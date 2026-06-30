@@ -27,10 +27,13 @@ services:
       - redis-data:/data
 
   # S3-compatible object storage for catalog payloads, preset .json, repo data.
+  # Port 9000 is exposed so the browser can PUT/GET via pre-signed URLs (the
+  # signature is bound to the public host — see S3_PUBLIC_ENDPOINT).
   minio:
     image: minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
+    ports: ["9000:9000", "9001:9001"]
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set in .env}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set in .env}
@@ -51,12 +54,32 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}
       REDIS_URL: redis://redis:6379
       S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      S3_BUCKET: ${S3_BUCKET:-bcweb}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       JWT_SECRET: ${JWT_SECRET:?set in .env}
+      SITE_URL: ${SITE_URL:-http://localhost}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       NODE_ENV: production
+
+  # Watches for PROVISIONING repos and brings them ONLINE (isolation/quota owner).
+  provisioner:
+    build:
+      context: ../..
+      dockerfile: apps/provisioner/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:-bcweb}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      REPO_PUBLIC_BASE: ${REPO_PUBLIC_BASE:-http://localhost/repos}
 
   web:
     build: ../../apps/web

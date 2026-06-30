@@ -1,7 +1,19 @@
 import { z } from 'zod';
 import { db, requireRole, slugify, notify } from '../lib.mjs';
+import { presignGet } from '../storage.mjs';
 
 const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
+
+// BSM preset shape — the metadata is always carried inside the preset itself.
+// passthrough() tolerates extra fields the format may grow.
+const presetSchema = z.object({
+  name: z.string().min(1).max(120),
+  color: z.string().regex(/^#?[0-9a-fA-F]{3,8}$/).optional(),
+  version: z.string().max(24),
+  UpdateNumber: z.number().optional(),
+  date: z.string().max(40).optional(),
+  assetPaths: z.array(z.string().max(300)).max(10000),
+}).passthrough();
 
 const submitSchema = z.object({
   projectKey: z.enum(['bmm', 'bsm', 'community']),
@@ -39,11 +51,25 @@ export default async function catalogRoutes(app) {
     return { item };
   });
 
+  // ── Download: short-lived pre-signed GET for a published payload ──
+  app.get('/catalog/:slug/download', async (req, reply) => {
+    const p = await db();
+    const item = await p.catalogItem.findUnique({ where: { slug: req.params.slug } });
+    if (!item || item.status !== 'PUBLISHED') return reply.code(404).send({ error: 'not_found' });
+    if (!item.payloadKey) return reply.code(404).send({ error: 'no_payload' });
+    return { url: await presignGet(item.payloadKey) };
+  });
+
   // ── Submit a NEW item (requires an account) → PENDING + a submission ──
   app.post('/catalog', { preHandler: requireRole() }, async (req, reply) => {
     const parsed = submitSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', details: parsed.error.flatten() });
     const d = parsed.data;
+    // BSM presets must match the preset schema (validated server-side).
+    if (d.kind === 'PRESET') {
+      const ok = presetSchema.safeParse(d.meta);
+      if (!ok.success) return reply.code(400).send({ error: 'invalid_preset', details: ok.error.flatten() });
+    }
     const p = await db();
     const project = await p.project.findUnique({ where: { key: d.projectKey } });
     if (!project) return reply.code(400).send({ error: 'unknown_project' });

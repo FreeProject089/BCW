@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { api } from './api.js';
+import { api, uploadPayload } from './api.js';
 import { useAuth } from './auth.jsx';
 
 // ── small helpers ──
@@ -89,6 +89,9 @@ export function ItemDetail() {
       <div className="text-xs text-accent uppercase">{it.kind} · v{it.version}</div>
       <H>{it.name}</H>
       <p className="text-slate-300 whitespace-pre-wrap">{it.description}</p>
+      {it.payloadKey && <button className="btn btn-primary mt-4" onClick={async () => {
+        try { const { url } = await api.get(`/catalog/${slug}/download`); window.open(url, '_blank'); } catch { alert('download failed'); }
+      }}>Download</button>}
       <div className="flex gap-2 mt-3">{(it.tags || []).map((t) => <span key={t} className="text-xs px-2 py-1 rounded bg-white/5">#{t}</span>)}</div>
       <Card className="mt-5"><div className="text-xs text-slate-400 mb-1">metadata</div>
         <pre className="text-xs overflow-auto">{JSON.stringify(it.meta, null, 2)}</pre></Card>
@@ -127,6 +130,60 @@ export function Repos() {
   );
 }
 
+// ── Hosting (buy a hosted Server-Repo) ──
+export function Hosting() {
+  const { user } = useAuth();
+  const nav = useNavigate();
+  const plans = useAsync(() => api.get('/hosting/plans'), []);
+  const cap = useAsync(() => api.get('/hosting/capacity'), []);
+  const buy = async (plan) => {
+    if (!user) return nav('/auth');
+    const repoName = prompt('Name for your hosted repo?'); if (!repoName) return;
+    try { const { url } = await api.post('/hosting/checkout', { planId: plan.id, repoName }); window.location = url; }
+    catch (x) { alert(x.data?.error === 'capacity_full' ? 'No capacity available right now.' : (x.data?.error || 'failed')); }
+  };
+  const c = cap.data?.capacity;
+  return (
+    <div><H>Host a Server-Repo</H>
+      {c && <Card className="mb-5 text-sm text-slate-400">Capacity: {c.freeGB.toFixed(0)} GB free of {c.usableGB.toFixed(0)} GB usable {c.enabled ? '' : '· (hosting disabled)'}</Card>}
+      <div className="grid md:grid-cols-4 gap-4">{(plans.data?.plans || []).map((pl) => (
+        <Card key={pl.id} className="text-center">
+          <div className="text-3xl font-extrabold">{pl.storageGB}<span className="text-base text-slate-400"> GB</span></div>
+          <div className="text-sm text-slate-400 mt-1">{(pl.uploadLimitKbps / 1024).toFixed(0)} Mbps · {pl.cpuShare} CPU</div>
+          <div className="text-accent font-bold my-3">${(pl.priceMonthlyCents / 100).toFixed(2)}/mo</div>
+          <button className="btn btn-primary w-full justify-center" onClick={() => buy(pl)}>Get hosted</button>
+        </Card>
+      ))}</div>
+      <p className="text-xs text-slate-500 mt-4">Updates to a hosted repo only require a valid SHA. We set the upload limit per repo.</p>
+    </div>
+  );
+}
+
+// ── Admin: capacity + pricing settings (ADMIN only) ──
+function AdminSettings() {
+  const { data, reload } = useAsync(() => api.get('/admin/settings'), []);
+  const [draft, setDraft] = useState({});
+  useEffect(() => { if (data?.settings) setDraft(data.settings); }, [data]);
+  const KEYS = [
+    ['hosting.totalCapacityGB', 'Total capacity (GB)'], ['hosting.reservedFreeGB', 'Reserved free margin (GB)'],
+    ['pricing.perGBCents', 'Price per GB (¢)'], ['pricing.perUploadMbpsCents', 'Price per Mbps (¢)'],
+    ['pricing.perCpuShareCents', 'Price per CPU share (¢)'], ['features.hostingEnabled', 'Hosting enabled (true/false)'],
+  ];
+  const save = async (key) => { try { await api.put(`/admin/settings/${key}`, { value: coerce(draft[key]) }); reload(); } catch { alert('save failed'); } };
+  const coerce = (v) => v === 'true' ? true : v === 'false' ? false : (v !== '' && !isNaN(Number(v)) ? Number(v) : v);
+  return (
+    <div className="mt-10"><h2 className="text-xl font-bold mb-3">Hosting settings</h2>
+      <div className="grid md:grid-cols-2 gap-3">{KEYS.map(([k, label]) => (
+        <Card key={k} className="flex items-center gap-3">
+          <div className="flex-1"><div className="text-xs text-slate-400">{label}</div>
+            <input className="input mt-1" value={draft[k] ?? ''} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} /></div>
+          <button className="btn" onClick={() => save(k)}>Save</button>
+        </Card>
+      ))}</div>
+    </div>
+  );
+}
+
 // ── Auth ──
 export function Auth() {
   const { login, register } = useAuth();
@@ -161,14 +218,27 @@ export function Dashboard() {
   const items = useAsync(() => api.get('/me/items'), []);
   const notes = useAsync(() => api.get('/me/notifications'), []);
   const [form, setForm] = useState({ projectKey: 'bmm', kind: 'PLUGIN', name: '', description: '', version: '1.0.0', meta: '{}' });
+  const [file, setFile] = useState(null);
   const [msg, setMsg] = useState('');
+
+  // For a BSM preset the .json IS the metadata: parse it to prefill name/version/meta.
+  const onFile = async (f) => {
+    setFile(f);
+    if (f && form.kind === 'PRESET' && /json$/i.test(f.name)) {
+      try { const j = JSON.parse(await f.text()); setForm((s) => ({ ...s, meta: JSON.stringify(j, null, 2), name: j.name || s.name, version: j.version || s.version })); }
+      catch { setMsg('preset is not valid JSON'); }
+    }
+  };
+
   const submit = async (e) => {
     e.preventDefault(); setMsg('');
     try {
       let meta = {}; try { meta = JSON.parse(form.meta || '{}'); } catch { setMsg('meta must be valid JSON'); return; }
-      await api.post('/catalog', { ...form, tags: [], meta });
-      setMsg('Submitted — pending moderation.'); items.reload();
-    } catch (x) { setMsg(x.data?.error || 'failed'); }
+      let payloadKey;
+      if (file) { setMsg('Uploading…'); payloadKey = await uploadPayload(form.kind, file); }
+      await api.post('/catalog', { ...form, tags: [], meta, payloadKey });
+      setMsg('Submitted — pending moderation.'); setFile(null); items.reload();
+    } catch (x) { setMsg(x.data?.error || x.message || 'failed'); }
   };
   return (
     <div className="space-y-8">
@@ -182,6 +252,10 @@ export function Dashboard() {
           <input className="input" placeholder="Version" value={form.version} onChange={(e) => setForm({ ...form, version: e.target.value })} />
           <textarea className="input md:col-span-2" placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           <textarea className="input md:col-span-2 font-mono text-xs" placeholder='meta JSON (e.g. a BSM preset)' value={form.meta} onChange={(e) => setForm({ ...form, meta: e.target.value })} />
+          <label className="md:col-span-2 text-sm text-slate-400">
+            {form.kind === 'PRESET' ? 'Preset .json file' : 'Payload file (zip / wasm)'}
+            <input className="input mt-1" type="file" onChange={(e) => onFile(e.target.files?.[0] || null)} />
+          </label>
           <div className="md:col-span-2 flex items-center gap-3"><button className="btn btn-primary">Submit</button><span className="text-sm text-slate-400">{msg}</span></div>
         </form></Card>
       </div>
@@ -202,6 +276,7 @@ export function Dashboard() {
 
 // ── Admin / moderation ──
 export function Admin() {
+  const { user } = useAuth();
   const subs = useAsync(() => api.get('/mod/submissions'), []);
   const act = async (id, action) => {
     try {
@@ -219,6 +294,7 @@ export function Admin() {
           <button className="btn" onClick={() => act(s.id, 'reject')}>Reject</button>
         </Card>
       ))}{!subs.data?.submissions?.length && <div className="text-slate-500">Queue is empty 🎉</div>}</div>
+      {user?.role === 'ADMIN' && <AdminSettings />}
     </div>
   );
 }

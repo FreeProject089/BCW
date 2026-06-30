@@ -39,11 +39,17 @@ After `docker compose up`, run the seed once: `docker compose exec api npm run s
 | POST | `/api/auth/register` · `/auth/login` · `/auth/logout` | – | accounts (argon2 + JWT cookie) |
 | GET | `/api/me` · `/me/items` · `/me/notifications` · `/me/repos` | user | user dashboard data |
 | GET | `/api/catalog` · `/catalog/:slug` | – | browse published apps/plugins/themes/presets |
-| POST | `/api/catalog` · `/catalog/:id/update` | user | submit / propose update (→ moderation) |
+| POST | `/api/catalog` · `/catalog/:id/update` | user | submit / propose update (→ moderation); presets validated |
+| POST | `/api/uploads/presign` | user | pre-signed PUT URL (direct-to-S3, size/type capped) |
+| GET | `/api/catalog/:slug/download` | – | pre-signed GET URL for a published payload |
 | GET/POST | `/api/mod/submissions` · `/…/approve` · `/…/reject` | mod/admin | moderation queue (notifies the owner) |
 | GET | `/api/blog` · `/blog/:slug` | – | per-project blog |
 | POST | `/api/blog` | mod/admin | publish a post |
 | GET | `/api/repos` | – | public hosted Server-Repos + status |
+| GET | `/api/hosting/plans` · `/hosting/capacity` · `/hosting/price` | – | plans, capacity status, live price preview |
+| POST | `/api/hosting/checkout` | user | Stripe Checkout for a hosted repo (capacity-guarded) |
+| POST | `/api/hosting/webhook` | Stripe | provisions repo on payment (signature-verified) |
+| POST | `/api/repos/:id/push` | user | update a hosted repo — **valid SHA only** |
 | GET/PUT | `/api/admin/settings` · `/…/:key` | admin | hosting cap, pricing knobs… |
 
 ## Web (React/Vite/Tailwind SPA)
@@ -56,12 +62,18 @@ notifications), **Admin** (moderation queue: approve/reject). Dev: `npm run dev`
 
 ## Status
 
-✅ **Full vertical slice**: Docker stack, DB schema, accounts, catalogs, submissions +
-moderation, notifications, blog, repos, admin settings — **and a working React front**
-covering browse + user dashboard + admin moderation.
+✅ **All roadmap phases implemented.** Docker stack · DB schema · accounts · catalogs ·
+submissions + moderation · notifications · blog · repos · admin settings · S3/MinIO
+pre-signed uploads + downloads · BSM preset validation · **Stripe hosting** (plans,
+capacity-guarded checkout, signature-verified webhook, flexible pricing knobs,
+SHA-only repo updates) · **provisioner** service (brings repos ONLINE, owns
+isolation/quota) · React front for all of it (browse, upload, hosting purchase, user
+dashboard, admin moderation + settings).
 
-▶️ **Next** (ARCHITECTURE §8): S3 pre-signed uploads (real payloads/preset files) →
-BSM preset schema-validation → Server-Repo **provisioner** → **Stripe** hosting
-(plans, checkout, webhooks, capacity/quota enforcement) → admin pricing UI.
+### Remaining hardening (productionizing, not features)
+- Real container orchestration in `apps/provisioner` (`spinUpRepoContainer` extension
+  point — dockerode volume + CPU/upload throttle) and a route to serve repo content.
+- Email verification + 2FA for admins; usage metering reconciliation with Stripe.
+- CDN in front of catalog downloads; Postgres read replicas when needed.
 
 Nothing here touches the BMM app repo; this is its own project (the `BCW` repo).

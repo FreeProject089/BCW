@@ -10,6 +10,8 @@
     "migrate": "prisma migrate deploy --schema ../../packages/db/schema.prisma"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.637.0",
+    "@aws-sdk/s3-request-presigner": "^3.637.0",
     "@fastify/cookie": "^9.3.1",
     "@fastify/cors": "^9.0.1",
     "@fastify/rate-limit": "^9.1.0",
@@ -18,6 +20,7 @@
     "fastify": "^4.28.1",
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",
+    "stripe": "^16.8.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

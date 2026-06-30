@@ -1,6 +1,6 @@
 import { Routes, Route, Link, NavLink, Navigate } from 'react-router-dom';
 import { useAuth } from './auth.jsx';
-import { Home, Catalog, ItemDetail, Blog, Repos, Auth, Dashboard, Admin } from './pages.jsx';
+import { Home, Catalog, ItemDetail, Blog, Repos, Hosting, Auth, Dashboard, Admin } from './pages.jsx';
 
 function Nav() {
   const { user, logout } = useAuth();
@@ -13,6 +13,7 @@ function Nav() {
         <NavLink to="/catalog?project=bsm&kind=PRESET" className={link}>BSM</NavLink>
         <NavLink to="/blog" className={link}>Blog</NavLink>
         <NavLink to="/repos" className={link}>Server Repos</NavLink>
+        <NavLink to="/hosting" className={link}>Hosting</NavLink>
         <div className="flex-1" />
         {user ? (
           <>
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/item/:slug" element={<ItemDetail />} />
           <Route path="/blog" element={<Blog />} />
           <Route path="/repos" element={<Repos />} />
+          <Route path="/hosting" element={<Hosting />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
           <Route path="/admin" element={<Protected role={['MOD', 'ADMIN']}><Admin /></Protected>} />
