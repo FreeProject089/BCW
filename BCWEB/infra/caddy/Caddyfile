@@ -1,0 +1,19 @@
+# Auto-HTTPS reverse proxy. Set SITE_DOMAIN in .env (use :80 for local).
+{$SITE_DOMAIN:localhost} {
+	encode gzip zstd
+
+	# API
+	handle_path /api/* {
+		reverse_proxy api:3000
+	}
+
+	# BMM telemetry dashboard
+	handle_path /telemetry/* {
+		reverse_proxy telemetry:8080
+	}
+
+	# Everything else → the web SPA
+	handle {
+		reverse_proxy web:80
+	}
+}

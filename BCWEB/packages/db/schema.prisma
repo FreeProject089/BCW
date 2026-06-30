@@ -1,0 +1,148 @@
+// BetterCommunity Web — data model. `npx prisma migrate dev` to apply.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role { USER MOD ADMIN }
+enum ProjectKey { community bmm bsm }
+enum CatalogKind { APP PLUGIN THEME PRESET }
+enum ItemStatus { PENDING PUBLISHED REJECTED HIDDEN }
+enum SubmissionType { NEW UPDATE }
+enum PostStatus { DRAFT PUBLISHED }
+enum RepoStatus { PROVISIONING ONLINE SUSPENDED OFFLINE }
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  displayName   String
+  role          Role     @default(USER)
+  emailVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  items         CatalogItem[]
+  submissions   Submission[]
+  notifications Notification[]
+  serverRepos   ServerRepo[]
+  subscriptions Subscription[]
+  posts         BlogPost[]
+}
+
+model Project {
+  id    String     @id @default(cuid())
+  key   ProjectKey @unique
+  name  String
+  posts BlogPost[]
+  items CatalogItem[]
+}
+
+model BlogPost {
+  id          String     @id @default(cuid())
+  project     Project    @relation(fields: [projectId], references: [id])
+  projectId   String
+  author      User       @relation(fields: [authorId], references: [id])
+  authorId    String
+  title       String
+  slug        String     @unique
+  body        String
+  status      PostStatus @default(DRAFT)
+  publishedAt DateTime?
+  createdAt   DateTime   @default(now())
+}
+
+model CatalogItem {
+  id          String      @id @default(cuid())
+  project     Project     @relation(fields: [projectId], references: [id])
+  projectId   String
+  kind        CatalogKind
+  owner       User        @relation(fields: [ownerId], references: [id])
+  ownerId     String
+  name        String
+  slug        String      @unique
+  description String      @default("")
+  tags        String[]    @default([])
+  version     String      @default("1.0.0")
+  status      ItemStatus  @default(PENDING)
+  payloadKey  String?     // object-storage key (the uploaded file/bundle)
+  meta        Json        @default("{}")  // preset JSON / plugin manifest / etc.
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  submissions Submission[]
+}
+
+model Submission {
+  id         String         @id @default(cuid())
+  item       CatalogItem    @relation(fields: [itemId], references: [id])
+  itemId     String
+  owner      User           @relation(fields: [ownerId], references: [id])
+  ownerId    String
+  type       SubmissionType @default(NEW)
+  status     ItemStatus     @default(PENDING)
+  reviewerId String?
+  reason     String?        // rejection reason -> sent to the user
+  createdAt  DateTime       @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  kind      String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model HostingPlan {
+  id               String   @id @default(cuid())
+  name             String
+  storageGB        Int
+  uploadLimitKbps  Int
+  cpuShare         Float    @default(0.25)
+  priceMonthlyCents Int
+  active           Boolean  @default(true)
+  subscriptions    Subscription[]
+}
+
+model ServerRepo {
+  id               String     @id @default(cuid())
+  owner            User       @relation(fields: [ownerId], references: [id])
+  ownerId          String
+  name             String
+  hosted           Boolean    @default(false)
+  status           RepoStatus @default(OFFLINE)
+  publicUrl        String?
+  region           String?
+  storageQuotaBytes BigInt    @default(0)
+  storageUsedBytes  BigInt    @default(0)
+  uploadLimitKbps  Int        @default(0)   // OUR limit (overrides the author's) when hosted
+  cpuShare         Float      @default(0.25)
+  seed             String?
+  createdAt        DateTime   @default(now())
+  subscription     Subscription?
+}
+
+model Subscription {
+  id               String     @id @default(cuid())
+  user             User       @relation(fields: [userId], references: [id])
+  userId           String
+  serverRepo       ServerRepo @relation(fields: [serverRepoId], references: [id])
+  serverRepoId     String     @unique
+  plan             HostingPlan @relation(fields: [planId], references: [id])
+  planId           String
+  stripeSubId      String?    @unique
+  status           String     @default("active")
+  currentPeriodEnd DateTime?
+}
+
+// Global, admin-editable settings: total hosting capacity, reserved free margin,
+// price/GB, price/upload, price/cpu, feature flags, etc. (key -> JSON value).
+model AdminSetting {
+  key   String @id
+  value Json
+}
