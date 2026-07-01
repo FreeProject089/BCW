@@ -86,16 +86,44 @@ services:
     restart: unless-stopped
     depends_on: [api]
 
-  # BMM telemetry dashboard (moved into bmm/), reachable at /telemetry via Caddy.
+  # Dedicated Postgres for the telemetry dashboard (kept isolated from the app DB).
+  telemetry-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bmm
+      POSTGRES_PASSWORD: bmm
+      POSTGRES_DB: telemetry
+    volumes:
+      - telemetry-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bmm -d telemetry"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # BMM telemetry dashboard (moved into bmm/), listens on 8900, reachable at /telemetry.
   telemetry:
     build: ../../bmm/telemetry-dashboard
     restart: unless-stopped
+    depends_on:
+      telemetry-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://bmm:bmm@telemetry-db:5432/telemetry
+      PORT: "8900"
+      API_KEY: ${TELEMETRY_API_KEY:-change-me}
+      ADMIN_KEY: ${TELEMETRY_ADMIN_KEY:-change-me-admin}
+      STATIC_DIR: /app/public
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     ports: ["80:80", "443:443"]
     depends_on: [api, web]
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-http://localhost}
+      TELEMETRY_DOMAIN: ${TELEMETRY_DOMAIN:-http://telemetry.localhost}
     volumes:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -105,5 +133,6 @@ volumes:
   db-data:
   redis-data:
   minio-data:
+  telemetry-data:
   caddy-data:
   caddy-config:

@@ -1,5 +1,7 @@
-# Auto-HTTPS reverse proxy. Set SITE_DOMAIN in .env (use :80 for local).
-{$SITE_DOMAIN:localhost} {
+# Reverse proxy. SITE_DOMAIN drives the scheme:
+#   local dev → http://localhost  (plain HTTP on :80)
+#   production → your-domain.com   (Caddy auto-provisions HTTPS)
+{$SITE_DOMAIN:http://localhost} {
 	encode gzip zstd
 
 	# API
@@ -7,13 +9,21 @@
 		reverse_proxy api:3000
 	}
 
-	# BMM telemetry dashboard
-	handle_path /telemetry/* {
-		reverse_proxy telemetry:8080
+	# Public hosted-repo content (repo.json / files) at a clean URL: /hosting/<user>/<repo>/...
+	handle /hosting/* {
+		reverse_proxy api:3000
 	}
 
 	# Everything else → the web SPA
 	handle {
 		reverse_proxy web:80
 	}
+}
+
+# BMM telemetry dashboard on its OWN origin (it owns /api, /assets, etc., which
+# would collide under a sub-path). Local: http://telemetry.localhost.
+# Production: set TELEMETRY_DOMAIN to a real subdomain (auto-HTTPS).
+{$TELEMETRY_DOMAIN:http://telemetry.localhost} {
+	encode gzip zstd
+	reverse_proxy telemetry:8900
 }

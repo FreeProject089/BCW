@@ -9,9 +9,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "boring-avatars": "^1.11.2",
+    "gsap": "^3.12.5",
+    "lucide-react": "^0.439.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.1"
+    "react-markdown": "^9.0.1",
+    "react-router-dom": "^6.26.1",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.0",
+    "rrweb": "^2.0.0-alpha.18",
+    "three": "^0.168.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",

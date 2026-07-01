@@ -33,12 +33,35 @@ export default async function authRoutes(app) {
 
   app.post('/auth/logout', async (_req, reply) => { clearSession(reply); return { ok: true }; });
 
+  const profileSelect = { id: true, email: true, displayName: true, role: true, emailVerified: true, bio: true, avatar: true, createdAt: true };
+
   app.get('/me', { preHandler: requireRole() }, async (req) => {
     const p = await db();
-    const user = await p.user.findUnique({
-      where: { id: req.user.uid },
-      select: { id: true, email: true, displayName: true, role: true, emailVerified: true, createdAt: true },
-    });
+    const user = await p.user.findUnique({ where: { id: req.user.uid }, select: profileSelect });
     return { user };
+  });
+
+  // Update profile (display name, bio, avatar).
+  app.patch('/me', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({
+      displayName: z.string().min(2).max(40).optional(),
+      bio: z.string().max(280).optional(),
+      avatar: z.object({ variant: z.string().max(20), seed: z.string().max(60) }).nullable().optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const user = await p.user.update({ where: { id: req.user.uid }, data: b.data, select: profileSelect });
+    return { user };
+  });
+
+  // Change password.
+  app.post('/me/password', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ current: z.string(), next: z.string().min(8).max(200) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const user = await p.user.findUnique({ where: { id: req.user.uid } });
+    if (!user || !(await argon2.verify(user.passwordHash, b.data.current))) return reply.code(401).send({ error: 'wrong_password' });
+    await p.user.update({ where: { id: user.id }, data: { passwordHash: await argon2.hash(b.data.next, { type: argon2.argon2id }) } });
+    return { ok: true };
   });
 }

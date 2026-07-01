@@ -50,3 +50,23 @@ async function tick() {
 await ensureBucket().catch(() => {});
 console.log('[provisioner] watching for PROVISIONING repos…');
 setInterval(() => tick().catch((e) => console.error(e)), Number(process.env.POLL_MS || 5000));
+
+// Periodically ping non-hosted, listed repos to keep their ONLINE/OFFLINE status
+// (and basic validity) fresh, without anyone clicking.
+async function checkRepos() {
+  const repos = await prisma.serverRepo.findMany({ where: { hosted: false, repoUrl: { not: null } }, take: 50 });
+  for (const r of repos) {
+    let status = 'OFFLINE';
+    try {
+      const res = await fetch(r.repoUrl, { signal: AbortSignal.timeout(8000), redirect: 'follow' });
+      if (res.ok) {
+        if (/\.json($|\?)/i.test(r.repoUrl)) { try { JSON.parse(await res.text()); status = 'ONLINE'; } catch { status = 'OFFLINE'; } }
+        else status = 'ONLINE';
+      }
+    } catch { /* offline */ }
+    if (status !== r.status) await prisma.serverRepo.update({ where: { id: r.id }, data: { status } }).catch(() => {});
+  }
+}
+checkRepos().catch(() => {});
+setInterval(() => checkRepos().catch((e) => console.error('[repo-check]', e?.message || e)), Number(process.env.REPO_CHECK_MS || 60000));
+console.log('[provisioner] repo health checks every', Number(process.env.REPO_CHECK_MS || 60000) / 1000, 's');

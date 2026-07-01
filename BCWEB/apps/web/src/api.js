@@ -19,6 +19,8 @@ export const api = {
   get: (p) => req('GET', p),
   post: (p, b) => req('POST', p, b),
   put: (p, b) => req('PUT', p, b),
+  patch: (p, b) => req('PATCH', p, b),
+  del: (p) => req('DELETE', p),
 };
 
 // Upload a payload directly to object storage via a pre-signed PUT, then return
@@ -29,4 +31,22 @@ export async function uploadPayload(kind, file) {
   const put = await fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
   if (!put.ok) throw Object.assign(new Error('upload_failed'), { status: put.status });
   return key;
+}
+
+// Upload a file into a hosted Server-Repo (quota-checked server-side).
+export async function uploadRepoFile(repoId, file) {
+  const contentType = file.type || 'application/octet-stream';
+  const { key, url, path } = await api.post(`/repos/${repoId}/files/presign`, { path: file.name, size: file.size, contentType });
+  const put = await fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+  if (!put.ok) throw Object.assign(new Error('upload_failed'), { status: put.status });
+  await api.post(`/repos/${repoId}/files`, { path, key, size: file.size, contentType });
+}
+
+// Upload a blog image; returns a stable public media URL to embed in markdown.
+export async function uploadBlogImage(file) {
+  const contentType = file.type || 'image/png';
+  const { url, mediaUrl } = await api.post('/uploads/presign', { kind: 'BLOG', filename: file.name, contentType, size: file.size });
+  const put = await fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+  if (!put.ok) throw Object.assign(new Error('upload_failed'), { status: put.status });
+  return mediaUrl;
 }

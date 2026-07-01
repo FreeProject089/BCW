@@ -31,3 +31,9 @@ export async function presignPut(key, contentType, expiresIn = 600) {
 export async function presignGet(key, expiresIn = 600) {
   return getSignedUrl(signer, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn });
 }
+
+/** Stream an object (used to serve blog media with stable public URLs). */
+export async function getObject(key) {
+  const res = await internal.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+  return { body: res.Body, contentType: res.ContentType || 'application/octet-stream', length: res.ContentLength };
+}

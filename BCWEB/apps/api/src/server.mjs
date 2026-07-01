@@ -13,6 +13,11 @@ import miscRoutes from './routes/misc.mjs';
 import uploadRoutes from './routes/uploads.mjs';
 import hostingRoutes from './routes/hosting.mjs';
 import stripeWebhook from './routes/stripe-webhook.mjs';
+import analyticsRoutes from './routes/analytics.mjs';
+import projectRoutes from './routes/projects.mjs';
+import blogRoutes from './routes/blog.mjs';
+import repoRoutes from './routes/repos.mjs';
+import hostingContentRoutes from './routes/hosting-content.mjs';
 
 const app = Fastify({ logger: true });
 
@@ -31,6 +36,11 @@ await app.register(catalogRoutes);
 await app.register(miscRoutes);
 await app.register(uploadRoutes);
 await app.register(hostingRoutes);
+await app.register(analyticsRoutes);
+await app.register(projectRoutes);
+await app.register(blogRoutes);
+await app.register(repoRoutes);
+await app.register(hostingContentRoutes);
 await app.register(stripeWebhook); // encapsulated: raw-body for Stripe signature
 
 // Make sure the object-storage bucket exists (non-fatal if storage isn't up yet).

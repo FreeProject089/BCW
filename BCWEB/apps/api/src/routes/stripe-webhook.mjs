@@ -21,7 +21,27 @@ export default async function stripeWebhook(app) {
     const p = await db();
     if (event.type === 'checkout.session.completed') {
       const s = event.data.object;
-      const { userId, planId, repoName } = s.metadata || {};
+      const meta = s.metadata || {};
+
+      // Paid feature promotion: extend the repo's featuredUntil + record an invoice.
+      if (meta.type === 'feature' && meta.repoId && meta.userId) {
+        const days = Number(meta.days || 7);
+        const repo = await p.serverRepo.findUnique({ where: { id: meta.repoId } });
+        if (repo) {
+          const base = repo.featuredUntil && repo.featuredUntil > new Date() ? repo.featuredUntil : new Date();
+          const until = new Date(base.getTime() + days * 864e5);
+          await p.serverRepo.update({ where: { id: repo.id }, data: { featuredUntil: until } });
+          await p.payment.create({ data: {
+            userId: meta.userId, serverRepoId: repo.id, kind: 'FEATURE',
+            description: `Featured listing — "${repo.name}" (${days} days)`,
+            amountCents: s.amount_total ?? 0, currency: s.currency || 'usd', days, stripeSessionId: s.id,
+          } });
+          await notify(p, meta.userId, 'feature_active', `"${repo.name}" is now featured until ${until.toDateString()}.`);
+        }
+        return { received: true };
+      }
+
+      const { userId, planId, repoName } = meta;
       const plan = await p.hostingPlan.findUnique({ where: { id: planId } });
       if (plan && userId) {
         // Provision the repo (status PROVISIONING — the provisioner brings it ONLINE).

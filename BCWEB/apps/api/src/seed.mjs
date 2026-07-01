@@ -42,10 +42,80 @@ const settings = {
   'pricing.perGBCents': 50,              // flexible pricing inputs
   'pricing.perUploadMbpsCents': 20,
   'pricing.perCpuShareCents': 400,
+  'pricing.featurePerDayCents': 50,   // paid "featured listing" promotion, per day
   'features.hostingEnabled': true,
 };
 for (const [key, value] of Object.entries(settings)) {
   await p.adminSetting.upsert({ where: { key }, create: { key, value }, update: {} }); // don't clobber admin edits
+}
+
+// Default per-project config (admin-editable later via the dashboard).
+const projectConfigs = {
+  community: {
+    name: 'BetterCommunity', tagline: 'The home for all Better projects.',
+    links: { kofi: 'https://ko-fi.com/bettercommunity', github: 'https://github.com/FreeProject089' },
+    downloads: [], contributors: [], progress: [], legal: {},
+  },
+  bmm: {
+    name: 'Better Mods Manager', tagline: 'Apps, plugins & themes for DCS modding.',
+    downloads: [
+      { label: 'Download (Windows)', url: 'https://github.com/FreeProject089/BetterModsManager/releases/latest', primary: true },
+    ],
+    releaseNotes: { owner: 'FreeProject089', repo: 'BetterModsManager', branch: 'Tdev', path: 'Update' },
+    links: {
+      github: 'https://github.com/FreeProject089/BetterModsManager',
+      discord: 'https://discord.gg/', kofi: 'https://ko-fi.com/bettercommunity',
+      reddit: '', forum: 'https://forum.dcs.world/',
+    },
+    contributors: [
+      { name: 'FreeProject089', role: 'Creator & Developer', category: 'staff', pfp: '', links: { github: 'https://github.com/FreeProject089' } },
+    ],
+    // Community contributors are pulled from this GitHub JSON; pfp filenames resolve
+    // against pfpBase. Messages scroll one at a time (no author shown).
+    contributorsUrl: 'https://raw.githubusercontent.com/FreeProject089/BetterModsManager/Tdev/frontend/assets/contributors.json',
+    pfpBase: 'https://raw.githubusercontent.com/FreeProject089/BetterModsManager/Tdev/frontend/assets/userpfp/',
+    replayUrl: '/bmm-replay.bmmreplay',   // real rrweb session, played as a transparent live preview
+    messages: [
+      { message: 'Welcome to the new BetterCommunity hub — thanks for being here!' },
+      { message: 'Share your mods, plugins and themes with the community.' },
+    ],
+    progress: [
+      { title: 'v1.0 release', status: 'in-progress', percent: 75, eta: 'Q3 2026', note: 'Final stabilization before the stable launch.',
+        items: [{ label: 'Core mod engine', done: true }, { label: 'Plugin API', done: true }, { label: 'Theme editor', done: true }, { label: 'Crash reporter', done: true }, { label: 'Full docs', done: false }, { label: 'Installer handoff', done: false }] },
+      { title: 'Plugin marketplace', status: 'in-progress', percent: 35, eta: 'Q4 2026', note: 'Browse & install community plugins in-app.',
+        items: [{ label: 'Catalog format', done: true }, { label: 'In-app browser', done: false }, { label: 'Ratings', done: false }] },
+      { title: 'Cloud sync', status: 'planned', percent: 0, eta: '2027', note: 'Sync your setup across machines.',
+        items: [{ label: 'Account linking', done: false }, { label: 'Conflict resolution', done: false }] },
+    ],
+    legal: {
+      license: 'GPL-3.0',
+      licenseUrl: 'https://github.com/FreeProject089/BetterModsManager/blob/Tdev/LICENSE.md',
+      tos: 'https://github.com/FreeProject089/BetterModsManager/blob/Tdev/TOS.md',
+      tosFr: 'https://github.com/FreeProject089/BetterModsManager/blob/Tdev/TOS_FR.md',
+      privacy: 'https://github.com/FreeProject089/BetterModsManager/blob/Tdev/PRIVACY.md',
+      privacyFr: 'https://github.com/FreeProject089/BetterModsManager/blob/Tdev/PRIVACY_FR.md',
+      readme: 'https://github.com/FreeProject089/BetterModsManager/blob/Tdev/README.md',
+    },
+  },
+  bsm: {
+    name: 'Better Sound Maker', tagline: 'Community sound presets.',
+    downloads: [{ label: 'Download (Windows)', url: '', primary: true }],
+    releaseNotes: { owner: 'FreeProject089', repo: 'Better-Sound.Maker', branch: 'main', path: 'Update' },
+    links: { github: 'https://github.com/FreeProject089/Better-Sound.Maker', discord: '', kofi: 'https://ko-fi.com/bettercommunity' },
+    contributors: [], messages: [], progress: [], legal: { license: '', tos: '', privacy: '' },
+  },
+  installer: {
+    name: 'BetterInstaller', tagline: 'The modern installer for the Better* suite.',
+    downloads: [{ label: 'Download (Windows)', url: '', primary: true }],
+    links: { github: '', kofi: 'https://ko-fi.com/bettercommunity' },
+    contributors: [], progress: [], legal: {},
+  },
+};
+// NOTE: project configs are overwritten on seed (still being set up). Once you
+// customize them via Admin → Projects config, avoid reseeding or they'll reset.
+for (const [key, value] of Object.entries(projectConfigs)) {
+  const k = `project.${key}`;
+  await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value }, update: { value } });
 }
 
 console.log('[seed] done');

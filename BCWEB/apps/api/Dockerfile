@@ -1,16 +1,20 @@
-# Build context = BCWEB root (see docker-compose: context ../.., dockerfile apps/api/Dockerfile),
-# so we can pull in the shared packages/db Prisma schema.
+# Build context = BCWEB root (see docker-compose: context ../.., dockerfile apps/api/Dockerfile).
 FROM node:20-alpine
 WORKDIR /app
 
-COPY apps/api/package.json ./package.json
-RUN npm install --omit=dev
+# openssl is needed by the Prisma query engine on alpine/musl.
+RUN apk add --no-cache openssl
 
-# Shared Prisma schema at /packages/db -> matches the "../../packages/db" the
-# package.json scripts use from WORKDIR /app (/app/../.. = /).
-COPY packages/db /packages/db
+# Full install (incl. the `prisma` CLI) — needed for generate at build + db push at runtime.
+COPY apps/api/package.json ./package.json
+RUN npm install
+
+# Schema at the conventional ./prisma so the CLI finds it + this project's package.json.
+COPY packages/db ./prisma
 COPY apps/api/src ./src
-RUN npx prisma generate --schema /packages/db/schema.prisma || true
+RUN npx prisma generate
 
 EXPOSE 3000
-CMD sh -c "npx prisma migrate deploy --schema /packages/db/schema.prisma || true; node src/server.mjs"
+# No committed migrations yet → `db push` syncs the schema straight to Postgres
+# (creates all tables). Swap to `migrate deploy` once migrations are committed.
+CMD sh -c "npx prisma db push --skip-generate --accept-data-loss; node src/server.mjs"

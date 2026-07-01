@@ -1,6 +1,8 @@
 // BetterCommunity Web — data model. `npx prisma migrate dev` to apply.
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // native = local dev; musl target = the alpine containers.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -8,13 +10,48 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role { USER MOD ADMIN }
-enum ProjectKey { community bmm bsm }
-enum CatalogKind { APP PLUGIN THEME PRESET }
-enum ItemStatus { PENDING PUBLISHED REJECTED HIDDEN }
-enum SubmissionType { NEW UPDATE }
-enum PostStatus { DRAFT PUBLISHED }
-enum RepoStatus { PROVISIONING ONLINE SUSPENDED OFFLINE }
+enum Role {
+  USER
+  MOD
+  ADMIN
+}
+
+enum ProjectKey {
+  community
+  bmm
+  bsm
+}
+
+enum CatalogKind {
+  APP
+  PLUGIN
+  THEME
+  PRESET
+}
+
+enum ItemStatus {
+  PENDING
+  PUBLISHED
+  REJECTED
+  HIDDEN
+}
+
+enum SubmissionType {
+  NEW
+  UPDATE
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum RepoStatus {
+  PROVISIONING
+  ONLINE
+  SUSPENDED
+  OFFLINE
+}
 
 model User {
   id            String   @id @default(cuid())
@@ -23,6 +60,8 @@ model User {
   displayName   String
   role          Role     @default(USER)
   emailVerified Boolean  @default(false)
+  bio           String   @default("")
+  avatar        Json?    // { variant, seed } for the Boring Avatar
   createdAt     DateTime @default(now())
 
   items         CatalogItem[]
@@ -31,6 +70,7 @@ model User {
   serverRepos   ServerRepo[]
   subscriptions Subscription[]
   posts         BlogPost[]
+  payments      Payment[]
 }
 
 model Project {
@@ -49,10 +89,13 @@ model BlogPost {
   authorId    String
   title       String
   slug        String     @unique
-  body        String
+  excerpt     String     @default("")
+  cover       String?    // cover image URL
+  body        String     // markdown (supports images, embeds, links)
   status      PostStatus @default(DRAFT)
   publishedAt DateTime?
   createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 }
 
 model CatalogItem {
@@ -123,8 +166,39 @@ model ServerRepo {
   uploadLimitKbps  Int        @default(0)   // OUR limit (overrides the author's) when hosted
   cpuShare         Float      @default(0.25)
   seed             String?
+  // Public listing + content verification.
+  description      String     @default("")
+  tags             String[]   @default([])
+  repoUrl          String?    // source URL for a non-hosted, listed repo
+  sha              String?    // current content SHA (integrity of last verified content)
+  listed           Boolean    @default(false)  // owner wants it in the public list
+  verified         Boolean    @default(false)  // content checked by a mod/admin
+  pendingReview    Boolean    @default(false)  // a change is awaiting verification
+  featuredUntil    DateTime?  // paid promotion expiry (listing boost)
+  // Hosted-content publishing (for repos we host): admin validates → repo.json served.
+  hostPath         String?    @unique  // "<ownerSlug>/<repoSlug>" for the public URL
+  published        Boolean    @default(false)
+  repoJson         Json?      // parsed manifest of the uploaded repo.json
   createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
   subscription     Subscription?
+  files            RepoFile[]
+}
+
+// A file uploaded to a hosted Server-Repo (counted against the storage quota).
+// Stored in object storage; NEVER executed — only listed/served as bytes.
+model RepoFile {
+  id           String     @id @default(cuid())
+  repo         ServerRepo @relation(fields: [serverRepoId], references: [id], onDelete: Cascade)
+  serverRepoId String
+  path         String     // logical path within the repo (e.g. "repo.json", "mods/x.zip")
+  key          String     // object-storage key
+  size         BigInt     @default(0)
+  contentType  String     @default("application/octet-stream")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([serverRepoId, path])
 }
 
 model Subscription {
@@ -145,4 +219,38 @@ model Subscription {
 model AdminSetting {
   key   String @id
   value Json
+}
+
+enum PaymentKind {
+  FEATURE
+  HOSTING
+}
+
+// Billing history / invoices (one-time feature promotions, hosting charges…).
+model Payment {
+  id              String      @id @default(cuid())
+  user            User        @relation(fields: [userId], references: [id])
+  userId          String
+  serverRepoId    String?
+  kind            PaymentKind
+  description     String
+  amountCents     Int
+  currency        String      @default("usd")
+  days            Int?        // promotion duration, when applicable
+  stripeSessionId String?
+  status          String      @default("paid")
+  createdAt       DateTime    @default(now())
+
+  @@index([userId])
+}
+
+// First-party, cookie-consent-gated page analytics (no third party, minimal data).
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  path      String
+  ref       String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([path])
 }

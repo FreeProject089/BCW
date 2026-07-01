@@ -29,3 +29,8 @@ Thumbs.db
 # Rust build artifacts
 target/
 **/target/
+
+# Large rrweb replay served by the web (do not commit ~26MB)
+apps/web/public/*.bmmreplay
+
+*.bmmreplay
