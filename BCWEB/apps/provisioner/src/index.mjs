@@ -7,7 +7,10 @@
 // enforcing storageQuotaBytes / uploadLimitKbps / cpuShare from the plan.
 
 import { PrismaClient } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { S3Client, PutObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+
+const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 
 const prisma = new PrismaClient();
 const BUCKET = process.env.S3_BUCKET || 'bcweb';
@@ -25,10 +28,11 @@ async function ensureBucket() {
 
 // EXTENSION POINT: real container + quota'd volume goes here.
 async function spinUpRepoContainer(repo) {
-  // e.g. dockerode: create a volume sized to repo.storageQuotaBytes, run the
-  // repo-server image with CPU share repo.cpuShare and an upload throttle of
-  // repo.uploadLimitKbps, mounted at repos/<id>/. For now we just stake out the
-  // storage prefix so the repo has a home.
+  // Runtime sandbox enforcement (bans, whitelist, bandwidth cap) already happens at
+  // serve time in the API (routes/hosting-content.mjs). A future deploy can additionally
+  // isolate at the OS level here — e.g. dockerode: a volume sized to storageQuotaBytes,
+  // the repo-server image with CPU share cpuShare and an upload throttle of
+  // uploadLimitKbps. For now we stake out the storage prefix so the repo has a home.
   await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: `repos/${repo.id}/.keep`, Body: '' }));
   return { publicUrl: `${REPO_BASE}/${repo.id}` };
 }
@@ -56,15 +60,20 @@ setInterval(() => tick().catch((e) => console.error(e)), Number(process.env.POLL
 async function checkRepos() {
   const repos = await prisma.serverRepo.findMany({ where: { hosted: false, repoUrl: { not: null } }, take: 50 });
   for (const r of repos) {
-    let status = 'OFFLINE';
+    let status = 'OFFLINE', valid = false, sha = null;
     try {
       const res = await fetch(r.repoUrl, { signal: AbortSignal.timeout(8000), redirect: 'follow' });
       if (res.ok) {
-        if (/\.json($|\?)/i.test(r.repoUrl)) { try { JSON.parse(await res.text()); status = 'ONLINE'; } catch { status = 'OFFLINE'; } }
-        else status = 'ONLINE';
+        const t = await res.text();
+        try { JSON.parse(t); valid = true; sha = sha256(t); status = 'ONLINE'; } catch { status = 'ONLINE'; valid = false; }
       }
     } catch { /* offline */ }
-    if (status !== r.status) await prisma.serverRepo.update({ where: { id: r.id }, data: { status } }).catch(() => {});
+    // Auto-reconcile status, content hash, and verification (valid manifest → verified).
+    const data = {};
+    if (status !== r.status) data.status = status;
+    if (sha && sha !== r.sha) data.sha = sha;
+    if (r.listed && r.verified !== valid) { data.verified = valid; data.pendingReview = false; }
+    if (Object.keys(data).length) await prisma.serverRepo.update({ where: { id: r.id }, data }).catch(() => {});
   }
 }
 checkRepos().catch(() => {});

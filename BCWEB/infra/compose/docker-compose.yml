@@ -62,6 +62,13 @@ services:
       SITE_URL: ${SITE_URL:-http://localhost}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      LINK_LOOKUP_SECRET: ${LINK_LOOKUP_SECRET:-dev-link-secret}
+      DISCORD_CONTACT_WEBHOOK: ${DISCORD_CONTACT_WEBHOOK:-}
+      BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-${LINK_LOOKUP_SECRET:-dev-bot-secret}}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
       NODE_ENV: production
 
   # Watches for PROVISIONING repos and brings them ONLINE (isolation/quota owner).
@@ -82,9 +89,23 @@ services:
       REPO_PUBLIC_BASE: ${REPO_PUBLIC_BASE:-http://localhost/repos}
 
   web:
-    build: ../../apps/web
+    build:
+      context: ../../apps/web
+      args:
+        VITE_GTM_ID: ${VITE_GTM_ID:-}
     restart: unless-stopped
     depends_on: [api]
+
+  # BetterCommunity Discord bot. Idle (exits 0) unless DISCORD_TOKEN is set in .env.
+  bot:
+    build: ../../apps/bot
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+      BCWEB_API_URL: http://api:3000
+      SITE_URL: ${SITE_URL:-http://localhost}
+      BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-${LINK_LOOKUP_SECRET:-dev-bot-secret}}
 
   # Dedicated Postgres for the telemetry dashboard (kept isolated from the app DB).
   telemetry-db:
@@ -115,6 +136,9 @@ services:
       API_KEY: ${TELEMETRY_API_KEY:-change-me}
       ADMIN_KEY: ${TELEMETRY_ADMIN_KEY:-change-me-admin}
       STATIC_DIR: /app/public
+      # Resolve creator ids → linked BetterCommunity accounts (server-to-server).
+      BC_API_URL: http://api:3000
+      BC_LINK_SECRET: ${LINK_LOOKUP_SECRET:-dev-link-secret}
 
   caddy:
     image: caddy:2-alpine

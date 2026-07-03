@@ -1,0 +1,15 @@
+{
+  "name": "bcweb-bot",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "BetterCommunity Discord bot — moderation, join-to-create voice, welcome/bye, account linking.",
+  "scripts": {
+    "start": "node src/index.mjs"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "@napi-rs/canvas": "^0.1.58",
+    "gifenc": "^1.0.3"
+  }
+}

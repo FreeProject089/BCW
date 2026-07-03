@@ -17,6 +17,10 @@ pub struct Config {
     /// fast guard loop trims back down to this whenever the DB grows ~20% past it
     /// (immediately — no waiting for the hourly retention pass).
     pub soft_db_mb: i64,
+    /// BetterCommunity API base (e.g. https://bettercommunity.ch/api) + shared secret,
+    /// used to resolve creator ids → linked accounts. Empty = feature disabled.
+    pub bc_api_url: String,
+    pub bc_link_secret: String,
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -39,6 +43,8 @@ impl Config {
             rate_per_min: env_or("RATE_PER_MIN", "240").parse().unwrap_or(240),
             max_batch: env_or("MAX_BATCH", "1000").parse().unwrap_or(1000),
             soft_db_mb: env_or("SOFT_DB_MB", "5120").parse().unwrap_or(5120),
+            bc_api_url: env_or("BC_API_URL", ""),
+            bc_link_secret: env_or("BC_LINK_SECRET", ""),
         }
     }
 }

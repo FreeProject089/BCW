@@ -19,7 +19,14 @@ export function RrwebReplay({ sessionId, fallbackEvents }: { sessionId: string; 
     let on = true;
     setEvts(null);
     apiGet(`/api/replay?session_id=${encodeURIComponent(sessionId)}`)
-      .then((r) => on && setEvts(r?.events || []))
+      .then((r) => {
+        if (!on) return;
+        // rrweb requires events in strict timestamp order — chunks can arrive/store
+        // out of order (network, coarse ingest ts), which makes the Replayer render
+        // blank or throw. Array.sort is stable, so equal timestamps keep chunk order.
+        const evs = (r?.events || []).slice().sort((a: any, b: any) => (a?.timestamp || 0) - (b?.timestamp || 0));
+        setEvts(evs);
+      })
       .catch(() => on && setEvts([]));
     return () => { on = false; };
   }, [sessionId]);

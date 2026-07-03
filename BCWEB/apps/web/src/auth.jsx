@@ -10,14 +10,27 @@ export function AuthProvider({ children }) {
 
   const refresh = async () => {
     try { const { user } = await api.get('/me'); setUser(user); }
-    catch { setUser(null); }
+    catch (e) {
+      // Only a real auth failure logs the user out. A rate-limit (429) or a transient
+      // network/5xx error must NOT clear the session — otherwise a burst of requests
+      // (e.g. uploading a folder) would spuriously sign the user out.
+      if (e?.status === 401) setUser(null);
+    }
     finally { setLoading(false); }
   };
   useEffect(() => { refresh(); }, []);
 
-  const login = async (email, password) => { await api.post('/auth/login', { email, password }); await refresh(); };
-  const register = async (email, password, displayName) => { await api.post('/auth/register', { email, password, displayName }); await refresh(); };
+  // Returns { twoFactorRequired: true, tempToken } when the account has 2FA
+  // enabled — the caller must then call loginWith2fa() to actually get a session.
+  const login = async (email, password) => {
+    const res = await api.post('/auth/login', { email, password });
+    if (res?.twoFactorRequired) return res;
+    await refresh();
+    return res;
+  };
+  const loginWith2fa = async (tempToken, code) => { await api.post('/auth/login/2fa', { tempToken, code }); await refresh(); };
+  const register = async (email, password, displayName, pow) => { await api.post('/auth/register', { email, password, displayName, pow }); await refresh(); };
   const logout = async () => { await api.post('/auth/logout'); setUser(null); };
 
-  return <Ctx.Provider value={{ user, loading, login, register, logout, refresh }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ user, loading, login, loginWith2fa, register, logout, refresh }}>{children}</Ctx.Provider>;
 }

@@ -50,6 +50,22 @@ export interface UserRow {
   first_seen?: string;
   last_seen?: string;
   benchmarks: any[];
+  /** Linked BetterCommunity account (creator id → account), when known. */
+  account?: {
+    accountId: string;
+    displayName?: string;
+    /** Linked Discord account + bot-reported activity, when the user linked Discord. */
+    discord?: {
+      id: string;
+      username?: string;
+      avatar?: string | null;
+      linkedAt?: string;
+      guildJoinedAt?: string | null;
+      lastMessageAt?: string | null;
+      lastVoiceJoinAt?: string | null;
+      lastVoiceCreateAt?: string | null;
+    } | null;
+  };
 }
 export interface PageRow {
   view: string;

@@ -4,6 +4,10 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install
 COPY . .
+# Vite bakes VITE_* vars into the bundle at build time (not readable at runtime),
+# so the Google Tag id has to come in as a build arg, not a container env var.
+ARG VITE_GTM_ID
+ENV VITE_GTM_ID=$VITE_GTM_ID
 RUN npm run build
 
 FROM nginx:alpine

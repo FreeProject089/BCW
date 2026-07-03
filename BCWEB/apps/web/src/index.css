@@ -64,6 +64,26 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 99px; border: 2px solid transparent; background-clip: content-box; }
 
+/* Subtler scrollbar for small, dense scroll panels (DB viewer, file manager) —
+   the default 10px thumb reads as oversized/heavy inside a compact box. */
+.scroll-thin { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; border: none; background-clip: unset; }
+.scroll-thin::-webkit-scrollbar-thumb:hover { background: var(--line-strong); }
+
+/* ── Mobile layout safety ──────────────────────────────────────────────
+   The app must always keep the right format on a phone, whatever the page.
+   We clip any accidental horizontal overflow at the page level (`clip`, not
+   `hidden`, so position:sticky and the bottom tab bar keep working), while
+   genuinely-wide content (code / JSON dumps / media / tables) scrolls INSIDE
+   its own box rather than stretching the whole page out of shape. */
+html, body, #root { overflow-x: clip; max-width: 100%; }
+img, svg, video, canvas { max-width: 100%; }
+pre { max-width: 100%; overflow-x: auto; }
+table { display: block; max-width: 100%; overflow-x: auto; }
+/* Long unbreakable tokens (URLs, ids, sha, emails) wrap instead of overflowing. */
+code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
+
 @layer components {
   .gradient-text {
     background: linear-gradient(110deg, var(--primary), var(--primary-2) 70%, #fbbf24);
@@ -76,7 +96,11 @@ h1, h2, h3 { letter-spacing: -0.025em; }
     box-shadow: var(--shadow);
     transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
   }
-  [data-theme="dark"] .card { backdrop-filter: blur(12px); }
+  /* Dark cards are SOLID by default — the old translucent surface (rgba white
+     2.8%) + blur was unreadable over the bright orb/page glow (see the security
+     log screenshot). Users who want the glassy look opt in via Settings →
+     Translucent surfaces, handled by the [data-surface-glass] rules below. */
+  [data-theme="dark"] .card { background: #15120d; }
   .card-hover:hover { border-color: var(--ring); transform: translateY(-3px); box-shadow: 0 16px 40px -16px var(--primary-glow); }
 
   .btn {
@@ -103,7 +127,8 @@ h1, h2, h3 { letter-spacing: -0.025em; }
     background: var(--bg-solid); border: 1px solid var(--line); color: var(--text);
     transition: border-color .16s ease, box-shadow .16s ease; outline: none;
   }
-  [data-theme="dark"] .input { background: rgba(0,0,0,0.3); }
+  [data-theme="dark"] .input { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); }
+  [data-theme="dark"] .input:hover { background: rgba(255,255,255,0.07); }
   .input::placeholder { color: var(--faint); }
   .input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px rgba(249,115,22,0.16); }
   textarea.input { resize: vertical; min-height: 84px; }
@@ -123,6 +148,24 @@ h1, h2, h3 { letter-spacing: -0.025em; }
   [data-theme="dark"] .badge-red { color: #fca5a5; }
 
   .topbar { background: color-mix(in srgb, var(--bg-solid) 82%, transparent); backdrop-filter: blur(14px); }
+  /* Dark theme: the glassy 82% + blur reads fine on white, but over the dark
+     bg (with the bright orb moving underneath) menu text became genuinely hard
+     to read — floating surfaces go near-opaque in dark. */
+  [data-theme="dark"] .topbar { background: color-mix(in srgb, var(--bg-solid) 94%, transparent); }
+  [data-theme="dark"] .modal-card { background: #17130e; backdrop-filter: none; }
+  /* Opt-in frosted-glass surfaces (Settings → Appearance → Translucent surfaces).
+     --glass-alpha is the surface opacity; a strong blur keeps text readable over
+     whatever shows through. Applies to BOTH cards and dialogs so the whole UI
+     shares the look, in both themes. */
+  [data-surface-glass] .card,
+  [data-surface-glass] .modal-card {
+    background: color-mix(in srgb, var(--surface) calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
+    backdrop-filter: blur(18px) saturate(1.4) !important;
+  }
+  [data-theme="dark"][data-surface-glass] .card,
+  [data-theme="dark"][data-surface-glass] .modal-card {
+    background: color-mix(in srgb, #17130e calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
+  }
   .nav-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 9px; font-size: 14px; color: var(--muted); transition: all .15s ease; }
   .nav-link:hover { color: var(--text); background: var(--surface-2); }
   .nav-link-active { color: var(--primary); background: var(--surface-2); }
@@ -134,6 +177,60 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 .anim-fade { animation: fadeIn .2s ease both; }
 .anim-pop { animation: popIn .22s cubic-bezier(.16,1,.3,1) both; }
 .anim-slide { animation: slideUp .35s cubic-bezier(.16,1,.3,1) both; }
+
+/* Indeterminate shimmer bar for the intro loader — no real "percent loaded" to
+   report (there's nothing to fetch, it's just the entrance animation playing
+   out), so a sliding shimmer reads more honest than a fake progress number. */
+@keyframes introShimmer { 0% { left: -40%; } 100% { left: 100%; } }
+.anim-intro-shimmer { animation: introShimmer 1.1s ease-in-out infinite; }
+
+/* Premium scroll reveal (JS-gated so content is never stuck hidden without JS).
+   Rise + settle + soft blur-in on a refined expo-out curve. `.reveal-stagger`
+   cascades its direct children one after another (--i is set per child in JS). */
+.reveal-on-scroll,
+.reveal-stagger > * {
+  transition: opacity .8s cubic-bezier(.22,1,.36,1), transform .8s cubic-bezier(.22,1,.36,1), filter .8s cubic-bezier(.22,1,.36,1);
+  will-change: opacity, transform;
+}
+/* --reveal-x is driven live by the Three.js orb (Hero3D sets it to ±44px based on
+   which side of the page the orb currently is) — elements rise AND drift in from
+   the orb's side, so content feels pushed out of its wake. Defaults to 0. */
+html.js-anim .reveal-on-scroll,
+html.js-anim .reveal-stagger > * { opacity: 0; transform: translate(var(--reveal-x, 0px), 38px) scale(.978); filter: blur(6px); }
+html.js-anim .reveal-on-scroll.in,
+html.js-anim .reveal-stagger.in > * { opacity: 1; transform: none; filter: none; }
+/* release the compositor hint once revealed so we don't keep hundreds of layers */
+html.js-anim .reveal-on-scroll.in,
+html.js-anim .reveal-stagger.in > * { will-change: auto; }
+/* Per-child cascade so grids surface piece by piece, matching the slow orb spiral
+   — CAPPED so a long grid can't lag far behind a fast scroll (was uncapped ×180ms,
+   which left the last cards visibly trailing after you'd already scrolled to them).
+   NOT gated on prefers-reduced-motion: Windows turns that on behind users' backs
+   (animation settings/battery saver) and it silently flattened every reveal. */
+html.js-anim .reveal-stagger.in > * { transition-delay: calc(min(var(--i, 0), 6) * 105ms); }
+/* Fast scroll / jump: JS adds .reveal-instant when a reveal fires while its element
+   is already well inside (or above) the viewport. Playing the long rise+blur then
+   would visibly animate on-screen content and read as a glitchy late "spawn", so
+   collapse it to a short fade in place with no stagger delay. */
+html.js-anim .reveal-on-scroll.reveal-instant,
+html.js-anim .reveal-stagger.reveal-instant > * { transition-duration: .34s; transition-delay: 0ms; }
+
+
+/* Theme-distinct page atmosphere — light is airy & editorial, dark is deep & rich,
+   so each theme feels like its own thing rather than a simple inversion. */
+[data-theme="light"] body {
+  background-image:
+    radial-gradient(58rem 42rem at 80% -12%, var(--glow-a), transparent 60%),
+    radial-gradient(46rem 40rem at -6% 6%, var(--glow-b), transparent 56%),
+    radial-gradient(90rem 46rem at 50% 118%, rgba(249, 115, 22, 0.07), transparent 62%),
+    linear-gradient(180deg, #fffdf9 0%, var(--bg) 40%);
+}
+[data-theme="dark"] body {
+  background-image:
+    radial-gradient(60rem 52rem at 82% -14%, var(--glow-a), transparent 56%),
+    radial-gradient(48rem 46rem at -8% 4%, var(--glow-b), transparent 56%),
+    radial-gradient(130% 90% at 50% 128%, rgba(245, 158, 11, 0.07), transparent 60%);
+}
 
 /* markdown (release notes) */
 .md-body { color: var(--text); font-size: 15px; line-height: 1.7; }
@@ -158,16 +255,27 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 .md-badge-refine { color: #0891b2; background: rgba(8,145,178,.13); border-color: rgba(8,145,178,.35); }
 .md-badge-visual { color: #db2777; background: rgba(219,39,119,.13); border-color: rgba(219,39,119,.35); }
 .md-badge-major { color: #ea580c; background: rgba(234,88,12,.15); border-color: rgba(234,88,12,.4); }
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
 .md-body .yt-embed { position: relative; padding-bottom: 56.25%; height: 0; margin: 1em 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
 .md-body .yt-embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 .md-body video { width: 100%; border-radius: 12px; margin: 1em 0; }
+/* GitHub-style alerts ( > [!NOTE] … ) — matches the BMM update-notes callouts. */
+.md-body .md-alert { border-left: 3px solid; border-radius: 0 10px 10px 0; padding: 12px 16px; margin: 1em 0; background: rgba(127,127,127,.06); }
+.md-body .md-alert-title { font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+.md-body .md-alert-body { color: var(--muted); font-size: .95em; }
+.md-body .md-alert-note { border-color: #2563eb; background: rgba(37,99,235,.08); } .md-alert-note .md-alert-title { color: #2563eb; }
+.md-body .md-alert-tip { border-color: #16a34a; background: rgba(22,163,74,.08); } .md-alert-tip .md-alert-title { color: #16a34a; }
+.md-body .md-alert-important { border-color: #9333ea; background: rgba(147,51,234,.08); } .md-alert-important .md-alert-title { color: #9333ea; }
+.md-body .md-alert-warning { border-color: #d97706; background: rgba(217,119,6,.08); } .md-alert-warning .md-alert-title { color: #d97706; }
+.md-body .md-alert-caution { border-color: #dc2626; background: rgba(220,38,38,.08); } .md-alert-caution .md-alert-title { color: #dc2626; }
 
 /* rrweb live preview — transparent (no black behind transparent app areas), no controls.
    Do NOT touch the player's width/height — rrweb-player computes its own scale. */
-.bmm-replay { overflow: hidden; display: grid; place-items: center; }
+.bmm-replay { overflow: hidden; display: grid; place-items: center; background: #0a0b0f; }
 .bmm-replay .rr-player, .bmm-replay .rr-player__frame { background: transparent !important; box-shadow: none !important; border-radius: 0 !important; }
-.bmm-replay .replayer-wrapper { background: transparent !important; }
-.bmm-replay .replayer-wrapper iframe { background: transparent !important; border: 0 !important; }
+.bmm-replay .replayer-wrapper { background: #0a0b0f !important; }
+.bmm-replay .replayer-wrapper iframe { background: #0a0b0f !important; border: 0 !important; }
 .bmm-replay .rr-controller, .bmm-replay .replayer-mouse-tail { display: none !important; }
 
 /* JSON code editor (admin projects config) — solid, not glassy */

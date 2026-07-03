@@ -96,6 +96,32 @@ struct User {
     geo: Option<Value>,
 }
 
+// Resolve creator ids → linked BetterCommunity accounts (server-to-server, shared
+// secret). Best-effort: returns empty if BC is unconfigured or unreachable.
+async fn fetch_account_links(cfg: &Config, ids: &[String]) -> HashMap<String, Value> {
+    let mut out: HashMap<String, Value> = HashMap::new();
+    if cfg.bc_api_url.is_empty() || ids.is_empty() {
+        return out;
+    }
+    let url = format!("{}/link/lookup", cfg.bc_api_url.trim_end_matches('/'));
+    let res = reqwest::Client::new()
+        .post(&url)
+        .header("x-link-secret", cfg.bc_link_secret.as_str())
+        .json(&json!({ "creatorIds": ids }))
+        .send()
+        .await;
+    if let Ok(r) = res {
+        if let Ok(body) = r.json::<Value>().await {
+            if let Some(obj) = body.get("accounts").and_then(Value::as_object) {
+                for (k, v) in obj {
+                    out.insert(k.clone(), v.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
 pub async fn compute_stats(pool: &PgPool, cfg: &Config) -> Value {
     let geo_map = load_geo_map(pool).await;
     let geo_of = |key: &Option<String>| -> Option<Value> {
@@ -805,6 +831,18 @@ pub async fn compute_stats(pool: &PgPool, cfg: &Config) -> Value {
             })
             .collect();
         v.sort_by(|a, b| b["last_seen"].as_str().cmp(&a["last_seen"].as_str()));
+        // Attach the linked BetterCommunity account (creator_id → account) when available.
+        let ids: Vec<String> = v.iter().filter_map(|u| u["creator_id"].as_str().map(String::from)).collect();
+        let acc_map = fetch_account_links(cfg, &ids).await;
+        if !acc_map.is_empty() {
+            for u in v.iter_mut() {
+                if let Some(cid) = u["creator_id"].as_str().map(String::from) {
+                    if let Some(acc) = acc_map.get(&cid) {
+                        u["account"] = acc.clone();
+                    }
+                }
+            }
+        }
         v
     };
 

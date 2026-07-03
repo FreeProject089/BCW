@@ -5,8 +5,13 @@ import { AuthProvider } from './auth.jsx';
 import { ThemeProvider } from './theme.jsx';
 import { I18nProvider } from './i18n.jsx';
 import { DialogProvider, ToastProvider } from './ui.jsx';
+import { UploadProvider } from './uploads.jsx';
 import App from './App.jsx';
+import { applyGlassPrefs } from './prefs.js';
 import './index.css';
+
+// Apply saved translucent-surface prefs before first paint (no style flash).
+applyGlassPrefs();
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -16,7 +21,9 @@ createRoot(document.getElementById('root')).render(
           <ToastProvider>
             <DialogProvider>
               <AuthProvider>
-                <App />
+                <UploadProvider>
+                  <App />
+                </UploadProvider>
               </AuthProvider>
             </DialogProvider>
           </ToastProvider>

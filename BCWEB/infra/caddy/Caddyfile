@@ -4,6 +4,35 @@
 {$SITE_DOMAIN:http://localhost} {
 	encode gzip zstd
 
+	# ── Security headers ──
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# Permissive-but-real CSP (allows the app's github/minio fetches, youtube
+		# embeds, rrweb blob iframes, inline theme bootstrap + React inline styles).
+		# script-src also allows Google Tag Manager / Analytics so a consent-gated
+		# analytics tag works when enabled (it is only loaded after opt-in, client-side).
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: https: blob:; media-src 'self' https: blob:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://tagmanager.google.com; frame-src 'self' blob: https://www.youtube-nocookie.com https://www.youtube.com https://www.googletagmanager.com; connect-src 'self' https: http://localhost:9000 ws: wss:; frame-ancestors 'self'; base-uri 'self'"
+		-Server
+	}
+
+	# ── Edge anti-bot / anti-scan (handle blocks are evaluated in written order
+	#    and are mutually exclusive, so these run BEFORE any upstream — unlike a
+	#    bare `respond`, which Caddy orders after `handle`). ──
+	# Block known attack-tool / aggressive-scraper User-Agents outright.
+	@badbots header_regexp User-Agent (?i)(sqlmap|nikto|nmap|masscan|zgrab|nuclei|wpscan|dirbuster|gobuster|feroxbuster|acunetix|nessus|openvas|metasploit|semrushbot|ahrefsbot|mj12bot|petalbot|bytespider)
+	handle @badbots {
+		respond 403
+	}
+	# Common vuln-scanner probe paths for OTHER stacks — nothing here to serve, so
+	# abort at the edge instead of running the SPA fallback (saves nginx + logs).
+	@scanpaths path /wp-login* /wp-admin* /wp-content* /xmlrpc.php /.env /.env.* /.git* /.aws* /phpmyadmin* /administrator* /vendor/* /cgi-bin/* /actuator* /.ssh* /*.sql /shell* /eval-stdin.php /solr/*
+	handle @scanpaths {
+		respond 404
+	}
+
 	# API
 	handle_path /api/* {
 		reverse_proxy api:3000
@@ -11,6 +40,23 @@
 
 	# Public hosted-repo content (repo.json / files) at a clean URL: /hosting/<user>/<repo>/...
 	handle /hosting/* {
+		reverse_proxy api:3000
+	}
+
+	# SEO files served by the API (dynamic sitemap incl. Other Projects + blog).
+	handle /sitemap.xml {
+		reverse_proxy api:3000
+	}
+	handle /robots.txt {
+		reverse_proxy api:3000
+	}
+	# Public aggregate Server-Repos feed (a consumable repo.json index of every listed repo).
+	handle /repos.json {
+		reverse_proxy api:3000
+	}
+
+	# Public catalog.json feed (BMM-consumable app/plugin/theme catalog, ?project=&kind=).
+	handle /catalog.json {
 		reverse_proxy api:3000
 	}
 

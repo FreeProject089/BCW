@@ -18,11 +18,19 @@ export function ThemeProvider({ children }) {
   return <ThemeCtx.Provider value={{ theme, toggle }}>{children}</ThemeCtx.Provider>;
 }
 
+// Clean sliding switch: a single high-contrast knob carrying the current mode's icon
+// slides across a track that fills with the accent when dark. No overlapping icons.
 export function ThemeToggle() {
   const { theme, toggle } = useTheme();
+  const dark = theme === 'dark';
   return (
-    <button className="nav-link" onClick={toggle} title="Toggle theme" aria-label="Toggle theme">
-      {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+    <button onClick={toggle} title={dark ? 'Switch to light' : 'Switch to dark'} aria-label="Toggle theme" role="switch" aria-checked={dark}
+      className="relative inline-block h-6 w-11 rounded-full transition-colors shrink-0 align-middle border"
+      style={{ background: dark ? 'var(--primary)' : 'color-mix(in srgb, var(--text) 12%, transparent)', borderColor: 'var(--line-strong)' }}>
+      <span className="absolute top-1/2 grid place-items-center w-[18px] h-[18px] rounded-full transition-transform duration-200 ease-out"
+        style={{ left: 2, marginTop: -9, transform: dark ? 'translateX(20px)' : 'translateX(0)', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
+        {dark ? <Moon size={11} className="text-[var(--primary)] fill-[var(--primary)]" /> : <Sun size={11} className="text-amber-500" />}
+      </span>
     </button>
   );
 }

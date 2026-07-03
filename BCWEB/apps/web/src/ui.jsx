@@ -55,14 +55,14 @@ export function Modal({ open, onClose, title, icon: Icon, children, footer, widt
   if (!open) return null;
   return createPortal(
     <div className="fixed inset-0 z-50 grid place-items-center p-4 anim-fade" style={{ background: 'rgba(4,5,8,0.62)', backdropFilter: 'blur(4px)' }} onMouseDown={onClose}>
-      <div className={`card anim-pop w-full ${width} p-0 overflow-hidden`} onMouseDown={(e) => e.stopPropagation()} style={{ boxShadow: '0 24px 70px -20px rgba(0,0,0,0.7)' }}>
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--line)]">
+      <div className={`card modal-card anim-pop w-full ${width} p-0 overflow-hidden max-h-[92vh] flex flex-col`} onMouseDown={(e) => e.stopPropagation()} style={{ boxShadow: '0 24px 70px -20px rgba(0,0,0,0.7)' }}>
+        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--line)] shrink-0">
           {Icon && <Icon size={18} className="text-[var(--primary-2)]" />}
-          <div className="font-semibold flex-1">{title}</div>
+          <div className="font-semibold flex-1 min-w-0 truncate">{title}</div>
           <button className="btn-ghost btn btn-sm !px-1.5" onClick={onClose} aria-label="Close"><X size={16} /></button>
         </div>
-        <div className="px-5 py-4">{children}</div>
-        {footer && <div className="px-5 py-4 border-t border-[var(--line)] flex justify-end gap-2">{footer}</div>}
+        <div className="px-5 py-4 overflow-auto">{children}</div>
+        {footer && <div className="px-5 py-4 border-t border-[var(--line)] flex justify-end gap-2 shrink-0 flex-wrap">{footer}</div>}
       </div>
     </div>, document.body);
 }

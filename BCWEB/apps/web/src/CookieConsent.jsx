@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Button } from './ui.jsx';
 import { useI18n } from './i18n.jsx';
 import { getConsent, setConsent } from './analytics.js';
+import { loadGtmIfConsented } from './gtm.js';
 
 // GDPR cookie banner. Essential cookies (the session) are always on; analytics
 // is opt-in. Choice persists in localStorage.
@@ -11,7 +12,7 @@ export default function CookieConsent() {
   const { t } = useI18n();
   const [choice, setChoice] = useState(getConsent());
   if (choice) return null;
-  const decide = (v) => { setConsent(v); setChoice(v); };
+  const decide = (v) => { setConsent(v); setChoice(v); if (v === 'all') loadGtmIfConsented(); };
   return (
     <div className="fixed bottom-4 left-4 z-[55] w-[26rem] max-w-[calc(100vw-2rem)] anim-slide">
       <div className="card p-5" style={{ boxShadow: '0 20px 50px -16px rgba(0,0,0,0.7)' }}>

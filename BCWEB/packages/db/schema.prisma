@@ -14,12 +14,14 @@ enum Role {
   USER
   MOD
   ADMIN
+  SUPERADMIN // implicitly satisfies every requireRole()/Protected role check — see lib.mjs
 }
 
 enum ProjectKey {
   community
   bmm
   bsm
+  installer
 }
 
 enum CatalogKind {
@@ -56,13 +58,31 @@ enum RepoStatus {
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
-  passwordHash  String
+  // Null for accounts created purely via OAuth (GitHub/Discord) that never set a
+  // password — /auth/login rejects those with a clear "use <provider> to sign in"
+  // error instead of crashing on argon2.verify(null, ...).
+  passwordHash  String?
   displayName   String
   role          Role     @default(USER)
   emailVerified Boolean  @default(false)
   bio           String   @default("")
   avatar        Json?    // { variant, seed } for the Boring Avatar
+  stripeCustomerId String? @unique
   createdAt     DateTime @default(now())
+
+  // ── 2FA (TOTP) — see totp.mjs. Recovery codes are argon2 hashes, one-time use. ──
+  totpSecret        String?
+  totpEnabled       Boolean  @default(false)
+  totpRecoveryCodes String[] @default([])
+  // Extra, SUPERADMIN-grantable permission (orthogonal to the role hierarchy)
+  // required — together with a step-up 2FA challenge — to reach the server-control
+  // tools (perf dashboard actions, Docker, terminal, power). See lib.mjs's
+  // requireElevated() and server-control.mjs.
+  canControlServer  Boolean  @default(false)
+  // Set once, the first time a Ko-fi donation webhook matches this account's
+  // email — gates the one-time 25% hosting discount grant so repeat donations
+  // (or webhook retries) don't mint duplicate codes.
+  kofiDonorAt       DateTime?
 
   items         CatalogItem[]
   submissions   Submission[]
@@ -71,20 +91,168 @@ model User {
   subscriptions Subscription[]
   posts         BlogPost[]
   payments      Payment[]
+  hostingGroups HostingGroup[]
+  creatorLinks  CreatorLink[]
+  discordLinks  DiscordLink[]
+  blogPermissions BlogPermission[]
+  submissionComments SubmissionComment[]
+  contactMessages ContactMessage[]
+  loginAttempts LoginAttempt[]
+  auditLogEntries AuditLogEntry[]
+  repoFavorites RepoFavorite[]
+  oauthAccounts OAuthAccount[]
+}
+
+// A GitHub/Discord identity linked to a website account — powers "Continue with
+// GitHub/Discord" login AND signup (see oauth.mjs). Distinct from DiscordLink,
+// which is a BMM/bot-gated pairing, not an auth method.
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  user              User     @relation(fields: [userId], references: [id])
+  userId            String
+  provider          String   // 'github' | 'discord'
+  providerAccountId String
+  username          String?
+  linkedAt          DateTime @default(now())
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// A Discord account linked to a website account. One Discord id ↔ one account.
+// Enables gated channel access (BMM + Discord + BCWEB) and telemetry enrichment.
+model DiscordLink {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  discordId String   @unique
+  username  String?
+  linkedAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Discord activity reported by the bot, keyed by Discord id — surfaced in the BMM
+// telemetry dashboard alongside the linked creator id (join date, last message, last
+// voice join/create, avatar/username).
+model DiscordActivity {
+  discordId         String    @id
+  username          String?
+  avatar            String?   // full CDN avatar URL
+  guildJoinedAt     DateTime?
+  lastMessageAt     DateTime?
+  lastVoiceJoinAt   DateTime?
+  lastVoiceCreateAt DateTime?
+  updatedAt         DateTime  @updatedAt
+}
+
+// Short-lived pairing code the bot issues (via /link) so a website account can claim
+// the Discord id by entering the code on BCWEB. Redeeming creates a DiscordLink.
+model DiscordLinkCode {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  discordId String
+  username  String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+// A short-lived pairing code BMM requests (local-first) so a website account can
+// claim the creator id by entering the code. Redeeming it creates a CreatorLink.
+model LinkCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  creatorId   String
+  displayName String?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+// A BMM creator id linked to an account. One creator id ↔ one account (unique),
+// but an account may link several. Locked from unlinking until unlinkableAt.
+model CreatorLink {
+  id           String   @id @default(cuid())
+  user         User     @relation(fields: [userId], references: [id])
+  userId       String
+  creatorId    String   @unique
+  displayName  String?  // the creator's display name as reported by BMM
+  linkedAt     DateTime @default(now())
+  unlinkableAt DateTime // linkedAt + 14 days (2-week lock)
+
+  @@index([userId])
+}
+
+// Permanent record that a creator id (or, absent one, an account) has already
+// claimed its ONE free hosted repo / free catalog upload. Deliberately never
+// deleted — unlike CreatorLink, which a user CAN delete by unlinking — so
+// unlink-then-relink-elsewhere can't be used to claim a second free item on the
+// same creator id.
+model FreeTierClaim {
+  id        String   @id @default(cuid())
+  kind      String   // "REPO" | "CATALOG"
+  creatorId String?  // set when the claim is tied to a creator id
+  userId    String   // the account that made the claim (informational)
+  createdAt DateTime @default(now())
+
+  @@unique([kind, creatorId])
+  @@index([userId])
+}
+
+// A storage pool for "multi-repo" hosting: the user divides poolBytes across
+// several repos. Single-repo hosting doesn't use a group (each repo owns its quota).
+model HostingGroup {
+  id              String   @id @default(cuid())
+  owner           User     @relation(fields: [ownerId], references: [id])
+  ownerId         String
+  name            String
+  poolBytes       BigInt   @default(0)   // total storage the user can distribute
+  uploadLimitKbps Int      @default(8192) // sandbox upload cap applied to every repo
+  cpuShare        Float    @default(0.5)
+  createdAt       DateTime @default(now())
+  repos           ServerRepo[]
+
+  @@index([ownerId])
 }
 
 model Project {
   id    String     @id @default(cuid())
   key   ProjectKey @unique
   name  String
+  // Per-blog toggle: do this project's posts also surface in the home page's
+  // unified "Latest news"? They always show on /blog regardless of this flag.
+  showOnHomeNews Boolean @default(true)
+  // Opt-in "Blog" tab on the project's own page, showing only this project's posts.
+  showBlogTab Boolean @default(false)
   posts BlogPost[]
   items CatalogItem[]
+
+  // Same visibility gate as ShowcaseProject (see there for the full comment) —
+  // applies to every fixed project EXCEPT 'community', which is always public
+  // (enforced in projects.mjs, not here, since Prisma can't express a per-row
+  // enum exception).
+  visibility          String @default("public")
+  visibilityWhitelist Json   @default("[]")
+
+  // Same staged-edit mechanism as ShowcaseProject.scheduledNext, but the payload
+  // is just `{ config }` — a fixed project's name/key never change.
+  scheduledAt   DateTime?
+  scheduledNext Json?
 }
 
 model BlogPost {
   id          String     @id @default(cuid())
-  project     Project    @relation(fields: [projectId], references: [id])
-  projectId   String
+  // A post belongs to exactly one blog "space" — a fixed Project (bmm/bsm/community/
+  // installer) OR an admin-created ShowcaseProject ("custom" page). Exactly one of
+  // project/showcaseProject is set; enforced in blog.mjs (Prisma can't express an
+  // either-or FK constraint directly).
+  project     Project?   @relation(fields: [projectId], references: [id])
+  projectId   String?
+  showcaseProject   ShowcaseProject? @relation(fields: [showcaseProjectId], references: [id])
+  showcaseProjectId String?
   author      User       @relation(fields: [authorId], references: [id])
   authorId    String
   title       String
@@ -92,10 +260,34 @@ model BlogPost {
   excerpt     String     @default("")
   cover       String?    // cover image URL
   body        String     // markdown (supports images, embeds, links)
+  // Optional French translation. When absent, readers see the base (EN) marked "not translated".
+  titleFr     String?
+  excerptFr   String?
+  bodyFr      String?
   status      PostStatus @default(DRAFT)
   publishedAt DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+
+  @@index([showcaseProjectId])
+}
+
+// Lets an ADMIN/SUPERADMIN grant a regular USER permission to author blog posts,
+// either globally (projectKey and showcaseProjectId both null) or scoped to one
+// blog (a fixed Project OR a custom ShowcaseProject page). MOD/ADMIN/SUPERADMIN
+// never need a row here — they already pass requireRole('MOD','ADMIN') everywhere
+// blog.mjs checks it; this table is purely for extending that ability to USER role.
+model BlogPermission {
+  id                String      @id @default(cuid())
+  user              User        @relation(fields: [userId], references: [id])
+  userId            String
+  projectKey        ProjectKey?
+  showcaseProjectId String?
+  grantedBy         String      // admin userId — audit trail only, no relation needed
+  createdAt         DateTime    @default(now())
+
+  @@unique([userId, projectKey, showcaseProjectId])
+  @@index([userId])
 }
 
 model CatalogItem {
@@ -112,10 +304,27 @@ model CatalogItem {
   version     String      @default("1.0.0")
   status      ItemStatus  @default(PENDING)
   payloadKey  String?     // object-storage key (the uploaded file/bundle)
+  payloadSize Int         @default(0)  // uploaded payload bytes (≤500MB cap fits Int) — counted against the temp submissions margin
   meta        Json        @default("{}")  // preset JSON / plugin manifest / etc.
+  views       Int         @default(0)     // all-time views (1 per item .json fetch)
+  downloads   Int         @default(0)     // all-time downloads
+  deleteAt    DateTime?                   // scheduled hard-deletion (72h grace); cancellable until then
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   submissions Submission[]
+
+  @@index([deleteAt])
+}
+
+// Time-stamped catalog events for windowed popularity (e.g. "popular this month").
+model CatalogEvent {
+  id        String   @id @default(cuid())
+  itemId    String
+  kind      String   // "view" | "download"
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+  @@index([itemId])
 }
 
 model Submission {
@@ -128,7 +337,23 @@ model Submission {
   status     ItemStatus     @default(PENDING)
   reviewerId String?
   reason     String?        // rejection reason -> sent to the user
+  tags       String[]       @default([]) // mod-only triage tags (e.g. "priority", "needs-rework") — never shown to the submitter
+  comments   SubmissionComment[]
   createdAt  DateTime       @default(now())
+}
+
+// Mod-only internal note on a submission (max 200 chars, enforced in catalog.mjs) —
+// a quick heads-up between moderators during review, never shown to the submitter.
+model SubmissionComment {
+  id           String     @id @default(cuid())
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submissionId String
+  author       User       @relation(fields: [authorId], references: [id])
+  authorId     String
+  body         String
+  createdAt    DateTime   @default(now())
+
+  @@index([submissionId, createdAt])
 }
 
 model Notification {
@@ -139,6 +364,29 @@ model Notification {
   body      String
   readAt    DateTime?
   createdAt DateTime @default(now())
+}
+
+// Site-wide banner announcements. Publishing one also broadcasts a Notification to
+// every user (see announcements.mjs) — the banner is the persistent/dismissible
+// form, the notification is the "you have something new" ping in the bell menu.
+model Announcement {
+  id         String   @id @default(cuid())
+  title      String
+  body       String
+  tone       String   @default("info") // info | warning | success
+  active     Boolean  @default(true)
+  // Every active announcement always sends a Notification (bell). This controls
+  // ONLY the dismissible top-of-site banner — off for a "quiet" announcement that
+  // should just land in people's notifications without also plastering the site.
+  showBanner Boolean  @default(true)
+  // Where the banner navigates on click — an internal path (e.g. "/blog/my-post")
+  // or a full external URL. Null/empty = banner isn't clickable, just the dismiss X.
+  linkUrl    String?
+  createdBy  String
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime?
+
+  @@index([active])
 }
 
 model HostingPlan {
@@ -169,6 +417,7 @@ model ServerRepo {
   // Public listing + content verification.
   description      String     @default("")
   tags             String[]   @default([])
+  links            Json?      // { discord, website, changelog } shown on the listing
   repoUrl          String?    // source URL for a non-hosted, listed repo
   sha              String?    // current content SHA (integrity of last verified content)
   listed           Boolean    @default(false)  // owner wants it in the public list
@@ -179,10 +428,41 @@ model ServerRepo {
   hostPath         String?    @unique  // "<ownerSlug>/<repoSlug>" for the public URL
   published        Boolean    @default(false)
   repoJson         Json?      // parsed manifest of the uploaded repo.json
+  // Sandboxed, owner-managed settings: bans, whitelist, requested upload limit.
+  // Requested values are always clamped to the hard sandbox caps on this row.
+  settings         Json?      // { access:{whitelistEnabled,ips,keys}, bans:{ips,keys}, requestedUploadKbps }
+  // Dedicated dashboard access control. The owner (or an ADMIN) always has access.
+  // Others get in either by being a logged-in user whose email is in accessEmails,
+  // or by entering dashPassword (login-less, mints a short-lived per-repo cookie).
+  accessEmails     String[]   @default([])  // authorized collaborator emails
+  dashPassword     String?    // argon2 hash of the dashboard password (null = disabled)
+  group            HostingGroup? @relation(fields: [groupId], references: [id])
+  groupId          String?
+  deleteAt         DateTime?  // scheduled hard-deletion (72h grace, e.g. after a failed payment)
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
   subscription     Subscription?
   files            RepoFile[]
+  auditLogs        RepoAuditLog[]
+  accessEvents     RepoAccessEvent[]
+  favorites        RepoFavorite[]
+
+  @@index([groupId])
+  @@index([deleteAt])
+}
+
+// A user starring a Server-Repo on the public list — purely social (visibility
+// into how liked a repo is), not an access grant of any kind.
+model RepoFavorite {
+  id           String     @id @default(cuid())
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  repo         ServerRepo @relation(fields: [serverRepoId], references: [id], onDelete: Cascade)
+  serverRepoId String
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, serverRepoId])
+  @@index([serverRepoId])
 }
 
 // A file uploaded to a hosted Server-Repo (counted against the storage quota).
@@ -195,10 +475,135 @@ model RepoFile {
   key          String     // object-storage key
   size         BigInt     @default(0)
   contentType  String     @default("application/octet-stream")
+  sha256       String?    // content checksum (computed at upload) — shown in the manager
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
   @@unique([serverRepoId, path])
+}
+
+// Per-repo activity log for the dedicated dashboard: who did what (uploads, deletes,
+// publish/offline, settings + access changes). Actor is a display label (owner name,
+// collaborator email, or "password access") — no auth material is stored.
+model RepoAuditLog {
+  id           String     @id @default(cuid())
+  repo         ServerRepo @relation(fields: [serverRepoId], references: [id], onDelete: Cascade)
+  serverRepoId String
+  actor        String
+  action       String     // upload | delete | publish | unpublish | settings | access | ban | unban
+  detail       String     @default("")
+  createdAt    DateTime   @default(now())
+
+  @@index([serverRepoId, createdAt])
+}
+
+// Consumer-side access to a published repo (BMM clients syncing it): a manifest fetch
+// (kind='connect' — an import/connect) or a file fetch (kind='download'). Powers the
+// dashboard's Users/Traffic view + who's connected, so the owner can ban IPs/keys.
+model RepoAccessEvent {
+  id           String     @id @default(cuid())
+  repo         ServerRepo @relation(fields: [serverRepoId], references: [id], onDelete: Cascade)
+  serverRepoId String
+  ip           String
+  accessKey    String?    // the ?key= the client sent (sandbox access key), if any
+  userId       String?    // resolved via the X-Creator-ID header -> CreatorLink, if linked
+  discordId    String?    // resolved via that same account's DiscordLink, if linked
+  path         String
+  kind         String     // connect | download
+  createdAt    DateTime   @default(now())
+
+  @@index([serverRepoId, createdAt])
+}
+
+// A single, admin-managed access policy applied identically to EVERY hosted repo, on
+// top of (never instead of) each repo's own per-repo settings.access/settings.bans:
+// bans here block a client everywhere; the whitelist here is unioned with a repo's own
+// whitelist when either the repo or `whitelistOnly` (site-wide) requires one. Entries
+// in the account lists are { type: "bcweb"|"discord", id, label }. Singleton row
+// (id is always "global") — read/written via GET/PUT /admin/access-policy.
+model GlobalAccessPolicy {
+  id                String   @id @default("global")
+  whitelistOnly     Boolean  @default(false) // forces whitelist-only mode on ALL repos
+  whitelistIps      String[] @default([])
+  whitelistKeys     String[] @default([])
+  whitelistAccounts Json     @default("[]")
+  bannedIps         String[] @default([])
+  bannedKeys        String[] @default([])
+  bannedAccounts    Json     @default("[]")
+  updatedAt         DateTime @updatedAt
+}
+
+// Same shape as GlobalAccessPolicy, but owner-managed and scoped to only THAT
+// owner's own hosted repos (one row per user, on top of both the repo's own
+// settings AND the site-wide GlobalAccessPolicy — see hosting-content.mjs).
+model UserAccessPolicy {
+  userId            String   @id
+  whitelistOnly     Boolean  @default(false)
+  whitelistIps      String[] @default([])
+  whitelistKeys     String[] @default([])
+  whitelistAccounts Json     @default("[]")
+  bannedIps         String[] @default([])
+  bannedKeys        String[] @default([])
+  bannedAccounts    Json     @default("[]")
+  updatedAt         DateTime @updatedAt
+}
+
+// Every login attempt against /auth/login, success or failure — powers the admin
+// security log (login attempts, IPs hitting the panel) and basic abuse review.
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ip        String
+  success   Boolean
+  reason    String? // "bad_password" | "2fa_required" | "2fa_invalid" | "ok"
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([ip, createdAt])
+}
+
+// A general admin/staff action audit trail — wired into the highest-value mutation
+// points (role changes, access-policy edits, server-control actions), not every
+// single endpoint (that would be a much larger retrofit for marginal benefit).
+model AuditLogEntry {
+  id        String   @id @default(cuid())
+  actor     User     @relation(fields: [actorId], references: [id])
+  actorId   String
+  action    String
+  detail    String   @default("")
+  ip        String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// A periodic sample of this host's own resource usage (see server-monitor.mjs's
+// sweeper tick) — builds the history behind the perf dashboard's graphs/uptime.
+model ServerMetricSample {
+  id        String   @id @default(cuid())
+  cpuPct    Float
+  memPct    Float
+  diskPct   Float
+  loadAvg1  Float
+  uptimeSec Int
+  latencyMs Int?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// A fired threshold alert (CPU/RAM/disk/service-down) — the persistent form of
+// what also gets pushed to Discord + surfaced live in the admin dashboard.
+model ServerAlertLog {
+  id        String   @id @default(cuid())
+  kind      String
+  message   String
+  announced Boolean  @default(false) // has the Discord bot posted this one yet?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 model Subscription {
@@ -214,11 +619,144 @@ model Subscription {
   currentPeriodEnd DateTime?
 }
 
+// Password reset tokens (single-use, short-lived). The raw token is never stored.
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique // sha256 of the emailed token
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
 // Global, admin-editable settings: total hosting capacity, reserved free margin,
 // price/GB, price/upload, price/cpu, feature flags, etc. (key -> JSON value).
+// Admin-generated promo code. Three kinds:
+//  - 'discount'     : % off (and/or first N months free) applied at hosting/boost checkout
+//  - 'free_hosting' : redeeming provisions a free hosted repo (storage/upload/duration)
+//  - 'free_boost'   : redeeming boosts one of the user's repos for boostDays
+model PromoCode {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  kind           String
+  percentOff     Int?     // discount: 1..100
+  freeMonths     Int?     // discount: first N months free (100% off, repeating)
+  minMonths      Int?     // discount: only applies at checkout when the chosen prepaid term is >= this (e.g. Ko-fi's reward is 12mo+ only)
+  storageGB      Int?     // free_hosting
+  uploadMbps     Int?     // free_hosting
+  hostMonths     Int?     // free_hosting: grant duration (0/none = no auto-expiry)
+  boostDays      Int?     // free_boost
+  maxRedemptions Int?     // null = unlimited
+  redeemedCount  Int      @default(0)
+  perUserLimit   Int      @default(1)
+  expiresAt      DateTime?
+  active         Boolean  @default(true)
+  note           String   @default("")
+  createdAt      DateTime @default(now())
+  redemptions    PromoRedemption[]
+}
+
+model PromoRedemption {
+  id        String    @id @default(cuid())
+  promo     PromoCode @relation(fields: [promoId], references: [id], onDelete: Cascade)
+  promoId   String
+  userId    String
+  detail    String    @default("")
+  createdAt DateTime  @default(now())
+
+  @@index([promoId])
+  @@index([userId])
+}
+
 model AdminSetting {
   key   String @id
   value Json
+}
+
+// One row per Ko-fi webhook event — lets the public funding-goal widget show a
+// real running total + tip count, not just the one-time discount-grant flag on
+// User. messageId dedupes Ko-fi's at-least-once webhook retries.
+model KofiDonation {
+  id           String   @id @default(cuid())
+  messageId    String   @unique
+  fromName     String
+  email        String?
+  amount       Float
+  currency     String
+  isSubscription Boolean @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// Admin-curated "Other projects" showcase. Each has a name, a short tag (3-4 chars),
+// and a flexible config (tabs, links, overview media, progress source, release-notes
+// source, community, legal cards) rendered by a BMM/BSM-style project page.
+model ShowcaseProject {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  short     String   // 3-4 char label shown in the nav/cards
+  config    Json     @default("{}")
+  published Boolean  @default(true)
+  order     Int      @default(0)
+  // Per-blog toggle: do this custom page's posts also surface in the home page's
+  // unified "Latest news"? They always show on /blog regardless of this flag.
+  showOnHomeNews Boolean @default(true)
+  // Opt-in "Blog" tab on this page, showing only this page's own posts.
+  showBlogTab Boolean @default(false)
+  posts     BlogPost[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Who can view this page: public (anyone), private (nobody but admins), unlisted
+  // (viewable with the direct link, just hidden from /projects and the topbar),
+  // whitelist (gated by visibilityWhitelist — see pageAccountEntrySchema in lib.mjs).
+  visibility          String  @default("public")
+  visibilityWhitelist Json    @default("[]")
+  // Shows this page as its own topbar pill (next to BMM/BSM/etc.) instead of only
+  // being reachable through the /projects grid.
+  pinTopbar           Boolean @default(false)
+
+  // ── Project announcement (a "coming soon" teaser instead of the real page) ──
+  // While announceEnabled and now < announceRevealAt, GET /showcase/:slug serves
+  // the teaser (logo + markdown + countdown) regardless of `visibility`. Once the
+  // countdown passes, the teaser stops and normal `visibility` rules take over —
+  // there's nothing to sweep/cron, it's computed at read time (see showcase.mjs).
+  announceEnabled  Boolean   @default(false)
+  announceTitle    String    @default("")
+  announceLogo     String?
+  announceMarkdown String    @default("")
+  announceRevealAt DateTime?
+
+  // ── Scheduled content update: stage a future edit, swapped in automatically at
+  // scheduledAt (old info fully replaced by "next") — computed + lazily persisted
+  // on first read past scheduledAt (see showcase.mjs). ──
+  scheduledAt   DateTime?
+  scheduledNext Json?
+
+  @@index([published, order])
+}
+
+// Contact-form submissions. Shown in the Admin dashboard and (if a webhook is
+// configured) forwarded to Discord. No account required to send.
+model ContactMessage {
+  id        String    @id @default(cuid())
+  name      String
+  email     String
+  body      String
+  // Set when the sender was logged in — links the message to their account so
+  // support can see who's asking without them having to repeat it. Never required.
+  user      User?     @relation(fields: [userId], references: [id])
+  userId    String?
+  ip        String    @default("") // for the daily anonymous rate limit + abuse review
+  status    String    @default("new") // new | read
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([createdAt])
 }
 
 enum PaymentKind {
@@ -245,12 +783,20 @@ model Payment {
 }
 
 // First-party, cookie-consent-gated page analytics (no third party, minimal data).
+// `visitor` is a DAILY-rotating salted hash (ip+ua+date) — approximates unique
+// visitors/sessions without a persistent cookie or storing any PII.
 model AnalyticsEvent {
   id        String   @id @default(cuid())
   path      String
   ref       String?
+  visitor   String?  // daily anonymous hash
+  device    String?  // mobile | tablet | desktop
+  browser   String?  // Chrome | Firefox | Safari | Edge | …
+  os        String?  // Windows | macOS | Linux | Android | iOS
+  country   String?  // ISO-3166 alpha-2 (from the CDN's country header, when present)
   createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([path])
+  @@index([visitor])
 }

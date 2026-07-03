@@ -10,6 +10,8 @@
     "migrate": "prisma migrate deploy --schema ../../packages/db/schema.prisma"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.58",
+    "adm-zip": "^0.5.16",
     "@aws-sdk/client-s3": "^3.637.0",
     "@aws-sdk/s3-request-presigner": "^3.637.0",
     "@fastify/cookie": "^9.3.1",
@@ -21,7 +23,8 @@
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",
     "stripe": "^16.8.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "geoip-lite": "^1.4.10"
   },
   "devDependencies": {
     "prisma": "^5.18.0"

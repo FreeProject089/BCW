@@ -83,6 +83,19 @@ export default function UserDetail() {
         <div>
           <div className="text-xl font-semibold">{u.names?.[0] || "Anonymous creator"}</div>
           <div className="font-mono text-xs text-sub">{u.creator_id}</div>
+          {u.account ? (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-brand/10 text-brand border border-brand/20">
+                Linked account: <span className="font-medium">{u.account.displayName || u.account.accountId}</span>
+                <span className="font-mono text-sub">{u.account.accountId}</span>
+              </span>
+              {u.account.discord ? (
+                <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                  Discord: <span className="font-medium">{u.account.discord.username || u.account.discord.id}</span>
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -114,6 +127,28 @@ export default function UserDetail() {
             <Info k="IP" v={<span className="font-mono text-xs">{u.ips?.[0] || "—"}</span>} />
           </div>
         </Card>
+
+        {u.account?.discord && (() => {
+          const d = u.account.discord!;
+          return (
+            <Card title="Discord" className="xl:col-span-1">
+              <div className="flex items-center gap-3 mb-2">
+                {d.avatar ? <img src={d.avatar} alt="" className="w-10 h-10 rounded-full" /> : <div className="w-10 h-10 rounded-full bg-indigo-500/20" />}
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{d.username || d.id}</div>
+                  <div className="font-mono text-xs text-sub truncate">{d.id}</div>
+                </div>
+              </div>
+              <div className="divide-y divide-line/60 -mx-1">
+                <Info k="Linked" v={fmtDate(d.linkedAt)} />
+                <Info k="Joined server" v={fmtDate(d.guildJoinedAt || undefined)} />
+                <Info k="Last message" v={fmtDateTime(d.lastMessageAt || undefined)} />
+                <Info k="Last voice join" v={fmtDateTime(d.lastVoiceJoinAt || undefined)} />
+                <Info k="Last voice created" v={fmtDateTime(d.lastVoiceCreateAt || undefined)} />
+              </div>
+            </Card>
+          );
+        })()}
 
         {u.config?.hw_extra && typeof u.config.hw_extra === "object" && (() => {
           const hw: any = u.config.hw_extra;
