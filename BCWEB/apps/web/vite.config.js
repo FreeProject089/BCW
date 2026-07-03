@@ -4,7 +4,8 @@ import react from '@vitejs/plugin-react';
 // Dev proxies /api -> the API container so the SPA + API share an origin.
 export default defineConfig({
   plugins: [react()],
-  server: { proxy: { '/api': { target: 'http://localhost:3000', changeOrigin: true } } },
+  // Dev server on :5176 to match the site's base URL (http://localhost:5176).
+  server: { port: 5176, strictPort: true, proxy: { '/api': { target: 'http://localhost:3000', changeOrigin: true } } },
   build: {
     // Split the heavy, rarely-changing libraries into their own hashed chunks so
     // (a) the main app chunk shrinks and parses faster on first paint, and (b)

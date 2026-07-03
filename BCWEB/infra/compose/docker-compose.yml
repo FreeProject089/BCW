@@ -59,7 +59,7 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       JWT_SECRET: ${JWT_SECRET:?set in .env}
-      SITE_URL: ${SITE_URL:-http://localhost}
+      SITE_URL: ${SITE_URL:-http://localhost:5176}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       LINK_LOOKUP_SECRET: ${LINK_LOOKUP_SECRET:-dev-link-secret}
@@ -104,7 +104,7 @@ services:
     environment:
       DISCORD_TOKEN: ${DISCORD_TOKEN:-}
       BCWEB_API_URL: http://api:3000
-      SITE_URL: ${SITE_URL:-http://localhost}
+      SITE_URL: ${SITE_URL:-http://localhost:5176}
       BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-${LINK_LOOKUP_SECRET:-dev-bot-secret}}
 
   # Dedicated Postgres for the telemetry dashboard (kept isolated from the app DB).
@@ -143,10 +143,14 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
-    ports: ["80:80", "443:443"]
+    # Local default: the site is served at http://localhost:5176 (SITE_DOMAIN), so
+    # Caddy listens on 5176; :80 stays published for the telemetry origin, :443 for
+    # production auto-HTTPS. In production point SITE_DOMAIN at your domain and the
+    # 80/443 mappings handle ACME + HTTPS (see DOMAIN_SETUP.md).
+    ports: ["5176:5176", "80:80", "443:443"]
     depends_on: [api, web]
     environment:
-      SITE_DOMAIN: ${SITE_DOMAIN:-http://localhost}
+      SITE_DOMAIN: ${SITE_DOMAIN:-http://localhost:5176}
       TELEMETRY_DOMAIN: ${TELEMETRY_DOMAIN:-http://telemetry.localhost}
     volumes:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
