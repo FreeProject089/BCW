@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
+import pg from 'pg';
 import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit } from '../lib.mjs';
 import { verifyTotp } from '../totp.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo } from '../gitbackup.mjs';
@@ -17,6 +19,17 @@ function requireConfirm(body) {
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const DANGEROUS = [requireRole('ADMIN'), requireCanControlServer(), requireElevated()];
+
+// Lazily-opened READ-ONLY connection to the BMM telemetry Postgres (a separate DB),
+// so the Advanced DB viewer can inspect it too. Requires TELEMETRY_DATABASE_URL.
+let _telemetryPool = null;
+function telemetryDb() {
+  if (_telemetryPool) return _telemetryPool;
+  const url = process.env.TELEMETRY_DATABASE_URL;
+  if (!url) return null;
+  _telemetryPool = new pg.Pool({ connectionString: url, max: 3, idleTimeoutMillis: 30000 });
+  return _telemetryPool;
+}
 
 function clientIp(req) {
   const xff = req.headers['x-forwarded-for'];
@@ -291,6 +304,52 @@ export default async function serverControlRoutes(app) {
     await logAudit(p, req.user.uid, 'server.db_read', `${req.params.name} page=${page} size=${pageSize}${sortDesc} rows=${rows.length}/${Number(total[0].n)}`, clientIp(req));
     const pkCol = await singlePkColumn(p, req.params.name);
     return { rows: safeRows, total: Number(total[0].n), page, pageSize, pkColumn: pkCol };
+  });
+
+  // ── BMM Telemetry SSO handoff ──
+  // Mint a short-lived HMAC token (signed with the shared BC_LINK_SECRET that the
+  // telemetry service also holds) so an ADMIN (requireRole already enforces 2FA)
+  // can open the BMM telemetry dashboard without its static admin key. Returns the
+  // telemetry URL carrying the token + a home link back to BCWEB.
+  app.post('/admin/telemetry/token', { preHandler: requireRole('ADMIN'), config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
+    const secret = process.env.BC_LINK_SECRET || process.env.LINK_LOOKUP_SECRET || 'dev-link-secret';
+    const payload = Buffer.from(JSON.stringify({ role: req.user.role, uid: req.user.uid, exp: Date.now() + 4 * 3600 * 1000 })).toString('base64url');
+    const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+    const token = `${payload}.${sig}`;
+    const base = (process.env.TELEMETRY_PUBLIC_URL || 'http://telemetry.localhost').replace(/\/+$/, '');
+    const home = process.env.SITE_URL || 'http://localhost:5176';
+    return { url: `${base}/#bc=${encodeURIComponent(token)}&home=${encodeURIComponent(home)}` };
+  });
+
+  // ── BMM Telemetry DB viewer (READ-ONLY) ──
+  // Same validate-against-the-real-catalog pattern as the BCWEB DB viewer, but
+  // against the separate telemetry Postgres and with no write/edit path.
+  app.get('/server/telemetry-db/tables', { preHandler: DANGEROUS, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const pool = telemetryDb();
+    if (!pool) return reply.code(503).send({ error: 'telemetry_db_not_configured' });
+    const { rows } = await pool.query(`SELECT c.relname AS name, c.reltuples::bigint AS approx_rows FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' ORDER BY c.relname`);
+    await logAudit(await db(), req.user.uid, 'server.telemetry_db_tables', `tables=${rows.length}`, clientIp(req));
+    return { tables: rows.map((r) => ({ name: r.name, approxRows: Number(r.approx_rows) })) };
+  });
+
+  app.get('/server/telemetry-db/table/:name', { preHandler: DANGEROUS, config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const pool = telemetryDb();
+    if (!pool) return reply.code(503).send({ error: 'telemetry_db_not_configured' });
+    const known = (await pool.query(`SELECT relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r'`)).rows;
+    if (!new Set(known.map((r) => r.relname)).has(req.params.name)) return reply.code(404).send({ error: 'not_found' });
+    const page = Math.max(0, Number(req.query?.page) || 0);
+    const pageSize = Math.min(100, Math.max(1, Number(req.query?.pageSize) || 25));
+    let orderBy = 'ORDER BY 1';
+    const sortCol = req.query?.sort;
+    if (sortCol) {
+      const cols = (await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`, [req.params.name])).rows;
+      if (cols.some((c) => c.column_name === sortCol)) orderBy = `ORDER BY "${sortCol}" ${req.query?.dir === 'desc' ? 'DESC' : 'ASC'} NULLS LAST`;
+    }
+    const rows = (await pool.query(`SELECT * FROM "${req.params.name}" ${orderBy} LIMIT ${pageSize} OFFSET ${page * pageSize}`)).rows;
+    const total = Number((await pool.query(`SELECT count(*)::bigint AS n FROM "${req.params.name}"`)).rows[0].n);
+    const safeRows = rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'bigint' ? v.toString() : v instanceof Date ? v.toISOString() : v])));
+    await logAudit(await db(), req.user.uid, 'server.telemetry_db_read', `${req.params.name} page=${page} size=${pageSize} rows=${rows.length}/${total}`, clientIp(req));
+    return { rows: safeRows, total, page, pageSize, readOnly: true };
   });
 
   // Resolves the table's single-column primary key (if it has exactly one) — a

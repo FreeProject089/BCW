@@ -517,11 +517,28 @@ export default async function repoRoutes(app) {
     return { ...res.health, verified: !!res.repo.verified, sha: res.repo.sha };
   });
 
+  // SOFT delete with a 72h grace window: the repo goes offline immediately but its
+  // content is kept and the deletion is reversible (POST /me/repos/:id/delete/cancel)
+  // until the sweeper hard-deletes the bytes + subscription + row after `deleteAt`.
   app.delete('/repos/:id', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
     const { repo, err } = await ownRepo(p, req.params.id, req.user);
     if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
-    await p.serverRepo.delete({ where: { id: repo.id } }).catch(() => {});
+    if (repo.ownerId !== req.user.uid) return reply.code(403).send({ error: 'owner_only' });
+    const deleteAt = new Date(Date.now() + 72 * 3600 * 1000);
+    await p.serverRepo.update({ where: { id: repo.id }, data: { deleteAt, status: repo.hosted ? 'SUSPENDED' : repo.status } });
+    return { ok: true, deleteAt };
+  });
+
+  // Undo a pending self-delete within the 72h grace window (owner-scoped mirror of
+  // /admin/repos/:id/delete/cancel). Clears deleteAt and restores the repo.
+  app.post('/me/repos/:id/delete/cancel', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const { repo, err } = await ownRepo(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
+    if (repo.ownerId !== req.user.uid) return reply.code(403).send({ error: 'owner_only' });
+    if (!repo.deleteAt) return reply.code(400).send({ error: 'not_scheduled' });
+    await p.serverRepo.update({ where: { id: repo.id }, data: { deleteAt: null, status: repo.status === 'SUSPENDED' ? 'ONLINE' : repo.status } });
     return { ok: true };
   });
 

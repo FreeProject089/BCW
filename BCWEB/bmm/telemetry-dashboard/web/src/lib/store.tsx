@@ -16,6 +16,25 @@ export const useStats = () => useContext(Ctx).stats;
 // The viewer key is the private admin key; it gates every data endpoint.
 const key = () => localStorage.getItem("bmm_admin_key") || "";
 
+// BetterCommunity SSO token: when the dashboard is opened from the BCWEB admin panel
+// it arrives as `#bc=<token>` — capture it once into localStorage, then it's sent as
+// X-BC-Token on every request (grants viewer access without the static admin key).
+export function captureBcToken() {
+  try {
+    const m = location.hash.match(/[#&]bc=([^&]+)/);
+    if (m) {
+      localStorage.setItem("bmm_bc_token", decodeURIComponent(m[1]));
+      const h = location.hash.match(/[#&]home=([^&]+)/);
+      if (h) localStorage.setItem("bmm_bc_home", decodeURIComponent(h[1]));
+      history.replaceState(null, "", location.pathname + location.search); // scrub the token from the URL
+    }
+  } catch { /* ignore */ }
+}
+const bcToken = () => localStorage.getItem("bmm_bc_token") || "";
+export const hasBcToken = () => !!bcToken();
+/** BCWEB home URL to return to (passed in the SSO handoff; sensible dev fallback). */
+export const bcHome = () => localStorage.getItem("bmm_bc_home") || "http://localhost:5176";
+
 // A stable per-browser fingerprint (classic UA + locale + screen + tz + a
 // persistent salt) sent on every request so the server can attribute admin
 // actions (downloads / deletes / backups) in the audit log.
@@ -32,7 +51,7 @@ function fingerprint(): string {
     return fp;
   } catch { return "unknown"; }
 }
-const authHeaders = (): Record<string, string> => ({ ...(key() ? { "X-Admin-Key": key() } : {}), "X-Admin-Fp": fingerprint() });
+const authHeaders = (): Record<string, string> => ({ ...(key() ? { "X-Admin-Key": key() } : {}), ...(bcToken() ? { "X-BC-Token": bcToken() } : {}), "X-Admin-Fp": fingerprint() });
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [stats, setStats] = useState<Stats | null>(null);
@@ -93,9 +112,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
     const connect = () => {
       try {
-        // EventSource can't set headers, so pass the key as a query param.
+        // EventSource can't set headers, so pass the key/BC token as a query param.
         const k = key();
-        const es = new EventSource(`/api/stream${k ? `?key=${encodeURIComponent(k)}` : ""}`);
+        const qs = bcToken() ? `?bc=${encodeURIComponent(bcToken())}` : (k ? `?key=${encodeURIComponent(k)}` : "");
+        const es = new EventSource(`/api/stream${qs}`);
         esRef.current = es;
         es.onopen = () => {
           setConnected(true);

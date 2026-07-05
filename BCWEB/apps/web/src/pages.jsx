@@ -2504,6 +2504,7 @@ const DB_SENSITIVE_COL = /hash|secret|token|password|totp/i;
 
 function DbViewer() {
   const toast = useToast(); const dialog = useDialog();
+  const [source, setSource] = useState('bcweb'); // 'bcweb' | 'telemetry'
   const [tables, setTables] = useState(null);
   const [tableQ, setTableQ] = useState('');
   const [active, setActive] = useState(null);
@@ -2515,13 +2516,20 @@ function DbViewer() {
   const [saving, setSaving] = useState(false);
   const [rowHistory, setRowHistory] = useState(null); // { table, pk, items }
   const pageSize = 25;
+  const canEdit = source === 'bcweb'; // the telemetry DB is read-only (no cell/edit routes)
+  const dbBase = (s = source) => (s === 'telemetry' ? '/server/telemetry-db' : '/server/db');
 
-  useEffect(() => { api.get('/server/db/tables').then((r) => setTables(r.tables)).catch(() => toast.error('Failed to list tables.')); /* eslint-disable-next-line */ }, []);
+  useEffect(() => {
+    setTables(null); setActive(null); setRows(null);
+    api.get(`${dbBase(source)}/tables`).then((r) => setTables(r.tables))
+      .catch((x) => toast.error(x.data?.error === 'telemetry_db_not_configured' ? 'BMM telemetry DB is not configured.' : 'Failed to list tables.'));
+    /* eslint-disable-next-line */
+  }, [source]);
   const openTable = async (name, p = 0, s = sort) => {
     setActive(name); setPage(p); setRows(null); setSort(s);
     try {
       const qs = new URLSearchParams({ page: p, pageSize }); if (s.col) { qs.set('sort', s.col); qs.set('dir', s.dir); }
-      const r = await api.get(`/server/db/table/${encodeURIComponent(name)}?${qs}`); setRows(r);
+      const r = await api.get(`${dbBase()}/table/${encodeURIComponent(name)}?${qs}`); setRows(r);
     } catch { toast.error('Failed to load table.'); }
   };
   const toggleSort = (c) => openTable(active, 0, sort.col === c ? { col: c, dir: sort.dir === 'asc' ? 'desc' : 'asc' } : { col: c, dir: 'asc' });
@@ -2540,7 +2548,14 @@ function DbViewer() {
 
   return (
     <Card className="p-4">
-      <div className="flex items-center gap-2 mb-2 text-sm"><HardDrive size={14} className="text-[var(--primary-2)]" /><span className="font-semibold">Database viewer</span><span className="text-xs text-[var(--faint)]">(read-only)</span></div>
+      <div className="flex items-center gap-2 mb-2 text-sm flex-wrap"><HardDrive size={14} className="text-[var(--primary-2)]" /><span className="font-semibold">Database viewer</span>
+        <span className="text-xs text-[var(--faint)]">{canEdit ? '(edit with care)' : '(read-only)'}</span>
+        <div className="ml-auto flex rounded-lg border border-[var(--line)] overflow-hidden text-xs">
+          {[['bcweb', 'BCWEB'], ['telemetry', 'BMM Telemetry']].map(([v, l]) => (
+            <button key={v} onClick={() => setSource(v)} className={`px-2.5 py-1 ${source === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
+          ))}
+        </div>
+      </div>
       {!tables ? <Loading /> : (
         <div className="grid sm:grid-cols-[180px_1fr] gap-3">
           <div>
@@ -2596,7 +2611,7 @@ function DbViewer() {
           {cell && (() => {
             const isPk = rows?.pkColumn === cell.col;
             const protected_ = DB_SENSITIVE_COL.test(cell.col);
-            const editable = !!rows?.pkColumn && cell.pk != null && !isPk && !protected_;
+            const editable = canEdit && !!rows?.pkColumn && cell.pk != null && !isPk && !protected_;
             const save = async () => {
               if (!(await doubleConfirm(dialog, { title: 'Save row edit', message: `Overwrite ${active}.${cell.col} (row ${cell.pk}) on the live database? The current row is backed up automatically.`, okLabel: 'Save' }))) return;
               setSaving(true);
@@ -4243,7 +4258,15 @@ function TrafficChart({ series, gran = 'day', onZoom, compare }) {
 function AdminAnalytics() {
   const [days, setDays] = useState(30);
   const [hours, setHours] = useState(null); // when set → hourly view (zoom-in)
+  const toast = useToast();
   const { data, loading } = useAsync(() => api.get(`/admin/analytics?${hours ? `hours=${hours}` : `days=${days}`}`), [days, hours]);
+  // Open BMM telemetry via an SSO handoff: mint a short-lived token (this call is
+  // admin-gated + 2FA-enforced) and hand it to the telemetry dashboard, so the
+  // dashboard is reachable ONLY through an authenticated BCWEB admin.
+  const openTelemetry = async () => {
+    try { const { url } = await api.post('/admin/telemetry/token', {}); window.open(url, '_blank', 'noopener'); }
+    catch { toast.error('Could not open telemetry — an admin account with 2FA is required.'); }
+  };
   const gran = data?.granularity || (hours ? 'hour' : 'day');
   // Ctrl+wheel on the chart: zoom in → hourly (24h); zoom out → back to daily.
   const onZoom = (dir) => { if (dir === 'in') setHours(24); else setHours(null); };
@@ -4266,7 +4289,7 @@ function AdminAnalytics() {
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {ranges.map(([d, l]) => <button key={d} onClick={() => pickRange(d)} className={`px-3 py-1.5 text-xs ${activeRange === d ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>)}
           </div>
-          <a href="http://telemetry.localhost" target="_blank" rel="noreferrer"><Button size="sm"><Gauge size={14} /> BMM telemetry</Button></a>
+          <Button size="sm" onClick={openTelemetry}><Gauge size={14} /> BMM telemetry</Button>
         </div>
       </div>
 

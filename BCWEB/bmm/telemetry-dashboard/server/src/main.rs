@@ -218,17 +218,52 @@ async fn require_viewer(State(st): State<Shared>, req: axum::extract::Request, n
         return next.run(req).await;
     }
     let header_ok = req.headers().get("X-Admin-Key").and_then(|v| v.to_str().ok()) == Some(st.cfg.admin_key.as_str());
+    // BetterCommunity SSO: a short-lived HMAC token minted by the BCWEB admin panel
+    // (which already enforces an admin-tier account + 2FA) grants viewer access
+    // without the static admin key.
+    let bc_ok = req.headers().get("X-BC-Token").and_then(|v| v.to_str().ok())
+        .map(|t| bc_token_ok(t, &st.cfg.bc_link_secret)).unwrap_or(false);
     let query_ok = req.uri().query().map(|q| {
         q.split('&').any(|kv| {
             let mut it = kv.splitn(2, '=');
-            matches!((it.next(), it.next()), (Some("key") | Some("admin_key"), Some(v)) if v == st.cfg.admin_key)
+            match (it.next(), it.next()) {
+                (Some("key") | Some("admin_key"), Some(v)) => v == st.cfg.admin_key,
+                (Some("bc"), Some(v)) => bc_token_ok(v, &st.cfg.bc_link_secret),
+                _ => false,
+            }
         })
     }).unwrap_or(false);
-    if header_ok || query_ok {
+    if header_ok || bc_ok || query_ok {
         next.run(req).await
     } else {
         (StatusCode::UNAUTHORIZED, Json(json!({ "error": "unauthorized" }))).into_response()
     }
+}
+
+/// Validate a BetterCommunity SSO token: `<payloadB64url>.<sigB64url>` where sig =
+/// HMAC-SHA256(bc_link_secret, payloadB64url) and payload JSON is `{ role, exp }`
+/// (exp in epoch ms). Grants access only for an admin-tier role and an unexpired
+/// token — the same shared secret the BCWEB API already uses for creator-id lookups.
+fn bc_token_ok(token: &str, secret: &str) -> bool {
+    use base64::Engine;
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    if secret.is_empty() {
+        return false;
+    }
+    let Some((payload_b64, sig_b64)) = token.split_once('.') else { return false };
+    let Ok(sig) = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(sig_b64) else { return false };
+    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(secret.as_bytes()) else { return false };
+    mac.update(payload_b64.as_bytes());
+    if mac.verify_slice(&sig).is_err() {
+        return false;
+    }
+    let Ok(payload) = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload_b64) else { return false };
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(&payload) else { return false };
+    let exp = v.get("exp").and_then(|e| e.as_i64()).unwrap_or(0);
+    let role_ok = v.get("role").and_then(|r| r.as_str())
+        .map(|r| matches!(r, "ADMIN" | "SUPERADMIN" | "MOD")).unwrap_or(false);
+    role_ok && chrono::Utc::now().timestamp_millis() < exp
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────

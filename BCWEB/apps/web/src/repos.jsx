@@ -359,7 +359,26 @@ export function MyRepos() {
       else toast.error(x.data?.error || t('repos.failed', 'Failed.'));
     }
   };
-  const del = async (r) => { if (!(await dialog.confirm({ title: t('repos.del.title', 'Delete repo'), message: t('repos.del.msg', 'Delete "{name}"?').replace('{name}', r.name), okLabel: t('repos.del.ok', 'Delete'), danger: true }))) return; try { await api.del(`/repos/${r.id}`); toast.success(t('repos.deleted', 'Deleted.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
+  // Double-confirmed delete → 72h soft-delete grace (the server keeps the content and
+  // the deletion is reversible until the sweeper hard-deletes it).
+  const del = async (r) => {
+    // Step 1: warn about the grace window + permanent content deletion.
+    if (!(await dialog.confirm({ title: t('repos.del.title', 'Delete repo'),
+      message: t('repos.del.msg', '"{name}" goes offline now and is permanently deleted — with all its content — in 72 hours. You can undo until then.').replace('{name}', r.name),
+      okLabel: t('repos.del.next', 'Continue'), danger: true }))) return;
+    // Step 2: type the repo name to confirm (the second confirmation).
+    const typed = await dialog.prompt({ title: t('repos.del.confirm.t', 'Confirm deletion'),
+      label: t('repos.del.confirm.l', 'Type the repo name to confirm').replace('{name}', r.name),
+      placeholder: r.name, okLabel: t('repos.del.ok', 'Delete'), danger: true });
+    if (typed === false) return;
+    if (String(typed).trim() !== r.name) return toast.error(t('repos.del.mismatch', "Name didn't match — deletion cancelled."));
+    try { await api.del(`/repos/${r.id}`); toast.success(t('repos.deleted72', 'Scheduled for deletion in 72h — undo from the repo card anytime before then.')); reload(); }
+    catch { toast.error(t('repos.failed', 'Failed.')); }
+  };
+  const undoDelete = async (r) => {
+    try { await api.post(`/me/repos/${r.id}/delete/cancel`); toast.success(t('repos.del.undone', 'Deletion cancelled — your repo is restored.')); reload(); }
+    catch { toast.error(t('repos.failed', 'Failed.')); }
+  };
   const check = async (r) => { try { const res = await api.post(`/repos/${r.id}/check`); toast[res.status === 'ONLINE' ? 'success' : 'error'](res.status === 'ONLINE' ? (res.verified ? t('repos.check.onver', 'Online & verified.') : t('repos.check.onunver', 'Online but unverified.')) : t('repos.check.off', 'Offline ({reason}).').replace('{reason}', res.reason || t('repos.unreachable', 'unreachable'))); reload(); } catch { toast.error(t('repos.check.failed', 'Check failed.')); } };
   // Free switch between single repo and a multi (pool) layout.
   const switchMode = async (r) => {
@@ -378,6 +397,13 @@ export function MyRepos() {
         : repos.length ? <div className="space-y-2">
           {repos.map((r) => (
             <Card key={r.id} className="p-4">
+              {r.deleteAt && (
+                <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs">
+                  <AlertTriangle size={14} className="text-red-400 shrink-0" />
+                  <span className="flex-1 text-red-300">{t('repos.del.pending', 'Scheduled for deletion — permanently removed with its content on {when}.').replace('{when}', new Date(r.deleteAt).toLocaleString())}</span>
+                  <Button size="sm" variant="primary" onClick={() => undoDelete(r)}><RefreshCw size={12} /> {t('repos.del.undo', 'Undo')}</Button>
+                </div>
+              )}
               <div className="flex items-start gap-3">
                 <GitBranch size={18} className="text-[var(--primary-2)] mt-0.5" />
                 <div className="flex-1 min-w-0">

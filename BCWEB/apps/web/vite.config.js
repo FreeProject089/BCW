@@ -4,8 +4,22 @@ import react from '@vitejs/plugin-react';
 // Dev proxies /api -> the API container so the SPA + API share an origin.
 export default defineConfig({
   plugins: [react()],
-  // Dev server on :5176 to match the site's base URL (http://localhost:5176).
-  server: { port: 5176, strictPort: true, proxy: { '/api': { target: 'http://localhost:3000', changeOrigin: true } } },
+  // Dev server prefers :5176 (the site's base URL); if that's taken — e.g. the
+  // Docker Caddy is already serving on 5176 — Vite falls back to the next free port
+  // instead of hard-failing. Proxies /api to the local API (run apps/api on :3000).
+  // NOTE the `rewrite` STRIPS the /api prefix: the API registers routes WITHOUT it
+  // (e.g. `/health`, `/auth/login`) and in production Caddy's `handle_path /api/*`
+  // strips the prefix before proxying. Without this rewrite every dev API call 404s.
+  server: {
+    port: 5176,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api/, ''),
+      },
+    },
+  },
   build: {
     // Split the heavy, rarely-changing libraries into their own hashed chunks so
     // (a) the main app chunk shrinks and parses faster on first paint, and (b)
