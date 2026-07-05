@@ -7,7 +7,7 @@ const DICT = {
   en: {
     'nav.home': 'Home', 'nav.bmm': 'BMM', 'nav.bsm': 'BSM', 'nav.installer': 'BI', 'nav.blog': 'Blog',
     'nav.repos': 'Repos', 'nav.hosting': 'Hosting', 'nav.projects': 'Projects', 'nav.dashboard': 'Dashboard', 'nav.admin': 'Admin',
-    'nav.settings': 'Settings',
+    'nav.settings': 'Settings', 'nav.docs': 'Docs',
     'projects.sub': 'More from the Better* ecosystem.',
     'nav.signin': 'Sign in', 'nav.signout': 'Sign out', 'nav.notifications': 'Notifications',
     'notif.none': 'No notifications', 'notif.markall': 'Mark all read', 'notif.open': 'Open dashboard', 'notif.justnow': 'just now',
@@ -80,7 +80,7 @@ const DICT = {
     'admin.2fa.title': 'Authentification à deux facteurs requise', 'admin.2fa.sub': "Le tableau de bord admin nécessite la 2FA sur ton compte, même pour les admins. Active-la dans ton profil pour continuer.", 'admin.2fa.cta': 'Aller au profil',
     'nav.home': 'Accueil', 'nav.bmm': 'BMM', 'nav.bsm': 'BSM', 'nav.installer': 'BI', 'nav.blog': 'Blog',
     'nav.repos': 'Dépôts', 'nav.hosting': 'Hébergement', 'nav.projects': 'Projets', 'nav.dashboard': 'Tableau de bord', 'nav.admin': 'Admin',
-    'nav.settings': 'Paramètres',
+    'nav.settings': 'Paramètres', 'nav.docs': 'Docs',
     'set.title': 'Paramètres', 'set.sub': 'Tes préférences — enregistrées sur ce navigateur uniquement.',
     'set.appearance': 'Apparence', 'set.theme': 'Thème', 'set.theme.d': 'Clair ou sombre — appliqué instantanément.',
     'set.light': 'Clair', 'set.dark': 'Sombre',

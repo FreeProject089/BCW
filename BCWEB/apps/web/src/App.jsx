@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Routes, Route, Link, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon } from 'lucide-react';
+import { Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
 import { useAuth } from './auth.jsx';
 import { api } from './api.js';
 import { Button } from './ui.jsx';
@@ -17,6 +17,7 @@ import ProjectPage, { OtherProjects, ShowcaseProjectPage } from './project.jsx';
 import Profile from './profile.jsx';
 import Avatar from './Avatar.jsx';
 import { BlogList, BlogPostPage } from './blog.jsx';
+import Docs from './docs.jsx';
 import { ReposPage } from './repos.jsx';
 import { RepoDashboard } from './repo-dashboard.jsx';
 import { Home, Catalog, ItemDetail, Hosting, Auth, Dashboard, Admin, Legal, Contact, Settings, NOTIF, NOTIF_FALLBACK } from './pages.jsx';
@@ -27,6 +28,7 @@ const NAV = [
   { to: '/p/bsm', k: 'nav.bsm', icon: Music2, img: '/icons/bsm.png' },
   { to: '/p/installer', k: 'nav.installer', icon: Download, img: '/icons/bi.png' },
   { to: '/blog', k: 'nav.blog', icon: Newspaper },
+  { to: '/docs', k: 'nav.docs', icon: BookOpen },
   { to: '/repos', k: 'nav.repos', icon: Server },
   { to: '/hosting', k: 'nav.hosting', icon: Rocket },
 ];
@@ -159,6 +161,11 @@ function Nav() {
     }, 60);
     return () => clearTimeout(id);
   }, [loc.pathname]);
+  // Pill labels vs icons-only is decided purely by CSS: the nav is a size container
+  // (`.seg-nav`, container-type inline-size) and a @container query shows `.nav-lbl`
+  // once the nav's own box is wide enough. No JS measurement (the old approach kept
+  // sticking in compact mode because the sticky-header flex width isn't final on
+  // first paint). See index.css `.seg-nav`.
   return (
     <header className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       <div className="max-w-7xl mx-auto rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
@@ -172,15 +179,15 @@ function Nav() {
             with the dashboard/admin/profile cluster below at in-between widths —
             that's what caused the overlapping/cut-off "buggy" look around
             700-950px. Below `lg:` everything lives in the hamburger sheet instead. */}
-        <nav ref={segNavRef} className="hidden lg:flex items-center gap-0.5 rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] min-w-0 overflow-x-auto no-scrollbar">
-          {visibleNav.map((n) => <NavLink key={n.to} to={n.to} title={t(n.k)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={n} size={15} /><span className="hidden 2xl:inline">{t(n.k)}</span></NavLink>)}
+        <nav ref={segNavRef} className="seg-nav hidden lg:flex flex-1 items-center gap-0.5 rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] min-w-0 overflow-x-auto no-scrollbar">
+          {visibleNav.map((n) => <NavLink key={n.to} to={n.to} title={t(n.k)} aria-label={t(n.k)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={n} size={16} /><span className="nav-lbl">{t(n.k)}</span></NavLink>)}
           {pinnedShowcase.map((p) => (
-            <NavLink key={p.slug} to={`/project/${p.slug}`} title={p.name} className={(s) => pill(s) + ' shrink-0'}>
-              <Sparkles size={15} /><span className="hidden 2xl:inline">{p.isAnnouncing ? p.announceTitle || p.name : p.name}</span>
+            <NavLink key={p.slug} to={`/project/${p.slug}`} title={p.name} aria-label={p.name} className={(s) => pill(s) + ' shrink-0'}>
+              <Sparkles size={15} /><span className="nav-lbl">{p.isAnnouncing ? p.announceTitle || p.name : p.name}</span>
             </NavLink>
           ))}
         </nav>
-        <div className="flex-1 min-w-[8px]" />
+        <div className="w-2 shrink-0" />
         {/* Right cluster, grouped by purpose: content actions (Projects,
             notifications) · then preferences (language, theme, settings), split
             by a subtle divider so it reads as two tidy groups, not one jumble. */}
@@ -310,7 +317,7 @@ function Footer() {
           </div>
         </div>
         <FooterCol title={t('foot.products')} links={[['BMM', '/p/bmm'], ['BSM', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting']]} />
-        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/about'], ['Blog', '/blog'], [t('nav.repos'), '/repos'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
+        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('nav.repos'), '/repos'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
         <FooterCol title={t('foot.legal')} links={[[t('foot.privacy'), '/privacy'], [t('foot.terms'), '/terms'], [t('foot.cookies'), '/cookies'], [t('foot.refunds', 'Payments & Refunds'), '/refunds']]} />
       </div>
       <div className="border-t border-[var(--line)]"><div className="max-w-6xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 text-xs text-[var(--faint)] pb-24 md:pb-5">
@@ -436,6 +443,8 @@ export default function App() {
               <Route path="/item/:slug" element={<ItemDetail />} />
               <Route path="/blog" element={<BlogList />} />
               <Route path="/blog/:slug" element={<BlogPostPage />} />
+              <Route path="/docs" element={<Docs />} />
+              <Route path="/docs/:slug" element={<Docs />} />
               <Route path="/repos" element={<ReposPage />} />
               <Route path="/repo/:id" element={<RepoDashboard />} />
               <Route path="/hosting" element={<Hosting />} />

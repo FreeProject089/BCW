@@ -3,11 +3,17 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   Newspaper, PenSquare, ImagePlus, Youtube, Link2, Video, Bold, Heading, List, Eye,
   Trash2, Pencil, ArrowLeft, CalendarDays, User as UserIcon, Plus, X, Tag as TagIcon, HelpCircle, Languages, Sparkles,
+  Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter,
 } from 'lucide-react';
 import { api, uploadBlogImage } from './api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from './i18n.jsx';
 import Markdown from './md.jsx';
+import Avatar from './Avatar.jsx';
+import { REACTION_OPTIONS, ReactionIcon } from './reactions.jsx';
+import VisualEditor from './visual-editor.jsx';
+import IconPicker from './icon-picker.jsx';
+import SelectionToolbar from './selection-toolbar.jsx';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal } from './ui.jsx';
 
 // Pick the reader's language version of a post. EN is the base (always present);
@@ -27,6 +33,20 @@ function useFetch(fn, deps) {
   return { data, loading, reload };
 }
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+
+// Author + collaborators avatar row. Solo → avatar + name; 2+ → avatars only.
+export function AuthorsRow({ authors, size = 22 }) {
+  const list = (authors || []).filter(Boolean);
+  if (!list.length) return null;
+  return (
+    <span className="flex items-center gap-1.5 min-w-0">
+      <span className="flex -space-x-2 shrink-0">
+        {list.slice(0, 4).map((a, i) => <span key={a.id || i} className="ring-2 ring-[var(--bg-solid)] rounded-full" title={a.displayName}><Avatar user={a} size={size} /></span>)}
+      </span>
+      {list.length === 1 && <span className="text-xs text-[var(--faint)] truncate">{list[0].displayName}</span>}
+    </span>
+  );
+}
 
 // Per-project tag: real logo + label (community uses the BetterCommunity logo).
 const TYPE_TAG = {
@@ -79,7 +99,7 @@ export function BlogList() {
                     {v.excerpt && <div className="text-sm text-[var(--muted)] mt-1.5 line-clamp-2 flex-1">{v.excerpt}</div>}
                     <div className="mt-4 pt-3 border-t border-[var(--line)] flex items-center justify-between">
                       <TypeTag post={p} />
-                      <span className="text-xs text-[var(--faint)] truncate max-w-[45%]">{p.author?.displayName}</span>
+                      <AuthorsRow authors={p.authors} />
                     </div>
                   </div>
                 </Card></Link>
@@ -97,29 +117,67 @@ export function BlogList() {
 export function BlogPostPage() {
   const { slug } = useParams();
   const { lang, t } = useI18n();
+  const { user } = useAuth(); const toast = useToast(); const nav = useNavigate();
   const { data, loading } = useFetch(() => api.get(`/blog/${slug}`), [slug]);
+  const [rx, setRx] = useState(null); // { counts, mine } — local so a click updates instantly
+  useEffect(() => { if (data?.post) setRx({ counts: data.post.reactionCounts || {}, mine: data.post.myReaction || null }); }, [data]);
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading', 'Loading…')}</div>;
   if (!data?.post) return <EmptyState icon={Newspaper} title={t('blog.notfound', 'Post not found')} />;
   const p = data.post; const v = pickLang(p, lang);
+  const authors = [p.author, ...(p.coAuthors || [])].filter(Boolean);
+  const react = async (type) => {
+    if (!user) { toast.info(t('blog.rx.signin', 'Sign in to react.')); nav('/auth?next=' + encodeURIComponent(`/blog/${slug}`)); return; }
+    try { const r = await api.post(`/blog/${p.id}/react`, { type }); setRx({ counts: r.reactionCounts, mine: r.myReaction }); }
+    catch { toast.error(t('blog.rx.failed', 'Could not react.')); }
+  };
   return (
     <div className="max-w-3xl mx-auto">
       <Link to="/blog" className="text-sm text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1 mb-4"><ArrowLeft size={14} /> {t('blog.title', 'Blog')}</Link>
       <article className="card p-6 md:p-9">
         <TypeTag post={p} />
         <h1 className="text-3xl md:text-4xl font-extrabold mt-3 leading-tight">{v.title}</h1>
-        <div className="text-sm text-[var(--faint)] mt-3 flex items-center gap-3"><span className="flex items-center gap-1"><UserIcon size={13} /> {p.author?.displayName}</span><span className="flex items-center gap-1"><CalendarDays size={13} /> {fmtDate(p.publishedAt)}</span></div>
+        <div className="text-sm text-[var(--faint)] mt-3 flex items-center gap-3"><span className="flex items-center gap-1"><UserIcon size={13} /> {p.author?.displayName}{authors.length > 1 && ` +${authors.length - 1}`}</span><span className="flex items-center gap-1"><CalendarDays size={13} /> {fmtDate(p.publishedAt)}</span></div>
         {!v.translated && <div className="mt-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--primary-2)]" /> Cet article n'est pas encore traduit en français — version anglaise affichée.</div>}
         {p.cover && <img src={p.cover} alt="" className="w-full rounded-2xl mt-6 border border-[var(--line)]" />}
-        <Markdown className="mt-7">{v.body}</Markdown>
+        <Markdown className="mt-7">{p.showToc && !/(^|\n)::toc\b/.test(v.body || '') ? `::toc[${p.tocTitle || 'On this page'}]\n\n${v.body}` : v.body}</Markdown>
+
+        {/* reactions */}
+        {p.reactionsEnabled && p.reactionTypes?.length > 0 && (
+          <div className="mt-8 pt-5 border-t border-[var(--line)] flex flex-wrap items-center gap-2">
+            <span className="text-xs text-[var(--faint)] mr-1">{t('blog.rx.label', 'Reactions')}</span>
+            {p.reactionTypes.map((type) => {
+              const count = rx?.counts?.[type] || 0; const mine = rx?.mine === type;
+              return (
+                <button key={type} onClick={() => react(type)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${mine ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary-2)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                  <ReactionIcon name={type} size={16} />{count > 0 && <span className="text-xs tabular-nums">{count}</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* author + collaborators */}
+        {authors.length > 0 && (
+          <div className="mt-6 pt-5 border-t border-[var(--line)] flex items-center gap-3">
+            <div className="flex -space-x-2">
+              {authors.map((a) => <div key={a.id} className="ring-2 ring-[var(--bg-solid)] rounded-full"><Avatar user={a} size={30} /></div>)}
+            </div>
+            <div className="text-xs text-[var(--muted)]">
+              {authors.length > 1 ? t('blog.by.multi', 'Written by {names}').replace('{names}', authors.map((a) => a.displayName).join(', ')) : t('blog.by.one', 'Written by {name}').replace('{name}', p.author?.displayName || '')}
+            </div>
+          </div>
+        )}
       </article>
     </div>
   );
 }
 
 /* ── Reusable rich Markdown editor (toolbar + preview). `full` adds media/badges. ── */
-function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, full = false }) {
+export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, full = false }) {
   const toast = useToast(); const dialog = useDialog();
   const ref = useRef(null); const [preview, setPreview] = useState(false);
+  const [mode, setMode] = useState('write'); // 'write' (markdown) | 'visual' (drag & drop)
   const insert = (text) => {
     const ta = ref.current; const v = value || ''; const at = ta ? ta.selectionStart : v.length;
     const next = v.slice(0, at) + text + v.slice(at); onChange(next);
@@ -130,23 +188,64 @@ function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, full = 
   const linkEmbed = async () => { const url = await dialog.prompt({ title: 'Link', label: 'URL', placeholder: 'https://…' }); if (!url) return; const txt = await dialog.prompt({ title: 'Link', label: 'Text', defaultValue: url }); insert(`[${txt || url}](${url})`); };
   const videoEmbed = async () => { const url = await dialog.prompt({ title: 'Video', label: 'Video file URL (mp4/webm)', placeholder: 'https://…' }); if (!url) return; insert(`\n<video controls src="${url}" style="width:100%;border-radius:12px"></video>\n`); };
   const tool = (Icon, fn, title) => <button type="button" title={title} onClick={fn} className="btn btn-sm"><Icon size={14} /></button>;
+  const [blocksOpen, setBlocksOpen] = useState(false);
+  const [iconPick, setIconPick] = useState(false);
+  // GitBook-style block snippets (remark-directive). `insertBlock` closes the menu.
+  const BLOCKS = [
+    { icon: TagIcon, label: 'Callout', snip: '\n:::tip[Good to know]\nSomething worth highlighting.\n:::\n' },
+    { icon: Sparkles, label: 'Custom callout', snip: '\n:::callout[Custom]{icon=rocket color="#7c3aed"}\nYour own icon and colour.\n:::\n' },
+    { icon: ChevronDown, label: 'Collapsible', snip: '\n:::details[Click to expand]\nHidden content — supports **markdown**.\n:::\n' },
+    { icon: LayoutGrid, label: 'Cards', snip: '\n::::cards\n:::card{title="First" icon=rocket}\nCard description.\n:::\n:::card{title="Link card" href="https://example.com" icon=link}\nGoes somewhere.\n:::\n::::\n' },
+    { icon: ImagePlus, label: 'Image card', snip: '\n:::card{title="With image" image="https://picsum.photos/400/200"}\nCaption or description.\n:::\n' },
+    { icon: Columns2, label: 'Columns', snip: '\n::::columns\n:::column\nLeft column.\n:::\n:::column\nRight column.\n:::\n::::\n' },
+    { icon: FileDown, label: 'File download', snip: '\n:::file[example.zip]{href="https://example.com/file.zip" size="10 KB"}\n:::\n' },
+    { icon: AlignCenter, label: 'Align (center)', snip: '\n:::center\nCentered content — text or an ![image](url).\n:::\n' },
+    { icon: Code2, label: 'Code block', snip: '\n```js\nconsole.log("hello");\n```\n' },
+    { icon: Keyboard, label: 'Shortcut', snip: ' :kbd[Ctrl+Shift+S] ' },
+    { icon: TagIcon, label: 'Tags', snip: ' :badge[New]{color="#16a34a"} :badge[Beta]{color="#2563eb"} ' },
+    { icon: Smile, label: 'Icon', onPick: () => { setBlocksOpen(false); setIconPick(true); } },
+    { icon: ListTree, label: 'Table of contents', snip: '\n::toc[On this page]\n' },
+  ];
+  const insertBlock = (snip) => { insert(snip); setBlocksOpen(false); };
   return (
     <div className="rounded-xl border border-[var(--line)] overflow-hidden bg-[var(--surface-2)]">
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-[var(--line)]">
-        {tool(Bold, () => insert('**bold**'), 'Bold')}{tool(Heading, () => insert('\n## Heading\n'), 'Heading')}{tool(List, () => insert('\n- item\n'), 'List')}{tool(Link2, linkEmbed, 'Link')}
-        {full && <>
-          <span className="w-px h-5 bg-[var(--line)] mx-1 self-center" />
-          {tool(ImagePlus, () => pickImage((u) => insert(`\n![image](${u})\n`)), 'Image')}{tool(Youtube, ytEmbed, 'YouTube')}{tool(Video, videoEmbed, 'Video')}
-          <span className="w-px h-5 bg-[var(--line)] mx-1 self-center" />
-          {['NEW', 'FIXED', 'IMPROVED'].map((b) => <button key={b} type="button" onClick={() => insert(`[${b}] `)} className="btn btn-sm !py-1"><span className={`md-badge md-badge-${b === 'NEW' ? 'new' : b === 'FIXED' ? 'fixed' : 'improved'} !mr-0`}>{b}</span></button>)}
-          {tool(TagIcon, () => insert('\n> [!NOTE]\n> Something worth highlighting.\n'), 'Callout / alert')}
+        {full && (
+          <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 mr-1">
+            {[['write', 'Markdown'], ['visual', 'Visual']].map(([m, label]) => (
+              <button key={m} type="button" onClick={() => { setMode(m); setPreview(false); }}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium ${mode === m ? 'bg-[var(--surface)] text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
+            ))}
+          </div>
+        )}
+        {mode === 'write' && <>
+          {tool(Bold, () => insert('**bold**'), 'Bold')}{tool(Heading, () => insert('\n## Heading\n'), 'Heading')}{tool(List, () => insert('\n- item\n'), 'List')}{tool(Link2, linkEmbed, 'Link')}
+          {full && <>
+            <span className="w-px h-5 bg-[var(--line)] mx-1 self-center" />
+            {tool(ImagePlus, () => pickImage((u) => insert(`\n![image](${u})\n`)), 'Image')}{tool(Youtube, ytEmbed, 'YouTube')}{tool(Video, videoEmbed, 'Video')}
+            <span className="w-px h-5 bg-[var(--line)] mx-1 self-center" />
+            {['NEW', 'FIXED', 'IMPROVED'].map((b) => <button key={b} type="button" onClick={() => insert(`[${b}] `)} className="btn btn-sm !py-1 hidden sm:inline-flex"><span className={`md-badge md-badge-${b === 'NEW' ? 'new' : b === 'FIXED' ? 'fixed' : 'improved'} !mr-0`}>{b}</span></button>)}
+            <div className="relative">
+              <button type="button" onClick={() => setBlocksOpen((v) => !v)} className="btn btn-sm" title="Insert a GitBook-style block"><BlocksIcon size={14} /> Blocks <ChevronDown size={12} /></button>
+              {blocksOpen && <>
+                <div className="fixed inset-0 z-40" onClick={() => setBlocksOpen(false)} />
+                <div className="absolute z-50 mt-1 w-52 rounded-xl border border-[var(--line-strong)] shadow-xl py-1 max-h-72 overflow-auto" style={{ background: 'var(--bg-solid)' }}>
+                  {BLOCKS.map((bl) => <button key={bl.label} type="button" onClick={() => bl.onPick ? bl.onPick() : insertBlock(bl.snip)} className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-[var(--surface-2)]"><bl.icon size={14} className="text-[var(--muted)]" /> {bl.label}</button>)}
+                </div>
+              </>}
+            </div>
+          </>}
         </>}
         <button type="button" onClick={() => setPreview((v) => !v)} className="btn btn-sm ml-auto"><Eye size={14} /> {preview ? 'Edit' : 'Preview'}</button>
-        {full && <a href="/blog/markdown-guide" target="_blank" rel="noreferrer" className="btn btn-sm" title="Markdown guide"><HelpCircle size={14} /> Guide</a>}
+        {full && <a href="/blog/markdown-guide" target="_blank" rel="noreferrer" className="btn btn-sm" title="Markdown guide"><HelpCircle size={14} /> <span className="hidden sm:inline">Guide</span></a>}
       </div>
       {preview
         ? <div className="p-4 max-h-[38vh] overflow-auto"><Markdown>{value || '*Nothing yet.*'}</Markdown></div>
-        : <textarea ref={ref} className="w-full bg-transparent border-0 outline-none resize-none p-4 text-sm leading-relaxed text-[var(--text)]" style={{ minHeight }} value={value || ''} spellCheck={false} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />}
+        : mode === 'visual'
+          ? <div className="max-h-[52vh] overflow-auto"><VisualEditor value={value} onChange={onChange} minHeight={minHeight} /></div>
+          : <><textarea ref={ref} className="w-full bg-transparent border-0 outline-none resize-none p-4 text-sm leading-relaxed text-[var(--text)]" style={{ minHeight }} value={value || ''} spellCheck={false} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+            <SelectionToolbar taRef={ref} value={value || ''} onChange={onChange} /></>}
+      {iconPick && <IconPicker onPick={(n) => insert(` :icon[${n}] `)} onClose={() => setIconPick(false)} />}
     </div>
   );
 }
@@ -159,16 +258,41 @@ function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, full = 
 function BlogEditor({ post, scopes, onClose, onSaved }) {
   const toast = useToast(); const dialog = useDialog();
   const defaultScope = scopes?.projects?.[0] ? `project:${scopes.projects[0].key}` : scopes?.showcases?.[0] ? `showcase:${scopes.showcases[0].slug}` : 'project:community';
-  const [f, setF] = useState({ scope: defaultScope, cover: '', publish: true, title: '', excerpt: '', body: '', titleFr: '', excerptFr: '', bodyFr: '' });
+  const [f, setF] = useState({ scope: defaultScope, cover: '', publish: true, title: '', excerpt: '', body: '', titleFr: '', excerptFr: '', bodyFr: '', reactionsEnabled: false, reactionTypes: [], coAuthorEmails: [], showToc: false, tocTitle: '' });
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('en'); // en (base) | fr (optional)
+  const [collab, setCollab] = useState(''); // pending co-author email input
   useEffect(() => {
-    if (post) setF({ scope: post.showcaseProject ? `showcase:${post.showcaseProject.slug}` : `project:${post.project?.key || 'community'}`, cover: post.cover || '', publish: post.status === 'PUBLISHED',
-      title: post.title || '', excerpt: post.excerpt || '', body: post.body || '',
-      titleFr: post.titleFr || '', excerptFr: post.excerptFr || '', bodyFr: post.bodyFr || '' });
-    else setF((s) => ({ ...s, scope: defaultScope }));
+    if (post) {
+      setF({ scope: post.showcaseProject ? `showcase:${post.showcaseProject.slug}` : `project:${post.project?.key || 'community'}`, cover: post.cover || '', publish: post.status === 'PUBLISHED',
+        title: post.title || '', excerpt: post.excerpt || '', body: post.body || '',
+        titleFr: post.titleFr || '', excerptFr: post.excerptFr || '', bodyFr: post.bodyFr || '',
+        reactionsEnabled: !!post.reactionsEnabled, reactionTypes: post.reactionTypes || [], coAuthorEmails: [], showToc: !!post.showToc, tocTitle: post.tocTitle || '' });
+      // The list payload (POST_SELECT) has no body — fetch the full post so the
+      // editor is pre-filled (otherwise saving trips the "content required" guard).
+      if (post.slug) api.get(`/blog/${post.slug}`).then((r) => { const fp = r.post || {}; setF((s) => ({ ...s,
+        title: fp.title ?? s.title, excerpt: fp.excerpt ?? s.excerpt, body: fp.body ?? s.body,
+        titleFr: fp.titleFr ?? s.titleFr, excerptFr: fp.excerptFr ?? s.excerptFr, bodyFr: fp.bodyFr ?? s.bodyFr,
+        reactionsEnabled: !!fp.reactionsEnabled, reactionTypes: fp.reactionTypes || s.reactionTypes })); }).catch(() => {});
+      // co-author emails aren't on the public post — fetch them for the editor.
+      api.get(`/blog/${post.id}/collab`).then((r) => setF((s) => ({ ...s, coAuthorEmails: r.coAuthorEmails || [] }))).catch(() => {});
+    } else setF((s) => ({ ...s, scope: defaultScope }));
     // eslint-disable-next-line
   }, [post]);
+  const REACTION_PALETTE = REACTION_OPTIONS;
+  const toggleReaction = (name) => setF((s) => {
+    const has = s.reactionTypes.includes(name);
+    if (has) return { ...s, reactionTypes: s.reactionTypes.filter((e) => e !== name) };
+    if (s.reactionTypes.length >= 3) return s; // max 3
+    return { ...s, reactionTypes: [...s.reactionTypes, name] };
+  });
+  const addCoAuthor = () => {
+    const email = collab.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast.error('Enter a valid email.');
+    if (!f.coAuthorEmails.includes(email)) setF((s) => ({ ...s, coAuthorEmails: [...s.coAuthorEmails, email] }));
+    setCollab('');
+  };
+  const removeCoAuthor = (email) => setF((s) => ({ ...s, coAuthorEmails: s.coAuthorEmails.filter((e) => e !== email) }));
   const suffix = tab === 'fr' ? 'Fr' : '';
   const g = (base) => f[base + suffix];
   const setField = (base, val) => setF((s) => ({ ...s, [base + suffix]: val }));
@@ -183,7 +307,9 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
       const body = { projectKey: scopeKind === 'project' ? scopeVal : undefined, showcaseSlug: scopeKind === 'showcase' ? scopeVal : undefined,
         cover: f.cover || null, publish: f.publish,
         title: f.title, excerpt: f.excerpt, body: f.body,
-        titleFr: f.titleFr || null, excerptFr: f.excerptFr || null, bodyFr: f.bodyFr || null };
+        titleFr: f.titleFr || null, excerptFr: f.excerptFr || null, bodyFr: f.bodyFr || null,
+        reactionsEnabled: f.reactionsEnabled, reactionTypes: f.reactionTypes, coAuthorEmails: f.coAuthorEmails,
+        showToc: f.showToc, tocTitle: f.tocTitle || null };
       if (post) await api.patch(`/blog/${post.id}`, body); else await api.post('/blog', body);
       toast.success(post ? 'Post updated.' : 'Post published.'); onSaved();
     } catch (x) { toast.error(x.data?.error === 'forbidden' ? "You don't have permission to post in that blog." : x.data?.error || 'Failed.'); } finally { setBusy(false); }
@@ -241,6 +367,51 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
       <div className="mt-4">
         <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] block mb-1.5">Content {fr && '· FR'}</label>
         <MarkdownEditor full value={g('body')} onChange={(v) => setField('body', v)} minHeight={240} placeholder={fr ? 'Rédige en Markdown (même syntaxe que les notes BMM)…' : 'Write in Markdown — same syntax as the BMM update notes.'} />
+      </div>
+
+      {/* table of contents (sommaire) */}
+      <div className="mt-4 rounded-xl border border-[var(--line)] p-3">
+        <label className="flex items-center justify-between text-sm font-medium cursor-pointer">
+          <span>Table of contents (sommaire)</span>
+          <input type="checkbox" checked={f.showToc} onChange={(e) => setF((s) => ({ ...s, showToc: e.target.checked }))} />
+        </label>
+        <p className="text-xs text-[var(--faint)] mt-1">Auto-built from your headings, shown at the top of the post. Leave off to place your own with the <b>Table of contents</b> block.</p>
+        {f.showToc && <input className="input !py-1.5 !text-sm mt-2" value={f.tocTitle} onChange={(e) => setF((s) => ({ ...s, tocTitle: e.target.value }))} placeholder="Heading (default: On this page)" />}
+      </div>
+
+      {/* reactions + collaborators (shared across languages) */}
+      <div className="mt-5 grid sm:grid-cols-2 gap-3">
+        <div className="rounded-xl border border-[var(--line)] p-3">
+          <label className="flex items-center justify-between text-sm font-medium cursor-pointer">
+            <span>Reactions</span>
+            <input type="checkbox" checked={f.reactionsEnabled} onChange={(e) => setF((s) => ({ ...s, reactionsEnabled: e.target.checked }))} />
+          </label>
+          <p className="text-xs text-[var(--faint)] mt-1">Let readers react — pick up to 3 ({f.reactionTypes.length}/3).</p>
+          {f.reactionsEnabled && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {REACTION_PALETTE.map((name) => {
+                const on = f.reactionTypes.includes(name); const disabled = !on && f.reactionTypes.length >= 3;
+                return <button key={name} type="button" disabled={disabled} title={name} onClick={() => toggleReaction(name)}
+                  className={`w-9 h-9 rounded-lg border grid place-items-center transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary-2)]' : disabled ? 'border-[var(--line)] opacity-30' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}><ReactionIcon name={name} size={17} /></button>;
+              })}
+            </div>
+          )}
+        </div>
+        <div className="rounded-xl border border-[var(--line)] p-3">
+          <div className="text-sm font-medium">Collaborators</div>
+          <p className="text-xs text-[var(--faint)] mt-1">Add co-authors by email — their avatars show on the post.</p>
+          <div className="flex gap-1.5 mt-2">
+            <Input value={collab} onChange={(e) => setCollab(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCoAuthor(); } }} placeholder="collaborator@email.com" className="!py-1.5 !text-sm" />
+            <Button type="button" size="sm" onClick={addCoAuthor}><Plus size={14} /></Button>
+          </div>
+          {f.coAuthorEmails.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {f.coAuthorEmails.map((email) => (
+                <span key={email} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--line)]">{email}<button type="button" onClick={() => removeCoAuthor(email)} className="text-[var(--faint)] hover:text-red-400"><X size={11} /></button></span>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </Modal>
   );

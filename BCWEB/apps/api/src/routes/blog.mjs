@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, slugify } from '../lib.mjs';
+import { db, requireRole, optionalAuth, slugify } from '../lib.mjs';
 
 // A post belongs to exactly one blog "space": a fixed Project (bmm/bsm/community/
 // installer) OR an admin-created ShowcaseProject ("custom" page, e.g. an Other
@@ -18,7 +18,21 @@ const postSchema = z.object({
   excerptFr: z.string().max(2000).optional().nullable(),
   bodyFr: z.string().optional().nullable(),
   publish: z.boolean().default(true),
+  // Author-configured reactions (up to 3 types) + collaborators (added by email).
+  reactionsEnabled: z.boolean().optional(),
+  reactionTypes: z.array(z.string().min(1).max(24)).max(3).optional(),
+  coAuthorEmails: z.array(z.string().email()).max(10).optional(),
+  showToc: z.boolean().optional(),
+  tocTitle: z.string().max(60).optional().nullable(),
 });
+
+// Resolve a list of emails to user ids (skips unknown emails, dedupes, drops the
+// primary author so they're never their own co-author).
+async function resolveCoAuthorIds(p, emails, primaryAuthorId) {
+  if (!emails?.length) return [];
+  const users = await p.user.findMany({ where: { email: { in: [...new Set(emails)] } }, select: { id: true } });
+  return [...new Set(users.map((u) => u.id))].filter((id) => id !== primaryAuthorId);
+}
 
 const STAFF = ['MOD', 'ADMIN', 'SUPERADMIN'];
 
@@ -39,32 +53,91 @@ async function canPostTo(p, user, { projectKey, showcaseSlug }) {
 
 const POST_SELECT = {
   id: true, slug: true, title: true, excerpt: true, cover: true, publishedAt: true, status: true, authorId: true,
-  titleFr: true, excerptFr: true, bodyFr: true,
+  titleFr: true, excerptFr: true, bodyFr: true, reactionsEnabled: true, reactionTypes: true, coAuthorIds: true, showToc: true, tocTitle: true,
   project: { select: { key: true, name: true } },
   showcaseProject: { select: { slug: true, name: true, short: true } },
-  author: { select: { displayName: true } },
+  author: { select: { id: true, displayName: true, avatar: true } },
 };
+
+// Attach a resolved `authors` array (primary author + co-authors, with avatars) to
+// each post in a list — one batched query for every co-author id across the page.
+async function attachAuthors(p, posts) {
+  const coIds = [...new Set(posts.flatMap((post) => post.coAuthorIds || []))];
+  const coUsers = coIds.length ? await p.user.findMany({ where: { id: { in: coIds } }, select: { id: true, displayName: true, avatar: true } }) : [];
+  const coMap = new Map(coUsers.map((u) => [u.id, u]));
+  for (const post of posts) {
+    post.authors = [post.author, ...(post.coAuthorIds || []).map((id) => coMap.get(id)).filter(Boolean)].filter(Boolean);
+  }
+  return posts;
+}
 
 export default async function blogRoutes(app) {
   // Public: published posts — optionally filtered by a fixed project (?project=),
   // a custom/showcase page (?page=), or the home page's "Latest news" (?home=1,
   // only posts whose blog has showOnHomeNews — posts always show on /blog itself
   // regardless of that flag).
-  app.get('/blog', async (req) => {
+  app.get('/blog', { preHandler: optionalAuth() }, async (req) => {
     const p = await db();
-    const where = { status: 'PUBLISHED' };
-    if (req.query?.project) where.project = { key: req.query.project };
-    if (req.query?.page) where.showcaseProject = { slug: req.query.page };
-    if (req.query?.home) where.OR = [{ project: { showOnHomeNews: true } }, { showcaseProject: { showOnHomeNews: true } }];
-    const posts = await p.blogPost.findMany({ where, orderBy: { publishedAt: 'desc' }, select: POST_SELECT });
+    // Drafts (unpublished) are visible only to staff and to a post's own author —
+    // never to logged-out visitors or users without edit rights.
+    const isStaff = req.user && ['MOD', 'ADMIN', 'SUPERADMIN'].includes(req.user.role);
+    const statusCond = isStaff ? {} : (req.user ? { OR: [{ status: 'PUBLISHED' }, { authorId: req.user.uid }] } : { status: 'PUBLISHED' });
+    const AND = [statusCond];
+    if (req.query?.project) AND.push({ project: { key: req.query.project } });
+    if (req.query?.page) AND.push({ showcaseProject: { slug: req.query.page } });
+    if (req.query?.home) AND.push({ OR: [{ project: { showOnHomeNews: true } }, { showcaseProject: { showOnHomeNews: true } }] });
+    const posts = await p.blogPost.findMany({ where: { AND }, orderBy: { publishedAt: 'desc' }, select: POST_SELECT });
+    await attachAuthors(p, posts);
     return { posts };
   });
 
-  app.get('/blog/:slug', async (req, reply) => {
+  app.get('/blog/:slug', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
-    const post = await p.blogPost.findUnique({ where: { slug: req.params.slug }, include: { project: true, showcaseProject: true, author: { select: { displayName: true } } } });
+    const post = await p.blogPost.findUnique({ where: { slug: req.params.slug }, include: { project: true, showcaseProject: true, author: { select: { id: true, displayName: true, avatar: true } } } });
+    // Drafts are visible only to staff or the author — a 404 to everyone else.
+    const isStaff = req.user && ['MOD', 'ADMIN', 'SUPERADMIN'].includes(req.user.role);
+    const canSeeDraft = post && (isStaff || (req.user && post.authorId === req.user.uid));
+    if (!post || (post.status !== 'PUBLISHED' && !canSeeDraft)) return reply.code(404).send({ error: 'not_found' });
+    // Resolve collaborators' avatars + a reaction summary (counts by type + the
+    // current viewer's own reaction, if any).
+    const coAuthors = post.coAuthorIds.length
+      ? await p.user.findMany({ where: { id: { in: post.coAuthorIds } }, select: { id: true, displayName: true, avatar: true } })
+      : [];
+    let reactionCounts = {}, myReaction = null;
+    if (post.reactionsEnabled && post.reactionTypes.length) {
+      const grouped = await p.blogReaction.groupBy({ by: ['type'], where: { postId: post.id }, _count: { type: true } });
+      reactionCounts = Object.fromEntries(grouped.map((g) => [g.type, g._count.type]));
+      if (req.user) { const mine = await p.blogReaction.findUnique({ where: { postId_userId: { postId: post.id, userId: req.user.uid } } }); myReaction = mine?.type || null; }
+    }
+    return { post: { ...post, coAuthors, reactionCounts, myReaction } };
+  });
+
+  // React to a post (toggle): one reaction per user; clicking the same type removes it.
+  app.post('/blog/:id/react', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ type: z.string().min(1).max(24) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { id: true, reactionsEnabled: true, reactionTypes: true, status: true } });
     if (!post || post.status !== 'PUBLISHED') return reply.code(404).send({ error: 'not_found' });
-    return { post };
+    if (!post.reactionsEnabled || !post.reactionTypes.includes(b.data.type)) return reply.code(400).send({ error: 'reaction_not_allowed' });
+    const key = { postId_userId: { postId: post.id, userId: req.user.uid } };
+    const existing = await p.blogReaction.findUnique({ where: key });
+    if (existing && existing.type === b.data.type) await p.blogReaction.delete({ where: key });
+    else await p.blogReaction.upsert({ where: key, update: { type: b.data.type }, create: { postId: post.id, userId: req.user.uid, type: b.data.type } });
+    const grouped = await p.blogReaction.groupBy({ by: ['type'], where: { postId: post.id }, _count: { type: true } });
+    const mine = await p.blogReaction.findUnique({ where: key });
+    return { reactionCounts: Object.fromEntries(grouped.map((g) => [g.type, g._count.type])), myReaction: mine?.type || null };
+  });
+
+  // Editor support: the current co-author EMAILS (so the editor can pre-fill them on
+  // edit). Author or staff only — emails aren't exposed on the public post.
+  app.get('/blog/:id/collab', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true } });
+    if (!post) return reply.code(404).send({ error: 'not_found' });
+    if (!STAFF.includes(req.user.role) && post.authorId !== req.user.uid) return reply.code(403).send({ error: 'forbidden' });
+    const users = post.coAuthorIds.length ? await p.user.findMany({ where: { id: { in: post.coAuthorIds } }, select: { email: true } }) : [];
+    return { coAuthorEmails: users.map((u) => u.email) };
   });
 
   // Admin/mod: every post incl. drafts (for the full moderation-style editor list).
@@ -116,6 +189,11 @@ export default async function blogRoutes(app) {
       cover: b.data.cover || null, body: b.data.body, slug: `${slugify(b.data.title)}-${Math.random().toString(36).slice(2, 6)}`,
       titleFr: b.data.titleFr || null, excerptFr: b.data.excerptFr || null, bodyFr: b.data.bodyFr || null,
       status: b.data.publish ? 'PUBLISHED' : 'DRAFT', publishedAt: b.data.publish ? new Date() : null,
+      reactionsEnabled: !!b.data.reactionsEnabled,
+      reactionTypes: (b.data.reactionTypes || []).slice(0, 3),
+      showToc: !!b.data.showToc,
+      tocTitle: b.data.tocTitle || null,
+      coAuthorIds: await resolveCoAuthorIds(p, b.data.coAuthorEmails, req.user.uid),
     };
     if (b.data.projectKey) { const project = await p.project.findUnique({ where: { key: b.data.projectKey } }); data.projectId = project.id; }
     else { const sp = await p.showcaseProject.findUnique({ where: { slug: b.data.showcaseSlug } }); if (!sp) return reply.code(400).send({ error: 'unknown_page' }); data.showcaseProjectId = sp.id; }
@@ -134,6 +212,11 @@ export default async function blogRoutes(app) {
     const d = b.data;
     const data = {};
     for (const k of ['title', 'excerpt', 'cover', 'body', 'titleFr', 'excerptFr', 'bodyFr']) if (d[k] !== undefined) data[k] = d[k];
+    if (d.reactionsEnabled !== undefined) data.reactionsEnabled = d.reactionsEnabled;
+    if (d.reactionTypes !== undefined) data.reactionTypes = d.reactionTypes.slice(0, 3);
+    if (d.showToc !== undefined) data.showToc = d.showToc;
+    if (d.tocTitle !== undefined) data.tocTitle = d.tocTitle || null;
+    if (d.coAuthorEmails !== undefined) data.coAuthorIds = await resolveCoAuthorIds(p, d.coAuthorEmails, existing.authorId);
     if (d.projectKey || d.showcaseSlug) {
       if (!(await canPostTo(p, req.user, d))) return reply.code(403).send({ error: 'forbidden' });
       if (d.projectKey) { const pr = await p.project.findUnique({ where: { key: d.projectKey } }); if (pr) { data.projectId = pr.id; data.showcaseProjectId = null; } }

@@ -9,7 +9,7 @@ import { useToast, Button, Card, Badge, Input, Textarea, Field, PageHeader, Spin
 import { DiscordIcon } from './brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from './Avatar.jsx';
 import { Link } from 'react-router-dom';
-import { LayoutDashboard } from 'lucide-react';
+import { LayoutDashboard, Copy, RefreshCw, Terminal } from 'lucide-react';
 
 export default function Profile() {
   const { user, refresh } = useAuth();
@@ -154,6 +154,7 @@ export default function Profile() {
           </Card>
 
           <TwoFactorCard />
+          <ApiTokenCard />
           <CreatorLinks />
           <DiscordLinks />
 
@@ -188,6 +189,42 @@ export default function Profile() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Personal API token: view / copy / reset / revoke your own token, then use it to
+// drive the /v1 account API. The token is shown only to its owner (session-authed).
+function ApiTokenCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const [token, setToken] = useState(undefined); // undefined = loading, null = none, string = token
+  const [reveal, setReveal] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.get('/me/api-token').then((r) => setToken(r.token || null)).catch(() => setToken(null)); }, []);
+  const reset = async () => { setBusy(true); try { const r = await api.post('/me/api-token/reset', {}); setToken(r.token); setReveal(true); toast.success(t('prof.token.reset', 'New token generated.')); } catch { toast.error('Failed.'); } finally { setBusy(false); } };
+  const revoke = async () => { setBusy(true); try { await api.del('/me/api-token'); setToken(null); setReveal(false); toast.success(t('prof.token.revoked', 'Token revoked.')); } catch { toast.error('Failed.'); } finally { setBusy(false); } };
+  const copy = () => { navigator.clipboard?.writeText(token).then(() => toast.success(t('prof.token.copied', 'Copied.'))).catch(() => {}); };
+  const masked = token ? token.slice(0, 8) + '•'.repeat(Math.max(6, token.length - 12)) + token.slice(-4) : '';
+  return (
+    <Card className="p-5">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Terminal size={15} className="text-[var(--primary-2)]" /> {t('prof.token.title', 'API token')}</div>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('prof.token.desc', 'Use this personal token to drive the account API on your behalf. Keep it secret — anyone with it can act as you.')}</p>
+      {token === undefined ? <Spinner /> : token ? (<>
+        <div className="flex flex-wrap items-center gap-2">
+          <code className="flex-1 min-w-[180px] text-xs font-mono px-3 py-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] break-all">{reveal ? token : masked}</code>
+          <Button size="sm" variant="ghost" onClick={() => setReveal((v) => !v)}>{reveal ? <EyeOff size={14} /> : <Eye size={14} />}</Button>
+          <Button size="sm" onClick={copy}><Copy size={14} /> {t('prof.token.copy', 'Copy')}</Button>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={reset}><RefreshCw size={14} /> {t('prof.token.resetbtn', 'Reset')}</Button>
+          <Button size="sm" variant="ghost" className="!text-red-400" disabled={busy} onClick={revoke}><Trash2 size={14} /> {t('prof.token.revoke', 'Revoke')}</Button>
+        </div>
+        <div className="mt-3 text-xs text-[var(--muted)]">
+          <div className="font-semibold mb-1">{t('prof.token.example', 'Example')}</div>
+          <code className="block text-[11px] font-mono px-3 py-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] break-all">curl -H "Authorization: Bearer {reveal ? token : '<token>'}" {location.origin}/api/v1/me</code>
+          <div className="mt-1.5 text-[var(--faint)]">{t('prof.token.rl', 'Token endpoints are rate-limited. GET /v1/me · GET /v1/me/repos · PATCH /v1/me.')}</div>
+        </div>
+      </>) : (
+        <Button size="sm" variant="primary" disabled={busy} onClick={reset}><KeyRound size={14} /> {t('prof.token.generate', 'Generate token')}</Button>
+      )}
+    </Card>
   );
 }
 

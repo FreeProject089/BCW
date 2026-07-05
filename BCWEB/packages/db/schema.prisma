@@ -68,6 +68,10 @@ model User {
   bio           String   @default("")
   avatar        Json?    // { variant, seed } for the Boring Avatar
   stripeCustomerId String? @unique
+  // Personal API token — the user copies it from their profile to drive the API on
+  // their own behalf (tokenAuth in lib.mjs). Resettable/revocable by the owner.
+  apiToken      String?  @unique
+  apiTokenCreatedAt DateTime?
   createdAt     DateTime @default(now())
 
   // ── 2FA (TOTP) — see totp.mjs. Recovery codes are argon2 hashes, one-time use. ──
@@ -269,7 +273,56 @@ model BlogPost {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
+  // Author-configured reactions: on/off + up to 3 reaction types (emoji). The
+  // reactions themselves live in BlogReaction (one per user per post).
+  reactionsEnabled Boolean  @default(false)
+  reactionTypes    String[] @default([])
+  reactions        BlogReaction[]
+  // Auto table-of-contents (a "sommaire") rendered from the post's headings.
+  showToc     Boolean  @default(false)
+  tocTitle    String?
+  // Collaborative authoring: extra author user ids beyond `authorId`. Their avatars
+  // render at the bottom of the post next to the main author's.
+  coAuthorIds      String[] @default([])
+
   @@index([showcaseProjectId])
+}
+
+// GitBook-style documentation: a flat set of pages grouped into named categories,
+// rendered with the doc-block markdown system (md.jsx). Only ADMIN/SUPERADMIN can
+// create/edit/reorder/delete pages (the "special role"); everyone can read published
+// ones. `order` sorts within a category; categories sort by their pages' min order.
+model DocPage {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  category  String   @default("General")
+  icon      String?  // lucide icon name (see md.jsx ICONS) shown in the sidebar
+  body      String   @default("")   // markdown w/ doc blocks (EN base)
+  bodyFr    String?                  // optional French translation
+  order     Int      @default(0)
+  published Boolean  @default(true)
+  // "Was this helpful?" tallies (3-face rating, one vote per browser).
+  helpfulYes Int     @default(0)   // 🙂 good
+  helpfulOk  Int     @default(0)   // 😐 ok
+  helpfulNo  Int     @default(0)   // 🙁 bad
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([category])
+}
+
+// One reaction per user per post; `type` is one of the post's reactionTypes (emoji).
+model BlogReaction {
+  id        String   @id @default(cuid())
+  post      BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String
+  userId    String
+  type      String
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([postId])
 }
 
 // Lets an ADMIN/SUPERADMIN grant a regular USER permission to author blog posts,

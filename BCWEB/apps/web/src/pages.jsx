@@ -17,6 +17,7 @@ import { getConsent, setConsent } from './analytics.js';
 import { SKIP_KEY } from './IntroContext.jsx';
 import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from './prefs.js';
 import { MyRepos, AdminRepos, Billing } from './repos.jsx';
+import { AuthorsRow } from './blog.jsx';
 import Avatar from './Avatar.jsx';
 import { AppLogo, KofiIcon, GithubIcon, DiscordIcon, RedditIcon } from './brand.jsx';
 import { Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast } from './ui.jsx';
@@ -342,8 +343,8 @@ export function Home() {
                     <div className="font-bold text-xl mt-2 leading-snug group-hover:text-[var(--primary-2)] transition-colors">{featured.title}</div>
                     <div className="text-sm text-[var(--muted)] mt-2 line-clamp-3 flex-1">{featured.excerpt}</div>
                     <div className="flex items-center justify-between mt-4">
-                      <span className="text-xs text-[var(--faint)]">{featured.author?.displayName} · {fdate(featured.publishedAt)}</span>
-                      <span className="text-xs text-[var(--primary-2)] flex items-center gap-1 font-medium">Read <ArrowRight size={12} /></span>
+                      <span className="flex items-center gap-2 min-w-0 text-xs text-[var(--faint)]"><AuthorsRow authors={featured.authors} size={20} /> · {fdate(featured.publishedAt)}</span>
+                      <span className="text-xs text-[var(--primary-2)] flex items-center gap-1 font-medium shrink-0">Read <ArrowRight size={12} /></span>
                     </div>
                   </div>
                 </Card>
@@ -360,7 +361,7 @@ export function Home() {
                         <Badge tone="primary" className="self-start">{p.project?.name}</Badge>
                         <div className="font-semibold mt-1 leading-snug line-clamp-2 group-hover:text-[var(--primary-2)] transition-colors">{p.title}</div>
                         <div className="text-xs text-[var(--muted)] mt-1 line-clamp-2">{p.excerpt}</div>
-                        <div className="text-[11px] text-[var(--faint)] mt-auto pt-1">{fdate(p.publishedAt)}</div>
+                        <div className="flex items-center gap-2 mt-auto pt-1"><AuthorsRow authors={p.authors} size={18} /><span className="text-[11px] text-[var(--faint)]">{fdate(p.publishedAt)}</span></div>
                       </div>
                     </Card>
                   </Link>
@@ -946,6 +947,20 @@ const OAUTH_ERRORS = {
   unexpected: 'Something went wrong — please try again.',
 };
 
+// Password field with a show/hide toggle.
+function PwInput({ value, onChange, placeholder = '••••••••' }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <Input type={show ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} className="!pr-10" />
+      <button type="button" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'}
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)] p-1">
+        {show ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  );
+}
+
 export function Auth() {
   const { user, loading: authLoading, login, loginWith2fa, register } = useAuth(); const nav = useNavigate(); const toast = useToast(); const { t } = useI18n();
   const [params, setParams] = useSearchParams();
@@ -1071,8 +1086,8 @@ export function Auth() {
           {mode === 'register' && <Field label={t('auth.name')}><Input value={f.displayName} onChange={set('displayName')} /></Field>}
           {mode !== 'reset' && <Field label={t('auth.email')}><Input type="email" value={f.email} onChange={set('email')} placeholder="you@example.com" /></Field>}
           {mode === 'reset' && <Field label={t('auth.token')}><Input value={f.token} onChange={set('token')} placeholder={t('auth.token.ph')} /></Field>}
-          {mode !== 'forgot' && <Field label={pw2 ? t('auth.newpw') : t('auth.password')}><Input type="password" value={f.password} onChange={set('password')} placeholder="••••••••" /></Field>}
-          {pw2 && <Field label={t('auth.confirmpw')}><Input type="password" value={f.confirm} onChange={set('confirm')} placeholder="••••••••" /></Field>}
+          {mode !== 'forgot' && <Field label={pw2 ? t('auth.newpw') : t('auth.password')}><PwInput value={f.password} onChange={set('password')} /></Field>}
+          {pw2 && <Field label={t('auth.confirmpw')}><PwInput value={f.confirm} onChange={set('confirm')} /></Field>}
           <Button variant="primary" className="w-full" disabled={busy}>{busy ? <><Spinner /> {step || '…'}</> : cta[mode]}</Button>
         </form>
         {(mode === 'login' || mode === 'register') && (oauthProviders?.github || oauthProviders?.discord) && (

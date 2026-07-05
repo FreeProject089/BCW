@@ -109,6 +109,21 @@ export function requireRole(...roles) {
   };
 }
 
+/** Personal-API-token auth: authenticates by the caller's own API token
+ * (Authorization: Bearer <token> or X-API-Token) and sets req.user = { uid, role }
+ * like the session guards, so token callers can drive their account endpoints. */
+export function tokenAuth() {
+  return async (req, reply) => {
+    const hdr = req.headers['authorization'];
+    const token = (hdr && /^Bearer\s+(.+)$/i.test(hdr) ? hdr.replace(/^Bearer\s+/i, '') : req.headers['x-api-token'] || '').toString().trim();
+    if (!token || token.length < 20) return reply.code(401).send({ error: 'unauthenticated' });
+    const p = await db();
+    const u = await p.user.findUnique({ where: { apiToken: token }, select: { id: true, role: true } });
+    if (!u) return reply.code(401).send({ error: 'invalid_token' });
+    req.user = { uid: u.id, role: u.role };
+  };
+}
+
 /** Soft auth: sets req.user from the session cookie when valid, else null. Never
  * fails — used by "who am I" style endpoints so a logged-out visitor gets a clean
  * 200 { user: null } instead of a noisy 401 in the console. */

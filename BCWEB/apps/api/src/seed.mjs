@@ -146,10 +146,13 @@ for (const [key, value] of Object.entries(projectConfigs)) {
 const adminUser = await p.user.findUnique({ where: { email: ADMIN_EMAIL } });
 const communityProject = await p.project.findUnique({ where: { key: 'community' } });
 if (adminUser && communityProject) {
-  const guideBody = `The BetterCommunity blog uses the **same Markdown** as the BMM update notes. Everything below works here and in-app.
+  const guideBody = `The BetterCommunity blog uses the **same Markdown** as the BMM update notes, plus a **GitBook-style block system**. Write in **Markdown** or switch to **Visual** mode (drag-and-drop blocks) — both save the same content.
 
-> [!TIP]
-> Keep posts short and scannable — a heading, a few bullets, and the change badges do most of the work.
+::toc[Contents]
+
+:::tip[Two ways to write]
+Use the **Blocks** button (Markdown mode) to insert rich blocks, or toggle **Visual** to build the post by dragging blocks around. The **⌘K**-style content is identical either way.
+:::
 
 ## Text basics
 \`**bold**\` · \`*italic*\` · \`~~strikethrough~~\` · \`\\\`inline code\\\`\` · \`[a link](https://example.com)\`
@@ -165,12 +168,34 @@ Wrap a keyword in square brackets to get a coloured chip:
 French spellings work too: \`[NOUVEAU]\`, \`[AMÉLIORÉ]\`, \`[FIXÉ]\`, \`[RAFFINEMENT]\`, \`[VISUEL]\`, \`[MAJEUR]\`.
 
 ## Callouts
-Start a blockquote with \`[!TYPE]\`:
+Callouts use lucide icons (no emoji). Pick a type or make a custom one:
 
-> [!WARNING]
-> Only install content from sources you trust.
+:::warning[Careful]
+Only install content from sources you trust.
+:::
+:::callout[Custom]{icon=rocket color="#7c3aed"}
+Custom callouts let you choose the icon and colour.
+:::
 
-Types: \`NOTE\`, \`TIP\`, \`IMPORTANT\`, \`WARNING\`, \`CAUTION\` (FR: \`REMARQUE\`, \`ASTUCE\`, \`IMPORTANT\`, \`AVERTISSEMENT\`, \`ATTENTION\`).
+Types: \`note\`, \`tip\`, \`success\`, \`warning\`, \`danger\`, or \`callout\` for a custom one. The classic \`> [!TIP]\` blockquote form still works too.
+
+## Rich blocks
+Insert these from the **Blocks** menu (or build them in **Visual** mode):
+
+:::details[Collapsible section]
+Hidden content that expands on click — supports **markdown** inside.
+:::
+
+::::cards
+:::card{title="Cards" icon=star}
+Group links or highlights into a responsive grid.
+:::
+:::card{title="Docs" href=/docs icon=book}
+Cards can link anywhere.
+:::
+::::
+
+Add a keyboard shortcut like :kbd[Ctrl+S], an inline icon :icon[sparkles], columns, code blocks and a \`::toc\` sommaire — all from the same menu.
 
 ## Media
 Use the editor toolbar buttons for images, YouTube, video and links — they insert the right snippet for you.
@@ -198,7 +223,13 @@ That's everything — combine badges + callouts + short bullets for clean, reada
 if (adminUser && communityProject) {
   const GUIDES = [
     { slug: 'guide-app-catalog', title: 'App Catalog format', excerpt: 'How to publish an app to the BMM App Catalog.', body:
-`The **App Catalog** is a hosted \`catalog.json\` with an \`apps\` array.
+`:badge[Catalog]{color="#2563eb"} :badge[Apps]{color="#16a34a"}
+
+The **App Catalog** is a hosted \`catalog.json\` with an \`apps\` array.
+
+:::tip[Publishing]
+Create official apps via **Admin → Catalogs**; community apps via **Dashboard → Submit content**. Both build a \`bmm://\` deeplink so an "Install in BMM" button just works.
+:::
 
 ## App entry — required fields
 | Field | Values |
@@ -212,12 +243,18 @@ if (adminUser && communityProject) {
 | \`download.url\` | direct link |
 | \`download.file_type\` | \`zip\` · \`exe\` · \`msi\` · \`script\` |
 
-Optional: \`version\`, \`requirements\`, \`md_link\`, \`images.thumb\` (16:9 ≥400×225), \`images.extra\`, \`download.size\`, \`download.sha256\` (recommended integrity checksum).
+## Optional fields
+:::note[Integrity]
+\`download.sha256\` is optional but **recommended** — BMM checks it on install. Also: \`version\`, \`requirements\`, \`md_link\`, \`images.thumb\` (16:9 ≥400×225), \`images.extra\`, \`download.size\`.
+:::
 
-> [!TIP]
-> On the site, create official apps via **Admin → Catalogs**; community apps via **Dashboard → Submit content**. Both build a \`bmm://\` deeplink.` },
+:::card{title="Full reference in the docs" href=/docs/app-catalog icon=book}
+The canonical, always-updated App Catalog format lives in the documentation.
+:::` },
     { slug: 'guide-plugin-catalog', title: 'Plugin Catalog & .bmmplug format', excerpt: 'Plugin catalog fields + the .bmmplug package and its checksums.', body:
-`A plugin catalog entry (required): \`id\`, \`name\`, \`version\`, \`author\`, \`download_url\`. Optional: \`game\`, \`description\`, \`official\`, \`tags\`, \`icon_url\`, and a \`sha256\` of the \`.bmmplug\`.
+`:badge[Catalog]{color="#2563eb"} :badge[Plugins]{color="#7c3aed"}
+
+A plugin catalog entry (**required**): \`id\`, \`name\`, \`version\`, \`author\`, \`download_url\`. Optional: \`game\`, \`description\`, \`official\`, \`tags\`, \`icon_url\`, and a \`sha256\` of the \`.bmmplug\`.
 
 ## .bmmplug package (a ZIP)
 - \`plugin.json\` — the manifest (**required**)
@@ -225,18 +262,39 @@ Optional: \`version\`, \`requirements\`, \`md_link\`, \`images.thumb\` (16:9 ≥
 - \`checksums.json\` — **sha256 of every file** in the package (integrity)
 
 ## Integrity
-The catalog entry's \`sha256\` covers the whole \`.bmmplug\`; \`checksums.json\` covers each file inside. BMM validates both — if either fails, the plugin is flagged **invalid** and a modal recommends **not installing**.
+The catalog entry's \`sha256\` covers the whole \`.bmmplug\`; \`checksums.json\` covers each file inside. BMM validates both.
 
-> [!WARNING]
-> Only install plugins that pass validation. Catalog plugins are always validated.` },
+:::danger[Trust]
+If either checksum fails, the plugin is flagged **invalid** and a modal recommends **not installing**. Only install plugins that pass validation — catalog plugins are always validated.
+:::
+
+:::card{title="Full reference in the docs" href=/docs/plugin-catalog icon=book}
+Read the complete .bmmplug format in the documentation.
+:::` },
     { slug: 'guide-preset-catalog', title: 'Preset Catalog (BSM)', excerpt: 'The BSM preset JSON format and how to share presets.', body:
-`A BSM preset is a single JSON: \`name\`, \`version\`, \`assetPaths\` (**required**); \`color\`, \`UpdateNumber\`, \`date\` (optional). Its metadata lives inside the file.
+`:badge[Catalog]{color="#2563eb"} :badge[BSM]{color="#db2777"}
 
-Publish via **Dashboard → Submit content** (Project **BSM**, Type **Preset**). On the catalog you can **download**, **multi-select download**, and sort by *popular (all-time / month)*, *newest* or *most viewed*. Every download is counted for the uploader's stats.` },
+A BSM preset is a single JSON: \`name\`, \`version\`, \`assetPaths\` (**required**); \`color\`, \`UpdateNumber\`, \`date\` (optional). Its metadata lives inside the file.
+
+:::tip[Publishing]
+Publish via **Dashboard → Submit content** (Project **BSM**, Type **Preset**). On the catalog you can **download**, **multi-select download**, and sort by *popular (all-time / month)*, *newest* or *most viewed* — every download counts toward the uploader's stats.
+:::
+
+:::card{title="Full reference in the docs" href=/docs/preset-catalog icon=book}
+The BSM preset format, in the documentation.
+:::` },
     { slug: 'guide-theme-catalog', title: 'Theme Catalog (.bmmtheme)', excerpt: 'The .bmmtheme package format and how to publish a theme.', body:
-`A \`.bmmtheme\` is a ZIP with \`theme.json\` (**required**) + optional \`assets/\`. The manifest carries \`id\`, \`name\`, \`author\`, \`version\`, a \`tokens\` map of \`--bmm-*\` CSS variables, and optional per-selector \`overrides\`.
+`:badge[Catalog]{color="#2563eb"} :badge[Themes]{color="#d97706"}
 
-Export one from the in-app **Theme Editor** (it writes a valid manifest), then publish via **Dashboard → Submit content** (Project **BMM**, Type **Theme**). Installing applies instantly and is reversible.` },
+A \`.bmmtheme\` is a ZIP with \`theme.json\` (**required**) + optional \`assets/\`. The manifest carries \`id\`, \`name\`, \`author\`, \`version\`, a \`tokens\` map of \`--bmm-*\` CSS variables, and optional per-selector \`overrides\`.
+
+:::tip[Fastest path]
+Export one from the in-app **Theme Editor** — it writes a valid \`theme.json\`. Then publish via **Dashboard → Submit content** (Project **BMM**, Type **Theme**). Installing applies instantly and is reversible.
+:::
+
+:::card{title="Full reference in the docs" href=/docs/theme-catalog icon=book}
+The .bmmtheme package format, in the documentation.
+:::` },
   ];
   for (const g of GUIDES) {
     const data = { title: g.title, excerpt: g.excerpt, body: g.body, status: 'PUBLISHED' };
