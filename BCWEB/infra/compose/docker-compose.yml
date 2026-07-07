@@ -92,6 +92,15 @@ services:
       NODE_ENV: production
     volumes:
       - audit-anchor:/var/audit
+    # Lets dependents (esp. Caddy) wait until the API actually serves — otherwise the
+    # telemetry origin's forward_auth hits a not-yet-listening api:3000 on every request
+    # during boot and Caddy spams "connection refused / 502" until the API comes up.
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/health',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
 
   # Watches for PROVISIONING repos and brings them ONLINE (isolation/quota owner).
   provisioner:
@@ -170,7 +179,13 @@ services:
     # production auto-HTTPS. In production point SITE_DOMAIN at your domain and the
     # 80/443 mappings handle ACME + HTTPS (see DOMAIN_SETUP.md).
     ports: ["5176:5176", "80:80", "443:443"]
-    depends_on: [api, web]
+    # Wait for the API to be HEALTHY (serving), not just started — otherwise the
+    # telemetry forward_auth 502-spams during API boot (connection refused).
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
     environment:
       SITE_DOMAIN: ${SITE_DOMAIN:-http://localhost:5176}
       TELEMETRY_DOMAIN: ${TELEMETRY_DOMAIN:-http://telemetry.localhost}
