@@ -204,16 +204,24 @@ export default async function docRoutes(app) {
     return { page };
   });
 
-  // ── Edit history: list snapshots + read one (ADMIN, like the rest of doc editing) ──
-  app.get('/docs/:id/history', { preHandler: requireRole('ADMIN') }, async (req) => {
+  // ── Edit history: editors get full history + restore; anyone can view a PUBLISHED
+  //    page's history read-only (drafts stay editor-only). ──
+  app.get('/docs/:id/history', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
+    const page = await p.docPage.findUnique({ where: { id: req.params.id }, select: { published: true } });
+    if (!page) return reply.code(404).send({ error: 'not_found' });
+    const editor = isEditor(req);
+    if (!editor && !page.published) return reply.code(403).send({ error: 'forbidden' });
     const revs = await p.docRevision.findMany({ where: { pageId: req.params.id }, orderBy: { version: 'desc' }, take: 50 });
     const editors = await p.user.findMany({ where: { id: { in: [...new Set(revs.map((r) => r.editorId).filter(Boolean))] } }, select: { id: true, displayName: true } });
     const nameOf = new Map(editors.map((u) => [u.id, u.displayName]));
-    return { revisions: revs.map((r) => ({ id: r.id, version: r.version, title: r.title, editor: nameOf.get(r.editorId) || 'Unknown', createdAt: r.createdAt, bytes: Buffer.byteLength(r.body || '') })) };
+    return { canRestore: editor, revisions: revs.map((r) => ({ id: r.id, version: r.version, title: r.title, editor: nameOf.get(r.editorId) || 'Unknown', createdAt: r.createdAt, bytes: Buffer.byteLength(r.body || '') })) };
   });
-  app.get('/docs/:id/history/:revId', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.get('/docs/:id/history/:revId', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
+    const page = await p.docPage.findUnique({ where: { id: req.params.id }, select: { published: true } });
+    if (!page) return reply.code(404).send({ error: 'not_found' });
+    if (!isEditor(req) && !page.published) return reply.code(403).send({ error: 'forbidden' });
     const rev = await p.docRevision.findFirst({ where: { id: req.params.revId, pageId: req.params.id } });
     if (!rev) return reply.code(404).send({ error: 'not_found' });
     return { revision: { version: rev.version, title: rev.title, body: rev.body, bodyFr: rev.bodyFr, createdAt: rev.createdAt } };

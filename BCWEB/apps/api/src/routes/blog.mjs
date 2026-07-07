@@ -326,21 +326,25 @@ export default async function blogRoutes(app) {
   });
 
   // ── Edit history (git-like): list snapshots, read one, restore into the editor ──
-  app.get('/blog/:id/history', { preHandler: requireRole() }, async (req, reply) => {
+  // Editors get the full history + restore; anyone can view a PUBLISHED post's history
+  // read-only (the public "click the date to see the changelog" view). Drafts stay
+  // editor-only so unpublished intermediate edits aren't exposed.
+  app.get('/blog/:id/history', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
-    const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true } });
+    const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true, status: true } });
     if (!post) return reply.code(404).send({ error: 'not_found' });
-    if (!STAFF.includes(req.user.role) && post.authorId !== req.user.uid && !(post.coAuthorIds || []).includes(req.user.uid)) return reply.code(403).send({ error: 'forbidden' });
+    const editor = canEditPost(req.user, post);
+    if (!editor && post.status !== 'PUBLISHED') return reply.code(403).send({ error: 'forbidden' });
     const revs = await p.blogRevision.findMany({ where: { postId: req.params.id }, orderBy: { version: 'desc' }, take: 50 });
     const editors = await p.user.findMany({ where: { id: { in: [...new Set(revs.map((r) => r.editorId).filter(Boolean))] } }, select: { id: true, displayName: true } });
     const nameOf = new Map(editors.map((u) => [u.id, u.displayName]));
-    return { revisions: revs.map((r) => ({ id: r.id, version: r.version, title: r.title, editor: nameOf.get(r.editorId) || 'Unknown', createdAt: r.createdAt, bytes: Buffer.byteLength(r.body || '') })) };
+    return { canRestore: editor, revisions: revs.map((r) => ({ id: r.id, version: r.version, title: r.title, editor: nameOf.get(r.editorId) || 'Unknown', createdAt: r.createdAt, bytes: Buffer.byteLength(r.body || '') })) };
   });
-  app.get('/blog/:id/history/:revId', { preHandler: requireRole() }, async (req, reply) => {
+  app.get('/blog/:id/history/:revId', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
-    const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true } });
+    const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true, status: true } });
     if (!post) return reply.code(404).send({ error: 'not_found' });
-    if (!STAFF.includes(req.user.role) && post.authorId !== req.user.uid && !(post.coAuthorIds || []).includes(req.user.uid)) return reply.code(403).send({ error: 'forbidden' });
+    if (!canEditPost(req.user, post) && post.status !== 'PUBLISHED') return reply.code(403).send({ error: 'forbidden' });
     const rev = await p.blogRevision.findFirst({ where: { id: req.params.revId, postId: req.params.id } });
     if (!rev) return reply.code(404).send({ error: 'not_found' });
     return { revision: { version: rev.version, title: rev.title, body: rev.body, bodyFr: rev.bodyFr, createdAt: rev.createdAt } };

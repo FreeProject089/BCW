@@ -14,10 +14,13 @@ export default function HistoryModal({ base, onClose, onRestore }) {
   const [active, setActive] = useState(null);      // selected revision id
   const [preview, setPreview] = useState(null);    // { version, title, body, bodyFr, createdAt }
   const [loadingPreview, setLoadingPreview] = useState(false);
+  // The API says whether the viewer may restore (editors) vs read-only (public view).
+  const [canRestore, setCanRestore] = useState(false);
 
   useEffect(() => {
     api.get(`${base}/history`).then((r) => {
       setRevs(r.revisions || []);
+      setCanRestore(!!r.canRestore && !!onRestore);
       if (r.revisions?.[0]) select(r.revisions[0].id);
     }).catch(() => setRevs([]));
     // eslint-disable-next-line
@@ -33,9 +36,9 @@ export default function HistoryModal({ base, onClose, onRestore }) {
   return (
     <Modal open onClose={onClose} title="Edit history" icon={History} width="max-w-4xl"
       footer={<>
-        <span className="text-xs text-[var(--faint)] mr-auto">Restoring loads the version into the editor — nothing is lost until you Save.</span>
+        <span className="text-xs text-[var(--faint)] mr-auto">{canRestore ? 'Restoring loads the version into the editor — nothing is lost until you Save.' : 'Read-only version history for this published post.'}</span>
         <Button variant="ghost" onClick={onClose}>Close</Button>
-        <Button variant="primary" disabled={!preview} onClick={restore}><RotateCcw size={14} /> Restore this version</Button>
+        {canRestore && <Button variant="primary" disabled={!preview} onClick={restore}><RotateCcw size={14} /> Restore this version</Button>}
       </>}>
       <div className="grid sm:grid-cols-[240px_1fr] gap-4 min-h-[50vh]">
         {/* revision list */}

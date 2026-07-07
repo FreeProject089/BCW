@@ -126,6 +126,7 @@ export function BlogPostPage() {
   const { data, loading } = useFetch(() => api.get(`/blog/${slug}`), [slug]);
   const [rx, setRx] = useState(null); // { counts, mine } — local so a click updates instantly
   const [showComments, setShowComments] = useState(false);
+  const [showHistory, setShowHistory] = useState(false); // read-only edit history (click the date)
   useEffect(() => { if (data?.post) setRx({ counts: data.post.reactionCounts || {}, mine: data.post.myReaction || null }); }, [data]);
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading', 'Loading…')}</div>;
   if (!data?.post) return <EmptyState icon={Newspaper} title={t('blog.notfound', 'Post not found')} />;
@@ -142,7 +143,8 @@ export function BlogPostPage() {
       <article className="card p-6 md:p-9">
         <TypeTag post={p} />
         <h1 className="text-3xl md:text-4xl font-extrabold mt-3 leading-tight">{v.title}</h1>
-        <div className="text-sm text-[var(--faint)] mt-3 flex items-center gap-3"><span className="flex items-center gap-1"><UserIcon size={13} /> {p.author?.displayName}{authors.length > 1 && ` +${authors.length - 1}`}</span><span className="flex items-center gap-1"><CalendarDays size={13} /> {fmtDate(p.publishedAt)}</span></div>
+        <div className="text-sm text-[var(--faint)] mt-3 flex items-center gap-3"><span className="flex items-center gap-1"><UserIcon size={13} /> {p.author?.displayName}{authors.length > 1 && ` +${authors.length - 1}`}</span>
+          <button onClick={() => setShowHistory(true)} title={t('blog.history.hint', 'View edit history')} className="flex items-center gap-1 hover:text-[var(--primary-2)] transition"><CalendarDays size={13} /> {fmtDate(p.publishedAt)} <History size={11} className="opacity-60" /></button></div>
         {!v.translated && <div className="mt-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--primary-2)]" /> Cet article n'est pas encore traduit en français — version anglaise affichée.</div>}
         {p.cover && p.coverInBody !== false && <img src={p.cover} alt="" className="w-full rounded-2xl mt-6 border border-[var(--line)]" />}
         <Markdown className="mt-7">{p.showToc && !/(^|\n)::toc\b/.test(v.body || '') ? `::toc[${p.tocTitle || 'On this page'}]\n\n${v.body}` : v.body}</Markdown>
@@ -173,6 +175,7 @@ export function BlogPostPage() {
           </div>
         )}
         {showComments && <CommentsModal base={`/blog/${p.id}`} onClose={() => setShowComments(false)} />}
+        {showHistory && <HistoryModal base={`/blog/${p.id}`} onClose={() => setShowHistory(false)} />}
 
         {/* author + collaborators */}
         {authors.length > 0 && (

@@ -28,6 +28,7 @@ export default function Docs() {
   const [search, setSearch] = useState(false); // ⌘K palette
   const [editing, setEditing] = useState(null); // page object being edited, or {} for new
   const [readerComments, setReaderComments] = useState(false); // public/editor comments viewer
+  const [readerHistory, setReaderHistory] = useState(false); // read-only edit history (click the date)
   const [collapsed, setCollapsed] = useState(() => new Set()); // collapsed sidebar categories
   const toggleCat = (c) => setCollapsed((s) => { const n = new Set(s); n.has(c) ? n.delete(c) : n.add(c); return n; });
 
@@ -160,7 +161,7 @@ export default function Docs() {
           : page ? (
             <article>
               <h1 className="text-2xl md:text-3xl font-extrabold mb-1">{page.title}</h1>
-              <div className="text-xs text-[var(--faint)] mb-6">{t('docs.updated')} {new Date(page.updatedAt).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US')}</div>
+              <div className="text-xs text-[var(--faint)] mb-6"><button onClick={() => setReaderHistory(true)} title={t('docs.history.hint', 'View edit history')} className="inline-flex items-center gap-1 hover:text-[var(--primary-2)] transition">{t('docs.updated')} {new Date(page.updatedAt).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US')} <History size={11} className="opacity-60" /></button></div>
               <PageTocMobile body={body} />
               {lang === 'fr' && !page.bodyFr && <div className="mb-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--primary-2)]" /> {t('docs.notfr')}</div>}
               <Markdown pageMap={pageMap}>{body || t('docs.empty')}</Markdown>
@@ -182,6 +183,7 @@ export default function Docs() {
 
       {search && <SearchPalette onClose={() => setSearch(false)} onPick={goTo} />}
       {readerComments && page && <CommentsModal base={`/docs/${page.id}`} onClose={() => setReaderComments(false)} />}
+      {readerHistory && page && <HistoryModal base={`/docs/${page.id}`} onClose={() => setReaderHistory(false)} />}
       {editing && <DocEditor page={editing.id ? editing : null} tree={tree} onClose={() => setEditing(null)} onSaved={onSaved} />}
     </div>
   );
