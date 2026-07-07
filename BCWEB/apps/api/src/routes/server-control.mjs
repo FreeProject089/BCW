@@ -5,7 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import pg from 'pg';
-import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual } from '../lib.mjs';
+import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual, readAnchors } from '../lib.mjs';
 import { verifyTotp } from '../totp.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo } from '../gitbackup.mjs';
 
@@ -123,7 +123,21 @@ export default async function serverControlRoutes(app) {
       if (!hmacOk || !linkOk) { firstBreak = { id: e.id, at: e.createdAt, reason: !hmacOk ? 'content_altered' : 'chain_broken' }; break; }
       expectedPrev = e.hash;
     }
-    return { ok: !firstBreak, total: rows.length, checked, legacy, firstBreak };
+    // External anchor cross-check — catches END-truncation the in-DB chain can't: a
+    // sensitive entry that was anchored (off-DB) but is now missing/altered in the DB,
+    // and is newer than the retention horizon (so it wasn't just legitimately pruned).
+    const oldest = rows.length ? rows[0].createdAt : null;
+    const anchors = await readAnchors();
+    const byId = new Map(rows.map((r) => [r.id, r.hash]));
+    let anchorsChecked = 0, anchorBreak = null;
+    for (const a of anchors) {
+      if (oldest && new Date(a.at) < oldest) continue; // older than what we still retain → pruned, not tampering
+      anchorsChecked++;
+      const h = byId.get(a.id);
+      if (h === undefined) { anchorBreak = { id: a.id, at: a.at, action: a.action, reason: 'anchored_entry_deleted' }; break; }
+      if (h !== a.hash) { anchorBreak = { id: a.id, at: a.at, action: a.action, reason: 'anchored_entry_altered' }; break; }
+    }
+    return { ok: !firstBreak && !anchorBreak, total: rows.length, checked, legacy, firstBreak, anchorsChecked, anchorBreak };
   });
 
   // ── File manager — confined to FILES_ROOT (this container's own filesystem) ──

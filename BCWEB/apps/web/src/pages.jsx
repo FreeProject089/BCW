@@ -2262,13 +2262,15 @@ function AdminSecurity() {
           <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
           <div className="flex-1 min-w-[180px] text-sm">
             <div className="font-medium">Tamper-evident log</div>
-            <div className="text-[11px] text-[var(--faint)]">Every staff action is HMAC-chained — edits or deletions are detectable. Sensitive actions (file downloads, DB writes, power) also alert SUPERADMINs.</div>
+            <div className="text-[11px] text-[var(--faint)]">Every staff action is HMAC-chained — edits or deletions are detectable. Sensitive actions (file downloads, DB writes, power) are anchored off-DB (catches truncation) and alert SUPERADMINs.</div>
           </div>
-          {verify && verify !== 'checking' && !verify.error && (
-            verify.ok
-              ? <Badge tone="green" className="flex items-center gap-1"><CheckCircle2 size={12} /> Intact · {verify.checked} verified{verify.legacy ? ` (+${verify.legacy} legacy)` : ''}</Badge>
-              : <Badge tone="red" className="flex items-center gap-1"><AlertTriangle size={12} /> {verify.firstBreak?.reason === 'content_altered' ? 'Altered' : 'Chain broken'} @ {verify.firstBreak ? new Date(verify.firstBreak.at).toLocaleString() : '?'}</Badge>
-          )}
+          {verify && verify !== 'checking' && !verify.error && (() => {
+            const brk = verify.firstBreak || verify.anchorBreak;
+            const reasonLabel = { content_altered: 'Content altered', chain_broken: 'Chain broken', anchored_entry_deleted: 'Log truncated', anchored_entry_altered: 'Anchored entry altered' }[brk?.reason] || 'Tampered';
+            return verify.ok
+              ? <Badge tone="green" className="flex items-center gap-1"><CheckCircle2 size={12} /> Intact · {verify.checked} chained{verify.anchorsChecked ? ` · ${verify.anchorsChecked} anchored` : ''}{verify.legacy ? ` (+${verify.legacy} legacy)` : ''}</Badge>
+              : <Badge tone="red" className="flex items-center gap-1"><AlertTriangle size={12} /> {reasonLabel}{brk?.at ? ` @ ${new Date(brk.at).toLocaleString()}` : ''}</Badge>;
+          })()}
           {verify?.error && <Badge tone="red">Verify failed</Badge>}
           <Button size="sm" variant="ghost" disabled={verify === 'checking'} onClick={runVerify}>{verify === 'checking' ? <Spinner /> : <><ShieldCheck size={13} /> Verify integrity</>}</Button>
         </Card>

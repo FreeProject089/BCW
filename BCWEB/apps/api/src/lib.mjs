@@ -1,6 +1,8 @@
 // Shared helpers: Prisma singleton, JWT sessions, role guards, slugify.
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { z } from 'zod';
 
 // Constant-time string comparison for shared secrets / tokens / signatures
@@ -99,15 +101,43 @@ export function auditHash(prevHash, e) {
 const SENSITIVE_ACTION = /^server\.(file_download|file_delete|db_write|db_restore|restart|terminal|power|db_write_blocked|db_restore_blocked)/;
 let _auditSettingsCache = { v: null, at: 0 };
 
+// ── Append-only external anchor (closes the end-truncation gap) ──
+// The HMAC chain detects edits + mid-deletions, but deleting the NEWEST rows leaves no
+// gap in-DB. So each SENSITIVE entry's {id,hash} is also appended to a file on a
+// dedicated volume mounted OUTSIDE /app — out of reach of the DB viewer AND the
+// /app-confined file manager. Verify cross-checks: an anchored entry missing/altered in
+// the DB (and newer than the retention horizon, so not just pruned) = truncation/tamper.
+const ANCHOR_DIR = process.env.AUDIT_ANCHOR_DIR || '/var/audit';
+const ANCHOR_FILE = path.join(ANCHOR_DIR, 'sensitive-anchor.jsonl');
+async function appendAnchor(rec) {
+  try {
+    await fs.mkdir(ANCHOR_DIR, { recursive: true });
+    await fs.appendFile(ANCHOR_FILE, JSON.stringify(rec) + '\n');
+    // Opportunistically cap the file so it can't grow forever (rare, best-effort).
+    if (Math.random() < 0.02) {
+      const lines = (await fs.readFile(ANCHOR_FILE, 'utf8')).split('\n').filter(Boolean);
+      if (lines.length > 5000) await fs.writeFile(ANCHOR_FILE, lines.slice(-5000).join('\n') + '\n');
+    }
+  } catch { /* anchor is best-effort — never block the action */ }
+}
+/** Read the external sensitive-action anchors (most recent `limit`). */
+export async function readAnchors(limit = 2000) {
+  try {
+    const lines = (await fs.readFile(ANCHOR_FILE, 'utf8')).split('\n').filter(Boolean);
+    return lines.slice(-limit).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  } catch { return []; }
+}
+
 /** Append an admin/staff audit-log entry, HMAC-chained for tamper-evidence. Never
  * throws — logging must not break the action it's recording. Also (best-effort) alerts
  * SUPERADMINs on sensitive actions and prunes the log to the configured retention. */
 export async function logAudit(p, actorId, action, detail = '', ip = '') {
   const d = String(detail || '').slice(0, 300); const ipS = String(ip || '').slice(0, 64);
+  let created = null;
   try {
     // Serialize audit writes with a Postgres advisory lock so the chain's prevHash is
     // consistent under concurrency, inside one interactive transaction.
-    await p.$transaction(async (tx) => {
+    created = await p.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(918273645)`;
       const last = await tx.auditLogEntry.findFirst({ orderBy: { createdAt: 'desc' }, select: { hash: true } });
       const prevHash = last?.hash || 'GENESIS';
@@ -115,11 +145,13 @@ export async function logAudit(p, actorId, action, detail = '', ip = '') {
       const createdAt = new Date();
       const hash = auditHash(prevHash, { id, actorId, action, detail: d, createdAt });
       await tx.auditLogEntry.create({ data: { id, actorId, action, detail: d, ip: ipS, createdAt, prevHash, hash } });
+      return { id, hash, createdAt };
     });
   } catch { /* non-fatal */ }
-  // Alert + prune are best-effort and out of the critical path.
+  // Sensitive actions: external anchor + SUPERADMIN alert. Best-effort, off critical path.
   try {
-    if (SENSITIVE_ACTION.test(action)) {
+    if (created && SENSITIVE_ACTION.test(action)) {
+      await appendAnchor({ at: created.createdAt.toISOString(), id: created.id, hash: created.hash, action });
       const supers = await p.user.findMany({ where: { role: 'SUPERADMIN' }, select: { id: true } });
       const who = await p.user.findUnique({ where: { id: actorId }, select: { displayName: true } }).catch(() => null);
       await Promise.all(supers.map((s) => notify(p, s.id, 'security_alert', `Sensitive staff action: ${who?.displayName || actorId} — ${action}${d ? ` (${d.slice(0, 120)})` : ''}`)));

@@ -85,7 +85,13 @@ services:
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      # Append-only anchor for the tamper-evident audit log (sensitive-action hashes).
+      # A dedicated volume mounted OUTSIDE /app so neither the DB viewer nor the
+      # /app-confined file manager can reach it — closes the end-truncation gap.
+      AUDIT_ANCHOR_DIR: /var/audit
       NODE_ENV: production
+    volumes:
+      - audit-anchor:/var/audit
 
   # Watches for PROVISIONING repos and brings them ONLINE (isolation/quota owner).
   provisioner:
@@ -180,3 +186,4 @@ volumes:
   telemetry-data:
   caddy-data:
   caddy-config:
+  audit-anchor:
