@@ -29,6 +29,29 @@ async function snapshotDoc(p, page, editorId) {
   } catch { /* best-effort */ }
 }
 
+// Live page count + total content bytes (octet_length), optionally excluding one page
+// so an edit measures every OTHER page then adds this one's new size.
+async function docsUsage(p, excludeId) {
+  const ex = excludeId || '';
+  const [c] = await p.$queryRaw`SELECT count(*)::int AS n, COALESCE(SUM(octet_length(body) + octet_length(COALESCE("bodyFr",''))),0)::bigint AS bytes FROM "DocPage" WHERE "id" <> ${ex}`;
+  return { count: c.n, bytes: Number(c.bytes) };
+}
+
+// Site-wide docs caps (Hosting settings: docs.maxTotalPages / docs.maxTotalKB). Returns
+// a 409 body or null. On edit, pass `excludeId` — only the size cap applies to edits.
+async function checkDocsLimits(p, addBytes, excludeId) {
+  const isEdit = !!excludeId;
+  const s = Object.fromEntries((await p.adminSetting.findMany()).map((r) => [r.key, r.value]));
+  const maxPages = Number(s['docs.maxTotalPages'] ?? 0);
+  const maxKB = Number(s['docs.maxTotalKB'] ?? 0);
+  if (maxPages > 0 || maxKB > 0) {
+    const u = await docsUsage(p, excludeId);
+    if (!isEdit && maxPages > 0 && u.count >= maxPages) return { error: 'docs_limit', kind: 'count', limit: maxPages, current: u.count };
+    if (maxKB > 0 && u.bytes + addBytes > maxKB * 1024) return { error: 'docs_limit', kind: 'size', limitKB: maxKB, currentKB: Math.round((u.bytes + addBytes) / 1024) };
+  }
+  return null;
+}
+
 // Build the sidebar tree: pages grouped by category, categories ordered by the
 // smallest page order they contain (then alphabetically), pages by order then title.
 function toTree(pages) {
@@ -125,6 +148,10 @@ export default async function docRoutes(app) {
     const b = pageSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid', detail: b.error.flatten() });
     const p = await db();
+    // Site-wide docs caps (count + size) — refuse creation when full.
+    const addBytes = Buffer.byteLength(b.data.body || '') + Buffer.byteLength(b.data.bodyFr || '');
+    const limitErr = await checkDocsLimits(p, addBytes, null);
+    if (limitErr) return reply.code(409).send(limitErr);
     // Unique slug from the title (append -2, -3… on collision).
     let base = slugify(b.data.title), slug = base, n = 1;
     while (await p.docPage.findUnique({ where: { slug } })) slug = `${base}-${++n}`;
@@ -152,6 +179,13 @@ export default async function docRoutes(app) {
       return reply.code(409).send({ error: 'version_conflict', current: {
         version: exists.version, title: exists.title, body: exists.body, bodyFr: exists.bodyFr,
       } });
+    }
+    // Size cap also applies on edit (count cap never trips on edit — see checkDocsLimits).
+    if (touchesContent) {
+      const newBody = d.body !== undefined ? d.body : exists.body;
+      const newBodyFr = d.bodyFr !== undefined ? d.bodyFr : exists.bodyFr;
+      const limitErr = await checkDocsLimits(p, Buffer.byteLength(newBody || '') + Buffer.byteLength(newBodyFr || ''), req.params.id);
+      if (limitErr) return reply.code(409).send(limitErr);
     }
     const page = await p.docPage.update({ where: { id: req.params.id }, data: {
       ...(d.title !== undefined ? { title: d.title } : {}),

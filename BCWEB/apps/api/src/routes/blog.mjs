@@ -57,40 +57,45 @@ const STAFF = ['MOD', 'ADMIN', 'SUPERADMIN'];
 const canEditPost = (user, post) => !!user && (STAFF.includes(user.role) || post.authorId === user.uid || (post.coAuthorIds || []).includes(user.uid));
 
 // Live count + total content bytes of published/draft posts, optionally scoped to one
-// blog space. Uses octet_length so the "size" matches what actually sits in Postgres.
-async function blogUsage(p, scope) {
+// blog space and optionally EXCLUDING one post (so an edit measures everyone else, then
+// adds the post's new size). octet_length ⇒ "size" matches what's really in Postgres.
+async function blogUsage(p, scope, excludeId) {
+  const ex = excludeId || '';
   if (scope?.showcaseProjectId) {
-    const [c] = await p.$queryRaw`SELECT count(*)::int AS n, COALESCE(SUM(octet_length(body) + octet_length(COALESCE("bodyFr",''))),0)::bigint AS bytes FROM "BlogPost" WHERE "showcaseProjectId" = ${scope.showcaseProjectId}`;
+    const [c] = await p.$queryRaw`SELECT count(*)::int AS n, COALESCE(SUM(octet_length(body) + octet_length(COALESCE("bodyFr",''))),0)::bigint AS bytes FROM "BlogPost" WHERE "showcaseProjectId" = ${scope.showcaseProjectId} AND "id" <> ${ex}`;
     return { count: c.n, bytes: Number(c.bytes) };
   }
   if (scope?.projectId) {
-    const [c] = await p.$queryRaw`SELECT count(*)::int AS n, COALESCE(SUM(octet_length(body) + octet_length(COALESCE("bodyFr",''))),0)::bigint AS bytes FROM "BlogPost" WHERE "projectId" = ${scope.projectId}`;
+    const [c] = await p.$queryRaw`SELECT count(*)::int AS n, COALESCE(SUM(octet_length(body) + octet_length(COALESCE("bodyFr",''))),0)::bigint AS bytes FROM "BlogPost" WHERE "projectId" = ${scope.projectId} AND "id" <> ${ex}`;
     return { count: c.n, bytes: Number(c.bytes) };
   }
-  const [c] = await p.$queryRaw`SELECT count(*)::int AS n, COALESCE(SUM(octet_length(body) + octet_length(COALESCE("bodyFr",''))),0)::bigint AS bytes FROM "BlogPost"`;
+  const [c] = await p.$queryRaw`SELECT count(*)::int AS n, COALESCE(SUM(octet_length(body) + octet_length(COALESCE("bodyFr",''))),0)::bigint AS bytes FROM "BlogPost" WHERE "id" <> ${ex}`;
   return { count: c.n, bytes: Number(c.bytes) };
 }
 
-// Enforce the article limits before creating a post: a site-wide cap (Hosting settings:
-// blog.maxTotalPosts / blog.maxTotalKB) AND, for a ShowcaseProject ("Other Projects")
-// page, its own per-page cap stored in config.blogMaxPosts / config.blogMaxKB. Returns
-// a 409 body to send, or null when within limits. `addBytes` = the new post's size.
-async function checkBlogLimits(p, { projectId, showcaseProjectId, showcaseConfig }, addBytes) {
+// Enforce the article limits: a site-wide cap (Hosting settings: blog.maxTotalPosts /
+// blog.maxTotalKB) AND, for a ShowcaseProject ("Other Projects") page, its own per-page
+// cap (config.blogMaxPosts / config.blogMaxKB). Returns a 409 body to send, or null.
+// `addBytes` = the (new) size of the post being written. On an EDIT pass `excludeId`
+// (the post's id) so its OLD size doesn't double-count and the count cap isn't tripped
+// just for editing an existing post at the limit — only the size cap applies to edits.
+async function checkBlogLimits(p, { projectId, showcaseProjectId, showcaseConfig }, addBytes, excludeId) {
+  const isEdit = !!excludeId;
   const s = Object.fromEntries((await p.adminSetting.findMany()).map((r) => [r.key, r.value]));
   const gMaxPosts = Number(s['blog.maxTotalPosts'] ?? 0);
   const gMaxKB = Number(s['blog.maxTotalKB'] ?? 0);
   if (gMaxPosts > 0 || gMaxKB > 0) {
-    const g = await blogUsage(p, null);
-    if (gMaxPosts > 0 && g.count >= gMaxPosts) return { error: 'blog_limit', scope: 'global', kind: 'count', limit: gMaxPosts, current: g.count };
-    if (gMaxKB > 0 && g.bytes + addBytes > gMaxKB * 1024) return { error: 'blog_limit', scope: 'global', kind: 'size', limitKB: gMaxKB, currentKB: Math.round(g.bytes / 1024) };
+    const g = await blogUsage(p, null, excludeId);
+    if (!isEdit && gMaxPosts > 0 && g.count >= gMaxPosts) return { error: 'blog_limit', scope: 'global', kind: 'count', limit: gMaxPosts, current: g.count };
+    if (gMaxKB > 0 && g.bytes + addBytes > gMaxKB * 1024) return { error: 'blog_limit', scope: 'global', kind: 'size', limitKB: gMaxKB, currentKB: Math.round((g.bytes + addBytes) / 1024) };
   }
   const cfg = showcaseConfig || {};
   const pMaxPosts = Number(cfg.blogMaxPosts ?? 0);
   const pMaxKB = Number(cfg.blogMaxKB ?? 0);
   if (showcaseProjectId && (pMaxPosts > 0 || pMaxKB > 0)) {
-    const u = await blogUsage(p, { showcaseProjectId });
-    if (pMaxPosts > 0 && u.count >= pMaxPosts) return { error: 'blog_limit', scope: 'project', kind: 'count', limit: pMaxPosts, current: u.count };
-    if (pMaxKB > 0 && u.bytes + addBytes > pMaxKB * 1024) return { error: 'blog_limit', scope: 'project', kind: 'size', limitKB: pMaxKB, currentKB: Math.round(u.bytes / 1024) };
+    const u = await blogUsage(p, { showcaseProjectId }, excludeId);
+    if (!isEdit && pMaxPosts > 0 && u.count >= pMaxPosts) return { error: 'blog_limit', scope: 'project', kind: 'count', limit: pMaxPosts, current: u.count };
+    if (pMaxKB > 0 && u.bytes + addBytes > pMaxKB * 1024) return { error: 'blog_limit', scope: 'project', kind: 'size', limitKB: pMaxKB, currentKB: Math.round((u.bytes + addBytes) / 1024) };
   }
   return null;
 }
@@ -303,6 +308,18 @@ export default async function blogRoutes(app) {
       else { const sp = await p.showcaseProject.findUnique({ where: { slug: d.showcaseSlug } }); if (sp) { data.showcaseProjectId = sp.id; data.projectId = null; } }
     }
     if (d.publish !== undefined) { data.status = d.publish ? 'PUBLISHED' : 'DRAFT'; data.publishedAt = d.publish ? new Date() : null; }
+    // Size caps also apply on edit — an edit that grows the post past a size limit is
+    // refused (the count cap never trips on edit; see checkBlogLimits). Only worth the
+    // query when the content actually changed.
+    if (touchesContent) {
+      const newBody = d.body !== undefined ? d.body : existing.body;
+      const newBodyFr = d.bodyFr !== undefined ? d.bodyFr : existing.bodyFr;
+      const addBytes = Buffer.byteLength(newBody || '') + Buffer.byteLength(newBodyFr || '');
+      const scPid = data.showcaseProjectId !== undefined ? data.showcaseProjectId : existing.showcaseProjectId;
+      const showcaseConfig = scPid ? (await p.showcaseProject.findUnique({ where: { id: scPid }, select: { config: true } }))?.config : null;
+      const limitErr = await checkBlogLimits(p, { projectId: data.projectId ?? existing.projectId, showcaseProjectId: scPid, showcaseConfig }, addBytes, req.params.id);
+      if (limitErr) return reply.code(409).send(limitErr);
+    }
     const post = await p.blogPost.update({ where: { id: req.params.id }, data });
     if (touchesContent) await snapshotBlog(p, post, req.user.uid);
     return { post };

@@ -453,6 +453,11 @@ function DocEditor({ page, tree, onClose, onSaved }) {
         setMerge({ conflicts: queue.length, pending: queue });
         if (queue.length > 0) { setMergeUI({ queue }); toast.info('Someone else edited this page — resolve the conflicts visually, then Save.'); }
         else toast.info('Merged with edits made by someone else — review, then Save again.');
+      } else if (x.status === 409 && x.data?.error === 'docs_limit') {
+        const d = x.data;
+        toast.error(d.kind === 'count'
+          ? `Docs are full — at most ${d.limit} pages allowed (currently ${d.current}). Delete one or raise the limit in Hosting settings.`
+          : `Docs size limit (${d.limitKB} KB) would be exceeded${d.currentKB ? ` (this would be ~${d.currentKB} KB)` : ''}. Trim the page, delete an old one, or raise the limit.`);
       } else { toast.error(x.data?.error === 'forbidden' ? 'You don’t have permission.' : x.data?.error || 'Failed.'); }
     }
     finally { setBusy(false); }

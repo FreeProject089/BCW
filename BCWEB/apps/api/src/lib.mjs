@@ -85,10 +85,64 @@ export function requireCanControlServer() {
   };
 }
 
-/** Append an admin/staff audit-log entry. Never throws — logging must not break
- * the action it's recording. */
+// Server-side secret the audit HMAC is keyed with. An attacker who can write to the
+// DB but doesn't hold this secret cannot forge a valid chain (edits/inserts are
+// detectable). Dedicated env, falls back to JWT_SECRET.
+const AUDIT_SECRET = process.env.AUDIT_SECRET || process.env.JWT_SECRET || 'dev-only-insecure-secret';
+export function auditHash(prevHash, e) {
+  const payload = `${prevHash}|${e.id}|${e.actorId}|${e.action}|${e.detail}|${new Date(e.createdAt).toISOString()}`;
+  return crypto.createHmac('sha256', AUDIT_SECRET).update(payload).digest('hex');
+}
+// Sensitive staff actions that should immediately surface to SUPERADMINs — the tripwire
+// for a compromised staff account (someone pulling another user's files, writing to the
+// DB, or hitting power/terminal). Matched by action prefix.
+const SENSITIVE_ACTION = /^server\.(file_download|file_delete|db_write|db_restore|restart|terminal|power|db_write_blocked|db_restore_blocked)/;
+let _auditSettingsCache = { v: null, at: 0 };
+
+/** Append an admin/staff audit-log entry, HMAC-chained for tamper-evidence. Never
+ * throws — logging must not break the action it's recording. Also (best-effort) alerts
+ * SUPERADMINs on sensitive actions and prunes the log to the configured retention. */
 export async function logAudit(p, actorId, action, detail = '', ip = '') {
-  try { await p.auditLogEntry.create({ data: { actorId, action, detail: String(detail || '').slice(0, 300), ip: String(ip || '').slice(0, 64) } }); } catch { /* non-fatal */ }
+  const d = String(detail || '').slice(0, 300); const ipS = String(ip || '').slice(0, 64);
+  try {
+    // Serialize audit writes with a Postgres advisory lock so the chain's prevHash is
+    // consistent under concurrency, inside one interactive transaction.
+    await p.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(918273645)`;
+      const last = await tx.auditLogEntry.findFirst({ orderBy: { createdAt: 'desc' }, select: { hash: true } });
+      const prevHash = last?.hash || 'GENESIS';
+      const id = 'a' + crypto.randomUUID().replace(/-/g, '');
+      const createdAt = new Date();
+      const hash = auditHash(prevHash, { id, actorId, action, detail: d, createdAt });
+      await tx.auditLogEntry.create({ data: { id, actorId, action, detail: d, ip: ipS, createdAt, prevHash, hash } });
+    });
+  } catch { /* non-fatal */ }
+  // Alert + prune are best-effort and out of the critical path.
+  try {
+    if (SENSITIVE_ACTION.test(action)) {
+      const supers = await p.user.findMany({ where: { role: 'SUPERADMIN' }, select: { id: true } });
+      const who = await p.user.findUnique({ where: { id: actorId }, select: { displayName: true } }).catch(() => null);
+      await Promise.all(supers.map((s) => notify(p, s.id, 'security_alert', `Sensitive staff action: ${who?.displayName || actorId} — ${action}${d ? ` (${d.slice(0, 120)})` : ''}`)));
+    }
+  } catch { /* non-fatal */ }
+  if (Math.random() < 0.05) pruneAuditLog(p).catch(() => {});
+}
+
+/** Prune the audit log to the admin-configured retention (audit.maxDays age +
+ * audit.maxEntries count). Authorized, app-controlled deletion — the chain verifier
+ * treats the oldest RETAINED entry as a fresh chain start, so pruning never trips it. */
+export async function pruneAuditLog(p) {
+  if (Date.now() - _auditSettingsCache.at > 60_000) {
+    _auditSettingsCache = { v: Object.fromEntries((await p.adminSetting.findMany()).map((r) => [r.key, r.value])), at: Date.now() };
+  }
+  const s = _auditSettingsCache.v || {};
+  const maxDays = Number(s['audit.maxDays'] ?? 0);
+  const maxEntries = Number(s['audit.maxEntries'] ?? 0);
+  if (maxDays > 0) await p.auditLogEntry.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - maxDays * 864e5) } } });
+  if (maxEntries > 0) {
+    const cutoff = await p.auditLogEntry.findMany({ orderBy: { createdAt: 'desc' }, skip: maxEntries, take: 1, select: { createdAt: true } });
+    if (cutoff.length) await p.auditLogEntry.deleteMany({ where: { createdAt: { lte: cutoff[0].createdAt } } });
+  }
 }
 
 /** Auth guard. requireRole() = any logged-in user; requireRole('ADMIN','MOD') = those roles.

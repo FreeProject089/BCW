@@ -5,7 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import pg from 'pg';
-import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit } from '../lib.mjs';
+import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual } from '../lib.mjs';
 import { verifyTotp } from '../totp.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo } from '../gitbackup.mjs';
 
@@ -104,6 +104,26 @@ export default async function serverControlRoutes(app) {
     const since = new Date(Date.now() - hours * 3600e3);
     const entries = await p.auditLogEntry.findMany({ where: { createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take, include: { actor: { select: { displayName: true } } } });
     return { entries };
+  });
+
+  // Verify the audit chain's integrity end-to-end: recompute each entry's HMAC (catches
+  // field edits / forged rows) and check prevHash linkage (catches deleted/inserted
+  // rows). Legacy rows written before hashing landed are reported separately, not as
+  // tampering. Returns the first break so an admin can see exactly where trust ends.
+  app.get('/admin/security/audit/verify', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const rows = await p.auditLogEntry.findMany({ orderBy: { createdAt: 'asc' }, select: { id: true, actorId: true, action: true, detail: true, createdAt: true, prevHash: true, hash: true } });
+    let checked = 0, legacy = 0, expectedPrev = null, firstBreak = null;
+    for (const e of rows) {
+      if (!e.hash) { legacy++; expectedPrev = null; continue; } // pre-hashing row → restart linkage after it
+      checked++;
+      const recomputed = auditHash(e.prevHash, e);
+      const hmacOk = safeEqual(recomputed, e.hash);
+      const linkOk = expectedPrev === null || e.prevHash === expectedPrev;
+      if (!hmacOk || !linkOk) { firstBreak = { id: e.id, at: e.createdAt, reason: !hmacOk ? 'content_altered' : 'chain_broken' }; break; }
+      expectedPrev = e.hash;
+    }
+    return { ok: !firstBreak, total: rows.length, checked, legacy, firstBreak };
   });
 
   // ── File manager — confined to FILES_ROOT (this container's own filesystem) ──

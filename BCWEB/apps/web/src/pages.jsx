@@ -2169,6 +2169,8 @@ function AdminSecurity() {
   const [hours, setHours] = useState('168');
   const logins = useAsync(() => api.get(`/admin/security/logins?hours=${hours}`), [hours]);
   const audit = useAsync(() => api.get(`/admin/security/audit?hours=${hours}`), [hours]);
+  const [verify, setVerify] = useState(null); // null | 'checking' | { ok, total, checked, legacy, firstBreak }
+  const runVerify = async () => { setVerify('checking'); try { setVerify(await api.get('/admin/security/audit/verify')); } catch { setVerify({ error: true }); } };
   const attempts = logins.data?.attempts || [];
   const entries = audit.data?.entries || [];
 
@@ -2255,6 +2257,22 @@ function AdminSecurity() {
           ))}
         </div>
       </Card> : <EmptyState icon={Lock} title={attempts.length ? 'No matches' : 'No login attempts in this range'} />)}
+      {tab === 'audit' && (
+        <Card className="p-3 mb-3 flex items-center gap-3 flex-wrap">
+          <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
+          <div className="flex-1 min-w-[180px] text-sm">
+            <div className="font-medium">Tamper-evident log</div>
+            <div className="text-[11px] text-[var(--faint)]">Every staff action is HMAC-chained — edits or deletions are detectable. Sensitive actions (file downloads, DB writes, power) also alert SUPERADMINs.</div>
+          </div>
+          {verify && verify !== 'checking' && !verify.error && (
+            verify.ok
+              ? <Badge tone="green" className="flex items-center gap-1"><CheckCircle2 size={12} /> Intact · {verify.checked} verified{verify.legacy ? ` (+${verify.legacy} legacy)` : ''}</Badge>
+              : <Badge tone="red" className="flex items-center gap-1"><AlertTriangle size={12} /> {verify.firstBreak?.reason === 'content_altered' ? 'Altered' : 'Chain broken'} @ {verify.firstBreak ? new Date(verify.firstBreak.at).toLocaleString() : '?'}</Badge>
+          )}
+          {verify?.error && <Badge tone="red">Verify failed</Badge>}
+          <Button size="sm" variant="ghost" disabled={verify === 'checking'} onClick={runVerify}>{verify === 'checking' ? <Spinner /> : <><ShieldCheck size={13} /> Verify integrity</>}</Button>
+        </Card>
+      )}
       {tab === 'audit' && (audit.loading ? <Loading /> : filteredEntries.length ? <Card className="p-0 overflow-hidden">
         <div className="max-h-[65vh] overflow-auto divide-y divide-[var(--line)]">
           {filteredEntries.map((e) => (
@@ -4849,11 +4867,17 @@ const SETTINGS_GROUPS = [
     ['catalog.freeTierCapMB', 'Free catalog-upload pool cap (MB)', 'Total payload bytes the free catalog tier can ever occupy across every user, once the toggle above is on.', 'number'],
     ['telemetry.storageLimitGB', 'BMM telemetry storage limit (GB)', 'How much storage the (separate) BMM telemetry database is allowed — shown as used vs. allocated in Total capacity above. 0 = untracked.', 'number'],
   ] },
-  { title: 'Blog & history', icon: Newspaper, keys: [
+  { title: 'Blog, docs & history', icon: Newspaper, keys: [
     ['blog.maxTotalPosts', 'Max total blog articles', 'Hard cap on the number of blog articles across the whole site. 0 = unlimited. New articles are refused once reached.', 'number'],
-    ['blog.maxTotalKB', 'Max total blog size (KB)', 'Hard cap on the combined size of every article body (EN + FR). 0 = unlimited. New articles are refused once reached.', 'number'],
+    ['blog.maxTotalKB', 'Max total blog size (KB)', 'Hard cap on the combined size of every article body (EN + FR). Enforced on create AND on edits that grow a post. 0 = unlimited.', 'number'],
+    ['docs.maxTotalPages', 'Max total doc pages', 'Hard cap on the number of documentation pages. 0 = unlimited. New pages are refused once reached.', 'number'],
+    ['docs.maxTotalKB', 'Max total docs size (KB)', 'Hard cap on the combined size of every doc page (EN + FR). Enforced on create AND on edits that grow a page. 0 = unlimited.', 'number'],
     ['history.maxRevisions', 'Edit-history: keep last N revisions', 'How many past snapshots each blog post / doc page keeps before the oldest is overwritten. Default 30.', 'number'],
     ['history.maxRevisionKB', 'Edit-history: max size per item (KB)', 'Also cap each item\'s stored history by size — older snapshots drop once this is exceeded. 0 = size limit off (count only).', 'number'],
+  ] },
+  { title: 'Security & audit logs', icon: ShieldCheck, keys: [
+    ['audit.maxDays', 'Audit log retention (days)', 'Staff-action log entries older than this are pruned. 0 = keep forever. The log is HMAC-chained (tamper-evident) — pruning is the only sanctioned deletion.', 'number'],
+    ['audit.maxEntries', 'Audit log max entries', 'Also cap the staff-action log by entry count — the oldest are pruned past this. 0 = no count cap.', 'number'],
   ] },
   { title: 'Pricing', icon: Receipt, keys: [
     ['pricing.perGBCents', 'Price per GB (¢ / month)', 'Base hosting cost, before the scarcity multiplier. Only applies above the free floor below.', 'number'],

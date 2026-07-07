@@ -702,6 +702,13 @@ model AuditLogEntry {
   detail    String   @default("")
   ip        String   @default("")
   createdAt DateTime @default(now())
+  // Tamper-evidence: each entry is HMAC-signed (server secret) over its own fields +
+  // the previous entry's hash, forming a chain. Editing any field breaks that row's
+  // HMAC; deleting/inserting a row breaks the next row's `prevHash` linkage. A
+  // compromised staff account therefore can't silently rewrite history. Verified via
+  // GET /admin/security/audit/verify. ("" on legacy rows written before this landed.)
+  prevHash  String   @default("")
+  hash      String   @default("")
 
   @@index([createdAt])
 }
