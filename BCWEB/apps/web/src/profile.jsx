@@ -11,6 +11,12 @@ import Avatar, { VARIANTS, PALETTES, avatarOf } from './Avatar.jsx';
 import { Link } from 'react-router-dom';
 import { LayoutDashboard, Copy, RefreshCw, Terminal } from 'lucide-react';
 
+// A small section heading used to group the profile cards into clear zones
+// (Public profile / Security / Connections / Account) instead of one flat stack.
+function SectionLabel({ icon: Ico, children }) {
+  return <div className="flex items-center gap-2 mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--faint)]"><Ico size={13} className="text-[var(--primary-2)]" /> {children}</div>;
+}
+
 export default function Profile() {
   const { user, refresh } = useAuth();
   const { t } = useI18n(); const toast = useToast();
@@ -129,8 +135,10 @@ export default function Profile() {
           <Button size="sm" variant="ghost" className="w-full mt-3" onClick={exportZip}><FileArchive size={14} /> {t('prof.exportavatars', 'Export avatars (.zip)')}</Button>
         </Card>
 
-        {/* details + password */}
-        <div className="min-w-0 space-y-6">
+        {/* details + password — grouped into labelled sections */}
+        <div className="min-w-0 space-y-7">
+          <div>
+          <SectionLabel icon={User}>{t('prof.sec.public', 'Public profile')}</SectionLabel>
           <Card className="p-5 space-y-3">
             <Field label={t('prof.dispname', 'Display name')}><Input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} /></Field>
             <Field label={t('prof.bio', 'Bio')}><Textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder={t('prof.bio.ph', 'A little about you…')} /></Field>
@@ -138,7 +146,10 @@ export default function Profile() {
               {msg === 'saved' && <span className="text-sm text-emerald-400 flex items-center gap-1"><Check size={14} /> {t('prof.saved', 'Saved')}</span>}
               {msg === 'error' && <span className="text-sm text-red-400">{t('prof.failed', 'Failed')}</span>}</div>
           </Card>
+          </div>
 
+          <div className="space-y-4">
+          <SectionLabel icon={ShieldCheck}>{t('prof.sec.security', 'Security')}</SectionLabel>
           <Card className="p-5">
             <div className="text-sm font-semibold mb-1 flex items-center gap-2"><KeyRound size={15} className="text-[var(--primary-2)]" /> {t('prof.changepw', 'Change password')}</div>
             <div className="grid sm:grid-cols-3 gap-3 mt-2">
@@ -155,8 +166,16 @@ export default function Profile() {
 
           <TwoFactorCard />
           <ApiTokenCard />
+          </div>
+
+          <div className="space-y-4">
+          <SectionLabel icon={Link2}>{t('prof.sec.connections', 'Connections')}</SectionLabel>
           <CreatorLinks />
           <DiscordLinks />
+          </div>
+
+          <div className="space-y-4">
+          <SectionLabel icon={SettingsIcon}>{t('prof.sec.account', 'Account & preferences')}</SectionLabel>
 
           {/* Device preferences (intro animation, theme, language, translucency,
               cookies) all live on the Settings page now — link there instead of
@@ -186,6 +205,7 @@ export default function Profile() {
               </div>
             )}
           </Card>
+          </div>
         </div>
       </div>
     </div>
