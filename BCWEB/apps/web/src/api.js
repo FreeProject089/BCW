@@ -99,3 +99,13 @@ export async function uploadImage(file) {
   return mediaUrl;
 }
 export const uploadBlogImage = uploadImage; // back-compat alias
+
+// Upload a project/showcase page asset (image, short video, or rrweb replay JSON)
+// — ADMIN-only, returns a stable public media URL. Used by the visual project editor.
+export async function uploadMedia(file) {
+  const contentType = file.type || 'application/octet-stream';
+  const { url, mediaUrl } = await api.post('/uploads/presign', { kind: 'MEDIA', filename: file.name, contentType, size: file.size });
+  const put = await fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+  if (!put.ok) throw Object.assign(new Error('upload_failed'), { status: put.status });
+  return mediaUrl;
+}

@@ -4,7 +4,7 @@ import argon2 from 'argon2';
 import archiver from 'archiver';
 import { db, repoLog, notify, accountEntrySchema } from '../lib.mjs';
 import { effUpload, DEFAULT_SETTINGS } from './repos.mjs';
-import { presignRepoFile, registerRepoFile, removeRepoFile, publishRepo, unpublishRepo } from './hosting-content.mjs';
+import { presignRepoFile, registerRepoFile, removeRepoFile, publishRepo, unpublishRepo, throttle } from './hosting-content.mjs';
 import { getObject } from '../storage.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
@@ -127,14 +127,25 @@ export default async function repoDashboardRoutes(app) {
     // the zip stream and out to the client — nothing is buffered in memory, so the
     // old 2 GB per-request cap is gone (it existed because AdmZip built the whole
     // archive in RAM).
+    // Throttle the download to the repo's effective upload cap — the same sandbox
+    // bandwidth the public /hosting file serving uses — so a dashboard zip can't
+    // pull faster than the plan allows (kbps=0 means unlimited).
+    const kbps = effUpload(req.repo);
     reply.hijack();
     reply.raw.writeHead(200, {
       'Content-Type': 'application/zip',
       'Content-Disposition': `attachment; filename="${req.repo.name.replace(/[^a-zA-Z0-9._-]/g, '_')}.zip"`,
+      'X-Sandbox-Upload-Kbps': String(kbps),
     });
     const archive = archiver('zip', { zlib: { level: 6 } });
     archive.on('error', () => { try { reply.raw.destroy(); } catch { /* client gone */ } });
-    archive.pipe(reply.raw);
+    if (kbps > 0) {
+      const shaper = throttle(kbps);
+      shaper.on('error', () => { try { reply.raw.destroy(); } catch { /* client gone */ } });
+      archive.pipe(shaper).pipe(reply.raw);
+    } else {
+      archive.pipe(reply.raw);
+    }
     for (const f of files) {
       try {
         const { body } = await getObject(f.key);

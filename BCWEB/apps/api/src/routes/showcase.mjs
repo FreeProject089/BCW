@@ -29,7 +29,13 @@ function isAnnouncing(row) {
 }
 
 export default async function showcaseRoutes(app) {
-  const pub = (p) => ({ id: p.id, slug: p.slug, name: p.name, short: p.short, tagline: p.config?.tagline || '', config: p.config || {}, showBlogTab: p.showBlogTab === true });
+  const pub = (p) => ({ id: p.id, slug: p.slug, name: p.name, short: p.short, icon: p.icon || null, tagline: p.config?.tagline || '', config: p.config || {}, showBlogTab: p.showBlogTab === true });
+  // The countdown block a page carries — shared by the full-takeover teaser and the
+  // "first tab" (announceShowPage) mode. Button can point anywhere (blog/docs/URL).
+  const countdownOf = (r) => ({
+    title: r.announceTitle, logo: r.announceLogo, markdown: r.announceMarkdown, revealAt: r.announceRevealAt,
+    button: r.announceButtonUrl ? { label: r.announceButtonLabel || 'Learn more', url: r.announceButtonUrl } : null,
+  });
 
   // ── Public ──
   app.get('/showcase', async () => {
@@ -42,7 +48,7 @@ export default async function showcaseRoutes(app) {
     // show the countdown teaser.
     return {
       projects: rows.filter((r) => r.visibility === 'public' || isAnnouncing(r)).map((r) => ({
-        slug: r.slug, name: r.name, short: r.short, tagline: r.config?.tagline || '',
+        slug: r.slug, name: r.name, short: r.short, icon: r.icon || null, tagline: r.config?.tagline || '',
         pinTopbar: r.pinTopbar, isAnnouncing: isAnnouncing(r), announceTitle: r.announceTitle, announceRevealAt: r.announceRevealAt,
       })),
     };
@@ -53,7 +59,15 @@ export default async function showcaseRoutes(app) {
     let row = await p.showcaseProject.findUnique({ where: { slug: req.params.slug } });
     if (!row || !row.published) return reply.code(404).send({ error: 'not_found' });
     row = await applyScheduledUpdate(p, p.showcaseProject, row);
-    if (isAnnouncing(row)) return { project: null, announcement: { title: row.announceTitle, logo: row.announceLogo, markdown: row.announceMarkdown, revealAt: row.announceRevealAt } };
+    // Countdown active. Two modes:
+    //  • takeover (default): the countdown IS the page — return it alone.
+    //  • showPage: the real page renders too, with the countdown as a first tab —
+    //    return BOTH (still gated by visibility, since the page is really shown).
+    if (isAnnouncing(row)) {
+      if (!row.announceShowPage) return { project: null, announcement: countdownOf(row) };
+      if (!(await canViewPage(p, row, req))) return reply.code(403).send({ error: 'no_access' });
+      return { project: pub(row), announcement: countdownOf(row), announcementInline: true };
+    }
     if (!(await canViewPage(p, row, req))) return reply.code(403).send({ error: 'no_access' });
     return { project: pub(row) };
   });
@@ -115,6 +129,7 @@ export default async function showcaseRoutes(app) {
         showOnHomeNews: r.showOnHomeNews, showBlogTab: r.showBlogTab,
         visibility: r.visibility, visibilityWhitelist: r.visibilityWhitelist, pinTopbar: r.pinTopbar,
         announceEnabled: r.announceEnabled, announceTitle: r.announceTitle, announceLogo: r.announceLogo, announceMarkdown: r.announceMarkdown, announceRevealAt: r.announceRevealAt,
+        announceShowPage: r.announceShowPage, announceButtonLabel: r.announceButtonLabel, announceButtonUrl: r.announceButtonUrl,
         scheduledAt: r.scheduledAt, scheduledNext: r.scheduledNext,
       })),
     };
@@ -137,6 +152,9 @@ export default async function showcaseRoutes(app) {
     announceLogo: z.string().max(500).nullable().optional(),
     announceMarkdown: z.string().max(20000).default(''),
     announceRevealAt: z.string().datetime().nullable().optional(),
+    announceShowPage: z.boolean().default(false),
+    announceButtonLabel: z.string().max(60).default(''),
+    announceButtonUrl: z.string().max(500).default(''),
   });
 
   app.post('/admin/showcase', { preHandler: requireRole('ADMIN') }, async (req, reply) => {

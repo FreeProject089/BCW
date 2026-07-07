@@ -213,6 +213,17 @@ function lucideMask(name, size, className = '') {
 }
 const isLucideName = (n) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(n);
 
+// A project/showcase icon accepting EITHER an image URL (uploaded svg/png, or a
+// logo) OR an icon name (lucide / `simple:brand`). Falls back to `fallback` when
+// unset — one field, every source (used by the topbar pill + project header).
+export function ShowcaseIcon({ icon, size = 16, className = '', rounded = 4, fallback = null }) {
+  if (!icon) return fallback;
+  if (/^(https?:|data:|\/)/i.test(icon)) {
+    return <img src={icon} alt="" width={size} height={size} className={className} style={{ display: 'inline-block', objectFit: 'contain', borderRadius: rounded }} />;
+  }
+  return <IconGlyph name={icon} size={size} className={className} />;
+}
+
 // Standalone icon glyph by name (used by the icon picker + reaction-style UIs).
 export function IconGlyph({ name, size = 18, className = '' }) {
   const slug = simpleSlug(name);

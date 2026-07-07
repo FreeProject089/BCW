@@ -7,6 +7,7 @@ import { Button } from './ui.jsx';
 import { ThemeToggle } from './theme.jsx';
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
 import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon } from './brand.jsx';
+import { ShowcaseIcon } from './md.jsx';
 import { trackPageview } from './analytics.js';
 import { loadGtmIfConsented } from './gtm.js';
 import { getOrbTransitionPref } from './prefs.js';
@@ -183,7 +184,7 @@ function Nav() {
           {visibleNav.map((n) => <NavLink key={n.to} to={n.to} title={t(n.k)} aria-label={t(n.k)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={n} size={16} /><span className="nav-lbl">{t(n.k)}</span></NavLink>)}
           {pinnedShowcase.map((p) => (
             <NavLink key={p.slug} to={`/project/${p.slug}`} title={p.name} aria-label={p.name} className={(s) => pill(s) + ' shrink-0'}>
-              <Sparkles size={15} /><span className="nav-lbl">{p.isAnnouncing ? p.announceTitle || p.name : p.name}</span>
+              <ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /><span className="nav-lbl">{p.isAnnouncing ? p.announceTitle || p.name : p.name}</span>
             </NavLink>
           ))}
         </nav>
@@ -224,7 +225,7 @@ function Nav() {
         <div className="lg:hidden mt-2 mx-2 sm:mx-3 rounded-2xl border border-[var(--line)] p-2 topbar anim-fade" style={{ boxShadow: '0 10px 34px -14px rgba(0,0,0,0.30)' }}>
           <div className="grid grid-cols-2 gap-1">
             {visibleNav.map((n) => <NavLink key={n.to} to={n.to} className={sheet} onClick={() => setOpen(false)}><NavIcon item={n} size={16} />{t(n.k)}</NavLink>)}
-            {pinnedShowcase.map((p) => <NavLink key={p.slug} to={`/project/${p.slug}`} className={sheet} onClick={() => setOpen(false)}><Sparkles size={16} />{p.isAnnouncing ? p.announceTitle || p.name : p.name}</NavLink>)}
+            {pinnedShowcase.map((p) => <NavLink key={p.slug} to={`/project/${p.slug}`} className={sheet} onClick={() => setOpen(false)}><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} />{p.isAnnouncing ? p.announceTitle || p.name : p.name}</NavLink>)}
             <NavLink to="/projects" className={sheet} onClick={() => setOpen(false)}><Boxes size={16} /> {t('nav.projects')}</NavLink>
             <NavLink to="/contact" className={sheet} onClick={() => setOpen(false)}><Mail size={16} /> Contact</NavLink>
             <NavLink to="/settings" className={sheet} onClick={() => setOpen(false)}><SettingsIcon size={16} /> {t('nav.settings', 'Settings')}</NavLink>

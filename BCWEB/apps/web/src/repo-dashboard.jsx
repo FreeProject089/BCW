@@ -160,7 +160,7 @@ function buildFileTree(files) {
   }
   return root;
 }
-function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, t, removing }) {
+function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, t, removing, deleting }) {
   const [open, setOpen] = useState(depth < 1);
   const dirs = [...node.dirs.entries()].sort(([a], [b]) => a.localeCompare(b));
   const files = [...node.files].sort((a, b) => a.path.localeCompare(b.path));
@@ -176,18 +176,21 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, t, removin
       )}
       {open && (
         <div>
-          {dirs.map(([seg, sub]) => <TreeNode key={seg} node={sub} name={seg} depth={depth + 1} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} t={t} removing={removing} />)}
+          {dirs.map(([seg, sub]) => <TreeNode key={seg} node={sub} name={seg} depth={depth + 1} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} t={t} removing={removing} deleting={deleting} />)}
           {files.map((f) => {
             const dl = downloadUrl(f);
             const base = f.path.includes('/') ? f.path.slice(f.path.lastIndexOf('/') + 1) : f.path;
+            const isDeleting = deleting?.has(f.id);
             return (
-              <div key={f.id} className={`flex items-center gap-2.5 px-4 py-2 text-sm ${removing?.has(f.id) ? 'file-row-out' : ''}`} style={{ paddingLeft: `${16 + (name != null ? depth + 1 : depth) * 16}px` }}>
-                <input type="checkbox" className="shrink-0" checked={sel.has(f.id)} onChange={() => toggle(f.id)} />
+              <div key={f.id} className={`flex items-center gap-2.5 px-4 py-2 text-sm ${removing?.has(f.id) ? 'file-row-out' : ''} ${isDeleting ? 'opacity-60' : ''}`} style={{ paddingLeft: `${16 + (name != null ? depth + 1 : depth) * 16}px` }}>
+                <input type="checkbox" className="shrink-0" checked={sel.has(f.id)} onChange={() => toggle(f.id)} disabled={isDeleting} />
                 {f.path === 'repo.json' ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
                 <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
-                <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
-                {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
-                <button className="text-[var(--faint)] hover:text-red-400 shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>
+                {isDeleting ? <span className="flex items-center gap-1.5 text-xs text-red-400 shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
+                  <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
+                  {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
+                  <button className="text-[var(--faint)] hover:text-red-400 shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>
+                </>}
               </div>
             );
           })}
@@ -204,27 +207,49 @@ function FilesTab({ r, reload }) {
   const [sort, setSort] = useState('name'); // name | size | -size
   const [sel, setSel] = useState(new Set());
   const [view, setView] = useState('list'); // list | tree
-  const files = r.files || [];
+  // Delete UX (0-lag, no full-reload freeze):
+  //  • `deleting` — files with an in-flight DELETE → per-row "Deleting…" spinner.
+  //  • `removing` — files done deleting, playing the slide-out exit animation.
+  //  • `hidden`   — optimistically removed from the local list, so we never blank
+  //    the whole list on reload (the old behaviour: freeze + everything vanishes).
+  //  • Many-at-once → ONE overlay on the card instead of dozens of row spinners.
+  const [deleting, setDeleting] = useState(new Set());
+  const [removing, setRemoving] = useState(new Set());
+  const [hidden, setHidden] = useState(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(0);
+  const BULK_THRESHOLD = 6;
+  const files = (r.files || []).filter((f) => !hidden.has(f.id));
   const hasRepoJson = files.some((f) => f.path === 'repo.json') && !!r.repoJson;
   const totalBytes = files.reduce((a, f) => a + (Number(f.size) || 0), 0);
   const upload = (list) => { if (list.length) enqueue(r.id, r.name, list, { dashboard: true, onDone: reload }); };
   const onDrop = (e) => { e.preventDefault(); setDragOver(false); const fs = [...(e.dataTransfer?.files || [])]; if (fs.length) upload(fs); };
-  // Deleting animates the row out (slide + fade) before it leaves the list, so the
-  // action reads visually instead of the file just vanishing on the next reload.
-  const [removing, setRemoving] = useState(new Set());
-  const markRemoving = (ids) => setRemoving((s) => new Set([...s, ...ids]));
+  // Slide a small set of rows out, then drop them from the list + reconcile.
+  const animateOut = (ids) => {
+    setRemoving((s) => new Set([...s, ...ids]));
+    setTimeout(() => {
+      setHidden((s) => new Set([...s, ...ids]));
+      setRemoving((s) => { const n = new Set(s); ids.forEach((i) => n.delete(i)); return n; });
+      reload(); // background reconcile; `hidden` keeps them gone until r updates
+    }, 300);
+  };
   const del = async (f) => {
     if (!(await dialog.confirm({ title: t('rd.delfile.t', 'Delete file'), message: t('rd.delfile.m', '{path}? This can\'t be undone.').replace('{path}', f.path), okLabel: t('common.delete', 'Delete'), danger: true }))) return;
-    markRemoving([f.id]);
-    try { await Promise.all([api.del(`/repos/${r.id}/dashboard/files/${f.id}`), new Promise((res) => setTimeout(res, 320))]); reload(); }
-    catch { setRemoving((s) => { const n = new Set(s); n.delete(f.id); return n; }); toast.error(t('repos.failed', 'Failed.')); }
+    setDeleting(new Set([f.id]));
+    try { await api.del(`/repos/${r.id}/dashboard/files/${f.id}`); setDeleting(new Set()); animateOut([f.id]); }
+    catch { setDeleting(new Set()); toast.error(t('repos.failed', 'Failed.')); }
   };
   const toggle = (id) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const delSelected = async () => {
     if (!(await dialog.confirm({ title: t('rd.delsel.t', 'Delete selected files'), message: t('rd.delsel.m', '{n} file(s)? This can\'t be undone.').replace('{n}', sel.size), okLabel: t('common.delete', 'Delete'), danger: true }))) return;
-    markRemoving([...sel]);
-    await Promise.all([...[...sel].map((id) => api.del(`/repos/${r.id}/dashboard/files/${id}`).catch(() => {})), new Promise((res) => setTimeout(res, 320))]);
-    setSel(new Set()); reload();
+    const ids = [...sel];
+    const bulk = ids.length > BULK_THRESHOLD;
+    if (bulk) setBulkDeleting(ids.length); else setDeleting(new Set(ids));
+    await Promise.all(ids.map((id) => api.del(`/repos/${r.id}/dashboard/files/${id}`).catch(() => {})));
+    setSel(new Set());
+    if (bulk) {
+      // One card-level animation, not dozens of row exits — hide them all at once.
+      setBulkDeleting(0); setHidden((s) => new Set([...s, ...ids])); reload();
+    } else { setDeleting(new Set()); animateOut(ids); }
   };
   const [zipping, setZipping] = useState(false);
   // A plain fetch (not the api.* helper, which always parses JSON) since the
@@ -270,7 +295,14 @@ function FilesTab({ r, reload }) {
         <div className="text-[11px] text-[var(--faint)] mt-2.5">{t('repos.includejson', 'Include a')} <code>repo.json</code> {t('repos.tomanifest', 'manifest. SHA / checksum is computed automatically.')}</div>
       </div>
 
-      <Card className="p-0 overflow-hidden">
+      <Card className="p-0 overflow-hidden relative">
+        {bulkDeleting > 0 && (
+          <div className="absolute inset-0 z-10 grid place-items-center backdrop-blur-[1px]" style={{ background: 'color-mix(in srgb, var(--bg-solid) 62%, transparent)' }}>
+            <div className="flex items-center gap-2.5 text-sm text-[var(--text)] rounded-xl border border-[var(--line)] bg-[var(--bg-solid)] px-4 py-2.5 shadow-lg">
+              <Spinner className="!w-4 !h-4 text-red-400" /> {t('rd.deletingn', 'Deleting {n} files…').replace('{n}', bulkDeleting)}
+            </div>
+          </div>
+        )}
         <div className="px-4 py-2.5 border-b border-[var(--line)] flex items-center gap-2.5 flex-wrap">
           <label className="flex items-center gap-1.5 shrink-0 text-xs text-[var(--faint)] cursor-pointer" title={t('rd.selectall', 'Select all')}>
             <input type="checkbox" checked={allSelected} onChange={toggleAll} />
@@ -294,21 +326,23 @@ function FilesTab({ r, reload }) {
         </div>
         <div className="max-h-[46vh] overflow-auto">
           {!shown.length ? <div className="text-sm text-[var(--faint)] px-4 py-4">{q.trim() ? t('rd.nomatch', 'No files match.') : t('repos.nofiles', 'No files yet.')}</div>
-          : view === 'tree' ? <TreeNode node={tree} name={null} depth={0} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} t={t} removing={removing} />
+          : view === 'tree' ? <TreeNode node={tree} name={null} depth={0} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} t={t} removing={removing} deleting={deleting} />
           : (
             <div className="divide-y divide-[var(--line)]">
               {shown.map((f) => {
                 const dl = downloadUrl(f);
                 const base = f.path.includes('/') ? f.path.slice(f.path.lastIndexOf('/') + 1) : f.path;
                 return (
-                <div key={f.id} className={`flex items-center gap-2.5 px-4 py-2.5 text-sm ${removing.has(f.id) ? 'file-row-out' : ''}`}>
-                  <input type="checkbox" className="shrink-0" checked={sel.has(f.id)} onChange={() => toggle(f.id)} />
+                <div key={f.id} className={`flex items-center gap-2.5 px-4 py-2.5 text-sm ${removing.has(f.id) ? 'file-row-out' : ''} ${deleting.has(f.id) ? 'opacity-60' : ''}`}>
+                  <input type="checkbox" className="shrink-0" checked={sel.has(f.id)} onChange={() => toggle(f.id)} disabled={deleting.has(f.id)} />
                   {f.path === 'repo.json' ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
                   <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
-                  {f.sha256 && <span className="hidden md:flex items-center gap-1 text-[10px] text-[var(--faint)] font-mono" title={`SHA-256: ${f.sha256}`}><Hash size={10} /> {f.sha256.slice(0, 10)}…</span>}
-                  <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
-                  {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
-                  <button className="text-[var(--faint)] hover:text-red-400 shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>
+                  {deleting.has(f.id) ? <span className="flex items-center gap-1.5 text-xs text-red-400 shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
+                    {f.sha256 && <span className="hidden md:flex items-center gap-1 text-[10px] text-[var(--faint)] font-mono" title={`SHA-256: ${f.sha256}`}><Hash size={10} /> {f.sha256.slice(0, 10)}…</span>}
+                    <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
+                    {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
+                    <button className="text-[var(--faint)] hover:text-red-400 shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>
+                  </>}
                 </div>
               );})}
             </div>

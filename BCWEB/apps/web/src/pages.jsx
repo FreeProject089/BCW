@@ -21,7 +21,9 @@ import { AuthorsRow } from './blog.jsx';
 import Avatar from './Avatar.jsx';
 import { AppLogo, KofiIcon, GithubIcon, DiscordIcon, RedditIcon } from './brand.jsx';
 import { Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast } from './ui.jsx';
-import Markdown from './md.jsx';
+import Markdown, { ShowcaseIcon } from './md.jsx';
+import IconPicker from './icon-picker.jsx';
+import ProjectConfigEditor from './project-config-editor.jsx';
 
 /* ── helpers ── */
 function useAsync(fn, deps = []) {
@@ -1678,8 +1680,7 @@ export function Admin() {
     { heading: 'Users & access' },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'planusers', label: 'Free vs paid', icon: Receipt },
-    isSuperAdmin && { id: 'roles', label: 'Roles & access', icon: Shield },
-    isAdmin && { id: 'blogaccess', label: 'Blog access', icon: PenSquare },
+    isAdmin && { id: 'access', label: 'Access & permissions', icon: Shield },
     isAdmin && { id: 'security', label: 'Security log', icon: Lock },
 
     { heading: 'Repos & hosting' },
@@ -1744,8 +1745,7 @@ export function Admin() {
         {s === 'messages' && <AdminMessages />}
         {s === 'users' && <AdminUsers />}
         {s === 'planusers' && <AdminPlanUsers />}
-        {s === 'roles' && <AdminRoles />}
-        {s === 'blogaccess' && <AdminBlogAccess />}
+        {s === 'access' && <AdminAccess isSuperAdmin={isSuperAdmin} />}
         {s === 'security' && <AdminSecurity />}
         {s === 'serverperf' && <AdminServerPerf />}
         {s === 'serveradv' && <AdminServerAdvanced />}
@@ -2805,7 +2805,7 @@ function AdminServerAdvanced() {
   };
 
   if (me2fa.loading || elevateStatus.loading) return <Loading />;
-  if (!me2fa.data?.canControlServer) return <EmptyState icon={AlertTriangle} title="Not authorized" sub="A SUPERADMIN must grant you server-control access from the Roles & access tab first." />;
+  if (!me2fa.data?.canControlServer) return <EmptyState icon={AlertTriangle} title="Not authorized" sub="A SUPERADMIN must grant you server-control access from the Access & permissions tab first." />;
 
   return (
     <div>
@@ -2883,24 +2883,28 @@ function BackupManager() {
   );
 }
 
-// SUPERADMIN-only: the site-wide access policy, role reassignment, and the
-// server-control permission grant. Blog-post access grants moved to their own
-// tab (AdminBlogAccess, below) since that stays ADMIN-accessible.
-function AdminRoles() {
+// Unified "Access & permissions": ONE user search that surfaces EVERY permission
+// for the picked user in a single card — role + server-control (SUPERADMIN only)
+// and blog-post grants (ADMIN+) — plus the site-wide access policy and a full grants
+// overview. Replaces the old split "Roles & access" / "Blog access" tabs, so an
+// admin no longer hunts across screens to see what a user can do.
+function AdminAccess({ isSuperAdmin }) {
   const toast = useToast();
   const [q, setQ] = useState('');
   const [results, setResults] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [picked, setPicked] = useState(null); // the user currently being managed
+  const [picked, setPicked] = useState(null);
   const [roleSel, setRoleSel] = useState('USER');
+  const [scopeSel, setScopeSel] = useState('global');
+  const scopes = useAsync(() => api.get('/blog/my-scopes'), []);
+  const grants = useAsync(() => api.get('/admin/blog-permissions'), []);
 
   const search = async () => {
     if (!q.trim()) return setResults(null);
     setBusy(true);
     try { const { users } = await api.get(`/admin/users?q=${encodeURIComponent(q)}&take=10`); setResults(users); } catch { setResults([]); } finally { setBusy(false); }
   };
-  const pick = (u) => { setPicked(u); setRoleSel(u.role); };
-
+  const pick = (u) => { setPicked(u); setRoleSel(u.role); setScopeSel('global'); };
   const saveRole = async () => {
     setBusy(true);
     try { await api.put(`/admin/users/${picked.id}/role`, { role: roleSel }); toast.success(`${picked.displayName} is now ${roleSel}.`); setPicked((p) => ({ ...p, role: roleSel })); }
@@ -2912,73 +2916,6 @@ function AdminRoles() {
     try { await api.put(`/admin/server-control/${picked.id}`, { granted: !picked.canControlServer }); toast.success(`Server-control ${!picked.canControlServer ? 'granted to' : 'revoked from'} ${picked.displayName}.`); setPicked((p) => ({ ...p, canControlServer: !p.canControlServer })); }
     catch { toast.error('Failed.'); } finally { setBusy(false); }
   };
-
-  return (
-    <div className="space-y-6">
-      <GlobalAccessPolicyCard />
-      <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--primary-2)]" /> Find a user</h2>
-        <p className="text-sm text-[var(--muted)] mb-3">Reassign a role and/or grant server-control access. Search by user id, display name, email, a linked <b>creator id</b>, or a linked <b>Discord</b> (username / id).</p>
-        <div className="flex gap-2 mb-3">
-          <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-            <Input className="!pl-9" placeholder="id / display name / email / creator id / Discord…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} /></div>
-          <Button variant="primary" disabled={busy} onClick={search}>{busy ? <Spinner /> : <><Search size={15} /> Search</>}</Button>
-        </div>
-        {results && (results.length ? <div className="space-y-1.5">
-          {results.map((u) => (
-            <button key={u.id} onClick={() => pick(u)} className={`w-full text-left card p-3 flex items-center gap-3 ${picked?.id === u.id ? 'border-[var(--primary)]' : ''}`}>
-              <Avatar user={u} size={32} />
-              <div className="flex-1 min-w-0"><div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
-            </button>
-          ))}
-        </div> : <div className="text-sm text-[var(--faint)]">No users found.</div>)}
-      </div>
-
-      {picked && (
-        <Card className="p-5">
-          <div className="flex items-center gap-3 mb-4"><Avatar user={picked} size={40} /><div><div className="font-semibold">{picked.displayName}</div><div className="text-xs text-[var(--faint)]">{picked.email}</div></div></div>
-
-          <div className="mb-5 pb-5 border-b border-[var(--line)]">
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Role</div>
-            <div className="flex items-center gap-2">
-              <Select className="!w-auto" value={roleSel} onChange={(e) => setRoleSel(e.target.value)}>
-                <option value="USER">USER</option><option value="MOD">MOD</option><option value="ADMIN">ADMIN</option><option value="SUPERADMIN">SUPERADMIN</option>
-              </Select>
-              <Button size="sm" variant="primary" disabled={busy || roleSel === picked.role} onClick={saveRole}>{busy ? <Spinner /> : 'Save role'}</Button>
-            </div>
-          </div>
-
-          {(picked.role === 'ADMIN' || picked.role === 'SUPERADMIN' || picked.canControlServer) && (
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Server-control tools</div>
-              <p className="text-xs text-[var(--muted)] mb-2">Grants access to the server performance dashboard's dangerous actions (DB viewer, restart) — still gated by that user's own 2FA step-up on top of this. {!picked.totpEnabled && <span className="text-amber-400">This user hasn't enabled 2FA yet, so the tools stay locked either way.</span>}</p>
-              <Button size="sm" variant={picked.canControlServer ? 'default' : 'primary'} disabled={busy} onClick={toggleServerControl}>{busy ? <Spinner /> : (picked.canControlServer ? 'Revoke server-control' : 'Grant server-control')}</Button>
-            </div>
-          )}
-        </Card>
-      )}
-    </div>
-  );
-}
-
-// ADMIN+: grant/revoke blog-post permissions — moved out of Roles & access (now
-// SUPERADMIN-only) since this stays a regular ADMIN capability.
-function AdminBlogAccess() {
-  const toast = useToast();
-  const [q, setQ] = useState('');
-  const [results, setResults] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [picked, setPicked] = useState(null);
-  const [scopeSel, setScopeSel] = useState('global');
-  const scopes = useAsync(() => api.get('/blog/my-scopes'), []);
-  const grants = useAsync(() => api.get('/admin/blog-permissions'), []);
-
-  const search = async () => {
-    if (!q.trim()) return setResults(null);
-    setBusy(true);
-    try { const { users } = await api.get(`/admin/users?q=${encodeURIComponent(q)}&take=10`); setResults(users); } catch { setResults([]); } finally { setBusy(false); }
-  };
-  const pick = (u) => { setPicked(u); setScopeSel('global'); };
   const grantBlog = async () => {
     setBusy(true);
     try {
@@ -2991,12 +2928,15 @@ function AdminBlogAccess() {
     try { await api.del(`/admin/blog-permissions/${g.id}`); toast.success('Revoked.'); grants.reload(); } catch { toast.error('Failed.'); }
   };
   const scopeLabel = (g) => g.showcase ? `Custom · ${g.showcase.name}` : g.projectKey ? `Project · ${g.projectKey.toUpperCase()}` : 'Global (all blogs)';
+  const roleTone = (role) => role === 'SUPERADMIN' ? 'red' : role === 'ADMIN' ? 'amber' : role === 'MOD' ? 'primary' : '';
+  const allGrants = grants.data?.grants || [];
+  const userGrants = picked ? allGrants.filter((g) => g.user?.id === picked.id) : [];
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><PenSquare size={16} className="text-[var(--primary-2)]" /> Find a user</h2>
-        <p className="text-sm text-[var(--muted)] mb-3">Grant blog-post access to a regular user. Search by user id, display name, email, a linked <b>creator id</b>, or a linked <b>Discord</b> (username / id).</p>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--primary-2)]" /> Access &amp; permissions</h2>
+        <p className="text-sm text-[var(--muted)] mb-3">Find a user to manage {isSuperAdmin ? 'their role, server-control access and ' : ''}blog-post access — all in one place. Search by user id, display name, email, a linked <b>creator id</b>, or a linked <b>Discord</b>.</p>
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
             <Input className="!pl-9" placeholder="id / display name / email / creator id / Discord…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} /></div>
@@ -3006,32 +2946,60 @@ function AdminBlogAccess() {
           {results.map((u) => (
             <button key={u.id} onClick={() => pick(u)} className={`w-full text-left card p-3 flex items-center gap-3 ${picked?.id === u.id ? 'border-[var(--primary)]' : ''}`}>
               <Avatar user={u} size={32} />
-              <div className="flex-1 min-w-0"><div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
+              <div className="flex-1 min-w-0"><div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={roleTone(u.role)}>{u.role}</Badge>{u.canControlServer && <Badge tone="red"><Server size={9} /> server</Badge>}</div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
             </button>
           ))}
         </div> : <div className="text-sm text-[var(--faint)]">No users found.</div>)}
       </div>
 
       {picked && (
-        <Card className="p-5">
-          <div className="flex items-center gap-3 mb-4"><Avatar user={picked} size={40} /><div><div className="font-semibold">{picked.displayName}</div><div className="text-xs text-[var(--faint)]">{picked.email}</div></div></div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Grant blog-post access</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select className="!w-auto" value={scopeSel} onChange={(e) => setScopeSel(e.target.value)}>
-              <option value="global">Global (all blogs)</option>
-              {(scopes.data?.projects || []).map((pr) => <option key={pr.key} value={`project:${pr.key}`}>Project · {pr.name}</option>)}
-              {(scopes.data?.showcases || []).map((s) => <option key={s.slug} value={`showcase:${s.slug}`}>Custom · {s.name}</option>)}
-            </Select>
-            <Button size="sm" variant="primary" disabled={busy} onClick={grantBlog}>{busy ? <Spinner /> : <><Plus size={14} /> Grant</>}</Button>
+        <Card className="p-5 space-y-5">
+          <div className="flex items-center gap-3"><Avatar user={picked} size={40} /><div className="min-w-0"><div className="font-semibold flex items-center gap-2">{picked.displayName} <Badge tone={roleTone(picked.role)}>{picked.role}</Badge></div><div className="text-xs text-[var(--faint)] truncate">{picked.email}</div></div></div>
+
+          {isSuperAdmin && (
+            <div className="pt-4 border-t border-[var(--line)]">
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Role</div>
+              <div className="flex items-center gap-2">
+                <Select className="!w-auto" value={roleSel} onChange={(e) => setRoleSel(e.target.value)}>
+                  <option value="USER">USER</option><option value="MOD">MOD</option><option value="ADMIN">ADMIN</option><option value="SUPERADMIN">SUPERADMIN</option>
+                </Select>
+                <Button size="sm" variant="primary" disabled={busy || roleSel === picked.role} onClick={saveRole}>{busy ? <Spinner /> : 'Save role'}</Button>
+              </div>
+            </div>
+          )}
+
+          {isSuperAdmin && (picked.role === 'ADMIN' || picked.role === 'SUPERADMIN' || picked.canControlServer) && (
+            <div className="pt-4 border-t border-[var(--line)]">
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Server-control tools</div>
+              <p className="text-xs text-[var(--muted)] mb-2">Grants access to the server dashboard's dangerous actions (DB viewer, restart) — still gated by that user's own 2FA step-up. {!picked.totpEnabled && <span className="text-amber-400">This user hasn't enabled 2FA yet, so the tools stay locked either way.</span>}</p>
+              <Button size="sm" variant={picked.canControlServer ? 'default' : 'primary'} disabled={busy} onClick={toggleServerControl}>{busy ? <Spinner /> : (picked.canControlServer ? 'Revoke server-control' : 'Grant server-control')}</Button>
+            </div>
+          )}
+
+          <div className="pt-4 border-t border-[var(--line)]">
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Blog-post access</div>
+            {userGrants.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">
+              {userGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs pl-2.5 pr-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><PenSquare size={11} className="text-[var(--primary-2)]" /> {scopeLabel(g)} <button onClick={() => revoke(g)} className="opacity-60 hover:opacity-100 hover:text-red-400" title="Revoke"><X size={11} /></button></span>)}
+            </div>}
+            <div className="flex flex-wrap items-center gap-2">
+              <Select className="!w-auto" value={scopeSel} onChange={(e) => setScopeSel(e.target.value)}>
+                <option value="global">Global (all blogs)</option>
+                {(scopes.data?.projects || []).map((pr) => <option key={pr.key} value={`project:${pr.key}`}>Project · {pr.name}</option>)}
+                {(scopes.data?.showcases || []).map((s) => <option key={s.slug} value={`showcase:${s.slug}`}>Custom · {s.name}</option>)}
+              </Select>
+              <Button size="sm" variant="primary" disabled={busy} onClick={grantBlog}>{busy ? <Spinner /> : <><Plus size={14} /> Grant</>}</Button>
+            </div>
           </div>
         </Card>
       )}
 
+      <GlobalAccessPolicyCard />
+
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><PenSquare size={16} className="text-[var(--primary-2)]" /> Blog-post grants</h2>
-        <p className="text-sm text-[var(--muted)] mb-3">Regular users who can write blog posts, and where.</p>
-        {grants.loading ? <Loading /> : (grants.data?.grants || []).length ? <div className="space-y-1.5">
-          {grants.data.grants.map((g) => (
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><PenSquare size={16} className="text-[var(--primary-2)]" /> All blog-post grants</h2>
+        <p className="text-sm text-[var(--muted)] mb-3">Everyone who can write blog posts, and where. Pick a user above to edit theirs.</p>
+        {grants.loading ? <Loading /> : allGrants.length ? <div className="space-y-1.5">
+          {allGrants.map((g) => (
             <Card key={g.id} className="p-3 flex items-center gap-3">
               <Avatar user={g.user} size={32} />
               <div className="flex-1 min-w-0"><div className="font-medium truncate">{g.user?.displayName || '(deleted)'}</div><div className="text-xs text-[var(--faint)] truncate">{g.user?.email}</div></div>
@@ -3337,6 +3305,7 @@ function AdminProjects() {
   const [active, setActive] = useState('bmm');
   const [text, setText] = useState('');
   const [progUrl, setProgUrl] = useState('');
+  const [editMode, setEditMode] = useState('form'); // 'form' (visual) | 'json' (raw)
   const projects = data?.projects || {};
   const showcase = show.data?.projects || [];
   const keys = ['community', 'bmm', 'bsm', 'installer'];
@@ -3421,7 +3390,7 @@ function AdminProjects() {
         {showcase.map((s) => (
           <button key={s.id} onClick={() => setActive(`sc:${s.id}`)}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm transition ${active === `sc:${s.id}` ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <Sparkles size={14} /> {s.name}
+            <ShowcaseIcon icon={s.icon} size={14} fallback={<Sparkles size={14} />} /> {s.name}
           </button>
         ))}
         <Button size="sm" variant="ghost" className="ml-auto" onClick={flushCache} title="Repo changes (progress.json, release notes, links) can sit in a 5-min cache — this applies them now.">
@@ -3467,25 +3436,43 @@ function AdminProjects() {
         <Button size="sm" variant="ghost" onClick={() => setScheduling(true)} title="Stage a future content swap for this page"><Clock size={13} /> Schedule an update</Button>
       </div>
       <div className="rounded-2xl overflow-hidden border border-[var(--line)]" style={{ boxShadow: 'var(--shadow)' }}>
-        <div className="flex items-center justify-between px-4 py-2.5 code-chrome">
-          <div className="flex items-center gap-2 text-sm font-medium text-[var(--text)]"><M.icon size={15} className="text-orange-400" /> {M.name}.json</div>
+        <div className="flex items-center justify-between gap-2 px-4 py-2.5 code-chrome flex-wrap">
+          <div className="flex items-center gap-2 text-sm font-medium text-[var(--text)]"><M.icon size={15} className="text-orange-400" /> {M.name}</div>
           <div className="flex items-center gap-2">
-            <Badge tone={valid ? 'green' : 'red'}>{valid ? 'valid JSON' : 'invalid JSON'}</Badge>
-            <Button size="sm" variant="ghost" onClick={format}>Format</Button>
+            {/* Visual form is the default; raw JSON stays as an advanced escape hatch. */}
+            <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
+              {[['form', 'Visual'], ['json', 'JSON']].map(([m, label]) => (
+                <button key={m} type="button" onClick={() => setEditMode(m)} disabled={m === 'form' && !valid}
+                  className={`px-2.5 py-1 rounded-md ${editMode === m ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'} ${m === 'form' && !valid ? 'opacity-40 cursor-not-allowed' : ''}`}>{label}</button>
+              ))}
+            </div>
+            {editMode === 'json' && <Badge tone={valid ? 'green' : 'red'}>{valid ? 'valid JSON' : 'invalid JSON'}</Badge>}
+            {editMode === 'json' && <Button size="sm" variant="ghost" onClick={format}>Format</Button>}
             <Button size="sm" variant="primary" disabled={!valid} onClick={save}>Save</Button>
           </div>
         </div>
-        <div className="code-editor flex" style={{ height: 460 }}>
-          <pre ref={gutRef} className="code-gutter" aria-hidden="true">{Array.from({ length: lineCount }, (_, i) => i + 1).join('\n')}</pre>
-          <textarea ref={taRef} className="code-area" value={text} spellCheck={false}
-            onChange={(e) => setText(e.target.value)}
-            onScroll={() => { if (gutRef.current && taRef.current) gutRef.current.scrollTop = taRef.current.scrollTop; }} />
-        </div>
-        <div className="grid sm:grid-cols-3 gap-3 px-4 py-3 code-chrome">
-          {hint('releaseNotes', '{ owner, repo, branch, path }')}
-          {hint('contributors / messages', '[{ name, role, pfp, links }]')}
-          {hint('progress / downloads', '[{ title, status, percent }] · [{ label, url, primary }]')}
-        </div>
+        {editMode === 'form' ? (
+          valid
+            ? <div className="p-3 bg-[var(--bg-solid)] max-h-[70vh] overflow-auto">
+                <ProjectConfigEditor value={JSON.parse(text || '{}')} onChange={(cfg) => setText(JSON.stringify(cfg, null, 2))}
+                  slug={isShowcase ? activeShow?.slug : active} isShowcase={isShowcase} />
+              </div>
+            : <div className="p-6 text-sm text-[var(--muted)] bg-[var(--bg-solid)]">The raw JSON is currently invalid — switch to the JSON tab to fix it, then come back.</div>
+        ) : (
+          <>
+            <div className="code-editor flex" style={{ height: 460 }}>
+              <pre ref={gutRef} className="code-gutter" aria-hidden="true">{Array.from({ length: lineCount }, (_, i) => i + 1).join('\n')}</pre>
+              <textarea ref={taRef} className="code-area" value={text} spellCheck={false}
+                onChange={(e) => setText(e.target.value)}
+                onScroll={() => { if (gutRef.current && taRef.current) gutRef.current.scrollTop = taRef.current.scrollTop; }} />
+            </div>
+            <div className="grid sm:grid-cols-3 gap-3 px-4 py-3 code-chrome">
+              {hint('releaseNotes', '{ owner, repo, branch, path }')}
+              {hint('contributors / messages', '[{ name, role, pfp, links }]')}
+              {hint('progress / downloads', '[{ title, status, percent }] · [{ label, url, primary }]')}
+            </div>
+          </>
+        )}
       </div>
       {scheduling && (() => {
         let cfg = {}; try { cfg = JSON.parse(text || '{}'); } catch { /* editor currently has invalid JSON — schedule form starts from {} */ }
@@ -4557,11 +4544,23 @@ function AnnouncementSection({ value, onChange }) {
       <label className="flex items-center gap-2 text-sm cursor-pointer font-semibold"><input type="checkbox" checked={value.announceEnabled} onChange={(e) => set('announceEnabled')(e.target.checked)} /> <Megaphone size={13} className="text-[var(--primary-2)]" /> Project announcement (countdown teaser)</label>
       {value.announceEnabled && (
         <div className="space-y-2 pl-1">
-          <p className="text-[11px] text-[var(--faint)]">Shown to everyone in place of the real page until the countdown ends — great for building hype before a soft-launch. Visibility above only takes effect once the countdown is over.</p>
           <Field label="Title"><Input value={value.announceTitle} onChange={(e) => set('announceTitle')(e.target.value)} placeholder="Something big is coming…" /></Field>
           <Field label="Logo URL (optional)"><Input value={value.announceLogo || ''} onChange={(e) => set('announceLogo')(e.target.value)} placeholder="https://example.com/logo.png" /></Field>
-          <Field label="Markdown description"><Textarea rows={5} value={value.announceMarkdown} onChange={(e) => set('announceMarkdown')(e.target.value)} placeholder="Tell people what's coming — markdown supported." /></Field>
+          <Field label="Markdown description"><Textarea rows={4} value={value.announceMarkdown} onChange={(e) => set('announceMarkdown')(e.target.value)} placeholder="Tell people what's coming — markdown supported." /></Field>
+          {/* Optional CTA — points anywhere: an external URL, or an in-site
+              /blog/<slug> or /docs/<slug> article. */}
+          <div className="grid grid-cols-[130px_1fr] gap-2">
+            <Field label="Button label"><Input value={value.announceButtonLabel || ''} onChange={(e) => set('announceButtonLabel')(e.target.value)} placeholder="Learn more" /></Field>
+            <Field label="Button link (URL, or /blog/… /docs/…)"><Input value={value.announceButtonUrl || ''} onChange={(e) => set('announceButtonUrl')(e.target.value)} placeholder="/docs/roadmap" /></Field>
+          </div>
           <Field label="Reveal at"><Input type="datetime-local" value={value.announceRevealAt || ''} onChange={(e) => set('announceRevealAt')(e.target.value)} /></Field>
+          <label className="flex items-center gap-2 text-sm cursor-pointer pt-1"><input type="checkbox" checked={!!value.announceShowPage} onChange={(e) => set('announceShowPage')(e.target.checked)} /> Show the page behind the countdown (adds it as a first tab instead of hiding everything)</label>
+          <p className="text-[11px] text-[var(--faint)]">
+            {value.announceShowPage
+              ? 'The real page stays reachable; the countdown appears as its own first tab. Normal visibility rules apply.'
+              : 'Only the countdown is shown until it ends — the rest of the page is hidden from everyone. Visibility takes effect once it\'s over.'}
+            {' '}Tip: to <b>swap in new content the moment the countdown ends</b>, use “Schedule an update” with the same date/time — a countdown can trigger an update, and an update can carry a countdown.
+          </p>
         </div>
       )}
     </div>
@@ -4647,7 +4646,9 @@ function AdminShowcase() {
           const announcing = pr.announceEnabled && pr.announceRevealAt && new Date(pr.announceRevealAt) > new Date();
           return (
           <Card key={pr.id} className="p-4 flex items-center gap-3 flex-wrap">
-            <div className="grid place-items-center w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white font-extrabold text-xs shrink-0">{pr.short}</div>
+            {pr.icon
+              ? <div className="grid place-items-center w-10 h-10 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] shrink-0 text-[var(--primary-2)]"><ShowcaseIcon icon={pr.icon} size={24} rounded={6} /></div>
+              : <div className="grid place-items-center w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white font-extrabold text-xs shrink-0">{pr.short}</div>}
             <div className="flex-1 min-w-0"><div className="font-medium truncate">{pr.name} <span className="text-xs text-[var(--faint)] font-normal">/project/{pr.slug}</span></div>
               <div className="text-xs text-[var(--faint)] flex items-center gap-1.5 flex-wrap">
                 {[pr.config?.tabs?.releases && 'releases', pr.config?.tabs?.community && 'community', pr.config?.tabs?.legal && 'legal'].filter(Boolean).join(' · ') || 'overview only'}
@@ -4697,7 +4698,11 @@ function ShowcaseEditModal({ project, onClose, onDone }) {
     announceLogo: project?.announceLogo ?? '',
     announceMarkdown: project?.announceMarkdown ?? '',
     announceRevealAt: project?.announceRevealAt ? new Date(project.announceRevealAt).toISOString().slice(0, 16) : '',
+    announceShowPage: project?.announceShowPage ?? false,
+    announceButtonLabel: project?.announceButtonLabel ?? '',
+    announceButtonUrl: project?.announceButtonUrl ?? '',
   });
+  const [iconPick, setIconPick] = useState(false);
   const [busy, setBusy] = useState(false);
   const save = async () => {
     if (name.trim().length < 2) return toast.error('Name is required.');
@@ -4725,14 +4730,18 @@ function ShowcaseEditModal({ project, onClose, onDone }) {
         <Field label="Short (≤5)"><Input value={short} maxLength={5} onChange={(e) => setShort(e.target.value)} placeholder="BS" /></Field>
       </div>
       <div className="mt-3"><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="One-line description" /></Field></div>
-      <div className="mt-3"><Field label="Logo / icon" hint="Shown as the project tag icon + used as the blog thumbnail when a post has no cover">
-        <div className="flex items-center gap-2">
-          {icon && <img src={icon} alt="" className="w-10 h-10 rounded-lg object-contain border border-[var(--line)] shrink-0" />}
-          <Input value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="https://…/logo.png" />
-          <Button type="button" size="sm" onClick={() => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { const f = i.files?.[0]; if (!f) return; try { toast.info('Uploading…'); setIcon(await uploadImage(f)); } catch { toast.error('Upload failed.'); } }; i.click(); }}>Upload</Button>
+      <div className="mt-3"><Field label="Logo / icon" hint="Topbar pill + page header + blog-thumbnail fallback. Pick a lucide/brand icon, upload an svg/png, or paste a logo URL.">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="w-10 h-10 rounded-lg border border-[var(--line)] shrink-0 grid place-items-center bg-[var(--surface-2)] text-[var(--primary-2)]">
+            <ShowcaseIcon icon={icon} size={26} rounded={6} fallback={<Sparkles size={18} className="text-[var(--faint)]" />} />
+          </div>
+          <Input className="flex-1 min-w-[140px]" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="lucide name, simple:github, or https://…/logo.png" />
+          <Button type="button" size="sm" onClick={() => setIconPick(true)}>Pick</Button>
+          <Button type="button" size="sm" onClick={() => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*,.svg'; i.onchange = async () => { const f = i.files?.[0]; if (!f) return; try { toast.info('Uploading…'); setIcon(await uploadImage(f)); } catch { toast.error('Upload failed.'); } }; i.click(); }}>Upload</Button>
           {icon && <Button type="button" size="sm" variant="ghost" onClick={() => setIcon('')}>Clear</Button>}
         </div>
       </Field></div>
+      {iconPick && <IconPicker title="Pick a project icon" onPick={(n) => setIcon(n)} onClose={() => setIconPick(false)} />}
       <div className="mt-3">
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Sub-tabs</div>
         <div className="flex flex-wrap gap-x-5 gap-y-2 p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]">

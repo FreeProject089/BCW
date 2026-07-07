@@ -5,7 +5,7 @@ import {
   FileText, ListTodo, Boxes, ExternalLink, FolderGit2, ChevronRight, ChevronDown,
   CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper,
 } from 'lucide-react';
-import Markdown, { matchesLang } from './md.jsx';
+import Markdown, { matchesLang, ShowcaseIcon } from './md.jsx';
 import { api } from './api.js';
 import { useI18n } from './i18n.jsx';
 import RrwebPreview from './RrwebPreview.jsx';
@@ -65,10 +65,16 @@ function useFetch(fn, deps) {
 function DownloadMenu({ downloads = [], children }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const closeTimer = useRef(null);
   useEffect(() => {
     const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', onDoc); return () => document.removeEventListener('mousedown', onDoc);
+    document.addEventListener('mousedown', onDoc);
+    return () => { document.removeEventListener('mousedown', onDoc); clearTimeout(closeTimer.current); };
   }, []);
+  // Open on hover (with a small close grace period so moving the cursor from the
+  // button down into the menu doesn't dismiss it), and still toggle on click.
+  const hoverOpen = () => { clearTimeout(closeTimer.current); setOpen(true); };
+  const hoverClose = () => { clearTimeout(closeTimer.current); closeTimer.current = setTimeout(() => setOpen(false), 160); };
   const list = downloads.filter((d) => d.url);
   if (!list.length) return children || null;
   const primary = list.find((d) => d.primary) || list[0];
@@ -79,7 +85,7 @@ function DownloadMenu({ downloads = [], children }) {
     </>);
   }
   return (
-    <div className="relative flex" ref={ref}>
+    <div className="relative flex" ref={ref} onMouseEnter={hoverOpen} onMouseLeave={hoverClose}>
       <a href={primary.url} download rel="noreferrer"><Button variant="primary" className="!rounded-r-none"><Download size={16} /> {primary.label}</Button></a>
       <Button variant="primary" className="!rounded-l-none !px-2 border-l border-white/25" aria-label="More download options" onClick={() => setOpen((v) => !v)}><ChevronDown size={15} className={`transition-transform ${open ? 'rotate-180' : ''}`} /></Button>
       {children}
@@ -108,12 +114,19 @@ function useCountdown(target) {
   return { days: Math.floor(s / 86400), hours: Math.floor((s % 86400) / 3600), minutes: Math.floor((s % 3600) / 60), seconds: s % 60, done: total <= 0 };
 }
 
-// A "coming soon" teaser served instead of the real page while a project
-// announcement's countdown is still running (see GET /showcase/:slug in the
-// API — this is what it returns when isAnnouncing(row) is true).
-function AnnouncementTeaser({ announcement, onReveal }) {
-  const cd = useCountdown(announcement.revealAt);
-  useEffect(() => { if (cd.done) onReveal?.(); }, [cd.done]); // eslint-disable-line react-hooks/exhaustive-deps
+// A CTA button that can point anywhere — internal (/blog/…, /docs/…) via router
+// Link, or an external URL via a normal anchor.
+function CtaButton({ button }) {
+  if (!button?.url) return null;
+  const internal = button.url.startsWith('/');
+  const inner = <Button variant="primary"><Sparkles size={15} /> {button.label || 'Learn more'}</Button>;
+  return <div className="mt-6">{internal ? <Link to={button.url}>{inner}</Link> : <a href={button.url} target="_blank" rel="noreferrer">{inner}</a>}</div>;
+}
+
+// The countdown itself — logo + title + digits + markdown + optional CTA. Shared by
+// the full-page takeover teaser AND the inline "Countdown" first tab, so both modes
+// look identical. `bare` drops the "Coming soon" chip/heading chrome for the tab.
+function CountdownBlock({ announcement, done, cd, bare }) {
   const unit = (v, label) => (
     <div className="flex flex-col items-center">
       <div className="text-3xl md:text-4xl font-extrabold tabular-nums bg-[var(--surface-2)] border border-[var(--line)] rounded-xl px-4 py-3 min-w-[4.5rem] text-center">{String(v).padStart(2, '0')}</div>
@@ -121,11 +134,11 @@ function AnnouncementTeaser({ announcement, onReveal }) {
     </div>
   );
   return (
-    <div className="max-w-2xl mx-auto text-center py-10">
-      {announcement.logo && <img src={announcement.logo} alt="" className="w-20 h-20 rounded-2xl object-cover mx-auto mb-5 shadow-lg" />}
-      <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-2"><Sparkles size={13} /> Coming soon</div>
-      <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4">{announcement.title || 'Something big is coming'}</h1>
-      {!cd.done ? (
+    <div className={`max-w-2xl mx-auto text-center ${bare ? 'py-4' : 'py-10'}`}>
+      {announcement.logo && <img src={announcement.logo} alt="" className="w-20 h-20 rounded-2xl object-contain mx-auto mb-5 shadow-lg bg-[var(--surface-2)] border border-[var(--line)] p-1.5" />}
+      {!bare && <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-2"><Sparkles size={13} /> Coming soon</div>}
+      {(announcement.title || !bare) && <h1 className={`${bare ? 'text-2xl' : 'text-3xl md:text-4xl'} font-extrabold tracking-tight mb-4`}>{announcement.title || 'Something big is coming'}</h1>}
+      {!done ? (
         <div className="flex items-center justify-center gap-2 md:gap-4 my-8">
           {unit(cd.days, 'days')}<div className="text-2xl text-[var(--faint)] pb-6">:</div>
           {unit(cd.hours, 'hours')}<div className="text-2xl text-[var(--faint)] pb-6">:</div>
@@ -134,8 +147,25 @@ function AnnouncementTeaser({ announcement, onReveal }) {
         </div>
       ) : <div className="my-8 text-[var(--muted)]">Revealing…</div>}
       {announcement.markdown && <div className="text-left"><Markdown>{announcement.markdown}</Markdown></div>}
+      <CtaButton button={announcement.button} />
     </div>
   );
+}
+
+// Full-page "coming soon" takeover — served instead of the real page while the
+// countdown runs (announceShowPage = false). Reveals (refetches) when it ends.
+function AnnouncementTeaser({ announcement, onReveal }) {
+  const cd = useCountdown(announcement.revealAt);
+  useEffect(() => { if (cd.done) onReveal?.(); }, [cd.done]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <CountdownBlock announcement={announcement} cd={cd} done={cd.done} />;
+}
+
+// Inline "Countdown" first tab (announceShowPage = true) — the page is reachable,
+// this just adds the countdown alongside it. Reveals the page when it ends.
+function CountdownPanel({ announcement, onReveal }) {
+  const cd = useCountdown(announcement.revealAt);
+  useEffect(() => { if (cd.done) onReveal?.(); }, [cd.done]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <CountdownBlock announcement={announcement} cd={cd} done={cd.done} bare />;
 }
 
 export default function ProjectPage() {
@@ -288,7 +318,7 @@ function ProgressItem({ it, lang }) {
 }
 // Renders the rich bilingual progress.json ({ lastUpdate, art, code, categories:
 // [{ name, items:[{ label, status, percent }] }] }) and the legacy flat array.
-function ProgressTracker({ data, title, lang }) {
+export function ProgressTracker({ data, title, lang }) {
   const legacy = Array.isArray(data?.legacy) ? data.legacy : (Array.isArray(data) ? data : null);
   const cats = legacy
     ? [{ name: title, items: legacy.map((it) => ({ label: it.title, status: it.status === 'in-progress' ? 'progress' : it.status, percent: it.percent, eta: it.eta })) }]
@@ -562,8 +592,13 @@ export function OtherProjects() {
               <Link key={p.slug} to={`/project/${p.slug}`}>
                 <Card hover className="p-5 h-full">
                   <div className="flex items-center gap-3">
-                    <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white font-extrabold text-sm shrink-0">{p.short}</div>
-                    <div className="font-semibold truncate">{p.name}</div>
+                    {p.icon
+                      ? <div className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-1.5 text-[var(--primary-2)]"><ShowcaseIcon icon={p.icon} size={28} rounded={8} /></div>
+                      : <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white font-extrabold text-sm shrink-0">{p.short}</div>}
+                    <div className="min-w-0">
+                      <div className="font-semibold truncate">{p.isAnnouncing ? (p.announceTitle || p.name) : p.name}</div>
+                      {p.isAnnouncing && <div className="text-[11px] text-[var(--primary-2)] flex items-center gap-1"><Clock size={11} /> Coming soon</div>}
+                    </div>
                   </div>
                   {p.tagline && <p className="text-sm text-[var(--muted)] mt-3 line-clamp-3">{p.tagline}</p>}
                 </Card>
@@ -612,29 +647,36 @@ export function ShowcaseProjectPage() {
   const { slug } = useParams();
   const { t, lang } = useI18n();
   const [sp, setSp] = useSearchParams();
-  const tab = sp.get('tab') || 'overview';
   const { data, loading, err, refetch } = useFetch(() => api.get(`/showcase/${slug}`), [slug]);
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
   if (err?.status === 403) return <EmptyState icon={ShieldCheck} title="Not available" sub="You don't have access to this page." />;
   if (err) return <EmptyState icon={Boxes} title="Project not found" />;
-  if (data.announcement) return <AnnouncementTeaser announcement={data.announcement} onReveal={refetch} />;
+  // Full-takeover countdown (no page behind it).
+  if (data.announcement && !data.project) return <AnnouncementTeaser announcement={data.announcement} onReveal={refetch} />;
   const proj = data.project; const cfg = proj.config || {}; const T = cfg.tabs || {};
+  // Inline countdown → adds a "Countdown" FIRST tab, page stays reachable.
+  const inlineCountdown = data.announcement && data.announcementInline ? data.announcement : null;
   const c = {
     name: proj.name, tagline: cfg.tagline, downloads: cfg.downloads || [], links: cfg.links || {},
     releaseNotes: cfg.releaseNotes, media: cfg.overview, replayUrl: cfg.overview?.replayUrl,
     contributors: cfg.community?.contributors || [], messages: cfg.community?.messages || [], contributorsUrl: cfg.community?.contributorsUrl,
   };
   const tabs = [
+    inlineCountdown && ['countdown', t('proj.countdown', 'Countdown'), Clock],
     ['overview', t('proj.overview'), ListTodo],
     (T.releases && cfg.releaseNotes?.owner) && ['releases', t('proj.releases'), ScrollText],
     T.community && ['community', t('proj.community'), Users],
     proj.showBlogTab && ['blog', t('proj.blog'), Newspaper],
     T.legal && ['legal', t('proj.legal'), ShieldCheck],
   ].filter(Boolean);
+  // Default to the countdown tab when one is present and no explicit tab chosen.
+  const activeTab = sp.get('tab') || (inlineCountdown ? 'countdown' : 'overview');
   return (
     <div>
       <div className="flex flex-col md:flex-row md:items-center gap-5 mb-8">
-        <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shrink-0"><span className="text-xl font-extrabold text-white">{proj.short}</span></div>
+        {proj.icon
+          ? <div className="grid place-items-center w-16 h-16 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-2 text-[var(--primary-2)]"><ShowcaseIcon icon={proj.icon} size={44} rounded={10} /></div>
+          : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shrink-0"><span className="text-xl font-extrabold text-white">{proj.short}</span></div>}
         <div className="flex-1"><h1 className="text-3xl font-extrabold">{proj.name}</h1>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
         <div className="flex flex-wrap items-start gap-2">
           <DownloadMenu downloads={cfg.downloads} />
@@ -652,17 +694,18 @@ export function ShowcaseProjectPage() {
       <div className="flex gap-2 mb-6 border-b border-[var(--line)] overflow-x-auto no-scrollbar">
         {tabs.map(([id, label, Icon]) => (
           <button key={id} onClick={() => setSp((p) => { const n = new URLSearchParams(p); n.set('tab', id); return n; })}
-            className={`flex items-center gap-1.5 px-3 py-2.5 text-sm border-b-2 -mb-px whitespace-nowrap ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            className={`flex items-center gap-1.5 px-3 py-2.5 text-sm border-b-2 -mb-px whitespace-nowrap ${activeTab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'} ${id === 'countdown' ? 'text-[var(--primary-2)]' : ''}`}>
             <Icon size={15} /> {label}
           </button>
         ))}
       </div>
 
-      {tab === 'overview' && <Overview c={c} pkey={slug} progressUrl={`/showcase/${slug}/progress`} />}
-      {tab === 'releases' && <Releases releasesUrl={`/showcase/${slug}/releases`} />}
-      {tab === 'community' && <ShowcaseCommunity cfg={cfg} c={c} slug={slug} />}
-      {tab === 'blog' && <ProjectBlogTab page={slug} />}
-      {tab === 'legal' && <ShowcaseLegal legal={cfg.legal || []} lang={lang} />}
+      {activeTab === 'countdown' && inlineCountdown && <CountdownPanel announcement={inlineCountdown} onReveal={refetch} />}
+      {activeTab === 'overview' && <Overview c={c} pkey={slug} progressUrl={`/showcase/${slug}/progress`} />}
+      {activeTab === 'releases' && <Releases releasesUrl={`/showcase/${slug}/releases`} />}
+      {activeTab === 'community' && <ShowcaseCommunity cfg={cfg} c={c} slug={slug} />}
+      {activeTab === 'blog' && <ProjectBlogTab page={slug} />}
+      {activeTab === 'legal' && <ShowcaseLegal legal={cfg.legal || []} lang={lang} />}
     </div>
   );
 }

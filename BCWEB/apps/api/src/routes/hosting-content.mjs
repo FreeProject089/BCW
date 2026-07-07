@@ -86,7 +86,7 @@ function sandboxGate(repo, req, reply, policies, identity) {
   return true;
 }
 // Paces a byte stream to at most `kbps` kilobits/second (sandbox bandwidth shaping).
-function throttle(kbps) {
+export function throttle(kbps) {
   const bytesPerSec = Math.max(1, kbps * 128); // kbps*1000/8 ≈ kbps*128
   const slices = 20; const perSlice = Math.max(1, Math.floor(bytesPerSec / slices));
   return new Transform({

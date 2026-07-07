@@ -786,6 +786,14 @@ model ShowcaseProject {
   announceLogo     String?
   announceMarkdown String    @default("")
   announceRevealAt DateTime?
+  // When true, the countdown does NOT take over the page — instead the real page
+  // renders normally with an extra "Countdown" FIRST tab. When false (default) the
+  // countdown is the only thing shown until it ends.
+  announceShowPage  Boolean  @default(false)
+  // Optional call-to-action on the countdown (teaser or first-tab): a button that
+  // can point anywhere — an external URL, or an in-site /blog/… or /docs/… article.
+  announceButtonLabel String @default("")
+  announceButtonUrl   String @default("")
 
   // ── Scheduled content update: stage a future edit, swapped in automatically at
   // scheduledAt (old info fully replaced by "next") — computed + lazily persisted

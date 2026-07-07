@@ -77,7 +77,7 @@ const DICT = {
     'auth.2fa.title': 'Two-factor code', 'auth.2fa.sub': 'Enter the 6-digit code from your authenticator app.',
     'auth.2fa.code': 'Code', 'auth.2fa.verify': 'Verify', 'auth.2fa.back': 'Back to login', 'auth.2fa.bad': 'Invalid code.',
 
-    'proj.overview': 'Overview', 'proj.releases': 'Release Notes', 'proj.community': 'Community', 'proj.legal': 'Legal',
+    'proj.overview': 'Overview', 'proj.releases': 'Release Notes', 'proj.community': 'Community', 'proj.legal': 'Legal', 'proj.countdown': 'Countdown',
     'proj.browse': 'Browse catalog', 'proj.progress': 'Progress tracker', 'proj.noprogress': 'No roadmap yet',
     'proj.nocontrib': 'No contributors yet', 'proj.messages': 'Community messages',
     'proj.blog': 'Blog', 'proj.noposts': 'No posts yet',
@@ -171,7 +171,7 @@ const DICT = {
     'auth.2fa.title': 'Code à deux facteurs', 'auth.2fa.sub': 'Entre le code à 6 chiffres de ton application d’authentification.',
     'auth.2fa.code': 'Code', 'auth.2fa.verify': 'Vérifier', 'auth.2fa.back': 'Retour à la connexion', 'auth.2fa.bad': 'Code invalide.',
 
-    'proj.overview': 'Aperçu', 'proj.releases': 'Notes de version', 'proj.community': 'Communauté', 'proj.legal': 'Légal',
+    'proj.overview': 'Aperçu', 'proj.releases': 'Notes de version', 'proj.community': 'Communauté', 'proj.legal': 'Légal', 'proj.countdown': 'Compte à rebours',
     'proj.browse': 'Voir le catalogue', 'proj.progress': 'Suivi d’avancement', 'proj.noprogress': 'Pas encore de roadmap',
     'proj.nocontrib': 'Pas encore de contributeurs', 'proj.messages': 'Messages de la communauté',
     'proj.blog': 'Blog', 'proj.noposts': 'Pas encore de billets',
@@ -318,6 +318,7 @@ const DICT = {
     'rd.traffic.window': '7 derniers jours. Les clients sont identifiés par IP (et clé d’accès si utilisée). Bannir les bloque immédiatement de la synchro de ce dépôt.',
     'rd.lastseen': 'vu', 'rd.dl': 'dl', 'rd.conn': 'conn', 'rd.ban': 'Bannir', 'rd.unban': 'Débannir', 'rd.banned': 'Banni.', 'rd.unbanned': 'Débanni.', 'rd.bannedbadge': 'Banni',
     'rd.noclients': 'Personne n’a encore synchronisé ce dépôt.', 'rd.downloaded': 'a téléchargé', 'rd.connected2': 's’est connecté',
+    'rd.deleting': 'Suppression…', 'rd.deletingn': 'Suppression de {n} fichiers…',
     'rd.files': 'fichier(s)', 'rd.selfhost': 'Dépôt auto-hébergé (URL) — son contenu est à sa propre URL, pas ici.', 'rd.selfhostonline': 'Les dépôts auto-hébergés sont accessibles à leur propre URL — rien à publier ici.', 'rd.selfhostset': 'Les réglages du bac à sable ne concernent que les dépôts hébergés.',
     'rd.filesearch': 'Filtrer par nom…', 'rd.sort.name': 'Nom', 'rd.sort.sizedesc': 'Plus gros d’abord', 'rd.sort.sizeasc': 'Plus petit d’abord',
     'rd.selectall': 'Tout sélectionner', 'rd.view.list': 'Liste', 'rd.view.tree': 'Arborescence',
