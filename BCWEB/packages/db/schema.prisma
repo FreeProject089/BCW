@@ -114,6 +114,7 @@ model User {
   repoFavorites RepoFavorite[]
   oauthAccounts OAuthAccount[]
   blogComments  BlogComment[]
+  docComments   DocComment[]
 }
 
 // A GitHub/Discord identity linked to a website account — powers "Continue with
@@ -367,8 +368,30 @@ model DocPage {
   // Optimistic-concurrency counter for git-style concurrent editing (see BlogPost.version).
   version   Int      @default(1)
   revisions DocRevision[]
+  // Threaded editor-collaboration comments (see BlogComment). `commentsPublic` lets
+  // readers see them read-only on the published page.
+  comments       DocComment[]
+  commentsPublic Boolean @default(false)
 
   @@index([category])
+}
+
+// Threaded comment on a doc page — the same editor-collaboration tool as BlogComment.
+// Any docs editor (ADMIN/SUPERADMIN) can read, add, reply, resolve and edit any comment.
+model DocComment {
+  id        String   @id @default(cuid())
+  page      DocPage  @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  pageId    String
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String
+  parentId  String?
+  anchor    String?
+  body      String
+  resolved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pageId])
 }
 
 // Edit-history snapshot of a doc page (see BlogRevision).

@@ -17,6 +17,7 @@ const pageSchema = z.object({
   bodyFr: z.string().max(200_000).nullish(),
   order: z.number().int().optional(),
   published: z.boolean().optional(),
+  commentsPublic: z.boolean().optional(),
   // Version the editor loaded from — for git-style concurrent-edit conflict detection.
   baseVersion: z.number().int().optional(),
 });
@@ -159,6 +160,7 @@ export default async function docRoutes(app) {
       slug, title: b.data.title, category: b.data.category || 'General', icon: b.data.icon || null,
       body: b.data.body || '', bodyFr: b.data.bodyFr || null,
       order: b.data.order ?? 0, published: b.data.published ?? true,
+      commentsPublic: !!b.data.commentsPublic,
     } });
     await snapshotDoc(p, page, req.user.uid);
     return reply.code(201).send({ page });
@@ -195,6 +197,7 @@ export default async function docRoutes(app) {
       ...(d.bodyFr !== undefined ? { bodyFr: d.bodyFr || null } : {}),
       ...(d.order !== undefined ? { order: d.order } : {}),
       ...(d.published !== undefined ? { published: d.published } : {}),
+      ...(d.commentsPublic !== undefined ? { commentsPublic: d.commentsPublic } : {}),
       ...(touchesContent ? { version: { increment: 1 } } : {}),
     } });
     if (touchesContent) await snapshotDoc(p, page, req.user.uid);
@@ -214,6 +217,53 @@ export default async function docRoutes(app) {
     const rev = await p.docRevision.findFirst({ where: { id: req.params.revId, pageId: req.params.id } });
     if (!rev) return reply.code(404).send({ error: 'not_found' });
     return { revision: { version: rev.version, title: rev.title, body: rev.body, bodyFr: rev.bodyFr, createdAt: rev.createdAt } };
+  });
+
+  // ── Editor-collaboration comments (threaded, mirror of the blog system) ──
+  // Read: docs editors always; published + commentsPublic pages also to readers (read-only).
+  // Write/edit/resolve/delete: docs editors (ADMIN/SUPERADMIN) — any editor edits any comment.
+  const shapeC = (c, nameOf, avaOf) => ({ id: c.id, parentId: c.parentId, anchor: c.anchor, body: c.body, resolved: c.resolved,
+    author: { id: c.authorId, name: nameOf.get(c.authorId) || 'Unknown', avatar: avaOf?.get(c.authorId) || null }, createdAt: c.createdAt, updatedAt: c.updatedAt });
+
+  app.get('/docs/:id/comments', { preHandler: optionalAuth() }, async (req, reply) => {
+    const p = await db();
+    const page = await p.docPage.findUnique({ where: { id: req.params.id }, select: { published: true, commentsPublic: true } });
+    if (!page) return reply.code(404).send({ error: 'not_found' });
+    const editor = isEditor(req);
+    if (!editor && !(page.commentsPublic && page.published)) return reply.code(403).send({ error: 'forbidden' });
+    const comments = await p.docComment.findMany({ where: { pageId: req.params.id }, orderBy: { createdAt: 'asc' } });
+    const authors = await p.user.findMany({ where: { id: { in: [...new Set(comments.map((c) => c.authorId))] } }, select: { id: true, displayName: true, avatar: true } });
+    const nameOf = new Map(authors.map((u) => [u.id, u.displayName])); const avaOf = new Map(authors.map((u) => [u.id, u.avatar]));
+    return { canComment: editor, commentsPublic: page.commentsPublic, comments: comments.map((c) => shapeC(c, nameOf, avaOf)) };
+  });
+
+  app.post('/docs/:id/comments', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({ body: z.string().min(1).max(5000), anchor: z.string().max(120).nullish(), parentId: z.string().nullish() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const page = await p.docPage.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!page) return reply.code(404).send({ error: 'not_found' });
+    if (b.data.parentId) { const parent = await p.docComment.findFirst({ where: { id: b.data.parentId, pageId: req.params.id } }); if (!parent) return reply.code(400).send({ error: 'bad_parent' }); }
+    const c = await p.docComment.create({ data: { pageId: req.params.id, authorId: req.user.uid, body: b.data.body, anchor: b.data.anchor || null, parentId: b.data.parentId || null } });
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true, avatar: true } });
+    return reply.code(201).send({ comment: shapeC(c, new Map([[req.user.uid, me?.displayName]]), new Map([[req.user.uid, me?.avatar]])) });
+  });
+
+  app.patch('/docs/:id/comments/:cid', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({ body: z.string().min(1).max(5000).optional(), resolved: z.boolean().optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const exists = await p.docComment.findFirst({ where: { id: req.params.cid, pageId: req.params.id } });
+    if (!exists) return reply.code(404).send({ error: 'not_found' });
+    const c = await p.docComment.update({ where: { id: req.params.cid }, data: {
+      ...(b.data.body !== undefined ? { body: b.data.body } : {}), ...(b.data.resolved !== undefined ? { resolved: b.data.resolved } : {}) } });
+    return { comment: { id: c.id, body: c.body, resolved: c.resolved, updatedAt: c.updatedAt } };
+  });
+
+  app.delete('/docs/:id/comments/:cid', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    await p.docComment.deleteMany({ where: { pageId: req.params.id, OR: [{ id: req.params.cid }, { parentId: req.params.cid }] } }).catch(() => {});
+    return { ok: true };
   });
 
   // Bulk reorder: [{ id, order, category? }] — used by the sidebar drag/reorder.

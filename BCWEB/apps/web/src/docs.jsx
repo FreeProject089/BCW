@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash, GitMerge, History } from 'lucide-react';
+import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash, GitMerge, History, MessageSquare, Globe } from 'lucide-react';
 import { api } from './api.js';
 import { merge3, hasConflictMarkers } from './merge3.js';
 import HistoryModal from './history-modal.jsx';
 import DiffMergeModal from './diff-merge-modal.jsx';
+import CommentsModal from './comments-modal.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from './i18n.jsx';
 import Markdown, { IconGlyph } from './md.jsx';
@@ -26,6 +27,7 @@ export default function Docs() {
   const [sidebar, setSidebar] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768);
   const [search, setSearch] = useState(false); // ⌘K palette
   const [editing, setEditing] = useState(null); // page object being edited, or {} for new
+  const [readerComments, setReaderComments] = useState(false); // public/editor comments viewer
   const [collapsed, setCollapsed] = useState(() => new Set()); // collapsed sidebar categories
   const toggleCat = (c) => setCollapsed((s) => { const n = new Set(s); n.has(c) ? n.delete(c) : n.add(c); return n; });
 
@@ -163,6 +165,11 @@ export default function Docs() {
               {lang === 'fr' && !page.bodyFr && <div className="mb-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--primary-2)]" /> {t('docs.notfr')}</div>}
               <Markdown pageMap={pageMap}>{body || t('docs.empty')}</Markdown>
               <HelpfulWidget page={page} canEdit={canEdit} />
+              {(page.commentsPublic || canEdit) && (
+                <button onClick={() => setReaderComments(true)} className="mt-4 inline-flex items-center gap-1.5 text-sm text-[var(--muted)] hover:text-[var(--text)] rounded-lg border border-[var(--line)] hover:border-[var(--line-strong)] px-3 py-1.5">
+                  <MessageSquare size={14} /> {t('docs.comments', 'Comments')}
+                </button>
+              )}
             </article>
           ) : (
             <EmptyState icon={BookOpen} title={t('docs.none.title')} sub={canEdit ? t('docs.none.sub.admin') : t('docs.none.sub')}>
@@ -174,6 +181,7 @@ export default function Docs() {
       {page && <PageToc body={body} />}
 
       {search && <SearchPalette onClose={() => setSearch(false)} onPick={goTo} />}
+      {readerComments && page && <CommentsModal base={`/docs/${page.id}`} onClose={() => setReaderComments(false)} />}
       {editing && <DocEditor page={editing.id ? editing : null} tree={tree} onClose={() => setEditing(null)} onSaved={onSaved} />}
     </div>
   );
@@ -413,9 +421,10 @@ function HelpfulWidget({ page, canEdit }) {
 function DocEditor({ page, tree, onClose, onSaved }) {
   const toast = useToast(); const dialog = useDialog();
   const categories = [...new Set(tree.map((c) => c.category))];
-  const [f, setF] = useState({ title: '', category: 'General', icon: '', order: 0, published: true, body: '', bodyFr: '' });
+  const [f, setF] = useState({ title: '', category: 'General', icon: '', order: 0, published: true, body: '', bodyFr: '', commentsPublic: false });
   const [tab, setTab] = useState('en');
   const [busy, setBusy] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   // Concurrent-edit tracking (see blog editor / merge3.js) — two admins editing the
   // same page merge git-style instead of one silently overwriting the other.
   const baseRef = useRef({ version: null, body: '', bodyFr: '' });
@@ -423,7 +432,7 @@ function DocEditor({ page, tree, onClose, onSaved }) {
   const [mergeUI, setMergeUI] = useState(null); // visual conflict resolver queue
   const [showHistory, setShowHistory] = useState(false);
   useEffect(() => {
-    if (page) setF({ title: page.title || '', category: page.category || 'General', icon: page.icon || '', order: page.order || 0, published: page.published !== false, body: '', bodyFr: '' });
+    if (page) setF({ title: page.title || '', category: page.category || 'General', icon: page.icon || '', order: page.order || 0, published: page.published !== false, body: '', bodyFr: '', commentsPublic: page.commentsPublic === true });
     // full bodies aren't in the sidebar tree — fetch the page.
     if (page?.slug) api.get(`/docs/${page.slug}`).then((r) => { setF((s) => ({ ...s, body: r.page.body || '', bodyFr: r.page.bodyFr || '' })); baseRef.current = { version: r.page.version ?? null, body: r.page.body || '', bodyFr: r.page.bodyFr || '' }; }).catch(() => {});
     // eslint-disable-next-line
@@ -434,7 +443,7 @@ function DocEditor({ page, tree, onClose, onSaved }) {
     if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) return toast.error('Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.');
     setBusy(true);
     try {
-      const b = { title: f.title, category: f.category || 'General', icon: f.icon || null, order: Number(f.order) || 0, published: f.published, body: f.body, bodyFr: f.bodyFr || null,
+      const b = { title: f.title, category: f.category || 'General', icon: f.icon || null, order: Number(f.order) || 0, published: f.published, body: f.body, bodyFr: f.bodyFr || null, commentsPublic: f.commentsPublic,
         ...(page && baseRef.current.version != null ? { baseVersion: baseRef.current.version } : {}) };
       const r = page ? await api.patch(`/docs/${page.id}`, b) : await api.post('/docs', b);
       toast.success(page ? 'Page saved.' : 'Page created.');
@@ -474,6 +483,8 @@ function DocEditor({ page, tree, onClose, onSaved }) {
       footer={<>
         {page && <Button variant="ghost" className="!text-red-400 mr-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
         {page && <Button variant="ghost" onClick={() => setShowHistory(true)}><History size={15} /> History</Button>}
+        {page && <Button variant="ghost" onClick={() => setShowComments(true)}><MessageSquare size={15} /> Comments</Button>}
+        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2" title="Show the comment thread to readers on the published page"><input type="checkbox" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} /> {f.commentsPublic ? <Globe size={13} className="text-emerald-400" /> : <MessageSquare size={13} />} Public comments</label>
         <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2"><input type="checkbox" checked={f.published} onChange={(e) => setF({ ...f, published: e.target.checked })} /> Published</label>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> Save</>}</Button>
@@ -510,6 +521,7 @@ function DocEditor({ page, tree, onClose, onSaved }) {
         placeholder={fr ? 'Traduction française (optionnelle)…' : 'Write with GitBook-style blocks — use the Blocks button.'} />
       {showHistory && page && <HistoryModal base={`/docs/${page.id}`} onClose={() => setShowHistory(false)}
         onRestore={(rev) => { setF((s) => ({ ...s, title: rev.title || s.title, body: rev.body || '', bodyFr: rev.bodyFr ?? s.bodyFr })); setTab('en'); }} />}
+      {showComments && page && <CommentsModal base={`/docs/${page.id}`} onClose={() => setShowComments(false)} />}
       {mergeUI?.queue?.length > 0 && (() => { const cur = mergeUI.queue[0]; return (
         <DiffMergeModal open base={cur.base} mine={cur.mine} theirs={cur.theirs} langLabel={cur.langLabel}
           onClose={() => setMergeUI(null)}
