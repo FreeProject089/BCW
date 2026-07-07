@@ -1318,6 +1318,15 @@ export function Dashboard() {
 
   const list = items.data?.items || [];
   const rlist = repos.data?.repos || [];
+  // My items — search + kind/status filters.
+  const [itemQ, setItemQ] = useState('');
+  const [itemKind, setItemKind] = useState('all');
+  const [itemStatus, setItemStatus] = useState('all');
+  const iq = itemQ.trim().toLowerCase();
+  const filteredItems = list.filter((it) =>
+    (!iq || it.name?.toLowerCase().includes(iq))
+    && (itemKind === 'all' || it.kind === itemKind)
+    && (itemStatus === 'all' || (itemStatus === 'deleting' ? !!it.deleteAt : it.status === itemStatus)));
   const stats = [
     { icon: Package, label: t('dash.items', 'Items'), value: list.length },
     { icon: CheckCircle2, label: t('dash.published', 'Published'), value: list.filter((i) => i.status === 'PUBLISHED').length, tone: 'text-emerald-400' },
@@ -1365,8 +1374,18 @@ export function Dashboard() {
               <h2 className="font-semibold flex items-center gap-2"><Package size={16} /> {t('dash.myitems', 'My items')}</h2>
               <Button size="sm" onClick={() => setOpen(true)}><Upload size={14} /> {t('dash.new', 'New')}</Button>
             </div>
-            {items.loading ? <Loading /> : (list.length ? <div className="space-y-2">
-              {list.map((it) => { const I = KIND_ICON[it.kind] || Package; const v = it.kind === 'PLUGIN' ? it.meta?.validation : null; return (
+            {list.length > 3 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+                  <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('dash.search', 'Search my items…')} value={itemQ} onChange={(e) => setItemQ(e.target.value)} /></div>
+                <Select className="!w-auto !py-1.5 !text-sm" value={itemKind} onChange={(e) => setItemKind(e.target.value)}>
+                  <option value="all">{t('dash.allkinds', 'All kinds')}</option><option value="APP">APP</option><option value="PLUGIN">PLUGIN</option><option value="THEME">THEME</option><option value="PRESET">PRESET</option></Select>
+                <Select className="!w-auto !py-1.5 !text-sm" value={itemStatus} onChange={(e) => setItemStatus(e.target.value)}>
+                  <option value="all">{t('dash.allstatus', 'All statuses')}</option><option value="PUBLISHED">Published</option><option value="PENDING">Pending</option><option value="REJECTED">Rejected</option><option value="deleting">Deleting</option></Select>
+              </div>
+            )}
+            {items.loading ? <Loading /> : (list.length ? (filteredItems.length ? <div className="space-y-2">
+              {filteredItems.map((it) => { const I = KIND_ICON[it.kind] || Package; const v = it.kind === 'PLUGIN' ? it.meta?.validation : null; return (
                 <Card key={it.id} className="p-4 flex items-center gap-3">
                   <I size={18} className="text-[var(--primary-2)] shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -1383,7 +1402,8 @@ export function Dashboard() {
                     : <><Badge tone={statusTone(it.status)}>{it.status}</Badge>
                         <Button size="sm" variant="ghost" onClick={() => setEditing(it)}><PenSquare size={14} /> <span className="hidden sm:inline">{t('dash.viewedit', 'View / edit')}</span></Button></>}
                 </Card>); })}
-            </div> : <EmptyState icon={Inbox} title={t('dash.noitems', 'No items yet')} sub={t('dash.noitems.s', 'Submit your first app, plugin, theme or preset.')}>
+            </div> : <div className="text-sm text-[var(--muted)] py-8 text-center">{t('dash.nomatch', 'No items match your filters.')}</div>)
+              : <EmptyState icon={Inbox} title={t('dash.noitems', 'No items yet')} sub={t('dash.noitems.s', 'Submit your first app, plugin, theme or preset.')}>
               <Button variant="primary" onClick={() => setOpen(true)}><Upload size={15} /> {t('sub.title', 'Submit content')}</Button></EmptyState>)}
           </div>}
 
@@ -4186,9 +4206,16 @@ function LedgerRow({ row }) {
 function AdminStorage() {
   const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/admin/storage'), []);
+  const [repoQ, setRepoQ] = useState('');   // search: hosted repos
+  const [pendQ, setPendQ] = useState('');   // search: pending deletions
   const cancelRepoDeletion = async (r) => { try { await api.post(`/admin/repos/${r.id}/delete/cancel`); toast.success(`"${r.name}" is back online.`); reload(); } catch { toast.error('Failed.'); } };
   if (loading) return <Loading />;
   const d = data || {};
+  const rq = repoQ.trim().toLowerCase();
+  const filteredRepos = (d.topRepos || []).filter((r) => !rq || r.name?.toLowerCase().includes(rq) || r.owner?.toLowerCase().includes(rq));
+  const pq = pendQ.trim().toLowerCase();
+  const pendItems = (d.pending?.items || []).filter((i) => !pq || i.name?.toLowerCase().includes(pq) || i.kind?.toLowerCase().includes(pq));
+  const pendRepos = (d.pending?.repos || []).filter((r) => !pq || r.name?.toLowerCase().includes(pq) || r.owner?.toLowerCase().includes(pq));
   const areas = d.areas || [];
   const total = d.totals?.bytes || 0;
   const colors = ['bg-orange-500', 'bg-amber-400', 'bg-sky-400', 'bg-red-400'];
@@ -4262,23 +4289,35 @@ function AdminStorage() {
       </div>
 
       <Card className="p-4 mb-4">
-        <div className="text-sm font-medium mb-3">Hosted repos</div>
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <div className="text-sm font-medium">Hosted repos <span className="text-[var(--faint)] font-normal">({(d.topRepos || []).length})</span></div>
+          {(d.topRepos || []).length > 5 && (
+            <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+              <Input className="!pl-8 !py-1.5 !text-sm" placeholder="Search name or owner…" value={repoQ} onChange={(e) => setRepoQ(e.target.value)} /></div>
+          )}
+        </div>
         <div className="grid grid-cols-3 gap-3 text-center mb-3">
           <div><div className="text-xl font-bold">{d.db?.hostedRepos || 0}</div><div className="text-xs text-[var(--muted)]">repos</div></div>
           <div><div className="text-xl font-bold">{fmtBytes(d.db?.repoUsedBytes || 0)}</div><div className="text-xs text-[var(--muted)]">used</div></div>
           <div><div className="text-xl font-bold">{fmtBytes(d.db?.repoAllocatedBytes || 0)}</div><div className="text-xs text-[var(--muted)]">allocated (quota)</div></div>
         </div>
-        {(d.topRepos || []).length > 0 && <div className="space-y-1.5 border-t border-[var(--line)] pt-3">
-          {d.topRepos.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm"><Server size={13} className="text-[var(--faint)] shrink-0" /><span className="flex-1 truncate">{r.name} <span className="text-[var(--faint)]">· {r.owner}</span></span><span className="text-xs text-[var(--muted)] tabular-nums">{fmtBytes(r.used)} / {fmtBytes(r.quota)}</span></div>)}
-        </div>}
+        {filteredRepos.length > 0 ? <div className="space-y-1.5 border-t border-[var(--line)] pt-3 max-h-72 overflow-auto">
+          {filteredRepos.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm"><Server size={13} className="text-[var(--faint)] shrink-0" /><span className="flex-1 truncate">{r.name} <span className="text-[var(--faint)]">· {r.owner}</span></span><span className="text-xs text-[var(--muted)] tabular-nums">{fmtBytes(r.used)} / {fmtBytes(r.quota)}</span></div>)}
+        </div> : <div className="text-sm text-[var(--muted)] border-t border-[var(--line)] pt-3">{rq ? 'No repos match your search.' : 'No hosted repos.'}</div>}
       </Card>
 
       <Card className="p-4">
-        <div className="text-sm font-medium mb-3 flex items-center gap-2"><Trash2 size={14} className="text-red-400" /> Pending deletions (72h grace){pending > 0 && <Badge tone="red">{pending}</Badge>}</div>
-        {pending ? <div className="space-y-1.5">
-          {(d.pending.items || []).map((i) => { const I = KIND_ICON[i.kind] || Package; return <div key={i.id} className="flex items-center gap-2 text-sm"><I size={14} className="text-[var(--faint)] shrink-0" /><Badge>{i.kind}</Badge><span className="flex-1 truncate">{i.name}</span><span className="text-xs text-red-400">in {fmtRemaining(i.deleteAt)}</span></div>; })}
-          {(d.pending.repos || []).map((r) => <div key={r.id} className="flex items-center gap-2 text-sm"><Server size={14} className="text-[var(--faint)] shrink-0" /><Badge>repo</Badge><span className="flex-1 truncate">{r.name} <span className="text-[var(--faint)]">· {r.owner}</span></span><span className="text-xs text-red-400">in {fmtRemaining(r.deleteAt)}</span><Button size="sm" variant="ghost" onClick={() => cancelRepoDeletion(r)}>Cancel</Button></div>)}
-        </div> : <div className="text-sm text-[var(--muted)]">Nothing scheduled for deletion.</div>}
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <div className="text-sm font-medium flex items-center gap-2"><Trash2 size={14} className="text-red-400" /> Pending deletions (72h grace){pending > 0 && <Badge tone="red">{pending}</Badge>}</div>
+          {pending > 5 && (
+            <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+              <Input className="!pl-8 !py-1.5 !text-sm" placeholder="Search name, owner or kind…" value={pendQ} onChange={(e) => setPendQ(e.target.value)} /></div>
+          )}
+        </div>
+        {pending ? ((pendItems.length + pendRepos.length) ? <div className="space-y-1.5 max-h-72 overflow-auto">
+          {pendItems.map((i) => { const I = KIND_ICON[i.kind] || Package; return <div key={i.id} className="flex items-center gap-2 text-sm"><I size={14} className="text-[var(--faint)] shrink-0" /><Badge>{i.kind}</Badge><span className="flex-1 truncate">{i.name}</span><span className="text-xs text-red-400">in {fmtRemaining(i.deleteAt)}</span></div>; })}
+          {pendRepos.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm"><Server size={14} className="text-[var(--faint)] shrink-0" /><Badge>repo</Badge><span className="flex-1 truncate">{r.name} <span className="text-[var(--faint)]">· {r.owner}</span></span><span className="text-xs text-red-400">in {fmtRemaining(r.deleteAt)}</span><Button size="sm" variant="ghost" onClick={() => cancelRepoDeletion(r)}>Cancel</Button></div>)}
+        </div> : <div className="text-sm text-[var(--muted)]">No pending deletions match your search.</div>) : <div className="text-sm text-[var(--muted)]">Nothing scheduled for deletion.</div>}
       </Card>
 
       {d.telemetryExternal && <p className="text-xs text-[var(--faint)] mt-3">Telemetry replays (rrweb) are stored by the separate BMM telemetry service and are not counted here.</p>}

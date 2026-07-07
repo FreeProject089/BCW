@@ -4,7 +4,7 @@ import {
   Server, GitBranch, Star, Plus, Pencil, Trash2, UploadCloud, Eye, EyeOff, CheckCircle2,
   XCircle, Clock, ShieldCheck, ExternalLink, Tag, Users, HardDrive, Settings2, Receipt, Printer, Rocket,
   Files, FileText, FileJson, FolderUp, CreditCard, Search, X, Wifi, WifiOff, Zap, Lock, Download, Copy, RefreshCw, AlertTriangle, LayoutDashboard, MoreHorizontal, Ticket,
-  Ban, Globe, Shield, ChevronDown, Fingerprint,
+  Ban, Globe, Shield, ChevronDown, Fingerprint, Info,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api, uploadRepoFile } from './api.js';
@@ -344,6 +344,16 @@ export function MyRepos() {
   const [poolAdd, setPoolAdd] = useState(null);
   const repos = data?.repos || [];
   const shared = data?.shared || [];
+  // Search + status filter for the repo list.
+  const [q, setQ] = useState('');
+  const [statusF, setStatusF] = useState('all'); // all | online | offline | deleting
+  const nq = q.trim().toLowerCase();
+  const filteredRepos = repos.filter((r) =>
+    (!nq || r.name?.toLowerCase().includes(nq) || r.description?.toLowerCase().includes(nq) || r.fingerprint?.toLowerCase().includes(nq))
+    && (statusF === 'all'
+      || (statusF === 'deleting' ? !!r.deleteAt
+        : statusF === 'online' ? (r.status === 'ONLINE' && !r.deleteAt)
+        : /* offline */ (r.status !== 'ONLINE' && !r.deleteAt))));
   const isFeatured = (r) => r.featuredUntil && new Date(r.featuredUntil) > new Date();
 
   // Push re-runs the auto check: the SHA is recomputed from the live repo.json and
@@ -399,9 +409,21 @@ export function MyRepos() {
         <h2 className="font-semibold flex items-center gap-2"><Server size={16} /> {t('repos.mine', 'My Server Repos')}</h2>
         <Button size="sm" variant="primary" onClick={() => setEditing({})}><Plus size={15} /> {t('repos.add', 'Add repo')}</Button>
       </div>
+      {repos.length > 3 && (
+        <div className="flex flex-wrap gap-2 mb-3">
+          <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+            <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('repos.search', 'Search by name, description or ID…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <Select className="!w-auto !py-1.5 !text-sm" value={statusF} onChange={(e) => setStatusF(e.target.value)}>
+            <option value="all">{t('repos.f.all', 'All')}</option>
+            <option value="online">{t('repos.online', 'Online')}</option>
+            <option value="offline">{t('repos.offline', 'Offline')}</option>
+            <option value="deleting">{t('repos.f.deleting', 'Deleting')}</option>
+          </Select>
+        </div>
+      )}
       {loading ? <div className="text-[var(--muted)] text-sm py-4">{t('common.loading', 'Loading…')}</div>
-        : repos.length ? <div className="space-y-2">
-          {repos.map((r) => (
+        : repos.length ? (filteredRepos.length ? <div className="space-y-2">
+          {filteredRepos.map((r) => (
             <Card key={r.id} className="p-4">
               {r.deleteAt && (
                 <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs">
@@ -455,7 +477,8 @@ export function MyRepos() {
               </div>
             </Card>
           ))}
-        </div> : <EmptyState icon={Server} title={t('repos.mine.empty.t', 'No repos yet')} sub={t('repos.mine.empty.s', 'Add a repo to list it publicly, or host one from the Hosting page.')} />}
+        </div> : <EmptyState icon={Search} title={t('repos.nomatch.t', 'No matches')} sub={t('repos.nomatch.s', 'Try a different search or clear the filters.')} />)
+        : <EmptyState icon={Server} title={t('repos.mine.empty.t', 'No repos yet')} sub={t('repos.mine.empty.s', 'Add a repo to list it publicly, or host one from the Hosting page.')} />}
 
       <MyAccessPolicyCard />
 
@@ -815,6 +838,11 @@ export function Billing() {
   const [portalBusy, setPortalBusy] = useState(false);
   const payments = data?.payments || [];
   const hostedRepos = (repoData?.repos || []).filter((r) => r.hosted);
+  const [hq, setHq] = useState(''); const [hStatus, setHStatus] = useState('all');
+  const hnq = hq.trim().toLowerCase();
+  const filteredHosted = hostedRepos.filter((r) =>
+    (!hnq || r.name?.toLowerCase().includes(hnq))
+    && (hStatus === 'all' || (hStatus === 'suspended' ? r.status === 'SUSPENDED' : hStatus === 'online' ? r.status === 'ONLINE' : r.status !== 'ONLINE' && r.status !== 'SUSPENDED')));
   const openPortal = async () => {
     setPortalBusy(true);
     try { const { url } = await api.post('/me/billing/portal'); window.location = url; }
@@ -826,9 +854,24 @@ export function Billing() {
 
       {hostedRepos.length > 0 && (
         <div className="mb-8">
-          <h2 className="font-semibold mb-3 flex items-center gap-2"><Rocket size={16} className="text-[var(--primary-2)]" /> {t('bill.subs', 'Active hosting')}</h2>
+          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+            <h2 className="font-semibold flex items-center gap-2"><Rocket size={16} className="text-[var(--primary-2)]" /> {t('bill.subs', 'Active hosting')}</h2>
+            {hostedRepos.length > 3 && (
+              <div className="flex gap-2">
+                <div className="relative w-40 sm:w-52"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+                  <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('bill.search', 'Search hosting…')} value={hq} onChange={(e) => setHq(e.target.value)} /></div>
+                <Select className="!w-auto !py-1.5 !text-sm" value={hStatus} onChange={(e) => setHStatus(e.target.value)}>
+                  <option value="all">{t('repos.f.all', 'All')}</option><option value="online">{t('repos.online', 'Online')}</option><option value="suspended">Suspended</option></Select>
+              </div>
+            )}
+          </div>
+          {/* Repo hosting is PREPAID (one-time, per term) — deleting a repo stops any
+              future renewal but doesn't refund the current term; there's no recurring
+              charge to cancel. Manage cards/receipts and any recurring subs below. */}
+          <p className="text-[11px] text-[var(--faint)] mb-2 flex items-center gap-1"><Info size={11} /> {t('bill.prepaid.note', 'Hosting is prepaid per term — deleting a repo stops future renewals (no recurring charge to cancel). Manage cards & receipts via “Manage billing”.')}</p>
           <Card className="overflow-hidden p-0">
-            {hostedRepos.map((r) => <SubscriptionRow key={r.id} repo={r} onChanged={reloadRepos} />)}
+            {filteredHosted.length ? filteredHosted.map((r) => <SubscriptionRow key={r.id} repo={r} onChanged={reloadRepos} />)
+              : <div className="px-4 py-6 text-sm text-[var(--muted)] text-center">{t('bill.nomatch', 'No hosting matches your search.')}</div>}
           </Card>
         </div>
       )}
