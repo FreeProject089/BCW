@@ -5,6 +5,7 @@ import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Lan
 import { api } from './api.js';
 import { merge3, hasConflictMarkers } from './merge3.js';
 import HistoryModal from './history-modal.jsx';
+import DiffMergeModal from './diff-merge-modal.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from './i18n.jsx';
 import Markdown, { IconGlyph } from './md.jsx';
@@ -419,6 +420,7 @@ function DocEditor({ page, tree, onClose, onSaved }) {
   // same page merge git-style instead of one silently overwriting the other.
   const baseRef = useRef({ version: null, body: '', bodyFr: '' });
   const [merge, setMerge] = useState(null);
+  const [mergeUI, setMergeUI] = useState(null); // visual conflict resolver queue
   const [showHistory, setShowHistory] = useState(false);
   useEffect(() => {
     if (page) setF({ title: page.title || '', category: page.category || 'General', icon: page.icon || '', order: page.order || 0, published: page.published !== false, body: '', bodyFr: '' });
@@ -439,13 +441,17 @@ function DocEditor({ page, tree, onClose, onSaved }) {
       onSaved(r.page?.slug);
     } catch (x) {
       if (x.status === 409 && x.data?.current) {
-        const cur = x.data.current; const lbl = { mine: 'your changes', theirs: 'their changes' };
-        const mb = merge3(baseRef.current.body, f.body, cur.body || '', lbl);
-        const mbf = merge3(baseRef.current.bodyFr, f.bodyFr || '', cur.bodyFr || '', lbl);
-        setF((s) => ({ ...s, body: mb.text, bodyFr: mbf.text || s.bodyFr }));
+        const cur = x.data.current; const lbl = { mine: 'Your version', theirs: 'Their version' };
+        const fields = [
+          { field: 'body', langLabel: 'EN', base: baseRef.current.body, mine: f.body, theirs: cur.body || '' },
+          { field: 'bodyFr', langLabel: 'FR', base: baseRef.current.bodyFr, mine: f.bodyFr || '', theirs: cur.bodyFr || '' },
+        ];
+        const patch = {}; const queue = [];
+        for (const fd of fields) { const m = merge3(fd.base, fd.mine, fd.theirs, lbl); if (m.conflicts > 0) queue.push(fd); else patch[fd.field] = m.text; }
+        if (Object.keys(patch).length) setF((s) => ({ ...s, ...patch }));
         baseRef.current = { version: cur.version, body: cur.body || '', bodyFr: cur.bodyFr || '' };
-        const conflicts = mb.conflicts + mbf.conflicts; setMerge({ conflicts });
-        if (conflicts > 0) { setTab(mb.conflicts ? 'en' : 'fr'); toast.error(`Someone else edited this page. Merged with ${conflicts} conflict(s) — resolve the markers, then Save.`); }
+        setMerge({ conflicts: queue.length, pending: queue });
+        if (queue.length > 0) { setMergeUI({ queue }); toast.info('Someone else edited this page — resolve the conflicts visually, then Save.'); }
         else toast.info('Merged with edits made by someone else — review, then Save again.');
       } else { toast.error(x.data?.error === 'forbidden' ? 'You don’t have permission.' : x.data?.error || 'Failed.'); }
     }
@@ -472,7 +478,8 @@ function DocEditor({ page, tree, onClose, onSaved }) {
           <GitMerge size={16} className="shrink-0 mt-0.5" />
           <div className="flex-1">
             {merge.conflicts > 0
-              ? <><b>Merged — {merge.conflicts} conflict{merge.conflicts > 1 ? 's' : ''} to resolve.</b> Someone else saved this page while you were editing. Their edits were merged in; fix the <code className="px-1 rounded bg-black/20">{'<<<<<<<'}</code> … <code className="px-1 rounded bg-black/20">{'>>>>>>>'}</code> markers, then Save.</>
+              ? <><b>{merge.conflicts} conflict{merge.conflicts > 1 ? 's' : ''} to resolve.</b> Someone else saved this page while you were editing.{' '}
+                  {mergeUI?.queue?.length ? 'Resolve them in the panel, then Save.' : <>Then Save. {merge.pending && <button className="underline font-medium" onClick={() => setMergeUI({ queue: merge.pending })}>Reopen resolver</button>}</>}</>
               : <><b>Merged cleanly with someone else's edits.</b> Review and Save again.</>}
           </div>
           <button onClick={() => setMerge(null)} className="opacity-70 hover:opacity-100"><X size={14} /></button>
@@ -498,6 +505,16 @@ function DocEditor({ page, tree, onClose, onSaved }) {
         placeholder={fr ? 'Traduction française (optionnelle)…' : 'Write with GitBook-style blocks — use the Blocks button.'} />
       {showHistory && page && <HistoryModal base={`/docs/${page.id}`} onClose={() => setShowHistory(false)}
         onRestore={(rev) => { setF((s) => ({ ...s, title: rev.title || s.title, body: rev.body || '', bodyFr: rev.bodyFr ?? s.bodyFr })); setTab('en'); }} />}
+      {mergeUI?.queue?.length > 0 && (() => { const cur = mergeUI.queue[0]; return (
+        <DiffMergeModal open base={cur.base} mine={cur.mine} theirs={cur.theirs} langLabel={cur.langLabel}
+          onClose={() => setMergeUI(null)}
+          onResolve={(text) => {
+            setF((s) => ({ ...s, [cur.field]: text }));
+            setMergeUI((m) => { const q = m.queue.slice(1); return q.length ? { queue: q } : null; });
+            setMerge((mm) => ({ conflicts: Math.max(0, (mm?.conflicts || 1) - 1) }));
+            if (cur.field === 'bodyFr') setTab('fr');
+          }} />
+      ); })()}
     </Modal>
   );
 }

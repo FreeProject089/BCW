@@ -113,6 +113,7 @@ model User {
   auditLogEntries AuditLogEntry[]
   repoFavorites RepoFavorite[]
   oauthAccounts OAuthAccount[]
+  blogComments  BlogComment[]
 }
 
 // A GitHub/Discord identity linked to a website account — powers "Continue with
@@ -298,8 +299,32 @@ model BlogPost {
   // merges (see merge3.js) instead of clobbering.
   version          Int      @default(1)
   revisions        BlogRevision[]
+  // Editor-collaboration comments (threaded). `commentsPublic` = readers can also SEE
+  // them on the published article (they still can't post — comments are an editor tool).
+  comments         BlogComment[]
+  commentsPublic   Boolean  @default(false)
 
   @@index([showcaseProjectId])
+}
+
+// A threaded comment on a blog post — an editor-collaboration tool (like a PR review
+// comment). Any editor of the post (author / co-author / staff) can read, add, resolve,
+// and EDIT any comment (collaborative). `anchor` optionally pins it to a section/line
+// label. When the post is `commentsPublic`, readers see them read-only.
+model BlogComment {
+  id        String   @id @default(cuid())
+  post      BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String
+  parentId  String?  // null = top-level thread; else a reply to this comment id
+  anchor    String?  // freeform pin label (e.g. a heading or "line 42"); null = general
+  body      String
+  resolved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([postId])
 }
 
 // A snapshot of a blog post's content, captured BEFORE each content save — the edit

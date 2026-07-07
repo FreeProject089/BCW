@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   Newspaper, PenSquare, ImagePlus, Youtube, Link2, Video, Bold, Heading, List, Eye,
   Trash2, Pencil, ArrowLeft, CalendarDays, User as UserIcon, Plus, X, Tag as TagIcon, HelpCircle, Languages, Sparkles,
-  Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge, History,
+  Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge, History, MessageSquare, Globe,
 } from 'lucide-react';
 import { api, uploadBlogImage } from './api.js';
 import { useAuth } from './auth.jsx';
@@ -17,6 +17,8 @@ import SelectionToolbar from './selection-toolbar.jsx';
 import KbdPicker from './kbd-picker.jsx';
 import { merge3, hasConflictMarkers } from './merge3.js';
 import HistoryModal from './history-modal.jsx';
+import DiffMergeModal from './diff-merge-modal.jsx';
+import CommentsModal from './comments-modal.jsx';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal } from './ui.jsx';
 
 // Pick the reader's language version of a post. EN is the base (always present);
@@ -123,6 +125,7 @@ export function BlogPostPage() {
   const { user } = useAuth(); const toast = useToast(); const nav = useNavigate();
   const { data, loading } = useFetch(() => api.get(`/blog/${slug}`), [slug]);
   const [rx, setRx] = useState(null); // { counts, mine } — local so a click updates instantly
+  const [showComments, setShowComments] = useState(false);
   useEffect(() => { if (data?.post) setRx({ counts: data.post.reactionCounts || {}, mine: data.post.myReaction || null }); }, [data]);
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading', 'Loading…')}</div>;
   if (!data?.post) return <EmptyState icon={Newspaper} title={t('blog.notfound', 'Post not found')} />;
@@ -159,6 +162,17 @@ export function BlogPostPage() {
             })}
           </div>
         )}
+
+        {/* Public comment thread — only when the author made it reader-visible. Editors
+            can also post from here (the API gates writes by canComment). */}
+        {p.commentsPublic && (
+          <div className="mt-6">
+            <button onClick={() => setShowComments(true)} className="inline-flex items-center gap-1.5 text-sm text-[var(--muted)] hover:text-[var(--text)] rounded-lg border border-[var(--line)] hover:border-[var(--line-strong)] px-3 py-1.5">
+              <MessageSquare size={14} /> {t('blog.comments', 'View comments')}
+            </button>
+          </div>
+        )}
+        {showComments && <CommentsModal base={`/blog/${p.id}`} onClose={() => setShowComments(false)} />}
 
         {/* author + collaborators */}
         {authors.length > 0 && (
@@ -334,7 +348,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
 function BlogEditor({ post, scopes, onClose, onSaved }) {
   const toast = useToast(); const dialog = useDialog();
   const defaultScope = scopes?.projects?.[0] ? `project:${scopes.projects[0].key}` : scopes?.showcases?.[0] ? `showcase:${scopes.showcases[0].slug}` : 'project:community';
-  const [f, setF] = useState({ scope: defaultScope, cover: '', coverInBody: true, publish: true, title: '', excerpt: '', body: '', titleFr: '', excerptFr: '', bodyFr: '', reactionsEnabled: false, reactionTypes: [], coAuthorEmails: [], showToc: false, tocTitle: '' });
+  const [f, setF] = useState({ scope: defaultScope, cover: '', coverInBody: true, publish: true, title: '', excerpt: '', body: '', titleFr: '', excerptFr: '', bodyFr: '', reactionsEnabled: false, reactionTypes: [], coAuthorEmails: [], showToc: false, tocTitle: '', commentsPublic: false });
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('en'); // en (base) | fr (optional)
   const [collab, setCollab] = useState(''); // pending co-author email input
@@ -343,12 +357,16 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
   const baseRef = useRef({ version: null, body: '', bodyFr: '' });
   const [merge, setMerge] = useState(null); // null | { conflicts, cleanCount }
   const [showHistory, setShowHistory] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  // Visual conflict resolver queue: one entry per field (body / bodyFr) that still has
+  // real conflicts after the 3-way merge. Resolved one at a time in DiffMergeModal.
+  const [mergeUI, setMergeUI] = useState(null); // null | { queue: [{ field, langLabel, base, mine, theirs }] }
   useEffect(() => {
     if (post) {
       setF({ scope: post.showcaseProject ? `showcase:${post.showcaseProject.slug}` : `project:${post.project?.key || 'community'}`, cover: post.cover || '', coverInBody: post.coverInBody !== false, publish: post.status === 'PUBLISHED',
         title: post.title || '', excerpt: post.excerpt || '', body: post.body || '',
         titleFr: post.titleFr || '', excerptFr: post.excerptFr || '', bodyFr: post.bodyFr || '',
-        reactionsEnabled: !!post.reactionsEnabled, reactionTypes: post.reactionTypes || [], coAuthorEmails: [], showToc: !!post.showToc, tocTitle: post.tocTitle || '' });
+        reactionsEnabled: !!post.reactionsEnabled, reactionTypes: post.reactionTypes || [], coAuthorEmails: [], showToc: !!post.showToc, tocTitle: post.tocTitle || '', commentsPublic: post.commentsPublic === true });
       // The list payload (POST_SELECT) has no body — fetch the full post so the
       // editor is pre-filled (otherwise saving trips the "content required" guard).
       if (post.slug) api.get(`/blog/${post.slug}`).then((r) => { const fp = r.post || {}; setF((s) => ({ ...s,
@@ -393,7 +411,7 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
         title: f.title, excerpt: f.excerpt, body: f.body,
         titleFr: f.titleFr || null, excerptFr: f.excerptFr || null, bodyFr: f.bodyFr || null,
         reactionsEnabled: f.reactionsEnabled, reactionTypes: f.reactionTypes, coAuthorEmails: f.coAuthorEmails,
-        showToc: f.showToc, tocTitle: f.tocTitle || null,
+        showToc: f.showToc, tocTitle: f.tocTitle || null, commentsPublic: f.commentsPublic,
         ...(post && baseRef.current.version != null ? { baseVersion: baseRef.current.version } : {}) };
       if (post) await api.patch(`/blog/${post.id}`, body); else await api.post('/blog', body);
       toast.success(post ? 'Post updated.' : 'Post published.'); onSaved();
@@ -401,14 +419,22 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
       // Someone else saved since we loaded → 3-way merge their copy into ours (git-style).
       if (x.status === 409 && x.data?.current) {
         const cur = x.data.current;
-        const lbl = { mine: 'your changes', theirs: 'their changes' };
-        const mb = merge3(baseRef.current.body, f.body, cur.body || '', lbl);
-        const mbf = merge3(baseRef.current.bodyFr, f.bodyFr || '', cur.bodyFr || '', lbl);
-        setF((s) => ({ ...s, body: mb.text, bodyFr: mbf.text || s.bodyFr }));
+        const lbl = { mine: 'Your version', theirs: 'Their version' };
+        // Auto-merge each field; anything with real conflicts goes to the visual resolver.
+        const fields = [
+          { field: 'body', langLabel: 'EN', base: baseRef.current.body, mine: f.body, theirs: cur.body || '' },
+          { field: 'bodyFr', langLabel: 'FR', base: baseRef.current.bodyFr, mine: f.bodyFr || '', theirs: cur.bodyFr || '' },
+        ];
+        const patch = {}; const queue = [];
+        for (const fd of fields) {
+          const m = merge3(fd.base, fd.mine, fd.theirs, lbl);
+          if (m.conflicts > 0) queue.push(fd); else patch[fd.field] = m.text;
+        }
+        if (Object.keys(patch).length) setF((s) => ({ ...s, ...patch }));
         baseRef.current = { version: cur.version, body: cur.body || '', bodyFr: cur.bodyFr || '' };
-        const conflicts = mb.conflicts + mbf.conflicts;
-        setMerge({ conflicts });
-        if (conflicts > 0) { setTab(mb.conflicts ? 'en' : 'fr'); toast.error(`Someone else edited this post. Merged with ${conflicts} conflict(s) — resolve the markers, then Save.`); }
+        const totalConflicts = queue.length;
+        setMerge({ conflicts: totalConflicts, pending: queue });
+        if (totalConflicts > 0) { setMergeUI({ queue }); toast.info('Someone else edited this post — resolve the conflicts visually, then Save.'); }
         else toast.info('Merged with edits made by someone else — review the content, then Save again.');
       } else if (x.status === 409 && x.data?.error === 'blog_limit') {
         const d = x.data;
@@ -432,18 +458,20 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
       footer={<>
         {post && <Button variant="ghost" className="!text-red-400 mr-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
         {post && <Button variant="ghost" onClick={() => setShowHistory(true)}><History size={15} /> History</Button>}
+        {post && <Button variant="ghost" onClick={() => setShowComments(true)}><MessageSquare size={15} /> Comments</Button>}
         <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2"><input type="checkbox" checked={f.publish} onChange={(e) => setF({ ...f, publish: e.target.checked })} /> Published</label>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (post ? 'Save' : 'Publish')}</Button>
       </>}>
-      {/* Concurrent-edit merge banner (git-style): shown after a colliding save was
-          auto-merged. Conflicts must be resolved (markers removed) before saving. */}
+      {/* Concurrent-edit merge banner (git-style): shown after a colliding save. Clean
+          merges just need a re-Save; conflicts open the visual resolver (GitMerge). */}
       {merge && (
         <div className={`mb-3 rounded-xl border px-3.5 py-2.5 text-sm flex items-start gap-2.5 ${merge.conflicts > 0 ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'}`}>
           <GitMerge size={16} className="shrink-0 mt-0.5" />
           <div className="flex-1">
             {merge.conflicts > 0
-              ? <><b>Merged — {merge.conflicts} conflict{merge.conflicts > 1 ? 's' : ''} to resolve.</b> Someone else saved changes while you were editing. Their edits were merged in; find the <code className="px-1 rounded bg-black/20">{'<<<<<<<'}</code> … <code className="px-1 rounded bg-black/20">{'>>>>>>>'}</code> markers, keep the right text, then Save.</>
+              ? <><b>{merge.conflicts} conflict{merge.conflicts > 1 ? 's' : ''} to resolve.</b> Someone else saved while you were editing.{' '}
+                  {mergeUI?.queue?.length ? 'Resolve them in the panel, then Save.' : <>Then Save. {merge.pending && <button className="underline font-medium" onClick={() => setMergeUI({ queue: merge.pending })}>Reopen resolver</button>}</>}</>
               : <><b>Merged cleanly with someone else's edits.</b> Review the content and Save again.</>}
           </div>
           <button onClick={() => setMerge(null)} className="opacity-70 hover:opacity-100"><X size={14} /></button>
@@ -533,10 +561,28 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
               ))}
             </div>
           )}
+          {/* Comments: an editor-collaboration tool. Off = only editors see them; on =
+              readers see them (read-only) on the published article. */}
+          <label className="flex items-start gap-2 mt-3 pt-3 border-t border-[var(--line)] cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} />
+            <span className="text-xs"><span className="font-medium flex items-center gap-1">{f.commentsPublic ? <Globe size={12} className="text-emerald-400" /> : <MessageSquare size={12} />} Comments visible to readers</span>
+              <span className="text-[var(--faint)]">{f.commentsPublic ? 'Readers can read the comment thread (they still can’t post — comments are an editor tool).' : 'Comments stay private to editors (author, co-authors, staff).'}</span></span>
+          </label>
         </div>
       </div>
       {showHistory && post && <HistoryModal base={`/blog/${post.id}`} onClose={() => setShowHistory(false)}
         onRestore={(rev) => { setF((s) => ({ ...s, title: rev.title || s.title, body: rev.body || '', bodyFr: rev.bodyFr ?? s.bodyFr })); setTab('en'); }} />}
+      {showComments && post && <CommentsModal base={`/blog/${post.id}`} onClose={() => setShowComments(false)} />}
+      {mergeUI?.queue?.length > 0 && (() => { const cur = mergeUI.queue[0]; return (
+        <DiffMergeModal open base={cur.base} mine={cur.mine} theirs={cur.theirs} langLabel={cur.langLabel}
+          onClose={() => setMergeUI(null)}
+          onResolve={(text) => {
+            setF((s) => ({ ...s, [cur.field]: text }));
+            setMergeUI((m) => { const q = m.queue.slice(1); return q.length ? { queue: q } : null; });
+            setMerge((mm) => ({ conflicts: Math.max(0, (mm?.conflicts || 1) - 1) }));
+            if (cur.field === 'bodyFr') setTab('fr');
+          }} />
+      ); })()}
     </Modal>
   );
 }

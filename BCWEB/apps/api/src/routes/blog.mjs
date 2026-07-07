@@ -28,6 +28,8 @@ const postSchema = z.object({
   coAuthorEmails: z.array(z.string().email()).max(10).optional(),
   showToc: z.boolean().optional(),
   tocTitle: z.string().max(60).optional().nullable(),
+  // Editor-collaboration comments visible to readers on the published post.
+  commentsPublic: z.boolean().optional(),
 });
 
 // Save an edit-history snapshot of a post's current content, then prune per the
@@ -49,6 +51,10 @@ async function resolveCoAuthorIds(p, emails, primaryAuthorId) {
 }
 
 const STAFF = ['MOD', 'ADMIN', 'SUPERADMIN'];
+
+// An "editor" of a post — staff, the author, or a co-author. The unit of trust for
+// history, comments, and editing. (`user` is req.user: { uid, role }.)
+const canEditPost = (user, post) => !!user && (STAFF.includes(user.role) || post.authorId === user.uid || (post.coAuthorIds || []).includes(user.uid));
 
 // Live count + total content bytes of published/draft posts, optionally scoped to one
 // blog space. Uses octet_length so the "size" matches what actually sits in Postgres.
@@ -247,6 +253,7 @@ export default async function blogRoutes(app) {
       reactionTypes: (b.data.reactionTypes || []).slice(0, 3),
       showToc: !!b.data.showToc,
       tocTitle: b.data.tocTitle || null,
+      commentsPublic: !!b.data.commentsPublic,
       coAuthorIds: await resolveCoAuthorIds(p, b.data.coAuthorEmails, req.user.uid),
     };
     let showcaseConfig = null;
@@ -288,6 +295,7 @@ export default async function blogRoutes(app) {
     if (d.reactionTypes !== undefined) data.reactionTypes = d.reactionTypes.slice(0, 3);
     if (d.showToc !== undefined) data.showToc = d.showToc;
     if (d.tocTitle !== undefined) data.tocTitle = d.tocTitle || null;
+    if (d.commentsPublic !== undefined) data.commentsPublic = d.commentsPublic;
     if (d.coAuthorEmails !== undefined) data.coAuthorIds = await resolveCoAuthorIds(p, d.coAuthorEmails, existing.authorId);
     if (d.projectKey || d.showcaseSlug) {
       if (!(await canPostTo(p, req.user, d))) return reply.code(403).send({ error: 'forbidden' });
@@ -327,6 +335,66 @@ export default async function blogRoutes(app) {
     if (!existing) return { ok: true };
     if (!STAFF.includes(req.user.role) && existing.authorId !== req.user.uid) return reply.code(403).send({ error: 'forbidden' });
     await p.blogPost.delete({ where: { id: req.params.id } }).catch(() => {});
+    return { ok: true };
+  });
+
+  // ── Editor-collaboration comments (threaded, PR-review style) ──
+  // Read: any editor of the post, OR anyone when the post is published + commentsPublic
+  // (read-only). Write/edit/resolve/delete: editors only — and ANY editor may edit ANY
+  // comment (collaborative), matching "les autres éditeurs peuvent lire et rééditer".
+  const shapeComment = (c, nameOf) => ({ id: c.id, parentId: c.parentId, anchor: c.anchor, body: c.body, resolved: c.resolved,
+    author: { id: c.authorId, name: nameOf.get(c.authorId) || 'Unknown', avatar: c.authorAvatar || null }, createdAt: c.createdAt, updatedAt: c.updatedAt });
+
+  app.get('/blog/:id/comments', { preHandler: optionalAuth() }, async (req, reply) => {
+    const p = await db();
+    const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true, status: true, commentsPublic: true } });
+    if (!post) return reply.code(404).send({ error: 'not_found' });
+    const editor = canEditPost(req.user, post);
+    const publicView = post.commentsPublic && post.status === 'PUBLISHED';
+    if (!editor && !publicView) return reply.code(403).send({ error: 'forbidden' });
+    const comments = await p.blogComment.findMany({ where: { postId: req.params.id }, orderBy: { createdAt: 'asc' } });
+    const authors = await p.user.findMany({ where: { id: { in: [...new Set(comments.map((c) => c.authorId))] } }, select: { id: true, displayName: true, avatar: true } });
+    const nameOf = new Map(authors.map((u) => [u.id, u.displayName]));
+    const avaOf = new Map(authors.map((u) => [u.id, u.avatar]));
+    return { canComment: editor, commentsPublic: post.commentsPublic,
+      comments: comments.map((c) => shapeComment({ ...c, authorAvatar: avaOf.get(c.authorId) }, nameOf)) };
+  });
+
+  app.post('/blog/:id/comments', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ body: z.string().min(1).max(5000), anchor: z.string().max(120).optional().nullable(), parentId: z.string().optional().nullable() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true } });
+    if (!post) return reply.code(404).send({ error: 'not_found' });
+    if (!canEditPost(req.user, post)) return reply.code(403).send({ error: 'forbidden' });
+    // A reply must point at a real comment on this post.
+    if (b.data.parentId) { const parent = await p.blogComment.findFirst({ where: { id: b.data.parentId, postId: req.params.id } }); if (!parent) return reply.code(400).send({ error: 'bad_parent' }); }
+    const c = await p.blogComment.create({ data: { postId: req.params.id, authorId: req.user.uid, body: b.data.body, anchor: b.data.anchor || null, parentId: b.data.parentId || null } });
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true, avatar: true } });
+    return reply.code(201).send({ comment: shapeComment({ ...c, authorAvatar: me?.avatar }, new Map([[req.user.uid, me?.displayName]])) });
+  });
+
+  app.patch('/blog/:id/comments/:cid', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ body: z.string().min(1).max(5000).optional(), resolved: z.boolean().optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true } });
+    if (!post) return reply.code(404).send({ error: 'not_found' });
+    if (!canEditPost(req.user, post)) return reply.code(403).send({ error: 'forbidden' }); // ANY editor may edit ANY comment
+    const exists = await p.blogComment.findFirst({ where: { id: req.params.cid, postId: req.params.id } });
+    if (!exists) return reply.code(404).send({ error: 'not_found' });
+    const c = await p.blogComment.update({ where: { id: req.params.cid }, data: {
+      ...(b.data.body !== undefined ? { body: b.data.body } : {}), ...(b.data.resolved !== undefined ? { resolved: b.data.resolved } : {}) } });
+    return { comment: { id: c.id, body: c.body, resolved: c.resolved, updatedAt: c.updatedAt } };
+  });
+
+  app.delete('/blog/:id/comments/:cid', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true } });
+    if (!post) return reply.code(404).send({ error: 'not_found' });
+    if (!canEditPost(req.user, post)) return reply.code(403).send({ error: 'forbidden' });
+    // Deleting a thread root removes its replies too.
+    await p.blogComment.deleteMany({ where: { postId: req.params.id, OR: [{ id: req.params.cid }, { parentId: req.params.cid }] } }).catch(() => {});
     return { ok: true };
   });
 

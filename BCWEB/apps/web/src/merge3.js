@@ -78,3 +78,65 @@ export function merge3(base, mine, theirs, labels = { mine: 'yours', theirs: 'th
 export function hasConflictMarkers(text) {
   return /^<<<<<<< |^=======$|^>>>>>>> /m.test(String(text || ''));
 }
+
+// Structured variant for the visual resolver: instead of inline <<<<<<< markers, return
+// an ordered list of hunks the UI can render GitHub-style and resolve hunk-by-hunk.
+//   { type: 'common',   lines: [...] }                       — unchanged / auto-merged text
+//   { type: 'conflict', mine: [...], theirs: [...], base }   — needs a human choice
+// `assembleHunks(hunks, choices)` turns resolved choices back into text.
+function mergeHunks(base, mine, theirs) {
+  const mMap = matchMap(base, mine);
+  const tMap = matchMap(base, theirs);
+  const anchors = [];
+  for (let i = 0; i < base.length; i++) if (mMap[i] >= 0 && tMap[i] >= 0) anchors.push(i);
+
+  const hunks = []; let conflicts = 0;
+  const pushCommon = (lines) => {
+    if (!lines.length) return;
+    const last = hunks[hunks.length - 1];
+    if (last && last.type === 'common') last.lines.push(...lines); // coalesce
+    else hunks.push({ type: 'common', lines: [...lines] });
+  };
+  let bi = 0, mi = 0, ti = 0;
+  const region = (bSlice, mSlice, tSlice) => {
+    if (eq(mSlice, tSlice)) return pushCommon(mSlice);      // same edit on both sides
+    if (eq(mSlice, bSlice)) return pushCommon(tSlice);      // only theirs changed
+    if (eq(tSlice, bSlice)) return pushCommon(mSlice);      // only mine changed
+    conflicts++;
+    hunks.push({ type: 'conflict', mine: [...mSlice], theirs: [...tSlice], base: [...bSlice] });
+  };
+  for (const a of anchors) {
+    region(base.slice(bi, a), mine.slice(mi, mMap[a]), theirs.slice(ti, tMap[a]));
+    pushCommon([base[a]]);
+    bi = a + 1; mi = mMap[a] + 1; ti = tMap[a] + 1;
+  }
+  region(base.slice(bi), mine.slice(mi), theirs.slice(ti));
+  return { hunks, conflicts };
+}
+
+export function merge3Hunks(base, mine, theirs) {
+  const B = String(base ?? '').split('\n');
+  const M = String(mine ?? '').split('\n');
+  const T = String(theirs ?? '').split('\n');
+  if (B.length > CAP || M.length > CAP || T.length > CAP) {
+    return { hunks: [{ type: 'conflict', mine: M, theirs: T, base: B }], conflicts: 1 };
+  }
+  return mergeHunks(B, M, T);
+}
+
+// Reassemble resolved hunks into text. `choices` maps conflict-hunk index → one of
+// 'mine' | 'theirs' | 'both' | 'theirs-mine' (both, theirs first) | { lines } (manual edit).
+export function assembleHunks(hunks, choices) {
+  const out = [];
+  hunks.forEach((h, i) => {
+    if (h.type === 'common') { out.push(...h.lines); return; }
+    const c = choices[i];
+    if (c && typeof c === 'object' && Array.isArray(c.lines)) out.push(...c.lines);
+    else if (c === 'mine') out.push(...h.mine);
+    else if (c === 'theirs') out.push(...h.theirs);
+    else if (c === 'both') out.push(...h.mine, ...h.theirs);
+    else if (c === 'theirs-mine') out.push(...h.theirs, ...h.mine);
+    // unresolved → drop nothing visible; caller gates save on all conflicts resolved
+  });
+  return out.join('\n');
+}
