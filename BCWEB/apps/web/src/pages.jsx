@@ -3482,8 +3482,38 @@ function AdminProjects() {
             onRemoveWhitelist={(e) => saveVisibility('whitelist', (activeMeta.visibilityWhitelist || []).filter((a) => !(a.type === e.type && a.id === e.id)))} />
         </Card>
       )}
+      {/* Existing scheduled update (a single staged content swap per page) — visible
+          here with Edit (reopens the form pre-filled) + Cancel (clears the schedule). */}
+      {(() => {
+        const sched = isShowcase ? activeShow : activeMeta;
+        if (!sched?.scheduledAt) return null;
+        const when = new Date(sched.scheduledAt);
+        const due = when.getTime() <= Date.now();
+        const nx = sched.scheduledNext || {};
+        const parts = [nx.name && `name → “${nx.name}”`, nx.short && `short → “${nx.short}”`, nx.config && 'config changes'].filter(Boolean);
+        const cancelSchedule = async () => {
+          try {
+            if (isShowcase) await api.put(`/admin/showcase/${activeShow.id}/schedule`, { at: null });
+            else await api.put(`/admin/projects/${active}/schedule`, { at: null });
+            toast.success('Scheduled update cancelled.'); reload(); show.reload?.(); adminMeta.reload?.();
+          } catch { toast.error('Could not cancel.'); }
+        };
+        return (
+          <div className={`mb-3 rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5 ${due ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-[var(--primary)]/40 bg-[var(--primary)]/8'}`}>
+            <Clock size={16} className={`shrink-0 mt-0.5 ${due ? 'text-emerald-400' : 'text-[var(--primary-2)]'}`} />
+            <div className="flex-1 min-w-0 text-sm">
+              <div className="font-medium">{due ? 'Scheduled update is due' : 'Scheduled update pending'} <span className="font-normal text-[var(--muted)]">· {when.toLocaleString()}</span></div>
+              <div className="text-xs text-[var(--faint)]">{parts.length ? `Will apply: ${parts.join(', ')}.` : 'A staged content update.'}{due ? ' It applies on the next public view of the page.' : ''}</div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button size="sm" variant="ghost" onClick={() => { if (nx.config) setText(JSON.stringify(nx.config, null, 2)); setScheduling(true); }} title="Load the staged content into the editor and reschedule"><PenSquare size={13} /> Edit</Button>
+              <Button size="sm" variant="ghost" className="!text-red-400" onClick={cancelSchedule}><X size={13} /> Cancel</Button>
+            </div>
+          </div>
+        );
+      })()}
       <div className="flex justify-end mb-4">
-        <Button size="sm" variant="ghost" onClick={() => setScheduling(true)} title="Stage a future content swap for this page"><Clock size={13} /> Schedule an update</Button>
+        <Button size="sm" variant="ghost" onClick={() => setScheduling(true)} title="Stage a future content swap for this page"><Clock size={13} /> {(isShowcase ? activeShow : activeMeta)?.scheduledAt ? 'Reschedule' : 'Schedule an update'}</Button>
       </div>
       <div className="rounded-2xl overflow-hidden border border-[var(--line)]" style={{ boxShadow: 'var(--shadow)' }}>
         <div className="flex items-center justify-between gap-2 px-4 py-2.5 code-chrome flex-wrap">
