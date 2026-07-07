@@ -790,6 +790,7 @@ export function Hosting() {
       if (x.data?.error === 'creator_link_required') { toast.error(t('hosting.err.link', 'Link a BMM creator id first (Profile → Creator IDs) to host a repo.')); return nav('/profile'); }
       const e = x.data?.error;
       toast.error(e === 'capacity_full' ? t('hosting.err.capacity', 'No capacity available right now.')
+        : e === 'over_limit' ? t('hosting.err.overlimit', 'That exceeds the current per-repo limits (max {u} Mbps upload, {c} vCPU). Lower them and retry.').replace('{u}', x.data.maxUploadMbps).replace('{c}', x.data.maxCpuShare)
         : e === 'free_tier_full' ? t('hosting.err.freetierfull', 'The free plan is sold out right now — every free slot is taken. Try a paid plan, or check back later.')
         : e === 'free_tier_already_used' ? t('hosting.err.freeused', "You've already used your one free repo (per account and per linked creator id) — pick a paid plan instead.")
         : e === 'stripe_not_configured' ? t('hosting.err.stripe', 'Payments not configured yet.') : t('hosting.err.checkout', 'Checkout failed.'));
@@ -926,6 +927,7 @@ function CustomPlanModal({ open, onClose, onCheckout, months = 12, setMonths, te
   const { t } = useI18n();
   const [spec, setSpec] = useState({ storageGB: 20, uploadMbps: 8, cpuShare: 0.5 });
   const [price, setPrice] = useState(null);
+  const [factors, setFactors] = useState(null); // { maxUploadMbps, maxCpuShare } — admin/scarcity caps
   const [promo, setPromo] = useState(null);
   const disc = termDisc[months] || 0;
   const afterTerm = price == null ? null : Math.round(price * months * (1 - disc));
@@ -934,14 +936,20 @@ function CustomPlanModal({ open, onClose, onCheckout, months = 12, setMonths, te
     if (!open) return;
     const id = setTimeout(() => {
       api.get(`/hosting/price?${new URLSearchParams({ storageGB: spec.storageGB, uploadMbps: spec.uploadMbps, cpuShare: spec.cpuShare })}`)
-        .then((r) => setPrice(r.priceMonthlyCents)).catch(() => setPrice(null));
+        .then((r) => { setPrice(r.priceMonthlyCents); setFactors(r.factors || null); }).catch(() => setPrice(null));
     }, 200);
     return () => clearTimeout(id);
   }, [open, spec]);
+  // Clamp the upload/CPU sliders to the current per-repo ceilings (admin + scarcity).
+  const upMax = Math.min(200, factors?.maxUploadMbps ?? 200);
+  const cpuMax = Math.min(4, factors?.maxCpuShare ?? 4);
+  useEffect(() => {
+    setSpec((sp) => (sp.uploadMbps > upMax || sp.cpuShare > cpuMax) ? { ...sp, uploadMbps: Math.min(sp.uploadMbps, upMax), cpuShare: Math.min(sp.cpuShare, cpuMax) } : sp);
+  }, [upMax, cpuMax]);
   const sliders = [
     { key: 'storageGB', label: t('hosting.s.storage', 'Storage'), min: 1, max: 200, step: 1, fmt: (v) => `${v} GB`, icon: HardDrive },
-    { key: 'uploadMbps', label: t('hosting.s.upload', 'Upload speed'), min: 1, max: 200, step: 1, fmt: (v) => `${v} Mbps`, icon: Zap },
-    { key: 'cpuShare', label: t('hosting.s.cpu', 'CPU share'), min: 0.1, max: 4, step: 0.1, fmt: (v) => `${v} vCPU`, icon: Cpu },
+    { key: 'uploadMbps', label: t('hosting.s.upload', 'Upload speed'), min: 1, max: upMax, step: 1, fmt: (v) => `${v} Mbps`, icon: Zap },
+    { key: 'cpuShare', label: t('hosting.s.cpu', 'CPU share'), min: 0.1, max: cpuMax, step: 0.1, fmt: (v) => `${v} vCPU`, icon: Cpu },
   ];
   return (
     <Modal open={open} onClose={onClose} title={t('hosting.custom.modaltitle', 'Build a custom plan')} icon={Sliders} width="max-w-lg"
@@ -4937,6 +4945,8 @@ const SETTINGS_GROUPS = [
     ['catalog.freeTierCapEnabled', 'Cap the free catalog-upload pool', 'When on, free catalog file hosting goes "sold out" once free uploads together reach the cap below — paid uploads never count against this.', 'bool'],
     ['catalog.freeTierCapMB', 'Free catalog-upload pool cap (MB)', 'Total payload bytes the free catalog tier can ever occupy across every user, once the toggle above is on.', 'number'],
     ['telemetry.storageLimitGB', 'BMM telemetry storage limit (GB)', 'How much storage the (separate) BMM telemetry database is allowed — shown as used vs. allocated in Total capacity above. 0 = untracked.', 'number'],
+    ['hosting.maxUploadMbps', 'Max upload per repo (Mbps)', 'Hard ceiling on the upload bandwidth a single repo can request (custom plans + upgrades). Scarcity may lower it further as capacity fills. Default 1000.', 'number'],
+    ['hosting.maxCpuShare', 'Max CPU per repo (vCPU share)', 'Hard ceiling on the CPU share a single repo can request. Scarcity may lower it further as capacity fills. Default 8.', 'number'],
   ] },
   { title: 'Blog, docs & history', icon: Newspaper, keys: [
     ['blog.maxTotalPosts', 'Max total blog articles', 'Hard cap on the number of blog articles across the whole site. 0 = unlimited. New articles are refused once reached.', 'number'],

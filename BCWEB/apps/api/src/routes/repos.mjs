@@ -279,6 +279,13 @@ export default async function repoRoutes(app) {
 
     const cap = await capacityStatus(p);
     if (!cap.enabled) return reply.code(403).send({ error: 'hosting_disabled' });
+    // Enforce the admin CPU/upload ceilings (unless the repo already exceeds them —
+    // never force an existing repo DOWN, just don't let an upgrade push further past).
+    const cfCaps = capacityFactors(cap);
+    if ((targetUploadMbps > cfCaps.maxUploadMbps && targetUploadMbps > (repo.uploadLimitKbps || 0) / 1024)
+      || (targetCpuShare > cfCaps.maxCpuShare && targetCpuShare > (repo.cpuShare || 0))) {
+      return reply.code(409).send({ error: 'over_limit', maxUploadMbps: cfCaps.maxUploadMbps, maxCpuShare: cfCaps.maxCpuShare });
+    }
     // This repo's CURRENT quota already counts toward allocatedGB — subtract it
     // before checking the delta, so upgrading doesn't get double-counted against
     // the pool (the exact same "reserved, no one else can use it" accounting that

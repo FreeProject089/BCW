@@ -113,6 +113,10 @@ export async function capacityStatus(p) {
     freeTierFreeGB: freeTierCapEnabled ? Math.max(0, freeTierCapGB - freeTierUsedGB) : null,
     telemetryLimitGB, telemetryUsedGB: telemetryUsed,
     telemetryFreeGB: telemetryLimitGB > 0 && telemetryUsed != null ? Math.max(0, telemetryLimitGB - telemetryUsed) : null,
+    // Admin-set hard ceilings on what a single repo may request (capacityFactors clamps
+    // its scarcity-based caps to these; checkout/resize enforce them).
+    maxCpuShareCap: Number(s['hosting.maxCpuShare'] ?? 8),
+    maxUploadMbpsCap: Number(s['hosting.maxUploadMbps'] ?? 1000),
   };
 }
 
@@ -160,8 +164,10 @@ const TERM_DISCOUNT = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.20, 24: 0.35 };
 export function capacityFactors(cap) {
   const fill = cap.usableGB ? Math.min(1, cap.allocatedGB / cap.usableGB) : 0;
   const priceMult = fill < 0.6 ? 1 : +(1 + (fill - 0.6) * 0.9).toFixed(3); // up to ~1.36x when full
-  const maxUploadMbps = fill > 0.9 ? 100 : fill > 0.75 ? 250 : 1000;
-  const maxCpuShare = fill > 0.9 ? 1 : fill > 0.75 ? 2 : 8;
+  // Scarcity caps, then clamped to the admin-set hard ceilings (hosting.maxUploadMbps /
+  // hosting.maxCpuShare, surfaced via capacityStatus).
+  const maxUploadMbps = Math.min(fill > 0.9 ? 100 : fill > 0.75 ? 250 : 1000, cap.maxUploadMbpsCap ?? 1000);
+  const maxCpuShare = Math.min(fill > 0.9 ? 1 : fill > 0.75 ? 2 : 8, cap.maxCpuShareCap ?? 8);
   return { fill: +fill.toFixed(3), priceMult, maxUploadMbps, maxCpuShare };
 }
 export function termTotalCents(monthlyCents, months, priceMult) {
@@ -216,6 +222,11 @@ export default async function hostingRoutes(app) {
     let plan;
     if (b.data.custom) {
       const cu = b.data.custom;
+      // Enforce the admin CPU/upload ceilings server-side (the UI clamps too, but never trust it).
+      const cf0 = capacityFactors(cap);
+      if (cu.uploadMbps > cf0.maxUploadMbps || cu.cpuShare > cf0.maxCpuShare) {
+        return reply.code(409).send({ error: 'over_limit', maxUploadMbps: cf0.maxUploadMbps, maxCpuShare: cf0.maxCpuShare });
+      }
       const s = await settings(p);
       plan = await p.hostingPlan.create({ data: {
         name: `Custom ${cu.storageGB}GB`, storageGB: cu.storageGB,
