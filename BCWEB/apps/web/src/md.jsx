@@ -14,10 +14,13 @@ const SANITIZE_SCHEMA = {
   ...defaultSchema,
   tagNames: [...new Set([...(defaultSchema.tagNames || []),
     'div', 'span', 'section', 'details', 'summary', 'nav', 'figure', 'figcaption',
-    'video', 'audio', 'source', 'iframe', 'kbd', 'doc-icon', 'doc-kbd'])],
+    'video', 'audio', 'source', 'iframe', 'kbd', 'doc-icon', 'doc-kbd', 'doc-comment'])],
   attributes: {
     ...defaultSchema.attributes,
-    '*': [...new Set([...((defaultSchema.attributes || {})['*'] || []), 'className', 'id', 'style', 'dataName', 'dataKeys'])],
+    // data-* here are hast (camelCased) property names — rehype-sanitize matches those,
+    // so `data-comment` in the source must be allowed as `dataComment` (the DocComment
+    // component reads both forms). Without this the whole <doc-comment> was stripped.
+    '*': [...new Set([...((defaultSchema.attributes || {})['*'] || []), 'className', 'id', 'style', 'dataName', 'dataKeys', 'dataComment', 'dataLink', 'dataImg', 'dataVideo'])],
     a: [...new Set([...(((defaultSchema.attributes || {}).a) || []), 'href', 'target', 'rel', 'download'])],
     img: [...new Set([...(((defaultSchema.attributes || {}).img) || []), 'src', 'alt', 'loading', 'className'])],
     video: ['src', 'controls', 'poster', 'className', 'style', 'loading'],
@@ -26,6 +29,7 @@ const SANITIZE_SCHEMA = {
     iframe: ['src', 'allow', 'allowFullScreen', 'frameBorder', 'loading', 'className'],
     'doc-icon': ['className', 'dataName'],
     'doc-kbd': ['className', 'dataKeys'],
+    'doc-comment': ['className', 'dataComment', 'dataLink', 'dataImg', 'dataVideo'],
   },
 };
 

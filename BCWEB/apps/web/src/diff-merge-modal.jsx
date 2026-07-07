@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Modal, Button } from './ui.jsx';
-import { merge3Hunks, assembleHunks } from './merge3.js';
+import { merge3Hunks, assembleHunks, lineStat } from './merge3.js';
 import { GitMerge, Check, ChevronDown, ChevronRight, User as UserIcon, Users } from 'lucide-react';
 
 // GitHub-style visual conflict resolver. Given the common ancestor + both edited
@@ -16,8 +16,13 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
   const conflictIdxs = hunks.map((h, i) => h.type === 'conflict' ? i : -1).filter((i) => i >= 0);
   const resolvedCount = conflictIdxs.filter((i) => choices[i]).length;
   const allResolved = resolvedCount === conflictIdxs.length;
+  // Overall line-diff of what the other editor changed (base → theirs).
+  const stat = useMemo(() => lineStat(base, theirs), [base, theirs]);
 
-  const pick = (i, choice) => setChoices((c) => ({ ...c, [i]: choice }));
+  // Toggle: re-clicking the active choice clears it (deselect). `cycle` (Both) steps
+  // both → theirs-mine → off so it's also fully deselectable.
+  const pick = (i, choice) => setChoices((c) => { const n = { ...c }; if (n[i] === choice) delete n[i]; else n[i] = choice; return n; });
+  const cycleBoth = (i) => setChoices((c) => { const n = { ...c }; const cur = n[i]; if (cur === 'both') n[i] = 'theirs-mine'; else if (cur === 'theirs-mine') delete n[i]; else n[i] = 'both'; return n; });
   const acceptAll = (choice) => setChoices(Object.fromEntries(conflictIdxs.map((i) => [i, choice])));
   const apply = () => { onResolve(assembleHunks(hunks, choices)); onClose(); };
 
@@ -36,8 +41,9 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
   return (
     <Modal open={open} onClose={onClose} title={`Resolve conflicts${langLabel ? ` · ${langLabel}` : ''}`} icon={GitMerge} width="max-w-4xl"
       footer={<>
-        <span className="text-xs mr-auto flex items-center gap-1.5" style={{ color: allResolved ? 'var(--success, #10b981)' : 'var(--muted)' }}>
-          {allResolved ? <Check size={14} /> : <GitMerge size={14} />} {resolvedCount}/{conflictIdxs.length} conflict{conflictIdxs.length === 1 ? '' : 's'} resolved
+        <span className="text-xs mr-auto flex items-center gap-2 flex-wrap" style={{ color: allResolved ? 'var(--success, #10b981)' : 'var(--muted)' }}>
+          <span className="flex items-center gap-1.5">{allResolved ? <Check size={14} /> : <GitMerge size={14} />} {resolvedCount}/{conflictIdxs.length} conflict{conflictIdxs.length === 1 ? '' : 's'} resolved</span>
+          <span className="font-mono text-[11px]"><span className="text-emerald-400">+{stat.added}</span> <span className="text-red-400">−{stat.removed}</span> <span className="text-[var(--faint)]">their changes</span></span>
         </span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={!allResolved} onClick={apply}><Check size={14} /> Apply resolution</Button>
@@ -74,11 +80,14 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
           return (
             <div key={i} className="bg-[var(--bg-solid)]">
               <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-amber-500/10 border-b border-amber-500/20">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-500 flex items-center gap-1.5"><GitMerge size={12} /> Conflict {conflictIdxs.indexOf(i) + 1}</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-500 flex items-center gap-1.5">
+                  <GitMerge size={12} /> Conflict {conflictIdxs.indexOf(i) + 1}
+                  <span className="font-mono normal-case tracking-normal ml-1"><span className="text-emerald-400">+{h.mine.length}</span> <span className="text-red-400">−{h.theirs.length}</span></span>
+                </span>
                 <div className="flex items-center gap-1.5 text-[11px]">
                   <ChoiceBtn active={choice === 'mine'} onClick={() => pick(i, 'mine')} tone="emerald" icon={UserIcon}>Yours</ChoiceBtn>
                   <ChoiceBtn active={choice === 'theirs'} onClick={() => pick(i, 'theirs')} tone="sky" icon={UserIcon}>Theirs</ChoiceBtn>
-                  <ChoiceBtn active={choice === 'both' || choice === 'theirs-mine'} onClick={() => pick(i, choice === 'both' ? 'theirs-mine' : 'both')} tone="slate" icon={Users}>
+                  <ChoiceBtn active={choice === 'both' || choice === 'theirs-mine'} onClick={() => cycleBoth(i)} tone="slate" icon={Users}>
                     Both{choice === 'theirs-mine' ? ' (T→Y)' : choice === 'both' ? ' (Y→T)' : ''}
                   </ChoiceBtn>
                 </div>

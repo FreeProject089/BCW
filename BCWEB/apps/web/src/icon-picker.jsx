@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
 import { ICON_NAMES, IconGlyph } from './md.jsx';
 
@@ -50,8 +51,12 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
   const lucideHits = useMemo(() => (nq ? lucide.filter((n) => n.includes(nq)) : lucide).slice(0, MAX_SHOWN), [lucide, nq]);
   const simpleHits = useMemo(() => (nq ? simple.filter((s) => s.slug.includes(nq) || s.title.toLowerCase().includes(nq)) : simple).slice(0, MAX_SHOWN / 2), [simple, nq]);
 
-  return (
-    <div className="fixed inset-0 z-[70] grid place-items-center p-4" style={{ background: 'rgba(4,5,8,0.55)', backdropFilter: 'blur(3px)' }} onMouseDown={onClose}>
+  // Portal to <body>: the picker is often opened from inside a modal whose card uses a
+  // transform (anim-pop) for its entrance. A CSS transform makes it the containing block
+  // for any `position: fixed` descendant, so without the portal `fixed inset-0` anchored
+  // to the modal card instead of the viewport — the broken, offset overlay (image 1).
+  return createPortal(
+    <div className="fixed inset-0 z-[80] grid place-items-center p-4" style={{ background: 'rgba(4,5,8,0.55)', backdropFilter: 'blur(3px)' }} onMouseDown={onClose}>
       <div className="card modal-card w-full max-w-lg p-0 overflow-hidden anim-pop flex flex-col max-h-[80vh]" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--line)] shrink-0">
           <span className="font-semibold flex-1">{title}</span>
@@ -84,6 +89,7 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
