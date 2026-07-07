@@ -87,6 +87,10 @@ model User {
   // edge via forward_auth → GET /api/telemetry/authorize (telemetry.mjs), so the
   // separate telemetry app itself is never touched. SUPERADMIN is always allowed.
   canViewTelemetry  Boolean  @default(false)
+  // Bumped on logout — invalidates any outstanding telemetry SSO token / tele_session
+  // cookie so a signed-out user immediately loses BMM-telemetry access (telemetry.mjs
+  // bakes this epoch into the token + host cookie and rejects on mismatch).
+  telemetryEpoch    Int      @default(0)
   // Set once, the first time a Ko-fi donation webhook matches this account's
   // email — gates the one-time 25% hosting discount grant so repeat donations
   // (or webhook retries) don't mint duplicate codes.
@@ -293,8 +297,26 @@ model BlogPost {
   // stale baseVersion means someone else saved in the meantime → the client 3-way
   // merges (see merge3.js) instead of clobbering.
   version          Int      @default(1)
+  revisions        BlogRevision[]
 
   @@index([showcaseProjectId])
+}
+
+// A snapshot of a blog post's content, captured BEFORE each content save — the edit
+// history. Nothing is lost: reverting is just re-saving an old snapshot (which itself
+// snapshots the then-current state). Pruned to the most recent N per post.
+model BlogRevision {
+  id        String   @id @default(cuid())
+  post      BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String
+  version   Int      // the version number this snapshot represents
+  title     String
+  body      String
+  bodyFr    String?
+  editorId  String?  // who authored this snapshot (may be deleted later)
+  createdAt DateTime @default(now())
+
+  @@index([postId, version])
 }
 
 // GitBook-style documentation: a flat set of pages grouped into named categories,
@@ -319,8 +341,24 @@ model DocPage {
   createdAt DateTime @default(now())
   // Optimistic-concurrency counter for git-style concurrent editing (see BlogPost.version).
   version   Int      @default(1)
+  revisions DocRevision[]
 
   @@index([category])
+}
+
+// Edit-history snapshot of a doc page (see BlogRevision).
+model DocRevision {
+  id        String   @id @default(cuid())
+  page      DocPage  @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  pageId    String
+  version   Int
+  title     String
+  body      String
+  bodyFr    String?
+  editorId  String?
+  createdAt DateTime @default(now())
+
+  @@index([pageId, version])
 }
 
 // One reaction per user per post; `type` is one of the post's reactionTypes (emoji).

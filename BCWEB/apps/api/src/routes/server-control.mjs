@@ -23,7 +23,7 @@ const DANGEROUS = [requireRole('ADMIN'), requireCanControlServer(), requireEleva
 // Lazily-opened READ-ONLY connection to the BMM telemetry Postgres (a separate DB),
 // so the Advanced DB viewer can inspect it too. Requires TELEMETRY_DATABASE_URL.
 let _telemetryPool = null;
-function telemetryDb() {
+export function telemetryDb() {
   if (_telemetryPool) return _telemetryPool;
   const url = process.env.TELEMETRY_DATABASE_URL;
   if (!url) return null;
@@ -315,15 +315,20 @@ export default async function serverControlRoutes(app) {
     // Same permission the edge forward_auth gate enforces (telemetry.mjs): the token
     // is useless without it, so refuse to mint one — keeps the button and the gate in
     // agreement. SUPERADMIN is always allowed.
-    const me = await (await db()).user.findUnique({ where: { id: req.user.uid }, select: { canViewTelemetry: true } });
+    const me = await (await db()).user.findUnique({ where: { id: req.user.uid }, select: { canViewTelemetry: true, telemetryEpoch: true } });
     if (req.user.role !== 'SUPERADMIN' && !me?.canViewTelemetry) return reply.code(403).send({ error: 'no_telemetry_access' });
     const secret = process.env.BC_LINK_SECRET || process.env.LINK_LOOKUP_SECRET || 'dev-link-secret';
-    const payload = Buffer.from(JSON.stringify({ role: req.user.role, uid: req.user.uid, exp: Date.now() + 4 * 3600 * 1000 })).toString('base64url');
+    // `ep` binds the token to the user's current logout epoch — logging out bumps it
+    // (auth.mjs) so this token (and the cookie minted from it) stops validating.
+    const payload = Buffer.from(JSON.stringify({ role: req.user.role, uid: req.user.uid, ep: me?.telemetryEpoch || 0, exp: Date.now() + 4 * 3600 * 1000 })).toString('base64url');
     const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
     const token = `${payload}.${sig}`;
     const base = (process.env.TELEMETRY_PUBLIC_URL || 'http://telemetry.localhost').replace(/\/+$/, '');
     const home = process.env.SITE_URL || 'http://localhost:5176';
-    return { url: `${base}/#bc=${encodeURIComponent(token)}&home=${encodeURIComponent(home)}` };
+    // Token goes in BOTH the query (so the edge forward_auth gate can read it —
+    // cookie-independent) AND the fragment (which the telemetry app's client reads).
+    const tok = encodeURIComponent(token);
+    return { url: `${base}/?bc=${tok}#bc=${tok}&home=${encodeURIComponent(home)}` };
   });
 
   // ── BMM Telemetry DB viewer (READ-ONLY) ──

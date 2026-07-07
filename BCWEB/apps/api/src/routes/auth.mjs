@@ -191,7 +191,14 @@ export default async function authRoutes(app) {
     return { enabled: !!u?.totpEnabled, canControlServer: !!u?.canControlServer, recoveryCodesLeft: u?.totpRecoveryCodes.length || 0 };
   });
 
-  app.post('/auth/logout', async (_req, reply) => { clearSession(reply); return { ok: true }; });
+  // Bump the telemetry epoch on the way out so any live telemetry SSO token / host
+  // cookie the user still holds is instantly invalidated — signing out of BCWEB
+  // signs you out of the (separate) BMM telemetry dashboard too.
+  app.post('/auth/logout', { preHandler: optionalAuth() }, async (req, reply) => {
+    if (req.user?.uid) await (await db()).user.update({ where: { id: req.user.uid }, data: { telemetryEpoch: { increment: 1 } } }).catch(() => {});
+    clearSession(reply);
+    return { ok: true };
+  });
 
   const profileSelect = { id: true, email: true, displayName: true, role: true, emailVerified: true, bio: true, avatar: true, createdAt: true, totpEnabled: true };
 

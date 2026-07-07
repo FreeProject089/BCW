@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, slugify } from '../lib.mjs';
+import { db, requireRole, optionalAuth, slugify, pruneRevisions } from '../lib.mjs';
 
 // A post belongs to exactly one blog "space": a fixed Project (bmm/bsm/community/
 // installer) OR an admin-created ShowcaseProject ("custom" page, e.g. an Other
@@ -30,6 +30,16 @@ const postSchema = z.object({
   tocTitle: z.string().max(60).optional().nullable(),
 });
 
+// Save an edit-history snapshot of a post's current content, then prune per the
+// admin-configured retention (by count and/or total size). Best-effort — never
+// blocks the save it records.
+async function snapshotBlog(p, post, editorId) {
+  try {
+    await p.blogRevision.create({ data: { postId: post.id, version: post.version, title: post.title, body: post.body, bodyFr: post.bodyFr, editorId } });
+    await pruneRevisions(p, p.blogRevision, { postId: post.id });
+  } catch { /* history is best-effort */ }
+}
+
 // Resolve a list of emails to user ids (skips unknown emails, dedupes, drops the
 // primary author so they're never their own co-author).
 async function resolveCoAuthorIds(p, emails, primaryAuthorId) {
@@ -39,6 +49,45 @@ async function resolveCoAuthorIds(p, emails, primaryAuthorId) {
 }
 
 const STAFF = ['MOD', 'ADMIN', 'SUPERADMIN'];
+
+// Live count + total content bytes of published/draft posts, optionally scoped to one
+// blog space. Uses octet_length so the "size" matches what actually sits in Postgres.
+async function blogUsage(p, scope) {
+  if (scope?.showcaseProjectId) {
+    const [c] = await p.$queryRaw`SELECT count(*)::int AS n, COALESCE(SUM(octet_length(body) + octet_length(COALESCE("bodyFr",''))),0)::bigint AS bytes FROM "BlogPost" WHERE "showcaseProjectId" = ${scope.showcaseProjectId}`;
+    return { count: c.n, bytes: Number(c.bytes) };
+  }
+  if (scope?.projectId) {
+    const [c] = await p.$queryRaw`SELECT count(*)::int AS n, COALESCE(SUM(octet_length(body) + octet_length(COALESCE("bodyFr",''))),0)::bigint AS bytes FROM "BlogPost" WHERE "projectId" = ${scope.projectId}`;
+    return { count: c.n, bytes: Number(c.bytes) };
+  }
+  const [c] = await p.$queryRaw`SELECT count(*)::int AS n, COALESCE(SUM(octet_length(body) + octet_length(COALESCE("bodyFr",''))),0)::bigint AS bytes FROM "BlogPost"`;
+  return { count: c.n, bytes: Number(c.bytes) };
+}
+
+// Enforce the article limits before creating a post: a site-wide cap (Hosting settings:
+// blog.maxTotalPosts / blog.maxTotalKB) AND, for a ShowcaseProject ("Other Projects")
+// page, its own per-page cap stored in config.blogMaxPosts / config.blogMaxKB. Returns
+// a 409 body to send, or null when within limits. `addBytes` = the new post's size.
+async function checkBlogLimits(p, { projectId, showcaseProjectId, showcaseConfig }, addBytes) {
+  const s = Object.fromEntries((await p.adminSetting.findMany()).map((r) => [r.key, r.value]));
+  const gMaxPosts = Number(s['blog.maxTotalPosts'] ?? 0);
+  const gMaxKB = Number(s['blog.maxTotalKB'] ?? 0);
+  if (gMaxPosts > 0 || gMaxKB > 0) {
+    const g = await blogUsage(p, null);
+    if (gMaxPosts > 0 && g.count >= gMaxPosts) return { error: 'blog_limit', scope: 'global', kind: 'count', limit: gMaxPosts, current: g.count };
+    if (gMaxKB > 0 && g.bytes + addBytes > gMaxKB * 1024) return { error: 'blog_limit', scope: 'global', kind: 'size', limitKB: gMaxKB, currentKB: Math.round(g.bytes / 1024) };
+  }
+  const cfg = showcaseConfig || {};
+  const pMaxPosts = Number(cfg.blogMaxPosts ?? 0);
+  const pMaxKB = Number(cfg.blogMaxKB ?? 0);
+  if (showcaseProjectId && (pMaxPosts > 0 || pMaxKB > 0)) {
+    const u = await blogUsage(p, { showcaseProjectId });
+    if (pMaxPosts > 0 && u.count >= pMaxPosts) return { error: 'blog_limit', scope: 'project', kind: 'count', limit: pMaxPosts, current: u.count };
+    if (pMaxKB > 0 && u.bytes + addBytes > pMaxKB * 1024) return { error: 'blog_limit', scope: 'project', kind: 'size', limitKB: pMaxKB, currentKB: Math.round(u.bytes / 1024) };
+  }
+  return null;
+}
 
 // Staff can post anywhere. A regular USER needs an explicit BlogPermission grant —
 // either global (projectKey and showcaseProjectId both null) or scoped to this
@@ -200,9 +249,15 @@ export default async function blogRoutes(app) {
       tocTitle: b.data.tocTitle || null,
       coAuthorIds: await resolveCoAuthorIds(p, b.data.coAuthorEmails, req.user.uid),
     };
+    let showcaseConfig = null;
     if (b.data.projectKey) { const project = await p.project.findUnique({ where: { key: b.data.projectKey } }); data.projectId = project.id; }
-    else { const sp = await p.showcaseProject.findUnique({ where: { slug: b.data.showcaseSlug } }); if (!sp) return reply.code(400).send({ error: 'unknown_page' }); data.showcaseProjectId = sp.id; }
+    else { const sp = await p.showcaseProject.findUnique({ where: { slug: b.data.showcaseSlug } }); if (!sp) return reply.code(400).send({ error: 'unknown_page' }); data.showcaseProjectId = sp.id; showcaseConfig = sp.config; }
+    // Article limits (site-wide + per-showcase-page) — refuse creation when full.
+    const addBytes = Buffer.byteLength(data.body || '') + Buffer.byteLength(data.bodyFr || '');
+    const limitErr = await checkBlogLimits(p, { projectId: data.projectId, showcaseProjectId: data.showcaseProjectId, showcaseConfig }, addBytes);
+    if (limitErr) return reply.code(409).send(limitErr);
     const post = await p.blogPost.create({ data });
+    await snapshotBlog(p, post, req.user.uid);
     return reply.code(201).send({ post });
   });
 
@@ -241,7 +296,29 @@ export default async function blogRoutes(app) {
     }
     if (d.publish !== undefined) { data.status = d.publish ? 'PUBLISHED' : 'DRAFT'; data.publishedAt = d.publish ? new Date() : null; }
     const post = await p.blogPost.update({ where: { id: req.params.id }, data });
+    if (touchesContent) await snapshotBlog(p, post, req.user.uid);
     return { post };
+  });
+
+  // ── Edit history (git-like): list snapshots, read one, restore into the editor ──
+  app.get('/blog/:id/history', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true } });
+    if (!post) return reply.code(404).send({ error: 'not_found' });
+    if (!STAFF.includes(req.user.role) && post.authorId !== req.user.uid && !(post.coAuthorIds || []).includes(req.user.uid)) return reply.code(403).send({ error: 'forbidden' });
+    const revs = await p.blogRevision.findMany({ where: { postId: req.params.id }, orderBy: { version: 'desc' }, take: 50 });
+    const editors = await p.user.findMany({ where: { id: { in: [...new Set(revs.map((r) => r.editorId).filter(Boolean))] } }, select: { id: true, displayName: true } });
+    const nameOf = new Map(editors.map((u) => [u.id, u.displayName]));
+    return { revisions: revs.map((r) => ({ id: r.id, version: r.version, title: r.title, editor: nameOf.get(r.editorId) || 'Unknown', createdAt: r.createdAt, bytes: Buffer.byteLength(r.body || '') })) };
+  });
+  app.get('/blog/:id/history/:revId', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true } });
+    if (!post) return reply.code(404).send({ error: 'not_found' });
+    if (!STAFF.includes(req.user.role) && post.authorId !== req.user.uid && !(post.coAuthorIds || []).includes(req.user.uid)) return reply.code(403).send({ error: 'forbidden' });
+    const rev = await p.blogRevision.findFirst({ where: { id: req.params.revId, postId: req.params.id } });
+    if (!rev) return reply.code(404).send({ error: 'not_found' });
+    return { revision: { version: rev.version, title: rev.title, body: rev.body, bodyFr: rev.bodyFr, createdAt: rev.createdAt } };
   });
 
   app.delete('/blog/:id', { preHandler: requireRole() }, async (req, reply) => {

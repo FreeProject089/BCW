@@ -27,6 +27,25 @@ export async function settings(p) {
   return Object.fromEntries((await p.adminSetting.findMany()).map((r) => [r.key, r.value]));
 }
 
+// Live on-disk size of the SEPARATE BMM telemetry Postgres, cached briefly so the
+// capacity overview (polled on every admin visit) doesn't open a cross-DB connection
+// each time. Returns null when TELEMETRY_DATABASE_URL isn't configured or the query fails.
+let _teleSizeCache = { gb: null, at: 0 };
+async function telemetryUsedGB() {
+  if (Date.now() - _teleSizeCache.at < 30_000) return _teleSizeCache.gb;
+  let gb = null;
+  try {
+    const { telemetryDb } = await import('./server-control.mjs');
+    const pool = telemetryDb();
+    if (pool) {
+      const { rows } = await pool.query('SELECT pg_database_size(current_database())::bigint AS bytes');
+      gb = Number(rows[0]?.bytes || 0) / GiB;
+    }
+  } catch { gb = null; }
+  _teleSizeCache = { gb, at: Date.now() };
+  return gb;
+}
+
 // Ensure the user has a Stripe customer (so subscriptions + the billing portal work).
 export async function ensureCustomer(p, sk, userId) {
   const u = await p.user.findUnique({ where: { id: userId } });
@@ -80,6 +99,10 @@ export async function capacityStatus(p) {
   }
   const freeTierCapGB = Number(s['hosting.freeTierCapGB'] ?? 50);
 
+  // BMM telemetry storage (separate Postgres): live used vs. an admin-set allocation.
+  const telemetryLimitGB = Number(s['telemetry.storageLimitGB'] ?? 0);
+  const telemetryUsed = await telemetryUsedGB();
+
   return {
     totalGB, reservedGB, usableGB, allocatedGB, hostingAllocatedGB, submissionsPublishedGB,
     freeGB: Math.max(0, usableGB - allocatedGB), tempMarginGB, tempUsedGB,
@@ -88,6 +111,8 @@ export async function capacityStatus(p) {
     enabled: s['features.hostingEnabled'] !== false,
     freeTierCapEnabled, freeTierCapGB, freeTierUsedGB,
     freeTierFreeGB: freeTierCapEnabled ? Math.max(0, freeTierCapGB - freeTierUsedGB) : null,
+    telemetryLimitGB, telemetryUsedGB: telemetryUsed,
+    telemetryFreeGB: telemetryLimitGB > 0 && telemetryUsed != null ? Math.max(0, telemetryLimitGB - telemetryUsed) : null,
   };
 }
 

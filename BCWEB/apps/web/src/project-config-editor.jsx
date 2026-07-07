@@ -359,6 +359,21 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
           </div>
         )}
       </Section>
+
+      {/* Blog limits — showcase ("Other Projects") pages only. Caps how much this page's
+          own blog can hold; enforced when a new article is created (blog.mjs). 0 = off. */}
+      {isShowcase && (
+        <Section icon={ScrollText} title="Blog limits" desc="Cap this page's own blog. New articles are refused once a limit is reached. Leave 0 for no limit.">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Max articles" hint="Maximum number of blog posts on this page.">
+              <Input type="number" min={0} value={c.blogMaxPosts ?? ''} onChange={(e) => set({ blogMaxPosts: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })} placeholder="0 = unlimited" />
+            </Field>
+            <Field label="Max total size (KB)" hint="Combined size of every article body (EN + FR).">
+              <Input type="number" min={0} value={c.blogMaxKB ?? ''} onChange={(e) => set({ blogMaxKB: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })} placeholder="0 = unlimited" />
+            </Field>
+          </div>
+        </Section>
+      )}
     </div>
   );
 }

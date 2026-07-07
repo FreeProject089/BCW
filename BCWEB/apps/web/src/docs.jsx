@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash, GitMerge } from 'lucide-react';
+import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash, GitMerge, History } from 'lucide-react';
 import { api } from './api.js';
 import { merge3, hasConflictMarkers } from './merge3.js';
+import HistoryModal from './history-modal.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from './i18n.jsx';
 import Markdown, { IconGlyph } from './md.jsx';
@@ -418,6 +419,7 @@ function DocEditor({ page, tree, onClose, onSaved }) {
   // same page merge git-style instead of one silently overwriting the other.
   const baseRef = useRef({ version: null, body: '', bodyFr: '' });
   const [merge, setMerge] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
   useEffect(() => {
     if (page) setF({ title: page.title || '', category: page.category || 'General', icon: page.icon || '', order: page.order || 0, published: page.published !== false, body: '', bodyFr: '' });
     // full bodies aren't in the sidebar tree — fetch the page.
@@ -460,6 +462,7 @@ function DocEditor({ page, tree, onClose, onSaved }) {
     <Modal open onClose={onClose} title={page ? 'Edit page' : 'New page'} icon={BookOpen} width="max-w-3xl"
       footer={<>
         {page && <Button variant="ghost" className="!text-red-400 mr-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
+        {page && <Button variant="ghost" onClick={() => setShowHistory(true)}><History size={15} /> History</Button>}
         <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2"><input type="checkbox" checked={f.published} onChange={(e) => setF({ ...f, published: e.target.checked })} /> Published</label>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> Save</>}</Button>
@@ -493,6 +496,8 @@ function DocEditor({ page, tree, onClose, onSaved }) {
         value={fr ? f.bodyFr : f.body}
         onChange={(v) => setF((s) => (fr ? { ...s, bodyFr: v } : { ...s, body: v }))}
         placeholder={fr ? 'Traduction française (optionnelle)…' : 'Write with GitBook-style blocks — use the Blocks button.'} />
+      {showHistory && page && <HistoryModal base={`/docs/${page.id}`} onClose={() => setShowHistory(false)}
+        onRestore={(rev) => { setF((s) => ({ ...s, title: rev.title || s.title, body: rev.body || '', bodyFr: rev.bodyFr ?? s.bodyFr })); setTab('en'); }} />}
     </Modal>
   );
 }

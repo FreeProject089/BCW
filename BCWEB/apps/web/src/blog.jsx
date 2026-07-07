@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   Newspaper, PenSquare, ImagePlus, Youtube, Link2, Video, Bold, Heading, List, Eye,
   Trash2, Pencil, ArrowLeft, CalendarDays, User as UserIcon, Plus, X, Tag as TagIcon, HelpCircle, Languages, Sparkles,
-  Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge,
+  Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge, History,
 } from 'lucide-react';
 import { api, uploadBlogImage } from './api.js';
 import { useAuth } from './auth.jsx';
@@ -16,6 +16,7 @@ import IconPicker from './icon-picker.jsx';
 import SelectionToolbar from './selection-toolbar.jsx';
 import KbdPicker from './kbd-picker.jsx';
 import { merge3, hasConflictMarkers } from './merge3.js';
+import HistoryModal from './history-modal.jsx';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal } from './ui.jsx';
 
 // Pick the reader's language version of a post. EN is the base (always present);
@@ -341,6 +342,7 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
   // save can 3-way merge against them (git-style). `merge` holds the banner state.
   const baseRef = useRef({ version: null, body: '', bodyFr: '' });
   const [merge, setMerge] = useState(null); // null | { conflicts, cleanCount }
+  const [showHistory, setShowHistory] = useState(false);
   useEffect(() => {
     if (post) {
       setF({ scope: post.showcaseProject ? `showcase:${post.showcaseProject.slug}` : `project:${post.project?.key || 'community'}`, cover: post.cover || '', coverInBody: post.coverInBody !== false, publish: post.status === 'PUBLISHED',
@@ -408,6 +410,12 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
         setMerge({ conflicts });
         if (conflicts > 0) { setTab(mb.conflicts ? 'en' : 'fr'); toast.error(`Someone else edited this post. Merged with ${conflicts} conflict(s) — resolve the markers, then Save.`); }
         else toast.info('Merged with edits made by someone else — review the content, then Save again.');
+      } else if (x.status === 409 && x.data?.error === 'blog_limit') {
+        const d = x.data;
+        const where = d.scope === 'project' ? 'this page' : 'the site';
+        toast.error(d.kind === 'count'
+          ? `Blog is full — ${where} allows at most ${d.limit} article${d.limit === 1 ? '' : 's'} (currently ${d.current}). Delete one or raise the limit.`
+          : `Blog is full — ${where}'s size limit (${d.limitKB} KB) would be exceeded. Trim this article, delete an old one, or raise the limit.`);
       } else {
         toast.error(x.data?.error === 'forbidden' ? "You don't have permission to post in that blog." : x.data?.error || 'Failed.');
       }
@@ -423,6 +431,7 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
     <Modal open onClose={onClose} title={post ? 'Edit post' : 'Write a post'} icon={PenSquare} width="max-w-3xl"
       footer={<>
         {post && <Button variant="ghost" className="!text-red-400 mr-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
+        {post && <Button variant="ghost" onClick={() => setShowHistory(true)}><History size={15} /> History</Button>}
         <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2"><input type="checkbox" checked={f.publish} onChange={(e) => setF({ ...f, publish: e.target.checked })} /> Published</label>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (post ? 'Save' : 'Publish')}</Button>
@@ -526,6 +535,8 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
           )}
         </div>
       </div>
+      {showHistory && post && <HistoryModal base={`/blog/${post.id}`} onClose={() => setShowHistory(false)}
+        onRestore={(rev) => { setF((s) => ({ ...s, title: rev.title || s.title, body: rev.body || '', bodyFr: rev.bodyFr ?? s.bodyFr })); setTab('en'); }} />}
     </Modal>
   );
 }

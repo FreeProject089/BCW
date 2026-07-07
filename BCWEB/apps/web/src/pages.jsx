@@ -4847,6 +4847,13 @@ const SETTINGS_GROUPS = [
     ['hosting.freeTierCapGB', 'Free hosting-plan pool cap (GB)', 'Total storage the Free plan can ever occupy across every user, once the toggle above is on.', 'number'],
     ['catalog.freeTierCapEnabled', 'Cap the free catalog-upload pool', 'When on, free catalog file hosting goes "sold out" once free uploads together reach the cap below — paid uploads never count against this.', 'bool'],
     ['catalog.freeTierCapMB', 'Free catalog-upload pool cap (MB)', 'Total payload bytes the free catalog tier can ever occupy across every user, once the toggle above is on.', 'number'],
+    ['telemetry.storageLimitGB', 'BMM telemetry storage limit (GB)', 'How much storage the (separate) BMM telemetry database is allowed — shown as used vs. allocated in Total capacity above. 0 = untracked.', 'number'],
+  ] },
+  { title: 'Blog & history', icon: Newspaper, keys: [
+    ['blog.maxTotalPosts', 'Max total blog articles', 'Hard cap on the number of blog articles across the whole site. 0 = unlimited. New articles are refused once reached.', 'number'],
+    ['blog.maxTotalKB', 'Max total blog size (KB)', 'Hard cap on the combined size of every article body (EN + FR). 0 = unlimited. New articles are refused once reached.', 'number'],
+    ['history.maxRevisions', 'Edit-history: keep last N revisions', 'How many past snapshots each blog post / doc page keeps before the oldest is overwritten. Default 30.', 'number'],
+    ['history.maxRevisionKB', 'Edit-history: max size per item (KB)', 'Also cap each item\'s stored history by size — older snapshots drop once this is exceeded. 0 = size limit off (count only).', 'number'],
   ] },
   { title: 'Pricing', icon: Receipt, keys: [
     ['pricing.perGBCents', 'Price per GB (¢ / month)', 'Base hosting cost, before the scarcity multiplier. Only applies above the free floor below.', 'number'],
@@ -4922,6 +4929,20 @@ function AdminSettings() {
                 <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, ((c.freeTierUsedGB || 0) / c.freeTierCapGB) * 100)}%` }} /></div>
               </div>
             )}
+            {/* BMM telemetry storage — used vs. the admin-set allocation (separate DB). */}
+            {c.telemetryUsedGB != null && (() => {
+              const alloc = c.telemetryLimitGB || 0;
+              const pct = alloc > 0 ? Math.min(100, (c.telemetryUsedGB / alloc) * 100) : 0;
+              return (
+                <div className="mt-3 pt-3 border-t border-[var(--line)]">
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-[var(--muted)] flex items-center gap-1.5"><Gauge size={12} className="text-sky-400" /> BMM telemetry storage {alloc > 0 ? '' : <span className="text-[var(--faint)]">(no limit set)</span>}</span>
+                    <span className="tabular-nums font-medium">{c.telemetryUsedGB.toFixed(2)}{alloc > 0 ? ` / ${alloc} GB` : ' GB used'}</span>
+                  </div>
+                  {alloc > 0 && <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-red-500' : 'bg-sky-500'}`} style={{ width: `${pct}%` }} /></div>}
+                </div>
+              );
+            })()}
           </Card>
         );
       })()}

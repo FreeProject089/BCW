@@ -37,7 +37,13 @@ export async function db() {
 // (e.g. telemetry.<domain>, gated in telemetry.mjs). Unset = host-only (current
 // behaviour), so this is a no-op until COOKIE_DOMAIN is configured in production.
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
-const cookieBase = { httpOnly: true, sameSite: 'lax', path: '/', secure: process.env.NODE_ENV === 'production', ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}) };
+// `Secure` is derived from the SITE scheme, NOT NODE_ENV. Over plain HTTP dev
+// (http://localhost) a Secure cookie is only sent to `localhost` itself — Firefox
+// does NOT treat `telemetry.localhost` as a secure context, so a Secure cookie never
+// reaches the telemetry sub-domain and its edge gate always denies. HTTP → not
+// secure (reaches every *.localhost); HTTPS prod → secure.
+const COOKIE_SECURE = /^https:/i.test(process.env.SITE_URL || process.env.SITE_DOMAIN || '');
+const cookieBase = { httpOnly: true, sameSite: 'lax', path: '/', secure: COOKIE_SECURE, ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}) };
 
 export function issueSession(reply, user) {
   const token = jwt.sign({ uid: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
@@ -148,6 +154,27 @@ export function isValidRepoManifest(o) {
 export function slugify(s) {
   return String(s).toLowerCase().trim()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'item';
+}
+
+/** Prune an edit-history table (BlogRevision / DocRevision) for one parent row to the
+ *  admin-configured retention: keep at most `history.maxRevisions` snapshots AND at
+ *  most `history.maxRevisionKB` of cumulative body size (0 = that limit off), always
+ *  keeping the newest ones. `delegate` is the Prisma model (p.blogRevision), `where`
+ *  scopes to the parent (e.g. { postId } / { pageId }). Best-effort. */
+export async function pruneRevisions(p, delegate, where) {
+  const s = Object.fromEntries((await p.adminSetting.findMany()).map((r) => [r.key, r.value]));
+  const maxCount = Math.max(1, Number(s['history.maxRevisions'] ?? 30));
+  const maxBytes = Math.max(0, Number(s['history.maxRevisionKB'] ?? 0)) * 1024;
+  const revs = await delegate.findMany({ where, orderBy: { version: 'desc' }, select: { id: true, body: true, bodyFr: true } });
+  const doomed = [];
+  let bytes = 0;
+  revs.forEach((r, i) => {
+    bytes += Buffer.byteLength(r.body || '') + Buffer.byteLength(r.bodyFr || '');
+    // Drop anything beyond the count cap, or once the size cap is exceeded — but never
+    // the single newest snapshot (i === 0), so history is never left empty.
+    if (i > 0 && (i >= maxCount || (maxBytes > 0 && bytes > maxBytes))) doomed.push(r.id);
+  });
+  if (doomed.length) await delegate.deleteMany({ where: { id: { in: doomed } } });
 }
 
 /** Persist a notification (used by moderation to tell the owner). */

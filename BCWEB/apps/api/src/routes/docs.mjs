@@ -3,7 +3,7 @@
 // editing / reordering / deleting is gated to ADMIN (SUPERADMIN implicitly), the
 // "special role" the docs are editable with.
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, slugify } from '../lib.mjs';
+import { db, requireRole, optionalAuth, slugify, pruneRevisions } from '../lib.mjs';
 
 const LIST_SELECT = { id: true, slug: true, title: true, category: true, icon: true, order: true, published: true, updatedAt: true };
 // Must match the heading-anchor slug produced by the renderer (md.jsx slugify).
@@ -20,6 +20,14 @@ const pageSchema = z.object({
   // Version the editor loaded from — for git-style concurrent-edit conflict detection.
   baseVersion: z.number().int().optional(),
 });
+
+// Save an edit-history snapshot of a page's current content; prune per admin retention. Best-effort.
+async function snapshotDoc(p, page, editorId) {
+  try {
+    await p.docRevision.create({ data: { pageId: page.id, version: page.version, title: page.title, body: page.body, bodyFr: page.bodyFr, editorId } });
+    await pruneRevisions(p, p.docRevision, { pageId: page.id });
+  } catch { /* best-effort */ }
+}
 
 // Build the sidebar tree: pages grouped by category, categories ordered by the
 // smallest page order they contain (then alphabetically), pages by order then title.
@@ -125,6 +133,7 @@ export default async function docRoutes(app) {
       body: b.data.body || '', bodyFr: b.data.bodyFr || null,
       order: b.data.order ?? 0, published: b.data.published ?? true,
     } });
+    await snapshotDoc(p, page, req.user.uid);
     return reply.code(201).send({ page });
   });
 
@@ -154,7 +163,23 @@ export default async function docRoutes(app) {
       ...(d.published !== undefined ? { published: d.published } : {}),
       ...(touchesContent ? { version: { increment: 1 } } : {}),
     } });
+    if (touchesContent) await snapshotDoc(p, page, req.user.uid);
     return { page };
+  });
+
+  // ── Edit history: list snapshots + read one (ADMIN, like the rest of doc editing) ──
+  app.get('/docs/:id/history', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const revs = await p.docRevision.findMany({ where: { pageId: req.params.id }, orderBy: { version: 'desc' }, take: 50 });
+    const editors = await p.user.findMany({ where: { id: { in: [...new Set(revs.map((r) => r.editorId).filter(Boolean))] } }, select: { id: true, displayName: true } });
+    const nameOf = new Map(editors.map((u) => [u.id, u.displayName]));
+    return { revisions: revs.map((r) => ({ id: r.id, version: r.version, title: r.title, editor: nameOf.get(r.editorId) || 'Unknown', createdAt: r.createdAt, bytes: Buffer.byteLength(r.body || '') })) };
+  });
+  app.get('/docs/:id/history/:revId', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const rev = await p.docRevision.findFirst({ where: { id: req.params.revId, pageId: req.params.id } });
+    if (!rev) return reply.code(404).send({ error: 'not_found' });
+    return { revision: { version: rev.version, title: rev.title, body: rev.body, bodyFr: rev.bodyFr, createdAt: rev.createdAt } };
   });
 
   // Bulk reorder: [{ id, order, category? }] — used by the sidebar drag/reorder.
