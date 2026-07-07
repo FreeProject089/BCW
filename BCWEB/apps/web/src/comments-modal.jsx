@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api.js';
 import { useToast, Button, Spinner, Modal, EmptyState, Input, Textarea } from './ui.jsx';
+import UserAvatar from './Avatar.jsx';
 import { MessageSquare, CornerDownRight, Check, Pencil, Trash2, Send, Tag, Globe, Lock } from 'lucide-react';
 
 // Threaded editor-collaboration comments for a blog post (PR-review style). Any editor
@@ -43,9 +44,10 @@ export default function CommentsModal({ base, onClose, readOnly }) {
   const del = async (id) => { try { await api.del(`${base}/comments/${id}`); await load(); } catch { toast.error('Failed.'); } };
 
   const fmt = (d) => { try { return new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
-  const Avatar = ({ a }) => a?.author?.avatar
-    ? <img src={a.author.avatar} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" />
-    : <span className="w-6 h-6 rounded-full bg-[var(--surface-2)] grid place-items-center text-[10px] font-bold shrink-0">{(a?.author?.name || '?').slice(0, 1).toUpperCase()}</span>;
+  // Real avatar: author.avatar is the saved descriptor { variant, seed, colors, image },
+  // not a URL — feed it to the shared Avatar component (was <img src={object}> → broke,
+  // showing only the letter fallback).
+  const Avatar = ({ a }) => <UserAvatar user={{ id: a?.author?.id, displayName: a?.author?.name, avatar: a?.author?.avatar }} size={24} className="shrink-0" />;
 
   const CommentBody = ({ c, isReply }) => (
     <div className={`${c.resolved ? 'opacity-60' : ''}`}>

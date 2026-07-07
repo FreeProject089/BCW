@@ -5048,10 +5048,31 @@ function AdminSettings() {
     catch (x) { toast.error(x.data?.error === 'exceeds_disk' ? `Exceeds the real disk capacity (${x.data.diskGB} GB max).` : 'Save failed.'); }
     finally { setBusy(null); }
   };
+  // "Save all changes" — edit several settings (CPU / storage / upload …) and save them
+  // in one click, instead of one Save button per field.
+  const KIND_OF = {}; SETTINGS_GROUPS.forEach((g) => g.keys.forEach(([k, , , kind]) => { KIND_OF[k] = kind === 'gbmb' ? 'number' : kind; }));
+  const dirtyKeys = Object.keys(KIND_OF).filter((k) => {
+    const kind = KIND_OF[k];
+    const cur = coerce(draft[k] ?? (kind === 'bool' ? false : ''), kind);
+    const saved = data?.settings?.[k] ?? (kind === 'bool' ? false : '');
+    return JSON.stringify(cur) !== JSON.stringify(saved);
+  });
+  const saveAll = async () => {
+    setBusy('__all__');
+    try {
+      for (const k of dirtyKeys) await api.put(`/admin/settings/${k}`, { value: coerce(draft[k], KIND_OF[k]) });
+      toast.success(`Saved ${dirtyKeys.length} change${dirtyKeys.length === 1 ? '' : 's'}.`); reload(); cap.reload?.();
+    } catch (x) { toast.error(x.data?.error === 'exceeds_disk' ? `Exceeds the real disk capacity (${x.data.diskGB} GB max).` : 'Some changes failed to save.'); }
+    finally { setBusy(null); }
+  };
   const c = cap.data?.capacity;
   const tempPct = c?.tempMarginGB ? Math.min(100, (c.tempUsedGB / c.tempMarginGB) * 100) : 0;
   return (
-    <div className="mt-10"><h2 className="font-semibold mb-3 flex items-center gap-2"><Settings2 size={16} /> Hosting settings</h2>
+    <div className="mt-10">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2 sticky top-0 z-10 py-1 bg-[var(--bg-solid)]/85 backdrop-blur-sm">
+        <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} /> Hosting settings</h2>
+        {dirtyKeys.length > 0 && <Button variant="primary" size="sm" disabled={busy === '__all__'} onClick={saveAll}>{busy === '__all__' ? <Spinner /> : <><CheckCheck size={14} /> Save all ({dirtyKeys.length})</>}</Button>}
+      </div>
       {/* At-a-glance stacked bar of the WHOLE Total capacity — where every GB goes
           (hosting quotas, approved submissions, temp margin, reserved, free) plus the
           separately-tracked free-plan pool. */}
