@@ -14,6 +14,7 @@ import { REACTION_OPTIONS, ReactionIcon } from './reactions.jsx';
 import VisualEditor from './visual-editor.jsx';
 import IconPicker from './icon-picker.jsx';
 import SelectionToolbar from './selection-toolbar.jsx';
+import KbdPicker from './kbd-picker.jsx';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal } from './ui.jsx';
 
 // Pick the reader's language version of a post. EN is the base (always present);
@@ -58,7 +59,7 @@ const TYPE_TAG = {
 function TypeTag({ post, className = '' }) {
   if (post?.showcaseProject) return (
     <span className={`inline-flex items-center gap-1.5 text-xs font-medium text-[var(--muted)] ${className}`}>
-      <Sparkles size={14} className="text-[var(--primary-2)]" /> {post.showcaseProject.name}
+      {post.showcaseProject.icon ? <img src={post.showcaseProject.icon} alt="" className="w-4 h-4 rounded object-contain" /> : <Sparkles size={14} className="text-[var(--primary-2)]" />} {post.showcaseProject.name}
     </span>
   );
   const m = TYPE_TAG[post?.project?.key] || TYPE_TAG.community;
@@ -92,7 +93,7 @@ export function BlogList() {
               <div key={p.id} className="group relative">
                 <Link to={`/blog/${p.slug}`}><Card hover className="overflow-hidden h-full flex flex-col">
                   {p.cover ? <img src={p.cover} alt="" className="w-full h-44 object-cover" />
-                    : <div className="w-full h-44 bg-gradient-to-br from-orange-500/25 to-amber-500/10 grid place-items-center">{p.showcaseProject ? <Sparkles size={40} className="text-[var(--primary-2)] opacity-90" /> : <img src={(TYPE_TAG[p.project?.key] || TYPE_TAG.community).img} alt="" className="w-12 h-12 rounded-xl object-contain opacity-90" />}</div>}
+                    : <div className="w-full h-44 bg-gradient-to-br from-orange-500/25 to-amber-500/10 grid place-items-center">{p.showcaseProject?.icon ? <img src={p.showcaseProject.icon} alt="" className="w-14 h-14 rounded-xl object-contain opacity-90" /> : p.showcaseProject ? <Sparkles size={40} className="text-[var(--primary-2)] opacity-90" /> : <img src={(TYPE_TAG[p.project?.key] || TYPE_TAG.community).img} alt="" className="w-12 h-12 rounded-xl object-contain opacity-90" />}</div>}
                   <div className="p-5 flex-1 flex flex-col">
                     <div className="text-xs text-[var(--faint)] flex items-center gap-2">{fmtDate(p.publishedAt)}{!v.translated && <span className="inline-flex items-center gap-1 text-[var(--faint)]"><Languages size={11} /> {t('blog.untranslated', 'not translated')}</span>}</div>
                     <div className="font-bold mt-1.5 text-lg leading-snug">{v.title}</div>
@@ -173,6 +174,75 @@ export function BlogPostPage() {
   );
 }
 
+const BADGE_PRESETS = [
+  ['New', '#16a34a'], ['Beta', '#2563eb'], ['Updated', '#7c3aed'], ['Fixed', '#0891b2'],
+  ['Important', '#d97706'], ['Deprecated', '#dc2626'], ['WIP', '#db2777'], ['Pro', '#ea580c'],
+];
+const CLASSIC_BADGES = ['NEW', 'FIXED', 'IMPROVED', 'REFINE', 'VISUAL', 'MAJOR'];
+const CLASSIC_CLASS = { NEW: 'new', FIXED: 'fixed', IMPROVED: 'improved', REFINE: 'refine', VISUAL: 'visual', MAJOR: 'major' };
+const chipStyle = (c) => ({ color: c, background: `color-mix(in srgb, ${c} 15%, transparent)`, borderColor: `color-mix(in srgb, ${c} 42%, transparent)` });
+const SAVED_BADGES_KEY = 'bcw-custom-badges';
+const readSavedBadges = () => { try { return JSON.parse(localStorage.getItem(SAVED_BADGES_KEY) || '[]'); } catch { return []; } };
+
+/* Badge picker: classic [NEW]-style chips, coloured presets, your saved customs, and
+   a colour-picker builder (customs persist in localStorage). Mobile-friendly modal. */
+function BadgePicker({ onPick, onPickRaw, onClose }) {
+  const [label, setLabel] = useState('Custom');
+  const [color, setColor] = useState('#7c3aed');
+  const [saved, setSaved] = useState(readSavedBadges);
+  const persist = (next) => { setSaved(next); try { localStorage.setItem(SAVED_BADGES_KEY, JSON.stringify(next)); } catch {} };
+  const add = (save) => {
+    if (!label.trim()) return;
+    if (save && !saved.some((s) => s[0] === label.trim())) persist([[label.trim(), color], ...saved].slice(0, 20));
+    onPick(label.trim(), color); onClose();
+  };
+  return (
+    <div className="fixed inset-0 z-[70] grid place-items-center p-4" style={{ background: 'rgba(4,5,8,0.55)', backdropFilter: 'blur(3px)' }} onMouseDown={onClose}>
+      <div className="card modal-card w-full max-w-md p-0 overflow-hidden anim-pop max-h-[80vh] flex flex-col" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--line)] shrink-0"><span className="font-semibold">Insert a badge</span><button onClick={onClose} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={16} /></button></div>
+        <div className="p-3 overflow-auto">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-2">Classic</div>
+          <div className="flex flex-wrap gap-2">
+            {CLASSIC_BADGES.map((b) => (
+              <button key={b} type="button" onClick={() => { onPickRaw?.(`[${b}] `); onClose(); }} className="!p-0 bg-transparent border-0 cursor-pointer">
+                <span className={`md-badge md-badge-${CLASSIC_CLASS[b]} !mr-0`}>{b}</span>
+              </button>
+            ))}
+          </div>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-2">Presets</div>
+          <div className="flex flex-wrap gap-2">
+            {BADGE_PRESETS.map(([l, c]) => (
+              <button key={l} type="button" onClick={() => { onPick(l, c); onClose(); }}
+                className="text-xs font-bold px-2.5 py-1 rounded-full border" style={chipStyle(c)}>{l}</button>
+            ))}
+          </div>
+          {saved.length > 0 && <>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-2">My badges</div>
+            <div className="flex flex-wrap gap-2">
+              {saved.map(([l, c]) => (
+                <span key={l} className="inline-flex items-center gap-1 text-xs font-bold pl-2.5 pr-1 py-1 rounded-full border" style={chipStyle(c)}>
+                  <button type="button" onClick={() => { onPick(l, c); onClose(); }} className="bg-transparent border-0 cursor-pointer font-bold" style={{ color: 'inherit' }}>{l}</button>
+                  <button type="button" title="Remove" onClick={() => persist(saved.filter((s) => s[0] !== l))} className="opacity-60 hover:opacity-100"><X size={11} /></button>
+                </span>
+              ))}
+            </div>
+          </>}
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-2">Custom</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5 cursor-pointer shrink-0" />
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label" className="input !py-1.5 !text-sm flex-1 min-w-[100px]" onKeyDown={(e) => e.key === 'Enter' && add(true)} />
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full border" style={chipStyle(color)}>{label || 'Label'}</span>
+          </div>
+          <div className="flex gap-2 mt-2">
+            <Button size="sm" variant="primary" onClick={() => add(true)}>Add & save</Button>
+            <Button size="sm" variant="ghost" onClick={() => add(false)}>Add once</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Reusable rich Markdown editor (toolbar + preview). `full` adds media/badges. ── */
 export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, full = false }) {
   const toast = useToast(); const dialog = useDialog();
@@ -190,6 +260,8 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
   const tool = (Icon, fn, title) => <button type="button" title={title} onClick={fn} className="btn btn-sm"><Icon size={14} /></button>;
   const [blocksOpen, setBlocksOpen] = useState(false);
   const [iconPick, setIconPick] = useState(false);
+  const [badgePick, setBadgePick] = useState(false);
+  const [kbdPick, setKbdPick] = useState(false);
   // GitBook-style block snippets (remark-directive). `insertBlock` closes the menu.
   const BLOCKS = [
     { icon: TagIcon, label: 'Callout', snip: '\n:::tip[Good to know]\nSomething worth highlighting.\n:::\n' },
@@ -201,8 +273,8 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
     { icon: FileDown, label: 'File download', snip: '\n:::file[example.zip]{href="https://example.com/file.zip" size="10 KB"}\n:::\n' },
     { icon: AlignCenter, label: 'Align (center)', snip: '\n:::center\nCentered content — text or an ![image](url).\n:::\n' },
     { icon: Code2, label: 'Code block', snip: '\n```js\nconsole.log("hello");\n```\n' },
-    { icon: Keyboard, label: 'Shortcut', snip: ' :kbd[Ctrl+Shift+S] ' },
-    { icon: TagIcon, label: 'Tags', snip: ' :badge[New]{color="#16a34a"} :badge[Beta]{color="#2563eb"} ' },
+    { icon: Keyboard, label: 'Shortcut', onPick: () => { setBlocksOpen(false); setKbdPick(true); } },
+    { icon: TagIcon, label: 'Tags / badge', onPick: () => { setBlocksOpen(false); setBadgePick(true); } },
     { icon: Smile, label: 'Icon', onPick: () => { setBlocksOpen(false); setIconPick(true); } },
     { icon: ListTree, label: 'Table of contents', snip: '\n::toc[On this page]\n' },
   ];
@@ -224,7 +296,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
             <span className="w-px h-5 bg-[var(--line)] mx-1 self-center" />
             {tool(ImagePlus, () => pickImage((u) => insert(`\n![image](${u})\n`)), 'Image')}{tool(Youtube, ytEmbed, 'YouTube')}{tool(Video, videoEmbed, 'Video')}
             <span className="w-px h-5 bg-[var(--line)] mx-1 self-center" />
-            {['NEW', 'FIXED', 'IMPROVED'].map((b) => <button key={b} type="button" onClick={() => insert(`[${b}] `)} className="btn btn-sm !py-1 hidden sm:inline-flex"><span className={`md-badge md-badge-${b === 'NEW' ? 'new' : b === 'FIXED' ? 'fixed' : 'improved'} !mr-0`}>{b}</span></button>)}
+            <button type="button" onClick={() => setBadgePick(true)} className="btn btn-sm" title="Insert a badge (classic, preset or custom)"><TagIcon size={14} /> Badges</button>
             <div className="relative">
               <button type="button" onClick={() => setBlocksOpen((v) => !v)} className="btn btn-sm" title="Insert a GitBook-style block"><BlocksIcon size={14} /> Blocks <ChevronDown size={12} /></button>
               {blocksOpen && <>
@@ -246,6 +318,8 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
           : <><textarea ref={ref} className="w-full bg-transparent border-0 outline-none resize-none p-4 text-sm leading-relaxed text-[var(--text)]" style={{ minHeight }} value={value || ''} spellCheck={false} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
             <SelectionToolbar taRef={ref} value={value || ''} onChange={onChange} /></>}
       {iconPick && <IconPicker onPick={(n) => insert(` :icon[${n}] `)} onClose={() => setIconPick(false)} />}
+      {badgePick && <BadgePicker onPick={(label, color) => insert(` :badge[${label}]${color ? `{color="${color}"}` : ''} `)} onPickRaw={(txt) => insert(txt)} onClose={() => setBadgePick(false)} />}
+      {kbdPick && <KbdPicker onPick={(combo) => insert(` :kbd[${combo}] `)} onClose={() => setKbdPick(false)} />}
     </div>
   );
 }

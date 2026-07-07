@@ -45,8 +45,13 @@ export async function redeemPromoAtomic(p, rawCode, userId, grant) {
       // Conditional UPDATE re-checks maxRedemptions AT THE DATABASE, inside the
       // same serializable transaction — the classic "check then increment" bug
       // this replaces let two racing requests both read the same redeemedCount.
+      // NOTE: with maxRedemptions null (unlimited), `redeemedCount: { lt: null }`
+      // is an INVALID Prisma filter and threw a 500 on every unlimited code — so
+      // the cap condition is only added when a cap actually exists.
       const inc = await tx.promoCode.updateMany({
-        where: { id: promo.id, OR: [{ maxRedemptions: null }, { redeemedCount: { lt: promo.maxRedemptions } }] },
+        where: promo.maxRedemptions == null
+          ? { id: promo.id }
+          : { id: promo.id, redeemedCount: { lt: promo.maxRedemptions } },
         data: { redeemedCount: { increment: 1 } },
       });
       if (inc.count === 0) return { error: 'depleted' };

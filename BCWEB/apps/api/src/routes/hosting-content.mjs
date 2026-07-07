@@ -28,7 +28,13 @@ function logAccess(p, repoId, req, path, kind, identity) {
   const ip = clientIp(req);
   const accessKey = (req.query?.key && String(req.query.key).slice(0, 128)) || null;
   p.repoAccessEvent.create({ data: { serverRepoId: repoId, ip: String(ip || '').slice(0, 64), accessKey, userId: identity?.userId || null, discordId: identity?.discordId || null, path: String(path).slice(0, 220), kind } })
-    .then(() => { if (Math.random() < 0.02) return p.repoAccessEvent.deleteMany({ where: { serverRepoId: repoId, createdAt: { lt: new Date(Date.now() - 30 * 864e5) } } }); })
+    .then(async () => {
+      if (Math.random() >= 0.02) return;
+      // Retention: 30 days AND at most 5000 rows per repo (oldest overwritten).
+      await p.repoAccessEvent.deleteMany({ where: { serverRepoId: repoId, createdAt: { lt: new Date(Date.now() - 30 * 864e5) } } });
+      const excess = await p.repoAccessEvent.findMany({ where: { serverRepoId: repoId }, orderBy: { createdAt: 'desc' }, skip: 5000, take: 1000, select: { id: true } });
+      if (excess.length) await p.repoAccessEvent.deleteMany({ where: { id: { in: excess.map((e) => e.id) } } });
+    })
     .catch(() => { /* logging must never break serving */ });
 }
 // Resolve the connecting client's account identity from the X-Creator-ID header BMM

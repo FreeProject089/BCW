@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
-import AdmZip from 'adm-zip';
+import archiver from 'archiver';
 import { db, repoLog, notify, accountEntrySchema } from '../lib.mjs';
 import { effUpload, DEFAULT_SETTINGS } from './repos.mjs';
 import { presignRepoFile, registerRepoFile, removeRepoFile, publishRepo, unpublishRepo } from './hosting-content.mjs';
@@ -123,20 +123,25 @@ export default async function repoDashboardRoutes(app) {
     const wanted = b.data.ids?.length ? new Set(b.data.ids) : null;
     const files = req.repo.files.filter((f) => !wanted || wanted.has(f.id));
     if (!files.length) return reply.code(400).send({ error: 'no_files' });
-    const totalBytes = files.reduce((a, f) => a + Number(f.size || 0), 0);
-    if (totalBytes > 2 * 1024 ** 3) return reply.code(413).send({ error: 'selection_too_large', detail: 'Zip downloads are limited to 2 GB per request — select fewer files.' });
-    const zip = new AdmZip();
+    // STREAMED zip (archiver): each file is piped from object storage straight into
+    // the zip stream and out to the client — nothing is buffered in memory, so the
+    // old 2 GB per-request cap is gone (it existed because AdmZip built the whole
+    // archive in RAM).
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${req.repo.name.replace(/[^a-zA-Z0-9._-]/g, '_')}.zip"`,
+    });
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', () => { try { reply.raw.destroy(); } catch { /* client gone */ } });
+    archive.pipe(reply.raw);
     for (const f of files) {
       try {
         const { body } = await getObject(f.key);
-        const chunks = []; for await (const c of body) chunks.push(typeof c === 'string' ? Buffer.from(c) : c);
-        zip.addFile(f.path, Buffer.concat(chunks));
+        archive.append(body, { name: f.path });
       } catch (e) { req.log?.warn?.({ path: f.path, e: String(e?.message || e) }, 'zip: failed to fetch file, skipping'); }
     }
-    const buf = zip.toBuffer();
-    reply.header('Content-Type', 'application/zip');
-    reply.header('Content-Disposition', `attachment; filename="${req.repo.name.replace(/[^a-zA-Z0-9._-]/g, '_')}.zip"`);
-    return reply.send(buf);
+    await archive.finalize();
   });
 
   // ── Publish / take offline (owner / collab / password) ──
@@ -149,9 +154,18 @@ export default async function repoDashboardRoutes(app) {
     return await unpublishRepo(req._p, req.repo, req.actor);
   });
 
-  // ── Activity log (any access level) — recent audit entries ──
+  // ── Activity log (any access level) — audit entries with server-side search
+  // (`?q=` over actor + detail) and an action-type filter (`?action=`), ≤500 rows ──
   app.get('/repos/:id/dashboard/activity', { preHandler: resolve() }, async (req) => {
-    const logs = await req._p.repoAuditLog.findMany({ where: { serverRepoId: req.repo.id }, orderBy: { createdAt: 'desc' }, take: 50 });
+    const take = Math.min(500, Math.max(1, parseInt(req.query?.take, 10) || 100));
+    const action = String(req.query?.action || '').trim();
+    const q = String(req.query?.q || '').trim();
+    const where = {
+      serverRepoId: req.repo.id,
+      ...(action ? { action } : {}),
+      ...(q ? { OR: [{ actor: { contains: q, mode: 'insensitive' } }, { detail: { contains: q, mode: 'insensitive' } }] } : {}),
+    };
+    const logs = await req._p.repoAuditLog.findMany({ where, orderBy: { createdAt: 'desc' }, take });
     return { activity: logs };
   });
 

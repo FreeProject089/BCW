@@ -205,12 +205,23 @@ export const ICON_NAMES = Object.keys(ICONS);
 // from the Simple Icons CDN; everything else is a lucide icon from ICONS.
 function simpleSlug(n) { const m = String(n || '').toLowerCase().match(/^(?:simple|si):(.+)$/); return m ? m[1].replace(/[^a-z0-9-]/g, '') : null; }
 
+// Any lucide icon not in the curated ICONS map still renders — as a CSS-mask over
+// the lucide-static CDN svg, so it inherits currentColor like a real component.
+function lucideMask(name, size, className = '') {
+  const url = `https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/${name}.svg`;
+  return <span aria-hidden className={className} style={{ display: 'inline-block', width: size, height: size, backgroundColor: 'currentColor', WebkitMask: `url(${url}) center / contain no-repeat`, mask: `url(${url}) center / contain no-repeat`, verticalAlign: '-2px' }} />;
+}
+const isLucideName = (n) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(n);
+
 // Standalone icon glyph by name (used by the icon picker + reaction-style UIs).
 export function IconGlyph({ name, size = 18, className = '' }) {
   const slug = simpleSlug(name);
   if (slug) return <img src={`https://cdn.simpleicons.org/${slug}`} width={size} height={size} alt="" className={className} style={{ display: 'inline-block' }} />;
-  const I = ICONS[String(name || '').toLowerCase()] || Hash;
-  return <I size={size} className={className} aria-hidden />;
+  const n = String(name || '').toLowerCase();
+  const I = ICONS[n];
+  if (I) return <I size={size} className={className} aria-hidden />;
+  if (isLucideName(n)) return lucideMask(n, size, className);
+  return <Hash size={size} className={className} aria-hidden />;
 }
 
 // Inline lucide icon by name (tolerant of hast property key casing).
@@ -219,8 +230,10 @@ function DocIcon({ node }) {
   const name = String(p.dataName || p['data-name'] || p.name || '').toLowerCase();
   const slug = simpleSlug(name);
   if (slug) return <img src={`https://cdn.simpleicons.org/${slug}`} width={16} height={16} alt="" className="doc-icon-svg" style={{ display: 'inline-block', verticalAlign: '-2px' }} />;
-  const Ico = ICONS[name] || Hash;
-  return <Ico className="doc-icon-svg" size={16} aria-hidden />;
+  const Ico = ICONS[name];
+  if (Ico) return <Ico className="doc-icon-svg" size={16} aria-hidden />;
+  if (isLucideName(name)) return lucideMask(name, 16, 'doc-icon-svg');
+  return <Hash className="doc-icon-svg" size={16} aria-hidden />;
 }
 // Keyboard shortcut: "Ctrl+Shift+S" → styled <kbd> keys.
 function DocKbd({ node }) {

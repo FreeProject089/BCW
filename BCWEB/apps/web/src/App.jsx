@@ -187,14 +187,15 @@ function Nav() {
             </NavLink>
           ))}
         </nav>
-        <div className="w-2 shrink-0" />
-        {/* Right cluster, grouped by purpose: content actions (Projects,
-            notifications) · then preferences (language, theme, settings), split
-            by a subtle divider so it reads as two tidy groups, not one jumble. */}
+        {/* Below lg the segmented nav is hidden, so this spacer takes the slack and
+            pushes the whole right cluster to the right edge (was left-glued). */}
+        <div className="flex-1 min-w-[8px] lg:flex-none lg:w-2 shrink-0" />
+        {/* Right cluster — always shows notifications · lang · theme · settings
+            (+ Projects from sm up), right-aligned at every breakpoint. */}
         <div className="flex items-center gap-0.5 shrink-0">
-          <NavLink to="/projects" className={({ isActive }) => `nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}><Boxes size={16} /></NavLink>
           {user && <NavNotifications />}
-          <span className="w-px h-5 bg-[var(--line)] mx-1" />
+          <NavLink to="/projects" className={({ isActive }) => `hidden sm:inline-flex nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}><Boxes size={16} /></NavLink>
+          <span className="w-px h-5 bg-[var(--line)] mx-1 hidden sm:block" />
           <LangToggle />
           <ThemeToggle />
           <NavLink to="/settings" className={({ isActive }) => `nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.settings', 'Settings')} aria-label="Settings"><SettingsIcon size={16} /></NavLink>
@@ -299,7 +300,7 @@ function FooterCol({ title, links }) {
 function Footer() {
   const { t } = useI18n();
   return (
-    <footer className="mt-24 relative">
+    <footer className="mt-16 md:mt-24 relative clear-both">
       {/* gradient accent line */}
       <div className="h-px bg-gradient-to-r from-transparent via-[var(--primary)]/40 to-transparent" />
       <div className="max-w-6xl mx-auto px-4 py-14 flex flex-col md:grid md:gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">

@@ -9,7 +9,7 @@ import {
   CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss,
   Info, Orbit, Fingerprint,
 } from 'lucide-react';
-import { api, uploadPayload } from './api.js';
+import { api, uploadPayload, uploadImage } from './api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from './i18n.jsx';
 import { useTheme } from './theme.jsx';
@@ -658,6 +658,7 @@ function PromoCodeField({ months, onChange }) {
   const [code, setCode] = useState('');
   const [state, setState] = useState(null); // { promo } | { error } | null
   const [checking, setChecking] = useState(false);
+  const [redeemOpen, setRedeemOpen] = useState(false);
   useEffect(() => {
     if (!code.trim() || !user) { setState(null); onChange(null); return; }
     setChecking(true);
@@ -679,11 +680,83 @@ function PromoCodeField({ months, onChange }) {
         {checking && <Spinner className="absolute right-3 top-1/2 -translate-y-1/2" />}
       </div>
       {state?.error && <div className="text-xs text-red-400 mt-1 flex items-center gap-1"><XCircle size={12} /> {t('hosting.promo.invalid', 'Invalid or expired code.')}</div>}
-      {state?.promo && !termTooShort && (
+      {state?.promo && state.promo.kind === 'discount' && !termTooShort && (
         <div className="text-xs text-emerald-400 mt-1 flex items-center gap-1"><CheckCircle2 size={12} /> {state.promo.percentOff ? t('hosting.promo.pct', '{pct}% off applied').replace('{pct}', state.promo.percentOff) : state.promo.freeMonths ? t('hosting.promo.free', 'First {n} months free').replace('{n}', state.promo.freeMonths) : t('hosting.promo.ok', 'Code applied.')}</div>
       )}
+      {/* Free-hosting / free-boost codes aren't checkout discounts — they redeem
+          directly. Surface that with a one-click "Use this code" modal flow. */}
+      {state?.promo && state.promo.kind !== 'discount' && (
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+          <span className="text-xs text-emerald-400 flex items-center gap-1"><Gift size={12} />
+            {state.promo.kind === 'free_hosting'
+              ? t('hosting.promo.hostcode', 'Free hosting code — {gb} GB repo at no cost.').replace('{gb}', state.promo.storageGB)
+              : t('hosting.promo.boostcode', 'Boost code — {d} days featured.').replace('{d}', state.promo.boostDays)}
+          </span>
+          <Button size="sm" variant="primary" onClick={() => setRedeemOpen(true)}>{t('hosting.promo.use', 'Use this code')}</Button>
+        </div>
+      )}
       {termTooShort && <div className="text-xs text-amber-400 mt-1 flex items-center gap-1"><AlertTriangle size={12} /> {t('hosting.promo.minmonths', 'This code needs a {n}+ month term.').replace('{n}', state.promo.minMonths)}</div>}
+      {redeemOpen && state?.promo && <RedeemPromoModal code={code.trim()} promo={state.promo} onClose={() => setRedeemOpen(false)} />}
     </div>
+  );
+}
+
+/* Redeem a free-hosting / free-boost code from the hosting page: shows what the
+   code grants; boost codes ask which of your repos to boost. Mobile-friendly. */
+function RedeemPromoModal({ code, promo, onClose }) {
+  const { t } = useI18n(); const toast = useToast(); const nav = useNavigate();
+  const isBoost = promo.kind === 'free_boost';
+  const [repos, setRepos] = useState(null);
+  const [repoId, setRepoId] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (isBoost) api.get('/me/repos').then((r) => setRepos(r.repos || [])).catch(() => setRepos([])); }, [isBoost]);
+  const apply = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post('/me/promo/redeem', { code, ...(isBoost ? { repoId } : {}) });
+      toast.success(r.kind === 'free_hosting'
+        ? t('promo.gotHosting', 'Redeemed! A free hosted repo was created — see "My repos".')
+        : t('promo.gotBoost', 'Redeemed! Your repo is now boosted.'));
+      onClose(); nav('/dashboard');
+    } catch (x) {
+      const e = x.data?.error;
+      toast.error(e === 'already_used' ? t('promo.used', 'You already used this code.')
+        : e === 'depleted' ? t('promo.depleted', 'This code is fully used.')
+        : e === 'expired' ? t('promo.expired', 'This code has expired.')
+        : e === 'busy' ? t('promo.busy', 'Busy — try again in a second.')
+        : t('repos.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+  return (
+    <Modal open onClose={onClose} title={t('hosting.promo.modal', 'Redeem code')} icon={Gift} width="max-w-md"
+      footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
+        <Button variant="primary" disabled={busy || (isBoost && !repoId)} onClick={apply}>{busy ? <Spinner /> : t('hosting.promo.apply', 'Apply code')}</Button></>}>
+      <div className="flex items-center gap-3 p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06] mb-4">
+        <Gift size={20} className="text-emerald-400 shrink-0" />
+        <div className="text-sm">
+          <div className="font-semibold">{code}</div>
+          <div className="text-[var(--muted)]">
+            {isBoost ? t('hosting.promo.boostdesc', 'Boosts one of your repos to the featured spots for {d} days.').replace('{d}', promo.boostDays)
+              : t('hosting.promo.hostdesc', 'Creates a free hosted repo — {gb} GB storage{months}.').replace('{gb}', promo.storageGB).replace('{months}', promo.hostMonths ? ` for ${promo.hostMonths} months` : ', no expiry')}
+          </div>
+        </div>
+      </div>
+      {isBoost && (
+        repos === null ? <div className="py-4 grid place-items-center"><Spinner /></div>
+        : !repos.length ? <div className="text-sm text-[var(--muted)]">{t('hosting.promo.norepos', "You don't have any repos yet — host one first, then redeem the boost.")}</div>
+        : <div className="space-y-1.5 max-h-56 overflow-auto">
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{t('promo.pickrepo', 'Which repo should get the boost?')}</div>
+            {repos.map((r) => (
+              <button key={r.id} type="button" onClick={() => setRepoId(r.id)}
+                className={`w-full text-left px-3 py-2 rounded-xl border text-sm flex items-center gap-2 transition ${repoId === r.id ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                <HardDrive size={14} className={repoId === r.id ? 'text-[var(--primary)]' : 'text-[var(--faint)]'} />
+                <span className="flex-1 truncate">{r.name}</span>
+                {repoId === r.id && <CheckCircle2 size={14} className="text-[var(--primary)]" />}
+              </button>
+            ))}
+          </div>
+      )}
+    </Modal>
   );
 }
 
@@ -748,18 +821,26 @@ export function Hosting() {
         ))}
       </div>
 
-      {/* prepaid billing term — custom dropdown */}
-      <div className="mb-4 max-w-md">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.term', 'Billing term')} <span className="normal-case font-normal">{t('hosting.term.note', '· prepaid, min 1 month')}</span></div>
-        <TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} />
-      </div>
-      <div className="mb-6 max-w-md">
-        <PromoCodeField months={months} onChange={setPromo} />
-      </div>
-
-      {c && <Card className="p-4 mb-6 flex items-center gap-4 text-sm"><Gauge size={18} className="text-[var(--primary-2)]" />
-        <div className="flex-1"><div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${c.usableGB ? 100 - (c.freeGB / c.usableGB) * 100 : 0}%` }} /></div></div>
-        <span className="text-[var(--muted)] whitespace-nowrap">{c.freeGB.toFixed(0)} / {c.usableGB.toFixed(0)} GB {t('hosting.free', 'free')}</span></Card>}
+      {/* order configuration — billing term + promo grouped in one tidy card
+          (they floated loose before, which read as unfinished, esp. on mobile) */}
+      <Card className="p-4 sm:p-5 mb-6">
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.term', 'Billing term')} <span className="normal-case font-normal">{t('hosting.term.note', '· prepaid, min 1 month')}</span></div>
+            <TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} />
+          </div>
+          <div>
+            <PromoCodeField months={months} onChange={setPromo} />
+          </div>
+        </div>
+        {c && (
+          <div className="flex items-center gap-3 text-sm mt-4 pt-4 border-t border-[var(--line)]">
+            <Gauge size={16} className="text-[var(--primary-2)] shrink-0" />
+            <div className="flex-1"><div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${c.usableGB ? 100 - (c.freeGB / c.usableGB) * 100 : 0}%` }} /></div></div>
+            <span className="text-xs text-[var(--muted)] whitespace-nowrap tabular-nums">{c.freeGB.toFixed(0)} / {c.usableGB.toFixed(0)} GB {t('hosting.free', 'free')}</span>
+          </div>
+        )}
+      </Card>
       {/* Free tier — a real $0 plan, called out on its own instead of blending into
           the paid grid below (it isn't really "one of the four tiers", it's the
           answer to "can I try this for free?"). Paid plans never draw from this
@@ -2342,9 +2423,26 @@ function AdminServerPerf() {
 
       {downtime.length > 0 && (
         <Card className="p-4 mb-4">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">Downtime history (gaps &gt; 25 min between samples)</div>
-          <div className="space-y-1 text-xs text-[var(--muted)]">
-            {downtime.map((d, i) => <div key={i}>{new Date(d.from).toLocaleString()} → {new Date(d.to).toLocaleString()} · ~{d.minutes} min</div>)}
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1.5"><AlertTriangle size={11} /> Downtime history</div>
+          <p className="text-[11px] text-[var(--faint)] mb-3">Periods where the server stopped reporting — i.e. it was most likely down or restarting.</p>
+          <div className="space-y-2">
+            {downtime.map((d, i) => {
+              const dur = d.minutes >= 90 ? `${(d.minutes / 60).toFixed(1)} h` : `~${d.minutes} min`;
+              const from = new Date(d.from); const to = new Date(d.to);
+              const sameDay = from.toDateString() === to.toDateString();
+              const time = (x) => x.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const day = (x) => x.toLocaleDateString([], { day: 'numeric', month: 'short' });
+              return (
+                <div key={i} className="flex items-center gap-3 text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">
+                  <Badge tone={d.minutes >= 60 ? 'red' : 'amber'} className="shrink-0 tabular-nums">{dur}</Badge>
+                  <span className="text-[var(--muted)] min-w-0 truncate">
+                    {sameDay
+                      ? <>{day(from)} · <span className="tabular-nums">{time(from)} → {time(to)}</span></>
+                      : <span className="tabular-nums">{day(from)} {time(from)} → {day(to)} {time(to)}</span>}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}
@@ -3370,7 +3468,7 @@ function AdminProjects() {
       </div>
       <div className="rounded-2xl overflow-hidden border border-[var(--line)]" style={{ boxShadow: 'var(--shadow)' }}>
         <div className="flex items-center justify-between px-4 py-2.5 code-chrome">
-          <div className="flex items-center gap-2 text-sm font-medium text-slate-200"><M.icon size={15} className="text-orange-400" /> {M.name}.json</div>
+          <div className="flex items-center gap-2 text-sm font-medium text-[var(--text)]"><M.icon size={15} className="text-orange-400" /> {M.name}.json</div>
           <div className="flex items-center gap-2">
             <Badge tone={valid ? 'green' : 'red'}>{valid ? 'valid JSON' : 'invalid JSON'}</Badge>
             <Button size="sm" variant="ghost" onClick={format}>Format</Button>
@@ -4584,6 +4682,7 @@ function ShowcaseEditModal({ project, onClose, onDone }) {
   const cfg0 = project?.config || {};
   const [name, setName] = useState(project?.name || '');
   const [short, setShort] = useState(project?.short || '');
+  const [icon, setIcon] = useState(project?.icon || '');
   const [published, setPublished] = useState(project?.published ?? true);
   const [tabs, setTabs] = useState({ releases: !!cfg0.tabs?.releases, community: !!cfg0.tabs?.community, legal: !!cfg0.tabs?.legal });
   const [tagline, setTagline] = useState(cfg0.tagline || '');
@@ -4607,7 +4706,7 @@ function ShowcaseEditModal({ project, onClose, onDone }) {
     if (announce.announceEnabled && !announce.announceRevealAt) return toast.error('Set a reveal date/time for the announcement.');
     const config = { ...extra, tabs, tagline };
     const payload = {
-      name: name.trim(), short: short.trim(), published, config, pinTopbar, visibility, visibilityWhitelist: whitelist,
+      name: name.trim(), short: short.trim(), icon: icon.trim() || null, published, config, pinTopbar, visibility, visibilityWhitelist: whitelist,
       ...announce, announceRevealAt: announce.announceEnabled && announce.announceRevealAt ? new Date(announce.announceRevealAt).toISOString() : null,
     };
     setBusy(true);
@@ -4626,6 +4725,14 @@ function ShowcaseEditModal({ project, onClose, onDone }) {
         <Field label="Short (≤5)"><Input value={short} maxLength={5} onChange={(e) => setShort(e.target.value)} placeholder="BS" /></Field>
       </div>
       <div className="mt-3"><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="One-line description" /></Field></div>
+      <div className="mt-3"><Field label="Logo / icon" hint="Shown as the project tag icon + used as the blog thumbnail when a post has no cover">
+        <div className="flex items-center gap-2">
+          {icon && <img src={icon} alt="" className="w-10 h-10 rounded-lg object-contain border border-[var(--line)] shrink-0" />}
+          <Input value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="https://…/logo.png" />
+          <Button type="button" size="sm" onClick={() => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { const f = i.files?.[0]; if (!f) return; try { toast.info('Uploading…'); setIcon(await uploadImage(f)); } catch { toast.error('Upload failed.'); } }; i.click(); }}>Upload</Button>
+          {icon && <Button type="button" size="sm" variant="ghost" onClick={() => setIcon('')}>Clear</Button>}
+        </div>
+      </Field></div>
       <div className="mt-3">
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Sub-tabs</div>
         <div className="flex flex-wrap gap-x-5 gap-y-2 p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]">

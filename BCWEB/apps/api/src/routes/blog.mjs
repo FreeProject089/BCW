@@ -55,7 +55,7 @@ const POST_SELECT = {
   id: true, slug: true, title: true, excerpt: true, cover: true, publishedAt: true, status: true, authorId: true,
   titleFr: true, excerptFr: true, bodyFr: true, reactionsEnabled: true, reactionTypes: true, coAuthorIds: true, showToc: true, tocTitle: true,
   project: { select: { key: true, name: true } },
-  showcaseProject: { select: { slug: true, name: true, short: true } },
+  showcaseProject: { select: { slug: true, name: true, short: true, icon: true } },
   author: { select: { id: true, displayName: true, avatar: true } },
 };
 

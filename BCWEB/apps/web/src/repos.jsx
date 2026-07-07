@@ -113,19 +113,6 @@ export function ReposPage() {
     <div>
       <PageHeader icon={Server} title={t('repos.title', 'Server Repos')} subtitle={t('repos.sub', 'Verified community repositories — featured ones first.')} />
 
-      {/* aggregate feed URL — a single repo.json index of every listed repo */}
-      <Card className="p-3 mb-4 flex items-center gap-2.5 flex-wrap">
-        <FileJson size={16} className="text-[var(--primary-2)] shrink-0" />
-        <div className="min-w-0 flex-1">
-          <div className="text-xs text-[var(--faint)]">{t('repos.feed.label', 'Aggregate feed — all listed repos in one repo.json')}</div>
-          <code className="text-xs text-[var(--muted)] break-all">{feedUrl}</code>
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <Button size="sm" onClick={() => { navigator.clipboard?.writeText(feedUrl); toast.success(t('repos.feed.copied', 'Feed URL copied.')); }}><Copy size={13} /> {t('repos.copylink', 'Copy link')}</Button>
-          <a href={feedUrl} target="_blank" rel="noreferrer"><Button size="sm"><ExternalLink size={13} /> {t('repos.feed.open', 'Open')}</Button></a>
-        </div>
-      </Card>
-
       {/* search + filters */}
       <div className="flex flex-col sm:flex-row gap-2 mb-3">
         <div className="relative flex-1">
@@ -353,7 +340,13 @@ export function MyRepos() {
     catch (x) { toast.error(x.data?.error || t('repos.failed', 'Failed.')); }
   };
   const toggleList = async (r) => {
-    try { await api.post(`/repos/${r.id}/list`, { listed: !r.listed }); toast.success(!r.listed ? t('repos.listed.ok', 'Listed & verified — now public.') : t('repos.unlisted.ok', 'Unlisted.')); reload(); }
+    try {
+      const res = await api.post(`/repos/${r.id}/list`, { listed: !r.listed });
+      toast.success(!r.listed
+        ? (res?.pending ? t('repos.listed.pending', 'Submitted — a moderator will review it before it appears publicly.') : t('repos.listed.ok', 'Listed & verified — now public.'))
+        : t('repos.unlisted.ok', 'Unlisted.'));
+      reload();
+    }
     catch (x) {
       if (x.data?.error === 'sha_invalid') toast.error(t('repos.sha.invalid', 'Invalid repo.json / SHA — kept private. Upload or fix a valid repo.json, then try again.'));
       else toast.error(x.data?.error || t('repos.failed', 'Failed.'));
@@ -1060,6 +1053,69 @@ function RepoIdentifyCard() {
   );
 }
 
+/* Admin: live traffic across every repo — recent access events (15 min window,
+   auto-refreshing) + a 24h per-repo download rollup. */
+function AdminRepoTraffic() {
+  const [data, setData] = useState(null);
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    let on = true;
+    const load = () => api.get('/admin/repos/traffic').then((d) => on && setData(d)).catch(() => {});
+    load();
+    const id = setInterval(load, 10000); // live-ish: refresh every 10s
+    return () => { on = false; clearInterval(id); };
+  }, []);
+  const recent = data?.recent || [];
+  const rollup = data?.rollup || [];
+  return (
+    <Card className="p-4 mb-4">
+      <button className="w-full flex items-center gap-2 text-left" onClick={() => setOpen((v) => !v)}>
+        <Wifi size={16} className="text-[var(--primary-2)]" />
+        <span className="font-semibold flex-1">Live repo traffic</span>
+        {recent.length > 0 && <Badge tone="primary">{recent.length} in the last 15 min</Badge>}
+        <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="mt-3 grid lg:grid-cols-2 gap-4">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">Now (15 min)</div>
+            {!recent.length ? <div className="text-sm text-[var(--faint)] py-3">No traffic right now.</div> : (
+              <div className="divide-y divide-[var(--line)] max-h-64 overflow-auto rounded-lg border border-[var(--line)]">
+                {recent.map((e) => (
+                  <div key={e.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                    <span className={`shrink-0 font-bold ${e.kind === 'download' ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`}>{e.kind === 'download' ? '↓' : '•'}</span>
+                    <span className="font-medium truncate max-w-[9rem]" title={e.repo}>{e.repo}</span>
+                    <span className="font-mono text-[var(--muted)] truncate flex-1" title={e.path}>{e.path}</span>
+                    <span className="text-[var(--faint)] font-mono shrink-0">{e.ip}</span>
+                    <span className="text-[var(--faint)] shrink-0 tabular-nums">{new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">Last 24h — downloads per repo</div>
+            {!rollup.length ? <div className="text-sm text-[var(--faint)] py-3">No downloads in the last 24h.</div> : (
+              <div className="space-y-1.5 max-h-64 overflow-auto pr-1">
+                {rollup.map((r) => {
+                  const max = rollup[0]?.count || 1;
+                  return (
+                    <div key={r.repoId} className="flex items-center gap-2 text-xs">
+                      <span className="w-36 truncate font-medium" title={`${r.name} · ${r.owner}`}>{r.name}</span>
+                      <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${Math.max(4, (r.count / max) * 100)}%` }} /></div>
+                      <span className="tabular-nums text-[var(--muted)] w-10 text-right">{r.count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function AdminRepos() {
   const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useFetch(() => api.get('/admin/repos'), []);
@@ -1081,6 +1137,7 @@ export function AdminRepos() {
   return (
     <div className="mt-10">
       <RepoIdentifyCard />
+      <AdminRepoTraffic />
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold flex items-center gap-2"><Server size={16} className="text-[var(--primary-2)]" /> Server Repos</h2>
         <div className="flex items-center gap-2">

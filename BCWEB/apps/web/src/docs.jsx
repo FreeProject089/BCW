@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash } from 'lucide-react';
 import { api } from './api.js';
@@ -13,7 +14,7 @@ import { useToast, useDialog, Button, Spinner, Modal, Input, Select, Field, Empt
 export default function Docs() {
   const { slug } = useParams();
   const nav = useNavigate();
-  const { lang } = useI18n();
+  const { lang, t } = useI18n();
   const [tree, setTree] = useState([]);
   const [canEdit, setCanEdit] = useState(false);
   const [page, setPage] = useState(null);
@@ -55,6 +56,15 @@ export default function Docs() {
     window.addEventListener('touchend', te, { passive: true });
     return () => { window.removeEventListener('touchstart', ts); window.removeEventListener('touchend', te); };
   }, []);
+  // When the mobile drawer is open, lock body scroll — otherwise the page scrolls
+  // behind the fixed drawer and the footer ends up overlapping the sidebar.
+  useEffect(() => {
+    if (sidebar && typeof window !== 'undefined' && window.innerWidth < 768) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [sidebar]);
 
   const filtered = useMemo(() => {
     if (!q.trim()) return tree;
@@ -77,68 +87,83 @@ export default function Docs() {
     if (anchor) setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
   };
 
-  return (
-    <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-start">
-      {/* Mobile drawer backdrop */}
-      {sidebar && <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden" onClick={() => setSidebar(false)} />}
-      {/* Sidebar — slide-in drawer on phone (swipe from the left edge or tap the
-          button), sticky rail on desktop. */}
-      <aside className={`fixed md:sticky inset-y-0 md:inset-auto left-0 md:top-20 z-50 md:z-auto w-[82%] max-w-xs md:w-64 md:max-w-none md:shrink-0 md:max-h-[calc(100vh-6rem)] overflow-auto no-scrollbar p-4 md:p-3.5 md:rounded-2xl md:border md:border-[var(--line)] bg-[var(--bg-solid)] md:bg-[var(--surface-2)] transition-transform md:transition-none ${sidebar ? 'translate-x-0 md:block' : '-translate-x-full md:hidden'}`}
-        style={{ boxShadow: 'var(--shadow, none)' }}>
-        <div className="md:hidden flex justify-end -mt-1 mb-1"><button onClick={() => setSidebar(false)} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={18} /></button></div>
-        <div className="flex items-center gap-2 mb-3">
-          <BookOpen size={18} className="text-[var(--primary)]" />
-          <span className="font-bold">Documentation</span>
-        </div>
-          <button onClick={() => setSearch(true)}
-            className="w-full flex items-center gap-2 px-3 py-2 mb-2.5 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] text-sm text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] transition">
-            <Search size={14} /> <span className="flex-1 text-left">Search…</span>
-            <kbd className="text-[10px] font-semibold px-1.5 py-0.5 rounded-lg border border-[var(--line)] bg-[var(--bg)]">⌘K</kbd>
+  // Shared sidebar content — rendered in the desktop rail AND the mobile drawer.
+  const sideInner = (
+    <>
+      <div className="flex items-center gap-2 mb-3">
+        <BookOpen size={18} className="text-[var(--primary)]" />
+        <span className="font-bold">{t('docs.title')}</span>
+      </div>
+      <button onClick={() => setSearch(true)}
+        className="w-full flex items-center gap-2 px-3 py-2 mb-2.5 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] text-sm text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] transition">
+        <Search size={14} /> <span className="flex-1 text-left">{t('docs.search')}</span>
+        <kbd className="text-[10px] font-semibold px-1.5 py-0.5 rounded-lg border border-[var(--line)] bg-[var(--bg)]">⌘K</kbd>
+      </button>
+      <div className="relative mb-4">
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('docs.filter')} className="!py-2 !text-sm !rounded-2xl" />
+      </div>
+      {filtered.map((cat) => { const isCollapsed = collapsed.has(cat.category) && !q.trim(); return (
+        <div key={cat.category} className="mb-3">
+          <button onClick={() => toggleCat(cat.category)} className="w-full flex items-center gap-1 px-1.5 mb-1 text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] hover:text-[var(--muted)]">
+            <ChevronRight size={12} className={`transition-transform ${isCollapsed ? '' : 'rotate-90'}`} /> {cat.category}
           </button>
-          <div className="relative mb-4">
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter pages…" className="!py-2 !text-sm !rounded-2xl" />
-          </div>
-          {filtered.map((cat) => { const isCollapsed = collapsed.has(cat.category) && !q.trim(); return (
-            <div key={cat.category} className="mb-3">
-              <button onClick={() => toggleCat(cat.category)} className="w-full flex items-center gap-1 px-1.5 mb-1 text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] hover:text-[var(--muted)]">
-                <ChevronRight size={12} className={`transition-transform ${isCollapsed ? '' : 'rotate-90'}`} /> {cat.category}
-              </button>
-              {!isCollapsed && cat.pages.map((p) => (
-                <Link key={p.slug} to={`/docs/${p.slug}`} onClick={() => { if (window.innerWidth < 768) setSidebar(false); }}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition ${activeSlug === p.slug ? 'bg-[var(--primary)]/10 text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
-                  <IconGlyph name={p.icon || 'file'} size={14} className={activeSlug === p.slug ? 'text-[var(--primary)]' : 'text-[var(--faint)]'} />
-                  <span className="truncate flex-1">{p.title}</span>
-                  {!p.published && <span className="text-[10px] text-orange-400 shrink-0">draft</span>}
-                </Link>
-              ))}
-            </div>
-          ); })}
-        {canEdit && <Button size="sm" variant="ghost" className="w-full mt-1" onClick={() => setEditing({})}><Plus size={14} /> New page</Button>}
-      </aside>
+          {!isCollapsed && cat.pages.map((p) => (
+            <Link key={p.slug} to={`/docs/${p.slug}`} onClick={() => { if (window.innerWidth < 768) setSidebar(false); }}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition ${activeSlug === p.slug ? 'bg-[var(--primary)]/10 text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
+              <IconGlyph name={p.icon || 'file'} size={14} className={activeSlug === p.slug ? 'text-[var(--primary)]' : 'text-[var(--faint)]'} />
+              <span className="truncate flex-1">{p.title}</span>
+              {!p.published && <span className="text-[10px] text-orange-400 shrink-0">draft</span>}
+            </Link>
+          ))}
+        </div>
+      ); })}
+      {canEdit && <Button size="sm" variant="ghost" className="w-full mt-1" onClick={() => setEditing({})}><Plus size={14} /> {t('docs.newpage')}</Button>}
+    </>
+  );
+
+  return (
+    <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-start min-h-[60vh] pb-6">
+      {/* Desktop rail (in-flow, sticky). */}
+      {sidebar && (
+        <aside className="hidden md:block md:sticky md:top-20 w-64 shrink-0 md:max-h-[calc(100vh-6rem)] overflow-auto no-scrollbar p-3.5 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)]" style={{ boxShadow: 'var(--shadow, none)' }}>
+          {sideInner}
+        </aside>
+      )}
+      {/* Mobile drawer — PORTALED to <body>. The page's <main> has `animation:…both`
+          (anim-fade) which makes it a permanent stacking context, so a fixed drawer
+          rendered inside it paints BELOW the footer no matter its z-index. */}
+      {sidebar && typeof document !== 'undefined' && createPortal(
+        <div className="md:hidden fixed inset-0 z-[95]">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSidebar(false)} />
+          <aside className="absolute inset-y-0 left-0 w-[82%] max-w-xs overflow-auto no-scrollbar p-4" style={{ background: 'var(--bg-solid)', boxShadow: '8px 0 30px rgba(0,0,0,.35)' }}>
+            <div className="flex justify-end -mt-1 mb-1"><button onClick={() => setSidebar(false)} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={18} /></button></div>
+            {sideInner}
+          </aside>
+        </div>, document.body)}
 
       {/* Content */}
       <main className="flex-1 min-w-0 w-full max-w-3xl">
         <div className="flex items-center gap-2 mb-2">
           <button className="btn btn-sm" onClick={() => setSidebar((v) => !v)} title="Toggle sidebar"><PanelLeftClose size={15} className="hidden md:block" /><Menu size={15} className="md:hidden" /></button>
           {canEdit && page && <div className="ml-auto flex gap-2">
-            <Button size="sm" onClick={() => setEditing(page)}><Pencil size={14} /> Edit</Button>
+            <Button size="sm" onClick={() => setEditing(page)}><Pencil size={14} /> {t('docs.edit')}</Button>
           </div>}
-          {canEdit && !page && <Button size="sm" className="ml-auto" onClick={() => setEditing({})}><Plus size={14} /> New page</Button>}
+          {canEdit && !page && <Button size="sm" className="ml-auto" onClick={() => setEditing({})}><Plus size={14} /> {t('docs.newpage')}</Button>}
         </div>
 
         {loading ? <div className="py-20 grid place-items-center"><Spinner /></div>
           : page ? (
             <article>
               <h1 className="text-2xl md:text-3xl font-extrabold mb-1">{page.title}</h1>
-              <div className="text-xs text-[var(--faint)] mb-6">Updated {new Date(page.updatedAt).toLocaleDateString()}</div>
+              <div className="text-xs text-[var(--faint)] mb-6">{t('docs.updated')} {new Date(page.updatedAt).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US')}</div>
               <PageTocMobile body={body} />
-              {lang === 'fr' && !page.bodyFr && <div className="mb-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--primary-2)]" /> Cette page n'est pas encore traduite en français — version anglaise affichée.</div>}
-              <Markdown pageMap={pageMap}>{body || '*This page is empty.*'}</Markdown>
+              {lang === 'fr' && !page.bodyFr && <div className="mb-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--primary-2)]" /> {t('docs.notfr')}</div>}
+              <Markdown pageMap={pageMap}>{body || t('docs.empty')}</Markdown>
               <HelpfulWidget page={page} canEdit={canEdit} />
             </article>
           ) : (
-            <EmptyState icon={BookOpen} title="No documentation yet" sub={canEdit ? 'Create the first page to get started.' : 'Check back soon.'}>
-              {canEdit && <Button variant="primary" onClick={() => setEditing({})}><Plus size={15} /> New page</Button>}
+            <EmptyState icon={BookOpen} title={t('docs.none.title')} sub={canEdit ? t('docs.none.sub.admin') : t('docs.none.sub')}>
+              {canEdit && <Button variant="primary" onClick={() => setEditing({})}><Plus size={15} /> {t('docs.newpage')}</Button>}
             </EmptyState>
           )}
       </main>
@@ -159,13 +184,14 @@ const tocHeads = (body) => (String(body || '').match(/^#{2,3}\s+.+$/gm) || []).m
 
 /* Collapsible "On this page" shown above the article on phones/tablets (< xl). */
 function PageTocMobile({ body }) {
+  const { t } = useI18n();
   const heads = useMemo(() => tocHeads(body), [body]);
   if (heads.length < 2) return null;
   const go = (e, id) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', `#${id}`); };
   return (
     <details className="xl:hidden mb-6 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]">
       <summary className="doc-toc-m-summary cursor-pointer list-none px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] flex items-center gap-2">
-        <ChevronRight size={13} className="doc-toc-m-chevron transition-transform" /> On this page
+        <ChevronRight size={13} className="doc-toc-m-chevron transition-transform" /> {t('docs.onthispage')}
       </summary>
       <nav className="px-3 pb-3 space-y-0.5">
         {heads.map((h) => <a key={h.id} href={`#${h.id}`} onClick={(e) => go(e, h.id)} className={`block py-1 text-sm text-[var(--muted)] hover:text-[var(--primary)] ${h.depth === 3 ? 'pl-4 text-[13px]' : ''}`}>{h.text}</a>)}
@@ -177,6 +203,7 @@ function PageTocMobile({ body }) {
 /* GitBook-style right rail: the current page's headings, with the section in view
    highlighted (IntersectionObserver against the anchor ids the renderer emits). */
 function PageToc({ body }) {
+  const { t } = useI18n();
   const heads = useMemo(() => (String(body || '').match(/^#{2,3}\s+.+$/gm) || []).map((h) => {
     const depth = (h.match(/^#+/) || ['##'])[0].length; const text = h.replace(/^#+\s+/, '').trim();
     return { depth, text, id: tocSlug(text) };
@@ -195,7 +222,7 @@ function PageToc({ body }) {
   if (heads.length < 2) return null;
   return (
     <aside className="hidden xl:block w-52 shrink-0 sticky top-20 self-start max-h-[calc(100vh-6rem)] overflow-auto no-scrollbar">
-      <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-2">On this page</div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-2">{t('docs.onthispage')}</div>
       <nav className="border-l border-[var(--line)]">
         {heads.map((h) => (
           <a key={h.id} href={`#${h.id}`} onClick={(e) => { e.preventDefault(); document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', `#${h.id}`); }}
@@ -227,6 +254,7 @@ const RECENT_KEY = 'doc-search-recent';
 const readRecent = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; } };
 
 function SearchPalette({ onClose, onPick }) {
+  const { t } = useI18n();
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
   const [active, setActive] = useState(0);
@@ -250,7 +278,24 @@ function SearchPalette({ onClose, onPick }) {
   useEffect(() => { listRef.current?.querySelector('[data-active="1"]')?.scrollIntoView({ block: 'nearest' }); }, [active]);
 
   const showRecent = q.trim().length < 2 && recent.length > 0;
-  const rows = showRecent ? recent : results;
+  // DocSearch-style grouping: one page row, its matching sections nested under it
+  // with tree connectors (└) instead of a flat list of noisy rows.
+  const rows = useMemo(() => {
+    if (showRecent) return recent;
+    const byPage = new Map();
+    for (const r of results) {
+      if (!byPage.has(r.slug)) byPage.set(r.slug, { page: null, sections: [] });
+      const g = byPage.get(r.slug);
+      if (r.section) g.sections.push(r); else g.page = r;
+    }
+    const out = [];
+    for (const [slug, g] of byPage) {
+      const head = g.sections[0] || {};
+      out.push(g.page || { slug, title: head.title, category: head.category, icon: head.icon });
+      for (const s of g.sections) out.push({ ...s, sub: true });
+    }
+    return out;
+  }, [results, recent, showRecent]);
   const pick = (r) => {
     try {
       const next = [r, ...readRecent().filter((x) => !(x.slug === r.slug && x.anchor === r.anchor))].slice(0, 6);
@@ -264,17 +309,30 @@ function SearchPalette({ onClose, onPick }) {
     if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
     if (e.key === 'Enter' && rows[active]) { e.preventDefault(); pick(rows[active]); }
   };
-  const Row = (r, i) => (
-    <button key={`${r.slug}-${r.anchor || 'page'}-${i}`} data-active={i === active ? '1' : '0'} onMouseEnter={() => setActive(i)} onClick={() => pick(r)}
-      className={`w-full text-left px-3.5 py-2.5 flex items-center gap-3 rounded-xl transition ${i === active ? 'bg-[var(--primary)]/12' : 'hover:bg-[var(--surface-2)]'}`}>
+  const Row = (r, i) => r.sub ? (
+    // Nested section hit: tree connector + # tile, page context muted below.
+    <button key={`${r.slug}-${r.anchor || i}`} data-active={i === active ? '1' : '0'} onMouseEnter={() => setActive(i)} onClick={() => pick(r)}
+      className={`w-full text-left pr-3.5 py-2 flex items-stretch gap-0 rounded-xl transition ${i === active ? 'bg-[var(--primary)]/12' : 'hover:bg-[var(--surface-2)]'}`}>
+      <span className="relative w-9 shrink-0" aria-hidden>
+        <span className="absolute left-[22px] -top-1 bottom-1/2 w-px bg-[var(--line-strong)]" />
+        <span className="absolute left-[22px] top-1/2 w-2.5 h-px bg-[var(--line-strong)]" style={{ transform: 'translateY(-0.5px)' }} />
+      </span>
+      <span className={`self-center grid place-items-center w-7 h-7 rounded-lg shrink-0 ${i === active ? 'text-[var(--primary)] bg-[var(--primary)]/15' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}><Hash size={13} /></span>
+      <div className="min-w-0 flex-1 self-center pl-3">
+        <div className="text-sm font-medium truncate">{highlight(r.section, q)}</div>
+        <div className="text-[11px] text-[var(--faint)] truncate">{r.title}</div>
+      </div>
+      {i === active && <CornerDownLeft size={14} className="self-center text-[var(--faint)] shrink-0" />}
+    </button>
+  ) : (
+    <button key={`${r.slug}-page-${i}`} data-active={i === active ? '1' : '0'} onMouseEnter={() => setActive(i)} onClick={() => pick(r)}
+      className={`w-full text-left px-3 py-2.5 flex items-center gap-3 rounded-xl transition ${i > 0 ? 'mt-1' : ''} ${i === active ? 'bg-[var(--primary)]/12' : 'hover:bg-[var(--surface-2)]'}`}>
       <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${i === active ? 'text-[var(--primary)] bg-[var(--primary)]/15' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}>
-        {r.section ? <Hash size={15} /> : <IconGlyph name={r.icon || 'file'} size={15} />}
+        <IconGlyph name={r.icon || 'file'} size={15} />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate">{r.section ? <>{highlight(r.section, q)} <span className="text-[var(--faint)] font-normal">· {r.title}</span></> : highlight(r.title, q)}</div>
-        {r.section ? <div className="text-xs text-[var(--faint)] truncate">{r.title}</div>
-          : r.snippet ? <div className="text-xs text-[var(--muted)] truncate">{highlight(r.snippet, q)}</div>
-          : <div className="text-xs text-[var(--faint)] truncate">{r.category}</div>}
+        <div className="text-sm font-semibold truncate">{highlight(r.title, q)} <span className="text-[var(--faint)] font-normal text-xs">· {r.category}</span></div>
+        {r.snippet && <div className="text-xs text-[var(--muted)] truncate">{highlight(r.snippet, q)}</div>}
       </div>
       {i === active && <CornerDownLeft size={14} className="text-[var(--faint)] shrink-0" />}
     </button>
@@ -285,21 +343,22 @@ function SearchPalette({ onClose, onPick }) {
         <div className="flex items-center gap-2.5 px-4 border-b border-[var(--line)]">
           <Search size={17} className="text-[var(--muted)] shrink-0" />
           <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey}
-            placeholder="Search the documentation…" className="flex-1 bg-transparent border-0 outline-none py-3.5 text-[15px] text-[var(--text)]" />
+            placeholder={t('docs.search.ph')} className="flex-1 bg-transparent border-0 outline-none py-3.5 text-[15px] text-[var(--text)]" />
           {loading && <Spinner className="!w-4 !h-4 text-[var(--faint)]" />}
           <button onClick={onClose} className="text-[var(--faint)] hover:text-[var(--text)] shrink-0"><X size={16} /></button>
         </div>
         <div ref={listRef} className="max-h-[54vh] overflow-auto p-1.5">
-          {showRecent && <div className="px-2.5 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--faint)]">Recent</div>}
-          {q.trim().length >= 2 && loading && !results.length ? <div className="px-4 py-10 grid place-items-center"><Spinner /></div>
-            : q.trim().length >= 2 && !results.length ? <div className="px-4 py-10 text-center text-sm text-[var(--faint)]">No results for “{q}”.</div>
+          {showRecent && <div className="px-2.5 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--faint)]">{t('docs.search.recent')}</div>}
+          {q.trim().length < 2 && !showRecent ? <div className="px-4 py-10 text-center text-sm text-[var(--faint)]">{t('docs.search.hint')}</div>
+            : q.trim().length >= 2 && loading && !results.length ? <div className="px-4 py-10 grid place-items-center"><Spinner /></div>
+            : q.trim().length >= 2 && !results.length ? <div className="px-4 py-10 text-center text-sm text-[var(--faint)]">{t('docs.search.none')} “{q}”.</div>
             : rows.length ? rows.map(Row)
-            : <div className="px-4 py-10 text-center text-sm text-[var(--faint)]">Search titles and section headings across the docs.</div>}
+            : <div className="px-4 py-10 text-center text-sm text-[var(--faint)]">{t('docs.search.hint')}</div>}
         </div>
         <div className="flex items-center gap-3 px-4 py-2 border-t border-[var(--line)] text-[11px] text-[var(--faint)]">
-          <span className="flex items-center gap-1"><kbd className="doc-kbd-hint">↑</kbd><kbd className="doc-kbd-hint">↓</kbd> navigate</span>
-          <span className="flex items-center gap-1"><kbd className="doc-kbd-hint">↵</kbd> open</span>
-          <span className="flex items-center gap-1"><kbd className="doc-kbd-hint">esc</kbd> close</span>
+          <span className="flex items-center gap-1"><kbd className="doc-kbd-hint">↑</kbd><kbd className="doc-kbd-hint">↓</kbd> {t('docs.kb.nav')}</span>
+          <span className="flex items-center gap-1"><kbd className="doc-kbd-hint">↵</kbd> {t('docs.kb.open')}</span>
+          <span className="flex items-center gap-1"><kbd className="doc-kbd-hint">esc</kbd> {t('docs.kb.close')}</span>
         </div>
       </div>
     </div>
@@ -308,6 +367,7 @@ function SearchPalette({ onClose, onPick }) {
 
 /* "Was this helpful?" — 3-face rating (good/ok/bad), one vote per browser. */
 function HelpfulWidget({ page, canEdit }) {
+  const { t } = useI18n();
   const key = `doc-fb-${page.id}`;
   const read = () => { try { return localStorage.getItem(key); } catch { return null; } };
   const [voted, setVoted] = useState(read);
@@ -322,7 +382,7 @@ function HelpfulWidget({ page, canEdit }) {
   const FACES = [['good', Smile, 'text-emerald-500', 'hover:border-emerald-500 hover:text-emerald-500'], ['ok', Meh, 'text-amber-500', 'hover:border-amber-500 hover:text-amber-500'], ['bad', Frown, 'text-red-500', 'hover:border-red-500 hover:text-red-500']];
   return (
     <div className="mt-12 pt-6 border-t border-[var(--line)] flex flex-col items-center gap-2.5">
-      <span className="text-sm text-[var(--muted)]">{voted ? 'Thanks for your feedback!' : 'Was this page helpful?'}</span>
+      <span className="text-sm text-[var(--muted)]">{voted ? t('docs.helpful.thanks') : t('docs.helpful')}</span>
       <div className="flex items-center gap-2">
         {FACES.map(([r, Ico, on, hov]) => (
           <button key={r} disabled={!!voted} onClick={() => vote(r)} title={r}

@@ -111,7 +111,7 @@ export default async function showcaseRoutes(app) {
     const rows = await p.showcaseProject.findMany({ orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
     return {
       projects: rows.map((r) => ({
-        id: r.id, slug: r.slug, name: r.name, short: r.short, published: r.published, order: r.order, config: r.config,
+        id: r.id, slug: r.slug, name: r.name, short: r.short, icon: r.icon, published: r.published, order: r.order, config: r.config,
         showOnHomeNews: r.showOnHomeNews, showBlogTab: r.showBlogTab,
         visibility: r.visibility, visibilityWhitelist: r.visibilityWhitelist, pinTopbar: r.pinTopbar,
         announceEnabled: r.announceEnabled, announceTitle: r.announceTitle, announceLogo: r.announceLogo, announceMarkdown: r.announceMarkdown, announceRevealAt: r.announceRevealAt,
@@ -123,6 +123,7 @@ export default async function showcaseRoutes(app) {
   const upsertSchema = z.object({
     name: z.string().min(2).max(60),
     short: z.string().min(1).max(5),
+    icon: z.string().max(500).nullable().optional(),
     config: configSchema.default({}),
     published: z.boolean().default(true),
     order: z.number().int().default(0),

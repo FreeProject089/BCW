@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { UploadCloud, CheckCircle2, X, AlertTriangle, Loader2, Ban, ChevronDown, ChevronUp } from 'lucide-react';
 import { uploadRepoFile } from './api.js';
 import { useToast } from './ui.jsx';
@@ -51,6 +51,7 @@ export function UploadProvider({ children }) {
 
     (async () => {
       let done = 0, failed = 0, sentBytes = 0;
+      const failedFiles = []; // which files failed (name + why), shown in the dock
       const started = performance.now();
       for (const f of files) {
         const c = ctrl.current.get(id);
@@ -71,9 +72,10 @@ export function UploadProvider({ children }) {
         } catch (e) {
           if (e?.aborted) break;         // cancelled — stop the whole job
           failed++;
+          if (failedFiles.length < 200) failedFiles.push({ name: (f.webkitRelativePath || f.name || '?'), reason: String(e?.data?.error || e?.message || 'failed').slice(0, 80) });
         }
         done++;
-        patch(id, { done, failed, sentBytes, curLoaded: 0 });
+        patch(id, { done, failed, sentBytes, failedFiles: [...failedFiles], curLoaded: 0 });
         opts.onProgress?.(done, files.length);
       }
       const c = ctrl.current.get(id);
@@ -89,6 +91,15 @@ export function UploadProvider({ children }) {
   }, [toast]);
 
   const active = jobs.filter((j) => j.status === 'uploading').length;
+
+  // Warn before closing/refreshing the tab while a file transfer is running —
+  // otherwise the upload dies silently mid-flight.
+  useEffect(() => {
+    if (!active) return;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ''; return ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [active > 0]);
 
   return (
     <Ctx.Provider value={{ enqueue, jobs, cancel }}>
@@ -137,6 +148,24 @@ export function UploadProvider({ children }) {
                         {fmtBytes(sent)}/{fmtBytes(j.totalBytes)}{uploading && j.bps ? ` · ${fmtBytes(j.bps)}/s` : ''}
                       </span>
                     </div>
+                    {/* Which files failed — expandable list + copy, so "81 failed"
+                        is actionable instead of a mystery. */}
+                    {j.failedFiles?.length > 0 && (
+                      <details className="mt-1.5">
+                        <summary className="cursor-pointer text-[11px] text-amber-400 hover:text-amber-300 select-none">
+                          {j.failedFiles.length} failed file(s) — view list
+                        </summary>
+                        <div className="mt-1 max-h-36 overflow-auto rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2 space-y-0.5">
+                          {j.failedFiles.map((ff, i) => (
+                            <div key={i} className="text-[10.5px] font-mono truncate" title={`${ff.name} — ${ff.reason}`}>
+                              <span className="text-[var(--text)]">{ff.name}</span> <span className="text-[var(--faint)]">· {ff.reason}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <button onClick={() => { navigator.clipboard?.writeText(j.failedFiles.map((ff) => `${ff.name}\t${ff.reason}`).join('\n')).then(() => toast.success('Failed-file list copied.')).catch(() => {}); }}
+                          className="mt-1 text-[10.5px] text-[var(--muted)] hover:text-[var(--text)] underline">Copy list</button>
+                      </details>
+                    )}
                   </div>
                 );
               })}

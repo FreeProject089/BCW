@@ -155,9 +155,18 @@ export async function notify(p, userId, kind, body) {
   try { await p.notification.create({ data: { userId, kind, body } }); } catch { /* non-fatal */ }
 }
 
-/** Append a per-repo audit entry. `actor` is a display label, not auth material. */
+/** Append a per-repo audit entry. `actor` is a display label, not auth material.
+ * Retention: entries older than 30 days are pruned, and each repo keeps at most
+ * 1000 rows (oldest overwritten) — sampled at 3% so writes stay cheap. */
 export async function repoLog(p, serverRepoId, actor, action, detail = '') {
-  try { await p.repoAuditLog.create({ data: { serverRepoId, actor: String(actor || 'unknown').slice(0, 160), action, detail: String(detail || '').slice(0, 300) } }); } catch { /* non-fatal */ }
+  try {
+    await p.repoAuditLog.create({ data: { serverRepoId, actor: String(actor || 'unknown').slice(0, 160), action, detail: String(detail || '').slice(0, 300) } });
+    if (Math.random() < 0.03) {
+      await p.repoAuditLog.deleteMany({ where: { serverRepoId, createdAt: { lt: new Date(Date.now() - 30 * 864e5) } } }).catch(() => {});
+      const excess = await p.repoAuditLog.findMany({ where: { serverRepoId }, orderBy: { createdAt: 'desc' }, skip: 1000, take: 500, select: { id: true } }).catch(() => []);
+      if (excess.length) await p.repoAuditLog.deleteMany({ where: { id: { in: excess.map((e) => e.id) } } }).catch(() => {});
+    }
+  } catch { /* non-fatal */ }
 }
 
 /** One free repo / one free catalog upload per account — AND per linked creator id,

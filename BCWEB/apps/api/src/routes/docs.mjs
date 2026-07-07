@@ -67,7 +67,13 @@ export default async function docRoutes(app) {
         let snippet = '';
         if (bi >= 0) {
           const start = Math.max(0, bi - 40);
-          snippet = (start > 0 ? '…' : '') + hay.slice(start, bi + q.length + 60).replace(/[#>*`:_-]{2,}/g, ' ').replace(/\s+/g, ' ').trim() + '…';
+          // Strip markdown/table/directive noise so snippets read as prose (they
+          // were showing raw `| GET | \`/docs\` |` pipes and ::: fences).
+          snippet = (start > 0 ? '…' : '') + hay.slice(start, bi + q.length + 70)
+            .replace(/:{2,}[\w-]*(\[[^\]]*\])?(\{[^}]*\})?/g, ' ')
+            .replace(/[|`{}#>*_[\]]+/g, ' ')
+            .replace(/-{3,}/g, ' ')
+            .replace(/\s+/g, ' ').trim() + '…';
         }
         results.push({ slug: pg.slug, title: pg.title, category: pg.category, icon: pg.icon, snippet, score: inTitle ? 3 : 1 });
       }

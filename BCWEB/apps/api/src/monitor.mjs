@@ -131,8 +131,12 @@ export async function sampleAndAlert(p, log) {
     if (cpuPct > 90) alerts.push(await maybeAlert(p, 'cpu', `CPU usage at ${cpuPct.toFixed(0)}% (>90%).`));
     if (memPct > 90) alerts.push(await maybeAlert(p, 'mem', `Memory usage at ${memPct.toFixed(0)}% (>90%).`));
     if (diskPct > 90) alerts.push(await maybeAlert(p, 'disk', `Disk usage at ${diskPct.toFixed(0)}% (>90%).`));
+    // Startup grace: right after the stack boots, dependencies (esp. the Discord
+    // bot, whose heartbeat is only "fresh" ~2 min after IT starts) haven't had
+    // time to report in — alerting immediately was a guaranteed false positive.
+    const inGrace = process.uptime() < 240; // 4 min
     for (const [key, ok] of Object.entries(deps)) {
-      if (ok === false) alerts.push(await maybeAlert(p, 'service_down', `${DEP_LABELS[key] || key} is unreachable.`));
+      if (ok === false && !inGrace) alerts.push(await maybeAlert(p, 'service_down', `${DEP_LABELS[key] || key} is unreachable.`));
     }
     const fired = alerts.filter(Boolean);
 

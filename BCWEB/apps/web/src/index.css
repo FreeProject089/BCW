@@ -177,6 +177,9 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+/* Repo-dashboard file delete: slide the row out before it leaves the list. */
+@keyframes fileOut { to { opacity: 0; transform: translateX(28px); max-height: 0; padding-top: 0; padding-bottom: 0; } }
+.file-row-out { animation: fileOut .3s ease forwards; overflow: hidden; max-height: 48px; pointer-events: none; }
 @keyframes popIn { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .anim-fade { animation: fadeIn .2s ease both; }
@@ -338,7 +341,8 @@ html.js-anim .reveal-stagger.reveal-instant > * { transition-duration: .34s; tra
 .md-body .doc-icon { display: inline-flex; vertical-align: -3px; margin: 0 1px; }
 .md-body .doc-icon-svg { display: inline-block; }
 .md-body .doc-kbd { display: inline-flex; gap: 3px; vertical-align: middle; }
-.md-body .doc-kbd kbd { font: 700 11px ui-monospace, monospace; background: var(--surface-2); border: 1px solid var(--line);
+.doc-kbd { display: inline-flex; gap: 3px; vertical-align: middle; }
+.doc-kbd kbd { font: 700 11px ui-monospace, monospace; background: var(--surface-2); border: 1px solid var(--line);
   border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; min-width: 16px; text-align: center; color: var(--text); }
 /* Inline comment / annotation — dashed underline + hover card (text/image/link) */
 .md-body .doc-comment { border-bottom: 2px dotted var(--primary); cursor: help; position: relative; outline: none; }
@@ -392,11 +396,13 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
 .bmm-replay .rr-controller, .bmm-replay .replayer-mouse-tail { display: none !important; }
 
 /* JSON code editor (admin projects config) — solid, not glassy */
-.code-chrome { background: #15171e; border-bottom: 1px solid rgba(255,255,255,0.07); }
-.code-editor { background: #0d0f15; }
-.code-gutter { margin: 0; padding: 14px 10px; text-align: right; color: #4b5563; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.6; user-select: none; overflow: hidden; min-width: 44px; border-right: 1px solid rgba(255,255,255,0.06); }
-.code-area { flex: 1; resize: none; padding: 14px 16px; background: transparent; color: #e2e6ee; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.6; border: 0; outline: none; white-space: pre; overflow: auto; tab-size: 2; }
-.code-area::placeholder { color: #4b5563; }
+/* Code editor chrome — rides the app theme tokens (was hardcoded dark, which made
+   it the one pitch-black island in light mode and off-palette in dark mode). */
+.code-chrome { background: var(--surface-2); border-bottom: 1px solid var(--line); color: var(--text); }
+.code-editor { background: var(--bg-solid); }
+.code-gutter { margin: 0; padding: 14px 10px; text-align: right; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.6; user-select: none; overflow: hidden; min-width: 44px; border-right: 1px solid var(--line); }
+.code-area { flex: 1; resize: none; padding: 14px 16px; background: transparent; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.6; border: 0; outline: none; white-space: pre; overflow: auto; tab-size: 2; }
+.code-area::placeholder { color: var(--faint); }
 
 /* range slider (custom plan) */
 .bcw-range { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); outline: none; }

@@ -95,8 +95,13 @@ export default function SelectionToolbar({ taRef, value, onChange }) {
         {btn(MessageSquarePlus, () => { cmt.current = { text: '', link: '', img: '' }; setSub((v) => v === 'comment' ? null : 'comment'); }, 'Comment')}
       </div>
       {sub === 'color' && (
-        <div className="absolute top-full mt-1 left-0 flex gap-1 p-1.5 rounded-lg border border-[var(--line-strong)] shadow-xl" style={{ background: 'var(--bg-solid)' }}>
+        <div className="absolute top-full mt-1 left-0 flex items-center gap-1 p-1.5 rounded-lg border border-[var(--line-strong)] shadow-xl" style={{ background: 'var(--bg-solid)' }}>
           {COLORS.map((c) => <button key={c} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => color(c)} className="w-5 h-5 rounded-full border border-black/20" style={{ background: c }} />)}
+          {/* full colour picker — applies when the native dialog closes */}
+          <input type="color" defaultValue="#7c3aed" title="Custom colour"
+            onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
+            onChange={(e) => color(e.target.value)}
+            className="w-6 h-6 rounded-full border border-[var(--line)] bg-transparent p-0 cursor-pointer" />
         </div>
       )}
       {sub === 'anchor' && (

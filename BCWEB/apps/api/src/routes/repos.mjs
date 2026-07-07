@@ -66,7 +66,9 @@ async function autoVerify(p, repoId) {
   const h = await checkRepoHealth(repo);
   const data = { status: h.status };
   if (h.sha) data.sha = h.sha;
-  if (repo.listed) { data.verified = !!h.valid; data.pendingReview = false; }
+  // Reconcile TECHNICAL validity only — pendingReview is a human-moderation flag
+  // now (cleared by admin verify/reject), so sweeps must never touch it.
+  if (repo.listed) { data.verified = !!h.valid; }
   const out = await p.serverRepo.update({ where: { id: repoId }, data });
   return { repo: out, health: h };
 }
@@ -95,7 +97,7 @@ export default async function repoRoutes(app) {
     const p = await db();
     const now = new Date();
     const all = await p.serverRepo.findMany({
-      where: { listed: true, verified: true },
+      where: { listed: true, verified: true, pendingReview: false },
       orderBy: { createdAt: 'desc' },
       select: { id: true, ownerId: true, name: true, description: true, tags: true, links: true, publicUrl: true, repoUrl: true, status: true, hosted: true, hostPath: true, published: true,
                 featuredUntil: true, storageQuotaBytes: true, storageUsedBytes: true, sha: true, verified: true, owner: { select: { displayName: true } },
@@ -148,7 +150,7 @@ export default async function repoRoutes(app) {
     // URLs from a client-controlled Host header would allow cache poisoning (CWE-644).
     const origin = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
     const repos = await p.serverRepo.findMany({
-      where: { listed: true, verified: true },
+      where: { listed: true, verified: true, pendingReview: false },
       orderBy: [{ featuredUntil: 'desc' }, { createdAt: 'desc' }],
       select: { name: true, description: true, tags: true, links: true, publicUrl: true, repoUrl: true, hosted: true, hostPath: true, published: true, featuredUntil: true, sha: true, owner: { select: { displayName: true } } },
     });
@@ -489,23 +491,35 @@ export default async function repoRoutes(app) {
     const { repo, err } = await ownRepo(p, req.params.id, req.user);
     if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
     if (!b.data.listed) {
-      await p.serverRepo.update({ where: { id: repo.id }, data: { listed: false } });
+      await p.serverRepo.update({ where: { id: repo.id }, data: { listed: false, pendingReview: false } });
       return { ok: true, listed: false };
     }
+    // Moderation queue: a regular user's repo passes the TECHNICAL checks here, then
+    // waits for a MOD/ADMIN approval before it appears publicly (staff-owned repos
+    // skip the queue). Admin approves via /admin/repos/:id/verify, rejects with reason.
+    const isStaff = ['MOD', 'ADMIN', 'SUPERADMIN'].includes(req.user.role);
+    const queue = isStaff ? {} : { pendingReview: true };
+    const notifyMods = async () => {
+      if (isStaff) return;
+      const mods = await p.user.findMany({ where: { role: { in: ['MOD', 'ADMIN', 'SUPERADMIN'] } }, select: { id: true } });
+      await Promise.all(mods.map((m) => notify(p, m.id, 'repo_review', `"${repo.name}" was submitted to the public list and awaits review.`).catch(() => {})));
+    };
     // Hosted repos verify from their uploaded repo.json; others from the live URL.
     if (repo.hosted) {
       if (!repo.verified || !repo.repoJson) return reply.code(409).send({ error: 'sha_invalid', reason: 'no_valid_repo_json' });
-      await p.serverRepo.update({ where: { id: repo.id }, data: { listed: true } });
-      return { ok: true, listed: true, verified: true };
+      await p.serverRepo.update({ where: { id: repo.id }, data: { listed: true, ...queue } });
+      await notifyMods();
+      return { ok: true, listed: true, verified: true, pending: !isStaff };
     }
     // Listing must be set for autoVerify to compute `verified`; revert if it fails.
-    await p.serverRepo.update({ where: { id: repo.id }, data: { listed: true } });
+    await p.serverRepo.update({ where: { id: repo.id }, data: { listed: true, ...queue } });
     const res = await autoVerify(p, repo.id);
     if (!res?.repo?.verified) {
-      await p.serverRepo.update({ where: { id: repo.id }, data: { listed: false } });
+      await p.serverRepo.update({ where: { id: repo.id }, data: { listed: false, pendingReview: false } });
       return reply.code(409).send({ error: 'sha_invalid', reason: res?.health?.reason || 'invalid_manifest' });
     }
-    return { ok: true, listed: true, verified: true };
+    await notifyMods();
+    return { ok: true, listed: true, verified: true, pending: !isStaff };
   });
 
   // On-demand health check → ONLINE/OFFLINE + validity + auto SHA + auto verify.
@@ -628,6 +642,27 @@ export default async function repoRoutes(app) {
       repo: { id: match.id, name: match.name, hosted: match.hosted, listed: match.listed, published: match.published, createdAt: match.createdAt },
       owner: { id: match.ownerId, displayName: match.owner?.displayName, email: match.owner?.email, role: match.owner?.role },
       identity: { creatorIds: idn.creatorIds, discordIds: idn.discordIds, kofiDonor: idn.kofi },
+    };
+  });
+
+  // Admin: live traffic across every repo — the last 15 minutes of access events
+  // (a "who is downloading what right now" feed) plus a 24h per-repo rollup.
+  app.get('/admin/repos/traffic', { preHandler: requireRole('MOD', 'ADMIN') }, async () => {
+    const p = await db();
+    const since = new Date(Date.now() - 15 * 60e3);
+    const day = new Date(Date.now() - 24 * 3600e3);
+    const recent = await p.repoAccessEvent.findMany({
+      where: { createdAt: { gt: since } }, orderBy: { createdAt: 'desc' }, take: 200,
+      include: { repo: { select: { id: true, name: true } } },
+    });
+    const rollup = await p.repoAccessEvent.groupBy({ by: ['serverRepoId'], where: { createdAt: { gt: day } }, _count: { _all: true } });
+    const repos = await p.serverRepo.findMany({ where: { id: { in: rollup.map((r) => r.serverRepoId) } }, select: { id: true, name: true, owner: { select: { displayName: true } } } });
+    const nameMap = new Map(repos.map((r) => [r.id, r]));
+    return {
+      recent: recent.map((e) => ({ id: e.id, repoId: e.serverRepoId, repo: e.repo?.name || '?', ip: e.ip, path: e.path, kind: e.kind, userId: e.userId, discordId: e.discordId, at: e.createdAt })),
+      rollup: rollup
+        .map((r) => ({ repoId: r.serverRepoId, name: nameMap.get(r.serverRepoId)?.name || '?', owner: nameMap.get(r.serverRepoId)?.owner?.displayName || '—', count: r._count._all }))
+        .sort((a, b) => b.count - a.count),
     };
   });
 

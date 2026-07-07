@@ -752,6 +752,9 @@ model ShowcaseProject {
   slug      String   @unique
   name      String
   short     String   // 3-4 char label shown in the nav/cards
+  // Logo/icon URL for this project — shown as the tag icon and used as the blog
+  // thumbnail fallback for posts in this project's blog when they have no cover.
+  icon      String?
   config    Json     @default("{}")
   published Boolean  @default(true)
   order     Int      @default(0)

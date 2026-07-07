@@ -7,7 +7,7 @@ import {
   UploadCloud as UploadIcon, Trash, Wifi as WifiOn, WifiOff as WifiGone, Download, Ban, Radio, Star,
 } from 'lucide-react';
 import { api } from './api.js';
-import { useToast, useDialog, Button, Card, Badge, Input, Spinner } from './ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Select, Spinner } from './ui.jsx';
 import { useUploads } from './uploads.jsx';
 import { useI18n } from './i18n.jsx';
 
@@ -160,7 +160,7 @@ function buildFileTree(files) {
   }
   return root;
 }
-function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, t }) {
+function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, t, removing }) {
   const [open, setOpen] = useState(depth < 1);
   const dirs = [...node.dirs.entries()].sort(([a], [b]) => a.localeCompare(b));
   const files = [...node.files].sort((a, b) => a.path.localeCompare(b.path));
@@ -176,12 +176,12 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, t }) {
       )}
       {open && (
         <div>
-          {dirs.map(([seg, sub]) => <TreeNode key={seg} node={sub} name={seg} depth={depth + 1} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} t={t} />)}
+          {dirs.map(([seg, sub]) => <TreeNode key={seg} node={sub} name={seg} depth={depth + 1} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} t={t} removing={removing} />)}
           {files.map((f) => {
             const dl = downloadUrl(f);
             const base = f.path.includes('/') ? f.path.slice(f.path.lastIndexOf('/') + 1) : f.path;
             return (
-              <div key={f.id} className="flex items-center gap-2.5 px-4 py-2 text-sm" style={{ paddingLeft: `${16 + (name != null ? depth + 1 : depth) * 16}px` }}>
+              <div key={f.id} className={`flex items-center gap-2.5 px-4 py-2 text-sm ${removing?.has(f.id) ? 'file-row-out' : ''}`} style={{ paddingLeft: `${16 + (name != null ? depth + 1 : depth) * 16}px` }}>
                 <input type="checkbox" className="shrink-0" checked={sel.has(f.id)} onChange={() => toggle(f.id)} />
                 {f.path === 'repo.json' ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
                 <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
@@ -209,14 +209,21 @@ function FilesTab({ r, reload }) {
   const totalBytes = files.reduce((a, f) => a + (Number(f.size) || 0), 0);
   const upload = (list) => { if (list.length) enqueue(r.id, r.name, list, { dashboard: true, onDone: reload }); };
   const onDrop = (e) => { e.preventDefault(); setDragOver(false); const fs = [...(e.dataTransfer?.files || [])]; if (fs.length) upload(fs); };
+  // Deleting animates the row out (slide + fade) before it leaves the list, so the
+  // action reads visually instead of the file just vanishing on the next reload.
+  const [removing, setRemoving] = useState(new Set());
+  const markRemoving = (ids) => setRemoving((s) => new Set([...s, ...ids]));
   const del = async (f) => {
     if (!(await dialog.confirm({ title: t('rd.delfile.t', 'Delete file'), message: t('rd.delfile.m', '{path}? This can\'t be undone.').replace('{path}', f.path), okLabel: t('common.delete', 'Delete'), danger: true }))) return;
-    try { await api.del(`/repos/${r.id}/dashboard/files/${f.id}`); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); }
+    markRemoving([f.id]);
+    try { await Promise.all([api.del(`/repos/${r.id}/dashboard/files/${f.id}`), new Promise((res) => setTimeout(res, 320))]); reload(); }
+    catch { setRemoving((s) => { const n = new Set(s); n.delete(f.id); return n; }); toast.error(t('repos.failed', 'Failed.')); }
   };
   const toggle = (id) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const delSelected = async () => {
     if (!(await dialog.confirm({ title: t('rd.delsel.t', 'Delete selected files'), message: t('rd.delsel.m', '{n} file(s)? This can\'t be undone.').replace('{n}', sel.size), okLabel: t('common.delete', 'Delete'), danger: true }))) return;
-    await Promise.all([...sel].map((id) => api.del(`/repos/${r.id}/dashboard/files/${id}`).catch(() => {})));
+    markRemoving([...sel]);
+    await Promise.all([...[...sel].map((id) => api.del(`/repos/${r.id}/dashboard/files/${id}`).catch(() => {})), new Promise((res) => setTimeout(res, 320))]);
     setSel(new Set()); reload();
   };
   const [zipping, setZipping] = useState(false);
@@ -287,14 +294,14 @@ function FilesTab({ r, reload }) {
         </div>
         <div className="max-h-[46vh] overflow-auto">
           {!shown.length ? <div className="text-sm text-[var(--faint)] px-4 py-4">{q.trim() ? t('rd.nomatch', 'No files match.') : t('repos.nofiles', 'No files yet.')}</div>
-          : view === 'tree' ? <TreeNode node={tree} name={null} depth={0} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} t={t} />
+          : view === 'tree' ? <TreeNode node={tree} name={null} depth={0} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} t={t} removing={removing} />
           : (
             <div className="divide-y divide-[var(--line)]">
               {shown.map((f) => {
                 const dl = downloadUrl(f);
                 const base = f.path.includes('/') ? f.path.slice(f.path.lastIndexOf('/') + 1) : f.path;
                 return (
-                <div key={f.id} className="flex items-center gap-2.5 px-4 py-2.5 text-sm">
+                <div key={f.id} className={`flex items-center gap-2.5 px-4 py-2.5 text-sm ${removing.has(f.id) ? 'file-row-out' : ''}`}>
                   <input type="checkbox" className="shrink-0" checked={sel.has(f.id)} onChange={() => toggle(f.id)} />
                   {f.path === 'repo.json' ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
                   <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
@@ -435,7 +442,16 @@ function UsersTab({ r }) {
 function ActivityTab({ r }) {
   const { t } = useI18n();
   const [logs, setLogs] = useState(null);
-  useEffect(() => { api.get(`/repos/${r.id}/dashboard/activity`).then((d) => setLogs(d.activity || [])).catch(() => setLogs([])); }, [r.id]);
+  const [q, setQ] = useState('');
+  const [action, setAction] = useState('');
+  // Server-side search + filter, debounced so typing doesn't hammer the API.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const params = new URLSearchParams({ take: '200', ...(q.trim() ? { q: q.trim() } : {}), ...(action ? { action } : {}) });
+      api.get(`/repos/${r.id}/dashboard/activity?${params}`).then((d) => setLogs(d.activity || [])).catch(() => setLogs([]));
+    }, q ? 250 : 0);
+    return () => clearTimeout(id);
+  }, [r.id, q, action]);
   const meta = {
     upload: [UploadIcon, 'text-[var(--primary-2)]', t('rd.act.upload', 'uploaded')],
     delete: [Trash, 'text-red-400', t('rd.act.delete', 'deleted')],
@@ -446,9 +462,20 @@ function ActivityTab({ r }) {
     ban: [Ban, 'text-red-400', t('rd.act.ban', 'banned')],
     unban: [Ban, 'text-[var(--faint)]', t('rd.act.unban', 'unbanned')],
   };
+  const toolbar = (
+    <div className="flex flex-col sm:flex-row gap-2 mb-3">
+      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('rd.act.search', 'Search activity (who / what)…')} className="!py-2 !text-sm flex-1" />
+      <Select value={action} onChange={(e) => setAction(e.target.value)} className="!py-2 !text-sm !w-auto">
+        <option value="">{t('rd.act.all', 'All actions')}</option>
+        {Object.entries(meta).map(([k, [, , label]]) => <option key={k} value={k}>{label}</option>)}
+      </Select>
+    </div>
+  );
   if (logs === null) return <div className="flex items-center gap-2 text-[var(--muted)] py-6"><Spinner /> {t('common.loading', 'Loading…')}</div>;
-  if (!logs.length) return <Card className="p-6 text-center text-sm text-[var(--faint)]"><History size={22} className="mx-auto mb-2 text-[var(--faint)]" /> {t('rd.act.empty', 'No activity yet.')}</Card>;
+  if (!logs.length) return <>{toolbar}<Card className="p-6 text-center text-sm text-[var(--faint)]"><History size={22} className="mx-auto mb-2 text-[var(--faint)]" /> {(q || action) ? t('rd.act.nomatch', 'No activity matches.') : t('rd.act.empty', 'No activity yet.')}</Card></>;
   return (
+    <>
+    {toolbar}
     <Card className="p-0 overflow-hidden">
       <div className="divide-y divide-[var(--line)] max-h-[60vh] overflow-auto">
         {logs.map((l) => {
@@ -465,6 +492,7 @@ function ActivityTab({ r }) {
         })}
       </div>
     </Card>
+    </>
   );
 }
 
