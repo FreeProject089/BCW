@@ -46,7 +46,25 @@ export default async function serverPerfRoutes(app) {
       diskFreeBytes: disk.freeBytes,
       uptimePct,
     };
-    return { history, latest, deps, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals };
+    // Per-repo ALLOCATED resources (not live "used": hosted repos aren't isolated
+    // processes yet — the provisioner is a scaffold, cpuShare/uploadLimitKbps are plan
+    // allotments a future container deploy would enforce). This shows what each repo is
+    // allocated + the total vCPU committed vs the host's core count.
+    const hostedRepos = await p.serverRepo.findMany({
+      where: { hosted: true }, orderBy: { cpuShare: 'desc' }, take: 300,
+      select: { id: true, name: true, status: true, cpuShare: true, uploadLimitKbps: true, storageQuotaBytes: true, storageUsedBytes: true, owner: { select: { displayName: true } } },
+    });
+    const repoAllocations = {
+      repos: hostedRepos.map((r) => ({
+        id: r.id, name: r.name, owner: r.owner?.displayName, status: r.status,
+        cpuShare: r.cpuShare, uploadMbps: +(r.uploadLimitKbps / 1024).toFixed(1),
+        storageUsedBytes: Number(r.storageUsedBytes), storageQuotaBytes: Number(r.storageQuotaBytes),
+      })),
+      totalCpuShare: +hostedRepos.reduce((a, r) => a + (r.cpuShare || 0), 0).toFixed(2),
+      totalUploadMbps: +hostedRepos.reduce((a, r) => a + (r.uploadLimitKbps || 0) / 1024, 0).toFixed(1),
+      hostCpuCores: os.cpus().length,
+    };
+    return { history, latest, deps, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations };
   });
 
   // Which dependencies to check at all — an admin can turn off ones that aren't

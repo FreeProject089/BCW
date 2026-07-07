@@ -2446,6 +2446,43 @@ function AdminServerPerf() {
         {cg?.usedBytes != null && <div className="text-[11px] text-[var(--faint)] mt-2">This process's own cgroup memory: {(cg.usedBytes / 1024 / 1024).toFixed(0)} MB{cg.limitBytes ? ` / ${(cg.limitBytes / 1024 / 1024).toFixed(0)} MB allocated` : ' (no cgroup limit set — showing real usage only)'}.</div>}
       </Card>
 
+      {/* Per-repo ALLOCATED resources (CPU share / upload / storage). NOT live usage:
+          hosted repos aren't isolated processes yet, so there's no real per-repo CPU to
+          sample — this is what each repo is allotted by its plan. */}
+      {(() => {
+        const ra = data?.repoAllocations;
+        if (!ra?.repos?.length) return null;
+        const over = ra.totalCpuShare > ra.hostCpuCores;
+        return (
+          <Card className="p-4 mb-4">
+            <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Cpu size={13} className="text-[var(--primary-2)]" /> Per-repo allocation</span>
+              <span className="text-[11px] tabular-nums text-[var(--muted)]">
+                <b className={over ? 'text-amber-400' : 'text-[var(--text)]'}>{ra.totalCpuShare}</b> vCPU allocated across {ra.repos.length} repo{ra.repos.length === 1 ? '' : 's'} · host has {ra.hostCpuCores} core{ra.hostCpuCores === 1 ? '' : 's'} · {ra.totalUploadMbps} Mbps total
+              </span>
+            </div>
+            <div className="text-[11px] text-[var(--faint)] mb-2.5">Allocated by each repo's plan — not live CPU usage (hosted repos aren't isolated processes yet).{over ? ' vCPU is over-committed vs the host core count.' : ''}</div>
+            <div className="max-h-72 overflow-auto -mx-1 px-1">
+              <table className="w-full text-sm">
+                <thead className="text-[11px] uppercase tracking-wide text-[var(--faint)] text-left"><tr>
+                  <th className="font-medium py-1">Repo</th><th className="font-medium py-1 text-right">CPU</th><th className="font-medium py-1 text-right">Upload</th><th className="font-medium py-1 text-right">Storage</th>
+                </tr></thead>
+                <tbody className="divide-y divide-[var(--line)]">
+                  {ra.repos.map((r) => (
+                    <tr key={r.id}>
+                      <td className="py-1.5 pr-2 min-w-0"><div className="truncate">{r.name} <span className="text-[var(--faint)] text-xs">· {r.owner}</span> {r.status !== 'ONLINE' && <Badge tone={r.status === 'SUSPENDED' ? 'red' : ''}>{r.status}</Badge>}</div></td>
+                      <td className="py-1.5 text-right tabular-nums whitespace-nowrap">{r.cpuShare} <span className="text-[var(--faint)] text-xs">vCPU</span></td>
+                      <td className="py-1.5 text-right tabular-nums whitespace-nowrap">{r.uploadMbps} <span className="text-[var(--faint)] text-xs">Mbps</span></td>
+                      <td className="py-1.5 text-right tabular-nums whitespace-nowrap text-[var(--muted)]">{fmtBytes(r.storageUsedBytes)} / {fmtBytes(r.storageQuotaBytes)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        );
+      })()}
+
       <div className="grid sm:grid-cols-2 gap-4 mb-4">
         <Card className="p-4">
           <div className="flex items-center justify-between mb-2">
