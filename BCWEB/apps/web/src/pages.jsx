@@ -4982,6 +4982,15 @@ const SETTINGS_GROUPS = [
   ] },
 ];
 
+// One-line description shown under each settings-group header panel.
+const GROUP_DESC = {
+  'Capacity': 'Storage ceilings, free-tier pools, telemetry & per-repo CPU/upload limits.',
+  'Blog, docs & history': 'Article/page count & size caps, and edit-history retention.',
+  'Security & audit logs': 'How long the tamper-evident staff action log is kept.',
+  'Pricing': 'What customers pay — per GB, Mbps, CPU, boost & catalog hosting.',
+  'Feature flags': 'Master on/off switches.',
+};
+
 // GB<->MB conversion for the free-floor unit toggle — the stored setting value
 // always stays in its native unit (GB for hostingFreeGB, MB for catalogFreeMB);
 // only the on-screen number changes when the admin picks a different unit.
@@ -5073,9 +5082,12 @@ function AdminSettings() {
       )}
       <div className="space-y-5">
         {SETTINGS_GROUPS.map((g) => (
-          <div key={g.title}>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><g.icon size={13} className="text-[var(--primary-2)]" /> {g.title}</div>
-            <div className="grid md:grid-cols-2 gap-3">
+          <div key={g.title} className="rounded-2xl border border-[var(--line)] overflow-hidden" style={{ boxShadow: 'var(--shadow)' }}>
+            <div className="flex items-center gap-2.5 px-4 py-3 bg-[var(--surface-2)]/40 border-b border-[var(--line)]">
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><g.icon size={15} className="text-[var(--primary-2)]" /></span>
+              <div className="min-w-0"><div className="text-sm font-semibold">{g.title}</div>{GROUP_DESC[g.title] && <div className="text-[11px] text-[var(--faint)] truncate">{GROUP_DESC[g.title]}</div>}</div>
+            </div>
+            <div className="p-3 grid md:grid-cols-2 gap-3">
               {g.keys.map(([k, label, desc, kind, nativeUnit]) => (
                 <Card key={k} className="p-4">
                   {kind === 'bool' ? (
