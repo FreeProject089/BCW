@@ -151,8 +151,9 @@ export default function Docs() {
       <main className="flex-1 min-w-0 w-full max-w-3xl">
         <div className="flex items-center gap-2 mb-2">
           <button className="btn btn-sm" onClick={() => setSidebar((v) => !v)} title="Toggle sidebar"><PanelLeftClose size={15} className="hidden md:block" /><Menu size={15} className="md:hidden" /></button>
-          {canEdit && page && <div className="ml-auto flex gap-2">
-            <Button size="sm" onClick={() => setEditing(page)}><Pencil size={14} /> {t('docs.edit')}</Button>
+          {page && (canEdit || page.commentsPublic) && <div className="ml-auto flex gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setReaderComments(true)}><MessageSquare size={14} /> {t('docs.comments', 'Comments')}</Button>
+            {canEdit && <Button size="sm" onClick={() => setEditing(page)}><Pencil size={14} /> {t('docs.edit')}</Button>}
           </div>}
           {canEdit && !page && <Button size="sm" className="ml-auto" onClick={() => setEditing({})}><Plus size={14} /> {t('docs.newpage')}</Button>}
         </div>
@@ -166,11 +167,6 @@ export default function Docs() {
               {lang === 'fr' && !page.bodyFr && <div className="mb-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--primary-2)]" /> {t('docs.notfr')}</div>}
               <Markdown pageMap={pageMap}>{body || t('docs.empty')}</Markdown>
               <HelpfulWidget page={page} canEdit={canEdit} />
-              {(page.commentsPublic || canEdit) && (
-                <button onClick={() => setReaderComments(true)} className="mt-4 inline-flex items-center gap-1.5 text-sm text-[var(--muted)] hover:text-[var(--text)] rounded-lg border border-[var(--line)] hover:border-[var(--line-strong)] px-3 py-1.5">
-                  <MessageSquare size={14} /> {t('docs.comments', 'Comments')}
-                </button>
-              )}
             </article>
           ) : (
             <EmptyState icon={BookOpen} title={t('docs.none.title')} sub={canEdit ? t('docs.none.sub.admin') : t('docs.none.sub')}>
