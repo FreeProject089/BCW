@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash } from 'lucide-react';
+import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash, GitMerge } from 'lucide-react';
 import { api } from './api.js';
+import { merge3, hasConflictMarkers } from './merge3.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from './i18n.jsx';
 import Markdown, { IconGlyph } from './md.jsx';
@@ -259,7 +260,8 @@ function SearchPalette({ onClose, onPick }) {
   const [results, setResults] = useState([]);
   const [active, setActive] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [recent] = useState(readRecent);
+  const [recent, setRecent] = useState(readRecent);
+  const clearRecent = () => { try { localStorage.removeItem(RECENT_KEY); } catch {} setRecent([]); };
   const inputRef = useRef(null);
   const listRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -348,7 +350,10 @@ function SearchPalette({ onClose, onPick }) {
           <button onClick={onClose} className="text-[var(--faint)] hover:text-[var(--text)] shrink-0"><X size={16} /></button>
         </div>
         <div ref={listRef} className="max-h-[54vh] overflow-auto p-1.5">
-          {showRecent && <div className="px-2.5 pt-1 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--faint)]">{t('docs.search.recent')}</div>}
+          {showRecent && <div className="px-2.5 pt-1 pb-1.5 flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)]">{t('docs.search.recent')}</span>
+            <button onClick={clearRecent} className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] flex items-center gap-1"><X size={11} /> {t('docs.search.clearrecent', 'Clear')}</button>
+          </div>}
           {q.trim().length < 2 && !showRecent ? <div className="px-4 py-10 text-center text-sm text-[var(--faint)]">{t('docs.search.hint')}</div>
             : q.trim().length >= 2 && loading && !results.length ? <div className="px-4 py-10 grid place-items-center"><Spinner /></div>
             : q.trim().length >= 2 && !results.length ? <div className="px-4 py-10 text-center text-sm text-[var(--faint)]">{t('docs.search.none')} “{q}”.</div>
@@ -409,22 +414,39 @@ function DocEditor({ page, tree, onClose, onSaved }) {
   const [f, setF] = useState({ title: '', category: 'General', icon: '', order: 0, published: true, body: '', bodyFr: '' });
   const [tab, setTab] = useState('en');
   const [busy, setBusy] = useState(false);
+  // Concurrent-edit tracking (see blog editor / merge3.js) — two admins editing the
+  // same page merge git-style instead of one silently overwriting the other.
+  const baseRef = useRef({ version: null, body: '', bodyFr: '' });
+  const [merge, setMerge] = useState(null);
   useEffect(() => {
     if (page) setF({ title: page.title || '', category: page.category || 'General', icon: page.icon || '', order: page.order || 0, published: page.published !== false, body: '', bodyFr: '' });
     // full bodies aren't in the sidebar tree — fetch the page.
-    if (page?.slug) api.get(`/docs/${page.slug}`).then((r) => setF((s) => ({ ...s, body: r.page.body || '', bodyFr: r.page.bodyFr || '' }))).catch(() => {});
+    if (page?.slug) api.get(`/docs/${page.slug}`).then((r) => { setF((s) => ({ ...s, body: r.page.body || '', bodyFr: r.page.bodyFr || '' })); baseRef.current = { version: r.page.version ?? null, body: r.page.body || '', bodyFr: r.page.bodyFr || '' }; }).catch(() => {});
     // eslint-disable-next-line
   }, [page?.id]);
 
   const save = async () => {
     if (f.title.trim().length < 1) return toast.error('A title is required.');
+    if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) return toast.error('Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.');
     setBusy(true);
     try {
-      const b = { title: f.title, category: f.category || 'General', icon: f.icon || null, order: Number(f.order) || 0, published: f.published, body: f.body, bodyFr: f.bodyFr || null };
+      const b = { title: f.title, category: f.category || 'General', icon: f.icon || null, order: Number(f.order) || 0, published: f.published, body: f.body, bodyFr: f.bodyFr || null,
+        ...(page && baseRef.current.version != null ? { baseVersion: baseRef.current.version } : {}) };
       const r = page ? await api.patch(`/docs/${page.id}`, b) : await api.post('/docs', b);
       toast.success(page ? 'Page saved.' : 'Page created.');
       onSaved(r.page?.slug);
-    } catch (x) { toast.error(x.data?.error === 'forbidden' ? 'You don’t have permission.' : x.data?.error || 'Failed.'); }
+    } catch (x) {
+      if (x.status === 409 && x.data?.current) {
+        const cur = x.data.current; const lbl = { mine: 'your changes', theirs: 'their changes' };
+        const mb = merge3(baseRef.current.body, f.body, cur.body || '', lbl);
+        const mbf = merge3(baseRef.current.bodyFr, f.bodyFr || '', cur.bodyFr || '', lbl);
+        setF((s) => ({ ...s, body: mb.text, bodyFr: mbf.text || s.bodyFr }));
+        baseRef.current = { version: cur.version, body: cur.body || '', bodyFr: cur.bodyFr || '' };
+        const conflicts = mb.conflicts + mbf.conflicts; setMerge({ conflicts });
+        if (conflicts > 0) { setTab(mb.conflicts ? 'en' : 'fr'); toast.error(`Someone else edited this page. Merged with ${conflicts} conflict(s) — resolve the markers, then Save.`); }
+        else toast.info('Merged with edits made by someone else — review, then Save again.');
+      } else { toast.error(x.data?.error === 'forbidden' ? 'You don’t have permission.' : x.data?.error || 'Failed.'); }
+    }
     finally { setBusy(false); }
   };
   const del = async () => {
@@ -442,6 +464,17 @@ function DocEditor({ page, tree, onClose, onSaved }) {
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> Save</>}</Button>
       </>}>
+      {merge && (
+        <div className={`mb-3 rounded-xl border px-3.5 py-2.5 text-sm flex items-start gap-2.5 ${merge.conflicts > 0 ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'}`}>
+          <GitMerge size={16} className="shrink-0 mt-0.5" />
+          <div className="flex-1">
+            {merge.conflicts > 0
+              ? <><b>Merged — {merge.conflicts} conflict{merge.conflicts > 1 ? 's' : ''} to resolve.</b> Someone else saved this page while you were editing. Their edits were merged in; fix the <code className="px-1 rounded bg-black/20">{'<<<<<<<'}</code> … <code className="px-1 rounded bg-black/20">{'>>>>>>>'}</code> markers, then Save.</>
+              : <><b>Merged cleanly with someone else's edits.</b> Review and Save again.</>}
+          </div>
+          <button onClick={() => setMerge(null)} className="opacity-70 hover:opacity-100"><X size={14} /></button>
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 mb-3">
         <Field label="Title"><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Page title" /></Field>
         <Field label="Category"><Input list="doc-cats" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="General" />

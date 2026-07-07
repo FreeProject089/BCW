@@ -78,7 +78,20 @@ export default async function uploadRoutes(app) {
     if (!key || !key.startsWith('blog/') || key.includes('..')) return reply.code(404).send({ error: 'not_found' });
     try {
       const { body, contentType } = await getObject(key);
-      reply.header('Content-Type', contentType).header('Cache-Control', 'public, max-age=86400');
+      // Harden against XSS from user-uploaded SVG/HTML served from our own origin
+      // (CWE-79). `nosniff` stops content-type confusion. The real defence is
+      // Content-Disposition: only genuine raster images / video render inline;
+      // everything else (SVG — which can carry scripts — JSON, octet-stream) is
+      // forced to DOWNLOAD on direct navigation, so no script ever executes on our
+      // origin. Attachment is ignored for <img>/<video> subresource loads, so
+      // legitimate embeds still display. (The per-response CSP is belt-and-braces;
+      // Caddy's edge CSP may override it, hence the disposition guard.)
+      const inlineSafe = /^(image\/(png|jpe?g|webp|gif|avif)|video\/)/i.test(contentType);
+      reply.header('Content-Type', contentType)
+        .header('Cache-Control', 'public, max-age=86400')
+        .header('X-Content-Type-Options', 'nosniff')
+        .header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; sandbox");
+      if (!inlineSafe) reply.header('Content-Disposition', 'attachment');
       return reply.send(body);
     } catch { return reply.code(404).send({ error: 'not_found' }); }
   });

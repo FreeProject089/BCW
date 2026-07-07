@@ -283,7 +283,7 @@ export default async function miscRoutes(app) {
     const rows = await p.user.findMany({
       where, take: take + 1, skip, orderBy: { createdAt: 'desc' },
       select: { id: true, displayName: true, email: true, role: true, avatar: true, createdAt: true,
-        totpEnabled: true, canControlServer: true,
+        totpEnabled: true, canControlServer: true, canViewTelemetry: true,
         creatorLinks: { select: { creatorId: true } }, discordLinks: { select: { discordId: true, username: true } },
         _count: { select: { serverRepos: true, items: true } } },
     });
@@ -292,7 +292,7 @@ export default async function miscRoutes(app) {
       hasMore,
       users: rows.slice(0, take).map((u) => ({
         id: u.id, bcId: userBcId(u.id), displayName: u.displayName, email: u.email, role: u.role, avatar: u.avatar, createdAt: u.createdAt,
-        totpEnabled: u.totpEnabled, canControlServer: u.canControlServer,
+        totpEnabled: u.totpEnabled, canControlServer: u.canControlServer, canViewTelemetry: u.canViewTelemetry,
         creatorIds: u.creatorLinks.map((c) => c.creatorId),
         discord: u.discordLinks[0] ? { id: u.discordLinks[0].discordId, username: u.discordLinks[0].username } : null,
         repoCount: u._count.serverRepos, itemCount: u._count.items,

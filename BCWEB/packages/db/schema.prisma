@@ -83,6 +83,10 @@ model User {
   // tools (perf dashboard actions, Docker, terminal, power). See lib.mjs's
   // requireElevated() and server-control.mjs.
   canControlServer  Boolean  @default(false)
+  // Admin-tier grant to view the BMM telemetry dashboard. Enforced at the Caddy
+  // edge via forward_auth → GET /api/telemetry/authorize (telemetry.mjs), so the
+  // separate telemetry app itself is never touched. SUPERADMIN is always allowed.
+  canViewTelemetry  Boolean  @default(false)
   // Set once, the first time a Ko-fi donation webhook matches this account's
   // email — gates the one-time 25% hosting discount grant so repeat donations
   // (or webhook retries) don't mint duplicate codes.
@@ -263,6 +267,7 @@ model BlogPost {
   slug        String     @unique
   excerpt     String     @default("")
   cover       String?    // cover image URL
+  coverInBody Boolean    @default(true) // also show the cover at the top of the article body
   body        String     // markdown (supports images, embeds, links)
   // Optional French translation. When absent, readers see the base (EN) marked "not translated".
   titleFr     String?
@@ -284,6 +289,10 @@ model BlogPost {
   // Collaborative authoring: extra author user ids beyond `authorId`. Their avatars
   // render at the bottom of the post next to the main author's.
   coAuthorIds      String[] @default([])
+  // Optimistic-concurrency counter — bumped on every content save. A PATCH carrying a
+  // stale baseVersion means someone else saved in the meantime → the client 3-way
+  // merges (see merge3.js) instead of clobbering.
+  version          Int      @default(1)
 
   @@index([showcaseProjectId])
 }
@@ -308,6 +317,8 @@ model DocPage {
   helpfulNo  Int     @default(0)   // 🙁 bad
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
+  // Optimistic-concurrency counter for git-style concurrent editing (see BlogPost.version).
+  version   Int      @default(1)
 
   @@index([category])
 }

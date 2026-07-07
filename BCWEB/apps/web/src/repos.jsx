@@ -31,10 +31,23 @@ function RepoMenu({ children }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
-  const toggle = () => {
-    if (!open && btnRef.current) { const r = btnRef.current.getBoundingClientRect(); setPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) }); }
-    setOpen((v) => !v);
-  };
+  const place = () => { if (btnRef.current) { const r = btnRef.current.getBoundingClientRect(); setPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) }); } };
+  const toggle = () => { if (!open) place(); setOpen((v) => !v); };
+  // Keep the fixed-positioned menu glued to the button while scrolling/resizing
+  // (a plain fixed menu would stay put as the button scrolls away). Close it once
+  // the button leaves the viewport. Capture-phase catches inner scroll containers.
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const el = btnRef.current; if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > window.innerHeight) { setOpen(false); return; }
+      setPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) });
+    };
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update); };
+  }, [open]);
   return (
     <span ref={btnRef} className="inline-flex">
       <Button size="sm" onClick={toggle} title="More actions"><MoreHorizontal size={16} /></Button>
@@ -352,17 +365,17 @@ export function MyRepos() {
       else toast.error(x.data?.error || t('repos.failed', 'Failed.'));
     }
   };
-  // Double-confirmed delete → 72h soft-delete grace (the server keeps the content and
-  // the deletion is reversible until the sweeper hard-deletes it).
+  // ONE combined delete dialog → 72h soft-delete grace (server keeps the content;
+  // reversible until the sweeper hard-deletes it). The warning + the type-to-confirm
+  // field live in the same modal (was two separate dialogs), and the repo name is
+  // shown right there so the user can copy-paste it.
   const del = async (r) => {
-    // Step 1: warn about the grace window + permanent content deletion.
-    if (!(await dialog.confirm({ title: t('repos.del.title', 'Delete repo'),
+    const typed = await dialog.prompt({
+      title: t('repos.del.title', 'Delete repo'),
       message: t('repos.del.msg', '"{name}" goes offline now and is permanently deleted — with all its content — in 72 hours. You can undo until then.').replace('{name}', r.name),
-      okLabel: t('repos.del.next', 'Continue'), danger: true }))) return;
-    // Step 2: type the repo name to confirm (the second confirmation).
-    const typed = await dialog.prompt({ title: t('repos.del.confirm.t', 'Confirm deletion'),
-      label: t('repos.del.confirm.l', 'Type the repo name to confirm').replace('{name}', r.name),
-      placeholder: r.name, okLabel: t('repos.del.ok', 'Delete'), danger: true });
+      label: t('repos.del.confirm.l2', 'To confirm, type the repo name: {name}').replace('{name}', r.name),
+      placeholder: r.name, okLabel: t('repos.del.ok', 'Delete'), danger: true,
+    });
     if (typed === false) return;
     if (String(typed).trim() !== r.name) return toast.error(t('repos.del.mismatch', "Name didn't match — deletion cancelled."));
     try { await api.del(`/repos/${r.id}`); toast.success(t('repos.deleted72', 'Scheduled for deletion in 72h — undo from the repo card anytime before then.')); reload(); }

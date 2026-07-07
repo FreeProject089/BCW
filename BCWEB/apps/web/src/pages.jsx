@@ -7,7 +7,7 @@ import {
   Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight,
   Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket,
   CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss,
-  Info, Orbit, Fingerprint,
+  Info, Orbit, Fingerprint, Layers,
 } from 'lucide-react';
 import { api, uploadPayload, uploadImage } from './api.js';
 import { useAuth } from './auth.jsx';
@@ -216,7 +216,7 @@ export function Home() {
           </h1>
           <p className="anim-slide text-[var(--muted)] text-lg md:text-xl max-w-xl mx-auto mt-7 leading-relaxed" style={{ animationDelay: '160ms' }}>{t('home.sub')}</p>
           <div className="anim-slide flex flex-wrap gap-3 justify-center mt-10" style={{ animationDelay: '240ms' }}>
-            <Link to="/catalog?project=bmm"><Button variant="primary" className="!px-6 !py-3">{t('home.cta.explore')} <ArrowRight size={16} /></Button></Link>
+            <Link to="/repos"><Button variant="primary" className="!px-6 !py-3">{t('home.cta.repos', 'Browse Server Repos')} <ArrowRight size={16} /></Button></Link>
             <Link to="/hosting"><Button className="!px-6 !py-3">{t('home.cta.host')}</Button></Link>
           </div>
           {(() => {
@@ -815,7 +815,7 @@ export function Hosting() {
 
       {/* single vs multi repo */}
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        {[['single', HardDrive, t('hosting.single', 'Single repo'), t('hosting.single.d', 'One repository with the whole quota.')], ['multi', Boxes, t('hosting.multi', 'Multiple repos'), t('hosting.multi.d', 'Split the storage across several repos, managed by you.')]].map(([m, I, title, sub]) => (
+        {[['single', HardDrive, t('hosting.single', 'Single repo'), t('hosting.single.d', 'One repository with the whole quota.')], ['multi', Layers, t('hosting.multi', 'Multiple repos'), t('hosting.multi.d', 'Split the storage across several repos, managed by you.')]].map(([m, I, title, sub]) => (
           <button key={m} onClick={() => setMode(m)} className={`flex-1 text-left card p-4 flex items-start gap-3 transition ${mode === m ? 'border-[var(--primary)] ring-1 ring-[var(--primary)]' : 'hover:border-[var(--line-strong)]'}`}>
             <span className={`grid place-items-center w-9 h-9 rounded-lg shrink-0 ${mode === m ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white' : 'bg-[var(--surface-2)] text-[var(--muted)]'}`}><I size={16} /></span>
             <span><span className="font-semibold flex items-center gap-2">{title}{mode === m && <CheckCircle2 size={14} className="text-[var(--primary-2)]" />}</span><span className="block text-xs text-[var(--muted)] mt-0.5">{sub}</span></span>
@@ -826,12 +826,15 @@ export function Hosting() {
       {/* order configuration — billing term + promo grouped in one tidy card
           (they floated loose before, which read as unfinished, esp. on mobile) */}
       <Card className="p-4 sm:p-5 mb-6">
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid sm:grid-cols-2 gap-4 sm:gap-5 items-start">
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.term', 'Billing term')} <span className="normal-case font-normal">{t('hosting.term.note', '· prepaid, min 1 month')}</span></div>
             <TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} />
           </div>
           <div>
+            {/* matching header so the promo input lines up with the term box (it
+                used to float higher than the labelled term column on desktop). */}
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.promo.head', 'Promo code')} <span className="normal-case font-normal">· {t('hosting.promo.optional', 'optional')}</span></div>
             <PromoCodeField months={months} onChange={setPromo} />
           </div>
         </div>
@@ -856,15 +859,15 @@ export function Hosting() {
         const freeDisabled = soldOut || freeTierSoldOut || (!!c && free.storageGB > c.freeGB);
         const freeTierPct = c?.freeTierCapEnabled && c.freeTierCapGB ? Math.min(100, (c.freeTierUsedGB / c.freeTierCapGB) * 100) : null;
         return (
-          <Card className="p-5 mb-4 border-emerald-500/30 bg-emerald-500/[0.06] overflow-hidden relative">
+          <Card className="p-5 mb-4 bg-emerald-500/[0.05] overflow-hidden relative">
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shrink-0 shadow-lg shadow-emerald-500/25"><Gift size={22} /></span>
               <div className="flex-1 text-center sm:text-left min-w-0">
-                <div className="font-semibold text-lg flex items-center justify-center sm:justify-start gap-2 flex-wrap">{t('hosting.freeplan.title', 'Just want to try it out?')} <Badge tone="green">{t('hosting.freeplan.badge', 'FREE')}</Badge></div>
+                <div className="font-semibold text-lg flex items-center justify-center sm:justify-start gap-2 flex-wrap">{t('hosting.freeplan.title', 'Just want to try it out?')} <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full text-white bg-gradient-to-r from-emerald-500 to-teal-500 shadow-sm shadow-emerald-500/30"><Gift size={11} /> {t('hosting.freeplan.badge', 'FREE')}</span></div>
                 <div className="text-sm text-[var(--muted)]">{t('hosting.freeplan.sub', 'Host a small repo at no cost — {gb} GB storage, {mbps} Mbps upload, forever free.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
                 <div className="text-xs text-[var(--faint)] mt-1">{t('hosting.freeplan.note', 'One free repo per account. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
               </div>
-              <Button variant="primary" className="!bg-emerald-600 hover:!bg-emerald-500 !border-emerald-600 shrink-0" disabled={freeDisabled} onClick={() => checkout({ planId: free.id })}>
+              <Button variant="primary" className="!bg-emerald-600 hover:!bg-emerald-500 !border-transparent shrink-0" disabled={freeDisabled} onClick={() => checkout({ planId: free.id })}>
                 <Gift size={16} /> {freeTierSoldOut ? t('hosting.freeplan.soldout', 'Free plan sold out') : freeDisabled ? t('hosting.nospace', 'Not enough space') : t('hosting.freeplan.cta', 'Get it free')}</Button>
             </div>
             {freeTierPct != null && (
@@ -2450,13 +2453,7 @@ function AdminServerPerf() {
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">Recent alerts</h3>
         {alerts.loading ? <Loading /> : (alerts.data?.alerts || []).length ? <div className="space-y-1.5">
-          {alerts.data.alerts.map((a) => (
-            <Card key={a.id} className="p-3 flex items-center gap-3">
-              <AlertTriangle size={15} className="text-red-400 shrink-0" />
-              <div className="flex-1 min-w-0"><span className="font-medium">{a.kind}</span> <span className="text-[var(--muted)]">{a.message}</span></div>
-              <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(a.createdAt).toLocaleString()}</span>
-            </Card>
-          ))}
+          {alerts.data.alerts.map((a) => <AlertRow key={a.id} a={a} />)}
         </div> : <EmptyState icon={CheckCircle2} title="No alerts" sub="Nothing has crossed a threshold yet." />}
       </div>
     </div>
@@ -2916,6 +2913,11 @@ function AdminAccess({ isSuperAdmin }) {
     try { await api.put(`/admin/server-control/${picked.id}`, { granted: !picked.canControlServer }); toast.success(`Server-control ${!picked.canControlServer ? 'granted to' : 'revoked from'} ${picked.displayName}.`); setPicked((p) => ({ ...p, canControlServer: !p.canControlServer })); }
     catch { toast.error('Failed.'); } finally { setBusy(false); }
   };
+  const toggleTelemetry = async () => {
+    setBusy(true);
+    try { await api.put(`/admin/telemetry-access/${picked.id}`, { granted: !picked.canViewTelemetry }); toast.success(`Telemetry access ${!picked.canViewTelemetry ? 'granted to' : 'revoked from'} ${picked.displayName}.`); setPicked((p) => ({ ...p, canViewTelemetry: !p.canViewTelemetry })); }
+    catch { toast.error('Failed.'); } finally { setBusy(false); }
+  };
   const grantBlog = async () => {
     setBusy(true);
     try {
@@ -2946,7 +2948,7 @@ function AdminAccess({ isSuperAdmin }) {
           {results.map((u) => (
             <button key={u.id} onClick={() => pick(u)} className={`w-full text-left card p-3 flex items-center gap-3 ${picked?.id === u.id ? 'border-[var(--primary)]' : ''}`}>
               <Avatar user={u} size={32} />
-              <div className="flex-1 min-w-0"><div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={roleTone(u.role)}>{u.role}</Badge>{u.canControlServer && <Badge tone="red"><Server size={9} /> server</Badge>}</div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
+              <div className="flex-1 min-w-0"><div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={roleTone(u.role)}>{u.role}</Badge>{u.canControlServer && <Badge tone="red"><Server size={9} /> server</Badge>}{u.canViewTelemetry && <Badge tone="primary"><TrendingUp size={9} /> telemetry</Badge>}</div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
             </button>
           ))}
         </div> : <div className="text-sm text-[var(--faint)]">No users found.</div>)}
@@ -2973,6 +2975,14 @@ function AdminAccess({ isSuperAdmin }) {
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Server-control tools</div>
               <p className="text-xs text-[var(--muted)] mb-2">Grants access to the server dashboard's dangerous actions (DB viewer, restart) — still gated by that user's own 2FA step-up. {!picked.totpEnabled && <span className="text-amber-400">This user hasn't enabled 2FA yet, so the tools stay locked either way.</span>}</p>
               <Button size="sm" variant={picked.canControlServer ? 'default' : 'primary'} disabled={busy} onClick={toggleServerControl}>{busy ? <Spinner /> : (picked.canControlServer ? 'Revoke server-control' : 'Grant server-control')}</Button>
+            </div>
+          )}
+
+          {isSuperAdmin && ['MOD', 'ADMIN', 'SUPERADMIN'].includes(picked.role) && (
+            <div className="pt-4 border-t border-[var(--line)]">
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><TrendingUp size={12} /> BMM telemetry</div>
+              <p className="text-xs text-[var(--muted)] mb-2">Lets this admin open the BMM telemetry dashboard (gated at the edge by a BCWEB login — no separate telemetry key needed). {picked.role === 'SUPERADMIN' && <span className="text-[var(--faint)]">SUPERADMIN always has access.</span>}</p>
+              <Button size="sm" variant={picked.canViewTelemetry ? 'default' : 'primary'} disabled={busy || picked.role === 'SUPERADMIN'} onClick={toggleTelemetry}>{busy ? <Spinner /> : (picked.canViewTelemetry ? 'Revoke telemetry access' : 'Grant telemetry access')}</Button>
             </div>
           )}
 
@@ -3479,6 +3489,7 @@ function AdminProjects() {
         const existing = isShowcase ? activeShow : activeMeta;
         return (
           <ScheduleUpdateModal title={`Schedule an update — ${M.name}`} includeNameShort={isShowcase} existing={existing}
+            slug={isShowcase ? activeShow?.slug : active} isShowcase={isShowcase}
             current={isShowcase ? { name: activeShow?.name, short: activeShow?.short, config: cfg } : { config: cfg }}
             onClose={() => setScheduling(false)}
             onSave={async (at, next) => {
@@ -4365,7 +4376,7 @@ function AdminAnalytics() {
   // dashboard is reachable ONLY through an authenticated BCWEB admin.
   const openTelemetry = async () => {
     try { const { url } = await api.post('/admin/telemetry/token', {}); window.open(url, '_blank', 'noopener'); }
-    catch { toast.error('Could not open telemetry — an admin account with 2FA is required.'); }
+    catch (x) { toast.error(x.data?.error === 'no_telemetry_access' ? 'You need the "telemetry" permission (Access & permissions) to open it.' : 'Could not open telemetry — an admin account with 2FA is required.'); }
   };
   const gran = data?.granularity || (hours ? 'hour' : 'day');
   // Ctrl+wheel on the chart: zoom in → hourly (24h); zoom out → back to daily.
@@ -4571,14 +4582,53 @@ function AnnouncementSection({ value, onChange }) {
 // short for showcase pages), and it swaps in automatically once due — no admin
 // action needed at reveal time. `putSchedule` is the save callback (varies by
 // fixed-vs-showcase endpoint); `current` seeds the editor with today's live values.
-function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClose, onSave }) {
+// A recent server alert — click to expand its full detail (kind, what it means,
+// the complete message, and the exact + relative time). The stored alert is just
+// { kind, message, createdAt }, so "detail" = the human-readable expansion of that.
+const ALERT_KIND = {
+  cpu: { label: 'High CPU', desc: 'CPU usage crossed the alert threshold (>90%).', tone: 'text-amber-400' },
+  mem: { label: 'High memory', desc: 'Memory usage crossed the alert threshold (>90%).', tone: 'text-amber-400' },
+  disk: { label: 'Low disk', desc: 'Disk usage crossed the alert threshold (>90%).', tone: 'text-red-400' },
+  service_down: { label: 'Service unreachable', desc: 'A dependency (DB, storage, bot, Stripe…) failed its health check.', tone: 'text-red-400' },
+};
+function AlertRow({ a }) {
+  const [open, setOpen] = useState(false);
+  const info = ALERT_KIND[a.kind] || { label: a.kind, desc: 'Threshold alert.', tone: 'text-red-400' };
+  const when = new Date(a.createdAt);
+  const ago = (() => { const s = Math.max(0, (Date.now() - when.getTime()) / 1000); if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s / 60)}m ago`; if (s < 86400) return `${Math.floor(s / 3600)}h ago`; return `${Math.floor(s / 86400)}d ago`; })();
+  return (
+    <Card className="p-0 overflow-hidden">
+      <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-3 text-left hover:bg-[var(--surface-2)] transition">
+        <AlertTriangle size={15} className={`${info.tone} shrink-0`} />
+        <div className="flex-1 min-w-0"><span className="font-medium">{info.label}</span> <span className="text-[var(--muted)] truncate">· {a.message}</span></div>
+        <span className="text-[11px] text-[var(--faint)] shrink-0 tabular-nums">{ago}</span>
+        <ChevronDown size={14} className={`text-[var(--faint)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-3 pb-3 pt-1 border-t border-[var(--line)] text-sm space-y-1.5">
+          <div className="text-[var(--muted)]">{info.desc}</div>
+          <div className="rounded-lg bg-[var(--surface-2)] border border-[var(--line)] p-2.5 font-mono text-xs text-[var(--text)] whitespace-pre-wrap break-words">{a.message}</div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--faint)]">
+            <span>Kind: <code className="text-[var(--muted)]">{a.kind}</code></span>
+            <span>When: {when.toLocaleString()}</span>
+            <span>{ago}</span>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClose, onSave, slug, isShowcase }) {
   const toast = useToast();
   const [at, setAt] = useState(existing?.scheduledAt ? new Date(existing.scheduledAt).toISOString().slice(0, 16) : '');
   const [name, setName] = useState(existing?.scheduledNext?.name ?? current.name ?? '');
   const [short, setShort] = useState(existing?.scheduledNext?.short ?? current.short ?? '');
   const [configText, setConfigText] = useState(JSON.stringify(existing?.scheduledNext?.config ?? current.config ?? {}, null, 2));
+  const [editMode, setEditMode] = useState('form'); // 'form' (visual) | 'json'
   const [busy, setBusy] = useState(false);
   const hasExisting = !!existing?.scheduledAt;
+  let cfgValid = true; try { JSON.parse(configText || '{}'); } catch { cfgValid = false; }
   const save = async () => {
     if (!at) return toast.error('Pick a date/time.');
     let config; try { config = JSON.parse(configText || '{}'); } catch { return toast.error('Config JSON is invalid.'); }
@@ -4608,8 +4658,22 @@ function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClo
         </div>
       )}
       <div className="mt-3">
-        <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 block">New config (JSON)</label>
-        <JsonEditor value={configText} onChange={setConfigText} minH={220} />
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] block">New config</label>
+          <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
+            {[['form', 'Visual'], ['json', 'JSON']].map(([m, label]) => (
+              <button key={m} type="button" onClick={() => setEditMode(m)} disabled={m === 'form' && !cfgValid}
+                className={`px-2.5 py-1 rounded-md ${editMode === m ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'} ${m === 'form' && !cfgValid ? 'opacity-40 cursor-not-allowed' : ''}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+        {editMode === 'form'
+          ? (cfgValid
+              ? <div className="rounded-xl border border-[var(--line)] p-3 max-h-[46vh] overflow-auto bg-[var(--bg-solid)]">
+                  <ProjectConfigEditor value={JSON.parse(configText || '{}')} onChange={(cfg) => setConfigText(JSON.stringify(cfg, null, 2))} slug={slug} isShowcase={isShowcase} />
+                </div>
+              : <div className="text-sm text-[var(--muted)] p-3">Invalid JSON — switch to the JSON tab to fix it.</div>)
+          : <JsonEditor value={configText} onChange={setConfigText} minH={220} />}
       </div>
     </Modal>
   );
@@ -4669,6 +4733,7 @@ function AdminShowcase() {
       {editing && <ShowcaseEditModal project={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onDone={reload} />}
       {scheduling && (
         <ScheduleUpdateModal title={`Schedule an update — ${scheduling.name}`} includeNameShort existing={scheduling}
+          slug={scheduling.slug} isShowcase
           current={{ name: scheduling.name, short: scheduling.short, config: scheduling.config }}
           onClose={() => setScheduling(null)}
           onSave={async (at, next) => { await api.put(`/admin/showcase/${scheduling.id}/schedule`, { at, next }); reload(); }} />
@@ -4821,6 +4886,45 @@ function AdminSettings() {
   const tempPct = c?.tempMarginGB ? Math.min(100, (c.tempUsedGB / c.tempMarginGB) * 100) : 0;
   return (
     <div className="mt-10"><h2 className="font-semibold mb-3 flex items-center gap-2"><Settings2 size={16} /> Hosting settings</h2>
+      {/* At-a-glance stacked bar of the WHOLE Total capacity — where every GB goes
+          (hosting quotas, approved submissions, temp margin, reserved, free) plus the
+          separately-tracked free-plan pool. */}
+      {c && (() => {
+        const total = c.totalGB || 0;
+        const seg = (gb, color, label) => ({ gb: Math.max(0, Number(gb) || 0), color, label });
+        const segs = [
+          seg(c.hostingAllocatedGB, 'var(--primary)', 'Hosting quotas'),
+          seg(c.submissionsPublishedGB, '#8b5cf6', 'Approved submissions'),
+          seg(c.tempUsedGB, '#f59e0b', 'Temp (in use)'),
+          seg((c.tempMarginGB || 0) - (c.tempUsedGB || 0), 'rgba(245,158,11,0.35)', 'Temp (reserved)'),
+          seg(c.reservedGB, 'var(--faint)', 'Reserved margin'),
+        ];
+        const used = segs.reduce((a, s) => a + s.gb, 0);
+        const all = [...segs, seg(Math.max(0, total - used), 'var(--surface-2)', 'Free')];
+        return (
+          <Card className="p-4 mb-3">
+            <div className="flex items-center justify-between text-sm mb-2 flex-wrap gap-2">
+              <span className="flex items-center gap-2 font-medium"><HardDrive size={15} className="text-[var(--primary-2)]" /> Total capacity</span>
+              <span className="text-xs text-[var(--muted)] tabular-nums">{used.toFixed(1)} / {total} GB used · {Math.max(0, total - used).toFixed(1)} GB free</span>
+            </div>
+            <div className="flex h-3.5 rounded-full overflow-hidden bg-[var(--surface-2)] border border-[var(--line)]">
+              {total > 0 && all.map((s, i) => s.gb > 0.001 && <div key={i} title={`${s.label}: ${s.gb.toFixed(2)} GB`} style={{ width: `${(s.gb / total) * 100}%`, background: s.color }} />)}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2.5 text-[11px]">
+              {all.filter((s) => s.gb > 0.001).map((s, i) => (
+                <span key={i} className="flex items-center gap-1.5 text-[var(--muted)]"><span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: s.color }} /> {s.label} <b className="text-[var(--text)] tabular-nums">{s.gb.toFixed(1)}G</b></span>
+              ))}
+            </div>
+            {c.diskFreeGB != null && <div className="text-[11px] text-[var(--faint)] mt-1.5">Real disk: <b className="text-[var(--text)]">{c.diskFreeGB.toFixed(0)} GB free</b> / {c.diskTotalGB?.toFixed(0)} GB total.</div>}
+            {c.freeTierCapEnabled && c.freeTierCapGB > 0 && (
+              <div className="mt-3 pt-3 border-t border-[var(--line)]">
+                <div className="flex items-center justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1.5"><Gift size={12} className="text-emerald-400" /> Free-plan pool (separate)</span><span className="tabular-nums font-medium">{(c.freeTierUsedGB || 0).toFixed(1)} / {c.freeTierCapGB} GB</span></div>
+                <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, ((c.freeTierUsedGB || 0) / c.freeTierCapGB) * 100)}%` }} /></div>
+              </div>
+            )}
+          </Card>
+        );
+      })()}
       {/* Temp submissions margin — live usage. Uploads (.bmmplugin / .bmmtheme / app
           payloads) are refused once this is full, until moderation clears space. */}
       {c && (

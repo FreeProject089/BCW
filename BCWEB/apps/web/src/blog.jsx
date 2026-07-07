@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   Newspaper, PenSquare, ImagePlus, Youtube, Link2, Video, Bold, Heading, List, Eye,
   Trash2, Pencil, ArrowLeft, CalendarDays, User as UserIcon, Plus, X, Tag as TagIcon, HelpCircle, Languages, Sparkles,
-  Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter,
+  Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge,
 } from 'lucide-react';
 import { api, uploadBlogImage } from './api.js';
 import { useAuth } from './auth.jsx';
@@ -15,6 +15,7 @@ import VisualEditor from './visual-editor.jsx';
 import IconPicker from './icon-picker.jsx';
 import SelectionToolbar from './selection-toolbar.jsx';
 import KbdPicker from './kbd-picker.jsx';
+import { merge3, hasConflictMarkers } from './merge3.js';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal } from './ui.jsx';
 
 // Pick the reader's language version of a post. EN is the base (always present);
@@ -80,7 +81,7 @@ export function BlogList() {
   // A granted regular user can write, but can only edit THEIR OWN posts — never
   // staff's or another grantee's.
   const canWrite = isStaff || !!scopeData;
-  const canEdit = (p) => isStaff || p.authorId === user?.id;
+  const canEdit = (p) => isStaff || p.authorId === user?.id || (p.coAuthorIds || []).includes(user?.id);
   const posts = data?.posts || [];
   return (
     <div>
@@ -139,7 +140,7 @@ export function BlogPostPage() {
         <h1 className="text-3xl md:text-4xl font-extrabold mt-3 leading-tight">{v.title}</h1>
         <div className="text-sm text-[var(--faint)] mt-3 flex items-center gap-3"><span className="flex items-center gap-1"><UserIcon size={13} /> {p.author?.displayName}{authors.length > 1 && ` +${authors.length - 1}`}</span><span className="flex items-center gap-1"><CalendarDays size={13} /> {fmtDate(p.publishedAt)}</span></div>
         {!v.translated && <div className="mt-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--primary-2)]" /> Cet article n'est pas encore traduit en français — version anglaise affichée.</div>}
-        {p.cover && <img src={p.cover} alt="" className="w-full rounded-2xl mt-6 border border-[var(--line)]" />}
+        {p.cover && p.coverInBody !== false && <img src={p.cover} alt="" className="w-full rounded-2xl mt-6 border border-[var(--line)]" />}
         <Markdown className="mt-7">{p.showToc && !/(^|\n)::toc\b/.test(v.body || '') ? `::toc[${p.tocTitle || 'On this page'}]\n\n${v.body}` : v.body}</Markdown>
 
         {/* reactions */}
@@ -332,13 +333,17 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
 function BlogEditor({ post, scopes, onClose, onSaved }) {
   const toast = useToast(); const dialog = useDialog();
   const defaultScope = scopes?.projects?.[0] ? `project:${scopes.projects[0].key}` : scopes?.showcases?.[0] ? `showcase:${scopes.showcases[0].slug}` : 'project:community';
-  const [f, setF] = useState({ scope: defaultScope, cover: '', publish: true, title: '', excerpt: '', body: '', titleFr: '', excerptFr: '', bodyFr: '', reactionsEnabled: false, reactionTypes: [], coAuthorEmails: [], showToc: false, tocTitle: '' });
+  const [f, setF] = useState({ scope: defaultScope, cover: '', coverInBody: true, publish: true, title: '', excerpt: '', body: '', titleFr: '', excerptFr: '', bodyFr: '', reactionsEnabled: false, reactionTypes: [], coAuthorEmails: [], showToc: false, tocTitle: '' });
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('en'); // en (base) | fr (optional)
   const [collab, setCollab] = useState(''); // pending co-author email input
+  // Concurrent-edit tracking: the version + body this editor loaded, so a colliding
+  // save can 3-way merge against them (git-style). `merge` holds the banner state.
+  const baseRef = useRef({ version: null, body: '', bodyFr: '' });
+  const [merge, setMerge] = useState(null); // null | { conflicts, cleanCount }
   useEffect(() => {
     if (post) {
-      setF({ scope: post.showcaseProject ? `showcase:${post.showcaseProject.slug}` : `project:${post.project?.key || 'community'}`, cover: post.cover || '', publish: post.status === 'PUBLISHED',
+      setF({ scope: post.showcaseProject ? `showcase:${post.showcaseProject.slug}` : `project:${post.project?.key || 'community'}`, cover: post.cover || '', coverInBody: post.coverInBody !== false, publish: post.status === 'PUBLISHED',
         title: post.title || '', excerpt: post.excerpt || '', body: post.body || '',
         titleFr: post.titleFr || '', excerptFr: post.excerptFr || '', bodyFr: post.bodyFr || '',
         reactionsEnabled: !!post.reactionsEnabled, reactionTypes: post.reactionTypes || [], coAuthorEmails: [], showToc: !!post.showToc, tocTitle: post.tocTitle || '' });
@@ -347,7 +352,8 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
       if (post.slug) api.get(`/blog/${post.slug}`).then((r) => { const fp = r.post || {}; setF((s) => ({ ...s,
         title: fp.title ?? s.title, excerpt: fp.excerpt ?? s.excerpt, body: fp.body ?? s.body,
         titleFr: fp.titleFr ?? s.titleFr, excerptFr: fp.excerptFr ?? s.excerptFr, bodyFr: fp.bodyFr ?? s.bodyFr,
-        reactionsEnabled: !!fp.reactionsEnabled, reactionTypes: fp.reactionTypes || s.reactionTypes })); }).catch(() => {});
+        reactionsEnabled: !!fp.reactionsEnabled, reactionTypes: fp.reactionTypes || s.reactionTypes }));
+        baseRef.current = { version: fp.version ?? null, body: fp.body || '', bodyFr: fp.bodyFr || '' }; }).catch(() => {});
       // co-author emails aren't on the public post — fetch them for the editor.
       api.get(`/blog/${post.id}/collab`).then((r) => setF((s) => ({ ...s, coAuthorEmails: r.coAuthorEmails || [] }))).catch(() => {});
     } else setF((s) => ({ ...s, scope: defaultScope }));
@@ -375,18 +381,37 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
   const pickCover = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { const file = i.files?.[0]; if (!file) return; try { toast.info('Uploading…'); const url = await uploadBlogImage(file); setF((s) => ({ ...s, cover: url })); } catch { toast.error('Upload failed.'); } }; i.click(); };
   const save = async () => {
     if (f.title.length < 2 || !f.body) return toast.error('English (base) title and content are required.');
+    // Don't let unresolved merge markers get saved.
+    if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) return toast.error('Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.');
     setBusy(true);
     try {
       const [scopeKind, scopeVal] = f.scope.split(':');
       const body = { projectKey: scopeKind === 'project' ? scopeVal : undefined, showcaseSlug: scopeKind === 'showcase' ? scopeVal : undefined,
-        cover: f.cover || null, publish: f.publish,
+        cover: f.cover || null, coverInBody: f.coverInBody, publish: f.publish,
         title: f.title, excerpt: f.excerpt, body: f.body,
         titleFr: f.titleFr || null, excerptFr: f.excerptFr || null, bodyFr: f.bodyFr || null,
         reactionsEnabled: f.reactionsEnabled, reactionTypes: f.reactionTypes, coAuthorEmails: f.coAuthorEmails,
-        showToc: f.showToc, tocTitle: f.tocTitle || null };
+        showToc: f.showToc, tocTitle: f.tocTitle || null,
+        ...(post && baseRef.current.version != null ? { baseVersion: baseRef.current.version } : {}) };
       if (post) await api.patch(`/blog/${post.id}`, body); else await api.post('/blog', body);
       toast.success(post ? 'Post updated.' : 'Post published.'); onSaved();
-    } catch (x) { toast.error(x.data?.error === 'forbidden' ? "You don't have permission to post in that blog." : x.data?.error || 'Failed.'); } finally { setBusy(false); }
+    } catch (x) {
+      // Someone else saved since we loaded → 3-way merge their copy into ours (git-style).
+      if (x.status === 409 && x.data?.current) {
+        const cur = x.data.current;
+        const lbl = { mine: 'your changes', theirs: 'their changes' };
+        const mb = merge3(baseRef.current.body, f.body, cur.body || '', lbl);
+        const mbf = merge3(baseRef.current.bodyFr, f.bodyFr || '', cur.bodyFr || '', lbl);
+        setF((s) => ({ ...s, body: mb.text, bodyFr: mbf.text || s.bodyFr }));
+        baseRef.current = { version: cur.version, body: cur.body || '', bodyFr: cur.bodyFr || '' };
+        const conflicts = mb.conflicts + mbf.conflicts;
+        setMerge({ conflicts });
+        if (conflicts > 0) { setTab(mb.conflicts ? 'en' : 'fr'); toast.error(`Someone else edited this post. Merged with ${conflicts} conflict(s) — resolve the markers, then Save.`); }
+        else toast.info('Merged with edits made by someone else — review the content, then Save again.');
+      } else {
+        toast.error(x.data?.error === 'forbidden' ? "You don't have permission to post in that blog." : x.data?.error || 'Failed.');
+      }
+    } finally { setBusy(false); }
   };
   const del = async () => {
     if (!post) return;
@@ -402,6 +427,19 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (post ? 'Save' : 'Publish')}</Button>
       </>}>
+      {/* Concurrent-edit merge banner (git-style): shown after a colliding save was
+          auto-merged. Conflicts must be resolved (markers removed) before saving. */}
+      {merge && (
+        <div className={`mb-3 rounded-xl border px-3.5 py-2.5 text-sm flex items-start gap-2.5 ${merge.conflicts > 0 ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'}`}>
+          <GitMerge size={16} className="shrink-0 mt-0.5" />
+          <div className="flex-1">
+            {merge.conflicts > 0
+              ? <><b>Merged — {merge.conflicts} conflict{merge.conflicts > 1 ? 's' : ''} to resolve.</b> Someone else saved changes while you were editing. Their edits were merged in; find the <code className="px-1 rounded bg-black/20">{'<<<<<<<'}</code> … <code className="px-1 rounded bg-black/20">{'>>>>>>>'}</code> markers, keep the right text, then Save.</>
+              : <><b>Merged cleanly with someone else's edits.</b> Review the content and Save again.</>}
+          </div>
+          <button onClick={() => setMerge(null)} className="opacity-70 hover:opacity-100"><X size={14} /></button>
+        </div>
+      )}
       {/* language tabs */}
       <div className="flex items-center gap-1 mb-3">
         {[['en', 'English (base)'], ['fr', 'Français']].map(([l, label]) => (
@@ -430,6 +468,7 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
         <span className="text-xs text-[var(--faint)] ml-auto">Cover &amp; blog are shared across languages</span>
       </div>
       {f.cover && <div className="rounded-xl overflow-hidden border border-[var(--line)] mt-3"><img src={f.cover} alt="" className="w-full h-40 object-cover" /></div>}
+      {f.cover && <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer text-[var(--muted)]"><input type="checkbox" checked={f.coverInBody !== false} onChange={(e) => setF((s) => ({ ...s, coverInBody: e.target.checked }))} /> Also show the cover at the top of the article</label>}
 
       {/* excerpt — rich editor (like content) */}
       <div className="mt-4">

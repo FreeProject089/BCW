@@ -64,12 +64,20 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       JWT_SECRET: ${JWT_SECRET:?set in .env}
       SITE_URL: ${SITE_URL:-http://localhost:5176}
+      # Scope the session cookie to the parent domain so it also reaches the telemetry
+      # sub-domain (telemetry.<domain>), which the edge forward_auth gate needs. Dev
+      # default `localhost` covers localhost + telemetry.localhost. PRODUCTION MUST set
+      # this to `.your-domain.com` (leading dot) — the localhost default would be
+      # rejected by the browser on a real domain and break login.
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-localhost}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       LINK_LOOKUP_SECRET: ${LINK_LOOKUP_SECRET:-dev-link-secret}
       # BMM telemetry SSO handoff (signs with LINK_LOOKUP_SECRET, which the telemetry
       # service verifies as BC_LINK_SECRET) + read-only DB access for the DB viewer.
-      TELEMETRY_PUBLIC_URL: ${TELEMETRY_PUBLIC_URL:-http://telemetry.localhost}
+      # The URL the SSO "open telemetry" button sends the admin to — must be the SAME
+      # host Caddy serves telemetry on (TELEMETRY_DOMAIN), or you get an empty response.
+      TELEMETRY_PUBLIC_URL: ${TELEMETRY_PUBLIC_URL:-${TELEMETRY_DOMAIN:-http://telemetry.localhost}}
       TELEMETRY_DATABASE_URL: ${TELEMETRY_DATABASE_URL:-postgres://bmm:bmm@telemetry-db:5432/telemetry}
       DISCORD_CONTACT_WEBHOOK: ${DISCORD_CONTACT_WEBHOOK:-}
       BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-${LINK_LOOKUP_SECRET:-dev-bot-secret}}

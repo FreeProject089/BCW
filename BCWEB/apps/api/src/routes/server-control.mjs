@@ -311,7 +311,12 @@ export default async function serverControlRoutes(app) {
   // telemetry service also holds) so an ADMIN (requireRole already enforces 2FA)
   // can open the BMM telemetry dashboard without its static admin key. Returns the
   // telemetry URL carrying the token + a home link back to BCWEB.
-  app.post('/admin/telemetry/token', { preHandler: requireRole('ADMIN'), config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
+  app.post('/admin/telemetry/token', { preHandler: requireRole('ADMIN'), config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
+    // Same permission the edge forward_auth gate enforces (telemetry.mjs): the token
+    // is useless without it, so refuse to mint one — keeps the button and the gate in
+    // agreement. SUPERADMIN is always allowed.
+    const me = await (await db()).user.findUnique({ where: { id: req.user.uid }, select: { canViewTelemetry: true } });
+    if (req.user.role !== 'SUPERADMIN' && !me?.canViewTelemetry) return reply.code(403).send({ error: 'no_telemetry_access' });
     const secret = process.env.BC_LINK_SECRET || process.env.LINK_LOOKUP_SECRET || 'dev-link-secret';
     const payload = Buffer.from(JSON.stringify({ role: req.user.role, uid: req.user.uid, exp: Date.now() + 4 * 3600 * 1000 })).toString('base64url');
     const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');

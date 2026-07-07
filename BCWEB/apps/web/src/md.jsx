@@ -4,7 +4,42 @@ import remarkGfm from 'remark-gfm';
 import remarkDirective from 'remark-directive';
 import rehypeRaw from 'rehype-raw';
 import rehypeHighlight from 'rehype-highlight';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
+
+// Sanitisation schema (CWE-79): author-written raw HTML in blog/doc bodies is stripped
+// of anything executable (scripts, on* handlers, javascript: URLs) by extending the
+// safe default schema to ALSO permit exactly what our doc-block system emits — no more.
+const SANITIZE_SCHEMA = {
+  ...defaultSchema,
+  tagNames: [...new Set([...(defaultSchema.tagNames || []),
+    'div', 'span', 'section', 'details', 'summary', 'nav', 'figure', 'figcaption',
+    'video', 'audio', 'source', 'iframe', 'kbd', 'doc-icon', 'doc-kbd'])],
+  attributes: {
+    ...defaultSchema.attributes,
+    '*': [...new Set([...((defaultSchema.attributes || {})['*'] || []), 'className', 'id', 'style', 'dataName', 'dataKeys'])],
+    a: [...new Set([...(((defaultSchema.attributes || {}).a) || []), 'href', 'target', 'rel', 'download'])],
+    img: [...new Set([...(((defaultSchema.attributes || {}).img) || []), 'src', 'alt', 'loading', 'className'])],
+    video: ['src', 'controls', 'poster', 'className', 'style', 'loading'],
+    audio: ['src', 'controls', 'className'],
+    source: ['src', 'type'],
+    iframe: ['src', 'allow', 'allowFullScreen', 'frameBorder', 'loading', 'className'],
+    'doc-icon': ['className', 'dataName'],
+    'doc-kbd': ['className', 'dataKeys'],
+  },
+};
+
+// After sanitising, drop any iframe whose src isn't YouTube — only embeds we vouch for
+// (the docs guide) survive; an author can't smuggle an arbitrary/phishing frame.
+function rehypeIframeAllowlist() {
+  return (tree) => {
+    visit(tree, 'element', (node, index, parent) => {
+      if (node.tagName !== 'iframe' || !parent) return;
+      const src = String(node.properties?.src || '');
+      if (!/^https:\/\/(www\.)?youtube(-nocookie)?\.com\//i.test(src)) { parent.children.splice(index, 1); return index; }
+    });
+  };
+}
 import { ThumbsUp, ThumbsDown } from 'lucide-react';
 import {
   Info, Lightbulb, AlertTriangle, Flame, CheckCircle2, BookOpen, Star, Rocket, Zap, Heart,
@@ -322,7 +357,7 @@ export default function Markdown({ children, className = '', pageMap }) {
     <div className={`md-body ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkDirective, remarkDocBlocks]}
-        rehypePlugins={[rehypeRaw, [rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], rehypeIframeAllowlist, [rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={components}
       >{preprocessMd(children || '')}</ReactMarkdown>
       {zoom && <div className="md-lightbox" onClick={() => setZoom(null)}><img src={zoom} alt="" /></div>}

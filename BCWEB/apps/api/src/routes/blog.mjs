@@ -12,6 +12,10 @@ const postSchema = z.object({
   title: z.string().min(2).max(160),
   excerpt: z.string().max(2000).default(''),
   cover: z.string().max(500).optional().nullable(),
+  coverInBody: z.boolean().optional(),
+  // The version the editor started from — lets the server detect a concurrent save
+  // and return the current copy so the client can 3-way merge instead of clobbering.
+  baseVersion: z.number().int().optional(),
   body: z.string().min(1),
   // Optional French translation (posted together with the base/EN version).
   titleFr: z.string().max(160).optional().nullable(),
@@ -52,7 +56,7 @@ async function canPostTo(p, user, { projectKey, showcaseSlug }) {
 }
 
 const POST_SELECT = {
-  id: true, slug: true, title: true, excerpt: true, cover: true, publishedAt: true, status: true, authorId: true,
+  id: true, slug: true, title: true, excerpt: true, cover: true, coverInBody: true, publishedAt: true, status: true, authorId: true,
   titleFr: true, excerptFr: true, bodyFr: true, reactionsEnabled: true, reactionTypes: true, coAuthorIds: true, showToc: true, tocTitle: true,
   project: { select: { key: true, name: true } },
   showcaseProject: { select: { slug: true, name: true, short: true, icon: true } },
@@ -78,10 +82,11 @@ export default async function blogRoutes(app) {
   // regardless of that flag).
   app.get('/blog', { preHandler: optionalAuth() }, async (req) => {
     const p = await db();
-    // Drafts (unpublished) are visible only to staff and to a post's own author —
-    // never to logged-out visitors or users without edit rights.
+    // Drafts (unpublished) are visible only to staff, a post's author, AND its
+    // co-authors (so collaborators can find + open the drafts they're working on) —
+    // never to logged-out visitors or unrelated users.
     const isStaff = req.user && ['MOD', 'ADMIN', 'SUPERADMIN'].includes(req.user.role);
-    const statusCond = isStaff ? {} : (req.user ? { OR: [{ status: 'PUBLISHED' }, { authorId: req.user.uid }] } : { status: 'PUBLISHED' });
+    const statusCond = isStaff ? {} : (req.user ? { OR: [{ status: 'PUBLISHED' }, { authorId: req.user.uid }, { coAuthorIds: { has: req.user.uid } }] } : { status: 'PUBLISHED' });
     const AND = [statusCond];
     if (req.query?.project) AND.push({ project: { key: req.query.project } });
     if (req.query?.page) AND.push({ showcaseProject: { slug: req.query.page } });
@@ -94,9 +99,9 @@ export default async function blogRoutes(app) {
   app.get('/blog/:slug', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
     const post = await p.blogPost.findUnique({ where: { slug: req.params.slug }, include: { project: true, showcaseProject: true, author: { select: { id: true, displayName: true, avatar: true } } } });
-    // Drafts are visible only to staff or the author — a 404 to everyone else.
+    // Drafts are visible only to staff, the author, or a co-author — 404 otherwise.
     const isStaff = req.user && ['MOD', 'ADMIN', 'SUPERADMIN'].includes(req.user.role);
-    const canSeeDraft = post && (isStaff || (req.user && post.authorId === req.user.uid));
+    const canSeeDraft = post && (isStaff || (req.user && (post.authorId === req.user.uid || (post.coAuthorIds || []).includes(req.user.uid))));
     if (!post || (post.status !== 'PUBLISHED' && !canSeeDraft)) return reply.code(404).send({ error: 'not_found' });
     // Resolve collaborators' avatars + a reaction summary (counts by type + the
     // current viewer's own reaction, if any).
@@ -186,7 +191,7 @@ export default async function blogRoutes(app) {
     const p = await db();
     const data = {
       authorId: req.user.uid, title: b.data.title, excerpt: b.data.excerpt,
-      cover: b.data.cover || null, body: b.data.body, slug: `${slugify(b.data.title)}-${Math.random().toString(36).slice(2, 6)}`,
+      cover: b.data.cover || null, coverInBody: b.data.coverInBody !== false, body: b.data.body, slug: `${slugify(b.data.title)}-${Math.random().toString(36).slice(2, 6)}`,
       titleFr: b.data.titleFr || null, excerptFr: b.data.excerptFr || null, bodyFr: b.data.bodyFr || null,
       status: b.data.publish ? 'PUBLISHED' : 'DRAFT', publishedAt: b.data.publish ? new Date() : null,
       reactionsEnabled: !!b.data.reactionsEnabled,
@@ -207,11 +212,23 @@ export default async function blogRoutes(app) {
     const p = await db();
     const existing = await p.blogPost.findUnique({ where: { id: req.params.id } });
     if (!existing) return reply.code(404).send({ error: 'not_found' });
-    // Non-staff can only edit their own posts, even with a grant to post in that blog.
-    if (!STAFF.includes(req.user.role) && existing.authorId !== req.user.uid) return reply.code(403).send({ error: 'forbidden' });
+    // Non-staff can edit their own posts AND posts they're a co-author on (even with
+    // only a grant to post in that blog).
+    if (!STAFF.includes(req.user.role) && existing.authorId !== req.user.uid && !(existing.coAuthorIds || []).includes(req.user.uid)) return reply.code(403).send({ error: 'forbidden' });
     const d = b.data;
     const data = {};
     for (const k of ['title', 'excerpt', 'cover', 'body', 'titleFr', 'excerptFr', 'bodyFr']) if (d[k] !== undefined) data[k] = d[k];
+    // Optimistic concurrency: a stale baseVersion means someone else saved since this
+    // editor loaded → hand back the current copy so the client can 3-way merge.
+    const touchesContent = ['title', 'excerpt', 'body', 'titleFr', 'excerptFr', 'bodyFr'].some((k) => d[k] !== undefined);
+    if (d.baseVersion !== undefined && touchesContent && d.baseVersion !== existing.version) {
+      return reply.code(409).send({ error: 'version_conflict', current: {
+        version: existing.version, title: existing.title, excerpt: existing.excerpt, body: existing.body,
+        titleFr: existing.titleFr, excerptFr: existing.excerptFr, bodyFr: existing.bodyFr,
+      } });
+    }
+    if (touchesContent) data.version = { increment: 1 };
+    if (d.coverInBody !== undefined) data.coverInBody = d.coverInBody;
     if (d.reactionsEnabled !== undefined) data.reactionsEnabled = d.reactionsEnabled;
     if (d.reactionTypes !== undefined) data.reactionTypes = d.reactionTypes.slice(0, 3);
     if (d.showToc !== undefined) data.showToc = d.showToc;

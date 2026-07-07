@@ -33,17 +33,20 @@ export async function db() {
   return _prisma;
 }
 
+// Optional parent-domain scope so the session cookie is shared with sub-domains
+// (e.g. telemetry.<domain>, gated in telemetry.mjs). Unset = host-only (current
+// behaviour), so this is a no-op until COOKIE_DOMAIN is configured in production.
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
+const cookieBase = { httpOnly: true, sameSite: 'lax', path: '/', secure: process.env.NODE_ENV === 'production', ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}) };
+
 export function issueSession(reply, user) {
   const token = jwt.sign({ uid: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-  reply.setCookie('bcw_session', token, {
-    httpOnly: true, sameSite: 'lax', path: '/',
-    secure: process.env.NODE_ENV === 'production', maxAge: 7 * 24 * 3600,
-  });
+  reply.setCookie('bcw_session', token, { ...cookieBase, maxAge: 7 * 24 * 3600 });
   return { id: user.id, email: user.email, displayName: user.displayName, role: user.role };
 }
 
 export function clearSession(reply) {
-  reply.clearCookie('bcw_session', { path: '/' });
+  reply.clearCookie('bcw_session', { path: '/', ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}) });
 }
 
 // ── Step-up elevation for server-control tools (see server-control.mjs) ──
@@ -55,10 +58,7 @@ export function clearSession(reply) {
 const ELEVATE_TTL_S = 15 * 60;
 export function issueElevatedToken(reply, userId) {
   const token = jwt.sign({ uid: userId, purpose: 'server-control' }, JWT_SECRET, { expiresIn: ELEVATE_TTL_S });
-  reply.setCookie('bcw_elevated', token, {
-    httpOnly: true, sameSite: 'lax', path: '/',
-    secure: process.env.NODE_ENV === 'production', maxAge: ELEVATE_TTL_S,
-  });
+  reply.setCookie('bcw_elevated', token, { ...cookieBase, maxAge: ELEVATE_TTL_S });
   return ELEVATE_TTL_S;
 }
 export function requireElevated() {

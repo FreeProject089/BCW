@@ -17,6 +17,8 @@ const pageSchema = z.object({
   bodyFr: z.string().max(200_000).nullish(),
   order: z.number().int().optional(),
   published: z.boolean().optional(),
+  // Version the editor loaded from — for git-style concurrent-edit conflict detection.
+  baseVersion: z.number().int().optional(),
 });
 
 // Build the sidebar tree: pages grouped by category, categories ordered by the
@@ -134,6 +136,14 @@ export default async function docRoutes(app) {
     const exists = await p.docPage.findUnique({ where: { id: req.params.id } });
     if (!exists) return reply.code(404).send({ error: 'not_found' });
     const d = b.data;
+    // Optimistic concurrency — a stale baseVersion means a concurrent save; hand back
+    // the current copy so the editor can 3-way merge instead of overwriting it.
+    const touchesContent = ['title', 'body', 'bodyFr'].some((k) => d[k] !== undefined);
+    if (d.baseVersion !== undefined && touchesContent && d.baseVersion !== exists.version) {
+      return reply.code(409).send({ error: 'version_conflict', current: {
+        version: exists.version, title: exists.title, body: exists.body, bodyFr: exists.bodyFr,
+      } });
+    }
     const page = await p.docPage.update({ where: { id: req.params.id }, data: {
       ...(d.title !== undefined ? { title: d.title } : {}),
       ...(d.category !== undefined ? { category: d.category } : {}),
@@ -142,6 +152,7 @@ export default async function docRoutes(app) {
       ...(d.bodyFr !== undefined ? { bodyFr: d.bodyFr || null } : {}),
       ...(d.order !== undefined ? { order: d.order } : {}),
       ...(d.published !== undefined ? { published: d.published } : {}),
+      ...(touchesContent ? { version: { increment: 1 } } : {}),
     } });
     return { page };
   });

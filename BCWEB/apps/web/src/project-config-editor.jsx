@@ -148,6 +148,11 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
   const community = c.community || {};
   const contributors = Array.isArray(community.contributors) ? community.contributors : [];
   const messages = Array.isArray(community.messages) ? community.messages : [];
+  // Custom links: prefer the new array; fall back to migrating the legacy single
+  // customLabel/customUrl pair so existing configs keep their link.
+  const customLinks = Array.isArray(links.custom)
+    ? links.custom
+    : (links.customUrl ? [{ icon: 'link', label: links.customLabel || 'Link', url: links.customUrl }] : []);
 
   return (
     <div className="space-y-3">
@@ -164,9 +169,20 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
             <Field key={k} label={label}><Input value={links[k] || ''} onChange={(e) => setIn('links', { [k]: e.target.value })} placeholder="https://…" /></Field>
           ))}
         </div>
-        <div className="grid grid-cols-[1fr_1.4fr] gap-3">
-          <Field label="Custom link label"><Input value={links.customLabel || ''} onChange={(e) => setIn('links', { customLabel: e.target.value })} placeholder="Docs" /></Field>
-          <Field label="Custom link URL"><Input value={links.customUrl || ''} onChange={(e) => setIn('links', { customUrl: e.target.value })} placeholder="https://…" /></Field>
+        {/* Custom links — as many as you want, each its own button with a chosen
+            icon (lucide / simple:brand) + label. (The old single customLabel/
+            customUrl pair is auto-migrated into this list on first edit.) */}
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Custom links</div>
+          <Repeatable items={customLinks} onChange={(v) => setIn('links', { custom: v, customLabel: undefined, customUrl: undefined })} addLabel="Add link" empty="No custom links yet."
+            add={() => ({ icon: 'link', label: 'Docs', url: '' })}
+            render={(it, patch) => (
+              <div className="flex items-center gap-2">
+                <IconBtn value={it.icon} onChange={(v) => patch({ icon: v })} />
+                <Input className="!w-32" value={it.label || ''} onChange={(e) => patch({ label: e.target.value })} placeholder="Label" />
+                <Input className="flex-1" value={it.url || ''} onChange={(e) => patch({ url: e.target.value })} placeholder="https://…" />
+              </div>
+            )} />
         </div>
       </Section>
 
@@ -175,7 +191,8 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
         <Repeatable items={downloads} onChange={(v) => set({ downloads: v })} addLabel="Add download" empty="No download buttons yet."
           add={() => ({ label: 'Download', url: '', primary: downloads.length === 0 })}
           render={(it, patch) => (
-            <div className="grid grid-cols-[1fr_1.6fr_auto] gap-2 items-center">
+            <div className="grid grid-cols-[auto_1fr_1.6fr_auto] gap-2 items-center">
+              <IconBtn value={it.icon} onChange={(v) => patch({ icon: v })} />
               <Input value={it.label || ''} onChange={(e) => patch({ label: e.target.value })} placeholder="Label" />
               <Input value={it.url || ''} onChange={(e) => patch({ url: e.target.value })} placeholder="https://…" />
               <button type="button" onClick={() => patch({ primary: !it.primary })} title="Primary button"

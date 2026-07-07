@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Routes, Route, Link, NavLink, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
 import { useAuth } from './auth.jsx';
 import { api } from './api.js';
@@ -51,8 +51,22 @@ function timeAgo(d, justnow) {
 }
 
 // Global notifications bell — visible on every page in the topbar when signed in.
+// Where a notification takes you when clicked (by kind) — makes the bell actionable
+// instead of just informational. Falls back to no navigation for pure-info kinds.
+const NOTIF_LINK = {
+  submission_approved: '/dashboard', submission_rejected: '/dashboard',
+  repo_verified: '/repos', repo_published: '/dashboard?s=repos', repo_rejected: '/dashboard?s=repos',
+  repo_access_granted: '/dashboard?s=repos', repo_renew: '/dashboard?s=repos', repo_upgrade: '/dashboard?s=repos',
+  repo_review: '/admin?s=moderation',
+  hosting_started: '/dashboard?s=repos', hosting_online: '/dashboard?s=repos', hosting_stopped: '/dashboard?s=repos', hosting_expiring: '/dashboard?s=repos',
+  feature_active: '/dashboard?s=repos', server_alert: '/admin?s=serverperf',
+  creator_linked: '/profile', discord_linked: '/profile',
+  kofi_reward: '/dashboard', promo_redeemed: '/dashboard', discount: '/hosting', free_hosting: '/dashboard?s=repos', free_boost: '/dashboard?s=repos',
+};
+
 function NavNotifications() {
   const { t } = useI18n();
+  const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const ref = useRef(null);
@@ -64,6 +78,8 @@ function NavNotifications() {
   }, []);
   const unread = items.filter((n) => !n.readAt).length;
   const markOne = async (n) => { if (n.readAt) return; setItems((s) => s.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x))); try { await api.post(`/me/notifications/${n.id}/read`); } catch {} };
+  // Click = mark read + go to the relevant page (if the kind maps to one).
+  const openNotif = (n) => { markOne(n); const to = NOTIF_LINK[n.kind]; if (to) { setOpen(false); nav(to); } };
   const markAll = async () => { setItems((s) => s.map((x) => ({ ...x, readAt: x.readAt || new Date().toISOString() }))); try { await api.post('/me/notifications/read-all'); } catch {} };
   const del = async (n) => { setItems((s) => s.filter((x) => x.id !== n.id)); try { await api.del(`/me/notifications/${n.id}`); } catch {} };
   // Menu-only dismiss — just clears what's shown here, nothing is deleted server-side
@@ -89,7 +105,7 @@ function NavNotifications() {
           <div className="overflow-y-auto flex-1 min-h-0">
           {items.length ? items.slice(0, 30).map((n) => { const m = NOTIF[n.kind] || NOTIF_FALLBACK; return (
             <div key={n.id} className={`group w-full px-3 py-2.5 border-b border-[var(--line)] hover:bg-[var(--surface-2)] flex gap-2.5 items-start ${n.readAt ? '' : 'bg-orange-500/5'}`}>
-              <button onClick={() => markOne(n)} className="flex gap-2.5 items-start text-left min-w-0 flex-1">
+              <button onClick={() => openNotif(n)} className={`flex gap-2.5 items-start text-left min-w-0 flex-1 ${NOTIF_LINK[n.kind] ? 'cursor-pointer' : ''}`}>
                 <span className={`grid place-items-center w-7 h-7 rounded-lg shrink-0 mt-0.5 ${m.tint}`}><m.icon size={13} className={m.tone} /></span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">

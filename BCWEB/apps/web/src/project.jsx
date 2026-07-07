@@ -32,6 +32,28 @@ const LINK_META = {
 };
 // Order of the generic link buttons on a showcase project page.
 const LINK_ORDER = ['github', 'source', 'discord', 'kofi', 'reddit', 'website', 'docs'];
+const KNOWN_LINKS = new Set([...LINK_ORDER, 'forum']);
+
+// The project's links row: known links (GitHub/Discord/…) then any number of custom
+// links, each its own button with a chosen icon (lucide / simple:brand) + label.
+// Back-compat: a legacy single customLabel/customUrl becomes one custom button.
+function LinksRow({ links }) {
+  if (!links) return null;
+  const custom = Array.isArray(links.custom)
+    ? links.custom.filter((x) => x && x.url)
+    : (links.customUrl ? [{ icon: 'link', label: links.customLabel || 'Link', url: links.customUrl }] : []);
+  const known = LINK_ORDER.filter((k) => links[k]);
+  if (!known.length && !custom.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2 mb-8">
+      {known.map((k) => { const m = LINK_META[k] || { icon: ExternalLink, label: k }; return (
+        <a key={k} href={links[k]} target="_blank" rel="noreferrer"><Button size="sm"><m.icon size={14} className={k === 'kofi' ? 'text-orange-400' : ''} /> {m.label}</Button></a>); })}
+      {custom.map((d, i) => (
+        <a key={`c${i}`} href={d.url} target="_blank" rel="noreferrer"><Button size="sm">{d.icon ? <ShowcaseIcon icon={d.icon} size={14} /> : <ExternalLink size={14} />} {d.label || 'Link'}</Button></a>
+      ))}
+    </div>
+  );
+}
 const LEGAL_ICONS = { shield: ShieldCheck, lock: ScrollText, book: BookOpen, file: FileText, scroll: ScrollText, globe: Globe, docs: BookOpen };
 
 // A framed, tilt-on-hover media slot for the overview: image, video, or an rrweb replay.
@@ -78,15 +100,20 @@ function DownloadMenu({ downloads = [], children }) {
   const list = downloads.filter((d) => d.url);
   if (!list.length) return children || null;
   const primary = list.find((d) => d.primary) || list[0];
+  // Per-download icon: a chosen lucide/simple icon, else the source-vs-download
+  // heuristic. `white` renders it on the solid primary button (currentColor).
+  const dlIcon = (d, size = 16, cls = '') => d.icon
+    ? <ShowcaseIcon icon={d.icon} size={size} className={cls} />
+    : (/^source|code|src/i.test(d.label || '') ? <FolderGit2 size={size} className={cls} /> : <Download size={size} className={cls} />);
   if (list.length === 1) {
     return (<>
-      <a href={primary.url} download rel="noreferrer"><Button variant="primary"><Download size={16} /> {primary.label}</Button></a>
+      <a href={primary.url} download rel="noreferrer"><Button variant="primary">{dlIcon(primary)} {primary.label}</Button></a>
       {children}
     </>);
   }
   return (
     <div className="relative flex" ref={ref} onMouseEnter={hoverOpen} onMouseLeave={hoverClose}>
-      <a href={primary.url} download rel="noreferrer"><Button variant="primary" className="!rounded-r-none"><Download size={16} /> {primary.label}</Button></a>
+      <a href={primary.url} download rel="noreferrer"><Button variant="primary" className="!rounded-r-none">{dlIcon(primary)} {primary.label}</Button></a>
       <Button variant="primary" className="!rounded-l-none !px-2 border-l border-white/25" aria-label="More download options" onClick={() => setOpen((v) => !v)}><ChevronDown size={15} className={`transition-transform ${open ? 'rotate-180' : ''}`} /></Button>
       {children}
       {open && (
@@ -95,7 +122,7 @@ function DownloadMenu({ downloads = [], children }) {
           {list.map((d) => (
             <a key={`${d.label}:${d.url}`} href={d.url} download rel="noreferrer" onClick={() => setOpen(false)}
               className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-[var(--text)] hover:bg-[var(--surface-2)] transition">
-              {/^source|code|src/i.test(d.label) ? <FolderGit2 size={15} className="text-[var(--primary-2)] shrink-0" /> : <Download size={15} className="text-[var(--primary-2)] shrink-0" />}
+              <span className="text-[var(--primary-2)] shrink-0">{dlIcon(d, 15)}</span>
               <span className="min-w-0 flex-1 truncate">{d.label}</span>
               {d.primary && <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">default</span>}
             </a>
@@ -205,12 +232,7 @@ export default function ProjectPage() {
       </div>
 
       {/* links row */}
-      {c.links && Object.values(c.links).some(Boolean) && (
-        <div className="flex flex-wrap gap-2 mb-8">
-          {Object.entries(c.links).filter(([, v]) => v).map(([k, v]) => { const m = LINK_META[k] || { icon: ExternalLink, label: k }; return (
-            <a key={k} href={v} target="_blank" rel="noreferrer"><Button size="sm"><m.icon size={14} className={k === 'kofi' ? 'text-orange-400' : ''} /> {m.label}</Button></a>); })}
-        </div>
-      )}
+      <LinksRow links={c.links} />
 
       {/* tabs */}
       <div className="flex gap-2 mb-6 border-b border-[var(--line)] overflow-x-auto no-scrollbar">
@@ -683,13 +705,7 @@ export function ShowcaseProjectPage() {
         </div>
       </div>
 
-      {cfg.links && Object.values(cfg.links).some(Boolean) && (
-        <div className="flex flex-wrap gap-2 mb-8">
-          {LINK_ORDER.filter((k) => cfg.links[k]).map((k) => { const m = LINK_META[k] || { icon: ExternalLink, label: k }; return (
-            <a key={k} href={cfg.links[k]} target="_blank" rel="noreferrer"><Button size="sm"><m.icon size={14} className={k === 'kofi' ? 'text-orange-400' : ''} /> {m.label}</Button></a>); })}
-          {cfg.links.customUrl && <a href={cfg.links.customUrl} target="_blank" rel="noreferrer"><Button size="sm"><ExternalLink size={14} /> {cfg.links.customLabel || 'Link'}</Button></a>}
-        </div>
-      )}
+      <LinksRow links={cfg.links} />
 
       <div className="flex gap-2 mb-6 border-b border-[var(--line)] overflow-x-auto no-scrollbar">
         {tabs.map(([id, label, Icon]) => (

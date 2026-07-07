@@ -71,5 +71,18 @@
 # Production: set TELEMETRY_DOMAIN to a real subdomain (auto-HTTPS).
 {$TELEMETRY_DOMAIN:http://telemetry.localhost} {
 	encode gzip zstd
+
+	# Gate the whole dashboard behind a BCWEB login + the canViewTelemetry grant.
+	# forward_auth hits the BCWEB API first: 2xx → proceed; otherwise its response
+	# (302 to /auth for anon, 403 for signed-in-but-not-granted) is returned to the
+	# browser. The telemetry app itself is never modified — this is edge-only.
+	# NOTE: the bcw_session cookie must reach this sub-domain, so set COOKIE_DOMAIN
+	# (BCWEB api) to a parent domain (e.g. .example.com) in production.
+	# NOTE: forward_auth talks to api:3000 directly (not through this proxy), so the
+	# path is the API's real route WITHOUT the /api prefix that handle_path strips.
+	forward_auth api:3000 {
+		uri /telemetry/authorize
+	}
+
 	reverse_proxy telemetry:8900
 }
