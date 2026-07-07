@@ -71,6 +71,9 @@ export default async function analyticsRoutes(app) {
     const days = Math.min(Math.max(Number(req.query?.days) || 30, 1), 365);
     const since = hours ? new Date(Date.now() - hours * 3600e3) : new Date(Date.now() - days * 864e5);
     const liveSince = new Date(Date.now() - 30 * 60e3); // last 30 min
+    // Immediately-preceding window of the SAME length, for period-over-period deltas.
+    const windowMs = Date.now() - since.getTime();
+    const prevSince = new Date(since.getTime() - windowMs);
     const uniq = async (where) => (await p.analyticsEvent.findMany({ where, select: { visitor: true }, distinct: ['visitor'] })).filter((x) => x.visitor).length;
     const [total, windowed, uniqueVisitors, totalVisitors, live, top, refs, devices, browsers, oses, countries, series, visitorSeries, bounce, flows] = await Promise.all([
       p.analyticsEvent.count(),
@@ -93,6 +96,15 @@ export default async function analyticsRoutes(app) {
     ]);
     const vs = Object.fromEntries(visitorSeries.map((s) => [new Date(s.day).toISOString(), Number(s.count)]));
     const b0 = bounce[0] || { bounces: 0, total: 0 };
+    // Previous-period figures for the headline KPI deltas (pageviews + unique visitors).
+    const [prevWindowed, prevUniqueVisitors, prevBounce] = await Promise.all([
+      p.analyticsEvent.count({ where: { createdAt: { gte: prevSince, lt: since } } }),
+      uniq({ createdAt: { gte: prevSince, lt: since } }),
+      p.$queryRaw`SELECT count(*) FILTER (WHERE n = 1)::int AS bounces, count(*)::int AS total FROM (SELECT "visitor", count(*) AS n FROM "AnalyticsEvent" WHERE "createdAt" >= ${prevSince} AND "createdAt" < ${since} AND "visitor" IS NOT NULL GROUP BY "visitor") t`,
+    ]);
+    const pb = prevBounce[0] || { bounces: 0, total: 0 };
+    const prevBounceRate = pb.total ? Math.round((Number(pb.bounces) / Number(pb.total)) * 100) : 0;
+    const prevViewsPerVisitor = prevUniqueVisitors ? +(prevWindowed / prevUniqueVisitors).toFixed(1) : 0;
 
     // Hour-granularity: zero-fill gaps and compute a "same hour, previous day"
     // comparison. The GROUP BY query above silently skips hours with zero events —
@@ -133,6 +145,8 @@ export default async function analyticsRoutes(app) {
       uniqueVisitors, totalVisitors, live, sessions: uniqueVisitors,
       viewsPerVisitor: uniqueVisitors ? +(windowed / uniqueVisitors).toFixed(1) : 0,
       bounceRate: b0.total ? Math.round((Number(b0.bounces) / Number(b0.total)) * 100) : 0,
+      // Previous equal-length window → the client renders ↑/↓ % deltas per KPI.
+      prev: { pageviews: prevWindowed, uniqueVisitors: prevUniqueVisitors, sessions: prevUniqueVisitors, viewsPerVisitor: prevViewsPerVisitor, bounceRate: prevBounceRate },
       top: top.map((t) => ({ path: t.path, count: t._count.path })),
       refs: refs.map((r) => ({ ref: r.ref, count: r._count.ref })),
       devices: devices.map((d) => ({ label: d.device, count: d._count.device })),

@@ -4487,7 +4487,15 @@ function AdminAnalytics() {
   const ranges = [['24h', '24h'], [7, '7 days'], [30, '30 days'], [90, '90 days']];
   const activeRange = hours ? '24h' : days;
   const pickRange = (v) => { if (v === '24h') setHours(24); else { setHours(null); setDays(v); } };
-  const kpi = (Icon, val, label, accent) => <Card className="p-4"><Icon size={16} className={accent || 'text-[var(--primary-2)]'} /><div className="text-2xl font-bold mt-2">{val}</div><div className="text-[11px] text-[var(--muted)]">{label}</div></Card>;
+  // Period-over-period delta chip (▲/▼ %); for bounce rate a DROP is good (lowerBetter).
+  const deltaChip = (cur, prev, lowerBetter) => {
+    if (prev == null || cur == null || Number(prev) === 0) return null;
+    const pct = Math.round(((cur - prev) / prev) * 100);
+    if (pct === 0) return <span className="text-[10px] text-[var(--faint)]">0%</span>;
+    const up = pct > 0, good = lowerBetter ? !up : up;
+    return <span className={`text-[10px] font-semibold tabular-nums ${good ? 'text-emerald-400' : 'text-red-400'}`} title="vs previous period">{up ? '▲' : '▼'} {Math.abs(pct)}%</span>;
+  };
+  const kpi = (Icon, val, label, accent, delta) => <Card className="p-4"><div className="flex items-center justify-between gap-1"><Icon size={16} className={accent || 'text-[var(--primary-2)]'} />{delta}</div><div className="text-2xl font-bold mt-2">{val}</div><div className="text-[11px] text-[var(--muted)]">{label}</div></Card>;
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -4503,11 +4511,11 @@ function AdminAnalytics() {
 
       {/* KPI row (Rybbit-style) */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-        {kpi(Users, data?.uniqueVisitors ?? '—', 'Unique visitors')}
-        {kpi(Package, data?.sessions ?? '—', 'Sessions')}
-        {kpi(Eye, data?.windowed ?? '—', 'Pageviews')}
-        {kpi(TrendingUp, data?.viewsPerVisitor ?? '—', 'Pages / session')}
-        {kpi(ArrowUpRight, data?.bounceRate != null ? `${data.bounceRate}%` : '—', 'Bounce rate')}
+        {kpi(Users, data?.uniqueVisitors ?? '—', 'Unique visitors', null, deltaChip(data?.uniqueVisitors, data?.prev?.uniqueVisitors))}
+        {kpi(Package, data?.sessions ?? '—', 'Sessions', null, deltaChip(data?.sessions, data?.prev?.sessions))}
+        {kpi(Eye, data?.windowed ?? '—', 'Pageviews', null, deltaChip(data?.windowed, data?.prev?.pageviews))}
+        {kpi(TrendingUp, data?.viewsPerVisitor ?? '—', 'Pages / session', null, deltaChip(data?.viewsPerVisitor, data?.prev?.viewsPerVisitor))}
+        {kpi(ArrowUpRight, data?.bounceRate != null ? `${data.bounceRate}%` : '—', 'Bounce rate', null, deltaChip(data?.bounceRate, data?.prev?.bounceRate, true))}
         {kpi(Zap, data?.live ?? '—', 'Live (30 min)', 'text-emerald-400')}
       </div>
 
