@@ -174,7 +174,7 @@ export function BlogPostPage() {
             </button>
           </div>
         )}
-        {showComments && <CommentsModal base={`/blog/${p.id}`} onClose={() => setShowComments(false)} />}
+        {showComments && <CommentsModal base={`/blog/${p.id}`} body={v.body || p.body} onClose={() => setShowComments(false)} onJump={(slug) => { const el = document.getElementById(slug); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />}
         {showHistory && <HistoryModal base={`/blog/${p.id}`} onClose={() => setShowHistory(false)} />}
 
         {/* author + collaborators */}
@@ -575,7 +575,7 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
       </div>
       {showHistory && post && <HistoryModal base={`/blog/${post.id}`} onClose={() => setShowHistory(false)}
         onRestore={(rev) => { setF((s) => ({ ...s, title: rev.title || s.title, body: rev.body || '', bodyFr: rev.bodyFr ?? s.bodyFr })); setTab('en'); }} />}
-      {showComments && post && <CommentsModal base={`/blog/${post.id}`} onClose={() => setShowComments(false)} />}
+      {showComments && post && <CommentsModal base={`/blog/${post.id}`} body={f.body} onClose={() => setShowComments(false)} />}
       {mergeUI?.queue?.length > 0 && (() => { const cur = mergeUI.queue[0]; return (
         <DiffMergeModal open base={cur.base} mine={cur.mine} theirs={cur.theirs} langLabel={cur.langLabel}
           onClose={() => setMergeUI(null)}

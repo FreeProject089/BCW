@@ -182,7 +182,7 @@ export default function Docs() {
       {page && <PageToc body={body} />}
 
       {search && <SearchPalette onClose={() => setSearch(false)} onPick={goTo} />}
-      {readerComments && page && <CommentsModal base={`/docs/${page.id}`} onClose={() => setReaderComments(false)} />}
+      {readerComments && page && <CommentsModal base={`/docs/${page.id}`} body={body} onClose={() => setReaderComments(false)} onJump={(slug) => { const el = document.getElementById(slug); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />}
       {readerHistory && page && <HistoryModal base={`/docs/${page.id}`} onClose={() => setReaderHistory(false)} />}
       {editing && <DocEditor page={editing.id ? editing : null} tree={tree} onClose={() => setEditing(null)} onSaved={onSaved} />}
     </div>
@@ -523,7 +523,7 @@ function DocEditor({ page, tree, onClose, onSaved }) {
         placeholder={fr ? 'Traduction française (optionnelle)…' : 'Write with GitBook-style blocks — use the Blocks button.'} />
       {showHistory && page && <HistoryModal base={`/docs/${page.id}`} onClose={() => setShowHistory(false)}
         onRestore={(rev) => { setF((s) => ({ ...s, title: rev.title || s.title, body: rev.body || '', bodyFr: rev.bodyFr ?? s.bodyFr })); setTab('en'); }} />}
-      {showComments && page && <CommentsModal base={`/docs/${page.id}`} onClose={() => setShowComments(false)} />}
+      {showComments && page && <CommentsModal base={`/docs/${page.id}`} body={f.body} onClose={() => setShowComments(false)} />}
       {mergeUI?.queue?.length > 0 && (() => { const cur = mergeUI.queue[0]; return (
         <DiffMergeModal open base={cur.base} mine={cur.mine} theirs={cur.theirs} langLabel={cur.langLabel}
           onClose={() => setMergeUI(null)}

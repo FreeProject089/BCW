@@ -1,20 +1,30 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from './api.js';
-import { useToast, Button, Spinner, Modal, EmptyState, Input, Textarea } from './ui.jsx';
+import { useToast, Button, Spinner, Modal, EmptyState, Input, Textarea, Select } from './ui.jsx';
 import UserAvatar from './Avatar.jsx';
-import { MessageSquare, CornerDownRight, Check, Pencil, Trash2, Send, Tag, Globe, Lock } from 'lucide-react';
+import { MessageSquare, CornerDownRight, Check, Pencil, Trash2, Send, Tag, Globe, Lock, Hash } from 'lucide-react';
+
+// Heading anchor slug — must match the docs/blog renderer (md.jsx) so a comment pinned
+// to a section can scroll to it.
+const headingSlug = (s) => String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'section';
+// Pull the ## / ### headings out of a markdown body → pickable section list.
+const extractSections = (md) => [...new Set((String(md || '').match(/^#{2,3}\s+.+$/gm) || [])
+  .map((h) => h.replace(/^#{2,3}\s+/, '').replace(/[*_`]/g, '').trim()).filter(Boolean))].slice(0, 60);
 
 // Threaded editor-collaboration comments for a blog post (PR-review style). Any editor
-// can read, add, reply, resolve, and EDIT any comment. `base` = `/blog/<id>`. `readOnly`
-// renders the reader view (visible when the post is commentsPublic) without write UI.
-export default function CommentsModal({ base, onClose, readOnly }) {
+// can read, add, reply, resolve, and EDIT any comment. `base` = `/blog/<id>`. `body` (the
+// post/page markdown) powers the "pin to a section" picker + click-to-jump. `onJump(slug)`
+// (optional) lets the reader scroll to a section when a pin is clicked.
+export default function CommentsModal({ base, onClose, readOnly, body, onJump }) {
   const toast = useToast();
   const [data, setData] = useState(null); // { comments, canComment, commentsPublic }
   const [draft, setDraft] = useState({ body: '', anchor: '' });
+  const [customAnchor, setCustomAnchor] = useState(false); // "Custom…" chosen in the picker
   const [replyTo, setReplyTo] = useState(null);
   const [replyBody, setReplyBody] = useState('');
   const [editing, setEditing] = useState(null); // { id, body }
   const [busy, setBusy] = useState(false);
+  const sections = useMemo(() => extractSections(body), [body]);
 
   const load = () => api.get(`${base}/comments`).then(setData).catch(() => setData({ comments: [], canComment: false }));
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [base]);
@@ -57,7 +67,9 @@ export default function CommentsModal({ base, onClose, readOnly }) {
         <span className="text-[11px] text-[var(--faint)]">{fmt(c.createdAt)}{c.updatedAt !== c.createdAt ? ' · edited' : ''}</span>
         {c.resolved && <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400 flex items-center gap-0.5"><Check size={10} /> resolved</span>}
       </div>
-      {c.anchor && !isReply && <div className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)]"><Tag size={10} /> {c.anchor}</div>}
+      {c.anchor && !isReply && (onJump
+        ? <button onClick={() => { onJump(headingSlug(c.anchor)); onClose(); }} title="Jump to this section" className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)] hover:bg-[var(--primary)]/20 transition"><Hash size={10} /> {c.anchor}</button>
+        : <div className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)]"><Hash size={10} /> {c.anchor}</div>)}
       {editing?.id === c.id ? (
         <div className="ml-8 mt-1.5">
           <Textarea rows={2} value={editing.body} onChange={(e) => setEditing({ ...editing, body: e.target.value })} />
@@ -108,9 +120,23 @@ export default function CommentsModal({ base, onClose, readOnly }) {
       )}
       {canWrite && (
         <div className="mt-4 pt-3 border-t border-[var(--line)]">
+          {/* Link to a section — pick from the content's headings (or type a custom pin).
+              Much simpler than remembering the exact heading text. */}
           <div className="flex items-center gap-2 mb-1.5">
-            <Tag size={13} className="text-[var(--faint)]" />
-            <Input value={draft.anchor} onChange={(e) => setDraft({ ...draft, anchor: e.target.value })} placeholder="Pin to a section/line (optional, e.g. “Intro”)" className="!py-1.5 !text-sm" />
+            <Hash size={13} className="text-[var(--faint)] shrink-0" />
+            {sections.length && !customAnchor ? (
+              <Select className="!py-1.5 !text-sm flex-1" value={draft.anchor}
+                onChange={(e) => { if (e.target.value === '__custom__') { setCustomAnchor(true); setDraft({ ...draft, anchor: '' }); } else setDraft({ ...draft, anchor: e.target.value }); }}>
+                <option value="">No section (general comment)</option>
+                {sections.map((s) => <option key={s} value={s}>{s}</option>)}
+                <option value="__custom__">Custom pin…</option>
+              </Select>
+            ) : (
+              <div className="flex-1 flex items-center gap-1.5">
+                <Input value={draft.anchor} autoFocus={customAnchor} onChange={(e) => setDraft({ ...draft, anchor: e.target.value })} placeholder="Pin to a section/line (optional)" className="!py-1.5 !text-sm" />
+                {sections.length > 0 && <button className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] whitespace-nowrap" onClick={() => { setCustomAnchor(false); setDraft({ ...draft, anchor: '' }); }}>sections</button>}
+              </div>
+            )}
           </div>
           <Textarea rows={2} value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} placeholder="Leave a comment for other editors…" />
           <div className="flex justify-end mt-1.5"><Button size="sm" variant="primary" disabled={busy || !draft.body.trim()} onClick={add}><Send size={14} /> Comment</Button></div>
