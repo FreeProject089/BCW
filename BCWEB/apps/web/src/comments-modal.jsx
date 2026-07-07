@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from './api.js';
 import { useToast, Button, Spinner, Modal, EmptyState, Input, Textarea, Select } from './ui.jsx';
 import UserAvatar from './Avatar.jsx';
+import Markdown from './md.jsx';
+import { MarkdownEditor } from './blog.jsx';
 import { MessageSquare, CornerDownRight, Check, Pencil, Trash2, Send, Tag, Globe, Lock, Hash } from 'lucide-react';
 
 // Heading anchor slug — must match the docs/blog renderer (md.jsx) so a comment pinned
@@ -72,11 +74,11 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
         : <div className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)]"><Hash size={10} /> {c.anchor}</div>)}
       {editing?.id === c.id ? (
         <div className="ml-8 mt-1.5">
-          <Textarea rows={2} value={editing.body} onChange={(e) => setEditing({ ...editing, body: e.target.value })} />
+          <MarkdownEditor value={editing.body} onChange={(v) => setEditing({ ...editing, body: v })} full minHeight={120} placeholder="Edit comment — supports blocks, tables, images…" />
           <div className="flex gap-1.5 mt-1.5"><Button size="sm" variant="primary" disabled={busy} onClick={saveEdit}>Save</Button><Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div>
         </div>
       ) : (
-        <div className="ml-8 mt-1 text-sm whitespace-pre-wrap break-words">{c.body}</div>
+        <div className="ml-8 mt-1 text-sm comment-md"><Markdown>{c.body}</Markdown></div>
       )}
       {canWrite && editing?.id !== c.id && (
         <div className="ml-8 mt-1 flex items-center gap-3 text-[11px] text-[var(--faint)]">
@@ -138,7 +140,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
               </div>
             )}
           </div>
-          <Textarea rows={2} value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} placeholder="Leave a comment for other editors…" />
+          <MarkdownEditor value={draft.body} onChange={(v) => setDraft({ ...draft, body: v })} full minHeight={110} placeholder="Leave a comment — use the Blocks button for cards, tables, images, video…" />
           <div className="flex justify-end mt-1.5"><Button size="sm" variant="primary" disabled={busy || !draft.body.trim()} onClick={add}><Send size={14} /> Comment</Button></div>
         </div>
       )}
