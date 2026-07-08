@@ -990,6 +990,37 @@ model AnalyticsEvent {
   @@index([country])
 }
 
+// Session replay (rrweb). One SessionReplay per visitor page-session; the raw rrweb
+// event stream is stored as a series of ReplayChunk rows (appended as the client flushes)
+// so a recording can grow without a read-modify-write. Capped in total bytes by the
+// hosting.siteReplayStorageMB admin setting (sweeper prunes oldest sessions first).
+model SessionReplay {
+  id         String   @id @default(cuid())
+  sessionKey String   @unique  // client-generated, one per tab-session
+  visitor    String?            // server-side daily hash (for linking to pageview sessions)
+  path       String?            // entry page
+  device     String?
+  startedAt  DateTime @default(now())
+  lastAt     DateTime @updatedAt
+  bytes      Int      @default(0)
+  chunks     Int      @default(0)
+  events     Int      @default(0) // rrweb event count
+
+  @@index([lastAt])
+  @@index([visitor])
+}
+
+model ReplayChunk {
+  id         String   @id @default(cuid())
+  sessionKey String
+  seq        Int
+  data       Json                // array of rrweb events
+  bytes      Int
+  createdAt  DateTime @default(now())
+
+  @@index([sessionKey, seq])
+}
+
 // Real-user Web Vitals (Core Web Vitals + FCP/TTFB), one row per metric sample, tied to
 // the page path it was measured on. Percentiles (p50/p75/p90/p99) are computed per path
 // in the admin panel. Values are milliseconds except CLS (unitless float).

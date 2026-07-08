@@ -4685,8 +4685,59 @@ function WebVitals({ days, hours }) {
 // update; each row expands to its page-by-page timeline. Built from the pageview stream.
 const fmtDur = (s) => s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
 const fmtAgo = (d) => { const s = Math.round((Date.now() - new Date(d).getTime()) / 1000); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`; };
+// Plays a recorded rrweb session with the raw Replayer (matches RrwebPreview / BMM),
+// scaled to fit, with play-pause + restart. Events are fetched from the admin endpoint.
+function SessionReplayModal({ sessionKey, onClose }) {
+  const wrap = useRef(null), stage = useRef(null);
+  const replayerRef = useRef(null);
+  const [status, setStatus] = useState('loading'); // loading | playing | paused | error | empty
+  useEffect(() => {
+    let replayer, cancelled = false, ro;
+    (async () => {
+      try {
+        const doc = await api.get(`/admin/analytics/replay/${sessionKey}`);
+        const events = doc.events || [];
+        if (!Array.isArray(events) || events.length < 2) { setStatus('empty'); return; }
+        const [{ Replayer }] = await Promise.all([import('rrweb'), import('rrweb/dist/style.css')]);
+        if (cancelled || !stage.current) return;
+        const meta = events.find((e) => e.type === 4)?.data || { width: 1480, height: 960 };
+        replayer = new Replayer(events, { root: stage.current, speed: 1, skipInactive: true, mouseTail: false, showWarning: false, showDebug: false });
+        replayerRef.current = replayer;
+        replayer.play(0); setStatus('playing');
+        replayer.on('finish', () => setStatus('paused'));
+        const fit = () => {
+          const w = wrap.current?.clientWidth || 760; const scale = w / meta.width;
+          if (wrap.current) wrap.current.style.height = meta.height * scale + 'px';
+          const inner = stage.current?.querySelector('.replayer-wrapper');
+          if (inner) { inner.style.transform = `scale(${scale})`; inner.style.transformOrigin = 'top left'; }
+        };
+        fit(); ro = new ResizeObserver(fit); if (wrap.current) ro.observe(wrap.current);
+      } catch { if (!cancelled) setStatus('error'); }
+    })();
+    return () => { cancelled = true; try { ro?.disconnect(); } catch {} try { replayer?.pause?.(); } catch {} };
+  }, [sessionKey]);
+  const toggle = () => { const r = replayerRef.current; if (!r) return; if (status === 'playing') { r.pause(); setStatus('paused'); } else { r.play(r.getCurrentTime?.() || 0); setStatus('playing'); } };
+  const restart = () => { const r = replayerRef.current; if (r) { r.play(0); setStatus('playing'); } };
+  return (
+    <Modal open onClose={onClose} title="Session replay" icon={Activity} width="max-w-4xl"
+      footer={<>
+        <span className="text-xs text-[var(--faint)] mr-auto">Inputs are masked — typed text is never recorded.</span>
+        <Button variant="ghost" onClick={restart} disabled={!['playing', 'paused'].includes(status)}><RefreshCw size={14} /> Restart</Button>
+        <Button variant="primary" onClick={toggle} disabled={!['playing', 'paused'].includes(status)}>{status === 'playing' ? 'Pause' : 'Play'}</Button>
+      </>}>
+      <div ref={wrap} className="w-full rounded-lg overflow-hidden bg-black/40 relative" style={{ minHeight: 260 }}>
+        <div ref={stage} style={{ position: 'absolute', top: 0, left: 0 }} />
+        {status === 'loading' && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--muted)]"><Spinner /></div>}
+        {status === 'empty' && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--faint)]">Recording too short to play.</div>}
+        {status === 'error' && <div className="absolute inset-0 grid place-items-center text-sm text-red-400">Could not load this replay.</div>}
+      </div>
+    </Modal>
+  );
+}
+
 function SessionRow({ s }) {
   const [open, setOpen] = useState(false);
+  const [replay, setReplay] = useState(false);
   const geo = [s.city, s.country].filter(Boolean).join(', ');
   return (
     <div className="rounded-xl border border-[var(--line)] overflow-hidden">
@@ -4711,8 +4762,11 @@ function SessionRow({ s }) {
           </div>
           <div className="text-[11px] text-[var(--faint)]">{fmtAgo(s.end)} ago</div>
         </div>
+        {s.replayKey && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); setReplay(true); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setReplay(true); } }}
+          className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border border-[var(--primary)]/40 text-[var(--primary-2)] hover:bg-[var(--primary)]/10" title="Play session replay"><Eye size={12} /> Replay</span>}
         <ChevronDown size={15} className={`text-[var(--faint)] transition-transform shrink-0 ${open ? 'rotate-180' : ''}`} />
       </button>
+      {replay && <SessionReplayModal sessionKey={s.replayKey} onClose={() => setReplay(false)} />}
       {open && (
         <div className="border-t border-[var(--line)] bg-[var(--surface)]/40 px-3 py-2 space-y-1.5">
           {s.events.map((e, i) => (
@@ -5279,6 +5333,11 @@ const SETTINGS_GROUPS = [
     ['audit.maxDays', 'Audit log retention (days)', 'Staff-action log entries older than this are pruned. 0 = keep forever. The log is HMAC-chained (tamper-evident) — pruning is the only sanctioned deletion.', 'number'],
     ['audit.maxEntries', 'Audit log max entries', 'Also cap the staff-action log by entry count — the oldest are pruned past this. 0 = no count cap.', 'number'],
   ] },
+  { title: 'Session replay (site telemetry)', icon: Activity, keys: [
+    ['siteReplay.enabled', 'Record visitor sessions (rrweb)', 'Master switch for site session replay — when on, consenting visitors\' sessions are recorded and playable from Site analytics → Sessions. Off by default (privacy-first).', 'bool'],
+    ['siteReplay.sampleRate', 'Sampling rate (0–1)', 'Fraction of eligible sessions actually recorded. 0.25 = one in four. Lower this to cut storage on high-traffic sites. Default 0.25.', 'number'],
+    ['siteReplay.storageMB', 'Replay storage limit (MB)', 'Total storage the session-replay recordings may occupy. Once exceeded, the oldest sessions are pruned automatically. Default 500.', 'number'],
+  ] },
   { title: 'Pricing', icon: Receipt, keys: [
     ['pricing.perGBCents', 'Price per GB (¢ / month)', 'Base hosting cost, before the scarcity multiplier. Only applies above the free floor below.', 'number'],
     ['pricing.hostingFreeGB', 'Free hosting floor', 'Every repo\'s first N of storage cost nothing — small personal repos are free. Only the excess is billed.', 'gbmb', 'GB'],
@@ -5298,6 +5357,7 @@ const GROUP_DESC = {
   'Capacity': 'Storage ceilings, free-tier pools, telemetry & per-repo CPU/upload limits.',
   'Blog, docs & history': 'Article/page count & size caps, and edit-history retention.',
   'Security & audit logs': 'How long the tamper-evident staff action log is kept.',
+  'Session replay (site telemetry)': 'Record & replay visitor sessions (rrweb) — toggle, sampling and a storage cap.',
   'Pricing': 'What customers pay — per GB, Mbps, CPU, boost & catalog hosting.',
   'Feature flags': 'Master on/off switches.',
 };

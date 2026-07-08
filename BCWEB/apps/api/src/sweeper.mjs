@@ -117,6 +117,36 @@ async function sweepDiscordActivityCap(p, log) {
   } catch (e) { log.warn({ e: String(e?.message || e) }, 'sweeper: discord activity cap failed'); return 0; }
 }
 
+// Enforce the site session-replay storage cap (hosting.siteReplay.storageMB). Replay
+// event chunks are the heavy part; we delete the OLDEST sessions (by lastAt) and their
+// chunks until the total is back under ~90% of the cap. Keeps the replay store bounded
+// no matter how much traffic records.
+async function sweepReplayCap(p, log) {
+  try {
+    const row = await p.adminSetting.findUnique({ where: { key: 'siteReplay.storageMB' } });
+    const capMB = Number(row?.value);
+    if (!capMB || capMB <= 0) return 0;
+    const capBytes = capMB * 1024 * 1024;
+    const agg = await p.sessionReplay.aggregate({ _sum: { bytes: true } });
+    let total = Number(agg._sum.bytes || 0);
+    if (total <= capBytes) return 0;
+    const target = capBytes * 0.9;
+    let pruned = 0;
+    // Delete oldest sessions (+ their chunks) in batches until under target.
+    while (total > target) {
+      const victims = await p.sessionReplay.findMany({ orderBy: { lastAt: 'asc' }, take: 50, select: { sessionKey: true, bytes: true } });
+      if (!victims.length) break;
+      const keys = victims.map((v) => v.sessionKey);
+      await p.replayChunk.deleteMany({ where: { sessionKey: { in: keys } } });
+      await p.sessionReplay.deleteMany({ where: { sessionKey: { in: keys } } });
+      total -= victims.reduce((a, v) => a + v.bytes, 0);
+      pruned += victims.length;
+      if (pruned > 5000) break; // safety valve
+    }
+    return pruned;
+  } catch (e) { log.warn({ e: String(e?.message || e) }, 'sweeper: replay cap failed'); return 0; }
+}
+
 // Warn 72h ahead of a lapsing term (once per term — flagged in the repo's existing
 // misc `settings` JSON bag so no schema change is needed). Only fires for terms
 // that haven't already lapsed/been scheduled for deletion.
@@ -145,13 +175,14 @@ export function startSweeper(app) {
   const run = async () => {
     try {
       const p = await db();
-      const [items, repos, expired, warned, pruned, backedUp] = [
+      const [items, repos, expired, warned, pruned, backedUp, replaysPruned] = [
         await sweepItems(p, app.log), await sweepRepos(p, app.log),
         await sweepExpiredSubscriptions(p, app.log), await sweepExpiryWarnings(p, app.log),
         await sweepDiscordActivityCap(p, app.log), await sweepDailyFileBackup(p, app.log),
+        await sweepReplayCap(p, app.log),
       ];
       await sampleAndAlert(p, app.log);
-      if (items || repos || expired || warned || pruned || backedUp) app.log.info(`[sweeper] hard-deleted ${items} item(s), ${repos} repo(s) · suspended ${expired} expired term(s) · warned ${warned} · pruned ${pruned} old Discord member row(s)${backedUp ? ' · took daily file backup snapshot' : ''}`);
+      if (items || repos || expired || warned || pruned || backedUp || replaysPruned) app.log.info(`[sweeper] hard-deleted ${items} item(s), ${repos} repo(s) · suspended ${expired} expired term(s) · warned ${warned} · pruned ${pruned} old Discord member row(s)${replaysPruned ? ` · pruned ${replaysPruned} old replay session(s)` : ''}${backedUp ? ' · took daily file backup snapshot' : ''}`);
     } catch (e) { app.log.warn({ e: String(e) }, 'sweeper run failed'); }
   };
   run(); // sweep once at boot

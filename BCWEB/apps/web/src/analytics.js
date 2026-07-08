@@ -66,3 +66,53 @@ export function initVitals() {
   addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
   addEventListener('pagehide', flush);
 }
+
+// ── Session replay (rrweb) ─────────────────────────────────────────────────────
+// Records the visitor's session (client-side SPA, so ONE continuous recording across
+// route changes) and flushes rrweb event batches to the API. Gated three ways: analytics
+// consent, the admin master switch (/analytics/replay/config), and a sampling roll.
+// Inputs are masked (maskAllInputs) so we never capture what people type. `.bcw-noreplay`
+// blocks an element from the recording entirely. rrweb is lazy-loaded only when recording.
+export async function initReplay() {
+  if (getConsent() !== 'all') return;
+  if (window.__bcwReplay) return; window.__bcwReplay = true;
+  let cfg;
+  try { cfg = await fetch('/api/analytics/replay/config').then((r) => r.json()); } catch { return; }
+  if (!cfg?.enabled) return;
+
+  // Sticky per-tab decision (survives a hard reload): the same session keeps recording.
+  const KEY = 'bcw_replay';
+  let sessionKey, sampledIn, seq = 0;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+    if (saved) { sessionKey = saved.k; sampledIn = saved.in; seq = saved.seq || 0; }
+  } catch {}
+  if (!sessionKey) {
+    sampledIn = Math.random() < (typeof cfg.sampleRate === 'number' ? cfg.sampleRate : 0.25);
+    sessionKey = ((crypto.randomUUID && crypto.randomUUID()) || `${Date.now()}${Math.random()}`).replace(/[^a-z0-9]/gi, '').slice(0, 32);
+  }
+  const persist = () => { try { sessionStorage.setItem(KEY, JSON.stringify({ k: sessionKey, in: sampledIn, seq })); } catch {} };
+  persist();
+  if (!sampledIn) return;
+
+  let record;
+  try { ({ record } = await import('rrweb')); } catch { return; }
+  let buf = [];
+  record({
+    emit: (e) => { buf.push(e); },
+    sampling: { mousemove: 100, scroll: 150, input: 'last', media: 800 },
+    maskAllInputs: true,
+    blockClass: 'bcw-noreplay',
+    recordCanvas: false,
+    collectFonts: false,
+  });
+  const flush = () => {
+    if (!buf.length || getConsent() !== 'all') return;
+    const events = buf; buf = [];
+    beacon('/api/analytics/replay', { sessionKey, seq: seq++, events, path: location.pathname + location.search });
+    persist();
+  };
+  setInterval(flush, 5000);
+  addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+  addEventListener('pagehide', flush);
+}

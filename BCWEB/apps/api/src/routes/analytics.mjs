@@ -72,6 +72,21 @@ function parseUA(ua = '') {
 // Privacy-friendly first-party analytics: page path + referrer + a daily anonymous
 // visitor hash + coarse device/browser. No cookies, no third party. Consent-gated client-side.
 export default async function analyticsRoutes(app) {
+  // Session-replay config lives in a single admin setting so the Hosting-settings UI can
+  // toggle it and set a storage cap. Defaults: OFF (privacy-first — replay is opt-in by
+  // the admin), 25% sampling, 500 MB cap.
+  const getReplayConfig = async () => {
+    const p = await db();
+    const rows = await p.adminSetting.findMany({ where: { key: { in: ['siteReplay.enabled', 'siteReplay.sampleRate', 'siteReplay.storageMB'] } } });
+    const m = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    const rate = Number(m['siteReplay.sampleRate']);
+    return {
+      enabled: m['siteReplay.enabled'] === true,
+      sampleRate: Number.isFinite(rate) && rate >= 0 && rate <= 1 ? rate : 0.25,
+      storageMB: Number(m['siteReplay.storageMB']) || 500,
+    };
+  };
+
   app.post('/analytics/pageview', async (req, reply) => {
     const b = z.object({ path: z.string().max(300), ref: z.string().max(300).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid' });
@@ -80,6 +95,54 @@ export default async function analyticsRoutes(app) {
     const { country, region, city } = await geoOf(req);
     await p.analyticsEvent.create({ data: { path: b.data.path, ref: b.data.ref || null, visitor: visitorHash(req), device, browser, os, country, region, city } }).catch(() => {});
     return reply.code(204).send();
+  });
+
+  // Session replay chunk (rrweb). The client records the page and flushes event batches
+  // here keyed by a client-generated sessionKey. Appended as ReplayChunk rows so a
+  // recording grows without a read-modify-write. Per-session byte cap protects the store;
+  // the global cap (hosting.siteReplayStorageMB) is enforced by the sweeper.
+  const REPLAY_SESSION_CAP = 8 * 1024 * 1024; // 8 MB of events per session, then stop appending
+  app.post('/analytics/replay', async (req, reply) => {
+    const b = z.object({
+      sessionKey: z.string().min(8).max(64),
+      seq: z.number().int().nonnegative(),
+      events: z.array(z.any()).min(1).max(500),
+      path: z.string().max(300).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid' });
+    // Respect the master switch — no recording stored when replay is disabled.
+    const cfg = await getReplayConfig();
+    if (!cfg.enabled) return reply.code(204).send();
+    const p = await db();
+    const bytes = Buffer.byteLength(JSON.stringify(b.data.events));
+    const existing = await p.sessionReplay.findUnique({ where: { sessionKey: b.data.sessionKey }, select: { bytes: true } });
+    if (existing && existing.bytes >= REPLAY_SESSION_CAP) return reply.code(204).send(); // session already full
+    const { device } = parseUA(req.headers['user-agent']);
+    await p.replayChunk.create({ data: { sessionKey: b.data.sessionKey, seq: b.data.seq, data: b.data.events, bytes } }).catch(() => {});
+    await p.sessionReplay.upsert({
+      where: { sessionKey: b.data.sessionKey },
+      create: { sessionKey: b.data.sessionKey, visitor: visitorHash(req), path: b.data.path || null, device, bytes, chunks: 1, events: b.data.events.length },
+      update: { bytes: { increment: bytes }, chunks: { increment: 1 }, events: { increment: b.data.events.length }, ...(b.data.path ? {} : {}) },
+    }).catch(() => {});
+    return reply.code(204).send();
+  });
+
+  // Public: tells the client whether to record + at what sampling rate (so recording is
+  // gated by the admin toggle, not just the client). Cheap, cacheable-ish.
+  app.get('/analytics/replay/config', async () => {
+    const c = await getReplayConfig();
+    return { enabled: c.enabled, sampleRate: c.sampleRate };
+  });
+
+  // Admin: the full rrweb event stream for one session (chunks concatenated in order),
+  // ready to feed straight into the rrweb Replayer.
+  app.get('/admin/analytics/replay/:sessionKey', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const meta = await p.sessionReplay.findUnique({ where: { sessionKey: req.params.sessionKey } });
+    if (!meta) return reply.code(404).send({ error: 'not_found' });
+    const chunks = await p.replayChunk.findMany({ where: { sessionKey: req.params.sessionKey }, orderBy: { seq: 'asc' }, select: { data: true } });
+    const events = chunks.flatMap((c) => Array.isArray(c.data) ? c.data : []);
+    return { sessionKey: meta.sessionKey, path: meta.path, startedAt: meta.startedAt, bytes: meta.bytes, events };
   });
 
   // Real-user Web Vitals sample (one metric per call, sent by the web-vitals client on
@@ -286,14 +349,27 @@ export default async function analyticsRoutes(app) {
       }
     }
     sessions.sort((a, b) => b._startMs - a._startMs);
-    const out = sessions.slice(0, limit).map((s) => ({
-      visitor: s.visitor, start: s.start, end: s.end,
-      durationSec: Math.max(0, Math.round((new Date(s.end).getTime() - s._startMs) / 1000)),
-      pages: s.events.length, entry: s.events[0]?.path, exit: s.events[s.events.length - 1]?.path,
-      events: s.events, device: s.device, browser: s.browser, os: s.os,
-      country: s.country, region: s.region, city: s.city, ref: s.ref,
-      live: now - new Date(s.end).getTime() < LIVE,
-    }));
+    const top = sessions.slice(0, limit);
+    // Attach available replays: match a recording to a pageview-session by visitor and an
+    // overlapping time window (the recorder keys on its own sessionKey, not our hash).
+    const visitors = [...new Set(top.map((s) => s.visitor))];
+    const replays = visitors.length
+      ? await p.sessionReplay.findMany({ where: { visitor: { in: visitors } }, select: { sessionKey: true, visitor: true, startedAt: true, lastAt: true, events: true } })
+      : [];
+    const replayFor = (s) => replays.find((r) => r.visitor === s.visitor && r.events > 1
+      && new Date(r.lastAt).getTime() >= s._startMs - 60e3 && new Date(r.startedAt).getTime() <= new Date(s.end).getTime() + 60e3);
+    const out = top.map((s) => {
+      const rep = replayFor(s);
+      return {
+        visitor: s.visitor, start: s.start, end: s.end,
+        durationSec: Math.max(0, Math.round((new Date(s.end).getTime() - s._startMs) / 1000)),
+        pages: s.events.length, entry: s.events[0]?.path, exit: s.events[s.events.length - 1]?.path,
+        events: s.events, device: s.device, browser: s.browser, os: s.os,
+        country: s.country, region: s.region, city: s.city, ref: s.ref,
+        live: now - new Date(s.end).getTime() < LIVE,
+        replayKey: rep?.sessionKey || null,
+      };
+    });
     return { sessions: out, liveCount: out.filter((s) => s.live).length };
   });
 }
