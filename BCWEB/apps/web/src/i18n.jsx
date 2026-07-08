@@ -662,6 +662,29 @@ const DICT = {
     'acc.grant': 'Accorder', 'acc.revoke.title': 'Retirer',
     'acc.all.title': 'Tous les accès blog', 'acc.all.desc': 'Toutes les personnes autorisées à écrire des articles, et où. Choisis un utilisateur ci-dessus pour modifier les siens.',
     'acc.all.none.t': 'Aucun accès pour le moment', 'acc.all.none.s': 'Les utilisateurs normaux ne peuvent pas écrire d’articles tant que tu n’accordes pas l’accès ci-dessus.', 'acc.deleted': '(supprimé)',
+
+    // ── Admin : annonces ──
+    'ann.new': 'Nouvelle annonce', 'ann.new.sub': 'S’affiche en bannière fermable sur chaque page et notifie immédiatement tous les utilisateurs.',
+    'ann.title': 'Titre', 'ann.title.ph': 'Maintenance programmée ce soir',
+    'ann.tone': 'Ton', 'ann.tone.info': 'Info', 'ann.tone.warning': 'Avertissement', 'ann.tone.success': 'Succès',
+    'ann.body': 'Corps (optionnel)', 'ann.body.ph': 'Plus de détails affichés après le titre…',
+    'ann.link': 'Lien (optionnel)', 'ann.link.ph': '/blog/mon-article ou https://exemple.com',
+    'ann.showbanner': 'Afficher aussi une bannière fermable sur tout le site (notifie tout le monde dans tous les cas)',
+    'ann.publish': 'Publier & notifier tout le monde',
+    'ann.title.req': 'Le titre est requis.', 'ann.published': 'Publié — {n} utilisateur(s) notifié(s).', 'ann.failed': 'Échec.',
+    'ann.del.t': 'Supprimer l’annonce', 'ann.del.m': 'Supprimer « {name} » ?', 'ann.del.ok': 'Supprimer', 'ann.deleted': 'Supprimé.',
+    'ann.notify.h': 'Notifier tout le monde (sans bannière)', 'ann.notify.sub': 'Une notification ponctuelle envoyée dans la cloche de chaque utilisateur, sans bannière sur le site.',
+    'ann.notify.ph': 'Un message rapide à tous les utilisateurs…', 'ann.notify.send': 'Envoyer à tous',
+    'ann.notify.confirm.t': 'Notifier chaque utilisateur', 'ann.notify.confirm.m': 'Ceci envoie immédiatement une notification à chaque utilisateur inscrit. Continuer ?', 'ann.notify.confirm.ok': 'Envoyer',
+    'ann.msg.req': 'Le message est requis.', 'ann.sent': 'Envoyé à {n} utilisateur(s).',
+    'ann.list': 'Annonces', 'ann.none': 'Aucune annonce pour le moment',
+    'ann.active': 'active', 'ann.inactive': 'inactive',
+    'ann.banneron': 'Bannière activée', 'ann.banneroff': 'Sans bannière', 'ann.bannertitle': 'Activer/désactiver la bannière de cette annonce',
+    'ann.deactivate': 'Désactiver', 'ann.activate': 'Activer',
+
+    // ── Admin : détails utilisateur (modale) ──
+    'ud.title': 'Détails de l’utilisateur', 'ud.close': 'Fermer', 'ud.notfound': 'Introuvable',
+    'ud.membersince': 'Membre depuis', 'ud.elembccopied': 'BC id d’élément copié.', 'ud.bccopied': 'BC id unique copié.',
   },
 };
 

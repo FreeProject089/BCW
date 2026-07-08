@@ -3292,7 +3292,7 @@ const ANN_BODY_MAX = 500; // banner bodies stay short/scannable; hard-capped ser
 // Admin: site-wide banner announcements (auto-notifies every user on publish) plus
 // a standalone "notify everyone" action for a one-off ping with no persistent banner.
 function AdminAnnouncements() {
-  const toast = useToast(); const dialog = useDialog();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/announcements'), []);
   const [f, setF] = useState({ title: '', body: '', tone: 'info', showBanner: true, linkUrl: '' });
   const [busy, setBusy] = useState(false);
@@ -3301,55 +3301,55 @@ function AdminAnnouncements() {
   const announcements = data?.announcements || [];
 
   const create = async () => {
-    if (f.title.length < 2) return toast.error('Title is required.');
+    if (f.title.length < 2) return toast.error(t('ann.title.req', 'Title is required.'));
     setBusy(true);
-    try { const r = await api.post('/admin/announcements', { ...f, linkUrl: f.linkUrl.trim() || null }); toast.success(`Published — notified ${r.notified} user${r.notified !== 1 ? 's' : ''}.`); setF({ title: '', body: '', tone: 'info', showBanner: true, linkUrl: '' }); reload(); }
-    catch (x) { toast.error(x.data?.error || 'Failed.'); } finally { setBusy(false); }
+    try { const r = await api.post('/admin/announcements', { ...f, linkUrl: f.linkUrl.trim() || null }); toast.success(t('ann.published', 'Published — notified {n} user(s).').replace('{n}', r.notified)); setF({ title: '', body: '', tone: 'info', showBanner: true, linkUrl: '' }); reload(); }
+    catch (x) { toast.error(x.data?.error || t('ann.failed', 'Failed.')); } finally { setBusy(false); }
   };
-  const toggleActive = async (a) => { try { await api.put(`/admin/announcements/${a.id}`, { active: !a.active }); reload(); } catch { toast.error('Failed.'); } };
-  const toggleBanner = async (a) => { try { await api.put(`/admin/announcements/${a.id}`, { showBanner: !a.showBanner }); reload(); } catch { toast.error('Failed.'); } };
+  const toggleActive = async (a) => { try { await api.put(`/admin/announcements/${a.id}`, { active: !a.active }); reload(); } catch { toast.error(t('ann.failed', 'Failed.')); } };
+  const toggleBanner = async (a) => { try { await api.put(`/admin/announcements/${a.id}`, { showBanner: !a.showBanner }); reload(); } catch { toast.error(t('ann.failed', 'Failed.')); } };
   const del = async (a) => {
-    if (!(await dialog.confirm({ title: 'Delete announcement', message: `Delete "${a.title}"?`, okLabel: 'Delete', danger: true }))) return;
-    try { await api.del(`/admin/announcements/${a.id}`); toast.success('Deleted.'); reload(); } catch { toast.error('Failed.'); }
+    if (!(await dialog.confirm({ title: t('ann.del.t', 'Delete announcement'), message: t('ann.del.m', 'Delete "{name}"?').replace('{name}', a.title), okLabel: t('ann.del.ok', 'Delete'), danger: true }))) return;
+    try { await api.del(`/admin/announcements/${a.id}`); toast.success(t('ann.deleted', 'Deleted.')); reload(); } catch { toast.error(t('ann.failed', 'Failed.')); }
   };
   const notifyAll = async () => {
-    if (broadcastMsg.length < 2) return toast.error('Message is required.');
-    if (!(await dialog.confirm({ title: 'Notify every user', message: 'This pushes a notification to every registered user immediately. Continue?', okLabel: 'Send' }))) return;
+    if (broadcastMsg.length < 2) return toast.error(t('ann.msg.req', 'Message is required.'));
+    if (!(await dialog.confirm({ title: t('ann.notify.confirm.t', 'Notify every user'), message: t('ann.notify.confirm.m', 'This pushes a notification to every registered user immediately. Continue?'), okLabel: t('ann.notify.confirm.ok', 'Send') }))) return;
     setBroadcastBusy(true);
-    try { const r = await api.post('/admin/notify-all', { body: broadcastMsg }); toast.success(`Sent to ${r.notified} user${r.notified !== 1 ? 's' : ''}.`); setBroadcastMsg(''); }
-    catch (x) { toast.error(x.data?.error || 'Failed.'); } finally { setBroadcastBusy(false); }
+    try { const r = await api.post('/admin/notify-all', { body: broadcastMsg }); toast.success(t('ann.sent', 'Sent to {n} user(s).').replace('{n}', r.notified)); setBroadcastMsg(''); }
+    catch (x) { toast.error(x.data?.error || t('ann.failed', 'Failed.')); } finally { setBroadcastBusy(false); }
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><BellIcon size={16} className="text-[var(--primary-2)]" /> New announcement</h2>
-        <p className="text-sm text-[var(--muted)] mb-3">Shows as a dismissible banner on every page and immediately notifies every user.</p>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><BellIcon size={16} className="text-[var(--primary-2)]" /> {t('ann.new', 'New announcement')}</h2>
+        <p className="text-sm text-[var(--muted)] mb-3">{t('ann.new.sub', 'Shows as a dismissible banner on every page and immediately notifies every user.')}</p>
         <Card className="p-4 space-y-3">
           <div className="grid sm:grid-cols-[1fr_auto] gap-3">
-            <Field label="Title"><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Scheduled maintenance tonight" /></Field>
-            <Field label="Tone"><Select value={f.tone} onChange={(e) => setF({ ...f, tone: e.target.value })}><option value="info">Info</option><option value="warning">Warning</option><option value="success">Success</option></Select></Field>
+            <Field label={t('ann.title', 'Title')}><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={t('ann.title.ph', 'Scheduled maintenance tonight')} /></Field>
+            <Field label={t('ann.tone', 'Tone')}><Select value={f.tone} onChange={(e) => setF({ ...f, tone: e.target.value })}><option value="info">{t('ann.tone.info', 'Info')}</option><option value="warning">{t('ann.tone.warning', 'Warning')}</option><option value="success">{t('ann.tone.success', 'Success')}</option></Select></Field>
           </div>
-          <Field label={<span className="flex items-center justify-between w-full">Body (optional) <span className={`text-[10px] tabular-nums ${f.body.length > ANN_BODY_MAX ? 'text-red-400' : 'text-[var(--faint)]'}`}>{f.body.length}/{ANN_BODY_MAX}</span></span>}>
-            <Textarea value={f.body} maxLength={ANN_BODY_MAX} onChange={(e) => setF({ ...f, body: e.target.value.slice(0, ANN_BODY_MAX) })} placeholder="More detail shown after the title…" />
+          <Field label={<span className="flex items-center justify-between w-full">{t('ann.body', 'Body (optional)')} <span className={`text-[10px] tabular-nums ${f.body.length > ANN_BODY_MAX ? 'text-red-400' : 'text-[var(--faint)]'}`}>{f.body.length}/{ANN_BODY_MAX}</span></span>}>
+            <Textarea value={f.body} maxLength={ANN_BODY_MAX} onChange={(e) => setF({ ...f, body: e.target.value.slice(0, ANN_BODY_MAX) })} placeholder={t('ann.body.ph', 'More detail shown after the title…')} />
           </Field>
-          <Field label="Link (optional)"><Input value={f.linkUrl} onChange={(e) => setF({ ...f, linkUrl: e.target.value })} placeholder="/blog/my-post or https://example.com" /></Field>
-          <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked={f.showBanner} onChange={(e) => setF({ ...f, showBanner: e.target.checked })} /> Also show as a dismissible site-wide banner (always notifies everyone either way)</label>
-          <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={create}>{busy ? <Spinner /> : <><Bell size={15} /> Publish & notify everyone</>}</Button></div>
+          <Field label={t('ann.link', 'Link (optional)')}><Input value={f.linkUrl} onChange={(e) => setF({ ...f, linkUrl: e.target.value })} placeholder={t('ann.link.ph', '/blog/my-post or https://example.com')} /></Field>
+          <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked={f.showBanner} onChange={(e) => setF({ ...f, showBanner: e.target.checked })} /> {t('ann.showbanner', 'Also show as a dismissible site-wide banner (always notifies everyone either way)')}</label>
+          <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={create}>{busy ? <Spinner /> : <><Bell size={15} /> {t('ann.publish', 'Publish & notify everyone')}</>}</Button></div>
         </Card>
       </div>
 
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Send size={16} className="text-[var(--primary-2)]" /> Notify everyone (no banner)</h2>
-        <p className="text-sm text-[var(--muted)] mb-3">A one-off notification pushed to every user's bell menu, with no site-wide banner.</p>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Send size={16} className="text-[var(--primary-2)]" /> {t('ann.notify.h', 'Notify everyone (no banner)')}</h2>
+        <p className="text-sm text-[var(--muted)] mb-3">{t('ann.notify.sub', "A one-off notification pushed to every user's bell menu, with no site-wide banner.")}</p>
         <Card className="p-4 flex flex-col sm:flex-row gap-2">
-          <Input className="flex-1" value={broadcastMsg} onChange={(e) => setBroadcastMsg(e.target.value)} placeholder="A quick message to every user…" />
-          <Button variant="primary" disabled={broadcastBusy} onClick={notifyAll}>{broadcastBusy ? <Spinner /> : <><Send size={15} /> Send to everyone</>}</Button>
+          <Input className="flex-1" value={broadcastMsg} onChange={(e) => setBroadcastMsg(e.target.value)} placeholder={t('ann.notify.ph', 'A quick message to every user…')} />
+          <Button variant="primary" disabled={broadcastBusy} onClick={notifyAll}>{broadcastBusy ? <Spinner /> : <><Send size={15} /> {t('ann.notify.send', 'Send to everyone')}</>}</Button>
         </Card>
       </div>
 
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Bell size={16} className="text-[var(--primary-2)]" /> Announcements</h2>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Bell size={16} className="text-[var(--primary-2)]" /> {t('ann.list', 'Announcements')}</h2>
         {loading ? <Loading /> : announcements.length ? <div className="space-y-2">
           {announcements.map((a) => {
             const TIcon = ANN_TONE_ICON[a.tone] || Info;
@@ -3361,14 +3361,14 @@ function AdminAnnouncements() {
                 {a.body && <div className="text-xs text-[var(--muted)] truncate">{a.body}</div>}
                 {a.linkUrl && <div className="text-xs text-[var(--primary-2)] truncate flex items-center gap-1"><Link2 size={11} /> {a.linkUrl}</div>}
               </div>
-              <Badge tone={a.active ? 'green' : ''}>{a.active ? 'active' : 'inactive'}</Badge>
-              <Button size="sm" variant="ghost" onClick={() => toggleBanner(a)} title="Toggle the site-wide banner for this announcement">{a.showBanner ? <Monitor size={13} /> : <MonitorOff size={13} />} {a.showBanner ? 'Banner on' : 'No banner'}</Button>
-              <Button size="sm" variant="ghost" onClick={() => toggleActive(a)}>{a.active ? 'Deactivate' : 'Activate'}</Button>
+              <Badge tone={a.active ? 'green' : ''}>{a.active ? t('ann.active', 'active') : t('ann.inactive', 'inactive')}</Badge>
+              <Button size="sm" variant="ghost" onClick={() => toggleBanner(a)} title={t('ann.bannertitle', 'Toggle the site-wide banner for this announcement')}>{a.showBanner ? <Monitor size={13} /> : <MonitorOff size={13} />} {a.showBanner ? t('ann.banneron', 'Banner on') : t('ann.banneroff', 'No banner')}</Button>
+              <Button size="sm" variant="ghost" onClick={() => toggleActive(a)}>{a.active ? t('ann.deactivate', 'Deactivate') : t('ann.activate', 'Activate')}</Button>
               <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(a)}><Trash2 size={13} /></Button>
             </Card>
             );
           })}
-        </div> : <EmptyState icon={BellIcon} title="No announcements yet" />}
+        </div> : <EmptyState icon={BellIcon} title={t('ann.none', 'No announcements yet')} />}
       </div>
     </div>
   );
