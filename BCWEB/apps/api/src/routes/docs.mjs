@@ -264,11 +264,16 @@ export default async function docRoutes(app) {
   });
 
   app.patch('/docs/:id/comments/:cid', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const b = z.object({ body: z.string().min(1).max(5000).optional(), resolved: z.boolean().optional() }).safeParse(req.body);
+    const b = z.object({ body: z.string().min(1).max(5000).optional(), resolved: z.boolean().optional(), baseBody: z.string().max(5000).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const exists = await p.docComment.findFirst({ where: { id: req.params.cid, pageId: req.params.id } });
     if (!exists) return reply.code(404).send({ error: 'not_found' });
+    // Optimistic concurrency (mirror of blog comments): stale base → 409 + current body
+    // so the client resolves a 3-way merge instead of overwriting a concurrent edit.
+    if (b.data.body !== undefined && b.data.baseBody !== undefined && b.data.baseBody !== exists.body) {
+      return reply.code(409).send({ error: 'comment_conflict', current: { body: exists.body } });
+    }
     const addEditor = b.data.body !== undefined && req.user.uid !== exists.authorId && !(exists.editorIds || []).includes(req.user.uid);
     const c = await p.docComment.update({ where: { id: req.params.cid }, data: {
       ...(b.data.body !== undefined ? { body: b.data.body } : {}), ...(b.data.resolved !== undefined ? { resolved: b.data.resolved } : {}),

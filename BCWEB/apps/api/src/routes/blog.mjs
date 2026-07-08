@@ -400,7 +400,9 @@ export default async function blogRoutes(app) {
   });
 
   app.patch('/blog/:id/comments/:cid', { preHandler: requireRole() }, async (req, reply) => {
-    const b = z.object({ body: z.string().min(1).max(5000).optional(), resolved: z.boolean().optional() }).safeParse(req.body);
+    // `baseBody` = the body the editor started from. Lets us detect a concurrent edit
+    // (someone else saved since) and hand the client a 3-way merge, exactly like posts.
+    const b = z.object({ body: z.string().min(1).max(5000).optional(), resolved: z.boolean().optional(), baseBody: z.string().max(5000).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true } });
@@ -408,6 +410,11 @@ export default async function blogRoutes(app) {
     if (!canEditPost(req.user, post)) return reply.code(403).send({ error: 'forbidden' }); // ANY editor may edit ANY comment
     const exists = await p.blogComment.findFirst({ where: { id: req.params.cid, postId: req.params.id } });
     if (!exists) return reply.code(404).send({ error: 'not_found' });
+    // Optimistic concurrency: a stale base (someone else edited this comment meanwhile)
+    // → 409 with the current body so the client can 3-way-merge instead of clobbering.
+    if (b.data.body !== undefined && b.data.baseBody !== undefined && b.data.baseBody !== exists.body) {
+      return reply.code(409).send({ error: 'comment_conflict', current: { body: exists.body } });
+    }
     // Editing the body records the editor as a participant (unless they're the author or already listed).
     const addEditor = b.data.body !== undefined && req.user.uid !== exists.authorId && !(exists.editorIds || []).includes(req.user.uid);
     const c = await p.blogComment.update({ where: { id: req.params.cid }, data: {

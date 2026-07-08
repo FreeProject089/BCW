@@ -4,6 +4,7 @@ import { useToast, Button, Spinner, Modal, EmptyState, Input, Textarea, Select }
 import UserAvatar from './Avatar.jsx';
 import Markdown from './md.jsx';
 import { MarkdownEditor } from './blog.jsx';
+import DiffMergeModal from './diff-merge-modal.jsx';
 import { MessageSquare, CornerDownRight, Check, Pencil, Trash2, Send, Tag, Globe, Lock, Hash, History, Clock } from 'lucide-react';
 
 // Heading anchor slug — must match the docs/blog renderer (md.jsx) so a comment pinned
@@ -55,7 +56,7 @@ function CommentBody({ c, isReply, ctx }) {
       {canWrite && editing?.id !== c.id && (
         <div className="ml-8 mt-1 flex items-center gap-3 text-[11px] text-[var(--faint)]">
           {!isReply && <button className="hover:text-[var(--text)] flex items-center gap-1" onClick={() => { setReplyTo(c.id); setReplyBody(''); }}><CornerDownRight size={11} /> Reply</button>}
-          <button className="hover:text-[var(--text)] flex items-center gap-1" onClick={() => setEditing({ id: c.id, body: c.body })}><Pencil size={11} /> Edit</button>
+          <button className="hover:text-[var(--text)] flex items-center gap-1" onClick={() => setEditing({ id: c.id, body: c.body, base: c.body })}><Pencil size={11} /> Edit</button>
           {!isReply && <button className="hover:text-emerald-400 flex items-center gap-1" onClick={() => toggleResolved(c)}><Check size={11} /> {c.resolved ? 'Unresolve' : 'Resolve'}</button>}
           <button className="hover:text-red-400 flex items-center gap-1" onClick={() => del(c.id)}><Trash2 size={11} /> Delete</button>
         </div>
@@ -81,7 +82,8 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
   const [customAnchor, setCustomAnchor] = useState(false); // "Custom…" chosen in the picker
   const [replyTo, setReplyTo] = useState(null);
   const [replyBody, setReplyBody] = useState('');
-  const [editing, setEditing] = useState(null); // { id, body }
+  const [editing, setEditing] = useState(null); // { id, body, base }
+  const [conflict, setConflict] = useState(null); // { id, base, mine, theirs } — concurrent-edit merge
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState(null); // { id, revisions } — a comment's edit history
   const sections = useMemo(() => extractSections(body), [body]);
@@ -113,8 +115,25 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
   };
   const saveEdit = async () => {
     setBusy(true);
-    try { await api.patch(`${base}/comments/${editing.id}`, { body: editing.body }); setEditing(null); await load(); }
-    catch { toast.error('Could not save.'); } finally { setBusy(false); }
+    try {
+      // Send the base we started from so the server can detect a concurrent edit.
+      await api.patch(`${base}/comments/${editing.id}`, { body: editing.body, baseBody: editing.base ?? editing.body });
+      setEditing(null); await load();
+    } catch (e) {
+      if (e?.status === 409 && e?.data?.error === 'comment_conflict') {
+        // Someone else edited this comment meanwhile → open the 3-way merge resolver.
+        setConflict({ id: editing.id, base: editing.base ?? '', mine: editing.body, theirs: e.data.current?.body ?? '' });
+      } else toast.error('Could not save.');
+    } finally { setBusy(false); }
+  };
+  // Save the merged result of a resolved conflict, re-basing on the version we merged against.
+  const resolveConflict = async (merged) => {
+    const c = conflict; setConflict(null); setBusy(true);
+    try { await api.patch(`${base}/comments/${c.id}`, { body: merged, baseBody: c.theirs }); setEditing(null); await load(); }
+    catch (e) {
+      if (e?.status === 409 && e?.data?.error === 'comment_conflict') setConflict({ id: c.id, base: c.theirs, mine: merged, theirs: e.data.current?.body ?? '' });
+      else toast.error('Could not save the merge.');
+    } finally { setBusy(false); }
   };
   const toggleResolved = async (c) => { try { await api.patch(`${base}/comments/${c.id}`, { resolved: !c.resolved }); await load(); } catch { toast.error('Failed.'); } };
   const del = async (id) => { try { await api.del(`${base}/comments/${id}`); await load(); } catch { toast.error('Failed.'); } };
@@ -192,6 +211,14 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
               </div>
             ) : <EmptyState icon={History} title="No history" sub="This comment hasn't been edited." />}
         </Modal>
+      )}
+
+      {/* Concurrent-edit resolver: shown when the server reports someone else changed the
+          comment since we started editing — same GitHub-style 3-way merge as posts/docs. */}
+      {conflict && (
+        <DiffMergeModal open onClose={() => setConflict(null)}
+          base={conflict.base} mine={conflict.mine} theirs={conflict.theirs}
+          labels={{ mine: 'Your edit', theirs: 'Their edit' }} onResolve={resolveConflict} />
       )}
     </Modal>
   );
