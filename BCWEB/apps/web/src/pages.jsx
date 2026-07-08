@@ -8,6 +8,7 @@ import {
   Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket,
   CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss,
   Info, Orbit, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon,
+  Mic, KeyRound,
 } from 'lucide-react';
 import { api, uploadPayload, uploadImage } from './api.js';
 import { useAuth } from './auth.jsx';
@@ -4203,6 +4204,7 @@ function AdminBot() {
   const [cfg, setCfg] = useState(null);
   const [previewNonce, setPreviewNonce] = useState(0);
   const [tokenInput, setTokenInput] = useState('');
+  const [scope, setScope] = useState(''); // '' = global defaults, else a guild id (per-server config)
   useEffect(() => { if (data?.config) setCfg(data.config); }, [data]);
   if (loading || !cfg) return <Loading />;
   const status = data?.status;
@@ -4224,25 +4226,59 @@ function AdminBot() {
     try { await api.put('/admin/bot/token', { token: null }); toast.success('Token cleared.'); reload(); }
     catch (x) { toast.error(x.data?.error === 'bot_enabled' ? 'Disable the bot first.' : 'Failed.'); }
   };
+  const g = (path) => path.split('.').reduce((o, k) => o?.[k], cfg) ?? '';
   const Toggle = ({ path, label }) => (
     <label className="flex items-center gap-2 text-sm cursor-pointer">
       <input type="checkbox" checked={!!path.split('.').reduce((o, k) => o?.[k], cfg)} onChange={(e) => set(path, e.target.checked)} /> {label}
     </label>
   );
-  const g = (path) => path.split('.').reduce((o, k) => o?.[k], cfg) ?? '';
-  const jtcLobbies = cfg.joinToCreate?.lobbies || (cfg.joinToCreate?.lobbyChannelId ? [{ lobbyChannelId: cfg.joinToCreate.lobbyChannelId, categoryId: cfg.joinToCreate.categoryId, tempCategoryName: cfg.joinToCreate.tempCategoryName }] : []);
+  const guildList = status?.guildList || [];
   // Blog announcement routes: the new list, or the legacy single channel as one all-sources route.
   const blogRoutes = (cfg.blog?.routes?.length ? cfg.blog.routes : (cfg.blog?.channelId ? [{ channelId: cfg.blog.channelId, sources: ['*'] }] : []));
-  const guildList = status?.guildList || [];
   // Welcome preview: substitute the message variables with sample values.
   const previewMsg = (tpl) => (tpl || '').replace(/\{user\}/g, '@NewMember').replace(/\{username\}/g, 'NewMember').replace(/\{servername\}/g, 'BetterCommunity').replace(/\{joinnumber\}/g, '1,024').replace(/\{joindate\}/g, new Date().toDateString());
+
+  // ── Per-server scope ─────────────────────────────────────────────────────
+  // The four per-server features (moderation / welcome / join-to-create / gating)
+  // are edited under a "scope": '' = the Global defaults (top-level cfg, applied to
+  // every server without its own config), or a guild id = that server's override in
+  // cfg.guilds[id]. Blog/alerts/kofi/limits/token stay global.
+  const scopeObj = scope ? (cfg.guilds?.[scope] || {}) : cfg;   // where the 4 features live for the current scope
+  const base = scope ? `guilds.${scope}.` : '';
+  const isCustomized = scope ? !!cfg.guilds?.[scope] : true;
+  const sg = (p) => (base + p).split('.').reduce((o, k) => o?.[k], cfg) ?? '';
+  const sset = (p, v) => set(base + p, v);
+  const SToggle = ({ path, label }) => (
+    <label className="flex items-center gap-2 text-sm cursor-pointer">
+      <input type="checkbox" checked={!!(base + path).split('.').reduce((o, k) => o?.[k], cfg)} onChange={(e) => sset(path, e.target.checked)} /> {label}
+    </label>
+  );
+  const customizeServer = () => set(`guilds.${scope}`, {
+    moderation: structuredClone(cfg.moderation || {}),
+    welcome: structuredClone(cfg.welcome || {}),
+    joinToCreate: structuredClone(cfg.joinToCreate || {}),
+    gating: structuredClone(cfg.gating || {}),
+  });
+  const resetServer = () => setCfg((c) => { const next = structuredClone(c); if (next.guilds) delete next.guilds[scope]; return next; });
+  const jtcLobbies = scopeObj.joinToCreate?.lobbies || (scopeObj.joinToCreate?.lobbyChannelId ? [{ lobbyChannelId: scopeObj.joinToCreate.lobbyChannelId, categoryId: scopeObj.joinToCreate.categoryId, tempCategoryName: scopeObj.joinToCreate.tempCategoryName }] : []);
+  const purgeChans = scopeObj.moderation?.purgeChannelIds || (scopeObj.moderation?.purgeChannelId ? [scopeObj.moderation.purgeChannelId] : []);
+  const scopeName = scope ? (guildList.find((gg) => gg.id === scope)?.name || scope) : 'Global defaults';
+
+  const SectionTitle = ({ icon: I, title, sub }) => (
+    <div className="flex items-center gap-2.5 mt-6 mb-3">
+      <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><I size={15} className="text-[var(--primary-2)]" /></span>
+      <div><div className="font-semibold text-sm">{title}</div>{sub && <div className="text-[11px] text-[var(--faint)]">{sub}</div>}</div>
+    </div>
+  );
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold flex items-center gap-2"><DiscordIcon size={16} className="text-[var(--primary-2)]" /> Discord bot</h2>
-        <div className="flex items-center gap-2">
-          <span className={`inline-flex items-center gap-1.5 text-xs ${online ? 'text-emerald-400' : 'text-[var(--faint)]'}`}><span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-[var(--line-strong)]'}`} /> {online ? 'Online' : 'Offline'}</span>
-          <Button size="sm" variant="primary" onClick={save}><CheckCircle2 size={14} /> Save</Button>
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2 sticky top-0 z-10 py-1.5 bg-[var(--bg-solid)]/85 backdrop-blur-sm">
+        <h2 className="font-semibold flex items-center gap-2 text-base"><DiscordIcon size={18} className="text-[#5865F2]" /> Discord bot</h2>
+        <div className="flex items-center gap-2.5">
+          <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${online ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-[var(--faint)] border-[var(--line)]'}`}><span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-[var(--line-strong)]'}`} /> {online ? 'Online' : 'Offline'}</span>
+          <Button size="sm" variant="primary" onClick={save}><CheckCircle2 size={14} /> Save changes</Button>
         </div>
       </div>
 
@@ -4254,134 +4290,197 @@ function AdminBot() {
         </div>
       )}
 
-      {/* live status */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        {[['Guilds', status?.guilds], ['Users', status?.users], ['Temp channels', status?.tempChannels],
-          ['Ping', status?.ping != null ? `${status.ping}ms` : '—'],
-          ['Uptime', status?.uptimeSec != null ? `${Math.floor(status.uptimeSec / 3600)}h ${Math.floor((status.uptimeSec % 3600) / 60)}m` : '—'],
-          ['Kicked (session)', status?.mod?.kicks ?? 0], ['Timed out (session)', status?.mod?.timeouts ?? 0], ['Messages purged (session)', status?.mod?.purged ?? 0]].map(([l, v]) => (
-          <Card key={l} className="p-4"><div className="text-xl font-bold">{v ?? '—'}</div><div className="text-xs text-[var(--muted)] mt-0.5">{l}</div></Card>
-        ))}
+      {/* Master switch + live stats in one hero row */}
+      <Card className="p-4 mb-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${cfg.enabled !== false ? 'bg-emerald-500' : 'bg-[var(--surface-2)] border border-[var(--line)]'}`}>
+              <input type="checkbox" className="sr-only" checked={cfg.enabled !== false} onChange={(e) => set('enabled', e.target.checked)} />
+              <span className={`inline-block h-4 w-4 rounded-full bg-white transition ${cfg.enabled !== false ? 'translate-x-6' : 'translate-x-1'}`} />
+            </span>
+            <span className="text-sm font-medium">Bot {cfg.enabled !== false ? 'enabled' : 'disabled'} <span className="text-[var(--faint)] font-normal">· master switch</span></span>
+          </label>
+          <div className="flex items-center gap-4 text-xs text-[var(--muted)] flex-wrap">
+            <span><b className="text-[var(--text)]">{status?.guilds ?? '—'}</b> servers</span>
+            <span><b className="text-[var(--text)]">{status?.users ?? '—'}</b> users</span>
+            <span><b className="text-[var(--text)]">{status?.tempChannels ?? 0}</b> temp voice</span>
+            <span><b className="text-[var(--text)]">{status?.ping != null ? `${status.ping}ms` : '—'}</b> ping</span>
+            <span><b className="text-[var(--text)]">{status?.uptimeSec != null ? `${Math.floor(status.uptimeSec / 3600)}h ${Math.floor((status.uptimeSec % 3600) / 60)}m` : '—'}</b> uptime</span>
+          </div>
+        </div>
+        {(status?.mod && (status.mod.kicks || status.mod.timeouts || status.mod.purged)) ? (
+          <div className="flex items-center gap-4 text-[11px] text-[var(--faint)] mt-2.5 pt-2.5 border-t border-[var(--line)]">
+            <span>{status.mod.kicks ?? 0} kicked</span><span>{status.mod.timeouts ?? 0} timed out</span><span>{status.mod.purged ?? 0} purged</span><span className="text-[var(--faint)]">(this session)</span>
+          </div>
+        ) : null}
+      </Card>
+
+      {/* Token + member DB usage, side by side */}
+      <div className="grid md:grid-cols-2 gap-4 mb-2">
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-1.5">
+            <Lock size={15} className="text-[var(--primary-2)]" /><span className="font-medium text-sm">Bot token</span>
+            {data?.hasToken ? <Badge tone="green"><CheckCircle2 size={10} /> Set</Badge> : <Badge tone="amber">Not set</Badge>}
+          </div>
+          {data?.tokenFromEnv ? (
+            <p className="text-xs text-[var(--muted)]">The token is provided via the <code>DISCORD_TOKEN</code> environment variable and is managed outside the dashboard.</p>
+          ) : botDisabled ? (
+            <>
+              <p className="text-xs text-[var(--muted)] mb-2">Paste your Discord bot token — it’s stored server-side and the bot connects automatically within ~20s. The token is never shown again.</p>
+              <div className="flex gap-2">
+                <Input type="password" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder={data?.hasToken ? 'New token…' : 'Bot token…'} onKeyDown={(e) => e.key === 'Enter' && saveToken()} />
+                <Button variant="primary" onClick={saveToken}>{data?.hasToken ? 'Change' : 'Set token'}</Button>
+                {data?.hasToken && <Button className="!text-red-400" onClick={clearToken}>Clear</Button>}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-amber-400/90 flex items-center gap-1.5"><Bell size={12} /> Turn the bot off (master switch) and Save to change the token.</p>
+          )}
+          {!online && !data?.hasToken && <div className="text-[11px] text-[var(--muted)] mt-2 flex items-center gap-1.5"><Bell size={12} /> No token set — add one (or set <code>DISCORD_TOKEN</code> in compose <code>.env</code>) to bring the bot online.</div>}
+        </Card>
+
+        {data?.storage && (
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-1.5"><span className="font-medium text-sm flex items-center gap-2"><HardDrive size={14} className="text-[var(--primary-2)]" /> Member database</span>
+              <span className="text-xs text-[var(--muted)]">{data.storage.memberCount} tracked</span></div>
+            {(() => { const capMB = cfg.limits?.storageMB || 0; const usedMB = data.storage.usedBytes / (1024 * 1024); const pct = capMB ? Math.min(100, (usedMB / capMB) * 100) : 0; return (
+              <>
+                <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-red-500' : 'bg-gradient-to-r from-orange-500 to-amber-500'}`} style={{ width: `${pct}%` }} /></div>
+                <div className="text-xs text-[var(--faint)] mt-1.5">{usedMB.toFixed(1)} MB {capMB ? `/ ${capMB} MB cap` : '(no cap set)'} — oldest inactive members are pruned once over.</div>
+              </>
+            ); })()}
+          </Card>
+        )}
       </div>
 
-      {/* the bot's own "database" — DiscordActivity, capped by limits.storageMB below */}
-      {data?.storage && (
-        <Card className="p-4 mb-4">
-          <div className="flex items-center justify-between mb-1.5"><span className="font-medium text-sm flex items-center gap-2"><HardDrive size={14} className="text-[var(--primary-2)]" /> Member database usage</span>
-            <span className="text-xs text-[var(--muted)]">{data.storage.memberCount} members tracked</span></div>
-          {(() => { const capMB = cfg.limits?.storageMB || 0; const usedMB = data.storage.usedBytes / (1024 * 1024); const pct = capMB ? Math.min(100, (usedMB / capMB) * 100) : 0; return (
-            <>
-              <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-red-500' : 'bg-gradient-to-r from-orange-500 to-amber-500'}`} style={{ width: `${pct}%` }} /></div>
-              <div className="text-xs text-[var(--faint)] mt-1.5">{usedMB.toFixed(1)} MB {capMB ? `/ ${capMB} MB cap` : '(no cap set)'} — oldest inactive members are pruned automatically once over the cap.</div>
-            </>
-          ); })()}
-        </Card>
-      )}
-      {/* Bot token — set/rotate from here (unless provided via the DISCORD_TOKEN env). */}
-      <Card className="p-4 mb-4">
-        <div className="flex items-center gap-2 mb-1.5">
-          <Lock size={15} className="text-[var(--primary-2)]" /><span className="font-medium text-sm">Bot token</span>
-          {data?.hasToken ? <Badge tone="green"><CheckCircle2 size={10} /> Set</Badge> : <Badge tone="amber">Not set</Badge>}
-        </div>
-        {data?.tokenFromEnv ? (
-          <p className="text-xs text-[var(--muted)]">The token is provided via the <code>DISCORD_TOKEN</code> environment variable and is managed outside the dashboard.</p>
-        ) : botDisabled ? (
-          <>
-            <p className="text-xs text-[var(--muted)] mb-2">Paste your Discord bot token — it’s stored server-side and the bot connects automatically within ~20s. The token is never shown again.</p>
-            <div className="flex gap-2">
-              <Input type="password" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder={data?.hasToken ? 'New token…' : 'Bot token…'} onKeyDown={(e) => e.key === 'Enter' && saveToken()} />
-              <Button variant="primary" onClick={saveToken}>{data?.hasToken ? 'Change' : 'Set token'}</Button>
-              {data?.hasToken && <Button className="!text-red-400" onClick={clearToken}>Clear</Button>}
-            </div>
-          </>
-        ) : (
-          <p className="text-xs text-amber-400/90 flex items-center gap-1.5"><Bell size={12} /> Turn “Bot enabled” off and Save to change the token.</p>
-        )}
-      </Card>
-      {!online && !data?.hasToken && <div className="text-xs text-[var(--muted)] mb-4 flex items-center gap-1.5"><Bell size={12} /> No token set — add one above (or set <code>DISCORD_TOKEN</code> in the compose <code>.env</code>) to bring the bot online.</div>}
-
+      {/* ═══════════ GLOBAL — cross-server ═══════════ */}
+      <SectionTitle icon={Globe} title="Global — applies across every server" sub="Announcements route by channel (works in any server); limits are shared." />
       <div className="grid md:grid-cols-2 gap-4">
         <Card className="p-4 space-y-2.5">
-          <div className="font-medium text-sm mb-1">General</div>
-          <Toggle path="enabled" label="Bot enabled" />
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] pt-2">Moderation</div>
-          <Toggle path="moderation.enabled" label="Moderation enabled" />
-          <Toggle path="moderation.antiSelfbot" label="Anti-selfbot filter" />
-          <Field label="No-post channels" hint="Posting here kicks the user + purges their messages.">
-            <ChannelIdList
-              ids={g('moderation.purgeChannelIds') || (g('moderation.purgeChannelId') ? [g('moderation.purgeChannelId')] : [])}
-              onChange={(v) => set('moderation.purgeChannelIds', v)}
-              placeholder="Channel ID — press Enter" />
-          </Field>
-        </Card>
-
-        <Card className="p-4 space-y-2.5">
-          <div className="flex items-center justify-between mb-1"><div className="font-medium text-sm">Join-to-create voice</div>
-            <Button size="sm" variant="ghost" onClick={() => set('joinToCreate.lobbies', [...jtcLobbies, { lobbyChannelId: '', categoryId: '', tempCategoryName: 'Temp Voice' }])}><Plus size={13} /> Lobby</Button></div>
-          <Toggle path="joinToCreate.enabled" label="Enabled" />
-          {jtcLobbies.length === 0 && <div className="text-xs text-[var(--faint)]">No lobbies — add one. Joining that voice channel spawns a temp room in its category.</div>}
-          {jtcLobbies.map((lb, i) => (
-            <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
-              <button onClick={() => set('joinToCreate.lobbies', jtcLobbies.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-red-400"><Trash2 size={13} /></button>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">Lobby {i + 1}</div>
-              <Input value={lb.lobbyChannelId || ''} onChange={(e) => set('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, lobbyChannelId: e.target.value } : x))} placeholder="Lobby voice channel ID" />
-              <div className="grid grid-cols-2 gap-2">
-                <Input value={lb.categoryId || ''} onChange={(e) => set('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, categoryId: e.target.value } : x))} placeholder="Category id (auto if empty)" />
-                <Input value={lb.tempCategoryName || ''} onChange={(e) => set('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, tempCategoryName: e.target.value } : x))} placeholder="Temp category name" />
-              </div>
-            </div>
-          ))}
-        </Card>
-
-        <Card className="p-4 space-y-2.5">
-          <div className="font-medium text-sm mb-1">Blog announcements</div>
+          <div className="font-medium text-sm mb-1 flex items-center gap-2"><Newspaper size={14} className="text-[var(--primary-2)]" /> Blog announcements</div>
           <Toggle path="blog.enabled" label="Announce new blog posts" />
-          <p className="text-xs text-[var(--muted)]">Add a route per channel and pick which blogs it receives — post BMM news to one server, Other-projects news to another, everything to a third. New published posts (title + excerpt + link + cover) are sent as they appear; history is never re-posted, and a new route never floods with old posts.</p>
-          {guildList.length > 0 && (
-            <div className="text-[11px] text-[var(--faint)]">In {guildList.length} server{guildList.length > 1 ? 's' : ''}: {guildList.map((gg) => gg.name).join(', ')}</div>
-          )}
+          <p className="text-xs text-[var(--muted)]">Add a route per channel and pick which blogs it receives — BMM news to one server, Other-projects news to another, everything to a third. New posts (title + excerpt + link + cover) are sent as they appear; history is never re-posted.</p>
           <BlogRoutes routes={blogRoutes} onChange={(r) => set('blog.routes', r)} guildList={guildList} />
-          <div className="font-medium text-sm mb-1" style={{ marginTop: 14 }}>Server-perf alerts</div>
+        </Card>
+
+        <Card className="p-4 space-y-2.5">
+          <div className="font-medium text-sm mb-1 flex items-center gap-2"><Bell size={14} className="text-[var(--primary-2)]" /> Alerts & tips</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] pt-1">Server-perf alerts</div>
           <Toggle path="alerts.enabled" label="Post CPU/RAM/disk/service-down alerts" />
-          <Field label="Alerts channel id" hint="Fired thresholds (see the Server perf tab) are posted here as soon as the bot polls.">
+          <Field label="Alerts channel id" hint="Fired thresholds (Server perf tab) are posted here.">
             <Input value={g('alerts.channelId')} onChange={(e) => set('alerts.channelId', e.target.value)} placeholder="Channel ID" />
           </Field>
-          <div className="font-medium text-sm mb-1" style={{ marginTop: 14 }}>Ko-fi tips</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] pt-2">Ko-fi tips</div>
           <Toggle path="kofi.enabled" label="Announce new Ko-fi tips" />
-          <Field label="Tips channel id" hint="Each new tip (recorded by the Ko-fi webhook) is posted as a thank-you embed with the running total. Old tips are never re-posted.">
+          <Field label="Tips channel id" hint="Each new tip is posted as a thank-you embed with the running total.">
             <Input value={g('kofi.channelId')} onChange={(e) => set('kofi.channelId', e.target.value)} placeholder="Channel ID" />
           </Field>
-          <div className="font-medium text-sm mb-1" style={{ marginTop: 14 }}>Welcome / bye</div>
-          <Toggle path="welcome.enabled" label="Enabled" />
-          <Field label="Welcome channel id"><Input value={g('welcome.channelId')} onChange={(e) => set('welcome.channelId', e.target.value)} placeholder="Channel ID" /></Field>
-          <Field label="Join message" hint="{user} {username} {servername} {joinnumber} {joindate}"><Input value={g('welcome.joinMessage')} onChange={(e) => set('welcome.joinMessage', e.target.value)} /></Field>
-          <Field label="Leave message"><Input value={g('welcome.leaveMessage')} onChange={(e) => set('welcome.leaveMessage', e.target.value)} /></Field>
-          {/* Live preview — the REAL banner the bot renders (same canvas), plus the message */}
-          <div className="rounded-lg border border-[var(--line)] overflow-hidden" style={{ background: '#0e0c09' }}>
-            <div className="flex items-center justify-between px-3 pt-2">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">Preview · real banner</div>
-              <button onClick={() => setPreviewNonce((n) => n + 1)} className="text-[10px] text-[var(--primary-2)] hover:underline flex items-center gap-1"><RefreshCw size={10} /> Refresh</button>
-            </div>
-            <div className="p-2">
-              <img alt="Welcome banner preview" className="w-full rounded-md block"
-                src={`/api/admin/bot/welcome-preview.png?server=${encodeURIComponent('BetterCommunity')}&members=${status?.users || 1024}&username=NewMember&_=${previewNonce}`}
-                onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-            </div>
-            <div className="px-3 py-2 text-xs text-gray-300 border-t border-white/5">{previewMsg(g('welcome.joinMessage')) || '—'}</div>
-          </div>
-        </Card>
-
-        <Card className="p-4 space-y-2.5">
-          <div className="font-medium text-sm mb-1">Gated access & limits</div>
-          <Toggle path="gating.enabled" label="Gate roles behind account links" />
-          <p className="text-xs text-[var(--muted)]">Each rule grants ONE Discord role to members who meet its requirements. The bot re-checks everyone every ~5 min (granting AND removing), and members can run <code>/refreshroles</code> to sync instantly after linking on the site.</p>
-          <GatingRules rules={Array.isArray(cfg.gating?.rules) ? cfg.gating.rules : []} onChange={(rules) => set('gating.rules', rules)} />
-          <div className="grid grid-cols-2 gap-2 pt-2">
+          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[var(--line)] mt-1">
             <Field label="Max temp channels"><Input type="number" value={g('limits.maxTempChannels')} onChange={(e) => set('limits.maxTempChannels', Number(e.target.value))} /></Field>
-            <Field label="Storage cap (MB)" hint="Caps the member database below — oldest inactive members are pruned once over."><Input type="number" value={g('limits.storageMB')} onChange={(e) => set('limits.storageMB', Number(e.target.value))} /></Field>
+            <Field label="Member DB cap (MB)" hint="Oldest inactive members are pruned once over."><Input type="number" value={g('limits.storageMB')} onChange={(e) => set('limits.storageMB', Number(e.target.value))} /></Field>
           </div>
         </Card>
       </div>
+
+      {/* ═══════════ PER-SERVER ═══════════ */}
+      <SectionTitle icon={Server} title="Per-server configuration" sub="Moderation, welcome, join-to-create and gated roles — set independently for each server the bot is in." />
+      {/* Scope selector */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        <button onClick={() => setScope('')} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition flex items-center gap-1.5 ${scope === '' ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+          <Globe size={12} /> Global defaults
+        </button>
+        {guildList.map((gg) => {
+          const custom = !!cfg.guilds?.[gg.id];
+          return (
+            <button key={gg.id} onClick={() => setScope(gg.id)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition flex items-center gap-1.5 ${scope === gg.id ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+              <Server size={12} /> {gg.name}{custom && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Has custom config" />}
+            </button>
+          );
+        })}
+      </div>
+      {guildList.length === 0 && (
+        <div className="text-xs text-[var(--muted)] mb-3 flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+          <Bell size={13} /> No servers detected yet. Bring the bot online (token above) and add it to your Discord servers — they’ll appear here to configure individually. Until then, edit the <b>Global defaults</b> which apply to every server.
+        </div>
+      )}
+
+      {/* Scope banner */}
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3 py-2">
+        <div className="text-xs text-[var(--muted)] flex items-center gap-1.5 min-w-0">
+          {scope ? <Server size={13} className="text-[var(--primary-2)] shrink-0" /> : <Globe size={13} className="text-[var(--primary-2)] shrink-0" />}
+          <span className="truncate">Editing <b className="text-[var(--text)]">{scopeName}</b>{scope ? (isCustomized ? '' : ' — currently using the global defaults') : ' — applied to any server without its own config'}</span>
+        </div>
+        {scope && (isCustomized
+          ? <Button size="sm" variant="ghost" className="!text-red-400" onClick={resetServer}><Trash2 size={13} /> Reset to defaults</Button>
+          : <Button size="sm" variant="primary" onClick={customizeServer}><Plus size={13} /> Customize this server</Button>)}
+      </div>
+
+      {scope && !isCustomized ? (
+        <div className="text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-6 text-center">
+          <Server size={22} className="mx-auto mb-2 opacity-50" />
+          This server uses the <b>Global defaults</b>. Click <b>Customize this server</b> above to give it its own moderation, welcome, join-to-create and gating settings.
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Moderation */}
+          <Card className="p-4 space-y-2.5">
+            <div className="font-medium text-sm mb-1 flex items-center gap-2"><Shield size={14} className="text-[var(--primary-2)]" /> Moderation</div>
+            <SToggle path="moderation.enabled" label="Moderation enabled" />
+            <SToggle path="moderation.antiSelfbot" label="Anti-selfbot filter (mass-mention timeout)" />
+            <Field label="No-post channels" hint="Posting here kicks the user + purges their messages. A channel id is unique to its server.">
+              <ChannelIdList ids={purgeChans} onChange={(v) => sset('moderation.purgeChannelIds', v)} placeholder="Channel ID — press Enter" />
+            </Field>
+          </Card>
+
+          {/* Join-to-create */}
+          <Card className="p-4 space-y-2.5">
+            <div className="flex items-center justify-between mb-1"><div className="font-medium text-sm flex items-center gap-2"><Mic size={14} className="text-[var(--primary-2)]" /> Join-to-create voice</div>
+              <Button size="sm" variant="ghost" onClick={() => sset('joinToCreate.lobbies', [...jtcLobbies, { lobbyChannelId: '', categoryId: '', tempCategoryName: 'Temp Voice' }])}><Plus size={13} /> Lobby</Button></div>
+            <SToggle path="joinToCreate.enabled" label="Enabled" />
+            {jtcLobbies.length === 0 && <div className="text-xs text-[var(--faint)]">No lobbies — add one. Joining that voice channel spawns a temp room in its category.</div>}
+            {jtcLobbies.map((lb, i) => (
+              <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
+                <button onClick={() => sset('joinToCreate.lobbies', jtcLobbies.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-red-400"><Trash2 size={13} /></button>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">Lobby {i + 1}</div>
+                <Input value={lb.lobbyChannelId || ''} onChange={(e) => sset('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, lobbyChannelId: e.target.value } : x))} placeholder="Lobby voice channel ID" />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input value={lb.categoryId || ''} onChange={(e) => sset('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, categoryId: e.target.value } : x))} placeholder="Category id (auto if empty)" />
+                  <Input value={lb.tempCategoryName || ''} onChange={(e) => sset('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, tempCategoryName: e.target.value } : x))} placeholder="Temp category name" />
+                </div>
+              </div>
+            ))}
+          </Card>
+
+          {/* Welcome / bye */}
+          <Card className="p-4 space-y-2.5">
+            <div className="font-medium text-sm mb-1 flex items-center gap-2"><Sparkles size={14} className="text-[var(--primary-2)]" /> Welcome / bye</div>
+            <SToggle path="welcome.enabled" label="Enabled" />
+            <Field label="Welcome channel id"><Input value={sg('welcome.channelId')} onChange={(e) => sset('welcome.channelId', e.target.value)} placeholder="Channel ID" /></Field>
+            <Field label="Join message" hint="{user} {username} {servername} {joinnumber} {joindate}"><Input value={sg('welcome.joinMessage')} onChange={(e) => sset('welcome.joinMessage', e.target.value)} /></Field>
+            <Field label="Leave message"><Input value={sg('welcome.leaveMessage')} onChange={(e) => sset('welcome.leaveMessage', e.target.value)} /></Field>
+            <div className="rounded-lg border border-[var(--line)] overflow-hidden" style={{ background: '#0e0c09' }}>
+              <div className="flex items-center justify-between px-3 pt-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">Preview · real banner</div>
+                <button onClick={() => setPreviewNonce((n) => n + 1)} className="text-[10px] text-[var(--primary-2)] hover:underline flex items-center gap-1"><RefreshCw size={10} /> Refresh</button>
+              </div>
+              <div className="p-2">
+                <img alt="Welcome banner preview" className="w-full rounded-md block"
+                  src={`/api/admin/bot/welcome-preview.png?server=${encodeURIComponent(scopeName)}&members=${status?.users || 1024}&username=NewMember&_=${previewNonce}`}
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              </div>
+              <div className="px-3 py-2 text-xs text-gray-300 border-t border-white/5">{previewMsg(sg('welcome.joinMessage')) || '—'}</div>
+            </div>
+          </Card>
+
+          {/* Gated access */}
+          <Card className="p-4 space-y-2.5">
+            <div className="font-medium text-sm mb-1 flex items-center gap-2"><KeyRound size={14} className="text-[var(--primary-2)]" /> Gated access</div>
+            <SToggle path="gating.enabled" label="Gate roles behind account links" />
+            <p className="text-xs text-[var(--muted)]">Each rule grants ONE Discord role to members who meet its requirements. Re-checked every ~5 min (granting AND removing); members can run <code>/refreshroles</code> to sync instantly after linking on the site.</p>
+            <GatingRules rules={Array.isArray(scopeObj.gating?.rules) ? scopeObj.gating.rules : []} onChange={(rules) => sset('gating.rules', rules)} />
+          </Card>
+        </div>
+      )}
 
       <AdminBotMembers />
     </div>

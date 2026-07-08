@@ -1,6 +1,6 @@
 // Moderation: bulk clear, a "no-post" channel that kicks + purges the poster, and a
 // light anti-selfbot heuristic. All configurable from the BCWEB admin dashboard.
-import { config } from '../config.mjs';
+import { guildConfig } from '../config.mjs';
 import { api } from '../api.mjs';
 import { msgReported, modStats } from '../store.mjs';
 
@@ -17,7 +17,7 @@ export async function onMessage(msg) {
   const last = msgReported.get(msg.author.id) || 0;
   if (Date.now() - last > 60_000) { msgReported.set(msg.author.id, Date.now()); api.activity(msg.author.id, 'message', msg.author); }
 
-  const cfg = await config();
+  const cfg = await guildConfig(msg.guild.id);
   const mod = cfg.moderation || {};
   if (!cfg.enabled || !mod.enabled) return;
 

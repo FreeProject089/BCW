@@ -2,7 +2,7 @@
 // inside a brand-colored embed with the variable-driven message. Canvas is
 // optional — if it fails to load, the embed still goes out without the banner.
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
-import { config } from '../config.mjs';
+import { guildConfig } from '../config.mjs';
 import { api } from '../api.mjs';
 
 let canvas = null, canvasTried = false;
@@ -112,7 +112,7 @@ function welcomeEmbed(text, img, color) {
 
 export async function onMemberAdd(member) {
   api.activity(member.id, 'join', member.user); // record server-join for telemetry (always)
-  const cfg = await config(); const w = cfg.welcome || {};
+  const cfg = await guildConfig(member.guild.id); const w = cfg.welcome || {};
   if (!cfg.enabled || !w.enabled || !w.channelId) return;
   const ch = member.guild.channels.cache.get(w.channelId);
   if (!ch?.send) return;
@@ -123,7 +123,7 @@ export async function onMemberAdd(member) {
 }
 
 export async function onMemberRemove(member) {
-  const cfg = await config(); const w = cfg.welcome || {};
+  const cfg = await guildConfig(member.guild.id); const w = cfg.welcome || {};
   if (!cfg.enabled || !w.enabled || !w.channelId) return;
   const ch = member.guild.channels.cache.get(w.channelId);
   if (!ch?.send) return;

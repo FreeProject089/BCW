@@ -39,6 +39,10 @@ const DEFAULT_BOT_CONFIG = {
   // posts each new tip to this channel with the running total.
   kofi: { enabled: false, channelId: '' },
   limits: { maxTempChannels: 50, storageMB: 200 },
+  // Per-server overrides: guilds[guildId] = { moderation?, welcome?, joinToCreate?,
+  // gating? }. A feature present here REPLACES the top-level default for that guild;
+  // absent → the top-level config applies (so single-server setups need no changes).
+  guilds: {},
 };
 
 async function getBotConfig(p) {

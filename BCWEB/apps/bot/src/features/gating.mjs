@@ -3,7 +3,7 @@
 // it when they no longer do. Multiple independent rules are supported — e.g. a
 // "Linked" role for anyone with a BCWEB account, plus a "Creator" role that also
 // needs a BMM creator id. Rules are configured from the BCWEB admin dashboard.
-import { config } from '../config.mjs';
+import { config, guildConfig, resolveGuildConfig } from '../config.mjs';
 import { api } from '../api.mjs';
 
 // Normalise config into a rules array. New shape: gating.rules = [{ roleId,
@@ -27,7 +27,7 @@ function meetsRule(rule, acc) {
 // account is fetched ONCE (not per rule), so cost is O(members), not O(members
 // × rules). Returns a small summary used by the /verify and /refreshroles replies.
 export async function checkGating(member, cfg) {
-  cfg = cfg || await config();
+  cfg = cfg || await guildConfig(member.guild.id);
   const g = cfg.gating || {};
   if (!cfg.enabled || !g.enabled) return null;
   const rules = gatingRules(g);
@@ -52,10 +52,14 @@ export async function checkGating(member, cfg) {
 // Periodic full re-check (link status changes on the website, not via Discord
 // events) — grants AND revokes across every guild, every member, every rule.
 export async function syncAllGating(client) {
-  const cfg = await config();
-  const g = cfg.gating || {};
-  if (!cfg.enabled || !g.enabled || !gatingRules(g).length) return;
+  const base = await config();
+  if (!base.enabled) return;
   for (const guild of client.guilds.cache.values()) {
+    // Each guild is evaluated against ITS OWN resolved config (per-guild gating
+    // rules), so multi-server setups reconcile independently.
+    const cfg = resolveGuildConfig(base, guild.id);
+    const g = cfg.gating || {};
+    if (!g.enabled || !gatingRules(g).length) continue;
     let members;
     try { members = await guild.members.fetch(); } catch { continue; }
     for (const m of members.values()) if (!m.user.bot) await checkGating(m, cfg).catch(() => {});

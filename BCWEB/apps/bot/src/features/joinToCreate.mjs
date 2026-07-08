@@ -3,7 +3,7 @@
 // panel in its text chat. Empty temp channels are cleaned up; an auto-created temp
 // category is removed once its last temp channel is gone.
 import { ChannelType, PermissionFlagsBits } from 'discord.js';
-import { config } from '../config.mjs';
+import { guildConfig } from '../config.mjs';
 import { api } from '../api.mjs';
 import { temp } from '../store.mjs';
 import { sendPanelTo } from './panel.mjs';
@@ -23,10 +23,10 @@ function getLobbies(j) {
 }
 
 export async function onVoiceStateUpdate(client, oldS, newS) {
-  const cfg = await config();
-  const j = cfg.joinToCreate || {};
   const guild = newS.guild || oldS.guild;
   if (!guild) return;
+  const cfg = await guildConfig(guild.id);
+  const j = cfg.joinToCreate || {};
   const lobbies = getLobbies(j);
   const lobby = newS.channelId ? lobbies.find((l) => l.lobbyChannelId === newS.channelId) : null;
 
