@@ -31,7 +31,8 @@ const CORE_PROJECTS = {
 
 // Build the metadata for a given app path. Returns { title, description, image,
 // url, type }. Falls back to the site defaults for any unrecognised path.
-async function metaForPath(path) {
+// Exported for unit-testing the routing/escaping without a running server.
+export async function metaForPath(path) {
   const site = SITE();
   const clean = String(path || '/').split('?')[0].split('#')[0];
   const url = site + clean;
@@ -103,7 +104,7 @@ async function metaForPath(path) {
   return fallback;
 }
 
-function renderOgHtml(meta) {
+export function renderOgHtml(meta) {
   const twCard = meta.image && meta.image !== LOGO() ? 'summary_large_image' : 'summary';
   return `<!doctype html>
 <html lang="en">

@@ -16,14 +16,14 @@ let _running = false;
 
 // Resolve the effective route list: the new `routes` array, or the legacy single
 // `channelId` treated as one all-sources route (so old configs keep working).
-function routesOf(b) {
+export function routesOf(b) {
   const routes = Array.isArray(b.routes) ? b.routes.filter((r) => r && r.channelId) : [];
   if (routes.length) return routes.map((r) => ({ channelId: String(r.channelId), sources: Array.isArray(r.sources) && r.sources.length ? r.sources : ['*'] }));
   if (b.channelId) return [{ channelId: String(b.channelId), sources: ['*'] }];
   return [];
 }
 
-const matchesSources = (sources, postSource) => sources.includes('*') || sources.includes(postSource);
+export const matchesSources = (sources, postSource) => sources.includes('*') || sources.includes(postSource);
 
 export async function pollBlog(client) {
   if (_running) return;             // a slow cycle must never overlap the next one
