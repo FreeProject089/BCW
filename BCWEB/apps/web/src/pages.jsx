@@ -2575,6 +2575,7 @@ function AdminServerPerf() {
             {sec.alloc && (() => {
               const totUsed = ra.repos.reduce((a, r) => a + (r.storageUsedBytes || 0), 0);
               const totQuota = ra.repos.reduce((a, r) => a + (r.storageQuotaBytes || 0), 0);
+              const totLive = ra.repos.reduce((a, r) => a + (r.liveUploadMbps || 0), 0);
               const cpuPct = ra.hostCpuCores ? Math.min(100, (ra.totalCpuShare / ra.hostCpuCores) * 100) : 0;
               return (
               <>
@@ -2587,12 +2588,12 @@ function AdminServerPerf() {
                   </div>
                   <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full rounded-full ${over ? 'bg-amber-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} style={{ width: `${Math.max(2, cpuPct)}%` }} /></div>
                   <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-[var(--faint)] mt-2">
-                    <span>{t('sp.alloc.uptot', 'Upload reserved (total)')}: <b className="text-[var(--text)] tabular-nums">{ra.totalUploadMbps} Mbps</b></span>
+                    <span className="flex items-center gap-1.5">{totLive > 0 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}{t('sp.alloc.uplivetot', 'Live upload (total)')}: <b className="text-[var(--text)] tabular-nums">{totLive.toFixed(2)} Mbps</b> <span className="text-[var(--faint)]/70">/ {ra.totalUploadMbps} {t('sp.alloc.reserved', 'reserved')}</span></span>
                     <span>{t('sp.alloc.stotot', 'Storage used (total)')}: <b className="text-[var(--text)] tabular-nums">{fmtBytes(totUsed)} / {fmtBytes(totQuota)}</b></span>
                   </div>
                   {over && <div className="text-[11px] text-amber-400/90 mt-1.5">{t('sp.alloc.over', 'vCPU is over-committed vs the host core count.')}</div>}
                 </div>
-                <div className="text-[11px] text-[var(--faint)] mb-2">{t('sp.alloc.note2', "CPU and Upload are reserved by each repo's plan (not live usage). Storage shows what's actually stored vs the quota.")}</div>
+                <div className="text-[11px] text-[var(--faint)] mb-2">{t('sp.alloc.note2', "Upload = throughput actually served right now vs the plan limit; Storage = what's actually stored vs the quota. CPU is what the plan reserves (not measurable live yet — hosted repos aren't isolated processes).")}</div>
 
                 {/* Per-repo table — plain numbers for the reserved values, a bar only for
                     storage (the one metric with a real used/total relationship). */}
@@ -2602,26 +2603,37 @@ function AdminServerPerf() {
                       <tr className="text-[10px] uppercase tracking-wider text-[var(--faint)]">
                         <th className="font-semibold text-left py-1.5 pl-1 pr-3">{t('sp.repo', 'Repo')}</th>
                         <th className="font-semibold text-right py-1.5 px-3 whitespace-nowrap">{t('sp.cpu', 'CPU')}</th>
-                        <th className="font-semibold text-right py-1.5 px-3 whitespace-nowrap">{t('sp.upload', 'Upload')}</th>
-                        <th className="font-semibold text-left py-1.5 pl-3 pr-1">{t('sp.storage', 'Storage')}</th>
+                        <th className="font-semibold text-left py-1.5 px-3 min-w-[150px]">{t('sp.upload', 'Upload')}</th>
+                        <th className="font-semibold text-left py-1.5 pl-3 pr-1 min-w-[150px]">{t('sp.storage', 'Storage')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--line)]">
                       {ra.repos.map((r) => {
                         const stoUsed = r.storageQuotaBytes ? Math.min(100, (r.storageUsedBytes / r.storageQuotaBytes) * 100) : 0;
                         const stoTone = stoUsed >= 90 ? '#f87171' : stoUsed >= 70 ? '#f59e0b' : '#34d399';
+                        const live = r.liveUploadMbps || 0;
+                        const cap = r.uploadMbps || 0;
+                        const upPct = cap > 0 ? Math.min(100, (live / cap) * 100) : (live > 0 ? 100 : 0);
                         return (
                           <tr key={r.id} className="hover:bg-[var(--surface-2)]/40">
                             <td className="py-2 pl-1 pr-3 max-w-0">
                               <div className="font-medium truncate">{r.name}</div>
                               <div className="text-[11px] text-[var(--faint)] truncate flex items-center gap-1.5">{r.owner}{r.status !== 'ONLINE' && <Badge tone={r.status === 'SUSPENDED' ? 'red' : ''}>{r.status}</Badge>}</div>
                             </td>
-                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{r.cpuShare} <span className="text-[var(--faint)] text-xs">vCPU</span></td>
-                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{r.uploadMbps} <span className="text-[var(--faint)] text-xs">Mbps</span></td>
-                            <td className="py-2 pl-3 pr-1 min-w-[140px]">
+                            <td className="py-2 px-3 text-right align-top whitespace-nowrap"><div className="tabular-nums">{r.cpuShare} <span className="text-[var(--faint)] text-xs">vCPU</span></div><div className="text-[9px] text-[var(--faint)]">{t('sp.alloc.reserved', 'reserved')}</div></td>
+                            {/* Live upload actually served now vs the plan limit (0 = idle). */}
+                            <td className="py-2 px-3">
                               <div className="flex items-baseline justify-between gap-2 text-[11px] tabular-nums mb-1">
-                                <span>{fmtBytes(r.storageUsedBytes)} <span className="text-[var(--faint)]">/ {fmtBytes(r.storageQuotaBytes)}</span></span>
-                                <span className="text-[var(--faint)]">{stoUsed < 0.5 ? t('sp.alloc.empty', 'empty') : t('sp.alloc.pctused', '{n}% used').replace('{n}', stoUsed.toFixed(0))}</span>
+                                <span className="flex items-center gap-1">{live > 0 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />}<b className="text-[var(--text)]">{live.toFixed(2)}</b> <span className="text-[var(--faint)]">/ {cap} Mbps</span></span>
+                                <span className="text-[var(--faint)]">{live <= 0 ? t('sp.alloc.idle', 'idle') : t('sp.alloc.pctused', '{n}%').replace('{n}', upPct.toFixed(0))}</span>
+                              </div>
+                              <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${Math.max(live > 0 ? 3 : 0, upPct)}%` }} /></div>
+                            </td>
+                            {/* Storage actually used vs quota. */}
+                            <td className="py-2 pl-3 pr-1">
+                              <div className="flex items-baseline justify-between gap-2 text-[11px] tabular-nums mb-1">
+                                <span><b className="text-[var(--text)]">{fmtBytes(r.storageUsedBytes)}</b> <span className="text-[var(--faint)]">/ {fmtBytes(r.storageQuotaBytes)}</span></span>
+                                <span className="text-[var(--faint)]">{stoUsed < 0.5 ? t('sp.alloc.empty', 'empty') : t('sp.alloc.pctused', '{n}%').replace('{n}', stoUsed.toFixed(0))}</span>
                               </div>
                               <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full" style={{ width: `${Math.max(2, stoUsed)}%`, background: stoTone }} /></div>
                             </td>

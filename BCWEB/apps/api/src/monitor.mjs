@@ -6,6 +6,7 @@
 import os from 'node:os';
 import fs from 'node:fs';
 import tls from 'node:tls';
+import { Transform } from 'node:stream';
 import { realDiskStats } from './routes/hosting.mjs';
 import { checkStorageHealth } from './storage.mjs';
 import { notify } from './lib.mjs';
@@ -104,6 +105,43 @@ function bwCategory(url = '') {
   return 'other';
 }
 export function getBandwidthByCat() { return { ..._bwByCat }; }
+
+// ── Live per-repo upload throughput ──
+// Bytes actually SENT to clients for each hosted repo's files, timestamped, so we can
+// report a real-time upload rate per repo (0 when idle, the live kbit/s when serving).
+// Sliding window: only the last REPO_BW_WINDOW ms count, so it reflects current
+// activity rather than a lifetime total. Called from the repo file streamer.
+const _repoBw = new Map(); // repoId -> [{ t, bytes }…] within the window
+const REPO_BW_WINDOW = 10_000;
+export function recordRepoBytes(repoId, bytes) {
+  const b = Number(bytes);
+  if (!repoId || !(b > 0)) return;
+  let arr = _repoBw.get(repoId);
+  if (!arr) { arr = []; _repoBw.set(repoId, arr); }
+  arr.push({ t: Date.now(), bytes: b });
+}
+// { repoId: kbps } over the sliding window. Idle repos report nothing (omitted).
+export function getRepoUploadKbps() {
+  const now = Date.now();
+  const out = {};
+  for (const [id, arr] of _repoBw) {
+    let i = 0; while (i < arr.length && now - arr[i].t > REPO_BW_WINDOW) i++;
+    if (i) arr.splice(0, i);
+    if (!arr.length) { _repoBw.delete(id); continue; }
+    const bytes = arr.reduce((a, s) => a + s.bytes, 0);
+    // kbps = bits / ms. Divide by the fixed window so a sustained transfer reads its
+    // true rate and a lone recent chunk doesn't inflate to an unrealistic spike.
+    out[id] = Math.max(0, Math.round((bytes * 8) / REPO_BW_WINDOW));
+  }
+  return out;
+}
+// A passthrough stream that meters bytes for a repo as they flow to the client.
+export function repoMeter(repoId) {
+  return new Transform({
+    transform(chunk, _enc, cb) { recordRepoBytes(repoId, chunk.length); cb(null, chunk); },
+  });
+}
+
 export function recordRequest(ms, statusCode, url, bytes) {
   _reqStats.count++; _reqStats.totalMs += ms;
   if (statusCode < 300) _reqStats.s2xx++; else if (statusCode < 400) _reqStats.s3xx++; else if (statusCode < 500) _reqStats.s4xx++; else _reqStats.s5xx++;

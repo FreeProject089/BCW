@@ -1,7 +1,7 @@
 import os from 'node:os';
 import { z } from 'zod';
 import { db, requireRole } from '../lib.mjs';
-import { checkSslExpiry, checkDependencies, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat } from '../monitor.mjs';
+import { checkSslExpiry, checkDependencies, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps } from '../monitor.mjs';
 import { realDiskStats } from './hosting.mjs';
 
 const BOT_SECRET = () => process.env.BOT_SHARED_SECRET || process.env.LINK_LOOKUP_SECRET || 'dev-bot-secret';
@@ -87,10 +87,13 @@ export default async function serverPerfRoutes(app) {
     const ceil = Object.fromEntries(ceilRows.map((r) => [r.key, Number(r.value)]));
     const maxCpuShare = Number.isFinite(ceil['hosting.maxCpuShare']) && ceil['hosting.maxCpuShare'] > 0 ? ceil['hosting.maxCpuShare'] : 8;
     const maxUploadMbps = Number.isFinite(ceil['hosting.maxUploadMbps']) && ceil['hosting.maxUploadMbps'] > 0 ? ceil['hosting.maxUploadMbps'] : 1000;
+    const liveUp = getRepoUploadKbps(); // { repoId: kbps } — live upload throughput now
     const repoAllocations = {
       repos: hostedRepos.map((r) => ({
         id: r.id, name: r.name, owner: r.owner?.displayName, status: r.status,
         cpuShare: r.cpuShare, uploadMbps: +(r.uploadLimitKbps / 1024).toFixed(1),
+        // Live upload actually served right now (Mbps), 0 when idle.
+        liveUploadMbps: +(((liveUp[r.id] || 0) / 1024)).toFixed(2),
         storageUsedBytes: Number(r.storageUsedBytes), storageQuotaBytes: Number(r.storageQuotaBytes),
       })),
       totalCpuShare: +hostedRepos.reduce((a, r) => a + (r.cpuShare || 0), 0).toFixed(2),

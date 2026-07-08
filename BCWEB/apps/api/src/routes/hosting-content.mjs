@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import AdmZip from 'adm-zip';
 import { db, requireRole, slugify, notify, repoLog, isValidRepoManifest, getGlobalAccessPolicy, getUserAccessPolicy, matchAccountList } from '../lib.mjs';
 import { presignPut, presignGet, getObject } from '../storage.mjs';
+import { repoMeter } from '../monitor.mjs';
 
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 
@@ -368,7 +369,9 @@ export default async function hostingContentRoutes(app) {
       const ct = file.path.endsWith('.json') ? 'application/json' : 'application/octet-stream';
       reply.header('Content-Type', ct).header('Content-Disposition', 'attachment');
       const cap = effKbps(repo);
-      if (cap <= 0) return reply.send(body); // uncapped repo → full speed, no governor
+      // Meter bytes as they flow to the client → live per-repo upload rate on the
+      // Server-perf dashboard (0 when idle, the real kbit/s while serving).
+      if (cap <= 0) return reply.send(body.pipe(repoMeter(repo.id))); // uncapped repo → full speed, no governor
       // Smart sharing: burst above the cap while the server is quiet, tighten under load.
       const burst = await getBurst(p);
       activeTransfers++;
@@ -378,7 +381,7 @@ export default async function hostingContentRoutes(app) {
       const getKbps = () => (activeTransfers <= burst.until ? Math.round(cap * burst.factor) : cap);
       reply.header('X-Sandbox-Upload-Kbps', String(cap));
       reply.header('X-Sandbox-Burst', String(activeTransfers <= burst.until ? burst.factor : 1));
-      return reply.send(body.pipe(throttle(getKbps)));
+      return reply.send(body.pipe(throttle(getKbps)).pipe(repoMeter(repo.id)));
     } catch { return reply.code(404).send({ error: 'not_found' }); }
   });
 }
