@@ -56,14 +56,42 @@ function devGeoSample(seed) {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return DEV_CITIES[h % DEV_CITIES.length];
 }
+// In local dev the client IP is loopback, so we can't geolocate the visitor. Resolve the
+// DEV MACHINE's own public IP once (cached 1h) and geolocate THAT — so localhost traffic
+// shows the developer's real location (real data), not a made-up sample city.
+let _devPubGeo = { at: 0, val: undefined };
+async function devRealGeo() {
+  // Keep a successful lookup for an hour; retry a failed one after 5 min (so a cold-start
+  // timeout doesn't wedge us on the sample fallback for a whole hour).
+  const ttl = _devPubGeo.val ? 3600e3 : 5 * 60e3;
+  if (_devPubGeo.val !== undefined && Date.now() - _devPubGeo.at < ttl) return _devPubGeo.val;
+  let val = null;
+  for (const url of ['https://api.ipify.org', 'https://ifconfig.me/ip']) {
+    try {
+      const ctrl = AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined;
+      const ip = (await fetch(url, ctrl ? { signal: ctrl } : {}).then((r) => r.text())).trim();
+      const geo = await loadGeoip();
+      const hit = geo && /^[0-9.]+$/.test(ip) ? geo.lookup(ip) : null;
+      if (hit?.country && /^[A-Z]{2}$/.test(hit.country)) {
+        val = { country: hit.country, region: hit.region || null, city: hit.city || null, lat: Array.isArray(hit.ll) ? hit.ll[0] : null, lng: Array.isArray(hit.ll) ? hit.ll[1] : null };
+        break;
+      }
+    } catch { /* try the next resolver, else fall back to the sample */ }
+  }
+  _devPubGeo = { at: Date.now(), val };
+  return val;
+}
 
 async function geoOf(req) {
   const hdr = req.headers['cf-ipcountry'] || req.headers['x-vercel-ip-country'] || req.headers['x-country'] || req.headers['x-geo-country'] || '';
   const cc = String(hdr).trim().toUpperCase();
   const headerCountry = /^[A-Z]{2}$/.test(cc) && cc !== 'XX' ? cc : null;
   const ip = clientIp(req);
-  // Dev/local traffic → sample a real city so geo features are testable without deploying.
+  // Dev/local traffic → use the dev machine's REAL public-IP location (so it shows the
+  // developer's actual country), falling back to a sample city only if that lookup fails.
   if (!headerCountry && isPrivateIp(ip) && process.env.ANALYTICS_DEV_GEO !== '0') {
+    const real = await devRealGeo();
+    if (real) return real;
     const d = devGeoSample(visitorHash(req));
     return { country: d.country, region: d.region, city: d.city, lat: d.lat, lng: d.lng };
   }

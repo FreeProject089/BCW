@@ -4838,7 +4838,9 @@ function AnalyticsMap({ points, height = 420 }) {
       if (disposed || !boxRef.current || mapRef.current) return;
       mlRef.current = maplibregl;
       const STYLE = { version: 8, sources: { base: { type: 'raster', tiles: ['https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap © CARTO' } }, layers: [{ id: 'base', type: 'raster', source: 'base' }] };
-      const map = new maplibregl.Map({ container: boxRef.current, style: STYLE, center: [10, 25], zoom: 1.3, attributionControl: false, maxPitch: 0, trackResize: true });
+      // maplibre-gl v5+ supports the globe projection — set it in the constructor so the
+      // map starts as a globe (no 2D→globe flash) and the toggle can switch it live.
+      const map = new maplibregl.Map({ container: boxRef.current, style: STYLE, center: [10, 25], zoom: 1.3, attributionControl: false, maxPitch: 0, trackResize: true, projection: { type: mode === 'globe' ? 'globe' : 'mercator' } });
       mapRef.current = map;
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
       map.on('error', () => {});
