@@ -4924,6 +4924,7 @@ function SessionsPanel() {
 function AdminAnalytics() {
   const [days, setDays] = useState(30);
   const [hours, setHours] = useState(null); // when set → hourly view (zoom-in)
+  const [tab, setTab] = useState('overview'); // sub-tab: overview | sessions | geo | tech | perf
   const toast = useToast();
   const { data, loading } = useAsync(() => api.get(`/admin/analytics?${hours ? `hours=${hours}` : `days=${days}`}`), [days, hours]);
   // Open BMM telemetry via an SSO handoff: mint a short-lived token (this call is
@@ -4981,8 +4982,8 @@ function AdminAnalytics() {
         </div>
       </div>
 
-      {/* KPI row (Rybbit-style) */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+      {/* KPI row (Rybbit-style) — always visible above the sub-tabs */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3 mb-4">
         {kpi(Users, data?.uniqueVisitors ?? '—', 'Unique visitors', null, deltaChip(data?.uniqueVisitors, data?.prev?.uniqueVisitors), visitorsSpark, '#38bdf8')}
         {kpi(Package, data?.sessions ?? '—', 'Sessions', null, deltaChip(data?.sessions, data?.prev?.sessions), visitorsSpark, '#38bdf8')}
         {kpi(Eye, data?.windowed ?? '—', 'Pageviews', null, deltaChip(data?.windowed, data?.prev?.pageviews), viewsSpark)}
@@ -4991,66 +4992,74 @@ function AdminAnalytics() {
         {kpi(Zap, data?.live ?? '—', 'Live (30 min)', 'text-emerald-400')}
       </div>
 
-      <Card className="p-5 mb-4">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <div className="text-xs font-semibold text-[var(--faint)] uppercase">{gran === 'hour' ? 'Traffic per hour · last 24h' : 'Traffic per day'}</div>
-          <div className="flex items-center gap-3 text-[11px] text-[var(--muted)]">
-            <span className="hidden sm:flex items-center gap-1 text-[var(--faint)]"><Search size={11} /> Ctrl + scroll to zoom</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-gradient-to-t from-orange-500 to-amber-400" /> Views</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-sky-400" /> Visitors</span></div>
+      {/* Sub-tab bar — horizontal-scrolls on narrow screens so it never overflows. */}
+      <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
+        {[['overview', 'Overview', TrendingUp], ['sessions', 'Sessions', Activity], ['geo', 'Geography', Globe2], ['tech', 'Tech', Monitor], ['perf', 'Performance', Gauge]].map(([id, label, I]) => (
+          <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={14} /> {label}</button>
+        ))}
+      </div>
+
+      {tab === 'overview' && <>
+        <Card className="p-4 sm:p-5 mb-4">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div className="text-xs font-semibold text-[var(--faint)] uppercase">{gran === 'hour' ? 'Traffic per hour · last 24h' : 'Traffic per day'}</div>
+            <div className="flex items-center gap-3 text-[11px] text-[var(--muted)]">
+              <span className="hidden sm:flex items-center gap-1 text-[var(--faint)]"><Search size={11} /> Ctrl + scroll to zoom</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-gradient-to-t from-orange-500 to-amber-400" /> Views</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-sky-400" /> Visitors</span></div>
+          </div>
+          {loading ? <div className="h-40 grid place-items-center text-[var(--faint)] text-sm"><Spinner /></div> : <TrafficChart series={series} gran={gran} onZoom={onZoom} compare={data?.compare} />}
+        </Card>
+        <div className="grid md:grid-cols-2 gap-4">
+          <Card className="p-4 sm:p-5">
+            <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3">Top pages</div>
+            <div className="space-y-2.5">
+              {top.length ? top.map((t) => (
+                <div key={t.path} className="flex items-center gap-3 text-sm">
+                  <span className="text-[var(--muted)] truncate w-28 sm:w-40 shrink-0">{t.path}</span>
+                  <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${(t.count / maxTop) * 100}%` }} /></div>
+                  <span className="w-10 text-right font-medium">{t.count}</span>
+                </div>
+              )) : <div className="text-sm text-[var(--faint)]">No page data yet.</div>}
+            </div>
+          </Card>
+          <Card className="p-4 sm:p-5">
+            <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3">Top referrers</div>
+            <div className="space-y-2.5">
+              {refs.length ? refs.map((r) => { const host = refHost(r.ref); return (
+                <div key={r.ref} className="flex items-center gap-3 text-sm">
+                  <span className="text-[var(--muted)] truncate w-28 sm:w-40 shrink-0 flex items-center gap-2"><BrandImg favicon={/\.[a-z]{2,}$/i.test(host) ? `https://icons.duckduckgo.com/ip3/${host}.ico` : null} /> {host}</span>
+                  <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-sky-500 to-cyan-400" style={{ width: `${(r.count / maxRef) * 100}%` }} /></div>
+                  <span className="w-10 text-right font-medium">{r.count}</span>
+                </div>); })
+                : <div className="text-sm text-[var(--faint)]">No referrers yet — most visits are direct.</div>}
+            </div>
+          </Card>
         </div>
-        {loading ? <div className="h-40 grid place-items-center text-[var(--faint)] text-sm"><Spinner /></div> : <TrafficChart series={series} gran={gran} onZoom={onZoom} compare={data?.compare} />}
-      </Card>
+      </>}
 
-      {/* devices · browsers · OS with real icons */}
-      <div className="grid md:grid-cols-3 gap-4 mb-4">
-        <Breakdown title="Devices" rows={devices} iconOf={(l) => { const I = { mobile: Zap, tablet: Package, desktop: Server }[l] || Server; return <I size={13} className="text-[var(--faint)]" />; }} />
-        <Breakdown title="Browsers" rows={browsers} iconOf={(l) => <BrandImg slug={BROWSER_SLUG[l]} />} />
-        <Breakdown title="Operating systems" rows={oses} iconOf={(l) => (OS_SLUG[l] ? <BrandImg slug={OS_SLUG[l]} fallback={Monitor} /> : <Monitor size={13} className="text-[var(--faint)] shrink-0" />)} />
-      </div>
+      {tab === 'sessions' && <SessionsPanel />}
 
-      <div className="grid md:grid-cols-2 gap-4 mb-4">
-        <Card className="p-5">
-          <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3">Top pages</div>
-          <div className="space-y-2.5">
-            {top.length ? top.map((t) => (
-              <div key={t.path} className="flex items-center gap-3 text-sm">
-                <span className="text-[var(--muted)] truncate w-40 shrink-0">{t.path}</span>
-                <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${(t.count / maxTop) * 100}%` }} /></div>
-                <span className="w-10 text-right font-medium">{t.count}</span>
-              </div>
-            )) : <div className="text-sm text-[var(--faint)]">No page data yet.</div>}
-          </div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3">Top referrers</div>
-          <div className="space-y-2.5">
-            {refs.length ? refs.map((r) => { const host = refHost(r.ref); return (
-              <div key={r.ref} className="flex items-center gap-3 text-sm">
-                <span className="text-[var(--muted)] truncate w-40 shrink-0 flex items-center gap-2"><BrandImg favicon={/\.[a-z]{2,}$/i.test(host) ? `https://icons.duckduckgo.com/ip3/${host}.ico` : null} /> {host}</span>
-                <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-sky-500 to-cyan-400" style={{ width: `${(r.count / maxRef) * 100}%` }} /></div>
-                <span className="w-10 text-right font-medium">{r.count}</span>
-              </div>); })
-              : <div className="text-sm text-[var(--faint)]">No referrers yet — most visits are direct.</div>}
-          </div>
-        </Card>
-      </div>
+      {tab === 'geo' && (
+        <div className="grid lg:grid-cols-[1.2fr_1.4fr] gap-4">
+          <GeoPanel countries={countries} regions={regions} cities={cities} />
+          <Card className="p-4 sm:p-5">
+            <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3 flex items-center gap-1.5"><ArrowRight size={13} /> Funnel · page journeys</div>
+            <Sankey flows={flows} />
+          </Card>
+        </div>
+      )}
 
-      {/* Live / recent visitor sessions with per-session page journeys */}
-      <SessionsPanel />
+      {tab === 'tech' && (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Breakdown title="Devices" rows={devices} iconOf={(l) => { const I = { mobile: Zap, tablet: Package, desktop: Server }[l] || Server; return <I size={13} className="text-[var(--faint)]" />; }} />
+          <Breakdown title="Browsers" rows={browsers} iconOf={(l) => <BrandImg slug={BROWSER_SLUG[l]} />} />
+          <Breakdown title="Operating systems" rows={oses} iconOf={(l) => (OS_SLUG[l] ? <BrandImg slug={OS_SLUG[l]} fallback={Monitor} /> : <Monitor size={13} className="text-[var(--faint)] shrink-0" />)} />
+        </div>
+      )}
 
-      {/* Web Vitals — real-user performance, per page */}
-      <WebVitals days={days} hours={hours} />
+      {tab === 'perf' && <WebVitals days={days} hours={hours} />}
 
-      {/* Geo (countries / regions / cities / map) + funnel */}
-      <div className="grid md:grid-cols-[1.2fr_1.4fr] gap-4 mb-4">
-        <GeoPanel countries={countries} regions={regions} cities={cities} />
-        <Card className="p-5">
-          <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3 flex items-center gap-1.5"><ArrowRight size={13} /> Funnel · page journeys</div>
-          <Sankey flows={flows} />
-        </Card>
-      </div>
-
-      <p className="text-[11px] text-[var(--faint)]">Geo comes from the CDN country header when present, otherwise from a local offline GeoIP lookup on the visitor IP — private/loopback IPs (local dev) have no country. Retention cohorts aren't shown — the privacy-friendly daily-rotating visitor hash intentionally can't track people across days.</p>
+      <p className="text-[11px] text-[var(--faint)] mt-4">Geo is resolved from the visitor IP (CDN country header, else an offline GeoIP lookup; local/private IPs get a sample location in dev). The privacy-friendly daily-rotating visitor hash can't track people across days.</p>
     </div>
   );
 }

@@ -28,13 +28,48 @@ async function loadGeoip() {
 // Full geo (country + region + city). CDN country header is authoritative for the
 // country when present; region/city always come from the local offline GeoIP DB (the
 // CDN header only carries a country). Private/loopback IPs (local dev) → nulls.
+// Is this a private / loopback / link-local address? Such IPs never geolocate — in
+// production only internal traffic uses them (real visitors have public IPs behind the
+// proxy), so a dev-only sample geo for them can't pollute real-user data.
+function isPrivateIp(ip) {
+  return !ip || /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|::1$|::$|fc|fd)/i.test(ip) || ip === 'localhost' || ip === '0.0.0.0';
+}
+// Dev fallback: deterministically place a private/loopback visitor in one real city
+// (by their anonymous hash, so a given visitor stays put). Lets Countries/Regions/Cities
+// /Map/Globe all populate on a local machine. OFF only if ANALYTICS_DEV_GEO=0.
+const DEV_CITIES = [
+  { country: 'US', region: 'California', city: 'San Francisco', lat: 37.77, lng: -122.42 },
+  { country: 'US', region: 'New York', city: 'New York', lat: 40.71, lng: -74.01 },
+  { country: 'GB', region: 'England', city: 'London', lat: 51.51, lng: -0.13 },
+  { country: 'FR', region: 'Île-de-France', city: 'Paris', lat: 48.86, lng: 2.35 },
+  { country: 'DE', region: 'Berlin', city: 'Berlin', lat: 52.52, lng: 13.40 },
+  { country: 'ES', region: 'Madrid', city: 'Madrid', lat: 40.42, lng: -3.70 },
+  { country: 'CA', region: 'Ontario', city: 'Toronto', lat: 43.65, lng: -79.38 },
+  { country: 'BR', region: 'São Paulo', city: 'São Paulo', lat: -23.55, lng: -46.63 },
+  { country: 'IN', region: 'Maharashtra', city: 'Mumbai', lat: 19.08, lng: 72.88 },
+  { country: 'JP', region: 'Tokyo', city: 'Tokyo', lat: 35.68, lng: 139.69 },
+  { country: 'AU', region: 'New South Wales', city: 'Sydney', lat: -33.87, lng: 151.21 },
+  { country: 'CH', region: 'Vaud', city: 'Lausanne', lat: 46.52, lng: 6.63 },
+];
+function devGeoSample(seed) {
+  let h = 0; const s = String(seed || '');
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return DEV_CITIES[h % DEV_CITIES.length];
+}
+
 async function geoOf(req) {
   const hdr = req.headers['cf-ipcountry'] || req.headers['x-vercel-ip-country'] || req.headers['x-country'] || req.headers['x-geo-country'] || '';
   const cc = String(hdr).trim().toUpperCase();
   const headerCountry = /^[A-Z]{2}$/.test(cc) && cc !== 'XX' ? cc : null;
+  const ip = clientIp(req);
+  // Dev/local traffic → sample a real city so geo features are testable without deploying.
+  if (!headerCountry && isPrivateIp(ip) && process.env.ANALYTICS_DEV_GEO !== '0') {
+    const d = devGeoSample(visitorHash(req));
+    return { country: d.country, region: d.region, city: d.city, lat: d.lat, lng: d.lng };
+  }
   const geo = await loadGeoip();
   let hit = null;
-  if (geo) { try { hit = geo.lookup(clientIp(req)); } catch { hit = null; } }
+  if (geo) { try { hit = geo.lookup(ip); } catch { hit = null; } }
   const country = headerCountry || (hit?.country && /^[A-Z]{2}$/.test(hit.country) ? hit.country : null);
   // geoip-lite returns `region` as a subdivision code (e.g. "CA") and `city` as a name.
   const region = hit?.region ? String(hit.region).slice(0, 80) || null : null;
