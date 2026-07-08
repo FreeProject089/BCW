@@ -33,6 +33,24 @@
 		respond 404
 	}
 
+	# ── Link-unfurl prerender ──
+	# Social/link-preview crawlers (Discord, Twitter/X, Slack, Telegram, WhatsApp,
+	# Facebook, …) don't run our SPA's JS, so a shared URL would only ever show the
+	# static homepage card. Route ONLY those bots (by User-Agent) to the API's /og
+	# endpoint, passing the original path — it returns per-page og:title/og:image so
+	# a blog link unfurls with its own title + cover. Real users never match this and
+	# fall through to the SPA below. Must precede /api, /hosting and the SPA handles.
+	@unfurl {
+		# Link-unfurl bots ONLY — deliberately NOT search engines (Googlebot/Bingbot
+		# render JS and must get the indexable SPA, not this noindex redirect shell).
+		header_regexp User-Agent (?i)(discordbot|twitterbot|facebookexternalhit|facebot|slackbot|slack-imgproxy|telegrambot|whatsapp|linkedinbot|embedly|redditbot|pinterest|vkshare|skypeuripreview|nuzzel|bitlybot|iframely|mastodon|snapchat)
+		path / /blog/* /project/* /p/* /item/* /catalog /repos /hosting /projects
+	}
+	handle @unfurl {
+		rewrite * /og?u={uri}
+		reverse_proxy api:3000
+	}
+
 	# API
 	handle_path /api/* {
 		reverse_proxy api:3000

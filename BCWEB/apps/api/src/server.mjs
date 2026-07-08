@@ -34,6 +34,7 @@ import telemetryRoutes from './routes/telemetry.mjs';
 import serverPerfRoutes from './routes/server-perf.mjs';
 import kofiRoutes from './routes/kofi.mjs';
 import oauthRoutes from './routes/oauth.mjs';
+import ogRoutes from './routes/og.mjs';
 import { recordRequest } from './monitor.mjs';
 import { installAbuseGuards } from './abuse.mjs';
 
@@ -116,6 +117,7 @@ await app.register(telemetryRoutes);
 await app.register(serverPerfRoutes);
 await app.register(kofiRoutes);
 await app.register(oauthRoutes);
+await app.register(ogRoutes); // crawler link-unfurl prerender (og:title/image per page)
 await app.register(stripeWebhook); // encapsulated: raw-body for Stripe signature
 
 // Make sure the object-storage bucket exists (non-fatal if storage isn't up yet).
