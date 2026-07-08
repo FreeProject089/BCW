@@ -43,6 +43,9 @@ function buildClient() {
     const beat = () => api.heartbeat({
       uptimeSec: Math.round(process.uptime()), guilds: ready.guilds.cache.size,
       users: ready.users.cache.size, tempChannels: temp.size, version: '0.1.0',
+      // The servers the bot is in — so the dashboard can show them + let the admin
+      // target a specific server when configuring per-server blog routes.
+      guildList: [...c.guilds.cache.values()].slice(0, 200).map((g) => ({ id: g.id, name: String(g.name || '').slice(0, 120) })),
       ping: c.ws.ping >= 0 ? c.ws.ping : null, mod: { ...modStats },
     });
     beat();

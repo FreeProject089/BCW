@@ -21,9 +21,11 @@ export const api = {
   heartbeat: (data) => call('POST', '/bot/heartbeat', data).catch(() => {}),
   // Report a failed connection (surfaced in the admin dashboard so the cause is visible).
   reportError: (error) => call('POST', '/bot/heartbeat', { online: false, error }).catch(() => {}),
-  // Blog announcements: published posts not yet announced + mark them done.
-  blogUnannounced: () => call('GET', '/bot/blog/unannounced').then((r) => r.posts || []).catch(() => []),
-  blogMarkAnnounced: (ids) => call('POST', '/bot/blog/announced', { ids }).catch(() => {}),
+  // Blog announcements (multi-route): recent published posts (each tagged with its
+  // source key) + each channel's already-announced set, so the bot can post the
+  // right posts to the right channels. Marking done is per channel ({channelId,ids}).
+  blogSync: (channels) => call('POST', '/bot/blog/sync', { channels }).then((r) => ({ posts: r.posts || [], announcedByChannel: r.announcedByChannel || {} })).catch(() => ({ posts: [], announcedByChannel: {} })),
+  blogMarkAnnounced: (marks) => call('POST', '/bot/blog/announced', { marks }).catch(() => {}),
   // Server-perf alerts (CPU/RAM/disk/service-down) not yet posted + mark them done.
   alertsUnannounced: () => call('GET', '/bot/alerts/unannounced').then((r) => r.alerts || []).catch(() => []),
   alertsMarkAnnounced: (ids) => call('POST', '/bot/alerts/announced', { ids }).catch(() => {}),

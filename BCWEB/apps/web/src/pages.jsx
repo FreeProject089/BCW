@@ -4142,6 +4142,57 @@ function GatingRules({ rules, onChange }) {
   );
 }
 
+// Blog "sources" a route can subscribe to — mirrors the source keys the API tags
+// each post with (project key, or 'showcase' for Other-projects pages, or '*'=all).
+const BLOG_SOURCES = [['*', 'All blogs'], ['bmm', 'BMM'], ['bsm', 'BSM'], ['community', 'Community'], ['installer', 'Installer'], ['showcase', 'Other projects']];
+
+// Per-route editor for blog announcements: each route = a channel (in any server)
+// + which blogs to post there. A channel id is globally unique, so routing works
+// across every server the bot is in.
+function BlogRoutes({ routes, onChange, guildList }) {
+  const set = (i, patch) => onChange(routes.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+  const toggleSource = (i, key) => {
+    const cur = routes[i].sources || ['*'];
+    let next;
+    if (key === '*') next = ['*'];
+    else { next = cur.includes('*') ? [key] : cur.includes(key) ? cur.filter((s) => s !== key) : [...cur, key]; if (!next.length) next = ['*']; }
+    set(i, { sources: next });
+  };
+  return (
+    <div className="space-y-2">
+      {routes.length === 0 && <div className="text-xs text-[var(--faint)]">No routes — add one. Each route posts the chosen blogs to a channel (in any server the bot is in).</div>}
+      {routes.map((r, i) => {
+        const guild = guildList.find((gg) => gg.id === r.guildId);
+        return (
+          <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
+            <button onClick={() => onChange(routes.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-red-400"><Trash2 size={13} /></button>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">Route {i + 1}{guild ? ` · ${guild.name}` : ''}</div>
+            <Input value={r.channelId || ''} onChange={(e) => set(i, { channelId: e.target.value })} placeholder="Channel ID (in any server the bot is in)" />
+            {guildList.length > 0 && (
+              <Select className="!py-2" value={r.guildId || ''} onChange={(e) => set(i, { guildId: e.target.value })}>
+                <option value="">Server (optional — for your reference)</option>
+                {guildList.map((gg) => <option key={gg.id} value={gg.id}>{gg.name}</option>)}
+              </Select>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {BLOG_SOURCES.map(([key, label]) => {
+                const on = (r.sources || ['*']).includes(key);
+                return (
+                  <button key={key} type="button" onClick={() => toggleSource(i, key)}
+                    className={`px-2 py-0.5 rounded-md text-[11px] border transition ${on ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      <Button size="sm" variant="ghost" onClick={() => onChange([...routes, { channelId: '', guildId: '', sources: ['*'] }])}><Plus size={13} /> Add route</Button>
+    </div>
+  );
+}
+
 function AdminBot() {
   const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/admin/bot/config'), []);
@@ -4176,6 +4227,9 @@ function AdminBot() {
   );
   const g = (path) => path.split('.').reduce((o, k) => o?.[k], cfg) ?? '';
   const jtcLobbies = cfg.joinToCreate?.lobbies || (cfg.joinToCreate?.lobbyChannelId ? [{ lobbyChannelId: cfg.joinToCreate.lobbyChannelId, categoryId: cfg.joinToCreate.categoryId, tempCategoryName: cfg.joinToCreate.tempCategoryName }] : []);
+  // Blog announcement routes: the new list, or the legacy single channel as one all-sources route.
+  const blogRoutes = (cfg.blog?.routes?.length ? cfg.blog.routes : (cfg.blog?.channelId ? [{ channelId: cfg.blog.channelId, sources: ['*'] }] : []));
+  const guildList = status?.guildList || [];
   // Welcome preview: substitute the message variables with sample values.
   const previewMsg = (tpl) => (tpl || '').replace(/\{user\}/g, '@NewMember').replace(/\{username\}/g, 'NewMember').replace(/\{servername\}/g, 'BetterCommunity').replace(/\{joinnumber\}/g, '1,024').replace(/\{joindate\}/g, new Date().toDateString());
   return (
@@ -4278,9 +4332,11 @@ function AdminBot() {
         <Card className="p-4 space-y-2.5">
           <div className="font-medium text-sm mb-1">Blog announcements</div>
           <Toggle path="blog.enabled" label="Announce new blog posts" />
-          <Field label="Announcement channel id" hint="New published posts are sent there (title + excerpt + link). History is never re-posted.">
-            <Input value={g('blog.channelId')} onChange={(e) => set('blog.channelId', e.target.value)} placeholder="Channel ID" />
-          </Field>
+          <p className="text-xs text-[var(--muted)]">Add a route per channel and pick which blogs it receives — post BMM news to one server, Other-projects news to another, everything to a third. New published posts (title + excerpt + link + cover) are sent as they appear; history is never re-posted, and a new route never floods with old posts.</p>
+          {guildList.length > 0 && (
+            <div className="text-[11px] text-[var(--faint)]">In {guildList.length} server{guildList.length > 1 ? 's' : ''}: {guildList.map((gg) => gg.name).join(', ')}</div>
+          )}
+          <BlogRoutes routes={blogRoutes} onChange={(r) => set('blog.routes', r)} guildList={guildList} />
           <div className="font-medium text-sm mb-1" style={{ marginTop: 14 }}>Server-perf alerts</div>
           <Toggle path="alerts.enabled" label="Post CPU/RAM/disk/service-down alerts" />
           <Field label="Alerts channel id" hint="Fired thresholds (see the Server perf tab) are posted here as soon as the bot polls.">

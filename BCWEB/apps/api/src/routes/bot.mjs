@@ -25,8 +25,13 @@ const DEFAULT_BOT_CONFIG = {
   // by the bot when `rules` is empty, so old configs keep working.
   gating: { enabled: false, rules: [], requireBmm: false, requireDiscord: true, requireBcweb: true, roleId: '', channelIds: [] },
   // Blog announcements: when enabled, the bot posts new PUBLISHED blog posts
-  // (title + excerpt + link) to this channel.
-  blog: { enabled: false, channelId: '' },
+  // (title + excerpt + link + cover) to one or more routes. Each route targets a
+  // channel (in ANY server the bot is in — a channel id is globally unique) and a
+  // set of blog "sources" to include: '*' (all), a fixed project key (bmm/bsm/
+  // community/installer), or 'showcase' (every Other-projects page). The legacy
+  // single `channelId` is still honoured by the bot as an all-sources route so old
+  // configs keep working.
+  blog: { enabled: false, channelId: '', routes: [] },
   // Server-perf alerts (CPU/RAM/disk/service-down — see monitor.mjs): when
   // enabled, the bot posts each fired ServerAlertLog to this channel.
   alerts: { enabled: false, channelId: '' },
@@ -186,35 +191,79 @@ export default async function botRoutes(app) {
     return { config: await getBotConfig(await db()) };
   });
   // ── Blog announcements (bot ↔ API, shared secret) ──
-  // Which published posts haven't been announced yet. First call ever initialises
-  // the announced-set with EVERYTHING already published (so enabling the feature
-  // doesn't flood the channel with the whole blog history) and returns [].
-  app.get('/bot/blog/unannounced', async (req, reply) => {
+  // Multi-route: the bot posts the SAME post to several channels (across servers),
+  // each filtered to its own set of blog sources. Dedup is therefore tracked
+  // PER CHANNEL (bot.blogAnnounced.byChannel[channelId] = [postId…]) rather than
+  // globally, so a post can be new for one channel and already-sent for another.
+  //
+  // The bot sends the channel ids it currently routes to; we return the recent
+  // published posts (each tagged with its source key) plus each channel's
+  // already-announced set. A channel we've never seen is SEEDED with every current
+  // post id (and reported as fully-announced) so newly-added routes never flood
+  // with the whole back-catalogue — exactly the old single-channel behaviour, now
+  // per channel.
+  app.post('/bot/blog/sync', async (req, reply) => {
     if (!botAuth(req, reply)) return;
+    const b = z.object({ channels: z.array(z.string().max(40)).max(100).optional() }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const channels = [...new Set(b.data.channels || [])];
     const p = await db();
     const posts = await p.blogPost.findMany({
       where: { status: 'PUBLISHED', publishedAt: { not: null } },
       orderBy: { publishedAt: 'asc' },
-      select: { id: true, slug: true, title: true, excerpt: true, cover: true, publishedAt: true, project: { select: { name: true } }, author: { select: { displayName: true } } },
+      select: {
+        id: true, slug: true, title: true, excerpt: true, cover: true, publishedAt: true,
+        project: { select: { key: true, name: true, icon: true } },
+        showcaseProject: { select: { slug: true, name: true, icon: true } },
+        author: { select: { displayName: true } },
+      },
     });
+    const allIds = posts.map((x) => x.id);
     const row = await p.adminSetting.findUnique({ where: { key: 'bot.blogAnnounced' } });
-    if (!row) {
-      await p.adminSetting.create({ data: { key: 'bot.blogAnnounced', value: { ids: posts.map((x) => x.id) } } });
-      return { posts: [] };
+    const byChannel = { ...(row?.value?.byChannel || {}) };
+    let dirty = false;
+    const announcedByChannel = {};
+    for (const ch of channels) {
+      if (byChannel[ch] == null) {
+        // First time we've seen this channel → seed with everything currently
+        // published so a newly-added route never floods with the back-catalogue
+        // (mirrors the old single-channel "don't re-post history" behaviour).
+        byChannel[ch] = [...allIds];
+        dirty = true;
+      }
+      announcedByChannel[ch] = byChannel[ch];
     }
-    const seen = new Set(row.value?.ids || []);
+    if (dirty) {
+      await p.adminSetting.upsert({ where: { key: 'bot.blogAnnounced' }, create: { key: 'bot.blogAnnounced', value: { byChannel } }, update: { value: { byChannel } } });
+    }
     const siteUrl = (process.env.SITE_URL || 'http://localhost').replace(/\/+$/, '');
-    return { posts: posts.filter((x) => !seen.has(x.id)).slice(0, 5).map((x) => ({ ...x, url: `${siteUrl}/blog/${x.slug}` })) };
+    const out = posts.slice(-50).map((x) => ({
+      id: x.id, slug: x.slug, title: x.title, excerpt: x.excerpt, cover: x.cover, publishedAt: x.publishedAt,
+      url: `${siteUrl}/blog/${x.slug}`,
+      // Source key used by the bot to match a route's `sources` filter.
+      source: x.project?.key || (x.showcaseProject ? 'showcase' : 'community'),
+      space: { name: x.project?.name || x.showcaseProject?.name || 'BetterCommunity', icon: x.project?.icon || x.showcaseProject?.icon || null },
+      project: x.project ? { name: x.project.name } : null,
+      author: x.author,
+    }));
+    return { posts: out, announcedByChannel };
   });
 
+  // Mark posts as announced, per channel. Accepts a batch of {channelId, ids} marks.
   app.post('/bot/blog/announced', async (req, reply) => {
     if (!botAuth(req, reply)) return;
-    const b = z.object({ ids: z.array(z.string().max(64)).min(1).max(50) }).safeParse(req.body);
+    const b = z.object({
+      marks: z.array(z.object({ channelId: z.string().max(40), ids: z.array(z.string().max(64)).max(50) })).max(100),
+    }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: 'bot.blogAnnounced' } });
-    const ids = [...new Set([...(row?.value?.ids || []), ...b.data.ids])].slice(-500);
-    await p.adminSetting.upsert({ where: { key: 'bot.blogAnnounced' }, create: { key: 'bot.blogAnnounced', value: { ids } }, update: { value: { ids } } });
+    const byChannel = { ...(row?.value?.byChannel || {}) };
+    for (const m of b.data.marks) {
+      if (!m.ids.length) continue;
+      byChannel[m.channelId] = [...new Set([...(byChannel[m.channelId] || []), ...m.ids])].slice(-500);
+    }
+    await p.adminSetting.upsert({ where: { key: 'bot.blogAnnounced' }, create: { key: 'bot.blogAnnounced', value: { byChannel } }, update: { value: { byChannel } } });
     return { ok: true };
   });
 
@@ -262,6 +311,9 @@ export default async function botRoutes(app) {
     if (!botAuth(req, reply)) return;
     const b = z.object({
       uptimeSec: z.number().optional(), guilds: z.number().optional(), users: z.number().optional(), tempChannels: z.number().optional(), version: z.string().optional(), online: z.boolean().optional(), error: z.string().max(300).optional(),
+      // The servers the bot is currently in (id + name) — lets the admin pick a
+      // target server when configuring per-server blog routes.
+      guildList: z.array(z.object({ id: z.string().max(32), name: z.string().max(120) })).max(200).optional(),
       ping: z.number().nullable().optional(), // gateway latency (ms)
       mod: z.object({ kicks: z.number().optional(), timeouts: z.number().optional(), purged: z.number().optional() }).optional(), // since-restart moderation counters
     }).safeParse(req.body || {});
