@@ -60,11 +60,15 @@ function devGeoSample(seed) {
 // DEV MACHINE's own public IP once (cached 1h) and geolocate THAT — so localhost traffic
 // shows the developer's real location (real data), not a made-up sample city.
 let _devPubGeo = { at: 0, val: undefined };
-async function devRealGeo() {
+let _devGeoInflight = null;
+function devRealGeo() {
   // Keep a successful lookup for an hour; retry a failed one after 5 min (so a cold-start
   // timeout doesn't wedge us on the sample fallback for a whole hour).
   const ttl = _devPubGeo.val ? 3600e3 : 5 * 60e3;
-  if (_devPubGeo.val !== undefined && Date.now() - _devPubGeo.at < ttl) return _devPubGeo.val;
+  if (_devPubGeo.val !== undefined && Date.now() - _devPubGeo.at < ttl) return Promise.resolve(_devPubGeo.val);
+  // Collapse concurrent callers onto ONE outbound lookup (no thundering herd of fetches).
+  if (_devGeoInflight) return _devGeoInflight;
+  _devGeoInflight = (async () => {
   let val = null;
   for (const url of ['https://api.ipify.org', 'https://ifconfig.me/ip']) {
     try {
@@ -80,6 +84,8 @@ async function devRealGeo() {
   }
   _devPubGeo = { at: Date.now(), val };
   return val;
+  })().finally(() => { _devGeoInflight = null; });
+  return _devGeoInflight;
 }
 
 async function geoOf(req) {
@@ -153,7 +159,7 @@ export default async function analyticsRoutes(app) {
     };
   };
 
-  app.post('/analytics/pageview', async (req, reply) => {
+  app.post('/analytics/pageview', { config: { rateLimit: { max: 240, timeWindow: '1 minute' } } }, async (req, reply) => {
     const b = z.object({ path: z.string().max(300), ref: z.string().max(300).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid' });
     const p = await db();
@@ -168,7 +174,10 @@ export default async function analyticsRoutes(app) {
   // recording grows without a read-modify-write. Per-session byte cap protects the store;
   // the global cap (hosting.siteReplayStorageMB) is enforced by the sweeper.
   const REPLAY_SESSION_CAP = 8 * 1024 * 1024; // 8 MB of events per session, then stop appending
-  app.post('/analytics/replay', async (req, reply) => {
+  // Replay chunks are the heaviest write (rrweb event batches) — cap them per-IP well
+  // below the global limit so a client can't flood the store (CWE-770). A legit recorder
+  // flushes every 5s (~12/min per tab); 180/min leaves plenty of headroom for many tabs.
+  app.post('/analytics/replay', { config: { rateLimit: { max: 180, timeWindow: '1 minute' } } }, async (req, reply) => {
     const b = z.object({
       sessionKey: z.string().min(8).max(64),
       seq: z.number().int().nonnegative(),
@@ -214,7 +223,7 @@ export default async function analyticsRoutes(app) {
   // Real-user Web Vitals sample (one metric per call, sent by the web-vitals client on
   // page unload). Best-effort, unauthenticated (same trust model as pageviews) — bounded
   // by strict validation so it can't be used to inject arbitrary metrics.
-  app.post('/analytics/vital', async (req, reply) => {
+  app.post('/analytics/vital', { config: { rateLimit: { max: 240, timeWindow: '1 minute' } } }, async (req, reply) => {
     const b = z.object({
       path: z.string().max(300),
       metric: z.enum(['LCP', 'CLS', 'INP', 'FCP', 'TTFB']),
