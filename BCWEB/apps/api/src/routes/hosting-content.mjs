@@ -85,22 +85,46 @@ function sandboxGate(repo, req, reply, policies, identity) {
   }
   return true;
 }
-// Paces a byte stream to at most `kbps` kilobits/second (sandbox bandwidth shaping).
-export function throttle(kbps) {
-  const bytesPerSec = Math.max(1, kbps * 128); // kbps*1000/8 ≈ kbps*128
-  const slices = 20; const perSlice = Math.max(1, Math.floor(bytesPerSec / slices));
+// Paces a byte stream. `rate` is either a fixed kbps or a GETTER `() => kbps` that's
+// re-read on every slice — so an in-flight download re-paces live as the smart governor
+// (below) opens or closes the burst window. kbps <= 0 from the getter = full speed.
+export function throttle(rate) {
+  const getKbps = typeof rate === 'function' ? rate : () => rate;
+  const slices = 20;
   return new Transform({
     transform(chunk, _enc, cb) {
       let off = 0;
       const pump = () => {
         if (off >= chunk.length) return cb();
+        const kbps = getKbps();
+        const perSlice = kbps > 0 ? Math.max(1, Math.floor((kbps * 128) / slices)) : chunk.length; // <=0 → flush the rest at once
         const end = Math.min(off + perSlice, chunk.length);
         this.push(chunk.subarray(off, end)); off = end;
+        if (off >= chunk.length) return cb();
         setTimeout(pump, 1000 / slices);
       };
       pump();
     },
   });
+}
+
+// ── Smart, burstable bandwidth sharing ──
+// A repo's upload cap is a FLOOR it's guaranteed, not a ceiling it's stuck at: when the
+// server is quiet (few concurrent transfers) a repo may burst to cap × burstFactor —
+// borrowing the idle capacity — and it tightens back to its plain cap as more transfers
+// contend. So the server/repos share smartly: idle → everyone goes faster; busy → each
+// repo is held to what it pays for. `hosting.burstFactor` / `hosting.burstUntilActive`
+// are admin-tunable (0/1 disables bursting).
+let activeTransfers = 0;
+let _burst = { factor: 4, until: 3, at: 0 };
+async function getBurst(p) {
+  if (Date.now() - _burst.at < 30_000) return _burst;
+  try {
+    const rows = await p.adminSetting.findMany({ where: { key: { in: ['hosting.burstFactor', 'hosting.burstUntilActive'] } } });
+    const m = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    _burst = { factor: Math.max(1, Number(m['hosting.burstFactor'] ?? 4)), until: Math.max(0, Number(m['hosting.burstUntilActive'] ?? 3)), at: Date.now() };
+  } catch { _burst.at = Date.now(); }
+  return _burst;
 }
 
 async function ownHosted(p, id, user) {
@@ -343,10 +367,18 @@ export default async function hostingContentRoutes(app) {
       // Force a non-executable content type (never serve as HTML/JS).
       const ct = file.path.endsWith('.json') ? 'application/json' : 'application/octet-stream';
       reply.header('Content-Type', ct).header('Content-Disposition', 'attachment');
-      // Serve at the sandbox bandwidth cap — the owner cannot exceed it.
-      const kbps = effKbps(repo);
-      reply.header('X-Sandbox-Upload-Kbps', String(kbps));
-      return reply.send(kbps > 0 ? body.pipe(throttle(kbps)) : body);
+      const cap = effKbps(repo);
+      if (cap <= 0) return reply.send(body); // uncapped repo → full speed, no governor
+      // Smart sharing: burst above the cap while the server is quiet, tighten under load.
+      const burst = await getBurst(p);
+      activeTransfers++;
+      let closed = false;
+      const done = () => { if (!closed) { closed = true; activeTransfers = Math.max(0, activeTransfers - 1); } };
+      reply.raw.on('close', done); reply.raw.on('finish', done);
+      const getKbps = () => (activeTransfers <= burst.until ? Math.round(cap * burst.factor) : cap);
+      reply.header('X-Sandbox-Upload-Kbps', String(cap));
+      reply.header('X-Sandbox-Burst', String(activeTransfers <= burst.until ? burst.factor : 1));
+      return reply.send(body.pipe(throttle(getKbps)));
     } catch { return reply.code(404).send({ error: 'not_found' }); }
   });
 }
