@@ -79,6 +79,14 @@ export default async function serverPerfRoutes(app) {
       where: { hosted: true }, orderBy: { cpuShare: 'desc' }, take: 300,
       select: { id: true, name: true, status: true, cpuShare: true, uploadLimitKbps: true, storageQuotaBytes: true, storageUsedBytes: true, owner: { select: { displayName: true } } },
     });
+    // The per-repo plan ceilings (admin-set) — used client-side to draw the CPU /
+    // upload bars as "share of the maximum a single repo may request", which is
+    // meaningful even when every repo is on the same plan (unlike a bar relative to
+    // the current largest repo, which would then always read 100%).
+    const ceilRows = await p.adminSetting.findMany({ where: { key: { in: ['hosting.maxCpuShare', 'hosting.maxUploadMbps'] } } });
+    const ceil = Object.fromEntries(ceilRows.map((r) => [r.key, Number(r.value)]));
+    const maxCpuShare = Number.isFinite(ceil['hosting.maxCpuShare']) && ceil['hosting.maxCpuShare'] > 0 ? ceil['hosting.maxCpuShare'] : 8;
+    const maxUploadMbps = Number.isFinite(ceil['hosting.maxUploadMbps']) && ceil['hosting.maxUploadMbps'] > 0 ? ceil['hosting.maxUploadMbps'] : 1000;
     const repoAllocations = {
       repos: hostedRepos.map((r) => ({
         id: r.id, name: r.name, owner: r.owner?.displayName, status: r.status,
@@ -88,6 +96,7 @@ export default async function serverPerfRoutes(app) {
       totalCpuShare: +hostedRepos.reduce((a, r) => a + (r.cpuShare || 0), 0).toFixed(2),
       totalUploadMbps: +hostedRepos.reduce((a, r) => a + (r.uploadLimitKbps || 0) / 1024, 0).toFixed(1),
       hostCpuCores: os.cpus().length,
+      maxCpuShare, maxUploadMbps,
     };
     // Current cumulative network counters — the client diffs these between its 30s
     // refreshes to show a LIVE download/upload rate (the sampled history is tick-average).

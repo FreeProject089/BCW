@@ -2561,8 +2561,11 @@ function AdminServerPerf() {
         const ra = data?.repoAllocations;
         if (!ra?.repos?.length) return null;
         const over = ra.totalCpuShare > ra.hostCpuCores;
-        const maxCpu = Math.max(0.1, ...ra.repos.map((r) => r.cpuShare || 0));
-        const maxUp = Math.max(0.1, ...ra.repos.map((r) => r.uploadMbps || 0));
+        // Bars are drawn as a share of the per-repo PLAN CEILING (admin-set max a
+        // single repo may request), so they're meaningful even when every repo is on
+        // the same plan — unlike relative-to-largest, which would always read 100%.
+        const maxCpu = Math.max(0.1, ra.maxCpuShare || 8);
+        const maxUp = Math.max(0.1, ra.maxUploadMbps || 1000);
         return (
           <Card className="p-4 mb-4">
             <button onClick={() => toggleSec('alloc')} className="w-full flex items-center justify-between gap-2 mb-1 flex-wrap text-left">
@@ -2575,23 +2578,45 @@ function AdminServerPerf() {
               </span>
             </button>
             {sec.alloc && <>
-              <div className="text-[11px] text-[var(--faint)] mb-2.5">{t('sp.alloc.note', 'Allocated by each repo\'s plan — not live CPU usage (hosted repos aren\'t isolated processes yet).')}{over ? ' ' + t('sp.alloc.over', 'vCPU is over-committed vs the host core count.') : ''}</div>
-              <div className="max-h-80 overflow-auto -mx-1 px-1 space-y-2">
+              <div className="text-[11px] text-[var(--faint)] mb-2">{t('sp.alloc.note', 'Allocated by each repo\'s plan — not live CPU usage (hosted repos aren\'t isolated processes yet).')}{over ? ' ' + t('sp.alloc.over', 'vCPU is over-committed vs the host core count.') : ''}</div>
+              {/* Legend explaining what the three bars mean. */}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-[var(--faint)] mb-2.5">
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-orange-500" /> {t('sp.alloc.cpuh', 'CPU reserved')}</span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-sky-500" /> {t('sp.alloc.uph', 'Upload reserved')}</span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" /> {t('sp.alloc.stoh', 'Storage used')}</span>
+                <span className="text-[var(--faint)]/80">{t('sp.alloc.legend', 'CPU & Upload bars = share of the per-repo maximum; Storage = used vs quota.')}</span>
+              </div>
+              <div className="max-h-96 overflow-auto -mx-1 px-1 space-y-2">
                 {ra.repos.map((r) => {
                   const stoUsed = r.storageQuotaBytes ? Math.min(100, (r.storageUsedBytes / r.storageQuotaBytes) * 100) : 0;
                   const stoTone = stoUsed >= 90 ? '#f87171' : stoUsed >= 70 ? '#f59e0b' : '#34d399';
+                  const bar = (pct, color) => <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1"><div className="h-full rounded-full" style={{ width: `${Math.max(2, Math.min(100, pct))}%`, background: color }} /></div>;
                   return (
-                    <div key={r.id} className="rounded-lg border border-[var(--line)] px-3 py-2">
-                      <div className="flex items-center gap-2 mb-1.5 min-w-0">
+                    <div key={r.id} className="rounded-lg border border-[var(--line)] px-3 py-2.5">
+                      <div className="flex items-center gap-2 mb-2 min-w-0">
                         <span className="font-medium truncate">{r.name}</span>
                         <span className="text-[var(--faint)] text-xs truncate">· {r.owner}</span>
                         {r.status !== 'ONLINE' && <Badge tone={r.status === 'SUSPENDED' ? 'red' : ''}>{r.status}</Badge>}
-                        <span className="ml-auto text-xs text-[var(--muted)] tabular-nums shrink-0">{r.cpuShare} vCPU · {r.uploadMbps} Mbps</span>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-[10px] text-[var(--faint)]">
-                        <div><div className="flex justify-between"><span>CPU</span></div><div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-0.5"><div className="h-full bg-orange-500" style={{ width: `${(r.cpuShare / maxCpu) * 100}%` }} /></div></div>
-                        <div><div className="flex justify-between"><span>{t('sp.upload', 'Upload')}</span></div><div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-0.5"><div className="h-full bg-sky-500" style={{ width: `${(r.uploadMbps / maxUp) * 100}%` }} /></div></div>
-                        <div><div className="flex justify-between"><span>{t('sp.storage', 'Storage')}</span><span className="tabular-nums">{fmtBytes(r.storageUsedBytes)}/{fmtBytes(r.storageQuotaBytes)}</span></div><div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-0.5"><div className="h-full" style={{ width: `${stoUsed}%`, background: stoTone }} /></div></div>
+                      <div className="grid grid-cols-3 gap-3 text-[10px]">
+                        {/* CPU reserved — value + share of the per-repo ceiling */}
+                        <div>
+                          <div className="flex items-baseline justify-between gap-1"><span className="text-[var(--muted)]">{t('sp.cpu', 'CPU')}</span><span className="tabular-nums font-medium text-[var(--text)]">{r.cpuShare} <span className="text-[var(--faint)] font-normal">vCPU</span></span></div>
+                          {bar((r.cpuShare / maxCpu) * 100, '#f97316')}
+                          <div className="text-[9px] text-[var(--faint)] mt-0.5">{t('sp.alloc.ofmax', 'of {n} max').replace('{n}', maxCpu)}</div>
+                        </div>
+                        {/* Upload reserved */}
+                        <div>
+                          <div className="flex items-baseline justify-between gap-1"><span className="text-[var(--muted)]">{t('sp.upload', 'Upload')}</span><span className="tabular-nums font-medium text-[var(--text)]">{r.uploadMbps} <span className="text-[var(--faint)] font-normal">Mbps</span></span></div>
+                          {bar((r.uploadMbps / maxUp) * 100, '#0ea5e9')}
+                          <div className="text-[9px] text-[var(--faint)] mt-0.5">{t('sp.alloc.ofmax', 'of {n} max').replace('{n}', maxUp)}</div>
+                        </div>
+                        {/* Storage used vs quota */}
+                        <div>
+                          <div className="flex items-baseline justify-between gap-1"><span className="text-[var(--muted)]">{t('sp.storage', 'Storage')}</span><span className="tabular-nums font-medium text-[var(--text)]">{fmtBytes(r.storageUsedBytes)}<span className="text-[var(--faint)] font-normal">/{fmtBytes(r.storageQuotaBytes)}</span></span></div>
+                          {bar(stoUsed, stoTone)}
+                          <div className="text-[9px] text-[var(--faint)] mt-0.5">{stoUsed < 0.5 ? t('sp.alloc.empty', 'empty') : t('sp.alloc.pctused', '{n}% used').replace('{n}', stoUsed.toFixed(0))}</div>
+                        </div>
                       </div>
                     </div>
                   );
@@ -2664,7 +2689,7 @@ function AdminServerPerf() {
           <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">{t('sp.alerts', 'Recent alerts')}{(alerts.data?.alerts || []).length ? <span className="text-[var(--muted)] normal-case tracking-normal">· {alerts.data.alerts.length}</span> : null}</h3>
           <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.alerts ? '' : '-rotate-90'}`} />
         </button>
-        {sec.alerts && (alerts.loading ? <Loading /> : (alerts.data?.alerts || []).length ? <div className="space-y-1.5">
+        {sec.alerts && (alerts.loading ? <Loading /> : (alerts.data?.alerts || []).length ? <div className="space-y-1.5 max-h-96 overflow-auto pr-1 -mr-1">
           {alerts.data.alerts.map((a) => <AlertRow key={a.id} a={a} />)}
         </div> : <EmptyState icon={CheckCircle2} title={t('sp.alerts.none', 'No alerts')} sub={t('sp.alerts.nonesub', 'Nothing has crossed a threshold yet.')} />)}
       </div>
@@ -5514,17 +5539,20 @@ function AnnouncementSection({ value, onChange }) {
 // A recent server alert — click to expand its full detail (kind, what it means,
 // the complete message, and the exact + relative time). The stored alert is just
 // { kind, message, createdAt }, so "detail" = the human-readable expansion of that.
+// i18n keys per alert kind — resolved in AlertRow (a module const can't call the hook).
 const ALERT_KIND = {
-  cpu: { label: 'High CPU', desc: 'CPU usage crossed the alert threshold (>90%).', tone: 'text-amber-400' },
-  mem: { label: 'High memory', desc: 'Memory usage crossed the alert threshold (>90%).', tone: 'text-amber-400' },
-  disk: { label: 'Low disk', desc: 'Disk usage crossed the alert threshold (>90%).', tone: 'text-red-400' },
-  service_down: { label: 'Service unreachable', desc: 'A dependency (DB, storage, bot, Stripe…) failed its health check.', tone: 'text-red-400' },
+  cpu: { l: 'sp.al.cpu', lf: 'High CPU', d: 'sp.al.cpu.d', df: 'CPU usage crossed the alert threshold (>90%).', tone: 'text-amber-400' },
+  mem: { l: 'sp.al.mem', lf: 'High memory', d: 'sp.al.mem.d', df: 'Memory usage crossed the alert threshold (>90%).', tone: 'text-amber-400' },
+  disk: { l: 'sp.al.disk', lf: 'Low disk', d: 'sp.al.disk.d', df: 'Disk usage crossed the alert threshold (>90%).', tone: 'text-red-400' },
+  service_down: { l: 'sp.al.svc', lf: 'Service unreachable', d: 'sp.al.svc.d', df: 'A dependency (DB, storage, bot, Stripe…) failed its health check.', tone: 'text-red-400' },
 };
 function AlertRow({ a }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const info = ALERT_KIND[a.kind] || { label: a.kind, desc: 'Threshold alert.', tone: 'text-red-400' };
+  const k = ALERT_KIND[a.kind];
+  const info = k ? { label: t(k.l, k.lf), desc: t(k.d, k.df), tone: k.tone } : { label: a.kind, desc: t('sp.al.generic', 'Threshold alert.'), tone: 'text-red-400' };
   const when = new Date(a.createdAt);
-  const ago = (() => { const s = Math.max(0, (Date.now() - when.getTime()) / 1000); if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s / 60)}m ago`; if (s < 86400) return `${Math.floor(s / 3600)}h ago`; return `${Math.floor(s / 86400)}d ago`; })();
+  const ago = (() => { const s = Math.max(0, (Date.now() - when.getTime()) / 1000); if (s < 60) return t('sp.ago.now', 'just now'); if (s < 3600) return t('sp.ago.m', '{n}m ago').replace('{n}', Math.floor(s / 60)); if (s < 86400) return t('sp.ago.h', '{n}h ago').replace('{n}', Math.floor(s / 3600)); return t('sp.ago.d', '{n}d ago').replace('{n}', Math.floor(s / 86400)); })();
   return (
     <Card className="p-0 overflow-hidden">
       <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-3 text-left hover:bg-[var(--surface-2)] transition">
@@ -5538,8 +5566,8 @@ function AlertRow({ a }) {
           <div className="text-[var(--muted)]">{info.desc}</div>
           <div className="rounded-lg bg-[var(--surface-2)] border border-[var(--line)] p-2.5 font-mono text-xs text-[var(--text)] whitespace-pre-wrap break-words">{a.message}</div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--faint)]">
-            <span>Kind: <code className="text-[var(--muted)]">{a.kind}</code></span>
-            <span>When: {when.toLocaleString()}</span>
+            <span>{t('sp.al.kindlbl', 'Kind:')} <code className="text-[var(--muted)]">{a.kind}</code></span>
+            <span>{t('sp.al.whenlbl', 'When:')} {when.toLocaleString()}</span>
             <span>{ago}</span>
           </div>
         </div>
