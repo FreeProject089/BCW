@@ -2424,6 +2424,8 @@ function AdminServerPerf() {
   // Live network rate: diff the cumulative rx/tx byte counters between two 30s refreshes.
   const netPrevRef = useRef(null);
   const [liveNet, setLiveNet] = useState({ rx: null, tx: null });
+  const [sec, setSec] = useState({ alloc: true, downtime: true, alerts: true }); // collapsible sections
+  const toggleSec = (k) => setSec((s) => ({ ...s, [k]: !s[k] }));
   useEffect(() => {
     const cur = data?.net; if (!cur) return;
     const prev = netPrevRef.current;
@@ -2553,32 +2555,43 @@ function AdminServerPerf() {
         const ra = data?.repoAllocations;
         if (!ra?.repos?.length) return null;
         const over = ra.totalCpuShare > ra.hostCpuCores;
+        const maxCpu = Math.max(0.1, ...ra.repos.map((r) => r.cpuShare || 0));
+        const maxUp = Math.max(0.1, ...ra.repos.map((r) => r.uploadMbps || 0));
         return (
           <Card className="p-4 mb-4">
-            <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Cpu size={13} className="text-[var(--primary-2)]" /> {t('sp.alloc', 'Per-repo allocation')}</span>
-              <span className="text-[11px] tabular-nums text-[var(--muted)]">
-                <b className={over ? 'text-amber-400' : 'text-[var(--text)]'}>{ra.totalCpuShare}</b> {t('sp.alloc.summary', 'vCPU allocated across {n} repo(s) · host has {c} core(s) · {u} Mbps total').replace('{n}', ra.repos.length).replace('{c}', ra.hostCpuCores).replace('{u}', ra.totalUploadMbps)}
+            <button onClick={() => toggleSec('alloc')} className="w-full flex items-center justify-between gap-2 mb-1 flex-wrap text-left">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Cpu size={13} className="text-[var(--primary-2)]" /> {t('sp.alloc', 'Per-repo allocation')} <span className="text-[var(--muted)] normal-case tracking-normal">· {ra.repos.length}</span></span>
+              <span className="flex items-center gap-2">
+                <span className="text-[11px] tabular-nums text-[var(--muted)] hidden sm:inline">
+                  <b className={over ? 'text-amber-400' : 'text-[var(--text)]'}>{ra.totalCpuShare}</b> {t('sp.alloc.summary', 'vCPU allocated across {n} repo(s) · host has {c} core(s) · {u} Mbps total').replace('{n}', ra.repos.length).replace('{c}', ra.hostCpuCores).replace('{u}', ra.totalUploadMbps)}
+                </span>
+                <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.alloc ? '' : '-rotate-90'}`} />
               </span>
-            </div>
-            <div className="text-[11px] text-[var(--faint)] mb-2.5">{t('sp.alloc.note', 'Allocated by each repo\'s plan — not live CPU usage (hosted repos aren\'t isolated processes yet).')}{over ? ' ' + t('sp.alloc.over', 'vCPU is over-committed vs the host core count.') : ''}</div>
-            <div className="max-h-72 overflow-auto -mx-1 px-1">
-              <table className="w-full text-sm">
-                <thead className="text-[11px] uppercase tracking-wide text-[var(--faint)] text-left"><tr>
-                  <th className="font-medium py-1">{t('sp.repo', 'Repo')}</th><th className="font-medium py-1 text-right">CPU</th><th className="font-medium py-1 text-right">{t('sp.upload', 'Upload')}</th><th className="font-medium py-1 text-right">{t('sp.storage', 'Storage')}</th>
-                </tr></thead>
-                <tbody className="divide-y divide-[var(--line)]">
-                  {ra.repos.map((r) => (
-                    <tr key={r.id}>
-                      <td className="py-1.5 pr-2 min-w-0"><div className="truncate">{r.name} <span className="text-[var(--faint)] text-xs">· {r.owner}</span> {r.status !== 'ONLINE' && <Badge tone={r.status === 'SUSPENDED' ? 'red' : ''}>{r.status}</Badge>}</div></td>
-                      <td className="py-1.5 text-right tabular-nums whitespace-nowrap">{r.cpuShare} <span className="text-[var(--faint)] text-xs">vCPU</span></td>
-                      <td className="py-1.5 text-right tabular-nums whitespace-nowrap">{r.uploadMbps} <span className="text-[var(--faint)] text-xs">Mbps</span></td>
-                      <td className="py-1.5 text-right tabular-nums whitespace-nowrap text-[var(--muted)]">{fmtBytes(r.storageUsedBytes)} / {fmtBytes(r.storageQuotaBytes)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            </button>
+            {sec.alloc && <>
+              <div className="text-[11px] text-[var(--faint)] mb-2.5">{t('sp.alloc.note', 'Allocated by each repo\'s plan — not live CPU usage (hosted repos aren\'t isolated processes yet).')}{over ? ' ' + t('sp.alloc.over', 'vCPU is over-committed vs the host core count.') : ''}</div>
+              <div className="max-h-80 overflow-auto -mx-1 px-1 space-y-2">
+                {ra.repos.map((r) => {
+                  const stoUsed = r.storageQuotaBytes ? Math.min(100, (r.storageUsedBytes / r.storageQuotaBytes) * 100) : 0;
+                  const stoTone = stoUsed >= 90 ? '#f87171' : stoUsed >= 70 ? '#f59e0b' : '#34d399';
+                  return (
+                    <div key={r.id} className="rounded-lg border border-[var(--line)] px-3 py-2">
+                      <div className="flex items-center gap-2 mb-1.5 min-w-0">
+                        <span className="font-medium truncate">{r.name}</span>
+                        <span className="text-[var(--faint)] text-xs truncate">· {r.owner}</span>
+                        {r.status !== 'ONLINE' && <Badge tone={r.status === 'SUSPENDED' ? 'red' : ''}>{r.status}</Badge>}
+                        <span className="ml-auto text-xs text-[var(--muted)] tabular-nums shrink-0">{r.cpuShare} vCPU · {r.uploadMbps} Mbps</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-[10px] text-[var(--faint)]">
+                        <div><div className="flex justify-between"><span>CPU</span></div><div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-0.5"><div className="h-full bg-orange-500" style={{ width: `${(r.cpuShare / maxCpu) * 100}%` }} /></div></div>
+                        <div><div className="flex justify-between"><span>{t('sp.upload', 'Upload')}</span></div><div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-0.5"><div className="h-full bg-sky-500" style={{ width: `${(r.uploadMbps / maxUp) * 100}%` }} /></div></div>
+                        <div><div className="flex justify-between"><span>{t('sp.storage', 'Storage')}</span><span className="tabular-nums">{fmtBytes(r.storageUsedBytes)}/{fmtBytes(r.storageQuotaBytes)}</span></div><div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-0.5"><div className="h-full" style={{ width: `${stoUsed}%`, background: stoTone }} /></div></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>}
           </Card>
         );
       })()}
@@ -2611,7 +2624,11 @@ function AdminServerPerf() {
 
       {downtime.length > 0 && (
         <Card className="p-4 mb-4">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1.5"><AlertTriangle size={11} /> {t('sp.downtime', 'Downtime history')}</div>
+          <button onClick={() => toggleSec('downtime')} className="w-full flex items-center justify-between text-left mb-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><AlertTriangle size={11} /> {t('sp.downtime', 'Downtime history')} <span className="text-[var(--muted)] normal-case tracking-normal">· {downtime.length}</span></span>
+            <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.downtime ? '' : '-rotate-90'}`} />
+          </button>
+          {sec.downtime && <>
           <p className="text-[11px] text-[var(--faint)] mb-3">{t('sp.downtime.note', 'Periods where the server stopped reporting — i.e. it was most likely down or restarting.')}</p>
           <div className="space-y-2">
             {downtime.map((d, i) => {
@@ -2632,14 +2649,18 @@ function AdminServerPerf() {
               );
             })}
           </div>
+          </>}
         </Card>
       )}
 
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('sp.alerts', 'Recent alerts')}</h3>
-        {alerts.loading ? <Loading /> : (alerts.data?.alerts || []).length ? <div className="space-y-1.5">
+        <button onClick={() => toggleSec('alerts')} className="w-full flex items-center justify-between text-left mb-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">{t('sp.alerts', 'Recent alerts')}{(alerts.data?.alerts || []).length ? <span className="text-[var(--muted)] normal-case tracking-normal">· {alerts.data.alerts.length}</span> : null}</h3>
+          <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.alerts ? '' : '-rotate-90'}`} />
+        </button>
+        {sec.alerts && (alerts.loading ? <Loading /> : (alerts.data?.alerts || []).length ? <div className="space-y-1.5">
           {alerts.data.alerts.map((a) => <AlertRow key={a.id} a={a} />)}
-        </div> : <EmptyState icon={CheckCircle2} title={t('sp.alerts.none', 'No alerts')} sub={t('sp.alerts.nonesub', 'Nothing has crossed a threshold yet.')} />}
+        </div> : <EmptyState icon={CheckCircle2} title={t('sp.alerts.none', 'No alerts')} sub={t('sp.alerts.nonesub', 'Nothing has crossed a threshold yet.')} />)}
       </div>
     </div>
   );
@@ -4861,7 +4882,7 @@ function AnalyticsMap({ points, choropleth, infoByName, height = 420 }) {
   const ptSig = (points || []).map((p) => `${p.lat},${p.lng},${p.color},${p.avatarSeed || ''}`).join('|');
   const chSig = (choropleth || []).map((c) => `${c.cc}:${c.count}`).join('|');
   const stablePts = useMemo(() => points || [], [ptSig]); // eslint-disable-line
-  const empty = choropleth ? !choropleth.length : !stablePts.length;
+  const empty = choropleth ? (!choropleth.length && !stablePts.length) : !stablePts.length;
 
   useEffect(() => {
     let disposed = false;
@@ -4930,7 +4951,7 @@ function AnalyticsMap({ points, choropleth, infoByName, height = 420 }) {
   // Markers (sessions): a Boring-Avatar pin when avatarSeed is set, else a coloured dot.
   useEffect(() => {
     const map = mapRef.current, maplibregl = mlRef.current;
-    if (!map || !maplibregl || !ready || choropleth) return;
+    if (!map || !maplibregl || !ready) return; // markers render alongside a choropleth too
     markersRef.current.forEach((m) => { try { m.root?.unmount(); } catch {} try { m.marker.remove(); } catch {} });
     markersRef.current = [];
     for (const p of stablePts) {
@@ -4990,9 +5011,16 @@ function GeoMap({ days, hours, height = 420 }) {
     // eslint-disable-next-line
   }, [data]);
   const rmax = Math.max(1, ...regions.map((r) => r.count));
+  const cmax = Math.max(1, ...countries.map((c) => c.count));
   const regionBubbles = useMemo(() => regions.filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng)).map((r) => ({
     lat: r.lat, lng: r.lng, size: 9 + Math.sqrt(r.count / rmax) * 26, color: 'rgba(52,211,153,.85)',
     info: { cc: r.cc, label: r.region, count: r.count, share: shareOf(r.count), delta: deltaOf(r.count, r.prev) },
+  })), [data]); // eslint-disable-line
+  // Country bubbles (a labelled dot per country at its avg coords) shown ON TOP of the
+  // choropleth, so the data is always visible even where the fill is faint.
+  const countryBubbles = useMemo(() => countries.filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lng)).map((c) => ({
+    lat: c.lat, lng: c.lng, size: 10 + Math.sqrt(c.count / cmax) * 24, color: 'rgba(52,211,153,.9)',
+    info: { cc: c.cc, label: countryName(c.cc), count: c.count, share: shareOf(c.count), delta: deltaOf(c.count, c.prev) },
   })), [data]); // eslint-disable-line
   return (
     <div>
@@ -5005,7 +5033,7 @@ function GeoMap({ days, hours, height = 420 }) {
         <span className="text-[11px] text-[var(--faint)]">{t('an.geo.hint', 'Hover an area for its share of traffic + change vs the previous period.')}</span>
       </div>
       {level === 'country'
-        ? <AnalyticsMap choropleth={countries} infoByName={infoByName} height={height} />
+        ? <AnalyticsMap choropleth={countries} points={countryBubbles} infoByName={infoByName} height={height} />
         : <AnalyticsMap points={regionBubbles} height={height} />}
     </div>
   );
