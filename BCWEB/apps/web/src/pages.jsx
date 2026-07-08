@@ -4585,42 +4585,6 @@ function Sparkline({ data, className = '', stroke = 'var(--primary)' }) {
   );
 }
 
-// Equirectangular bubble world map: a flag bubble per country, sized by traffic, over a
-// light lat/long graticule. Coordinates come from COUNTRY_CENTROIDS; unknown codes are
-// skipped on the map (they still list below).
-function WorldBubbleMap({ countries }) {
-  const [hover, setHover] = useState(null);
-  const W = 360, H = 180;
-  const pts = countries.map((c) => ({ ...c, ll: COUNTRY_CENTROIDS[String(c.label).toUpperCase()] })).filter((c) => c.ll);
-  const max = Math.max(1, ...pts.map((c) => c.count));
-  const proj = (lat, lng) => [((lng + 180) / 360) * W, ((90 - lat) / 180) * H];
-  const grat = [];
-  for (let lng = -150; lng <= 150; lng += 30) { const [gx] = proj(0, lng); grat.push(<line key={`v${lng}`} x1={gx} y1={0} x2={gx} y2={H} stroke="var(--line)" strokeWidth="0.4" vectorEffect="non-scaling-stroke" opacity="0.5" />); }
-  for (let lat = -60; lat <= 60; lat += 30) { const [, gy] = proj(lat, 0); grat.push(<line key={`h${lat}`} x1={0} y1={gy} x2={W} y2={gy} stroke="var(--line)" strokeWidth="0.4" vectorEffect="non-scaling-stroke" opacity="0.5" />); }
-  return (
-    <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-lg bg-[var(--surface-2)]" onMouseLeave={() => setHover(null)}>
-        {grat}
-        {pts.map((c) => {
-          const [cx, cy] = proj(c.ll[0], c.ll[1]);
-          const r = 3 + Math.sqrt(c.count / max) * 9;
-          const cid = `mf-${c.label}`;
-          return (
-            <g key={c.label} onMouseEnter={() => setHover(c)} style={{ cursor: 'default' }}>
-              <clipPath id={cid}><circle cx={cx} cy={cy} r={r - 0.8} /></clipPath>
-              <circle cx={cx} cy={cy} r={r} fill="var(--primary)" opacity="0.18" />
-              <image href={flagUrl(c.label, '40x30')} x={cx - (r - 0.8)} y={cy - (r - 0.8)} width={(r - 0.8) * 2} height={(r - 0.8) * 2} clipPath={`url(#${cid})`} preserveAspectRatio="xMidYMid slice" />
-              <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--primary)" strokeWidth="0.7" vectorEffect="non-scaling-stroke" opacity="0.8" />
-            </g>
-          );
-        })}
-      </svg>
-      {hover && <div className="absolute top-2 left-2 text-[11px] px-2 py-1 rounded-md bg-[var(--bg-solid)] border border-[var(--line)] shadow flex items-center gap-1.5 pointer-events-none"><Flag cc={hover.label} /> {countryName(hover.label)} · <b>{hover.count}</b></div>}
-      {!pts.length && <div className="absolute inset-0 grid place-items-center text-xs text-[var(--faint)]">No geo-located visits yet.</div>}
-    </div>
-  );
-}
-
 // Geo panel with Countries / Regions / Cities / Map tabs. Regions & cities carry their
 // country so the right flag shows next to a subdivision/city name.
 function GeoPanel({ countries, regions, cities }) {
@@ -4629,6 +4593,9 @@ function GeoPanel({ countries, regions, cities }) {
   const list = tab === 'countries' ? countries : tab === 'regions' ? regions : cities;
   const tot = (list || []).reduce((a, r) => a + r.count, 0) || 1;
   const max = Math.max(1, ...(list || []).map((r) => r.count));
+  // Country markers for the map tab: centroid per country, sized by traffic share.
+  const cmax = Math.max(1, ...countries.map((c) => c.count));
+  const mapPoints = countries.map((c) => { const ll = COUNTRY_CENTROIDS[String(c.label).toUpperCase()]; return ll ? { lat: ll[0], lng: ll[1], color: '#f59e0b', size: 8 + Math.sqrt(c.count / cmax) * 22, title: `${countryName(c.label)} · ${c.count}` } : null; }).filter(Boolean);
   return (
     <Card className="p-5">
       <div className="flex items-center gap-1 mb-3 border-b border-[var(--line)] -mx-1 px-1">
@@ -4636,7 +4603,7 @@ function GeoPanel({ countries, regions, cities }) {
           <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border-b-2 -mb-px transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><Icon size={13} /> {label}</button>
         ))}
       </div>
-      {tab === 'map' ? <WorldBubbleMap countries={countries} />
+      {tab === 'map' ? <AnalyticsMap points={mapPoints} height={340} />
         : (list && list.length) ? (
           <div className="space-y-2.5 max-h-[340px] overflow-auto pr-1">
             {list.map((r, i) => (
@@ -4819,71 +4786,65 @@ function SessionRow({ s }) {
     </div>
   );
 }
-// Auto-rotating 3D globe of sessions (three.js, lazy-loaded). Each geo-located session is
-// a glowing pin on the sphere (green = live); hovering pauses the spin and shows a card.
-// Self-contained — a dark sphere + graticule + atmosphere, no external Earth texture.
-function SessionsGlobe({ sessions }) {
-  const mountRef = useRef(null);
-  const [hover, setHover] = useState(null);
-  const hoverRef = useRef(false);
-  // Only rebuild when the geo points actually change (data refetches every 15s).
-  const pts = sessions.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
-  const sig = pts.map((s) => `${s.lat},${s.lng},${s.live ? 1 : 0}`).join('|');
-  const stablePts = useMemo(() => pts, [sig]); // eslint-disable-line
+// Interactive analytics map with a 2D (mercator) / 3D (globe) toggle — same approach as
+// the BMM telemetry dashboard: MapLibre GL + a keyless CARTO dark basemap + one marker
+// per geo point. `points` = [{ lat, lng, color, size, title }]. maplibre is lazy-loaded.
+function AnalyticsMap({ points, height = 420 }) {
+  const boxRef = useRef(null);
+  const mapRef = useRef(null);
+  const mlRef = useRef(null);
+  const markersRef = useRef([]);
+  const [mode, setMode] = useState('globe'); // 'globe' | '2d'
+  const [ready, setReady] = useState(false);
+  const sig = points.map((p) => `${p.lat},${p.lng},${p.color}`).join('|');
+  const stable = useMemo(() => points, [sig]); // eslint-disable-line
+
   useEffect(() => {
-    let renderer, frame, ro, disposed = false;
-    const mount = mountRef.current;
+    let disposed = false;
     (async () => {
-      let THREE;
-      try { THREE = await import('three'); } catch { return; }
-      if (disposed || !mount) return;
-      const H = 420, W = mount.clientWidth || 600;
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(42, W / H, 0.1, 100);
-      camera.position.z = 3.1;
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      renderer.setSize(W, H); renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-      mount.appendChild(renderer.domElement);
-      const R = 1, globe = new THREE.Group(); scene.add(globe);
-      globe.add(new THREE.Mesh(new THREE.SphereGeometry(R, 48, 48), new THREE.MeshBasicMaterial({ color: 0x0e1a2e })));
-      globe.add(new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.SphereGeometry(R * 1.002, 24, 16)), new THREE.LineBasicMaterial({ color: 0x2b4066, transparent: true, opacity: 0.35 })));
-      scene.add(new THREE.Mesh(new THREE.SphereGeometry(R * 1.14, 40, 40), new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.07, side: THREE.BackSide })));
-      const toVec = (lat, lng, r = R * 1.02) => { const phi = (90 - lat) * Math.PI / 180, th = (lng + 180) * Math.PI / 180; return new THREE.Vector3(-r * Math.sin(phi) * Math.cos(th), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(th)); };
-      const markers = [];
-      for (const s of stablePts) {
-        const v = toVec(s.lat, s.lng), col = s.live ? 0x34d399 : 0xf97316;
-        const m = new THREE.Mesh(new THREE.SphereGeometry(s.live ? 0.03 : 0.022, 10, 10), new THREE.MeshBasicMaterial({ color: col }));
-        m.position.copy(v); m.userData = s; globe.add(m); markers.push(m);
-        globe.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([toVec(s.lat, s.lng, R), v]), new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.45 })));
-      }
-      const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
-      const onMove = (e) => {
-        const r = renderer.domElement.getBoundingClientRect();
-        mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1; mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1;
-        ray.setFromCamera(mouse, camera);
-        const hit = ray.intersectObjects(markers)[0];
-        if (hit) { hoverRef.current = true; setHover({ s: hit.object.userData, x: e.clientX - r.left, y: e.clientY - r.top }); }
-        else { hoverRef.current = false; setHover(null); }
-      };
-      renderer.domElement.addEventListener('pointermove', onMove);
-      renderer.domElement.addEventListener('pointerleave', () => { hoverRef.current = false; setHover(null); });
-      const animate = () => { frame = requestAnimationFrame(animate); if (!hoverRef.current) globe.rotation.y += 0.0016; renderer.render(scene, camera); };
-      animate();
-      ro = new ResizeObserver(() => { const w = mount.clientWidth || W; renderer.setSize(w, H); camera.aspect = w / H; camera.updateProjectionMatrix(); });
-      ro.observe(mount);
+      let maplibregl;
+      try { const [mod] = await Promise.all([import('maplibre-gl'), import('maplibre-gl/dist/maplibre-gl.css')]); maplibregl = mod.default; }
+      catch { return; }
+      if (disposed || !boxRef.current || mapRef.current) return;
+      mlRef.current = maplibregl;
+      const STYLE = { version: 8, sources: { base: { type: 'raster', tiles: ['https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap © CARTO' } }, layers: [{ id: 'base', type: 'raster', source: 'base' }] };
+      const map = new maplibregl.Map({ container: boxRef.current, style: STYLE, center: [10, 25], zoom: 1.3, attributionControl: false, maxPitch: 0, trackResize: true });
+      mapRef.current = map;
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+      map.on('error', () => {});
+      map.on('load', () => { if (disposed) return; try { map.setProjection({ type: mode === 'globe' ? 'globe' : 'mercator' }); } catch {} setReady(true); });
     })();
-    return () => {
-      disposed = true; cancelAnimationFrame(frame);
-      try { ro?.disconnect(); } catch {}
-      try { renderer?.forceContextLoss?.(); renderer?.dispose?.(); renderer?.domElement?.remove(); } catch {}
-    };
-  }, [stablePts]);
+    return () => { disposed = true; markersRef.current.forEach((m) => { try { m.remove(); } catch {} }); markersRef.current = []; try { mapRef.current?.remove(); } catch {} mapRef.current = null; };
+    // eslint-disable-next-line
+  }, []);
+
+  // Projection toggle (2D mercator ↔ 3D globe).
+  useEffect(() => { const map = mapRef.current; if (map) { try { map.setProjection({ type: mode === 'globe' ? 'globe' : 'mercator' }); } catch {} } }, [mode]);
+
+  // (Re)build markers when the points change.
+  useEffect(() => {
+    const map = mapRef.current, maplibregl = mlRef.current;
+    if (!map || !maplibregl || !ready) return;
+    markersRef.current.forEach((m) => { try { m.remove(); } catch {} }); markersRef.current = [];
+    for (const p of stable) {
+      if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) continue;
+      const el = document.createElement('div');
+      const sz = p.size || 12, c = p.color || '#f97316';
+      el.style.cssText = `width:${sz}px;height:${sz}px;border-radius:50%;background:${c};box-shadow:0 0 8px ${c};border:1.5px solid rgba(255,255,255,.75);cursor:default;`;
+      if (p.title) el.title = p.title;
+      markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map));
+    }
+  }, [stable, ready]);
+
   return (
     <div className="relative">
-      <div ref={mountRef} className="w-full rounded-lg overflow-hidden" style={{ height: 420, background: 'radial-gradient(circle at 50% 40%, #0b1526, #05070d)' }} />
-      {hover && <div style={{ left: Math.min(hover.x + 12, 460), top: hover.y + 12 }} className="absolute text-[11px] px-2 py-1 rounded-md bg-[var(--bg-solid)] border border-[var(--line)] shadow flex items-center gap-1.5 pointer-events-none z-10">
-        {hover.s.country ? <Flag cc={hover.s.country} /> : null} {[hover.s.city, hover.s.country].filter(Boolean).join(', ') || 'Unknown'} · <b>{hover.s.pages}</b> pg{hover.s.live && <span className="text-emerald-400">· live</span>}</div>}
-      {!stablePts.length && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--faint)]">No geo-located sessions yet — needs real visitor IPs.</div>}
+      <div ref={boxRef} className="w-full rounded-lg overflow-hidden" style={{ height, background: '#05070d' }} />
+      <div className="absolute top-2 right-2 z-10 flex rounded-lg border border-[var(--line)] overflow-hidden bg-[var(--bg-solid)]/80 backdrop-blur">
+        {[['2d', '2D'], ['globe', '3D']].map(([v, l]) => (
+          <button key={v} onClick={() => setMode(v)} className={`px-2.5 py-1 text-xs ${mode === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
+        ))}
+      </div>
+      {!stable.length && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--faint)] pointer-events-none">No geo-located data yet.</div>}
     </div>
   );
 }
@@ -4914,7 +4875,7 @@ function SessionsPanel() {
         </div>
       </div>
       {!collapsed && (!data ? <div className="h-20 grid place-items-center"><Spinner /></div>
-        : view === 'globe' ? <SessionsGlobe sessions={sessions} />
+        : view === 'globe' ? <AnalyticsMap points={sessions.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng)).map((s) => ({ lat: s.lat, lng: s.lng, color: s.live ? '#34d399' : '#f97316', size: s.live ? 15 : 11, title: `${[s.city, s.country].filter(Boolean).join(', ') || 'Unknown'} · ${s.pages} pg${s.live ? ' · live' : ''}` }))} />
         : sessions.length ? <div className="space-y-2 max-h-[520px] overflow-auto pr-1">{sessions.map((s) => <SessionRow key={s.visitor + s.start} s={s} />)}</div>
         : <div className="text-sm text-[var(--faint)] py-6 text-center">No sessions yet — needs visitors who accepted analytics cookies.</div>)}
     </Card>
