@@ -2395,6 +2395,7 @@ const TONE_STROKE = { ok: '#34d399', warn: '#f59e0b', crit: '#f87171', '': 'var(
 // separate, bigger ask (see the "Advanced server management" tab).
 function AdminServerPerf() {
   const toast = useToast();
+  const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/server/metrics'), []);
   const alerts = useAsync(() => api.get('/admin/server/alerts'), []);
   const depsCfg = useAsync(() => api.get('/admin/server/deps-config'), []);
@@ -2403,14 +2404,14 @@ function AdminServerPerf() {
   const [depsBusy, setDepsBusy] = useState(false);
   // Auto-refresh the read-only metrics + alerts every 30s (cheap — deps/SSL config,
   // which rarely changes, is NOT re-polled). Keeps the dashboard live between samples.
-  useEffect(() => { const t = setInterval(() => { reload(); alerts.reload(); }, 30_000); return () => clearInterval(t); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { const id = setInterval(() => { reload(); alerts.reload(); }, 30_000); return () => clearInterval(id); /* eslint-disable-next-line */ }, []);
   const sampleNow = async () => {
     setBusy(true);
-    try { await api.post('/admin/server/sample-now'); toast.success('Sampled.'); reload(); alerts.reload(); } catch { toast.error('Failed.'); } finally { setBusy(false); }
+    try { await api.post('/admin/server/sample-now'); toast.success(t('sp.sampled', 'Sampled.')); reload(); alerts.reload(); } catch { toast.error(t('sp.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const toggleDep = async (key, on) => {
     setDepsBusy(true);
-    try { await api.put('/admin/server/deps-config', { [key]: on }); depsCfg.reload(); reload(); } catch { toast.error('Failed.'); } finally { setDepsBusy(false); }
+    try { await api.put('/admin/server/deps-config', { [key]: on }); depsCfg.reload(); reload(); } catch { toast.error(t('sp.failed', 'Failed.')); } finally { setDepsBusy(false); }
   };
   if (loading) return <Loading />;
   const latest = data?.latest;
@@ -2432,7 +2433,7 @@ function AdminServerPerf() {
   const cpuTone = toneFor(latest?.cpuPct, PERF_THRESH.cpuPct), memTone = toneFor(latest?.memPct, PERF_THRESH.memPct), diskTone = toneFor(latest?.diskPct, PERF_THRESH.diskPct), loadTone = toneFor(loadRatio, PERF_THRESH.loadRatio);
   const worst = [cpuTone, memTone, diskTone, loadTone];
   const health = !latest ? null : worst.includes('crit') ? 'crit' : worst.includes('warn') ? 'warn' : 'ok';
-  const healthLabel = { ok: 'Healthy', warn: 'Under load', crit: 'Critical' }[health];
+  const healthLabel = { ok: t('sp.health.ok', 'Healthy'), warn: t('sp.health.warn', 'Under load'), crit: t('sp.health.crit', 'Critical') }[health];
   // Per-metric sparklines from the sampled history (oldest→newest).
   const spark = (key) => history.map((h) => h[key]).filter((v) => v != null);
   const kpi = (label, value, Icon, tone, sparkKey) => (
@@ -2447,37 +2448,37 @@ function AdminServerPerf() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2"><Cpu size={16} className="text-[var(--primary-2)]" /> Server performance
+        <h2 className="font-semibold flex items-center gap-2"><Cpu size={16} className="text-[var(--primary-2)]" /> {t('sp.title', 'Server performance')}
           {health && <Badge tone={health === 'ok' ? 'green' : health === 'warn' ? 'amber' : 'red'}>{health === 'ok' ? <CheckCircle2 size={11} /> : <AlertTriangle size={11} />} {healthLabel}</Badge>}
         </h2>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> auto 30s</span>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={sampleNow}>{busy ? <Spinner /> : <><RefreshCw size={14} /> Sample now</>}</Button>
+          <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> {t('sp.auto', 'auto 30s')}</span>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={sampleNow}>{busy ? <Spinner /> : <><RefreshCw size={14} /> {t('sp.samplenow', 'Sample now')}</>}</Button>
         </div>
       </div>
-      <p className="text-xs text-[var(--muted)] mb-3">Metrics reflect this API container's own view (os/cgroup) — sampled every ~10 min, auto-refreshed here every 30s. A full per-service breakdown with restart controls needs Docker-socket access (see "Advanced server management").</p>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('sp.desc', 'Metrics reflect this API container\'s own view (os/cgroup) — sampled every ~10 min, auto-refreshed here every 30s. A full per-service breakdown with restart controls needs Docker-socket access (see "Advanced server management").')}</p>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
         {kpi('CPU', latest ? `${latest.cpuPct.toFixed(0)}%` : '—', Cpu, cpuTone, 'cpuPct')}
-        {kpi('Memory', latest ? `${latest.memPct.toFixed(0)}%` : '—', Gauge, memTone, 'memPct')}
-        {kpi('Disk', latest ? `${latest.diskPct.toFixed(0)}%` : '—', HardDrive, diskTone, 'diskPct')}
-        {kpi('Load (1m)', latest ? latest.loadAvg1.toFixed(2) : '—', TrendingUp, loadTone)}
-        {kpi('Uptime', latest ? `${(latest.uptimeSec / 3600).toFixed(1)}h` : '—', Clock, '')}
-        {kpi('Avg latency', latest?.latencyMs != null ? `${latest.latencyMs}ms` : '—', Zap, latest?.latencyMs != null ? toneFor(latest.latencyMs, [400, 1000]) : '')}
+        {kpi(t('sp.memory', 'Memory'), latest ? `${latest.memPct.toFixed(0)}%` : '—', Gauge, memTone, 'memPct')}
+        {kpi(t('sp.disk', 'Disk'), latest ? `${latest.diskPct.toFixed(0)}%` : '—', HardDrive, diskTone, 'diskPct')}
+        {kpi(t('sp.load', 'Load (1m)'), latest ? latest.loadAvg1.toFixed(2) : '—', TrendingUp, loadTone)}
+        {kpi(t('sp.uptime', 'Uptime'), latest ? `${(latest.uptimeSec / 3600).toFixed(1)}h` : '—', Clock, '')}
+        {kpi(t('sp.latency', 'Avg latency'), latest?.latencyMs != null ? `${latest.latencyMs}ms` : '—', Zap, latest?.latencyMs != null ? toneFor(latest.latencyMs, [400, 1000]) : '')}
       </div>
 
       {/* Absolute totals alongside the percentages above — "11% used" only means
           something once you know it's 11% of how much. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <Card className="p-3"><div className="flex items-center gap-2 text-[var(--faint)] text-xs mb-1"><Cpu size={13} /> CPU cores</div><div className="text-xl font-bold tabular-nums">{totals.cpuCores ?? '—'}</div></Card>
-        <Card className="p-3"><div className="flex items-center gap-2 text-[var(--faint)] text-xs mb-1"><Gauge size={13} /> RAM total</div><div className="text-xl font-bold tabular-nums">{memUsedGB != null ? `${memUsedGB.toFixed(1)} / ${gb(totals.memTotalBytes).toFixed(1)} GB` : '—'}</div></Card>
-        <Card className="p-3"><div className="flex items-center gap-2 text-[var(--faint)] text-xs mb-1"><HardDrive size={13} /> Disk total</div><div className="text-xl font-bold tabular-nums">{diskUsedGB != null ? `${diskUsedGB.toFixed(0)} / ${gb(totals.diskTotalBytes).toFixed(0)} GB` : '—'}</div></Card>
-        <Card className="p-3"><div className="flex items-center gap-2 text-[var(--faint)] text-xs mb-1"><ShieldCheck size={13} /> Availability</div><div className="text-xl font-bold tabular-nums">{totals.uptimePct != null ? `${totals.uptimePct.toFixed(2)}%` : '—'}</div></Card>
+        <Card className="p-3"><div className="flex items-center gap-2 text-[var(--faint)] text-xs mb-1"><Cpu size={13} /> {t('sp.cores', 'CPU cores')}</div><div className="text-xl font-bold tabular-nums">{totals.cpuCores ?? '—'}</div></Card>
+        <Card className="p-3"><div className="flex items-center gap-2 text-[var(--faint)] text-xs mb-1"><Gauge size={13} /> {t('sp.ramtotal', 'RAM total')}</div><div className="text-xl font-bold tabular-nums">{memUsedGB != null ? `${memUsedGB.toFixed(1)} / ${gb(totals.memTotalBytes).toFixed(1)} GB` : '—'}</div></Card>
+        <Card className="p-3"><div className="flex items-center gap-2 text-[var(--faint)] text-xs mb-1"><HardDrive size={13} /> {t('sp.disktotal', 'Disk total')}</div><div className="text-xl font-bold tabular-nums">{diskUsedGB != null ? `${diskUsedGB.toFixed(0)} / ${gb(totals.diskTotalBytes).toFixed(0)} GB` : '—'}</div></Card>
+        <Card className="p-3"><div className="flex items-center gap-2 text-[var(--faint)] text-xs mb-1"><ShieldCheck size={13} /> {t('sp.availability', 'Availability')}</div><div className="text-xl font-bold tabular-nums">{totals.uptimePct != null ? `${totals.uptimePct.toFixed(2)}%` : '—'}</div></Card>
       </div>
 
       <Card className="p-4 mb-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">CPU / Memory / Disk — history</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('sp.history', 'CPU / Memory / Disk — history')}</span>
           <span className="flex items-center gap-3 text-[11px] text-[var(--muted)]"><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#f97316' }} /> CPU</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#38bdf8' }} /> Mem</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#a78bfa' }} /> Disk</span></span>
         </div>
         <MetricChart history={history} />
@@ -2494,16 +2495,16 @@ function AdminServerPerf() {
         return (
           <Card className="p-4 mb-4">
             <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Cpu size={13} className="text-[var(--primary-2)]" /> Per-repo allocation</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Cpu size={13} className="text-[var(--primary-2)]" /> {t('sp.alloc', 'Per-repo allocation')}</span>
               <span className="text-[11px] tabular-nums text-[var(--muted)]">
-                <b className={over ? 'text-amber-400' : 'text-[var(--text)]'}>{ra.totalCpuShare}</b> vCPU allocated across {ra.repos.length} repo{ra.repos.length === 1 ? '' : 's'} · host has {ra.hostCpuCores} core{ra.hostCpuCores === 1 ? '' : 's'} · {ra.totalUploadMbps} Mbps total
+                <b className={over ? 'text-amber-400' : 'text-[var(--text)]'}>{ra.totalCpuShare}</b> {t('sp.alloc.summary', 'vCPU allocated across {n} repo(s) · host has {c} core(s) · {u} Mbps total').replace('{n}', ra.repos.length).replace('{c}', ra.hostCpuCores).replace('{u}', ra.totalUploadMbps)}
               </span>
             </div>
-            <div className="text-[11px] text-[var(--faint)] mb-2.5">Allocated by each repo's plan — not live CPU usage (hosted repos aren't isolated processes yet).{over ? ' vCPU is over-committed vs the host core count.' : ''}</div>
+            <div className="text-[11px] text-[var(--faint)] mb-2.5">{t('sp.alloc.note', 'Allocated by each repo\'s plan — not live CPU usage (hosted repos aren\'t isolated processes yet).')}{over ? ' ' + t('sp.alloc.over', 'vCPU is over-committed vs the host core count.') : ''}</div>
             <div className="max-h-72 overflow-auto -mx-1 px-1">
               <table className="w-full text-sm">
                 <thead className="text-[11px] uppercase tracking-wide text-[var(--faint)] text-left"><tr>
-                  <th className="font-medium py-1">Repo</th><th className="font-medium py-1 text-right">CPU</th><th className="font-medium py-1 text-right">Upload</th><th className="font-medium py-1 text-right">Storage</th>
+                  <th className="font-medium py-1">{t('sp.repo', 'Repo')}</th><th className="font-medium py-1 text-right">CPU</th><th className="font-medium py-1 text-right">{t('sp.upload', 'Upload')}</th><th className="font-medium py-1 text-right">{t('sp.storage', 'Storage')}</th>
                 </tr></thead>
                 <tbody className="divide-y divide-[var(--line)]">
                   {ra.repos.map((r) => (
@@ -2524,8 +2525,8 @@ function AdminServerPerf() {
       <div className="grid sm:grid-cols-2 gap-4 mb-4">
         <Card className="p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">Dependencies</span>
-            <button className="text-[11px] text-[var(--muted)] hover:text-[var(--text)] hover:underline" onClick={() => setConfiguring((c) => !c)}>{configuring ? 'Done' : 'Configure'}</button>
+            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('sp.deps', 'Dependencies')}</span>
+            <button className="text-[11px] text-[var(--muted)] hover:text-[var(--text)] hover:underline" onClick={() => setConfiguring((c) => !c)}>{configuring ? t('sp.done', 'Done') : t('sp.configure', 'Configure')}</button>
           </div>
           {configuring ? (
             <div className="space-y-1.5">
@@ -2537,20 +2538,20 @@ function AdminServerPerf() {
             </div>
           ) : (
             <div className="flex flex-wrap gap-1.5">
-              {Object.keys(deps).length ? Object.entries(deps).map(([k, ok]) => depBadge(ok, labels[k] || k)) : <span className="text-xs text-[var(--faint)]">All dependency checks are disabled.</span>}
+              {Object.keys(deps).length ? Object.entries(deps).map(([k, ok]) => depBadge(ok, labels[k] || k)) : <span className="text-xs text-[var(--faint)]">{t('sp.deps.off', 'All dependency checks are disabled.')}</span>}
             </div>
           )}
         </Card>
         <Card className="p-4">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Lock size={11} /> SSL certificate</div>
-          {ssl ? <div className="text-sm">{ssl.daysLeft <= 14 ? <Badge tone="red">{ssl.daysLeft}d left</Badge> : ssl.daysLeft <= 30 ? <Badge tone="amber">{ssl.daysLeft}d left</Badge> : <Badge tone="green">{ssl.daysLeft}d left</Badge>} <span className="text-[var(--faint)] text-xs">expires {new Date(ssl.expiresAt).toLocaleDateString()}</span></div> : <div className="text-xs text-[var(--faint)]">Couldn't probe SITE_URL's certificate.</div>}
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Lock size={11} /> {t('sp.ssl', 'SSL certificate')}</div>
+          {ssl ? <div className="text-sm">{ssl.daysLeft <= 14 ? <Badge tone="red">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge> : ssl.daysLeft <= 30 ? <Badge tone="amber">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge> : <Badge tone="green">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge>} <span className="text-[var(--faint)] text-xs">{t('sp.ssl.expires', 'expires {d}').replace('{d}', new Date(ssl.expiresAt).toLocaleDateString())}</span></div> : <div className="text-xs text-[var(--faint)]">{t('sp.ssl.noprobe', "Couldn't probe SITE_URL's certificate.")}</div>}
         </Card>
       </div>
 
       {downtime.length > 0 && (
         <Card className="p-4 mb-4">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1.5"><AlertTriangle size={11} /> Downtime history</div>
-          <p className="text-[11px] text-[var(--faint)] mb-3">Periods where the server stopped reporting — i.e. it was most likely down or restarting.</p>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1.5"><AlertTriangle size={11} /> {t('sp.downtime', 'Downtime history')}</div>
+          <p className="text-[11px] text-[var(--faint)] mb-3">{t('sp.downtime.note', 'Periods where the server stopped reporting — i.e. it was most likely down or restarting.')}</p>
           <div className="space-y-2">
             {downtime.map((d, i) => {
               const dur = d.minutes >= 90 ? `${(d.minutes / 60).toFixed(1)} h` : `~${d.minutes} min`;
@@ -2574,10 +2575,10 @@ function AdminServerPerf() {
       )}
 
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">Recent alerts</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('sp.alerts', 'Recent alerts')}</h3>
         {alerts.loading ? <Loading /> : (alerts.data?.alerts || []).length ? <div className="space-y-1.5">
           {alerts.data.alerts.map((a) => <AlertRow key={a.id} a={a} />)}
-        </div> : <EmptyState icon={CheckCircle2} title="No alerts" sub="Nothing has crossed a threshold yet." />}
+        </div> : <EmptyState icon={CheckCircle2} title={t('sp.alerts.none', 'No alerts')} sub={t('sp.alerts.nonesub', 'Nothing has crossed a threshold yet.')} />}
       </div>
     </div>
   );
@@ -3675,6 +3676,7 @@ const OS_SLUG = {
 };
 
 function Breakdown({ title, rows, iconOf }) {
+  const { t } = useI18n();
   const max = Math.max(1, ...rows.map((r) => r.count)); const tot = rows.reduce((a, r) => a + r.count, 0) || 1;
   return (
     <Card className="p-5">
@@ -3686,7 +3688,7 @@ function Breakdown({ title, rows, iconOf }) {
             <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${(r.count / max) * 100}%` }} /></div>
             <span className="w-12 text-right font-medium">{Math.round((r.count / tot) * 100)}%</span>
           </div>
-        )) : <div className="text-sm text-[var(--faint)]">No data yet.</div>}
+        )) : <div className="text-sm text-[var(--faint)]">{t('an.nodata', 'No data yet.')}</div>}
       </div>
     </Card>
   );
@@ -4245,6 +4247,7 @@ function AdminBot() {
 // The bot's "member database" — DiscordActivity rows, paginated + searchable —
 // with the linked BCWEB account shown when there is one.
 function AdminBotMembers() {
+  const { t } = useI18n();
   const [q, setQ] = useState('');
   const [link, setLink] = useState(''); // '' | 'linked' | 'unlinked'
   const [rows, setRows] = useState(null);
@@ -4264,15 +4267,15 @@ function AdminBotMembers() {
   useEffect(() => { load(false); /* eslint-disable-next-line */ }, []);
   const pickLink = (v) => { setLink(v); load(false, v); };
   const since = (d) => d ? new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
-  const tabs = [['', 'All', counts?.all], ['linked', 'Linked', counts?.linked], ['unlinked', 'Not linked', counts?.unlinked]];
+  const tabs = [['', t('bm.all', 'All'), counts?.all], ['linked', t('bm.linked', 'Linked'), counts?.linked], ['unlinked', t('bm.notlinked', 'Not linked'), counts?.unlinked]];
   return (
     <div className="mt-6">
       <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-left">
         <Users size={16} className="text-[var(--primary-2)]" />
-        <h2 className="font-semibold flex-1">Members{counts ? <span className="text-sm font-normal text-[var(--faint)]"> · {counts.all} total · {counts.linked} linked</span> : null}</h2>
+        <h2 className="font-semibold flex-1">{t('bm.title', 'Members')}{counts ? <span className="text-sm font-normal text-[var(--faint)]"> · {t('bm.count', '{a} total · {l} linked').replace('{a}', counts.all).replace('{l}', counts.linked)}</span> : null}</h2>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${collapsed ? '-rotate-90' : ''}`} />
       </button>
-      <p className="text-sm text-[var(--muted)] mb-3">The full roster — the bot scans every member on startup. Shows join date, last message/voice activity, and whether the member has linked a BCWEB account.</p>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('bm.desc', 'The full roster — the bot scans every member on startup. Shows join date, last message/voice activity, and whether the member has linked a BCWEB account.')}</p>
       {!collapsed && <>
         <div className="flex rounded-lg border border-[var(--line)] overflow-hidden w-fit mb-3">
           {tabs.map(([v, label, n]) => (
@@ -4284,8 +4287,8 @@ function AdminBotMembers() {
         </div>
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-            <Input className="!pl-9" placeholder="Search by Discord id or username…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(false)} /></div>
-          <Button variant="primary" disabled={busy} onClick={() => load(false)}>{busy ? <Spinner /> : <><Search size={15} /> Search</>}</Button>
+            <Input className="!pl-9" placeholder={t('bm.search', 'Search by Discord id or username…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(false)} /></div>
+          <Button variant="primary" disabled={busy} onClick={() => load(false)}>{busy ? <Spinner /> : <><Search size={15} /> {t('bm.searchbtn', 'Search')}</>}</Button>
         </div>
         {rows === null ? <Loading /> : rows.length ? <div className="space-y-1.5">
           {rows.map((m) => (
@@ -4295,14 +4298,14 @@ function AdminBotMembers() {
                 <div className="font-medium truncate flex items-center gap-2">{m.username || m.discordId}
                   {m.linkedUser
                     ? <Badge tone="green"><CheckCircle2 size={11} /> {m.linkedUser.displayName}</Badge>
-                    : <Badge><XCircle size={11} /> Not linked</Badge>}
+                    : <Badge><XCircle size={11} /> {t('bm.notlinked', 'Not linked')}</Badge>}
                 </div>
-                <div className="text-xs text-[var(--faint)] truncate">joined {since(m.guildJoinedAt)} · last message {since(m.lastMessageAt)} · last voice {since(m.lastVoiceJoinAt)} · id {m.discordId}</div>
+                <div className="text-xs text-[var(--faint)] truncate">{t('bm.joined', 'joined')} {since(m.guildJoinedAt)} · {t('bm.lastmsg', 'last message')} {since(m.lastMessageAt)} · {t('bm.lastvoice', 'last voice')} {since(m.lastVoiceJoinAt)} · id {m.discordId}</div>
               </div>
             </Card>
           ))}
-          {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(true)}>{busy ? <Spinner /> : 'Load more'}</Button></div>}
-        </div> : <EmptyState icon={Users} title={link === 'linked' ? 'No linked members' : link === 'unlinked' ? 'No unlinked members' : 'No members tracked yet'} sub={link ? 'Try another filter.' : "They'll appear here once the bot scans the server (on startup)."} />}
+          {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(true)}>{busy ? <Spinner /> : t('bm.loadmore', 'Load more')}</Button></div>}
+        </div> : <EmptyState icon={Users} title={link === 'linked' ? t('bm.none.linked', 'No linked members') : link === 'unlinked' ? t('bm.none.unlinked', 'No unlinked members') : t('bm.none', 'No members tracked yet')} sub={link ? t('bm.trother', 'Try another filter.') : t('bm.none.sub', "They'll appear here once the bot scans the server (on startup).")} />}
       </>}
     </div>
   );
@@ -4588,8 +4591,9 @@ function Sparkline({ data, className = '', stroke = 'var(--primary)' }) {
 // Geo panel with Countries / Regions / Cities / Map tabs. Regions & cities carry their
 // country so the right flag shows next to a subdivision/city name.
 function GeoPanel({ countries, regions, cities }) {
+  const { t } = useI18n();
   const [tab, setTab] = useState('countries');
-  const tabs = [['countries', 'Countries', Globe2], ['regions', 'Regions', MapPin], ['cities', 'Cities', Building2], ['map', 'Map', MapIcon]];
+  const tabs = [['countries', t('an.geo.countries', 'Countries'), Globe2], ['regions', t('an.geo.regions', 'Regions'), MapPin], ['cities', t('an.geo.cities', 'Cities'), Building2], ['map', t('an.geo.map', 'Map'), MapIcon]];
   const list = tab === 'countries' ? countries : tab === 'regions' ? regions : cities;
   const tot = (list || []).reduce((a, r) => a + r.count, 0) || 1;
   const max = Math.max(1, ...(list || []).map((r) => r.count));
@@ -4617,7 +4621,7 @@ function GeoPanel({ countries, regions, cities }) {
               </div>
             ))}
           </div>
-        ) : <div className="text-sm text-[var(--faint)] py-4">No {tab} data yet — needs geo-located visits.</div>}
+        ) : <div className="text-sm text-[var(--faint)] py-4">{t('an.geo.none', 'No data yet — needs geo-located visits.')}</div>}
     </Card>
   );
 }
@@ -4634,6 +4638,7 @@ const vitalRating = (m, v) => v == null ? null : v <= VITAL_META[m].good ? 'good
 const vitalColor = (r) => r === 'good' ? 'text-emerald-400' : r === 'ni' ? 'text-amber-400' : r === 'poor' ? 'text-red-400' : 'text-[var(--faint)]';
 
 function WebVitals({ days, hours }) {
+  const { t } = useI18n();
   const [pct, setPct] = useState('p75');
   const { data, loading } = useAsync(() => api.get(`/admin/analytics/vitals?${hours ? `hours=${hours}` : `days=${days}`}`), [days, hours]);
   const metrics = data?.metrics || [];
@@ -4642,27 +4647,27 @@ function WebVitals({ days, hours }) {
   return (
     <Card className="p-5 mb-4">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="text-sm font-semibold flex items-center gap-2"><Activity size={15} /> Web Vitals <span className="text-[11px] font-normal text-[var(--faint)]">real-user performance</span></div>
+        <div className="text-sm font-semibold flex items-center gap-2"><Activity size={15} /> Web Vitals <span className="text-[11px] font-normal text-[var(--faint)]">{t('an.wv.sub', 'real-user performance')}</span></div>
         <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
           {['p50', 'p75', 'p90', 'p99'].map((p) => <button key={p} onClick={() => setPct(p)} className={`px-2.5 py-1 text-xs uppercase ${pct === p ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{p}</button>)}
         </div>
       </div>
       {loading ? <div className="h-24 grid place-items-center"><Spinner /></div> : !metrics.some((m) => m.n) ? (
-        <div className="text-sm text-[var(--faint)] py-6 text-center">No performance samples yet — collected from real visits (needs analytics consent).</div>
+        <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.wv.none', 'No performance samples yet — collected from real visits (needs analytics consent).')}</div>
       ) : <>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
           {metrics.map((m) => { const v = m[pct]; const r = vitalRating(m.metric, v); return (
             <div key={m.metric} className="rounded-xl border border-[var(--line)] p-3">
-              <div className="text-[11px] text-[var(--muted)] flex items-center gap-1" title={VITAL_META[m.metric].label}>{m.metric}{m.goodShare != null && <span className="ml-auto text-[10px] text-[var(--faint)]">{m.goodShare}% good</span>}</div>
+              <div className="text-[11px] text-[var(--muted)] flex items-center gap-1" title={VITAL_META[m.metric].label}>{m.metric}{m.goodShare != null && <span className="ml-auto text-[10px] text-[var(--faint)]">{m.goodShare}% {t('an.wv.good', 'good')}</span>}</div>
               <div className={`text-xl font-bold mt-1 ${r ? vitalColor(r) : ''}`}>{v == null ? '—' : VITAL_META[m.metric].fmt(v)}</div>
-              <div className="text-[10px] text-[var(--faint)] mt-0.5">{m.n} samples</div>
+              <div className="text-[10px] text-[var(--faint)] mt-0.5">{m.n} {t('an.wv.samples', 'samples')}</div>
             </div>
           ); })}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[560px]">
             <thead><tr className="text-[11px] uppercase text-[var(--faint)] text-left border-b border-[var(--line)]">
-              <th className="py-2 font-semibold">Page</th><th className="py-2 font-semibold text-right">LCP</th><th className="py-2 font-semibold text-right">CLS</th><th className="py-2 font-semibold text-right">INP</th><th className="py-2 font-semibold text-right">FCP</th><th className="py-2 font-semibold text-right">TTFB</th><th className="py-2 font-semibold text-right">Samples</th>
+              <th className="py-2 font-semibold">{t('an.wv.page', 'Page')}</th><th className="py-2 font-semibold text-right">LCP</th><th className="py-2 font-semibold text-right">CLS</th><th className="py-2 font-semibold text-right">INP</th><th className="py-2 font-semibold text-right">FCP</th><th className="py-2 font-semibold text-right">TTFB</th><th className="py-2 font-semibold text-right">{t('an.wv.samplesCol', 'Samples')}</th>
             </tr></thead>
             <tbody>
               {pages.map((pg) => (
@@ -4679,7 +4684,7 @@ function WebVitals({ days, hours }) {
             </tbody>
           </table>
         </div>
-        <p className="text-[11px] text-[var(--faint)] mt-3">Per-page p75 (75th percentile) of each metric — the value 75% of real visits are faster than. Green ≤ “good”, amber ≤ “needs improvement”, red above. CLS is unitless; the rest are time.</p>
+        <p className="text-[11px] text-[var(--faint)] mt-3">{t('an.wv.note', 'Per-page p75 (75th percentile) of each metric — the value 75% of real visits are faster than. Green ≤ “good”, amber ≤ “needs improvement”, red above. CLS is unitless; the rest are time.')}</p>
       </>}
     </Card>
   );
@@ -4692,6 +4697,7 @@ const fmtAgo = (d) => { const s = Math.round((Date.now() - new Date(d).getTime()
 // Plays a recorded rrweb session with the raw Replayer (matches RrwebPreview / BMM),
 // scaled to fit, with play-pause + restart. Events are fetched from the admin endpoint.
 function SessionReplayModal({ sessionKey, onClose }) {
+  const { t } = useI18n();
   const wrap = useRef(null), stage = useRef(null);
   const replayerRef = useRef(null);
   const [status, setStatus] = useState('loading'); // loading | playing | paused | error | empty
@@ -4723,23 +4729,24 @@ function SessionReplayModal({ sessionKey, onClose }) {
   const toggle = () => { const r = replayerRef.current; if (!r) return; if (status === 'playing') { r.pause(); setStatus('paused'); } else { r.play(r.getCurrentTime?.() || 0); setStatus('playing'); } };
   const restart = () => { const r = replayerRef.current; if (r) { r.play(0); setStatus('playing'); } };
   return (
-    <Modal open onClose={onClose} title="Session replay" icon={Activity} width="max-w-4xl"
+    <Modal open onClose={onClose} title={t('an.replay.title', 'Session replay')} icon={Activity} width="max-w-4xl"
       footer={<>
-        <span className="text-xs text-[var(--faint)] mr-auto">Inputs are masked — typed text is never recorded.</span>
-        <Button variant="ghost" onClick={restart} disabled={!['playing', 'paused'].includes(status)}><RefreshCw size={14} /> Restart</Button>
-        <Button variant="primary" onClick={toggle} disabled={!['playing', 'paused'].includes(status)}>{status === 'playing' ? 'Pause' : 'Play'}</Button>
+        <span className="text-xs text-[var(--faint)] mr-auto">{t('an.replay.masked', 'Inputs are masked — typed text is never recorded.')}</span>
+        <Button variant="ghost" onClick={restart} disabled={!['playing', 'paused'].includes(status)}><RefreshCw size={14} /> {t('an.replay.restart', 'Restart')}</Button>
+        <Button variant="primary" onClick={toggle} disabled={!['playing', 'paused'].includes(status)}>{status === 'playing' ? t('an.replay.pause', 'Pause') : t('an.replay.play', 'Play')}</Button>
       </>}>
       <div ref={wrap} className="w-full rounded-lg overflow-hidden bg-black/40 relative" style={{ minHeight: 260 }}>
         <div ref={stage} style={{ position: 'absolute', top: 0, left: 0 }} />
         {status === 'loading' && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--muted)]"><Spinner /></div>}
-        {status === 'empty' && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--faint)]">Recording too short to play.</div>}
-        {status === 'error' && <div className="absolute inset-0 grid place-items-center text-sm text-red-400">Could not load this replay.</div>}
+        {status === 'empty' && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--faint)]">{t('an.replay.short', 'Recording too short to play.')}</div>}
+        {status === 'error' && <div className="absolute inset-0 grid place-items-center text-sm text-red-400">{t('an.replay.err', 'Could not load this replay.')}</div>}
       </div>
     </Modal>
   );
 }
 
 function SessionRow({ s }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [replay, setReplay] = useState(false);
   const geo = [s.city, s.country].filter(Boolean).join(', ');
@@ -4757,17 +4764,17 @@ function SessionRow({ s }) {
             <span className="font-mono text-xs text-[var(--muted)] truncate">{s.entry}</span>
             {s.exit !== s.entry && <><ArrowRight size={11} className="text-[var(--faint)] shrink-0" /><span className="font-mono text-xs text-[var(--muted)] truncate">{s.exit}</span></>}
           </div>
-          <div className="text-[11px] text-[var(--faint)] truncate">{geo || 'Unknown'} · {refHost(s.ref)}</div>
+          <div className="text-[11px] text-[var(--faint)] truncate">{geo || t('an.unknown', 'Unknown')} · {refHost(s.ref)}</div>
         </div>
         <div className="text-right shrink-0">
           <div className="text-xs flex items-center gap-1.5 justify-end">
-            {s.live && <span className="inline-flex items-center gap-1 text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> live</span>}
-            <span className="text-[var(--muted)]">{s.pages} pg · {fmtDur(s.durationSec)}</span>
+            {s.live && <span className="inline-flex items-center gap-1 text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> {t('an.liveLabel', 'live')}</span>}
+            <span className="text-[var(--muted)]">{s.pages} {t('an.pg', 'pg')} · {fmtDur(s.durationSec)}</span>
           </div>
-          <div className="text-[11px] text-[var(--faint)]">{fmtAgo(s.end)} ago</div>
+          <div className="text-[11px] text-[var(--faint)]">{t('an.ago', '{n} ago').replace('{n}', fmtAgo(s.end))}</div>
         </div>
         {s.replayKey && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); setReplay(true); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setReplay(true); } }}
-          className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border border-[var(--primary)]/40 text-[var(--primary-2)] hover:bg-[var(--primary)]/10" title="Play session replay"><Eye size={12} /> Replay</span>}
+          className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border border-[var(--primary)]/40 text-[var(--primary-2)] hover:bg-[var(--primary)]/10" title={t('an.replay.play.title', 'Play session replay')}><Eye size={12} /> {t('an.replay.btn', 'Replay')}</span>}
         <ChevronDown size={15} className={`text-[var(--faint)] transition-transform shrink-0 ${open ? 'rotate-180' : ''}`} />
       </button>
       {replay && <SessionReplayModal sessionKey={s.replayKey} onClose={() => setReplay(false)} />}
@@ -4790,6 +4797,7 @@ function SessionRow({ s }) {
 // the BMM telemetry dashboard: MapLibre GL + a keyless CARTO dark basemap + one marker
 // per geo point. `points` = [{ lat, lng, color, size, title }]. maplibre is lazy-loaded.
 function AnalyticsMap({ points, height = 420 }) {
+  const { t } = useI18n();
   const boxRef = useRef(null);
   const mapRef = useRef(null);
   const mlRef = useRef(null);
@@ -4844,40 +4852,42 @@ function AnalyticsMap({ points, height = 420 }) {
           <button key={v} onClick={() => setMode(v)} className={`px-2.5 py-1 text-xs ${mode === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
         ))}
       </div>
-      {!stable.length && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--faint)] pointer-events-none">No geo-located data yet.</div>}
+      {!stable.length && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--faint)] pointer-events-none">{t('an.map.none', 'No geo-located data yet.')}</div>}
     </div>
   );
 }
 
 function SessionsPanel() {
+  const { t } = useI18n();
   const [data, setData] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
   const [view, setView] = useState('list'); // 'list' | 'globe'
   const load = () => api.get('/admin/analytics/sessions?limit=40').then(setData).catch(() => setData({ sessions: [], liveCount: 0 }));
-  useEffect(() => { load(); const t = setInterval(load, 15_000); return () => clearInterval(t); }, []);
+  useEffect(() => { load(); const id = setInterval(load, 15_000); return () => clearInterval(id); }, []);
   const sessions = data?.sessions || [];
+  const unknown = t('an.unknown', 'Unknown');
   return (
     <Card className="p-5 mb-4">
       <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-left">
         <Activity size={15} className="text-[var(--primary-2)]" />
-        <h2 className="font-semibold flex-1 flex items-center gap-2">Sessions
-          {data?.liveCount > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> {data.liveCount} live</span>}
+        <h2 className="font-semibold flex-1 flex items-center gap-2">{t('an.sess.title', 'Sessions')}
+          {data?.liveCount > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> {data.liveCount} {t('an.liveLabel', 'live')}</span>}
         </h2>
-        <span className="text-[11px] text-[var(--faint)] mr-1">auto-refresh 15s</span>
+        <span className="text-[11px] text-[var(--faint)] mr-1">{t('an.sess.autorefresh', 'auto-refresh 15s')}</span>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${collapsed ? '-rotate-90' : ''}`} />
       </button>
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <p className="text-sm text-[var(--muted)]">Recent visitor sessions — {view === 'globe' ? 'positioned on the globe by IP geolocation.' : 'click one to see its page-by-page journey.'} Live = active in the last 5 minutes.</p>
+        <p className="text-sm text-[var(--muted)]">{view === 'globe' ? t('an.sess.descGlobe', 'Recent visitor sessions — positioned on the globe by IP geolocation. Live = active in the last 5 minutes.') : t('an.sess.descList', 'Recent visitor sessions — click one to see its page-by-page journey. Live = active in the last 5 minutes.')}</p>
         <div className="flex rounded-lg border border-[var(--line)] overflow-hidden shrink-0">
-          {[['list', 'List', LayoutDashboard], ['globe', 'Globe', Globe2]].map(([v, label, I]) => (
+          {[['list', t('an.sess.list', 'List'), LayoutDashboard], ['globe', t('an.sess.globe', 'Globe'), Globe2]].map(([v, label, I]) => (
             <button key={v} onClick={() => setView(v)} className={`px-3 py-1 text-xs flex items-center gap-1.5 ${view === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={12} /> {label}</button>
           ))}
         </div>
       </div>
       {!collapsed && (!data ? <div className="h-20 grid place-items-center"><Spinner /></div>
-        : view === 'globe' ? <AnalyticsMap points={sessions.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng)).map((s) => ({ lat: s.lat, lng: s.lng, color: s.live ? '#34d399' : '#f97316', size: s.live ? 15 : 11, title: `${[s.city, s.country].filter(Boolean).join(', ') || 'Unknown'} · ${s.pages} pg${s.live ? ' · live' : ''}` }))} />
+        : view === 'globe' ? <AnalyticsMap points={sessions.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng)).map((s) => ({ lat: s.lat, lng: s.lng, color: s.live ? '#34d399' : '#f97316', size: s.live ? 15 : 11, title: `${[s.city, s.country].filter(Boolean).join(', ') || unknown} · ${s.pages} ${t('an.pg', 'pg')}${s.live ? ' · ' + t('an.liveLabel', 'live') : ''}` }))} />
         : sessions.length ? <div className="space-y-2 max-h-[520px] overflow-auto pr-1">{sessions.map((s) => <SessionRow key={s.visitor + s.start} s={s} />)}</div>
-        : <div className="text-sm text-[var(--faint)] py-6 text-center">No sessions yet — needs visitors who accepted analytics cookies.</div>)}
+        : <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.sess.none', 'No sessions yet — needs visitors who accepted analytics cookies.')}</div>)}
     </Card>
   );
 }
@@ -4887,13 +4897,14 @@ function AdminAnalytics() {
   const [hours, setHours] = useState(null); // when set → hourly view (zoom-in)
   const [tab, setTab] = useState('overview'); // sub-tab: overview | sessions | geo | tech | perf
   const toast = useToast();
+  const { t } = useI18n();
   const { data, loading } = useAsync(() => api.get(`/admin/analytics?${hours ? `hours=${hours}` : `days=${days}`}`), [days, hours]);
   // Open BMM telemetry via an SSO handoff: mint a short-lived token (this call is
   // admin-gated + 2FA-enforced) and hand it to the telemetry dashboard, so the
   // dashboard is reachable ONLY through an authenticated BCWEB admin.
   const openTelemetry = async () => {
     try { const { url } = await api.post('/admin/telemetry/token', {}); window.open(url, '_blank', 'noopener'); }
-    catch (x) { toast.error(x.data?.error === 'no_telemetry_access' ? 'You need the "telemetry" permission (Access & permissions) to open it.' : 'Could not open telemetry — an admin account with 2FA is required.'); }
+    catch (x) { toast.error(x.data?.error === 'no_telemetry_access' ? t('an.telemetry.noperm', 'You need the "telemetry" permission (Access & permissions) to open it.') : t('an.telemetry.err', 'Could not open telemetry — an admin account with 2FA is required.')); }
   };
   const gran = data?.granularity || (hours ? 'hour' : 'day');
   // Ctrl+wheel on the chart: zoom in → hourly (24h); zoom out → back to daily.
@@ -4909,7 +4920,7 @@ function AdminAnalytics() {
   const maxRef = Math.max(1, ...refs.map((r) => r.count));
   const maxSeries = Math.max(1, ...series.map((s) => s.count));
   const maxFlow = Math.max(1, ...flows.map((f) => f.count));
-  const ranges = [['24h', '24h'], [7, '7 days'], [30, '30 days'], [90, '90 days']];
+  const ranges = [['24h', '24h'], [7, t('an.range.7d', '7 days')], [30, t('an.range.30d', '30 days')], [90, t('an.range.90d', '90 days')]];
   const activeRange = hours ? '24h' : days;
   const pickRange = (v) => { if (v === '24h') setHours(24); else { setHours(null); setDays(v); } };
   // Period-over-period delta chip (▲/▼ %); for bounce rate a DROP is good (lowerBetter).
@@ -4918,7 +4929,7 @@ function AdminAnalytics() {
     const pct = Math.round(((cur - prev) / prev) * 100);
     if (pct === 0) return <span className="text-[10px] text-[var(--faint)]">0%</span>;
     const up = pct > 0, good = lowerBetter ? !up : up;
-    return <span className={`text-[10px] font-semibold tabular-nums ${good ? 'text-emerald-400' : 'text-red-400'}`} title="vs previous period">{up ? '▲' : '▼'} {Math.abs(pct)}%</span>;
+    return <span className={`text-[10px] font-semibold tabular-nums ${good ? 'text-emerald-400' : 'text-red-400'}`} title={t('an.vsprev', 'vs previous period')}>{up ? '▲' : '▼'} {Math.abs(pct)}%</span>;
   };
   const kpi = (Icon, val, label, accent, delta, spark, sparkColor) => (
     <Card className="p-4 relative overflow-hidden">
@@ -4933,29 +4944,29 @@ function AdminAnalytics() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><TrendingUp size={16} /> Site analytics
-          {data?.live > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 ml-1"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> {data.live} live</span>}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><TrendingUp size={16} /> {t('an.title', 'Site analytics')}
+          {data?.live > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 ml-1"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> {data.live} {t('an.live', 'live')}</span>}</h2>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {ranges.map(([d, l]) => <button key={d} onClick={() => pickRange(d)} className={`px-3 py-1.5 text-xs ${activeRange === d ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>)}
           </div>
-          <Button size="sm" onClick={openTelemetry}><Gauge size={14} /> BMM telemetry</Button>
+          <Button size="sm" onClick={openTelemetry}><Gauge size={14} /> {t('an.telemetry', 'BMM telemetry')}</Button>
         </div>
       </div>
 
       {/* KPI row (Rybbit-style) — always visible above the sub-tabs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3 mb-4">
-        {kpi(Users, data?.uniqueVisitors ?? '—', 'Unique visitors', null, deltaChip(data?.uniqueVisitors, data?.prev?.uniqueVisitors), visitorsSpark, '#38bdf8')}
-        {kpi(Package, data?.sessions ?? '—', 'Sessions', null, deltaChip(data?.sessions, data?.prev?.sessions), visitorsSpark, '#38bdf8')}
-        {kpi(Eye, data?.windowed ?? '—', 'Pageviews', null, deltaChip(data?.windowed, data?.prev?.pageviews), viewsSpark)}
-        {kpi(TrendingUp, data?.viewsPerVisitor ?? '—', 'Pages / session', null, deltaChip(data?.viewsPerVisitor, data?.prev?.viewsPerVisitor), ppsSpark)}
-        {kpi(ArrowUpRight, data?.bounceRate != null ? `${data.bounceRate}%` : '—', 'Bounce rate', null, deltaChip(data?.bounceRate, data?.prev?.bounceRate, true), viewsSpark, '#f59e0b')}
-        {kpi(Zap, data?.live ?? '—', 'Live (30 min)', 'text-emerald-400')}
+        {kpi(Users, data?.uniqueVisitors ?? '—', t('an.kpi.visitors', 'Unique visitors'), null, deltaChip(data?.uniqueVisitors, data?.prev?.uniqueVisitors), visitorsSpark, '#38bdf8')}
+        {kpi(Package, data?.sessions ?? '—', t('an.kpi.sessions', 'Sessions'), null, deltaChip(data?.sessions, data?.prev?.sessions), visitorsSpark, '#38bdf8')}
+        {kpi(Eye, data?.windowed ?? '—', t('an.kpi.pageviews', 'Pageviews'), null, deltaChip(data?.windowed, data?.prev?.pageviews), viewsSpark)}
+        {kpi(TrendingUp, data?.viewsPerVisitor ?? '—', t('an.kpi.pps', 'Pages / session'), null, deltaChip(data?.viewsPerVisitor, data?.prev?.viewsPerVisitor), ppsSpark)}
+        {kpi(ArrowUpRight, data?.bounceRate != null ? `${data.bounceRate}%` : '—', t('an.kpi.bounce', 'Bounce rate'), null, deltaChip(data?.bounceRate, data?.prev?.bounceRate, true), viewsSpark, '#f59e0b')}
+        {kpi(Zap, data?.live ?? '—', t('an.kpi.live', 'Live (30 min)'), 'text-emerald-400')}
       </div>
 
       {/* Sub-tab bar — horizontal-scrolls on narrow screens so it never overflows. */}
       <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
-        {[['overview', 'Overview', TrendingUp], ['sessions', 'Sessions', Activity], ['geo', 'Geography', Globe2], ['tech', 'Tech', Monitor], ['perf', 'Performance', Gauge]].map(([id, label, I]) => (
+        {[['overview', t('an.tab.overview', 'Overview'), TrendingUp], ['sessions', t('an.tab.sessions', 'Sessions'), Activity], ['geo', t('an.tab.geo', 'Geography'), Globe2], ['tech', t('an.tab.tech', 'Tech'), Monitor], ['perf', t('an.tab.perf', 'Performance'), Gauge]].map(([id, label, I]) => (
           <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={14} /> {label}</button>
         ))}
       </div>
@@ -4963,28 +4974,28 @@ function AdminAnalytics() {
       {tab === 'overview' && <>
         <Card className="p-4 sm:p-5 mb-4">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <div className="text-xs font-semibold text-[var(--faint)] uppercase">{gran === 'hour' ? 'Traffic per hour · last 24h' : 'Traffic per day'}</div>
+            <div className="text-xs font-semibold text-[var(--faint)] uppercase">{gran === 'hour' ? t('an.traffic.hour', 'Traffic per hour · last 24h') : t('an.traffic.day', 'Traffic per day')}</div>
             <div className="flex items-center gap-3 text-[11px] text-[var(--muted)]">
-              <span className="hidden sm:flex items-center gap-1 text-[var(--faint)]"><Search size={11} /> Ctrl + scroll to zoom</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-gradient-to-t from-orange-500 to-amber-400" /> Views</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-sky-400" /> Visitors</span></div>
+              <span className="hidden sm:flex items-center gap-1 text-[var(--faint)]"><Search size={11} /> {t('an.zoomhint', 'Ctrl + scroll to zoom')}</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-gradient-to-t from-orange-500 to-amber-400" /> {t('an.views', 'Views')}</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-sky-400" /> {t('an.visitors', 'Visitors')}</span></div>
           </div>
           {loading ? <div className="h-40 grid place-items-center text-[var(--faint)] text-sm"><Spinner /></div> : <TrafficChart series={series} gran={gran} onZoom={onZoom} compare={data?.compare} />}
         </Card>
         <div className="grid md:grid-cols-2 gap-4">
           <Card className="p-4 sm:p-5">
-            <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3">Top pages</div>
+            <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3">{t('an.toppages', 'Top pages')}</div>
             <div className="space-y-2.5">
-              {top.length ? top.map((t) => (
-                <div key={t.path} className="flex items-center gap-3 text-sm">
-                  <span className="text-[var(--muted)] truncate w-28 sm:w-40 shrink-0">{t.path}</span>
-                  <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${(t.count / maxTop) * 100}%` }} /></div>
-                  <span className="w-10 text-right font-medium">{t.count}</span>
+              {top.length ? top.map((tp) => (
+                <div key={tp.path} className="flex items-center gap-3 text-sm">
+                  <span className="text-[var(--muted)] truncate w-28 sm:w-40 shrink-0">{tp.path}</span>
+                  <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${(tp.count / maxTop) * 100}%` }} /></div>
+                  <span className="w-10 text-right font-medium">{tp.count}</span>
                 </div>
-              )) : <div className="text-sm text-[var(--faint)]">No page data yet.</div>}
+              )) : <div className="text-sm text-[var(--faint)]">{t('an.nopages', 'No page data yet.')}</div>}
             </div>
           </Card>
           <Card className="p-4 sm:p-5">
-            <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3">Top referrers</div>
+            <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3">{t('an.toprefs', 'Top referrers')}</div>
             <div className="space-y-2.5">
               {refs.length ? refs.map((r) => { const host = refHost(r.ref); return (
                 <div key={r.ref} className="flex items-center gap-3 text-sm">
@@ -4992,7 +5003,7 @@ function AdminAnalytics() {
                   <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-sky-500 to-cyan-400" style={{ width: `${(r.count / maxRef) * 100}%` }} /></div>
                   <span className="w-10 text-right font-medium">{r.count}</span>
                 </div>); })
-                : <div className="text-sm text-[var(--faint)]">No referrers yet — most visits are direct.</div>}
+                : <div className="text-sm text-[var(--faint)]">{t('an.norefs', 'No referrers yet — most visits are direct.')}</div>}
             </div>
           </Card>
         </div>
@@ -5004,7 +5015,7 @@ function AdminAnalytics() {
         <div className="grid lg:grid-cols-[1.2fr_1.4fr] gap-4">
           <GeoPanel countries={countries} regions={regions} cities={cities} />
           <Card className="p-4 sm:p-5">
-            <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3 flex items-center gap-1.5"><ArrowRight size={13} /> Funnel · page journeys</div>
+            <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3 flex items-center gap-1.5"><ArrowRight size={13} /> {t('an.funnel', 'Funnel · page journeys')}</div>
             <Sankey flows={flows} />
           </Card>
         </div>
@@ -5012,15 +5023,15 @@ function AdminAnalytics() {
 
       {tab === 'tech' && (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Breakdown title="Devices" rows={devices} iconOf={(l) => { const I = { mobile: Zap, tablet: Package, desktop: Server }[l] || Server; return <I size={13} className="text-[var(--faint)]" />; }} />
-          <Breakdown title="Browsers" rows={browsers} iconOf={(l) => <BrandImg slug={BROWSER_SLUG[l]} />} />
-          <Breakdown title="Operating systems" rows={oses} iconOf={(l) => (OS_SLUG[l] ? <BrandImg slug={OS_SLUG[l]} fallback={Monitor} /> : <Monitor size={13} className="text-[var(--faint)] shrink-0" />)} />
+          <Breakdown title={t('an.devices', 'Devices')} rows={devices} iconOf={(l) => { const I = { mobile: Zap, tablet: Package, desktop: Server }[l] || Server; return <I size={13} className="text-[var(--faint)]" />; }} />
+          <Breakdown title={t('an.browsers', 'Browsers')} rows={browsers} iconOf={(l) => <BrandImg slug={BROWSER_SLUG[l]} />} />
+          <Breakdown title={t('an.os', 'Operating systems')} rows={oses} iconOf={(l) => (OS_SLUG[l] ? <BrandImg slug={OS_SLUG[l]} fallback={Monitor} /> : <Monitor size={13} className="text-[var(--faint)] shrink-0" />)} />
         </div>
       )}
 
       {tab === 'perf' && <WebVitals days={days} hours={hours} />}
 
-      <p className="text-[11px] text-[var(--faint)] mt-4">Geo is resolved from the visitor IP (CDN country header, else an offline GeoIP lookup; local/private IPs get a sample location in dev). The privacy-friendly daily-rotating visitor hash can't track people across days.</p>
+      <p className="text-[11px] text-[var(--faint)] mt-4">{t('an.geonote', 'Geo is resolved from the visitor IP (CDN country header, else an offline GeoIP lookup; local/private IPs get a sample location in dev). The privacy-friendly daily-rotating visitor hash can\'t track people across days.')}</p>
     </div>
   );
 }
