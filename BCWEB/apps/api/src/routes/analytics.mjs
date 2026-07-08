@@ -253,4 +253,47 @@ export default async function analyticsRoutes(app) {
       pages: byPage.map((r) => ({ path: r.path, samples: Number(r.samples), lcp: num(r.lcp), cls: num(r.cls), inp: num(r.inp), fcp: num(r.fcp), ttfb: num(r.ttfb) })),
     };
   });
+
+  // Recent visitor sessions (Rybbit-style live feed). Pageviews are grouped per visitor
+  // and split into sessions on a 30-min inactivity gap; each session carries its ordered
+  // page timeline, entry/exit, duration, device/geo, and a `live` flag (active < 5 min
+  // ago). Built from the pageview stream we already collect — no extra recording needed.
+  app.get('/admin/analytics/sessions', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const limit = Math.min(Math.max(Number(req.query?.limit) || 40, 1), 100);
+    // Pull the most recent events, then sessionize newest-first in JS (bounded scan).
+    const rows = await p.analyticsEvent.findMany({
+      where: { visitor: { not: null } },
+      orderBy: { createdAt: 'desc' }, take: 4000,
+      select: { visitor: true, path: true, ref: true, device: true, browser: true, os: true, country: true, region: true, city: true, createdAt: true },
+    });
+    const GAP = 30 * 60e3, LIVE = 5 * 60e3, now = Date.now();
+    // Group by visitor (events are desc; reverse each group to chronological).
+    const byVisitor = new Map();
+    for (const e of rows) { if (!byVisitor.has(e.visitor)) byVisitor.set(e.visitor, []); byVisitor.get(e.visitor).push(e); }
+    const sessions = [];
+    for (const [visitor, evs] of byVisitor) {
+      evs.reverse(); // chronological
+      let cur = null;
+      for (const e of evs) {
+        const t = new Date(e.createdAt).getTime();
+        if (!cur || t - cur._last > GAP) {
+          cur = { visitor, start: e.createdAt, _startMs: t, _last: t, events: [], device: e.device, browser: e.browser, os: e.os, country: e.country, region: e.region, city: e.city, ref: e.ref };
+          sessions.push(cur);
+        }
+        cur.events.push({ path: e.path, at: e.createdAt });
+        cur._last = t; cur.end = e.createdAt;
+      }
+    }
+    sessions.sort((a, b) => b._startMs - a._startMs);
+    const out = sessions.slice(0, limit).map((s) => ({
+      visitor: s.visitor, start: s.start, end: s.end,
+      durationSec: Math.max(0, Math.round((new Date(s.end).getTime() - s._startMs) / 1000)),
+      pages: s.events.length, entry: s.events[0]?.path, exit: s.events[s.events.length - 1]?.path,
+      events: s.events, device: s.device, browser: s.browser, os: s.os,
+      country: s.country, region: s.region, city: s.city, ref: s.ref,
+      live: now - new Date(s.end).getTime() < LIVE,
+    }));
+    return { sessions: out, liveCount: out.filter((s) => s.live).length };
+  });
 }

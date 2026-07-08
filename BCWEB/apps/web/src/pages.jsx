@@ -4681,6 +4681,77 @@ function WebVitals({ days, hours }) {
   );
 }
 
+// Live/recent visitor sessions (Rybbit-style). Auto-refreshes so "in progress" sessions
+// update; each row expands to its page-by-page timeline. Built from the pageview stream.
+const fmtDur = (s) => s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+const fmtAgo = (d) => { const s = Math.round((Date.now() - new Date(d).getTime()) / 1000); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`; };
+function SessionRow({ s }) {
+  const [open, setOpen] = useState(false);
+  const geo = [s.city, s.country].filter(Boolean).join(', ');
+  return (
+    <div className="rounded-xl border border-[var(--line)] overflow-hidden">
+      <button onClick={() => setOpen((x) => !x)} className="w-full flex items-center gap-3 p-3 text-left hover:bg-[var(--surface-2)]/50">
+        {s.country ? <Flag cc={s.country} className="w-5 h-4" /> : <Globe size={16} className="text-[var(--faint)]" />}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <BrandImg slug={BROWSER_SLUG[s.browser]} size={14} />
+          {OS_SLUG[s.os] ? <BrandImg slug={OS_SLUG[s.os]} size={14} fallback={Monitor} /> : <Monitor size={14} className="text-[var(--faint)]" />}
+          {s.device === 'mobile' ? <Zap size={13} className="text-[var(--faint)]" /> : null}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm truncate flex items-center gap-1.5">
+            <span className="font-mono text-xs text-[var(--muted)] truncate">{s.entry}</span>
+            {s.exit !== s.entry && <><ArrowRight size={11} className="text-[var(--faint)] shrink-0" /><span className="font-mono text-xs text-[var(--muted)] truncate">{s.exit}</span></>}
+          </div>
+          <div className="text-[11px] text-[var(--faint)] truncate">{geo || 'Unknown'} · {refHost(s.ref)}</div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-xs flex items-center gap-1.5 justify-end">
+            {s.live && <span className="inline-flex items-center gap-1 text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> live</span>}
+            <span className="text-[var(--muted)]">{s.pages} pg · {fmtDur(s.durationSec)}</span>
+          </div>
+          <div className="text-[11px] text-[var(--faint)]">{fmtAgo(s.end)} ago</div>
+        </div>
+        <ChevronDown size={15} className={`text-[var(--faint)] transition-transform shrink-0 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="border-t border-[var(--line)] bg-[var(--surface)]/40 px-3 py-2 space-y-1.5">
+          {s.events.map((e, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs">
+              <span className="w-5 text-center text-[10px] text-[var(--faint)] shrink-0">{i + 1}</span>
+              <Eye size={12} className="text-[var(--primary-2)] shrink-0" />
+              <span className="font-mono text-[var(--muted)] truncate flex-1">{e.path}</span>
+              <span className="text-[var(--faint)] shrink-0 tabular-nums">{new Date(e.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+function SessionsPanel() {
+  const [data, setData] = useState(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const load = () => api.get('/admin/analytics/sessions?limit=40').then(setData).catch(() => setData({ sessions: [], liveCount: 0 }));
+  useEffect(() => { load(); const t = setInterval(load, 15_000); return () => clearInterval(t); }, []);
+  const sessions = data?.sessions || [];
+  return (
+    <Card className="p-5 mb-4">
+      <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-left">
+        <Activity size={15} className="text-[var(--primary-2)]" />
+        <h2 className="font-semibold flex-1 flex items-center gap-2">Sessions
+          {data?.liveCount > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> {data.liveCount} live</span>}
+        </h2>
+        <span className="text-[11px] text-[var(--faint)] mr-1">auto-refresh 15s</span>
+        <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+      </button>
+      <p className="text-sm text-[var(--muted)] mb-3">Recent visitor sessions — click one to see its page-by-page journey. Live sessions were active in the last 5 minutes.</p>
+      {!collapsed && (!data ? <div className="h-20 grid place-items-center"><Spinner /></div>
+        : sessions.length ? <div className="space-y-2 max-h-[520px] overflow-auto pr-1">{sessions.map((s) => <SessionRow key={s.visitor + s.start} s={s} />)}</div>
+        : <div className="text-sm text-[var(--faint)] py-6 text-center">No sessions yet — needs visitors who accepted analytics cookies.</div>)}
+    </Card>
+  );
+}
+
 function AdminAnalytics() {
   const [days, setDays] = useState(30);
   const [hours, setHours] = useState(null); // when set → hourly view (zoom-in)
@@ -4794,6 +4865,9 @@ function AdminAnalytics() {
           </div>
         </Card>
       </div>
+
+      {/* Live / recent visitor sessions with per-session page journeys */}
+      <SessionsPanel />
 
       {/* Web Vitals — real-user performance, per page */}
       <WebVitals days={days} hours={hours} />
