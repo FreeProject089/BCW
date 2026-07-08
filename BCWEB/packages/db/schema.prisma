@@ -982,6 +982,8 @@ model AnalyticsEvent {
   country   String?  // ISO-3166 alpha-2 (from the CDN's country header, when present)
   region    String?  // subdivision (state/province) name, when geo resolves it
   city      String?  // city name, when geo resolves it
+  lat       Float?   // approximate latitude from the IP (geoip `ll`), for the globe map
+  lng       Float?   // approximate longitude
   createdAt DateTime @default(now())
 
   @@index([createdAt])

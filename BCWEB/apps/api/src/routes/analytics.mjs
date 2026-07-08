@@ -39,7 +39,10 @@ async function geoOf(req) {
   // geoip-lite returns `region` as a subdivision code (e.g. "CA") and `city` as a name.
   const region = hit?.region ? String(hit.region).slice(0, 80) || null : null;
   const city = hit?.city ? String(hit.city).slice(0, 120) || null : null;
-  return { country, region: region || null, city: city || null };
+  // `ll` = [lat, lng]; present on most geoip hits even when city/region are blank.
+  const lat = Array.isArray(hit?.ll) && Number.isFinite(hit.ll[0]) ? hit.ll[0] : null;
+  const lng = Array.isArray(hit?.ll) && Number.isFinite(hit.ll[1]) ? hit.ll[1] : null;
+  return { country, region: region || null, city: city || null, lat, lng };
 }
 // OS + distro detection. Distro/edition is only reliably present in the UA for a few
 // cases (Firefox exposes Ubuntu/Fedora; ChromeOS uses the "CrOS" token) — best-effort,
@@ -92,8 +95,8 @@ export default async function analyticsRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid' });
     const p = await db();
     const { device, browser, os } = parseUA(req.headers['user-agent']);
-    const { country, region, city } = await geoOf(req);
-    await p.analyticsEvent.create({ data: { path: b.data.path, ref: b.data.ref || null, visitor: visitorHash(req), device, browser, os, country, region, city } }).catch(() => {});
+    const { country, region, city, lat, lng } = await geoOf(req);
+    await p.analyticsEvent.create({ data: { path: b.data.path, ref: b.data.ref || null, visitor: visitorHash(req), device, browser, os, country, region, city, lat, lng } }).catch(() => {});
     return reply.code(204).send();
   });
 
@@ -328,7 +331,7 @@ export default async function analyticsRoutes(app) {
     const rows = await p.analyticsEvent.findMany({
       where: { visitor: { not: null } },
       orderBy: { createdAt: 'desc' }, take: 4000,
-      select: { visitor: true, path: true, ref: true, device: true, browser: true, os: true, country: true, region: true, city: true, createdAt: true },
+      select: { visitor: true, path: true, ref: true, device: true, browser: true, os: true, country: true, region: true, city: true, lat: true, lng: true, createdAt: true },
     });
     const GAP = 30 * 60e3, LIVE = 5 * 60e3, now = Date.now();
     // Group by visitor (events are desc; reverse each group to chronological).
@@ -341,7 +344,7 @@ export default async function analyticsRoutes(app) {
       for (const e of evs) {
         const t = new Date(e.createdAt).getTime();
         if (!cur || t - cur._last > GAP) {
-          cur = { visitor, start: e.createdAt, _startMs: t, _last: t, events: [], device: e.device, browser: e.browser, os: e.os, country: e.country, region: e.region, city: e.city, ref: e.ref };
+          cur = { visitor, start: e.createdAt, _startMs: t, _last: t, events: [], device: e.device, browser: e.browser, os: e.os, country: e.country, region: e.region, city: e.city, lat: e.lat, lng: e.lng, ref: e.ref };
           sessions.push(cur);
         }
         cur.events.push({ path: e.path, at: e.createdAt });
@@ -365,7 +368,7 @@ export default async function analyticsRoutes(app) {
         durationSec: Math.max(0, Math.round((new Date(s.end).getTime() - s._startMs) / 1000)),
         pages: s.events.length, entry: s.events[0]?.path, exit: s.events[s.events.length - 1]?.path,
         events: s.events, device: s.device, browser: s.browser, os: s.os,
-        country: s.country, region: s.region, city: s.city, ref: s.ref,
+        country: s.country, region: s.region, city: s.city, lat: s.lat, lng: s.lng, ref: s.ref,
         live: now - new Date(s.end).getTime() < LIVE,
         replayKey: rep?.sessionKey || null,
       };

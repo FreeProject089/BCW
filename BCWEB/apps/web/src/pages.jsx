@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload,
@@ -2355,6 +2355,9 @@ function MetricChart({ history }) {
   const ttX = hoverIdx != null ? Math.min(Math.max(x(hoverIdx) - ttW / 2, padL), W - padR - ttW) : 0;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-48 cursor-crosshair" onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)}>
+      {/* Danger band: anything above 90% is tinted red so sustained pressure is obvious. */}
+      <rect x={padL} y={y(100)} width={W - padL - padR} height={y(90) - y(100)} fill="#f87171" opacity="0.08" />
+      <line x1={padL} x2={W - padR} y1={y(90)} y2={y(90)} stroke="#f87171" strokeWidth={1} strokeDasharray="4 3" opacity="0.5" />
       {[0, 25, 50, 75, 100].map((g) => (
         <g key={g}>
           <line x1={padL} x2={W - padR} y1={y(g)} y2={y(g)} stroke="var(--line)" strokeWidth={1} />
@@ -2378,6 +2381,13 @@ function MetricChart({ history }) {
   );
 }
 
+// Utilisation thresholds → tone. Disk fills slowly so its "warn" is higher; CPU/RAM
+// spike, so they warn earlier. Used to colour the KPI cards and the health summary.
+const PERF_THRESH = { cpuPct: [75, 90], memPct: [80, 92], diskPct: [85, 95], loadRatio: [1, 1.5] };
+const toneFor = (v, [warn, crit]) => v == null ? '' : v >= crit ? 'crit' : v >= warn ? 'warn' : 'ok';
+const TONE_TEXT = { ok: 'text-emerald-400', warn: 'text-amber-400', crit: 'text-red-400', '': '' };
+const TONE_STROKE = { ok: '#34d399', warn: '#f59e0b', crit: '#f87171', '': 'var(--primary)' };
+
 // Server performance dashboard — read-only (no dangerous action lives here, so no
 // step-up 2FA required). CPU/RAM/disk/latency/uptime are sampled from INSIDE this
 // container every ~10 min by the sweeper (monitor.mjs); a per-container/per-service
@@ -2391,6 +2401,9 @@ function AdminServerPerf() {
   const [busy, setBusy] = useState(false);
   const [configuring, setConfiguring] = useState(false);
   const [depsBusy, setDepsBusy] = useState(false);
+  // Auto-refresh the read-only metrics + alerts every 30s (cheap — deps/SSL config,
+  // which rarely changes, is NOT re-polled). Keeps the dashboard live between samples.
+  useEffect(() => { const t = setInterval(() => { reload(); alerts.reload(); }, 30_000); return () => clearInterval(t); /* eslint-disable-next-line */ }, []);
   const sampleNow = async () => {
     setBusy(true);
     try { await api.post('/admin/server/sample-now'); toast.success('Sampled.'); reload(); alerts.reload(); } catch { toast.error('Failed.'); } finally { setBusy(false); }
@@ -2414,19 +2427,43 @@ function AdminServerPerf() {
   const gb = (b) => b == null ? null : b / 1024 ** 3;
   const memUsedGB = totals.memTotalBytes != null && totals.memFreeBytes != null ? gb(totals.memTotalBytes - totals.memFreeBytes) : null;
   const diskUsedGB = totals.diskTotalBytes != null && totals.diskFreeBytes != null ? gb(totals.diskTotalBytes - totals.diskFreeBytes) : null;
+  // Per-metric tone (green/amber/red) + an overall health rollup = the worst of them.
+  const loadRatio = latest && totals.cpuCores ? latest.loadAvg1 / totals.cpuCores : null;
+  const cpuTone = toneFor(latest?.cpuPct, PERF_THRESH.cpuPct), memTone = toneFor(latest?.memPct, PERF_THRESH.memPct), diskTone = toneFor(latest?.diskPct, PERF_THRESH.diskPct), loadTone = toneFor(loadRatio, PERF_THRESH.loadRatio);
+  const worst = [cpuTone, memTone, diskTone, loadTone];
+  const health = !latest ? null : worst.includes('crit') ? 'crit' : worst.includes('warn') ? 'warn' : 'ok';
+  const healthLabel = { ok: 'Healthy', warn: 'Under load', crit: 'Critical' }[health];
+  // Per-metric sparklines from the sampled history (oldest→newest).
+  const spark = (key) => history.map((h) => h[key]).filter((v) => v != null);
+  const kpi = (label, value, Icon, tone, sparkKey) => (
+    <Card className="p-3 relative overflow-hidden">
+      {sparkKey && spark(sparkKey).length > 1 && <Sparkline data={spark(sparkKey)} stroke={TONE_STROKE[tone]} className="absolute inset-x-0 bottom-0 h-8 w-full opacity-60 pointer-events-none" />}
+      <div className="relative">
+        <div className="flex items-center gap-2 text-[var(--faint)] text-xs mb-1"><Icon size={13} /> {label}</div>
+        <div className={`text-xl font-bold tabular-nums ${TONE_TEXT[tone] || ''}`}>{value}</div>
+      </div>
+    </Card>
+  );
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold flex items-center gap-2"><Cpu size={16} className="text-[var(--primary-2)]" /> Server performance</h2>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={sampleNow}>{busy ? <Spinner /> : <><RefreshCw size={14} /> Sample now</>}</Button>
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <h2 className="font-semibold flex items-center gap-2"><Cpu size={16} className="text-[var(--primary-2)]" /> Server performance
+          {health && <Badge tone={health === 'ok' ? 'green' : health === 'warn' ? 'amber' : 'red'}>{health === 'ok' ? <CheckCircle2 size={11} /> : <AlertTriangle size={11} />} {healthLabel}</Badge>}
+        </h2>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> auto 30s</span>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={sampleNow}>{busy ? <Spinner /> : <><RefreshCw size={14} /> Sample now</>}</Button>
+        </div>
       </div>
-      <p className="text-xs text-[var(--muted)] mb-3">Metrics reflect this API container's own view (os/cgroup) — sampled every ~10 min. A full per-service breakdown with restart controls needs Docker-socket access (see "Advanced server management").</p>
+      <p className="text-xs text-[var(--muted)] mb-3">Metrics reflect this API container's own view (os/cgroup) — sampled every ~10 min, auto-refreshed here every 30s. A full per-service breakdown with restart controls needs Docker-socket access (see "Advanced server management").</p>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
-        {[['CPU', latest ? `${latest.cpuPct.toFixed(0)}%` : '—', Cpu], ['Memory', latest ? `${latest.memPct.toFixed(0)}%` : '—', Gauge], ['Disk', latest ? `${latest.diskPct.toFixed(0)}%` : '—', HardDrive], ['Load (1m)', latest ? latest.loadAvg1.toFixed(2) : '—', TrendingUp],
-          ['Uptime', latest ? `${(latest.uptimeSec / 3600).toFixed(1)}h` : '—', Clock], ['Avg latency', latest?.latencyMs != null ? `${latest.latencyMs}ms` : '—', Zap]].map(([l, v, I]) => (
-          <Card key={l} className="p-3"><div className="flex items-center gap-2 text-[var(--faint)] text-xs mb-1"><I size={13} /> {l}</div><div className="text-xl font-bold tabular-nums">{v}</div></Card>
-        ))}
+        {kpi('CPU', latest ? `${latest.cpuPct.toFixed(0)}%` : '—', Cpu, cpuTone, 'cpuPct')}
+        {kpi('Memory', latest ? `${latest.memPct.toFixed(0)}%` : '—', Gauge, memTone, 'memPct')}
+        {kpi('Disk', latest ? `${latest.diskPct.toFixed(0)}%` : '—', HardDrive, diskTone, 'diskPct')}
+        {kpi('Load (1m)', latest ? latest.loadAvg1.toFixed(2) : '—', TrendingUp, loadTone)}
+        {kpi('Uptime', latest ? `${(latest.uptimeSec / 3600).toFixed(1)}h` : '—', Clock, '')}
+        {kpi('Avg latency', latest?.latencyMs != null ? `${latest.latencyMs}ms` : '—', Zap, latest?.latencyMs != null ? toneFor(latest.latencyMs, [400, 1000]) : '')}
       </div>
 
       {/* Absolute totals alongside the percentages above — "11% used" only means
@@ -4782,9 +4819,79 @@ function SessionRow({ s }) {
     </div>
   );
 }
+// Auto-rotating 3D globe of sessions (three.js, lazy-loaded). Each geo-located session is
+// a glowing pin on the sphere (green = live); hovering pauses the spin and shows a card.
+// Self-contained — a dark sphere + graticule + atmosphere, no external Earth texture.
+function SessionsGlobe({ sessions }) {
+  const mountRef = useRef(null);
+  const [hover, setHover] = useState(null);
+  const hoverRef = useRef(false);
+  // Only rebuild when the geo points actually change (data refetches every 15s).
+  const pts = sessions.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
+  const sig = pts.map((s) => `${s.lat},${s.lng},${s.live ? 1 : 0}`).join('|');
+  const stablePts = useMemo(() => pts, [sig]); // eslint-disable-line
+  useEffect(() => {
+    let renderer, frame, ro, disposed = false;
+    const mount = mountRef.current;
+    (async () => {
+      let THREE;
+      try { THREE = await import('three'); } catch { return; }
+      if (disposed || !mount) return;
+      const H = 420, W = mount.clientWidth || 600;
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(42, W / H, 0.1, 100);
+      camera.position.z = 3.1;
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(W, H); renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+      mount.appendChild(renderer.domElement);
+      const R = 1, globe = new THREE.Group(); scene.add(globe);
+      globe.add(new THREE.Mesh(new THREE.SphereGeometry(R, 48, 48), new THREE.MeshBasicMaterial({ color: 0x0e1a2e })));
+      globe.add(new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.SphereGeometry(R * 1.002, 24, 16)), new THREE.LineBasicMaterial({ color: 0x2b4066, transparent: true, opacity: 0.35 })));
+      scene.add(new THREE.Mesh(new THREE.SphereGeometry(R * 1.14, 40, 40), new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.07, side: THREE.BackSide })));
+      const toVec = (lat, lng, r = R * 1.02) => { const phi = (90 - lat) * Math.PI / 180, th = (lng + 180) * Math.PI / 180; return new THREE.Vector3(-r * Math.sin(phi) * Math.cos(th), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(th)); };
+      const markers = [];
+      for (const s of stablePts) {
+        const v = toVec(s.lat, s.lng), col = s.live ? 0x34d399 : 0xf97316;
+        const m = new THREE.Mesh(new THREE.SphereGeometry(s.live ? 0.03 : 0.022, 10, 10), new THREE.MeshBasicMaterial({ color: col }));
+        m.position.copy(v); m.userData = s; globe.add(m); markers.push(m);
+        globe.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([toVec(s.lat, s.lng, R), v]), new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.45 })));
+      }
+      const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+      const onMove = (e) => {
+        const r = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1; mouse.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+        ray.setFromCamera(mouse, camera);
+        const hit = ray.intersectObjects(markers)[0];
+        if (hit) { hoverRef.current = true; setHover({ s: hit.object.userData, x: e.clientX - r.left, y: e.clientY - r.top }); }
+        else { hoverRef.current = false; setHover(null); }
+      };
+      renderer.domElement.addEventListener('pointermove', onMove);
+      renderer.domElement.addEventListener('pointerleave', () => { hoverRef.current = false; setHover(null); });
+      const animate = () => { frame = requestAnimationFrame(animate); if (!hoverRef.current) globe.rotation.y += 0.0016; renderer.render(scene, camera); };
+      animate();
+      ro = new ResizeObserver(() => { const w = mount.clientWidth || W; renderer.setSize(w, H); camera.aspect = w / H; camera.updateProjectionMatrix(); });
+      ro.observe(mount);
+    })();
+    return () => {
+      disposed = true; cancelAnimationFrame(frame);
+      try { ro?.disconnect(); } catch {}
+      try { renderer?.forceContextLoss?.(); renderer?.dispose?.(); renderer?.domElement?.remove(); } catch {}
+    };
+  }, [stablePts]);
+  return (
+    <div className="relative">
+      <div ref={mountRef} className="w-full rounded-lg overflow-hidden" style={{ height: 420, background: 'radial-gradient(circle at 50% 40%, #0b1526, #05070d)' }} />
+      {hover && <div style={{ left: Math.min(hover.x + 12, 460), top: hover.y + 12 }} className="absolute text-[11px] px-2 py-1 rounded-md bg-[var(--bg-solid)] border border-[var(--line)] shadow flex items-center gap-1.5 pointer-events-none z-10">
+        {hover.s.country ? <Flag cc={hover.s.country} /> : null} {[hover.s.city, hover.s.country].filter(Boolean).join(', ') || 'Unknown'} · <b>{hover.s.pages}</b> pg{hover.s.live && <span className="text-emerald-400">· live</span>}</div>}
+      {!stablePts.length && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--faint)]">No geo-located sessions yet — needs real visitor IPs.</div>}
+    </div>
+  );
+}
+
 function SessionsPanel() {
   const [data, setData] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [view, setView] = useState('list'); // 'list' | 'globe'
   const load = () => api.get('/admin/analytics/sessions?limit=40').then(setData).catch(() => setData({ sessions: [], liveCount: 0 }));
   useEffect(() => { load(); const t = setInterval(load, 15_000); return () => clearInterval(t); }, []);
   const sessions = data?.sessions || [];
@@ -4798,8 +4905,16 @@ function SessionsPanel() {
         <span className="text-[11px] text-[var(--faint)] mr-1">auto-refresh 15s</span>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${collapsed ? '-rotate-90' : ''}`} />
       </button>
-      <p className="text-sm text-[var(--muted)] mb-3">Recent visitor sessions — click one to see its page-by-page journey. Live sessions were active in the last 5 minutes.</p>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <p className="text-sm text-[var(--muted)]">Recent visitor sessions — {view === 'globe' ? 'positioned on the globe by IP geolocation.' : 'click one to see its page-by-page journey.'} Live = active in the last 5 minutes.</p>
+        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden shrink-0">
+          {[['list', 'List', LayoutDashboard], ['globe', 'Globe', Globe2]].map(([v, label, I]) => (
+            <button key={v} onClick={() => setView(v)} className={`px-3 py-1 text-xs flex items-center gap-1.5 ${view === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={12} /> {label}</button>
+          ))}
+        </div>
+      </div>
       {!collapsed && (!data ? <div className="h-20 grid place-items-center"><Spinner /></div>
+        : view === 'globe' ? <SessionsGlobe sessions={sessions} />
         : sessions.length ? <div className="space-y-2 max-h-[520px] overflow-auto pr-1">{sessions.map((s) => <SessionRow key={s.visitor + s.start} s={s} />)}</div>
         : <div className="text-sm text-[var(--faint)] py-6 text-center">No sessions yet — needs visitors who accepted analytics cookies.</div>)}
     </Card>
