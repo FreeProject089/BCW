@@ -230,8 +230,15 @@ export default async function docRoutes(app) {
   // ── Editor-collaboration comments (threaded, mirror of the blog system) ──
   // Read: docs editors always; published + commentsPublic pages also to readers (read-only).
   // Write/edit/resolve/delete: docs editors (ADMIN/SUPERADMIN) — any editor edits any comment.
-  const shapeC = (c, nameOf, avaOf) => ({ id: c.id, parentId: c.parentId, anchor: c.anchor, body: c.body, resolved: c.resolved,
-    author: { id: c.authorId, name: nameOf.get(c.authorId) || 'Unknown', avatar: avaOf?.get(c.authorId) || null }, createdAt: c.createdAt, updatedAt: c.updatedAt });
+  // participants = author + everyone who edited it (pfps shown on the comment).
+  const shapeC = (c, umap) => {
+    const who = (id) => ({ id, name: umap.get(id)?.name || 'Unknown', avatar: umap.get(id)?.avatar || null });
+    const partIds = [...new Set([c.authorId, ...(c.editorIds || [])])];
+    return { id: c.id, parentId: c.parentId, anchor: c.anchor, body: c.body, resolved: c.resolved,
+      author: who(c.authorId), participants: partIds.map(who), edited: (c.editorIds || []).length > 0,
+      createdAt: c.createdAt, updatedAt: c.updatedAt };
+  };
+  const usersMap = async (p, ids) => new Map((await p.user.findMany({ where: { id: { in: [...new Set(ids)] } }, select: { id: true, displayName: true, avatar: true } })).map((u) => [u.id, { name: u.displayName, avatar: u.avatar }]));
 
   app.get('/docs/:id/comments', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
@@ -240,9 +247,8 @@ export default async function docRoutes(app) {
     const editor = isEditor(req);
     if (!editor && !(page.commentsPublic && page.published)) return reply.code(403).send({ error: 'forbidden' });
     const comments = await p.docComment.findMany({ where: { pageId: req.params.id }, orderBy: { createdAt: 'asc' } });
-    const authors = await p.user.findMany({ where: { id: { in: [...new Set(comments.map((c) => c.authorId))] } }, select: { id: true, displayName: true, avatar: true } });
-    const nameOf = new Map(authors.map((u) => [u.id, u.displayName])); const avaOf = new Map(authors.map((u) => [u.id, u.avatar]));
-    return { canComment: editor, commentsPublic: page.commentsPublic, comments: comments.map((c) => shapeC(c, nameOf, avaOf)) };
+    const umap = await usersMap(p, comments.flatMap((c) => [c.authorId, ...(c.editorIds || [])]));
+    return { canComment: editor, commentsPublic: page.commentsPublic, comments: comments.map((c) => shapeC(c, umap)) };
   });
 
   app.post('/docs/:id/comments', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
@@ -253,8 +259,7 @@ export default async function docRoutes(app) {
     if (!page) return reply.code(404).send({ error: 'not_found' });
     if (b.data.parentId) { const parent = await p.docComment.findFirst({ where: { id: b.data.parentId, pageId: req.params.id } }); if (!parent) return reply.code(400).send({ error: 'bad_parent' }); }
     const c = await p.docComment.create({ data: { pageId: req.params.id, authorId: req.user.uid, body: b.data.body, anchor: b.data.anchor || null, parentId: b.data.parentId || null } });
-    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true, avatar: true } });
-    return reply.code(201).send({ comment: shapeC(c, new Map([[req.user.uid, me?.displayName]]), new Map([[req.user.uid, me?.avatar]])) });
+    return reply.code(201).send({ comment: shapeC(c, await usersMap(p, [c.authorId])) });
   });
 
   app.patch('/docs/:id/comments/:cid', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
@@ -263,9 +268,11 @@ export default async function docRoutes(app) {
     const p = await db();
     const exists = await p.docComment.findFirst({ where: { id: req.params.cid, pageId: req.params.id } });
     if (!exists) return reply.code(404).send({ error: 'not_found' });
+    const addEditor = b.data.body !== undefined && req.user.uid !== exists.authorId && !(exists.editorIds || []).includes(req.user.uid);
     const c = await p.docComment.update({ where: { id: req.params.cid }, data: {
-      ...(b.data.body !== undefined ? { body: b.data.body } : {}), ...(b.data.resolved !== undefined ? { resolved: b.data.resolved } : {}) } });
-    return { comment: { id: c.id, body: c.body, resolved: c.resolved, updatedAt: c.updatedAt } };
+      ...(b.data.body !== undefined ? { body: b.data.body } : {}), ...(b.data.resolved !== undefined ? { resolved: b.data.resolved } : {}),
+      ...(addEditor ? { editorIds: { push: req.user.uid } } : {}) } });
+    return { comment: shapeC(c, await usersMap(p, [c.authorId, ...(c.editorIds || [])])) };
   });
 
   app.delete('/docs/:id/comments/:cid', { preHandler: requireRole('ADMIN') }, async (req, reply) => {

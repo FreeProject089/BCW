@@ -63,11 +63,20 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
 
   const CommentBody = ({ c, isReply }) => (
     <div className={`${c.resolved ? 'opacity-60' : ''}`}>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Avatar a={c} />
         <span className="text-sm font-medium">{c.author?.name}</span>
-        <span className="text-[11px] text-[var(--faint)]">{fmt(c.createdAt)}{c.updatedAt !== c.createdAt ? ' · edited' : ''}</span>
+        <span className="text-[11px] text-[var(--faint)]">{fmt(c.createdAt)}{(c.edited || c.updatedAt !== c.createdAt) ? ' · edited' : ''}</span>
         {c.resolved && <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400 flex items-center gap-0.5"><Check size={10} /> resolved</span>}
+        {/* Everyone who participated (author + editors) — their pfps, git-style. */}
+        {c.participants?.length > 1 && (
+          <span className="flex items-center -space-x-1.5 ml-auto" title={`Contributors: ${c.participants.map((u) => u.name).join(', ')}`}>
+            {c.participants.slice(0, 5).map((u) => (
+              <UserAvatar key={u.id} user={{ id: u.id, displayName: u.name, avatar: u.avatar }} size={18} className="ring-1 ring-[var(--surface)] rounded-full" />
+            ))}
+            {c.participants.length > 5 && <span className="text-[10px] text-[var(--faint)] pl-2">+{c.participants.length - 5}</span>}
+          </span>
+        )}
       </div>
       {c.anchor && !isReply && (onJump
         ? <button onClick={() => { onJump(headingSlug(c.anchor)); onClose(); }} title="Jump to this section" className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)] hover:bg-[var(--primary)]/20 transition"><Hash size={10} /> {c.anchor}</button>

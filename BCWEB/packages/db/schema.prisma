@@ -322,6 +322,8 @@ model BlogComment {
   anchor    String?  // freeform pin label (e.g. a heading or "line 42"); null = general
   body      String
   resolved  Boolean  @default(false)
+  // Everyone who has EDITED this comment (collaborative) — their pfps show on it.
+  editorIds String[] @default([])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -388,6 +390,7 @@ model DocComment {
   anchor    String?
   body      String
   resolved  Boolean  @default(false)
+  editorIds String[] @default([]) // everyone who edited this comment — pfps show on it
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

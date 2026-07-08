@@ -363,8 +363,15 @@ export default async function blogRoutes(app) {
   // Read: any editor of the post, OR anyone when the post is published + commentsPublic
   // (read-only). Write/edit/resolve/delete: editors only — and ANY editor may edit ANY
   // comment (collaborative), matching "les autres éditeurs peuvent lire et rééditer".
-  const shapeComment = (c, nameOf) => ({ id: c.id, parentId: c.parentId, anchor: c.anchor, body: c.body, resolved: c.resolved,
-    author: { id: c.authorId, name: nameOf.get(c.authorId) || 'Unknown', avatar: c.authorAvatar || null }, createdAt: c.createdAt, updatedAt: c.updatedAt });
+  // participants = the author + everyone who edited it (their pfps show on the comment).
+  const shapeComment = (c, umap) => {
+    const who = (id) => ({ id, name: umap.get(id)?.name || 'Unknown', avatar: umap.get(id)?.avatar || null });
+    const partIds = [...new Set([c.authorId, ...(c.editorIds || [])])];
+    return { id: c.id, parentId: c.parentId, anchor: c.anchor, body: c.body, resolved: c.resolved,
+      author: who(c.authorId), participants: partIds.map(who), edited: (c.editorIds || []).length > 0,
+      createdAt: c.createdAt, updatedAt: c.updatedAt };
+  };
+  const usersMap = async (p, ids) => new Map((await p.user.findMany({ where: { id: { in: [...new Set(ids)] } }, select: { id: true, displayName: true, avatar: true } })).map((u) => [u.id, { name: u.displayName, avatar: u.avatar }]));
 
   app.get('/blog/:id/comments', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
@@ -374,11 +381,8 @@ export default async function blogRoutes(app) {
     const publicView = post.commentsPublic && post.status === 'PUBLISHED';
     if (!editor && !publicView) return reply.code(403).send({ error: 'forbidden' });
     const comments = await p.blogComment.findMany({ where: { postId: req.params.id }, orderBy: { createdAt: 'asc' } });
-    const authors = await p.user.findMany({ where: { id: { in: [...new Set(comments.map((c) => c.authorId))] } }, select: { id: true, displayName: true, avatar: true } });
-    const nameOf = new Map(authors.map((u) => [u.id, u.displayName]));
-    const avaOf = new Map(authors.map((u) => [u.id, u.avatar]));
-    return { canComment: editor, commentsPublic: post.commentsPublic,
-      comments: comments.map((c) => shapeComment({ ...c, authorAvatar: avaOf.get(c.authorId) }, nameOf)) };
+    const umap = await usersMap(p, comments.flatMap((c) => [c.authorId, ...(c.editorIds || [])]));
+    return { canComment: editor, commentsPublic: post.commentsPublic, comments: comments.map((c) => shapeComment(c, umap)) };
   });
 
   app.post('/blog/:id/comments', { preHandler: requireRole() }, async (req, reply) => {
@@ -391,8 +395,7 @@ export default async function blogRoutes(app) {
     // A reply must point at a real comment on this post.
     if (b.data.parentId) { const parent = await p.blogComment.findFirst({ where: { id: b.data.parentId, postId: req.params.id } }); if (!parent) return reply.code(400).send({ error: 'bad_parent' }); }
     const c = await p.blogComment.create({ data: { postId: req.params.id, authorId: req.user.uid, body: b.data.body, anchor: b.data.anchor || null, parentId: b.data.parentId || null } });
-    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true, avatar: true } });
-    return reply.code(201).send({ comment: shapeComment({ ...c, authorAvatar: me?.avatar }, new Map([[req.user.uid, me?.displayName]])) });
+    return reply.code(201).send({ comment: shapeComment(c, await usersMap(p, [c.authorId])) });
   });
 
   app.patch('/blog/:id/comments/:cid', { preHandler: requireRole() }, async (req, reply) => {
@@ -404,9 +407,12 @@ export default async function blogRoutes(app) {
     if (!canEditPost(req.user, post)) return reply.code(403).send({ error: 'forbidden' }); // ANY editor may edit ANY comment
     const exists = await p.blogComment.findFirst({ where: { id: req.params.cid, postId: req.params.id } });
     if (!exists) return reply.code(404).send({ error: 'not_found' });
+    // Editing the body records the editor as a participant (unless they're the author or already listed).
+    const addEditor = b.data.body !== undefined && req.user.uid !== exists.authorId && !(exists.editorIds || []).includes(req.user.uid);
     const c = await p.blogComment.update({ where: { id: req.params.cid }, data: {
-      ...(b.data.body !== undefined ? { body: b.data.body } : {}), ...(b.data.resolved !== undefined ? { resolved: b.data.resolved } : {}) } });
-    return { comment: { id: c.id, body: c.body, resolved: c.resolved, updatedAt: c.updatedAt } };
+      ...(b.data.body !== undefined ? { body: b.data.body } : {}), ...(b.data.resolved !== undefined ? { resolved: b.data.resolved } : {}),
+      ...(addEditor ? { editorIds: { push: req.user.uid } } : {}) } });
+    return { comment: shapeComment(c, await usersMap(p, [c.authorId, ...(c.editorIds || [])])) };
   });
 
   app.delete('/blog/:id/comments/:cid', { preHandler: requireRole() }, async (req, reply) => {
