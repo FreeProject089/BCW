@@ -2413,7 +2413,9 @@ function AdminServerPerf() {
     setDepsBusy(true);
     try { await api.put('/admin/server/deps-config', { [key]: on }); depsCfg.reload(); reload(); } catch { toast.error(t('sp.failed', 'Failed.')); } finally { setDepsBusy(false); }
   };
-  if (loading) return <Loading />;
+  // Only blank to a spinner on the FIRST load — during the 30s background refresh keep
+  // showing the current data (otherwise the whole tab flashes empty every 30s).
+  if (loading && !data) return <Loading />;
   const latest = data?.latest;
   const deps = data?.deps || {};
   const ssl = data?.ssl;
@@ -4656,11 +4658,18 @@ function WebVitals({ days, hours }) {
         <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.wv.none', 'No performance samples yet — collected from real visits (needs analytics consent).')}</div>
       ) : <>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
-          {metrics.map((m) => { const v = m[pct]; const r = vitalRating(m.metric, v); return (
-            <div key={m.metric} className="rounded-xl border border-[var(--line)] p-3">
-              <div className="text-[11px] text-[var(--muted)] flex items-center gap-1" title={VITAL_META[m.metric].label}>{m.metric}{m.goodShare != null && <span className="ml-auto text-[10px] text-[var(--faint)]">{m.goodShare}% {t('an.wv.good', 'good')}</span>}</div>
-              <div className={`text-xl font-bold mt-1 ${r ? vitalColor(r) : ''}`}>{v == null ? '—' : VITAL_META[m.metric].fmt(v)}</div>
-              <div className="text-[10px] text-[var(--faint)] mt-0.5">{m.n} {t('an.wv.samples', 'samples')}</div>
+          {metrics.map((m) => { const v = m[pct]; const r = vitalRating(m.metric, v);
+            const trend = (data?.trend || []).filter((x) => x.metric === m.metric).map((x) => x.p75).filter((x) => x != null);
+            const stroke = r === 'good' ? '#34d399' : r === 'ni' ? '#f59e0b' : r === 'poor' ? '#f87171' : 'var(--primary)';
+            return (
+            <div key={m.metric} className="rounded-xl border border-[var(--line)] p-3 relative overflow-hidden">
+              {trend.length > 1 && <Sparkline data={trend} stroke={stroke} className="absolute inset-x-0 bottom-0 h-7 w-full opacity-50 pointer-events-none" />}
+              <div className="relative">
+                <div className="text-[11px] text-[var(--muted)] flex items-center gap-1" title={VITAL_META[m.metric].label}>{m.metric}{m.goodShare != null && <span className="ml-auto text-[10px] text-[var(--faint)]">{m.goodShare}% {t('an.wv.good', 'good')}</span>}</div>
+                <div className={`text-xl font-bold mt-1 ${r ? vitalColor(r) : ''}`}>{v == null ? '—' : VITAL_META[m.metric].fmt(v)}</div>
+                {m.goodShare != null && <div className="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1.5 mb-0.5"><div className="h-full" style={{ width: `${m.goodShare}%`, background: m.goodShare >= 75 ? '#34d399' : m.goodShare >= 50 ? '#f59e0b' : '#f87171' }} /></div>}
+                <div className="text-[10px] text-[var(--faint)]">{m.n} {t('an.wv.samples', 'samples')} · {t('an.wv.goodle', 'good ≤')} {VITAL_META[m.metric].fmt(VITAL_META[m.metric].good)}</div>
+              </div>
             </div>
           ); })}
         </div>
@@ -4745,15 +4754,27 @@ function SessionReplayModal({ sessionKey, onClose }) {
   );
 }
 
+// Anonymous per-session identity (never the real account): a stable "Colour Animal"
+// nickname + a Boring-Avatar, both seeded by the daily-rotating visitor hash — the same
+// privacy-friendly style as the BMM telemetry dashboard.
+const NICK_ADJ = ['Lavender', 'Tan', 'Violet', 'Lime', 'Sapphire', 'Emerald', 'Peach', 'Gray', 'Amethyst', 'Beige', 'Teal', 'Tomato', 'Apricot', 'Aquamarine', 'Salmon', 'Crimson', 'Indigo', 'Olive', 'Coral', 'Azure', 'Maroon', 'Cyan', 'Magenta', 'Amber'];
+const NICK_ANIMAL = ['Chimpanzee', 'Tiglon', 'Koi', 'Lynx', 'Anteater', 'Krill', 'Vole', 'Giraffe', 'Canid', 'Urial', 'Zebra', 'Herring', 'Viper', 'Scallop', 'Bison', 'Marten', 'Barracuda', 'Reptile', 'Rook', 'Gayal', 'Otter', 'Falcon', 'Heron', 'Ibex'];
+const hashSeed = (seed) => { let h = 0; const s = String(seed || ''); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
+function fakeNick(seed) { const h = hashSeed(seed); return `${NICK_ADJ[h % NICK_ADJ.length]} ${NICK_ANIMAL[(h >> 5) % NICK_ANIMAL.length]}`; }
+
 function SessionRow({ s }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [replay, setReplay] = useState(false);
   const geo = [s.city, s.country].filter(Boolean).join(', ');
+  const nick = fakeNick(s.visitor);
   return (
     <div className="rounded-xl border border-[var(--line)] overflow-hidden">
       <button onClick={() => setOpen((x) => !x)} className="w-full flex items-center gap-3 p-3 text-left hover:bg-[var(--surface-2)]/50">
-        {s.country ? <Flag cc={s.country} className="w-5 h-4" /> : <Globe size={16} className="text-[var(--faint)]" />}
+        <span className="relative shrink-0">
+          <Avatar seed={s.visitor} size={30} />
+          {s.country && <span className="absolute -bottom-1 -right-1 rounded-[2px] overflow-hidden ring-1 ring-[var(--bg-solid)]"><Flag cc={s.country} className="w-3.5 h-2.5" /></span>}
+        </span>
         <div className="flex items-center gap-1.5 shrink-0">
           <BrandImg slug={BROWSER_SLUG[s.browser]} size={14} />
           {OS_SLUG[s.os] ? <BrandImg slug={OS_SLUG[s.os]} size={14} fallback={Monitor} /> : <Monitor size={14} className="text-[var(--faint)]" />}
@@ -4761,8 +4782,9 @@ function SessionRow({ s }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm truncate flex items-center gap-1.5">
-            <span className="font-mono text-xs text-[var(--muted)] truncate">{s.entry}</span>
-            {s.exit !== s.entry && <><ArrowRight size={11} className="text-[var(--faint)] shrink-0" /><span className="font-mono text-xs text-[var(--muted)] truncate">{s.exit}</span></>}
+            <span className="font-medium">{nick}</span>
+            <span className="font-mono text-xs text-[var(--faint)] truncate">{s.entry}</span>
+            {s.exit !== s.entry && <><ArrowRight size={11} className="text-[var(--faint)] shrink-0" /><span className="font-mono text-xs text-[var(--faint)] truncate">{s.exit}</span></>}
           </div>
           <div className="text-[11px] text-[var(--faint)] truncate">{geo || t('an.unknown', 'Unknown')} · {refHost(s.ref)}</div>
         </div>
@@ -4885,7 +4907,7 @@ function SessionsPanel() {
         </div>
       </div>
       {!collapsed && (!data ? <div className="h-20 grid place-items-center"><Spinner /></div>
-        : view === 'globe' ? <AnalyticsMap points={sessions.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng)).map((s) => ({ lat: s.lat, lng: s.lng, color: s.live ? '#34d399' : '#f97316', size: s.live ? 15 : 11, title: `${[s.city, s.country].filter(Boolean).join(', ') || unknown} · ${s.pages} ${t('an.pg', 'pg')}${s.live ? ' · ' + t('an.liveLabel', 'live') : ''}` }))} />
+        : view === 'globe' ? <AnalyticsMap points={sessions.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng)).map((s) => ({ lat: s.lat, lng: s.lng, color: s.live ? '#34d399' : '#f97316', size: s.live ? 15 : 11, title: `${fakeNick(s.visitor)} · ${[s.city, s.country].filter(Boolean).join(', ') || unknown} · ${s.pages} ${t('an.pg', 'pg')}${s.live ? ' · ' + t('an.liveLabel', 'live') : ''}` }))} />
         : sessions.length ? <div className="space-y-2 max-h-[520px] overflow-auto pr-1">{sessions.map((s) => <SessionRow key={s.visitor + s.start} s={s} />)}</div>
         : <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.sess.none', 'No sessions yet — needs visitors who accepted analytics cookies.')}</div>)}
     </Card>

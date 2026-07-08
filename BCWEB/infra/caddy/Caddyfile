@@ -14,7 +14,7 @@
 		# embeds, rrweb blob iframes, inline theme bootstrap + React inline styles).
 		# script-src also allows Google Tag Manager / Analytics so a consent-gated
 		# analytics tag works when enabled (it is only loaded after opt-in, client-side).
-		Content-Security-Policy "default-src 'self'; img-src 'self' data: https: blob:; media-src 'self' https: blob:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://tagmanager.google.com; frame-src 'self' blob: https://www.youtube-nocookie.com https://www.youtube.com https://www.googletagmanager.com; connect-src 'self' https: http://localhost:9000 ws: wss:; frame-ancestors 'self'; base-uri 'self'"
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: https: blob:; media-src 'self' https: blob:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' blob: https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://tagmanager.google.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self' blob: https://www.youtube-nocookie.com https://www.youtube.com https://www.googletagmanager.com; connect-src 'self' https: http://localhost:9000 ws: wss:; frame-ancestors 'self'; base-uri 'self'"
 		-Server
 	}
 

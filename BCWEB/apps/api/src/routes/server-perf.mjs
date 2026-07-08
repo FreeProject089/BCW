@@ -10,6 +10,22 @@ function botAuth(req, reply) {
   return true;
 }
 
+// The dependency checks + SSL probe do live network I/O (a TLS handshake to the site,
+// Redis/DB/MinIO pings) that took seconds and ran on EVERY /metrics call — so the panel's
+// 30s auto-refresh was slow. Cache them for 2 min: the CPU/RAM/disk history (a cheap DB
+// read) is always fresh, only these slow probes are memoized.
+let _probeCache = { deps: null, ssl: null, at: 0 };
+const PROBE_TTL = 2 * 60e3;
+async function cachedProbes(p) {
+  if (_probeCache.deps && Date.now() - _probeCache.at < PROBE_TTL) return _probeCache;
+  const [deps, ssl] = await Promise.all([
+    checkDependencies(p),
+    checkSslExpiry((process.env.SITE_URL || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '') || null),
+  ]);
+  _probeCache = { deps, ssl, at: Date.now() };
+  return _probeCache;
+}
+
 // Read-only monitoring — no dangerous action lives here, so plain ADMIN is enough
 // (no step-up 2FA / canControlServer required, unlike server-control.mjs).
 export default async function serverPerfRoutes(app) {
@@ -17,12 +33,12 @@ export default async function serverPerfRoutes(app) {
     const p = await db();
     const hoursBack = Math.min(Number(req.query?.hours) || (24 * 7), 24 * 30);
     const since = new Date(Date.now() - hoursBack * 3600e3);
-    const [history, deps] = await Promise.all([
+    const [history, probes] = await Promise.all([
       p.serverMetricSample.findMany({ where: { createdAt: { gte: since } }, orderBy: { createdAt: 'asc' } }),
-      checkDependencies(p),
+      cachedProbes(p),
     ]);
+    const { deps, ssl } = probes;
     const latest = history[history.length - 1] || null;
-    const ssl = await checkSslExpiry((process.env.SITE_URL || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '') || null);
     // Downtime gaps: consecutive samples more than 2x the ~10-min tick apart imply
     // the sweeper (and so the API process) wasn't running in between.
     const downtime = [];
@@ -81,6 +97,7 @@ export default async function serverPerfRoutes(app) {
     const cur = await getDepsConfig(p);
     const next = { ...cur, ...b.data };
     await p.adminSetting.upsert({ where: { key: 'serverperf.deps' }, create: { key: 'serverperf.deps', value: next }, update: { value: next } });
+    _probeCache.at = 0; // force a fresh dependency check on the next metrics fetch
     return { enabled: next };
   });
 

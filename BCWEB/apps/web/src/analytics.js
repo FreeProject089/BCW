@@ -39,7 +39,10 @@ export function initVitals() {
     if (nav && nav.responseStart > 0) set('TTFB', Math.max(0, nav.responseStart));
   } catch {}
 
-  const obs = (type, cb, opts) => { try { const o = new PerformanceObserver(cb); o.observe({ type, buffered: true, ...opts }); return o; } catch { return null; } };
+  // Skip entry types the browser doesn't support (e.g. Firefox has no layout-shift/INP)
+  // so it doesn't log "entryTypes … ignored" warnings on every page load.
+  const supported = (PerformanceObserver.supportedEntryTypes || []);
+  const obs = (type, cb, opts) => { if (!supported.includes(type)) return null; try { const o = new PerformanceObserver(cb); o.observe({ type, buffered: true, ...opts }); return o; } catch { return null; } };
 
   // FCP: first-contentful-paint from the paint timeline.
   obs('paint', (l) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint') set('FCP', e.startTime); });
