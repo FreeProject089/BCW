@@ -217,7 +217,7 @@ async fn require_viewer(State(st): State<Shared>, req: axum::extract::Request, n
     if st.cfg.admin_key.is_empty() {
         return next.run(req).await;
     }
-    let header_ok = req.headers().get("X-Admin-Key").and_then(|v| v.to_str().ok()) == Some(st.cfg.admin_key.as_str());
+    let header_ok = req.headers().get("X-Admin-Key").and_then(|v| v.to_str().ok()).map(|v| ct_eq(v, &st.cfg.admin_key)).unwrap_or(false);
     // BetterCommunity SSO: a short-lived HMAC token minted by the BCWEB admin panel
     // (which already enforces an admin-tier account + 2FA) grants viewer access
     // without the static admin key.
@@ -227,7 +227,7 @@ async fn require_viewer(State(st): State<Shared>, req: axum::extract::Request, n
         q.split('&').any(|kv| {
             let mut it = kv.splitn(2, '=');
             match (it.next(), it.next()) {
-                (Some("key") | Some("admin_key"), Some(v)) => v == st.cfg.admin_key,
+                (Some("key") | Some("admin_key"), Some(v)) => ct_eq(v, &st.cfg.admin_key),
                 (Some("bc"), Some(v)) => bc_token_ok(v, &st.cfg.bc_link_secret),
                 _ => false,
             }
@@ -267,17 +267,30 @@ fn bc_token_ok(token: &str, secret: &str) -> bool {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
+// Constant-time string comparison for secrets (api key / admin key) — plain `==`
+// short-circuits on the first differing byte, leaking the shared prefix via timing.
+fn ct_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for i in 0..a.len() {
+        diff |= a[i] ^ b[i];
+    }
+    diff == 0
+}
 fn ok_key(cfg: &Config, k: Option<&str>) -> bool {
-    cfg.api_key.is_empty() || k == Some(cfg.api_key.as_str())
+    cfg.api_key.is_empty() || k.map(|k| ct_eq(k, &cfg.api_key)).unwrap_or(false)
 }
 fn is_admin(cfg: &Config, headers: &HeaderMap, q: &HashMap<String, String>, body: &Value) -> bool {
     if cfg.admin_key.is_empty() {
         return false;
     }
     let h = headers.get("X-Admin-Key").and_then(|v| v.to_str().ok());
-    h == Some(cfg.admin_key.as_str())
-        || q.get("admin_key").map(String::as_str) == Some(cfg.admin_key.as_str())
-        || body.get("admin_key").and_then(Value::as_str) == Some(cfg.admin_key.as_str())
+    h.map(|h| ct_eq(h, &cfg.admin_key)).unwrap_or(false)
+        || q.get("admin_key").map(|v| ct_eq(v, &cfg.admin_key)).unwrap_or(false)
+        || body.get("admin_key").and_then(Value::as_str).map(|v| ct_eq(v, &cfg.admin_key)).unwrap_or(false)
 }
 
 // ── handlers ────────────────────────────────────────────────────────────────
