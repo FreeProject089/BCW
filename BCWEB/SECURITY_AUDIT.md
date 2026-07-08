@@ -60,3 +60,43 @@ BetterInstaller now HAS code (a Rust workspace under `BetterInstaller/crates`, c
 | SSRF DNS-rebind TOCTOU | Low | Accepted (Node fetch limitation, documented) |
 | Launch-pack VBS/PS escaping | Low | Fine for local-only input |
 | BetterInstaller | — | Dedicated pre-release audit of download/verify + handoff |
+
+---
+
+# Re-audit — 2026-07-08 (analytics/telemetry surfaces + Docker images)
+
+Second pass focused on the code added since (analytics ingest, session/geo endpoints, the
+BMM telemetry service linked to BCWEB) plus a container CVE scan.
+
+## Fixed
+
+- **CWE-208 — timing-unsafe key compare (telemetry).** `X-Admin-Key` / `?key=` /
+  `?admin_key=` and the ingest `api_key` were compared with `==`, which short-circuits on
+  the first differing byte (leaks the secret prefix via timing). Added a constant-time
+  `ct_eq()` and routed every key check through it (`main.rs`), matching the HMAC BC-token
+  path which was already constant-time.
+- **CWE-639 — IDOR in comment edit-history** (`/{blog,docs}/:id/comments/:cid/history`):
+  now verifies the comment belongs to the post/page before returning revisions.
+- **CWE-770 — rate limits** added per-route to the unauthenticated analytics ingest
+  (pageview/vital/replay) on top of the global limiter.
+- **Docker CVEs** (`docker scout`): telemetry → `distroless/cc` (dropped the unreachable
+  `perl` critical/highs → **0 vulns**); bot `openssl` CRITICAL → patched via `apk upgrade`.
+- **CSP**: MapLibre worker via `worker-src 'self' blob:` instead of widening `script-src`.
+
+## Reviewed — safe
+
+- Telemetry `format!("… FROM {table}")` interpolates only **hardcoded** table arrays — no
+  user input → not injectable. Telemetry SQL is otherwise sqlx-parameterized.
+- Analytics ingest is bounded by zod; the admin analytics/geo/sessions/vitals endpoints are
+  all `requireRole('ADMIN')`. Session identities shown on the map are anonymous (derived
+  from the daily-rotating visitor hash), never real accounts.
+- `devRealGeo` outbound lookup uses hardcoded hosts (ipify/ifconfig) — no SSRF.
+
+## Open recommendations
+
+| Item | Severity | Status |
+|---|---|---|
+| Telemetry runs open when `ADMIN_KEY`/`API_KEY` unset | Medium | Dev-only + Caddy `forward_auth` in prod; add a prod guard or ensure keys always set |
+| Live Discord token in pushed history | High | **Rotate in the Discord Developer Portal** (unchanged since first audit) |
+| Residual Docker CVEs (alpine curl / debian perl / bundled npm tar) | Low | Unfixed upstream or non-runtime-reachable bundled tooling; re-scan after base-image refresh |
+| CSRF via per-request tokens on mutations | Low | `sameSite=lax` already blocks standard cross-site cases |
