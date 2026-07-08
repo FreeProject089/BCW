@@ -2104,6 +2104,7 @@ function PolicyChipList({ label, items, onAdd, onRemove, placeholder }) {
 // Account entries ({type:"bcweb"|"discord", id, label}) — searches the same
 // creator-id/Discord-id/username/display-name index as the "Find a user" box below.
 function PolicyAccountChips({ label, items, onAdd, onRemove }) {
+  const { t } = useI18n();
   const [q, setQ] = useState(''); const [results, setResults] = useState(null); const [busy, setBusy] = useState(false);
   const search = async () => {
     if (!q.trim()) return setResults(null);
@@ -2116,7 +2117,7 @@ function PolicyAccountChips({ label, items, onAdd, onRemove }) {
     <div>
       <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{label}</div>
       <div className="flex gap-1.5">
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="id / display name / creator id / Discord…" onKeyDown={(e) => e.key === 'Enter' && search()} />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('gap.accsearch', 'id / display name / creator id / Discord…')} onKeyDown={(e) => e.key === 'Enter' && search()} />
         <Button size="sm" onClick={search}>{busy ? <Spinner /> : <Search size={13} />}</Button>
       </div>
       {results && (
@@ -2129,7 +2130,7 @@ function PolicyAccountChips({ label, items, onAdd, onRemove }) {
                 {u.discord && <button onClick={() => add({ type: 'discord', id: u.discord.id, label: u.discord.username || u.discord.id })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--primary-2)] hover:border-[var(--primary-2)]">+ Discord</button>}
               </span>
             </div>
-          )) : <div className="text-[11px] text-[var(--faint)] px-1">No accounts found.</div>}
+          )) : <div className="text-[11px] text-[var(--faint)] px-1">{t('gap.noaccounts', 'No accounts found.')}</div>}
         </div>
       )}
       <div className="flex flex-wrap gap-1 mt-1.5">
@@ -2149,6 +2150,7 @@ function PolicyAccountChips({ label, items, onAdd, onRemove }) {
 // see it (GET is MOD+); only ADMIN+ can change it (PUT enforces that server-side).
 function GlobalAccessPolicyCard() {
   const toast = useToast();
+  const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/access-policy'), []);
   const [policy, setPolicy] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -2167,32 +2169,32 @@ function GlobalAccessPolicyCard() {
 
   const save = async () => {
     setBusy(true);
-    try { await api.put('/admin/access-policy', policy); toast.success('Global access policy saved.'); reload(); }
-    catch { toast.error('Failed to save.'); } finally { setBusy(false); }
+    try { await api.put('/admin/access-policy', policy); toast.success(t('gap.saved', 'Global access policy saved.')); reload(); }
+    catch { toast.error(t('gap.savefail', 'Failed to save.')); } finally { setBusy(false); }
   };
 
   return (
     <Card className="p-5 space-y-4">
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Globe size={16} className="text-[var(--primary-2)]" /> Global access policy</h2>
-        <p className="text-sm text-[var(--muted)]">Applied identically to every hosted repo, on top of each owner's own settings — a ban here blocks a client everywhere; the whitelist here is added to whichever repos require one.</p>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Globe size={16} className="text-[var(--primary-2)]" /> {t('gap.title', 'Global access policy')}</h2>
+        <p className="text-sm text-[var(--muted)]">{t('gap.desc', "Applied identically to every hosted repo, on top of each owner's own settings — a ban here blocks a client everywhere; the whitelist here is added to whichever repos require one.")}</p>
       </div>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={policy.whitelistOnly} onChange={(e) => setPolicy({ ...policy, whitelistOnly: e.target.checked })} /> Whitelist-only for ALL repos (forces every hosted repo into whitelist mode, site-wide)</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={policy.whitelistOnly} onChange={(e) => setPolicy({ ...policy, whitelistOnly: e.target.checked })} /> {t('gap.wlonly', 'Whitelist-only for ALL repos (forces every hosted repo into whitelist mode, site-wide)')}</label>
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Shield size={12} className="text-emerald-400" /> Whitelist</div>
-          <PolicyChipList label="IPs" items={policy.whitelistIps || []} onAdd={(v) => addTo('whitelistIps', v)} onRemove={(v) => rm('whitelistIps', v)} placeholder="203.0.113.4" />
-          <PolicyChipList label="Creator ID" items={policy.whitelistKeys || []} onAdd={(v) => addTo('whitelistKeys', v)} onRemove={(v) => rm('whitelistKeys', v)} placeholder="BMM creator id…" />
-          <PolicyAccountChips label="Accounts" items={policy.whitelistAccounts || []} onAdd={(e) => addAccount('whitelistAccounts', e)} onRemove={(e) => rmAccount('whitelistAccounts', e)} />
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Shield size={12} className="text-emerald-400" /> {t('gap.whitelist', 'Whitelist')}</div>
+          <PolicyChipList label={t('gap.ips', 'IPs')} items={policy.whitelistIps || []} onAdd={(v) => addTo('whitelistIps', v)} onRemove={(v) => rm('whitelistIps', v)} placeholder="203.0.113.4" />
+          <PolicyChipList label={t('gap.creatorid', 'Creator ID')} items={policy.whitelistKeys || []} onAdd={(v) => addTo('whitelistKeys', v)} onRemove={(v) => rm('whitelistKeys', v)} placeholder="BMM creator id…" />
+          <PolicyAccountChips label={t('gap.accounts', 'Accounts')} items={policy.whitelistAccounts || []} onAdd={(e) => addAccount('whitelistAccounts', e)} onRemove={(e) => rmAccount('whitelistAccounts', e)} />
         </div>
         <div className="space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Ban size={12} className="text-red-400" /> Blacklist</div>
-          <PolicyChipList label="IPs" items={policy.bannedIps || []} onAdd={(v) => addTo('bannedIps', v)} onRemove={(v) => rm('bannedIps', v)} placeholder="198.51.100.7" />
-          <PolicyChipList label="Creator ID" items={policy.bannedKeys || []} onAdd={(v) => addTo('bannedKeys', v)} onRemove={(v) => rm('bannedKeys', v)} placeholder="BMM creator id…" />
-          <PolicyAccountChips label="Accounts" items={policy.bannedAccounts || []} onAdd={(e) => addAccount('bannedAccounts', e)} onRemove={(e) => rmAccount('bannedAccounts', e)} />
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Ban size={12} className="text-red-400" /> {t('gap.blacklist', 'Blacklist')}</div>
+          <PolicyChipList label={t('gap.ips', 'IPs')} items={policy.bannedIps || []} onAdd={(v) => addTo('bannedIps', v)} onRemove={(v) => rm('bannedIps', v)} placeholder="198.51.100.7" />
+          <PolicyChipList label={t('gap.creatorid', 'Creator ID')} items={policy.bannedKeys || []} onAdd={(v) => addTo('bannedKeys', v)} onRemove={(v) => rm('bannedKeys', v)} placeholder="BMM creator id…" />
+          <PolicyAccountChips label={t('gap.accounts', 'Accounts')} items={policy.bannedAccounts || []} onAdd={(e) => addAccount('bannedAccounts', e)} onRemove={(e) => rmAccount('bannedAccounts', e)} />
         </div>
       </div>
-      <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : 'Save global policy'}</Button></div>
+      <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('gap.save', 'Save global policy')}</Button></div>
     </Card>
   );
 }
@@ -2209,6 +2211,7 @@ const SECURITY_RANGES = [['24', '24h'], ['168', '7d'], ['720', '30d'], ['8760', 
 const BRUTE_FORCE_THRESHOLD = 5;
 
 function AdminSecurity() {
+  const { t } = useI18n();
   const [tab, setTab] = useState('logins');
   const [q, setQ] = useState('');
   const [loginFilter, setLoginFilter] = useState('all'); // all | success | failed | suspicious
@@ -2252,20 +2255,20 @@ function AdminSecurity() {
 
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Lock size={16} className="text-[var(--primary-2)]" /> Security log</h2>
-      <p className="text-sm text-[var(--muted)] mb-3">Login attempts (success/fail, IP) and the admin action audit trail.</p>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Lock size={16} className="text-[var(--primary-2)]" /> {t('sec.title', 'Security log')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('sec.desc', 'Login attempts (success/fail, IP) and the admin action audit trail.')}</p>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
-        <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1">Attempts</div><div className="text-xl font-bold tabular-nums">{attempts.length}</div></Card>
-        <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1">Failed</div><div className="text-xl font-bold tabular-nums text-red-400">{failedCount}</div></Card>
-        <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1">Unique IPs</div><div className="text-xl font-bold tabular-nums">{uniqueIps}</div></Card>
-        <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1 flex items-center gap-1"><AlertTriangle size={11} className={suspiciousIps.size ? 'text-red-400' : ''} /> Suspicious IPs</div><div className={`text-xl font-bold tabular-nums ${suspiciousIps.size ? 'text-red-400' : ''}`}>{suspiciousIps.size}</div></Card>
+        <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1">{t('sec.attempts', 'Attempts')}</div><div className="text-xl font-bold tabular-nums">{attempts.length}</div></Card>
+        <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1">{t('sec.failedn', 'Failed')}</div><div className="text-xl font-bold tabular-nums text-red-400">{failedCount}</div></Card>
+        <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1">{t('sec.uniqueips', 'Unique IPs')}</div><div className="text-xl font-bold tabular-nums">{uniqueIps}</div></Card>
+        <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1 flex items-center gap-1"><AlertTriangle size={11} className={suspiciousIps.size ? 'text-red-400' : ''} /> {t('sec.suspicious', 'Suspicious IPs')}</div><div className={`text-xl font-bold tabular-nums ${suspiciousIps.size ? 'text-red-400' : ''}`}>{suspiciousIps.size}</div></Card>
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
         <div className="flex gap-2">
-          <button onClick={() => setTab('logins')} className={`px-3 py-1.5 rounded-lg border text-sm ${tab === 'logins' ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>Login attempts</button>
-          <button onClick={() => setTab('audit')} className={`px-3 py-1.5 rounded-lg border text-sm ${tab === 'audit' ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>Admin audit trail</button>
+          <button onClick={() => setTab('logins')} className={`px-3 py-1.5 rounded-lg border text-sm ${tab === 'logins' ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>{t('sec.tab.logins', 'Login attempts')}</button>
+          <button onClick={() => setTab('audit')} className={`px-3 py-1.5 rounded-lg border text-sm ${tab === 'audit' ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>{t('sec.tab.audit', 'Admin audit trail')}</button>
         </div>
         <div className="flex gap-1">
           {SECURITY_RANGES.map(([h, label]) => (
@@ -2276,10 +2279,10 @@ function AdminSecurity() {
 
       <div className="flex flex-wrap gap-2 mb-3">
         <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!pl-9" placeholder={tab === 'logins' ? 'Search email, IP or account…' : 'Search actor, action, detail or IP…'} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <Input className="!pl-9" placeholder={tab === 'logins' ? t('sec.search.logins', 'Search email, IP or account…') : t('sec.search.audit', 'Search actor, action, detail or IP…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
         {tab === 'logins' && (
           <Select className="!w-auto" value={loginFilter} onChange={(e) => setLoginFilter(e.target.value)}>
-            <option value="all">All outcomes</option><option value="success">Success only</option><option value="failed">Failed only</option><option value="suspicious">Suspicious IPs only</option>
+            <option value="all">{t('sec.f.all', 'All outcomes')}</option><option value="success">{t('sec.f.success', 'Success only')}</option><option value="failed">{t('sec.f.failed', 'Failed only')}</option><option value="suspicious">{t('sec.f.suspicious', 'Suspicious IPs only')}</option>
           </Select>
         )}
         <Button size="sm" onClick={() => tab === 'logins'
@@ -2295,30 +2298,30 @@ function AdminSecurity() {
             <div key={a.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
               {a.success ? <CheckCircle2 size={15} className="text-emerald-400 shrink-0" /> : <XCircle size={15} className="text-red-400 shrink-0" />}
               <div className="flex-1 min-w-0">
-                <div className="truncate"><button onClick={() => setQ(a.email)} className="font-medium hover:text-[var(--primary-2)]">{a.email}</button> {a.user && <span className="text-xs text-[var(--faint)]">· {a.user.displayName} ({a.user.role})</span>} {suspiciousIps.has(a.ip) && <Badge tone="red" className="ml-1">Brute-force?</Badge>}</div>
+                <div className="truncate"><button onClick={() => setQ(a.email)} className="font-medium hover:text-[var(--primary-2)]">{a.email}</button> {a.user && <span className="text-xs text-[var(--faint)]">· {a.user.displayName} ({a.user.role})</span>} {suspiciousIps.has(a.ip) && <Badge tone="red" className="ml-1">{t('sec.bruteforce', 'Brute-force?')}</Badge>}</div>
                 <div className="text-[11px] text-[var(--faint)] font-mono"><button onClick={() => setQ(a.ip)} className="hover:text-[var(--primary-2)]">{a.ip}</button> {a.reason ? `· ${a.reason}` : ''}</div>
               </div>
               <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(a.createdAt).toLocaleString()}</span>
             </div>
           ))}
         </div>
-      </Card> : <EmptyState icon={Lock} title={attempts.length ? 'No matches' : 'No login attempts in this range'} />)}
+      </Card> : <EmptyState icon={Lock} title={attempts.length ? t('sec.nomatch', 'No matches') : t('sec.none.logins', 'No login attempts in this range')} />)}
       {tab === 'audit' && (
         <Card className="p-3 mb-3 flex items-center gap-3 flex-wrap">
           <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
           <div className="flex-1 min-w-[180px] text-sm">
-            <div className="font-medium">Tamper-evident log</div>
-            <div className="text-[11px] text-[var(--faint)]">Every staff action is HMAC-chained — edits or deletions are detectable. Sensitive actions (file downloads, DB writes, power) are anchored off-DB (catches truncation) and alert SUPERADMINs.</div>
+            <div className="font-medium">{t('sec.tamper.title', 'Tamper-evident log')}</div>
+            <div className="text-[11px] text-[var(--faint)]">{t('sec.tamper.desc', 'Every staff action is HMAC-chained — edits or deletions are detectable. Sensitive actions (file downloads, DB writes, power) are anchored off-DB (catches truncation) and alert SUPERADMINs.')}</div>
           </div>
           {verify && verify !== 'checking' && !verify.error && (() => {
             const brk = verify.firstBreak || verify.anchorBreak;
-            const reasonLabel = { content_altered: 'Content altered', chain_broken: 'Chain broken', anchored_entry_deleted: 'Log truncated', anchored_entry_altered: 'Anchored entry altered' }[brk?.reason] || 'Tampered';
+            const reasonLabel = { content_altered: t('sec.r.content', 'Content altered'), chain_broken: t('sec.r.chain', 'Chain broken'), anchored_entry_deleted: t('sec.r.truncated', 'Log truncated'), anchored_entry_altered: t('sec.r.anchored', 'Anchored entry altered') }[brk?.reason] || t('sec.r.tampered', 'Tampered');
             return verify.ok
-              ? <Badge tone="green" className="flex items-center gap-1"><CheckCircle2 size={12} /> Intact · {verify.checked} chained{verify.anchorsChecked ? ` · ${verify.anchorsChecked} anchored` : ''}{verify.legacy ? ` (+${verify.legacy} legacy)` : ''}</Badge>
+              ? <Badge tone="green" className="flex items-center gap-1"><CheckCircle2 size={12} /> {t('sec.intact', 'Intact')} · {verify.checked} {t('sec.chained', 'chained')}{verify.anchorsChecked ? ` · ${verify.anchorsChecked} ${t('sec.anchored', 'anchored')}` : ''}{verify.legacy ? ` (+${verify.legacy} ${t('sec.legacy', 'legacy')})` : ''}</Badge>
               : <Badge tone="red" className="flex items-center gap-1"><AlertTriangle size={12} /> {reasonLabel}{brk?.at ? ` @ ${new Date(brk.at).toLocaleString()}` : ''}</Badge>;
           })()}
-          {verify?.error && <Badge tone="red">Verify failed</Badge>}
-          <Button size="sm" variant="ghost" disabled={verify === 'checking'} onClick={runVerify}>{verify === 'checking' ? <Spinner /> : <><ShieldCheck size={13} /> Verify integrity</>}</Button>
+          {verify?.error && <Badge tone="red">{t('sec.verify.failed', 'Verify failed')}</Badge>}
+          <Button size="sm" variant="ghost" disabled={verify === 'checking'} onClick={runVerify}>{verify === 'checking' ? <Spinner /> : <><ShieldCheck size={13} /> {t('sec.verify', 'Verify integrity')}</>}</Button>
         </Card>
       )}
       {tab === 'audit' && (audit.loading ? <Loading /> : filteredEntries.length ? <Card className="p-0 overflow-hidden">
@@ -2334,7 +2337,7 @@ function AdminSecurity() {
             </div>
           ))}
         </div>
-      </Card> : <EmptyState icon={Shield} title={entries.length ? 'No matches' : 'No audit entries in this range'} />)}
+      </Card> : <EmptyState icon={Shield} title={entries.length ? t('sec.nomatch', 'No matches') : t('sec.none.audit', 'No audit entries in this range')} />)}
     </div>
   );
 }
@@ -3095,6 +3098,7 @@ function BackupManager() {
 // admin no longer hunts across screens to see what a user can do.
 function AdminAccess({ isSuperAdmin }) {
   const toast = useToast();
+  const { t } = useI18n();
   const [q, setQ] = useState('');
   const [results, setResults] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -3112,32 +3116,32 @@ function AdminAccess({ isSuperAdmin }) {
   const pick = (u) => { setPicked(u); setRoleSel(u.role); setScopeSel('global'); };
   const saveRole = async () => {
     setBusy(true);
-    try { await api.put(`/admin/users/${picked.id}/role`, { role: roleSel }); toast.success(`${picked.displayName} is now ${roleSel}.`); setPicked((p) => ({ ...p, role: roleSel })); }
-    catch (x) { toast.error(x.data?.error === 'cannot_change_own_role' ? "You can't change your own role." : x.data?.error || 'Failed.'); }
+    try { await api.put(`/admin/users/${picked.id}/role`, { role: roleSel }); toast.success(t('acc.rolenow', '{name} is now {role}.').replace('{name}', picked.displayName).replace('{role}', roleSel)); setPicked((p) => ({ ...p, role: roleSel })); }
+    catch (x) { toast.error(x.data?.error === 'cannot_change_own_role' ? t('acc.ownrole', "You can't change your own role.") : x.data?.error || t('acc.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
   const toggleServerControl = async () => {
     setBusy(true);
-    try { await api.put(`/admin/server-control/${picked.id}`, { granted: !picked.canControlServer }); toast.success(`Server-control ${!picked.canControlServer ? 'granted to' : 'revoked from'} ${picked.displayName}.`); setPicked((p) => ({ ...p, canControlServer: !p.canControlServer })); }
-    catch { toast.error('Failed.'); } finally { setBusy(false); }
+    try { await api.put(`/admin/server-control/${picked.id}`, { granted: !picked.canControlServer }); toast.success((!picked.canControlServer ? t('acc.sc.on', 'Server-control granted to {name}.') : t('acc.sc.off', 'Server-control revoked from {name}.')).replace('{name}', picked.displayName)); setPicked((p) => ({ ...p, canControlServer: !p.canControlServer })); }
+    catch { toast.error(t('acc.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const toggleTelemetry = async () => {
     setBusy(true);
-    try { await api.put(`/admin/telemetry-access/${picked.id}`, { granted: !picked.canViewTelemetry }); toast.success(`Telemetry access ${!picked.canViewTelemetry ? 'granted to' : 'revoked from'} ${picked.displayName}.`); setPicked((p) => ({ ...p, canViewTelemetry: !p.canViewTelemetry })); }
-    catch { toast.error('Failed.'); } finally { setBusy(false); }
+    try { await api.put(`/admin/telemetry-access/${picked.id}`, { granted: !picked.canViewTelemetry }); toast.success((!picked.canViewTelemetry ? t('acc.tel.on', 'Telemetry access granted to {name}.') : t('acc.tel.off', 'Telemetry access revoked from {name}.')).replace('{name}', picked.displayName)); setPicked((p) => ({ ...p, canViewTelemetry: !p.canViewTelemetry })); }
+    catch { toast.error(t('acc.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const grantBlog = async () => {
     setBusy(true);
     try {
       const [kind, val] = scopeSel.split(':');
       await api.post('/admin/blog-permissions', { userId: picked.id, projectKey: kind === 'project' ? val : null, showcaseSlug: kind === 'showcase' ? val : null });
-      toast.success(`Granted blog access to ${picked.displayName}.`); grants.reload();
-    } catch (x) { toast.error(x.data?.error || 'Failed.'); } finally { setBusy(false); }
+      toast.success(t('acc.blog.granted', 'Granted blog access to {name}.').replace('{name}', picked.displayName)); grants.reload();
+    } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const revoke = async (g) => {
-    try { await api.del(`/admin/blog-permissions/${g.id}`); toast.success('Revoked.'); grants.reload(); } catch { toast.error('Failed.'); }
+    try { await api.del(`/admin/blog-permissions/${g.id}`); toast.success(t('acc.revoked', 'Revoked.')); grants.reload(); } catch { toast.error(t('acc.failed', 'Failed.')); }
   };
-  const scopeLabel = (g) => g.showcase ? `Custom · ${g.showcase.name}` : g.projectKey ? `Project · ${g.projectKey.toUpperCase()}` : 'Global (all blogs)';
+  const scopeLabel = (g) => g.showcase ? t('acc.scope.custom', 'Custom · {name}').replace('{name}', g.showcase.name) : g.projectKey ? t('acc.scope.project', 'Project · {key}').replace('{key}', g.projectKey.toUpperCase()) : t('acc.scope.global', 'Global (all blogs)');
   const roleTone = (role) => role === 'SUPERADMIN' ? 'red' : role === 'ADMIN' ? 'amber' : role === 'MOD' ? 'primary' : '';
   const allGrants = grants.data?.grants || [];
   const userGrants = picked ? allGrants.filter((g) => g.user?.id === picked.id) : [];
@@ -3145,21 +3149,21 @@ function AdminAccess({ isSuperAdmin }) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--primary-2)]" /> Access &amp; permissions</h2>
-        <p className="text-sm text-[var(--muted)] mb-3">Find a user to manage {isSuperAdmin ? 'their role, server-control access and ' : ''}blog-post access — all in one place. Search by user id, display name, email, a linked <b>creator id</b>, or a linked <b>Discord</b>.</p>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('acc.title', 'Access & permissions')}</h2>
+        <p className="text-sm text-[var(--muted)] mb-3">{isSuperAdmin ? t('acc.desc.super', 'Find a user to manage their role, server-control access and blog-post access — all in one place. Search by user id, display name, email, a linked creator id, or a linked Discord.') : t('acc.desc.admin', 'Find a user to manage blog-post access — all in one place. Search by user id, display name, email, a linked creator id, or a linked Discord.')}</p>
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-            <Input className="!pl-9" placeholder="id / display name / email / creator id / Discord…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} /></div>
-          <Button variant="primary" disabled={busy} onClick={search}>{busy ? <Spinner /> : <><Search size={15} /> Search</>}</Button>
+            <Input className="!pl-9" placeholder={t('au.search.ph', 'id / display name / email / creator id / Discord…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} /></div>
+          <Button variant="primary" disabled={busy} onClick={search}>{busy ? <Spinner /> : <><Search size={15} /> {t('acc.search', 'Search')}</>}</Button>
         </div>
         {results && (results.length ? <div className="space-y-1.5">
           {results.map((u) => (
             <button key={u.id} onClick={() => pick(u)} className={`w-full text-left card p-3 flex items-center gap-3 ${picked?.id === u.id ? 'border-[var(--primary)]' : ''}`}>
               <Avatar user={u} size={32} />
-              <div className="flex-1 min-w-0"><div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={roleTone(u.role)}>{u.role}</Badge>{u.canControlServer && <Badge tone="red"><Server size={9} /> server</Badge>}{u.canViewTelemetry && <Badge tone="primary"><TrendingUp size={9} /> telemetry</Badge>}</div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
+              <div className="flex-1 min-w-0"><div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={roleTone(u.role)}>{u.role}</Badge>{u.canControlServer && <Badge tone="red"><Server size={9} /> {t('acc.server', 'server')}</Badge>}{u.canViewTelemetry && <Badge tone="primary"><TrendingUp size={9} /> {t('acc.telemetry', 'telemetry')}</Badge>}</div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
             </button>
           ))}
-        </div> : <div className="text-sm text-[var(--faint)]">No users found.</div>)}
+        </div> : <div className="text-sm text-[var(--faint)]">{t('acc.nousers', 'No users found.')}</div>)}
       </div>
 
       {picked && (
@@ -3168,44 +3172,44 @@ function AdminAccess({ isSuperAdmin }) {
 
           {isSuperAdmin && (
             <div className="pt-4 border-t border-[var(--line)]">
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Role</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('acc.role', 'Role')}</div>
               <div className="flex items-center gap-2">
                 <Select className="!w-auto" value={roleSel} onChange={(e) => setRoleSel(e.target.value)}>
                   <option value="USER">USER</option><option value="MOD">MOD</option><option value="ADMIN">ADMIN</option><option value="SUPERADMIN">SUPERADMIN</option>
                 </Select>
-                <Button size="sm" variant="primary" disabled={busy || roleSel === picked.role} onClick={saveRole}>{busy ? <Spinner /> : 'Save role'}</Button>
+                <Button size="sm" variant="primary" disabled={busy || roleSel === picked.role} onClick={saveRole}>{busy ? <Spinner /> : t('acc.saverole', 'Save role')}</Button>
               </div>
             </div>
           )}
 
           {isSuperAdmin && (picked.role === 'ADMIN' || picked.role === 'SUPERADMIN' || picked.canControlServer) && (
             <div className="pt-4 border-t border-[var(--line)]">
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Server-control tools</div>
-              <p className="text-xs text-[var(--muted)] mb-2">Grants access to the server dashboard's dangerous actions (DB viewer, restart) — still gated by that user's own 2FA step-up. {!picked.totpEnabled && <span className="text-amber-400">This user hasn't enabled 2FA yet, so the tools stay locked either way.</span>}</p>
-              <Button size="sm" variant={picked.canControlServer ? 'default' : 'primary'} disabled={busy} onClick={toggleServerControl}>{busy ? <Spinner /> : (picked.canControlServer ? 'Revoke server-control' : 'Grant server-control')}</Button>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('acc.sc.title', 'Server-control tools')}</div>
+              <p className="text-xs text-[var(--muted)] mb-2">{t('acc.sc.desc', "Grants access to the server dashboard's dangerous actions (DB viewer, restart) — still gated by that user's own 2FA step-up.")} {!picked.totpEnabled && <span className="text-amber-400">{t('acc.sc.no2fa', "This user hasn't enabled 2FA yet, so the tools stay locked either way.")}</span>}</p>
+              <Button size="sm" variant={picked.canControlServer ? 'default' : 'primary'} disabled={busy} onClick={toggleServerControl}>{busy ? <Spinner /> : (picked.canControlServer ? t('acc.sc.revoke', 'Revoke server-control') : t('acc.sc.grant', 'Grant server-control'))}</Button>
             </div>
           )}
 
           {isSuperAdmin && ['MOD', 'ADMIN', 'SUPERADMIN'].includes(picked.role) && (
             <div className="pt-4 border-t border-[var(--line)]">
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><TrendingUp size={12} /> BMM telemetry</div>
-              <p className="text-xs text-[var(--muted)] mb-2">Lets this admin open the BMM telemetry dashboard (gated at the edge by a BCWEB login — no separate telemetry key needed). {picked.role === 'SUPERADMIN' && <span className="text-[var(--faint)]">SUPERADMIN always has access.</span>}</p>
-              <Button size="sm" variant={picked.canViewTelemetry ? 'default' : 'primary'} disabled={busy || picked.role === 'SUPERADMIN'} onClick={toggleTelemetry}>{busy ? <Spinner /> : (picked.canViewTelemetry ? 'Revoke telemetry access' : 'Grant telemetry access')}</Button>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><TrendingUp size={12} /> {t('acc.tel.title', 'BMM telemetry')}</div>
+              <p className="text-xs text-[var(--muted)] mb-2">{t('acc.tel.desc', 'Lets this admin open the BMM telemetry dashboard (gated at the edge by a BCWEB login — no separate telemetry key needed).')} {picked.role === 'SUPERADMIN' && <span className="text-[var(--faint)]">{t('acc.tel.super', 'SUPERADMIN always has access.')}</span>}</p>
+              <Button size="sm" variant={picked.canViewTelemetry ? 'default' : 'primary'} disabled={busy || picked.role === 'SUPERADMIN'} onClick={toggleTelemetry}>{busy ? <Spinner /> : (picked.canViewTelemetry ? t('acc.tel.revoke', 'Revoke telemetry access') : t('acc.tel.grant', 'Grant telemetry access'))}</Button>
             </div>
           )}
 
           <div className="pt-4 border-t border-[var(--line)]">
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Blog-post access</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('acc.blog.title', 'Blog-post access')}</div>
             {userGrants.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">
-              {userGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs pl-2.5 pr-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><PenSquare size={11} className="text-[var(--primary-2)]" /> {scopeLabel(g)} <button onClick={() => revoke(g)} className="opacity-60 hover:opacity-100 hover:text-red-400" title="Revoke"><X size={11} /></button></span>)}
+              {userGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs pl-2.5 pr-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><PenSquare size={11} className="text-[var(--primary-2)]" /> {scopeLabel(g)} <button onClick={() => revoke(g)} className="opacity-60 hover:opacity-100 hover:text-red-400" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
             </div>}
             <div className="flex flex-wrap items-center gap-2">
               <Select className="!w-auto" value={scopeSel} onChange={(e) => setScopeSel(e.target.value)}>
-                <option value="global">Global (all blogs)</option>
-                {(scopes.data?.projects || []).map((pr) => <option key={pr.key} value={`project:${pr.key}`}>Project · {pr.name}</option>)}
-                {(scopes.data?.showcases || []).map((s) => <option key={s.slug} value={`showcase:${s.slug}`}>Custom · {s.name}</option>)}
+                <option value="global">{t('acc.blog.globalopt', 'Global (all blogs)')}</option>
+                {(scopes.data?.projects || []).map((pr) => <option key={pr.key} value={`project:${pr.key}`}>{t('acc.blog.projectopt', 'Project · {name}').replace('{name}', pr.name)}</option>)}
+                {(scopes.data?.showcases || []).map((s) => <option key={s.slug} value={`showcase:${s.slug}`}>{t('acc.blog.customopt', 'Custom · {name}').replace('{name}', s.name)}</option>)}
               </Select>
-              <Button size="sm" variant="primary" disabled={busy} onClick={grantBlog}>{busy ? <Spinner /> : <><Plus size={14} /> Grant</>}</Button>
+              <Button size="sm" variant="primary" disabled={busy} onClick={grantBlog}>{busy ? <Spinner /> : <><Plus size={14} /> {t('acc.grant', 'Grant')}</>}</Button>
             </div>
           </div>
         </Card>
@@ -3214,18 +3218,18 @@ function AdminAccess({ isSuperAdmin }) {
       <GlobalAccessPolicyCard />
 
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><PenSquare size={16} className="text-[var(--primary-2)]" /> All blog-post grants</h2>
-        <p className="text-sm text-[var(--muted)] mb-3">Everyone who can write blog posts, and where. Pick a user above to edit theirs.</p>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><PenSquare size={16} className="text-[var(--primary-2)]" /> {t('acc.all.title', 'All blog-post grants')}</h2>
+        <p className="text-sm text-[var(--muted)] mb-3">{t('acc.all.desc', 'Everyone who can write blog posts, and where. Pick a user above to edit theirs.')}</p>
         {grants.loading ? <Loading /> : allGrants.length ? <div className="space-y-1.5">
           {allGrants.map((g) => (
             <Card key={g.id} className="p-3 flex items-center gap-3">
               <Avatar user={g.user} size={32} />
-              <div className="flex-1 min-w-0"><div className="font-medium truncate">{g.user?.displayName || '(deleted)'}</div><div className="text-xs text-[var(--faint)] truncate">{g.user?.email}</div></div>
+              <div className="flex-1 min-w-0"><div className="font-medium truncate">{g.user?.displayName || t('acc.deleted', '(deleted)')}</div><div className="text-xs text-[var(--faint)] truncate">{g.user?.email}</div></div>
               <Badge tone="primary">{scopeLabel(g)}</Badge>
               <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => revoke(g)}><Trash2 size={13} /></Button>
             </Card>
           ))}
-        </div> : <EmptyState icon={PenSquare} title="No grants yet" sub="Regular users can't write blog posts until you grant access above." />}
+        </div> : <EmptyState icon={PenSquare} title={t('acc.all.none.t', 'No grants yet')} sub={t('acc.all.none.s', "Regular users can't write blog posts until you grant access above.")} />}
       </div>
     </div>
   );
