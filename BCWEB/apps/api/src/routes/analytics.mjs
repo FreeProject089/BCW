@@ -368,4 +368,37 @@ export default async function analyticsRoutes(app) {
     }));
     return { sessions: out, liveCount: out.filter((s) => s.live).length };
   });
+
+  // Aggregated geography for the map — per country AND per region, each with: current
+  // count, previous-equal-window count (→ % change vs the period before, e.g. "vs
+  // yesterday"), and average coordinates (for region bubbles). Totals let the client show
+  // each area's share of all located traffic. Powers Geography→Map and Sessions→Globe.
+  app.get('/admin/analytics/geo', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
+    const days = Math.min(Math.max(Number(req.query?.days) || 30, 1), 365);
+    const since = hours ? new Date(Date.now() - hours * 3600e3) : new Date(Date.now() - days * 864e5);
+    const windowMs = Date.now() - since.getTime();
+    const prevSince = new Date(since.getTime() - windowMs);
+    const num = (v) => (v == null ? null : Number(v));
+    const [curC, prevC, curR, prevR, tot] = await Promise.all([
+      p.$queryRaw`SELECT country AS cc, count(*)::int AS c, avg(lat) AS lat, avg(lng) AS lng FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} AND country IS NOT NULL GROUP BY country`,
+      p.$queryRaw`SELECT country AS cc, count(*)::int AS c FROM "AnalyticsEvent" WHERE "createdAt" >= ${prevSince} AND "createdAt" < ${since} AND country IS NOT NULL GROUP BY country`,
+      p.$queryRaw`SELECT country AS cc, region, count(*)::int AS c, avg(lat) AS lat, avg(lng) AS lng FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} AND region IS NOT NULL GROUP BY country, region`,
+      p.$queryRaw`SELECT country AS cc, region, count(*)::int AS c FROM "AnalyticsEvent" WHERE "createdAt" >= ${prevSince} AND "createdAt" < ${since} AND region IS NOT NULL GROUP BY country, region`,
+      p.$queryRaw`SELECT
+          count(*) FILTER (WHERE "createdAt" >= ${since} AND country IS NOT NULL)::int AS cur,
+          count(*) FILTER (WHERE "createdAt" >= ${prevSince} AND "createdAt" < ${since} AND country IS NOT NULL)::int AS prev
+        FROM "AnalyticsEvent"`,
+    ]);
+    const prevCMap = Object.fromEntries(prevC.map((r) => [r.cc, Number(r.c)]));
+    const prevRMap = Object.fromEntries(prevR.map((r) => [`${r.cc}|${r.region}`, Number(r.c)]));
+    return {
+      total: Number(tot[0]?.cur || 0), totalPrev: Number(tot[0]?.prev || 0),
+      countries: curC.map((r) => ({ cc: r.cc, count: Number(r.c), prev: prevCMap[r.cc] || 0, lat: num(r.lat), lng: num(r.lng) }))
+        .sort((a, b) => b.count - a.count),
+      regions: curR.map((r) => ({ cc: r.cc, region: r.region, count: Number(r.c), prev: prevRMap[`${r.cc}|${r.region}`] || 0, lat: num(r.lat), lng: num(r.lng) }))
+        .sort((a, b) => b.count - a.count),
+    };
+  });
 }

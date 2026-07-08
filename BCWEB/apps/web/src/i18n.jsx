@@ -454,6 +454,8 @@ const DICT = {
     'an.sess.descGlobe': 'Sessions récentes des visiteurs — placées sur le globe par géolocalisation IP. En direct = actif dans les 5 dernières minutes.',
     'an.sess.descList': 'Sessions récentes des visiteurs — clique sur l’une pour voir son parcours page par page. En direct = actif dans les 5 dernières minutes.',
     'an.sess.list': 'Liste', 'an.sess.globe': 'Globe', 'an.sess.none': 'Aucune session pour l’instant — nécessite des visiteurs ayant accepté les cookies analytiques.',
+    'an.sess.descGlobe2': 'Visiteurs agrégés par pays/région — nombre, part du trafic, et évolution vs la période précédente.',
+    'an.geo.hint': 'Survole une zone pour voir sa part du trafic + l’évolution vs la période précédente.',
 
     // ── Admin : Performance serveur ──
     'sp.sampled': 'Échantillonné.', 'sp.failed': 'Échec.',

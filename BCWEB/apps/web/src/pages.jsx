@@ -10,7 +10,6 @@ import {
   Info, Orbit, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon,
 } from 'lucide-react';
 import { api, uploadPayload, uploadImage } from './api.js';
-import { COUNTRY_CENTROIDS } from './geo-centroids.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from './i18n.jsx';
 import { useTheme } from './theme.jsx';
@@ -4610,15 +4609,13 @@ function Sparkline({ data, className = '', stroke = 'var(--primary)' }) {
 
 // Geo panel with Countries / Regions / Cities / Map tabs. Regions & cities carry their
 // country so the right flag shows next to a subdivision/city name.
-function GeoPanel({ countries, regions, cities }) {
+function GeoPanel({ countries, regions, cities, days, hours }) {
   const { t } = useI18n();
   const [tab, setTab] = useState('countries');
   const tabs = [['countries', t('an.geo.countries', 'Countries'), Globe2], ['regions', t('an.geo.regions', 'Regions'), MapPin], ['cities', t('an.geo.cities', 'Cities'), Building2], ['map', t('an.geo.map', 'Map'), MapIcon]];
   const list = tab === 'countries' ? countries : tab === 'regions' ? regions : cities;
   const tot = (list || []).reduce((a, r) => a + r.count, 0) || 1;
   const max = Math.max(1, ...(list || []).map((r) => r.count));
-  // Country choropleth data for the map tab (shade each country by its traffic).
-  const mapCountries = countries.map((c) => ({ cc: c.label, count: c.count }));
   return (
     <Card className="p-5">
       <div className="flex items-center gap-1 mb-3 border-b border-[var(--line)] -mx-1 px-1">
@@ -4626,7 +4623,7 @@ function GeoPanel({ countries, regions, cities }) {
           <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border-b-2 -mb-px transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><Icon size={13} /> {label}</button>
         ))}
       </div>
-      {tab === 'map' ? <AnalyticsMap choropleth={mapCountries} height={340} />
+      {tab === 'map' ? <GeoMap days={days} hours={hours} height={340} />
         : (list && list.length) ? (
           <div className="space-y-2.5 max-h-[340px] overflow-auto pr-1">
             {list.map((r, i) => (
@@ -4795,14 +4792,30 @@ const geoName = (cc) => GEO_NAME_ALIAS[String(cc).toUpperCase()] || countryName(
 // a country choropleth (`choropleth`=[{cc,count}], shades world.json countries by traffic)
 // OR markers (`points`=[{lat,lng,color,size,title,avatarSeed}]; avatarSeed → a Boring-Avatar
 // pin). maplibre + world.json are lazy-loaded.
-function AnalyticsMap({ points, choropleth, height = 420 }) {
+// Small hover-card body shared by the map tooltips: area name, count, share %, and the
+// ▲/▼ change vs the previous equal period.
+function GeoHoverCard({ info }) {
+  return (
+    <div className="flex items-center gap-1.5 whitespace-nowrap">
+      {info.cc && <Flag cc={info.cc} />}
+      <b>{info.label}</b>
+      <span className="text-[var(--muted)]">{info.count} · {info.share}%</span>
+      {info.delta != null && <span className={info.delta > 0 ? 'text-emerald-400' : info.delta < 0 ? 'text-red-400' : 'text-[var(--faint)]'}>{info.delta > 0 ? '▲' : info.delta < 0 ? '▼' : ''}{Math.abs(info.delta)}%</span>}
+    </div>
+  );
+}
+
+function AnalyticsMap({ points, choropleth, infoByName, height = 420 }) {
   const { t } = useI18n();
   const boxRef = useRef(null);
   const mapRef = useRef(null);
   const mlRef = useRef(null);
   const markersRef = useRef([]);
+  const infoRef = useRef({});
   const [mode, setMode] = useState('globe'); // 'globe' | '2d'
   const [ready, setReady] = useState(false);
+  const [hover, setHover] = useState(null); // { info, x, y }
+  useEffect(() => { infoRef.current = infoByName || {}; }, [infoByName]);
   const ptSig = (points || []).map((p) => `${p.lat},${p.lng},${p.color},${p.avatarSeed || ''}`).join('|');
   const chSig = (choropleth || []).map((c) => `${c.cc}:${c.count}`).join('|');
   const stablePts = useMemo(() => points || [], [ptSig]); // eslint-disable-line
@@ -4831,6 +4844,14 @@ function AnalyticsMap({ points, choropleth, height = 420 }) {
           try {
             map.addSource('countries', { type: 'geojson', data: worldGeo });
             map.addLayer({ id: 'country-fill', type: 'fill', source: 'countries', paint: { 'fill-color': 'rgba(255,255,255,0.02)', 'fill-outline-color': 'rgba(255,255,255,0.12)' } });
+            // Hover a country → show its count / share / vs-previous card.
+            map.on('mousemove', 'country-fill', (e) => {
+              const name = e.features?.[0]?.properties?.name;
+              const info = infoRef.current[name];
+              if (info) { map.getCanvas().style.cursor = 'default'; setHover({ info, x: e.point.x, y: e.point.y }); }
+              else setHover(null);
+            });
+            map.on('mouseleave', 'country-fill', () => { map.getCanvas().style.cursor = ''; setHover(null); });
           } catch {}
         }
         try { map.resize(); } catch {}
@@ -4884,6 +4905,10 @@ function AnalyticsMap({ points, choropleth, height = 420 }) {
         const sz = p.size || 12, c = p.color || '#f97316';
         el.style.cssText = `width:${sz}px;height:${sz}px;border-radius:50%;background:${c};box-shadow:0 0 8px ${c};border:1.5px solid rgba(255,255,255,.75);cursor:default;`;
       }
+      if (p.info) {
+        el.addEventListener('mouseenter', () => { try { const pt = map.project([p.lng, p.lat]); setHover({ info: p.info, x: pt.x, y: pt.y }); } catch {} });
+        el.addEventListener('mouseleave', () => setHover(null));
+      }
       const marker = new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
       markersRef.current.push({ marker, root });
     }
@@ -4897,12 +4922,54 @@ function AnalyticsMap({ points, choropleth, height = 420 }) {
           <button key={v} onClick={() => setMode(v)} className={`px-2.5 py-1 text-xs ${mode === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
         ))}
       </div>
+      {hover && <div className="absolute z-20 text-[11px] px-2 py-1 rounded-md bg-[var(--bg-solid)] border border-[var(--line)] shadow pointer-events-none" style={{ left: Math.min(hover.x + 12, (boxRef.current?.clientWidth || 400) - 160), top: hover.y + 12 }}><GeoHoverCard info={hover.info} /></div>}
       {empty && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--faint)] pointer-events-none">{t('an.map.none', 'No geo-located data yet.')}</div>}
     </div>
   );
 }
 
-function SessionsPanel() {
+// Aggregated geography map with a Country / Region toggle. Country → choropleth; Region →
+// bubbles at each region's average coordinates. Every area's hover card shows its visit
+// count, its share of all located traffic, and the change vs the previous equal period.
+// Fetches /admin/analytics/geo. Reused by Geography→Map AND Sessions→Globe.
+function GeoMap({ days, hours, height = 420 }) {
+  const { t } = useI18n();
+  const [level, setLevel] = useState('country'); // 'country' | 'region'
+  const { data } = useAsync(() => api.get(`/admin/analytics/geo?${hours ? `hours=${hours}` : `days=${days || 30}`}`), [days, hours]);
+  const total = data?.total || 0;
+  const countries = data?.countries || [];
+  const regions = data?.regions || [];
+  const shareOf = (n) => total ? Math.round((n / total) * 1000) / 10 : 0;
+  const deltaOf = (count, prev) => prev > 0 ? Math.round(((count - prev) / prev) * 100) : (count > 0 ? 100 : null);
+  const infoByName = useMemo(() => {
+    const m = {};
+    for (const c of countries) m[geoName(c.cc)] = { cc: c.cc, label: countryName(c.cc), count: c.count, share: shareOf(c.count), delta: deltaOf(c.count, c.prev) };
+    return m;
+    // eslint-disable-next-line
+  }, [data]);
+  const rmax = Math.max(1, ...regions.map((r) => r.count));
+  const regionBubbles = useMemo(() => regions.filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng)).map((r) => ({
+    lat: r.lat, lng: r.lng, size: 9 + Math.sqrt(r.count / rmax) * 26, color: 'rgba(52,211,153,.85)',
+    info: { cc: r.cc, label: r.region, count: r.count, share: shareOf(r.count), delta: deltaOf(r.count, r.prev) },
+  })), [data]); // eslint-disable-line
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden text-xs">
+          {[['country', t('an.geo.countries', 'Countries'), Globe2], ['region', t('an.geo.regions', 'Regions'), MapPin]].map(([v, label, I]) => (
+            <button key={v} onClick={() => setLevel(v)} className={`px-3 py-1.5 flex items-center gap-1.5 ${level === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={12} /> {label}</button>
+          ))}
+        </div>
+        <span className="text-[11px] text-[var(--faint)]">{t('an.geo.hint', 'Hover an area for its share of traffic + change vs the previous period.')}</span>
+      </div>
+      {level === 'country'
+        ? <AnalyticsMap choropleth={countries} infoByName={infoByName} height={height} />
+        : <AnalyticsMap points={regionBubbles} height={height} />}
+    </div>
+  );
+}
+
+function SessionsPanel({ days, hours }) {
   const { t } = useI18n();
   const [data, setData] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -4910,7 +4977,6 @@ function SessionsPanel() {
   const load = () => api.get('/admin/analytics/sessions?limit=40').then(setData).catch(() => setData({ sessions: [], liveCount: 0 }));
   useEffect(() => { load(); const id = setInterval(load, 15_000); return () => clearInterval(id); }, []);
   const sessions = data?.sessions || [];
-  const unknown = t('an.unknown', 'Unknown');
   return (
     <Card className="p-5 mb-4">
       <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-left">
@@ -4922,7 +4988,7 @@ function SessionsPanel() {
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${collapsed ? '-rotate-90' : ''}`} />
       </button>
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <p className="text-sm text-[var(--muted)]">{view === 'globe' ? t('an.sess.descGlobe', 'Recent visitor sessions — positioned on the globe by IP geolocation. Live = active in the last 5 minutes.') : t('an.sess.descList', 'Recent visitor sessions — click one to see its page-by-page journey. Live = active in the last 5 minutes.')}</p>
+        <p className="text-sm text-[var(--muted)]">{view === 'globe' ? t('an.sess.descGlobe2', 'Visitors aggregated by country/region — count, share of traffic, and change vs the previous period.') : t('an.sess.descList', 'Recent visitor sessions — click one to see its page-by-page journey. Live = active in the last 5 minutes.')}</p>
         <div className="flex rounded-lg border border-[var(--line)] overflow-hidden shrink-0">
           {[['list', t('an.sess.list', 'List'), LayoutDashboard], ['globe', t('an.sess.globe', 'Globe'), Globe2]].map(([v, label, I]) => (
             <button key={v} onClick={() => setView(v)} className={`px-3 py-1 text-xs flex items-center gap-1.5 ${view === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={12} /> {label}</button>
@@ -4930,7 +4996,7 @@ function SessionsPanel() {
         </div>
       </div>
       {!collapsed && (!data ? <div className="h-20 grid place-items-center"><Spinner /></div>
-        : view === 'globe' ? <AnalyticsMap points={sessions.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng)).map((s) => ({ lat: s.lat, lng: s.lng, avatarSeed: s.visitor, color: s.live ? '#34d399' : 'rgba(255,255,255,.6)', size: s.live ? 30 : 24, title: `${fakeNick(s.visitor)} · ${[s.city, s.country].filter(Boolean).join(', ') || unknown} · ${s.pages} ${t('an.pg', 'pg')}${s.live ? ' · ' + t('an.liveLabel', 'live') : ''}` }))} />
+        : view === 'globe' ? <GeoMap days={days} hours={hours} height={460} />
         : sessions.length ? <div className="space-y-2 max-h-[520px] overflow-auto pr-1">{sessions.map((s) => <SessionRow key={s.visitor + s.start} s={s} />)}</div>
         : <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.sess.none', 'No sessions yet — needs visitors who accepted analytics cookies.')}</div>)}
     </Card>
@@ -5054,11 +5120,11 @@ function AdminAnalytics() {
         </div>
       </>}
 
-      {tab === 'sessions' && <SessionsPanel />}
+      {tab === 'sessions' && <SessionsPanel days={days} hours={hours} />}
 
       {tab === 'geo' && (
         <div className="grid lg:grid-cols-[1.2fr_1.4fr] gap-4">
-          <GeoPanel countries={countries} regions={regions} cities={cities} />
+          <GeoPanel countries={countries} regions={regions} cities={cities} days={days} hours={hours} />
           <Card className="p-4 sm:p-5">
             <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3 flex items-center gap-1.5"><ArrowRight size={13} /> {t('an.funnel', 'Funnel · page journeys')}</div>
             <Sankey flows={flows} />
