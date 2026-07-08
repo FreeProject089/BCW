@@ -1,7 +1,7 @@
 import os from 'node:os';
 import { z } from 'zod';
 import { db, requireRole } from '../lib.mjs';
-import { checkSslExpiry, checkDependencies, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes } from '../monitor.mjs';
+import { checkSslExpiry, checkDependencies, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat } from '../monitor.mjs';
 import { realDiskStats } from './hosting.mjs';
 
 const BOT_SECRET = () => process.env.BOT_SHARED_SECRET || process.env.LINK_LOOKUP_SECRET || 'dev-bot-secret';
@@ -93,7 +93,7 @@ export default async function serverPerfRoutes(app) {
     // refreshes to show a LIVE download/upload rate (the sampled history is tick-average).
     const nb = readNetBytes();
     const net = nb ? { rx: nb.rx, tx: nb.tx, at: Date.now() } : null;
-    return { history, latest, deps, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations, net };
+    return { history, latest, deps, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations, net, bandwidthByCat: getBandwidthByCat() };
   });
 
   // Which dependencies to check at all — an admin can turn off ones that aren't

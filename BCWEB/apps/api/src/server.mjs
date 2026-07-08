@@ -87,7 +87,7 @@ app.get('/health', async () => {
 // Feeds the server-perf dashboard's response-time/status-code stats (monitor.mjs
 // flushes + persists this on each sweeper tick). Cheap: just two subtractions.
 app.addHook('onResponse', (req, reply, done) => {
-  recordRequest(reply.elapsedTime, reply.statusCode);
+  recordRequest(reply.elapsedTime, reply.statusCode, req.url, reply.getHeader('content-length'));
   done();
 });
 

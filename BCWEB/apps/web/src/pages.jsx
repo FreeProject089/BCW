@@ -2520,6 +2520,32 @@ function AdminServerPerf() {
         {cg?.usedBytes != null && <div className="text-[11px] text-[var(--faint)] mt-2">This process's own cgroup memory: {(cg.usedBytes / 1024 / 1024).toFixed(0)} MB{cg.limitBytes ? ` / ${(cg.limitBytes / 1024 / 1024).toFixed(0)} MB allocated` : ' (no cgroup limit set — showing real usage only)'}.</div>}
       </Card>
 
+      {/* Bandwidth served, broken down by what's consuming it (since the API last started). */}
+      {(() => {
+        const bw = data?.bandwidthByCat; if (!bw) return null;
+        const rows = [['repo', t('sp.bw.repo', 'Repo downloads'), '#f97316'], ['catalog', t('sp.bw.catalog', 'Catalog / submissions'), '#38bdf8'], ['media', t('sp.bw.media', 'Media'), '#a78bfa'], ['other', t('sp.bw.other', 'App / API'), '#64748b']];
+        const total = rows.reduce((a, [k]) => a + (bw[k] || 0), 0);
+        return (
+          <Card className="p-4 mb-4">
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Download size={13} className="text-[var(--primary-2)]" /> {t('sp.bw.title', 'Bandwidth served — by consumer')}</span>
+              <span className="text-[11px] text-[var(--muted)] tabular-nums">{fmtBytes(total)} {t('sp.bw.since', 'since restart')}</span>
+            </div>
+            {total > 0 ? <>
+              <div className="flex h-2.5 rounded-full overflow-hidden mb-2.5 bg-[var(--surface-2)]">
+                {rows.map(([k, , c]) => (bw[k] || 0) > 0 && <div key={k} style={{ width: `${(bw[k] / total) * 100}%`, background: c }} title={`${bw[k]} B`} />)}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                {rows.map(([k, label, c]) => (
+                  <div key={k} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c }} /><span className="text-[var(--muted)] truncate">{label}</span><span className="ml-auto tabular-nums font-medium">{Math.round(((bw[k] || 0) / total) * 100)}%</span></div>
+                ))}
+              </div>
+              <p className="text-[11px] text-[var(--faint)] mt-2.5">{t('sp.bw.note', 'Counted from response sizes since the API last restarted. Telemetry runs as a separate service, so it isn’t included here.')}</p>
+            </> : <div className="text-sm text-[var(--faint)]">{t('sp.bw.none', 'No traffic served yet since restart.')}</div>}
+          </Card>
+        );
+      })()}
+
       {/* Per-repo ALLOCATED resources (CPU share / upload / storage). NOT live usage:
           hosted repos aren't isolated processes yet, so there's no real per-repo CPU to
           sample — this is what each repo is allotted by its plan. */}

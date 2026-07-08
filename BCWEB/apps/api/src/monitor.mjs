@@ -92,9 +92,23 @@ export async function checkDependencies(p) {
 // ── In-process request stats (response times + status codes) — reset every
 // sample so each ServerMetricSample reflects "since the last tick". ──
 let _reqStats = { count: 0, totalMs: 0, s2xx: 0, s3xx: 0, s4xx: 0, s5xx: 0 };
-export function recordRequest(ms, statusCode) {
+// Bytes served per category since process start — answers "what's using the bandwidth"
+// (repo hosting downloads vs catalog/submission payloads vs media vs the rest). Counted
+// from Content-Length on each response (streams without one are under-counted). Telemetry
+// is a separate service (not served by this API), so it can't be measured here.
+const _bwByCat = { repo: 0, catalog: 0, media: 0, other: 0 };
+function bwCategory(url = '') {
+  if (url.startsWith('/hosting/') || /^\/(admin\/)?repos\/[^/]+\/files/.test(url)) return 'repo';
+  if (url.startsWith('/catalog/') || url.startsWith('/admin/catalog/')) return 'catalog';
+  if (url.startsWith('/media/') || url.startsWith('/api/media/')) return 'media';
+  return 'other';
+}
+export function getBandwidthByCat() { return { ..._bwByCat }; }
+export function recordRequest(ms, statusCode, url, bytes) {
   _reqStats.count++; _reqStats.totalMs += ms;
   if (statusCode < 300) _reqStats.s2xx++; else if (statusCode < 400) _reqStats.s3xx++; else if (statusCode < 500) _reqStats.s4xx++; else _reqStats.s5xx++;
+  const b = Number(bytes);
+  if (b > 0) _bwByCat[bwCategory(url)] += b;
 }
 function flushRequestStats() {
   const snap = _reqStats;
