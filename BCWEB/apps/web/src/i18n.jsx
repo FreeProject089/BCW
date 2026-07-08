@@ -563,6 +563,28 @@ const DICT = {
     'hs.d.pricing.catalogHostPerMBCents': 'Facturé aux soumetteurs non-staff pour les charges utiles hébergées par nous au-dessus du seuil gratuit ci-dessous.',
     'hs.d.pricing.catalogFreeMB': 'Les N premiers de chaque soumission (app/plugin/thème/preset) sont gratuits — seul le surplus est facturé.',
     'hs.d.features.hostingEnabled': 'Désactive toute la fonctionnalité d’hébergement Server-Repo à l’échelle du site quand décoché.',
+
+    // ── Admin : navigation & en-têtes ──
+    'adm.title': 'Admin', 'adm.subtitle': 'Modération, catalogues, hébergement, analytique et réglages.',
+    'adm.h.moderation': 'Modération', 'adm.h.users': 'Utilisateurs & accès', 'adm.h.repos': 'Dépôts & hébergement',
+    'adm.h.content': 'Contenu', 'adm.h.server': 'Serveur', 'adm.h.botanalytics': 'Bot & analytique', 'adm.h.settings': 'Réglages',
+    'adm.tab.moderation': 'Modération', 'adm.tab.messages': 'Messages', 'adm.tab.users': 'Utilisateurs',
+    'adm.tab.planusers': 'Gratuit vs payant', 'adm.tab.access': 'Accès & permissions', 'adm.tab.security': 'Journal de sécurité',
+    'adm.tab.repos': 'Dépôts serveur', 'adm.tab.hosting': 'Hébergement gratuit', 'adm.tab.promo': 'Codes promo', 'adm.tab.storage': 'Stockage',
+    'adm.tab.catalogs': 'Catalogues', 'adm.tab.projects': 'Projets', 'adm.tab.showcase': 'Autres projets', 'adm.tab.announcements': 'Annonces',
+    'adm.tab.serverperf': 'Perf serveur', 'adm.tab.serveradv': 'Serveur avancé', 'adm.tab.bot': 'Bot Discord', 'adm.tab.analytics': 'Analytique',
+    'adm.tab.settings': 'Réglages',
+
+    // ── Admin : file de modération ──
+    'mod.approved': 'Approuvé « {name} ».', 'mod.failed': 'Échec.',
+    'mod.reject.title': 'Rejeter la soumission', 'mod.reject.label': 'Raison (envoyée à l’auteur)', 'mod.reject.ph': 'Pourquoi est-ce rejeté ?',
+    'mod.reject.ok': 'Rejeter', 'mod.rejected': 'Rejeté et auteur notifié.',
+    'mod.queue': 'File de modération', 'mod.search.ph': 'Rechercher par nom, auteur ou e-mail…', 'mod.search': 'Rechercher',
+    'mod.allkinds': 'Toutes catégories', 'mod.k.app': 'App', 'mod.k.plugin': 'Plugin', 'mod.k.theme': 'Thème', 'mod.k.preset': 'Preset',
+    'mod.alltypes': 'Toutes actions', 'mod.t.new': 'Nouveau', 'mod.t.update': 'Mise à jour',
+    'mod.oldest': 'Plus anciens d’abord', 'mod.newest': 'Plus récents d’abord',
+    'mod.review': 'Examiner', 'mod.approve': 'Approuver', 'mod.reject': 'Rejeter',
+    'mod.empty.t': 'La file est vide', 'mod.empty.s': 'Rien en attente de revue.',
   },
 };
 

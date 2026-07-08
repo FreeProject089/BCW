@@ -1705,71 +1705,71 @@ function SubmitModal({ open, onClose, onDone }) {
 
 /* ─────────────────────────  Admin  ───────────────────────── */
 export function Admin() {
-  const { user } = useAuth(); const dialog = useDialog(); const toast = useToast();
+  const { user } = useAuth(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
   const [modQ, setModQ] = useState(''); const [modQApplied, setModQApplied] = useState('');
   const [modSort, setModSort] = useState('oldest'); const [modKind, setModKind] = useState(''); const [modType, setModType] = useState('');
   const subs = useAsync(() => api.get(`/mod/submissions?q=${encodeURIComponent(modQApplied)}&sort=${modSort}&kind=${modKind}&type=${modType}`), [modQApplied, modSort, modKind, modType]);
-  const approve = async (s) => { try { await api.post(`/mod/submissions/${s.id}/approve`); toast.success(`Approved "${s.item?.name}".`); subs.reload(); } catch { toast.error('Failed.'); } };
+  const approve = async (s) => { try { await api.post(`/mod/submissions/${s.id}/approve`); toast.success(t('mod.approved', 'Approved "{name}".').replace('{name}', s.item?.name)); subs.reload(); } catch { toast.error(t('mod.failed', 'Failed.')); } };
   const reject = async (s) => {
-    const reason = await dialog.prompt({ title: 'Reject submission', label: 'Reason (sent to the author)', placeholder: 'Why is this rejected?', okLabel: 'Reject', danger: true });
+    const reason = await dialog.prompt({ title: t('mod.reject.title', 'Reject submission'), label: t('mod.reject.label', 'Reason (sent to the author)'), placeholder: t('mod.reject.ph', 'Why is this rejected?'), okLabel: t('mod.reject.ok', 'Reject'), danger: true });
     if (!reason) return;
-    try { await api.post(`/mod/submissions/${s.id}/reject`, { reason }); toast.success('Rejected and author notified.'); subs.reload(); } catch { toast.error('Failed.'); }
+    try { await api.post(`/mod/submissions/${s.id}/reject`, { reason }); toast.success(t('mod.rejected', 'Rejected and author notified.')); subs.reload(); } catch { toast.error(t('mod.failed', 'Failed.')); }
   };
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPERADMIN';
   const isSuperAdmin = user?.role === 'SUPERADMIN';
   const queue = subs.data?.submissions || [];
   const [review, setReview] = useState(null);
   const tabs = [
-    { heading: 'Moderation' },
-    { id: 'moderation', label: 'Moderation', icon: Inbox, badge: queue.length || undefined },
-    { id: 'messages', label: 'Messages', icon: Mail },
+    { heading: t('adm.h.moderation', 'Moderation') },
+    { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: Inbox, badge: queue.length || undefined },
+    { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail },
 
-    { heading: 'Users & access' },
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'planusers', label: 'Free vs paid', icon: Receipt },
-    isAdmin && { id: 'access', label: 'Access & permissions', icon: Shield },
-    isAdmin && { id: 'security', label: 'Security log', icon: Lock },
+    { heading: t('adm.h.users', 'Users & access') },
+    { id: 'users', label: t('adm.tab.users', 'Users'), icon: Users },
+    { id: 'planusers', label: t('adm.tab.planusers', 'Free vs paid'), icon: Receipt },
+    isAdmin && { id: 'access', label: t('adm.tab.access', 'Access & permissions'), icon: Shield },
+    isAdmin && { id: 'security', label: t('adm.tab.security', 'Security log'), icon: Lock },
 
-    { heading: 'Repos & hosting' },
-    { id: 'repos', label: 'Server repos', icon: Server },
-    isAdmin && { id: 'hosting', label: 'Free hosting', icon: Rocket },
-    isAdmin && { id: 'promo', label: 'Promo codes', icon: Ticket },
-    isAdmin && { id: 'storage', label: 'Storage', icon: HardDrive },
+    { heading: t('adm.h.repos', 'Repos & hosting') },
+    { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
+    isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
+    isAdmin && { id: 'promo', label: t('adm.tab.promo', 'Promo codes'), icon: Ticket },
+    isAdmin && { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
 
-    isAdmin && { heading: 'Content' },
-    isAdmin && { id: 'catalogs', label: 'Catalogs', icon: Boxes },
-    isAdmin && { id: 'projects', label: 'Projects', icon: Settings2 },
-    isAdmin && { id: 'showcase', label: 'Other projects', icon: Sparkles },
-    isAdmin && { id: 'announcements', label: 'Announcements', icon: BellIcon },
+    isAdmin && { heading: t('adm.h.content', 'Content') },
+    isAdmin && { id: 'catalogs', label: t('adm.tab.catalogs', 'Catalogs'), icon: Boxes },
+    isAdmin && { id: 'projects', label: t('adm.tab.projects', 'Projects'), icon: Settings2 },
+    isAdmin && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
+    isAdmin && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
 
-    isAdmin && { heading: 'Server' },
-    isAdmin && { id: 'serverperf', label: 'Server perf', icon: Cpu },
-    isAdmin && { id: 'serveradv', label: 'Advanced server', icon: AlertTriangle },
+    isAdmin && { heading: t('adm.h.server', 'Server') },
+    isAdmin && { id: 'serverperf', label: t('adm.tab.serverperf', 'Server perf'), icon: Cpu },
+    isAdmin && { id: 'serveradv', label: t('adm.tab.serveradv', 'Advanced server'), icon: AlertTriangle },
 
-    isAdmin && { heading: 'Bot & analytics' },
-    isAdmin && { id: 'bot', label: 'Discord bot', icon: MessageSquare },
-    isAdmin && { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+    isAdmin && { heading: t('adm.h.botanalytics', 'Bot & analytics') },
+    isAdmin && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: MessageSquare },
+    isAdmin && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp },
 
-    isAdmin && { heading: 'Settings' },
-    isAdmin && { id: 'settings', label: 'Settings', icon: Sliders },
+    isAdmin && { heading: t('adm.h.settings', 'Settings') },
+    isAdmin && { id: 'settings', label: t('adm.tab.settings', 'Settings'), icon: Sliders },
   ].filter(Boolean);
   return (
-    <SideDash icon={ShieldCheck} title="Admin" subtitle="Moderation, catalogs, hosting, analytics and settings." tabs={tabs}>
+    <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}>
       {(s) => (<>
         {s === 'moderation' && <div>
-          <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> Moderation queue</h2>
+          <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
           <div className="flex flex-wrap gap-2 mb-3">
             <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-              <Input className="!pl-9" placeholder="Search by item name, author or email…" value={modQ} onChange={(e) => setModQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setModQApplied(modQ)} /></div>
-            <Button variant="primary" onClick={() => setModQApplied(modQ)}><Search size={15} /> Search</Button>
+              <Input className="!pl-9" placeholder={t('mod.search.ph', 'Search by item name, author or email…')} value={modQ} onChange={(e) => setModQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setModQApplied(modQ)} /></div>
+            <Button variant="primary" onClick={() => setModQApplied(modQ)}><Search size={15} /> {t('mod.search', 'Search')}</Button>
             <Select className="!w-auto" value={modKind} onChange={(e) => setModKind(e.target.value)}>
-              <option value="">All kinds</option><option value="APP">App</option><option value="PLUGIN">Plugin</option><option value="THEME">Theme</option><option value="PRESET">Preset</option>
+              <option value="">{t('mod.allkinds', 'All kinds')}</option><option value="APP">{t('mod.k.app', 'App')}</option><option value="PLUGIN">{t('mod.k.plugin', 'Plugin')}</option><option value="THEME">{t('mod.k.theme', 'Theme')}</option><option value="PRESET">{t('mod.k.preset', 'Preset')}</option>
             </Select>
             <Select className="!w-auto" value={modType} onChange={(e) => setModType(e.target.value)}>
-              <option value="">All types</option><option value="NEW">New</option><option value="UPDATE">Update</option>
+              <option value="">{t('mod.alltypes', 'All types')}</option><option value="NEW">{t('mod.t.new', 'New')}</option><option value="UPDATE">{t('mod.t.update', 'Update')}</option>
             </Select>
             <Select className="!w-auto" value={modSort} onChange={(e) => setModSort(e.target.value)}>
-              <option value="oldest">Oldest first</option><option value="newest">Newest first</option>
+              <option value="oldest">{t('mod.oldest', 'Oldest first')}</option><option value="newest">{t('mod.newest', 'Newest first')}</option>
             </Select>
           </div>
           {subs.loading ? <Loading /> : (queue.length ? <div className="space-y-2">
@@ -1783,10 +1783,10 @@ export function Admin() {
                     {sub.comments?.length > 0 && <span className="flex items-center gap-1 text-[var(--faint)]"><MessageSquare size={11} /> {sub.comments.length}</span>}
                   </div>
                 </div>
-                <Button size="sm" onClick={() => setReview(sub)}><Eye size={15} /> Review</Button>
-                <Button size="sm" variant="primary" onClick={() => approve(sub)}><CheckCircle2 size={15} /> Approve</Button>
-                <Button size="sm" onClick={() => reject(sub)}><XCircle size={15} /> Reject</Button></Card>); })}
-          </div> : <EmptyState icon={CheckCircle2} title="Queue is empty" sub="Nothing waiting for review." />)}
+                <Button size="sm" onClick={() => setReview(sub)}><Eye size={15} /> {t('mod.review', 'Review')}</Button>
+                <Button size="sm" variant="primary" onClick={() => approve(sub)}><CheckCircle2 size={15} /> {t('mod.approve', 'Approve')}</Button>
+                <Button size="sm" onClick={() => reject(sub)}><XCircle size={15} /> {t('mod.reject', 'Reject')}</Button></Card>); })}
+          </div> : <EmptyState icon={CheckCircle2} title={t('mod.empty.t', 'Queue is empty')} sub={t('mod.empty.s', 'Nothing waiting for review.')} />)}
           {review && <SubmissionReview sub={review} onClose={() => setReview(null)} onApprove={() => { approve(review); setReview(null); }} onReject={() => { reject(review); setReview(null); }} reload={subs.reload} />}
         </div>}
         {s === 'messages' && <AdminMessages />}
