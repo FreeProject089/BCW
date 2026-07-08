@@ -5584,7 +5584,7 @@ function ShowcaseEditModal({ project, onClose, onDone }) {
 // pricing knobs vs. feature flags) instead of one flat undifferentiated grid —
 // each field gets a real description of its effect, not just a bare label.
 const SETTINGS_GROUPS = [
-  { title: 'Capacity', icon: HardDrive, keys: [
+  { title: 'Capacity', gk: 'capacity', icon: HardDrive, keys: [
     ['hosting.totalCapacityGB', 'Total capacity (GB)', 'The overall ceiling for everything hosting draws against — checked against the real disk on save.', 'number'],
     ['hosting.reservedFreeGB', 'Reserved free margin (GB)', 'Always kept free below Total capacity, as a safety buffer.', 'number'],
     ['hosting.tempMarginGB', 'Temp margin for submissions (GB)', 'Separate pool for catalog submissions awaiting moderation — full = new uploads refused until reviewed.', 'number'],
@@ -5598,7 +5598,7 @@ const SETTINGS_GROUPS = [
     ['hosting.burstFactor', 'Bandwidth burst factor', 'Smart sharing: while the server is quiet, a repo download may burst to its cap × this factor, borrowing idle capacity. Tightens back to the cap under load. 1 = no bursting. Default 4.', 'number'],
     ['hosting.burstUntilActive', 'Burst until N active transfers', 'Bursting is allowed only while fewer than this many downloads are in flight at once; beyond it, each repo is held to its own cap. Default 3.', 'number'],
   ] },
-  { title: 'Blog, docs & history', icon: Newspaper, keys: [
+  { title: 'Blog, docs & history', gk: 'blog', icon: Newspaper, keys: [
     ['blog.maxTotalPosts', 'Max total blog articles', 'Hard cap on the number of blog articles across the whole site. 0 = unlimited. New articles are refused once reached.', 'number'],
     ['blog.maxTotalKB', 'Max total blog size (KB)', 'Hard cap on the combined size of every article body (EN + FR). Enforced on create AND on edits that grow a post. 0 = unlimited.', 'number'],
     ['docs.maxTotalPages', 'Max total doc pages', 'Hard cap on the number of documentation pages. 0 = unlimited. New pages are refused once reached.', 'number'],
@@ -5606,11 +5606,11 @@ const SETTINGS_GROUPS = [
     ['history.maxRevisions', 'Edit-history: keep last N revisions', 'How many past snapshots each blog post / doc page keeps before the oldest is overwritten. Default 30.', 'number'],
     ['history.maxRevisionKB', 'Edit-history: max size per item (KB)', 'Also cap each item\'s stored history by size — older snapshots drop once this is exceeded. 0 = size limit off (count only).', 'number'],
   ] },
-  { title: 'Security & audit logs', icon: ShieldCheck, keys: [
+  { title: 'Security & audit logs', gk: 'security', icon: ShieldCheck, keys: [
     ['audit.maxDays', 'Audit log retention (days)', 'Staff-action log entries older than this are pruned. 0 = keep forever. The log is HMAC-chained (tamper-evident) — pruning is the only sanctioned deletion.', 'number'],
     ['audit.maxEntries', 'Audit log max entries', 'Also cap the staff-action log by entry count — the oldest are pruned past this. 0 = no count cap.', 'number'],
   ] },
-  { title: 'Pricing', icon: Receipt, keys: [
+  { title: 'Pricing', gk: 'pricing', icon: Receipt, keys: [
     ['pricing.perGBCents', 'Price per GB (¢ / month)', 'Base hosting cost, before the scarcity multiplier. Only applies above the free floor below.', 'number'],
     ['pricing.hostingFreeGB', 'Free hosting floor', 'Every repo\'s first N of storage cost nothing — small personal repos are free. Only the excess is billed.', 'gbmb', 'GB'],
     ['pricing.perUploadMbpsCents', 'Price per Mbps (¢ / month)', 'Cost per Mbps of upload bandwidth allotted to a repo.', 'number'],
@@ -5619,7 +5619,7 @@ const SETTINGS_GROUPS = [
     ['pricing.catalogHostPerMBCents', 'Catalog file hosting (¢ / MB / month)', 'Charged to non-staff submitters for our-hosted payloads above the free floor below.', 'number'],
     ['pricing.catalogFreeMB', 'Free catalog upload floor', 'Every submission\'s (app/plugin/theme/preset) first N are free — only the excess is billed.', 'gbmb', 'MB'],
   ] },
-  { title: 'Feature flags', icon: Sliders, keys: [
+  { title: 'Feature flags', gk: 'features', icon: Sliders, keys: [
     ['features.hostingEnabled', 'Hosting enabled', 'Turns the whole Server-Repo hosting feature off site-wide when unchecked.', 'bool'],
   ] },
 ];
@@ -5640,6 +5640,7 @@ const convertUnit = (value, fromUnit, toUnit) => fromUnit === toUnit ? Number(va
 
 function AdminSettings() {
   const toast = useToast();
+  const { t } = useI18n();
   const { data, reload } = useAsync(() => api.get('/admin/settings'), []);
   const cap = useAsync(() => api.get('/hosting/capacity'), []);
   const [draft, setDraft] = useState({});
@@ -5649,8 +5650,8 @@ function AdminSettings() {
   const coerce = (v, kind) => kind === 'bool' ? !!v : (v !== '' && !isNaN(Number(v)) ? Number(v) : v);
   const save = async (key, kind) => {
     setBusy(key);
-    try { await api.put(`/admin/settings/${key}`, { value: coerce(draft[key], kind) }); toast.success('Saved.'); reload(); cap.reload?.(); }
-    catch (x) { toast.error(x.data?.error === 'exceeds_disk' ? `Exceeds the real disk capacity (${x.data.diskGB} GB max).` : 'Save failed.'); }
+    try { await api.put(`/admin/settings/${key}`, { value: coerce(draft[key], kind) }); toast.success(t('hs.saved', 'Saved.')); reload(); cap.reload?.(); }
+    catch (x) { toast.error(x.data?.error === 'exceeds_disk' ? t('hs.exceedsdisk', `Exceeds the real disk capacity (${x.data.diskGB} GB max).`).replace('{n}', x.data.diskGB) : t('hs.savefail', 'Save failed.')); }
     finally { setBusy(null); }
   };
   // "Save all changes" — edit several settings (CPU / storage / upload …) and save them
@@ -5666,8 +5667,8 @@ function AdminSettings() {
     setBusy('__all__');
     try {
       for (const k of dirtyKeys) await api.put(`/admin/settings/${k}`, { value: coerce(draft[k], KIND_OF[k]) });
-      toast.success(`Saved ${dirtyKeys.length} change${dirtyKeys.length === 1 ? '' : 's'}.`); reload(); cap.reload?.();
-    } catch (x) { toast.error(x.data?.error === 'exceeds_disk' ? `Exceeds the real disk capacity (${x.data.diskGB} GB max).` : 'Some changes failed to save.'); }
+      toast.success(t('hs.savecount', `Saved ${dirtyKeys.length} changes.`).replace('{n}', dirtyKeys.length)); reload(); cap.reload?.();
+    } catch (x) { toast.error(x.data?.error === 'exceeds_disk' ? t('hs.exceedsdisk', `Exceeds the real disk capacity (${x.data.diskGB} GB max).`).replace('{n}', x.data.diskGB) : t('hs.savepartial', 'Some changes failed to save.')); }
     finally { setBusy(null); }
   };
   const c = cap.data?.capacity;
@@ -5675,8 +5676,8 @@ function AdminSettings() {
   return (
     <div className="mt-10">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2 sticky top-0 z-10 py-1 bg-[var(--bg-solid)]/85 backdrop-blur-sm">
-        <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} /> Hosting settings</h2>
-        {dirtyKeys.length > 0 && <Button variant="primary" size="sm" disabled={busy === '__all__'} onClick={saveAll}>{busy === '__all__' ? <Spinner /> : <><CheckCheck size={14} /> Save all ({dirtyKeys.length})</>}</Button>}
+        <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} /> {t('hs.title', 'Hosting settings')}</h2>
+        {dirtyKeys.length > 0 && <Button variant="primary" size="sm" disabled={busy === '__all__'} onClick={saveAll}>{busy === '__all__' ? <Spinner /> : <><CheckCheck size={14} /> {t('hs.saveall', 'Save all')} ({dirtyKeys.length})</>}</Button>}
       </div>
       {/* At-a-glance stacked bar of the WHOLE Total capacity — where every GB goes
           (hosting quotas, approved submissions, temp margin, reserved, free) plus the
@@ -5685,19 +5686,19 @@ function AdminSettings() {
         const total = c.totalGB || 0;
         const seg = (gb, color, label) => ({ gb: Math.max(0, Number(gb) || 0), color, label });
         const segs = [
-          seg(c.hostingAllocatedGB, 'var(--primary)', 'Hosting quotas'),
-          seg(c.submissionsPublishedGB, '#8b5cf6', 'Approved submissions'),
-          seg(c.tempUsedGB, '#f59e0b', 'Temp (in use)'),
-          seg((c.tempMarginGB || 0) - (c.tempUsedGB || 0), 'rgba(245,158,11,0.35)', 'Temp (reserved)'),
-          seg(c.reservedGB, 'var(--faint)', 'Reserved margin'),
+          seg(c.hostingAllocatedGB, 'var(--primary)', t('hs.seg.hosting', 'Hosting quotas')),
+          seg(c.submissionsPublishedGB, '#8b5cf6', t('hs.seg.subs', 'Approved submissions')),
+          seg(c.tempUsedGB, '#f59e0b', t('hs.seg.tempuse', 'Temp (in use)')),
+          seg((c.tempMarginGB || 0) - (c.tempUsedGB || 0), 'rgba(245,158,11,0.35)', t('hs.seg.tempres', 'Temp (reserved)')),
+          seg(c.reservedGB, 'var(--faint)', t('hs.seg.reserved', 'Reserved margin')),
         ];
         const used = segs.reduce((a, s) => a + s.gb, 0);
-        const all = [...segs, seg(Math.max(0, total - used), 'var(--surface-2)', 'Free')];
+        const all = [...segs, seg(Math.max(0, total - used), 'var(--surface-2)', t('hs.seg.free', 'Free'))];
         return (
           <Card className="p-4 mb-3">
             <div className="flex items-center justify-between text-sm mb-2 flex-wrap gap-2">
-              <span className="flex items-center gap-2 font-medium"><HardDrive size={15} className="text-[var(--primary-2)]" /> Total capacity</span>
-              <span className="text-xs text-[var(--muted)] tabular-nums">{used.toFixed(1)} / {total} GB used · {Math.max(0, total - used).toFixed(1)} GB free</span>
+              <span className="flex items-center gap-2 font-medium"><HardDrive size={15} className="text-[var(--primary-2)]" /> {t('hs.totalcap', 'Total capacity')}</span>
+              <span className="text-xs text-[var(--muted)] tabular-nums">{t('hs.capused', '{used} / {total} GB used · {free} GB free').replace('{used}', used.toFixed(1)).replace('{total}', total).replace('{free}', Math.max(0, total - used).toFixed(1))}</span>
             </div>
             <div className="flex h-3.5 rounded-full overflow-hidden bg-[var(--surface-2)] border border-[var(--line)]">
               {total > 0 && all.map((s, i) => s.gb > 0.001 && <div key={i} title={`${s.label}: ${s.gb.toFixed(2)} GB`} style={{ width: `${(s.gb / total) * 100}%`, background: s.color }} />)}
@@ -5707,10 +5708,10 @@ function AdminSettings() {
                 <span key={i} className="flex items-center gap-1.5 text-[var(--muted)]"><span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: s.color }} /> {s.label} <b className="text-[var(--text)] tabular-nums">{s.gb.toFixed(1)}G</b></span>
               ))}
             </div>
-            {c.diskFreeGB != null && <div className="text-[11px] text-[var(--faint)] mt-1.5">Real disk: <b className="text-[var(--text)]">{c.diskFreeGB.toFixed(0)} GB free</b> / {c.diskTotalGB?.toFixed(0)} GB total.</div>}
+            {c.diskFreeGB != null && <div className="text-[11px] text-[var(--faint)] mt-1.5">{t('hs.realdisk', 'Real disk:')} <b className="text-[var(--text)]">{t('hs.gbfree', '{n} GB free').replace('{n}', c.diskFreeGB.toFixed(0))}</b> / {t('hs.gbtotal', '{n} GB total').replace('{n}', c.diskTotalGB?.toFixed(0))}.</div>}
             {c.freeTierCapEnabled && c.freeTierCapGB > 0 && (
               <div className="mt-3 pt-3 border-t border-[var(--line)]">
-                <div className="flex items-center justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1.5"><Gift size={12} className="text-emerald-400" /> Free-plan pool (separate)</span><span className="tabular-nums font-medium">{(c.freeTierUsedGB || 0).toFixed(1)} / {c.freeTierCapGB} GB</span></div>
+                <div className="flex items-center justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1.5"><Gift size={12} className="text-emerald-400" /> {t('hs.freepool', 'Free-plan pool (separate)')}</span><span className="tabular-nums font-medium">{(c.freeTierUsedGB || 0).toFixed(1)} / {c.freeTierCapGB} GB</span></div>
                 <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, ((c.freeTierUsedGB || 0) / c.freeTierCapGB) * 100)}%` }} /></div>
               </div>
             )}
@@ -5721,8 +5722,8 @@ function AdminSettings() {
               return (
                 <div className="mt-3 pt-3 border-t border-[var(--line)]">
                   <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="text-[var(--muted)] flex items-center gap-1.5"><Gauge size={12} className="text-sky-400" /> BMM telemetry storage {alloc > 0 ? '' : <span className="text-[var(--faint)]">(no limit set)</span>}</span>
-                    <span className="tabular-nums font-medium">{c.telemetryUsedGB.toFixed(2)}{alloc > 0 ? ` / ${alloc} GB` : ' GB used'}</span>
+                    <span className="text-[var(--muted)] flex items-center gap-1.5"><Gauge size={12} className="text-sky-400" /> {t('hs.telestore', 'BMM telemetry storage')} {alloc > 0 ? '' : <span className="text-[var(--faint)]">{t('hs.nolimit', '(no limit set)')}</span>}</span>
+                    <span className="tabular-nums font-medium">{c.telemetryUsedGB.toFixed(2)}{alloc > 0 ? ` / ${alloc} GB` : ` ${t('hs.gbused', 'GB used')}`}</span>
                   </div>
                   {alloc > 0 && <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-red-500' : 'bg-sky-500'}`} style={{ width: `${pct}%` }} /></div>}
                 </div>
@@ -5736,11 +5737,11 @@ function AdminSettings() {
       {c && (
         <Card className="p-4 mb-3">
           <div className="flex items-center justify-between text-sm mb-1.5">
-            <span className="flex items-center gap-2 text-[var(--muted)]"><Upload size={14} className="text-[var(--primary-2)]" /> Temp storage (submissions)</span>
+            <span className="flex items-center gap-2 text-[var(--muted)]"><Upload size={14} className="text-[var(--primary-2)]" /> {t('hs.tempstore', 'Temp storage (submissions)')}</span>
             <span className="font-semibold tabular-nums">{(c.tempUsedGB ?? 0).toFixed(2)} / {c.tempMarginGB ?? 0} GB</span>
           </div>
           <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${tempPct > 90 ? 'bg-red-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} style={{ width: `${tempPct}%` }} /></div>
-          <div className="text-[11px] text-[var(--faint)] mt-1.5">Submitted files (.bmmplugin, .bmmtheme, app payloads) live here until moderation. When full, new submission uploads are refused.</div>
+          <div className="text-[11px] text-[var(--faint)] mt-1.5">{t('hs.tempnote', 'Submitted files (.bmmplugin, .bmmtheme, app payloads) live here until moderation. When full, new submission uploads are refused.')}</div>
         </Card>
       )}
       <div className="space-y-5">
@@ -5748,36 +5749,41 @@ function AdminSettings() {
           <div key={g.title} className="rounded-2xl border border-[var(--line)] overflow-hidden" style={{ boxShadow: 'var(--shadow)' }}>
             <div className="flex items-center gap-2.5 px-4 py-3 bg-[var(--surface-2)]/40 border-b border-[var(--line)]">
               <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><g.icon size={15} className="text-[var(--primary-2)]" /></span>
-              <div className="min-w-0"><div className="text-sm font-semibold">{g.title}</div>{GROUP_DESC[g.title] && <div className="text-[11px] text-[var(--faint)] truncate">{GROUP_DESC[g.title]}</div>}</div>
+              <div className="min-w-0"><div className="text-sm font-semibold">{t(`hs.g.${g.gk}`, g.title)}</div>{GROUP_DESC[g.title] && <div className="text-[11px] text-[var(--faint)] truncate">{t(`hs.gd.${g.gk}`, GROUP_DESC[g.title])}</div>}</div>
             </div>
             <div className="p-3 grid md:grid-cols-2 gap-3">
-              {g.keys.map(([k, label, desc, kind, nativeUnit]) => (
+              {g.keys.map(([k, label, desc, kind, nativeUnit]) => {
+                const L = t(`hs.l.${k}`, label);
+                const D = t(`hs.d.${k}`, desc);
+                const saveLabel = t('hs.save', 'Save');
+                return (
                 <Card key={k} className="p-4">
                   {kind === 'bool' ? (
                     <div className="flex items-center justify-between gap-3">
-                      <label className="flex items-center gap-2.5 text-sm cursor-pointer flex-1"><input type="checkbox" checked={draft[k] !== false && draft[k] !== 'false' && !!draft[k]} onChange={(e) => setDraft({ ...draft, [k]: e.target.checked })} /> <span className="font-medium">{label}</span></label>
-                      <Button size="sm" disabled={busy === k} onClick={() => save(k, kind)}>{busy === k ? <Spinner /> : 'Save'}</Button>
+                      <label className="flex items-center gap-2.5 text-sm cursor-pointer flex-1"><input type="checkbox" checked={draft[k] !== false && draft[k] !== 'false' && !!draft[k]} onChange={(e) => setDraft({ ...draft, [k]: e.target.checked })} /> <span className="font-medium">{L}</span></label>
+                      <Button size="sm" disabled={busy === k} onClick={() => save(k, kind)}>{busy === k ? <Spinner /> : saveLabel}</Button>
                     </div>
                   ) : kind === 'gbmb' ? (() => {
                     const curUnit = unit[k] || nativeUnit;
                     const displayValue = draft[k] !== '' && draft[k] != null ? convertUnit(Number(draft[k]), nativeUnit, curUnit) : '';
                     return (
                       <div className="flex items-end gap-2">
-                        <div className="flex-1"><Field label={label}><Input type="number" value={displayValue} onChange={(e) => setDraft({ ...draft, [k]: e.target.value === '' ? '' : convertUnit(Number(e.target.value), curUnit, nativeUnit) })} /></Field></div>
+                        <div className="flex-1"><Field label={L}><Input type="number" value={displayValue} onChange={(e) => setDraft({ ...draft, [k]: e.target.value === '' ? '' : convertUnit(Number(e.target.value), curUnit, nativeUnit) })} /></Field></div>
                         <Select className="!w-auto !py-2.5" value={curUnit} onChange={(e) => setUnit({ ...unit, [k]: e.target.value })}><option value="MB">MB</option><option value="GB">GB</option></Select>
-                        <Button size="sm" disabled={busy === k} onClick={() => save(k, 'number')}>{busy === k ? <Spinner /> : 'Save'}</Button>
+                        <Button size="sm" disabled={busy === k} onClick={() => save(k, 'number')}>{busy === k ? <Spinner /> : saveLabel}</Button>
                       </div>
                     );
                   })() : (
                     <div className="flex items-end gap-3">
-                      <div className="flex-1"><Field label={label}><Input type="number" value={draft[k] ?? ''} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} /></Field></div>
-                      <Button size="sm" disabled={busy === k} onClick={() => save(k, kind)}>{busy === k ? <Spinner /> : 'Save'}</Button>
+                      <div className="flex-1"><Field label={L}><Input type="number" value={draft[k] ?? ''} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} /></Field></div>
+                      <Button size="sm" disabled={busy === k} onClick={() => save(k, kind)}>{busy === k ? <Spinner /> : saveLabel}</Button>
                     </div>
                   )}
-                  <div className="text-[11px] text-[var(--faint)] mt-1.5">{desc}</div>
-                  {k === 'hosting.totalCapacityGB' && c?.diskTotalGB != null && <div className="text-[11px] text-amber-400/90 mt-1">Real disk: {c.diskFreeGB.toFixed(0)} GB free / {c.diskTotalGB.toFixed(0)} GB total — can't be set above this.</div>}
+                  <div className="text-[11px] text-[var(--faint)] mt-1.5">{D}</div>
+                  {k === 'hosting.totalCapacityGB' && c?.diskTotalGB != null && <div className="text-[11px] text-amber-400/90 mt-1">{t('hs.realdiskcap', "Real disk: {free} GB free / {total} GB total — can't be set above this.").replace('{free}', c.diskFreeGB.toFixed(0)).replace('{total}', c.diskTotalGB.toFixed(0))}</div>}
                 </Card>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}
