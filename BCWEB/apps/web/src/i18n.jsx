@@ -585,6 +585,23 @@ const DICT = {
     'mod.oldest': 'Plus anciens d’abord', 'mod.newest': 'Plus récents d’abord',
     'mod.review': 'Examiner', 'mod.approve': 'Approuver', 'mod.reject': 'Rejeter',
     'mod.empty.t': 'La file est vide', 'mod.empty.s': 'Rien en attente de revue.',
+
+    // ── Admin : recherche d'utilisateurs ──
+    'au.title': 'Recherche d’utilisateurs',
+    'au.desc': 'Recherche par id utilisateur, id BC unique (BC-XXXX-XXXX), nom affiché, e-mail, un creator id lié, ou un Discord lié (pseudo / id). Clique sur un utilisateur pour voir tous les détails.',
+    'au.search.ph': 'id / nom affiché / e-mail / creator id / Discord…', 'au.search': 'Rechercher',
+    'au.find.t': 'Trouver un utilisateur', 'au.find.s': 'Entre un terme ci-dessus pour rechercher.',
+    'au.since': 'depuis', 'au.creatorids': '{n} creator id(s)', 'au.discord': 'Discord', 'au.loadmore': 'Charger plus',
+    'au.none.t': 'Aucun utilisateur trouvé', 'au.none.s': 'Essaie un autre id, nom, e-mail ou creator id.',
+
+    // ── Admin : gratuit vs payant ──
+    'pu.title': 'Gratuit vs payant',
+    'pu.desc': 'Ce que chaque client a d’actif actuellement : hébergement gratuit, hébergement/boosts payants, ou durées expirées/terminées. Clique sur une ligne pour le détail ; clique sur le nom de l’utilisateur pour son profil complet.',
+    'pu.tab.paying': 'Clients payants', 'pu.tab.free': 'Plan gratuit', 'pu.tab.archived': 'Archivés',
+    'pu.payments': '{n} paiement(s)', 'pu.last': 'dernier', 'pu.active': '{n} actif(s)', 'pu.loadmore': 'Charger plus',
+    'pu.empty.paying.t': 'Aucun client payant', 'pu.empty.paying.s': 'Personne n’a encore effectué de paiement.',
+    'pu.empty.free.t': 'Aucun utilisateur en plan gratuit', 'pu.empty.free.s': 'Personne n’héberge de contenu gratuitement pour le moment.',
+    'pu.empty.archived.t': 'Rien d’archivé', 'pu.empty.archived.s': 'Aucune durée expirée ou boost terminé pour le moment.',
   },
 };
 

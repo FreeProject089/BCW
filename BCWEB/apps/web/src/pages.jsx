@@ -1941,6 +1941,7 @@ function ThemeVerifier() {
 
 // Admin: find a user by id / display name / email / linked creator id, then inspect them.
 function AdminUsers() {
+  const { t } = useI18n();
   const [sp] = useSearchParams();
   const [q, setQ] = useState(sp.get('q') || '');
   const [results, setResults] = useState(null);
@@ -1962,23 +1963,23 @@ function AdminUsers() {
   const since = (d) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Users size={16} className="text-[var(--primary-2)]" /> User search</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">Search by user id, <b>Unique BC id</b> (BC-XXXX-XXXX), display name, email, a linked <b>creator id</b>, or a linked <b>Discord</b> (username / id). Click a user to see full details.</p>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Users size={16} className="text-[var(--primary-2)]" /> {t('au.title', 'User search')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('au.desc', 'Search by user id, Unique BC id (BC-XXXX-XXXX), display name, email, a linked creator id, or a linked Discord (username / id). Click a user to see full details.')}</p>
       <div className="flex gap-2 mb-5">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!pl-9" placeholder="id / display name / email / creator id / Discord…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
+          <Input className="!pl-9" placeholder={t('au.search.ph', 'id / display name / email / creator id / Discord…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
         </div>
-        <Button variant="primary" disabled={busy} onClick={search}>{busy ? <Spinner /> : <><Search size={15} /> Search</>}</Button>
+        <Button variant="primary" disabled={busy} onClick={search}>{busy ? <Spinner /> : <><Search size={15} /> {t('au.search', 'Search')}</>}</Button>
       </div>
-      {results === null ? <EmptyState icon={Users} title="Find a user" sub="Enter a term above to search." />
+      {results === null ? <EmptyState icon={Users} title={t('au.find.t', 'Find a user')} sub={t('au.find.s', 'Enter a term above to search.')} />
         : results.length ? <div className="space-y-2">
           {results.map((u) => (
             <button key={u.id} onClick={() => setDetail(u.id)} className="w-full text-left card card-hover p-4 flex items-center gap-3">
               <Avatar user={u} size={40} />
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
-                <div className="text-xs text-[var(--faint)] truncate">{u.email} · since {since(u.createdAt)}</div>
+                <div className="text-xs text-[var(--faint)] truncate">{u.email} · {t('au.since', 'since')} {since(u.createdAt)}</div>
                 <div className="text-xs text-[var(--faint)] mt-0.5 font-mono truncate flex items-center gap-2">
                   {u.bcId && <span className="inline-flex items-center gap-1 text-[var(--primary-2)]"><Fingerprint size={11} /> {u.bcId}</span>}
                   <span className="truncate">{u.id}</span>
@@ -1993,13 +1994,13 @@ function AdminUsers() {
               <div className="text-xs text-[var(--muted)] flex flex-col items-end gap-0.5 shrink-0">
                 <span className="flex items-center gap-1"><Server size={11} /> {u.repoCount}</span>
                 <span className="flex items-center gap-1"><Package size={11} /> {u.itemCount}</span>
-                {u.creatorIds.length > 0 && <Badge tone="green">{u.creatorIds.length} creator id{u.creatorIds.length > 1 ? 's' : ''}</Badge>}
-                {u.discord && <Badge tone="primary"><DiscordIcon size={10} /> Discord</Badge>}
+                {u.creatorIds.length > 0 && <Badge tone="green">{t('au.creatorids', '{n} creator id(s)').replace('{n}', u.creatorIds.length)}</Badge>}
+                {u.discord && <Badge tone="primary"><DiscordIcon size={10} /> {t('au.discord', 'Discord')}</Badge>}
               </div>
             </button>
           ))}
-          {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(q, true)}>{busy ? <Spinner /> : 'Load more'}</Button></div>}
-        </div> : <EmptyState icon={XCircle} title="No users found" sub="Try a different id, name, email or creator id." />}
+          {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(q, true)}>{busy ? <Spinner /> : t('au.loadmore', 'Load more')}</Button></div>}
+        </div> : <EmptyState icon={XCircle} title={t('au.none.t', 'No users found')} sub={t('au.none.s', 'Try a different id, name, email or creator id.')} />}
       {detail && <UserDetailModal id={detail} onClose={() => setDetail(null)} />}
     </div>
   );
@@ -2017,6 +2018,7 @@ const PLANUSERS_TABS = [
 // Classified by CURRENT state (see the endpoint): a user can appear in more than one
 // tab — e.g. one free repo + one paid boost — since the tabs aren't a strict partition.
 function AdminPlanUsers() {
+  const { t } = useI18n();
   const [tab, setTab] = useState('paying');
   const [results, setResults] = useState(null);
   const [hasMore, setHasMore] = useState(false);
@@ -2033,15 +2035,15 @@ function AdminPlanUsers() {
   };
   useEffect(() => { load(false); setExpanded(null); /* eslint-disable-next-line */ }, [tab]);
   const since = (d) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-  const emptyCopy = { paying: ['No paying customers yet', 'Nobody has made a payment yet.'], free: ['No free-plan users', 'Nobody is hosting content for free right now.'], archived: ['Nothing archived', 'No expired terms or ended boosts right now.'] }[tab];
+  const emptyCopy = [t(`pu.empty.${tab}.t`, ''), t(`pu.empty.${tab}.s`, '')];
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> Free vs paid</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">What every customer currently has active: free-tier hosting, paid hosting/boosts, or expired/ended terms. Click a row to see the detail; click the user's name for their full profile.</p>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> {t('pu.title', 'Free vs paid')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('pu.desc', "What every customer currently has active: free-tier hosting, paid hosting/boosts, or expired/ended terms. Click a row to see the detail; click the user's name for their full profile.")}</p>
       <div className="flex gap-2 mb-4">
         {PLANUSERS_TABS.map(([id, I, label]) => (
           <button key={id} onClick={() => setTab(id)} className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium border transition ${tab === id ? 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <I size={14} className="inline mr-1.5 -mt-0.5" /> {label}</button>
+            <I size={14} className="inline mr-1.5 -mt-0.5" /> {t(`pu.tab.${id}`, label)}</button>
         ))}
       </div>
       {busy && !results ? <Loading /> : results && results.length ? <div className="space-y-2">
@@ -2058,10 +2060,10 @@ function AdminPlanUsers() {
               {tab === 'paying' && u.totalSpentCents != null && (
                 <div className="text-xs text-right shrink-0">
                   <div className="text-sm font-semibold text-emerald-400">${(u.totalSpentCents / 100).toFixed(2)}</div>
-                  <div className="text-[var(--faint)]">{u.paymentCount} payment{u.paymentCount !== 1 ? 's' : ''} · last {since(u.lastPaymentAt)}</div>
+                  <div className="text-[var(--faint)]">{t('pu.payments', '{n} payment(s)').replace('{n}', u.paymentCount)} · {t('pu.last', 'last')} {since(u.lastPaymentAt)}</div>
                 </div>
               )}
-              <Badge className="shrink-0">{u.active.length} active</Badge>
+              <Badge className="shrink-0">{t('pu.active', '{n} active').replace('{n}', u.active.length)}</Badge>
               <ChevronDown size={15} className={`shrink-0 text-[var(--faint)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
             {isOpen && (
@@ -2076,7 +2078,7 @@ function AdminPlanUsers() {
             )}
           </Card>
           ); })}
-        {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(true)}>{busy ? <Spinner /> : 'Load more'}</Button></div>}
+        {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(true)}>{busy ? <Spinner /> : t('pu.loadmore', 'Load more')}</Button></div>}
       </div> : <EmptyState icon={tab === 'paying' ? CreditCard : tab === 'free' ? Gift : Archive} title={emptyCopy[0]} sub={emptyCopy[1]} />}
       {detail && <UserDetailModal id={detail} onClose={() => setDetail(null)} />}
     </div>
