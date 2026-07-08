@@ -7,9 +7,10 @@ import {
   Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight,
   Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket,
   CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss,
-  Info, Orbit, Fingerprint, Layers,
+  Info, Orbit, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon,
 } from 'lucide-react';
 import { api, uploadPayload, uploadImage } from './api.js';
+import { COUNTRY_CENTROIDS } from './geo-centroids.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from './i18n.jsx';
 import { useTheme } from './theme.jsx';
@@ -3629,7 +3630,12 @@ function BrandImg({ slug, favicon, size = 15, fallback: Fb = Globe }) {
 const BROWSER_SLUG = { Chrome: 'googlechrome/4285F4', Firefox: 'firefoxbrowser/FF7139', Safari: 'safari/1B88CA', Edge: 'microsoftedge/0078D7', Opera: 'opera/FF1B2D' };
 // NOTE: SimpleIcons removed the Windows/Microsoft brand marks, so there's no valid CDN
 // slug for Windows — it's rendered with a Lucide Monitor glyph instead (see OS iconOf).
-const OS_SLUG = { Windows: null, macOS: 'apple/A2AAAD', iOS: 'apple/A2AAAD', Linux: 'linux/FCC624', Android: 'android/3DDC84' };
+const OS_SLUG = {
+  Windows: null, macOS: 'apple/A2AAAD', iOS: 'apple/A2AAAD', Android: 'android/3DDC84',
+  Linux: 'linux/FCC624', Ubuntu: 'ubuntu/E95420', Fedora: 'fedora/51A2DA', Debian: 'debian/A81D33',
+  Kali: 'kalilinux/557C94', Arch: 'archlinux/1793D1', Manjaro: 'manjaro/35BF5C',
+  'Linux Mint': 'linuxmint/87CF3E', SteamOS: 'steamdeck/1A9FFF', ChromeOS: 'googlechrome/4285F4',
+};
 
 function Breakdown({ title, rows, iconOf }) {
   const max = Math.max(1, ...rows.map((r) => r.count)); const tot = rows.reduce((a, r) => a + r.count, 0) || 1;
@@ -4451,9 +4457,9 @@ function TrafficChart({ series, gran = 'day', onZoom, compare }) {
   const path = (key) => series.map((s, i) => `${i ? 'L' : 'M'} ${x(i).toFixed(1)} ${y(s[key] || 0).toFixed(1)}`).join(' ');
   const area = `${path('count')} L ${x(n - 1).toFixed(1)} ${H - padY} L ${x(0).toFixed(1)} ${H - padY} Z`;
   const labelEvery = Math.ceil(n / 8);
-  // Y-axis gridlines at 0 / half / max — without them the chart was just a
-  // shape with no sense of scale (couldn't tell 40 views from 4,000 apart).
-  const yTicks = [0, 0.5, 1].map((f) => ({ v: Math.round(max * f), py: y(max * f) }));
+  // Y-axis gridlines at 0 / ¼ / ½ / ¾ / max — finer scale so the exact height of
+  // each point is readable, not just "somewhere between zero and the peak".
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ v: Math.round(max * f), py: y(max * f) }));
   const last = series[n - 1];
   return (
     <div className="relative" ref={wrapRef}>
@@ -4500,6 +4506,164 @@ function TrafficChart({ series, gran = 'day', onZoom, compare }) {
   );
 }
 
+// ISO alpha-2 → localized country name (built-in, no data table).
+const countryName = (cc) => { try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(String(cc).toUpperCase()) || cc; } catch { return cc; } };
+const flagUrl = (cc, size = '24x18') => `https://flagcdn.com/${size}/${String(cc).toLowerCase()}.png`;
+const Flag = ({ cc, className = 'w-4 h-3' }) => cc
+  ? <img src={flagUrl(cc)} alt="" className={`${className} rounded-[2px] object-cover shrink-0`} onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
+  : <Globe size={13} className="text-[var(--faint)] shrink-0" />;
+
+// Tiny inline area sparkline for KPI-card backgrounds. `data` = array of numbers.
+function Sparkline({ data, className = '', stroke = 'var(--primary)' }) {
+  if (!data || data.length < 2) return null;
+  const W = 120, H = 40, max = Math.max(1, ...data), n = data.length;
+  const x = (i) => (i / (n - 1)) * W;
+  const y = (v) => H - (v / max) * (H - 3) - 1.5;
+  const line = data.map((v, i) => `${i ? 'L' : 'M'} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+  const area = `${line} L ${W} ${H} L 0 ${H} Z`;
+  const gid = `spk-${Math.random().toString(36).slice(2, 8)}`;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className={className} aria-hidden>
+      <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={stroke} stopOpacity="0.28" /><stop offset="100%" stopColor={stroke} stopOpacity="0" /></linearGradient></defs>
+      <path d={area} fill={`url(#${gid})`} />
+      <path d={line} fill="none" stroke={stroke} strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
+    </svg>
+  );
+}
+
+// Equirectangular bubble world map: a flag bubble per country, sized by traffic, over a
+// light lat/long graticule. Coordinates come from COUNTRY_CENTROIDS; unknown codes are
+// skipped on the map (they still list below).
+function WorldBubbleMap({ countries }) {
+  const [hover, setHover] = useState(null);
+  const W = 360, H = 180;
+  const pts = countries.map((c) => ({ ...c, ll: COUNTRY_CENTROIDS[String(c.label).toUpperCase()] })).filter((c) => c.ll);
+  const max = Math.max(1, ...pts.map((c) => c.count));
+  const proj = (lat, lng) => [((lng + 180) / 360) * W, ((90 - lat) / 180) * H];
+  const grat = [];
+  for (let lng = -150; lng <= 150; lng += 30) { const [gx] = proj(0, lng); grat.push(<line key={`v${lng}`} x1={gx} y1={0} x2={gx} y2={H} stroke="var(--line)" strokeWidth="0.4" vectorEffect="non-scaling-stroke" opacity="0.5" />); }
+  for (let lat = -60; lat <= 60; lat += 30) { const [, gy] = proj(lat, 0); grat.push(<line key={`h${lat}`} x1={0} y1={gy} x2={W} y2={gy} stroke="var(--line)" strokeWidth="0.4" vectorEffect="non-scaling-stroke" opacity="0.5" />); }
+  return (
+    <div className="relative">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-lg bg-[var(--surface-2)]" onMouseLeave={() => setHover(null)}>
+        {grat}
+        {pts.map((c) => {
+          const [cx, cy] = proj(c.ll[0], c.ll[1]);
+          const r = 3 + Math.sqrt(c.count / max) * 9;
+          const cid = `mf-${c.label}`;
+          return (
+            <g key={c.label} onMouseEnter={() => setHover(c)} style={{ cursor: 'default' }}>
+              <clipPath id={cid}><circle cx={cx} cy={cy} r={r - 0.8} /></clipPath>
+              <circle cx={cx} cy={cy} r={r} fill="var(--primary)" opacity="0.18" />
+              <image href={flagUrl(c.label, '40x30')} x={cx - (r - 0.8)} y={cy - (r - 0.8)} width={(r - 0.8) * 2} height={(r - 0.8) * 2} clipPath={`url(#${cid})`} preserveAspectRatio="xMidYMid slice" />
+              <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--primary)" strokeWidth="0.7" vectorEffect="non-scaling-stroke" opacity="0.8" />
+            </g>
+          );
+        })}
+      </svg>
+      {hover && <div className="absolute top-2 left-2 text-[11px] px-2 py-1 rounded-md bg-[var(--bg-solid)] border border-[var(--line)] shadow flex items-center gap-1.5 pointer-events-none"><Flag cc={hover.label} /> {countryName(hover.label)} · <b>{hover.count}</b></div>}
+      {!pts.length && <div className="absolute inset-0 grid place-items-center text-xs text-[var(--faint)]">No geo-located visits yet.</div>}
+    </div>
+  );
+}
+
+// Geo panel with Countries / Regions / Cities / Map tabs. Regions & cities carry their
+// country so the right flag shows next to a subdivision/city name.
+function GeoPanel({ countries, regions, cities }) {
+  const [tab, setTab] = useState('countries');
+  const tabs = [['countries', 'Countries', Globe2], ['regions', 'Regions', MapPin], ['cities', 'Cities', Building2], ['map', 'Map', MapIcon]];
+  const list = tab === 'countries' ? countries : tab === 'regions' ? regions : cities;
+  const tot = (list || []).reduce((a, r) => a + r.count, 0) || 1;
+  const max = Math.max(1, ...(list || []).map((r) => r.count));
+  return (
+    <Card className="p-5">
+      <div className="flex items-center gap-1 mb-3 border-b border-[var(--line)] -mx-1 px-1">
+        {tabs.map(([id, label, Icon]) => (
+          <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border-b-2 -mb-px transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><Icon size={13} /> {label}</button>
+        ))}
+      </div>
+      {tab === 'map' ? <WorldBubbleMap countries={countries} />
+        : (list && list.length) ? (
+          <div className="space-y-2.5 max-h-[340px] overflow-auto pr-1">
+            {list.map((r, i) => (
+              <div key={`${r.label}-${i}`} className="flex items-center gap-3 text-sm">
+                <span className="text-[var(--muted)] w-40 shrink-0 flex items-center gap-2 truncate">
+                  <Flag cc={r.country || r.label} />
+                  <span className="truncate">{tab === 'countries' ? countryName(r.label) : r.label}{tab === 'cities' && r.region ? <span className="text-[var(--faint)]"> · {r.region}</span> : null}</span>
+                </span>
+                <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${(r.count / max) * 100}%` }} /></div>
+                <span className="w-12 text-right font-medium">{Math.round((r.count / tot) * 100)}%</span>
+              </div>
+            ))}
+          </div>
+        ) : <div className="text-sm text-[var(--faint)] py-4">No {tab} data yet — needs geo-located visits.</div>}
+    </Card>
+  );
+}
+
+// ── Web Vitals (real-user performance) ─────────────────────────────────────────
+const VITAL_META = {
+  LCP:  { label: 'Largest Contentful Paint', unit: 'ms', good: 2500, poor: 4000, fmt: (v) => v >= 1000 ? `${(v / 1000).toFixed(2)} s` : `${Math.round(v)} ms` },
+  CLS:  { label: 'Cumulative Layout Shift', unit: '', good: 0.1, poor: 0.25, fmt: (v) => v.toFixed(3) },
+  INP:  { label: 'Interaction to Next Paint', unit: 'ms', good: 200, poor: 500, fmt: (v) => `${Math.round(v)} ms` },
+  FCP:  { label: 'First Contentful Paint', unit: 'ms', good: 1800, poor: 3000, fmt: (v) => v >= 1000 ? `${(v / 1000).toFixed(2)} s` : `${Math.round(v)} ms` },
+  TTFB: { label: 'Time to First Byte', unit: 'ms', good: 800, poor: 1800, fmt: (v) => `${Math.round(v)} ms` },
+};
+const vitalRating = (m, v) => v == null ? null : v <= VITAL_META[m].good ? 'good' : v <= VITAL_META[m].poor ? 'ni' : 'poor';
+const vitalColor = (r) => r === 'good' ? 'text-emerald-400' : r === 'ni' ? 'text-amber-400' : r === 'poor' ? 'text-red-400' : 'text-[var(--faint)]';
+
+function WebVitals({ days, hours }) {
+  const [pct, setPct] = useState('p75');
+  const { data, loading } = useAsync(() => api.get(`/admin/analytics/vitals?${hours ? `hours=${hours}` : `days=${days}`}`), [days, hours]);
+  const metrics = data?.metrics || [];
+  const pages = data?.pages || [];
+  const cell = (m, v) => <span className={vitalRating(m, v) ? vitalColor(vitalRating(m, v)) : ''}>{v == null ? '—' : VITAL_META[m].fmt(v)}</span>;
+  return (
+    <Card className="p-5 mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="text-sm font-semibold flex items-center gap-2"><Activity size={15} /> Web Vitals <span className="text-[11px] font-normal text-[var(--faint)]">real-user performance</span></div>
+        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+          {['p50', 'p75', 'p90', 'p99'].map((p) => <button key={p} onClick={() => setPct(p)} className={`px-2.5 py-1 text-xs uppercase ${pct === p ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{p}</button>)}
+        </div>
+      </div>
+      {loading ? <div className="h-24 grid place-items-center"><Spinner /></div> : !metrics.some((m) => m.n) ? (
+        <div className="text-sm text-[var(--faint)] py-6 text-center">No performance samples yet — collected from real visits (needs analytics consent).</div>
+      ) : <>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+          {metrics.map((m) => { const v = m[pct]; const r = vitalRating(m.metric, v); return (
+            <div key={m.metric} className="rounded-xl border border-[var(--line)] p-3">
+              <div className="text-[11px] text-[var(--muted)] flex items-center gap-1" title={VITAL_META[m.metric].label}>{m.metric}{m.goodShare != null && <span className="ml-auto text-[10px] text-[var(--faint)]">{m.goodShare}% good</span>}</div>
+              <div className={`text-xl font-bold mt-1 ${r ? vitalColor(r) : ''}`}>{v == null ? '—' : VITAL_META[m.metric].fmt(v)}</div>
+              <div className="text-[10px] text-[var(--faint)] mt-0.5">{m.n} samples</div>
+            </div>
+          ); })}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[560px]">
+            <thead><tr className="text-[11px] uppercase text-[var(--faint)] text-left border-b border-[var(--line)]">
+              <th className="py-2 font-semibold">Page</th><th className="py-2 font-semibold text-right">LCP</th><th className="py-2 font-semibold text-right">CLS</th><th className="py-2 font-semibold text-right">INP</th><th className="py-2 font-semibold text-right">FCP</th><th className="py-2 font-semibold text-right">TTFB</th><th className="py-2 font-semibold text-right">Samples</th>
+            </tr></thead>
+            <tbody>
+              {pages.map((pg) => (
+                <tr key={pg.path} className="border-b border-[var(--line)]/60">
+                  <td className="py-2 pr-3 font-mono text-xs text-[var(--muted)] truncate max-w-[220px]" title={pg.path}>{pg.path}</td>
+                  <td className="py-2 text-right tabular-nums">{cell('LCP', pg.lcp)}</td>
+                  <td className="py-2 text-right tabular-nums">{cell('CLS', pg.cls)}</td>
+                  <td className="py-2 text-right tabular-nums">{cell('INP', pg.inp)}</td>
+                  <td className="py-2 text-right tabular-nums">{cell('FCP', pg.fcp)}</td>
+                  <td className="py-2 text-right tabular-nums">{cell('TTFB', pg.ttfb)}</td>
+                  <td className="py-2 text-right text-[var(--faint)] tabular-nums">{pg.samples}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[11px] text-[var(--faint)] mt-3">Per-page p75 (75th percentile) of each metric — the value 75% of real visits are faster than. Green ≤ “good”, amber ≤ “needs improvement”, red above. CLS is unitless; the rest are time.</p>
+      </>}
+    </Card>
+  );
+}
+
 function AdminAnalytics() {
   const [days, setDays] = useState(30);
   const [hours, setHours] = useState(null); // when set → hourly view (zoom-in)
@@ -4517,6 +4681,11 @@ function AdminAnalytics() {
   const onZoom = (dir) => { if (dir === 'in') setHours(24); else setHours(null); };
   const top = data?.top || [], refs = data?.refs || [], series = data?.series || [];
   const devices = data?.devices || [], browsers = data?.browsers || [], oses = data?.oses || [], flows = data?.flows || [], countries = data?.countries || [];
+  const regions = data?.regions || [], cities = data?.cities || [];
+  // Per-bucket arrays for the KPI-card background sparklines.
+  const viewsSpark = series.map((s) => s.count);
+  const visitorsSpark = series.map((s) => s.visitors || 0);
+  const ppsSpark = series.map((s) => (s.visitors ? +(s.count / s.visitors).toFixed(2) : 0));
   const maxTop = Math.max(1, ...top.map((t) => t.count));
   const maxRef = Math.max(1, ...refs.map((r) => r.count));
   const maxSeries = Math.max(1, ...series.map((s) => s.count));
@@ -4532,7 +4701,16 @@ function AdminAnalytics() {
     const up = pct > 0, good = lowerBetter ? !up : up;
     return <span className={`text-[10px] font-semibold tabular-nums ${good ? 'text-emerald-400' : 'text-red-400'}`} title="vs previous period">{up ? '▲' : '▼'} {Math.abs(pct)}%</span>;
   };
-  const kpi = (Icon, val, label, accent, delta) => <Card className="p-4"><div className="flex items-center justify-between gap-1"><Icon size={16} className={accent || 'text-[var(--primary-2)]'} />{delta}</div><div className="text-2xl font-bold mt-2">{val}</div><div className="text-[11px] text-[var(--muted)]">{label}</div></Card>;
+  const kpi = (Icon, val, label, accent, delta, spark, sparkColor) => (
+    <Card className="p-4 relative overflow-hidden">
+      {spark && spark.length > 1 && <Sparkline data={spark} stroke={sparkColor || 'var(--primary)'} className="absolute inset-x-0 bottom-0 h-9 w-full opacity-70 pointer-events-none" />}
+      <div className="relative">
+        <div className="flex items-center justify-between gap-1"><Icon size={16} className={accent || 'text-[var(--primary-2)]'} />{delta}</div>
+        <div className="text-2xl font-bold mt-2">{val}</div>
+        <div className="text-[11px] text-[var(--muted)]">{label}</div>
+      </div>
+    </Card>
+  );
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -4548,11 +4726,11 @@ function AdminAnalytics() {
 
       {/* KPI row (Rybbit-style) */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-        {kpi(Users, data?.uniqueVisitors ?? '—', 'Unique visitors', null, deltaChip(data?.uniqueVisitors, data?.prev?.uniqueVisitors))}
-        {kpi(Package, data?.sessions ?? '—', 'Sessions', null, deltaChip(data?.sessions, data?.prev?.sessions))}
-        {kpi(Eye, data?.windowed ?? '—', 'Pageviews', null, deltaChip(data?.windowed, data?.prev?.pageviews))}
-        {kpi(TrendingUp, data?.viewsPerVisitor ?? '—', 'Pages / session', null, deltaChip(data?.viewsPerVisitor, data?.prev?.viewsPerVisitor))}
-        {kpi(ArrowUpRight, data?.bounceRate != null ? `${data.bounceRate}%` : '—', 'Bounce rate', null, deltaChip(data?.bounceRate, data?.prev?.bounceRate, true))}
+        {kpi(Users, data?.uniqueVisitors ?? '—', 'Unique visitors', null, deltaChip(data?.uniqueVisitors, data?.prev?.uniqueVisitors), visitorsSpark, '#38bdf8')}
+        {kpi(Package, data?.sessions ?? '—', 'Sessions', null, deltaChip(data?.sessions, data?.prev?.sessions), visitorsSpark, '#38bdf8')}
+        {kpi(Eye, data?.windowed ?? '—', 'Pageviews', null, deltaChip(data?.windowed, data?.prev?.pageviews), viewsSpark)}
+        {kpi(TrendingUp, data?.viewsPerVisitor ?? '—', 'Pages / session', null, deltaChip(data?.viewsPerVisitor, data?.prev?.viewsPerVisitor), ppsSpark)}
+        {kpi(ArrowUpRight, data?.bounceRate != null ? `${data.bounceRate}%` : '—', 'Bounce rate', null, deltaChip(data?.bounceRate, data?.prev?.bounceRate, true), viewsSpark, '#f59e0b')}
         {kpi(Zap, data?.live ?? '—', 'Live (30 min)', 'text-emerald-400')}
       </div>
 
@@ -4600,9 +4778,12 @@ function AdminAnalytics() {
         </Card>
       </div>
 
-      {/* countries (real geo from the CDN header) + funnel */}
-      <div className="grid md:grid-cols-[1fr_1.6fr] gap-4 mb-4">
-        <Breakdown title="Countries" rows={countries} iconOf={(cc) => <img src={`https://flagcdn.com/24x18/${String(cc).toLowerCase()}.png`} alt="" className="w-4 h-3 rounded-[2px] object-cover" onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />} />
+      {/* Web Vitals — real-user performance, per page */}
+      <WebVitals days={days} hours={hours} />
+
+      {/* Geo (countries / regions / cities / map) + funnel */}
+      <div className="grid md:grid-cols-[1.2fr_1.4fr] gap-4 mb-4">
+        <GeoPanel countries={countries} regions={regions} cities={cities} />
         <Card className="p-5">
           <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-3 flex items-center gap-1.5"><ArrowRight size={13} /> Funnel · page journeys</div>
           <Sankey flows={flows} />

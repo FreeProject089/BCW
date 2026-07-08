@@ -25,25 +25,47 @@ async function loadGeoip() {
   try { _geoip = (await import('geoip-lite')).default; } catch { _geoip = null; }
   return _geoip;
 }
-async function countryOf(req) {
-  const c = req.headers['cf-ipcountry'] || req.headers['x-vercel-ip-country'] || req.headers['x-country'] || req.headers['x-geo-country'] || '';
-  const cc = String(c).trim().toUpperCase();
-  if (/^[A-Z]{2}$/.test(cc) && cc !== 'XX') return cc;
+// Full geo (country + region + city). CDN country header is authoritative for the
+// country when present; region/city always come from the local offline GeoIP DB (the
+// CDN header only carries a country). Private/loopback IPs (local dev) → nulls.
+async function geoOf(req) {
+  const hdr = req.headers['cf-ipcountry'] || req.headers['x-vercel-ip-country'] || req.headers['x-country'] || req.headers['x-geo-country'] || '';
+  const cc = String(hdr).trim().toUpperCase();
+  const headerCountry = /^[A-Z]{2}$/.test(cc) && cc !== 'XX' ? cc : null;
   const geo = await loadGeoip();
-  if (!geo) return null;
-  try {
-    const hit = geo.lookup(clientIp(req));
-    return hit?.country && /^[A-Z]{2}$/.test(hit.country) ? hit.country : null;
-  } catch { return null; }
+  let hit = null;
+  if (geo) { try { hit = geo.lookup(clientIp(req)); } catch { hit = null; } }
+  const country = headerCountry || (hit?.country && /^[A-Z]{2}$/.test(hit.country) ? hit.country : null);
+  // geoip-lite returns `region` as a subdivision code (e.g. "CA") and `city` as a name.
+  const region = hit?.region ? String(hit.region).slice(0, 80) || null : null;
+  const city = hit?.city ? String(hit.city).slice(0, 120) || null : null;
+  return { country, region: region || null, city: city || null };
 }
+// OS + distro detection. Distro/edition is only reliably present in the UA for a few
+// cases (Firefox exposes Ubuntu/Fedora; ChromeOS uses the "CrOS" token) — best-effort,
+// falling back to the generic family. Never guesses beyond what the UA actually states.
 function parseUA(ua = '') {
   const u = ua.toLowerCase();
   const device = /ipad|tablet/.test(u) ? 'tablet' : /mobi|android|iphone|ipod/.test(u) ? 'mobile' : 'desktop';
   const browser = /edg\//.test(u) ? 'Edge' : /opr\/|opera/.test(u) ? 'Opera' : /firefox/.test(u) ? 'Firefox'
+    : /samsungbrowser/.test(u) ? 'Samsung Internet' : /brave/.test(u) ? 'Brave'
     : /chrome|crios/.test(u) ? 'Chrome' : /safari/.test(u) ? 'Safari' : 'Other';
-  const os = /android/.test(u) ? 'Android' : /iphone|ipad|ipod/.test(u) ? 'iOS'
-    : /windows/.test(u) ? 'Windows' : /mac os x|macintosh/.test(u) ? 'macOS'
-    : /linux|x11/.test(u) ? 'Linux' : 'Other';
+  let os;
+  if (/android/.test(u)) os = 'Android';
+  else if (/iphone|ipad|ipod/.test(u)) os = 'iOS';
+  else if (/cros/.test(u)) os = 'ChromeOS';
+  else if (/windows/.test(u)) os = 'Windows';
+  else if (/mac os x|macintosh/.test(u)) os = 'macOS';
+  else if (/ubuntu/.test(u)) os = 'Ubuntu';
+  else if (/fedora/.test(u)) os = 'Fedora';
+  else if (/debian/.test(u)) os = 'Debian';
+  else if (/kali/.test(u)) os = 'Kali';
+  else if (/arch/.test(u)) os = 'Arch';
+  else if (/manjaro/.test(u)) os = 'Manjaro';
+  else if (/mint/.test(u)) os = 'Linux Mint';
+  else if (/steamos/.test(u)) os = 'SteamOS';
+  else if (/linux|x11/.test(u)) os = 'Linux';
+  else os = 'Other';
   return { device, browser, os };
 }
 
@@ -55,8 +77,25 @@ export default async function analyticsRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid' });
     const p = await db();
     const { device, browser, os } = parseUA(req.headers['user-agent']);
-    const country = await countryOf(req);
-    await p.analyticsEvent.create({ data: { path: b.data.path, ref: b.data.ref || null, visitor: visitorHash(req), device, browser, os, country } }).catch(() => {});
+    const { country, region, city } = await geoOf(req);
+    await p.analyticsEvent.create({ data: { path: b.data.path, ref: b.data.ref || null, visitor: visitorHash(req), device, browser, os, country, region, city } }).catch(() => {});
+    return reply.code(204).send();
+  });
+
+  // Real-user Web Vitals sample (one metric per call, sent by the web-vitals client on
+  // page unload). Best-effort, unauthenticated (same trust model as pageviews) — bounded
+  // by strict validation so it can't be used to inject arbitrary metrics.
+  app.post('/analytics/vital', async (req, reply) => {
+    const b = z.object({
+      path: z.string().max(300),
+      metric: z.enum(['LCP', 'CLS', 'INP', 'FCP', 'TTFB']),
+      value: z.number().finite().nonnegative().max(3_600_000),
+      rating: z.enum(['good', 'needs-improvement', 'poor']).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid' });
+    const p = await db();
+    const { device } = parseUA(req.headers['user-agent']);
+    await p.webVital.create({ data: { path: b.data.path, metric: b.data.metric, value: b.data.value, rating: b.data.rating || null, visitor: visitorHash(req), device } }).catch(() => {});
     return reply.code(204).send();
   });
 
@@ -75,7 +114,7 @@ export default async function analyticsRoutes(app) {
     const windowMs = Date.now() - since.getTime();
     const prevSince = new Date(since.getTime() - windowMs);
     const uniq = async (where) => (await p.analyticsEvent.findMany({ where, select: { visitor: true }, distinct: ['visitor'] })).filter((x) => x.visitor).length;
-    const [total, windowed, uniqueVisitors, totalVisitors, live, top, refs, devices, browsers, oses, countries, series, visitorSeries, bounce, flows] = await Promise.all([
+    const [total, windowed, uniqueVisitors, totalVisitors, live, top, refs, devices, browsers, oses, countries, series, visitorSeries, bounce, flows, regions, cities] = await Promise.all([
       p.analyticsEvent.count(),
       p.analyticsEvent.count({ where: { createdAt: { gte: since } } }),
       uniq({ createdAt: { gte: since } }),
@@ -86,13 +125,16 @@ export default async function analyticsRoutes(app) {
       p.analyticsEvent.groupBy({ by: ['device'], _count: { device: true }, where: { createdAt: { gte: since }, device: { not: null } }, orderBy: { _count: { device: 'desc' } } }),
       p.analyticsEvent.groupBy({ by: ['browser'], _count: { browser: true }, where: { createdAt: { gte: since }, browser: { not: null } }, orderBy: { _count: { browser: 'desc' } } }),
       p.analyticsEvent.groupBy({ by: ['os'], _count: { os: true }, where: { createdAt: { gte: since }, os: { not: null } }, orderBy: { _count: { os: 'desc' } } }),
-      p.analyticsEvent.groupBy({ by: ['country'], _count: { country: true }, where: { createdAt: { gte: since }, country: { not: null } }, orderBy: { _count: { country: 'desc' } }, take: 12 }),
+      p.analyticsEvent.groupBy({ by: ['country'], _count: { country: true }, where: { createdAt: { gte: since }, country: { not: null } }, orderBy: { _count: { country: 'desc' } }, take: 30 }),
       p.$queryRaw`SELECT date_trunc(${gran}, "createdAt") AS day, count(*)::int AS count FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} GROUP BY 1 ORDER BY 1`,
       p.$queryRaw`SELECT date_trunc(${gran}, "createdAt") AS day, count(DISTINCT "visitor")::int AS count FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} GROUP BY 1 ORDER BY 1`,
       // Bounce: visitors who viewed exactly one page.
       p.$queryRaw`SELECT count(*) FILTER (WHERE n = 1)::int AS bounces, count(*)::int AS total FROM (SELECT "visitor", count(*) AS n FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} AND "visitor" IS NOT NULL GROUP BY "visitor") t`,
       // Top page→page transitions (journey / flow), computed per-visitor over time.
       p.$queryRaw`SELECT frm, path AS "to", count(*)::int AS c FROM (SELECT "visitor", path, lag(path) OVER (PARTITION BY "visitor" ORDER BY "createdAt") AS frm FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} AND "visitor" IS NOT NULL) t WHERE frm IS NOT NULL AND frm <> path GROUP BY frm, path ORDER BY c DESC LIMIT 25`,
+      // Regions & cities carry the country alongside so the UI shows the right flag.
+      p.$queryRaw`SELECT country, region, count(*)::int AS c FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} AND region IS NOT NULL GROUP BY country, region ORDER BY c DESC LIMIT 30`,
+      p.$queryRaw`SELECT country, region, city, count(*)::int AS c FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} AND city IS NOT NULL GROUP BY country, region, city ORDER BY c DESC LIMIT 30`,
     ]);
     const vs = Object.fromEntries(visitorSeries.map((s) => [new Date(s.day).toISOString(), Number(s.count)]));
     const b0 = bounce[0] || { bounces: 0, total: 0 };
@@ -153,9 +195,62 @@ export default async function analyticsRoutes(app) {
       browsers: browsers.map((b) => ({ label: b.browser, count: b._count.browser })),
       oses: oses.map((o) => ({ label: o.os, count: o._count.os })),
       countries: countries.map((c) => ({ label: c.country, count: c._count.country })),
+      regions: regions.map((r) => ({ country: r.country, label: r.region, count: Number(r.c) })),
+      cities: cities.map((c) => ({ country: c.country, region: c.region, label: c.city, count: Number(c.c) })),
       flows: flows.map((f) => ({ from: f.frm, to: f.to, count: Number(f.c) })),
       series: hourlySeries || series.map((s) => ({ day: s.day, count: Number(s.count), visitors: vs[new Date(s.day).toISOString()] || 0 })),
       compare,
+    };
+  });
+
+  // Real-user Web Vitals overview: overall percentiles per metric (p50/p75/p90/p99),
+  // an hourly p75 trend per metric, and a per-page table (p75 of each metric + samples).
+  // Percentiles are computed in Postgres (percentile_cont) over the selected window.
+  app.get('/admin/analytics/vitals', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
+    const gran = hours ? 'hour' : 'day';
+    const days = Math.min(Math.max(Number(req.query?.days) || 30, 1), 365);
+    const since = hours ? new Date(Date.now() - hours * 3600e3) : new Date(Date.now() - days * 864e5);
+    const METRICS = ['LCP', 'CLS', 'INP', 'FCP', 'TTFB'];
+    const [overall, trend, byPage] = await Promise.all([
+      // One row per metric: the four percentiles + a sample count + a "good" share.
+      p.$queryRaw`SELECT metric,
+          percentile_cont(0.50) WITHIN GROUP (ORDER BY value) AS p50,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) AS p75,
+          percentile_cont(0.90) WITHIN GROUP (ORDER BY value) AS p90,
+          percentile_cont(0.99) WITHIN GROUP (ORDER BY value) AS p99,
+          count(*)::int AS n,
+          (count(*) FILTER (WHERE rating = 'good'))::int AS good
+        FROM "WebVital" WHERE "createdAt" >= ${since} GROUP BY metric`,
+      // p75 per metric per time bucket → sparkline/line per metric.
+      p.$queryRaw`SELECT metric, date_trunc(${gran}, "createdAt") AS bucket,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) AS p75
+        FROM "WebVital" WHERE "createdAt" >= ${since} GROUP BY metric, bucket ORDER BY bucket`,
+      // Per-page p75 for every metric, pivoted, ordered by sample volume.
+      p.$queryRaw`SELECT path,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'LCP')  AS lcp,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'CLS')  AS cls,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'INP')  AS inp,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'FCP')  AS fcp,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'TTFB') AS ttfb,
+          count(*)::int AS samples
+        FROM "WebVital" WHERE "createdAt" >= ${since} GROUP BY path ORDER BY samples DESC LIMIT 40`,
+    ]);
+    const om = new Map(overall.map((o) => [o.metric, o]));
+    const num = (v) => (v == null ? null : Number(v));
+    return {
+      days, hours, granularity: gran,
+      metrics: METRICS.map((m) => {
+        const o = om.get(m);
+        return {
+          metric: m, n: o ? Number(o.n) : 0,
+          p50: o ? num(o.p50) : null, p75: o ? num(o.p75) : null, p90: o ? num(o.p90) : null, p99: o ? num(o.p99) : null,
+          goodShare: o && Number(o.n) ? Math.round((Number(o.good) / Number(o.n)) * 100) : null,
+        };
+      }),
+      trend: trend.map((t) => ({ metric: t.metric, bucket: t.bucket, p75: num(t.p75) })),
+      pages: byPage.map((r) => ({ path: r.path, samples: Number(r.samples), lcp: num(r.lcp), cls: num(r.cls), inp: num(r.inp), fcp: num(r.fcp), ttfb: num(r.ttfb) })),
     };
   });
 }

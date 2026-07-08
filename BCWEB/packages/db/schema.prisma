@@ -978,11 +978,32 @@ model AnalyticsEvent {
   visitor   String?  // daily anonymous hash
   device    String?  // mobile | tablet | desktop
   browser   String?  // Chrome | Firefox | Safari | Edge | …
-  os        String?  // Windows | macOS | Linux | Android | iOS
+  os        String?  // Windows | macOS | Ubuntu | Fedora | Kali | ChromeOS | Android | iOS | …
   country   String?  // ISO-3166 alpha-2 (from the CDN's country header, when present)
+  region    String?  // subdivision (state/province) name, when geo resolves it
+  city      String?  // city name, when geo resolves it
   createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([path])
   @@index([visitor])
+  @@index([country])
+}
+
+// Real-user Web Vitals (Core Web Vitals + FCP/TTFB), one row per metric sample, tied to
+// the page path it was measured on. Percentiles (p50/p75/p90/p99) are computed per path
+// in the admin panel. Values are milliseconds except CLS (unitless float).
+model WebVital {
+  id        String   @id @default(cuid())
+  path      String
+  metric    String   // LCP | CLS | INP | FCP | TTFB
+  value     Float
+  rating    String?  // good | needs-improvement | poor (as reported by web-vitals)
+  visitor   String?
+  device    String?  // mobile | tablet | desktop
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([path])
+  @@index([metric])
 }
