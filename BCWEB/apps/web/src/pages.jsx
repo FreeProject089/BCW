@@ -2561,11 +2561,6 @@ function AdminServerPerf() {
         const ra = data?.repoAllocations;
         if (!ra?.repos?.length) return null;
         const over = ra.totalCpuShare > ra.hostCpuCores;
-        // Bars are drawn as a share of the per-repo PLAN CEILING (admin-set max a
-        // single repo may request), so they're meaningful even when every repo is on
-        // the same plan — unlike relative-to-largest, which would always read 100%.
-        const maxCpu = Math.max(0.1, ra.maxCpuShare || 8);
-        const maxUp = Math.max(0.1, ra.maxUploadMbps || 1000);
         return (
           <Card className="p-4 mb-4">
             <button onClick={() => toggleSec('alloc')} className="w-full flex items-center justify-between gap-2 mb-1 flex-wrap text-left">
@@ -2577,52 +2572,68 @@ function AdminServerPerf() {
                 <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.alloc ? '' : '-rotate-90'}`} />
               </span>
             </button>
-            {sec.alloc && <>
-              <div className="text-[11px] text-[var(--faint)] mb-2">{t('sp.alloc.note', 'Allocated by each repo\'s plan — not live CPU usage (hosted repos aren\'t isolated processes yet).')}{over ? ' ' + t('sp.alloc.over', 'vCPU is over-committed vs the host core count.') : ''}</div>
-              {/* Legend explaining what the three bars mean. */}
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-[var(--faint)] mb-2.5">
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-orange-500" /> {t('sp.alloc.cpuh', 'CPU reserved')}</span>
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-sky-500" /> {t('sp.alloc.uph', 'Upload reserved')}</span>
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" /> {t('sp.alloc.stoh', 'Storage used')}</span>
-                <span className="text-[var(--faint)]/80">{t('sp.alloc.legend', 'CPU & Upload bars = share of the per-repo maximum; Storage = used vs quota.')}</span>
-              </div>
-              <div className="max-h-96 overflow-auto -mx-1 px-1 space-y-2">
-                {ra.repos.map((r) => {
-                  const stoUsed = r.storageQuotaBytes ? Math.min(100, (r.storageUsedBytes / r.storageQuotaBytes) * 100) : 0;
-                  const stoTone = stoUsed >= 90 ? '#f87171' : stoUsed >= 70 ? '#f59e0b' : '#34d399';
-                  const bar = (pct, color) => <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1"><div className="h-full rounded-full" style={{ width: `${Math.max(2, Math.min(100, pct))}%`, background: color }} /></div>;
-                  return (
-                    <div key={r.id} className="rounded-lg border border-[var(--line)] px-3 py-2.5">
-                      <div className="flex items-center gap-2 mb-2 min-w-0">
-                        <span className="font-medium truncate">{r.name}</span>
-                        <span className="text-[var(--faint)] text-xs truncate">· {r.owner}</span>
-                        {r.status !== 'ONLINE' && <Badge tone={r.status === 'SUSPENDED' ? 'red' : ''}>{r.status}</Badge>}
-                      </div>
-                      <div className="grid grid-cols-3 gap-3 text-[10px]">
-                        {/* CPU reserved — value + share of the per-repo ceiling */}
-                        <div>
-                          <div className="flex items-baseline justify-between gap-1"><span className="text-[var(--muted)]">{t('sp.cpu', 'CPU')}</span><span className="tabular-nums font-medium text-[var(--text)]">{r.cpuShare} <span className="text-[var(--faint)] font-normal">vCPU</span></span></div>
-                          {bar((r.cpuShare / maxCpu) * 100, '#f97316')}
-                          <div className="text-[9px] text-[var(--faint)] mt-0.5">{t('sp.alloc.ofmax', 'of {n} max').replace('{n}', maxCpu)}</div>
-                        </div>
-                        {/* Upload reserved */}
-                        <div>
-                          <div className="flex items-baseline justify-between gap-1"><span className="text-[var(--muted)]">{t('sp.upload', 'Upload')}</span><span className="tabular-nums font-medium text-[var(--text)]">{r.uploadMbps} <span className="text-[var(--faint)] font-normal">Mbps</span></span></div>
-                          {bar((r.uploadMbps / maxUp) * 100, '#0ea5e9')}
-                          <div className="text-[9px] text-[var(--faint)] mt-0.5">{t('sp.alloc.ofmax', 'of {n} max').replace('{n}', maxUp)}</div>
-                        </div>
-                        {/* Storage used vs quota */}
-                        <div>
-                          <div className="flex items-baseline justify-between gap-1"><span className="text-[var(--muted)]">{t('sp.storage', 'Storage')}</span><span className="tabular-nums font-medium text-[var(--text)]">{fmtBytes(r.storageUsedBytes)}<span className="text-[var(--faint)] font-normal">/{fmtBytes(r.storageQuotaBytes)}</span></span></div>
-                          {bar(stoUsed, stoTone)}
-                          <div className="text-[9px] text-[var(--faint)] mt-0.5">{stoUsed < 0.5 ? t('sp.alloc.empty', 'empty') : t('sp.alloc.pctused', '{n}% used').replace('{n}', stoUsed.toFixed(0))}</div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>}
+            {sec.alloc && (() => {
+              const totUsed = ra.repos.reduce((a, r) => a + (r.storageUsedBytes || 0), 0);
+              const totQuota = ra.repos.reduce((a, r) => a + (r.storageQuotaBytes || 0), 0);
+              const cpuPct = ra.hostCpuCores ? Math.min(100, (ra.totalCpuShare / ra.hostCpuCores) * 100) : 0;
+              return (
+              <>
+                {/* Server-commitment summary — the ONE bar that means something: how much
+                    of the host's cores is reserved across all repos. */}
+                <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-3">
+                  <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className="font-medium flex items-center gap-1.5"><Cpu size={13} className="text-[var(--primary-2)]" /> {t('sp.alloc.committed', 'CPU committed')}</span>
+                    <span className={`tabular-nums ${over ? 'text-amber-400 font-medium' : 'text-[var(--muted)]'}`}>{t('sp.alloc.coresline', '{a} / {c} cores · {p}%').replace('{a}', ra.totalCpuShare).replace('{c}', ra.hostCpuCores).replace('{p}', cpuPct.toFixed(0))}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full rounded-full ${over ? 'bg-amber-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} style={{ width: `${Math.max(2, cpuPct)}%` }} /></div>
+                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-[var(--faint)] mt-2">
+                    <span>{t('sp.alloc.uptot', 'Upload reserved (total)')}: <b className="text-[var(--text)] tabular-nums">{ra.totalUploadMbps} Mbps</b></span>
+                    <span>{t('sp.alloc.stotot', 'Storage used (total)')}: <b className="text-[var(--text)] tabular-nums">{fmtBytes(totUsed)} / {fmtBytes(totQuota)}</b></span>
+                  </div>
+                  {over && <div className="text-[11px] text-amber-400/90 mt-1.5">{t('sp.alloc.over', 'vCPU is over-committed vs the host core count.')}</div>}
+                </div>
+                <div className="text-[11px] text-[var(--faint)] mb-2">{t('sp.alloc.note2', "CPU and Upload are reserved by each repo's plan (not live usage). Storage shows what's actually stored vs the quota.")}</div>
+
+                {/* Per-repo table — plain numbers for the reserved values, a bar only for
+                    storage (the one metric with a real used/total relationship). */}
+                <div className="max-h-96 overflow-auto -mx-1">
+                  <table className="w-full text-sm border-collapse min-w-[460px]">
+                    <thead>
+                      <tr className="text-[10px] uppercase tracking-wider text-[var(--faint)]">
+                        <th className="font-semibold text-left py-1.5 pl-1 pr-3">{t('sp.repo', 'Repo')}</th>
+                        <th className="font-semibold text-right py-1.5 px-3 whitespace-nowrap">{t('sp.cpu', 'CPU')}</th>
+                        <th className="font-semibold text-right py-1.5 px-3 whitespace-nowrap">{t('sp.upload', 'Upload')}</th>
+                        <th className="font-semibold text-left py-1.5 pl-3 pr-1">{t('sp.storage', 'Storage')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--line)]">
+                      {ra.repos.map((r) => {
+                        const stoUsed = r.storageQuotaBytes ? Math.min(100, (r.storageUsedBytes / r.storageQuotaBytes) * 100) : 0;
+                        const stoTone = stoUsed >= 90 ? '#f87171' : stoUsed >= 70 ? '#f59e0b' : '#34d399';
+                        return (
+                          <tr key={r.id} className="hover:bg-[var(--surface-2)]/40">
+                            <td className="py-2 pl-1 pr-3 max-w-0">
+                              <div className="font-medium truncate">{r.name}</div>
+                              <div className="text-[11px] text-[var(--faint)] truncate flex items-center gap-1.5">{r.owner}{r.status !== 'ONLINE' && <Badge tone={r.status === 'SUSPENDED' ? 'red' : ''}>{r.status}</Badge>}</div>
+                            </td>
+                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{r.cpuShare} <span className="text-[var(--faint)] text-xs">vCPU</span></td>
+                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{r.uploadMbps} <span className="text-[var(--faint)] text-xs">Mbps</span></td>
+                            <td className="py-2 pl-3 pr-1 min-w-[140px]">
+                              <div className="flex items-baseline justify-between gap-2 text-[11px] tabular-nums mb-1">
+                                <span>{fmtBytes(r.storageUsedBytes)} <span className="text-[var(--faint)]">/ {fmtBytes(r.storageQuotaBytes)}</span></span>
+                                <span className="text-[var(--faint)]">{stoUsed < 0.5 ? t('sp.alloc.empty', 'empty') : t('sp.alloc.pctused', '{n}% used').replace('{n}', stoUsed.toFixed(0))}</span>
+                              </div>
+                              <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full" style={{ width: `${Math.max(2, stoUsed)}%`, background: stoTone }} /></div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+              );
+            })()}
           </Card>
         );
       })()}
