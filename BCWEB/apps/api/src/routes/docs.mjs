@@ -259,6 +259,7 @@ export default async function docRoutes(app) {
     if (!page) return reply.code(404).send({ error: 'not_found' });
     if (b.data.parentId) { const parent = await p.docComment.findFirst({ where: { id: b.data.parentId, pageId: req.params.id } }); if (!parent) return reply.code(400).send({ error: 'bad_parent' }); }
     const c = await p.docComment.create({ data: { pageId: req.params.id, authorId: req.user.uid, body: b.data.body, anchor: b.data.anchor || null, parentId: b.data.parentId || null } });
+    await p.commentRevision.create({ data: { commentId: c.id, kind: 'doc', body: c.body, editorId: c.authorId } }).catch(() => {}); // v1
     return reply.code(201).send({ comment: shapeC(c, await usersMap(p, [c.authorId])) });
   });
 
@@ -272,12 +273,26 @@ export default async function docRoutes(app) {
     const c = await p.docComment.update({ where: { id: req.params.cid }, data: {
       ...(b.data.body !== undefined ? { body: b.data.body } : {}), ...(b.data.resolved !== undefined ? { resolved: b.data.resolved } : {}),
       ...(addEditor ? { editorIds: { push: req.user.uid } } : {}) } });
+    if (b.data.body !== undefined && b.data.body !== exists.body) await p.commentRevision.create({ data: { commentId: c.id, kind: 'doc', body: c.body, editorId: req.user.uid } }).catch(() => {});
     return { comment: shapeC(c, await usersMap(p, [c.authorId, ...(c.editorIds || [])])) };
+  });
+
+  app.get('/docs/:id/comments/:cid/history', { preHandler: optionalAuth() }, async (req, reply) => {
+    const p = await db();
+    const page = await p.docPage.findUnique({ where: { id: req.params.id }, select: { published: true, commentsPublic: true } });
+    if (!page) return reply.code(404).send({ error: 'not_found' });
+    if (!isEditor(req) && !(page.commentsPublic && page.published)) return reply.code(403).send({ error: 'forbidden' });
+    const revs = await p.commentRevision.findMany({ where: { commentId: req.params.cid, kind: 'doc' }, orderBy: { createdAt: 'desc' }, take: 50 });
+    const umap = await usersMap(p, revs.map((r) => r.editorId).filter(Boolean));
+    return { revisions: revs.map((r) => ({ id: r.id, body: r.body, editor: umap.get(r.editorId)?.name || null, createdAt: r.createdAt })) };
   });
 
   app.delete('/docs/:id/comments/:cid', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const p = await db();
-    await p.docComment.deleteMany({ where: { pageId: req.params.id, OR: [{ id: req.params.cid }, { parentId: req.params.cid }] } }).catch(() => {});
+    const doomed = await p.docComment.findMany({ where: { pageId: req.params.id, OR: [{ id: req.params.cid }, { parentId: req.params.cid }] }, select: { id: true } });
+    const ids = doomed.map((d) => d.id);
+    if (ids.length) await p.commentRevision.deleteMany({ where: { commentId: { in: ids } } }).catch(() => {});
+    await p.docComment.deleteMany({ where: { id: { in: ids } } }).catch(() => {});
     return { ok: true };
   });
 

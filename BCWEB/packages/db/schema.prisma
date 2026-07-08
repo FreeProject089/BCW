@@ -378,6 +378,21 @@ model DocPage {
   @@index([category])
 }
 
+// Per-comment edit history (blog + doc comments, polymorphic via `kind`). One row is
+// written when a comment is created (v1) and on every body edit, so the full timeline of
+// a comment's content — who wrote each version and when — is preserved (nothing lost,
+// git-like). Pruned/cascaded manually when the parent comment is deleted.
+model CommentRevision {
+  id        String   @id @default(cuid())
+  commentId String
+  kind      String   // 'blog' | 'doc'
+  body      String
+  editorId  String?  // who wrote this version
+  createdAt DateTime @default(now())
+
+  @@index([commentId])
+}
+
 // Threaded comment on a doc page — the same editor-collaboration tool as BlogComment.
 // Any docs editor (ADMIN/SUPERADMIN) can read, add, reply, resolve and edit any comment.
 model DocComment {

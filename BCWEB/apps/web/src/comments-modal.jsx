@@ -4,7 +4,7 @@ import { useToast, Button, Spinner, Modal, EmptyState, Input, Textarea, Select }
 import UserAvatar from './Avatar.jsx';
 import Markdown from './md.jsx';
 import { MarkdownEditor } from './blog.jsx';
-import { MessageSquare, CornerDownRight, Check, Pencil, Trash2, Send, Tag, Globe, Lock, Hash } from 'lucide-react';
+import { MessageSquare, CornerDownRight, Check, Pencil, Trash2, Send, Tag, Globe, Lock, Hash, History, Clock } from 'lucide-react';
 
 // Heading anchor slug — must match the docs/blog renderer (md.jsx) so a comment pinned
 // to a section can scroll to it.
@@ -22,13 +22,15 @@ const CAvatar = ({ a }) => <UserAvatar user={{ id: a?.author?.id, displayName: a
 // reply editors lost focus after each keystroke ("letter by letter"). `ctx` carries the
 // handlers/state so identity stays stable and inputs keep focus.
 function CommentBody({ c, isReply, ctx }) {
-  const { canWrite, editing, setEditing, busy, saveEdit, setReplyTo, replyTo, replyBody, setReplyBody, reply, toggleResolved, del, onJump, onClose } = ctx;
+  const { canWrite, editing, setEditing, busy, saveEdit, setReplyTo, replyTo, replyBody, setReplyBody, reply, toggleResolved, del, onJump, onClose, openHistory } = ctx;
+  const edited = c.edited || c.updatedAt !== c.createdAt;
   return (
     <div className={`${c.resolved ? 'opacity-60' : ''}`}>
       <div className="flex items-center gap-2 flex-wrap">
         <CAvatar a={c} />
         <span className="text-sm font-medium">{c.author?.name}</span>
-        <span className="text-[11px] text-[var(--faint)]">{fmt(c.createdAt)}{(c.edited || c.updatedAt !== c.createdAt) ? ' · edited' : ''}</span>
+        <span className="text-[11px] text-[var(--faint)]">{fmt(c.createdAt)}</span>
+        {edited && <button onClick={() => openHistory(c.id)} title="View this comment's edit history" className="text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-0.5 underline decoration-dotted"><History size={10} /> edited</button>}
         {c.resolved && <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400 flex items-center gap-0.5"><Check size={10} /> resolved</span>}
         {c.participants?.length > 1 && (
           <span className="flex items-center -space-x-1.5 ml-auto" title={`Contributors: ${c.participants.map((u) => u.name).join(', ')}`}>
@@ -81,7 +83,14 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
   const [replyBody, setReplyBody] = useState('');
   const [editing, setEditing] = useState(null); // { id, body }
   const [busy, setBusy] = useState(false);
+  const [history, setHistory] = useState(null); // { id, revisions } — a comment's edit history
   const sections = useMemo(() => extractSections(body), [body]);
+
+  const openHistory = async (id) => {
+    setHistory({ id, revisions: null });
+    try { const r = await api.get(`${base}/comments/${id}/history`); setHistory({ id, revisions: r.revisions || [] }); }
+    catch { setHistory({ id, revisions: [] }); }
+  };
 
   const load = () => api.get(`${base}/comments`).then(setData).catch(() => setData({ comments: [], canComment: false }));
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [base]);
@@ -112,7 +121,8 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
 
   // Handlers/state handed to the module-scope CommentBody (keeps its identity stable so
   // edit/reply inputs don't lose focus — see the note on CommentBody).
-  const ctx = { canWrite, editing, setEditing, busy, saveEdit, replyTo, setReplyTo, replyBody, setReplyBody, reply, toggleResolved, del, onJump, onClose };
+  const ctx = { canWrite, editing, setEditing, busy, saveEdit, replyTo, setReplyTo, replyBody, setReplyBody, reply, toggleResolved, del, onJump, onClose, openHistory };
+  const fmtFull = (d) => { try { return new Date(d).toLocaleString(); } catch { return ''; } };
 
   return (
     <Modal open onClose={onClose} title="Comments" icon={MessageSquare} width="max-w-2xl"
@@ -160,6 +170,28 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
           <MarkdownEditor value={draft.body} onChange={(v) => setDraft({ ...draft, body: v })} full minHeight={110} placeholder="Leave a comment — use the Blocks button for cards, tables, images, video…" />
           <div className="flex justify-end mt-1.5"><Button size="sm" variant="primary" disabled={busy || !draft.body.trim()} onClick={add}><Send size={14} /> Comment</Button></div>
         </div>
+      )}
+      {/* A single comment's edit history — every version (newest first) with who + when.
+          Nothing is lost when a comment is collaboratively edited. */}
+      {history && (
+        <Modal open onClose={() => setHistory(null)} title="Comment history" icon={History} width="max-w-lg"
+          footer={<Button variant="ghost" onClick={() => setHistory(null)}>Close</Button>}>
+          {history.revisions === null ? <div className="grid place-items-center py-8"><Spinner /></div>
+            : history.revisions.length ? (
+              <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+                {history.revisions.map((r, i) => (
+                  <div key={r.id} className="rounded-lg border border-[var(--line)] p-3">
+                    <div className="flex items-center gap-2 text-[11px] text-[var(--faint)] mb-1.5">
+                      <Clock size={11} /> {fmtFull(r.createdAt)}
+                      {r.editor && <span>· {r.editor}</span>}
+                      {i === 0 && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-emerald-400">current</span>}
+                    </div>
+                    <div className="text-sm comment-md"><Markdown>{r.body || '*(empty)*'}</Markdown></div>
+                  </div>
+                ))}
+              </div>
+            ) : <EmptyState icon={History} title="No history" sub="This comment hasn't been edited." />}
+        </Modal>
       )}
     </Modal>
   );
