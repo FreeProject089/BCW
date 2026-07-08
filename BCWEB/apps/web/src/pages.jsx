@@ -36,6 +36,21 @@ function useAsync(fn, deps = []) {
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, deps);
   return { data, err, loading, reload };
 }
+
+// Measure an element's live pixel width (ResizeObserver). Used to size SVG charts so
+// their viewBox matches real pixels 1:1 — keeps axis/label text legible on phones
+// instead of shrinking with a fixed-width viewBox.
+function useElementWidth(fallback = 760) {
+  const ref = useRef(null);
+  const [w, setW] = useState(fallback);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const ro = new ResizeObserver(([e]) => { const cw = e.contentRect.width; if (cw > 0) setW(Math.round(cw)); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w];
+}
 const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson };
 const statusTone = (s) => s === 'PUBLISHED' ? 'green' : s === 'REJECTED' ? 'red' : 'amber';
 const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> Loading…</div>;
@@ -2326,7 +2341,7 @@ function AdminSecurity() {
 // A compact multi-line SVG chart for cpu/mem/disk % history — same hand-rolled
 // approach as the repo dashboard's traffic chart (no charting library dependency).
 function MetricChart({ history }) {
-  const W = 760; const H = 200; const padL = 32; const padR = 8; const padY = 16;
+  const [wrapRef, W] = useElementWidth(760); const H = 200; const padL = 32; const padR = 8; const padY = 16;
   const [hoverIdx, setHoverIdx] = useState(null);
   if (!history.length) return <div className="text-sm text-[var(--faint)] py-10 text-center">No samples yet — click "Sample now" or wait for the next ~10 min tick.</div>;
   const n = history.length;
@@ -2355,7 +2370,8 @@ function MetricChart({ history }) {
   const ttW = 132; const ttH = 62;
   const ttX = hoverIdx != null ? Math.min(Math.max(x(hoverIdx) - ttW / 2, padL), W - padR - ttW) : 0;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-48 cursor-crosshair" onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)}>
+    <div ref={wrapRef} className="w-full">
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="192" preserveAspectRatio="none" className="cursor-crosshair" onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)}>
       {/* Danger band: anything above 90% is tinted red so sustained pressure is obvious. */}
       <rect x={padL} y={y(100)} width={W - padL - padR} height={y(90) - y(100)} fill="#f87171" opacity="0.08" />
       <line x1={padL} x2={W - padR} y1={y(90)} y2={y(90)} stroke="#f87171" strokeWidth={1} strokeDasharray="4 3" opacity="0.5" />
@@ -2379,6 +2395,7 @@ function MetricChart({ history }) {
         </g>
       )}
     </svg>
+    </div>
   );
 }
 
@@ -4494,7 +4511,7 @@ function Sankey({ flows }) {
 // `compare` (hourly view only): same-hour-yesterday counts + %, from the API.
 function TrafficChart({ series, gran = 'day', onZoom, compare }) {
   const [hover, setHover] = useState(null);
-  const wrapRef = useRef(null);
+  const [wrapRef, W] = useElementWidth(800);
   // Ctrl + wheel zooms between daily and hourly. A native non-passive listener is
   // used so preventDefault() actually stops the page from scrolling while zooming.
   useEffect(() => {
@@ -4510,7 +4527,7 @@ function TrafficChart({ series, gran = 'day', onZoom, compare }) {
     ? new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     : new Date(d).toLocaleDateString();
   if (!series.length) return <div ref={wrapRef} className="text-sm text-[var(--faint)] py-8 text-center">No data yet — visits appear once visitors accept analytics cookies.</div>;
-  const W = 800, H = 170, padL = 30, padR = 6, padY = 6, n = series.length;
+  const H = 170, padL = 30, padR = 6, padY = 6, n = series.length;
   const max = Math.max(1, ...series.map((s) => Math.max(s.count, s.visitors || 0)));
   const x = (i) => padL + (n <= 1 ? (W - padL - padR) / 2 : (i / (n - 1)) * (W - padL - padR));
   const y = (v) => H - padY - (v / max) * (H - padY * 2);
