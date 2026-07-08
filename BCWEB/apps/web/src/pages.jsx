@@ -20,6 +20,7 @@ import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPre
 import { MyRepos, AdminRepos, Billing } from './repos.jsx';
 import { AuthorsRow } from './blog.jsx';
 import Avatar from './Avatar.jsx';
+import { createRoot } from 'react-dom/client';
 import { AppLogo, KofiIcon, GithubIcon, DiscordIcon, RedditIcon } from './brand.jsx';
 import { Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast } from './ui.jsx';
 import Markdown, { ShowcaseIcon } from './md.jsx';
@@ -4599,9 +4600,8 @@ function GeoPanel({ countries, regions, cities }) {
   const list = tab === 'countries' ? countries : tab === 'regions' ? regions : cities;
   const tot = (list || []).reduce((a, r) => a + r.count, 0) || 1;
   const max = Math.max(1, ...(list || []).map((r) => r.count));
-  // Country markers for the map tab: centroid per country, sized by traffic share.
-  const cmax = Math.max(1, ...countries.map((c) => c.count));
-  const mapPoints = countries.map((c) => { const ll = COUNTRY_CENTROIDS[String(c.label).toUpperCase()]; return ll ? { lat: ll[0], lng: ll[1], color: '#f59e0b', size: 8 + Math.sqrt(c.count / cmax) * 22, title: `${countryName(c.label)} · ${c.count}` } : null; }).filter(Boolean);
+  // Country choropleth data for the map tab (shade each country by its traffic).
+  const mapCountries = countries.map((c) => ({ cc: c.label, count: c.count }));
   return (
     <Card className="p-5">
       <div className="flex items-center gap-1 mb-3 border-b border-[var(--line)] -mx-1 px-1">
@@ -4609,7 +4609,7 @@ function GeoPanel({ countries, regions, cities }) {
           <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border-b-2 -mb-px transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><Icon size={13} /> {label}</button>
         ))}
       </div>
-      {tab === 'map' ? <AnalyticsMap points={mapPoints} height={340} />
+      {tab === 'map' ? <AnalyticsMap choropleth={mapCountries} height={340} />
         : (list && list.length) ? (
           <div className="space-y-2.5 max-h-[340px] overflow-auto pr-1">
             {list.map((r, i) => (
@@ -4761,10 +4761,24 @@ function SessionRow({ s }) {
     </div>
   );
 }
+// ISO alpha-2 → the Natural-Earth country name used in world.json, when it differs from
+// the Intl.DisplayNames name. Everything else matches the Intl name directly.
+const GEO_NAME_ALIAS = {
+  US: 'United States', GB: 'United Kingdom', RU: 'Russia', CZ: 'Czech Rep.', KR: 'Korea',
+  KP: 'Dem. Rep. Korea', BA: 'Bosnia and Herz.', MK: 'Macedonia', CI: "Côte d'Ivoire",
+  SZ: 'Swaziland', CD: 'Dem. Rep. Congo', CG: 'Congo', CF: 'Central African Rep.',
+  SS: 'S. Sudan', DO: 'Dominican Rep.', LA: 'Laos', SY: 'Syria', MD: 'Moldova',
+  TZ: 'Tanzania', VN: 'Vietnam', BN: 'Brunei', IR: 'Iran', VE: 'Venezuela', BO: 'Bolivia',
+  TW: 'Taiwan', EH: 'W. Sahara', AE: 'United Arab Emirates', GN: 'Guinea',
+};
+const geoName = (cc) => GEO_NAME_ALIAS[String(cc).toUpperCase()] || countryName(cc);
+
 // Interactive analytics map with a 2D (mercator) / 3D (globe) toggle — same approach as
-// the BMM telemetry dashboard: MapLibre GL + a keyless CARTO dark basemap + one marker
-// per geo point. `points` = [{ lat, lng, color, size, title }]. maplibre is lazy-loaded.
-function AnalyticsMap({ points, height = 420 }) {
+// the BMM telemetry dashboard: MapLibre GL + a keyless CARTO dark basemap. Renders EITHER
+// a country choropleth (`choropleth`=[{cc,count}], shades world.json countries by traffic)
+// OR markers (`points`=[{lat,lng,color,size,title,avatarSeed}]; avatarSeed → a Boring-Avatar
+// pin). maplibre + world.json are lazy-loaded.
+function AnalyticsMap({ points, choropleth, height = 420 }) {
   const { t } = useI18n();
   const boxRef = useRef(null);
   const mapRef = useRef(null);
@@ -4772,47 +4786,91 @@ function AnalyticsMap({ points, height = 420 }) {
   const markersRef = useRef([]);
   const [mode, setMode] = useState('globe'); // 'globe' | '2d'
   const [ready, setReady] = useState(false);
-  const sig = points.map((p) => `${p.lat},${p.lng},${p.color}`).join('|');
-  const stable = useMemo(() => points, [sig]); // eslint-disable-line
+  const ptSig = (points || []).map((p) => `${p.lat},${p.lng},${p.color},${p.avatarSeed || ''}`).join('|');
+  const chSig = (choropleth || []).map((c) => `${c.cc}:${c.count}`).join('|');
+  const stablePts = useMemo(() => points || [], [ptSig]); // eslint-disable-line
+  const empty = choropleth ? !choropleth.length : !stablePts.length;
 
   useEffect(() => {
     let disposed = false;
     (async () => {
-      let maplibregl;
-      try { const [mod] = await Promise.all([import('maplibre-gl'), import('maplibre-gl/dist/maplibre-gl.css')]); maplibregl = mod.default; }
-      catch { return; }
+      let maplibregl, worldGeo = null;
+      try {
+        const [mod] = await Promise.all([import('maplibre-gl'), import('maplibre-gl/dist/maplibre-gl.css')]);
+        maplibregl = mod.default;
+        if (choropleth) worldGeo = await fetch('/world.json').then((r) => r.json()).catch(() => null);
+      } catch { return; }
       if (disposed || !boxRef.current || mapRef.current) return;
       mlRef.current = maplibregl;
       const STYLE = { version: 8, sources: { base: { type: 'raster', tiles: ['https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap © CARTO' } }, layers: [{ id: 'base', type: 'raster', source: 'base' }] };
-      // maplibre-gl v5+ supports the globe projection — set it in the constructor so the
-      // map starts as a globe (no 2D→globe flash) and the toggle can switch it live.
       const map = new maplibregl.Map({ container: boxRef.current, style: STYLE, center: [10, 25], zoom: 1.3, attributionControl: false, maxPitch: 0, trackResize: true, projection: { type: mode === 'globe' ? 'globe' : 'mercator' } });
       mapRef.current = map;
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
       map.on('error', () => {});
-      map.on('load', () => { if (disposed) return; try { map.setProjection({ type: mode === 'globe' ? 'globe' : 'mercator' }); } catch {} try { map.resize(); } catch {} setReady(true); });
+      map.on('load', () => {
+        if (disposed) return;
+        try { map.setProjection({ type: mode === 'globe' ? 'globe' : 'mercator' }); } catch {}
+        if (worldGeo) {
+          try {
+            map.addSource('countries', { type: 'geojson', data: worldGeo });
+            map.addLayer({ id: 'country-fill', type: 'fill', source: 'countries', paint: { 'fill-color': 'rgba(255,255,255,0.02)', 'fill-outline-color': 'rgba(255,255,255,0.12)' } });
+          } catch {}
+        }
+        try { map.resize(); } catch {}
+        setReady(true);
+      });
     })();
-    return () => { disposed = true; markersRef.current.forEach((m) => { try { m.remove(); } catch {} }); markersRef.current = []; try { mapRef.current?.remove(); } catch {} mapRef.current = null; };
+    return () => {
+      disposed = true;
+      markersRef.current.forEach((m) => { try { m.root?.unmount(); } catch {} try { m.marker.remove(); } catch {} });
+      markersRef.current = [];
+      try { mapRef.current?.remove(); } catch {} mapRef.current = null;
+    };
     // eslint-disable-next-line
   }, []);
 
-  // Projection toggle (2D mercator ↔ 3D globe).
   useEffect(() => { const map = mapRef.current; if (map) { try { map.setProjection({ type: mode === 'globe' ? 'globe' : 'mercator' }); } catch {} } }, [mode]);
 
-  // (Re)build markers when the points change.
+  // Choropleth: recolour countries by traffic via a `match` expression on the name.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !choropleth || !map.getLayer('country-fill')) return;
+    const max = Math.max(1, ...choropleth.map((c) => c.count));
+    const seen = new Set(); const expr = ['match', ['get', 'name']];
+    for (const c of choropleth) {
+      const n = geoName(c.cc);
+      if (!n || seen.has(n)) continue; seen.add(n);
+      const a = (0.18 + 0.72 * Math.sqrt(c.count / max)).toFixed(3);
+      expr.push(n, `rgba(52,211,153,${a})`);
+    }
+    expr.push('rgba(255,255,255,0.02)');
+    try { map.setPaintProperty('country-fill', 'fill-color', seen.size ? expr : 'rgba(255,255,255,0.02)'); } catch {}
+  }, [chSig, ready]); // eslint-disable-line
+
+  // Markers (sessions): a Boring-Avatar pin when avatarSeed is set, else a coloured dot.
   useEffect(() => {
     const map = mapRef.current, maplibregl = mlRef.current;
-    if (!map || !maplibregl || !ready) return;
-    markersRef.current.forEach((m) => { try { m.remove(); } catch {} }); markersRef.current = [];
-    for (const p of stable) {
+    if (!map || !maplibregl || !ready || choropleth) return;
+    markersRef.current.forEach((m) => { try { m.root?.unmount(); } catch {} try { m.marker.remove(); } catch {} });
+    markersRef.current = [];
+    for (const p of stablePts) {
       if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) continue;
       const el = document.createElement('div');
-      const sz = p.size || 12, c = p.color || '#f97316';
-      el.style.cssText = `width:${sz}px;height:${sz}px;border-radius:50%;background:${c};box-shadow:0 0 8px ${c};border:1.5px solid rgba(255,255,255,.75);cursor:default;`;
       if (p.title) el.title = p.title;
-      markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map));
+      let root = null;
+      if (p.avatarSeed) {
+        const sz = p.size || 26;
+        el.style.cssText = `width:${sz}px;height:${sz}px;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px ${p.color || '#fff'},0 1px 6px rgba(0,0,0,.5);cursor:default;`;
+        root = createRoot(el);
+        root.render(<Avatar seed={p.avatarSeed} size={sz} />);
+      } else {
+        const sz = p.size || 12, c = p.color || '#f97316';
+        el.style.cssText = `width:${sz}px;height:${sz}px;border-radius:50%;background:${c};box-shadow:0 0 8px ${c};border:1.5px solid rgba(255,255,255,.75);cursor:default;`;
+      }
+      const marker = new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
+      markersRef.current.push({ marker, root });
     }
-  }, [stable, ready]);
+  }, [ptSig, ready]); // eslint-disable-line
 
   return (
     <div className="relative">
@@ -4822,7 +4880,7 @@ function AnalyticsMap({ points, height = 420 }) {
           <button key={v} onClick={() => setMode(v)} className={`px-2.5 py-1 text-xs ${mode === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
         ))}
       </div>
-      {!stable.length && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--faint)] pointer-events-none">{t('an.map.none', 'No geo-located data yet.')}</div>}
+      {empty && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--faint)] pointer-events-none">{t('an.map.none', 'No geo-located data yet.')}</div>}
     </div>
   );
 }
@@ -4855,7 +4913,7 @@ function SessionsPanel() {
         </div>
       </div>
       {!collapsed && (!data ? <div className="h-20 grid place-items-center"><Spinner /></div>
-        : view === 'globe' ? <AnalyticsMap points={sessions.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng)).map((s) => ({ lat: s.lat, lng: s.lng, color: s.live ? '#34d399' : '#f97316', size: s.live ? 15 : 11, title: `${fakeNick(s.visitor)} · ${[s.city, s.country].filter(Boolean).join(', ') || unknown} · ${s.pages} ${t('an.pg', 'pg')}${s.live ? ' · ' + t('an.liveLabel', 'live') : ''}` }))} />
+        : view === 'globe' ? <AnalyticsMap points={sessions.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng)).map((s) => ({ lat: s.lat, lng: s.lng, avatarSeed: s.visitor, color: s.live ? '#34d399' : 'rgba(255,255,255,.6)', size: s.live ? 30 : 24, title: `${fakeNick(s.visitor)} · ${[s.city, s.country].filter(Boolean).join(', ') || unknown} · ${s.pages} ${t('an.pg', 'pg')}${s.live ? ' · ' + t('an.liveLabel', 'live') : ''}` }))} />
         : sessions.length ? <div className="space-y-2 max-h-[520px] overflow-auto pr-1">{sessions.map((s) => <SessionRow key={s.visitor + s.start} s={s} />)}</div>
         : <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.sess.none', 'No sessions yet — needs visitors who accepted analytics cookies.')}</div>)}
     </Card>
