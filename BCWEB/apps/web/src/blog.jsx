@@ -119,16 +119,65 @@ export function BlogList() {
   );
 }
 
+// Heading-anchor slug — matches the md.jsx renderer's heading ids + comment anchors.
+const headingSlug = (s) => String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'section';
+// Inject a clickable "💬 N" pill onto each heading that has comments pinned to it, so
+// hovering the section reveals a way to open those comments. Imperative because the
+// headings are rendered by <Markdown> (outside React's tree).
+export function useSectionCommentPills(rootRef, sectionComments, onOpen, deps) {
+  useEffect(() => {
+    const root = rootRef.current; if (!root) return;
+    root.querySelectorAll('.section-comment-pill').forEach((e) => e.remove()); // clear stale (count/slug change)
+    // Add a pill only to headings that don't already have one — so the MutationObserver
+    // (which re-injects after <Markdown> re-renders, e.g. on a reaction) never loops.
+    const inject = () => {
+      for (const [slug, n] of Object.entries(sectionComments || {})) {
+        let h; try { h = root.querySelector(`#${CSS.escape(slug)}`); } catch { continue; }
+        if (!h || h.querySelector('.section-comment-pill')) continue;
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'section-comment-pill'; btn.innerHTML = `💬 ${n}`;
+        btn.title = `${n} comment${n > 1 ? 's' : ''} pinned here — open`;
+        btn.style.cssText = 'margin-left:8px;font-size:11px;font-weight:600;vertical-align:middle;padding:1px 8px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--primary-2);cursor:pointer;opacity:.5;transition:opacity .15s,border-color .15s';
+        btn.addEventListener('mouseenter', () => { btn.style.opacity = '1'; btn.style.borderColor = 'var(--primary)'; });
+        btn.addEventListener('mouseleave', () => { btn.style.opacity = '.5'; btn.style.borderColor = 'var(--line)'; });
+        btn.addEventListener('click', (e) => { e.preventDefault(); onOpen(); });
+        h.appendChild(btn);
+      }
+    };
+    inject();
+    const obs = new MutationObserver(() => inject());
+    obs.observe(root, { childList: true, subtree: true });
+    return () => obs.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+}
+// Build slug→count of comments pinned to a section (silent on permission errors).
+export function useSectionComments(base, enabled) {
+  const [map, setMap] = useState({});
+  useEffect(() => {
+    if (!enabled) return;
+    api.get(`${base}/comments`).then((r) => {
+      const m = {}; (r.comments || []).forEach((c) => { if (c.anchor) { const s = headingSlug(c.anchor); m[s] = (m[s] || 0) + 1; } });
+      setMap(m);
+    }).catch(() => setMap({}));
+  }, [base, enabled]);
+  return map;
+}
+
 /* ── Single post ── */
 export function BlogPostPage() {
   const { slug } = useParams();
   const { lang, t } = useI18n();
   const { user } = useAuth(); const toast = useToast(); const nav = useNavigate();
   const { data, loading } = useFetch(() => api.get(`/blog/${slug}`), [slug]);
+  const articleRef = useRef(null);
   const [rx, setRx] = useState(null); // { counts, mine } — local so a click updates instantly
   const [showComments, setShowComments] = useState(false);
   const [showHistory, setShowHistory] = useState(false); // read-only edit history (click the date)
   useEffect(() => { if (data?.post) setRx({ counts: data.post.reactionCounts || {}, mine: data.post.myReaction || null }); }, [data]);
+  const postId = data?.post?.id;
+  const sectionComments = useSectionComments(postId ? `/blog/${postId}` : '', !!postId);
+  useSectionCommentPills(articleRef, sectionComments, () => setShowComments(true), [sectionComments, data?.post?.body, lang]);
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading', 'Loading…')}</div>;
   if (!data?.post) return <EmptyState icon={Newspaper} title={t('blog.notfound', 'Post not found')} />;
   const p = data.post; const v = pickLang(p, lang);
@@ -141,7 +190,7 @@ export function BlogPostPage() {
   return (
     <div className="max-w-3xl mx-auto">
       <Link to="/blog" className="text-sm text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1 mb-4"><ArrowLeft size={14} /> {t('blog.title', 'Blog')}</Link>
-      <article className="card p-6 md:p-9">
+      <article ref={articleRef} className="card p-6 md:p-9">
         <TypeTag post={p} />
         <h1 className="text-3xl md:text-4xl font-extrabold mt-3 leading-tight">{v.title}</h1>
         <div className="text-sm text-[var(--faint)] mt-3 flex items-center gap-3"><span className="flex items-center gap-1"><UserIcon size={13} /> {p.author?.displayName}{authors.length > 1 && ` +${authors.length - 1}`}</span>

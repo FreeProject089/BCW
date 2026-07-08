@@ -10,7 +10,7 @@ import CommentsModal from './comments-modal.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from './i18n.jsx';
 import Markdown, { IconGlyph } from './md.jsx';
-import { MarkdownEditor } from './blog.jsx';
+import { MarkdownEditor, useSectionComments, useSectionCommentPills } from './blog.jsx';
 import { useToast, useDialog, Button, Spinner, Modal, Input, Select, Field, EmptyState } from './ui.jsx';
 
 // BCWEB documentation — a GitBook-style space rendered with the doc-block markdown
@@ -29,6 +29,7 @@ export default function Docs() {
   const [editing, setEditing] = useState(null); // page object being edited, or {} for new
   const [readerComments, setReaderComments] = useState(false); // public/editor comments viewer
   const [readerHistory, setReaderHistory] = useState(false); // read-only edit history (click the date)
+  const articleRef = useRef(null);
   const [collapsed, setCollapsed] = useState(() => new Set()); // collapsed sidebar categories
   const toggleCat = (c) => setCollapsed((s) => { const n = new Set(s); n.has(c) ? n.delete(c) : n.add(c); return n; });
 
@@ -80,6 +81,9 @@ export default function Docs() {
   }, [tree, q]);
 
   const body = page ? (lang === 'fr' && page.bodyFr ? page.bodyFr : page.body) : '';
+  // Comment pins on headings → hover a section to open its comments.
+  const sectionComments = useSectionComments(page ? `/docs/${page.id}` : '', !!page);
+  useSectionCommentPills(articleRef, sectionComments, () => setReaderComments(true), [sectionComments, page?.body, lang]);
   // Map of /docs/<slug> → { title, category } for link hover-previews.
   const pageMap = useMemo(() => { const m = {}; tree.forEach((c) => c.pages.forEach((p) => { m[`/docs/${p.slug}`] = { title: p.title, category: c.category }; })); return m; }, [tree]);
   const onSaved = async (savedSlug) => { setEditing(null); await loadTree(); if (savedSlug) nav(`/docs/${savedSlug}`); else if (slug) { const r = await api.get(`/docs/${slug}`).catch(() => null); if (r) setPage(r.page); } };
@@ -160,7 +164,7 @@ export default function Docs() {
 
         {loading ? <div className="py-20 grid place-items-center"><Spinner /></div>
           : page ? (
-            <article>
+            <article ref={articleRef}>
               <h1 className="text-2xl md:text-3xl font-extrabold mb-1">{page.title}</h1>
               <div className="text-xs text-[var(--faint)] mb-6"><button onClick={() => setReaderHistory(true)} title={t('docs.history.hint', 'View edit history')} className="inline-flex items-center gap-1 hover:text-[var(--primary-2)] transition">{t('docs.updated')} {new Date(page.updatedAt).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US')} <History size={11} className="opacity-60" /></button></div>
               <PageTocMobile body={body} />
