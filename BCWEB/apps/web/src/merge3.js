@@ -79,6 +79,22 @@ export function hasConflictMarkers(text) {
   return /^<<<<<<< |^=======$|^>>>>>>> /m.test(String(text || ''));
 }
 
+// GitHub-style line diff (a → b): an ordered list of { type:'same'|'add'|'del', text }.
+// LCS-based, so unchanged lines are 'same', b-only lines are 'add', a-only are 'del'.
+export function diffLines(a, b) {
+  const A = String(a ?? '').split('\n'), B = String(b ?? '').split('\n');
+  if (A.length > CAP || B.length > CAP) return [{ type: 'del', text: String(a ?? '') }, { type: 'add', text: String(b ?? '') }];
+  const out = []; let i = 0, j = 0;
+  for (const [pi, pj] of lcsPairs(A, B)) {
+    while (i < pi) out.push({ type: 'del', text: A[i++] });
+    while (j < pj) out.push({ type: 'add', text: B[j++] });
+    out.push({ type: 'same', text: A[i] }); i++; j++;
+  }
+  while (i < A.length) out.push({ type: 'del', text: A[i++] });
+  while (j < B.length) out.push({ type: 'add', text: B[j++] });
+  return out;
+}
+
 // Line-level diff stat between two texts (a → b): how many lines were added / removed.
 // Uses the LCS so unchanged lines don't count. Capped like the merge.
 export function lineStat(a, b) {
