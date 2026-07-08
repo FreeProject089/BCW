@@ -11,24 +11,33 @@ function botAuth(req, reply) {
 }
 
 // The dependency checks + SSL probe do live network I/O (a TLS handshake to the site,
-// Redis/DB/MinIO pings) that took seconds and ran on EVERY /metrics call — so the panel's
-// 30s auto-refresh was slow. Cache them for 2 min: the CPU/RAM/disk history (a cheap DB
-// read) is always fresh, only these slow probes are memoized.
-let _probeCache = { deps: null, ssl: null, at: 0 };
+// Redis/DB/MinIO pings) that took seconds. Running them inline made the /metrics endpoint
+// slow — even the first page load blocked on them. Serve them stale-while-revalidate:
+// return whatever we have IMMEDIATELY (null on the very first hit) and refresh in the
+// background, so the endpoint is always fast. The CPU/RAM/disk history is a cheap DB read.
+let _probeCache = { deps: null, ssl: null, at: 0, refreshing: false };
 const PROBE_TTL = 2 * 60e3;
-async function cachedProbes(p) {
-  if (_probeCache.deps && Date.now() - _probeCache.at < PROBE_TTL) return _probeCache;
-  const [deps, ssl] = await Promise.all([
+function refreshProbes(p) {
+  if (_probeCache.refreshing) return;
+  _probeCache.refreshing = true;
+  Promise.all([
     checkDependencies(p),
     checkSslExpiry((process.env.SITE_URL || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '') || null),
-  ]);
-  _probeCache = { deps, ssl, at: Date.now() };
-  return _probeCache;
+  ]).then(([deps, ssl]) => { _probeCache = { ..._probeCache, deps, ssl, at: Date.now() }; })
+    .catch(() => {})
+    .finally(() => { _probeCache.refreshing = false; });
+}
+function cachedProbes(p) {
+  // Kick off a background refresh when stale/empty; never await it.
+  if (!_probeCache.deps || Date.now() - _probeCache.at > PROBE_TTL) refreshProbes(p);
+  return { deps: _probeCache.deps, ssl: _probeCache.ssl };
 }
 
 // Read-only monitoring — no dangerous action lives here, so plain ADMIN is enough
 // (no step-up 2FA / canControlServer required, unlike server-control.mjs).
 export default async function serverPerfRoutes(app) {
+  // Warm the probe cache at boot so the first admin visit already has deps/SSL populated.
+  db().then((p) => refreshProbes(p)).catch(() => {});
   app.get('/admin/server/metrics', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
     const hoursBack = Math.min(Number(req.query?.hours) || (24 * 7), 24 * 30);

@@ -4844,7 +4844,7 @@ function AnalyticsMap({ points, height = 420 }) {
       mapRef.current = map;
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
       map.on('error', () => {});
-      map.on('load', () => { if (disposed) return; try { map.setProjection({ type: mode === 'globe' ? 'globe' : 'mercator' }); } catch {} setReady(true); });
+      map.on('load', () => { if (disposed) return; try { map.setProjection({ type: mode === 'globe' ? 'globe' : 'mercator' }); } catch {} try { map.resize(); } catch {} setReady(true); });
     })();
     return () => { disposed = true; markersRef.current.forEach((m) => { try { m.remove(); } catch {} }); markersRef.current = []; try { mapRef.current?.remove(); } catch {} mapRef.current = null; };
     // eslint-disable-next-line
