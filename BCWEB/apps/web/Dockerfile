@@ -11,6 +11,7 @@ ENV VITE_GTM_ID=$VITE_GTM_ID
 RUN npm run build
 
 FROM nginx:alpine
+RUN apk upgrade --no-cache   # patch OS packages (curl, etc.)
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80

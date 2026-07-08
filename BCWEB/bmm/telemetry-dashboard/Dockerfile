@@ -15,11 +15,14 @@ COPY server/src ./src
 RUN cargo build --release
 
 # ── Runtime ─────────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+# distroless/cc (glibc + libgcc + ca-certificates; no shell, no perl, no openssl) — the
+# server is a rustls-only Rust binary (sqlx + reqwest use rustls, not openssl), so it needs
+# nothing more. Dropping debian-slim removes the passive `perl` package and its unfixed
+# CVEs (CVE-2026-12087 etc.) that were never actually reachable here.
+FROM gcr.io/distroless/cc-debian12
 WORKDIR /app
 COPY --from=server /app/target/release/bmm-telemetry-server /usr/local/bin/bmm-telemetry-server
 COPY --from=web /web/dist ./public
 ENV STATIC_DIR=/app/public
 EXPOSE 8900
-CMD ["bmm-telemetry-server"]
+CMD ["/usr/local/bin/bmm-telemetry-server"]

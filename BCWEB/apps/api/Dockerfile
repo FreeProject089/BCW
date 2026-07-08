@@ -6,7 +6,7 @@ WORKDIR /app
 # real fonts so the welcome-banner preview text ("sans-serif") actually renders.
 # git → the Advanced Server Management file/DB-edit backup system shells out to
 # the real `git` CLI (see gitbackup.mjs) rather than a JS git implementation.
-RUN apk add --no-cache openssl fontconfig font-dejavu git
+RUN apk upgrade --no-cache && apk add --no-cache openssl fontconfig font-dejavu git
 
 # Full install (incl. the `prisma` CLI) — needed for generate at build + db push at runtime.
 COPY apps/api/package.json ./package.json
