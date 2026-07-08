@@ -70,22 +70,30 @@ function NavNotifications() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const ref = useRef(null);
-  const load = () => api.get('/me/notifications').then((d) => setItems(d.notifications || [])).catch(() => {});
+  // Locally-read ids (so a 60s poll can't revert an optimistic mark-read) + a persisted
+  // "cleared before" timestamp (so Clear is durable — cleared notifs don't come back on
+  // the next poll/reload; only newer ones appear).
+  const readIds = useRef(new Set());
+  const clearedAt = useRef((() => { try { return Number(localStorage.getItem('bcw_notif_cleared')) || 0; } catch { return 0; } })());
+  const load = () => api.get('/me/notifications').then((d) => {
+    const list = (d.notifications || []).filter((n) => new Date(n.createdAt).getTime() > clearedAt.current);
+    setItems(list.map((n) => (readIds.current.has(n.id) && !n.readAt ? { ...n, readAt: new Date().toISOString() } : n)));
+  }).catch(() => {});
   useEffect(() => { load(); const id = setInterval(load, 60000); return () => clearInterval(id); }, []);
   useEffect(() => {
     const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', onDoc); return () => document.removeEventListener('mousedown', onDoc);
   }, []);
   const unread = items.filter((n) => !n.readAt).length;
-  const markOne = async (n) => { if (n.readAt) return; setItems((s) => s.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x))); try { await api.post(`/me/notifications/${n.id}/read`); } catch {} };
+  const markOne = async (n) => { if (n.readAt) return; readIds.current.add(n.id); setItems((s) => s.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x))); try { await api.post(`/me/notifications/${n.id}/read`); } catch {} };
   // Click = mark read + go to the relevant page (if the kind maps to one).
   const openNotif = (n) => { markOne(n); const to = NOTIF_LINK[n.kind]; if (to) { setOpen(false); nav(to); } };
-  const markAll = async () => { setItems((s) => s.map((x) => ({ ...x, readAt: x.readAt || new Date().toISOString() }))); try { await api.post('/me/notifications/read-all'); } catch {} };
+  const markAll = async () => { items.forEach((x) => readIds.current.add(x.id)); setItems((s) => s.map((x) => ({ ...x, readAt: x.readAt || new Date().toISOString() }))); try { await api.post('/me/notifications/read-all'); } catch {} };
   const del = async (n) => { setItems((s) => s.filter((x) => x.id !== n.id)); try { await api.del(`/me/notifications/${n.id}`); } catch {} };
-  // Menu-only dismiss — just clears what's shown here, nothing is deleted server-side
-  // (they'll be back next reload). The dashboard's Notifications tab has the real
+  // Durable menu dismiss: remember "everything up to now is cleared" so the poll/reload
+  // won't bring them back (only genuinely newer notifications will). The dashboard's
   // "delete everything" action.
-  const clearMenu = () => setItems([]);
+  const clearMenu = () => { clearedAt.current = Date.now(); try { localStorage.setItem('bcw_notif_cleared', String(clearedAt.current)); } catch {} setItems([]); };
   return (
     <div className="relative" ref={ref}>
       <button className="nav-link !px-2 relative" onClick={() => { setOpen((o) => !o); if (!open) load(); }} title={t('nav.notifications')} aria-label={t('nav.notifications')}>

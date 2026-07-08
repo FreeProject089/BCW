@@ -331,7 +331,7 @@ html.js-anim .reveal-stagger.reveal-instant > * { transition-duration: .34s; tra
 .md-body .doc-align-left { text-align: left; }
 /* Image lightbox */
 .md-body img.md-zoomable { cursor: zoom-in; }
-.md-lightbox { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.85); display: grid; place-items: center; padding: 24px; cursor: zoom-out; }
+.md-lightbox { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,.9); display: grid; place-items: center; padding: 24px; cursor: zoom-out; }
 .md-lightbox img { max-width: 95vw; max-height: 92vh; border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
 /* Inline tag / badge chip */
 .md-body .doc-badge { --badge: var(--primary); display: inline-block; font-size: 11px; font-weight: 700; line-height: 1.6;

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkDirective from 'remark-directive';
@@ -364,7 +365,9 @@ export default function Markdown({ children, className = '', pageMap }) {
         rehypePlugins={[rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], rehypeIframeAllowlist, [rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={components}
       >{preprocessMd(children || '')}</ReactMarkdown>
-      {zoom && <div className="md-lightbox" onClick={() => setZoom(null)}><img src={zoom} alt="" /></div>}
+      {/* Portal to body so the fixed overlay escapes any modal's transform/stacking
+          context (e.g. the Edit-history modal's anim-pop) and truly fills the viewport. */}
+      {zoom && createPortal(<div className="md-lightbox" onClick={() => setZoom(null)}><img src={zoom} alt="" /></div>, document.body)}
     </div>
   );
 }
