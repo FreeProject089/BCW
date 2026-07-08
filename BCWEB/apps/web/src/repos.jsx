@@ -1185,11 +1185,7 @@ export function AdminRepos() {
   const revalidate = async (r) => { try { const res = await api.post(`/admin/repos/${r.id}/revalidate`); toast[res.verified ? 'success' : 'error'](res.verified ? `Revalidated — verified (sha ${String(res.sha).slice(0, 10)}…).` : `Revalidated — invalid (${res.reason || 'no valid repo.json'}).`); reload(); } catch { toast.error('Failed.'); } };
   const [checkingAll, setCheckingAll] = useState(false);
   const checkAll = async () => { setCheckingAll(true); try { const r = await api.post('/admin/repos/check-all'); toast.success(`Checked ${r.checked} repos — ${r.online} online, ${r.verified} verified.`); reload(); } catch { toast.error('Check failed.'); } finally { setCheckingAll(false); } };
-  const limits = async (r) => {
-    const storageGB = await dialog.prompt({ title: 'Storage quota', label: 'GB', defaultValue: String(gb(r.storageQuotaBytes)) }); if (storageGB === false) return;
-    const uploadLimitKbps = await dialog.prompt({ title: 'Upload limit', label: 'kbps', defaultValue: String(r.uploadLimitKbps) }); if (uploadLimitKbps === false) return;
-    try { await api.patch(`/admin/repos/${r.id}`, { storageGB: Number(storageGB), uploadLimitKbps: Number(uploadLimitKbps) }); toast.success('Limits set.'); reload(); } catch { toast.error('Failed.'); }
-  };
+  const [limitsRepo, setLimitsRepo] = useState(null); // repo whose CPU/upload/storage limits are being edited
   return (
     <div className="mt-10">
       <RepoIdentifyCard />
@@ -1232,12 +1228,56 @@ export function AdminRepos() {
                 <Button size="sm" onClick={() => revalidate(r)}><ShieldCheck size={14} /> Revalidate SHA</Button>
                 {r.hosted && <Button size="sm" onClick={() => setReview(r)}><Files size={14} /> Review &amp; download</Button>}
                 <Button size="sm" onClick={() => reject(r)}><XCircle size={14} /> Reject / unlist</Button>
-                <Button size="sm" onClick={() => limits(r)}><HardDrive size={14} /> Limits</Button>
+                <Button size="sm" onClick={() => setLimitsRepo(r)}><Sliders size={14} /> Limits</Button>
               </div>
             </Card>
           ))}
         </div> : <EmptyState icon={Server} title="No repos" />}
       {review && <HostFilesModal repo={review} admin onClose={() => setReview(null)} onChanged={reload} />}
+      {limitsRepo && <RepoLimitsModal repo={limitsRepo} onClose={() => setLimitsRepo(null)} onSaved={() => { setLimitsRepo(null); reload(); }} />}
     </div>
+  );
+}
+
+// Admin: edit a hosted repo's CPU / upload / storage limits in one form (no more
+// one-prompt-at-a-time). PATCH /admin/repos/:id — storage can't drop below what's used.
+function RepoLimitsModal({ repo, onClose, onSaved }) {
+  const toast = useToast(); const { t } = useI18n();
+  const usedGB = Number(repo.storageUsedBytes || 0) / 1024 ** 3;
+  const [f, setF] = useState({
+    cpuShare: repo.cpuShare ?? 1,
+    uploadMbps: +(((repo.uploadLimitKbps || 0) / 1024).toFixed(1)),
+    storageGB: +((Number(repo.storageQuotaBytes || 0) / 1024 ** 3).toFixed(2)),
+  });
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (f.storageGB < usedGB) return toast.error(`Storage can't be below what's already used (${usedGB.toFixed(2)} GB).`);
+    setBusy(true);
+    try {
+      await api.patch(`/admin/repos/${repo.id}`, { cpuShare: Number(f.cpuShare), uploadMbps: Number(f.uploadMbps), storageGB: Number(f.storageGB) });
+      toast.success(t('repos.limits.saved', 'Limits updated.')); onSaved();
+    } catch (x) { toast.error(x.data?.error === 'exceeds_disk' ? 'Exceeds the real disk capacity.' : t('repos.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const rows = [
+    { k: 'cpuShare', label: t('repos.cpushare', 'CPU share'), suffix: 'vCPU', step: 0.1, min: 0, icon: Cpu },
+    { k: 'uploadMbps', label: t('repos.s.upload', 'Upload speed'), suffix: 'Mbps', step: 1, min: 0, icon: Zap },
+    { k: 'storageGB', label: t('repos.storage', 'Storage'), suffix: 'GB', step: 1, min: 0, icon: HardDrive },
+  ];
+  return (
+    <Modal open onClose={onClose} title={`Limits — ${repo.name}`} icon={Sliders} width="max-w-md"
+      footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button></>}>
+      <div className="space-y-3">
+        {rows.map((r) => (
+          <Field key={r.k} label={<span className="flex items-center gap-1.5"><r.icon size={13} className="text-[var(--primary-2)]" /> {r.label}</span>}>
+            <div className="flex items-center gap-2">
+              <Input type="number" step={r.step} min={r.min} value={f[r.k]} onChange={(e) => setF({ ...f, [r.k]: e.target.value })} />
+              <span className="text-sm text-[var(--muted)] w-12">{r.suffix}</span>
+            </div>
+          </Field>
+        ))}
+        <p className="text-[11px] text-[var(--faint)]">Currently using {usedGB.toFixed(2)} GB — storage can't be set below that. These are the repo's allotted limits (see Server performance for the per-repo allocation table).</p>
+      </div>
+    </Modal>
   );
 }

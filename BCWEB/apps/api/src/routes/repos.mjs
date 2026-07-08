@@ -725,14 +725,19 @@ export default async function repoRoutes(app) {
   app.patch('/admin/repos/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
       status: z.enum(['PROVISIONING', 'ONLINE', 'SUSPENDED', 'OFFLINE']).optional(),
-      storageGB: z.number().min(0).optional(), uploadLimitKbps: z.number().int().min(0).optional(),
+      storageGB: z.number().min(0).max(4000).optional(),
+      uploadMbps: z.number().min(0).max(4000).optional(),
+      uploadLimitKbps: z.number().int().min(0).optional(),
+      cpuShare: z.number().min(0).max(64).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const data = {};
     if (b.data.status) data.status = b.data.status;
     if (b.data.storageGB != null) data.storageQuotaBytes = BigInt(Math.round(b.data.storageGB * 1024 ** 3));
+    if (b.data.uploadMbps != null) data.uploadLimitKbps = Math.round(b.data.uploadMbps * 1024);
     if (b.data.uploadLimitKbps != null) data.uploadLimitKbps = b.data.uploadLimitKbps;
+    if (b.data.cpuShare != null) data.cpuShare = b.data.cpuShare;
     const repo = await p.serverRepo.update({ where: { id: req.params.id }, data });
     return { repo: ser(repo) };
   });
