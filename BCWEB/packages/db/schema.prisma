@@ -764,6 +764,8 @@ model ServerMetricSample {
   loadAvg1  Float
   uptimeSec Int
   latencyMs Int?
+  netRxKbps Int?     // avg download throughput over the tick (kbit/s)
+  netTxKbps Int?     // avg upload throughput over the tick (kbit/s)
   createdAt DateTime @default(now())
 
   @@index([createdAt])

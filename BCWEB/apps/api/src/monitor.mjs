@@ -109,6 +109,40 @@ async function maybeAlert(p, kind, message) {
   return p.serverAlertLog.create({ data: { kind, message } });
 }
 
+// Network throughput from /proc/net/dev (Linux container): sum rx/tx bytes across real
+// interfaces (skip loopback), then derive kbit/s from the delta since the last sample.
+// First call returns null (no baseline yet). Falls back to null off-Linux.
+// Cumulative rx/tx byte counters across real interfaces (skip loopback). Off-Linux → null.
+export function readNetBytes() {
+  try {
+    const txt = fs.readFileSync('/proc/net/dev', 'utf8');
+    let rx = 0, tx = 0;
+    for (const line of txt.split('\n')) {
+      const m = line.match(/^\s*([^:]+):\s*(.+)$/);
+      if (!m) continue;
+      const iface = m[1].trim();
+      if (iface === 'lo' || iface.startsWith('lo')) continue;
+      const cols = m[2].trim().split(/\s+/).map(Number);
+      rx += cols[0] || 0; tx += cols[8] || 0; // rx bytes = col 0, tx bytes = col 8
+    }
+    return { rx, tx };
+  } catch { return null; }
+}
+let _netPrev = null;
+function netRate() {
+  const cur = readNetBytes();
+  if (!cur) return { rxKbps: null, txKbps: null };
+  const now = Date.now();
+  let rxKbps = null, txKbps = null;
+  if (_netPrev && now > _netPrev.at) {
+    const dt = (now - _netPrev.at) / 1000;
+    rxKbps = Math.max(0, Math.round(((cur.rx - _netPrev.rx) * 8) / 1000 / dt));
+    txKbps = Math.max(0, Math.round(((cur.tx - _netPrev.tx) * 8) / 1000 / dt));
+  }
+  _netPrev = { ...cur, at: now };
+  return { rxKbps, txKbps };
+}
+
 // The sweeper's per-tick entry point: sample metrics, persist history, run
 // threshold checks, and fire (debounced) alerts. Never throws.
 export async function sampleAndAlert(p, log) {
@@ -119,9 +153,11 @@ export async function sampleAndAlert(p, log) {
     const memPct = 100 * (1 - os.freemem() / os.totalmem());
     const reqStats = flushRequestStats();
     const latencyMs = reqStats.count ? Math.round(reqStats.totalMs / reqStats.count) : null;
+    const { rxKbps, txKbps } = netRate();
 
     await p.serverMetricSample.create({ data: {
       cpuPct, memPct, diskPct, loadAvg1: os.loadavg()[0], uptimeSec: Math.round(process.uptime()), latencyMs,
+      netRxKbps: rxKbps, netTxKbps: txKbps,
     } });
     // Keep 30 days of history — enough for the dashboard's trend graph without
     // the table growing unbounded (one row per ~10 min tick).

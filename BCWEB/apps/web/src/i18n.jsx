@@ -468,7 +468,7 @@ const DICT = {
     'sp.alloc': 'Allocation par repo', 'sp.alloc.summary': 'vCPU alloués sur {n} repo(s) · l’hôte a {c} cœur(s) · {u} Mbps au total',
     'sp.alloc.note': 'Alloué par le forfait de chaque repo — pas l’usage CPU réel (les repos hébergés ne sont pas encore des processus isolés).',
     'sp.alloc.over': 'Le vCPU est surengagé par rapport au nombre de cœurs de l’hôte.',
-    'sp.repo': 'Repo', 'sp.upload': 'Envoi', 'sp.storage': 'Stockage',
+    'sp.repo': 'Repo', 'sp.upload': 'Envoi', 'sp.storage': 'Stockage', 'sp.download': 'Réception',
     'sp.deps': 'Dépendances', 'sp.done': 'Terminé', 'sp.configure': 'Configurer', 'sp.deps.off': 'Tous les contrôles de dépendances sont désactivés.',
     'sp.ssl': 'Certificat SSL', 'sp.ssl.left': '{n}j restants', 'sp.ssl.expires': 'expire le {d}', 'sp.ssl.noprobe': 'Impossible de sonder le certificat de SITE_URL.',
     'sp.downtime': 'Historique des pannes', 'sp.downtime.note': 'Périodes où le serveur a cessé de reporter — il était donc probablement hors-ligne ou en redémarrage.',

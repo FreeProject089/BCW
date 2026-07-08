@@ -2404,6 +2404,8 @@ const PERF_THRESH = { cpuPct: [75, 90], memPct: [80, 92], diskPct: [85, 95], loa
 const toneFor = (v, [warn, crit]) => v == null ? '' : v >= crit ? 'crit' : v >= warn ? 'warn' : 'ok';
 const TONE_TEXT = { ok: 'text-emerald-400', warn: 'text-amber-400', crit: 'text-red-400', '': '' };
 const TONE_STROKE = { ok: '#34d399', warn: '#f59e0b', crit: '#f87171', '': 'var(--primary)' };
+// kbit/s → a readable rate (Mb/s above 1000, else kb/s).
+const fmtKbps = (k) => k == null ? '—' : k >= 1000 ? `${(k / 1000).toFixed(1)} Mb/s` : `${Math.round(k)} kb/s`;
 
 // Server performance dashboard — read-only (no dangerous action lives here, so no
 // step-up 2FA required). CPU/RAM/disk/latency/uptime are sampled from INSIDE this
@@ -2419,6 +2421,18 @@ function AdminServerPerf() {
   const [busy, setBusy] = useState(false);
   const [configuring, setConfiguring] = useState(false);
   const [depsBusy, setDepsBusy] = useState(false);
+  // Live network rate: diff the cumulative rx/tx byte counters between two 30s refreshes.
+  const netPrevRef = useRef(null);
+  const [liveNet, setLiveNet] = useState({ rx: null, tx: null });
+  useEffect(() => {
+    const cur = data?.net; if (!cur) return;
+    const prev = netPrevRef.current;
+    if (prev && cur.at > prev.at) {
+      const dt = (cur.at - prev.at) / 1000;
+      setLiveNet({ rx: Math.max(0, Math.round((cur.rx - prev.rx) * 8 / 1000 / dt)), tx: Math.max(0, Math.round((cur.tx - prev.tx) * 8 / 1000 / dt)) });
+    }
+    netPrevRef.current = cur;
+  }, [data?.net?.at]);
   // Auto-refresh the read-only metrics + alerts every 30s (cheap — deps/SSL config,
   // which rarely changes, is NOT re-polled). Keeps the dashboard live between samples.
   useEffect(() => { const id = setInterval(() => { reload(); alerts.reload(); }, 30_000); return () => clearInterval(id); /* eslint-disable-next-line */ }, []);
@@ -2484,6 +2498,8 @@ function AdminServerPerf() {
         {kpi(t('sp.load', 'Load (1m)'), latest ? latest.loadAvg1.toFixed(2) : '—', TrendingUp, loadTone)}
         {kpi(t('sp.uptime', 'Uptime'), latest ? `${(latest.uptimeSec / 3600).toFixed(1)}h` : '—', Clock, '')}
         {kpi(t('sp.latency', 'Avg latency'), latest?.latencyMs != null ? `${latest.latencyMs}ms` : '—', Zap, latest?.latencyMs != null ? toneFor(latest.latencyMs, [400, 1000]) : '')}
+        {kpi(t('sp.download', 'Download'), (liveNet.rx ?? latest?.netRxKbps) != null ? fmtKbps(liveNet.rx ?? latest.netRxKbps) : '—', Download, '', 'netRxKbps')}
+        {kpi(t('sp.upload', 'Upload'), (liveNet.tx ?? latest?.netTxKbps) != null ? fmtKbps(liveNet.tx ?? latest.netTxKbps) : '—', Upload, '', 'netTxKbps')}
       </div>
 
       {/* Absolute totals alongside the percentages above — "11% used" only means
@@ -4783,7 +4799,7 @@ const GEO_NAME_ALIAS = {
   SZ: 'Swaziland', CD: 'Dem. Rep. Congo', CG: 'Congo', CF: 'Central African Rep.',
   SS: 'S. Sudan', DO: 'Dominican Rep.', LA: 'Laos', SY: 'Syria', MD: 'Moldova',
   TZ: 'Tanzania', VN: 'Vietnam', BN: 'Brunei', IR: 'Iran', VE: 'Venezuela', BO: 'Bolivia',
-  TW: 'Taiwan', EH: 'W. Sahara', AE: 'United Arab Emirates', GN: 'Guinea',
+  TW: 'Taiwan', EH: 'W. Sahara', AE: 'United Arab Emirates', GN: 'Guinea', TR: 'Turkey',
 };
 const geoName = (cc) => GEO_NAME_ALIAS[String(cc).toUpperCase()] || countryName(cc);
 
@@ -4843,7 +4859,7 @@ function AnalyticsMap({ points, choropleth, infoByName, height = 420 }) {
         if (worldGeo) {
           try {
             map.addSource('countries', { type: 'geojson', data: worldGeo });
-            map.addLayer({ id: 'country-fill', type: 'fill', source: 'countries', paint: { 'fill-color': 'rgba(255,255,255,0.02)', 'fill-outline-color': 'rgba(255,255,255,0.12)' } });
+            map.addLayer({ id: 'country-fill', type: 'fill', source: 'countries', paint: { 'fill-color': 'rgba(52,211,153,0.06)', 'fill-outline-color': 'rgba(255,255,255,0.18)' } });
             // Hover a country → show its count / share / vs-previous card.
             map.on('mousemove', 'country-fill', (e) => {
               const name = e.features?.[0]?.properties?.name;
@@ -4878,11 +4894,11 @@ function AnalyticsMap({ points, choropleth, infoByName, height = 420 }) {
     for (const c of choropleth) {
       const n = geoName(c.cc);
       if (!n || seen.has(n)) continue; seen.add(n);
-      const a = (0.18 + 0.72 * Math.sqrt(c.count / max)).toFixed(3);
+      const a = (0.28 + 0.62 * Math.sqrt(c.count / max)).toFixed(3);
       expr.push(n, `rgba(52,211,153,${a})`);
     }
-    expr.push('rgba(255,255,255,0.02)');
-    try { map.setPaintProperty('country-fill', 'fill-color', seen.size ? expr : 'rgba(255,255,255,0.02)'); } catch {}
+    expr.push('rgba(52,211,153,0.06)'); // subtle green wash on all other land (Rybbit look)
+    try { map.setPaintProperty('country-fill', 'fill-color', seen.size ? expr : 'rgba(52,211,153,0.06)'); } catch {}
   }, [chSig, ready]); // eslint-disable-line
 
   // Markers (sessions): a Boring-Avatar pin when avatarSeed is set, else a coloured dot.
