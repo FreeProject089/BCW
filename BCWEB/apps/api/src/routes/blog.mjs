@@ -423,6 +423,11 @@ export default async function blogRoutes(app) {
     const post = await p.blogPost.findUnique({ where: { id: req.params.id }, select: { authorId: true, coAuthorIds: true, status: true, commentsPublic: true } });
     if (!post) return reply.code(404).send({ error: 'not_found' });
     if (!canEditPost(req.user, post) && !(post.commentsPublic && post.status === 'PUBLISHED')) return reply.code(403).send({ error: 'forbidden' });
+    // The comment must actually belong to THIS post — otherwise a public post's id
+    // could be paired with a private post's comment id to read the latter's history
+    // (CWE-639 / IDOR). Scope the ownership check before touching revisions.
+    const owns = await p.blogComment.findFirst({ where: { id: req.params.cid, postId: req.params.id }, select: { id: true } });
+    if (!owns) return reply.code(404).send({ error: 'not_found' });
     const revs = await p.commentRevision.findMany({ where: { commentId: req.params.cid, kind: 'blog' }, orderBy: { createdAt: 'desc' }, take: 50 });
     const umap = await usersMap(p, revs.map((r) => r.editorId).filter(Boolean));
     return { revisions: revs.map((r) => ({ id: r.id, body: r.body, editor: umap.get(r.editorId)?.name || null, createdAt: r.createdAt })) };

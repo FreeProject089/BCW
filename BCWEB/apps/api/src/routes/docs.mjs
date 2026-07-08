@@ -282,6 +282,10 @@ export default async function docRoutes(app) {
     const page = await p.docPage.findUnique({ where: { id: req.params.id }, select: { published: true, commentsPublic: true } });
     if (!page) return reply.code(404).send({ error: 'not_found' });
     if (!isEditor(req) && !(page.commentsPublic && page.published)) return reply.code(403).send({ error: 'forbidden' });
+    // The comment must belong to THIS page — pairing a public page's id with another
+    // page's comment id would otherwise leak that comment's history (CWE-639 / IDOR).
+    const owns = await p.docComment.findFirst({ where: { id: req.params.cid, pageId: req.params.id }, select: { id: true } });
+    if (!owns) return reply.code(404).send({ error: 'not_found' });
     const revs = await p.commentRevision.findMany({ where: { commentId: req.params.cid, kind: 'doc' }, orderBy: { createdAt: 'desc' }, take: 50 });
     const umap = await usersMap(p, revs.map((r) => r.editorId).filter(Boolean));
     return { revisions: revs.map((r) => ({ id: r.id, body: r.body, editor: umap.get(r.editorId)?.name || null, createdAt: r.createdAt })) };
