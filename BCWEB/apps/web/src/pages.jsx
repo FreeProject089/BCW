@@ -4366,7 +4366,7 @@ function AdminStorage() {
       <Card className="p-4 mb-4">
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
           <div className="text-sm font-medium">Hosted repos <span className="text-[var(--faint)] font-normal">({(d.topRepos || []).length})</span></div>
-          {(d.topRepos || []).length > 5 && (
+          {(d.topRepos || []).length > 2 && (
             <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
               <Input className="!pl-8 !py-1.5 !text-sm" placeholder="Search name or owner…" value={repoQ} onChange={(e) => setRepoQ(e.target.value)} /></div>
           )}
@@ -4384,7 +4384,7 @@ function AdminStorage() {
       <Card className="p-4">
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
           <div className="text-sm font-medium flex items-center gap-2"><Trash2 size={14} className="text-red-400" /> Pending deletions (72h grace){pending > 0 && <Badge tone="red">{pending}</Badge>}</div>
-          {pending > 5 && (
+          {pending > 2 && (
             <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
               <Input className="!pl-8 !py-1.5 !text-sm" placeholder="Search name, owner or kind…" value={pendQ} onChange={(e) => setPendQ(e.target.value)} /></div>
           )}

@@ -13,6 +13,61 @@ const headingSlug = (s) => String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g
 const extractSections = (md) => [...new Set((String(md || '').match(/^#{2,3}\s+.+$/gm) || [])
   .map((h) => h.replace(/^#{2,3}\s+/, '').replace(/[*_`]/g, '').trim()).filter(Boolean))].slice(0, 60);
 
+const fmt = (d) => { try { return new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
+// Real avatar: author.avatar is the saved descriptor { variant, seed, colors, image }.
+const CAvatar = ({ a }) => <UserAvatar user={{ id: a?.author?.id, displayName: a?.author?.name, avatar: a?.author?.avatar }} size={24} className="shrink-0" />;
+
+// A single comment (or reply). MODULE-SCOPE on purpose: when it was defined inside the
+// modal it was a new component type every render, so React remounted it — and the edit /
+// reply editors lost focus after each keystroke ("letter by letter"). `ctx` carries the
+// handlers/state so identity stays stable and inputs keep focus.
+function CommentBody({ c, isReply, ctx }) {
+  const { canWrite, editing, setEditing, busy, saveEdit, setReplyTo, replyTo, replyBody, setReplyBody, reply, toggleResolved, del, onJump, onClose } = ctx;
+  return (
+    <div className={`${c.resolved ? 'opacity-60' : ''}`}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <CAvatar a={c} />
+        <span className="text-sm font-medium">{c.author?.name}</span>
+        <span className="text-[11px] text-[var(--faint)]">{fmt(c.createdAt)}{(c.edited || c.updatedAt !== c.createdAt) ? ' · edited' : ''}</span>
+        {c.resolved && <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400 flex items-center gap-0.5"><Check size={10} /> resolved</span>}
+        {c.participants?.length > 1 && (
+          <span className="flex items-center -space-x-1.5 ml-auto" title={`Contributors: ${c.participants.map((u) => u.name).join(', ')}`}>
+            {c.participants.slice(0, 5).map((u) => (
+              <UserAvatar key={u.id} user={{ id: u.id, displayName: u.name, avatar: u.avatar }} size={18} className="ring-1 ring-[var(--surface)] rounded-full" />
+            ))}
+            {c.participants.length > 5 && <span className="text-[10px] text-[var(--faint)] pl-2">+{c.participants.length - 5}</span>}
+          </span>
+        )}
+      </div>
+      {c.anchor && !isReply && (onJump
+        ? <button onClick={() => { onJump(headingSlug(c.anchor)); onClose(); }} title="Jump to this section" className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)] hover:bg-[var(--primary)]/20 transition"><Hash size={10} /> {c.anchor}</button>
+        : <div className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)]"><Hash size={10} /> {c.anchor}</div>)}
+      {editing?.id === c.id ? (
+        <div className="ml-8 mt-1.5">
+          <MarkdownEditor value={editing.body} onChange={(v) => setEditing({ ...editing, body: v })} full minHeight={120} placeholder="Edit comment — supports blocks, tables, images…" />
+          <div className="flex gap-1.5 mt-1.5"><Button size="sm" variant="primary" disabled={busy} onClick={saveEdit}>Save</Button><Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div>
+        </div>
+      ) : (
+        <div className="ml-8 mt-1 text-sm comment-md"><Markdown>{c.body}</Markdown></div>
+      )}
+      {canWrite && editing?.id !== c.id && (
+        <div className="ml-8 mt-1 flex items-center gap-3 text-[11px] text-[var(--faint)]">
+          {!isReply && <button className="hover:text-[var(--text)] flex items-center gap-1" onClick={() => { setReplyTo(c.id); setReplyBody(''); }}><CornerDownRight size={11} /> Reply</button>}
+          <button className="hover:text-[var(--text)] flex items-center gap-1" onClick={() => setEditing({ id: c.id, body: c.body })}><Pencil size={11} /> Edit</button>
+          {!isReply && <button className="hover:text-emerald-400 flex items-center gap-1" onClick={() => toggleResolved(c)}><Check size={11} /> {c.resolved ? 'Unresolve' : 'Resolve'}</button>}
+          <button className="hover:text-red-400 flex items-center gap-1" onClick={() => del(c.id)}><Trash2 size={11} /> Delete</button>
+        </div>
+      )}
+      {replyTo === c.id && (
+        <div className="ml-8 mt-2 flex gap-1.5">
+          <Input value={replyBody} autoFocus onChange={(e) => setReplyBody(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); reply(c.id); } }} placeholder="Reply…" className="!py-1.5 !text-sm" />
+          <Button size="sm" variant="primary" disabled={busy} onClick={() => reply(c.id)}><Send size={13} /></Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Threaded editor-collaboration comments for a blog post (PR-review style). Any editor
 // can read, add, reply, resolve, and EDIT any comment. `base` = `/blog/<id>`. `body` (the
 // post/page markdown) powers the "pin to a section" picker + click-to-jump. `onJump(slug)`
@@ -55,56 +110,9 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
   const toggleResolved = async (c) => { try { await api.patch(`${base}/comments/${c.id}`, { resolved: !c.resolved }); await load(); } catch { toast.error('Failed.'); } };
   const del = async (id) => { try { await api.del(`${base}/comments/${id}`); await load(); } catch { toast.error('Failed.'); } };
 
-  const fmt = (d) => { try { return new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
-  // Real avatar: author.avatar is the saved descriptor { variant, seed, colors, image },
-  // not a URL — feed it to the shared Avatar component (was <img src={object}> → broke,
-  // showing only the letter fallback).
-  const Avatar = ({ a }) => <UserAvatar user={{ id: a?.author?.id, displayName: a?.author?.name, avatar: a?.author?.avatar }} size={24} className="shrink-0" />;
-
-  const CommentBody = ({ c, isReply }) => (
-    <div className={`${c.resolved ? 'opacity-60' : ''}`}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <Avatar a={c} />
-        <span className="text-sm font-medium">{c.author?.name}</span>
-        <span className="text-[11px] text-[var(--faint)]">{fmt(c.createdAt)}{(c.edited || c.updatedAt !== c.createdAt) ? ' · edited' : ''}</span>
-        {c.resolved && <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400 flex items-center gap-0.5"><Check size={10} /> resolved</span>}
-        {/* Everyone who participated (author + editors) — their pfps, git-style. */}
-        {c.participants?.length > 1 && (
-          <span className="flex items-center -space-x-1.5 ml-auto" title={`Contributors: ${c.participants.map((u) => u.name).join(', ')}`}>
-            {c.participants.slice(0, 5).map((u) => (
-              <UserAvatar key={u.id} user={{ id: u.id, displayName: u.name, avatar: u.avatar }} size={18} className="ring-1 ring-[var(--surface)] rounded-full" />
-            ))}
-            {c.participants.length > 5 && <span className="text-[10px] text-[var(--faint)] pl-2">+{c.participants.length - 5}</span>}
-          </span>
-        )}
-      </div>
-      {c.anchor && !isReply && (onJump
-        ? <button onClick={() => { onJump(headingSlug(c.anchor)); onClose(); }} title="Jump to this section" className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)] hover:bg-[var(--primary)]/20 transition"><Hash size={10} /> {c.anchor}</button>
-        : <div className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)]"><Hash size={10} /> {c.anchor}</div>)}
-      {editing?.id === c.id ? (
-        <div className="ml-8 mt-1.5">
-          <MarkdownEditor value={editing.body} onChange={(v) => setEditing({ ...editing, body: v })} full minHeight={120} placeholder="Edit comment — supports blocks, tables, images…" />
-          <div className="flex gap-1.5 mt-1.5"><Button size="sm" variant="primary" disabled={busy} onClick={saveEdit}>Save</Button><Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div>
-        </div>
-      ) : (
-        <div className="ml-8 mt-1 text-sm comment-md"><Markdown>{c.body}</Markdown></div>
-      )}
-      {canWrite && editing?.id !== c.id && (
-        <div className="ml-8 mt-1 flex items-center gap-3 text-[11px] text-[var(--faint)]">
-          {!isReply && <button className="hover:text-[var(--text)] flex items-center gap-1" onClick={() => { setReplyTo(c.id); setReplyBody(''); }}><CornerDownRight size={11} /> Reply</button>}
-          <button className="hover:text-[var(--text)] flex items-center gap-1" onClick={() => setEditing({ id: c.id, body: c.body })}><Pencil size={11} /> Edit</button>
-          {!isReply && <button className="hover:text-emerald-400 flex items-center gap-1" onClick={() => toggleResolved(c)}><Check size={11} /> {c.resolved ? 'Unresolve' : 'Resolve'}</button>}
-          <button className="hover:text-red-400 flex items-center gap-1" onClick={() => del(c.id)}><Trash2 size={11} /> Delete</button>
-        </div>
-      )}
-      {replyTo === c.id && (
-        <div className="ml-8 mt-2 flex gap-1.5">
-          <Input value={replyBody} autoFocus onChange={(e) => setReplyBody(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); reply(c.id); } }} placeholder="Reply…" className="!py-1.5 !text-sm" />
-          <Button size="sm" variant="primary" disabled={busy} onClick={() => reply(c.id)}><Send size={13} /></Button>
-        </div>
-      )}
-    </div>
-  );
+  // Handlers/state handed to the module-scope CommentBody (keeps its identity stable so
+  // edit/reply inputs don't lose focus — see the note on CommentBody).
+  const ctx = { canWrite, editing, setEditing, busy, saveEdit, replyTo, setReplyTo, replyBody, setReplyBody, reply, toggleResolved, del, onJump, onClose };
 
   return (
     <Modal open onClose={onClose} title="Comments" icon={MessageSquare} width="max-w-2xl"
@@ -119,10 +127,10 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
           {roots.length === 0 && <EmptyState icon={MessageSquare} title="No comments yet" sub={canWrite ? 'Start the discussion below.' : 'Nothing here yet.'} />}
           {roots.map((c) => (
             <div key={c.id} className="rounded-xl border border-[var(--line)] p-3">
-              <CommentBody c={c} />
+              <CommentBody c={c} ctx={ctx} />
               {repliesOf(c.id).length > 0 && (
                 <div className="ml-4 mt-3 pl-3 border-l-2 border-[var(--line)] space-y-3">
-                  {repliesOf(c.id).map((r) => <CommentBody key={r.id} c={r} isReply />)}
+                  {repliesOf(c.id).map((r) => <CommentBody key={r.id} c={r} isReply ctx={ctx} />)}
                 </div>
               )}
             </div>
