@@ -4209,29 +4209,42 @@ function AdminBot() {
 // with the linked BCWEB account shown when there is one.
 function AdminBotMembers() {
   const [q, setQ] = useState('');
+  const [link, setLink] = useState(''); // '' | 'linked' | 'unlinked'
   const [rows, setRows] = useState(null);
   const [hasMore, setHasMore] = useState(false);
+  const [counts, setCounts] = useState(null); // { all, linked, unlinked }
   const [busy, setBusy] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const load = async (append = false) => {
+  const load = async (append = false, linkOverride) => {
     setBusy(true);
+    const lk = linkOverride !== undefined ? linkOverride : link;
     try {
       const skip = append ? (rows?.length || 0) : 0;
-      const { members, hasMore: more } = await api.get(`/admin/bot/members?q=${encodeURIComponent(q)}&skip=${skip}&take=30`);
-      setRows(append ? [...(rows || []), ...members] : members); setHasMore(more);
+      const { members, hasMore: more, counts: c } = await api.get(`/admin/bot/members?q=${encodeURIComponent(q)}&skip=${skip}&take=30${lk ? `&link=${lk}` : ''}`);
+      setRows(append ? [...(rows || []), ...members] : members); setHasMore(more); if (c) setCounts(c);
     } catch { if (!append) setRows([]); } finally { setBusy(false); }
   };
   useEffect(() => { load(false); /* eslint-disable-next-line */ }, []);
+  const pickLink = (v) => { setLink(v); load(false, v); };
   const since = (d) => d ? new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+  const tabs = [['', 'All', counts?.all], ['linked', 'Linked', counts?.linked], ['unlinked', 'Not linked', counts?.unlinked]];
   return (
     <div className="mt-6">
       <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-left">
         <Users size={16} className="text-[var(--primary-2)]" />
-        <h2 className="font-semibold flex-1">Members{rows?.length ? <span className="text-sm font-normal text-[var(--faint)]"> · {rows.length}{hasMore ? '+' : ''}</span> : null}</h2>
+        <h2 className="font-semibold flex-1">Members{counts ? <span className="text-sm font-normal text-[var(--faint)]"> · {counts.all} total · {counts.linked} linked</span> : null}</h2>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${collapsed ? '-rotate-90' : ''}`} />
       </button>
-      <p className="text-sm text-[var(--muted)] mb-3">Everyone the bot has seen — join date, last message/voice activity, and the linked BCWEB account when there is one.</p>
+      <p className="text-sm text-[var(--muted)] mb-3">The full roster — the bot scans every member on startup. Shows join date, last message/voice activity, and whether the member has linked a BCWEB account.</p>
       {!collapsed && <>
+        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden w-fit mb-3">
+          {tabs.map(([v, label, n]) => (
+            <button key={v} onClick={() => pickLink(v)} className={`px-3 py-1.5 text-xs flex items-center gap-1.5 ${link === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+              {v === 'linked' ? <CheckCircle2 size={12} className="text-emerald-400" /> : v === 'unlinked' ? <XCircle size={12} className="text-[var(--faint)]" /> : null}
+              {label}{n != null && <span className="text-[var(--faint)]">{n}</span>}
+            </button>
+          ))}
+        </div>
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
             <Input className="!pl-9" placeholder="Search by Discord id or username…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(false)} /></div>
@@ -4242,13 +4255,17 @@ function AdminBotMembers() {
             <Card key={m.discordId} className="p-3 flex items-center gap-3">
               {m.avatar ? <img src={m.avatar} alt="" className="w-9 h-9 rounded-full shrink-0" /> : <div className="w-9 h-9 rounded-full bg-[var(--surface-2)] grid place-items-center shrink-0"><DiscordIcon size={16} className="text-[#5865F2]" /></div>}
               <div className="flex-1 min-w-0">
-                <div className="font-medium truncate flex items-center gap-2">{m.username || m.discordId}{m.linkedUser && <Badge tone="green">{m.linkedUser.displayName}</Badge>}</div>
+                <div className="font-medium truncate flex items-center gap-2">{m.username || m.discordId}
+                  {m.linkedUser
+                    ? <Badge tone="green"><CheckCircle2 size={11} /> {m.linkedUser.displayName}</Badge>
+                    : <Badge><XCircle size={11} /> Not linked</Badge>}
+                </div>
                 <div className="text-xs text-[var(--faint)] truncate">joined {since(m.guildJoinedAt)} · last message {since(m.lastMessageAt)} · last voice {since(m.lastVoiceJoinAt)} · id {m.discordId}</div>
               </div>
             </Card>
           ))}
           {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(true)}>{busy ? <Spinner /> : 'Load more'}</Button></div>}
-        </div> : <EmptyState icon={Users} title="No members tracked yet" sub="They'll appear here once the bot sees activity in the server." />}
+        </div> : <EmptyState icon={Users} title={link === 'linked' ? 'No linked members' : link === 'unlinked' ? 'No unlinked members' : 'No members tracked yet'} sub={link ? 'Try another filter.' : "They'll appear here once the bot scans the server (on startup)."} />}
       </>}
     </div>
   );

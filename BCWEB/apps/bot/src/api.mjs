@@ -32,6 +32,8 @@ export const api = {
   kofiMarkAnnounced: (ids) => call('POST', '/bot/kofi/announced', { ids }).catch(() => {}),
   issueLink: (discordId, username) => call('POST', '/bot/link/issue', { discordId, username }),
   account: (discordId) => call('GET', `/bot/account/${discordId}`).catch(() => ({ linked: false })),
+  // Bulk-sync the guild roster into the member database (startup + periodic full scan).
+  syncMembers: (members) => call('POST', '/bot/members/sync', { members }).catch(() => ({ synced: 0 })),
   // Report a Discord activity event (join / message / voiceJoin / voiceCreate) so the
   // telemetry dashboard can show it next to the linked creator id. Best-effort.
   activity: (discordId, event, user) => call('POST', '/bot/activity', {

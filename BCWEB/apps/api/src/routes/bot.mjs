@@ -122,14 +122,25 @@ export default async function botRoutes(app) {
     const take = Math.min(Number(req.query?.take) || 30, 100);
     const skip = Math.max(0, Number(req.query?.skip) || 0);
     const q = String(req.query?.q || '').trim();
-    const where = q ? { OR: [{ username: { contains: q, mode: 'insensitive' } }, { discordId: { contains: q } }] } : {};
-    const [rows, total] = await Promise.all([
+    const link = ['linked', 'unlinked'].includes(req.query?.link) ? req.query.link : null;
+    // All linked Discord ids (bounded by account count) — lets us filter the member table
+    // by link status and report the linked/unlinked totals for the header.
+    const linkedIds = (await p.discordLink.findMany({ select: { discordId: true } })).map((l) => l.discordId);
+    const qWhere = q ? { OR: [{ username: { contains: q, mode: 'insensitive' } }, { discordId: { contains: q } }] } : {};
+    const where = { ...qWhere, ...(link === 'linked' ? { discordId: { in: linkedIds } } : link === 'unlinked' ? { discordId: { notIn: linkedIds } } : {}) };
+    const [rows, total, allTotal, linkedTotal] = await Promise.all([
       p.discordActivity.findMany({ where, orderBy: { updatedAt: 'desc' }, take, skip }),
       p.discordActivity.count({ where }),
+      p.discordActivity.count(),
+      p.discordActivity.count({ where: { discordId: { in: linkedIds } } }),
     ]);
     const links = await p.discordLink.findMany({ where: { discordId: { in: rows.map((r) => r.discordId) } }, include: { user: { select: { id: true, displayName: true, email: true } } } });
     const linkByDiscordId = Object.fromEntries(links.map((l) => [l.discordId, l.user]));
-    return { members: rows.map((r) => ({ ...r, linkedUser: linkByDiscordId[r.discordId] || null })), total, hasMore: skip + rows.length < total };
+    return {
+      members: rows.map((r) => ({ ...r, linkedUser: linkByDiscordId[r.discordId] || null })),
+      total, hasMore: skip + rows.length < total,
+      counts: { all: allTotal, linked: linkedTotal, unlinked: allTotal - linkedTotal },
+    };
   });
   app.put('/admin/bot/config', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({ config: z.record(z.any()) }).safeParse(req.body);
@@ -297,6 +308,35 @@ export default async function botRoutes(app) {
       update: { ...base, [field]: now },
     });
     return { ok: true };
+  });
+
+  // Bulk member sync — the bot posts its FULL guild roster on startup (and periodically)
+  // so the member database contains every member, not just those who happened to send a
+  // message or join while the bot was online. Upserts in chunks; guildJoinedAt is only
+  // filled when known and not already set (a real join event is more authoritative).
+  app.post('/bot/members/sync', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({
+      members: z.array(z.object({
+        discordId: z.string().min(1).max(32),
+        username: z.string().max(80).optional(),
+        avatar: z.string().max(400).optional(),
+        joinedAt: z.string().datetime().optional(),
+      })).max(2000),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    let synced = 0;
+    for (const m of b.data.members) {
+      const joinedAt = m.joinedAt ? new Date(m.joinedAt) : null;
+      await p.discordActivity.upsert({
+        where: { discordId: m.discordId },
+        create: { discordId: m.discordId, username: m.username, avatar: m.avatar, guildJoinedAt: joinedAt },
+        // Don't clobber a known join date with null; refresh name/avatar (they change).
+        update: { username: m.username, avatar: m.avatar, ...(joinedAt ? { guildJoinedAt: joinedAt } : {}) },
+      }).then(() => synced++).catch(() => {});
+    }
+    return { ok: true, synced };
   });
 
   // Account resolution for gated access + telemetry enrichment.

@@ -10,6 +10,7 @@ import { onVoiceStateUpdate } from './features/joinToCreate.mjs';
 import { onMemberAdd, onMemberRemove } from './features/welcome.mjs';
 import { onMessage } from './features/moderation.mjs';
 import { checkGating, syncAllGating } from './features/gating.mjs';
+import { scanAllMembers } from './features/scanMembers.mjs';
 import { pollBlog } from './features/blog.mjs';
 import { pollAlerts } from './features/alerts.mjs';
 import { pollKofi } from './features/kofi.mjs';
@@ -46,6 +47,10 @@ function buildClient() {
     });
     beat();
     timers.push(setInterval(beat, 60_000));
+    // Full member scan: populate the member database with the ENTIRE roster now, then
+    // refresh every 30 min (names/avatars change, people join). Independent of gating.
+    scanAllMembers(c).catch(() => {});
+    timers.push(setInterval(() => scanAllMembers(c).catch(() => {}), 30 * 60_000));
     timers.push(setInterval(() => syncAllGating(c).catch(() => {}), 5 * 60_000));
     // Blog announcements: check for new published posts every 5 min (+ once now).
     pollBlog(c).catch(() => {});
