@@ -4198,6 +4198,55 @@ function BlogRoutes({ routes, onChange, guildList }) {
   );
 }
 
+// A styled on/off switch — the classic bot-dashboard module toggle.
+function BotSwitch({ checked, onChange, disabled }) {
+  return (
+    <button type="button" role="switch" aria-checked={!!checked} disabled={disabled}
+      onClick={() => !disabled && onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0 ${checked ? 'bg-emerald-500' : 'bg-[var(--surface-2)] border border-[var(--line)]'} ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+      <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+    </button>
+  );
+}
+
+// One server in the dashboard's server picker (avatar + name + member count),
+// MEE6/Dyno-style. `dot` shows a green marker when that server has custom config.
+function ServerBubble({ name, icon, sub, active, dot, onClick }) {
+  const initial = (name || '?').slice(0, 2).toUpperCase();
+  return (
+    <button onClick={onClick} title={name}
+      className={`relative flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left transition shrink-0 w-[180px] ${active ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]/50'}`}>
+      {icon ? <img src={icon} alt="" className="w-9 h-9 rounded-full shrink-0" />
+        : <span className="w-9 h-9 rounded-full shrink-0 grid place-items-center text-xs font-bold bg-gradient-to-br from-orange-500 to-amber-500 text-white">{initial}</span>}
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium truncate">{name}</div>
+        {sub && <div className="text-[10px] text-[var(--faint)] truncate">{sub}</div>}
+      </div>
+      {dot && <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" title="Custom config" />}
+    </button>
+  );
+}
+
+// A feature "module" card: header (icon + title + master switch) over a settings
+// body that dims when the module is off. The heart of the bot-dashboard layout.
+function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children }) {
+  const off = enabled === false;
+  return (
+    <Card className="p-0 overflow-hidden self-start">
+      <div className="flex items-start gap-3 p-4">
+        <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><I size={17} className="text-[var(--primary-2)]" /></span>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm">{title}</div>
+          {desc && <div className="text-[11px] text-[var(--faint)] mt-0.5 leading-snug">{desc}</div>}
+        </div>
+        {action}
+        {onToggle && <BotSwitch checked={!!enabled} onChange={onToggle} />}
+      </div>
+      {children && <div className={`px-4 pb-4 space-y-2.5 border-t border-[var(--line)] pt-3 transition ${off ? 'opacity-40 pointer-events-none select-none' : ''}`}>{children}</div>}
+    </Card>
+  );
+}
+
 function AdminBot() {
   const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/admin/bot/config'), []);
@@ -4227,11 +4276,6 @@ function AdminBot() {
     catch (x) { toast.error(x.data?.error === 'bot_enabled' ? 'Disable the bot first.' : 'Failed.'); }
   };
   const g = (path) => path.split('.').reduce((o, k) => o?.[k], cfg) ?? '';
-  const Toggle = ({ path, label }) => (
-    <label className="flex items-center gap-2 text-sm cursor-pointer">
-      <input type="checkbox" checked={!!path.split('.').reduce((o, k) => o?.[k], cfg)} onChange={(e) => set(path, e.target.checked)} /> {label}
-    </label>
-  );
   const guildList = status?.guildList || [];
   // Blog announcement routes: the new list, or the legacy single channel as one all-sources route.
   const blogRoutes = (cfg.blog?.routes?.length ? cfg.blog.routes : (cfg.blog?.channelId ? [{ channelId: cfg.blog.channelId, sources: ['*'] }] : []));
@@ -4248,11 +4292,6 @@ function AdminBot() {
   const isCustomized = scope ? !!cfg.guilds?.[scope] : true;
   const sg = (p) => (base + p).split('.').reduce((o, k) => o?.[k], cfg) ?? '';
   const sset = (p, v) => set(base + p, v);
-  const SToggle = ({ path, label }) => (
-    <label className="flex items-center gap-2 text-sm cursor-pointer">
-      <input type="checkbox" checked={!!(base + path).split('.').reduce((o, k) => o?.[k], cfg)} onChange={(e) => sset(path, e.target.checked)} /> {label}
-    </label>
-  );
   const customizeServer = () => set(`guilds.${scope}`, {
     moderation: structuredClone(cfg.moderation || {}),
     welcome: structuredClone(cfg.welcome || {}),
@@ -4355,48 +4394,40 @@ function AdminBot() {
 
       {/* ═══════════ GLOBAL — cross-server ═══════════ */}
       <SectionTitle icon={Globe} title="Global — applies across every server" sub="Announcements route by channel (works in any server); limits are shared." />
-      <div className="grid md:grid-cols-2 gap-4">
-        <Card className="p-4 space-y-2.5">
-          <div className="font-medium text-sm mb-1 flex items-center gap-2"><Newspaper size={14} className="text-[var(--primary-2)]" /> Blog announcements</div>
-          <Toggle path="blog.enabled" label="Announce new blog posts" />
-          <p className="text-xs text-[var(--muted)]">Add a route per channel and pick which blogs it receives — BMM news to one server, Other-projects news to another, everything to a third. New posts (title + excerpt + link + cover) are sent as they appear; history is never re-posted.</p>
+      <div className="grid md:grid-cols-2 gap-4 items-start">
+        <ModuleCard icon={Newspaper} title="Blog announcements" desc="Post new blog posts to any channel — filter each route by project." enabled={!!cfg.blog?.enabled} onToggle={(v) => set('blog.enabled', v)}>
           <BlogRoutes routes={blogRoutes} onChange={(r) => set('blog.routes', r)} guildList={guildList} />
-        </Card>
+        </ModuleCard>
 
-        <Card className="p-4 space-y-2.5">
-          <div className="font-medium text-sm mb-1 flex items-center gap-2"><Bell size={14} className="text-[var(--primary-2)]" /> Alerts & tips</div>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] pt-1">Server-perf alerts</div>
-          <Toggle path="alerts.enabled" label="Post CPU/RAM/disk/service-down alerts" />
+        <ModuleCard icon={AlertTriangle} title="Server-perf alerts" desc="Post CPU/RAM/disk/service-down alerts as they fire." enabled={!!cfg.alerts?.enabled} onToggle={(v) => set('alerts.enabled', v)}>
           <Field label="Alerts channel id" hint="Fired thresholds (Server perf tab) are posted here.">
             <Input value={g('alerts.channelId')} onChange={(e) => set('alerts.channelId', e.target.value)} placeholder="Channel ID" />
           </Field>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] pt-2">Ko-fi tips</div>
-          <Toggle path="kofi.enabled" label="Announce new Ko-fi tips" />
-          <Field label="Tips channel id" hint="Each new tip is posted as a thank-you embed with the running total.">
+        </ModuleCard>
+
+        <ModuleCard icon={Heart} title="Ko-fi tips" desc="Thank supporters automatically with a running total." enabled={!!cfg.kofi?.enabled} onToggle={(v) => set('kofi.enabled', v)}>
+          <Field label="Tips channel id" hint="Each new tip is posted as a thank-you embed. Old tips are never re-posted.">
             <Input value={g('kofi.channelId')} onChange={(e) => set('kofi.channelId', e.target.value)} placeholder="Channel ID" />
           </Field>
-          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[var(--line)] mt-1">
+        </ModuleCard>
+
+        <ModuleCard icon={Sliders} title="Limits">
+          <div className="grid grid-cols-2 gap-2">
             <Field label="Max temp channels"><Input type="number" value={g('limits.maxTempChannels')} onChange={(e) => set('limits.maxTempChannels', Number(e.target.value))} /></Field>
             <Field label="Member DB cap (MB)" hint="Oldest inactive members are pruned once over."><Input type="number" value={g('limits.storageMB')} onChange={(e) => set('limits.storageMB', Number(e.target.value))} /></Field>
           </div>
-        </Card>
+        </ModuleCard>
       </div>
 
       {/* ═══════════ PER-SERVER ═══════════ */}
       <SectionTitle icon={Server} title="Per-server configuration" sub="Moderation, welcome, join-to-create and gated roles — set independently for each server the bot is in." />
-      {/* Scope selector */}
-      <div className="flex flex-wrap gap-1.5 mb-3">
-        <button onClick={() => setScope('')} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition flex items-center gap-1.5 ${scope === '' ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
-          <Globe size={12} /> Global defaults
-        </button>
-        {guildList.map((gg) => {
-          const custom = !!cfg.guilds?.[gg.id];
-          return (
-            <button key={gg.id} onClick={() => setScope(gg.id)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition flex items-center gap-1.5 ${scope === gg.id ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
-              <Server size={12} /> {gg.name}{custom && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Has custom config" />}
-            </button>
-          );
-        })}
+      {/* Scope selector — a bot-dashboard server picker (avatars + custom-config dot) */}
+      <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar pb-1">
+        <ServerBubble name="Global defaults" sub="every server" active={scope === ''} onClick={() => setScope('')} />
+        {guildList.map((gg) => (
+          <ServerBubble key={gg.id} name={gg.name} icon={gg.icon} sub={gg.members != null ? `${gg.members} members` : 'server'}
+            active={scope === gg.id} dot={!!cfg.guilds?.[gg.id]} onClick={() => setScope(gg.id)} />
+        ))}
       </div>
       {guildList.length === 0 && (
         <div className="text-xs text-[var(--muted)] mb-3 flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
@@ -4421,22 +4452,18 @@ function AdminBot() {
           This server uses the <b>Global defaults</b>. Click <b>Customize this server</b> above to give it its own moderation, welcome, join-to-create and gating settings.
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-2 gap-4 items-start">
           {/* Moderation */}
-          <Card className="p-4 space-y-2.5">
-            <div className="font-medium text-sm mb-1 flex items-center gap-2"><Shield size={14} className="text-[var(--primary-2)]" /> Moderation</div>
-            <SToggle path="moderation.enabled" label="Moderation enabled" />
-            <SToggle path="moderation.antiSelfbot" label="Anti-selfbot filter (mass-mention timeout)" />
+          <ModuleCard icon={Shield} title="Moderation" desc="Auto-kick + purge in no-post channels; anti-selfbot timeout." enabled={!!scopeObj.moderation?.enabled} onToggle={(v) => sset('moderation.enabled', v)}>
+            <label className="flex items-center justify-between gap-2 text-sm"><span>Anti-selfbot filter <span className="text-[var(--faint)]">(mass-mention timeout)</span></span><BotSwitch checked={!!scopeObj.moderation?.antiSelfbot} onChange={(v) => sset('moderation.antiSelfbot', v)} /></label>
             <Field label="No-post channels" hint="Posting here kicks the user + purges their messages. A channel id is unique to its server.">
               <ChannelIdList ids={purgeChans} onChange={(v) => sset('moderation.purgeChannelIds', v)} placeholder="Channel ID — press Enter" />
             </Field>
-          </Card>
+          </ModuleCard>
 
           {/* Join-to-create */}
-          <Card className="p-4 space-y-2.5">
-            <div className="flex items-center justify-between mb-1"><div className="font-medium text-sm flex items-center gap-2"><Mic size={14} className="text-[var(--primary-2)]" /> Join-to-create voice</div>
-              <Button size="sm" variant="ghost" onClick={() => sset('joinToCreate.lobbies', [...jtcLobbies, { lobbyChannelId: '', categoryId: '', tempCategoryName: 'Temp Voice' }])}><Plus size={13} /> Lobby</Button></div>
-            <SToggle path="joinToCreate.enabled" label="Enabled" />
+          <ModuleCard icon={Mic} title="Join-to-create voice" desc="Joining a lobby spawns a personal temp voice room." enabled={!!scopeObj.joinToCreate?.enabled} onToggle={(v) => sset('joinToCreate.enabled', v)}
+            action={<Button size="sm" variant="ghost" onClick={() => sset('joinToCreate.lobbies', [...jtcLobbies, { lobbyChannelId: '', categoryId: '', tempCategoryName: 'Temp Voice' }])}><Plus size={13} /> Lobby</Button>}>
             {jtcLobbies.length === 0 && <div className="text-xs text-[var(--faint)]">No lobbies — add one. Joining that voice channel spawns a temp room in its category.</div>}
             {jtcLobbies.map((lb, i) => (
               <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
@@ -4449,12 +4476,10 @@ function AdminBot() {
                 </div>
               </div>
             ))}
-          </Card>
+          </ModuleCard>
 
           {/* Welcome / bye */}
-          <Card className="p-4 space-y-2.5">
-            <div className="font-medium text-sm mb-1 flex items-center gap-2"><Sparkles size={14} className="text-[var(--primary-2)]" /> Welcome / bye</div>
-            <SToggle path="welcome.enabled" label="Enabled" />
+          <ModuleCard icon={Sparkles} title="Welcome / bye" desc="Animated banner + message when members join or leave." enabled={!!scopeObj.welcome?.enabled} onToggle={(v) => sset('welcome.enabled', v)}>
             <Field label="Welcome channel id"><Input value={sg('welcome.channelId')} onChange={(e) => sset('welcome.channelId', e.target.value)} placeholder="Channel ID" /></Field>
             <Field label="Join message" hint="{user} {username} {servername} {joinnumber} {joindate}"><Input value={sg('welcome.joinMessage')} onChange={(e) => sset('welcome.joinMessage', e.target.value)} /></Field>
             <Field label="Leave message"><Input value={sg('welcome.leaveMessage')} onChange={(e) => sset('welcome.leaveMessage', e.target.value)} /></Field>
@@ -4470,15 +4495,13 @@ function AdminBot() {
               </div>
               <div className="px-3 py-2 text-xs text-gray-300 border-t border-white/5">{previewMsg(sg('welcome.joinMessage')) || '—'}</div>
             </div>
-          </Card>
+          </ModuleCard>
 
           {/* Gated access */}
-          <Card className="p-4 space-y-2.5">
-            <div className="font-medium text-sm mb-1 flex items-center gap-2"><KeyRound size={14} className="text-[var(--primary-2)]" /> Gated access</div>
-            <SToggle path="gating.enabled" label="Gate roles behind account links" />
+          <ModuleCard icon={KeyRound} title="Gated access" desc="Grant roles automatically to members who link their account." enabled={!!scopeObj.gating?.enabled} onToggle={(v) => sset('gating.enabled', v)}>
             <p className="text-xs text-[var(--muted)]">Each rule grants ONE Discord role to members who meet its requirements. Re-checked every ~5 min (granting AND removing); members can run <code>/refreshroles</code> to sync instantly after linking on the site.</p>
             <GatingRules rules={Array.isArray(scopeObj.gating?.rules) ? scopeObj.gating.rules : []} onChange={(rules) => sset('gating.rules', rules)} />
-          </Card>
+          </ModuleCard>
         </div>
       )}
 

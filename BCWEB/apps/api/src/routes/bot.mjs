@@ -317,7 +317,7 @@ export default async function botRoutes(app) {
       uptimeSec: z.number().optional(), guilds: z.number().optional(), users: z.number().optional(), tempChannels: z.number().optional(), version: z.string().optional(), online: z.boolean().optional(), error: z.string().max(300).optional(),
       // The servers the bot is currently in (id + name) — lets the admin pick a
       // target server when configuring per-server blog routes.
-      guildList: z.array(z.object({ id: z.string().max(32), name: z.string().max(120) })).max(200).optional(),
+      guildList: z.array(z.object({ id: z.string().max(32), name: z.string().max(120), icon: z.string().max(400).nullable().optional(), members: z.number().nullable().optional() })).max(200).optional(),
       ping: z.number().nullable().optional(), // gateway latency (ms)
       mod: z.object({ kicks: z.number().optional(), timeouts: z.number().optional(), purged: z.number().optional() }).optional(), // since-restart moderation counters
     }).safeParse(req.body || {});
