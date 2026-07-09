@@ -854,22 +854,28 @@ export function Hosting() {
         </div>
       )}
 
-      {/* single vs multi repo */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        {[['single', HardDrive, t('hosting.single', 'Single repo'), t('hosting.single.d', 'One repository with the whole quota.')], ['multi', Layers, t('hosting.multi', 'Multiple repos'), t('hosting.multi.d', 'Split the storage across several repos, managed by you.')]].map(([m, I, title, sub]) => (
-          <button key={m} onClick={() => setMode(m)} className={`flex-1 text-left card p-4 flex items-start gap-3 transition ${mode === m ? 'border-[var(--primary)] ring-1 ring-[var(--primary)]' : 'hover:border-[var(--line-strong)]'}`}>
-            <span className={`grid place-items-center w-9 h-9 rounded-lg shrink-0 ${mode === m ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white' : 'bg-[var(--surface-2)] text-[var(--muted)]'}`}><I size={16} /></span>
-            <span><span className="font-semibold flex items-center gap-2">{title}{mode === m && <CheckCircle2 size={14} className="text-[var(--primary-2)]" />}</span><span className="block text-xs text-[var(--muted)] mt-0.5">{sub}</span></span>
-          </button>
-        ))}
-      </div>
-
-      {/* order configuration — billing term + promo grouped in one tidy card
-          (they floated loose before, which read as unfinished, esp. on mobile) */}
+      {/* One tidy "configure your order" card: repo layout + billing term +
+          capacity in a single block, instead of three stacked config panels
+          before the user has even seen a price. */}
       <Card className="p-4 sm:p-5 mb-6">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.term', 'Billing term')} <span className="normal-case font-normal">{t('hosting.term.cart', '· applies to repos you add to the cart · prepaid')}</span></div>
-        <TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} />
-        <p className="text-xs text-[var(--muted)] mt-3 flex items-center gap-1.5"><ShoppingCart size={13} className="text-[var(--primary-2)]" /> {t('hosting.cart.hint', 'Add repos and boosts to your cart, apply promo codes, then check out — all in one payment. Auto-renew is available per repo afterwards.')}</p>
+        <div className="flex flex-col sm:flex-row sm:items-start gap-5">
+          <div className="sm:flex-1 min-w-0">
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.layout', 'Repo layout')}</div>
+            <div className="inline-flex rounded-xl border border-[var(--line)] p-1 gap-1">
+              {[['single', HardDrive, t('hosting.single', 'Single repo')], ['multi', Layers, t('hosting.multi', 'Multiple repos')]].map(([m, I, title]) => (
+                <button key={m} type="button" onClick={() => setMode(m)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition ${mode === m ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                  <I size={14} /> {title}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-[var(--muted)] mt-2">{mode === 'multi' ? t('hosting.multi.d', 'Split the storage across several repos, managed by you.') : t('hosting.single.d', 'One repository with the whole quota.')}</p>
+          </div>
+          <div className="sm:flex-1 min-w-0">
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.term', 'Billing term')}</div>
+            <TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} />
+          </div>
+        </div>
+        <p className="text-xs text-[var(--muted)] mt-4 flex items-center gap-1.5"><ShoppingCart size={13} className="text-[var(--primary-2)]" /> {t('hosting.cart.hint', 'Add repos and boosts to your cart, apply promo codes, then check out — all in one payment. Auto-renew is available per repo afterwards.')}</p>
         {c && (
           <div className="flex items-center gap-3 text-sm mt-4 pt-4 border-t border-[var(--line)]">
             <Gauge size={16} className="text-[var(--primary-2)] shrink-0" />

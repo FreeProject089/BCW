@@ -428,6 +428,7 @@ const DICT = {
     'hosting.title': 'Héberger un Server-Repo', 'hosting.sub': 'On l’exécute, tu le gères. Paie selon la taille dont tu as besoin.',
     'hosting.single': 'Dépôt unique', 'hosting.single.d': 'Un seul dépôt avec tout le quota.',
     'hosting.multi': 'Dépôts multiples', 'hosting.multi.d': 'Répartis le stockage sur plusieurs dépôts, gérés par toi.',
+    'hosting.layout': 'Disposition des dépôts',
     'hosting.term': 'Durée de facturation', 'hosting.term.note': '· prépayé, min. 1 mois',
     'hosting.term.note2': 'Prépayé — min. 1 mois, plus long = plus de réduction', 'hosting.2yr': '2 ans', 'hosting.standard': 'standard',
     'hosting.mo': 'mois', 'hosting.1yr': '1 an', 'hosting.best': 'TOP', 'hosting.popular': 'RECOMMANDÉE', 'hosting.popular2': 'Recommandé', 'hosting.freeplan.badge2': 'Gratuit',
