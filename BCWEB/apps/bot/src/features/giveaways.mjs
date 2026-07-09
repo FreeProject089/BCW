@@ -2,7 +2,7 @@
 //  1. Post any active giveaway that hasn't been posted yet (embed + "Enter" button).
 //  2. Draw + announce any active giveaway whose end time has passed.
 // Entries arrive via the button handler in commands.mjs (customId `gw:enter:<id>`).
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import { config } from '../config.mjs';
 import { api, SITE_URL } from '../api.mjs';
 
@@ -63,9 +63,9 @@ export async function handleGiveawayButton(interaction) {
   const [, , id] = interaction.customId.split(':');
   try {
     const r = await api.giveawayEnter(id, interaction.user.id);
-    await interaction.reply({ content: r.already ? "You're already entered — good luck! 🍀" : `You're in! 🎉 (${r.count} entrant${r.count === 1 ? '' : 's'})`, ephemeral: true });
+    await interaction.reply({ content: r.already ? "You're already entered — good luck! 🍀" : `You're in! 🎉 (${r.count} entrant${r.count === 1 ? '' : 's'})`, flags: MessageFlags.Ephemeral });
   } catch (e) {
     const notActive = String(e.message || '').includes('409');
-    await interaction.reply({ content: notActive ? 'This giveaway has ended.' : 'Could not enter — try again in a moment.', ephemeral: true }).catch(() => {});
+    await interaction.reply({ content: notActive ? 'This giveaway has ended.' : 'Could not enter — try again in a moment.', flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 }

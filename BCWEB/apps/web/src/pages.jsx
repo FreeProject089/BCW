@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload,
@@ -799,12 +800,12 @@ export function Hosting() {
     if (!user) return nav('/auth');
     const repoName = await dialog.prompt({ title: mode === 'multi' ? t('hosting.pool.title', 'New storage pool') : t('hosting.repo.title', 'Host a repo'), label: mode === 'multi' ? t('hosting.pool.label', 'Pool name') : t('hosting.repo.label', 'Repository name'), placeholder: mode === 'multi' ? t('hosting.pool.ph', 'my-pool') : t('hosting.repo.ph', 'my-awesome-repo'), okLabel: t('cart.add', 'Add to cart') });
     if (!repoName || String(repoName).trim().length < 2) return;
-    setCart((c) => [...c, { uid: Math.random().toString(36).slice(2), kind: 'hosting', mode, months, repoName: String(repoName).trim(), planId, custom, label, autoRenew: false }]);
+    setCart((c) => [...c, { uid: Math.random().toString(36).slice(2), kind: 'hosting', mode, months, repoName: String(repoName).trim(), planId, custom, label, autoRenew: true }]);
     setCartOpen(true);
   };
   const addBoost = ({ repoId, repoName, days }) => {
     if (!user) return nav('/auth');
-    setCart((c) => [...c, { uid: Math.random().toString(36).slice(2), kind: 'boost', repoId, repoName, days }]);
+    setCart((c) => [...c, { uid: Math.random().toString(36).slice(2), kind: 'boost', repoId, repoName, days, autoRenew: true }]);
     setCartOpen(true);
   };
   const removeItem = (uid) => setCart((c) => c.filter((x) => x.uid !== uid));
@@ -857,7 +858,7 @@ export function Hosting() {
       {/* One tidy "configure your order" card: repo layout + billing term +
           capacity in a single block, instead of three stacked config panels
           before the user has even seen a price. */}
-      <Card className="p-4 sm:p-5 mb-6">
+      <Card className="p-4 sm:p-5 mb-6 relative z-30">
         <div className="flex flex-col sm:flex-row sm:items-start gap-5">
           <div className="sm:flex-1 min-w-0">
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.layout', 'Repo layout')}</div>
@@ -901,7 +902,7 @@ export function Hosting() {
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shrink-0 shadow-lg shadow-emerald-500/25"><Gift size={22} /></span>
               <div className="flex-1 text-center sm:text-left min-w-0">
-                <div className="font-semibold text-lg flex items-center justify-center sm:justify-start gap-2 flex-wrap">{t('hosting.freeplan.title', 'Just want to try it out?')} <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"><Gift size={11} /> {t('hosting.freeplan.badge2', 'Free')}</span></div>
+                <div className="font-semibold text-lg flex items-center justify-center sm:justify-start gap-2 flex-wrap">{t('hosting.freeplan.title', 'Just want to try it out?')} <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-500 text-white shadow-sm shadow-emerald-500/30">{t('hosting.freeplan.badge3', '$0 · Free')}</span></div>
                 <div className="text-sm text-[var(--muted)]">{t('hosting.freeplan.sub', 'Host a small repo at no cost — {gb} GB storage, {mbps} Mbps upload, forever free.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
                 <div className="text-xs text-[var(--faint)] mt-1">{t('hosting.freeplan.note', 'One free repo per account. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
               </div>
@@ -921,27 +922,41 @@ export function Hosting() {
         );
       })()}
 
-      {plans.loading ? <Loading /> : <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {(plans.data?.plans || []).filter((pl) => pl.priceMonthlyCents > 0).map((pl) => {
+      {plans.loading ? <Loading /> : <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 items-stretch pt-2">
+        {(plans.data?.plans || []).filter((pl) => pl.priceMonthlyCents > 0).map((pl, idx) => {
           // A plan can be individually unavailable (not enough free space for ITS
           // size) even while the pool isn't fully soldOut — disable just that card.
           const planDisabled = soldOut || (!!c && pl.storageGB > c.freeGB);
           const recommended = pl.storageGB === 25;
+          // Distinct header accents per tier (pricing-table look). The recommended
+          // tier always wears the brand orange and sits raised with a corner ribbon.
+          const ACCENTS = [['#0ea5e9', '#06b6d4'], ['#8b5cf6', '#d946ef'], ['#f97316', '#f59e0b'], ['#f43f5e', '#ec4899']];
+          const [a1, a2] = recommended ? ['#f97316', '#f59e0b'] : ACCENTS[idx % ACCENTS.length];
           return (
           <div key={pl.id} role="button" tabIndex={0} aria-disabled={planDisabled} onClick={() => !planDisabled && addHosting({ planId: pl.id })}
             onKeyDown={(e) => { if (e.key === 'Enter' && !planDisabled) addHosting({ planId: pl.id }); }}
-            className={`group card p-6 text-center relative transition-all duration-200 ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-1.5'} ${recommended && !planDisabled ? 'md:scale-105 md:-my-1' : ''}`}
-            style={recommended && !planDisabled ? { borderColor: 'var(--primary)', boxShadow: '0 0 0 1px var(--primary), 0 18px 50px -18px var(--primary-glow)' } : undefined}
-            onMouseEnter={(e) => { if (!recommended && !planDisabled) e.currentTarget.style.boxShadow = '0 0 0 1px var(--primary), 0 22px 55px -22px var(--primary-glow)'; }}
-            onMouseLeave={(e) => { if (!recommended) e.currentTarget.style.boxShadow = ''; }}>
-            {recommended && !planDisabled && <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 bg-[var(--primary)]/15 text-[var(--primary-2)] border border-[var(--primary)]/40 whitespace-nowrap" style={{ boxShadow: '0 0 0 3px var(--bg-solid)' }}><Star size={10} /> {t('hosting.popular2', 'Recommended')}</div>}
-            <HardDrive size={22} className="mx-auto text-[var(--primary-2)] transition-transform group-hover:scale-110" />
-            <div className="text-4xl font-extrabold mt-3">{pl.storageGB}<span className="text-base font-medium text-[var(--muted)]"> GB</span></div>
-            <div className="text-xs text-[var(--faint)] mt-2 flex items-center justify-center gap-3"><span className="flex items-center gap-1"><Zap size={12} />{(pl.uploadLimitKbps / 1024).toFixed(0)}Mbps</span></div>
-            <div className="text-2xl font-bold gradient-text mt-4">${(termTotal(pl.priceMonthlyCents) / 100 / months).toFixed(2)}<span className="text-sm text-[var(--muted)] font-medium">{t('hosting.permo', '/mo')}</span></div>
-            <div className="text-[11px] text-[var(--muted)] mb-4">{months > 1 ? <>${(termTotal(pl.priceMonthlyCents) / 100).toFixed(2)} {t('hosting.billedfor', 'billed for')} {months} {t('hosting.mo', 'mo')}</> : t('hosting.billedmonthly', 'billed monthly')}</div>
-            <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full group-hover:opacity-95" onClick={(e) => { e.stopPropagation(); addHosting({ planId: pl.id }); }}>
-              {planDisabled ? t('hosting.nospace', 'Not enough space') : <><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}</>}</Button>
+            className={`group card overflow-hidden text-center relative flex flex-col transition-all duration-200 ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-1.5'} ${recommended && !planDisabled ? 'lg:scale-[1.06] lg:-my-1 z-10' : ''}`}
+            style={recommended && !planDisabled ? { borderColor: 'var(--primary)', boxShadow: '0 0 0 1px var(--primary), 0 22px 55px -20px var(--primary-glow)' } : undefined}>
+            {/* diagonal "MOST POPULAR" corner ribbon (image-3 style) */}
+            {recommended && !planDisabled && (
+              <span className="absolute top-0 right-0 w-[94px] h-[94px] overflow-hidden pointer-events-none z-20">
+                <span className="absolute rotate-45 text-white text-[8.5px] font-extrabold tracking-wider text-center py-1 shadow-md" style={{ width: 132, top: 19, right: -35, background: 'linear-gradient(90deg,#f97316,#f59e0b)' }}>{t('hosting.popular3', 'MOST POPULAR')}</span>
+              </span>
+            )}
+            {/* colored tier header — the "name band" from a classic pricing table */}
+            <div className="px-5 pt-6 pb-5 text-white" style={{ background: `linear-gradient(135deg, ${a1}, ${a2})` }}>
+              <HardDrive size={20} className="mx-auto opacity-90 transition-transform group-hover:scale-110" />
+              <div className="text-4xl font-extrabold mt-2 leading-none">{pl.storageGB}<span className="text-lg font-semibold opacity-90"> GB</span></div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider opacity-80 mt-1">{t('hosting.storage', 'Storage')}</div>
+            </div>
+            {/* body — speed, price, CTA */}
+            <div className="p-5 flex-1 flex flex-col">
+              <div className="text-xs text-[var(--faint)] flex items-center justify-center gap-1"><Zap size={12} />{(pl.uploadLimitKbps / 1024).toFixed(0)} Mbps {t('hosting.uploadword', 'upload')}</div>
+              <div className="text-3xl font-bold gradient-text mt-3">${(termTotal(pl.priceMonthlyCents) / 100 / months).toFixed(2)}<span className="text-sm text-[var(--muted)] font-medium">{t('hosting.permo', '/mo')}</span></div>
+              <div className="text-[11px] text-[var(--muted)] mb-4">{months > 1 ? <>${(termTotal(pl.priceMonthlyCents) / 100).toFixed(2)} {t('hosting.billedfor', 'billed for')} {months} {t('hosting.mo', 'mo')}</> : t('hosting.billedmonthly', 'billed monthly')}</div>
+              <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full mt-auto" onClick={(e) => { e.stopPropagation(); addHosting({ planId: pl.id }); }}>
+                {planDisabled ? t('hosting.nospace', 'Not enough space') : <><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}</>}</Button>
+            </div>
           </div>
           ); })}
       </div>}
@@ -1002,7 +1017,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
   const [agreed, setAgreed] = useState(false); // must accept Terms + Payments policy before paying
   const apiItems = useMemo(() => cart.map((it) => it.kind === 'hosting'
     ? { kind: 'hosting', mode: it.mode, repoName: it.repoName, months: it.months, autoRenew: !!it.autoRenew, ...(it.custom ? { custom: it.custom } : { planId: it.planId }) }
-    : { kind: 'boost', repoId: it.repoId, days: it.days }), [cart]);
+    : { kind: 'boost', repoId: it.repoId, days: it.days, autoRenew: !!it.autoRenew }), [cart]);
   // Live quote (debounced) whenever the cart or promo set changes.
   useEffect(() => {
     if (!cart.length) { setQuote(null); setQuoteErr(null); return; }
@@ -1035,14 +1050,17 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
     } finally { setBusy(false); }
   };
   if (!count) return null;
-  if (!open) return (
-    <button onClick={() => setOpen(true)} className="fixed bottom-20 md:bottom-4 right-3 md:right-4 z-[60] flex items-center gap-2 pl-3.5 pr-4 py-3 rounded-2xl text-white font-semibold shadow-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:brightness-105 transition">
+  // Rendered through a portal to <body> so no page-level ancestor (opacity/anim
+  // wrappers, reveal transforms) can turn `fixed` into a clipped absolute — that
+  // was making the cart + its button hide under the footer and go un-clickable.
+  if (!open) return createPortal((
+    <button onClick={() => setOpen(true)} className="fixed bottom-20 md:bottom-4 right-3 md:right-4 z-[90] flex items-center gap-2 pl-3.5 pr-4 py-3 rounded-2xl text-white font-semibold shadow-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:brightness-105 transition">
       <span className="relative"><ShoppingCart size={18} /><span className="absolute -top-2 -right-2 grid place-items-center w-4 h-4 rounded-full bg-white text-orange-600 text-[10px] font-bold">{count}</span></span>
       {t('cart.title', 'Cart')}
     </button>
-  );
-  return (
-    <div className="fixed z-[60] inset-x-2 bottom-[4.75rem] md:inset-x-auto md:right-4 md:bottom-4 md:w-[24rem] max-h-[70vh] md:max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl border border-[var(--line-strong)] overflow-hidden" style={{ background: 'var(--bg-solid)', boxShadow: '0 24px 70px -18px rgba(0,0,0,0.6)' }}>
+  ), document.body);
+  return createPortal((
+    <div className="fixed z-[90] inset-x-2 bottom-[4.75rem] md:inset-x-auto md:right-4 md:bottom-4 md:w-[24rem] max-h-[70vh] md:max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl border border-[var(--line-strong)] overflow-hidden" style={{ background: 'var(--bg-solid)', boxShadow: '0 24px 70px -18px rgba(0,0,0,0.6)' }}>
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--line)]">
         <ShoppingCart size={16} className="text-[var(--primary-2)]" />
         <span className="font-semibold flex-1">{t('cart.your', 'Your cart')} <span className="text-[var(--faint)] font-normal">· {count}</span></span>
@@ -1055,17 +1073,16 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
               {it.kind === 'boost' ? <Rocket size={14} className="text-amber-400 shrink-0" /> : <HardDrive size={14} className="text-[var(--primary-2)] shrink-0" />}
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{it.kind === 'boost' ? t('cart.boostof', 'Boost "{n}"').replace('{n}', it.repoName || '') : (it.label || it.repoName)}</div>
-                <div className="text-[11px] text-[var(--faint)]">{it.kind === 'boost' ? `${it.days} ${t('cart.days', 'days')} · ${t('cart.onetime', 'one-time')}` : `${it.mode === 'multi' ? t('hosting.multi', 'Multiple repos') : t('hosting.single', 'Single repo')} · ${it.months} ${t('hosting.mo', 'mo')}`}</div>
+                <div className="text-[11px] text-[var(--faint)]">{it.kind === 'boost' ? `${it.days} ${t('cart.days', 'days')} · ${it.autoRenew ? t('cart.recurring', 'recurring') : t('cart.onetime', 'one-time')}` : `${it.mode === 'multi' ? t('hosting.multi', 'Multiple repos') : t('hosting.single', 'Single repo')} · ${it.months} ${t('hosting.mo', 'mo')}`}</div>
               </div>
               <button onClick={() => removeItem(it.uid)} className="text-[var(--faint)] hover:text-red-400 shrink-0"><X size={14} /></button>
             </div>
-            {/* Per-item auto-renew — hosting only (a boost is always a one-time buy). */}
-            {it.kind === 'hosting' && (
-              <label className="flex items-center gap-1.5 mt-1.5 text-[11px] text-[var(--muted)] cursor-pointer" title={t('cart.autorenew.h', 'Keep this repo online automatically — after the prepaid term it renews as a subscription. Cancel anytime in Billing.')}>
-                <input type="checkbox" checked={!!it.autoRenew} onChange={(e) => setItemAutoRenew(it.uid, e.target.checked)} />
-                <RefreshCw size={11} className={it.autoRenew ? 'text-emerald-400' : 'text-[var(--faint)]'} /> {t('cart.autorenew', 'Auto-renew after the prepaid term')}
-              </label>
-            )}
+            {/* Per-item auto-renew — hosting renews as a subscription after the prepaid
+                term; a boost re-bills every N days. Both cancellable in Billing. */}
+            <label className="flex items-center gap-1.5 mt-1.5 text-[11px] text-[var(--muted)] cursor-pointer" title={it.kind === 'boost' ? t('cart.autorenew.hb', 'Keep this repo featured automatically — re-bills every {n} days. Cancel anytime in Billing.').replace('{n}', it.days) : t('cart.autorenew.h', 'Keep this repo online automatically — after the prepaid term it renews as a subscription. Cancel anytime in Billing.')}>
+              <input type="checkbox" checked={!!it.autoRenew} onChange={(e) => setItemAutoRenew(it.uid, e.target.checked)} />
+              <RefreshCw size={11} className={it.autoRenew ? 'text-emerald-400' : 'text-[var(--faint)]'} /> {it.kind === 'boost' ? t('cart.autorenew.boost', 'Auto-renew every {n} days').replace('{n}', it.days) : t('cart.autorenew', 'Auto-renew after the prepaid term')}
+            </label>
           </div>
         ))}
         {/* Promo codes (stack the stackable ones) */}
@@ -1096,7 +1113,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
         <p className="text-[10px] text-[var(--faint)] text-center">{t('cart.note2', 'Prepaid now for the whole cart. Items marked auto-renew continue as a subscription after their term.')}</p>
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 function CustomPlanModal({ open, onClose, onCheckout, months = 12, setMonths, termDisc = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.20, 24: 0.35 } }) {

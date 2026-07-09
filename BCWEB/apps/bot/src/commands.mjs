@@ -1,5 +1,5 @@
 // Slash commands + interaction routing.
-import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } from 'discord.js';
 import { api, SITE_URL } from './api.mjs';
 import { clearMessages } from './features/moderation.mjs';
 import { sendPanel, handlePanelInteraction } from './features/panel.mjs';
@@ -10,7 +10,7 @@ import { handleGiveawayButton } from './features/giveaways.mjs';
 // consistent look across alerts/blog/tips/commands. Shared with panel.mjs.
 export const BRAND = 0xf59e0b;
 export const eReply = (i, text, { color = BRAND, title = null, ephemeral = true } = {}) =>
-  i.reply({ embeds: [new EmbedBuilder().setColor(color).setTitle(title).setDescription(text)], ephemeral });
+  i.reply({ embeds: [new EmbedBuilder().setColor(color).setTitle(title).setDescription(text)], ...(ephemeral ? { flags: MessageFlags.Ephemeral } : {}) });
 
 export const commandData = [
   new SlashCommandBuilder().setName('link').setDescription('Link your Discord to your BetterCommunity account'),

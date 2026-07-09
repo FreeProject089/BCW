@@ -33,7 +33,7 @@ export default async function stripeWebhook(app) {
           // Saved card (present only when a line opted into auto-renew — the session
           // was created with setup_future_usage: off_session).
           let savedPm = null;
-          if (items.some((l) => l.kind === 'hosting' && l.autoRenew) && s.payment_intent) {
+          if (items.some((l) => l.autoRenew) && s.payment_intent) {
             try { const pi = typeof s.payment_intent === 'string' ? await stripe.paymentIntents.retrieve(s.payment_intent) : s.payment_intent; savedPm = pi?.payment_method || null; } catch {}
           }
           for (const l of items) {
@@ -61,6 +61,17 @@ export default async function stripeWebhook(app) {
                 const until = new Date(base.getTime() + l.days * 864e5);
                 await p.serverRepo.update({ where: { id: repo.id }, data: { featuredUntil: until } });
                 await p.payment.create({ data: { userId: cart.userId, serverRepoId: repo.id, kind: 'FEATURE', description: `Featured boost — "${repo.name}" (${l.days} days)`, amountCents: l.finalCents ?? 0, currency: 'usd', days: l.days, stripeSessionId: s.id } });
+                // Auto-renew boost: subscription that re-bills every `days` starting at
+                // the end of this prepaid window (trial_end). A FeatureSubscription row
+                // lets invoice.paid 'subscription_cycle' re-extend featuredUntil.
+                if (l.autoRenew && savedPm) {
+                  try {
+                    const trialEnd = Math.floor(until.getTime() / 1000);
+                    const price = await stripe.prices.create({ currency: 'usd', unit_amount: Math.max(50, l.finalCents || l.baseCents || 50), recurring: { interval: 'day', interval_count: l.days }, product_data: { name: `Feature "${repo.name}" (auto-renews every ${l.days} days)` } });
+                    const sub = await stripe.subscriptions.create({ customer: s.customer, items: [{ price: price.id }], default_payment_method: savedPm, trial_end: trialEnd, proration_behavior: 'none', metadata: { type: 'feature', kind: 'feature', repoId: repo.id, userId: cart.userId, days: String(l.days) } });
+                    await p.featureSubscription.upsert({ where: { stripeSubId: sub.id }, create: { userId: cart.userId, serverRepoId: repo.id, stripeSubId: sub.id, days: l.days, status: 'active', currentPeriodEnd: until }, update: { status: 'active', currentPeriodEnd: until } });
+                  } catch (e) { req.log?.warn?.({ err: e?.message }, 'cart boost auto-renew sub create failed'); }
+                }
                 provisioned++;
               }
             } catch (e) { req.log?.warn?.({ err: e?.message }, 'cart line provision failed'); }

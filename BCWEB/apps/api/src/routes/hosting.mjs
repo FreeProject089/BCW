@@ -378,7 +378,7 @@ export default async function hostingRoutes(app) {
       autoRenew: z.boolean().optional(),
       planId: z.string().optional(),
       custom: z.object({ storageGB: z.number().int().min(1).max(500), uploadMbps: z.number().min(1).max(1000) }).optional() }),
-    z.object({ kind: z.literal('boost'), repoId: z.string(), days: z.number().int().min(1).max(365) }),
+    z.object({ kind: z.literal('boost'), repoId: z.string(), days: z.number().int().min(1).max(365), autoRenew: z.boolean().optional() }),
   ])).min(1).max(20);
 
   // Resolve a cart to priced lines + combined discount. `persistPlans` = create the
@@ -407,7 +407,7 @@ export default async function hostingRoutes(app) {
       } else {
         const repo = await p.serverRepo.findUnique({ where: { id: it.repoId }, select: { id: true, name: true, ownerId: true } });
         if (!repo || repo.ownerId !== req.user.uid) return { error: 'boost_repo_not_found' };
-        lines.push({ kind: 'boost', name: `Boost "${repo.name}" — ${it.days} d`, baseCents: featurePriceFn(it.days), monthlyCents: 0, months: 0, repoId: repo.id, days: it.days });
+        lines.push({ kind: 'boost', name: `Boost "${repo.name}" — ${it.days} d`, baseCents: featurePriceFn(it.days), monthlyCents: 0, months: 0, repoId: repo.id, days: it.days, autoRenew: !!it.autoRenew });
       }
     }
     if (cap.allocatedGB + neededStorageGB > cap.usableGB) return { error: 'capacity_full', freeGB: cap.freeGB };
@@ -466,7 +466,7 @@ export default async function hostingRoutes(app) {
     const suffix = (r.combinedPct || r.freeMonths) ? ` (${[r.combinedPct ? `−${r.combinedPct}%` : null, r.freeMonths ? `${r.freeMonths}mo free` : null].filter(Boolean).join(', ')})` : '';
     // If any hosting line opted into auto-renew, save the card off-session so the
     // webhook can start each such repo's subscription (anchored at its prepaid term end).
-    const wantsRenew = r.lines.some((l) => l.kind === 'hosting' && l.autoRenew);
+    const wantsRenew = r.lines.some((l) => l.autoRenew);
     const session = await sk.checkout.sessions.create({
       mode: 'payment', customer,
       line_items: r.lines.map((l) => ({ quantity: 1, price_data: { currency: 'usd', unit_amount: Math.max(0, l.finalCents), product_data: { name: `${l.name}${suffix}` } } })).filter((li) => li.price_data.unit_amount > 0),

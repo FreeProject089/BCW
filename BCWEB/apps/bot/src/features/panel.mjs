@@ -12,7 +12,7 @@ import { temp } from '../store.mjs';
 // output (defined locally — commands.mjs imports this file, so importing its
 // eReply back would be circular).
 const mini = (text, color = 0xf59e0b) => new EmbedBuilder().setColor(color).setDescription(text);
-const eReply = (i, text, color) => i.reply({ embeds: [mini(text, color)], ephemeral: true });
+const eReply = (i, text, color) => i.reply({ embeds: [mini(text, color)], flags: MessageFlags.Ephemeral });
 const eUpdate = (i, text, color) => i.update({ content: '', embeds: [mini(text, color)], components: [] });
 
 const RENAME_COOLDOWN_MS = 12 * 60 * 1000; // 12 minutes
@@ -99,18 +99,18 @@ export async function handlePanelInteraction(i) {
     if (action === 'region') {
       const select = new StringSelectMenuBuilder().setCustomId('vps:region').setPlaceholder('Choose a voice region')
         .addOptions(REGIONS.map(([v, l]) => ({ label: l, value: v })));
-      return i.reply({ embeds: [mini('Pick a region:')], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
+      return i.reply({ embeds: [mini('Pick a region:')], components: [new ActionRowBuilder().addComponents(select)], flags: MessageFlags.Ephemeral });
     }
     if (action === 'whitelist' || action === 'kick' || action === 'ban') {
       const select = new UserSelectMenuBuilder().setCustomId(`vps:${action}`).setPlaceholder(`Select a user to ${action}`).setMaxValues(1);
-      return i.reply({ embeds: [mini(`Select a user to **${action}**:`)], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
+      return i.reply({ embeds: [mini(`Select a user to **${action}**:`)], components: [new ActionRowBuilder().addComponents(select)], flags: MessageFlags.Ephemeral });
     }
     if (action === 'unban' || action === 'unkick') {
       const set = action === 'unban' ? state.bans : state.kicks;
       if (!set.size) return eReply(i, `No ${action === 'unban' ? 'banned' : 'kicked'} users.`);
       const select = new StringSelectMenuBuilder().setCustomId(`vps:${action}`).setPlaceholder('Select a user')
         .addOptions([...set].slice(0, 25).map((uid) => ({ label: uid, value: uid })));
-      return i.reply({ embeds: [mini('Select a user:')], components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
+      return i.reply({ embeds: [mini('Select a user:')], components: [new ActionRowBuilder().addComponents(select)], flags: MessageFlags.Ephemeral });
     }
     if (action === 'preset_export') {
       // Export the room's current setup as a portable .json — sent EPHEMERALLY, so
@@ -120,7 +120,7 @@ export async function handlePanelInteraction(i) {
       const file = new AttachmentBuilder(Buffer.from(json, 'utf8'), { name: 'voice-preset.json' });
       return i.reply({
         embeds: [mini(`Here is your room preset — keep it and paste it into **Import preset** anytime:\n\`\`\`json\n${json}\n\`\`\``)],
-        files: [file], ephemeral: true,
+        files: [file], flags: MessageFlags.Ephemeral,
       });
     }
     if (action === 'preset_import') {

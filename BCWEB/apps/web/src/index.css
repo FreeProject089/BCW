@@ -187,11 +187,13 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     background: color-mix(in srgb, var(--bg-solid) calc(var(--glass-alpha, 0.85) * 100%), transparent);
     backdrop-filter: blur(10px) saturate(1.2);
   }
-  /* Segmented topbar nav: the nav is a size container; pill labels appear only once
-     the nav's own box is wide enough (pure CSS — no JS measurement). */
-  .seg-nav { container: segnav / inline-size; }
+  /* Segmented topbar nav: icons-only by default, icons+labels once the VIEWPORT is
+     wide enough. Keyed on viewport width (not the nav's own box) because the nav is
+     flex-1 — a container query on it is a feedback loop (labels widen the box, which
+     re-triggers the query), which flipped it to icons-only on wide screens. The nav
+     itself only appears at lg (1024px); below that it's the hamburger sheet. */
   .seg-nav .nav-lbl { display: none; margin-left: 6px; }
-  @container segnav (min-width: 560px) { .seg-nav .nav-lbl { display: inline; } }
+  @media (min-width: 1250px) { .seg-nav .nav-lbl { display: inline; } }
   .nav-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 9px; font-size: 14px; color: var(--muted); transition: all .15s ease; }
   .nav-link:hover { color: var(--text); background: var(--surface-2); }
   .nav-link-active { color: var(--primary); background: var(--surface-2); }
