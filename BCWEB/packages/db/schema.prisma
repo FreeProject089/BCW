@@ -67,6 +67,7 @@ model User {
   emailVerified Boolean  @default(false)
   bio           String   @default("")
   avatar        Json?    // { variant, seed } for the Boring Avatar
+  termsAcceptedAt DateTime? // last time the user accepted the Terms + Payments policy at checkout
   stripeCustomerId String? @unique
   // Personal API token — the user copies it from their profile to drive the API on
   // their own behalf (tokenAuth in lib.mjs). Resettable/revocable by the owner.

@@ -448,9 +448,12 @@ export default async function hostingRoutes(app) {
   });
 
   app.post('/hosting/cart/checkout', { preHandler: requireRole() }, async (req, reply) => {
-    const b = z.object({ items: cartItemSchema, promoCodes: z.array(z.string().max(40)).max(10).default([]) }).safeParse(req.body);
+    const b = z.object({ items: cartItemSchema, promoCodes: z.array(z.string().max(40)).max(10).default([]), acceptedTerms: z.boolean().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    // Must accept the Terms + Payments policy to pay (recorded on the account).
+    if (!b.data.acceptedTerms) return reply.code(400).send({ error: 'terms_not_accepted' });
     const p = await db();
+    await p.user.update({ where: { id: req.user.uid }, data: { termsAcceptedAt: new Date() } }).catch(() => {});
     if (await p.creatorLink.count({ where: { userId: req.user.uid } }) === 0) return reply.code(403).send({ error: 'creator_link_required' });
     const r = await resolveCart(p, req, b.data, { persistPlans: true });
     if (r.error) return reply.code(r.error.startsWith('promo_') ? 400 : 409).send(r);

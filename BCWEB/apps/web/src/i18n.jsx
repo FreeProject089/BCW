@@ -462,6 +462,8 @@ const DICT = {
     'cart.onetime': 'unique', 'cart.autorenew': 'Renouvellement auto après la durée prépayée',
     'cart.autorenew.h': 'Garde ce dépôt en ligne automatiquement — après la durée prépayée, il se renouvelle en abonnement. Annulable à tout moment dans Facturation.',
     'cart.note2': 'Prépayé maintenant pour tout le panier. Les articles en renouvellement auto continuent en abonnement après leur durée.',
+    'cart.mustagree': 'Merci d’accepter d’abord les Conditions et la politique de paiement.',
+    'cart.agree': 'J’accepte les <a href="/legal/terms" target="_blank" class="text-[var(--primary-2)] underline">Conditions</a> et la politique <a href="/legal/refunds" target="_blank" class="text-[var(--primary-2)] underline">Paiements & Remboursements</a>, et je comprends que le contenu que j’héberge relève de ma responsabilité.',
     'hosting.custom.cta': 'Créer un plan sur mesure', 'hosting.custom.modaltitle': 'Créer un plan sur mesure',
     'hosting.note': 'Les mises à jour nécessitent seulement un SHA valide. Nous fixons la limite d’envoi par dépôt.',
     'hosting.pool.title': 'Nouveau pool de stockage', 'hosting.pool.label': 'Nom du pool', 'hosting.pool.ph': 'mon-pool',
