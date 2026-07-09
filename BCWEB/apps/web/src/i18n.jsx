@@ -176,6 +176,29 @@ const DICT = {
     'proj.nocontrib': 'Pas encore de contributeurs', 'proj.messages': 'Messages de la communauté',
     'proj.blog': 'Blog', 'proj.noposts': 'Pas encore de billets',
     'common.loading': 'Chargement…', 'common.cancel': 'Annuler',
+    'common.failed': 'Échec.', 'common.deleted': 'Supprimé.', 'common.saved': 'Enregistré.', 'common.removed': 'Retiré.', 'common.copied': 'Copié.', 'common.savefail': 'Échec de l’enregistrement.', 'common.loadfail': 'Échec du chargement.',
+
+    // ── Admin : objectif de financement Ko-fi ──
+    'kg.title': 'Objectif de financement (widget public)',
+    'kg.sub': 'Affiché sur l’accueil avec le total récolté + le nombre de dons, depuis les events du webhook Ko-fi. Définis un objectif pour l’activer.',
+    'kg.raised': 'Récolté :', 'kg.tips': 'Dons :',
+    'kg.f.title': 'Titre (optionnel)', 'kg.f.title.ph': 'Aide-nous à couvrir les frais de serveur', 'kg.f.target': 'Objectif', 'kg.f.currency': 'Devise',
+    'kg.pct': '{p}% de l’objectif de {a} {c} — en ligne sur l’accueil',
+    'kg.update': 'Mettre à jour', 'kg.publish': 'Publier l’objectif', 'kg.remove': 'Retirer',
+    'kg.amt.req': 'Le montant cible doit être supérieur à 0.', 'kg.saved': 'Objectif enregistré — maintenant visible sur l’accueil.',
+    'kg.rm.t': 'Retirer l’objectif de financement', 'kg.rm.m': 'Le widget public disparaîtra de l’accueil. Le total et le nombre de dons continuent de s’accumuler en arrière-plan.', 'kg.rm.ok': 'Retirer',
+
+    // ── Admin : codes promo ──
+    'pc.title': 'Codes promo', 'pc.created': 'Code {code} créé.',
+    'pc.err.discount': 'Définis un % de réduction ou des mois gratuits.', 'pc.err.exists': 'Ce code existe déjà.', 'pc.err.storage': 'Définis le stockage (Go).', 'pc.err.boost': 'Définis les jours de boost.',
+    'pc.f.type': 'Type', 'pc.t.discount': 'Réduction (% / mois gratuits)', 'pc.t.hosting': 'Hébergement gratuit', 'pc.t.boost': 'Boost gratuit',
+    'pc.f.code': 'Code (vide = auto-généré)', 'pc.f.pctoff': '% de réduction', 'pc.f.freemonths': 'Premiers mois gratuits', 'pc.f.minterm': 'Durée min. (mois, 0 = toutes)',
+    'pc.f.storage': 'Stockage Go', 'pc.f.upload': 'Envoi Mbps', 'pc.f.duration': 'Durée (mois, 0 = pour toujours)', 'pc.f.boostdays': 'Jours de boost',
+    'pc.f.maxred': 'Utilisations max (vide = ∞)', 'pc.f.peruser': 'Limite par utilisateur', 'pc.f.note': 'Note (interne)', 'pc.f.note.ph': 'ex. promo de lancement',
+    'pc.create': 'Créer le code', 'pc.disabled': 'Désactivé', 'pc.disable': 'Désactiver', 'pc.enable': 'Activer',
+    'pc.used': 'utilisés', 'pc.noreds': 'Aucune utilisation pour le moment.',
+    'pc.none.t': 'Aucun code promo', 'pc.none.s': 'Crée-en un ci-dessus — réduction, hébergement gratuit, ou boost gratuit.',
+    'pc.d.off': '{n}% de réduction', 'pc.d.mofree': '{n} mois gratuits', 'pc.d.minterm': 'durée {n} mois+ seulement', 'pc.d.forever': 'pour toujours', 'pc.d.boost': 'boost {n} jours',
 
     'hosting.title': 'Héberger un Server-Repo', 'hosting.sub': 'On l’exécute, tu le gères. Paie selon la taille dont tu as besoin.',
     'hosting.single': 'Dépôt unique', 'hosting.single.d': 'Un seul dépôt avec tout le quota.',

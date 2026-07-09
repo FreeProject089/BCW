@@ -4081,47 +4081,47 @@ function AdminKofi() {
 // The running total + tip count are read-only here (derived from logged webhook
 // events) — only the target amount/currency/title are editable.
 function AdminKofiGoal() {
-  const toast = useToast(); const dialog = useDialog();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/kofi/goal'), []);
   const [f, setF] = useState({ title: '', targetAmount: '', currency: 'USD' });
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (data?.goal) setF({ title: data.goal.title || '', targetAmount: String(data.goal.targetAmount ?? ''), currency: data.goal.currency || 'USD' }); }, [data]);
   const save = async () => {
     const amt = Number(f.targetAmount);
-    if (!(amt > 0)) return toast.error('Target amount must be greater than 0.');
+    if (!(amt > 0)) return toast.error(t('kg.amt.req', 'Target amount must be greater than 0.'));
     setBusy(true);
-    try { await api.put('/admin/kofi/goal', { title: f.title.trim(), targetAmount: amt, currency: f.currency.trim() || 'USD' }); toast.success('Goal saved — now visible on the homepage.'); reload(); }
-    catch { toast.error('Failed.'); } finally { setBusy(false); }
+    try { await api.put('/admin/kofi/goal', { title: f.title.trim(), targetAmount: amt, currency: f.currency.trim() || 'USD' }); toast.success(t('kg.saved', 'Goal saved — now visible on the homepage.')); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const clear = async () => {
-    if (!(await dialog.confirm({ title: 'Remove funding goal', message: 'The public widget will disappear from the homepage. The running total/tip count keep accumulating in the background.', okLabel: 'Remove' }))) return;
-    try { await api.del('/admin/kofi/goal'); toast.success('Removed.'); setF({ title: '', targetAmount: '', currency: 'USD' }); reload(); }
-    catch { toast.error('Failed.'); }
+    if (!(await dialog.confirm({ title: t('kg.rm.t', 'Remove funding goal'), message: t('kg.rm.m', 'The public widget will disappear from the homepage. The running total/tip count keep accumulating in the background.'), okLabel: t('kg.rm.ok', 'Remove') }))) return;
+    try { await api.del('/admin/kofi/goal'); toast.success(t('common.removed', 'Removed.')); setF({ title: '', targetAmount: '', currency: 'USD' }); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
   };
   if (loading) return <Loading />;
   const pct = data?.goal ? Math.min(100, Math.round((data.totalAmount / data.goal.targetAmount) * 100)) : 0;
   return (
     <Card className="p-4 mb-4">
-      <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><Target size={16} className="text-[var(--primary-2)]" /> Funding goal (public widget)</div>
-      <p className="text-xs text-[var(--muted)] mb-3">Shown on the homepage with the running total raised + number of tips, sourced from Ko-fi webhook events. Set a target to turn it on.</p>
+      <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><Target size={16} className="text-[var(--primary-2)]" /> {t('kg.title', 'Funding goal (public widget)')}</div>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('kg.sub', 'Shown on the homepage with the running total raised + number of tips, sourced from Ko-fi webhook events. Set a target to turn it on.')}</p>
       <div className="rounded-xl bg-[var(--surface-2)] p-3 mb-3 flex items-center gap-4 text-sm">
-        <div><span className="text-[var(--faint)]">Raised so far:</span> <b>{(data?.totalAmount || 0).toFixed(2)} {f.currency || 'USD'}</b></div>
-        <div><span className="text-[var(--faint)]">Tips:</span> <b>{data?.tipCount ?? 0}</b></div>
+        <div><span className="text-[var(--faint)]">{t('kg.raised', 'Raised so far:')}</span> <b>{(data?.totalAmount || 0).toFixed(2)} {f.currency || 'USD'}</b></div>
+        <div><span className="text-[var(--faint)]">{t('kg.tips', 'Tips:')}</span> <b>{data?.tipCount ?? 0}</b></div>
       </div>
       <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mb-2">
-        <Field label="Title (optional)"><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Help us cover server costs" /></Field>
-        <Field label="Target"><Input type="number" min="1" value={f.targetAmount} onChange={(e) => setF({ ...f, targetAmount: e.target.value })} placeholder="500" className="w-28" /></Field>
-        <Field label="Currency"><Input value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value.toUpperCase() })} placeholder="USD" className="w-20" /></Field>
+        <Field label={t('kg.f.title', 'Title (optional)')}><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={t('kg.f.title.ph', 'Help us cover server costs')} /></Field>
+        <Field label={t('kg.f.target', 'Target')}><Input type="number" min="1" value={f.targetAmount} onChange={(e) => setF({ ...f, targetAmount: e.target.value })} placeholder="500" className="w-28" /></Field>
+        <Field label={t('kg.f.currency', 'Currency')}><Input value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value.toUpperCase() })} placeholder="USD" className="w-20" /></Field>
       </div>
       {data?.goal && (
         <div className="mb-3">
           <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${pct}%` }} /></div>
-          <div className="text-xs text-[var(--faint)] mt-1">{pct}% of {data.goal.targetAmount} {data.goal.currency} goal — live on the homepage</div>
+          <div className="text-xs text-[var(--faint)] mt-1">{t('kg.pct', '{p}% of {a} {c} goal — live on the homepage').replace('{p}', pct).replace('{a}', data.goal.targetAmount).replace('{c}', data.goal.currency)}</div>
         </div>
       )}
       <div className="flex gap-2">
-        <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : data?.goal ? 'Update goal' : 'Publish goal'}</Button>
-        {data?.goal && <Button variant="ghost" className="!text-red-400" onClick={clear}>Remove</Button>}
+        <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : data?.goal ? t('kg.update', 'Update goal') : t('kg.publish', 'Publish goal')}</Button>
+        {data?.goal && <Button variant="ghost" className="!text-red-400" onClick={clear}>{t('kg.remove', 'Remove')}</Button>}
       </div>
     </Card>
   );
@@ -4129,7 +4129,7 @@ function AdminKofiGoal() {
 
 // Admin: generate + manage promo codes (discount / free hosting / free boost).
 function AdminPromo() {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/promo'), []);
   const [f, setF] = useState({ kind: 'discount', code: '', percentOff: 20, freeMonths: 0, minMonths: 0, storageGB: 10, uploadMbps: 8, hostMonths: 0, boostDays: 7, maxRedemptions: '', perUserLimit: 1, note: '' });
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
@@ -4139,37 +4139,37 @@ function AdminPromo() {
     if (f.kind === 'discount') { if (Number(f.percentOff)) body.percentOff = Number(f.percentOff); if (Number(f.freeMonths)) body.freeMonths = Number(f.freeMonths); if (Number(f.minMonths)) body.minMonths = Number(f.minMonths); }
     if (f.kind === 'free_hosting') { body.storageGB = Number(f.storageGB); if (Number(f.uploadMbps)) body.uploadMbps = Number(f.uploadMbps); if (Number(f.hostMonths)) body.hostMonths = Number(f.hostMonths); }
     if (f.kind === 'free_boost') body.boostDays = Number(f.boostDays);
-    try { const r = await api.post('/admin/promo', body); toast.success(`Code ${r.code.code} created.`); setF((s) => ({ ...s, code: '' })); reload(); }
-    catch (x) { toast.error(x.data?.error === 'discount_needs_value' ? 'Set a % off or free months.' : x.data?.error === 'code_exists' ? 'That code already exists.' : x.data?.error === 'hosting_needs_storage' ? 'Set the storage GB.' : x.data?.error === 'boost_needs_days' ? 'Set the boost days.' : 'Failed.'); }
+    try { const r = await api.post('/admin/promo', body); toast.success(t('pc.created', 'Code {code} created.').replace('{code}', r.code.code)); setF((s) => ({ ...s, code: '' })); reload(); }
+    catch (x) { toast.error(x.data?.error === 'discount_needs_value' ? t('pc.err.discount', 'Set a % off or free months.') : x.data?.error === 'code_exists' ? t('pc.err.exists', 'That code already exists.') : x.data?.error === 'hosting_needs_storage' ? t('pc.err.storage', 'Set the storage GB.') : x.data?.error === 'boost_needs_days' ? t('pc.err.boost', 'Set the boost days.') : t('common.failed', 'Failed.')); }
   };
-  const toggle = async (c) => { try { await api.patch(`/admin/promo/${c.id}`, { active: !c.active }); reload(); } catch { toast.error('Failed.'); } };
-  const del = async (c) => { try { await api.del(`/admin/promo/${c.id}`); reload(); } catch { toast.error('Failed.'); } };
+  const toggle = async (c) => { try { await api.patch(`/admin/promo/${c.id}`, { active: !c.active }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = async (c) => { try { await api.del(`/admin/promo/${c.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const [openId, setOpenId] = useState(null);
   const [reds, setReds] = useState({});
   const viewReds = async (c) => {
     if (openId === c.id) { setOpenId(null); return; }
     setOpenId(c.id);
-    if (!reds[c.id]) { try { const r = await api.get(`/admin/promo/${c.id}/redemptions`); setReds((s) => ({ ...s, [c.id]: r.redemptions })); } catch { toast.error('Failed to load.'); } }
+    if (!reds[c.id]) { try { const r = await api.get(`/admin/promo/${c.id}/redemptions`); setReds((s) => ({ ...s, [c.id]: r.redemptions })); } catch { toast.error(t('common.loadfail', 'Failed to load.')); } }
   };
-  const desc = (c) => c.kind === 'discount' ? [c.percentOff && `${c.percentOff}% off`, c.freeMonths && `${c.freeMonths} mo free`, c.minMonths && `${c.minMonths}mo+ term only`].filter(Boolean).join(' + ')
-    : c.kind === 'free_hosting' ? `${c.storageGB}GB${c.uploadMbps ? ` · ${c.uploadMbps}Mbps` : ''}${c.hostMonths ? ` · ${c.hostMonths}mo` : ' · forever'}`
-    : `boost ${c.boostDays} days`;
+  const desc = (c) => c.kind === 'discount' ? [c.percentOff && t('pc.d.off', '{n}% off').replace('{n}', c.percentOff), c.freeMonths && t('pc.d.mofree', '{n} mo free').replace('{n}', c.freeMonths), c.minMonths && t('pc.d.minterm', '{n}mo+ term only').replace('{n}', c.minMonths)].filter(Boolean).join(' + ')
+    : c.kind === 'free_hosting' ? `${c.storageGB}GB${c.uploadMbps ? ` · ${c.uploadMbps}Mbps` : ''}${c.hostMonths ? ` · ${c.hostMonths}mo` : ` · ${t('pc.d.forever', 'forever')}`}`
+    : t('pc.d.boost', 'boost {n} days').replace('{n}', c.boostDays);
   return (
     <div>
-      <h2 className="font-semibold mb-3 flex items-center gap-2"><Ticket size={16} className="text-[var(--primary-2)]" /> Promo codes</h2>
+      <h2 className="font-semibold mb-3 flex items-center gap-2"><Ticket size={16} className="text-[var(--primary-2)]" /> {t('pc.title', 'Promo codes')}</h2>
       <AdminKofi />
       <Card className="p-4 mb-4">
         <div className="grid sm:grid-cols-2 gap-3">
-          <Field label="Type"><Select value={f.kind} onChange={(e) => set('kind', e.target.value)}><option value="discount">Discount (% off / months free)</option><option value="free_hosting">Free hosting</option><option value="free_boost">Free boost</option></Select></Field>
-          <Field label="Code (blank = auto-generate)"><Input value={f.code} onChange={(e) => set('code', e.target.value)} placeholder="AUTO" /></Field>
-          {f.kind === 'discount' && <><Field label="% off"><Input type="number" value={f.percentOff} onChange={(e) => set('percentOff', e.target.value)} /></Field><Field label="First months free"><Input type="number" value={f.freeMonths} onChange={(e) => set('freeMonths', e.target.value)} /></Field><Field label="Min. term months (0 = any)"><Input type="number" value={f.minMonths} onChange={(e) => set('minMonths', e.target.value)} /></Field></>}
-          {f.kind === 'free_hosting' && <><Field label="Storage GB"><Input type="number" value={f.storageGB} onChange={(e) => set('storageGB', e.target.value)} /></Field><Field label="Upload Mbps"><Input type="number" value={f.uploadMbps} onChange={(e) => set('uploadMbps', e.target.value)} /></Field><Field label="Duration (months, 0 = forever)"><Input type="number" value={f.hostMonths} onChange={(e) => set('hostMonths', e.target.value)} /></Field></>}
-          {f.kind === 'free_boost' && <Field label="Boost days"><Input type="number" value={f.boostDays} onChange={(e) => set('boostDays', e.target.value)} /></Field>}
-          <Field label="Max redemptions (blank = ∞)"><Input type="number" value={f.maxRedemptions} onChange={(e) => set('maxRedemptions', e.target.value)} placeholder="∞" /></Field>
-          <Field label="Per-user limit"><Input type="number" value={f.perUserLimit} onChange={(e) => set('perUserLimit', e.target.value)} /></Field>
-          <Field label="Note (internal)"><Input value={f.note} onChange={(e) => set('note', e.target.value)} placeholder="e.g. launch promo" /></Field>
+          <Field label={t('pc.f.type', 'Type')}><Select value={f.kind} onChange={(e) => set('kind', e.target.value)}><option value="discount">{t('pc.t.discount', 'Discount (% off / months free)')}</option><option value="free_hosting">{t('pc.t.hosting', 'Free hosting')}</option><option value="free_boost">{t('pc.t.boost', 'Free boost')}</option></Select></Field>
+          <Field label={t('pc.f.code', 'Code (blank = auto-generate)')}><Input value={f.code} onChange={(e) => set('code', e.target.value)} placeholder="AUTO" /></Field>
+          {f.kind === 'discount' && <><Field label={t('pc.f.pctoff', '% off')}><Input type="number" value={f.percentOff} onChange={(e) => set('percentOff', e.target.value)} /></Field><Field label={t('pc.f.freemonths', 'First months free')}><Input type="number" value={f.freeMonths} onChange={(e) => set('freeMonths', e.target.value)} /></Field><Field label={t('pc.f.minterm', 'Min. term months (0 = any)')}><Input type="number" value={f.minMonths} onChange={(e) => set('minMonths', e.target.value)} /></Field></>}
+          {f.kind === 'free_hosting' && <><Field label={t('pc.f.storage', 'Storage GB')}><Input type="number" value={f.storageGB} onChange={(e) => set('storageGB', e.target.value)} /></Field><Field label={t('pc.f.upload', 'Upload Mbps')}><Input type="number" value={f.uploadMbps} onChange={(e) => set('uploadMbps', e.target.value)} /></Field><Field label={t('pc.f.duration', 'Duration (months, 0 = forever)')}><Input type="number" value={f.hostMonths} onChange={(e) => set('hostMonths', e.target.value)} /></Field></>}
+          {f.kind === 'free_boost' && <Field label={t('pc.f.boostdays', 'Boost days')}><Input type="number" value={f.boostDays} onChange={(e) => set('boostDays', e.target.value)} /></Field>}
+          <Field label={t('pc.f.maxred', 'Max redemptions (blank = ∞)')}><Input type="number" value={f.maxRedemptions} onChange={(e) => set('maxRedemptions', e.target.value)} placeholder="∞" /></Field>
+          <Field label={t('pc.f.peruser', 'Per-user limit')}><Input type="number" value={f.perUserLimit} onChange={(e) => set('perUserLimit', e.target.value)} /></Field>
+          <Field label={t('pc.f.note', 'Note (internal)')}><Input value={f.note} onChange={(e) => set('note', e.target.value)} placeholder={t('pc.f.note.ph', 'e.g. launch promo')} /></Field>
         </div>
-        <div className="flex justify-end mt-3"><Button variant="primary" onClick={create}><Plus size={15} /> Create code</Button></div>
+        <div className="flex justify-end mt-3"><Button variant="primary" onClick={create}><Plus size={15} /> {t('pc.create', 'Create code')}</Button></div>
       </Card>
       {loading ? <Loading /> : codes.length ? <div className="space-y-2">
         {codes.map((c) => (
@@ -4177,16 +4177,16 @@ function AdminPromo() {
             <div className="flex items-center gap-3">
               <Ticket size={18} className={c.active ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2"><code className="font-mono font-semibold">{c.code}</code><button onClick={() => { navigator.clipboard?.writeText(c.code); toast.success('Copied.'); }} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button>{!c.active && <Badge>Disabled</Badge>}</div>
+                <div className="flex items-center gap-2"><code className="font-mono font-semibold">{c.code}</code><button onClick={() => { navigator.clipboard?.writeText(c.code); toast.success(t('common.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button>{!c.active && <Badge>{t('pc.disabled', 'Disabled')}</Badge>}</div>
                 <div className="text-xs text-[var(--muted)] mt-0.5"><Badge tone="primary">{c.kind.replace('_', ' ')}</Badge> {desc(c)}{c.expiresAt ? ` · exp ${new Date(c.expiresAt).toLocaleDateString()}` : ''}{c.note ? ` · ${c.note}` : ''}</div>
               </div>
-              <button onClick={() => viewReds(c)} className={`text-xs px-2.5 py-1.5 rounded-lg border ${openId === c.id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Users size={12} className="inline mr-1" />{c.redeemedCount}{c.maxRedemptions ? `/${c.maxRedemptions}` : ''} used</button>
-              <Button size="sm" onClick={() => toggle(c)}>{c.active ? 'Disable' : 'Enable'}</Button>
+              <button onClick={() => viewReds(c)} className={`text-xs px-2.5 py-1.5 rounded-lg border ${openId === c.id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Users size={12} className="inline mr-1" />{c.redeemedCount}{c.maxRedemptions ? `/${c.maxRedemptions}` : ''} {t('pc.used', 'used')}</button>
+              <Button size="sm" onClick={() => toggle(c)}>{c.active ? t('pc.disable', 'Disable') : t('pc.enable', 'Enable')}</Button>
               <Button size="sm" className="!text-red-400" onClick={() => del(c)}><Trash2 size={14} /></Button>
             </div>
             {openId === c.id && (
               <div className="mt-3 pt-3 border-t border-[var(--line)]">
-                {!reds[c.id] ? <div className="text-xs text-[var(--muted)] flex items-center gap-2"><Spinner /> Loading…</div>
+                {!reds[c.id] ? <div className="text-xs text-[var(--muted)] flex items-center gap-2"><Spinner /> {t('common.loading', 'Loading…')}</div>
                   : reds[c.id].length ? <div className="space-y-1.5">
                     {reds[c.id].map((r) => (
                       <div key={r.id} className="flex items-center gap-2.5 text-sm">
@@ -4197,12 +4197,12 @@ function AdminPromo() {
                         <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(r.createdAt).toLocaleString()}</span>
                       </div>
                     ))}
-                  </div> : <div className="text-xs text-[var(--faint)]">No redemptions yet.</div>}
+                  </div> : <div className="text-xs text-[var(--faint)]">{t('pc.noreds', 'No redemptions yet.')}</div>}
               </div>
             )}
           </Card>
         ))}
-      </div> : <EmptyState icon={Ticket} title="No promo codes yet" sub="Create one above — discount, free hosting, or a free boost." />}
+      </div> : <EmptyState icon={Ticket} title={t('pc.none.t', 'No promo codes yet')} sub={t('pc.none.s', 'Create one above — discount, free hosting, or a free boost.')} />}
     </div>
   );
 }
