@@ -210,6 +210,11 @@ export default async function hostingRoutes(app) {
       months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1),
       // Optional admin promo code (a 'discount' code — % off and/or first months free).
       promoCode: z.string().max(40).optional(),
+      // Auto-renew: bill recurrently every `months` (a real Stripe subscription) so
+      // the repo never lapses. Falls back to a one-time prepaid charge when off, when
+      // a promo is used (a one-off discount can't recur cleanly), or for terms over
+      // 12 months (Stripe caps a billing interval at 1 year).
+      autoRenew: z.boolean().default(true),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -276,13 +281,31 @@ export default async function hostingRoutes(app) {
       if (total < 50) return reply.code(400).send({ error: 'promo_makes_free', detail: 'This code makes it free — an admin should issue a free-hosting code instead.' });
       promoLabel = promo.percentOff ? ` · −${promo.percentOff}% (${promo.code})` : promo.freeMonths ? ` · ${promo.freeMonths}mo free (${promo.code})` : ` · ${promo.code}`;
     }
-    const session = await sk.checkout.sessions.create({
+    // Recurring only when opted in, no one-off promo, and the term fits Stripe's
+    // 1-year max billing interval. Otherwise a one-time prepaid charge (unchanged).
+    const recurring = b.data.autoRenew && !promo && months <= 12;
+    const md = { userId: req.user.uid, planId: plan.id, repoName: b.data.repoName, hostMode: b.data.mode, months: String(months), promoCode: promo?.code || '' };
+    const productName = `${plan.name} hosting — ${recurring ? `auto-renews every ${months} month${months > 1 ? 's' : ''}` : `${months} month${months > 1 ? 's' : ''}`}${TERM_DISCOUNT[months] ? ` (−${Math.round(TERM_DISCOUNT[months] * 100)}%)` : ''}${promoLabel}`;
+    const session = await sk.checkout.sessions.create(recurring ? {
+      mode: 'subscription', customer,
+      line_items: [{ quantity: 1, price_data: {
+        currency: 'usd', unit_amount: total,
+        recurring: { interval: 'month', interval_count: months },
+        product_data: { name: productName },
+      } }],
+      // Metadata on BOTH the session (first provision via checkout.session.completed)
+      // and the subscription (so invoice.paid renewals can be attributed).
+      subscription_data: { metadata: md },
+      metadata: md,
+      success_url: `${siteUrl}/dashboard?hosting=ok`,
+      cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
+    } : {
       mode: 'payment', customer,
       line_items: [{ quantity: 1, price_data: {
         currency: 'usd', unit_amount: total,
-        product_data: { name: `${plan.name} hosting — ${months} month${months > 1 ? 's' : ''}${TERM_DISCOUNT[months] ? ` (−${Math.round(TERM_DISCOUNT[months] * 100)}%)` : ''}${promoLabel}` },
+        product_data: { name: productName },
       } }],
-      metadata: { userId: req.user.uid, planId: plan.id, repoName: b.data.repoName, hostMode: b.data.mode, months: String(months), promoCode: promo?.code || '' },
+      metadata: md,
       success_url: `${siteUrl}/dashboard?hosting=ok`,
       cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     });

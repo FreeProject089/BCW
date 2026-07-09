@@ -787,6 +787,7 @@ export function Hosting() {
   const [mode, setMode] = useState('single'); // single = one repo; multi = a shared storage pool
   const [months, setMonths] = useState(12); // prepaid term (1yr recommended)
   const [promo, setPromo] = useState(null); // validated promo code for the simple plan-card checkout
+  const [autoRenew, setAutoRenew] = useState(true); // recurring subscription vs one-time prepaid
   const TERM_DISC = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.20, 24: 0.35 };
   const termTotal = (monthlyCents) => {
     let total = Math.round(monthlyCents * months * (1 - (TERM_DISC[months] || 0)));
@@ -798,7 +799,7 @@ export function Hosting() {
     const repoName = await dialog.prompt({ title: mode === 'multi' ? t('hosting.pool.title', 'New storage pool') : t('hosting.repo.title', 'Host a repo'), label: mode === 'multi' ? t('hosting.pool.label', 'Pool name') : t('hosting.repo.label', 'Repository name'), placeholder: mode === 'multi' ? t('hosting.pool.ph', 'my-pool') : t('hosting.repo.ph', 'my-awesome-repo'), okLabel: t('hosting.continue', 'Continue to payment') });
     if (!repoName) return;
     try {
-      const res = await api.post('/hosting/checkout', { promoCode: promo?.code, ...body, repoName, mode, months });
+      const res = await api.post('/hosting/checkout', { promoCode: promo?.code, autoRenew, ...body, repoName, mode, months });
       // A $0 plan (the free tier, or a discount that zeroes it out) is provisioned
       // directly — there's no Stripe session/url to redirect to.
       if (res?.free) { toast.success(t('hosting.freeplan.provisioned', 'Your repo "{name}" is provisioning — free tier, no charge.').replace('{name}', repoName)); return nav('/dashboard'); }
@@ -856,6 +857,26 @@ export function Hosting() {
             <PromoCodeField months={months} onChange={setPromo} />
           </div>
         </div>
+        {/* Auto-renew — a real recurring subscription (default on). Forced off (one-time
+            prepaid) by a promo or a term over 12 months (Stripe's max billing interval). */}
+        {(() => {
+          const eligible = !promo && months <= 12;
+          return (
+            <div className="mt-4 pt-4 border-t border-[var(--line)]">
+              <label className={`flex items-start gap-2.5 text-sm ${eligible ? 'cursor-pointer' : 'opacity-60'}`}>
+                <input type="checkbox" className="mt-0.5" checked={eligible && autoRenew} disabled={!eligible} onChange={(e) => setAutoRenew(e.target.checked)} />
+                <span>
+                  <span className="font-medium flex items-center gap-1.5"><RefreshCw size={13} className="text-[var(--primary-2)]" /> {t('hosting.autorenew', 'Auto-renew')}</span>
+                  <span className="block text-xs text-[var(--muted)] mt-0.5">
+                    {!eligible ? t('hosting.autorenew.onetime', 'This term is a one-time prepaid charge (promos and terms over 12 months don’t auto-renew).')
+                      : autoRenew ? t('hosting.autorenew.on', 'Billed automatically every term so your repo never lapses. Cancel anytime from “Manage billing”.')
+                      : t('hosting.autorenew.off', 'One-time prepaid charge — your repo goes offline at the end of the term unless you renew manually.')}
+                  </span>
+                </span>
+              </label>
+            </div>
+          );
+        })()}
         {c && (
           <div className="flex items-center gap-3 text-sm mt-4 pt-4 border-t border-[var(--line)]">
             <Gauge size={16} className="text-[var(--primary-2)] shrink-0" />

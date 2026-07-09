@@ -144,6 +144,41 @@ export default async function stripeWebhook(app) {
         const repo = await provisionHostedRepo(p, { userId, plan, repoName, hostMode, months, stripeSubId: s.subscription || null });
         await notify(p, userId, 'hosting_started', `Your hosted repo "${repo.name}" is provisioning — prepaid for ${months} month${months > 1 ? 's' : ''}.`);
       }
+    } else if (event.type === 'invoice.paid') {
+      // Recurring HOSTING renewal. The FIRST invoice (billing_reason
+      // 'subscription_create') is skipped — checkout.session.completed already
+      // provisioned it. Only 'subscription_cycle' renewals land here.
+      const inv = event.data.object;
+      if (inv.billing_reason === 'subscription_cycle' && inv.subscription) {
+        const sub = await p.subscription.findUnique({ where: { stripeSubId: inv.subscription } });
+        if (sub) {
+          // Trust Stripe's own period for the new end date.
+          const periodEnd = inv.lines?.data?.[0]?.period?.end ? new Date(inv.lines.data[0].period.end * 1000)
+            : (inv.period_end ? new Date(inv.period_end * 1000) : new Date(Date.now() + 30 * 864e5));
+          await p.subscription.update({ where: { id: sub.id }, data: { status: 'active', currentPeriodEnd: periodEnd } });
+          const repo = await p.serverRepo.findUnique({ where: { id: sub.serverRepoId }, select: { name: true, ownerId: true, status: true } });
+          // Restore a repo that a prior failed renewal had suspended.
+          if (repo) await p.serverRepo.update({ where: { id: sub.serverRepoId }, data: { deleteAt: null, ...(repo.status === 'SUSPENDED' ? { status: 'ONLINE' } : {}) } });
+          await p.payment.create({ data: {
+            userId: sub.userId, serverRepoId: sub.serverRepoId, kind: 'HOSTING',
+            description: `"${repo?.name || 'repo'}" auto-renewal`,
+            amountCents: inv.amount_paid ?? 0, currency: inv.currency || 'usd', stripeSessionId: inv.id,
+          } });
+          if (repo) await notify(p, repo.ownerId, 'hosting_started', `"${repo.name}" auto-renewed successfully — thanks for staying with us!`);
+        }
+      }
+    } else if (event.type === 'invoice.payment_failed') {
+      // A recurring renewal charge failed. Stripe's dunning will retry; on final
+      // failure customer.subscription.deleted fires (→ suspend, handled below). Here
+      // we just warn the owner so they can fix their card in time.
+      const inv = event.data.object;
+      if (inv.subscription) {
+        const sub = await p.subscription.findUnique({ where: { stripeSubId: inv.subscription } });
+        if (sub) {
+          const repo = await p.serverRepo.findUnique({ where: { id: sub.serverRepoId }, select: { name: true, ownerId: true } });
+          if (repo) await notify(p, repo.ownerId, 'hosting_stopped', `Auto-renewal payment for "${repo.name}" failed — update your card in “Manage billing” soon, or hosting will be suspended.`);
+        }
+      }
     } else if (event.type === 'charge.refunded') {
       // A charge was (partially or fully) refunded. Record a lightweight refund
       // event for the Discord bot to announce (see bot.mjs /bot/payments/*). Keyed
