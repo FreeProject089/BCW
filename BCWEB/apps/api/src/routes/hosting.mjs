@@ -375,6 +375,7 @@ export default async function hostingRoutes(app) {
   const cartItemSchema = z.array(z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('hosting'), mode: z.enum(['single', 'multi']).default('single'), repoName: z.string().min(2).max(60),
       months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1),
+      autoRenew: z.boolean().optional(),
       planId: z.string().optional(),
       custom: z.object({ storageGB: z.number().int().min(1).max(500), uploadMbps: z.number().min(1).max(1000) }).optional() }),
     z.object({ kind: z.literal('boost'), repoId: z.string(), days: z.number().int().min(1).max(365) }),
@@ -402,7 +403,7 @@ export default async function hostingRoutes(app) {
         }
         neededStorageGB += plan.storageGB;
         const baseCents = termTotalCents(plan.priceMonthlyCents, it.months, cf.priceMult);
-        lines.push({ kind: 'hosting', name: `${plan.name} — ${it.months} mo`, baseCents, monthlyCents: Math.round(baseCents / it.months), months: it.months, planId: plan.id, repoName: it.repoName, mode: it.mode });
+        lines.push({ kind: 'hosting', name: `${plan.name} — ${it.months} mo`, baseCents, monthlyCents: Math.round(baseCents / it.months), months: it.months, planId: plan.id, repoName: it.repoName, mode: it.mode, autoRenew: !!it.autoRenew });
       } else {
         const repo = await p.serverRepo.findUnique({ where: { id: it.repoId }, select: { id: true, name: true, ownerId: true } });
         if (!repo || repo.ownerId !== req.user.uid) return { error: 'boost_repo_not_found' };
@@ -460,10 +461,14 @@ export default async function hostingRoutes(app) {
     const siteUrl = process.env.SITE_URL || 'http://localhost';
     const cart = await p.pendingCart.create({ data: { userId: req.user.uid, payload: { items: r.lines, promoCodes: r.appliedCodes } } });
     const suffix = (r.combinedPct || r.freeMonths) ? ` (${[r.combinedPct ? `−${r.combinedPct}%` : null, r.freeMonths ? `${r.freeMonths}mo free` : null].filter(Boolean).join(', ')})` : '';
+    // If any hosting line opted into auto-renew, save the card off-session so the
+    // webhook can start each such repo's subscription (anchored at its prepaid term end).
+    const wantsRenew = r.lines.some((l) => l.kind === 'hosting' && l.autoRenew);
     const session = await sk.checkout.sessions.create({
       mode: 'payment', customer,
       line_items: r.lines.map((l) => ({ quantity: 1, price_data: { currency: 'usd', unit_amount: Math.max(0, l.finalCents), product_data: { name: `${l.name}${suffix}` } } })).filter((li) => li.price_data.unit_amount > 0),
       invoice_creation: { enabled: true },
+      ...(wantsRenew ? { payment_intent_data: { setup_future_usage: 'off_session' } } : {}),
       metadata: { type: 'cart', cartId: cart.id, userId: req.user.uid },
       success_url: `${siteUrl}/dashboard?hosting=ok`,
       cancel_url: `${siteUrl}/dashboard?hosting=cancel`,

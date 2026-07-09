@@ -30,6 +30,12 @@ export default async function stripeWebhook(app) {
         if (cart && cart.userId === meta.userId) {
           const { items = [], promoCodes = [] } = cart.payload || {};
           let provisioned = 0;
+          // Saved card (present only when a line opted into auto-renew — the session
+          // was created with setup_future_usage: off_session).
+          let savedPm = null;
+          if (items.some((l) => l.kind === 'hosting' && l.autoRenew) && s.payment_intent) {
+            try { const pi = typeof s.payment_intent === 'string' ? await stripe.paymentIntents.retrieve(s.payment_intent) : s.payment_intent; savedPm = pi?.payment_method || null; } catch {}
+          }
           for (const l of items) {
             try {
               if (l.kind === 'hosting') {
@@ -37,6 +43,16 @@ export default async function stripeWebhook(app) {
                 if (!plan) continue;
                 const repo = await provisionHostedRepo(p, { userId: cart.userId, plan, repoName: l.repoName, hostMode: l.mode, months: l.months });
                 await p.payment.create({ data: { userId: cart.userId, serverRepoId: repo.id, kind: 'HOSTING', description: `${plan.name} hosting — ${l.months} month${l.months > 1 ? 's' : ''}`, amountCents: l.finalCents ?? 0, currency: 'usd', stripeSessionId: s.id } });
+                // Auto-renew: start a subscription that first bills at the prepaid
+                // term end (trial_end), billed every `months` at the full term price.
+                if (l.autoRenew && savedPm) {
+                  try {
+                    const trialEnd = Math.floor((Date.now() + l.months * 30 * 864e5) / 1000);
+                    const price = await stripe.prices.create({ currency: 'usd', unit_amount: Math.max(50, l.baseCents || plan.priceMonthlyCents * l.months), recurring: { interval: 'month', interval_count: l.months }, product_data: { name: `${plan.name} hosting (auto-renew)` } });
+                    const sub = await stripe.subscriptions.create({ customer: s.customer, items: [{ price: price.id }], default_payment_method: savedPm, trial_end: trialEnd, proration_behavior: 'none', metadata: { kind: 'hosting', repoId: repo.id, userId: cart.userId } });
+                    await p.subscription.updateMany({ where: { serverRepoId: repo.id }, data: { stripeSubId: sub.id } });
+                  } catch (e) { req.log?.warn?.({ err: e?.message }, 'cart auto-renew sub create failed'); }
+                }
                 provisioned++;
               } else if (l.kind === 'boost') {
                 const repo = await p.serverRepo.findUnique({ where: { id: l.repoId } });

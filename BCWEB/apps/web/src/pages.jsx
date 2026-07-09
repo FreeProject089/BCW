@@ -790,14 +790,16 @@ export function Hosting() {
   const [autoRenew, setAutoRenew] = useState(true); // recurring subscription vs one-time prepaid
   const TERM_DISC = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.20, 24: 0.35 };
   // ── Shopping cart: buy several repos + boosts in one prepaid checkout ──
-  const [cart, setCart] = useState([]); // [{ uid, kind:'hosting'|'boost', ... }]
+  // Persisted in localStorage so it survives a refresh / navigating away and back.
+  const [cart, setCart] = useState(() => { try { return JSON.parse(localStorage.getItem('bcw_cart') || '[]'); } catch { return []; } });
   const [cartOpen, setCartOpen] = useState(false);
+  useEffect(() => { try { localStorage.setItem('bcw_cart', JSON.stringify(cart)); } catch {} }, [cart]);
   const myRepos = useAsync(() => (user ? api.get('/me/repos') : Promise.resolve({ repos: [] })), [!!user]);
   const addHosting = async ({ planId, custom, label }) => {
     if (!user) return nav('/auth');
     const repoName = await dialog.prompt({ title: mode === 'multi' ? t('hosting.pool.title', 'New storage pool') : t('hosting.repo.title', 'Host a repo'), label: mode === 'multi' ? t('hosting.pool.label', 'Pool name') : t('hosting.repo.label', 'Repository name'), placeholder: mode === 'multi' ? t('hosting.pool.ph', 'my-pool') : t('hosting.repo.ph', 'my-awesome-repo'), okLabel: t('cart.add', 'Add to cart') });
     if (!repoName || String(repoName).trim().length < 2) return;
-    setCart((c) => [...c, { uid: Math.random().toString(36).slice(2), kind: 'hosting', mode, months, repoName: String(repoName).trim(), planId, custom, label }]);
+    setCart((c) => [...c, { uid: Math.random().toString(36).slice(2), kind: 'hosting', mode, months, repoName: String(repoName).trim(), planId, custom, label, autoRenew: false }]);
     setCartOpen(true);
   };
   const addBoost = ({ repoId, repoName, days }) => {
@@ -806,6 +808,8 @@ export function Hosting() {
     setCartOpen(true);
   };
   const removeItem = (uid) => setCart((c) => c.filter((x) => x.uid !== uid));
+  const setItemAutoRenew = (uid, on) => setCart((c) => c.map((x) => (x.uid === uid ? { ...x, autoRenew: on } : x)));
+  const clearCart = () => setCart([]);
   const cartCount = cart.length;
   const termTotal = (monthlyCents) => {
     let total = Math.round(monthlyCents * months * (1 - (TERM_DISC[months] || 0)));
@@ -951,7 +955,7 @@ export function Hosting() {
 
       <p className="text-xs text-[var(--faint)] mt-5 flex items-center gap-1.5"><ShieldCheck size={13} /> {t('hosting.note', 'Updates only require a valid SHA. We set the upload limit per repo.')}</p>
       <CustomPlanModal open={customOpen} onClose={() => setCustomOpen(false)} months={months} setMonths={setMonths} termDisc={TERM_DISC} onCheckout={(custom) => { setCustomOpen(false); addHosting({ custom, label: t('cart.custom', 'Custom {gb} GB').replace('{gb}', custom.storageGB) }); }} />
-      <CartPanel open={cartOpen} setOpen={setCartOpen} cart={cart} count={cartCount} removeItem={removeItem} onEmptyBrowse={() => setCartOpen(false)} />
+      <CartPanel open={cartOpen} setOpen={setCartOpen} cart={cart} count={cartCount} removeItem={removeItem} setItemAutoRenew={setItemAutoRenew} clearCart={clearCart} />
     </div>
   );
 }
@@ -982,7 +986,7 @@ function BoostAddCard({ repos, onAdd }) {
 // Floating shopping cart: line items + stacked promo codes + a live server quote,
 // then one Stripe checkout for the whole bundle. Responsive (a bottom-right panel on
 // desktop, near-fullscreen sheet on mobile) with a collapsed pill when closed.
-function CartPanel({ open, setOpen, cart, count, removeItem }) {
+function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew }) {
   const { t } = useI18n(); const toast = useToast(); const { user } = useAuth(); const nav = useNavigate();
   const [codes, setCodes] = useState([]);
   const [codeInput, setCodeInput] = useState('');
@@ -990,7 +994,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem }) {
   const [quoteErr, setQuoteErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const apiItems = useMemo(() => cart.map((it) => it.kind === 'hosting'
-    ? { kind: 'hosting', mode: it.mode, repoName: it.repoName, months: it.months, ...(it.custom ? { custom: it.custom } : { planId: it.planId }) }
+    ? { kind: 'hosting', mode: it.mode, repoName: it.repoName, months: it.months, autoRenew: !!it.autoRenew, ...(it.custom ? { custom: it.custom } : { planId: it.planId }) }
     : { kind: 'boost', repoId: it.repoId, days: it.days }), [cart]);
   // Live quote (debounced) whenever the cart or promo set changes.
   useEffect(() => {
@@ -1017,7 +1021,8 @@ function CartPanel({ open, setOpen, cart, count, removeItem }) {
       else if (e === 'promo_not_stackable') toast.error(t('cart.err.stack', 'Those codes can’t be combined — only stackable codes stack.'));
       else if (e === 'capacity_full') toast.error(t('hosting.err.capacity', 'No capacity available right now.'));
       else if (e === 'stripe_not_configured') toast.error(t('hosting.err.stripe', 'Payments not configured yet.'));
-      else toast.error(t('hosting.err.checkout', 'Checkout failed.'));
+      else if (e?.startsWith('promo_')) toast.error(t('cart.err.promo', 'A code is invalid or not eligible.'));
+      else toast.error(t('hosting.err.checkout', 'Checkout failed — {e}').replace('{e}', e || (x.status ? `HTTP ${x.status}` : 'unknown')));
     } finally { setBusy(false); }
   };
   if (!count) return null;
@@ -1036,13 +1041,22 @@ function CartPanel({ open, setOpen, cart, count, removeItem }) {
       </div>
       <div className="overflow-auto p-3 space-y-2 flex-1">
         {cart.map((it) => (
-          <div key={it.uid} className="flex items-center gap-2 text-sm rounded-lg bg-[var(--surface-2)] px-3 py-2">
-            {it.kind === 'boost' ? <Rocket size={14} className="text-amber-400 shrink-0" /> : <HardDrive size={14} className="text-[var(--primary-2)] shrink-0" />}
-            <div className="flex-1 min-w-0">
-              <div className="font-medium truncate">{it.kind === 'boost' ? t('cart.boostof', 'Boost "{n}"').replace('{n}', it.repoName || '') : (it.label || it.repoName)}</div>
-              <div className="text-[11px] text-[var(--faint)]">{it.kind === 'boost' ? `${it.days} ${t('cart.days', 'days')}` : `${it.mode === 'multi' ? t('hosting.multi', 'Multiple repos') : t('hosting.single', 'Single repo')} · ${it.months} ${t('hosting.mo', 'mo')}`}</div>
+          <div key={it.uid} className="rounded-lg bg-[var(--surface-2)] px-3 py-2">
+            <div className="flex items-center gap-2 text-sm">
+              {it.kind === 'boost' ? <Rocket size={14} className="text-amber-400 shrink-0" /> : <HardDrive size={14} className="text-[var(--primary-2)] shrink-0" />}
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">{it.kind === 'boost' ? t('cart.boostof', 'Boost "{n}"').replace('{n}', it.repoName || '') : (it.label || it.repoName)}</div>
+                <div className="text-[11px] text-[var(--faint)]">{it.kind === 'boost' ? `${it.days} ${t('cart.days', 'days')} · ${t('cart.onetime', 'one-time')}` : `${it.mode === 'multi' ? t('hosting.multi', 'Multiple repos') : t('hosting.single', 'Single repo')} · ${it.months} ${t('hosting.mo', 'mo')}`}</div>
+              </div>
+              <button onClick={() => removeItem(it.uid)} className="text-[var(--faint)] hover:text-red-400 shrink-0"><X size={14} /></button>
             </div>
-            <button onClick={() => removeItem(it.uid)} className="text-[var(--faint)] hover:text-red-400 shrink-0"><X size={14} /></button>
+            {/* Per-item auto-renew — hosting only (a boost is always a one-time buy). */}
+            {it.kind === 'hosting' && (
+              <label className="flex items-center gap-1.5 mt-1.5 text-[11px] text-[var(--muted)] cursor-pointer" title={t('cart.autorenew.h', 'Keep this repo online automatically — after the prepaid term it renews as a subscription. Cancel anytime in Billing.')}>
+                <input type="checkbox" checked={!!it.autoRenew} onChange={(e) => setItemAutoRenew(it.uid, e.target.checked)} />
+                <RefreshCw size={11} className={it.autoRenew ? 'text-emerald-400' : 'text-[var(--faint)]'} /> {t('cart.autorenew', 'Auto-renew after the prepaid term')}
+              </label>
+            )}
           </div>
         ))}
         {/* Promo codes (stack the stackable ones) */}
@@ -1064,9 +1078,9 @@ function CartPanel({ open, setOpen, cart, count, removeItem }) {
           {quote.discountCents > 0 && <div className="flex justify-between text-sm text-emerald-400"><span>{t('cart.discount', 'Discount')}{quote.combinedPct ? ` (−${quote.combinedPct}%)` : ''}</span><span className="tabular-nums">−{money(quote.discountCents)}</span></div>}
           <div className="flex justify-between font-bold text-base pt-1 border-t border-[var(--line)]"><span>{t('cart.total', 'Total')}</span><span className="tabular-nums">{money(quote.totalCents)}</span></div>
         </>)}
-        {quoteErr && !promoErr && <div className="text-[11px] text-amber-400">{quoteErr === 'capacity_full' ? t('hosting.err.capacity', 'No capacity available right now.') : t('cart.err.quote', 'Could not price the cart.')}</div>}
-        <Button variant="primary" className="w-full mt-1" disabled={busy || !quote} onClick={checkout}>{busy ? <Spinner /> : <><CreditCard size={15} /> {t('cart.checkout', 'Checkout')}{quote ? ` · ${money(quote.totalCents)}` : ''}</>}</Button>
-        <p className="text-[10px] text-[var(--faint)] text-center">{t('cart.note', 'One-time prepaid for the whole cart. Auto-renew is available per repo afterwards.')}</p>
+        {quoteErr && !promoErr && <div className="text-[11px] text-amber-400">{quoteErr === 'capacity_full' ? t('hosting.err.capacity', 'No capacity available right now.') : quoteErr === 'over_limit' ? t('cart.err.overlimit', 'A custom plan exceeds the per-repo upload limit.') : t('cart.err.quote', 'Could not price the cart.')}</div>}
+        <Button variant="primary" className="w-full mt-1" disabled={busy || !count} onClick={checkout}>{busy ? <Spinner /> : <><CreditCard size={15} /> {t('cart.checkout', 'Checkout')}{quote ? ` · ${money(quote.totalCents)}` : ''}</>}</Button>
+        <p className="text-[10px] text-[var(--faint)] text-center">{t('cart.note2', 'Prepaid now for the whole cart. Items marked auto-renew continue as a subscription after their term.')}</p>
       </div>
     </div>
   );
@@ -1575,7 +1589,7 @@ export function Dashboard() {
   useEffect(() => {
     const hosting = sp.get('hosting'); const feature = sp.get('feature'); const oauth = sp.get('oauth');
     if (!hosting && !feature && !oauth) return;
-    if (hosting === 'ok') { setPayReturn({ ok: true, kind: 'hosting' }); repos.reload(); items.reload(); }
+    if (hosting === 'ok') { setPayReturn({ ok: true, kind: 'hosting' }); repos.reload(); items.reload(); try { localStorage.removeItem('bcw_cart'); } catch {} }
     else if (hosting === 'fail' || hosting === 'failed') { setPayReturn({ ok: false, failed: true, kind: 'hosting' }); }
     else if (hosting === 'cancel') { setPayReturn({ ok: false, kind: 'hosting' }); }
     if (feature === 'ok') { setPayReturn({ ok: true, kind: 'feature' }); repos.reload(); }
