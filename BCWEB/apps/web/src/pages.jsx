@@ -2191,13 +2191,37 @@ function AdminPlanUsers() {
               <ChevronDown size={15} className={`shrink-0 text-[var(--faint)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
             {isOpen && (
-              <div className="px-4 pb-4 pt-1 space-y-1 border-t border-[var(--line)]">
-                {u.active.map((label, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
-                    {tab === 'paying' ? <CreditCard size={13} className="text-emerald-400 shrink-0" /> : tab === 'free' ? <Gift size={13} className="text-[var(--primary-2)] shrink-0" /> : <Archive size={13} className="text-[var(--faint)] shrink-0" />}
-                    <span className="truncate">{label}</span>
-                  </div>
-                ))}
+              <div className="px-4 pb-4 pt-1 space-y-1.5 border-t border-[var(--line)]">
+                {u.active.map((a, i) => {
+                  // Back-compat: tolerate a plain-string entry (old API shape).
+                  if (typeof a === 'string') return (
+                    <div key={i} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><span className="truncate">{a}</span></div>
+                  );
+                  const TypeIcon = a.type === 'boost' ? Star : a.type === 'catalog' ? Package : Server;
+                  const money = (c, cur) => { const C = (cur || 'usd').toUpperCase(); const s = C === 'USD' ? '$' : C === 'EUR' ? '€' : C === 'GBP' ? '£' : ''; return s ? `${s}${(c / 100).toFixed(2)}` : `${(c / 100).toFixed(2)} ${C}`; };
+                  const bits = [];
+                  if (a.type === 'hosting' && a.specs) bits.push(`${a.specs.storageGB} GB · ${a.specs.uploadMbps} Mbps · ${a.specs.cpuShare} vCPU`);
+                  if (a.type === 'boost' && a.featuredUntil) bits.push(`${t('pu.d.until', 'until')} ${since(a.featuredUntil)}`);
+                  if (a.type === 'catalog') bits.push(`${a.kind || ''}${a.sizeMB != null ? ` · ${a.sizeMB} MB` : ''}`.trim());
+                  if (a.status) bits.push(a.status);
+                  if (a.deleteAt) bits.push(`${t('pu.d.deletes', 'deletes')} ${since(a.deleteAt)}`);
+                  return (
+                    <div key={i} className="flex items-start gap-2.5 text-sm px-3 py-2 rounded-lg bg-[var(--surface-2)]">
+                      <TypeIcon size={14} className={`shrink-0 mt-0.5 ${a.paid ? 'text-emerald-400' : 'text-[var(--primary-2)]'}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium truncate">{a.name || a.label}</span>
+                          <Badge tone={a.paid ? 'green' : ''}>{a.paid ? t('pu.d.paid', 'paid') : t('pu.d.free', 'free')}</Badge>
+                          {a.repoId && <a href={`/repo/${a.repoId}`} target="_blank" rel="noreferrer" className="text-[var(--primary-2)] hover:underline text-xs inline-flex items-center gap-0.5">{t('pu.d.open', 'open')} <ArrowUpRight size={11} /></a>}
+                        </div>
+                        {bits.length > 0 && <div className="text-xs text-[var(--faint)] mt-0.5">{bits.join(' · ')}</div>}
+                        {a.spend && a.spend.spentCents > 0 && (
+                          <div className="text-xs text-emerald-400/90 mt-0.5">{money(a.spend.spentCents, a.spend.currency)} {t('pu.d.acrosspay', 'across {n} payment(s)').replace('{n}', a.spend.count)}{a.spend.lastAt ? ` · ${t('pu.last', 'last')} ${since(a.spend.lastAt)}` : ''}</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </Card>

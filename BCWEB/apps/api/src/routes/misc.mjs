@@ -360,29 +360,47 @@ export default async function miscRoutes(app) {
     const ownerFilter = includeStaff ? {} : { role: 'USER' };
 
     const [repos, items, payments] = await Promise.all([
-      p.serverRepo.findMany({ where: { hosted: true, owner: ownerFilter }, select: { id: true, ownerId: true, name: true, status: true, deleteAt: true, featuredUntil: true } }),
-      p.catalogItem.findMany({ where: { payloadKey: { not: null }, owner: ownerFilter }, select: { id: true, ownerId: true, name: true, status: true, meta: true } }),
-      p.payment.findMany({ where: { serverRepoId: { not: null } }, select: { serverRepoId: true, kind: true } }),
+      p.serverRepo.findMany({ where: { hosted: true, owner: ownerFilter }, select: { id: true, ownerId: true, name: true, status: true, deleteAt: true, featuredUntil: true, storageQuotaBytes: true, uploadLimitKbps: true, cpuShare: true } }),
+      p.catalogItem.findMany({ where: { payloadKey: { not: null }, owner: ownerFilter }, select: { id: true, ownerId: true, name: true, status: true, kind: true, payloadSize: true, meta: true } }),
+      p.payment.findMany({ where: { serverRepoId: { not: null } }, select: { serverRepoId: true, kind: true, amountCents: true, currency: true, createdAt: true, days: true, description: true } }),
     ]);
     const paidHostingRepoIds = new Set(payments.filter((x) => x.kind === 'HOSTING').map((x) => x.serverRepoId));
     const paidFeatureRepoIds = new Set(payments.filter((x) => x.kind === 'FEATURE').map((x) => x.serverRepoId));
+    // Per-repo × kind spend rollup so each detail row can show real amounts/dates.
+    const spendKey = (repoId, kind) => `${repoId}::${kind}`;
+    const repoSpend = new Map(); // "repoId::KIND" -> { spentCents, count, lastAt, currency, lastDesc }
+    for (const x of payments) {
+      const k = spendKey(x.serverRepoId, x.kind);
+      const cur = repoSpend.get(k) || { spentCents: 0, count: 0, lastAt: null, currency: x.currency || 'usd', lastDesc: null };
+      cur.spentCents += x.amountCents || 0; cur.count += 1;
+      if (!cur.lastAt || x.createdAt > cur.lastAt) { cur.lastAt = x.createdAt; cur.lastDesc = x.description; }
+      repoSpend.set(k, cur);
+    }
+    const spendFor = (repoId, kind) => repoSpend.get(spendKey(repoId, kind)) || null;
 
-    const byUser = new Map(); // userId -> { paying: [label...], free: [...], archived: [...] }
+    const byUser = new Map(); // userId -> { paying: [detail...], free: [...], archived: [...] }
     const bucket = (userId) => { if (!byUser.has(userId)) byUser.set(userId, { paying: [], free: [], archived: [] }); return byUser.get(userId); };
 
     for (const r of repos) {
       const b = bucket(r.ownerId);
-      if (r.status === 'SUSPENDED' && r.deleteAt) { b.archived.push(`Server-Repo (expired) — ${r.name}`); }
-      else { (paidHostingRepoIds.has(r.id) ? b.paying : b.free).push(`Server-Repo hosting${paidHostingRepoIds.has(r.id) ? '' : ' (free)'} — ${r.name}`); }
+      const specs = { storageGB: Math.round(Number(r.storageQuotaBytes) / (1024 ** 3) * 10) / 10, uploadMbps: Math.round((r.uploadLimitKbps || 0) / 1024 * 10) / 10, cpuShare: r.cpuShare };
+      if (r.status === 'SUSPENDED' && r.deleteAt) {
+        b.archived.push({ type: 'hosting', paid: paidHostingRepoIds.has(r.id), label: `Server-Repo (expired) — ${r.name}`, name: r.name, repoId: r.id, status: r.status, deleteAt: r.deleteAt, specs, spend: spendFor(r.id, 'HOSTING') });
+      } else {
+        const paid = paidHostingRepoIds.has(r.id);
+        (paid ? b.paying : b.free).push({ type: 'hosting', paid, label: `Server-Repo hosting${paid ? '' : ' (free)'} — ${r.name}`, name: r.name, repoId: r.id, status: r.status, specs, spend: spendFor(r.id, 'HOSTING') });
+      }
       if (r.featuredUntil) {
-        if (r.featuredUntil > now) (paidFeatureRepoIds.has(r.id) ? b.paying : b.free).push(`Featured boost${paidFeatureRepoIds.has(r.id) ? '' : ' (free)'} — ${r.name}`);
-        else if (paidFeatureRepoIds.has(r.id)) b.archived.push(`Featured boost (ended) — ${r.name}`);
+        const paid = paidFeatureRepoIds.has(r.id);
+        if (r.featuredUntil > now) (paid ? b.paying : b.free).push({ type: 'boost', paid, label: `Featured boost${paid ? '' : ' (free)'} — ${r.name}`, name: r.name, repoId: r.id, featuredUntil: r.featuredUntil, spend: spendFor(r.id, 'FEATURE') });
+        else if (paid) b.archived.push({ type: 'boost', paid: true, label: `Featured boost (ended) — ${r.name}`, name: r.name, repoId: r.id, featuredUntil: r.featuredUntil, spend: spendFor(r.id, 'FEATURE') });
       }
     }
     for (const it of items) {
       const b = bucket(it.ownerId);
-      if (it.status === 'HIDDEN' && it.meta?._hostingUnpaid) b.archived.push(`Catalog file hosting (expired) — ${it.name}`);
-      else if (it.status === 'PUBLISHED') (it.meta?._hostingSubId ? b.paying : b.free).push(`Catalog file hosting${it.meta?._hostingSubId ? '' : ' (free)'} — ${it.name}`);
+      const sizeMB = it.payloadSize ? Math.round(Number(it.payloadSize) / (1024 ** 2) * 10) / 10 : null;
+      if (it.status === 'HIDDEN' && it.meta?._hostingUnpaid) b.archived.push({ type: 'catalog', paid: false, label: `Catalog file hosting (expired) — ${it.name}`, name: it.name, itemId: it.id, kind: it.kind, sizeMB });
+      else if (it.status === 'PUBLISHED') { const paid = !!it.meta?._hostingSubId; (paid ? b.paying : b.free).push({ type: 'catalog', paid, label: `Catalog file hosting${paid ? '' : ' (free)'} — ${it.name}`, name: it.name, itemId: it.id, kind: it.kind, sizeMB }); }
     }
 
     const entries = [...byUser.entries()].filter(([, v]) => v[tab].length > 0).sort((a, b2) => b2[1][tab].length - a[1][tab].length);

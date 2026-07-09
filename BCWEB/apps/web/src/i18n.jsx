@@ -884,6 +884,8 @@ const DICT = {
     'pu.tab.paying': 'Clients payants', 'pu.tab.free': 'Plan gratuit', 'pu.tab.archived': 'Archivés',
     'pu.includestaff': 'Inclure le staff (admins/mods) — normalement exclu de ce rapport clients',
     'pu.payments': '{n} paiement(s)', 'pu.last': 'dernier', 'pu.active': '{n} actif(s)', 'pu.loadmore': 'Charger plus',
+    'pu.d.until': 'jusqu’au', 'pu.d.deletes': 'suppression le', 'pu.d.paid': 'payé', 'pu.d.free': 'gratuit', 'pu.d.open': 'ouvrir',
+    'pu.d.acrosspay': 'sur {n} paiement(s)',
     'pu.empty.paying.t': 'Aucun client payant', 'pu.empty.paying.s': 'Personne n’a encore effectué de paiement.',
     'pu.empty.free.t': 'Aucun utilisateur en plan gratuit', 'pu.empty.free.s': 'Personne n’héberge de contenu gratuitement pour le moment.',
     'pu.empty.archived.t': 'Rien d’archivé', 'pu.empty.archived.s': 'Aucune durée expirée ou boost terminé pour le moment.',
