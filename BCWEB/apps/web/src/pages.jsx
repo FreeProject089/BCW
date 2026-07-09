@@ -2164,14 +2164,16 @@ function AdminPlanUsers() {
   const [detail, setDetail] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [includeStaff, setIncludeStaff] = useState(false);
+  const [mrr, setMrr] = useState(null); // { totalCents, subCount, annualCents }
   const load = async (append = false) => {
     setBusy(true);
     try {
       const skip = append ? (results?.length || 0) : 0;
-      const { users, hasMore: more } = await api.get(`/admin/billing/users?tab=${tab}&skip=${skip}&take=30${includeStaff ? '&includeStaff=1' : ''}`);
-      setResults(append ? [...(results || []), ...users] : users); setHasMore(more);
+      const { users, hasMore: more, mrr: m } = await api.get(`/admin/billing/users?tab=${tab}&skip=${skip}&take=30${includeStaff ? '&includeStaff=1' : ''}`);
+      setResults(append ? [...(results || []), ...users] : users); setHasMore(more); if (m) setMrr(m);
     } catch { if (!append) setResults([]); } finally { setBusy(false); }
   };
+  const mrrMoney = (c) => `$${((c || 0) / 100).toFixed(2)}`;
   useEffect(() => { load(false); setExpanded(null); /* eslint-disable-next-line */ }, [tab, includeStaff]);
   const since = (d) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   const emptyCopy = [t(`pu.empty.${tab}.t`, ''), t(`pu.empty.${tab}.s`, '')];
@@ -2179,6 +2181,13 @@ function AdminPlanUsers() {
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> {t('pu.title', 'Free vs paid')}</h2>
       <p className="text-sm text-[var(--muted)] mb-3">{t('pu.desc', "What every customer currently has active: free-tier hosting, paid hosting/boosts, or expired/ended terms. Click a row to see the detail; click the user's name for their full profile.")}</p>
+      {mrr && (
+        <div className="grid sm:grid-cols-3 gap-3 mb-4">
+          <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><RefreshCw size={12} className="text-emerald-400" /> {t('pu.mrr', 'Monthly recurring revenue')}</div><div className="text-2xl font-bold text-emerald-400 tabular-nums">{mrrMoney(mrr.totalCents)}<span className="text-sm font-normal text-[var(--faint)]">/{t('pu.mo', 'mo')}</span></div></Card>
+          <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><TrendingUp size={12} className="text-[var(--primary-2)]" /> {t('pu.arr', 'Annualized (est.)')}</div><div className="text-2xl font-bold tabular-nums">{mrrMoney(mrr.annualCents)}<span className="text-sm font-normal text-[var(--faint)]">/{t('pu.yr', 'yr')}</span></div></Card>
+          <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><CreditCard size={12} className="text-[var(--primary-2)]" /> {t('pu.activesubs', 'Active subscriptions')}</div><div className="text-2xl font-bold tabular-nums">{mrr.subCount}</div></Card>
+        </div>
+      )}
       <label className="flex items-center gap-2 text-xs text-[var(--muted)] mb-4 cursor-pointer w-fit">
         <input type="checkbox" checked={includeStaff} onChange={(e) => setIncludeStaff(e.target.checked)} /> {t('pu.includestaff', 'Include staff (admins/mods) — normally excluded from this customer report')}
       </label>
@@ -2199,10 +2208,10 @@ function AdminPlanUsers() {
                 <div className="font-medium truncate flex items-center gap-2"><span onClick={(e) => { e.stopPropagation(); setDetail(u.id); }} className="hover:underline hover:text-[var(--primary-2)]">{u.displayName}</span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
                 <div className="text-xs text-[var(--faint)] truncate">{u.email}</div>
               </div>
-              {tab === 'paying' && u.totalSpentCents != null && (
+              {tab === 'paying' && (u.totalSpentCents != null || u.mrrCents > 0) && (
                 <div className="text-xs text-right shrink-0">
-                  <div className="text-sm font-semibold text-emerald-400">${(u.totalSpentCents / 100).toFixed(2)}</div>
-                  <div className="text-[var(--faint)]">{t('pu.payments', '{n} payment(s)').replace('{n}', u.paymentCount)} · {t('pu.last', 'last')} {since(u.lastPaymentAt)}</div>
+                  {u.mrrCents > 0 && <div className="text-sm font-semibold text-emerald-400">{mrrMoney(u.mrrCents)}<span className="text-[var(--faint)] font-normal">/{t('pu.mo', 'mo')}</span></div>}
+                  {u.totalSpentCents != null && <div className="text-[var(--faint)]">{t('pu.spent', '{n} spent').replace('{n}', mrrMoney(u.totalSpentCents))} · {t('pu.payments', '{n} payment(s)').replace('{n}', u.paymentCount)}</div>}
                 </div>
               )}
               <Badge className="shrink-0">{t('pu.active', '{n} active').replace('{n}', u.active.length)}</Badge>
@@ -2215,12 +2224,13 @@ function AdminPlanUsers() {
                   if (typeof a === 'string') return (
                     <div key={i} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><span className="truncate">{a}</span></div>
                   );
-                  const TypeIcon = a.type === 'boost' ? Star : a.type === 'catalog' ? Package : Server;
+                  const TypeIcon = a.type === 'subscription' ? RefreshCw : a.type === 'boost' ? Star : a.type === 'catalog' ? Package : Server;
                   const money = (c, cur) => { const C = (cur || 'usd').toUpperCase(); const s = C === 'USD' ? '$' : C === 'EUR' ? '€' : C === 'GBP' ? '£' : ''; return s ? `${s}${(c / 100).toFixed(2)}` : `${(c / 100).toFixed(2)} ${C}`; };
                   const bits = [];
-                  if (a.type === 'hosting' && a.specs) bits.push(`${a.specs.storageGB} GB · ${a.specs.uploadMbps} Mbps · ${a.specs.cpuShare} vCPU`);
+                  if (a.type === 'hosting' && a.specs) bits.push(`${a.specs.storageGB} GB · ${a.specs.uploadMbps} Mbps`);
                   if (a.type === 'boost' && a.featuredUntil) bits.push(`${t('pu.d.until', 'until')} ${since(a.featuredUntil)}`);
                   if (a.type === 'catalog') bits.push(`${a.kind || ''}${a.sizeMB != null ? ` · ${a.sizeMB} MB` : ''}`.trim());
+                  if (a.type === 'subscription') { const per = a.intervalCount > 1 ? `/${a.intervalCount} ${a.interval}` : `/${a.interval}`; bits.push(`${money(a.amountCents, a.currency)} ${per}`); if (a.currentPeriodEnd) bits.push(`${t('bill.sub.renews', 'Renews {d}').replace('{d}', since(a.currentPeriodEnd))}`); }
                   if (a.status) bits.push(a.status);
                   if (a.deleteAt) bits.push(`${t('pu.d.deletes', 'deletes')} ${since(a.deleteAt)}`);
                   return (
@@ -2235,6 +2245,9 @@ function AdminPlanUsers() {
                         {bits.length > 0 && <div className="text-xs text-[var(--faint)] mt-0.5">{bits.join(' · ')}</div>}
                         {a.spend && a.spend.spentCents > 0 && (
                           <div className="text-xs text-emerald-400/90 mt-0.5">{money(a.spend.spentCents, a.spend.currency)} {t('pu.d.acrosspay', 'across {n} payment(s)').replace('{n}', a.spend.count)}{a.spend.lastAt ? ` · ${t('pu.last', 'last')} ${since(a.spend.lastAt)}` : ''}</div>
+                        )}
+                        {a.type === 'subscription' && a.mrrCents > 0 && (
+                          <div className="text-xs text-emerald-400/90 mt-0.5">≈ {money(a.mrrCents, a.currency)} {t('pu.permo', 'per month')}</div>
                         )}
                       </div>
                     </div>
@@ -3593,6 +3606,25 @@ function UserDetailModal({ id, onClose }) {
               </div>
             ))}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nodiscord', 'No Discord linked.')}</div>}
           </div>
+
+          {u.subscriptions?.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><RefreshCw size={12} /> {t('ud.subs', 'Active subscriptions')} · <span className="text-emerald-400 normal-case">≈ ${(u.mrrCents / 100).toFixed(2)}/{t('pu.mo', 'mo')}</span></div>
+              <div className="space-y-1">{u.subscriptions.map((s) => {
+                const cur = (s.currency || 'usd').toUpperCase(); const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '';
+                const amt = sym ? `${sym}${(s.amountCents / 100).toFixed(2)}` : `${(s.amountCents / 100).toFixed(2)} ${cur}`;
+                const per = s.intervalCount > 1 ? `/${s.intervalCount} ${s.interval}` : `/${s.interval}`;
+                return (
+                  <div key={s.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
+                    <RefreshCw size={13} className="text-[var(--primary-2)] shrink-0" />
+                    <span className="flex-1 truncate">{s.kind === 'boost' ? t('bill.sub.boost', 'Repo boost subscription') : t('bill.sub.hosting', 'Hosting subscription')}</span>
+                    <span className="font-medium shrink-0">{amt} <span className="text-[var(--faint)] font-normal text-xs">{per}</span></span>
+                    {s.currentPeriodEnd && <span className="text-[11px] text-[var(--faint)] shrink-0">{fdate(s.currentPeriodEnd)}</span>}
+                  </div>
+                );
+              })}</div>
+            </div>
+          )}
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Receipt size={12} /> {t('ud.payments', 'Payments')} ({u.payments?.length || 0})</div>

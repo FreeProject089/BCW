@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { db, requireRole, optionalAuth, slugify, logAudit } from '../lib.mjs';
 import { prefixUsage } from '../storage.mjs';
-import { capacityStatus, realDiskStats } from './hosting.mjs';
+import { capacityStatus, realDiskStats, stripe } from './hosting.mjs';
 import { powVerify } from './auth.mjs';
 import { FILES_BACKUP_ROOT, DB_BACKUP_ROOT, repoSizeBytes } from '../gitbackup.mjs';
 import { userBcId, itemFingerprint, repoFingerprint, loadOwnerIdentities, looksLikeBcId, findUserIdByBcId } from '../repofingerprint.mjs';
@@ -303,7 +303,7 @@ export default async function miscRoutes(app) {
   app.get('/admin/users/:id', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
     const p = await db();
     const u = await p.user.findUnique({ where: { id: req.params.id }, select: {
-      id: true, displayName: true, email: true, role: true, avatar: true, bio: true, createdAt: true,
+      id: true, displayName: true, email: true, role: true, avatar: true, bio: true, createdAt: true, stripeCustomerId: true,
       serverRepos: { select: { id: true, name: true, hosted: true, status: true, listed: true, verified: true }, orderBy: { createdAt: 'desc' } },
       items: { select: { id: true, name: true, slug: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' } },
       creatorLinks: { select: { creatorId: true, displayName: true, linkedAt: true, unlinkableAt: true } },
@@ -314,9 +314,25 @@ export default async function miscRoutes(app) {
     // The account-level Unique BC id + a per-element BC id on every repo/item, all
     // folded from the same owner identity (creator ids / Discord / Ko-fi).
     const idn = (await loadOwnerIdentities(p, [u.id])).get(u.id) || { creatorIds: [], discordIds: [], kofi: false };
+    // Active Stripe subscriptions + this user's recurring monthly revenue (best-effort).
+    let subscriptions = [], mrrCents = 0;
+    try {
+      const sk = await stripe();
+      if (sk && u.stripeCustomerId) {
+        const subs = await sk.subscriptions.list({ customer: u.stripeCustomerId, status: 'active', limit: 50 });
+        const monthlyCents = (unit, interval, count) => { count = count || 1; unit = unit || 0; if (interval === 'year') return unit / (12 * count); if (interval === 'week') return (unit * 4.345) / count; if (interval === 'day') return (unit * 30.44) / count; return unit / count; };
+        subscriptions = subs.data.map((s) => {
+          const price = s.items?.data?.[0]?.price;
+          const m = monthlyCents(price?.unit_amount, price?.recurring?.interval, price?.recurring?.interval_count);
+          mrrCents += m;
+          return { id: s.id, kind: s.metadata?.kind === 'feature' ? 'boost' : 'hosting', amountCents: price?.unit_amount ?? 0, currency: price?.currency || 'usd', interval: price?.recurring?.interval || 'month', intervalCount: price?.recurring?.interval_count || 1, mrrCents: Math.round(m), currentPeriodEnd: s.current_period_end ? new Date(s.current_period_end * 1000).toISOString() : null };
+        });
+      }
+    } catch (e) { req.log?.warn?.({ err: e?.message }, 'user subs fetch failed'); }
     return { user: {
       ...u,
       bcId: userBcId(u.id),
+      subscriptions, mrrCents: Math.round(mrrCents),
       serverRepos: u.serverRepos.map((r) => ({ ...r, fingerprint: repoFingerprint({ repoId: r.id, ownerId: u.id, ...idn }) })),
       items: u.items.map((it) => ({ ...it, fingerprint: itemFingerprint({ itemId: it.id, ownerId: u.id, creatorIds: idn.creatorIds }) })),
     } };
@@ -403,6 +419,50 @@ export default async function miscRoutes(app) {
       else if (it.status === 'PUBLISHED') { const paid = !!it.meta?._hostingSubId; (paid ? b.paying : b.free).push({ type: 'catalog', paid, label: `Catalog file hosting${paid ? '' : ' (free)'} — ${it.name}`, name: it.name, itemId: it.id, kind: it.kind, sizeMB }); }
     }
 
+    // ── Recurring revenue (MRR) from live Stripe subscriptions ──
+    // Adds each active subscription as a "paying" entry (so subs are counted even for
+    // a user with no other paid item) and normalizes every sub's price to a monthly
+    // figure so the report can answer "how much do I make per month". Best-effort:
+    // if Stripe is down/unset, the report still renders without MRR.
+    const mrrByUser = new Map(); // userId -> cents/month
+    let siteMrrCents = 0, siteSubCount = 0;
+    const monthlyCents = (unit, interval, count) => {
+      count = count || 1; unit = unit || 0;
+      if (interval === 'year') return unit / (12 * count);
+      if (interval === 'week') return (unit * 4.345) / count;
+      if (interval === 'day') return (unit * 30.44) / count;
+      return unit / count; // month (or unknown → treat as monthly)
+    };
+    try {
+      const sk = await stripe();
+      if (sk) {
+        const custUsers = await p.user.findMany({ where: { stripeCustomerId: { not: null }, ...(includeStaff ? {} : { role: 'USER' }) }, select: { id: true, stripeCustomerId: true } });
+        const userByCust = new Map(custUsers.map((u) => [u.stripeCustomerId, u.id]));
+        let starting_after; let guard = 0;
+        do {
+          const pageSubs = await sk.subscriptions.list({ status: 'active', limit: 100, ...(starting_after ? { starting_after } : {}) });
+          for (const s of pageSubs.data) {
+            const price = s.items?.data?.[0]?.price;
+            const m = monthlyCents(price?.unit_amount, price?.recurring?.interval, price?.recurring?.interval_count);
+            siteMrrCents += m; siteSubCount += 1;
+            const uid = userByCust.get(typeof s.customer === 'string' ? s.customer : s.customer?.id);
+            if (!uid) continue;
+            mrrByUser.set(uid, (mrrByUser.get(uid) || 0) + m);
+            const kind = s.metadata?.kind === 'feature' ? 'boost' : 'hosting';
+            bucket(uid).paying.push({
+              type: 'subscription', paid: true, subKind: kind,
+              label: `${kind === 'boost' ? 'Boost' : 'Hosting'} subscription`,
+              name: `${kind === 'boost' ? 'Boost' : 'Hosting'} subscription`,
+              amountCents: price?.unit_amount ?? 0, currency: price?.currency || 'usd',
+              interval: price?.recurring?.interval || 'month', intervalCount: price?.recurring?.interval_count || 1,
+              mrrCents: Math.round(m), currentPeriodEnd: s.current_period_end ? new Date(s.current_period_end * 1000).toISOString() : null,
+            });
+          }
+          starting_after = pageSubs.has_more ? pageSubs.data[pageSubs.data.length - 1].id : null;
+        } while (starting_after && ++guard < 10);
+      }
+    } catch (e) { req.log?.warn?.({ err: e?.message }, 'MRR compute failed'); }
+
     const entries = [...byUser.entries()].filter(([, v]) => v[tab].length > 0).sort((a, b2) => b2[1][tab].length - a[1][tab].length);
     const hasMore = entries.length > skip + take;
     const page = entries.slice(skip, skip + take);
@@ -417,7 +477,8 @@ export default async function miscRoutes(app) {
     }
     return {
       tab, hasMore,
-      users: page.map(([id, v]) => ({ ...(byId[id] || { id, displayName: '(deleted)', email: '' }), active: v[tab], ...(spendById[id] || {}) })),
+      mrr: { totalCents: Math.round(siteMrrCents), subCount: siteSubCount, annualCents: Math.round(siteMrrCents * 12) },
+      users: page.map(([id, v]) => ({ ...(byId[id] || { id, displayName: '(deleted)', email: '' }), active: v[tab], mrrCents: Math.round(mrrByUser.get(id) || 0), ...(spendById[id] || {}) })),
     };
   });
 

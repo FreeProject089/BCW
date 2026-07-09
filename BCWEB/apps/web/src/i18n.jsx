@@ -897,6 +897,8 @@ const DICT = {
     'pu.payments': '{n} paiement(s)', 'pu.last': 'dernier', 'pu.active': '{n} actif(s)', 'pu.loadmore': 'Charger plus',
     'pu.d.until': 'jusqu’au', 'pu.d.deletes': 'suppression le', 'pu.d.paid': 'payé', 'pu.d.free': 'gratuit', 'pu.d.open': 'ouvrir',
     'pu.d.acrosspay': 'sur {n} paiement(s)',
+    'pu.mrr': 'Revenu récurrent mensuel', 'pu.mo': 'mois', 'pu.yr': 'an', 'pu.arr': 'Annualisé (est.)', 'pu.activesubs': 'Abonnements actifs',
+    'pu.spent': '{n} dépensés', 'pu.permo': 'par mois', 'ud.subs': 'Abonnements actifs',
     'pu.empty.paying.t': 'Aucun client payant', 'pu.empty.paying.s': 'Personne n’a encore effectué de paiement.',
     'pu.empty.free.t': 'Aucun utilisateur en plan gratuit', 'pu.empty.free.s': 'Personne n’héberge de contenu gratuitement pour le moment.',
     'pu.empty.archived.t': 'Rien d’archivé', 'pu.empty.archived.s': 'Aucune durée expirée ou boost terminé pour le moment.',
