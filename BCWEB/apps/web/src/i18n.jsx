@@ -508,7 +508,7 @@ const DICT = {
     'repos.storupd': 'Stockage mis à jour.', 'repos.poolfull': 'Pool plein — max {n} GB.', 'repos.belowused': 'Sous l’utilisation actuelle.',
     'repos.storinpool': 'Stockage dans le pool', 'repos.usedhere': 'utilisé ici', 'repos.usedothers': 'utilisé par d’autres', 'repos.maxhere': 'max ici', 'repos.apply': 'Appliquer',
     'repos.upgradestorage': 'Besoin de plus de stockage ?', 'repos.upgradeprice': '{price}/mois · même upload/CPU, plus de stockage',
-    'repos.upgradefree': 'Encore dans le palier gratuit — aucun frais.', 'repos.currentplan': 'Ton offre actuelle.', 'repos.upgrade': 'Améliorer',
+    'repos.upgradefree': 'Encore dans le palier gratuit — aucun frais.', 'repos.currentplan': 'Ton offre actuelle.', 'repos.upgrade': 'Améliorer', 'repos.upgradeplan': 'Améliorer le stockage / l’offre',
     'repos.upgraded.free': 'Passé à {n} GB — palier gratuit, aucun frais.', 'repos.notupgrade': 'Choisis une taille plus grande que ton quota actuel.',
     'repos.upcustom': 'Augmenter aussi l’envoi & le CPU', 'repos.upprice': '{price}/mois',
     'repos.notupgrade2': 'Augmente le stockage, la vitesse d’envoi ou le CPU au-dessus de leurs valeurs actuelles.',

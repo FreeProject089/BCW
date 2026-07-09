@@ -341,6 +341,7 @@ export function MyRepos() {
   const [featuring, setFeaturing] = useState(null);
   const [managing, setManaging] = useState(null);
   const [sandbox, setSandbox] = useState(null);
+  const [sandboxTab, setSandboxTab] = useState('access'); // which tab RepoManageModal opens on
   const [poolAdd, setPoolAdd] = useState(null);
   const repos = data?.repos || [];
   const shared = data?.shared || [];
@@ -466,7 +467,8 @@ export function MyRepos() {
                 <RepoMenu>
                   {repoJsonUrl(r) && <MenuItem icon={Copy} onClick={() => { navigator.clipboard?.writeText(repoJsonUrl(r)); toast.success(t('repos.copy.ok', 'repo.json link copied.')); }}>{t('repos.copylink', 'Copy repo.json link')}</MenuItem>}
                   {r.hosted && <MenuItem icon={Files} onClick={() => setManaging(r)}>{t('repos.quickfiles', 'Quick files')}</MenuItem>}
-                  {r.hosted && <MenuItem icon={ShieldCheck} onClick={() => setSandbox(r)}>{t('repos.sandbox', 'Sandbox settings')}</MenuItem>}
+                  {r.hosted && <MenuItem icon={HardDrive} onClick={() => { setSandboxTab('limits'); setSandbox(r); }}>{t('repos.upgradeplan', 'Upgrade storage / plan')}</MenuItem>}
+                  {r.hosted && <MenuItem icon={ShieldCheck} onClick={() => { setSandboxTab('access'); setSandbox(r); }}>{t('repos.sandbox', 'Sandbox settings')}</MenuItem>}
                   {!r.hosted && <MenuItem icon={UploadCloud} onClick={() => push(r)}>{t('repos.push', 'Push')}</MenuItem>}
                   {!r.hosted && <MenuItem icon={CheckCircle2} onClick={() => check(r)}>{t('repos.check', 'Check')}</MenuItem>}
                   {r.hosted && <MenuItem icon={HardDrive} onClick={() => switchMode(r)}>{r.groupId ? t('repos.tosingle', 'Switch to single') : t('repos.tomulti', 'Switch to multi')}</MenuItem>}
@@ -507,7 +509,7 @@ export function MyRepos() {
       {editing !== null && <RepoEditor repo={editing.id ? editing : null} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
       {featuring && <FeatureModal repo={featuring} onClose={() => setFeaturing(null)} />}
       {managing && <HostFilesModal repo={managing} onClose={() => setManaging(null)} onChanged={reload} />}
-      {sandbox && <RepoManageModal repo={sandbox} onClose={() => setSandbox(null)} onChanged={reload} />}
+      {sandbox && <RepoManageModal repo={sandbox} initialTab={sandboxTab} onClose={() => setSandbox(null)} onChanged={reload} />}
       {poolAdd && <PoolAddModal group={poolAdd} onClose={() => setPoolAdd(null)} onDone={() => { setPoolAdd(null); reload(); }} />}
     </div>
   );
@@ -515,7 +517,7 @@ export function MyRepos() {
 
 // Sandboxed repo dashboard: access mode, whitelist, bans, upload limit — all
 // hard-capped by the sandbox. Grouped (multi) repos can also resize their quota.
-function RepoManageModal({ repo, onClose, onChanged }) {
+function RepoManageModal({ repo, onClose, onChanged, initialTab }) {
   const toast = useToast(); const { t } = useI18n();
   const s0 = repo.settings || { access: { whitelistEnabled: false, ips: [], keys: [] }, bans: { ips: [], keys: [] }, requestedUploadKbps: null };
   const [access, setAccess] = useState(s0.access);
@@ -523,7 +525,7 @@ function RepoManageModal({ repo, onClose, onChanged }) {
   const capKbps = repo.uploadLimitKbps || 0;
   const [reqMbps, setReqMbps] = useState(s0.requestedUploadKbps ? (s0.requestedUploadKbps / 1024) : (capKbps / 1024));
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState('access');
+  const [tab, setTab] = useState(initialTab || 'access');
   const [ipIn, setIpIn] = useState(''); const [keyIn, setKeyIn] = useState('');
   const [banIpIn, setBanIpIn] = useState('');
 
