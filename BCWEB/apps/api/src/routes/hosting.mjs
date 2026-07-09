@@ -204,8 +204,9 @@ export default async function hostingRoutes(app) {
       repoName: z.string().min(2).max(60),
       // single = one repo with the full quota; multi = a shared storage pool.
       mode: z.enum(['single', 'multi']).default('single'),
-      // Custom plan: user picks their own size / upload / cpu.
-      custom: z.object({ storageGB: z.number().int().min(1).max(500), uploadMbps: z.number().min(1).max(1000), cpuShare: z.number().min(0.1).max(8) }).optional(),
+      // Custom plan: user picks their own size / upload. CPU is no longer a product
+      // dimension — a fixed default share is applied server-side.
+      custom: z.object({ storageGB: z.number().int().min(1).max(500), uploadMbps: z.number().min(1).max(1000), cpuShare: z.number().min(0.1).max(8).optional() }).optional(),
       // Prepaid term (months): 1 (min), 12 (recommended), or 3/6/24 for bigger discounts.
       months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1),
       // Optional admin promo code (a 'discount' code — % off and/or first months free).
@@ -227,16 +228,17 @@ export default async function hostingRoutes(app) {
     let plan;
     if (b.data.custom) {
       const cu = b.data.custom;
-      // Enforce the admin CPU/upload ceilings server-side (the UI clamps too, but never trust it).
+      const cpuShare = cu.cpuShare ?? 0.5; // fixed default — CPU isn't user-selectable anymore
+      // Enforce the admin upload ceiling server-side (the UI clamps too, but never trust it).
       const cf0 = capacityFactors(cap);
-      if (cu.uploadMbps > cf0.maxUploadMbps || cu.cpuShare > cf0.maxCpuShare) {
-        return reply.code(409).send({ error: 'over_limit', maxUploadMbps: cf0.maxUploadMbps, maxCpuShare: cf0.maxCpuShare });
+      if (cu.uploadMbps > cf0.maxUploadMbps) {
+        return reply.code(409).send({ error: 'over_limit', maxUploadMbps: cf0.maxUploadMbps });
       }
       const s = await settings(p);
       plan = await p.hostingPlan.create({ data: {
         name: `Custom ${cu.storageGB}GB`, storageGB: cu.storageGB,
-        uploadLimitKbps: Math.round(cu.uploadMbps * 1024), cpuShare: cu.cpuShare,
-        priceMonthlyCents: priceCents(s, cu.storageGB, cu.uploadMbps, cu.cpuShare), active: false,
+        uploadLimitKbps: Math.round(cu.uploadMbps * 1024), cpuShare,
+        priceMonthlyCents: priceCents(s, cu.storageGB, cu.uploadMbps, cpuShare), active: false,
       } });
     } else {
       plan = await p.hostingPlan.findUnique({ where: { id: b.data.planId } });

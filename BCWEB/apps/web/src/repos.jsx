@@ -600,9 +600,8 @@ function RepoManageModal({ repo, onClose, onChanged, initialTab }) {
               <span className="text-[var(--muted)]">{t('repos.sandboxcap', 'Sandbox cap:')} <b>{(capKbps / 1024).toFixed(1)} Mbps</b>. {t('repos.effective', 'Effective:')} <b className="text-[var(--primary-2)]">{(effectiveKbps / 1024).toFixed(1)} Mbps</b>{capped && ` ${t('repos.wascapped', '(your request was capped)')}`}.</span>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[var(--line)]">
+          <div className="pt-2 border-t border-[var(--line)]">
             <div><div className="text-xs text-[var(--faint)]">{t('repos.storage', 'Storage')}</div><div className="font-semibold">{gb(repo.storageUsedBytes)} / {gb(repo.storageQuotaBytes)} GB</div></div>
-            <div><div className="text-xs text-[var(--faint)]">{t('repos.cpushare', 'CPU share')}</div><div className="font-semibold">{repo.cpuShare} vCPU</div></div>
           </div>
           {repo.group ? <QuotaResizer repo={repo} onChanged={onChanged} /> : (repo.hosted && <RepoUpgrade repo={repo} />)}
         </div>
@@ -620,30 +619,30 @@ function RepoUpgrade({ repo }) {
   const { t } = useI18n(); const toast = useToast();
   const currentGB = Number(repo.storageQuotaBytes) / 1024 ** 3;
   const curUp = +(((repo.uploadLimitKbps || 0) / 1024).toFixed(1));
-  const curCpu = repo.cpuShare || 0;
+  const curCpu = repo.cpuShare || 0; // kept fixed at the repo's current share — no longer user-adjustable
   const [gbVal, setGbVal] = useState(Math.ceil(currentGB * 2));
   const [upVal, setUpVal] = useState(curUp);
-  const [cpuVal, setCpuVal] = useState(curCpu);
   const [custom, setCustom] = useState(false);
   const [quote, setQuote] = useState(null);
   const [busy, setBusy] = useState(false);
-  const sGB = Math.max(gbVal, currentGB); const sUp = Math.max(upVal, curUp); const sCpu = Math.max(cpuVal, curCpu);
-  const changed = sGB > currentGB || sUp > curUp || sCpu > curCpu;
+  const sGB = Math.max(gbVal, currentGB); const sUp = Math.max(upVal, curUp);
+  const changed = sGB > currentGB || sUp > curUp;
   useEffect(() => {
     if (!changed) { setQuote(null); return; }
-    api.get(`/hosting/price?storageGB=${sGB}&uploadMbps=${sUp}&cpuShare=${sCpu}`).then(setQuote).catch(() => setQuote(null));
-  }, [sGB, sUp, sCpu, changed]);
+    // CPU is priced at the repo's existing share (curCpu) but never changed here.
+    api.get(`/hosting/price?storageGB=${sGB}&uploadMbps=${sUp}&cpuShare=${curCpu}`).then(setQuote).catch(() => setQuote(null));
+  }, [sGB, sUp, changed]);
   const upgrade = async () => {
     setBusy(true);
     try {
-      const body = { storageGB: sGB, ...(sUp > curUp ? { uploadMbps: sUp } : {}), ...(sCpu > curCpu ? { cpuShare: sCpu } : {}) };
+      const body = { storageGB: sGB, ...(sUp > curUp ? { uploadMbps: sUp } : {}) };
       const res = await api.post(`/me/repos/${repo.id}/upgrade`, body);
       if (res.url || res.checkoutUrl) { window.location.href = res.url || res.checkoutUrl; return; }
       if (res.free) toast.success(t('repos.upgraded.free', 'Upgraded to {n} GB — free tier, no charge.').replace('{n}', sGB));
     } catch (x) {
       toast.error(x.data?.error === 'capacity_full' ? t('repos.poolfull', 'Pool full — max {n} GB.').replace('{n}', x.data.freeGB?.toFixed(1))
-        : x.data?.error === 'not_an_upgrade' ? t('repos.notupgrade2', 'Raise storage, upload speed, or CPU above their current values.')
-        : x.data?.error === 'over_limit' ? t('repos.upover', 'Exceeds the per-repo limits (max {u} Mbps upload, {c} vCPU).').replace('{u}', x.data.maxUploadMbps).replace('{c}', x.data.maxCpuShare)
+        : x.data?.error === 'not_an_upgrade' ? t('repos.notupgrade3', 'Raise storage or upload speed above their current values.')
+        : x.data?.error === 'over_limit' ? t('repos.upover2', 'Exceeds the per-repo upload limit (max {u} Mbps).').replace('{u}', x.data.maxUploadMbps)
         : t('repos.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
@@ -651,11 +650,10 @@ function RepoUpgrade({ repo }) {
     <div className="pt-3 border-t border-[var(--line)] space-y-2">
       <div className="flex items-center justify-between mb-1.5 text-sm"><span className="flex items-center gap-1.5 text-[var(--muted)]"><HardDrive size={14} /> {t('repos.upgradestorage', 'Need more storage?')}</span><span className="font-semibold">{gbVal} GB</span></div>
       <input type="range" min={Math.ceil(currentGB)} max={Math.max(Math.ceil(currentGB) + 1, 500)} step={1} value={gbVal} className="bcw-range w-full" onChange={(e) => setGbVal(Number(e.target.value))} />
-      <button type="button" onClick={() => setCustom((c) => !c)} className="text-xs text-[var(--primary-2)] hover:underline flex items-center gap-1"><Settings2 size={12} /> {t('repos.upcustom', 'Also raise upload & CPU')} <ChevronDown size={11} className={`transition-transform ${custom ? 'rotate-180' : ''}`} /></button>
+      <button type="button" onClick={() => setCustom((c) => !c)} className="text-xs text-[var(--primary-2)] hover:underline flex items-center gap-1"><Settings2 size={12} /> {t('repos.upcustom2', 'Also raise upload speed')} <ChevronDown size={11} className={`transition-transform ${custom ? 'rotate-180' : ''}`} /></button>
       {custom && (
-        <div className="grid grid-cols-2 gap-3 pt-1">
+        <div className="pt-1">
           <div><div className="flex justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1"><Zap size={12} /> {t('repos.s.upload', 'Upload speed')}</span><b className="tabular-nums">{upVal} Mbps</b></div><input type="range" min={Math.max(1, Math.ceil(curUp))} max={1000} step={1} value={upVal} className="bcw-range w-full" onChange={(e) => setUpVal(Number(e.target.value))} /></div>
-          <div><div className="flex justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1"><Cpu size={12} /> {t('repos.cpushare', 'CPU share')}</span><b className="tabular-nums">{cpuVal} vCPU</b></div><input type="range" min={Math.max(0.1, curCpu)} max={8} step={0.1} value={cpuVal} className="bcw-range w-full" onChange={(e) => setCpuVal(Number(e.target.value))} /></div>
         </div>
       )}
       <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
@@ -1384,13 +1382,13 @@ export function AdminRepos() {
   );
 }
 
-// Admin: edit a hosted repo's CPU / upload / storage limits in one form (no more
+// Admin: edit a hosted repo's upload / storage limits in one form (no more
 // one-prompt-at-a-time). PATCH /admin/repos/:id — storage can't drop below what's used.
+// CPU is no longer a product dimension, so it isn't editable here.
 function RepoLimitsModal({ repo, onClose, onSaved }) {
   const toast = useToast(); const { t } = useI18n();
   const usedGB = Number(repo.storageUsedBytes || 0) / 1024 ** 3;
   const [f, setF] = useState({
-    cpuShare: repo.cpuShare ?? 1,
     uploadMbps: +(((repo.uploadLimitKbps || 0) / 1024).toFixed(1)),
     storageGB: +((Number(repo.storageQuotaBytes || 0) / 1024 ** 3).toFixed(2)),
   });
@@ -1399,13 +1397,12 @@ function RepoLimitsModal({ repo, onClose, onSaved }) {
     if (f.storageGB < usedGB) return toast.error(t('arp.storagebelow', "Storage can't be below what's already used ({n} GB).").replace('{n}', usedGB.toFixed(2)));
     setBusy(true);
     try {
-      await api.patch(`/admin/repos/${repo.id}`, { cpuShare: Number(f.cpuShare), uploadMbps: Number(f.uploadMbps), storageGB: Number(f.storageGB) });
+      await api.patch(`/admin/repos/${repo.id}`, { uploadMbps: Number(f.uploadMbps), storageGB: Number(f.storageGB) });
       toast.success(t('repos.limits.saved', 'Limits updated.')); onSaved();
     } catch (x) { toast.error(x.data?.error === 'exceeds_disk' ? 'Exceeds the real disk capacity.' : t('repos.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
   const rows = [
-    { k: 'cpuShare', label: t('repos.cpushare', 'CPU share'), suffix: 'vCPU', step: 0.1, min: 0, icon: Cpu },
     { k: 'uploadMbps', label: t('repos.s.upload', 'Upload speed'), suffix: 'Mbps', step: 1, min: 0, icon: Zap },
     { k: 'storageGB', label: t('repos.storage', 'Storage'), suffix: 'GB', step: 1, min: 0, icon: HardDrive },
   ];

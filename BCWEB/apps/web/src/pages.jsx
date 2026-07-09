@@ -808,7 +808,7 @@ export function Hosting() {
       if (x.data?.error === 'creator_link_required') { toast.error(t('hosting.err.link', 'Link a BMM creator id first (Profile → Creator IDs) to host a repo.')); return nav('/profile'); }
       const e = x.data?.error;
       toast.error(e === 'capacity_full' ? t('hosting.err.capacity', 'No capacity available right now.')
-        : e === 'over_limit' ? t('hosting.err.overlimit', 'That exceeds the current per-repo limits (max {u} Mbps upload, {c} vCPU). Lower them and retry.').replace('{u}', x.data.maxUploadMbps).replace('{c}', x.data.maxCpuShare)
+        : e === 'over_limit' ? t('hosting.err.overlimit2', 'That exceeds the current per-repo upload limit (max {u} Mbps). Lower it and retry.').replace('{u}', x.data.maxUploadMbps)
         : e === 'free_tier_full' ? t('hosting.err.freetierfull', 'The free plan is sold out right now — every free slot is taken. Try a paid plan, or check back later.')
         : e === 'free_tier_already_used' ? t('hosting.err.freeused', "You've already used your one free repo (per account and per linked creator id) — pick a paid plan instead.")
         : e === 'stripe_not_configured' ? t('hosting.err.stripe', 'Payments not configured yet.') : t('hosting.err.checkout', 'Checkout failed.'));
@@ -938,7 +938,7 @@ export function Hosting() {
             {recommended && !planDisabled && <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide text-white flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 whitespace-nowrap" style={{ boxShadow: '0 6px 18px -4px var(--primary-glow), 0 0 0 3px var(--bg-solid)' }}><Star size={11} className="fill-white" /> {t('hosting.popular', 'RECOMMENDED')}</div>}
             <HardDrive size={22} className="mx-auto text-[var(--primary-2)] transition-transform group-hover:scale-110" />
             <div className="text-4xl font-extrabold mt-3">{pl.storageGB}<span className="text-base font-medium text-[var(--muted)]"> GB</span></div>
-            <div className="text-xs text-[var(--faint)] mt-2 flex items-center justify-center gap-3"><span className="flex items-center gap-1"><Zap size={12} />{(pl.uploadLimitKbps / 1024).toFixed(0)}Mbps</span><span className="flex items-center gap-1"><Cpu size={12} />{pl.cpuShare}</span></div>
+            <div className="text-xs text-[var(--faint)] mt-2 flex items-center justify-center gap-3"><span className="flex items-center gap-1"><Zap size={12} />{(pl.uploadLimitKbps / 1024).toFixed(0)}Mbps</span></div>
             <div className="text-2xl font-bold gradient-text mt-4">${(termTotal(pl.priceMonthlyCents) / 100 / months).toFixed(2)}<span className="text-sm text-[var(--muted)] font-medium">{t('hosting.permo', '/mo')}</span></div>
             <div className="text-[11px] text-[var(--muted)] mb-4">{months > 1 ? <>${(termTotal(pl.priceMonthlyCents) / 100).toFixed(2)} {t('hosting.billedfor', 'billed for')} {months} {t('hosting.mo', 'mo')}</> : t('hosting.billedmonthly', 'billed monthly')}</div>
             <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full group-hover:opacity-95" onClick={(e) => { e.stopPropagation(); checkout({ planId: pl.id }); }}>
@@ -963,9 +963,9 @@ export function Hosting() {
 
 function CustomPlanModal({ open, onClose, onCheckout, months = 12, setMonths, termDisc = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.20, 24: 0.35 } }) {
   const { t } = useI18n();
-  const [spec, setSpec] = useState({ storageGB: 20, uploadMbps: 8, cpuShare: 0.5 });
+  const [spec, setSpec] = useState({ storageGB: 20, uploadMbps: 8 });
   const [price, setPrice] = useState(null);
-  const [factors, setFactors] = useState(null); // { maxUploadMbps, maxCpuShare } — admin/scarcity caps
+  const [factors, setFactors] = useState(null); // { maxUploadMbps } — admin/scarcity caps
   const [promo, setPromo] = useState(null);
   const disc = termDisc[months] || 0;
   const afterTerm = price == null ? null : Math.round(price * months * (1 - disc));
@@ -973,21 +973,19 @@ function CustomPlanModal({ open, onClose, onCheckout, months = 12, setMonths, te
   useEffect(() => {
     if (!open) return;
     const id = setTimeout(() => {
-      api.get(`/hosting/price?${new URLSearchParams({ storageGB: spec.storageGB, uploadMbps: spec.uploadMbps, cpuShare: spec.cpuShare })}`)
+      api.get(`/hosting/price?${new URLSearchParams({ storageGB: spec.storageGB, uploadMbps: spec.uploadMbps })}`)
         .then((r) => { setPrice(r.priceMonthlyCents); setFactors(r.factors || null); }).catch(() => setPrice(null));
     }, 200);
     return () => clearTimeout(id);
   }, [open, spec]);
-  // Clamp the upload/CPU sliders to the current per-repo ceilings (admin + scarcity).
+  // Clamp the upload slider to the current per-repo ceiling (admin + scarcity).
   const upMax = Math.min(200, factors?.maxUploadMbps ?? 200);
-  const cpuMax = Math.min(4, factors?.maxCpuShare ?? 4);
   useEffect(() => {
-    setSpec((sp) => (sp.uploadMbps > upMax || sp.cpuShare > cpuMax) ? { ...sp, uploadMbps: Math.min(sp.uploadMbps, upMax), cpuShare: Math.min(sp.cpuShare, cpuMax) } : sp);
-  }, [upMax, cpuMax]);
+    setSpec((sp) => (sp.uploadMbps > upMax) ? { ...sp, uploadMbps: Math.min(sp.uploadMbps, upMax) } : sp);
+  }, [upMax]);
   const sliders = [
     { key: 'storageGB', label: t('hosting.s.storage', 'Storage'), min: 1, max: 200, step: 1, fmt: (v) => `${v} GB`, icon: HardDrive },
     { key: 'uploadMbps', label: t('hosting.s.upload', 'Upload speed'), min: 1, max: upMax, step: 1, fmt: (v) => `${v} Mbps`, icon: Zap },
-    { key: 'cpuShare', label: t('hosting.s.cpu', 'CPU share'), min: 0.1, max: cpuMax, step: 0.1, fmt: (v) => `${v} vCPU`, icon: Cpu },
   ];
   return (
     <Modal open={open} onClose={onClose} title={t('hosting.custom.modaltitle', 'Build a custom plan')} icon={Sliders} width="max-w-lg"
@@ -2732,20 +2730,18 @@ function AdminServerPerf() {
         );
       })()}
 
-      {/* Per-repo ALLOCATED resources (CPU share / upload / storage). NOT live usage:
-          hosted repos aren't isolated processes yet, so there's no real per-repo CPU to
-          sample — this is what each repo is allotted by its plan. */}
+      {/* Per-repo ALLOCATED upload + live-served throughput and storage. (CPU is no
+          longer a product dimension, so it's not shown here.) */}
       {(() => {
         const ra = data?.repoAllocations;
         if (!ra?.repos?.length) return null;
-        const over = ra.totalCpuShare > ra.hostCpuCores;
         return (
           <Card className="p-4 mb-4">
             <button onClick={() => toggleSec('alloc')} className="w-full flex items-center justify-between gap-2 mb-1 flex-wrap text-left">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Cpu size={13} className="text-[var(--primary-2)]" /> {t('sp.alloc', 'Per-repo allocation')} <span className="text-[var(--muted)] normal-case tracking-normal">· {ra.repos.length}</span></span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Server size={13} className="text-[var(--primary-2)]" /> {t('sp.alloc', 'Per-repo allocation')} <span className="text-[var(--muted)] normal-case tracking-normal">· {ra.repos.length}</span></span>
               <span className="flex items-center gap-2">
                 <span className="text-[11px] tabular-nums text-[var(--muted)] hidden sm:inline">
-                  <b className={over ? 'text-amber-400' : 'text-[var(--text)]'}>{ra.totalCpuShare}</b> {t('sp.alloc.summary', 'vCPU allocated across {n} repo(s) · host has {c} core(s) · {u} Mbps total').replace('{n}', ra.repos.length).replace('{c}', ra.hostCpuCores).replace('{u}', ra.totalUploadMbps)}
+                  {t('sp.alloc.summary2', '{n} repo(s) · {u} Mbps total upload').replace('{n}', ra.repos.length).replace('{u}', ra.totalUploadMbps)}
                 </span>
                 <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.alloc ? '' : '-rotate-90'}`} />
               </span>
@@ -2754,33 +2750,23 @@ function AdminServerPerf() {
               const totUsed = ra.repos.reduce((a, r) => a + (r.storageUsedBytes || 0), 0);
               const totQuota = ra.repos.reduce((a, r) => a + (r.storageQuotaBytes || 0), 0);
               const totLive = ra.repos.reduce((a, r) => a + (r.liveUploadMbps || 0), 0);
-              const cpuPct = ra.hostCpuCores ? Math.min(100, (ra.totalCpuShare / ra.hostCpuCores) * 100) : 0;
               return (
               <>
-                {/* Server-commitment summary — the ONE bar that means something: how much
-                    of the host's cores is reserved across all repos. */}
+                {/* Totals summary — live upload actually served + storage used across all repos. */}
                 <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-3">
-                  <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="font-medium flex items-center gap-1.5"><Cpu size={13} className="text-[var(--primary-2)]" /> {t('sp.alloc.committed', 'CPU committed')}</span>
-                    <span className={`tabular-nums ${over ? 'text-amber-400 font-medium' : 'text-[var(--muted)]'}`}>{t('sp.alloc.coresline', '{a} / {c} cores · {p}%').replace('{a}', ra.totalCpuShare).replace('{c}', ra.hostCpuCores).replace('{p}', cpuPct.toFixed(0))}</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full rounded-full ${over ? 'bg-amber-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} style={{ width: `${Math.max(2, cpuPct)}%` }} /></div>
-                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-[var(--faint)] mt-2">
+                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-[var(--faint)]">
                     <span className="flex items-center gap-1.5">{totLive > 0 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}{t('sp.alloc.uplivetot', 'Live upload (total)')}: <b className="text-[var(--text)] tabular-nums">{totLive.toFixed(2)} Mbps</b> <span className="text-[var(--faint)]/70">/ {ra.totalUploadMbps} {t('sp.alloc.reserved', 'reserved')}</span></span>
                     <span>{t('sp.alloc.stotot', 'Storage used (total)')}: <b className="text-[var(--text)] tabular-nums">{fmtBytes(totUsed)} / {fmtBytes(totQuota)}</b></span>
                   </div>
-                  {over && <div className="text-[11px] text-amber-400/90 mt-1.5">{t('sp.alloc.over', 'vCPU is over-committed vs the host core count.')}</div>}
                 </div>
-                <div className="text-[11px] text-[var(--faint)] mb-2">{t('sp.alloc.note2', "Upload = throughput actually served right now vs the plan limit; Storage = what's actually stored vs the quota. CPU is what the plan reserves (not measurable live yet — hosted repos aren't isolated processes).")}</div>
+                <div className="text-[11px] text-[var(--faint)] mb-2">{t('sp.alloc.note3', "Upload = throughput actually served right now vs the plan limit; Storage = what's actually stored vs the quota.")}</div>
 
-                {/* Per-repo table — plain numbers for the reserved values, a bar only for
-                    storage (the one metric with a real used/total relationship). */}
+                {/* Per-repo table — live upload + storage, each with a real used/total bar. */}
                 <div className="max-h-96 overflow-auto -mx-1">
-                  <table className="w-full text-sm border-collapse min-w-[560px]">
+                  <table className="w-full text-sm border-collapse min-w-[480px]">
                     <thead>
                       <tr className="text-[10px] uppercase tracking-wider text-[var(--faint)]">
                         <th className="font-semibold text-left py-1.5 pl-1 pr-3 min-w-[150px]">{t('sp.repo', 'Repo')}</th>
-                        <th className="font-semibold text-right py-1.5 px-3 whitespace-nowrap">{t('sp.cpu', 'CPU')}</th>
                         <th className="font-semibold text-left py-1.5 px-3 min-w-[150px]">{t('sp.upload', 'Upload')}</th>
                         <th className="font-semibold text-left py-1.5 pl-3 pr-1 min-w-[150px]">{t('sp.storage', 'Storage')}</th>
                       </tr>
@@ -2798,7 +2784,6 @@ function AdminServerPerf() {
                               <div className="font-medium break-all leading-tight">{r.name}</div>
                               <div className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 flex-wrap">{r.owner}{r.status !== 'ONLINE' && <Badge tone={r.status === 'SUSPENDED' ? 'red' : ''}>{r.status}</Badge>}</div>
                             </td>
-                            <td className="py-2 px-3 text-right align-top whitespace-nowrap"><div className="tabular-nums">{r.cpuShare} <span className="text-[var(--faint)] text-xs">vCPU</span></div><div className="text-[9px] text-[var(--faint)]">{t('sp.alloc.reserved', 'reserved')}</div></td>
                             {/* Live upload actually served now vs the plan limit (0 = idle). */}
                             <td className="py-2 px-3">
                               <div className="flex items-baseline justify-between gap-2 text-[11px] tabular-nums mb-1">
@@ -3710,7 +3695,7 @@ function PluginContentModal({ item, onClose }) {
 function AdminFreeHost() {
   const toast = useToast(); const { t } = useI18n();
   const plans = useAsync(() => api.get('/hosting/plans'), []);
-  const [f, setF] = useState({ name: '', ownerEmail: '', planId: '', storageGB: 10, uploadMbps: 8, cpuShare: 0.5, listed: false, mode: 'single' });
+  const [f, setF] = useState({ name: '', ownerEmail: '', planId: '', storageGB: 10, uploadMbps: 8, listed: false, mode: 'single' });
   const [custom, setCustom] = useState(false);
   const [busy, setBusy] = useState(false);
   const submit = async () => {
@@ -3719,11 +3704,11 @@ function AdminFreeHost() {
     try {
       const body = { name: f.name, listed: f.listed, mode: f.mode };
       if (f.ownerEmail) body.ownerEmail = f.ownerEmail;
-      if (custom) { body.storageGB = Number(f.storageGB); body.uploadMbps = Number(f.uploadMbps); body.cpuShare = Number(f.cpuShare); }
+      if (custom) { body.storageGB = Number(f.storageGB); body.uploadMbps = Number(f.uploadMbps); }
       else if (f.planId) body.planId = f.planId;
       await api.post('/admin/repos/host', body);
       toast.success((f.mode === 'multi' ? t('fh.provmulti', 'Multi-repo pool "{name}" provisioned.') : t('fh.provsingle', 'Hosted repo "{name}" provisioned. See it under Server repos.')).replace('{name}', f.name));
-      setF({ name: '', ownerEmail: '', planId: '', storageGB: 10, uploadMbps: 8, cpuShare: 0.5, listed: false, mode: 'single' });
+      setF({ name: '', ownerEmail: '', planId: '', storageGB: 10, uploadMbps: 8, listed: false, mode: 'single' });
     } catch (x) { toast.error(x.data?.error === 'user_not_found' ? t('fh.usernotfound', 'No user with that email.') : x.data?.error || t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   return (
@@ -3745,10 +3730,9 @@ function AdminFreeHost() {
           <button onClick={() => setCustom(true)} className={`px-3 py-1.5 rounded-lg border ${custom ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>{t('fh.customsize', 'Custom size')}</button>
         </div>
         {custom ? (
-          <div className="grid sm:grid-cols-3 gap-3">
+          <div className="grid sm:grid-cols-2 gap-3">
             <Field label={t('fh.storage', 'Storage (GB)')}><Input type="number" value={f.storageGB} onChange={(e) => setF({ ...f, storageGB: e.target.value })} /></Field>
             <Field label={t('fh.upload', 'Upload (Mbps)')}><Input type="number" value={f.uploadMbps} onChange={(e) => setF({ ...f, uploadMbps: e.target.value })} /></Field>
-            <Field label={t('fh.cpu', 'CPU share')}><Input type="number" step="0.1" value={f.cpuShare} onChange={(e) => setF({ ...f, cpuShare: e.target.value })} /></Field>
           </div>
         ) : (
           <Field label={t('fh.plan', 'Plan')}><Select value={f.planId} onChange={(e) => setF({ ...f, planId: e.target.value })}>
