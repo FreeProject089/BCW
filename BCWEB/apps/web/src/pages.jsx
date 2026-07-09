@@ -2777,7 +2777,7 @@ async function doubleConfirm(dialog, { title, message, okLabel = 'Continue' }) {
 }
 
 function FileManager() {
-  const toast = useToast(); const dialog = useDialog();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const [dir, setDir] = useState('.');
   const [data, setData] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -2785,56 +2785,56 @@ function FileManager() {
   const [q, setQ] = useState('');
   const [history, setHistory] = useState(null); // { path, items } for the backup-history modal
 
-  const load = (d) => api.get(`/server/files?path=${encodeURIComponent(d)}`).then((r) => { setData(r); setDir(r.path); setQ(''); }).catch(() => toast.error('Failed to list.'));
+  const load = (d) => api.get(`/server/files?path=${encodeURIComponent(d)}`).then((r) => { setData(r); setDir(r.path); setQ(''); }).catch(() => toast.error(t('fm.listfail', 'Failed to list.')));
   useEffect(() => { load('.'); /* eslint-disable-next-line */ }, []);
 
   const openEntry = async (e) => {
     const full = dir === '.' ? e.name : `${dir}/${e.name}`;
     if (e.isDir) return load(full);
     try { const r = await api.get(`/server/files/read?path=${encodeURIComponent(full)}`); setEditing({ path: r.path, content: r.content }); }
-    catch (x) { toast.error(x.data?.error === 'too_large' ? 'File too large to view here — use download instead.' : 'Failed to read (probably binary — use download instead).'); }
+    catch (x) { toast.error(x.data?.error === 'too_large' ? t('fm.toolarge', 'File too large to view here — use download instead.') : t('fm.readfail', 'Failed to read (probably binary — use download instead).')); }
   };
   const up = () => { const parts = dir.split('/').filter((x) => x !== '.'); parts.pop(); load(parts.length ? parts.join('/') : '.'); };
   const saveFile = async () => {
-    if (!(await doubleConfirm(dialog, { title: 'Save changes', message: `Overwrite "${editing.path}" on the live server? A backup of the current content is kept automatically.`, okLabel: 'Save' }))) return;
+    if (!(await doubleConfirm(dialog, { title: t('fm.savechanges', 'Save changes'), message: t('fm.saveconfirm', 'Overwrite "{p}" on the live server? A backup of the current content is kept automatically.').replace('{p}', editing.path), okLabel: t('common.save', 'Save') }))) return;
     setBusy(true);
-    try { await api.put('/server/files/write', { path: editing.path, content: editing.content, confirmToken: 'CONFIRM' }); toast.success('Saved — a backup of the previous version was kept.'); setEditing(null); }
-    catch { toast.error('Failed to save.'); } finally { setBusy(false); }
+    try { await api.put('/server/files/write', { path: editing.path, content: editing.content, confirmToken: 'CONFIRM' }); toast.success(t('fm.savedbackup', 'Saved — a backup of the previous version was kept.')); setEditing(null); }
+    catch { toast.error(t('fm.savefail', 'Failed to save.')); } finally { setBusy(false); }
   };
   const delEntry = async (e) => {
     const full = dir === '.' ? e.name : `${dir}/${e.name}`;
-    if (!(await doubleConfirm(dialog, { title: 'Delete', message: `Delete "${full}"? A backup is kept, but it won't reappear in the file manager until restored.`, okLabel: 'Delete' }))) return;
-    try { await api.del(`/server/files?path=${encodeURIComponent(full)}&confirmToken=CONFIRM`); toast.success('Deleted.'); load(dir); } catch { toast.error('Failed.'); }
+    if (!(await doubleConfirm(dialog, { title: t('fm.del', 'Delete'), message: t('fm.delconfirm', 'Delete "{p}"? A backup is kept, but it won\'t reappear in the file manager until restored.').replace('{p}', full), okLabel: t('fm.del', 'Delete') }))) return;
+    try { await api.del(`/server/files?path=${encodeURIComponent(full)}&confirmToken=CONFIRM`); toast.success(t('common.deleted', 'Deleted.')); load(dir); } catch { toast.error(t('common.failed', 'Failed.')); }
   };
   const viewHistory = async (full) => {
     try { const r = await api.get(`/server/files/backups?path=${encodeURIComponent(full)}`); setHistory({ path: full, items: r.history }); }
-    catch { toast.error('Failed to load history.'); }
+    catch { toast.error(t('fm.histfail', 'Failed to load history.')); }
   };
   const restoreVersion = async (hash) => {
-    if (!(await doubleConfirm(dialog, { title: 'Restore this version', message: `Overwrite "${history.path}" with the version from this backup? The current content is backed up first.`, okLabel: 'Restore' }))) return;
-    try { await api.post(`/server/files/backups/${hash}/restore`, { path: history.path, confirmToken: 'CONFIRM' }); toast.success('Restored.'); setHistory(null); load(dir); }
-    catch { toast.error('Failed to restore.'); }
+    if (!(await doubleConfirm(dialog, { title: t('fm.restore', 'Restore this version'), message: t('fm.restoreconfirm', 'Overwrite "{p}" with the version from this backup? The current content is backed up first.').replace('{p}', history.path), okLabel: t('fm.restorebtn', 'Restore') }))) return;
+    try { await api.post(`/server/files/backups/${hash}/restore`, { path: history.path, confirmToken: 'CONFIRM' }); toast.success(t('fm.restored', 'Restored.')); setHistory(null); load(dir); }
+    catch { toast.error(t('fm.restorefail', 'Failed to restore.')); }
   };
   const newFolder = async () => {
-    const name = await dialog.prompt({ title: 'New folder', label: 'Folder name', placeholder: 'assets' });
+    const name = await dialog.prompt({ title: t('fm.newfolder', 'New folder'), label: t('fm.foldername', 'Folder name'), placeholder: 'assets' });
     if (!name) return;
     const full = dir === '.' ? name : `${dir}/${name}`;
-    try { await api.post('/server/files/mkdir', { path: full }); toast.success('Created.'); load(dir); }
-    catch (x) { toast.error(x.data?.error === 'already_exists' ? 'Already exists.' : 'Failed.'); }
+    try { await api.post('/server/files/mkdir', { path: full }); toast.success(t('fm.created', 'Created.')); load(dir); }
+    catch (x) { toast.error(x.data?.error === 'already_exists' ? t('fm.exists', 'Already exists.') : t('common.failed', 'Failed.')); }
   };
   const newFile = async () => {
-    const name = await dialog.prompt({ title: 'New file', label: 'File name', placeholder: 'notes.txt' });
+    const name = await dialog.prompt({ title: t('fm.newfile', 'New file'), label: t('fm.filename', 'File name'), placeholder: 'notes.txt' });
     if (!name) return;
     const full = dir === '.' ? name : `${dir}/${name}`;
-    try { await api.put('/server/files/write', { path: full, content: '' }); toast.success('Created.'); load(dir); }
-    catch { toast.error('Failed.'); }
+    try { await api.put('/server/files/write', { path: full, content: '' }); toast.success(t('fm.created', 'Created.')); load(dir); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
   };
   const rename = async (e) => {
-    const newName = await dialog.prompt({ title: `Rename "${e.name}"`, label: 'New name', placeholder: e.name });
+    const newName = await dialog.prompt({ title: t('fm.renametitle', 'Rename "{n}"').replace('{n}', e.name), label: t('fm.newname', 'New name'), placeholder: e.name });
     if (!newName || newName === e.name) return;
     const full = dir === '.' ? e.name : `${dir}/${e.name}`;
-    try { await api.put('/server/files/rename', { path: full, newName }); toast.success('Renamed.'); load(dir); }
-    catch (x) { toast.error(x.data?.error === 'bad_name' ? 'Invalid name.' : 'Failed.'); }
+    try { await api.put('/server/files/rename', { path: full, newName }); toast.success(t('fm.renamed', 'Renamed.')); load(dir); }
+    catch (x) { toast.error(x.data?.error === 'bad_name' ? t('fm.badname', 'Invalid name.') : t('common.failed', 'Failed.')); }
   };
   const downloadEntry = (e) => {
     const full = dir === '.' ? e.name : `${dir}/${e.name}`;
@@ -2847,7 +2847,7 @@ function FileManager() {
   return (
     <Card className="p-4">
       <div className="flex items-center gap-2 mb-2 text-sm flex-wrap">
-        <FileText size={14} className="text-[var(--primary-2)] shrink-0" /> <span className="font-semibold shrink-0">File manager</span>
+        <FileText size={14} className="text-[var(--primary-2)] shrink-0" /> <span className="font-semibold shrink-0">{t('fm.title', 'File manager')}</span>
         <div className="flex items-center gap-1 text-xs font-mono text-[var(--faint)] min-w-0 overflow-x-auto">
           <button onClick={() => load('.')} className="hover:text-[var(--primary-2)] shrink-0">/</button>
           {crumbs.map((c, i) => (
@@ -2858,23 +2858,23 @@ function FileManager() {
           ))}
         </div>
         <div className="flex-1" />
-        <Button size="sm" onClick={newFolder}><Plus size={12} /> Folder</Button>
-        <Button size="sm" onClick={newFile}><Plus size={12} /> File</Button>
-        {dir !== '.' && <Button size="sm" onClick={up}>Up</Button>}
+        <Button size="sm" onClick={newFolder}><Plus size={12} /> {t('fm.folder', 'Folder')}</Button>
+        <Button size="sm" onClick={newFile}><Plus size={12} /> {t('fm.file', 'File')}</Button>
+        {dir !== '.' && <Button size="sm" onClick={up}>{t('fm.up', 'Up')}</Button>}
       </div>
       {editing ? (
         <div>
           <div className="flex items-center justify-between mb-1">
             <div className="text-xs text-[var(--faint)] font-mono">{editing.path}</div>
-            <button onClick={() => viewHistory(editing.path)} className="text-xs text-[var(--faint)] hover:text-[var(--primary-2)] flex items-center gap-1"><History size={12} /> History</button>
+            <button onClick={() => viewHistory(editing.path)} className="text-xs text-[var(--faint)] hover:text-[var(--primary-2)] flex items-center gap-1"><History size={12} /> {t('fm.history', 'History')}</button>
           </div>
           <textarea value={editing.content} onChange={(e) => setEditing({ ...editing, content: e.target.value })} className="w-full h-64 font-mono text-xs bg-[var(--surface-2)] rounded-lg p-3 outline-none" spellCheck={false} />
-          <div className="flex gap-2 mt-2"><Button variant="primary" disabled={busy} onClick={saveFile}>{busy ? <Spinner /> : 'Save'}</Button><Button onClick={() => setEditing(null)}>Cancel</Button></div>
+          <div className="flex gap-2 mt-2"><Button variant="primary" disabled={busy} onClick={saveFile}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button><Button onClick={() => setEditing(null)}>{t('su.cancel', 'Cancel')}</Button></div>
         </div>
       ) : (
         <>
           <div className="relative mb-2"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-            <Input className="!pl-8 !py-1.5 !text-xs" placeholder="Filter this folder…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <Input className="!pl-8 !py-1.5 !text-xs" placeholder={t('fm.filter', 'Filter this folder…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <div className="divide-y divide-[var(--line)] max-h-80 overflow-auto scroll-thin">
             {entries.length ? entries.map((e) => (
               <div key={e.name} className="flex items-center gap-2 py-1.5 text-sm group">
@@ -2889,22 +2889,22 @@ function FileManager() {
                   <button onClick={() => delEntry(e)} className="text-[var(--faint)] hover:text-red-400" title="Delete"><Trash2 size={12} /></button>
                 </span>
               </div>
-            )) : <div className="text-xs text-[var(--faint)] py-4 text-center">{data?.entries?.length ? 'No matches.' : 'Empty directory.'}</div>}
+            )) : <div className="text-xs text-[var(--faint)] py-4 text-center">{data?.entries?.length ? t('fm.nomatches', 'No matches.') : t('fm.emptydir', 'Empty directory.')}</div>}
           </div>
         </>
       )}
       {history && (
-        <Modal open onClose={() => setHistory(null)} title={`Backup history — ${history.path}`} icon={History} width="max-w-lg">
+        <Modal open onClose={() => setHistory(null)} title={t('fm.histtitle', 'Backup history — {p}').replace('{p}', history.path)} icon={History} width="max-w-lg">
           {history.items.length ? (
             <div className="divide-y divide-[var(--line)] max-h-96 overflow-auto scroll-thin">
               {history.items.map((h) => (
                 <div key={h.hash} className="flex items-center gap-2.5 py-2 text-sm">
                   <div className="flex-1 min-w-0"><div className="truncate">{h.message}</div><div className="text-[11px] text-[var(--faint)]">{new Date(h.at).toLocaleString()} · <code className="font-mono">{h.hash.slice(0, 8)}</code></div></div>
-                  <Button size="sm" onClick={() => restoreVersion(h.hash)}>Restore</Button>
+                  <Button size="sm" onClick={() => restoreVersion(h.hash)}>{t('fm.restorebtn', 'Restore')}</Button>
                 </div>
               ))}
             </div>
-          ) : <div className="text-xs text-[var(--faint)] py-6 text-center">No backups yet for this file.</div>}
+          ) : <div className="text-xs text-[var(--faint)] py-6 text-center">{t('fm.nobackups', 'No backups yet for this file.')}</div>}
         </Modal>
       )}
     </Card>
@@ -2917,7 +2917,7 @@ function FileManager() {
 const DB_SENSITIVE_COL = /hash|secret|token|password|totp/i;
 
 function DbViewer() {
-  const toast = useToast(); const dialog = useDialog();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const [source, setSource] = useState('bcweb'); // 'bcweb' | 'telemetry'
   const [tables, setTables] = useState(null);
   const [tableQ, setTableQ] = useState('');
@@ -2936,7 +2936,7 @@ function DbViewer() {
   useEffect(() => {
     setTables(null); setActive(null); setRows(null);
     api.get(`${dbBase(source)}/tables`).then((r) => setTables(r.tables))
-      .catch((x) => toast.error(x.data?.error === 'telemetry_db_not_configured' ? 'BMM telemetry DB is not configured.' : 'Failed to list tables.'));
+      .catch((x) => toast.error(x.data?.error === 'telemetry_db_not_configured' ? t('dbv.notconfigured', 'BMM telemetry DB is not configured.') : t('dbv.listfail', 'Failed to list tables.')));
     /* eslint-disable-next-line */
   }, [source]);
   const openTable = async (name, p = 0, s = sort) => {
@@ -2944,7 +2944,7 @@ function DbViewer() {
     try {
       const qs = new URLSearchParams({ page: p, pageSize }); if (s.col) { qs.set('sort', s.col); qs.set('dir', s.dir); }
       const r = await api.get(`${dbBase()}/table/${encodeURIComponent(name)}?${qs}`); setRows(r);
-    } catch { toast.error('Failed to load table.'); }
+    } catch { toast.error(t('dbv.tablefail', 'Failed to load table.')); }
   };
   const toggleSort = (c) => openTable(active, 0, sort.col === c ? { col: c, dir: sort.dir === 'asc' ? 'desc' : 'asc' } : { col: c, dir: 'asc' });
   const cols = rows?.rows?.[0] ? Object.keys(rows.rows[0]) : [];
@@ -2962,8 +2962,8 @@ function DbViewer() {
 
   return (
     <Card className="p-4">
-      <div className="flex items-center gap-2 mb-2 text-sm flex-wrap"><HardDrive size={14} className="text-[var(--primary-2)]" /><span className="font-semibold">Database viewer</span>
-        <span className="text-xs text-[var(--faint)]">{canEdit ? '(edit with care)' : '(read-only)'}</span>
+      <div className="flex items-center gap-2 mb-2 text-sm flex-wrap"><HardDrive size={14} className="text-[var(--primary-2)]" /><span className="font-semibold">{t('dbv.title', 'Database viewer')}</span>
+        <span className="text-xs text-[var(--faint)]">{canEdit ? t('dbv.editcare', '(edit with care)') : t('dbv.readonly', '(read-only)')}</span>
         <div className="ml-auto flex rounded-lg border border-[var(--line)] overflow-hidden text-xs">
           {[['bcweb', 'BCWEB'], ['telemetry', 'BMM Telemetry']].map(([v, l]) => (
             <button key={v} onClick={() => setSource(v)} className={`px-2.5 py-1 ${source === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
@@ -2974,18 +2974,18 @@ function DbViewer() {
         <div className="grid sm:grid-cols-[180px_1fr] gap-3">
           <div>
             <div className="relative mb-1.5"><Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-              <Input className="!pl-7 !py-1 !text-xs" placeholder="Filter tables…" value={tableQ} onChange={(e) => setTableQ(e.target.value)} /></div>
+              <Input className="!pl-7 !py-1 !text-xs" placeholder={t('dbv.filtertables', 'Filter tables…')} value={tableQ} onChange={(e) => setTableQ(e.target.value)} /></div>
             <div className="max-h-80 overflow-auto scroll-thin space-y-0.5">
               {visibleTables.map((t) => (
                 <button key={t.name} onClick={() => openTable(t.name)} className={`w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center justify-between gap-2 ${active === t.name ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
                   <span className="truncate">{t.name}</span><span className="text-[var(--faint)] shrink-0">{t.approxRows}</span>
                 </button>
               ))}
-              {!visibleTables.length && <div className="text-xs text-[var(--faint)] py-3 text-center">No matches.</div>}
+              {!visibleTables.length && <div className="text-xs text-[var(--faint)] py-3 text-center">{t('fm.nomatches', 'No matches.')}</div>}
             </div>
           </div>
           <div className="min-w-0">
-            {!active ? <div className="text-xs text-[var(--faint)] py-6 text-center">Pick a table.</div>
+            {!active ? <div className="text-xs text-[var(--faint)] py-6 text-center">{t('dbv.picktable', 'Pick a table.')}</div>
               : !rows ? <Loading />
               : (
                 <>
@@ -3012,11 +3012,11 @@ function DbViewer() {
                     </table>
                   </div>
                   <div className="flex items-center justify-between mt-2 text-xs text-[var(--muted)]">
-                    <span>{rows.total} row{rows.total !== 1 ? 's' : ''}</span>
+                    <span>{rows.total} {rows.total !== 1 ? t('dbv.rows', 'rows') : t('dbv.row', 'row')}</span>
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={exportCsv}><Download size={12} /> CSV (page)</Button>
-                      <Button size="sm" disabled={page === 0} onClick={() => openTable(active, page - 1)}>Prev</Button>
-                      <Button size="sm" disabled={(page + 1) * pageSize >= rows.total} onClick={() => openTable(active, page + 1)}>Next</Button>
+                      <Button size="sm" onClick={exportCsv}><Download size={12} /> {t('dbv.csv', 'CSV (page)')}</Button>
+                      <Button size="sm" disabled={page === 0} onClick={() => openTable(active, page - 1)}>{t('dbv.prev', 'Prev')}</Button>
+                      <Button size="sm" disabled={(page + 1) * pageSize >= rows.total} onClick={() => openTable(active, page + 1)}>{t('dbv.next', 'Next')}</Button>
                     </div>
                   </div>
                 </>
@@ -3027,51 +3027,51 @@ function DbViewer() {
             const protected_ = DB_SENSITIVE_COL.test(cell.col);
             const editable = canEdit && !!rows?.pkColumn && cell.pk != null && !isPk && !protected_;
             const save = async () => {
-              if (!(await doubleConfirm(dialog, { title: 'Save row edit', message: `Overwrite ${active}.${cell.col} (row ${cell.pk}) on the live database? The current row is backed up automatically.`, okLabel: 'Save' }))) return;
+              if (!(await doubleConfirm(dialog, { title: t('dbv.saverow', 'Save row edit'), message: t('dbv.saverowconfirm', 'Overwrite {t}.{c} (row {pk}) on the live database? The current row is backed up automatically.').replace('{t}', active).replace('{c}', cell.col).replace('{pk}', cell.pk), okLabel: t('common.save', 'Save') }))) return;
               setSaving(true);
               try {
                 await api.put(`/server/db/table/${encodeURIComponent(active)}/cell`, { pk: cell.pk, column: cell.col, value: draft, confirmToken: 'CONFIRM' });
-                toast.success('Saved — the previous row value was backed up.');
+                toast.success(t('dbv.rowsaved', 'Saved — the previous row value was backed up.'));
                 setCell(null);
                 openTable(active, page, sort);
               } catch (x) {
-                toast.error(x.data?.error === 'table_protected' ? 'Audit/log tables are read-only — they can\'t be edited here.' : x.data?.error === 'column_protected' ? 'This column can\'t be edited here.' : x.data?.error === 'update_failed' ? `Failed: ${x.data?.detail || 'invalid value'}` : 'Failed.');
+                toast.error(x.data?.error === 'table_protected' ? t('dbv.tableprotected', 'Audit/log tables are read-only — they can\'t be edited here.') : x.data?.error === 'column_protected' ? t('dbv.colprotected', 'This column can\'t be edited here.') : x.data?.error === 'update_failed' ? t('dbv.updatefail', 'Failed: {d}').replace('{d}', x.data?.detail || 'invalid value') : t('common.failed', 'Failed.'));
               } finally { setSaving(false); }
             };
             const viewRowHistory = async () => {
               try { const r = await api.get(`/server/db/backups?table=${encodeURIComponent(active)}&pk=${encodeURIComponent(cell.pk)}`); setRowHistory({ table: active, pk: cell.pk, items: r.history }); }
-              catch { toast.error('Failed to load history.'); }
+              catch { toast.error(t('fm.histfail', 'Failed to load history.')); }
             };
             return (
               <Modal open onClose={() => setCell(null)} title={cell.col} icon={HardDrive} width="max-w-lg"
-                footer={editable ? <><Button onClick={() => setCell(null)}>Cancel</Button><Button onClick={viewRowHistory}><History size={13} /> History</Button><Button variant="primary" disabled={saving} onClick={save}>{saving ? <Spinner /> : 'Save'}</Button></> : undefined}>
+                footer={editable ? <><Button onClick={() => setCell(null)}>{t('su.cancel', 'Cancel')}</Button><Button onClick={viewRowHistory}><History size={13} /> {t('fm.history', 'History')}</Button><Button variant="primary" disabled={saving} onClick={save}>{saving ? <Spinner /> : t('common.save', 'Save')}</Button></> : undefined}>
                 {editable ? (
                   <textarea value={draft} onChange={(e) => setDraft(e.target.value)} className="w-full h-40 font-mono text-xs bg-[var(--surface-2)] rounded-lg p-3 outline-none" spellCheck={false} />
                 ) : (
                   <>
                     <pre className="text-xs font-mono bg-[var(--surface-2)] rounded-lg p-3 max-h-80 overflow-auto scroll-thin whitespace-pre-wrap break-all">{cell.value === null ? 'null' : cellText(cell.value)}</pre>
-                    <p className="text-xs text-[var(--faint)] mt-2">{protected_ ? "This column can't be edited here (sensitive)." : isPk ? "The primary key can't be edited." : 'This table has no single-column primary key, so it can only be viewed.'}</p>
+                    <p className="text-xs text-[var(--faint)] mt-2">{protected_ ? t('dbv.sensitivenote', "This column can't be edited here (sensitive).") : isPk ? t('dbv.pknote', "The primary key can't be edited.") : t('dbv.nopknote', 'This table has no single-column primary key, so it can only be viewed.')}</p>
                   </>
                 )}
               </Modal>
             );
           })()}
           {rowHistory && (
-            <Modal open onClose={() => setRowHistory(null)} title={`Row backup history — ${rowHistory.table} (pk=${rowHistory.pk})`} icon={History} width="max-w-lg">
+            <Modal open onClose={() => setRowHistory(null)} title={t('dbv.rowhisttitle', 'Row backup history — {t} (pk={pk})').replace('{t}', rowHistory.table).replace('{pk}', rowHistory.pk)} icon={History} width="max-w-lg">
               {rowHistory.items.length ? (
                 <div className="divide-y divide-[var(--line)] max-h-96 overflow-auto scroll-thin">
                   {rowHistory.items.map((h) => (
                     <div key={h.hash} className="flex items-center gap-2.5 py-2 text-sm">
                       <div className="flex-1 min-w-0"><div className="truncate">{h.message}</div><div className="text-[11px] text-[var(--faint)]">{new Date(h.at).toLocaleString()} · <code className="font-mono">{h.hash.slice(0, 8)}</code></div></div>
                       <Button size="sm" onClick={async () => {
-                        if (!(await doubleConfirm(dialog, { title: 'Restore this row', message: `Overwrite ${rowHistory.table} (pk=${rowHistory.pk}) with this backed-up version? Sensitive columns are never restored. The current row is backed up first.`, okLabel: 'Restore' }))) return;
-                        try { const r = await api.post(`/server/db/backups/${h.hash}/restore`, { table: rowHistory.table, pk: rowHistory.pk, confirmToken: 'CONFIRM' }); toast.success(`Restored ${r.restored.length} column(s)${r.skipped.length ? `, skipped ${r.skipped.length}` : ''}.`); setRowHistory(null); setCell(null); openTable(active, page, sort); }
-                        catch { toast.error('Failed to restore.'); }
-                      }}>Restore</Button>
+                        if (!(await doubleConfirm(dialog, { title: t('dbv.restorerow', 'Restore this row'), message: t('dbv.restorerowconfirm', 'Overwrite {t} (pk={pk}) with this backed-up version? Sensitive columns are never restored. The current row is backed up first.').replace('{t}', rowHistory.table).replace('{pk}', rowHistory.pk), okLabel: t('fm.restorebtn', 'Restore') }))) return;
+                        try { const r = await api.post(`/server/db/backups/${h.hash}/restore`, { table: rowHistory.table, pk: rowHistory.pk, confirmToken: 'CONFIRM' }); toast.success(t('dbv.rowrestored', 'Restored {n} column(s){s}.').replace('{n}', r.restored.length).replace('{s}', r.skipped.length ? t('dbv.skipped', ', skipped {k}').replace('{k}', r.skipped.length) : '')); setRowHistory(null); setCell(null); openTable(active, page, sort); }
+                        catch { toast.error(t('fm.restorefail', 'Failed to restore.')); }
+                      }}>{t('fm.restorebtn', 'Restore')}</Button>
                     </div>
                   ))}
                 </div>
-              ) : <div className="text-xs text-[var(--faint)] py-6 text-center">No backups yet for this row.</div>}
+              ) : <div className="text-xs text-[var(--faint)] py-6 text-center">{t('dbv.norowbackups', 'No backups yet for this row.')}</div>}
             </Modal>
           )}
         </div>
@@ -3086,7 +3086,7 @@ function DbViewer() {
 // socket (and, for power, a privileged agent), a docker-compose change with real
 // security implications that hasn't been made.
 function AdminServerAdvanced() {
-  const toast = useToast(); const dialog = useDialog();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const me2fa = useAsync(() => api.get('/me/2fa'), []);
   const elevateStatus = useAsync(() => api.get('/server/elevate/status').catch(() => ({ elevated: false })), []);
   const [code, setCode] = useState('');
@@ -3095,31 +3095,31 @@ function AdminServerAdvanced() {
 
   const elevate = async () => {
     setBusy(true);
-    try { await api.post('/server/elevate', { code: code.trim() }); toast.success('Elevated for 15 minutes.'); setCode(''); elevateStatus.reload(); }
-    catch (x) { toast.error(x.data?.error === 'invalid_code' ? 'Invalid code.' : x.data?.error === '2fa_not_enabled' ? 'Enable 2FA in your profile first.' : x.data?.error === 'forbidden' ? "You don't have server-control access." : 'Failed.'); }
+    try { await api.post('/server/elevate', { code: code.trim() }); toast.success(t('asa.elevated', 'Elevated for 15 minutes.')); setCode(''); elevateStatus.reload(); }
+    catch (x) { toast.error(x.data?.error === 'invalid_code' ? t('asa.invalidcode', 'Invalid code.') : x.data?.error === '2fa_not_enabled' ? t('asa.no2fa', 'Enable 2FA in your profile first.') : x.data?.error === 'forbidden' ? t('asa.noaccess', "You don't have server-control access.") : t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
   const restart = async () => {
-    if (!(await dialog.confirm({ title: 'Restart the API server', message: 'This restarts the api container. Everyone will briefly lose connection (usually a few seconds). Continue?', okLabel: 'Restart', danger: true }))) return;
+    if (!(await dialog.confirm({ title: t('asa.restarttitle', 'Restart the API server'), message: t('asa.restartconfirm', 'This restarts the api container. Everyone will briefly lose connection (usually a few seconds). Continue?'), okLabel: t('asa.restart', 'Restart'), danger: true }))) return;
     setRestarting(true);
-    try { await api.post('/server/restart'); toast.success('Restarting — back in a few seconds.'); } catch { toast.error('Failed.'); setRestarting(false); }
+    try { await api.post('/server/restart'); toast.success(t('asa.restarting', 'Restarting — back in a few seconds.')); } catch { toast.error(t('common.failed', 'Failed.')); setRestarting(false); }
   };
 
   if (me2fa.loading || elevateStatus.loading) return <Loading />;
-  if (!me2fa.data?.canControlServer) return <EmptyState icon={AlertTriangle} title="Not authorized" sub="A SUPERADMIN must grant you server-control access from the Access & permissions tab first." />;
+  if (!me2fa.data?.canControlServer) return <EmptyState icon={AlertTriangle} title={t('asa.notauth', 'Not authorized')} sub={t('asa.notauthsub', 'A SUPERADMIN must grant you server-control access from the Access & permissions tab first.')} />;
 
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><AlertTriangle size={16} className="text-red-400" /> Advanced server management</h2>
-      <p className="text-sm text-[var(--muted)] mb-3">Confined to this API container's own filesystem/process — no host or Docker access today. A fuller per-service view (Docker start/stop/restart/logs, host power) needs a docker-compose change (mounting the Docker socket, or a separate privileged power agent) that hasn't been made yet.</p>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><AlertTriangle size={16} className="text-red-400" /> {t('asa.title', 'Advanced server management')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('asa.sub', "Confined to this API container's own filesystem/process — no host or Docker access today. A fuller per-service view (Docker start/stop/restart/logs, host power) needs a docker-compose change (mounting the Docker socket, or a separate privileged power agent) that hasn't been made yet.")}</p>
 
       {!elevateStatus.data?.elevated ? (
         <Card className="p-5 max-w-sm">
-          <div className="text-sm font-semibold mb-2 flex items-center gap-2"><ShieldCheck size={15} className="text-[var(--primary-2)]" /> Step-up verification required</div>
-          <p className="text-xs text-[var(--muted)] mb-3">Enter a fresh code from your authenticator app to unlock these tools for 15 minutes.</p>
+          <div className="text-sm font-semibold mb-2 flex items-center gap-2"><ShieldCheck size={15} className="text-[var(--primary-2)]" /> {t('asa.stepup', 'Step-up verification required')}</div>
+          <p className="text-xs text-[var(--muted)] mb-3">{t('asa.stepupsub', 'Enter a fresh code from your authenticator app to unlock these tools for 15 minutes.')}</p>
           <div className="flex gap-2">
             <Input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" />
-            <Button variant="primary" disabled={busy || code.length !== 6} onClick={elevate}>{busy ? <Spinner /> : 'Elevate'}</Button>
+            <Button variant="primary" disabled={busy || code.length !== 6} onClick={elevate}>{busy ? <Spinner /> : t('asa.elevate', 'Elevate')}</Button>
           </div>
         </Card>
       ) : (
@@ -3128,9 +3128,9 @@ function AdminServerAdvanced() {
           <DbViewer />
           <BackupManager />
           <Card className="p-4">
-            <div className="flex items-center gap-2 mb-2 text-sm"><RefreshCw size={14} className="text-red-400" /><span className="font-semibold">Restart server</span></div>
-            <p className="text-xs text-[var(--muted)] mb-3">Restarts the api container (Docker's own `restart: unless-stopped` policy brings it right back — no Docker-socket access needed for this).</p>
-            <Button className="!text-red-400" disabled={restarting} onClick={restart}>{restarting ? <Spinner /> : 'Restart now'}</Button>
+            <div className="flex items-center gap-2 mb-2 text-sm"><RefreshCw size={14} className="text-red-400" /><span className="font-semibold">{t('asa.restartserver', 'Restart server')}</span></div>
+            <p className="text-xs text-[var(--muted)] mb-3">{t('asa.restartserversub', "Restarts the api container (Docker's own `restart: unless-stopped` policy brings it right back — no Docker-socket access needed for this).")}</p>
+            <Button className="!text-red-400" disabled={restarting} onClick={restart}>{restarting ? <Spinner /> : t('asa.restartnow', 'Restart now')}</Button>
           </Card>
         </div>
       )}
@@ -3143,30 +3143,30 @@ function AdminServerAdvanced() {
 // backup of the whole app. Size shown here is also mirrored in the admin
 // Storage tab's ledger.
 function BackupManager() {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/server/backups/usage'), []);
   const [limitGB, setLimitGB] = useState('');
   const [busy, setBusy] = useState(false);
   const [gcBusy, setGcBusy] = useState(false);
   const saveLimit = async () => {
     setBusy(true);
-    try { await api.put('/server/backups/limit', { maxBytes: limitGB.trim() ? Math.round(Number(limitGB) * 1024 ** 3) : null }); toast.success('Saved.'); setLimitGB(''); reload(); }
-    catch { toast.error('Failed.'); } finally { setBusy(false); }
+    try { await api.put('/server/backups/limit', { maxBytes: limitGB.trim() ? Math.round(Number(limitGB) * 1024 ** 3) : null }); toast.success(t('common.saved', 'Saved.')); setLimitGB(''); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const runGc = async () => {
     setGcBusy(true);
-    try { await api.post('/server/backups/gc'); toast.success('Compacted.'); reload(); } catch { toast.error('Failed.'); } finally { setGcBusy(false); }
+    try { await api.post('/server/backups/gc'); toast.success(t('bkp.compacted', 'Compacted.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } finally { setGcBusy(false); }
   };
   if (loading) return <Loading />;
   const d = data || {};
   const pct = d.maxBytes ? Math.min(100, (d.totalBytes / d.maxBytes) * 100) : 0;
   return (
     <Card className="p-4">
-      <div className="flex items-center gap-2 mb-2 text-sm"><History size={14} className="text-[var(--primary-2)]" /><span className="font-semibold">Backup storage</span></div>
-      <p className="text-xs text-[var(--muted)] mb-3">Every file edit/delete and DB row edit is git-committed first, so it can always be rolled back — plus a full daily snapshot of the file tree. This is separate from the app's own storage (see the Storage tab).</p>
+      <div className="flex items-center gap-2 mb-2 text-sm"><History size={14} className="text-[var(--primary-2)]" /><span className="font-semibold">{t('bkp.title', 'Backup storage')}</span></div>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('bkp.sub', "Every file edit/delete and DB row edit is git-committed first, so it can always be rolled back — plus a full daily snapshot of the file tree. This is separate from the app's own storage (see the Storage tab).")}</p>
       <div className="grid grid-cols-2 gap-3 mb-3">
-        <div><div className="text-xs text-[var(--faint)] mb-0.5">File history</div><div className="text-lg font-bold tabular-nums">{fmtBytes(d.filesBytes || 0)}</div></div>
-        <div><div className="text-xs text-[var(--faint)] mb-0.5">DB row history</div><div className="text-lg font-bold tabular-nums">{fmtBytes(d.dbBytes || 0)}</div></div>
+        <div><div className="text-xs text-[var(--faint)] mb-0.5">{t('bkp.filehist', 'File history')}</div><div className="text-lg font-bold tabular-nums">{fmtBytes(d.filesBytes || 0)}</div></div>
+        <div><div className="text-xs text-[var(--faint)] mb-0.5">{t('bkp.dbhist', 'DB row history')}</div><div className="text-lg font-bold tabular-nums">{fmtBytes(d.dbBytes || 0)}</div></div>
       </div>
       {d.maxBytes != null && (
         <div className="mb-3">
@@ -3175,11 +3175,11 @@ function BackupManager() {
         </div>
       )}
       <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2">
-        <Input type="number" value={limitGB} onChange={(e) => setLimitGB(e.target.value)} placeholder={d.maxBytes ? `Currently ${(d.maxBytes / 1024 ** 3).toFixed(1)} GB — blank = unlimited` : 'Size limit in GB (blank = unlimited)'} />
-        <Button variant="primary" disabled={busy} onClick={saveLimit}>{busy ? <Spinner /> : 'Save limit'}</Button>
-        <Button disabled={gcBusy} onClick={runGc} title="Runs git gc on the backup repos to reclaim space from old/loose objects. Non-destructive: NO history is deleted — every version can still be restored.">{gcBusy ? <Spinner /> : 'Compact backups'}</Button>
+        <Input type="number" value={limitGB} onChange={(e) => setLimitGB(e.target.value)} placeholder={d.maxBytes ? t('bkp.currently', 'Currently {n} GB — blank = unlimited').replace('{n}', (d.maxBytes / 1024 ** 3).toFixed(1)) : t('bkp.limitph', 'Size limit in GB (blank = unlimited)')} />
+        <Button variant="primary" disabled={busy} onClick={saveLimit}>{busy ? <Spinner /> : t('bkp.savelimit', 'Save limit')}</Button>
+        <Button disabled={gcBusy} onClick={runGc} title={t('bkp.compacttip', 'Runs git gc on the backup repos to reclaim space from old/loose objects. Non-destructive: NO history is deleted — every version can still be restored.')}>{gcBusy ? <Spinner /> : t('bkp.compact', 'Compact backups')}</Button>
       </div>
-      <p className="text-[11px] text-[var(--faint)] mt-2"><b>Compact backups</b> reclaims disk space by garbage-collecting the backup git repos (loose/duplicate objects). It never deletes history — every past version stays restorable.</p>
+      <p className="text-[11px] text-[var(--faint)] mt-2" dangerouslySetInnerHTML={{ __html: t('bkp.note', '<b>Compact backups</b> reclaims disk space by garbage-collecting the backup git repos (loose/duplicate objects). It never deletes history — every past version stays restorable.') }} />
     </Card>
   );
 }
