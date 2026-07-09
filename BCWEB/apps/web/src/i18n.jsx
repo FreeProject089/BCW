@@ -599,7 +599,8 @@ const DICT = {
     'bill.recurring': 'Abonnements récurrents', 'bill.sub.hosting': 'Abonnement d’hébergement', 'bill.sub.boost': 'Abonnement de mise en avant',
     'bill.sub.generic': 'Abonnement', 'bill.sub.renews': 'Renouvelle le {d}', 'bill.sub.endson': 'Se termine le {d}',
     'bill.sub.canceling': 'annulation', 'bill.sub.manage': 'Annule ou modifie un abonnement via « Gérer la facturation ».',
-    'bill.autorenew': 'Renouv. auto', 'bill.autorenew.h': 'Prélève automatiquement à chaque échéance au lieu d’un paiement unique.', 'bill.subscribe': 'S’abonner',
+    'bill.autorenew': 'Renouv. auto', 'bill.autorenew.h': 'Démarre un abonnement récurrent — prélevé automatiquement à chaque échéance.', 'bill.subscribe': 'S’abonner',
+    'bill.renewonce': 'Renouveler une fois', 'bill.renewonce.h': 'Un seul prélèvement pour la durée choisie.',
     'bill.history': 'Historique des paiements', 'bill.recurringtag': 'abonnement', 'bill.download': 'Télécharger', 'bill.view': 'Voir',
 
     'sub.presetjson': 'Le preset n’est pas un JSON valide.', 'sub.tmplgen': 'Modèle généré — modifie les valeurs.',

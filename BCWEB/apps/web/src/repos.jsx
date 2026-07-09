@@ -823,19 +823,20 @@ function PromoRedeem() {
 function SubscriptionRow({ repo, onChanged }) {
   const toast = useToast(); const { t } = useI18n();
   const [months, setMonths] = useState(12);
-  const [autoRenew, setAutoRenew] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(null); // 'once' | 'auto' while its request is in flight
   const sub = repo.subscription;
   const expired = sub?.currentPeriodEnd && new Date(sub.currentPeriodEnd) <= new Date();
   const soon = sub?.currentPeriodEnd && !expired && (new Date(sub.currentPeriodEnd) - Date.now()) < 7 * 864e5;
-  const renew = async () => {
-    setBusy(true);
+  // One click = one action. "Renew once" is a single charge; "Auto-renew" starts a
+  // recurring subscription — no hidden toggle state to remember.
+  const renew = async (autoRenew) => {
+    setBusy(autoRenew ? 'auto' : 'once');
     try {
       const res = await api.post(`/me/repos/${repo.id}/renew`, { months, autoRenew });
       if (res?.free) { toast.success(t('bill.renewed.free', 'Renewed — free tier, no charge.')); onChanged?.(); return; }
       window.location = res.url;
     } catch (x) { toast.error(x.data?.error === 'stripe_not_configured' ? t('hosting.err.stripe', 'Payments not configured yet.') : x.data?.error || t('repos.failed', 'Failed.')); }
-    finally { setBusy(false); }
+    finally { setBusy(null); }
   };
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm border-t border-[var(--line)] first:border-t-0">
@@ -853,10 +854,10 @@ function SubscriptionRow({ repo, onChanged }) {
       <Select className="!w-auto !py-1.5 !text-xs" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
         {[1, 3, 6, 12, 24].map((m) => <option key={m} value={m}>{m} mo</option>)}
       </Select>
-      <label className="flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer whitespace-nowrap" title={t('bill.autorenew.h', 'Charge automatically each term instead of a one-time payment.')}>
-        <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} /> {t('bill.autorenew', 'Auto-renew')}
-      </label>
-      <Button size="sm" variant={expired || repo.deleteAt ? 'primary' : 'default'} disabled={busy} onClick={renew}>{busy ? <Spinner /> : <><RefreshCw size={13} /> {autoRenew ? t('bill.subscribe', 'Subscribe') : t('bill.renew', 'Renew')}</>}</Button>
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant={expired || repo.deleteAt ? 'primary' : 'default'} disabled={!!busy} onClick={() => renew(false)} title={t('bill.renewonce.h', 'A single charge for the chosen term.')}>{busy === 'once' ? <Spinner /> : <><RefreshCw size={13} /> {t('bill.renewonce', 'Renew once')}</>}</Button>
+        <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => renew(true)} title={t('bill.autorenew.h', 'Start a recurring subscription — charges automatically each term.')}>{busy === 'auto' ? <Spinner /> : <><Zap size={13} /> {t('bill.autorenew', 'Auto-renew')}</>}</Button>
+      </div>
     </div>
   );
 }
