@@ -1467,33 +1467,45 @@ function TwoFactorNudge() {
 // Card-payment-terminal (TPE) illustration, tinted by outcome. `ok` → the terminal
 // shows an approved slip + green check; else a declined slip + amber cross.
 function PaymentTerminal({ ok }) {
-  const accent = ok ? '#34d399' : '#f59e0b';
+  const a1 = ok ? '#34d399' : '#fbbf24';
+  const a2 = ok ? '#059669' : '#f59e0b';
+  const g = ok ? 'ptok' : 'ptfail';
   return (
-    <svg viewBox="0 0 200 200" width="132" height="132" className="mx-auto" role="img" aria-hidden="true">
-      {/* soft glow */}
-      <circle cx="100" cy="100" r="78" fill={accent} opacity="0.08" />
-      {/* terminal body */}
-      <rect x="58" y="44" width="84" height="118" rx="12" fill="var(--surface-2)" stroke="var(--line-strong)" strokeWidth="2" />
-      {/* screen */}
-      <rect x="70" y="56" width="60" height="34" rx="4" fill="var(--bg-solid)" stroke="var(--line)" strokeWidth="1.5" />
-      <rect x="76" y="63" width="34" height="4" rx="2" fill={accent} opacity="0.9" />
-      <rect x="76" y="72" width="24" height="4" rx="2" fill="var(--faint)" opacity="0.6" />
-      {/* keypad */}
-      {[0, 1, 2].map((r) => [0, 1, 2].map((c) => (
-        <circle key={`${r}-${c}`} cx={78 + c * 22} cy={104 + r * 18} r="5.5" fill="var(--line-strong)" />
-      )))}
-      {/* printed receipt slip curling out the top */}
-      <g transform="translate(96 12)">
-        <rect x="0" y="0" width="52" height="40" rx="3" fill="#fff" transform="rotate(-8 26 20)" opacity="0.96" />
-        <rect x="8" y="9" width="34" height="3" rx="1.5" fill="#cbd5e1" transform="rotate(-8 26 20)" />
-        <rect x="8" y="17" width="26" height="3" rx="1.5" fill="#cbd5e1" transform="rotate(-8 26 20)" />
-        <rect x="8" y="25" width="30" height="3" rx="1.5" fill="#cbd5e1" transform="rotate(-8 26 20)" />
+    <svg viewBox="0 0 240 210" width="150" height="132" className="mx-auto" role="img" aria-hidden="true">
+      <defs>
+        <linearGradient id={`${g}-body`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--surface-2)" /><stop offset="1" stopColor="var(--bg-solid)" /></linearGradient>
+        <linearGradient id={`${g}-acc`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={a1} /><stop offset="1" stopColor={a2} /></linearGradient>
+        <radialGradient id={`${g}-glow`} cx="0.52" cy="0.46" r="0.62"><stop offset="0" stopColor={a1} stopOpacity="0.26" /><stop offset="1" stopColor={a1} stopOpacity="0" /></radialGradient>
+      </defs>
+      <rect x="0" y="0" width="240" height="210" fill={`url(#${g}-glow)`} />
+      {/* handheld terminal, slightly tilted for depth */}
+      <g transform="rotate(-6 120 120)">
+        <rect x="74" y="52" width="92" height="130" rx="17" fill={`url(#${g}-body)`} stroke="var(--line-strong)" strokeWidth="2" />
+        {/* screen */}
+        <rect x="86" y="64" width="68" height="40" rx="6" fill="#0b1220" />
+        <g stroke={a1} strokeWidth="2.6" fill="none" strokeLinecap="round" opacity="0.95"><path d="M104 84 a10 10 0 0 1 0 12" /><path d="M110 80 a17 17 0 0 1 0 20" /></g>
+        <rect x="122" y="81" width="24" height="4" rx="2" fill={a1} opacity="0.85" />
+        <rect x="122" y="90" width="16" height="4" rx="2" fill="#475569" />
+        {/* rounded keypad keys */}
+        {[0, 1, 2].map((r) => [0, 1, 2].map((c) => (
+          <rect key={`${r}-${c}`} x={90 + c * 24} y={116 + r * 18} width="17" height="12" rx="3.5" fill="var(--line-strong)" />
+        )))}
       </g>
-      {/* outcome badge */}
-      <circle cx="140" cy="140" r="20" fill={accent} />
-      {ok
-        ? <path d="M131 140 l6 6 l12 -13" fill="none" stroke="#0b1220" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-        : <path d="M133 133 l14 14 M147 133 l-14 14" fill="none" stroke="#0b1220" strokeWidth="3.5" strokeLinecap="round" />}
+      {/* card tapped on top (contactless) */}
+      <g transform="rotate(11 152 58)">
+        <rect x="120" y="32" width="66" height="43" rx="8" fill={`url(#${g}-acc)`} />
+        <rect x="120" y="45" width="66" height="9" fill="#0b1220" opacity="0.32" />
+        <rect x="128" y="40" width="13" height="10" rx="2" fill="#fde68a" />
+        <rect x="128" y="62" width="28" height="5" rx="2.5" fill="#fff" opacity="0.9" />
+      </g>
+      {/* outcome badge with a clean ring */}
+      <g transform="translate(170 152)">
+        <circle r="26" fill="var(--bg-solid)" />
+        <circle r="21" fill={`url(#${g}-acc)`} />
+        {ok
+          ? <path d="M-9 1 l6 6 l12 -13" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+          : <path d="M-7 -7 l14 14 M7 -7 l-14 14" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" />}
+      </g>
     </svg>
   );
 }
