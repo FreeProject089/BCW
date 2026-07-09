@@ -428,7 +428,7 @@ const DICT = {
     'hosting.multi': 'Dépôts multiples', 'hosting.multi.d': 'Répartis le stockage sur plusieurs dépôts, gérés par toi.',
     'hosting.term': 'Durée de facturation', 'hosting.term.note': '· prépayé, min. 1 mois',
     'hosting.term.note2': 'Prépayé — min. 1 mois, plus long = plus de réduction', 'hosting.2yr': '2 ans', 'hosting.standard': 'standard',
-    'hosting.mo': 'mois', 'hosting.1yr': '1 an', 'hosting.best': 'TOP', 'hosting.popular': 'RECOMMANDÉE',
+    'hosting.mo': 'mois', 'hosting.1yr': '1 an', 'hosting.best': 'TOP', 'hosting.popular': 'RECOMMANDÉE', 'hosting.popular2': 'Recommandé', 'hosting.freeplan.badge2': 'Gratuit',
     'hosting.best2': 'Meilleure offre', 'hosting.savepct': 'Économise {n}% vs mensuel',
     'hosting.free': 'libres', 'hosting.permo': '/mois',
     'hosting.billedfor': 'facturé pour', 'hosting.billedmonthly': 'facturé mensuellement', 'hosting.gethosted': 'Héberger',
