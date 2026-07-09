@@ -1341,6 +1341,100 @@ function TwoFactorNudge() {
   );
 }
 
+// Card-payment-terminal (TPE) illustration, tinted by outcome. `ok` → the terminal
+// shows an approved slip + green check; else a declined slip + amber cross.
+function PaymentTerminal({ ok }) {
+  const accent = ok ? '#34d399' : '#f59e0b';
+  return (
+    <svg viewBox="0 0 200 200" width="132" height="132" className="mx-auto" role="img" aria-hidden="true">
+      {/* soft glow */}
+      <circle cx="100" cy="100" r="78" fill={accent} opacity="0.08" />
+      {/* terminal body */}
+      <rect x="58" y="44" width="84" height="118" rx="12" fill="var(--surface-2)" stroke="var(--line-strong)" strokeWidth="2" />
+      {/* screen */}
+      <rect x="70" y="56" width="60" height="34" rx="4" fill="var(--bg-solid)" stroke="var(--line)" strokeWidth="1.5" />
+      <rect x="76" y="63" width="34" height="4" rx="2" fill={accent} opacity="0.9" />
+      <rect x="76" y="72" width="24" height="4" rx="2" fill="var(--faint)" opacity="0.6" />
+      {/* keypad */}
+      {[0, 1, 2].map((r) => [0, 1, 2].map((c) => (
+        <circle key={`${r}-${c}`} cx={78 + c * 22} cy={104 + r * 18} r="5.5" fill="var(--line-strong)" />
+      )))}
+      {/* printed receipt slip curling out the top */}
+      <g transform="translate(96 12)">
+        <rect x="0" y="0" width="52" height="40" rx="3" fill="#fff" transform="rotate(-8 26 20)" opacity="0.96" />
+        <rect x="8" y="9" width="34" height="3" rx="1.5" fill="#cbd5e1" transform="rotate(-8 26 20)" />
+        <rect x="8" y="17" width="26" height="3" rx="1.5" fill="#cbd5e1" transform="rotate(-8 26 20)" />
+        <rect x="8" y="25" width="30" height="3" rx="1.5" fill="#cbd5e1" transform="rotate(-8 26 20)" />
+      </g>
+      {/* outcome badge */}
+      <circle cx="140" cy="140" r="20" fill={accent} />
+      {ok
+        ? <path d="M131 140 l6 6 l12 -13" fill="none" stroke="#0b1220" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+        : <path d="M133 133 l14 14 M147 133 l-14 14" fill="none" stroke="#0b1220" strokeWidth="3.5" strokeLinecap="round" />}
+    </svg>
+  );
+}
+
+function PaymentResultModal({ result, onClose }) {
+  const { t } = useI18n();
+  const ok = result?.ok;
+  const kind = result?.kind;
+  const [pay, setPay] = useState(null);       // most-recent payment (for the invoice link)
+  const [linking, setLinking] = useState(false);
+  // The webhook that records the Payment row can land a beat after the redirect —
+  // poll briefly so "Download invoice" lights up once it exists.
+  useEffect(() => {
+    if (!ok) return;
+    let tries = 0, cancelled = false;
+    const poll = async () => {
+      try { const r = await api.get('/me/payments'); const latest = (r.payments || [])[0]; if (latest && !cancelled) { setPay(latest); return; } } catch {}
+      if (tries++ < 5 && !cancelled) setTimeout(poll, 1500);
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [ok]);
+  const downloadInvoice = async () => {
+    if (!pay) return;
+    setLinking(true);
+    try {
+      const link = await api.get(`/me/payments/${pay.id}/stripe-link`).catch(() => null);
+      const url = link?.pdf || link?.hosted || link?.receipt;
+      if (url) window.open(url, '_blank', 'noopener');
+    } finally { setLinking(false); }
+  };
+  const amount = pay ? (() => { const cur = (pay.currency || 'usd').toUpperCase(); const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : ''; return sym ? `${sym}${(pay.amountCents / 100).toFixed(2)}` : `${(pay.amountCents / 100).toFixed(2)} ${cur}`; })() : null;
+  return (
+    <Modal open onClose={onClose} title="" width="max-w-sm"
+      footer={<>
+        {ok && <Button variant="ghost" disabled={!pay || linking} onClick={downloadInvoice}>{linking ? <Spinner /> : <><Download size={15} /> {t('dash.pay.dl', 'Download invoice')}</>}</Button>}
+        <Button variant="primary" onClick={onClose}>{ok ? t('dash.pay.done', 'Done') : t('dash.pay.retry', 'Try again')}</Button>
+      </>}>
+      <div className="text-center pt-2 pb-1">
+        <PaymentTerminal ok={ok} />
+        <div className="text-xl font-extrabold mt-3">{ok ? t('dash.pay.ok.t', 'Payment confirmed') : t('dash.pay.cancel.t', 'Checkout cancelled')}</div>
+        <p className="text-sm text-[var(--muted)] mt-1.5 max-w-xs mx-auto">
+          {ok
+            ? (kind === 'feature' ? t('dash.pay.feature.m', 'Your repo is now featured on the public listing.') : t('dash.pay.hosting.m', "Your repo is being provisioned — it'll be online shortly."))
+            : t('dash.pay.cancel.m', 'No charge was made. You can try again anytime.')}
+        </p>
+        {ok && (
+          <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-4 py-3 text-left text-sm max-w-xs mx-auto">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[var(--faint)]">{t('dash.pay.item', 'Item')}</span>
+              <span className="font-medium truncate">{pay?.description || (kind === 'feature' ? t('dash.pay.boost', 'Repo boost') : t('dash.pay.hostingitem', 'Repo hosting'))}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 mt-1.5">
+              <span className="text-[var(--faint)]">{t('dash.pay.amount', 'Amount')}</span>
+              <span className="font-semibold tabular-nums">{amount || <span className="text-[var(--faint)]">{t('dash.pay.processing', 'processing…')}</span>}</span>
+            </div>
+            <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><Info size={11} /> {t('dash.pay.receipt', 'A receipt is available in the Billing tab.')}</div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export function Dashboard() {
   const { user } = useAuth(); const toast = useToast(); const nav = useNavigate(); const { t } = useI18n();
   const items = useAsync(() => api.get('/me/items'), []);
@@ -1398,22 +1492,7 @@ export function Dashboard() {
   ];
   return (
     <>
-      {payReturn && (
-        <div className="max-w-6xl mx-auto px-4 pt-4">
-          <div className={`rounded-xl border p-4 flex items-start gap-3 anim-fade ${payReturn.ok ? 'border-emerald-500/40 bg-emerald-500/[0.08]' : 'border-amber-500/40 bg-amber-500/[0.08]'}`}>
-            {payReturn.ok ? <CheckCircle2 size={22} className="text-emerald-400 shrink-0 mt-0.5" /> : <XCircle size={22} className="text-amber-400 shrink-0 mt-0.5" />}
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold">{payReturn.ok ? t('dash.pay.ok.t', 'Payment confirmed') : t('dash.pay.cancel.t', 'Checkout cancelled')}</div>
-              <div className="text-sm text-[var(--muted)] mt-0.5">
-                {payReturn.ok
-                  ? (payReturn.kind === 'feature' ? t('dash.pay.feature.m', 'Your repo is now featured on the public listing.') : t('dash.pay.hosting.m', "Your repo is being provisioned — it'll be online shortly.")) + ' ' + t('dash.pay.receipt', 'A receipt is available in the Billing tab.')
-                  : t('dash.pay.cancel.m', 'No charge was made. You can try again anytime.')}
-              </div>
-            </div>
-            <button onClick={() => setPayReturn(null)} className="text-[var(--faint)] hover:text-[var(--text)] shrink-0" aria-label="Dismiss"><X size={16} /></button>
-          </div>
-        </div>
-      )}
+      {payReturn && <PaymentResultModal result={payReturn} onClose={() => setPayReturn(null)} />}
       <SideDash icon={LayoutDashboard} title={t('dash.hi', 'Hi, {name}').replace('{name}', user?.displayName || 'there')} subtitle={t('dash.sub', 'Manage your content, repos and billing.')} tabs={tabs}
         headerActions={<Button variant="primary" onClick={() => setOpen(true)}><Upload size={16} /> {t('sub.title', 'Submit content')}</Button>}>
         {(s) => (<>
