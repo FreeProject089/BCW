@@ -421,7 +421,7 @@ function HelpfulWidget({ page, canEdit }) {
 
 /* Role-gated page editor (title, category, icon, order, publish, EN + FR body). */
 function DocEditor({ page, tree, onClose, onSaved }) {
-  const toast = useToast(); const dialog = useDialog();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const categories = [...new Set(tree.map((c) => c.category))];
   const [f, setF] = useState({ title: '', category: 'General', icon: '', order: 0, published: true, body: '', bodyFr: '', commentsPublic: false });
   const [tab, setTab] = useState('en');
@@ -441,14 +441,14 @@ function DocEditor({ page, tree, onClose, onSaved }) {
   }, [page?.id]);
 
   const save = async () => {
-    if (f.title.trim().length < 1) return toast.error('A title is required.');
-    if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) return toast.error('Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.');
+    if (f.title.trim().length < 1) return toast.error(t('de.titlereq', 'A title is required.'));
+    if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) return toast.error(t('be.conflicts', 'Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.'));
     setBusy(true);
     try {
       const b = { title: f.title, category: f.category || 'General', icon: f.icon || null, order: Number(f.order) || 0, published: f.published, body: f.body, bodyFr: f.bodyFr || null, commentsPublic: f.commentsPublic,
         ...(page && baseRef.current.version != null ? { baseVersion: baseRef.current.version } : {}) };
       const r = page ? await api.patch(`/docs/${page.id}`, b) : await api.post('/docs', b);
-      toast.success(page ? 'Page saved.' : 'Page created.');
+      toast.success(page ? t('de.pagesaved', 'Page saved.') : t('de.pagecreated', 'Page created.'));
       onSaved(r.page?.slug);
     } catch (x) {
       if (x.status === 409 && x.data?.current) {
@@ -462,21 +462,21 @@ function DocEditor({ page, tree, onClose, onSaved }) {
         if (Object.keys(patch).length) setF((s) => ({ ...s, ...patch }));
         baseRef.current = { version: cur.version, body: cur.body || '', bodyFr: cur.bodyFr || '' };
         setMerge({ conflicts: queue.length, pending: queue });
-        if (queue.length > 0) { setMergeUI({ queue }); toast.info('Someone else edited this page — resolve the conflicts visually, then Save.'); }
-        else toast.info('Merged with edits made by someone else — review, then Save again.');
+        if (queue.length > 0) { setMergeUI({ queue }); toast.info(t('de.conflictvisual', 'Someone else edited this page — resolve the conflicts visually, then Save.')); }
+        else toast.info(t('de.mergedreview', 'Merged with edits made by someone else — review, then Save again.'));
       } else if (x.status === 409 && x.data?.error === 'docs_limit') {
         const d = x.data;
         toast.error(d.kind === 'count'
-          ? `Docs are full — at most ${d.limit} pages allowed (currently ${d.current}). Delete one or raise the limit in Hosting settings.`
-          : `Docs size limit (${d.limitKB} KB) would be exceeded${d.currentKB ? ` (this would be ~${d.currentKB} KB)` : ''}. Trim the page, delete an old one, or raise the limit.`);
-      } else { toast.error(x.data?.error === 'forbidden' ? 'You don’t have permission.' : x.data?.error || 'Failed.'); }
+          ? t('de.fullcount', 'Docs are full — at most {limit} pages allowed (currently {current}). Delete one or raise the limit in Hosting settings.').replace('{limit}', d.limit).replace('{current}', d.current)
+          : t('de.fullsize', 'Docs size limit ({kb} KB) would be exceeded{cur}. Trim the page, delete an old one, or raise the limit.').replace('{kb}', d.limitKB).replace('{cur}', d.currentKB ? t('de.wouldbe', ' (this would be ~{c} KB)').replace('{c}', d.currentKB) : ''));
+      } else { toast.error(x.data?.error === 'forbidden' ? t('de.noperm', 'You don’t have permission.') : x.data?.error || t('be.failed', 'Failed.')); }
     }
     finally { setBusy(false); }
   };
   const del = async () => {
     if (!page) return;
-    if (!(await dialog.confirm({ title: 'Delete page', message: `Delete “${page.title}”? This cannot be undone.`, okLabel: 'Delete', danger: true }))) return;
-    try { await api.del(`/docs/${page.id}`); toast.success('Deleted.'); onSaved(); } catch { toast.error('Failed.'); }
+    if (!(await dialog.confirm({ title: t('de.delpage', 'Delete page'), message: t('de.delpagemsg', 'Delete “{n}”? This cannot be undone.').replace('{n}', page.title), okLabel: t('be.delete', 'Delete'), danger: true }))) return;
+    try { await api.del(`/docs/${page.id}`); toast.success(t('be.deleted', 'Deleted.')); onSaved(); } catch { toast.error(t('be.failed', 'Failed.')); }
   };
   const fr = tab === 'fr';
 

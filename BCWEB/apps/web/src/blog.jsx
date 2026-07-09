@@ -314,7 +314,7 @@ function BadgePicker({ onPick, onPickRaw, onClose }) {
 
 /* ── Reusable rich Markdown editor (toolbar + preview). `full` adds media/badges. ── */
 export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, full = false }) {
-  const toast = useToast(); const dialog = useDialog();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const ref = useRef(null); const [preview, setPreview] = useState(false);
   const [mode, setMode] = useState('write'); // 'write' (markdown) | 'visual' (drag & drop)
   const insert = (text) => {
@@ -322,7 +322,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
     const next = v.slice(0, at) + text + v.slice(at); onChange(next);
     setTimeout(() => { if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = at + text.length; } }, 0);
   };
-  const pickImage = (cb) => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { const file = i.files?.[0]; if (!file) return; try { toast.info('Uploading…'); cb(await uploadBlogImage(file)); } catch { toast.error('Upload failed.'); } }; i.click(); };
+  const pickImage = (cb) => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { const file = i.files?.[0]; if (!file) return; try { toast.info(t('be.uploading', 'Uploading…')); cb(await uploadBlogImage(file)); } catch { toast.error(t('be.uploadfail', 'Upload failed.')); } }; i.click(); };
   const ytEmbed = async () => { const url = await dialog.prompt({ title: 'YouTube', label: 'Video URL or ID', placeholder: 'https://youtu.be/…' }); if (!url) return; const m = url.match(/(?:v=|youtu\.be\/|embed\/)([\w-]{11})/) || [null, url.trim()]; insert(`\n<div class="yt-embed"><iframe src="https://www.youtube-nocookie.com/embed/${m[1]}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>\n`); };
   const linkEmbed = async () => { const url = await dialog.prompt({ title: 'Link', label: 'URL', placeholder: 'https://…' }); if (!url) return; const txt = await dialog.prompt({ title: 'Link', label: 'Text', defaultValue: url }); insert(`[${txt || url}](${url})`); };
   const videoEmbed = async () => { const url = await dialog.prompt({ title: 'Video', label: 'Video file URL (mp4/webm)', placeholder: 'https://…' }); if (!url) return; insert(`\n<video controls src="${url}" style="width:100%;border-radius:12px"></video>\n`); };
@@ -408,7 +408,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
 // `scope` values are encoded "project:<key>" or "showcase:<slug>" to disambiguate
 // the two blog "spaces" in one dropdown.
 function BlogEditor({ post, scopes, onClose, onSaved }) {
-  const toast = useToast(); const dialog = useDialog();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const defaultScope = scopes?.projects?.[0] ? `project:${scopes.projects[0].key}` : scopes?.showcases?.[0] ? `showcase:${scopes.showcases[0].slug}` : 'project:community';
   const [f, setF] = useState({ scope: defaultScope, cover: '', coverInBody: true, publish: true, title: '', excerpt: '', body: '', titleFr: '', excerptFr: '', bodyFr: '', reactionsEnabled: false, reactionTypes: [], coAuthorEmails: [], showToc: false, tocTitle: '', commentsPublic: false });
   const [busy, setBusy] = useState(false);
@@ -450,7 +450,7 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
   });
   const addCoAuthor = () => {
     const email = collab.trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast.error('Enter a valid email.');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast.error(t('be.validemail', 'Enter a valid email.'));
     if (!f.coAuthorEmails.includes(email)) setF((s) => ({ ...s, coAuthorEmails: [...s.coAuthorEmails, email] }));
     setCollab('');
   };
@@ -460,11 +460,11 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
   const setField = (base, val) => setF((s) => ({ ...s, [base + suffix]: val }));
   const hasFr = !!(f.titleFr || f.bodyFr || f.excerptFr);
 
-  const pickCover = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { const file = i.files?.[0]; if (!file) return; try { toast.info('Uploading…'); const url = await uploadBlogImage(file); setF((s) => ({ ...s, cover: url })); } catch { toast.error('Upload failed.'); } }; i.click(); };
+  const pickCover = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { const file = i.files?.[0]; if (!file) return; try { toast.info(t('be.uploading', 'Uploading…')); const url = await uploadBlogImage(file); setF((s) => ({ ...s, cover: url })); } catch { toast.error(t('be.uploadfail', 'Upload failed.')); } }; i.click(); };
   const save = async () => {
-    if (f.title.length < 2 || !f.body) return toast.error('English (base) title and content are required.');
+    if (f.title.length < 2 || !f.body) return toast.error(t('be.titlereq', 'English (base) title and content are required.'));
     // Don't let unresolved merge markers get saved.
-    if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) return toast.error('Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.');
+    if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) return toast.error(t('be.conflicts', 'Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.'));
     setBusy(true);
     try {
       const [scopeKind, scopeVal] = f.scope.split(':');
@@ -496,27 +496,27 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
         baseRef.current = { version: cur.version, body: cur.body || '', bodyFr: cur.bodyFr || '' };
         const totalConflicts = queue.length;
         setMerge({ conflicts: totalConflicts, pending: queue });
-        if (totalConflicts > 0) { setMergeUI({ queue }); toast.info('Someone else edited this post — resolve the conflicts visually, then Save.'); }
-        else toast.info('Merged with edits made by someone else — review the content, then Save again.');
+        if (totalConflicts > 0) { setMergeUI({ queue }); toast.info(t('be.conflictvisual', 'Someone else edited this post — resolve the conflicts visually, then Save.')); }
+        else toast.info(t('be.mergedreview', 'Merged with edits made by someone else — review the content, then Save again.'));
       } else if (x.status === 409 && x.data?.error === 'blog_limit') {
         const d = x.data;
-        const where = d.scope === 'project' ? 'this page' : 'the site';
+        const where = d.scope === 'project' ? t('be.thispage', 'this page') : t('be.thesite', 'the site');
         toast.error(d.kind === 'count'
-          ? `Blog is full — ${where} allows at most ${d.limit} article${d.limit === 1 ? '' : 's'} (currently ${d.current}). Delete one or raise the limit.`
-          : `Blog is full — ${where}'s size limit (${d.limitKB} KB) would be exceeded. Trim this article, delete an old one, or raise the limit.`);
+          ? t('be.fullcount', 'Blog is full — {where} allows at most {limit} article(s) (currently {current}). Delete one or raise the limit.').replace('{where}', where).replace('{limit}', d.limit).replace('{current}', d.current)
+          : t('be.fullsize', "Blog is full — {where}'s size limit ({kb} KB) would be exceeded. Trim this article, delete an old one, or raise the limit.").replace('{where}', where).replace('{kb}', d.limitKB));
       } else {
-        toast.error(x.data?.error === 'forbidden' ? "You don't have permission to post in that blog." : x.data?.error || 'Failed.');
+        toast.error(x.data?.error === 'forbidden' ? t('be.noperm', "You don't have permission to post in that blog.") : x.data?.error || t('be.failed', 'Failed.'));
       }
     } finally { setBusy(false); }
   };
   const del = async () => {
     if (!post) return;
-    if (!(await dialog.confirm({ title: 'Delete post', message: 'This cannot be undone.', okLabel: 'Delete', danger: true }))) return;
-    try { await api.del(`/blog/${post.id}`); toast.success('Deleted.'); onSaved(); } catch { toast.error('Failed.'); }
+    if (!(await dialog.confirm({ title: t('be.delpost', 'Delete post'), message: t('be.cannotundo', 'This cannot be undone.'), okLabel: t('be.delete', 'Delete'), danger: true }))) return;
+    try { await api.del(`/blog/${post.id}`); toast.success(t('be.deleted', 'Deleted.')); onSaved(); } catch { toast.error(t('be.failed', 'Failed.')); }
   };
   const fr = tab === 'fr';
   return (
-    <Modal open onClose={onClose} title={post ? 'Edit post' : 'Write a post'} icon={PenSquare} width="max-w-3xl"
+    <Modal open onClose={onClose} title={post ? t('be.editpost', 'Edit post') : t('be.writepost', 'Write a post')} icon={PenSquare} width="max-w-3xl"
       footer={<>
         {post && <Button variant="ghost" className="!text-red-400 mr-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
         {post && <Button variant="ghost" onClick={() => setShowHistory(true)}><History size={15} /> History</Button>}

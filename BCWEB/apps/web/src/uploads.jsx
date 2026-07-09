@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect } f
 import { UploadCloud, CheckCircle2, X, AlertTriangle, Loader2, Ban, ChevronDown, ChevronUp } from 'lucide-react';
 import { uploadRepoFile } from './api.js';
 import { useToast } from './ui.jsx';
+import { useI18n } from './i18n.jsx';
 
 // Global background-upload manager. Repo file/folder uploads run here (not inside a
 // modal), so they keep going after the modal is closed. A floating dock shows live
@@ -19,7 +20,7 @@ const fmtBytes = (n) => {
 
 let _id = 0;
 export function UploadProvider({ children }) {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const [jobs, setJobs] = useState([]);
   const [minimized, setMinimized] = useState(false);
   // Mutable per-job control (AbortController + cancel flag) — kept out of state so the
@@ -111,12 +112,12 @@ export function UploadProvider({ children }) {
                style={{ background: 'var(--bg-solid)', boxShadow: '0 -1px 0 0 var(--line) inset' }}>
             <UploadCloud size={15} className="text-[var(--primary-2)]" />
             <span className="text-sm font-semibold flex-1">
-              {active ? `Uploading — ${active} active` : 'Uploads'}
+              {active ? t('up.uploadingactive', 'Uploading — {n} active').replace('{n}', active) : t('up.uploads', 'Uploads')}
             </span>
-            <button onClick={() => setMinimized((v) => !v)} className="text-[var(--faint)] hover:text-[var(--text)] p-0.5" title={minimized ? 'Expand' : 'Minimize'}>
+            <button onClick={() => setMinimized((v) => !v)} className="text-[var(--faint)] hover:text-[var(--text)] p-0.5" title={minimized ? t('up.expand', 'Expand') : t('up.minimize', 'Minimize')}>
               {minimized ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
             </button>
-            {!active && <button onClick={() => jobs.forEach((j) => dismiss(j.id))} className="text-[var(--faint)] hover:text-[var(--text)] p-0.5" title="Clear all"><X size={15} /></button>}
+            {!active && <button onClick={() => jobs.forEach((j) => dismiss(j.id))} className="text-[var(--faint)] hover:text-[var(--text)] p-0.5" title={t('up.clearall', 'Clear all')}><X size={15} /></button>}
           </div>
           {!minimized && (
             <div className="border border-[var(--line-strong)] rounded-b-2xl overflow-hidden divide-y divide-[var(--line)] max-h-[60vh] overflow-y-auto"
@@ -134,7 +135,7 @@ export function UploadProvider({ children }) {
                         : <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />}
                       <span className="text-sm font-medium flex-1 truncate">{j.repoName}</span>
                       {uploading
-                        ? <button onClick={() => cancel(j.id)} className="text-[11px] px-2 py-0.5 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-red-400 hover:border-red-400/50 flex items-center gap-1"><Ban size={11} /> Cancel</button>
+                        ? <button onClick={() => cancel(j.id)} className="text-[11px] px-2 py-0.5 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-red-400 hover:border-red-400/50 flex items-center gap-1"><Ban size={11} /> {t('up.cancel', 'Cancel')}</button>
                         : <button onClick={() => dismiss(j.id)} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={13} /></button>}
                     </div>
                     <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden">
@@ -142,7 +143,7 @@ export function UploadProvider({ children }) {
                     </div>
                     <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--muted)] mt-1">
                       <span className="truncate">
-                        {uploading ? `${j.done}/${j.total} · ${j.curName}` : j.status === 'cancelled' ? `Cancelled · ${j.done}/${j.total} sent` : j.failed ? `${j.done - j.failed}/${j.total} done · ${j.failed} failed` : `${j.total} file(s) · done`}
+                        {uploading ? `${j.done}/${j.total} · ${j.curName}` : j.status === 'cancelled' ? t('up.cancelledsent', 'Cancelled · {d}/{t} sent').replace('{d}', j.done).replace('{t}', j.total) : j.failed ? t('up.donefailed', '{d}/{t} done · {f} failed').replace('{d}', j.done - j.failed).replace('{t}', j.total).replace('{f}', j.failed) : t('up.filesdone', '{t} file(s) · done').replace('{t}', j.total)}
                       </span>
                       <span className="shrink-0 tabular-nums">
                         {fmtBytes(sent)}/{fmtBytes(j.totalBytes)}{uploading && j.bps ? ` · ${fmtBytes(j.bps)}/s` : ''}
@@ -153,7 +154,7 @@ export function UploadProvider({ children }) {
                     {j.failedFiles?.length > 0 && (
                       <details className="mt-1.5">
                         <summary className="cursor-pointer text-[11px] text-amber-400 hover:text-amber-300 select-none">
-                          {j.failedFiles.length} failed file(s) — view list
+                          {t('up.failedfiles', '{n} failed file(s) — view list').replace('{n}', j.failedFiles.length)}
                         </summary>
                         <div className="mt-1 max-h-36 overflow-auto rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2 space-y-0.5">
                           {j.failedFiles.map((ff, i) => (
@@ -162,8 +163,8 @@ export function UploadProvider({ children }) {
                             </div>
                           ))}
                         </div>
-                        <button onClick={() => { navigator.clipboard?.writeText(j.failedFiles.map((ff) => `${ff.name}\t${ff.reason}`).join('\n')).then(() => toast.success('Failed-file list copied.')).catch(() => {}); }}
-                          className="mt-1 text-[10.5px] text-[var(--muted)] hover:text-[var(--text)] underline">Copy list</button>
+                        <button onClick={() => { navigator.clipboard?.writeText(j.failedFiles.map((ff) => `${ff.name}\t${ff.reason}`).join('\n')).then(() => toast.success(t('up.listcopied', 'Failed-file list copied.'))).catch(() => {}); }}
+                          className="mt-1 text-[10.5px] text-[var(--muted)] hover:text-[var(--text)] underline">{t('up.copylist', 'Copy list')}</button>
                       </details>
                     )}
                   </div>

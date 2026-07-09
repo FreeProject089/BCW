@@ -371,6 +371,55 @@ const DICT = {
     'as.in': 'dans', 'as.repo': 'dépôt', 'as.nopendmatch': 'Aucune suppression en attente ne correspond à ta recherche.',
     'as.nothingdel': 'Rien de programmé pour suppression.', 'as.telemreplays': 'Les rejeux de télémétrie (rrweb) sont stockés par le service de télémétrie BMM séparé et ne sont pas comptés ici.',
 
+    // ── Éditeur de blog ──
+    'be.uploading': 'Import…', 'be.uploadfail': 'Échec de l’import.', 'be.validemail': 'Saisis un e-mail valide.',
+    'be.titlereq': 'Le titre et le contenu (base, anglais) sont requis.', 'be.conflicts': 'Résous d’abord les marqueurs de conflit (<<<<<<< … >>>>>>>), puis enregistre.',
+    'be.conflictvisual': 'Quelqu’un d’autre a modifié ce billet — résous les conflits visuellement, puis Enregistre.',
+    'be.mergedreview': 'Fusionné avec les modifications de quelqu’un d’autre — revois le contenu, puis Enregistre à nouveau.',
+    'be.thispage': 'cette page', 'be.thesite': 'le site',
+    'be.fullcount': 'Le blog est plein — {where} autorise au plus {limit} article(s) (actuellement {current}). Supprime-en un ou augmente la limite.',
+    'be.fullsize': 'Le blog est plein — la limite de taille de {where} ({kb} Ko) serait dépassée. Raccourcis cet article, supprime-en un ancien, ou augmente la limite.',
+    'be.noperm': 'Tu n’as pas la permission de publier dans ce blog.', 'be.failed': 'Échec.', 'be.delpost': 'Supprimer le billet',
+    'be.cannotundo': 'Ceci est irréversible.', 'be.delete': 'Supprimer', 'be.deleted': 'Supprimé.', 'be.editpost': 'Modifier le billet', 'be.writepost': 'Écrire un billet',
+
+    // ── Éditeur de docs ──
+    'de.titlereq': 'Un titre est requis.', 'de.pagesaved': 'Page enregistrée.', 'de.pagecreated': 'Page créée.',
+    'de.conflictvisual': 'Quelqu’un d’autre a modifié cette page — résous les conflits visuellement, puis Enregistre.',
+    'de.mergedreview': 'Fusionné avec les modifications de quelqu’un d’autre — revois, puis Enregistre à nouveau.',
+    'de.fullcount': 'Les docs sont pleins — au plus {limit} pages autorisées (actuellement {current}). Supprime-en une ou augmente la limite dans les réglages d’hébergement.',
+    'de.fullsize': 'La limite de taille des docs ({kb} Ko) serait dépassée{cur}. Raccourcis la page, supprime-en une ancienne, ou augmente la limite.',
+    'de.wouldbe': ' (cela ferait ~{c} Ko)', 'de.noperm': 'Tu n’as pas la permission.', 'de.delpage': 'Supprimer la page',
+    'de.delpagemsg': 'Supprimer « {n} » ? Ceci est irréversible.',
+
+    // ── Commentaires ──
+    'cm.postfail': 'Impossible de publier le commentaire.', 'cm.replyfail': 'Impossible de répondre.',
+    'cm.savefail': 'Impossible d’enregistrer.', 'cm.mergefail': 'Impossible d’enregistrer la fusion.',
+
+    // ── Historique des modifications ──
+    'hm.loadfail': 'Impossible de charger cette version.', 'hm.restored': 'Version {v} restaurée dans l’éditeur — revois, puis Enregistre.',
+    'hm.title': 'Historique des modifications', 'hm.restorehint': 'Restaurer charge la version dans l’éditeur — rien n’est perdu tant que tu n’as pas Enregistré.',
+    'hm.readonly': 'Historique en lecture seule pour ce billet publié.', 'hm.close': 'Fermer', 'hm.restorebtn': 'Restaurer cette version',
+    'hm.latest': 'dernière', 'hm.nohistory': 'Aucun historique', 'hm.nohistorysub': 'Les instantanés apparaissent ici après chaque enregistrement.',
+    'hm.version': 'Version', 'hm.rendered': 'Rendu', 'hm.diff': 'Diff', 'hm.language': 'Langue',
+    'hm.firstversion': 'Première version — rien à comparer.', 'hm.selectversion': 'Sélectionne une version pour l’aperçu.', 'hm.vsprev': 'vs version précédente',
+
+    // ── Éditeur de config projet ──
+    'pce.uploaded': 'Importé.', 'pce.toolarge': 'Fichier trop volumineux.', 'pce.unsupported': 'Type de fichier non pris en charge.',
+    'pce.fetched': 'progress.json récupéré ({n} éléments).', 'pce.fetchfail': 'Échec de la récupération.',
+
+    // ── Admin : dépôts ──
+    'arp.verified': 'Vérifié « {n} ».', 'arp.reject': 'Rejeter / retirer', 'arp.reason': 'Raison (envoyée au propriétaire)',
+    'arp.rejectbtn': 'Rejeter', 'arp.rejected': 'Rejeté.', 'arp.revalok': 'Re-validé — vérifié (sha {s}…).',
+    'arp.revalbad': 'Re-validé — invalide ({r}).', 'arp.norepojson': 'aucun repo.json valide',
+    'arp.checked': '{c} dépôts vérifiés — {o} en ligne, {v} validés.', 'arp.checkfail': 'Échec de la vérification.',
+    'arp.storagebelow': 'Le stockage ne peut pas être inférieur à ce qui est déjà utilisé ({n} Go).',
+
+    // ── Dock d’import ──
+    'up.uploadingactive': 'Import — {n} actif(s)', 'up.uploads': 'Imports', 'up.expand': 'Développer', 'up.minimize': 'Réduire',
+    'up.clearall': 'Tout effacer', 'up.cancel': 'Annuler', 'up.cancelledsent': 'Annulé · {d}/{t} envoyés',
+    'up.donefailed': '{d}/{t} faits · {f} échoués', 'up.filesdone': '{t} fichier(s) · terminé',
+    'up.failedfiles': '{n} fichier(s) échoué(s) — voir la liste', 'up.listcopied': 'Liste des fichiers échoués copiée.', 'up.copylist': 'Copier la liste',
+
     'hosting.title': 'Héberger un Server-Repo', 'hosting.sub': 'On l’exécute, tu le gères. Paie selon la taille dont tu as besoin.',
     'hosting.single': 'Dépôt unique', 'hosting.single.d': 'Un seul dépôt avec tout le quota.',
     'hosting.multi': 'Dépôts multiples', 'hosting.multi.d': 'Répartis le stockage sur plusieurs dépôts, gérés par toi.',

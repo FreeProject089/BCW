@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api.js';
 import { useToast, Button, Spinner, Modal, EmptyState, Input, Textarea, Select } from './ui.jsx';
+import { useI18n } from './i18n.jsx';
 import UserAvatar from './Avatar.jsx';
 import Markdown from './md.jsx';
 import { MarkdownEditor } from './blog.jsx';
@@ -76,7 +77,7 @@ function CommentBody({ c, isReply, ctx }) {
 // post/page markdown) powers the "pin to a section" picker + click-to-jump. `onJump(slug)`
 // (optional) lets the reader scroll to a section when a pin is clicked.
 export default function CommentsModal({ base, onClose, readOnly, body, onJump }) {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const [data, setData] = useState(null); // { comments, canComment, commentsPublic }
   const [draft, setDraft] = useState({ body: '', anchor: '' });
   const [customAnchor, setCustomAnchor] = useState(false); // "Custom…" chosen in the picker
@@ -105,13 +106,13 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
     if (!draft.body.trim()) return;
     setBusy(true);
     try { await api.post(`${base}/comments`, { body: draft.body.trim(), anchor: draft.anchor.trim() || null }); setDraft({ body: '', anchor: '' }); await load(); }
-    catch { toast.error('Could not post the comment.'); } finally { setBusy(false); }
+    catch { toast.error(t('cm.postfail', 'Could not post the comment.')); } finally { setBusy(false); }
   };
   const reply = async (parentId) => {
     if (!replyBody.trim()) return;
     setBusy(true);
     try { await api.post(`${base}/comments`, { body: replyBody.trim(), parentId }); setReplyTo(null); setReplyBody(''); await load(); }
-    catch { toast.error('Could not reply.'); } finally { setBusy(false); }
+    catch { toast.error(t('cm.replyfail', 'Could not reply.')); } finally { setBusy(false); }
   };
   const saveEdit = async () => {
     setBusy(true);
@@ -123,7 +124,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
       if (e?.status === 409 && e?.data?.error === 'comment_conflict') {
         // Someone else edited this comment meanwhile → open the 3-way merge resolver.
         setConflict({ id: editing.id, base: editing.base ?? '', mine: editing.body, theirs: e.data.current?.body ?? '' });
-      } else toast.error('Could not save.');
+      } else toast.error(t('cm.savefail', 'Could not save.'));
     } finally { setBusy(false); }
   };
   // Save the merged result of a resolved conflict, re-basing on the version we merged against.
@@ -132,11 +133,11 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
     try { await api.patch(`${base}/comments/${c.id}`, { body: merged, baseBody: c.theirs }); setEditing(null); await load(); }
     catch (e) {
       if (e?.status === 409 && e?.data?.error === 'comment_conflict') setConflict({ id: c.id, base: c.theirs, mine: merged, theirs: e.data.current?.body ?? '' });
-      else toast.error('Could not save the merge.');
+      else toast.error(t('cm.mergefail', 'Could not save the merge.'));
     } finally { setBusy(false); }
   };
-  const toggleResolved = async (c) => { try { await api.patch(`${base}/comments/${c.id}`, { resolved: !c.resolved }); await load(); } catch { toast.error('Failed.'); } };
-  const del = async (id) => { try { await api.del(`${base}/comments/${id}`); await load(); } catch { toast.error('Failed.'); } };
+  const toggleResolved = async (c) => { try { await api.patch(`${base}/comments/${c.id}`, { resolved: !c.resolved }); await load(); } catch { toast.error(t('be.failed', 'Failed.')); } };
+  const del = async (id) => { try { await api.del(`${base}/comments/${id}`); await load(); } catch { toast.error(t('be.failed', 'Failed.')); } };
 
   // Handlers/state handed to the module-scope CommentBody (keeps its identity stable so
   // edit/reply inputs don't lose focus — see the note on CommentBody).

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Button, Input, Textarea, Field, Badge, Spinner } from './ui.jsx';
 import { useToast } from './ui.jsx';
+import { useI18n } from './i18n.jsx';
 import { api, uploadMedia } from './api.js';
 import IconPicker from './icon-picker.jsx';
 import { IconGlyph } from './md.jsx';
@@ -36,15 +37,15 @@ function Section({ icon: Icon, title, desc, children, defaultOpen = false, badge
 
 // A URL field with an Upload button (image / video / rrweb json) + optional preview.
 function MediaField({ label, hint, value, onChange, accept, preview }) {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const pick = () => {
     const i = document.createElement('input'); i.type = 'file'; i.accept = accept;
     i.onchange = async () => {
       const f = i.files?.[0]; if (!f) return;
       setBusy(true);
-      try { onChange(await uploadMedia(f)); toast.success('Uploaded.'); }
-      catch (x) { toast.error(x.status === 413 ? 'File too large.' : x.status === 415 ? 'Unsupported file type.' : 'Upload failed.'); }
+      try { onChange(await uploadMedia(f)); toast.success(t('pce.uploaded', 'Uploaded.')); }
+      catch (x) { toast.error(x.status === 413 ? t('pce.toolarge', 'File too large.') : x.status === 415 ? t('pce.unsupported', 'Unsupported file type.') : t('be.uploadfail', 'Upload failed.')); }
       finally { setBusy(false); }
     };
     i.click();
@@ -117,7 +118,7 @@ function IconBtn({ value, onChange }) {
 const LINK_FIELDS = [['github', 'GitHub'], ['source', 'Source'], ['discord', 'Discord'], ['kofi', 'Ko-fi'], ['website', 'Website']];
 
 export default function ProjectConfigEditor({ value, onChange, slug, isShowcase }) {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const c = value || {};
   const set = (patch) => onChange({ ...c, ...patch });
   const setIn = (key, patch) => onChange({ ...c, [key]: { ...(c[key] || {}), ...patch } });
@@ -130,8 +131,8 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
   const prog = c.progressData || { code: 0, art: 0, lastUpdate: '', categories: [] };
   const setProg = (patch) => set({ progressData: { ...prog, ...patch } });
   const testRemote = async () => {
-    try { const r = await api.get(`/${isShowcase ? 'showcase' : 'projects'}/${slug}/progress`); const n = (r.progress?.categories || []).reduce((a, cc) => a + (cc.items?.length || 0), 0); toast.success(`Fetched progress.json (${n} items).`); }
-    catch (x) { toast.error(x.data?.detail || x.data?.error || 'Fetch failed.'); }
+    try { const r = await api.get(`/${isShowcase ? 'showcase' : 'projects'}/${slug}/progress`); const n = (r.progress?.categories || []).reduce((a, cc) => a + (cc.items?.length || 0), 0); toast.success(t('pce.fetched', 'Fetched progress.json ({n} items).').replace('{n}', n)); }
+    catch (x) { toast.error(x.data?.detail || x.data?.error || t('pce.fetchfail', 'Fetch failed.')); }
   };
 
   const links = c.links || {};

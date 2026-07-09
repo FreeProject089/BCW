@@ -1063,7 +1063,7 @@ function HostFilesModal({ repo, admin, onClose, onChanged }) {
   const goOnline = async () => { setBusy(true); try { await api.post(`/repos/${repo.id}/publish`); toast.success(t('repos.nowonline', 'Online — your repo.json is now public.')); reload(); onChanged?.(); } catch (x) { toast.error(x.data?.error === 'no_repo_json' ? t('repos.needjson', 'Upload a valid repo.json first.') : t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
   const takeOffline = async () => { setBusy(true); try { await api.post(`/repos/${repo.id}/unpublish`); toast.success(t('repos.nowoffline', 'Taken offline.')); reload(); onChanged?.(); } catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
   // Admin: validate & publish / unpublish (moderation gate).
-  const publish = async () => { try { const r = await api.post(`/admin/repos/${repo.id}/publish`); toast.success(`Published → /hosting/${r.hostPath}/repo.json`); reload(); onChanged?.(); } catch (x) { toast.error(x.data?.error === 'no_repo_json' ? t('repos.needjson', 'A repo.json must be uploaded first.') : t('repos.failed', 'Failed.')); } };
+  const publish = async () => { try { const r = await api.post(`/admin/repos/${repo.id}/publish`); toast.success(t('repos.publishedto', 'Published → /hosting/{p}/repo.json').replace('{p}', r.hostPath)); reload(); onChanged?.(); } catch (x) { toast.error(x.data?.error === 'no_repo_json' ? t('repos.needjson', 'A repo.json must be uploaded first.') : t('repos.failed', 'Failed.')); } };
   const unpublish = async () => { try { await api.post(`/admin/repos/${repo.id}/unpublish`); reload(); onChanged?.(); } catch {} };
   const copyUrl = () => { navigator.clipboard?.writeText(publicUrl); toast.success(t('repos.copy.ok', 'repo.json link copied.')); };
   return (
@@ -1249,18 +1249,18 @@ function AdminRepoTraffic() {
 }
 
 export function AdminRepos() {
-  const toast = useToast(); const dialog = useDialog();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useFetch(() => api.get('/admin/repos'), []);
   const [review, setReview] = useState(null);
   const repos = data?.repos || [];
   const pending = repos.filter((r) => r.pendingReview).length;
-  const verify = async (r) => { try { await api.post(`/admin/repos/${r.id}/verify`); toast.success(`Verified "${r.name}".`); reload(); } catch { toast.error('Failed.'); } };
-  const reject = async (r) => { const reason = await dialog.prompt({ title: 'Reject / unlist', label: 'Reason (sent to owner)', okLabel: 'Reject', danger: true }); if (!reason) return; try { await api.post(`/admin/repos/${r.id}/reject`, { reason }); toast.success('Rejected.'); reload(); } catch { toast.error('Failed.'); } };
-  const setStatus = async (r, status) => { try { await api.patch(`/admin/repos/${r.id}`, { status }); reload(); } catch { toast.error('Failed.'); } };
+  const verify = async (r) => { try { await api.post(`/admin/repos/${r.id}/verify`); toast.success(t('arp.verified', 'Verified "{n}".').replace('{n}', r.name)); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
+  const reject = async (r) => { const reason = await dialog.prompt({ title: t('arp.reject', 'Reject / unlist'), label: t('arp.reason', 'Reason (sent to owner)'), okLabel: t('arp.rejectbtn', 'Reject'), danger: true }); if (!reason) return; try { await api.post(`/admin/repos/${r.id}/reject`, { reason }); toast.success(t('arp.rejected', 'Rejected.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
+  const setStatus = async (r, status) => { try { await api.patch(`/admin/repos/${r.id}`, { status }); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
   // Manually re-run validation: recompute the content SHA and re-verify.
-  const revalidate = async (r) => { try { const res = await api.post(`/admin/repos/${r.id}/revalidate`); toast[res.verified ? 'success' : 'error'](res.verified ? `Revalidated — verified (sha ${String(res.sha).slice(0, 10)}…).` : `Revalidated — invalid (${res.reason || 'no valid repo.json'}).`); reload(); } catch { toast.error('Failed.'); } };
+  const revalidate = async (r) => { try { const res = await api.post(`/admin/repos/${r.id}/revalidate`); toast[res.verified ? 'success' : 'error'](res.verified ? t('arp.revalok', 'Revalidated — verified (sha {s}…).').replace('{s}', String(res.sha).slice(0, 10)) : t('arp.revalbad', 'Revalidated — invalid ({r}).').replace('{r}', res.reason || t('arp.norepojson', 'no valid repo.json'))); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
   const [checkingAll, setCheckingAll] = useState(false);
-  const checkAll = async () => { setCheckingAll(true); try { const r = await api.post('/admin/repos/check-all'); toast.success(`Checked ${r.checked} repos — ${r.online} online, ${r.verified} verified.`); reload(); } catch { toast.error('Check failed.'); } finally { setCheckingAll(false); } };
+  const checkAll = async () => { setCheckingAll(true); try { const r = await api.post('/admin/repos/check-all'); toast.success(t('arp.checked', 'Checked {c} repos — {o} online, {v} verified.').replace('{c}', r.checked).replace('{o}', r.online).replace('{v}', r.verified)); reload(); } catch { toast.error(t('arp.checkfail', 'Check failed.')); } finally { setCheckingAll(false); } };
   const [limitsRepo, setLimitsRepo] = useState(null); // repo whose CPU/upload/storage limits are being edited
   return (
     <div className="mt-10">
@@ -1327,7 +1327,7 @@ function RepoLimitsModal({ repo, onClose, onSaved }) {
   });
   const [busy, setBusy] = useState(false);
   const save = async () => {
-    if (f.storageGB < usedGB) return toast.error(`Storage can't be below what's already used (${usedGB.toFixed(2)} GB).`);
+    if (f.storageGB < usedGB) return toast.error(t('arp.storagebelow', "Storage can't be below what's already used ({n} GB).").replace('{n}', usedGB.toFixed(2)));
     setBusy(true);
     try {
       await api.patch(`/admin/repos/${repo.id}`, { cpuShare: Number(f.cpuShare), uploadMbps: Number(f.uploadMbps), storageGB: Number(f.storageGB) });

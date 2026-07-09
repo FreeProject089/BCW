@@ -220,8 +220,8 @@ function ApiTokenCard() {
   const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => { api.get('/me/api-token').then((r) => setToken(r.token || null)).catch(() => setToken(null)); }, []);
-  const reset = async () => { setBusy(true); try { const r = await api.post('/me/api-token/reset', {}); setToken(r.token); setReveal(true); toast.success(t('prof.token.reset', 'New token generated.')); } catch { toast.error('Failed.'); } finally { setBusy(false); } };
-  const revoke = async () => { setBusy(true); try { await api.del('/me/api-token'); setToken(null); setReveal(false); toast.success(t('prof.token.revoked', 'Token revoked.')); } catch { toast.error('Failed.'); } finally { setBusy(false); } };
+  const reset = async () => { setBusy(true); try { const r = await api.post('/me/api-token/reset', {}); setToken(r.token); setReveal(true); toast.success(t('prof.token.reset', 'New token generated.')); } catch { toast.error(t('prof.failed', 'Failed.')); } finally { setBusy(false); } };
+  const revoke = async () => { setBusy(true); try { await api.del('/me/api-token'); setToken(null); setReveal(false); toast.success(t('prof.token.revoked', 'Token revoked.')); } catch { toast.error(t('prof.failed', 'Failed.')); } finally { setBusy(false); } };
   const copy = () => { navigator.clipboard?.writeText(token).then(() => toast.success(t('prof.token.copied', 'Copied.'))).catch(() => {}); };
   const masked = token ? token.slice(0, 8) + '•'.repeat(Math.max(6, token.length - 12)) + token.slice(-4) : '';
   return (
