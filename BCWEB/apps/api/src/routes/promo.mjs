@@ -165,6 +165,12 @@ export default async function promoRoutes(app) {
     if (peek.error) return reply.code(400).send({ error: peek.error });
     if (peek.promo.kind === 'discount') return reply.code(400).send({ error: 'use_at_checkout' });
     if (peek.promo.kind === 'free_boost' && !b.data.repoId) return reply.code(400).send({ error: 'needs_repo' });
+    // A hosted repo (even a free one from a promo) requires a linked BMM creator id —
+    // same rule as paid hosting checkout, so a repo is never created for an unlinked
+    // account. (free_boost only touches an EXISTING owned repo, so it's fine.)
+    if (peek.promo.kind === 'free_hosting' && await p.creatorLink.count({ where: { userId: req.user.uid } }) === 0) {
+      return reply.code(403).send({ error: 'creator_link_required' });
+    }
 
     const result = await redeemPromoAtomic(p, b.data.code, req.user.uid, async (tx, promo) => {
       if (promo.kind === 'free_hosting') {

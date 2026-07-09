@@ -617,36 +617,52 @@ function RepoManageModal({ repo, onClose, onChanged }) {
 function RepoUpgrade({ repo }) {
   const { t } = useI18n(); const toast = useToast();
   const currentGB = Number(repo.storageQuotaBytes) / 1024 ** 3;
+  const curUp = +(((repo.uploadLimitKbps || 0) / 1024).toFixed(1));
+  const curCpu = repo.cpuShare || 0;
   const [gbVal, setGbVal] = useState(Math.ceil(currentGB * 2));
+  const [upVal, setUpVal] = useState(curUp);
+  const [cpuVal, setCpuVal] = useState(curCpu);
+  const [custom, setCustom] = useState(false);
   const [quote, setQuote] = useState(null);
   const [busy, setBusy] = useState(false);
+  const sGB = Math.max(gbVal, currentGB); const sUp = Math.max(upVal, curUp); const sCpu = Math.max(cpuVal, curCpu);
+  const changed = sGB > currentGB || sUp > curUp || sCpu > curCpu;
   useEffect(() => {
-    if (gbVal <= currentGB) { setQuote(null); return; }
-    api.get(`/hosting/price?storageGB=${gbVal}&uploadMbps=${(repo.uploadLimitKbps || 0) / 1024}&cpuShare=${repo.cpuShare || 0}`).then(setQuote).catch(() => setQuote(null));
-  }, [gbVal, currentGB, repo.uploadLimitKbps, repo.cpuShare]);
+    if (!changed) { setQuote(null); return; }
+    api.get(`/hosting/price?storageGB=${sGB}&uploadMbps=${sUp}&cpuShare=${sCpu}`).then(setQuote).catch(() => setQuote(null));
+  }, [sGB, sUp, sCpu, changed]);
   const upgrade = async () => {
     setBusy(true);
     try {
-      const res = await api.post(`/me/repos/${repo.id}/upgrade`, { storageGB: gbVal });
-      if (res.checkoutUrl) { window.location.href = res.checkoutUrl; return; }
-      if (res.free) toast.success(t('repos.upgraded.free', 'Upgraded to {n} GB — free tier, no charge.').replace('{n}', gbVal));
+      const body = { storageGB: sGB, ...(sUp > curUp ? { uploadMbps: sUp } : {}), ...(sCpu > curCpu ? { cpuShare: sCpu } : {}) };
+      const res = await api.post(`/me/repos/${repo.id}/upgrade`, body);
+      if (res.url || res.checkoutUrl) { window.location.href = res.url || res.checkoutUrl; return; }
+      if (res.free) toast.success(t('repos.upgraded.free', 'Upgraded to {n} GB — free tier, no charge.').replace('{n}', sGB));
     } catch (x) {
       toast.error(x.data?.error === 'capacity_full' ? t('repos.poolfull', 'Pool full — max {n} GB.').replace('{n}', x.data.freeGB?.toFixed(1))
-        : x.data?.error === 'not_an_upgrade' ? t('repos.notupgrade', 'Pick a size larger than your current quota.')
+        : x.data?.error === 'not_an_upgrade' ? t('repos.notupgrade2', 'Raise storage, upload speed, or CPU above their current values.')
+        : x.data?.error === 'over_limit' ? t('repos.upover', 'Exceeds the per-repo limits (max {u} Mbps upload, {c} vCPU).').replace('{u}', x.data.maxUploadMbps).replace('{c}', x.data.maxCpuShare)
         : t('repos.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
   return (
-    <div className="pt-3 border-t border-[var(--line)]">
+    <div className="pt-3 border-t border-[var(--line)] space-y-2">
       <div className="flex items-center justify-between mb-1.5 text-sm"><span className="flex items-center gap-1.5 text-[var(--muted)]"><HardDrive size={14} /> {t('repos.upgradestorage', 'Need more storage?')}</span><span className="font-semibold">{gbVal} GB</span></div>
       <input type="range" min={Math.ceil(currentGB)} max={Math.max(Math.ceil(currentGB) + 1, 500)} step={1} value={gbVal} className="bcw-range w-full" onChange={(e) => setGbVal(Number(e.target.value))} />
+      <button type="button" onClick={() => setCustom((c) => !c)} className="text-xs text-[var(--primary-2)] hover:underline flex items-center gap-1"><Settings2 size={12} /> {t('repos.upcustom', 'Also raise upload & CPU')} <ChevronDown size={11} className={`transition-transform ${custom ? 'rotate-180' : ''}`} /></button>
+      {custom && (
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <div><div className="flex justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1"><Zap size={12} /> {t('repos.s.upload', 'Upload speed')}</span><b className="tabular-nums">{upVal} Mbps</b></div><input type="range" min={Math.max(1, Math.ceil(curUp))} max={1000} step={1} value={upVal} className="bcw-range w-full" onChange={(e) => setUpVal(Number(e.target.value))} /></div>
+          <div><div className="flex justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1"><Cpu size={12} /> {t('repos.cpushare', 'CPU share')}</span><b className="tabular-nums">{cpuVal} vCPU</b></div><input type="range" min={Math.max(0.1, curCpu)} max={8} step={0.1} value={cpuVal} className="bcw-range w-full" onChange={(e) => setCpuVal(Number(e.target.value))} /></div>
+        </div>
+      )}
       <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
         <span className="text-xs text-[var(--faint)]">
-          {gbVal <= currentGB ? t('repos.currentplan', 'Your current plan.')
-            : quote?.priceMonthlyCents > 0 ? t('repos.upgradeprice', '{price}/mo · same upload/CPU, more storage').replace('{price}', `$${(quote.priceMonthlyCents / 100).toFixed(2)}`)
+          {!changed ? t('repos.currentplan', 'Your current plan.')
+            : quote?.priceMonthlyCents > 0 ? t('repos.upprice', '{price}/mo').replace('{price}', `$${(quote.priceMonthlyCents / 100).toFixed(2)}`)
             : t('repos.upgradefree', 'Still within the free tier — no charge.')}
         </span>
-        <Button size="sm" variant="primary" disabled={busy || gbVal <= currentGB} onClick={upgrade}>{busy ? <Spinner /> : t('repos.upgrade', 'Upgrade')}</Button>
+        <Button size="sm" variant="primary" disabled={busy || !changed} onClick={upgrade}>{busy ? <Spinner /> : t('repos.upgrade', 'Upgrade')}</Button>
       </div>
     </div>
   );
@@ -765,6 +781,7 @@ function PromoRedeem() {
     } catch (x) {
       const e = x.data?.error;
       if (e === 'needs_repo') { setPickRepo(true); }
+      else if (e === 'creator_link_required') { toast.error(t('hosting.err.link', 'Link a BMM creator id first (Profile → Creator IDs) to host a repo.')); }
       else toast.error(e === 'invalid' ? t('promo.invalid', 'Invalid or inactive code.') : e === 'expired' ? t('promo.expired', 'This code has expired.') : e === 'depleted' ? t('promo.depleted', 'This code is fully used.') : e === 'already_used' ? t('promo.used', 'You already used this code.') : e === 'use_at_checkout' ? t('promo.atcheckout', 'This is a discount code — enter it when hosting or boosting.') : t('repos.failed', 'Failed.'));
     } finally { setBusy(false); }
   };

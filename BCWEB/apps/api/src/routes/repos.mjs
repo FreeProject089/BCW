@@ -272,10 +272,15 @@ export default async function repoRoutes(app) {
     if (repo.groupId) return reply.code(400).send({ error: 'grouped', detail: 'Grouped repos resize for free within their pool — use /quota instead.' });
     if (!repo.hosted) return reply.code(400).send({ error: 'not_hosted' });
     const currentGB = Number(repo.storageQuotaBytes) / GiB;
-    if (b.data.storageGB <= currentGB) return reply.code(400).send({ error: 'not_an_upgrade', detail: 'New size must be larger than the current quota.' });
-    // Never below what the repo already has — this endpoint only ever raises.
-    const targetUploadMbps = Math.max(b.data.uploadMbps ?? 0, (repo.uploadLimitKbps || 0) / 1024);
+    const curUploadMbps = (repo.uploadLimitKbps || 0) / 1024;
+    // Never below what the repo already has — this endpoint only ever RAISES.
+    const targetUploadMbps = Math.max(b.data.uploadMbps ?? 0, curUploadMbps);
     const targetCpuShare = Math.max(b.data.cpuShare ?? 0, repo.cpuShare || 0);
+    const newStorageGB = Math.max(b.data['storageGB'], currentGB);
+    // An upgrade must raise at least ONE resource — storage, upload speed, or CPU.
+    if (newStorageGB <= currentGB && targetUploadMbps <= curUploadMbps && targetCpuShare <= (repo.cpuShare || 0)) {
+      return reply.code(400).send({ error: 'not_an_upgrade', detail: 'Raise storage, upload speed, or CPU above the current values.' });
+    }
 
     const cap = await capacityStatus(p);
     if (!cap.enabled) return reply.code(403).send({ error: 'hosting_disabled' });
@@ -290,14 +295,14 @@ export default async function repoRoutes(app) {
     // before checking the delta, so upgrading doesn't get double-counted against
     // the pool (the exact same "reserved, no one else can use it" accounting that
     // already guards fresh repo creation, just netted against this repo's own slice).
-    const deltaGB = b.data.storageGB - currentGB;
+    const deltaGB = newStorageGB - currentGB;
     if (cap.allocatedGB + deltaGB > cap.usableGB) return reply.code(409).send({ error: 'capacity_full', freeGB: cap.freeGB });
 
     const s = await settings(p);
     const plan = await p.hostingPlan.create({ data: {
-      name: `Custom ${b.data.storageGB}GB (upgrade)`, storageGB: b.data.storageGB,
+      name: `Custom ${newStorageGB}GB (upgrade)`, storageGB: newStorageGB,
       uploadLimitKbps: Math.round(targetUploadMbps * 1024), cpuShare: targetCpuShare,
-      priceMonthlyCents: priceCents(s, b.data.storageGB, targetUploadMbps, targetCpuShare), active: false,
+      priceMonthlyCents: priceCents(s, newStorageGB, targetUploadMbps, targetCpuShare), active: false,
     } });
     const cf = capacityFactors(cap);
     const months = b.data.months;
@@ -305,7 +310,7 @@ export default async function repoRoutes(app) {
 
     if (total <= 0) {
       await p.serverRepo.update({ where: { id: repo.id }, data: {
-        storageQuotaBytes: BigInt(Math.round(b.data.storageGB * GiB)),
+        storageQuotaBytes: BigInt(Math.round(newStorageGB * GiB)),
         uploadLimitKbps: plan.uploadLimitKbps, cpuShare: plan.cpuShare,
       } });
       // upsert, not create — every hosted repo already has a Subscription row
@@ -315,7 +320,7 @@ export default async function repoRoutes(app) {
         create: { userId: req.user.uid, serverRepoId: repo.id, planId: plan.id, status: 'active', currentPeriodEnd: new Date(Date.now() + months * 30 * 864e5) },
         update: { planId: plan.id, status: 'active', currentPeriodEnd: new Date(Date.now() + months * 30 * 864e5) },
       });
-      await notify(p, req.user.uid, 'hosting_started', `"${repo.name}" upgraded to ${b.data.storageGB} GB — free tier, no charge.`);
+      await notify(p, req.user.uid, 'hosting_started', `"${repo.name}" upgraded to ${newStorageGB} GB — free tier, no charge.`);
       return { ok: true, free: true, repoId: repo.id };
     }
 
@@ -327,7 +332,7 @@ export default async function repoRoutes(app) {
       mode: 'payment', customer,
       line_items: [{ quantity: 1, price_data: {
         currency: 'usd', unit_amount: total,
-        product_data: { name: `"${repo.name}" upgrade → ${b.data.storageGB}GB — ${months} month${months > 1 ? 's' : ''}` },
+        product_data: { name: `"${repo.name}" upgrade → ${newStorageGB}GB — ${months} month${months > 1 ? 's' : ''}` },
       } }],
       metadata: { type: 'repo_upgrade', userId: req.user.uid, repoId: repo.id, planId: plan.id, months: String(months) },
       success_url: `${siteUrl}/dashboard?hosting=ok`,
