@@ -850,6 +850,7 @@ model PromoCode {
   expiresAt      DateTime?
   active         Boolean  @default(true)
   stackable      Boolean  @default(false) // may be combined with OTHER stackable codes in one cart
+  assignedUserIds String[] @default([]) // if non-empty, ONLY these users may redeem it (gift codes)
   note           String   @default("")
   createdAt      DateTime @default(now())
   redemptions    PromoRedemption[]

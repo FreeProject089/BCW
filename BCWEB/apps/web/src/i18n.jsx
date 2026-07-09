@@ -210,6 +210,8 @@ const DICT = {
     'pc.f.stackable': 'Cumulable — peut être combiné avec d’autres codes cumulables',
     'pc.f.stackable.h': 'Autorise ce code à être combiné avec d’AUTRES codes cumulables dans un même panier. Les codes non cumulables doivent être utilisés seuls.',
     'pc.stackable': 'cumulable', 'pc.stack': 'Rendre cumulable', 'pc.unstack': 'Non cumulable',
+    'pc.f.assign': 'Attribuer à des utilisateurs (code cadeau)', 'pc.f.assign.h': 'E-mails de comptes séparés par virgule/espace. Si renseigné, SEULS ces comptes peuvent utiliser le code. Vide = tout le monde.',
+    'pc.gift': 'cadeau · {n}',
     'pc.none.t': 'Aucun code promo', 'pc.none.s': 'Crée-en un ci-dessus — réduction, hébergement gratuit, ou boost gratuit.',
     'pc.d.off': '{n}% de réduction', 'pc.d.mofree': '{n} mois gratuits', 'pc.d.minterm': 'durée {n} mois+ seulement', 'pc.d.forever': 'pour toujours', 'pc.d.boost': 'boost {n} jours',
 
@@ -571,7 +573,7 @@ const DICT = {
     // Promo codes (user redeem)
     'promo.title': 'Utiliser un code promo', 'promo.desc': 'Un code ? Utilisez-le pour un hébergement gratuit ou un boost. (Les codes de réduction s’entrent au paiement.)',
     'promo.redeem': 'Valider', 'promo.gotHosting': 'Validé ! Un dépôt hébergé gratuit a été créé — voir « Mes dépôts ».', 'promo.gotBoost': 'Validé ! Votre dépôt est maintenant boosté.', 'promo.ok': 'Validé !',
-    'promo.invalid': 'Code invalide ou inactif.', 'promo.expired': 'Ce code a expiré.', 'promo.depleted': 'Ce code est épuisé.', 'promo.used': 'Vous avez déjà utilisé ce code.', 'promo.atcheckout': 'C’est un code de réduction — entrez-le au moment d’héberger ou booster.',
+    'promo.invalid': 'Code invalide ou inactif.', 'promo.expired': 'Ce code a expiré.', 'promo.depleted': 'Ce code est épuisé.', 'promo.used': 'Vous avez déjà utilisé ce code.', 'promo.notyours': 'Ce code est réservé à un autre compte.', 'promo.atcheckout': 'C’est un code de réduction — entrez-le au moment d’héberger ou booster.',
     'promo.pickrepo': 'Quel dépôt booster ?', 'promo.norepos': 'Vous n’avez pas encore de dépôt à booster.',
     // Submissions temp margin + per-item catalog.json
     'sub.tempfull': 'Le stockage des soumissions est plein — réessayez quand la modération aura libéré de la place.',

@@ -21,6 +21,8 @@ export async function validatePromo(p, rawCode, userId) {
   if (!promo || !promo.active) return { error: 'invalid' };
   if (promo.expiresAt && promo.expiresAt < new Date()) return { error: 'expired' };
   if (promo.maxRedemptions != null && promo.redeemedCount >= promo.maxRedemptions) return { error: 'depleted' };
+  // Gift codes: assigned to one or more users → only they may redeem.
+  if (promo.assignedUserIds?.length && (!userId || !promo.assignedUserIds.includes(userId))) return { error: 'not_yours' };
   if (userId) { const mine = await p.promoRedemption.count({ where: { promoId: promo.id, userId } }); if (mine >= promo.perUserLimit) return { error: 'already_used' }; }
   return { promo };
 }
@@ -40,6 +42,7 @@ export async function redeemPromoAtomic(p, rawCode, userId, grant) {
       const promo = await tx.promoCode.findUnique({ where: { code } });
       if (!promo || !promo.active) return { error: 'invalid' };
       if (promo.expiresAt && promo.expiresAt < new Date()) return { error: 'expired' };
+      if (promo.assignedUserIds?.length && (!userId || !promo.assignedUserIds.includes(userId))) return { error: 'not_yours' };
       const mine = await tx.promoRedemption.count({ where: { promoId: promo.id, userId } });
       if (mine >= promo.perUserLimit) return { error: 'already_used' };
       // Conditional UPDATE re-checks maxRedemptions AT THE DATABASE, inside the
@@ -91,6 +94,10 @@ export default async function promoRoutes(app) {
       perUserLimit: z.number().int().min(1).max(1000).optional(),
       expiresAt: z.string().datetime().nullable().optional(),
       stackable: z.boolean().optional(),
+      // Gift/assign: restrict the code to specific accounts. Accepts user ids and/or
+      // emails; emails are resolved to ids below. Empty = anyone can redeem.
+      assignedUserIds: z.array(z.string().max(40)).max(200).optional(),
+      assignedEmails: z.array(z.string().max(200)).max(200).optional(),
       note: z.string().max(200).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -99,6 +106,12 @@ export default async function promoRoutes(app) {
     if (d.kind === 'free_hosting' && !d.storageGB) return reply.code(400).send({ error: 'hosting_needs_storage' });
     if (d.kind === 'free_boost' && !d.boostDays) return reply.code(400).send({ error: 'boost_needs_days' });
     const p = await db();
+    // Resolve any assigned emails to user ids and merge with any explicit ids.
+    let assignedUserIds = [...(d.assignedUserIds || [])];
+    if (d.assignedEmails?.length) {
+      const users = await p.user.findMany({ where: { email: { in: d.assignedEmails.map((e) => e.trim().toLowerCase()).filter(Boolean) } }, select: { id: true } });
+      assignedUserIds = [...new Set([...assignedUserIds, ...users.map((u) => u.id)])];
+    }
     let code = (d.code || genCode()).toUpperCase().replace(/\s+/g, '');
     if (d.code) {
       // An explicit code that already exists is an error (don't silently replace it)…
@@ -112,7 +125,7 @@ export default async function promoRoutes(app) {
         code, kind: d.kind, percentOff: d.percentOff ?? null, freeMonths: d.freeMonths ?? null, minMonths: d.minMonths ?? null,
         storageGB: d.storageGB ?? null, uploadMbps: d.uploadMbps ?? null, hostMonths: d.hostMonths ?? null,
         boostDays: d.boostDays ?? null, maxRedemptions: d.maxRedemptions ?? null, perUserLimit: d.perUserLimit ?? 1,
-        expiresAt: d.expiresAt ? new Date(d.expiresAt) : null, stackable: d.stackable ?? false, note: d.note || '',
+        expiresAt: d.expiresAt ? new Date(d.expiresAt) : null, stackable: d.stackable ?? false, assignedUserIds, note: d.note || '',
       } });
       return reply.code(201).send({ code: created });
     } catch { return reply.code(409).send({ error: 'code_exists' }); }
