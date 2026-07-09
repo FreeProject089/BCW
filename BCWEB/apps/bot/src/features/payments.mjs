@@ -10,6 +10,8 @@ import { api } from '../api.mjs';
 let _running = false;
 
 const money = (cents, ccy) => `${(Math.abs(cents || 0) / 100).toFixed(2)} ${(ccy || 'usd').toUpperCase()}`;
+// Don't leak a full customer email into a Discord channel — mask the local part.
+const maskEmail = (e) => { if (!e) return ''; const [u, d] = String(e).split('@'); return d ? `${u.slice(0, 1)}***@${d}` : '***'; };
 
 export async function pollPayments(client) {
   if (_running) return;
@@ -52,7 +54,7 @@ export async function pollPayments(client) {
           const embed = new EmbedBuilder()
             .setColor(0xf59e0b)
             .setTitle('↩️ Refund issued')
-            .setDescription(`**${money(r.amountCents, r.currency)}** refunded${r.email ? ` to ${r.email}` : ''}.`)
+            .setDescription(`**${money(r.amountCents, r.currency)}** refunded${r.email ? ` to ${maskEmail(r.email)}` : ''}.`)
             .setTimestamp(r.at ? new Date(r.at) : new Date());
           await refundChannel.send({ embeds: [embed] });
           marks.refundIds.push(r.id);
