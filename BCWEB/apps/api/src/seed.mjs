@@ -302,5 +302,149 @@ The .bmmtheme package format, in the documentation.
   }
 }
 
+// ── Welcome / announcement blog posts (bilingual EN + FR) ──
+// Real articles (not format guides) that greet visitors and summarise the platform.
+// Upserted by slug so re-running the seed refreshes their content in place.
+if (adminUser && communityProject) {
+  const POSTS = [
+    {
+      slug: 'welcome-to-bettercommunity', daysAgo: 0,
+      title: 'Welcome to BetterCommunity',
+      excerpt: 'The home for every Better* project — catalogs, presets, hosting and accounts, all in one place.',
+      titleFr: 'Bienvenue sur BetterCommunity',
+      excerptFr: 'La maison de tous les projets Better* — catalogues, presets, hébergement et comptes, au même endroit.',
+      body:
+`:badge[Announcement]{color="#f59e0b"} :badge[Welcome]{color="#16a34a"}
+
+**BetterCommunity** is the hub for the whole Better* ecosystem. Browse moderated catalogs, share presets, manage your uploads, and host your own Server-Repos — all from a single account.
+
+:::tip[Get started in a minute]
+Create a free account, then open the **Catalog** to install apps, plugins and themes straight into BMM with one click.
+:::
+
+## What you can do here
+- **Browse** moderated catalogs of apps, plugins, themes and BSM presets
+- **Publish** your own content — every submission is reviewed before it goes live
+- **Host** a Server-Repo, billed only for what you use (there's a free tier to start)
+- **Link** your Discord and BMM creator id for roles, credit and gated channels
+
+:::card{title="Open the catalog" href=/catalog icon=box}
+Discover what the community has already built.
+:::`,
+      bodyFr:
+`:badge[Annonce]{color="#f59e0b"} :badge[Bienvenue]{color="#16a34a"}
+
+**BetterCommunity** est le hub de tout l'écosystème Better*. Parcours des catalogues modérés, partage des presets, gère tes envois et héberge tes propres Server-Repos — le tout depuis un seul compte.
+
+:::tip[Commence en une minute]
+Crée un compte gratuit, puis ouvre le **Catalogue** pour installer apps, plugins et thèmes directement dans BMM en un clic.
+:::
+
+## Ce que tu peux faire ici
+- **Parcourir** des catalogues modérés d'apps, plugins, thèmes et presets BSM
+- **Publier** ton propre contenu — chaque soumission est vérifiée avant sa mise en ligne
+- **Héberger** un Server-Repo, facturé seulement à l'usage (un palier gratuit pour commencer)
+- **Lier** ton Discord et ton creator id BMM pour les rôles, le crédit et les salons réservés
+
+:::card{title="Ouvrir le catalogue" href=/catalog icon=box}
+Découvre ce que la communauté a déjà créé.
+:::`,
+    },
+    {
+      slug: 'whats-new-platform', daysAgo: 3,
+      title: 'What’s new — catalogs, hosting & Discord',
+      excerpt: 'A quick roundup of what shipped recently across BetterCommunity.',
+      titleFr: 'Nouveautés — catalogues, hébergement & Discord',
+      excerptFr: 'Un tour d’horizon rapide des dernières nouveautés sur BetterCommunity.',
+      body:
+`:badge[Changelog]{color="#2563eb"}
+
+Here's a snapshot of what's new on the platform.
+
+| Area | What changed |
+|---|---|
+| Catalogs | One-click install into BMM via \`bmm://\` deeplinks |
+| Hosting | Pay-as-you-grow Server-Repos with a free tier |
+| Discord | Multi-server bot: per-server config + blog news routing |
+| Accounts | Link your Discord and BMM creator id from your profile |
+
+:::note[Privacy-first]
+Analytics are anonymous and first-party — no third-party trackers, and only with your consent.
+:::
+
+:::card{title="See the hosting plans" href=/hosting icon=server}
+Host a repo and pay only for what you use.
+:::`,
+      bodyFr:
+`:badge[Journal]{color="#2563eb"}
+
+Voici un aperçu des nouveautés sur la plateforme.
+
+| Domaine | Ce qui a changé |
+|---|---|
+| Catalogues | Installation en un clic dans BMM via des liens \`bmm://\` |
+| Hébergement | Server-Repos à la demande avec un palier gratuit |
+| Discord | Bot multi-serveur : config par serveur + routage des news blog |
+| Comptes | Lie ton Discord et ton creator id BMM depuis ton profil |
+
+:::note[Vie privée d'abord]
+Les statistiques sont anonymes et internes — aucun traqueur tiers, et uniquement avec ton consentement.
+:::
+
+:::card{title="Voir les offres d'hébergement" href=/hosting icon=server}
+Héberge un dépôt et ne paie que ce que tu utilises.
+:::`,
+    },
+    {
+      slug: 'roadmap-whats-next', daysAgo: 7,
+      title: 'Roadmap — what’s coming next',
+      excerpt: 'Where BetterCommunity is headed, and how to help shape it.',
+      titleFr: 'Roadmap — la suite',
+      excerptFr: 'Où va BetterCommunity, et comment aider à le façonner.',
+      body:
+`:badge[Roadmap]{color="#7c3aed"}
+
+We're building in the open. A few things on the horizon:
+
+- **BetterInstaller** — a fast, modern installer for the whole suite
+- **Richer creator dashboards** — deeper stats on your uploads and repos
+- **More community tooling** — around presets, themes and plugins
+
+:::tip[Have an idea?]
+The **Contact** page and our **Discord** are the fastest ways to reach us — feature requests welcome.
+:::
+
+:::card{title="Join the Discord" href=/contact icon=message-circle}
+Tell us what you'd like to see next.
+:::`,
+      bodyFr:
+`:badge[Roadmap]{color="#7c3aed"}
+
+On construit à ciel ouvert. Quelques éléments à l'horizon :
+
+- **BetterInstaller** — un installeur moderne et rapide pour toute la suite
+- **Tableaux de bord créateurs enrichis** — des stats plus poussées sur tes envois et dépôts
+- **Plus d'outils communautaires** — autour des presets, thèmes et plugins
+
+:::tip[Une idée ?]
+La page **Contact** et notre **Discord** sont les moyens les plus rapides de nous joindre — les demandes de fonctionnalités sont les bienvenues.
+:::
+
+:::card{title="Rejoindre le Discord" href=/contact icon=message-circle}
+Dis-nous ce que tu aimerais voir ensuite.
+:::`,
+    },
+  ];
+  for (const post of POSTS) {
+    const { slug, daysAgo, ...rest } = post;
+    const data = { ...rest, status: 'PUBLISHED', coverInBody: true };
+    await p.blogPost.upsert({
+      where: { slug },
+      create: { slug, projectId: communityProject.id, authorId: adminUser.id, publishedAt: new Date(Date.now() - daysAgo * 86400000), ...data },
+      update: data,
+    });
+  }
+}
+
 console.log('[seed] done');
 process.exit(0);
