@@ -3887,17 +3887,17 @@ const fmtBytes = (n) => {
 // Admin: contact-form inbox. Messages are stored server-side (and forwarded to
 // Discord if a webhook is configured).
 function AdminMessages() {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/contact'), []);
   const msgs = data?.messages || [];
   const markRead = async (m) => { if (m.readAt) return; try { await api.post(`/admin/contact/${m.id}/read`); reload(); } catch {} };
-  const del = async (m) => { try { await api.del(`/admin/contact/${m.id}`); toast.success('Deleted.'); reload(); } catch { toast.error('Failed.'); } };
+  const del = async (m) => { try { await api.del(`/admin/contact/${m.id}`); toast.success(t('common.deleted', 'Deleted.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   if (loading) return <Loading />;
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold flex items-center gap-2"><Mail size={16} className="text-[var(--primary-2)]" /> Contact messages {data?.unread > 0 && <Badge tone="amber">{data.unread} new</Badge>}</h2>
-        <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> Refresh</Button>
+        <h2 className="font-semibold flex items-center gap-2"><Mail size={16} className="text-[var(--primary-2)]" /> {t('am.title', 'Contact messages')} {data?.unread > 0 && <Badge tone="amber">{t('am.new', '{n} new').replace('{n}', data.unread)}</Badge>}</h2>
+        <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> {t('am.refresh', 'Refresh')}</Button>
       </div>
       {msgs.length ? <div className="space-y-2">
         {msgs.map((m) => (
@@ -3909,19 +3909,19 @@ function AdminMessages() {
                   <span className="font-medium">{m.name}</span>
                   <a href={`mailto:${m.email}`} className="text-xs text-[var(--primary-2)] hover:underline">{m.email}</a>
                   {m.user && <Badge tone="primary"><Users size={9} /> {m.user.displayName}</Badge>}
-                  {!m.readAt && <Badge tone="amber">new</Badge>}
+                  {!m.readAt && <Badge tone="amber">{t('am.newbadge', 'new')}</Badge>}
                   <span className="text-xs text-[var(--faint)] ml-auto">{new Date(m.createdAt).toLocaleString()}</span>
                 </div>
                 <div className="text-sm text-[var(--muted)] mt-1.5 break-words prose-sm"><Markdown>{m.body}</Markdown></div>
                 <div className="flex items-center gap-2 mt-2.5">
-                  <a href={`mailto:${m.email}?subject=${encodeURIComponent('Re: your message to BetterCommunity')}`}><Button size="sm"><Send size={13} /> Reply</Button></a>
-                  <Button size="sm" variant="ghost" onClick={() => del(m)}><Trash2 size={13} /> Delete</Button>
+                  <a href={`mailto:${m.email}?subject=${encodeURIComponent(t('am.replysubj', 'Re: your message to BetterCommunity'))}`}><Button size="sm"><Send size={13} /> {t('am.reply', 'Reply')}</Button></a>
+                  <Button size="sm" variant="ghost" onClick={() => del(m)}><Trash2 size={13} /> {t('am.delete', 'Delete')}</Button>
                 </div>
               </div>
             </div>
           </Card>
         ))}
-      </div> : <EmptyState icon={Mail} title="No messages" sub="Contact-form submissions will appear here." />}
+      </div> : <EmptyState icon={Mail} title={t('am.none.t', 'No messages')} sub={t('am.none.s', 'Contact-form submissions will appear here.')} />}
     </div>
   );
 }

@@ -200,6 +200,11 @@ const DICT = {
     'pc.none.t': 'Aucun code promo', 'pc.none.s': 'Crée-en un ci-dessus — réduction, hébergement gratuit, ou boost gratuit.',
     'pc.d.off': '{n}% de réduction', 'pc.d.mofree': '{n} mois gratuits', 'pc.d.minterm': 'durée {n} mois+ seulement', 'pc.d.forever': 'pour toujours', 'pc.d.boost': 'boost {n} jours',
 
+    // ── Admin : messages de contact ──
+    'am.title': 'Messages de contact', 'am.new': '{n} nouveau(x)', 'am.refresh': 'Rafraîchir', 'am.newbadge': 'nouveau',
+    'am.reply': 'Répondre', 'am.delete': 'Supprimer', 'am.replysubj': 'Re : ton message à BetterCommunity',
+    'am.none.t': 'Aucun message', 'am.none.s': 'Les messages du formulaire de contact apparaîtront ici.',
+
     'hosting.title': 'Héberger un Server-Repo', 'hosting.sub': 'On l’exécute, tu le gères. Paie selon la taille dont tu as besoin.',
     'hosting.single': 'Dépôt unique', 'hosting.single.d': 'Un seul dépôt avec tout le quota.',
     'hosting.multi': 'Dépôts multiples', 'hosting.multi.d': 'Répartis le stockage sur plusieurs dépôts, gérés par toi.',
