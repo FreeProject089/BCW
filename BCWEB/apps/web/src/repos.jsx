@@ -864,11 +864,23 @@ export function Billing() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading } = useFetch(() => api.get('/me/payments'), []);
   const { data: repoData, reload: reloadRepos } = useFetch(() => api.get('/me/repos'), []);
-  const { data: overview } = useFetch(() => api.get('/me/billing/overview').catch(() => null), []);
+  const { data: overview, reload: reloadOverview } = useFetch(() => api.get('/me/billing/overview').catch(() => null), []);
+  const dialog = useDialog();
+  const [subBusy, setSubBusy] = useState(null);
+  const cancelSub = async (s) => {
+    const resume = s.cancelAtPeriodEnd;
+    if (!resume && !(await dialog.confirm({ title: t('bill.sub.cancel.t', 'Stop auto-renew?'), message: t('bill.sub.cancel.m', 'This subscription stays active until {d}, then won’t renew. You keep everything you’ve paid for.').replace('{d}', s.currentPeriodEnd ? new Date(s.currentPeriodEnd).toLocaleDateString() : '—'), okLabel: t('bill.sub.cancel.ok', 'Stop auto-renew'), danger: true }))) return;
+    setSubBusy(s.id);
+    try { await api.post(`/me/subscriptions/${s.id}/cancel`, { resume }); toast.success(resume ? t('bill.sub.resumed', 'Auto-renew re-enabled.') : t('bill.sub.canceled', 'Auto-renew stopped — active until the period ends.')); reloadOverview(); }
+    catch { toast.error(t('repos.failed', 'Failed.')); } finally { setSubBusy(null); }
+  };
   const { data: invData } = useFetch(() => api.get('/me/invoices').catch(() => null), []);
   const [invoice, setInvoice] = useState(null);
   const [portalBusy, setPortalBusy] = useState(false);
   const [dlBusy, setDlBusy] = useState(null); // invoice id currently downloading
+  const [expandedInv, setExpandedInv] = useState(null); // invoice id expanded for details
+  // A short, human summary instead of Stripe's long line-item description.
+  const invSummary = (inv) => inv.recurring ? t('bill.h.subscription', 'Subscription') : /boost/i.test(inv.description || '') ? t('bill.h.boost', 'Boost') : /host|repo|gb/i.test(inv.description || '') ? t('bill.h.hosting', 'Hosting') : t('bill.h.payment', 'Payment');
   const payments = data?.payments || [];
   const subs = overview?.subscriptions || [];
   const invoices = invData?.invoices || [];
@@ -926,14 +938,24 @@ export function Billing() {
               const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '';
               const amt = sym ? `${sym}${(s.amountCents / 100).toFixed(2)}` : `${(s.amountCents / 100).toFixed(2)} ${cur}`;
               const per = s.interval ? (s.intervalCount > 1 ? `/ ${s.intervalCount} ${s.interval}` : `/ ${s.interval}`) : '';
+              const isBoost = s.target === 'boost';
+              const label = isBoost ? t('bill.sub.boost2', 'Boost') : t('bill.sub.hosting2', 'Hosting');
+              const startsSoon = s.status === 'trialing' && s.trialEnd;
               return (
                 <div key={s.id} className={`flex items-center gap-3 px-4 py-3 text-sm ${i ? 'border-t border-[var(--line)]' : ''}`}>
+                  {isBoost ? <Rocket size={15} className="text-amber-400 shrink-0" /> : <Server size={15} className="text-[var(--primary-2)] shrink-0" />}
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{s.kind === 'hosting' ? t('bill.sub.hosting', 'Hosting subscription') : s.kind === 'feature' ? t('bill.sub.boost', 'Repo boost subscription') : t('bill.sub.generic', 'Subscription')}</div>
-                    <div className="text-xs text-[var(--faint)]">{s.currentPeriodEnd ? (s.cancelAtPeriodEnd ? t('bill.sub.endson', 'Ends {d}') : t('bill.sub.renews', 'Renews {d}')).replace('{d}', new Date(s.currentPeriodEnd).toLocaleDateString()) : ''}</div>
+                    <div className="font-medium truncate">{label}{s.repoName ? <> · <span className="text-[var(--primary-2)]">{s.repoName}</span></> : ''}</div>
+                    <div className="text-xs text-[var(--faint)]">
+                      {startsSoon ? t('bill.sub.starts', 'First renewal {d}').replace('{d}', new Date(s.trialEnd).toLocaleDateString())
+                        : s.currentPeriodEnd ? (s.cancelAtPeriodEnd ? t('bill.sub.endson', 'Ends {d}') : t('bill.sub.renews', 'Renews {d}')).replace('{d}', new Date(s.currentPeriodEnd).toLocaleDateString()) : ''}
+                    </div>
                   </div>
-                  <Badge tone={s.status === 'active' || s.status === 'trialing' ? 'green' : 'amber'}>{s.cancelAtPeriodEnd ? t('bill.sub.canceling', 'canceling') : s.status}</Badge>
+                  <Badge tone={s.cancelAtPeriodEnd ? 'amber' : (s.status === 'active' || s.status === 'trialing' ? 'green' : 'amber')}>{s.cancelAtPeriodEnd ? t('bill.sub.canceling', 'canceling') : s.status}</Badge>
                   <span className="font-semibold text-right whitespace-nowrap">{amt} <span className="text-[var(--faint)] font-normal text-xs">{per}</span></span>
+                  <Button size="sm" variant="ghost" disabled={subBusy === s.id} onClick={() => cancelSub(s)} title={s.cancelAtPeriodEnd ? t('bill.sub.resume.h', 'Turn auto-renew back on') : t('bill.sub.cancel.h', 'Stop auto-renew (stays active until the period ends)')}>
+                    {subBusy === s.id ? <Spinner /> : s.cancelAtPeriodEnd ? <><RefreshCw size={13} /> {t('bill.sub.resume', 'Resume')}</> : <><X size={13} /> {t('bill.sub.cancel', 'Cancel')}</>}
+                  </Button>
                 </div>
               );
             })}
@@ -949,19 +971,38 @@ export function Billing() {
       {/* Prefer Stripe's own invoice history (covers one-time AND every subscription
           cycle, each with a real downloadable PDF). Fall back to the local ledger. */}
       {invoices.length ? <Card className="overflow-hidden p-0">
-          {invoices.map((inv, i) => (
-            <div key={inv.id} className={`flex items-center gap-3 px-4 py-3 text-sm ${i ? 'border-t border-[var(--line)]' : ''}`}>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium truncate flex items-center gap-2">{inv.description}{inv.recurring && <Badge tone="primary"><RefreshCw size={9} /> {t('bill.recurringtag', 'subscription')}</Badge>}</div>
-                <div className="text-xs text-[var(--faint)]">{inv.created ? new Date(inv.created).toLocaleString() : ''} · <span className="font-mono">{inv.number}</span></div>
-              </div>
-              <Badge tone={inv.status === 'paid' ? 'green' : 'amber'}>{inv.status === 'paid' ? t('bill.paid', 'PAID') : inv.status}</Badge>
-              <span className="font-semibold text-right whitespace-nowrap">{money(inv.amountCents, inv.currency)}</span>
-              {inv.hasPdf
-                ? <Button size="sm" disabled={dlBusy === inv.id} onClick={() => downloadInvoicePdf(inv)}>{dlBusy === inv.id ? <Spinner /> : <><Download size={13} /> {t('bill.download', 'Download')}</>}</Button>
-                : inv.hosted ? <a href={inv.hosted} target="_blank" rel="noreferrer"><Button size="sm"><ExternalLink size={13} /> {t('bill.view', 'View')}</Button></a> : null}
+          {invoices.map((inv, i) => {
+            const isOpen = expandedInv === inv.id;
+            return (
+            <div key={inv.id} className={`${i ? 'border-t border-[var(--line)]' : ''}`}>
+              {/* Compact summary row — click to expand the full detail. */}
+              <button onClick={() => setExpandedInv(isOpen ? null : inv.id)} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-left hover:bg-[var(--surface-2)] transition">
+                <ChevronDown size={15} className={`shrink-0 text-[var(--faint)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium flex items-center gap-2">{invSummary(inv)}{inv.recurring && <Badge tone="primary"><RefreshCw size={9} /> {t('bill.recurringtag', 'subscription')}</Badge>}</div>
+                  <div className="text-xs text-[var(--faint)]">{inv.created ? new Date(inv.created).toLocaleDateString() : ''}</div>
+                </div>
+                <Badge tone={inv.status === 'paid' ? 'green' : 'amber'}>{inv.status === 'paid' ? t('bill.paid', 'PAID') : inv.status}</Badge>
+                <span className="font-semibold text-right whitespace-nowrap">{money(inv.amountCents, inv.currency)}</span>
+              </button>
+              {isOpen && (
+                <div className="px-4 pb-3 pt-0 pl-11 space-y-2">
+                  <div className="rounded-lg bg-[var(--surface-2)]/60 p-3 text-sm space-y-1.5">
+                    <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.desc', 'Description')}</span><span className="text-right">{inv.description}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.invoiceno', 'Invoice №')}</span><span className="font-mono text-right">{inv.number}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.date', 'Date')}</span><span className="text-right">{inv.created ? new Date(inv.created).toLocaleString() : ''}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.amount', 'Amount')}</span><span className="font-semibold text-right">{money(inv.amountCents, inv.currency)}</span></div>
+                  </div>
+                  <div className="flex justify-end">
+                    {inv.hasPdf
+                      ? <Button size="sm" disabled={dlBusy === inv.id} onClick={() => downloadInvoicePdf(inv)}>{dlBusy === inv.id ? <Spinner /> : <><Download size={13} /> {t('bill.download', 'Download PDF')}</>}</Button>
+                      : inv.hosted ? <a href={inv.hosted} target="_blank" rel="noreferrer"><Button size="sm"><ExternalLink size={13} /> {t('bill.view', 'View')}</Button></a> : null}
+                  </div>
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </Card>
         : loading ? <div className="text-[var(--muted)] text-sm py-3">{t('common.loading', 'Loading…')}</div>
         : payments.length ? <Card className="overflow-hidden p-0">

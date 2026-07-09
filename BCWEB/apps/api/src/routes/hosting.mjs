@@ -545,28 +545,58 @@ export default async function hostingRoutes(app) {
     if (!sk || !u?.stripeCustomerId) return { subscriptions: [] };
     try {
       const subs = await sk.subscriptions.list({ customer: u.stripeCustomerId, status: 'all', limit: 20 });
-      const list = subs.data
-        .filter((s) => ['active', 'trialing', 'past_due', 'unpaid'].includes(s.status))
-        .map((s) => {
-          const item = s.items?.data?.[0];
-          const price = item?.price;
-          return {
-            id: s.id,
-            status: s.status,
-            kind: s.metadata?.kind || (s.metadata?.repoId ? 'hosting' : 'subscription'),
-            repoId: s.metadata?.repoId || null,
-            amountCents: price?.unit_amount ?? 0,
-            currency: price?.currency || 'usd',
-            interval: price?.recurring?.interval || null,
-            intervalCount: price?.recurring?.interval_count || 1,
-            currentPeriodEnd: s.current_period_end ? new Date(s.current_period_end * 1000).toISOString() : null,
-            cancelAtPeriodEnd: !!s.cancel_at_period_end,
-          };
-        });
+      const active = subs.data.filter((s) => ['active', 'trialing', 'past_due', 'unpaid'].includes(s.status));
+      // Resolve the repo each subscription acts on so the UI can say "Hosting — my-repo".
+      const repoIds = [...new Set(active.map((s) => s.metadata?.repoId).filter(Boolean))];
+      const repos = repoIds.length ? await p.serverRepo.findMany({ where: { id: { in: repoIds } }, select: { id: true, name: true } }) : [];
+      const repoName = Object.fromEntries(repos.map((r) => [r.id, r.name]));
+      const list = active.map((s) => {
+        const item = s.items?.data?.[0];
+        const price = item?.price;
+        const kind = s.metadata?.kind || (s.metadata?.repoId ? 'hosting' : 'subscription');
+        return {
+          id: s.id,
+          status: s.status,
+          kind,
+          repoId: s.metadata?.repoId || null,
+          repoName: s.metadata?.repoId ? (repoName[s.metadata.repoId] || null) : null,
+          target: kind === 'feature' || kind === 'boost' ? 'boost' : 'hosting',
+          amountCents: price?.unit_amount ?? 0,
+          currency: price?.currency || 'usd',
+          interval: price?.recurring?.interval || null,
+          intervalCount: price?.recurring?.interval_count || 1,
+          currentPeriodEnd: s.current_period_end ? new Date(s.current_period_end * 1000).toISOString() : null,
+          trialEnd: s.trial_end ? new Date(s.trial_end * 1000).toISOString() : null,
+          cancelAtPeriodEnd: !!s.cancel_at_period_end,
+        };
+      });
       return { subscriptions: list };
     } catch (e) {
       req.log?.warn?.({ err: e?.message }, 'billing overview failed');
       return { subscriptions: [] };
+    }
+  });
+
+  // Cancel (stop auto-renew) or resume a subscription. Ownership is enforced by
+  // checking the subscription belongs to THIS user's Stripe customer. Default cancels
+  // at period end (keeps what's paid for); `resume:true` un-cancels.
+  app.post('/me/subscriptions/:id/cancel', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ resume: z.boolean().optional() }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: req.user.uid } });
+    const sk = await stripe();
+    if (!sk || !u?.stripeCustomerId) return reply.code(503).send({ error: 'stripe_not_configured' });
+    try {
+      const sub = await sk.subscriptions.retrieve(req.params.id);
+      if (sub.customer !== u.stripeCustomerId) return reply.code(404).send({ error: 'not_found' });
+      const updated = await sk.subscriptions.update(req.params.id, { cancel_at_period_end: !b.data.resume });
+      // Keep the local mirror in step (best-effort — the webhook is the source of truth).
+      if (sub.metadata?.repoId) await p.subscription.updateMany({ where: { stripeSubId: sub.id }, data: { status: b.data.resume ? 'active' : 'canceling' } }).catch(() => {});
+      return { ok: true, cancelAtPeriodEnd: !!updated.cancel_at_period_end };
+    } catch (e) {
+      req.log?.warn?.({ err: e?.message }, 'subscription cancel failed');
+      return reply.code(502).send({ error: 'stripe_error' });
     }
   });
 
