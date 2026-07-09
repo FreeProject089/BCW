@@ -3554,13 +3554,13 @@ function PluginContentModal({ item, onClose }) {
 
 // Admin: provision a hosted repo for free (no Stripe), optionally for another user.
 function AdminFreeHost() {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const plans = useAsync(() => api.get('/hosting/plans'), []);
   const [f, setF] = useState({ name: '', ownerEmail: '', planId: '', storageGB: 10, uploadMbps: 8, cpuShare: 0.5, listed: false, mode: 'single' });
   const [custom, setCustom] = useState(false);
   const [busy, setBusy] = useState(false);
   const submit = async () => {
-    if (f.name.length < 2) return toast.error('Repo name is required.');
+    if (f.name.length < 2) return toast.error(t('fh.namereq', 'Repo name is required.'));
     setBusy(true);
     try {
       const body = { name: f.name, listed: f.listed, mode: f.mode };
@@ -3568,42 +3568,42 @@ function AdminFreeHost() {
       if (custom) { body.storageGB = Number(f.storageGB); body.uploadMbps = Number(f.uploadMbps); body.cpuShare = Number(f.cpuShare); }
       else if (f.planId) body.planId = f.planId;
       await api.post('/admin/repos/host', body);
-      toast.success(f.mode === 'multi' ? `Multi-repo pool "${f.name}" provisioned.` : `Hosted repo "${f.name}" provisioned. See it under Server repos.`);
+      toast.success((f.mode === 'multi' ? t('fh.provmulti', 'Multi-repo pool "{name}" provisioned.') : t('fh.provsingle', 'Hosted repo "{name}" provisioned. See it under Server repos.')).replace('{name}', f.name));
       setF({ name: '', ownerEmail: '', planId: '', storageGB: 10, uploadMbps: 8, cpuShare: 0.5, listed: false, mode: 'single' });
-    } catch (x) { toast.error(x.data?.error === 'user_not_found' ? 'No user with that email.' : x.data?.error || 'Failed.'); } finally { setBusy(false); }
+    } catch (x) { toast.error(x.data?.error === 'user_not_found' ? t('fh.usernotfound', 'No user with that email.') : x.data?.error || t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Rocket size={16} className="text-[var(--primary-2)]" /> Host a Server-Repo (free)</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">Provisions a hosted, sandboxed repo directly — no payment. Leave the email blank to host it under your own account.</p>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Rocket size={16} className="text-[var(--primary-2)]" /> {t('fh.title', 'Host a Server-Repo (free)')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('fh.sub', 'Provisions a hosted, sandboxed repo directly — no payment. Leave the email blank to host it under your own account.')}</p>
       <Card className="p-5 space-y-3">
         <div className="flex items-center gap-2 text-sm">
-          {[['single', 'Single repo'], ['multi', 'Multi-repo pool']].map(([m, l]) => (
+          {[['single', t('fh.single', 'Single repo')], ['multi', t('fh.multi', 'Multi-repo pool')]].map(([m, l]) => (
             <button key={m} onClick={() => setF({ ...f, mode: m })} className={`px-3 py-1.5 rounded-lg border ${f.mode === m ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>{l}</button>
           ))}
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
-          <Field label={f.mode === 'multi' ? 'Pool name' : 'Repo name'}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="official-server-repo" /></Field>
-          <Field label="Owner email (optional)"><Input value={f.ownerEmail} onChange={(e) => setF({ ...f, ownerEmail: e.target.value })} placeholder="you@…" /></Field>
+          <Field label={f.mode === 'multi' ? t('fh.poolname', 'Pool name') : t('fh.reponame', 'Repo name')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="official-server-repo" /></Field>
+          <Field label={t('fh.owneremail', 'Owner email (optional)')}><Input value={f.ownerEmail} onChange={(e) => setF({ ...f, ownerEmail: e.target.value })} placeholder="you@…" /></Field>
         </div>
         <div className="flex items-center gap-2 text-sm">
-          <button onClick={() => setCustom(false)} className={`px-3 py-1.5 rounded-lg border ${!custom ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>Use a plan</button>
-          <button onClick={() => setCustom(true)} className={`px-3 py-1.5 rounded-lg border ${custom ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>Custom size</button>
+          <button onClick={() => setCustom(false)} className={`px-3 py-1.5 rounded-lg border ${!custom ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>{t('fh.useplan', 'Use a plan')}</button>
+          <button onClick={() => setCustom(true)} className={`px-3 py-1.5 rounded-lg border ${custom ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>{t('fh.customsize', 'Custom size')}</button>
         </div>
         {custom ? (
           <div className="grid sm:grid-cols-3 gap-3">
-            <Field label="Storage (GB)"><Input type="number" value={f.storageGB} onChange={(e) => setF({ ...f, storageGB: e.target.value })} /></Field>
-            <Field label="Upload (Mbps)"><Input type="number" value={f.uploadMbps} onChange={(e) => setF({ ...f, uploadMbps: e.target.value })} /></Field>
-            <Field label="CPU share"><Input type="number" step="0.1" value={f.cpuShare} onChange={(e) => setF({ ...f, cpuShare: e.target.value })} /></Field>
+            <Field label={t('fh.storage', 'Storage (GB)')}><Input type="number" value={f.storageGB} onChange={(e) => setF({ ...f, storageGB: e.target.value })} /></Field>
+            <Field label={t('fh.upload', 'Upload (Mbps)')}><Input type="number" value={f.uploadMbps} onChange={(e) => setF({ ...f, uploadMbps: e.target.value })} /></Field>
+            <Field label={t('fh.cpu', 'CPU share')}><Input type="number" step="0.1" value={f.cpuShare} onChange={(e) => setF({ ...f, cpuShare: e.target.value })} /></Field>
           </div>
         ) : (
-          <Field label="Plan"><Select value={f.planId} onChange={(e) => setF({ ...f, planId: e.target.value })}>
-            <option value="">Select a plan…</option>
+          <Field label={t('fh.plan', 'Plan')}><Select value={f.planId} onChange={(e) => setF({ ...f, planId: e.target.value })}>
+            <option value="">{t('fh.selectplan', 'Select a plan…')}</option>
             {(plans.data?.plans || []).map((pl) => <option key={pl.id} value={pl.id}>{pl.name} — {pl.storageGB}GB</option>)}
           </Select></Field>
         )}
-        <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked={f.listed} onChange={(e) => setF({ ...f, listed: e.target.checked })} /> List publicly once verified</label>
-        <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={submit}>{busy ? <Spinner /> : <><Rocket size={15} /> Provision (free)</>}</Button></div>
+        <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked={f.listed} onChange={(e) => setF({ ...f, listed: e.target.checked })} /> {t('fh.listpub', 'List publicly once verified')}</label>
+        <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={submit}>{busy ? <Spinner /> : <><Rocket size={15} /> {t('fh.provision', 'Provision (free)')}</>}</Button></div>
       </Card>
     </div>
   );

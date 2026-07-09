@@ -215,6 +215,14 @@ const DICT = {
     'am.reply': 'Répondre', 'am.delete': 'Supprimer', 'am.replysubj': 'Re : ton message à BetterCommunity',
     'am.none.t': 'Aucun message', 'am.none.s': 'Les messages du formulaire de contact apparaîtront ici.',
 
+    // ── Admin : hébergement gratuit ──
+    'fh.namereq': 'Le nom du dépôt est requis.', 'fh.provmulti': 'Pool multi-dépôts « {name} » provisionné.', 'fh.provsingle': 'Dépôt hébergé « {name} » provisionné. Voir dans Dépôts serveur.', 'fh.usernotfound': 'Aucun utilisateur avec cet e-mail.',
+    'fh.title': 'Héberger un Server-Repo (gratuit)', 'fh.sub': 'Provisionne un dépôt hébergé et bac-à-sable directement — sans paiement. Laisse l’e-mail vide pour l’héberger sous ton propre compte.',
+    'fh.single': 'Dépôt unique', 'fh.multi': 'Pool multi-dépôts', 'fh.poolname': 'Nom du pool', 'fh.reponame': 'Nom du dépôt',
+    'fh.owneremail': 'E-mail du propriétaire (optionnel)', 'fh.useplan': 'Utiliser un plan', 'fh.customsize': 'Taille sur mesure',
+    'fh.storage': 'Stockage (Go)', 'fh.upload': 'Envoi (Mbps)', 'fh.cpu': 'Part de CPU', 'fh.plan': 'Plan', 'fh.selectplan': 'Choisir un plan…',
+    'fh.listpub': 'Lister publiquement une fois vérifié', 'fh.provision': 'Provisionner (gratuit)',
+
     'hosting.title': 'Héberger un Server-Repo', 'hosting.sub': 'On l’exécute, tu le gères. Paie selon la taille dont tu as besoin.',
     'hosting.single': 'Dépôt unique', 'hosting.single.d': 'Un seul dépôt avec tout le quota.',
     'hosting.multi': 'Dépôts multiples', 'hosting.multi.d': 'Répartis le stockage sur plusieurs dépôts, gérés par toi.',
