@@ -38,6 +38,10 @@ const DEFAULT_BOT_CONFIG = {
   // Ko-fi tips (see kofi.mjs's webhook → KofiDonation): when enabled, the bot
   // posts each new tip to this channel with the running total.
   kofi: { enabled: false, channelId: '' },
+  // Stripe payments & refunds: when enabled, the bot posts each new successful
+  // payment to `channelId` and each refund to `refundChannelId` (falls back to
+  // `channelId`). Fed by the Stripe webhook (Payment rows + bot.refundEvents).
+  payments: { enabled: false, channelId: '', refundChannelId: '' },
   limits: { maxTempChannels: 50, storageMB: 200 },
   // Per-server overrides: guilds[guildId] = { moderation?, welcome?, joinToCreate?,
   // gating? }. A feature present here REPLACES the top-level default for that guild;
@@ -299,6 +303,47 @@ export default async function botRoutes(app) {
     const row = await p.adminSetting.findUnique({ where: { key: 'bot.kofiAnnounced' } });
     const ids = [...new Set([...(row?.value?.ids || []), ...b.data.ids])].slice(-500);
     await p.adminSetting.upsert({ where: { key: 'bot.kofiAnnounced' }, create: { key: 'bot.kofiAnnounced', value: { ids } }, update: { value: { ids } } });
+    return { ok: true };
+  });
+
+  // ── Stripe payments & refunds (bot ↔ API, shared secret) — same first-call-seeds
+  // shape as blog/kofi so enabling never floods with old history. Payments come from
+  // Payment rows; refunds from the bot.refundEvents set the webhook appends to. ──
+  app.get('/bot/payments/unannounced', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const [payments, refundRow, seen] = await Promise.all([
+      p.payment.findMany({ where: { status: 'paid' }, orderBy: { createdAt: 'asc' }, take: 500,
+        select: { id: true, kind: true, description: true, amountCents: true, currency: true, createdAt: true, user: { select: { displayName: true } } } }),
+      p.adminSetting.findUnique({ where: { key: 'bot.refundEvents' } }),
+      p.adminSetting.findUnique({ where: { key: 'bot.paymentsAnnounced' } }),
+    ]);
+    const refunds = refundRow?.value?.events || [];
+    if (!seen) {
+      // First call ever → seed with everything current so nothing old floods.
+      await p.adminSetting.create({ data: { key: 'bot.paymentsAnnounced', value: { paymentIds: payments.map((x) => x.id), refundIds: refunds.map((r) => r.id) } } });
+      return { payments: [], refunds: [] };
+    }
+    const pSeen = new Set(seen.value?.paymentIds || []);
+    const rSeen = new Set(seen.value?.refundIds || []);
+    return {
+      payments: payments.filter((x) => !pSeen.has(x.id)).slice(0, 20).map((x) => ({ id: x.id, kind: x.kind, description: x.description, amountCents: x.amountCents, currency: x.currency, createdAt: x.createdAt, buyer: x.user?.displayName || null })),
+      refunds: refunds.filter((r) => !rSeen.has(r.id)).slice(0, 20),
+    };
+  });
+
+  app.post('/bot/payments/announced', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({
+      paymentIds: z.array(z.string().max(64)).max(50).optional(),
+      refundIds: z.array(z.string().max(80)).max(50).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'bot.paymentsAnnounced' } });
+    const paymentIds = [...new Set([...(row?.value?.paymentIds || []), ...(b.data.paymentIds || [])])].slice(-1000);
+    const refundIds = [...new Set([...(row?.value?.refundIds || []), ...(b.data.refundIds || [])])].slice(-500);
+    await p.adminSetting.upsert({ where: { key: 'bot.paymentsAnnounced' }, create: { key: 'bot.paymentsAnnounced', value: { paymentIds, refundIds } }, update: { value: { paymentIds, refundIds } } });
     return { ok: true };
   });
 

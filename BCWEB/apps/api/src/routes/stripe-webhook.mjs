@@ -144,6 +144,21 @@ export default async function stripeWebhook(app) {
         const repo = await provisionHostedRepo(p, { userId, plan, repoName, hostMode, months, stripeSubId: s.subscription || null });
         await notify(p, userId, 'hosting_started', `Your hosted repo "${repo.name}" is provisioning — prepaid for ${months} month${months > 1 ? 's' : ''}.`);
       }
+    } else if (event.type === 'charge.refunded') {
+      // A charge was (partially or fully) refunded. Record a lightweight refund
+      // event for the Discord bot to announce (see bot.mjs /bot/payments/*). Keyed
+      // by charge id + refunded amount so successive partial refunds are distinct.
+      const c = event.data.object;
+      const ev = {
+        id: `${c.id}:${c.amount_refunded ?? 0}`,
+        amountCents: c.amount_refunded ?? 0,
+        currency: c.currency || 'usd',
+        email: c.billing_details?.email || c.receipt_email || null,
+        at: new Date().toISOString(),
+      };
+      const row = await p.adminSetting.findUnique({ where: { key: 'bot.refundEvents' } });
+      const events = [...(row?.value?.events || []).filter((e) => e.id !== ev.id), ev].slice(-200);
+      await p.adminSetting.upsert({ where: { key: 'bot.refundEvents' }, create: { key: 'bot.refundEvents', value: { events } }, update: { value: { events } } });
     } else if (event.type === 'customer.subscription.deleted') {
       const subId = event.data.object.id;
       const sub = await p.subscription.findUnique({ where: { stripeSubId: subId } });

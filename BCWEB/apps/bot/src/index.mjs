@@ -14,6 +14,7 @@ import { scanAllMembers } from './features/scanMembers.mjs';
 import { pollBlog } from './features/blog.mjs';
 import { pollAlerts } from './features/alerts.mjs';
 import { pollKofi } from './features/kofi.mjs';
+import { pollPayments } from './features/payments.mjs';
 import { temp, modStats } from './store.mjs';
 
 let client = null;
@@ -65,6 +66,9 @@ function buildClient() {
     // Ko-fi tips: check every 2 min (+ once now) — a thank-you should feel prompt.
     pollKofi(c).catch(() => {});
     timers.push(setInterval(() => pollKofi(c).catch(() => {}), 2 * 60_000));
+    // Stripe payments & refunds: check every 2 min (+ once now).
+    pollPayments(c).catch(() => {});
+    timers.push(setInterval(() => pollPayments(c).catch(() => {}), 2 * 60_000));
   });
   c.on(Events.InteractionCreate, guard(handleInteraction));
   c.on(Events.VoiceStateUpdate, guard((o, n) => onVoiceStateUpdate(c, o, n)));

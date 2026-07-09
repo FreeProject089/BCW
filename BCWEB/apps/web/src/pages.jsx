@@ -4464,6 +4464,15 @@ function AdminBot() {
           </Field>
         </ModuleCard>
 
+        <ModuleCard icon={Receipt} title={t('db.mod.pay', 'Payments & refunds')} desc={t('db.mod.pay.d', 'Post each successful Stripe payment and each refund to the chosen channels.')} enabled={!!cfg.payments?.enabled} onToggle={(v) => set('payments.enabled', v)}>
+          <Field label={t('db.f.paych', 'Payments channel id')} hint={t('db.f.paych.h', 'Every successful payment (hosting, boost…) is posted here.')}>
+            <Input value={g('payments.channelId')} onChange={(e) => set('payments.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
+          </Field>
+          <Field label={t('db.f.refundch', 'Refunds channel id')} hint={t('db.f.refundch.h', 'Refunds are posted here. Empty = use the payments channel.')}>
+            <Input value={g('payments.refundChannelId')} onChange={(e) => set('payments.refundChannelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
+          </Field>
+        </ModuleCard>
+
         <ModuleCard icon={Sliders} title={t('db.mod.limits', 'Limits')}>
           <div className="grid grid-cols-2 gap-2">
             <Field label={t('db.f.maxtemp', 'Max temp channels')}><Input type="number" value={g('limits.maxTempChannels')} onChange={(e) => set('limits.maxTempChannels', Number(e.target.value))} /></Field>

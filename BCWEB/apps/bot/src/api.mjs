@@ -32,6 +32,9 @@ export const api = {
   // Ko-fi tips not yet posted (+ running totals for the embed) + mark them done.
   kofiUnannounced: () => call('GET', '/bot/kofi/unannounced').then((r) => ({ tips: r.tips || [], totals: r.totals || {} })).catch(() => ({ tips: [], totals: {} })),
   kofiMarkAnnounced: (ids) => call('POST', '/bot/kofi/announced', { ids }).catch(() => {}),
+  // Stripe payments + refunds not yet posted, and marking them done.
+  paymentsUnannounced: () => call('GET', '/bot/payments/unannounced').then((r) => ({ payments: r.payments || [], refunds: r.refunds || [] })).catch(() => ({ payments: [], refunds: [] })),
+  paymentsMarkAnnounced: (marks) => call('POST', '/bot/payments/announced', marks).catch(() => {}),
   issueLink: (discordId, username) => call('POST', '/bot/link/issue', { discordId, username }),
   account: (discordId) => call('GET', `/bot/account/${discordId}`).catch(() => ({ linked: false })),
   // Bulk-sync the guild roster into the member database (startup + periodic full scan).
