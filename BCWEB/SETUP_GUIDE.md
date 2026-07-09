@@ -126,9 +126,15 @@ Admin dashboard → **Discord bot**:
 2. Paste the token in the dashboard's **Bot token** field and save — or set
    `DISCORD_TOKEN` in `.env` (the env var always wins over the dashboard-stored one).
 3. Configure moderation, welcome messages, join-to-create voice, blog announcements,
-   and **server-perf alerts** (a new channel field — posts CPU/RAM/disk/service-down
+   and **server-perf alerts** (a channel field — posts CPU/RAM/disk/service-down
    alerts as they fire) from the same screen.
-4. In production, also set `BOT_SHARED_SECRET` in `.env` (defaults to an insecure
+4. **Payments & refunds module** — when enabled, the bot posts every successful Stripe
+   payment and every refund to Discord. Both accept **multiple channel ids** (click
+   "Add another channel"): a payment is posted to *all* payment channels, a refund to
+   *all* refund channels (or the payment channels if you leave refunds empty).
+   Refund embeds mask the customer email. Requires Stripe (section 9) so the webhook
+   records payments/refunds for the bot to announce.
+5. In production, also set `BOT_SHARED_SECRET` in `.env` (defaults to an insecure
    dev value) — it's the shared secret between the API and the bot container.
 
 ## 8b. Optional: GitHub / Discord OAuth login ("Continue with…")
@@ -157,16 +163,57 @@ this off with no visible trace.
 
 ## 9. Optional: Stripe (paid hosting/catalog billing)
 
-1. Get API keys at `dashboard.stripe.com`, set `STRIPE_SECRET_KEY` in `.env`.
-2. Create a webhook endpoint pointing at `https://your-domain/api/hosting/webhook`,
-   enable the events the webhook handler expects, and set `STRIPE_WEBHOOK_SECRET`.
-3. Enable the Stripe **Customer Portal** (needed for the "Manage billing" link).
-4. Once `STRIPE_SECRET_KEY` is set, the Server perf tab's dependency list
+1. Get API keys at `dashboard.stripe.com` (use **test mode** keys while developing),
+   set `STRIPE_SECRET_KEY` in `.env`.
+2. Create a webhook endpoint pointing at `https://your-domain/api/hosting/webhook`
+   and set `STRIPE_WEBHOOK_SECRET` to its signing secret. Enable **exactly these
+   events** (the handler in `apps/api/src/routes/stripe-webhook.mjs` listens for them):
+   - `checkout.session.completed` — provisions hosting / boosts / upgrades / renewals.
+   - `invoice.paid` — recurring auto-renew cycles (hosting subs + boost subs).
+   - `invoice.payment_failed` — warns the owner a renewal charge failed.
+   - `customer.subscription.deleted` — suspends when a subscription finally ends.
+   - `charge.refunded` — records refunds (surfaced in the bot's refund channels).
+   For **local** testing, run `stripe listen --forward-to localhost/api/hosting/webhook`
+   and use the CLI's printed signing secret as `STRIPE_WEBHOOK_SECRET`.
+3. Enable the Stripe **Customer Portal** (needed for the "Manage billing" link and to
+   let users cancel/change subscriptions).
+4. **Invoices are real Stripe documents.** One-time checkouts are created with
+   `invoice_creation` on, and Billing → *Invoice* / the payment-success modal resolve
+   the genuine Stripe hosted-invoice/receipt **PDF** live (older payments, pre-upgrade,
+   fall back to the styled in-app receipt). Nothing to configure — just don't disable
+   invoice emails/PDFs in your Stripe settings if you want the PDF link.
+5. **Auto-renew** — the hosting "Renew" row and the boost modal both have an
+   *auto-renew* toggle that starts a recurring subscription instead of a one-time
+   charge; `invoice.paid` (step 2) drives the renewals.
+6. Once `STRIPE_SECRET_KEY` is set, the Server perf tab's dependency list
    automatically starts checking Stripe's reachability too.
 
-## 10. Production checklist
+## 10. Optional: BMM telemetry dashboard
 
-See the **Production checklist** section in [README.md](./README.md) for the full
-list (domain/HTTPS, backups, Stripe live keys, etc.) — do that pass before pointing a
-real domain at this. At minimum, on top of what's there: make sure every SUPERADMIN
-and ADMIN account has 2FA enabled (step 5) before go-live.
+The telemetry service (`bmm/telemetry-dashboard`, its own container + SQLite) collects
+opt-in BMM app analytics. Config env lives in `bmm/telemetry-dashboard/.env`
+(`API_KEY` must match the BMM app's `analytics_key`; `ADMIN_KEY` unlocks the admin
+panel). Beyond first boot you **don't** edit that `.env` for day-to-day limits:
+
+- **Storage cap, GDPR retention, and erase delay are editable LIVE** from
+  Admin → **Hosting settings** → the *"BMM telemetry (live)"* card. Saving pushes to
+  the telemetry service, persists to its `config.json` (overrides `.env`, survives
+  restarts), and trims over-limit data immediately — no restart.
+- For BCWEB to reach the telemetry service, the `api` container needs
+  `TELEMETRY_INTERNAL_URL` (default `http://telemetry:8900`) and `TELEMETRY_ADMIN_KEY`
+  (= the telemetry service's `ADMIN_KEY`) — both already wired in
+  `infra/compose/docker-compose.yml`, so setting `TELEMETRY_ADMIN_KEY` in `.env` is
+  enough.
+- Admins with telemetry access get an SSO "open telemetry" button (no static key
+  needed); grant it per-user in **Roles & access**.
+
+## 11. Production checklist
+
+- Follow **[DOMAIN_SETUP.md](./DOMAIN_SETUP.md)** to move off `localhost` onto your
+  own domain with automatic HTTPS (Caddy + Let's Encrypt), including the optional
+  `telemetry.<domain>` sub-domain.
+- See the **Production checklist** in [README.md](./README.md) for the full list
+  (backups, Stripe **live** keys + a live-mode webhook, secrets rotation, etc.).
+- Make sure every SUPERADMIN and ADMIN account has 2FA enabled (step 5) before
+  go-live, and that `JWT_SECRET` / `BOT_SHARED_SECRET` / `TELEMETRY_ADMIN_KEY` are all
+  real random values, not the dev defaults.
