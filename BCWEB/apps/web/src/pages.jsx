@@ -1859,7 +1859,7 @@ const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Pres
 
 // Admin: quickly publish an OFFICIAL catalog entry for BMM or BSM.
 function AdminCatalogCreator() {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const [f, setF] = useState({ projectKey: 'bmm', kind: 'APP', name: '', version: '1.0.0', description: '', tags: '', url: '' });
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -1873,11 +1873,11 @@ function AdminCatalogCreator() {
     setFile(uploaded);
     if (uploaded && f.kind === 'PRESET' && /json$/i.test(uploaded.name)) {
       try { const j = JSON.parse(await uploaded.text()); setF((s) => ({ ...s, name: j.name || s.name, version: j.version || s.version, meta: j })); }
-      catch { toast.error('Preset is not valid JSON.'); }
+      catch { toast.error(t('cc.presetinvalid', 'Preset is not valid JSON.')); }
     }
   };
   const submit = async () => {
-    if (f.name.length < 2) return toast.error('Name is required.');
+    if (f.name.length < 2) return toast.error(t('cc.namereq', 'Name is required.'));
     setBusy(true);
     try {
       let payloadKey; if (file) payloadKey = await uploadPayload(f.kind, file);
@@ -1890,37 +1890,37 @@ function AdminCatalogCreator() {
       const body = { projectKey: f.projectKey, kind: f.kind, name: f.name, version: f.version, description: f.description,
         tags: f.tags.split(',').map((t) => t.trim()).filter(Boolean), payloadKey, meta };
       const res = await api.post('/admin/catalog', body);
-      if (f.kind === 'PLUGIN' && res.validation) toast[res.validation.valid ? 'success' : 'error'](res.validation.valid ? `Plugin "${f.name}" published & validated.` : `Published but INVALID: ${res.validation.reason} — fix before users install.`);
-      else toast.success(`Official ${KIND_LABEL[f.kind]} "${f.name}" published.`);
+      if (f.kind === 'PLUGIN' && res.validation) toast[res.validation.valid ? 'success' : 'error'](res.validation.valid ? t('cc.pubvalidated', 'Plugin "{n}" published & validated.').replace('{n}', f.name) : t('cc.pubinvalid', 'Published but INVALID: {r} — fix before users install.').replace('{r}', res.validation.reason));
+      else toast.success(t('cc.published', 'Official {k} "{n}" published.').replace('{k}', KIND_LABEL[f.kind]).replace('{n}', f.name));
       setF({ projectKey: f.projectKey, kind: f.kind, name: '', version: '1.0.0', description: '', tags: '', url: '' }); setFile(null);
-    } catch (x) { toast.error(x.data?.error === 'invalid_preset' ? 'Preset JSON is invalid.' : x.data?.error || 'Failed.'); } finally { setBusy(false); }
+    } catch (x) { toast.error(x.data?.error === 'invalid_preset' ? t('cc.presetjsoninvalid', 'Preset JSON is invalid.') : x.data?.error || t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
-  const copy = () => { navigator.clipboard?.writeText(deeplink); toast.success('Deeplink copied.'); };
+  const copy = () => { navigator.clipboard?.writeText(deeplink); toast.success(t('cc.dlcopied', 'Deeplink copied.')); };
 
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><BadgeCheck size={16} className="text-[var(--primary-2)]" /> Create an official catalog entry</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">Publishes instantly (no moderation) and is flagged <b>Official</b>. BSM offers presets; BMM offers apps, plugins and themes with a <code>bmm://</code> deeplink.</p>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><BadgeCheck size={16} className="text-[var(--primary-2)]" /> {t('cc.title', 'Create an official catalog entry')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-4" dangerouslySetInnerHTML={{ __html: t('cc.sub', 'Publishes instantly (no moderation) and is flagged <b>Official</b>. BSM offers presets; BMM offers apps, plugins and themes with a <code>bmm://</code> deeplink.') }} />
       <Card className="p-5 space-y-3">
         <div className="grid sm:grid-cols-2 gap-3">
-          <Field label="Project"><Select value={f.projectKey} onChange={(e) => setProject(e.target.value)}><option value="bmm">BMM</option><option value="bsm">BSM</option></Select></Field>
-          <Field label="Type"><Select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>{kinds.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</Select></Field>
-          <Field label="Name"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={f.kind === 'PRESET' ? 'Afterburner Boom' : f.kind === 'THEME' ? 'Midnight Orange' : 'Auto Backup'} /></Field>
-          <Field label="Version"><Input value={f.version} onChange={(e) => setF({ ...f, version: e.target.value })} /></Field>
+          <Field label={t('cc.project', 'Project')}><Select value={f.projectKey} onChange={(e) => setProject(e.target.value)}><option value="bmm">BMM</option><option value="bsm">BSM</option></Select></Field>
+          <Field label={t('cc.type', 'Type')}><Select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>{kinds.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</Select></Field>
+          <Field label={t('cc.name', 'Name')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={f.kind === 'PRESET' ? 'Afterburner Boom' : f.kind === 'THEME' ? 'Midnight Orange' : 'Auto Backup'} /></Field>
+          <Field label={t('cc.version', 'Version')}><Input value={f.version} onChange={(e) => setF({ ...f, version: e.target.value })} /></Field>
         </div>
-        <Field label="Description"><Textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="What it does, in a sentence or two…" /></Field>
-        <Field label="Tags (comma-separated)"><Input value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="audio, utility, dark-theme" /></Field>
-        {f.kind === 'PLUGIN' && <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 text-xs text-[var(--muted)]">Host the <code>.bmmplug</code> yourself (URL below) or with us (upload it — priced by size). Either way it's checksum-validated on publish.</div>}
-        {f.kind !== 'PRESET' && <Field label={f.kind === 'PLUGIN' ? '.bmmplug URL (self-hosted)' : 'Download URL'} hint={f.kind === 'PLUGIN' ? 'GitHub raw / personal server. Leave empty to host with us via upload.' : 'Where the app/theme is fetched from.'}><Input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder={f.kind === 'PLUGIN' ? 'https://raw.githubusercontent.com/you/repo/main/plugin.bmmplug' : 'https://github.com/you/repo/releases/latest/download/app.zip'} /></Field>}
-        <Field label={f.kind === 'PRESET' ? 'Preset .json (metadata is read from the file)' : f.kind === 'PLUGIN' ? '.bmmplug file (our-hosted — priced by size)' : 'Payload file (optional — zip / wasm)'}>
+        <Field label={t('cc.description', 'Description')}><Textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder={t('cc.descph', 'What it does, in a sentence or two…')} /></Field>
+        <Field label={t('cc.tags', 'Tags (comma-separated)')}><Input value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="audio, utility, dark-theme" /></Field>
+        {f.kind === 'PLUGIN' && <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 text-xs text-[var(--muted)]" dangerouslySetInnerHTML={{ __html: t('cc.pluginnote', "Host the <code>.bmmplug</code> yourself (URL below) or with us (upload it — priced by size). Either way it's checksum-validated on publish.") }} />}
+        {f.kind !== 'PRESET' && <Field label={f.kind === 'PLUGIN' ? t('cc.plugurl', '.bmmplug URL (self-hosted)') : t('cc.dlurl', 'Download URL')} hint={f.kind === 'PLUGIN' ? t('cc.plugurlhint', 'GitHub raw / personal server. Leave empty to host with us via upload.') : t('cc.dlurlhint', 'Where the app/theme is fetched from.')}><Input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder={f.kind === 'PLUGIN' ? 'https://raw.githubusercontent.com/you/repo/main/plugin.bmmplug' : 'https://github.com/you/repo/releases/latest/download/app.zip'} /></Field>}
+        <Field label={f.kind === 'PRESET' ? t('cc.presetfile', 'Preset .json (metadata is read from the file)') : f.kind === 'PLUGIN' ? t('cc.plugfile', '.bmmplug file (our-hosted — priced by size)') : t('cc.payloadfile', 'Payload file (optional — zip / wasm)')}>
           <Input type="file" accept={f.kind === 'PRESET' ? '.json,application/json' : f.kind === 'PLUGIN' ? '.bmmplug,.zip' : undefined} onChange={(e) => onFile(e.target.files?.[0] || null)} /></Field>
         {deeplink && (
           <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-3">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1"><Link2 size={11} /> BMM deeplink</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1"><Link2 size={11} /> {t('cc.deeplink', 'BMM deeplink')}</div>
             <div className="flex items-center gap-2"><code className="text-xs text-[var(--muted)] truncate flex-1">{deeplink}</code><Button size="sm" onClick={copy}><Copy size={13} /></Button></div>
           </div>
         )}
-        <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={submit}>{busy ? <Spinner /> : <><BadgeCheck size={15} /> Publish official</>}</Button></div>
+        <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={submit}>{busy ? <Spinner /> : <><BadgeCheck size={15} /> {t('cc.publish', 'Publish official')}</>}</Button></div>
       </Card>
     </div>
   );
@@ -1928,28 +1928,28 @@ function AdminCatalogCreator() {
 
 // Admin: verify plugin integrity — validate (download+unzip+checksum), inspect content.
 function PluginVerifier() {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/catalog?kind=PLUGIN'), []);
   const [content, setContent] = useState(null);
   const items = data?.items || [];
-  const validate = async (it) => { try { const r = await api.post(`/admin/catalog/${it.id}/validate`); toast[r.valid ? 'success' : 'error'](r.valid ? `"${it.name}" is valid.` : `"${it.name}" INVALID: ${r.reason}`); reload(); } catch (x) { toast.error(x.data?.detail || 'Validation failed.'); } };
-  const dl = async (it) => { try { const { url } = await api.get(`/admin/catalog/${it.id}/file`); window.open(url, '_blank'); } catch { toast.error('This plugin has no downloadable file.'); } };
+  const validate = async (it) => { try { const r = await api.post(`/admin/catalog/${it.id}/validate`); toast[r.valid ? 'success' : 'error'](r.valid ? t('pv.isvalid', '"{n}" is valid.').replace('{n}', it.name) : t('pv.isinvalid', '"{n}" INVALID: {r}').replace('{n}', it.name).replace('{r}', r.reason)); reload(); } catch (x) { toast.error(x.data?.detail || t('pv.valfail', 'Validation failed.')); } };
+  const dl = async (it) => { try { const { url } = await api.get(`/admin/catalog/${it.id}/file`); window.open(url, '_blank'); } catch { toast.error(t('pv.nofile', 'This plugin has no downloadable file.')); } };
   return (
     <div className="mt-10">
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><ShieldCheck size={16} className="text-[var(--primary-2)]" /> Plugin verification</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">Download the <code>.bmmplug</code>, unzip it, and verify the package + per-file checksums. Invalid plugins warn users not to install.</p>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><ShieldCheck size={16} className="text-[var(--primary-2)]" /> {t('pv.title', 'Plugin verification')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-4" dangerouslySetInnerHTML={{ __html: t('pv.sub', 'Download the <code>.bmmplug</code>, unzip it, and verify the package + per-file checksums. Invalid plugins warn users not to install.') }} />
       {loading ? <Loading /> : items.length ? <div className="space-y-2">
         {items.map((it) => { const v = it.meta?.validation; return (
           <Card key={it.id} className="p-4 flex items-center gap-3 flex-wrap">
             <Puzzle size={17} className="text-[var(--primary-2)]" />
             <div className="flex-1 min-w-0"><div className="font-medium truncate">{it.name} <span className="text-xs text-[var(--faint)] font-normal">v{it.version} · {it.owner?.displayName}</span></div>
-              <div className="text-xs text-[var(--faint)] mt-0.5">{it.meta?.download_url ? 'self-hosted' : it.payloadKey ? 'our-hosted' : 'no source'}{v?.sha256 ? ` · ${v.sha256.slice(0, 12)}…` : ''}</div></div>
-            {v ? (v.valid ? <Badge tone="green"><CheckCircle2 size={11} /> Valid</Badge> : <Badge tone="red"><XCircle size={11} /> {v.reason}</Badge>) : <Badge>Unchecked</Badge>}
-            <Button size="sm" onClick={() => validate(it)}><ShieldCheck size={14} /> Validate</Button>
-            {(it.payloadKey || it.meta?.download_url) && <Button size="sm" onClick={() => dl(it)}><Download size={14} /> Download</Button>}
-            <Button size="sm" onClick={() => setContent(it)}><Files size={14} /> Content</Button>
+              <div className="text-xs text-[var(--faint)] mt-0.5">{it.meta?.download_url ? t('pv.selfhosted', 'self-hosted') : it.payloadKey ? t('pv.ourhosted', 'our-hosted') : t('pv.nosource', 'no source')}{v?.sha256 ? ` · ${v.sha256.slice(0, 12)}…` : ''}</div></div>
+            {v ? (v.valid ? <Badge tone="green"><CheckCircle2 size={11} /> {t('pv.valid', 'Valid')}</Badge> : <Badge tone="red"><XCircle size={11} /> {v.reason}</Badge>) : <Badge>{t('pv.unchecked', 'Unchecked')}</Badge>}
+            <Button size="sm" onClick={() => validate(it)}><ShieldCheck size={14} /> {t('pv.validate', 'Validate')}</Button>
+            {(it.payloadKey || it.meta?.download_url) && <Button size="sm" onClick={() => dl(it)}><Download size={14} /> {t('pv.download', 'Download')}</Button>}
+            <Button size="sm" onClick={() => setContent(it)}><Files size={14} /> {t('pv.content', 'Content')}</Button>
           </Card>); })}
-      </div> : <EmptyState icon={Puzzle} title="No plugins yet" />}
+      </div> : <EmptyState icon={Puzzle} title={t('pv.empty', 'No plugins yet')} />}
       {content && <PluginContentModal item={content} onClose={() => setContent(null)} />}
     </div>
   );
@@ -1957,25 +1957,25 @@ function PluginVerifier() {
 
 // Admin: theme verification — download & inspect a theme's JSON before it goes live.
 function ThemeVerifier() {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const { data, loading } = useAsync(() => api.get('/admin/catalog?kind=THEME'), []);
   const items = data?.items || [];
-  const dl = async (it) => { try { const { url } = await api.get(`/admin/catalog/${it.id}/file`); window.open(url, '_blank'); } catch { toast.error('This theme has no downloadable file.'); } };
+  const dl = async (it) => { try { const { url } = await api.get(`/admin/catalog/${it.id}/file`); window.open(url, '_blank'); } catch { toast.error(t('tv.nofile', 'This theme has no downloadable file.')); } };
   return (
     <div className="mt-10">
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Palette size={16} className="text-[var(--primary-2)]" /> Theme verification</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">Download and inspect a theme's JSON before it goes live. Themes are served as data, never executed.</p>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Palette size={16} className="text-[var(--primary-2)]" /> {t('tv.title', 'Theme verification')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('tv.sub', "Download and inspect a theme's JSON before it goes live. Themes are served as data, never executed.")}</p>
       {loading ? <Loading /> : items.length ? <div className="space-y-2">
         {items.map((it) => (
           <Card key={it.id} className="p-4 flex items-center gap-3 flex-wrap">
             <Palette size={17} className="text-[var(--primary-2)]" />
             <div className="flex-1 min-w-0"><div className="font-medium truncate">{it.name} <span className="text-xs text-[var(--faint)] font-normal">v{it.version} · {it.owner?.displayName}</span></div>
-              <div className="text-xs text-[var(--faint)] mt-0.5">{it.meta?.url || it.meta?.download_url ? 'self-hosted' : it.payloadKey ? 'our-hosted' : 'no source'}</div></div>
+              <div className="text-xs text-[var(--faint)] mt-0.5">{it.meta?.url || it.meta?.download_url ? t('pv.selfhosted', 'self-hosted') : it.payloadKey ? t('pv.ourhosted', 'our-hosted') : t('pv.nosource', 'no source')}</div></div>
             <Badge tone={statusTone(it.status)}>{it.status}</Badge>
-            {(it.payloadKey || it.meta?.url || it.meta?.download_url) && <Button size="sm" onClick={() => dl(it)}><Download size={14} /> Download</Button>}
+            {(it.payloadKey || it.meta?.url || it.meta?.download_url) && <Button size="sm" onClick={() => dl(it)}><Download size={14} /> {t('pv.download', 'Download')}</Button>}
           </Card>
         ))}
-      </div> : <EmptyState icon={Palette} title="No themes yet" />}
+      </div> : <EmptyState icon={Palette} title={t('tv.empty', 'No themes yet')} />}
     </div>
   );
 }
@@ -3952,7 +3952,7 @@ function ChannelIdList({ ids, onChange, placeholder }) {
 // Moderation: full submission review (details, metadata, download, plugin validation,
 // plus mod-only internal tags & a short comment thread for other moderators).
 function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const it = sub.item || {}; const meta = it.meta || {};
   const dl = meta.download_url || meta.downloadUrl || null;
   const [tags, setTags] = useState(sub.tags || []);
@@ -3961,75 +3961,75 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
   const [commentInput, setCommentInput] = useState('');
   const [busy, setBusy] = useState(false);
   const rows = [
-    ['Kind', it.kind], ['Version', it.version && `v${it.version}`], ['Project', it.project?.key?.toUpperCase()],
-    ['Author', `${it.owner?.displayName || '—'}${it.owner?.email ? ` · ${it.owner.email}` : ''}`], ['Slug', it.slug], ['Submission type', sub.type],
+    [t('sr.kind', 'Kind'), it.kind], [t('sr.version', 'Version'), it.version && `v${it.version}`], [t('sr.project', 'Project'), it.project?.key?.toUpperCase()],
+    [t('sr.author', 'Author'), `${it.owner?.displayName || '—'}${it.owner?.email ? ` · ${it.owner.email}` : ''}`], [t('sr.slug', 'Slug'), it.slug], [t('sr.subtype', 'Submission type'), sub.type],
   ].filter(([, v]) => v);
 
   const saveTags = async (next) => {
     setTags(next);
-    try { await api.put(`/mod/submissions/${sub.id}/tags`, { tags: next }); reload?.(); } catch { toast.error('Failed.'); }
+    try { await api.put(`/mod/submissions/${sub.id}/tags`, { tags: next }); reload?.(); } catch { toast.error(t('common.failed', 'Failed.')); }
   };
   const addTag = () => { const x = tagInput.trim(); if (x && !tags.includes(x)) saveTags([...tags, x]); setTagInput(''); };
-  const removeTag = (x) => saveTags(tags.filter((t) => t !== x));
+  const removeTag = (x) => saveTags(tags.filter((tg) => tg !== x));
 
   const addComment = async () => {
     const body = commentInput.trim();
     if (!body) return;
     setBusy(true);
     try { const r = await api.post(`/mod/submissions/${sub.id}/comments`, { body }); setComments((c) => [...c, r.comment]); setCommentInput(''); reload?.(); }
-    catch { toast.error('Failed.'); } finally { setBusy(false); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const removeComment = async (cid) => {
-    try { await api.del(`/mod/submissions/${sub.id}/comments/${cid}`); setComments((c) => c.filter((x) => x.id !== cid)); reload?.(); } catch { toast.error('Failed.'); }
+    try { await api.del(`/mod/submissions/${sub.id}/comments/${cid}`); setComments((c) => c.filter((x) => x.id !== cid)); reload?.(); } catch { toast.error(t('common.failed', 'Failed.')); }
   };
 
   return (
-    <Modal open onClose={onClose} title={`Review — ${it.name}`} icon={Eye} width="max-w-2xl"
-      footer={<><Button variant="ghost" onClick={onClose}>Close</Button><Button onClick={onReject}><XCircle size={15} /> Reject</Button><Button variant="primary" onClick={onApprove}><CheckCircle2 size={15} /> Approve</Button></>}>
+    <Modal open onClose={onClose} title={t('sr.title', 'Review — {n}').replace('{n}', it.name)} icon={Eye} width="max-w-2xl"
+      footer={<><Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button><Button onClick={onReject}><XCircle size={15} /> {t('sr.reject', 'Reject')}</Button><Button variant="primary" onClick={onApprove}><CheckCircle2 size={15} /> {t('sr.approve', 'Approve')}</Button></>}>
       <div className="grid sm:grid-cols-2 gap-x-4 gap-y-2.5 text-sm mb-4">
         {rows.map(([k, v]) => <div key={k} className="min-w-0"><span className="text-[var(--faint)] text-xs">{k}</span><div className="font-medium truncate">{v}</div></div>)}
       </div>
-      {it.description && <div className="mb-4"><div className="text-xs text-[var(--faint)] uppercase font-semibold mb-1">Description</div><p className="text-sm text-[var(--muted)] whitespace-pre-wrap">{it.description}</p></div>}
+      {it.description && <div className="mb-4"><div className="text-xs text-[var(--faint)] uppercase font-semibold mb-1">{t('cc.description', 'Description')}</div><p className="text-sm text-[var(--muted)] whitespace-pre-wrap">{it.description}</p></div>}
       {it.tags?.length > 0 && <div className="flex flex-wrap gap-1.5 mb-4">{it.tags.map((tg) => <Badge key={tg}><Tag size={10} /> {tg}</Badge>)}</div>}
 
       <div className="mb-4 p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]">
-        <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5 flex items-center gap-1.5"><Tag size={11} /> Internal mod tags <span className="normal-case font-normal">(never shown to the author)</span></div>
+        <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5 flex items-center gap-1.5"><Tag size={11} /> {t('sr.modtags', 'Internal mod tags')} <span className="normal-case font-normal">{t('sr.modtagsnote', '(never shown to the author)')}</span></div>
         <div className="flex gap-1.5 mb-2">
-          <Input value={tagInput} onChange={(e) => setTagInput(e.target.value)} placeholder="e.g. priority, needs-rework…" onKeyDown={(e) => e.key === 'Enter' && addTag()} />
+          <Input value={tagInput} onChange={(e) => setTagInput(e.target.value)} placeholder={t('sr.tagph', 'e.g. priority, needs-rework…')} onKeyDown={(e) => e.key === 'Enter' && addTag()} />
           <Button size="sm" onClick={addTag}><Plus size={13} /></Button>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {tags.length ? tags.map((tg) => <span key={tg} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-500">{tg}<button onClick={() => removeTag(tg)} className="hover:text-red-400"><X size={10} /></button></span>) : <span className="text-xs text-[var(--faint)]">None</span>}
+          {tags.length ? tags.map((tg) => <span key={tg} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-500">{tg}<button onClick={() => removeTag(tg)} className="hover:text-red-400"><X size={10} /></button></span>) : <span className="text-xs text-[var(--faint)]">{t('sr.none', 'None')}</span>}
         </div>
       </div>
 
       <div className="mb-4">
-        <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5 flex items-center gap-1.5"><MessageSquare size={11} /> Mod comments <span className="normal-case font-normal">(internal, 200 char max)</span></div>
+        <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5 flex items-center gap-1.5"><MessageSquare size={11} /> {t('sr.modcomments', 'Mod comments')} <span className="normal-case font-normal">{t('sr.modcommentsnote', '(internal, 200 char max)')}</span></div>
         <div className="space-y-1.5 mb-2 max-h-40 overflow-auto">
           {comments.length ? comments.map((c) => (
             <div key={c.id} className="flex items-start gap-2 text-sm bg-[var(--surface-2)] rounded-lg px-3 py-2">
               <div className="flex-1 min-w-0"><span className="font-medium">{c.author?.displayName || '—'}</span> <span className="text-[var(--muted)]">{c.body}</span></div>
               <button onClick={() => removeComment(c.id)} className="text-[var(--faint)] hover:text-red-400 shrink-0"><X size={12} /></button>
             </div>
-          )) : <div className="text-xs text-[var(--faint)]">No comments yet.</div>}
+          )) : <div className="text-xs text-[var(--faint)]">{t('sr.nocomments', 'No comments yet.')}</div>}
         </div>
         <div className="flex gap-1.5">
-          <Input value={commentInput} onChange={(e) => setCommentInput(e.target.value.slice(0, 200))} placeholder="Leave a note for other moderators…" onKeyDown={(e) => e.key === 'Enter' && addComment()} />
+          <Input value={commentInput} onChange={(e) => setCommentInput(e.target.value.slice(0, 200))} placeholder={t('sr.commentph', 'Leave a note for other moderators…')} onKeyDown={(e) => e.key === 'Enter' && addComment()} />
           <Button size="sm" disabled={busy} onClick={addComment}>{busy ? <Spinner /> : <Send size={13} />}</Button>
         </div>
         <div className="text-[10px] text-[var(--faint)] mt-1 text-right">{commentInput.length}/200</div>
       </div>
 
       {dl && <div className="mb-4 flex items-center gap-2 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] px-3 py-2"><Download size={14} className="text-[var(--primary-2)] shrink-0" /><a href={dl} target="_blank" rel="noreferrer" className="text-xs text-[var(--primary-2)] break-all flex-1 hover:underline">{dl}</a></div>}
-      {meta.validation && <div className="mb-4"><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5 flex items-center gap-2">Plugin validation {meta.validation.valid ? <Badge tone="green"><CheckCircle2 size={10} /> valid</Badge> : <Badge tone="red"><XCircle size={10} /> invalid</Badge>}</div><pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-40 overflow-auto">{JSON.stringify(meta.validation, null, 2)}</pre></div>}
-      {Object.keys(meta).length > 0 && <div><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5">Full metadata (review before approving)</div><pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-56 overflow-auto">{JSON.stringify(meta, null, 2)}</pre></div>}
+      {meta.validation && <div className="mb-4"><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5 flex items-center gap-2">{t('sr.pluginval', 'Plugin validation')} {meta.validation.valid ? <Badge tone="green"><CheckCircle2 size={10} /> {t('sr.valid', 'valid')}</Badge> : <Badge tone="red"><XCircle size={10} /> {t('sr.invalid', 'invalid')}</Badge>}</div><pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-40 overflow-auto">{JSON.stringify(meta.validation, null, 2)}</pre></div>}
+      {Object.keys(meta).length > 0 && <div><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5">{t('sr.fullmeta', 'Full metadata (review before approving)')}</div><pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-56 overflow-auto">{JSON.stringify(meta, null, 2)}</pre></div>}
     </Modal>
   );
 }
 
 // Admin: generate + manage promo codes (discount / free hosting / free boost).
 function AdminKofi() {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/kofi/settings'), []);
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
@@ -4038,37 +4038,37 @@ function AdminKofi() {
   const save = async () => {
     if (!token.trim()) return;
     setBusy(true);
-    try { await api.put('/admin/kofi/settings', { token: token.trim() }); toast.success('Saved.'); setToken(''); reload(); }
-    catch { toast.error('Failed.'); } finally { setBusy(false); }
+    try { await api.put('/admin/kofi/settings', { token: token.trim() }); toast.success(t('common.saved', 'Saved.')); setToken(''); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const grant = async () => {
     if (!email.trim()) return;
     setGrantBusy(true);
-    try { const r = await api.post('/admin/kofi/grant', { email: email.trim() }); toast.success(`Granted — code ${r.code}.`); setEmail(''); }
-    catch (x) { toast.error(x.data?.error === 'no_matching_account' ? 'No account with that email.' : x.data?.error === 'already_granted' ? 'Already granted for this account.' : 'Failed.'); }
+    try { const r = await api.post('/admin/kofi/grant', { email: email.trim() }); toast.success(t('kf.granted', 'Granted — code {c}.').replace('{c}', r.code)); setEmail(''); }
+    catch (x) { toast.error(x.data?.error === 'no_matching_account' ? t('kf.noaccount', 'No account with that email.') : x.data?.error === 'already_granted' ? t('kf.alreadygranted', 'Already granted for this account.') : t('common.failed', 'Failed.')); }
     finally { setGrantBusy(false); }
   };
   if (loading) return <Loading />;
   return (
     <>
       <Card className="p-4 mb-4">
-        <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><KofiIcon size={16} className="text-[var(--primary-2)]" /> Ko-fi donor rewards</div>
-        <p className="text-xs text-[var(--muted)] mb-3">A donor whose Ko-fi email matches their BetterCommunity account automatically gets a one-time {data?.percentOff ?? 25}% hosting discount code (valid on {data?.minMonths ?? 12}+ month plans). Paste this webhook URL + a secret token into Ko-fi's <b>Settings → Webhooks</b>, using the same token below.</p>
+        <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><KofiIcon size={16} className="text-[var(--primary-2)]" /> {t('kf.title', 'Ko-fi donor rewards')}</div>
+        <p className="text-xs text-[var(--muted)] mb-3" dangerouslySetInnerHTML={{ __html: t('kf.sub', "A donor whose Ko-fi email matches their BetterCommunity account automatically gets a one-time {off}% hosting discount code (valid on {min}+ month plans). Paste this webhook URL + a secret token into Ko-fi's <b>Settings → Webhooks</b>, using the same token below.").replace('{off}', data?.percentOff ?? 25).replace('{min}', data?.minMonths ?? 12) }} />
         <div className="flex items-center gap-2 mb-3 text-xs">
           <code className="flex-1 bg-[var(--surface-2)] rounded-lg px-2.5 py-1.5 truncate">{data?.webhookUrl}</code>
-          <Button size="sm" onClick={() => { navigator.clipboard?.writeText(data?.webhookUrl || ''); toast.success('Copied.'); }}><Copy size={12} /></Button>
+          <Button size="sm" onClick={() => { navigator.clipboard?.writeText(data?.webhookUrl || ''); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
         </div>
         <div className="grid sm:grid-cols-[1fr_auto] gap-2 mb-4">
-          <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder={data?.configured ? 'Token configured — enter a new one to replace it' : 'Ko-fi verification token'} />
-          <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : 'Save token'}</Button>
+          <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder={data?.configured ? t('kf.tokenset', 'Token configured — enter a new one to replace it') : t('kf.tokenph', 'Ko-fi verification token')} />
+          <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('kf.savetoken', 'Save token')}</Button>
         </div>
-        {data?.configured && <Badge tone="green" className="mb-3"><CheckCircle2 size={11} /> Webhook configured</Badge>}
+        {data?.configured && <Badge tone="green" className="mb-3"><CheckCircle2 size={11} /> {t('kf.configured', 'Webhook configured')}</Badge>}
         <div className="pt-3 border-t border-[var(--line)]">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Manual grant</div>
-          <p className="text-xs text-[var(--muted)] mb-2">For a donation you verified by hand (e.g. before the webhook was set up).</p>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('kf.manualgrant', 'Manual grant')}</div>
+          <p className="text-xs text-[var(--muted)] mb-2">{t('kf.manualsub', 'For a donation you verified by hand (e.g. before the webhook was set up).')}</p>
           <div className="grid sm:grid-cols-[1fr_auto] gap-2">
             <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="donor@email.com" />
-            <Button disabled={grantBusy} onClick={grant}>{grantBusy ? <Spinner /> : 'Grant 25% code'}</Button>
+            <Button disabled={grantBusy} onClick={grant}>{grantBusy ? <Spinner /> : t('kf.grantcode', 'Grant 25% code')}</Button>
           </div>
         </div>
       </Card>

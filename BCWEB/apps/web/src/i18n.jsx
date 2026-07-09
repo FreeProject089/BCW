@@ -298,6 +298,45 @@ const DICT = {
     'bkp.compact': 'Compacter les sauvegardes',
     'bkp.note': '<b>Compacter les sauvegardes</b> récupère de l’espace disque en nettoyant les dépôts git de sauvegarde (objets épars/dupliqués). Cela ne supprime jamais l’historique — chaque version passée reste restaurable.',
 
+    // ── Admin : créer une entrée de catalogue officielle ──
+    'cc.presetinvalid': 'Le preset n’est pas un JSON valide.', 'cc.namereq': 'Le nom est requis.',
+    'cc.pubvalidated': 'Plugin « {n} » publié et validé.', 'cc.pubinvalid': 'Publié mais INVALIDE : {r} — corrige avant que des utilisateurs ne l’installent.',
+    'cc.published': '{k} officiel « {n} » publié.', 'cc.presetjsoninvalid': 'Le JSON du preset est invalide.', 'cc.dlcopied': 'Deeplink copié.',
+    'cc.title': 'Créer une entrée de catalogue officielle',
+    'cc.sub': 'Publie instantanément (sans modération) et est marqué <b>Officiel</b>. BSM propose des presets ; BMM propose des apps, plugins et thèmes avec un deeplink <code>bmm://</code>.',
+    'cc.project': 'Projet', 'cc.type': 'Type', 'cc.name': 'Nom', 'cc.version': 'Version', 'cc.description': 'Description',
+    'cc.descph': 'Ce que ça fait, en une phrase ou deux…', 'cc.tags': 'Tags (séparés par des virgules)',
+    'cc.pluginnote': "Héberge le <code>.bmmplug</code> toi-même (URL ci-dessous) ou chez nous (importe-le — tarifé à la taille). Dans tous les cas il est validé par checksum à la publication.",
+    'cc.plugurl': 'URL .bmmplug (auto-hébergé)', 'cc.dlurl': 'URL de téléchargement',
+    'cc.plugurlhint': 'GitHub raw / serveur perso. Laisse vide pour héberger chez nous via import.', 'cc.dlurlhint': 'Où l’app/le thème est récupéré.',
+    'cc.presetfile': 'Preset .json (les métadonnées sont lues du fichier)', 'cc.plugfile': 'Fichier .bmmplug (hébergé chez nous — tarifé à la taille)',
+    'cc.payloadfile': 'Fichier payload (optionnel — zip / wasm)', 'cc.deeplink': 'Deeplink BMM', 'cc.publish': 'Publier en officiel',
+
+    // ── Admin : vérification plugins/thèmes ──
+    'pv.isvalid': '« {n} » est valide.', 'pv.isinvalid': '« {n} » INVALIDE : {r}', 'pv.valfail': 'Échec de la validation.',
+    'pv.nofile': 'Ce plugin n’a aucun fichier téléchargeable.', 'pv.title': 'Vérification des plugins',
+    'pv.sub': 'Télécharge le <code>.bmmplug</code>, décompresse-le, et vérifie le paquet + les checksums par fichier. Les plugins invalides avertissent les utilisateurs de ne pas installer.',
+    'pv.selfhosted': 'auto-hébergé', 'pv.ourhosted': 'hébergé chez nous', 'pv.nosource': 'aucune source', 'pv.valid': 'Valide',
+    'pv.unchecked': 'Non vérifié', 'pv.validate': 'Valider', 'pv.download': 'Télécharger', 'pv.content': 'Contenu', 'pv.empty': 'Aucun plugin',
+    'tv.nofile': 'Ce thème n’a aucun fichier téléchargeable.', 'tv.title': 'Vérification des thèmes',
+    'tv.sub': 'Télécharge et inspecte le JSON d’un thème avant sa mise en ligne. Les thèmes sont servis comme données, jamais exécutés.', 'tv.empty': 'Aucun thème',
+
+    // ── Modération : revue de soumission ──
+    'sr.kind': 'Type', 'sr.version': 'Version', 'sr.project': 'Projet', 'sr.author': 'Auteur', 'sr.slug': 'Slug', 'sr.subtype': 'Type de soumission',
+    'sr.title': 'Revue — {n}', 'sr.reject': 'Rejeter', 'sr.approve': 'Approuver', 'sr.modtags': 'Tags de modération internes',
+    'sr.modtagsnote': '(jamais montrés à l’auteur)', 'sr.tagph': 'ex. priorité, à-retravailler…', 'sr.none': 'Aucun',
+    'sr.modcomments': 'Commentaires de modération', 'sr.modcommentsnote': '(interne, 200 caractères max)',
+    'sr.nocomments': 'Aucun commentaire.', 'sr.commentph': 'Laisse une note pour les autres modérateurs…',
+    'sr.pluginval': 'Validation du plugin', 'sr.valid': 'valide', 'sr.invalid': 'invalide', 'sr.fullmeta': 'Métadonnées complètes (à revoir avant d’approuver)',
+
+    // ── Admin : Ko-fi ──
+    'kf.granted': 'Accordé — code {c}.', 'kf.noaccount': 'Aucun compte avec cet e-mail.', 'kf.alreadygranted': 'Déjà accordé pour ce compte.',
+    'kf.title': 'Récompenses des donateurs Ko-fi',
+    'kf.sub': "Un donateur dont l’e-mail Ko-fi correspond à son compte BetterCommunity reçoit automatiquement un code de réduction hébergement unique de {off}% (valable sur les forfaits {min}+ mois). Colle cette URL de webhook + un jeton secret dans <b>Réglages → Webhooks</b> de Ko-fi, avec le même jeton ci-dessous.",
+    'kf.tokenset': 'Jeton configuré — saisis-en un nouveau pour le remplacer', 'kf.tokenph': 'Jeton de vérification Ko-fi', 'kf.savetoken': 'Enregistrer le jeton',
+    'kf.configured': 'Webhook configuré', 'kf.manualgrant': 'Attribution manuelle',
+    'kf.manualsub': 'Pour un don que tu as vérifié à la main (ex. avant la mise en place du webhook).', 'kf.grantcode': 'Accorder un code 25%',
+
     'hosting.title': 'Héberger un Server-Repo', 'hosting.sub': 'On l’exécute, tu le gères. Paie selon la taille dont tu as besoin.',
     'hosting.single': 'Dépôt unique', 'hosting.single.d': 'Un seul dépôt avec tout le quota.',
     'hosting.multi': 'Dépôts multiples', 'hosting.multi.d': 'Répartis le stockage sur plusieurs dépôts, gérés par toi.',
