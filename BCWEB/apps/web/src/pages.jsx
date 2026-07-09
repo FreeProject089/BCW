@@ -4662,9 +4662,9 @@ function ServerBubble({ name, icon, sub, active, dot, onClick }) {
 function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children }) {
   const off = enabled === false;
   return (
-    <Card className="p-0 overflow-hidden self-start">
+    <Card className={`p-0 overflow-hidden self-start transition ${off ? 'opacity-75' : ''}`}>
       <div className="flex items-start gap-3 p-4">
-        <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><I size={17} className="text-[var(--primary-2)]" /></span>
+        <span className={`grid place-items-center w-9 h-9 rounded-lg shrink-0 border ${off ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'bg-[var(--primary)]/10 border-[var(--primary)]/20'}`}><I size={17} className={off ? 'text-[var(--faint)]' : 'text-[var(--primary-2)]'} /></span>
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-sm">{title}</div>
           {desc && <div className="text-[11px] text-[var(--faint)] mt-0.5 leading-snug">{desc}</div>}
@@ -4672,7 +4672,9 @@ function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children 
         {action}
         {onToggle && <BotSwitch checked={!!enabled} onChange={onToggle} />}
       </div>
-      {children && <div className={`px-4 pb-4 space-y-2.5 border-t border-[var(--line)] pt-3 transition ${off ? 'opacity-40 pointer-events-none select-none' : ''}`}>{children}</div>}
+      {/* When the module is toggled off, its config collapses to keep the tab tidy —
+          the values persist and reappear on enable (no greyed-out sprawl). */}
+      {children && !off && <div className="px-4 pb-4 space-y-2.5 border-t border-[var(--line)] pt-3">{children}</div>}
     </Card>
   );
 }
