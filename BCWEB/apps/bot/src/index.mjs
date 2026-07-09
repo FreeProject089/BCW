@@ -17,6 +17,7 @@ import { pollBlog } from './features/blog.mjs';
 import { pollAlerts } from './features/alerts.mjs';
 import { pollKofi } from './features/kofi.mjs';
 import { pollPayments } from './features/payments.mjs';
+import { pollDMs } from './features/dm.mjs';
 import { temp, modStats } from './store.mjs';
 
 let client = null;
@@ -71,6 +72,9 @@ function buildClient() {
     // Stripe payments & refunds: check every 2 min (+ once now).
     pollPayments(c).catch(() => {});
     timers.push(setInterval(() => pollPayments(c).catch(() => {}), 2 * 60_000));
+    // Admin DMs / gift codes: deliver promptly (30s).
+    pollDMs(c).catch(() => {});
+    timers.push(setInterval(() => pollDMs(c).catch(() => {}), 30_000));
   });
   c.on(Events.InteractionCreate, guard(handleInteraction));
   c.on(Events.VoiceStateUpdate, guard((o, n) => onVoiceStateUpdate(c, o, n)));

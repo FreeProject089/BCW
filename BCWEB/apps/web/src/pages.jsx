@@ -4686,6 +4686,67 @@ function BotLogsCard() {
   );
 }
 
+// Admin: DM a Discord user — plain message and/or a one-off gift promo code minted
+// against their linked account. The bot delivers it within ~30s.
+function BotDMCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [discordId, setDiscordId] = useState('');
+  const [message, setMessage] = useState('');
+  const [withGift, setWithGift] = useState(false);
+  const [gift, setGift] = useState({ kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, uploadMbps: 8, hostMonths: 0, boostDays: 7 });
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    if (!discordId.trim()) return toast.error(t('dm.needid', 'Enter a Discord user id.'));
+    setBusy(true);
+    try {
+      const body = { discordId: discordId.trim(), message };
+      if (withGift) {
+        const g = { kind: gift.kind };
+        if (gift.kind === 'discount') { if (Number(gift.percentOff)) g.percentOff = Number(gift.percentOff); if (Number(gift.freeMonths)) g.freeMonths = Number(gift.freeMonths); }
+        if (gift.kind === 'free_hosting') { g.storageGB = Number(gift.storageGB); if (Number(gift.uploadMbps)) g.uploadMbps = Number(gift.uploadMbps); if (Number(gift.hostMonths)) g.hostMonths = Number(gift.hostMonths); }
+        if (gift.kind === 'free_boost') g.boostDays = Number(gift.boostDays);
+        body.gift = g;
+      }
+      const r = await api.post('/admin/bot/dm', body);
+      toast.success(r.giftCode ? t('dm.sentgift', 'Queued — DM + gift code {c} on its way.').replace('{c}', r.giftCode) : t('dm.sent', 'Queued — the bot DMs it within ~30s.'));
+      setMessage(''); setDiscordId('');
+    } catch (x) {
+      const e = x.data?.error;
+      toast.error(e === 'no_linked_account' ? t('dm.nolink', 'That Discord user has no linked BetterCommunity account — a gift code needs one.')
+        : e === 'empty_message' ? t('dm.empty', 'Add a message or a gift.')
+        : e === 'discount_needs_value' ? t('pc.err.discount', 'Set a % off or free months.')
+        : e === 'hosting_needs_storage' ? t('pc.err.storage', 'Set the storage GB.')
+        : e === 'boost_needs_days' ? t('pc.err.boost', 'Set the boost days.') : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+  return (
+    <Card className="p-4 mb-4">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-left">
+        <span className="font-medium text-sm flex items-center gap-2"><Mail size={14} className="text-[var(--primary-2)]" /> {t('dm.title', 'Direct message / gift')}</span>
+        <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          <p className="text-[11px] text-[var(--faint)]">{t('dm.note', 'The bot DMs the user directly. A gift mints a one-time promo code reserved for their account and appends it to the message. Requires the user shares a server with the bot and has DMs open.')}</p>
+          <Field label={t('dm.userid', 'Discord user id')} hint={t('dm.userid.h', 'Enable Developer Mode in Discord → right-click a user → Copy User ID.')}><Input value={discordId} onChange={(e) => setDiscordId(e.target.value)} placeholder="123456789012345678" /></Field>
+          <Field label={t('dm.message', 'Message')}><Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder={t('dm.message.ph', 'Thanks for being awesome! Here’s a little something…')} /></Field>
+          <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={withGift} onChange={(e) => setWithGift(e.target.checked)} /> <Gift size={13} className="text-[var(--primary-2)]" /> {t('dm.attachgift', 'Attach a gift promo code')}</label>
+          {withGift && (
+            <div className="rounded-lg border border-[var(--line)] p-3 grid sm:grid-cols-2 gap-3">
+              <Field label={t('pc.f.type', 'Type')}><Select value={gift.kind} onChange={(e) => setGift({ ...gift, kind: e.target.value })}><option value="discount">{t('pc.t.discount', 'Discount (% off / months free)')}</option><option value="free_hosting">{t('pc.t.hosting', 'Free hosting')}</option><option value="free_boost">{t('pc.t.boost', 'Free boost')}</option></Select></Field>
+              {gift.kind === 'discount' && <><Field label={t('pc.f.pctoff', '% off')}><Input type="number" value={gift.percentOff} onChange={(e) => setGift({ ...gift, percentOff: e.target.value })} /></Field><Field label={t('pc.f.freemonths', 'First months free')}><Input type="number" value={gift.freeMonths} onChange={(e) => setGift({ ...gift, freeMonths: e.target.value })} /></Field></>}
+              {gift.kind === 'free_hosting' && <><Field label={t('pc.f.storage', 'Storage GB')}><Input type="number" value={gift.storageGB} onChange={(e) => setGift({ ...gift, storageGB: e.target.value })} /></Field><Field label={t('pc.f.duration', 'Duration (months, 0 = forever)')}><Input type="number" value={gift.hostMonths} onChange={(e) => setGift({ ...gift, hostMonths: e.target.value })} /></Field></>}
+              {gift.kind === 'free_boost' && <Field label={t('pc.f.boostdays', 'Boost days')}><Input type="number" value={gift.boostDays} onChange={(e) => setGift({ ...gift, boostDays: e.target.value })} /></Field>}
+            </div>
+          )}
+          <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={send}>{busy ? <Spinner /> : <><Send size={14} /> {t('dm.send', 'Send')}</>}</Button></div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function AdminBot() {
   const toast = useToast();
   const { t } = useI18n();
@@ -4833,6 +4894,7 @@ function AdminBot() {
       </div>
 
       <BotLogsCard />
+      <BotDMCard />
 
       {/* ═══════════ GLOBAL — cross-server ═══════════ */}
       <SectionTitle icon={Globe} title={t('db.sec.global', 'Global — applies across every server')} sub={t('db.sec.global.sub', 'Announcements route by channel (works in any server); limits are shared.')} />

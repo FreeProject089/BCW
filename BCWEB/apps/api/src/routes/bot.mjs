@@ -350,6 +350,71 @@ export default async function botRoutes(app) {
     return { ok: true };
   });
 
+  // ── Bot direct messages + gift codes ──
+  // Admin sends a DM to a Discord user; optionally mints a one-off promo code assigned
+  // to the recipient's linked account and appends it. The bot delivers on its next poll.
+  app.post('/admin/bot/dm', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      discordId: z.string().min(5).max(32),
+      message: z.string().max(1500).default(''),
+      gift: z.object({
+        kind: z.enum(['discount', 'free_hosting', 'free_boost']),
+        percentOff: z.number().int().min(1).max(100).optional(),
+        freeMonths: z.number().int().min(0).max(24).optional(),
+        storageGB: z.number().int().min(1).max(2000).optional(),
+        uploadMbps: z.number().int().min(1).max(2000).optional(),
+        hostMonths: z.number().int().min(0).max(60).optional(),
+        boostDays: z.number().int().min(1).max(3650).optional(),
+      }).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    let message = b.data.message || '';
+    let giftCode = null;
+    if (b.data.gift) {
+      const g = b.data.gift;
+      if (g.kind === 'discount' && !g.percentOff && !g.freeMonths) return reply.code(400).send({ error: 'discount_needs_value' });
+      if (g.kind === 'free_hosting' && !g.storageGB) return reply.code(400).send({ error: 'hosting_needs_storage' });
+      if (g.kind === 'free_boost' && !g.boostDays) return reply.code(400).send({ error: 'boost_needs_days' });
+      // Assigning a gift code needs the recipient's BCWEB account (via their Discord link).
+      const link = await p.discordLink.findUnique({ where: { discordId: b.data.discordId } });
+      if (!link) return reply.code(400).send({ error: 'no_linked_account' });
+      let code = genCode();
+      for (let i = 0; i < 5 && (await p.promoCode.findUnique({ where: { code } })); i++) code = genCode();
+      await p.promoCode.create({ data: {
+        code, kind: g.kind, percentOff: g.percentOff ?? null, freeMonths: g.freeMonths ?? null,
+        storageGB: g.storageGB ?? null, uploadMbps: g.uploadMbps ?? null, hostMonths: g.hostMonths ?? null, boostDays: g.boostDays ?? null,
+        maxRedemptions: 1, perUserLimit: 1, assignedUserIds: [link.userId], note: `gift DM → ${b.data.discordId}`,
+      } });
+      giftCode = code;
+      const siteUrl = process.env.SITE_URL || 'http://localhost';
+      message += `\n\n🎁 **Your gift code:** \`${code}\`\nRedeem it at ${siteUrl}/dashboard (Billing → “Redeem a promo code”). It’s reserved for your account.`;
+    }
+    if (!message.trim()) return reply.code(400).send({ error: 'empty_message' });
+    const row = await p.adminSetting.findUnique({ where: { key: 'bot.dmQueue' } });
+    const items = [...(row?.value?.items || []), { id: genCode(), discordId: b.data.discordId, message: message.slice(0, 1900), at: Date.now() }].slice(-200);
+    await p.adminSetting.upsert({ where: { key: 'bot.dmQueue' }, create: { key: 'bot.dmQueue', value: { items } }, update: { value: { items } } });
+    return { ok: true, giftCode };
+  });
+
+  app.get('/bot/dm/pending', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'bot.dmQueue' } });
+    return { items: (row?.value?.items || []).slice(0, 20) };
+  });
+  app.post('/bot/dm/sent', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ ids: z.array(z.string().max(40)).max(50) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'bot.dmQueue' } });
+    const done = new Set(b.data.ids);
+    const items = (row?.value?.items || []).filter((x) => !done.has(x.id));
+    await p.adminSetting.upsert({ where: { key: 'bot.dmQueue' }, create: { key: 'bot.dmQueue', value: { items } }, update: { value: { items } } });
+    return { ok: true };
+  });
+
   app.post('/bot/payments/announced', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const b = z.object({

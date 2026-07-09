@@ -35,6 +35,9 @@ export const api = {
   // Stripe payments + refunds not yet posted, and marking them done.
   paymentsUnannounced: () => call('GET', '/bot/payments/unannounced').then((r) => ({ payments: r.payments || [], refunds: r.refunds || [], test: !!r.test })).catch((e) => { console.warn('[bot] paymentsUnannounced failed:', e.message); return { payments: [], refunds: [], test: false }; }),
   paymentsMarkAnnounced: (marks) => call('POST', '/bot/payments/announced', marks).catch(() => {}),
+  // Pending admin DMs (message + optional gift code) and marking them delivered.
+  dmPending: () => call('GET', '/bot/dm/pending').then((r) => r.items || []).catch((e) => { console.warn('[bot] dmPending failed:', e.message); return []; }),
+  dmSent: (ids) => call('POST', '/bot/dm/sent', { ids }).catch(() => {}),
   issueLink: (discordId, username) => call('POST', '/bot/link/issue', { discordId, username }),
   account: (discordId) => call('GET', `/bot/account/${discordId}`).catch(() => ({ linked: false })),
   // Bulk-sync the guild roster into the member database (startup + periodic full scan).
