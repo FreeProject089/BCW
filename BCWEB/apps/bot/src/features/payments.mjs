@@ -38,8 +38,9 @@ export async function pollPayments(client) {
     const sendToAll = async (ids, embed) => {
       let delivered = false;
       for (const id of ids) {
-        const ch = client.channels.cache.get(id);
-        if (!ch?.send) continue;
+        // Fetch on cache miss so a freshly-configured salon still receives the post.
+        const ch = client.channels.cache.get(id) || await client.channels.fetch(id).catch(() => null);
+        if (!ch?.send) { console.warn('[bot] payments channel not found/inaccessible:', id); continue; }
         try { await ch.send({ embeds: [embed] }); delivered = true; }
         catch (e) { console.warn('[bot] payments announce to', id, 'failed', e.message); }
       }

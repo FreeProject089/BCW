@@ -14,8 +14,10 @@ export async function pollKofi(client) {
     const cfg = await config();
     const k = cfg.kofi || {};
     if (!cfg.enabled || !k.enabled || !k.channelId) return;
-    const channel = client.channels.cache.get(k.channelId);
-    if (!channel?.send) return;
+    // Cache miss is common (a channel the bot hasn't touched since startup) — fetch it
+    // so tips still land in the configured salon instead of being silently dropped.
+    const channel = client.channels.cache.get(k.channelId) || await client.channels.fetch(k.channelId).catch(() => null);
+    if (!channel?.send) { console.warn('[bot] kofi channel not found/inaccessible:', k.channelId); return; }
 
     const { tips, totals } = await api.kofiUnannounced();
     if (!tips.length) return;
