@@ -595,6 +595,11 @@ const DICT = {
     'bill.desc': 'Description', 'bill.qty': 'Qté', 'bill.amount': 'Montant', 'bill.subtotal': 'Sous-total', 'bill.paid': 'PAYÉ',
     'bill.days': '{n} jours', 'bill.onemonth': '1 mois', 'bill.paidon': 'Payé le {d}',
     'bill.legal': 'Reçu à conserver pour vos archives. Les taxes éventuelles sont incluses. Une question ? Contactez-nous via la page Contact.',
+    'bill.stripeInvoice': 'Facture officielle (Stripe)',
+    'bill.recurring': 'Abonnements récurrents', 'bill.sub.hosting': 'Abonnement d’hébergement', 'bill.sub.boost': 'Abonnement de mise en avant',
+    'bill.sub.generic': 'Abonnement', 'bill.sub.renews': 'Renouvelle le {d}', 'bill.sub.endson': 'Se termine le {d}',
+    'bill.sub.canceling': 'annulation', 'bill.sub.manage': 'Annule ou modifie un abonnement via « Gérer la facturation ».',
+    'bill.autorenew': 'Renouv. auto', 'bill.autorenew.h': 'Prélève automatiquement à chaque échéance au lieu d’un paiement unique.', 'bill.subscribe': 'S’abonner',
 
     'sub.presetjson': 'Le preset n’est pas un JSON valide.', 'sub.tmplgen': 'Modèle généré — modifie les valeurs.',
     'sub.namereq': 'Le nom est requis.', 'sub.metajson': 'Les métadonnées doivent être un JSON valide.',

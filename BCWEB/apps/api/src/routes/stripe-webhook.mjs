@@ -131,8 +131,10 @@ export default async function stripeWebhook(app) {
           await p.serverRepo.update({ where: { id: repo.id }, data: { deleteAt: null, status: repo.status === 'SUSPENDED' ? 'ONLINE' : repo.status } });
           await p.subscription.upsert({
             where: { serverRepoId: repo.id },
-            update: { status: 'active', currentPeriodEnd },
-            create: { userId: meta.userId, serverRepoId: repo.id, status: 'active', currentPeriodEnd,
+            // When this renewal is a real recurring subscription, persist its id so
+            // invoice.paid 'subscription_cycle' events re-extend the right repo.
+            update: { status: 'active', currentPeriodEnd, ...(s.subscription ? { stripeSubId: s.subscription } : {}) },
+            create: { userId: meta.userId, serverRepoId: repo.id, status: 'active', currentPeriodEnd, stripeSubId: s.subscription || null,
               planId: (await p.hostingPlan.create({ data: { name: `Custom ${Number(repo.storageQuotaBytes) / (1024 ** 3)}GB (renewal)`, storageGB: Number(repo.storageQuotaBytes) / (1024 ** 3), uploadLimitKbps: repo.uploadLimitKbps, cpuShare: repo.cpuShare, priceMonthlyCents: 0, active: false } })).id },
           });
           await p.payment.create({ data: {

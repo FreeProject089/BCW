@@ -345,7 +345,7 @@ export default async function repoRoutes(app) {
   // currentPeriodEnd. Also the "resume payment" path out of a lapsed term: clears
   // any pending 72h deleteAt and restores ONLINE if the sweeper had suspended it.
   app.post('/me/repos/:id/renew', { preHandler: requireRole() }, async (req, reply) => {
-    const b = z.object({ months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1) }).safeParse(req.body);
+    const b = z.object({ months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1), autoRenew: z.boolean().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const { repo, err } = await ownRepo(p, req.params.id, req.user);
@@ -383,10 +383,20 @@ export default async function repoRoutes(app) {
     const sk = await stripe();
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
-    const session = await sk.checkout.sessions.create({
+    const md = { type: 'repo_renew', kind: 'hosting', userId: req.user.uid, repoId: repo.id, months: String(months) };
+    // Auto-renew → a real recurring Stripe subscription (charges again each term).
+    // One-time → a single payment that also mints a genuine Stripe invoice/receipt.
+    const session = await sk.checkout.sessions.create(b.data.autoRenew ? {
+      mode: 'subscription', customer,
+      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: total, recurring: { interval: 'month', interval_count: months }, product_data: { name: `"${repo.name}" hosting — auto-renews every ${months} month${months > 1 ? 's' : ''}` } } }],
+      subscription_data: { metadata: md },
+      metadata: md,
+      success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
+    } : {
       mode: 'payment', customer,
       line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: total, product_data: { name: `"${repo.name}" renewal — ${months} month${months > 1 ? 's' : ''}` } } }],
-      metadata: { type: 'repo_renew', userId: req.user.uid, repoId: repo.id, months: String(months) },
+      invoice_creation: { enabled: true },
+      metadata: md,
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     });
     return { url: session.url };

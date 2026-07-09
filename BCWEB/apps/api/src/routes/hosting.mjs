@@ -305,6 +305,9 @@ export default async function hostingRoutes(app) {
         currency: 'usd', unit_amount: total,
         product_data: { name: productName },
       } }],
+      // Generate a REAL Stripe invoice (with hosted page + PDF) for one-time
+      // payments too, so Billing can offer the genuine Stripe invoice/receipt.
+      invoice_creation: { enabled: true },
       metadata: md,
       success_url: `${siteUrl}/dashboard?hosting=ok`,
       cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
@@ -352,6 +355,7 @@ export default async function hostingRoutes(app) {
     } : {
       mode: 'payment', customer,
       line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: amount, product_data: { name: `Feature "${repo.name}" for ${b.data.days} days` } } }],
+      invoice_creation: { enabled: true },
       metadata: md,
       success_url: `${siteUrl}/dashboard?feature=ok`,
       cancel_url: `${siteUrl}/dashboard?feature=cancel`,
@@ -383,5 +387,71 @@ export default async function hostingRoutes(app) {
     if (!pay || pay.userId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
     const user = await p.user.findUnique({ where: { id: pay.userId }, select: { email: true, displayName: true } });
     return { invoice: { ...pay, user, number: `BCW-${pay.id.slice(-8).toUpperCase()}` } };
+  });
+
+  // Resolve the REAL Stripe invoice / receipt URLs for a payment on demand (no
+  // schema storage — always reflects Stripe's current links). Works for both the
+  // recurring-invoice path (stripeSessionId = in_…) and one-time checkout
+  // (stripeSessionId = cs_…, now created with invoice_creation enabled).
+  app.get('/me/payments/:id/stripe-link', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const pay = await p.payment.findUnique({ where: { id: req.params.id } });
+    if (!pay || pay.userId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
+    const sk = await stripe();
+    if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
+    const sid = pay.stripeSessionId || '';
+    try {
+      let hosted = null, pdf = null, receipt = null;
+      if (sid.startsWith('in_')) {
+        const inv = await sk.invoices.retrieve(sid);
+        hosted = inv.hosted_invoice_url; pdf = inv.invoice_pdf;
+      } else if (sid.startsWith('cs_')) {
+        const sess = await sk.checkout.sessions.retrieve(sid, { expand: ['invoice', 'payment_intent.latest_charge'] });
+        const inv = sess.invoice;
+        if (inv && typeof inv === 'object') { hosted = inv.hosted_invoice_url; pdf = inv.invoice_pdf; }
+        const charge = sess.payment_intent?.latest_charge;
+        if (charge && typeof charge === 'object') receipt = charge.receipt_url;
+      }
+      if (!hosted && !pdf && !receipt) return reply.code(404).send({ error: 'no_stripe_document' });
+      return { hosted, pdf, receipt };
+    } catch (e) {
+      req.log?.warn?.({ err: e?.message }, 'stripe-link lookup failed');
+      return reply.code(502).send({ error: 'stripe_lookup_failed' });
+    }
+  });
+
+  // Billing overview: active Stripe subscriptions (recurring hosting + boosts) for
+  // this customer, so the dashboard can show what actually renews vs. one-off
+  // prepaid terms. Empty list when Stripe/customer isn't set up.
+  app.get('/me/billing/overview', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: req.user.uid } });
+    const sk = await stripe();
+    if (!sk || !u?.stripeCustomerId) return { subscriptions: [] };
+    try {
+      const subs = await sk.subscriptions.list({ customer: u.stripeCustomerId, status: 'all', limit: 20 });
+      const list = subs.data
+        .filter((s) => ['active', 'trialing', 'past_due', 'unpaid'].includes(s.status))
+        .map((s) => {
+          const item = s.items?.data?.[0];
+          const price = item?.price;
+          return {
+            id: s.id,
+            status: s.status,
+            kind: s.metadata?.kind || (s.metadata?.repoId ? 'hosting' : 'subscription'),
+            repoId: s.metadata?.repoId || null,
+            amountCents: price?.unit_amount ?? 0,
+            currency: price?.currency || 'usd',
+            interval: price?.recurring?.interval || null,
+            intervalCount: price?.recurring?.interval_count || 1,
+            currentPeriodEnd: s.current_period_end ? new Date(s.current_period_end * 1000).toISOString() : null,
+            cancelAtPeriodEnd: !!s.cancel_at_period_end,
+          };
+        });
+      return { subscriptions: list };
+    } catch (e) {
+      req.log?.warn?.({ err: e?.message }, 'billing overview failed');
+      return { subscriptions: [] };
+    }
   });
 }

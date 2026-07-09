@@ -821,6 +821,7 @@ function PromoRedeem() {
 function SubscriptionRow({ repo, onChanged }) {
   const toast = useToast(); const { t } = useI18n();
   const [months, setMonths] = useState(12);
+  const [autoRenew, setAutoRenew] = useState(false);
   const [busy, setBusy] = useState(false);
   const sub = repo.subscription;
   const expired = sub?.currentPeriodEnd && new Date(sub.currentPeriodEnd) <= new Date();
@@ -828,7 +829,7 @@ function SubscriptionRow({ repo, onChanged }) {
   const renew = async () => {
     setBusy(true);
     try {
-      const res = await api.post(`/me/repos/${repo.id}/renew`, { months });
+      const res = await api.post(`/me/repos/${repo.id}/renew`, { months, autoRenew });
       if (res?.free) { toast.success(t('bill.renewed.free', 'Renewed — free tier, no charge.')); onChanged?.(); return; }
       window.location = res.url;
     } catch (x) { toast.error(x.data?.error === 'stripe_not_configured' ? t('hosting.err.stripe', 'Payments not configured yet.') : x.data?.error || t('repos.failed', 'Failed.')); }
@@ -850,7 +851,10 @@ function SubscriptionRow({ repo, onChanged }) {
       <Select className="!w-auto !py-1.5 !text-xs" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
         {[1, 3, 6, 12, 24].map((m) => <option key={m} value={m}>{m} mo</option>)}
       </Select>
-      <Button size="sm" variant={expired || repo.deleteAt ? 'primary' : 'default'} disabled={busy} onClick={renew}>{busy ? <Spinner /> : <><RefreshCw size={13} /> {t('bill.renew', 'Renew')}</>}</Button>
+      <label className="flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer whitespace-nowrap" title={t('bill.autorenew.h', 'Charge automatically each term instead of a one-time payment.')}>
+        <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} /> {t('bill.autorenew', 'Auto-renew')}
+      </label>
+      <Button size="sm" variant={expired || repo.deleteAt ? 'primary' : 'default'} disabled={busy} onClick={renew}>{busy ? <Spinner /> : <><RefreshCw size={13} /> {autoRenew ? t('bill.subscribe', 'Subscribe') : t('bill.renew', 'Renew')}</>}</Button>
     </div>
   );
 }
@@ -859,9 +863,11 @@ export function Billing() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading } = useFetch(() => api.get('/me/payments'), []);
   const { data: repoData, reload: reloadRepos } = useFetch(() => api.get('/me/repos'), []);
+  const { data: overview } = useFetch(() => api.get('/me/billing/overview').catch(() => null), []);
   const [invoice, setInvoice] = useState(null);
   const [portalBusy, setPortalBusy] = useState(false);
   const payments = data?.payments || [];
+  const subs = overview?.subscriptions || [];
   const hostedRepos = (repoData?.repos || []).filter((r) => r.hosted);
   const [hq, setHq] = useState(''); const [hStatus, setHStatus] = useState('all');
   const hnq = hq.trim().toLowerCase();
@@ -901,6 +907,31 @@ export function Billing() {
         </div>
       )}
 
+      {subs.length > 0 && (
+        <div className="mb-8">
+          <h2 className="font-semibold flex items-center gap-2 mb-3"><RefreshCw size={16} className="text-[var(--primary-2)]" /> {t('bill.recurring', 'Recurring subscriptions')}</h2>
+          <Card className="overflow-hidden p-0">
+            {subs.map((s, i) => {
+              const cur = (s.currency || 'usd').toUpperCase();
+              const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '';
+              const amt = sym ? `${sym}${(s.amountCents / 100).toFixed(2)}` : `${(s.amountCents / 100).toFixed(2)} ${cur}`;
+              const per = s.interval ? (s.intervalCount > 1 ? `/ ${s.intervalCount} ${s.interval}` : `/ ${s.interval}`) : '';
+              return (
+                <div key={s.id} className={`flex items-center gap-3 px-4 py-3 text-sm ${i ? 'border-t border-[var(--line)]' : ''}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{s.kind === 'hosting' ? t('bill.sub.hosting', 'Hosting subscription') : s.kind === 'feature' ? t('bill.sub.boost', 'Repo boost subscription') : t('bill.sub.generic', 'Subscription')}</div>
+                    <div className="text-xs text-[var(--faint)]">{s.currentPeriodEnd ? (s.cancelAtPeriodEnd ? t('bill.sub.endson', 'Ends {d}') : t('bill.sub.renews', 'Renews {d}')).replace('{d}', new Date(s.currentPeriodEnd).toLocaleDateString()) : ''}</div>
+                  </div>
+                  <Badge tone={s.status === 'active' || s.status === 'trialing' ? 'green' : 'amber'}>{s.cancelAtPeriodEnd ? t('bill.sub.canceling', 'canceling') : s.status}</Badge>
+                  <span className="font-semibold text-right whitespace-nowrap">{amt} <span className="text-[var(--faint)] font-normal text-xs">{per}</span></span>
+                </div>
+              );
+            })}
+          </Card>
+          <p className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><Info size={11} /> {t('bill.sub.manage', 'Cancel or change a subscription via “Manage billing”.')}</p>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-2 mb-3">
         <h2 className="font-semibold flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> {t('bill.title', 'Billing & invoices')}</h2>
         <Button size="sm" variant="ghost" disabled={portalBusy} onClick={openPortal}><CreditCard size={13} /> {t('bill.manage', 'Manage billing')}</Button>
@@ -924,6 +955,10 @@ export function Billing() {
 function InvoiceModal({ id, onClose }) {
   const { t } = useI18n();
   const { data, loading } = useFetch(() => api.get(`/me/payments/${id}`), [id]);
+  // Resolve the REAL Stripe invoice/receipt link (best-effort — absent for older
+  // payments or when Stripe isn't configured; the styled receipt below is the fallback).
+  const { data: link } = useFetch(() => api.get(`/me/payments/${id}/stripe-link`).catch(() => null), [id]);
+  const stripeUrl = link?.pdf || link?.hosted || link?.receipt || null;
   const inv = data?.invoice;
   const cur = (inv?.currency || 'usd').toUpperCase();
   const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '';
@@ -932,7 +967,12 @@ function InvoiceModal({ id, onClose }) {
   const paid = inv?.status === 'paid';
   return (
     <Modal open onClose={onClose} title={t('bill.invoice', 'Invoice')} icon={Receipt} width="max-w-lg"
-      footer={<><Button variant="ghost" onClick={onClose}>{t('bill.close', 'Close')}</Button><Button variant="primary" onClick={() => window.print()}><Printer size={15} /> {t('bill.print', 'Print / Save PDF')}</Button></>}>
+      footer={<>
+        <Button variant="ghost" onClick={onClose}>{t('bill.close', 'Close')}</Button>
+        {stripeUrl
+          ? <a href={stripeUrl} target="_blank" rel="noreferrer"><Button variant="primary"><Download size={15} /> {t('bill.stripeInvoice', 'Official invoice (Stripe)')}</Button></a>
+          : <Button variant="primary" onClick={() => window.print()}><Printer size={15} /> {t('bill.print', 'Print / Save PDF')}</Button>}
+      </>}>
       {loading || !inv ? <div className="text-[var(--muted)] text-sm">{t('common.loading', 'Loading…')}</div> : (
         <div className="text-sm invoice-sheet" id="invoice-print">
           {/* Header band */}
