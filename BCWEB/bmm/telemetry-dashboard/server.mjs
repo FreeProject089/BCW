@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { ingest, requestDeletion, decideDeletion, listDeletions, runDueDeletions, purgeRetention, eventOccurrences, userJourney,
   packetStatuses, sessionsList, funnel, listGoals, addGoal, delGoal,
-  storageBytes, getStorageLimitMb, setStorageLimitMb, enforceStorageLimit, db } from './db.mjs';
+  storageBytes, getStorageLimitMb, setStorageLimitMb, enforceStorageLimit,
+  getRetentionDays, getDeleteDelayH, getRuntimeConfig, setRuntimeConfig, db } from './db.mjs';
 import { computeStats } from './stats.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,8 +37,10 @@ refresh();
 // Recompute on a slow heartbeat, but also promptly (≤1.2s) after new data arrives.
 setInterval(refresh, 15000);
 setInterval(() => { if (dirty) { dirty = false; refresh(); } }, 1200);
-// retention + due (72h-elapsed) deletions + storage-limit enforcement, hourly + at boot
-function maintenance() { runDueDeletions(); purgeRetention(cfg.RETENTION_DAYS); enforceStorageLimit(); }
+// retention + due deletions + storage-limit enforcement, hourly + at boot. Reads
+// retention live (getRetentionDays) so a config change applies from the next sweep
+// without a restart.
+function maintenance() { runDueDeletions(); purgeRetention(getRetentionDays()); enforceStorageLimit(); }
 maintenance();
 setInterval(maintenance, 3600000);
 
@@ -64,8 +67,9 @@ app.post('/delete-request', (req, res) => {
   const { api_key, packet_id } = req.body || {};
   if (!okKey(api_key)) return res.status(401).json({ error: 'bad key' });
   if (!packet_id) return res.status(400).json({ error: 'missing packet_id' });
-  const row = requestDeletion(String(packet_id), cfg.DELETE_DELAY_H);
-  res.json({ status: 1, scheduled_at: row.scheduled_at, delay_hours: cfg.DELETE_DELAY_H });
+  const delayH = getDeleteDelayH();
+  const row = requestDeletion(String(packet_id), delayH);
+  res.json({ status: 1, scheduled_at: row.scheduled_at, delay_hours: delayH });
 });
 
 app.get('/api/stats', (_req, res) => res.json(statsCache));
@@ -111,7 +115,24 @@ app.get('/api/user', (req, res) => {
 // ── Admin: review / approve / reject deletions (no 72h wait) ───────────────────
 app.get('/api/admin/deletions', (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ error: 'admin key required' });
-  res.json({ deletions: listDeletions(), delay_hours: cfg.DELETE_DELAY_H });
+  res.json({ deletions: listDeletions(), delay_hours: getDeleteDelayH() });
+});
+
+// ── Admin: runtime config (storage limit + retention + erase delay) ─────────────
+// GET returns the effective values (config.json overrides, else .env). POST patches
+// any subset; storage over-limit is enforced immediately. This is what BCWEB's
+// Hosting settings drives, so telemetry limits are editable without touching .env.
+app.get('/api/admin/config', (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ error: 'admin key required' });
+  res.json({ config: getRuntimeConfig(), used_bytes: storageBytes() });
+});
+app.post('/api/admin/config', (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ error: 'admin key required' });
+  const b = req.body || {};
+  const config = setRuntimeConfig({ storageLimitMb: b.storageLimitMb, retentionDays: b.retentionDays, deleteDelayH: b.deleteDelayH });
+  const deleted = enforceStorageLimit();
+  refresh();
+  res.json({ status: 1, config, deleted_rows: deleted, used_bytes: storageBytes() });
 });
 app.post('/api/admin/decide', (req, res) => {
   if (!isAdmin(req)) return res.status(401).json({ error: 'admin key required' });
@@ -279,6 +300,6 @@ app.listen(cfg.PORT, () => {
   console.log(`  ──────────────────────────────────────────`);
   console.log(`  Dashboard : http://localhost:${cfg.PORT}`);
   console.log(`  Ingest    : POST /batch/`);
-  console.log(`  Retention : ${cfg.RETENTION_DAYS}d · erase delay ${cfg.DELETE_DELAY_H}h`);
+  console.log(`  Retention : ${getRetentionDays()}d · erase delay ${getDeleteDelayH()}h`);
   console.log(`  Admin     : ${cfg.ADMIN_KEY ? 'enabled (X-Admin-Key)' : 'set ADMIN_KEY in .env to enable approvals'}\n`);
 });

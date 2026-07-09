@@ -172,24 +172,49 @@ export function storageBytes() {
   const sz = db.prepare(`SELECT page_count * page_size bytes FROM pragma_page_count(), pragma_page_size()`).get();
   return sz ? sz.bytes : 0;
 }
+// Runtime-mutable config lives in config.json (persisted, survives restarts) and
+// OVERRIDES the .env defaults — so the storage limit, retention window and erase
+// delay can all be changed live (e.g. from BCWEB Hosting settings) without editing
+// .env or restarting the container. .env values are the initial fallback only.
 const CONFIG_FILE = path.join(__dirname, 'config.json');
-
-export function getStorageLimitMb() {
-  try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      const c = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-      if (c.storage_limit_mb) return Number(c.storage_limit_mb);
-    }
-  } catch {}
-  return process.env.STORAGE_LIMIT_MB ? Number(process.env.STORAGE_LIMIT_MB) : 5120;
+function readConfigFile() { try { if (fs.existsSync(CONFIG_FILE)) return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch {} return {}; }
+function writeConfigFile(patch) {
+  const c = { ...readConfigFile(), ...patch };
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2), 'utf8');
+  return c;
 }
 
+export function getStorageLimitMb() {
+  const c = readConfigFile();
+  if (c.storage_limit_mb) return Number(c.storage_limit_mb);
+  return process.env.STORAGE_LIMIT_MB ? Number(process.env.STORAGE_LIMIT_MB) : 5120;
+}
 export function setStorageLimitMb(mb) {
-  const limit = Math.max(128, Number(mb) || 5120);
-  let c = {};
-  try { if (fs.existsSync(CONFIG_FILE)) c = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch {}
-  c.storage_limit_mb = limit;
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(c, null, 2), 'utf8');
+  writeConfigFile({ storage_limit_mb: Math.max(128, Number(mb) || 5120) });
+}
+
+export function getRetentionDays() {
+  const c = readConfigFile();
+  if (c.retention_days != null) return Number(c.retention_days);
+  return process.env.RETENTION_DAYS ? Number(process.env.RETENTION_DAYS) : 180;
+}
+export function getDeleteDelayH() {
+  const c = readConfigFile();
+  if (c.delete_delay_h != null) return Number(c.delete_delay_h);
+  return process.env.DELETE_DELAY_H ? Number(process.env.DELETE_DELAY_H) : 72;
+}
+
+// Combined getter/setter for the admin config surface. Clamps to sane ranges.
+export function getRuntimeConfig() {
+  return { storageLimitMb: getStorageLimitMb(), retentionDays: getRetentionDays(), deleteDelayH: getDeleteDelayH() };
+}
+export function setRuntimeConfig({ storageLimitMb, retentionDays, deleteDelayH } = {}) {
+  const patch = {};
+  if (storageLimitMb != null) patch.storage_limit_mb = Math.max(128, Number(storageLimitMb) || 5120);
+  if (retentionDays != null) patch.retention_days = Math.min(3650, Math.max(1, Math.round(Number(retentionDays) || 180)));
+  if (deleteDelayH != null) patch.delete_delay_h = Math.min(720, Math.max(0, Math.round(Number(deleteDelayH) || 72)));
+  writeConfigFile(patch);
+  return getRuntimeConfig();
 }
 
 /**

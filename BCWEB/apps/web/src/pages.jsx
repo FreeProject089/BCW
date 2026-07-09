@@ -6053,6 +6053,56 @@ const GROUP_DESC = {
 // only the on-screen number changes when the admin picks a different unit.
 const convertUnit = (value, fromUnit, toUnit) => fromUnit === toUnit ? Number(value) : (fromUnit === 'GB' ? Number(value) * 1024 : Number(value) / 1024);
 
+// Live BMM telemetry config — proxies the telemetry service's own admin API, so
+// changes here are APPLIED to the running telemetry service (config.json, no .env
+// edit / restart), unlike the display-only telemetry.storageLimitGB setting.
+function TelemetryConfigCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/telemetry/config').then((d) => d).catch((x) => ({ __err: x?.data?.error || 'telemetry_unreachable' })), []);
+  const [f, setF] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data?.config) setF({ storageGB: String(Math.round((data.config.storageLimitMb / 1024) * 100) / 100), retentionDays: String(data.config.retentionDays), deleteDelayH: String(data.config.deleteDelayH) }); }, [data]);
+  if (loading) return null;
+  if (data?.__err) {
+    const notcfg = data.__err === 'telemetry_not_configured';
+    return (
+      <Card className="p-4 mb-3">
+        <div className="text-sm font-medium flex items-center gap-2 mb-1"><Gauge size={15} className="text-sky-400" /> {t('tc.title', 'BMM telemetry (live)')}</div>
+        <div className="text-xs text-amber-400/90">{notcfg ? t('tc.notcfg', 'Set TELEMETRY_INTERNAL_URL + TELEMETRY_ADMIN_KEY in the api service env to manage telemetry limits from here.') : t('tc.unreach', 'Telemetry service unreachable right now.')}</div>
+      </Card>
+    );
+  }
+  if (!f) return null;
+  const usedGB = (data.used_bytes || 0) / (1024 ** 3);
+  const limitGB = Number(f.storageGB) || 0;
+  const pct = limitGB > 0 ? Math.min(100, (usedGB / limitGB) * 100) : 0;
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.put('/admin/telemetry/config', { storageLimitMb: Math.round(Number(f.storageGB) * 1024), retentionDays: Number(f.retentionDays), deleteDelayH: Number(f.deleteDelayH) });
+      toast.success(t('tc.saved', 'Applied to the telemetry service.')); reload();
+    } catch { toast.error(t('tc.savefail', 'Could not update telemetry.')); } finally { setBusy(false); }
+  };
+  return (
+    <Card className="p-4 mb-3">
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        <div className="text-sm font-medium flex items-center gap-2"><Gauge size={15} className="text-sky-400" /> {t('tc.title', 'BMM telemetry (live)')}</div>
+        <Button size="sm" variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><CheckCheck size={14} /> {t('tc.apply', 'Apply to telemetry')}</>}</Button>
+      </div>
+      <p className="text-[11px] text-[var(--faint)] mb-3">{t('tc.sub', 'Edits the telemetry service directly (storage cap, GDPR retention, erase delay) — applied live, no restart. Over-limit data is trimmed immediately on save.')}</p>
+      <div className="mb-3">
+        <div className="flex items-center justify-between text-xs mb-1"><span className="text-[var(--muted)]">{t('tc.used', 'Used')}</span><span className="tabular-nums font-medium">{usedGB.toFixed(2)}{limitGB > 0 ? ` / ${limitGB} GB` : ` ${t('hs.gbused', 'GB used')}`}</span></div>
+        {limitGB > 0 && <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-red-500' : 'bg-sky-500'}`} style={{ width: `${pct}%` }} /></div>}
+      </div>
+      <div className="grid sm:grid-cols-3 gap-3">
+        <Field label={t('tc.storage', 'Storage cap (GB)')} hint={t('tc.storage.h', 'Oldest events trimmed when exceeded.')}><Input type="number" min="0.125" step="0.5" value={f.storageGB} onChange={(e) => setF({ ...f, storageGB: e.target.value })} /></Field>
+        <Field label={t('tc.retention', 'Retention (days)')} hint={t('tc.retention.h', 'Raw events auto-deleted after this.')}><Input type="number" min="1" max="3650" value={f.retentionDays} onChange={(e) => setF({ ...f, retentionDays: e.target.value })} /></Field>
+        <Field label={t('tc.delay', 'Erase delay (h)')} hint={t('tc.delay.h', 'Review window before an erasure request auto-applies.')}><Input type="number" min="0" max="720" value={f.deleteDelayH} onChange={(e) => setF({ ...f, deleteDelayH: e.target.value })} /></Field>
+      </div>
+    </Card>
+  );
+}
+
 function AdminSettings() {
   const toast = useToast();
   const { t } = useI18n();
@@ -6147,6 +6197,7 @@ function AdminSettings() {
           </Card>
         );
       })()}
+      <TelemetryConfigCard />
       {/* Temp submissions margin — live usage. Uploads (.bmmplugin / .bmmtheme / app
           payloads) are refused once this is full, until moderation clears space. */}
       {c && (

@@ -79,6 +79,11 @@ services:
       # host Caddy serves telemetry on (TELEMETRY_DOMAIN), or you get an empty response.
       TELEMETRY_PUBLIC_URL: ${TELEMETRY_PUBLIC_URL:-${TELEMETRY_DOMAIN:-http://telemetry.localhost}}
       TELEMETRY_DATABASE_URL: ${TELEMETRY_DATABASE_URL:-postgres://bmm:bmm@telemetry-db:5432/telemetry}
+      # Server-to-server so BCWEB Hosting settings can edit the telemetry service's
+      # runtime config (storage limit / retention / erase delay) live. Admin key must
+      # match the telemetry service's ADMIN_KEY (same TELEMETRY_ADMIN_KEY var below).
+      TELEMETRY_INTERNAL_URL: ${TELEMETRY_INTERNAL_URL:-http://telemetry:8900}
+      TELEMETRY_ADMIN_KEY: ${TELEMETRY_ADMIN_KEY:-change-me-admin}
       DISCORD_CONTACT_WEBHOOK: ${DISCORD_CONTACT_WEBHOOK:-}
       BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-${LINK_LOOKUP_SECRET:-dev-bot-secret}}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}

@@ -365,6 +365,47 @@ export default async function serverControlRoutes(app) {
     return { url: `${base}/?bc=${tok}#bc=${tok}&home=${encodeURIComponent(home)}` };
   });
 
+  // ── BMM Telemetry runtime config (storage limit / retention / erase delay) ──
+  // Proxies the telemetry service's ADMIN_KEY-gated /api/admin/config so an ADMIN
+  // can change these LIVE from BCWEB's Hosting settings — no .env edit or restart.
+  // Needs TELEMETRY_INTERNAL_URL (server-to-server, e.g. http://telemetry:8900) and
+  // TELEMETRY_ADMIN_KEY (= the telemetry service's ADMIN_KEY) in the api env.
+  const teleBase = () => (process.env.TELEMETRY_INTERNAL_URL || '').replace(/\/+$/, '');
+  const teleKey = () => process.env.TELEMETRY_ADMIN_KEY || process.env.TELEMETRY_ADMIN || '';
+  app.get('/admin/telemetry/config', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    if (!teleBase() || !teleKey()) return reply.code(503).send({ error: 'telemetry_not_configured' });
+    try {
+      const r = await fetch(`${teleBase()}/api/admin/config`, { headers: { 'X-Admin-Key': teleKey() } });
+      if (!r.ok) return reply.code(502).send({ error: 'telemetry_unreachable', status: r.status });
+      return await r.json();
+    } catch (e) { return reply.code(502).send({ error: 'telemetry_unreachable', detail: String(e?.message || e) }); }
+  });
+  app.put('/admin/telemetry/config', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    if (!teleBase() || !teleKey()) return reply.code(503).send({ error: 'telemetry_not_configured' });
+    const b = z.object({
+      storageLimitMb: z.number().min(128).max(10 ** 7).optional(),
+      retentionDays: z.number().int().min(1).max(3650).optional(),
+      deleteDelayH: z.number().int().min(0).max(720).optional(),
+    }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    try {
+      const r = await fetch(`${teleBase()}/api/admin/config`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': teleKey() },
+        body: JSON.stringify(b.data),
+      });
+      if (!r.ok) return reply.code(502).send({ error: 'telemetry_unreachable', status: r.status });
+      const out = await r.json();
+      // Mirror the storage limit into BCWEB's own adminSetting so the capacity
+      // overview (which reads telemetry.storageLimitGB) stays in sync with reality.
+      if (out?.config?.storageLimitMb != null) {
+        const p = await db();
+        await p.adminSetting.upsert({ where: { key: 'telemetry.storageLimitGB' }, create: { key: 'telemetry.storageLimitGB', value: out.config.storageLimitMb / 1024 }, update: { value: out.config.storageLimitMb / 1024 } }).catch(() => {});
+      }
+      await logAudit(await db(), req.user.uid, 'server.telemetry_config', JSON.stringify(b.data), clientIp(req)).catch(() => {});
+      return out;
+    } catch (e) { return reply.code(502).send({ error: 'telemetry_unreachable', detail: String(e?.message || e) }); }
+  });
+
   // ── BMM Telemetry DB viewer (READ-ONLY) ──
   // Same validate-against-the-real-catalog pattern as the BCWEB DB viewer, but
   // against the separate telemetry Postgres and with no write/edit path.
