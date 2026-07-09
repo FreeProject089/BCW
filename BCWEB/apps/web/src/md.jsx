@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -7,6 +7,8 @@ import rehypeRaw from 'rehype-raw';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
+import { ProgressTracker } from './progress-tracker.jsx';
+import { useI18n } from './i18n.jsx';
 
 // Sanitisation schema (CWE-79): author-written raw HTML in blog/doc bodies is stripped
 // of anything executable (scripts, on* handlers, javascript: URLs) by extending the
@@ -15,13 +17,13 @@ const SANITIZE_SCHEMA = {
   ...defaultSchema,
   tagNames: [...new Set([...(defaultSchema.tagNames || []),
     'div', 'span', 'section', 'details', 'summary', 'nav', 'figure', 'figcaption',
-    'video', 'audio', 'source', 'iframe', 'kbd', 'doc-icon', 'doc-kbd', 'doc-comment'])],
+    'video', 'audio', 'source', 'iframe', 'kbd', 'doc-icon', 'doc-kbd', 'doc-comment', 'doc-roadmap'])],
   attributes: {
     ...defaultSchema.attributes,
     // data-* here are hast (camelCased) property names — rehype-sanitize matches those,
     // so `data-comment` in the source must be allowed as `dataComment` (the DocComment
     // component reads both forms). Without this the whole <doc-comment> was stripped.
-    '*': [...new Set([...((defaultSchema.attributes || {})['*'] || []), 'className', 'id', 'style', 'dataName', 'dataKeys', 'dataComment', 'dataLink', 'dataImg', 'dataVideo'])],
+    '*': [...new Set([...((defaultSchema.attributes || {})['*'] || []), 'className', 'id', 'style', 'dataName', 'dataKeys', 'dataComment', 'dataLink', 'dataImg', 'dataVideo', 'dataSrc', 'dataJson', 'dataTitle'])],
     a: [...new Set([...(((defaultSchema.attributes || {}).a) || []), 'href', 'target', 'rel', 'download'])],
     img: [...new Set([...(((defaultSchema.attributes || {}).img) || []), 'src', 'alt', 'loading', 'className'])],
     video: ['src', 'controls', 'poster', 'className', 'style', 'loading'],
@@ -31,6 +33,7 @@ const SANITIZE_SCHEMA = {
     'doc-icon': ['className', 'dataName'],
     'doc-kbd': ['className', 'dataKeys'],
     'doc-comment': ['className', 'dataComment', 'dataLink', 'dataImg', 'dataVideo'],
+    'doc-roadmap': ['className', 'dataSrc', 'dataJson', 'dataTitle'],
   },
 };
 
@@ -219,6 +222,19 @@ function remarkDocBlocks() {
       } else if (name === 'kbd') {
         setEl('doc-kbd', ['doc-kbd'], { 'data-keys': (nodeText(node) || '').trim() });
         node.children = [];
+      } else if (name === 'roadmap' || name === 'progress') {
+        // Progress / roadmap tracker. Two sources:
+        //   remote → :::roadmap{src="https://site/progress.json" title="Roadmap"}
+        //   static → :::roadmap{title="Roadmap"} with a ```json … ``` block inside
+        // Both render the same customisable tracker (categories, %, meters, ETA).
+        const code = (node.children || []).find((c) => c.type === 'code');
+        const inlineJson = code ? String(code.value || '') : '';
+        setEl('doc-roadmap', ['doc-roadmap'], {
+          'data-src': attrs.src || attrs.href || '',
+          'data-json': inlineJson,
+          'data-title': labelText || attrs.title || '',
+        });
+        node.children = [];
       } else if (name === 'toc') {
         data.hName = 'nav'; data.hProperties = { className: ['doc-toc'] };
         node.children = [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-toc-title'] } }, children: [{ type: 'text', value: labelText || 'On this page' }] },
@@ -325,7 +341,39 @@ export function matchesLang(name, lang) {
   return true;
 }
 
-const COMPONENTS = { 'doc-icon': DocIcon, 'doc-kbd': DocKbd, 'doc-comment': DocComment };
+// Roadmap / progress tracker embedded in blog & docs. Data comes from a remote
+// `.json` (data-src, fetched client-side) or an inline JSON block (data-json) —
+// both render the same customisable ProgressTracker used on the project pages.
+function DocRoadmap({ node }) {
+  const { lang } = useI18n();
+  const p = node?.properties || {};
+  const src = p.dataSrc || p['data-src'] || '';
+  const rawJson = p.dataJson || p['data-json'] || '';
+  const title = p.dataTitle || p['data-title'] || (lang === 'fr' ? 'Feuille de route' : 'Roadmap');
+  const inline = useMemo(() => {
+    if (!rawJson) return null;
+    try { return { data: JSON.parse(rawJson) }; } catch { return { error: true }; }
+  }, [rawJson]);
+  const [remote, setRemote] = useState(null);
+  const [fetchErr, setFetchErr] = useState(false);
+  useEffect(() => {
+    if (!src) return;
+    let alive = true; setFetchErr(false);
+    fetch(src).then((r) => { if (!r.ok) throw new Error('http'); return r.json(); })
+      .then((j) => { if (alive) setRemote(j); })
+      .catch(() => { if (alive) setFetchErr(true); });
+    return () => { alive = false; };
+  }, [src]);
+  const data = remote ?? inline?.data ?? null;
+  if (data) return <div className="doc-roadmap">{<ProgressTracker data={data} title={title} lang={lang} />}</div>;
+  const msg = fetchErr ? (lang === 'fr' ? 'Impossible de charger la feuille de route.' : 'Could not load the roadmap.')
+    : inline?.error ? (lang === 'fr' ? 'JSON de feuille de route invalide.' : 'Invalid roadmap JSON.')
+    : src ? (lang === 'fr' ? 'Chargement…' : 'Loading…')
+    : (lang === 'fr' ? 'Feuille de route vide — fournis un « src » ou un bloc JSON.' : 'Empty roadmap — provide a "src" or a JSON block.');
+  return <div className="doc-roadmap doc-roadmap-empty text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-4">{msg}</div>;
+}
+
+const COMPONENTS = { 'doc-icon': DocIcon, 'doc-kbd': DocKbd, 'doc-comment': DocComment, 'doc-roadmap': DocRoadmap };
 
 // Internal link with a GitBook-style hover-preview card (title + category), shown
 // only when the href is a known page in `pageMap`.

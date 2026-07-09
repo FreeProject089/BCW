@@ -210,6 +210,14 @@ Use the editor toolbar buttons for images, YouTube, video and links — they ins
 { "name": "example", "version": "1.0.0" }
 \`\`\`
 
+## Roadmap / progress tracker
+Embed the same customisable progress tracker used on the project pages — right inside a post or doc.
+
+:::note[Two sources]
+**Remote** — point it at a hosted JSON file: \`:::roadmap{src="https://example.com/progress.json" title="Roadmap"}:::\`
+**Static** — put a \`json\` code block inside the \`:::roadmap{title="Roadmap"} … :::\` block. Shape: \`{ "categories": [{ "name": "v1.0", "items": [{ "label": "Core", "status": "done" }, { "label": "Docs", "status": "progress", "percent": 40 }] }] }\`. Statuses: \`done\` · \`progress\` · \`planned\`; optional \`percent\`, \`eta\`, and \`code\`/\`art\`/\`lastUpdate\` meters. Labels can be \`{ "en": …, "fr": … }\` for bilingual roadmaps.
+:::
+
 That's everything — combine badges + callouts + short bullets for clean, readable posts.`;
   const guide = { title: 'Markdown guide — writing notes & blog posts', excerpt: 'Every Markdown feature the blog supports: badges, callouts, media, tables and more.', body: guideBody, status: 'PUBLISHED' };
   await p.blogPost.upsert({
