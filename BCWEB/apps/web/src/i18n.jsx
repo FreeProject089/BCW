@@ -600,6 +600,7 @@ const DICT = {
     'bill.sub.generic': 'Abonnement', 'bill.sub.renews': 'Renouvelle le {d}', 'bill.sub.endson': 'Se termine le {d}',
     'bill.sub.canceling': 'annulation', 'bill.sub.manage': 'Annule ou modifie un abonnement via « Gérer la facturation ».',
     'bill.autorenew': 'Renouv. auto', 'bill.autorenew.h': 'Prélève automatiquement à chaque échéance au lieu d’un paiement unique.', 'bill.subscribe': 'S’abonner',
+    'bill.history': 'Historique des paiements', 'bill.recurringtag': 'abonnement', 'bill.download': 'Télécharger', 'bill.view': 'Voir',
 
     'sub.presetjson': 'Le preset n’est pas un JSON valide.', 'sub.tmplgen': 'Modèle généré — modifie les valeurs.',
     'sub.namereq': 'Le nom est requis.', 'sub.metajson': 'Les métadonnées doivent être un JSON valide.',
@@ -670,6 +671,7 @@ const DICT = {
     'dash.pay.dl': 'Télécharger la facture', 'dash.pay.done': 'Terminé', 'dash.pay.retry': 'Réessayer',
     'dash.pay.item': 'Article', 'dash.pay.amount': 'Montant', 'dash.pay.processing': 'traitement…',
     'dash.pay.boost': 'Mise en avant du dépôt', 'dash.pay.hostingitem': 'Hébergement du dépôt',
+    'dash.pay.fail.t': 'Paiement échoué', 'dash.pay.fail.m': 'Le paiement n’a pas pu être effectué — aucun montant n’a été débité. Vérifie les informations de ta carte et réessaie.',
     'dash.items': 'Éléments', 'dash.published': 'Publiés', 'dash.pending': 'En attente', 'dash.repos': 'Dépôts', 'dash.featured': 'Mis en avant',
     'dash.hostrepo': 'Héberger un dépôt', 'dash.browse': 'Voir le catalogue', 'dash.editprofile': 'Modifier le profil',
     'dash.overview': 'Aperçu', 'dash.myitems': 'Mes éléments', 'dash.myrepos': 'Mes dépôts', 'dash.billing': 'Facturation',

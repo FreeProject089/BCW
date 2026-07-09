@@ -15,7 +15,7 @@ import { useAuth } from './auth.jsx';
 import { useI18n } from './i18n.jsx';
 import { useTheme } from './theme.jsx';
 import { getConsent, setConsent } from './analytics.js';
-import { SKIP_KEY } from './IntroContext.jsx';
+import { SKIP_KEY, useIntro } from './IntroContext.jsx';
 import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from './prefs.js';
 import { MyRepos, AdminRepos, Billing } from './repos.jsx';
 import { AuthorsRow } from './blog.jsx';
@@ -1379,42 +1379,57 @@ function PaymentResultModal({ result, onClose }) {
   const { t } = useI18n();
   const ok = result?.ok;
   const kind = result?.kind;
-  const [pay, setPay] = useState(null);       // most-recent payment (for the invoice link)
+  const failed = result?.failed;             // true = payment failed (declined), vs plain cancel
+  const [inv, setInv] = useState(null);       // most-recent Stripe invoice (for the real PDF)
+  const [pay, setPay] = useState(null);       // fallback: local payment row (amount display)
   const [linking, setLinking] = useState(false);
-  // The webhook that records the Payment row can land a beat after the redirect —
-  // poll briefly so "Download invoice" lights up once it exists.
+  // The webhook + Stripe invoice can land a beat after the redirect — poll briefly so
+  // "Download invoice" lights up once the real invoice exists.
   useEffect(() => {
     if (!ok) return;
     let tries = 0, cancelled = false;
     const poll = async () => {
-      try { const r = await api.get('/me/payments'); const latest = (r.payments || [])[0]; if (latest && !cancelled) { setPay(latest); return; } } catch {}
-      if (tries++ < 5 && !cancelled) setTimeout(poll, 1500);
+      try {
+        const [iv, r] = await Promise.all([api.get('/me/invoices').catch(() => null), api.get('/me/payments').catch(() => null)]);
+        const latestInv = iv?.invoices?.[0]; const latestPay = r?.payments?.[0];
+        if (!cancelled && (latestInv || latestPay)) { setInv(latestInv || null); setPay(latestPay || null); if (latestInv) return; }
+      } catch {}
+      if (tries++ < 6 && !cancelled) setTimeout(poll, 1500);
     };
     poll();
     return () => { cancelled = true; };
   }, [ok]);
   const downloadInvoice = async () => {
-    if (!pay) return;
     setLinking(true);
     try {
-      const link = await api.get(`/me/payments/${pay.id}/stripe-link`).catch(() => null);
-      const url = link?.pdf || link?.hosted || link?.receipt;
-      if (url) window.open(url, '_blank', 'noopener');
+      if (inv?.hasPdf) {
+        // Real download through the API (attachment, correct filename).
+        const res = await fetch(`/api/me/invoices/${inv.id}/pdf`); const blob = await res.blob();
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `invoice-${inv.number}.pdf`;
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      } else if (pay) {
+        const link = await api.get(`/me/payments/${pay.id}/stripe-link`).catch(() => null);
+        const url = link?.pdf || link?.hosted || link?.receipt;
+        if (url) window.open(url, '_blank', 'noopener');
+      }
     } finally { setLinking(false); }
   };
-  const amount = pay ? (() => { const cur = (pay.currency || 'usd').toUpperCase(); const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : ''; return sym ? `${sym}${(pay.amountCents / 100).toFixed(2)}` : `${(pay.amountCents / 100).toFixed(2)} ${cur}`; })() : null;
+  const src = inv || pay;
+  const amount = src ? (() => { const c = inv ? inv.amountCents : pay.amountCents; const cur = (src.currency || 'usd').toUpperCase(); const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : ''; return sym ? `${sym}${(c / 100).toFixed(2)}` : `${(c / 100).toFixed(2)} ${cur}`; })() : null;
+  const canDl = (inv?.hasPdf) || !!pay;
   return (
     <Modal open onClose={onClose} title="" width="max-w-sm"
       footer={<>
-        {ok && <Button variant="ghost" disabled={!pay || linking} onClick={downloadInvoice}>{linking ? <Spinner /> : <><Download size={15} /> {t('dash.pay.dl', 'Download invoice')}</>}</Button>}
+        {ok && <Button variant="ghost" disabled={!canDl || linking} onClick={downloadInvoice}>{linking ? <Spinner /> : <><Download size={15} /> {t('dash.pay.dl', 'Download invoice')}</>}</Button>}
         <Button variant="primary" onClick={onClose}>{ok ? t('dash.pay.done', 'Done') : t('dash.pay.retry', 'Try again')}</Button>
       </>}>
       <div className="text-center pt-2 pb-1">
         <PaymentTerminal ok={ok} />
-        <div className="text-xl font-extrabold mt-3">{ok ? t('dash.pay.ok.t', 'Payment confirmed') : t('dash.pay.cancel.t', 'Checkout cancelled')}</div>
+        <div className="text-xl font-extrabold mt-3">{ok ? t('dash.pay.ok.t', 'Payment confirmed') : failed ? t('dash.pay.fail.t', 'Payment failed') : t('dash.pay.cancel.t', 'Checkout cancelled')}</div>
         <p className="text-sm text-[var(--muted)] mt-1.5 max-w-xs mx-auto">
           {ok
             ? (kind === 'feature' ? t('dash.pay.feature.m', 'Your repo is now featured on the public listing.') : t('dash.pay.hosting.m', "Your repo is being provisioned — it'll be online shortly."))
+            : failed ? t('dash.pay.fail.m', 'The payment could not be completed — no charge was made. Check your card details and try again.')
             : t('dash.pay.cancel.m', 'No charge was made. You can try again anytime.')}
         </p>
         {ok && (
@@ -1446,13 +1461,16 @@ export function Dashboard() {
   // Handle the return trip from a Stripe Checkout redirect (?hosting=ok/cancel, ?feature=ok/cancel).
   // Surfaces a prominent, dismissible confirmation/cancel banner (not just a toast).
   const [sp, setSp] = useSearchParams();
-  const [payReturn, setPayReturn] = useState(null); // { ok, kind } | null
+  const { active: introActive } = useIntro(); // hold the payment modal until the site intro finishes
+  const [payReturn, setPayReturn] = useState(null); // { ok, kind, failed } | null
   useEffect(() => {
     const hosting = sp.get('hosting'); const feature = sp.get('feature'); const oauth = sp.get('oauth');
     if (!hosting && !feature && !oauth) return;
     if (hosting === 'ok') { setPayReturn({ ok: true, kind: 'hosting' }); repos.reload(); items.reload(); }
+    else if (hosting === 'fail' || hosting === 'failed') { setPayReturn({ ok: false, failed: true, kind: 'hosting' }); }
     else if (hosting === 'cancel') { setPayReturn({ ok: false, kind: 'hosting' }); }
     if (feature === 'ok') { setPayReturn({ ok: true, kind: 'feature' }); repos.reload(); }
+    else if (feature === 'fail' || feature === 'failed') { setPayReturn({ ok: false, failed: true, kind: 'feature' }); }
     else if (feature === 'cancel') { setPayReturn({ ok: false, kind: 'feature' }); }
     if (oauth === 'success') toast.success(t('auth.welcome.toast', 'Welcome!'));
     setSp((p) => { const n = new URLSearchParams(p); n.delete('hosting'); n.delete('feature'); n.delete('oauth'); return n; }, { replace: true });
@@ -1492,7 +1510,7 @@ export function Dashboard() {
   ];
   return (
     <>
-      {payReturn && <PaymentResultModal result={payReturn} onClose={() => setPayReturn(null)} />}
+      {payReturn && !introActive && <PaymentResultModal result={payReturn} onClose={() => setPayReturn(null)} />}
       <SideDash icon={LayoutDashboard} title={t('dash.hi', 'Hi, {name}').replace('{name}', user?.displayName || 'there')} subtitle={t('dash.sub', 'Manage your content, repos and billing.')} tabs={tabs}
         headerActions={<Button variant="primary" onClick={() => setOpen(true)}><Upload size={16} /> {t('sub.title', 'Submit content')}</Button>}>
         {(s) => (<>

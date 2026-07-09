@@ -866,10 +866,19 @@ export function Billing() {
   const { data, loading } = useFetch(() => api.get('/me/payments'), []);
   const { data: repoData, reload: reloadRepos } = useFetch(() => api.get('/me/repos'), []);
   const { data: overview } = useFetch(() => api.get('/me/billing/overview').catch(() => null), []);
+  const { data: invData } = useFetch(() => api.get('/me/invoices').catch(() => null), []);
   const [invoice, setInvoice] = useState(null);
   const [portalBusy, setPortalBusy] = useState(false);
+  const [dlBusy, setDlBusy] = useState(null); // invoice id currently downloading
   const payments = data?.payments || [];
   const subs = overview?.subscriptions || [];
+  const invoices = invData?.invoices || [];
+  const money = (c, cur) => { const C = (cur || 'usd').toUpperCase(); const s = C === 'USD' ? '$' : C === 'EUR' ? '€' : C === 'GBP' ? '£' : ''; return s ? `${s}${(c / 100).toFixed(2)}` : `${(c / 100).toFixed(2)} ${C}`; };
+  const downloadInvoicePdf = async (inv) => {
+    setDlBusy(inv.id);
+    try { await forceDownload(`/api/me/invoices/${inv.id}/pdf`, `invoice-${inv.number}.pdf`); }
+    finally { setDlBusy(null); }
+  };
   const hostedRepos = (repoData?.repos || []).filter((r) => r.hosted);
   const [hq, setHq] = useState(''); const [hStatus, setHStatus] = useState('all');
   const hnq = hq.trim().toLowerCase();
@@ -935,10 +944,27 @@ export function Billing() {
       )}
 
       <div className="flex items-center justify-between gap-2 mb-3">
-        <h2 className="font-semibold flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> {t('bill.title', 'Billing & invoices')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> {invoices.length ? t('bill.history', 'Payment history') : t('bill.title', 'Billing & invoices')}</h2>
         <Button size="sm" variant="ghost" disabled={portalBusy} onClick={openPortal}><CreditCard size={13} /> {t('bill.manage', 'Manage billing')}</Button>
       </div>
-      {loading ? <div className="text-[var(--muted)] text-sm py-3">{t('common.loading', 'Loading…')}</div>
+      {/* Prefer Stripe's own invoice history (covers one-time AND every subscription
+          cycle, each with a real downloadable PDF). Fall back to the local ledger. */}
+      {invoices.length ? <Card className="overflow-hidden p-0">
+          {invoices.map((inv, i) => (
+            <div key={inv.id} className={`flex items-center gap-3 px-4 py-3 text-sm ${i ? 'border-t border-[var(--line)]' : ''}`}>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate flex items-center gap-2">{inv.description}{inv.recurring && <Badge tone="primary"><RefreshCw size={9} /> {t('bill.recurringtag', 'subscription')}</Badge>}</div>
+                <div className="text-xs text-[var(--faint)]">{inv.created ? new Date(inv.created).toLocaleString() : ''} · <span className="font-mono">{inv.number}</span></div>
+              </div>
+              <Badge tone={inv.status === 'paid' ? 'green' : 'amber'}>{inv.status === 'paid' ? t('bill.paid', 'PAID') : inv.status}</Badge>
+              <span className="font-semibold text-right whitespace-nowrap">{money(inv.amountCents, inv.currency)}</span>
+              {inv.hasPdf
+                ? <Button size="sm" disabled={dlBusy === inv.id} onClick={() => downloadInvoicePdf(inv)}>{dlBusy === inv.id ? <Spinner /> : <><Download size={13} /> {t('bill.download', 'Download')}</>}</Button>
+                : inv.hosted ? <a href={inv.hosted} target="_blank" rel="noreferrer"><Button size="sm"><ExternalLink size={13} /> {t('bill.view', 'View')}</Button></a> : null}
+            </div>
+          ))}
+        </Card>
+        : loading ? <div className="text-[var(--muted)] text-sm py-3">{t('common.loading', 'Loading…')}</div>
         : payments.length ? <Card className="overflow-hidden p-0">
           {payments.map((pay, i) => (
             <div key={pay.id} className={`flex items-center gap-3 px-4 py-3 text-sm ${i ? 'border-t border-[var(--line)]' : ''}`}>

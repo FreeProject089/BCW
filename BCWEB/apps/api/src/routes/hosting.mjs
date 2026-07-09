@@ -454,4 +454,59 @@ export default async function hostingRoutes(app) {
       return { subscriptions: [] };
     }
   });
+
+  // Full invoice history from Stripe (covers one-time payments AND every recurring
+  // subscription cycle) — the authoritative "payment history" with a real, downloadable
+  // PDF per row. Falls back to empty when Stripe/customer isn't set up (the local
+  // Payment ledger still renders in the UI).
+  app.get('/me/invoices', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: req.user.uid } });
+    const sk = await stripe();
+    if (!sk || !u?.stripeCustomerId) return { invoices: [] };
+    try {
+      const inv = await sk.invoices.list({ customer: u.stripeCustomerId, limit: 100 });
+      const invoices = inv.data.map((i) => ({
+        id: i.id,
+        number: i.number || `BCW-${String(i.id).slice(-8).toUpperCase()}`,
+        description: i.lines?.data?.[0]?.description || i.description || (i.subscription ? 'Subscription' : 'Payment'),
+        amountCents: i.amount_paid ?? i.amount_due ?? i.total ?? 0,
+        currency: i.currency || 'usd',
+        status: i.status, // draft | open | paid | uncollectible | void
+        recurring: !!i.subscription,
+        created: i.created ? new Date(i.created * 1000).toISOString() : null,
+        hosted: i.hosted_invoice_url || null,
+        hasPdf: !!i.invoice_pdf,
+      })).filter((i) => i.status === 'paid' || i.status === 'open');
+      return { invoices };
+    } catch (e) {
+      req.log?.warn?.({ err: e?.message }, 'invoice list failed');
+      return { invoices: [] };
+    }
+  });
+
+  // Stream a Stripe invoice PDF straight through the API as an attachment — a REAL
+  // download (correct filename, no redirect off-site), and ownership-checked against
+  // the caller's Stripe customer so one user can't fetch another's invoice.
+  app.get('/me/invoices/:id/pdf', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: req.user.uid } });
+    const sk = await stripe();
+    if (!sk || !u?.stripeCustomerId) return reply.code(503).send({ error: 'stripe_not_configured' });
+    try {
+      const inv = await sk.invoices.retrieve(req.params.id);
+      if (inv.customer !== u.stripeCustomerId) return reply.code(404).send({ error: 'not_found' });
+      if (!inv.invoice_pdf) return reply.code(404).send({ error: 'no_pdf' });
+      const r = await fetch(inv.invoice_pdf);
+      if (!r.ok) return reply.code(502).send({ error: 'pdf_fetch_failed' });
+      const buf = Buffer.from(await r.arrayBuffer());
+      const name = `invoice-${inv.number || inv.id}.pdf`;
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="${name}"`);
+      return reply.send(buf);
+    } catch (e) {
+      req.log?.warn?.({ err: e?.message }, 'invoice pdf stream failed');
+      return reply.code(502).send({ error: 'stripe_lookup_failed' });
+    }
+  });
 }
