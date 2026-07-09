@@ -866,6 +866,19 @@ model PromoRedemption {
   @@index([userId])
 }
 
+// A hosting shopping-cart checkout, persisted while the user is at Stripe. The
+// resolved line items (hosting plan ids / boost repo+days) + promo codes are stored
+// here and consumed by the checkout.session.completed webhook (metadata carries only
+// the cart id, since a full cart won't fit in Stripe's metadata limits).
+model PendingCart {
+  id        String   @id @default(cuid())
+  userId    String
+  payload   Json     // { items: [...], promoCodes: [...] }
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
 model AdminSetting {
   key   String @id
   value Json

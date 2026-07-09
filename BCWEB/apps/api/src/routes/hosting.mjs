@@ -365,6 +365,114 @@ export default async function hostingRoutes(app) {
     return { url: session.url };
   });
 
+  // ── Hosting shopping cart ──
+  // Buy several repos + boosts in ONE prepaid checkout. One-time only (mode:'payment')
+  // because Stripe forbids mixing one-time and recurring in a single session; auto-renew
+  // stays available on the per-item Renew/Boost flows. `quote` prices the cart live
+  // (incl. validating/combining promo codes); `checkout` opens Stripe. Multiple promo
+  // codes are allowed only when EVERY code is `stackable`; a non-stackable code must be
+  // used alone. Discount codes only (free-hosting/boost grants are redeemed separately).
+  const cartItemSchema = z.array(z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('hosting'), mode: z.enum(['single', 'multi']).default('single'), repoName: z.string().min(2).max(60),
+      months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1),
+      planId: z.string().optional(),
+      custom: z.object({ storageGB: z.number().int().min(1).max(500), uploadMbps: z.number().min(1).max(1000) }).optional() }),
+    z.object({ kind: z.literal('boost'), repoId: z.string(), days: z.number().int().min(1).max(365) }),
+  ])).min(1).max(20);
+
+  // Resolve a cart to priced lines + combined discount. `persistPlans` = create the
+  // custom hidden plan rows (checkout) vs. price them in memory (quote, no rows).
+  async function resolveCart(p, req, data, { persistPlans }) {
+    const cap = await capacityStatus(p);
+    if (!cap.enabled) return { error: 'hosting_disabled' };
+    const cf = capacityFactors(cap);
+    const s = await settings(p);
+    const featurePriceFn = (days) => Math.round(Number(s['pricing.featurePerDayCents'] ?? 50) * days);
+    const lines = []; let neededStorageGB = 0;
+    for (const it of data.items) {
+      if (it.kind === 'hosting') {
+        let plan;
+        if (it.custom) {
+          if (it.custom.uploadMbps > cf.maxUploadMbps) return { error: 'over_limit', maxUploadMbps: cf.maxUploadMbps };
+          const planData = { name: `Custom ${it.custom.storageGB}GB`, storageGB: it.custom.storageGB, uploadLimitKbps: Math.round(it.custom.uploadMbps * 1024), cpuShare: 0.5, priceMonthlyCents: priceCents(s, it.custom.storageGB, it.custom.uploadMbps, 0.5), active: false };
+          plan = persistPlans ? await p.hostingPlan.create({ data: planData }) : { id: null, ...planData };
+        } else {
+          plan = await p.hostingPlan.findUnique({ where: { id: it.planId } });
+          if (!plan || !plan.active) return { error: 'unknown_plan' };
+        }
+        neededStorageGB += plan.storageGB;
+        const baseCents = termTotalCents(plan.priceMonthlyCents, it.months, cf.priceMult);
+        lines.push({ kind: 'hosting', name: `${plan.name} — ${it.months} mo`, baseCents, monthlyCents: Math.round(baseCents / it.months), months: it.months, planId: plan.id, repoName: it.repoName, mode: it.mode });
+      } else {
+        const repo = await p.serverRepo.findUnique({ where: { id: it.repoId }, select: { id: true, name: true, ownerId: true } });
+        if (!repo || repo.ownerId !== req.user.uid) return { error: 'boost_repo_not_found' };
+        lines.push({ kind: 'boost', name: `Boost "${repo.name}" — ${it.days} d`, baseCents: featurePriceFn(it.days), monthlyCents: 0, months: 0, repoId: repo.id, days: it.days });
+      }
+    }
+    if (cap.allocatedGB + neededStorageGB > cap.usableGB) return { error: 'capacity_full', freeGB: cap.freeGB };
+
+    // Promo codes (discount kind only). Stacking rule enforced here.
+    let combinedPct = 0, freeMonths = 0, minMonthsReq = 0; const appliedCodes = [];
+    const uniq = [...new Set((data.promoCodes || []).map((c) => c.trim().toUpperCase()).filter(Boolean))];
+    if (uniq.length) {
+      const resolved = [];
+      for (const code of uniq) {
+        const v = await validatePromo(p, code, req.user.uid);
+        if (v.error) return { error: `promo_${v.error}`, code };
+        if (v.promo.kind !== 'discount') return { error: 'promo_not_discount', code };
+        resolved.push(v.promo);
+      }
+      if (resolved.length > 1 && !resolved.every((r) => r.stackable)) return { error: 'promo_not_stackable' };
+      for (const r of resolved) { if (r.percentOff) combinedPct += r.percentOff; if (r.freeMonths) freeMonths = Math.max(freeMonths, r.freeMonths); if (r.minMonths) minMonthsReq = Math.max(minMonthsReq, r.minMonths); appliedCodes.push(r.code); }
+      combinedPct = Math.min(90, combinedPct);
+      if (minMonthsReq && lines.some((l) => l.kind === 'hosting' && l.months < minMonthsReq)) return { error: 'promo_min_months', minMonths: minMonthsReq };
+    }
+    let subtotal = 0, total = 0;
+    for (const l of lines) {
+      let c = l.baseCents;
+      if (l.kind === 'hosting' && freeMonths) c = Math.max(0, c - l.monthlyCents * freeMonths);
+      if (combinedPct) c = Math.round(c * (1 - combinedPct / 100));
+      l.finalCents = c; subtotal += l.baseCents; total += c;
+    }
+    return { lines, subtotal, total, discount: subtotal - total, combinedPct, freeMonths, appliedCodes };
+  }
+
+  app.post('/hosting/cart/quote', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ items: cartItemSchema, promoCodes: z.array(z.string().max(40)).max(10).default([]) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const r = await resolveCart(p, req, b.data, { persistPlans: false });
+    if (r.error) return reply.code(r.error.startsWith('promo_') ? 400 : 409).send(r);
+    return { lines: r.lines.map((l) => ({ name: l.name, baseCents: l.baseCents, finalCents: l.finalCents, kind: l.kind })), subtotalCents: r.subtotal, discountCents: r.discount, totalCents: r.total, appliedCodes: r.appliedCodes, combinedPct: r.combinedPct, freeMonths: r.freeMonths };
+  });
+
+  app.post('/hosting/cart/checkout', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ items: cartItemSchema, promoCodes: z.array(z.string().max(40)).max(10).default([]) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    if (await p.creatorLink.count({ where: { userId: req.user.uid } }) === 0) return reply.code(403).send({ error: 'creator_link_required' });
+    const r = await resolveCart(p, req, b.data, { persistPlans: true });
+    if (r.error) return reply.code(r.error.startsWith('promo_') ? 400 : 409).send(r);
+    if (r.total < 50) return reply.code(400).send({ error: 'cart_makes_free', detail: 'Total is free/too low — use a free-hosting grant code, or add paid items.' });
+    const sk = await stripe();
+    if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
+    const customer = await ensureCustomer(p, sk, req.user.uid);
+    const siteUrl = process.env.SITE_URL || 'http://localhost';
+    const cart = await p.pendingCart.create({ data: { userId: req.user.uid, payload: { items: r.lines, promoCodes: r.appliedCodes } } });
+    const suffix = (r.combinedPct || r.freeMonths) ? ` (${[r.combinedPct ? `−${r.combinedPct}%` : null, r.freeMonths ? `${r.freeMonths}mo free` : null].filter(Boolean).join(', ')})` : '';
+    const session = await sk.checkout.sessions.create({
+      mode: 'payment', customer,
+      line_items: r.lines.map((l) => ({ quantity: 1, price_data: { currency: 'usd', unit_amount: Math.max(0, l.finalCents), product_data: { name: `${l.name}${suffix}` } } })).filter((li) => li.price_data.unit_amount > 0),
+      invoice_creation: { enabled: true },
+      metadata: { type: 'cart', cartId: cart.id, userId: req.user.uid },
+      success_url: `${siteUrl}/dashboard?hosting=ok`,
+      cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
+    });
+    // Promo redemption happens in the webhook AFTER payment succeeds (not here) so an
+    // abandoned cart doesn't burn a redemption.
+    return { url: session.url };
+  });
+
   // ── Stripe customer portal: manage subscriptions, cards, download receipts ──
   app.post('/me/billing/portal', { preHandler: requireRole() }, async (req, reply) => {
     const sk = await stripe();

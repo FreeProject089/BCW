@@ -7,7 +7,7 @@ import {
   Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight,
   Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket,
   CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss,
-  Info, Orbit, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon,
+  Info, Orbit, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, ShoppingCart,
   Mic, KeyRound,
 } from 'lucide-react';
 import { api, uploadPayload, uploadImage } from './api.js';
@@ -789,6 +789,24 @@ export function Hosting() {
   const [promo, setPromo] = useState(null); // validated promo code for the simple plan-card checkout
   const [autoRenew, setAutoRenew] = useState(true); // recurring subscription vs one-time prepaid
   const TERM_DISC = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.20, 24: 0.35 };
+  // ── Shopping cart: buy several repos + boosts in one prepaid checkout ──
+  const [cart, setCart] = useState([]); // [{ uid, kind:'hosting'|'boost', ... }]
+  const [cartOpen, setCartOpen] = useState(false);
+  const myRepos = useAsync(() => (user ? api.get('/me/repos') : Promise.resolve({ repos: [] })), [!!user]);
+  const addHosting = async ({ planId, custom, label }) => {
+    if (!user) return nav('/auth');
+    const repoName = await dialog.prompt({ title: mode === 'multi' ? t('hosting.pool.title', 'New storage pool') : t('hosting.repo.title', 'Host a repo'), label: mode === 'multi' ? t('hosting.pool.label', 'Pool name') : t('hosting.repo.label', 'Repository name'), placeholder: mode === 'multi' ? t('hosting.pool.ph', 'my-pool') : t('hosting.repo.ph', 'my-awesome-repo'), okLabel: t('cart.add', 'Add to cart') });
+    if (!repoName || String(repoName).trim().length < 2) return;
+    setCart((c) => [...c, { uid: Math.random().toString(36).slice(2), kind: 'hosting', mode, months, repoName: String(repoName).trim(), planId, custom, label }]);
+    setCartOpen(true);
+  };
+  const addBoost = ({ repoId, repoName, days }) => {
+    if (!user) return nav('/auth');
+    setCart((c) => [...c, { uid: Math.random().toString(36).slice(2), kind: 'boost', repoId, repoName, days }]);
+    setCartOpen(true);
+  };
+  const removeItem = (uid) => setCart((c) => c.filter((x) => x.uid !== uid));
+  const cartCount = cart.length;
   const termTotal = (monthlyCents) => {
     let total = Math.round(monthlyCents * months * (1 - (TERM_DISC[months] || 0)));
     if (promo?.percentOff) total = Math.round(total * (1 - promo.percentOff / 100));
@@ -845,38 +863,9 @@ export function Hosting() {
       {/* order configuration — billing term + promo grouped in one tidy card
           (they floated loose before, which read as unfinished, esp. on mobile) */}
       <Card className="p-4 sm:p-5 mb-6">
-        <div className="grid sm:grid-cols-2 gap-4 sm:gap-5 items-start">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.term', 'Billing term')} <span className="normal-case font-normal">{t('hosting.term.note', '· prepaid, min 1 month')}</span></div>
-            <TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} />
-          </div>
-          <div>
-            {/* matching header so the promo input lines up with the term box (it
-                used to float higher than the labelled term column on desktop). */}
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.promo.head', 'Promo code')} <span className="normal-case font-normal">· {t('hosting.promo.optional', 'optional')}</span></div>
-            <PromoCodeField months={months} onChange={setPromo} />
-          </div>
-        </div>
-        {/* Auto-renew — a real recurring subscription (default on). Forced off (one-time
-            prepaid) by a promo or a term over 12 months (Stripe's max billing interval). */}
-        {(() => {
-          const eligible = !promo && months <= 12;
-          return (
-            <div className="mt-4 pt-4 border-t border-[var(--line)]">
-              <label className={`flex items-start gap-2.5 text-sm ${eligible ? 'cursor-pointer' : 'opacity-60'}`}>
-                <input type="checkbox" className="mt-0.5" checked={eligible && autoRenew} disabled={!eligible} onChange={(e) => setAutoRenew(e.target.checked)} />
-                <span>
-                  <span className="font-medium flex items-center gap-1.5"><RefreshCw size={13} className="text-[var(--primary-2)]" /> {t('hosting.autorenew', 'Auto-renew')}</span>
-                  <span className="block text-xs text-[var(--muted)] mt-0.5">
-                    {!eligible ? t('hosting.autorenew.onetime', 'This term is a one-time prepaid charge (promos and terms over 12 months don’t auto-renew).')
-                      : autoRenew ? t('hosting.autorenew.on', 'Billed automatically every term so your repo never lapses. Cancel anytime from “Manage billing”.')
-                      : t('hosting.autorenew.off', 'One-time prepaid charge — your repo goes offline at the end of the term unless you renew manually.')}
-                  </span>
-                </span>
-              </label>
-            </div>
-          );
-        })()}
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.term', 'Billing term')} <span className="normal-case font-normal">{t('hosting.term.cart', '· applies to repos you add to the cart · prepaid')}</span></div>
+        <TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} />
+        <p className="text-xs text-[var(--muted)] mt-3 flex items-center gap-1.5"><ShoppingCart size={13} className="text-[var(--primary-2)]" /> {t('hosting.cart.hint', 'Add repos and boosts to your cart, apply promo codes, then check out — all in one payment. Auto-renew is available per repo afterwards.')}</p>
         {c && (
           <div className="flex items-center gap-3 text-sm mt-4 pt-4 border-t border-[var(--line)]">
             <Gauge size={16} className="text-[var(--primary-2)] shrink-0" />
@@ -929,8 +918,8 @@ export function Hosting() {
           const planDisabled = soldOut || (!!c && pl.storageGB > c.freeGB);
           const recommended = pl.storageGB === 25;
           return (
-          <div key={pl.id} role="button" tabIndex={0} aria-disabled={planDisabled} onClick={() => !planDisabled && checkout({ planId: pl.id })}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !planDisabled) checkout({ planId: pl.id }); }}
+          <div key={pl.id} role="button" tabIndex={0} aria-disabled={planDisabled} onClick={() => !planDisabled && addHosting({ planId: pl.id })}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !planDisabled) addHosting({ planId: pl.id }); }}
             className={`group card p-6 text-center relative transition-all duration-200 ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-1.5'} ${recommended && !planDisabled ? 'md:scale-105 md:-my-1' : ''}`}
             style={recommended && !planDisabled ? { borderColor: 'var(--primary)', boxShadow: '0 0 0 1px var(--primary), 0 18px 50px -18px var(--primary-glow)' } : undefined}
             onMouseEnter={(e) => { if (!recommended && !planDisabled) e.currentTarget.style.boxShadow = '0 0 0 1px var(--primary), 0 22px 55px -22px var(--primary-glow)'; }}
@@ -941,8 +930,8 @@ export function Hosting() {
             <div className="text-xs text-[var(--faint)] mt-2 flex items-center justify-center gap-3"><span className="flex items-center gap-1"><Zap size={12} />{(pl.uploadLimitKbps / 1024).toFixed(0)}Mbps</span></div>
             <div className="text-2xl font-bold gradient-text mt-4">${(termTotal(pl.priceMonthlyCents) / 100 / months).toFixed(2)}<span className="text-sm text-[var(--muted)] font-medium">{t('hosting.permo', '/mo')}</span></div>
             <div className="text-[11px] text-[var(--muted)] mb-4">{months > 1 ? <>${(termTotal(pl.priceMonthlyCents) / 100).toFixed(2)} {t('hosting.billedfor', 'billed for')} {months} {t('hosting.mo', 'mo')}</> : t('hosting.billedmonthly', 'billed monthly')}</div>
-            <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full group-hover:opacity-95" onClick={(e) => { e.stopPropagation(); checkout({ planId: pl.id }); }}>
-              {planDisabled ? t('hosting.nospace', 'Not enough space') : t('hosting.gethosted', 'Get hosted')}</Button>
+            <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full group-hover:opacity-95" onClick={(e) => { e.stopPropagation(); addHosting({ planId: pl.id }); }}>
+              {planDisabled ? t('hosting.nospace', 'Not enough space') : <><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}</>}</Button>
           </div>
           ); })}
       </div>}
@@ -951,12 +940,134 @@ export function Hosting() {
       <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-orange-500/10 to-transparent">
         <Sliders size={26} className="text-[var(--primary-2)]" />
         <div className="flex-1 text-center sm:text-left"><div className="font-semibold text-lg">{t('hosting.custom.title', 'Need a different size?')}</div>
-          <div className="text-sm text-[var(--muted)]">{t('hosting.custom.sub', 'Build a custom plan — pick your storage, upload speed and CPU. Price adapts instantly.')}</div></div>
+          <div className="text-sm text-[var(--muted)]">{t('hosting.custom.sub2', 'Build a custom plan — pick your storage and upload speed. Price adapts instantly.')}</div></div>
         <Button variant="primary" disabled={soldOut} onClick={() => setCustomOpen(true)}><Sliders size={16} /> {soldOut ? t('hosting.soldout.short', 'Sold out') : t('hosting.custom.cta', 'Build custom plan')}</Button>
       </Card>
 
+      {/* Boost an existing repo — added to the same cart (one-time, priced per day). */}
+      {user && (myRepos.data?.repos || []).some((r) => r.hosted || r.listed) && (
+        <BoostAddCard repos={(myRepos.data?.repos || []).filter((r) => r.hosted || r.listed)} onAdd={addBoost} />
+      )}
+
       <p className="text-xs text-[var(--faint)] mt-5 flex items-center gap-1.5"><ShieldCheck size={13} /> {t('hosting.note', 'Updates only require a valid SHA. We set the upload limit per repo.')}</p>
-      <CustomPlanModal open={customOpen} onClose={() => setCustomOpen(false)} months={months} setMonths={setMonths} termDisc={TERM_DISC} onCheckout={(custom, promoCode) => { setCustomOpen(false); checkout({ custom, promoCode }); }} />
+      <CustomPlanModal open={customOpen} onClose={() => setCustomOpen(false)} months={months} setMonths={setMonths} termDisc={TERM_DISC} onCheckout={(custom) => { setCustomOpen(false); addHosting({ custom, label: t('cart.custom', 'Custom {gb} GB').replace('{gb}', custom.storageGB) }); }} />
+      <CartPanel open={cartOpen} setOpen={setCartOpen} cart={cart} count={cartCount} removeItem={removeItem} onEmptyBrowse={() => setCartOpen(false)} />
+    </div>
+  );
+}
+
+// A small "add a boost to the cart" card: pick one of your repos + a duration.
+function BoostAddCard({ repos, onAdd }) {
+  const { t } = useI18n();
+  const [repoId, setRepoId] = useState(repos[0]?.id || '');
+  const [days, setDays] = useState(7);
+  const { data: fp } = useAsync(() => api.get(`/hosting/feature-price?days=${days}`).catch(() => null), [days]);
+  const repo = repos.find((r) => r.id === repoId);
+  return (
+    <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-amber-500/10 to-transparent">
+      <Rocket size={26} className="text-amber-400 shrink-0" />
+      <div className="flex-1 w-full">
+        <div className="font-semibold text-lg">{t('cart.boost.title', 'Boost a repo to the top')}</div>
+        <div className="text-sm text-[var(--muted)] mb-2">{t('cart.boost.sub', 'Feature one of your repos at the top of the public listing for a set number of days.')}</div>
+        <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 items-end">
+          <Select value={repoId} onChange={(e) => setRepoId(e.target.value)}>{repos.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select>
+          <Select className="!w-auto" value={days} onChange={(e) => setDays(Number(e.target.value))}>{[3, 7, 14, 30, 90].map((d) => <option key={d} value={d}>{d} {t('cart.days', 'days')}</option>)}</Select>
+          <Button variant="primary" disabled={!repoId} onClick={() => onAdd({ repoId, repoName: repo?.name, days })}><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}{fp?.priceCents != null ? ` · $${(fp.priceCents / 100).toFixed(2)}` : ''}</Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// Floating shopping cart: line items + stacked promo codes + a live server quote,
+// then one Stripe checkout for the whole bundle. Responsive (a bottom-right panel on
+// desktop, near-fullscreen sheet on mobile) with a collapsed pill when closed.
+function CartPanel({ open, setOpen, cart, count, removeItem }) {
+  const { t } = useI18n(); const toast = useToast(); const { user } = useAuth(); const nav = useNavigate();
+  const [codes, setCodes] = useState([]);
+  const [codeInput, setCodeInput] = useState('');
+  const [quote, setQuote] = useState(null);
+  const [quoteErr, setQuoteErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const apiItems = useMemo(() => cart.map((it) => it.kind === 'hosting'
+    ? { kind: 'hosting', mode: it.mode, repoName: it.repoName, months: it.months, ...(it.custom ? { custom: it.custom } : { planId: it.planId }) }
+    : { kind: 'boost', repoId: it.repoId, days: it.days }), [cart]);
+  // Live quote (debounced) whenever the cart or promo set changes.
+  useEffect(() => {
+    if (!cart.length) { setQuote(null); setQuoteErr(null); return; }
+    const id = setTimeout(async () => {
+      try { setQuote(await api.post('/hosting/cart/quote', { items: apiItems, promoCodes: codes })); setQuoteErr(null); }
+      catch (x) { setQuote(null); setQuoteErr(x.data?.error || 'quote_failed'); }
+    }, 350);
+    return () => clearTimeout(id);
+  }, [apiItems, codes, cart.length]);
+  const money = (c) => `$${((c || 0) / 100).toFixed(2)}`;
+  const addCode = () => { const v = codeInput.trim().toUpperCase(); if (v && !codes.includes(v)) setCodes((c) => [...c, v]); setCodeInput(''); };
+  const promoErr = quoteErr && quoteErr.startsWith('promo_');
+  const checkout = async () => {
+    if (!user) return nav('/auth');
+    setBusy(true);
+    try {
+      const res = await api.post('/hosting/cart/checkout', { items: apiItems, promoCodes: codes });
+      window.location = res.url;
+    } catch (x) {
+      const e = x.data?.error;
+      if (e === 'creator_link_required') { toast.error(t('hosting.err.link', 'Link a BMM creator id first (Profile → Creator IDs) to host a repo.')); nav('/profile'); }
+      else if (e === 'cart_makes_free') toast.error(t('cart.err.free', 'The total is free — remove a promo or use a free-hosting grant code instead.'));
+      else if (e === 'promo_not_stackable') toast.error(t('cart.err.stack', 'Those codes can’t be combined — only stackable codes stack.'));
+      else if (e === 'capacity_full') toast.error(t('hosting.err.capacity', 'No capacity available right now.'));
+      else if (e === 'stripe_not_configured') toast.error(t('hosting.err.stripe', 'Payments not configured yet.'));
+      else toast.error(t('hosting.err.checkout', 'Checkout failed.'));
+    } finally { setBusy(false); }
+  };
+  if (!count) return null;
+  if (!open) return (
+    <button onClick={() => setOpen(true)} className="fixed bottom-4 right-4 z-[60] flex items-center gap-2 pl-3.5 pr-4 py-3 rounded-2xl text-white font-semibold shadow-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:brightness-105 transition">
+      <span className="relative"><ShoppingCart size={18} /><span className="absolute -top-2 -right-2 grid place-items-center w-4 h-4 rounded-full bg-white text-orange-600 text-[10px] font-bold">{count}</span></span>
+      {t('cart.title', 'Cart')}
+    </button>
+  );
+  return (
+    <div className="fixed bottom-4 right-4 z-[60] w-[24rem] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl border border-[var(--line-strong)] overflow-hidden" style={{ background: 'var(--bg-solid)', boxShadow: '0 24px 70px -18px rgba(0,0,0,0.6)' }}>
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--line)]">
+        <ShoppingCart size={16} className="text-[var(--primary-2)]" />
+        <span className="font-semibold flex-1">{t('cart.your', 'Your cart')} <span className="text-[var(--faint)] font-normal">· {count}</span></span>
+        <button onClick={() => setOpen(false)} className="text-[var(--faint)] hover:text-[var(--text)]"><ChevronDown size={18} /></button>
+      </div>
+      <div className="overflow-auto p-3 space-y-2 flex-1">
+        {cart.map((it) => (
+          <div key={it.uid} className="flex items-center gap-2 text-sm rounded-lg bg-[var(--surface-2)] px-3 py-2">
+            {it.kind === 'boost' ? <Rocket size={14} className="text-amber-400 shrink-0" /> : <HardDrive size={14} className="text-[var(--primary-2)] shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate">{it.kind === 'boost' ? t('cart.boostof', 'Boost "{n}"').replace('{n}', it.repoName || '') : (it.label || it.repoName)}</div>
+              <div className="text-[11px] text-[var(--faint)]">{it.kind === 'boost' ? `${it.days} ${t('cart.days', 'days')}` : `${it.mode === 'multi' ? t('hosting.multi', 'Multiple repos') : t('hosting.single', 'Single repo')} · ${it.months} ${t('hosting.mo', 'mo')}`}</div>
+            </div>
+            <button onClick={() => removeItem(it.uid)} className="text-[var(--faint)] hover:text-red-400 shrink-0"><X size={14} /></button>
+          </div>
+        ))}
+        {/* Promo codes (stack the stackable ones) */}
+        <div className="pt-1">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('cart.promos', 'Promo codes')}</div>
+          <div className="flex gap-1.5">
+            <Input className="!py-1.5 !text-sm" value={codeInput} onChange={(e) => setCodeInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCode()} placeholder={t('cart.promoph', 'Enter a code')} />
+            <Button size="sm" onClick={addCode}><Plus size={13} /></Button>
+          </div>
+          {codes.length > 0 && <div className="flex flex-wrap gap-1.5 mt-2">{codes.map((c) => (
+            <span key={c} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-xs font-mono">{c}<button onClick={() => setCodes((x) => x.filter((k) => k !== c))} className="text-[var(--faint)] hover:text-red-400"><X size={10} /></button></span>
+          ))}</div>}
+          {promoErr && <div className="text-[11px] text-red-400 mt-1.5">{quoteErr === 'promo_not_stackable' ? t('cart.err.stack', 'Those codes can’t be combined — only stackable codes stack.') : quoteErr === 'promo_not_discount' ? t('cart.err.notdiscount', 'Only discount codes apply in the cart.') : t('cart.err.promo', 'A code is invalid or not eligible.')}</div>}
+        </div>
+      </div>
+      <div className="border-t border-[var(--line)] p-3 space-y-1.5">
+        {quote && (<>
+          <div className="flex justify-between text-sm text-[var(--muted)]"><span>{t('cart.subtotal', 'Subtotal')}</span><span className="tabular-nums">{money(quote.subtotalCents)}</span></div>
+          {quote.discountCents > 0 && <div className="flex justify-between text-sm text-emerald-400"><span>{t('cart.discount', 'Discount')}{quote.combinedPct ? ` (−${quote.combinedPct}%)` : ''}</span><span className="tabular-nums">−{money(quote.discountCents)}</span></div>}
+          <div className="flex justify-between font-bold text-base pt-1 border-t border-[var(--line)]"><span>{t('cart.total', 'Total')}</span><span className="tabular-nums">{money(quote.totalCents)}</span></div>
+        </>)}
+        {quoteErr && !promoErr && <div className="text-[11px] text-amber-400">{quoteErr === 'capacity_full' ? t('hosting.err.capacity', 'No capacity available right now.') : t('cart.err.quote', 'Could not price the cart.')}</div>}
+        <Button variant="primary" className="w-full mt-1" disabled={busy || !quote} onClick={checkout}>{busy ? <Spinner /> : <><CreditCard size={15} /> {t('cart.checkout', 'Checkout')}{quote ? ` · ${money(quote.totalCents)}` : ''}</>}</Button>
+        <p className="text-[10px] text-[var(--faint)] text-center">{t('cart.note', 'One-time prepaid for the whole cart. Auto-renew is available per repo afterwards.')}</p>
+      </div>
     </div>
   );
 }
@@ -989,7 +1100,7 @@ function CustomPlanModal({ open, onClose, onCheckout, months = 12, setMonths, te
   ];
   return (
     <Modal open={open} onClose={onClose} title={t('hosting.custom.modaltitle', 'Build a custom plan')} icon={Sliders} width="max-w-lg"
-      footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={() => onCheckout(spec, promo?.code)}>{t('hosting.continue', 'Continue to payment')}</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={() => onCheckout(spec, promo?.code)}><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}</Button></>}>
       <div className="space-y-5">
         {/* Live spec summary chips — see the whole plan at a glance while dragging */}
         <div className="flex flex-wrap gap-2">

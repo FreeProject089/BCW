@@ -1,5 +1,6 @@
 import { db, notify } from '../lib.mjs';
 import { provisionHostedRepo } from './hosting.mjs';
+import { redeemPromoAtomic } from './promo.mjs';
 
 // Encapsulated plugin: a raw-body JSON parser scoped here only, so Stripe's
 // signature can be verified against the exact bytes (the rest of the API keeps
@@ -21,6 +22,39 @@ export default async function stripeWebhook(app) {
     if (event.type === 'checkout.session.completed') {
       const s = event.data.object;
       const meta = s.metadata || {};
+
+      // Shopping-cart checkout: provision every line (hosted repos + boosts), record a
+      // Payment per line, redeem any applied promo codes, then drop the PendingCart.
+      if (meta.type === 'cart' && meta.cartId) {
+        const cart = await p.pendingCart.findUnique({ where: { id: meta.cartId } });
+        if (cart && cart.userId === meta.userId) {
+          const { items = [], promoCodes = [] } = cart.payload || {};
+          let provisioned = 0;
+          for (const l of items) {
+            try {
+              if (l.kind === 'hosting') {
+                const plan = l.planId ? await p.hostingPlan.findUnique({ where: { id: l.planId } }) : null;
+                if (!plan) continue;
+                const repo = await provisionHostedRepo(p, { userId: cart.userId, plan, repoName: l.repoName, hostMode: l.mode, months: l.months });
+                await p.payment.create({ data: { userId: cart.userId, serverRepoId: repo.id, kind: 'HOSTING', description: `${plan.name} hosting — ${l.months} month${l.months > 1 ? 's' : ''}`, amountCents: l.finalCents ?? 0, currency: 'usd', stripeSessionId: s.id } });
+                provisioned++;
+              } else if (l.kind === 'boost') {
+                const repo = await p.serverRepo.findUnique({ where: { id: l.repoId } });
+                if (!repo) continue;
+                const base = repo.featuredUntil && repo.featuredUntil > new Date() ? repo.featuredUntil : new Date();
+                const until = new Date(base.getTime() + l.days * 864e5);
+                await p.serverRepo.update({ where: { id: repo.id }, data: { featuredUntil: until } });
+                await p.payment.create({ data: { userId: cart.userId, serverRepoId: repo.id, kind: 'FEATURE', description: `Featured boost — "${repo.name}" (${l.days} days)`, amountCents: l.finalCents ?? 0, currency: 'usd', days: l.days, stripeSessionId: s.id } });
+                provisioned++;
+              }
+            } catch (e) { req.log?.warn?.({ err: e?.message }, 'cart line provision failed'); }
+          }
+          for (const code of promoCodes) await redeemPromoAtomic(p, code, cart.userId, async () => ({ detail: 'cart checkout' })).catch(() => {});
+          await p.pendingCart.delete({ where: { id: cart.id } }).catch(() => {});
+          await notify(p, cart.userId, 'hosting_started', `Your order is being provisioned — ${provisioned} item${provisioned > 1 ? 's' : ''}.`);
+        }
+        return { received: true };
+      }
 
       // Paid catalog-file hosting: clear the unpaid flag, queue for moderation, record.
       // This is a real RECURRING Stripe subscription (billed monthly by file size) —
