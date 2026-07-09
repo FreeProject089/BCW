@@ -819,43 +819,59 @@ function PromoRedeem() {
 // never auto-renews (no recurring Stripe subscription behind it, see the sweeper),
 // so this is the only way to extend it short of buying a whole new repo.
 function SubscriptionRow({ repo, onChanged }) {
-  const toast = useToast(); const { t } = useI18n();
+  const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
   const [months, setMonths] = useState(12);
-  const [busy, setBusy] = useState(null); // 'once' | 'auto' while its request is in flight
+  const [busy, setBusy] = useState(false);
   const sub = repo.subscription;
+  const hasSub = !!sub?.stripeSubId;                 // a real auto-renewing Stripe subscription
+  const canceling = sub?.status === 'canceling' || sub?.status === 'canceled';
   const expired = sub?.currentPeriodEnd && new Date(sub.currentPeriodEnd) <= new Date();
   const soon = sub?.currentPeriodEnd && !expired && (new Date(sub.currentPeriodEnd) - Date.now()) < 7 * 864e5;
-  // One click = one action. "Renew once" is a single charge; "Auto-renew" starts a
-  // recurring subscription — no hidden toggle state to remember.
-  const renew = async (autoRenew) => {
-    setBusy(autoRenew ? 'auto' : 'once');
+  // Legacy prepaid / free repo with no subscription → start auto-renew (subscription checkout).
+  const enableAutoRenew = async () => {
+    setBusy(true);
     try {
-      const res = await api.post(`/me/repos/${repo.id}/renew`, { months, autoRenew });
+      const res = await api.post(`/me/repos/${repo.id}/renew`, { months, autoRenew: true });
       if (res?.free) { toast.success(t('bill.renewed.free', 'Renewed — free tier, no charge.')); onChanged?.(); return; }
       window.location = res.url;
     } catch (x) { toast.error(x.data?.error === 'stripe_not_configured' ? t('hosting.err.stripe', 'Payments not configured yet.') : x.data?.error || t('repos.failed', 'Failed.')); }
-    finally { setBusy(null); }
+    finally { setBusy(false); }
+  };
+  // Hosting auto-renews by default → this button cancels it (stays online until the
+  // period ends), and flips to "Reactivate" once cancelled.
+  const toggleCancel = async () => {
+    const resume = canceling;
+    if (!resume && !(await dialog.confirm({ title: t('bill.sub.cancel.t', 'Stop auto-renew?'), message: t('bill.sub.cancel.m', 'This subscription stays active until {d}, then won’t renew. You keep everything you’ve paid for.').replace('{d}', sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : '—'), okLabel: t('bill.sub.cancel.ok', 'Stop auto-renew'), danger: true }))) return;
+    setBusy(true);
+    try { await api.post(`/me/subscriptions/${sub.stripeSubId}/cancel`, { resume }); toast.success(resume ? t('bill.sub.resumed', 'Auto-renew re-enabled.') : t('bill.sub.canceled', 'Auto-renew stopped — active until the period ends.')); onChanged?.(); }
+    catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); }
   };
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm border-t border-[var(--line)] first:border-t-0">
       <Server size={15} className="text-[var(--primary-2)] shrink-0" />
       <div className="flex-1 min-w-0">
-        <div className="font-medium truncate flex items-center gap-2">{repo.name} <Badge tone={repo.status === 'SUSPENDED' ? 'red' : repo.status === 'ONLINE' ? 'green' : ''}>{repo.status}</Badge></div>
-        <div className="text-xs text-[var(--faint)]">{gb(repo.storageQuotaBytes)} GB · {(repo.uploadLimitKbps / 1024).toFixed(1)} Mbps · {repo.cpuShare} CPU</div>
+        <div className="font-medium truncate flex items-center gap-2">{repo.name} <Badge tone={repo.status === 'SUSPENDED' ? 'red' : repo.status === 'ONLINE' ? 'green' : ''}>{repo.status}</Badge>{hasSub && canceling && <Badge tone="amber">{t('bill.sub.canceling', 'canceling')}</Badge>}</div>
+        <div className="text-xs text-[var(--faint)]">{gb(repo.storageQuotaBytes)} GB · {(repo.uploadLimitKbps / 1024).toFixed(1)} Mbps</div>
       </div>
       {sub?.currentPeriodEnd && (
         <div className={`text-xs text-right shrink-0 ${expired ? 'text-red-400' : soon ? 'text-amber-400' : 'text-[var(--muted)]'}`}>
-          <div className="flex items-center gap-1 justify-end"><Clock size={11} /> {expired ? t('bill.expired', 'Expired') : t('bill.renewson', 'Renews/expires')}</div>
+          <div className="flex items-center gap-1 justify-end"><Clock size={11} /> {expired ? t('bill.expired', 'Expired') : canceling ? t('bill.ah.ends', 'Ends') : t('bill.renewson', 'Renews/expires')}</div>
           <div className="font-medium">{new Date(sub.currentPeriodEnd).toLocaleDateString()}</div>
         </div>
       )}
-      <Select className="!w-auto !py-1.5 !text-xs" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
-        {[1, 3, 6, 12, 24].map((m) => <option key={m} value={m}>{m} mo</option>)}
-      </Select>
-      <div className="flex items-center gap-2">
-        <Button size="sm" variant={expired || repo.deleteAt ? 'primary' : 'default'} disabled={!!busy} onClick={() => renew(false)} title={t('bill.renewonce.h', 'A single charge for the chosen term.')}>{busy === 'once' ? <Spinner /> : <><RefreshCw size={13} /> {t('bill.renewonce', 'Renew once')}</>}</Button>
-        <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => renew(true)} title={t('bill.autorenew.h', 'Start a recurring subscription — charges automatically each term.')}>{busy === 'auto' ? <Spinner /> : <><Zap size={13} /> {t('bill.autorenew', 'Auto-renew')}</>}</Button>
-      </div>
+      {hasSub ? (
+        <Button size="sm" variant={canceling ? 'primary' : 'ghost'} disabled={busy} onClick={toggleCancel}
+          title={canceling ? t('bill.sub.resume.h', 'Turn auto-renew back on') : t('bill.sub.cancel.h', 'Stop auto-renew (stays active until the period ends)')}>
+          {busy ? <Spinner /> : canceling ? <><RefreshCw size={13} /> {t('bill.ah.reactivate', 'Reactivate')}</> : <><X size={13} /> {t('bill.ah.cancel', 'Cancel auto-renew')}</>}
+        </Button>
+      ) : (
+        <>
+          <Select className="!w-auto !py-1.5 !text-xs" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
+            {[1, 3, 6, 12, 24].map((m) => <option key={m} value={m}>{m} mo</option>)}
+          </Select>
+          <Button size="sm" variant="primary" disabled={busy} onClick={enableAutoRenew} title={t('bill.autorenew.h', 'Start a recurring subscription — charges automatically each term.')}>{busy ? <Spinner /> : <><RefreshCw size={13} /> {t('bill.ah.enable', 'Enable auto-renew')}</>}</Button>
+        </>
+      )}
     </div>
   );
 }

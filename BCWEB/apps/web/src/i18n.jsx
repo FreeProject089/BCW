@@ -626,6 +626,7 @@ const DICT = {
     'bill.sub.cancel.ok': 'Arrêter le renouvellement', 'bill.sub.resumed': 'Renouvellement auto réactivé.', 'bill.sub.canceled': 'Renouvellement auto arrêté — actif jusqu’à la fin de la période.',
     'bill.autorenew': 'Renouv. auto', 'bill.autorenew.h': 'Démarre un abonnement récurrent — prélevé automatiquement à chaque échéance.', 'bill.subscribe': 'S’abonner',
     'bill.renewonce': 'Renouveler une fois', 'bill.renewonce.h': 'Un seul prélèvement pour la durée choisie.',
+    'bill.ah.cancel': 'Annuler le renouvellement', 'bill.ah.reactivate': 'Réactiver', 'bill.ah.enable': 'Activer le renouvellement auto', 'bill.ah.ends': 'Se termine',
     'bill.history': 'Historique des paiements', 'bill.recurringtag': 'abonnement', 'bill.download': 'Télécharger le PDF', 'bill.view': 'Voir',
     'bill.h.subscription': 'Abonnement', 'bill.h.boost': 'Mise en avant', 'bill.h.hosting': 'Hébergement', 'bill.h.payment': 'Paiement',
 
