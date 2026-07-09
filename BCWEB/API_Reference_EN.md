@@ -133,11 +133,18 @@ from the Fastify route modules in `apps/api/src/routes/`.
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/hosting/plans` · `/capacity` · `/price` · `/feature-price` | — | Plans, capacity, live price preview. |
-| POST | `/hosting/checkout` | user | Stripe Checkout for a hosted repo. |
-| POST | `/repos/:id/feature/checkout` | user | Checkout for a repo feature/boost. |
+| POST | `/hosting/checkout` | user | Stripe Checkout for a single hosted repo (supports `autoRenew`). |
+| POST | `/repos/:id/feature/checkout` | user | Checkout for a repo feature/boost (one-time or `autoRenew`). |
+| POST | `/hosting/cart/quote` | user | Price a **shopping cart** (repos + boosts) live, validating/combining stacked promo codes — no side effects. |
+| POST | `/hosting/cart/checkout` | user | One Stripe Checkout for a whole cart. Requires `acceptedTerms:true`; persists a `PendingCart`; per-item `autoRenew` saves the card + the webhook starts a subscription. |
 | POST | `/me/billing/portal` | user | Stripe Customer Portal link. |
-| GET | `/me/payments` · `/me/payments/:id` | user | Payment history. |
-| POST | `/hosting/webhook` | webhook | Stripe webhook (provisions on payment, signature-verified). |
+| GET | `/me/billing/overview` | user | Active Stripe subscriptions (kind, repo name, renew/trial date, cancel state). |
+| GET | `/me/invoices` | user | Full Stripe invoice history (one-time + every subscription cycle). |
+| GET | `/me/invoices/:id/pdf` | user | Stream the real Stripe invoice PDF as an attachment (ownership-checked). |
+| GET | `/me/payments` · `/me/payments/:id` | user | Local payment ledger. |
+| GET | `/me/payments/:id/stripe-link` | user | Resolve the genuine Stripe hosted-invoice / receipt URL for a payment. |
+| POST | `/me/subscriptions/:id/cancel` | user | Stop auto-renew (`cancel_at_period_end`) or resume (`{resume:true}`), ownership-checked. |
+| POST | `/hosting/webhook` | webhook | Stripe webhook (provisions repos/boosts/carts on payment, subscription cycles, refunds — signature-verified). |
 
 ## 10. Announcements & notifications (`announcements.mjs`, part of `misc.mjs`)
 | Method | Path | Auth | Purpose |
@@ -171,7 +178,9 @@ from the Fastify route modules in `apps/api/src/routes/`.
 | POST | `/bot/heartbeat` · `/bot/activity` · `/bot/link/issue` | bot | Bot heartbeat, activity, link-code issue. |
 | GET/POST | `/bot/blog/unannounced` · `/blog/announced` | bot | Blog-announce queue. |
 | GET/POST | `/bot/kofi/unannounced` · `/kofi/announced` | bot | Ko-fi tip announce queue. |
+| GET/POST | `/bot/payments/unannounced` · `/payments/announced` | bot | Payment/refund announce queue (+ read-once `test` ping). |
 | GET/PUT | `/admin/bot/config` · `/admin/bot/token` | admin | Bot config + token (dashboard). |
+| POST | `/admin/bot/payments/test` | admin | Fire a one-off test payment embed to the configured channels. |
 | GET | `/admin/bot/members` · `/admin/bot/welcome-preview.png` | admin | Members view + welcome image. |
 | GET/POST/DELETE | `/me/discord/links` · `/me/discord/redeem` | user | Link/unlink Discord. |
 
@@ -213,10 +222,15 @@ from the Fastify route modules in `apps/api/src/routes/`.
 | GET/POST/PUT/DELETE | `/server/files*` (read/write/rename/mkdir/download/backups) | server-control | File manager + backups. |
 | GET/POST/PUT | `/server/backups/usage` · `/gc` · `/limit` | server-control | Backup housekeeping. |
 | POST | `/server/restart` | server-control | Restart the stack. |
+| POST | `/admin/telemetry/token` | admin | Mint an SSO token to open the BMM telemetry dashboard (HMAC, epoch-bound). |
+| GET/PUT | `/admin/telemetry/config` | admin | Read/update the BMM telemetry service's live config (storage limit, retention, erase delay) — proxied to the service. |
+| GET | `/server/telemetry-db/tables` · `/table/:name` | server-control | Read-only viewer over the separate BMM telemetry Postgres. |
 | GET | `/admin/security/audit` · `/admin/security/logins` | admin | Security log (actions, login attempts, IPs). |
 | GET/PUT | `/admin/server-control/users` · `/admin/server-control/:userId` | superadmin | Grant/revoke the server-control permission. |
 
 ---
 
-*250 endpoints total. Generated 2026-07-03 from `apps/api/src/routes/`. For request/response
-shapes, read the corresponding route module — each is small and commented.*
+*Generated from `apps/api/src/routes/` (last refreshed 2026-07 — includes the shopping cart,
+invoice history/PDF, subscription cancel, MRR reporting, live telemetry config, and the bot
+payments queue). For request/response shapes, read the corresponding route module — each is
+small and commented.*
