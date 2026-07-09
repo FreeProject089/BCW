@@ -39,9 +39,12 @@ const DEFAULT_BOT_CONFIG = {
   // posts each new tip to this channel with the running total.
   kofi: { enabled: false, channelId: '' },
   // Stripe payments & refunds: when enabled, the bot posts each new successful
-  // payment to `channelId` and each refund to `refundChannelId` (falls back to
-  // `channelId`). Fed by the Stripe webhook (Payment rows + bot.refundEvents).
-  payments: { enabled: false, channelId: '', refundChannelId: '' },
+  // payment to every id in `channelIds` and each refund to every id in
+  // `refundChannelIds`. The legacy single `channelId`/`refundChannelId` are still
+  // honoured (merged in) so old configs keep working; refunds fall back to the
+  // payment channels when no refund channels are set. Fed by the Stripe webhook
+  // (Payment rows + bot.refundEvents).
+  payments: { enabled: false, channelId: '', refundChannelId: '', channelIds: [], refundChannelIds: [] },
   limits: { maxTempChannels: 50, storageMB: 200 },
   // Per-server overrides: guilds[guildId] = { moderation?, welcome?, joinToCreate?,
   // gating? }. A feature present here REPLACES the top-level default for that guild;

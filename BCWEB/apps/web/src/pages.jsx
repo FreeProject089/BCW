@@ -4249,6 +4249,25 @@ const BLOG_SOURCES = [['*', 'All blogs'], ['bmm', 'BMM'], ['bsm', 'BSM'], ['comm
 // + which blogs to post there. A channel id is globally unique, so routing works
 // across every server the bot is in.
 const BLOG_SOURCE_KEY = { '*': 'db.src.all', bmm: 'db.src.bmm', bsm: 'db.src.bsm', community: 'db.src.community', installer: 'db.src.installer', showcase: 'db.src.showcase' };
+// Editable list of Discord channel ids (add / remove rows). Empty strings are kept
+// while editing and filtered out server-side, so a trailing blank row is harmless.
+function MultiChannelInput({ value, onChange, placeholder }) {
+  const { t } = useI18n();
+  const ids = Array.isArray(value) ? value : (value ? [value] : []);
+  const list = ids.length ? ids : [''];
+  return (
+    <div className="space-y-1.5">
+      {list.map((id, i) => (
+        <div key={i} className="flex gap-1.5">
+          <Input value={id} onChange={(e) => onChange(list.map((x, k) => (k === i ? e.target.value : x)))} placeholder={placeholder} />
+          {list.length > 1 && <Button size="sm" variant="ghost" onClick={() => onChange(list.filter((_, k) => k !== i))}><Trash2 size={13} /></Button>}
+        </div>
+      ))}
+      <button type="button" onClick={() => onChange([...list, ''])} className="text-xs text-[var(--primary-2)] hover:underline flex items-center gap-1"><Plus size={12} /> {t('db.f.addchan', 'Add another channel')}</button>
+    </div>
+  );
+}
+
 function BlogRoutes({ routes, onChange, guildList }) {
   const { t } = useI18n();
   const set = (i, patch) => onChange(routes.map((r, k) => (k === i ? { ...r, ...patch } : r)));
@@ -4509,11 +4528,11 @@ function AdminBot() {
         </ModuleCard>
 
         <ModuleCard icon={Receipt} title={t('db.mod.pay', 'Payments & refunds')} desc={t('db.mod.pay.d', 'Post each successful Stripe payment and each refund to the chosen channels.')} enabled={!!cfg.payments?.enabled} onToggle={(v) => set('payments.enabled', v)}>
-          <Field label={t('db.f.paych', 'Payments channel id')} hint={t('db.f.paych.h', 'Every successful payment (hosting, boost…) is posted here.')}>
-            <Input value={g('payments.channelId')} onChange={(e) => set('payments.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
+          <Field label={t('db.f.paych', 'Payments channels')} hint={t('db.f.paych.h', 'Every successful payment (hosting, boost…) is posted to each of these channels.')}>
+            <MultiChannelInput value={cfg.payments?.channelIds?.length ? cfg.payments.channelIds : (cfg.payments?.channelId ? [cfg.payments.channelId] : [])} onChange={(v) => set('payments.channelIds', v)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
-          <Field label={t('db.f.refundch', 'Refunds channel id')} hint={t('db.f.refundch.h', 'Refunds are posted here. Empty = use the payments channel.')}>
-            <Input value={g('payments.refundChannelId')} onChange={(e) => set('payments.refundChannelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
+          <Field label={t('db.f.refundch', 'Refunds channels')} hint={t('db.f.refundch.h', 'Refunds are posted to each of these. Empty = use the payments channels.')}>
+            <MultiChannelInput value={cfg.payments?.refundChannelIds?.length ? cfg.payments.refundChannelIds : (cfg.payments?.refundChannelId ? [cfg.payments.refundChannelId] : [])} onChange={(v) => set('payments.refundChannelIds', v)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
         </ModuleCard>
 

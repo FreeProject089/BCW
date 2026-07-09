@@ -20,45 +20,54 @@ export async function pollPayments(client) {
     const cfg = await config();
     const pay = cfg.payments || {};
     if (!cfg.enabled || !pay.enabled) return;
-    const payChannelId = pay.channelId;
-    const refundChannelId = pay.refundChannelId || pay.channelId;
-    if (!payChannelId && !refundChannelId) return;
+    // Merge the legacy single fields with the new arrays and de-dupe. Refunds fall
+    // back to the payment channels when no dedicated refund channels are configured.
+    const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+    const payChannelIds = uniq([...(pay.channelIds || []), pay.channelId]);
+    const refundChannelIds = uniq([...(pay.refundChannelIds || []), pay.refundChannelId]);
+    const refundTargets = refundChannelIds.length ? refundChannelIds : payChannelIds;
+    if (!payChannelIds.length && !refundTargets.length) return;
 
     const { payments, refunds } = await api.paymentsUnannounced();
     if (!payments.length && !refunds.length) return;
 
     const marks = { paymentIds: [], refundIds: [] };
 
-    // Successful payments → green embed in the payments channel.
-    const payChannel = payChannelId ? client.channels.cache.get(payChannelId) : null;
-    if (payChannel?.send) {
+    // Fan a built embed out to every configured channel; returns true if it landed
+    // in at least one (so we only mark announced when it was actually delivered).
+    const sendToAll = async (ids, embed) => {
+      let delivered = false;
+      for (const id of ids) {
+        const ch = client.channels.cache.get(id);
+        if (!ch?.send) continue;
+        try { await ch.send({ embeds: [embed] }); delivered = true; }
+        catch (e) { console.warn('[bot] payments announce to', id, 'failed', e.message); }
+      }
+      return delivered;
+    };
+
+    // Successful payments → green embed in every payment channel.
+    if (payChannelIds.length) {
       for (const p of payments) {
-        try {
-          const embed = new EmbedBuilder()
-            .setColor(0x16a34a)
-            .setTitle('💳 New payment')
-            .setDescription(`**${money(p.amountCents, p.currency)}** — ${p.description}`)
-            .addFields({ name: 'Type', value: String(p.kind || '—'), inline: true }, ...(p.buyer ? [{ name: 'Customer', value: p.buyer, inline: true }] : []))
-            .setTimestamp(p.createdAt ? new Date(p.createdAt) : new Date());
-          await payChannel.send({ embeds: [embed] });
-          marks.paymentIds.push(p.id);
-        } catch (e) { console.warn('[bot] payment announce failed', e.message); break; }
+        const embed = new EmbedBuilder()
+          .setColor(0x16a34a)
+          .setTitle('💳 New payment')
+          .setDescription(`**${money(p.amountCents, p.currency)}** — ${p.description}`)
+          .addFields({ name: 'Type', value: String(p.kind || '—'), inline: true }, ...(p.buyer ? [{ name: 'Customer', value: p.buyer, inline: true }] : []))
+          .setTimestamp(p.createdAt ? new Date(p.createdAt) : new Date());
+        if (await sendToAll(payChannelIds, embed)) marks.paymentIds.push(p.id);
       }
     }
 
-    // Refunds → amber embed in the refund channel (or payments channel).
-    const refundChannel = refundChannelId ? client.channels.cache.get(refundChannelId) : null;
-    if (refundChannel?.send) {
+    // Refunds → amber embed in every refund channel (or the payment channels).
+    if (refundTargets.length) {
       for (const r of refunds) {
-        try {
-          const embed = new EmbedBuilder()
-            .setColor(0xf59e0b)
-            .setTitle('↩️ Refund issued')
-            .setDescription(`**${money(r.amountCents, r.currency)}** refunded${r.email ? ` to ${maskEmail(r.email)}` : ''}.`)
-            .setTimestamp(r.at ? new Date(r.at) : new Date());
-          await refundChannel.send({ embeds: [embed] });
-          marks.refundIds.push(r.id);
-        } catch (e) { console.warn('[bot] refund announce failed', e.message); break; }
+        const embed = new EmbedBuilder()
+          .setColor(0xf59e0b)
+          .setTitle('↩️ Refund issued')
+          .setDescription(`**${money(r.amountCents, r.currency)}** refunded${r.email ? ` to ${maskEmail(r.email)}` : ''}.`)
+          .setTimestamp(r.at ? new Date(r.at) : new Date());
+        if (await sendToAll(refundTargets, embed)) marks.refundIds.push(r.id);
       }
     } else {
       // No usable refund channel — still mark them so they don't pile up forever.

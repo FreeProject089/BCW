@@ -978,7 +978,7 @@ const DICT = {
     'db.f.maxtemp': 'Max salons temp', 'db.f.dbcap': 'Limite base membres (MB)', 'db.f.dbcap.h': 'Les membres inactifs les plus anciens sont purgés une fois dépassée.',
     'db.f.antiselfbot': 'Filtre anti-selfbot', 'db.f.antiselfbot.sub': '(timeout mentions en masse)',
     'db.f.nopost': 'Salons interdits', 'db.f.nopost.h': 'Poster ici expulse l’utilisateur + purge ses messages. Un id de salon est unique à son serveur.',
-    'db.f.chanph': 'ID du salon — Entrée', 'db.f.chanid': 'ID du salon',
+    'db.f.chanph': 'ID du salon — Entrée', 'db.f.chanid': 'ID du salon', 'db.f.addchan': 'Ajouter un autre salon',
     'db.f.welcomech': 'ID du salon de bienvenue', 'db.f.joinmsg': 'Message d’arrivée', 'db.f.leavemsg': 'Message de départ', 'db.f.enabled': 'Activé',
     'db.preview': 'Aperçu · vraie bannière', 'db.refresh': 'Rafraîchir',
     'db.jtc.addlobby': 'Lobby', 'db.jtc.nolobbies': 'Aucun lobby — ajoutes-en un. Rejoindre ce salon vocal crée un salon temporaire dans sa catégorie.', 'db.jtc.lobbyn': 'Lobby {n}', 'db.jtc.lobbych': 'ID du salon vocal lobby', 'db.jtc.catid': 'ID de catégorie (auto si vide)', 'db.jtc.tempcat': 'Nom catégorie temp',
