@@ -5657,7 +5657,7 @@ function AlertRow({ a }) {
 }
 
 function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClose, onSave, slug, isShowcase }) {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const [at, setAt] = useState(existing?.scheduledAt ? new Date(existing.scheduledAt).toISOString().slice(0, 16) : '');
   const [name, setName] = useState(existing?.scheduledNext?.name ?? current.name ?? '');
   const [short, setShort] = useState(existing?.scheduledNext?.short ?? current.short ?? '');
@@ -5667,38 +5667,38 @@ function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClo
   const hasExisting = !!existing?.scheduledAt;
   let cfgValid = true; try { JSON.parse(configText || '{}'); } catch { cfgValid = false; }
   const save = async () => {
-    if (!at) return toast.error('Pick a date/time.');
-    let config; try { config = JSON.parse(configText || '{}'); } catch { return toast.error('Config JSON is invalid.'); }
+    if (!at) return toast.error(t('su.pickdate', 'Pick a date/time.'));
+    let config; try { config = JSON.parse(configText || '{}'); } catch { return toast.error(t('su.cfginvalid', 'Config JSON is invalid.')); }
     const next = includeNameShort ? { name: name.trim(), short: short.trim(), config } : { config };
     setBusy(true);
-    try { await onSave(new Date(at).toISOString(), next); toast.success('Update scheduled.'); onClose(); }
-    catch { toast.error('Failed.'); } finally { setBusy(false); }
+    try { await onSave(new Date(at).toISOString(), next); toast.success(t('su.scheduled', 'Update scheduled.')); onClose(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const cancelSchedule = async () => {
     setBusy(true);
-    try { await onSave(null, null); toast.success('Schedule cancelled.'); onClose(); }
-    catch { toast.error('Failed.'); } finally { setBusy(false); }
+    try { await onSave(null, null); toast.success(t('su.cancelled', 'Schedule cancelled.')); onClose(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   return (
     <Modal open onClose={onClose} title={title} icon={Clock} width="max-w-lg"
       footer={<>
-        {hasExisting && <Button variant="ghost" className="!text-red-400" disabled={busy} onClick={cancelSchedule}>Cancel schedule</Button>}
-        <Button variant="ghost" onClick={onClose}>Close</Button>
-        <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : 'Schedule'}</Button>
+        {hasExisting && <Button variant="ghost" className="!text-red-400" disabled={busy} onClick={cancelSchedule}>{t('su.cancelsched', 'Cancel schedule')}</Button>}
+        <Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>
+        <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('su.schedule', 'Schedule')}</Button>
       </>}>
-      <p className="text-sm text-[var(--muted)] mb-3">Stage new content below — it automatically replaces the current version at the date/time you pick. Nothing changes until then.</p>
-      <Field label="Switch at"><Input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} /></Field>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('su.desc', 'Stage new content below — it automatically replaces the current version at the date/time you pick. Nothing changes until then.')}</p>
+      <Field label={t('su.switchat', 'Switch at')}><Input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} /></Field>
       {includeNameShort && (
         <div className="grid grid-cols-[1fr_110px] gap-3 mt-3">
-          <Field label="New name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-          <Field label="New short (≤5)"><Input value={short} maxLength={5} onChange={(e) => setShort(e.target.value)} /></Field>
+          <Field label={t('su.newname', 'New name')}><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+          <Field label={t('su.newshort', 'New short (≤5)')}><Input value={short} maxLength={5} onChange={(e) => setShort(e.target.value)} /></Field>
         </div>
       )}
       <div className="mt-3">
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] block">New config</label>
+          <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] block">{t('su.newconfig', 'New config')}</label>
           <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
-            {[['form', 'Visual'], ['json', 'JSON']].map(([m, label]) => (
+            {[['form', t('su.visual', 'Visual')], ['json', 'JSON']].map(([m, label]) => (
               <button key={m} type="button" onClick={() => setEditMode(m)} disabled={m === 'form' && !cfgValid}
                 className={`px-2.5 py-1 rounded-md ${editMode === m ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'} ${m === 'form' && !cfgValid ? 'opacity-40 cursor-not-allowed' : ''}`}>{label}</button>
             ))}
@@ -5709,7 +5709,7 @@ function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClo
               ? <div className="rounded-xl border border-[var(--line)] p-3 max-h-[46vh] overflow-auto bg-[var(--bg-solid)]">
                   <ProjectConfigEditor value={JSON.parse(configText || '{}')} onChange={(cfg) => setConfigText(JSON.stringify(cfg, null, 2))} slug={slug} isShowcase={isShowcase} />
                 </div>
-              : <div className="text-sm text-[var(--muted)] p-3">Invalid JSON — switch to the JSON tab to fix it.</div>)
+              : <div className="text-sm text-[var(--muted)] p-3">{t('su.invalidjsontab', 'Invalid JSON — switch to the JSON tab to fix it.')}</div>)
           : <JsonEditor value={configText} onChange={setConfigText} minH={220} />}
       </div>
     </Modal>
@@ -5729,19 +5729,19 @@ const SHOWCASE_TEMPLATE = {
 };
 
 function AdminShowcase() {
-  const toast = useToast(); const dialog = useDialog();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/showcase'), []);
   const [editing, setEditing] = useState(null); // project object or 'new'
   const [scheduling, setScheduling] = useState(null); // project object
   const projects = data?.projects || [];
-  const del = async (pr) => { if (!(await dialog.confirm({ title: 'Delete project', message: `Delete "${pr.name}"?`, okLabel: 'Delete', danger: true }))) return; try { await api.del(`/admin/showcase/${pr.id}`); toast.success('Deleted.'); reload(); } catch { toast.error('Failed.'); } };
+  const del = async (pr) => { if (!(await dialog.confirm({ title: t('sh.del.t', 'Delete project'), message: t('sh.del.m', 'Delete "{name}"?').replace('{name}', pr.name), okLabel: t('sh.del.ok', 'Delete'), danger: true }))) return; try { await api.del(`/admin/showcase/${pr.id}`); toast.success(t('common.deleted', 'Deleted.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <h2 className="font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[var(--primary-2)]" /> Other projects</h2>
-        <Button size="sm" variant="primary" onClick={() => setEditing('new')}><Plus size={14} /> New project</Button>
+        <h2 className="font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[var(--primary-2)]" /> {t('sh.title', 'Other projects')}</h2>
+        <Button size="sm" variant="primary" onClick={() => setEditing('new')}><Plus size={14} /> {t('sh.new', 'New project')}</Button>
       </div>
-      <p className="text-sm text-[var(--muted)] mb-4">Feature any project on the public <code>/projects</code> page. Overview is always shown; enable Release notes, Community and Legal per project.</p>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('sh.sub', 'Feature any project on the public /projects page. Overview is always shown; enable Release notes, Community and Legal per project.')}</p>
       {loading ? <Loading /> : projects.length ? <div className="space-y-2">
         {projects.map((pr) => {
           const announcing = pr.announceEnabled && pr.announceRevealAt && new Date(pr.announceRevealAt) > new Date();
@@ -5752,24 +5752,24 @@ function AdminShowcase() {
               : <div className="grid place-items-center w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white font-extrabold text-xs shrink-0">{pr.short}</div>}
             <div className="flex-1 min-w-0"><div className="font-medium truncate">{pr.name} <span className="text-xs text-[var(--faint)] font-normal">/project/{pr.slug}</span></div>
               <div className="text-xs text-[var(--faint)] flex items-center gap-1.5 flex-wrap">
-                {[pr.config?.tabs?.releases && 'releases', pr.config?.tabs?.community && 'community', pr.config?.tabs?.legal && 'legal'].filter(Boolean).join(' · ') || 'overview only'}
+                {[pr.config?.tabs?.releases && 'releases', pr.config?.tabs?.community && 'community', pr.config?.tabs?.legal && 'legal'].filter(Boolean).join(' · ') || t('sh.overviewonly', 'overview only')}
                 {pr.pinTopbar && <span className="inline-flex items-center gap-0.5 text-[var(--primary-2)]"><Rss size={10} /> topbar</span>}
                 {pr.visibility && pr.visibility !== 'public' && <span className="inline-flex items-center gap-0.5"><EyeOff size={10} /> {pr.visibility}</span>}
               </div></div>
-            <Badge tone={pr.published ? 'green' : ''}>{pr.published ? 'published' : 'hidden'}</Badge>
-            {announcing && <Badge tone="primary"><Megaphone size={10} /> counting down</Badge>}
-            {pr.scheduledAt && <Badge tone="primary"><Clock size={10} /> update {new Date(pr.scheduledAt).toLocaleDateString()}</Badge>}
-            <Button size="sm" variant="ghost" onClick={() => setScheduling(pr)} title="Schedule an update"><Clock size={14} /></Button>
-            <Button size="sm" variant="ghost" onClick={() => setEditing(pr)}><PenSquare size={14} /> Edit</Button>
+            <Badge tone={pr.published ? 'green' : ''}>{pr.published ? t('sh.published', 'published') : t('sh.hidden', 'hidden')}</Badge>
+            {announcing && <Badge tone="primary"><Megaphone size={10} /> {t('sh.countdown', 'counting down')}</Badge>}
+            {pr.scheduledAt && <Badge tone="primary"><Clock size={10} /> {t('sh.update', 'update')} {new Date(pr.scheduledAt).toLocaleDateString()}</Badge>}
+            <Button size="sm" variant="ghost" onClick={() => setScheduling(pr)} title={t('sh.schedtip', 'Schedule an update')}><Clock size={14} /></Button>
+            <Button size="sm" variant="ghost" onClick={() => setEditing(pr)}><PenSquare size={14} /> {t('sh.editbtn', 'Edit')}</Button>
             <a href={`/project/${pr.slug}`} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost"><ArrowUpRight size={14} /></Button></a>
             <Button size="sm" variant="ghost" onClick={() => del(pr)}><Trash2 size={14} /></Button>
           </Card>
           );
         })}
-      </div> : <EmptyState icon={Sparkles} title="No projects yet" sub="Add your first featured project." />}
+      </div> : <EmptyState icon={Sparkles} title={t('sh.empty', 'No projects yet')} sub={t('sh.emptysub', 'Add your first featured project.')} />}
       {editing && <ShowcaseEditModal project={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onDone={reload} />}
       {scheduling && (
-        <ScheduleUpdateModal title={`Schedule an update — ${scheduling.name}`} includeNameShort existing={scheduling}
+        <ScheduleUpdateModal title={t('sh.schedmodal', 'Schedule an update — {name}').replace('{name}', scheduling.name)} includeNameShort existing={scheduling}
           slug={scheduling.slug} isShowcase
           current={{ name: scheduling.name, short: scheduling.short, config: scheduling.config }}
           onClose={() => setScheduling(null)}
@@ -5780,7 +5780,7 @@ function AdminShowcase() {
 }
 
 function ShowcaseEditModal({ project, onClose, onDone }) {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const isNew = !project;
   const cfg0 = project?.config || {};
   const [name, setName] = useState(project?.name || '');
@@ -5807,10 +5807,10 @@ function ShowcaseEditModal({ project, onClose, onDone }) {
   const [iconPick, setIconPick] = useState(false);
   const [busy, setBusy] = useState(false);
   const save = async () => {
-    if (name.trim().length < 2) return toast.error('Name is required.');
-    if (!short.trim()) return toast.error('Short name is required.');
-    let extra = {}; try { extra = JSON.parse(details || '{}'); } catch { return toast.error('Details JSON is invalid.'); }
-    if (announce.announceEnabled && !announce.announceRevealAt) return toast.error('Set a reveal date/time for the announcement.');
+    if (name.trim().length < 2) return toast.error(t('sh.e.namereq', 'Name is required.'));
+    if (!short.trim()) return toast.error(t('sh.e.shortreq', 'Short name is required.'));
+    let extra = {}; try { extra = JSON.parse(details || '{}'); } catch { return toast.error(t('sh.e.jsoninvalid', 'Details JSON is invalid.')); }
+    if (announce.announceEnabled && !announce.announceRevealAt) return toast.error(t('sh.e.revealreq', 'Set a reveal date/time for the announcement.'));
     const config = { ...extra, tabs, tagline };
     const payload = {
       name: name.trim(), short: short.trim(), icon: icon.trim() || null, published, config, pinTopbar, visibility, visibilityWhitelist: whitelist,
@@ -5820,49 +5820,49 @@ function ShowcaseEditModal({ project, onClose, onDone }) {
     try {
       if (isNew) await api.post('/admin/showcase', payload);
       else await api.put(`/admin/showcase/${project.id}`, payload);
-      toast.success('Saved.'); onClose(); onDone();
-    } catch (x) { toast.error(x.data?.error || 'Save failed.'); } finally { setBusy(false); }
+      toast.success(t('common.saved', 'Saved.')); onClose(); onDone();
+    } catch (x) { toast.error(x.data?.error || t('common.savefail', 'Save failed.')); } finally { setBusy(false); }
   };
   const Toggle = ({ k, label }) => <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={tabs[k]} onChange={(e) => setTabs({ ...tabs, [k]: e.target.checked })} /> {label}</label>;
   return (
-    <Modal open onClose={onClose} title={isNew ? 'New project' : `Edit ${project.name}`} icon={Sparkles} width="max-w-lg"
-      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : 'Save'}</Button></>}>
+    <Modal open onClose={onClose} title={isNew ? t('sh.new', 'New project') : t('sh.e.edit', 'Edit {name}').replace('{name}', project.name)} icon={Sparkles} width="max-w-lg"
+      footer={<><Button variant="ghost" onClick={onClose}>{t('su.cancel', 'Cancel')}</Button><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button></>}>
       <div className="grid grid-cols-[1fr_110px] gap-3">
-        <Field label="Project name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Better Something" /></Field>
-        <Field label="Short (≤5)"><Input value={short} maxLength={5} onChange={(e) => setShort(e.target.value)} placeholder="BS" /></Field>
+        <Field label={t('sh.e.pname', 'Project name')}><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Better Something" /></Field>
+        <Field label={t('sh.e.pshort', 'Short (≤5)')}><Input value={short} maxLength={5} onChange={(e) => setShort(e.target.value)} placeholder="BS" /></Field>
       </div>
-      <div className="mt-3"><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="One-line description" /></Field></div>
-      <div className="mt-3"><Field label="Logo / icon" hint="Topbar pill + page header + blog-thumbnail fallback. Pick a lucide/brand icon, upload an svg/png, or paste a logo URL.">
+      <div className="mt-3"><Field label={t('sh.e.tagline', 'Tagline')}><Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder={t('sh.e.taglineph', 'One-line description')} /></Field></div>
+      <div className="mt-3"><Field label={t('sh.e.logo', 'Logo / icon')} hint={t('sh.e.logohint', 'Topbar pill + page header + blog-thumbnail fallback. Pick a lucide/brand icon, upload an svg/png, or paste a logo URL.')}>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="w-10 h-10 rounded-lg border border-[var(--line)] shrink-0 grid place-items-center bg-[var(--surface-2)] text-[var(--primary-2)]">
             <ShowcaseIcon icon={icon} size={26} rounded={6} fallback={<Sparkles size={18} className="text-[var(--faint)]" />} />
           </div>
           <Input className="flex-1 min-w-[140px]" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="lucide name, simple:github, or https://…/logo.png" />
-          <Button type="button" size="sm" onClick={() => setIconPick(true)}>Pick</Button>
-          <Button type="button" size="sm" onClick={() => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*,.svg'; i.onchange = async () => { const f = i.files?.[0]; if (!f) return; try { toast.info('Uploading…'); setIcon(await uploadImage(f)); } catch { toast.error('Upload failed.'); } }; i.click(); }}>Upload</Button>
-          {icon && <Button type="button" size="sm" variant="ghost" onClick={() => setIcon('')}>Clear</Button>}
+          <Button type="button" size="sm" onClick={() => setIconPick(true)}>{t('sh.e.pick', 'Pick')}</Button>
+          <Button type="button" size="sm" onClick={() => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*,.svg'; i.onchange = async () => { const f = i.files?.[0]; if (!f) return; try { toast.info(t('sh.e.uploading', 'Uploading…')); setIcon(await uploadImage(f)); } catch { toast.error(t('sh.e.uploadfail', 'Upload failed.')); } }; i.click(); }}>{t('sh.e.upload', 'Upload')}</Button>
+          {icon && <Button type="button" size="sm" variant="ghost" onClick={() => setIcon('')}>{t('sh.e.clear', 'Clear')}</Button>}
         </div>
       </Field></div>
-      {iconPick && <IconPicker title="Pick a project icon" onPick={(n) => setIcon(n)} onClose={() => setIconPick(false)} />}
+      {iconPick && <IconPicker title={t('sh.e.pickicon', 'Pick a project icon')} onPick={(n) => setIcon(n)} onClose={() => setIconPick(false)} />}
       <div className="mt-3">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Sub-tabs</div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('sh.e.subtabs', 'Sub-tabs')}</div>
         <div className="flex flex-wrap gap-x-5 gap-y-2 p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]">
-          <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked disabled /> Overview (always)</label>
-          <Toggle k="releases" label="Release notes" />
-          <Toggle k="community" label="Community" />
-          <Toggle k="legal" label="Legal" />
+          <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked disabled /> {t('sh.e.overview', 'Overview (always)')}</label>
+          <Toggle k="releases" label={t('sh.e.releases', 'Release notes')} />
+          <Toggle k="community" label={t('sh.e.community', 'Community')} />
+          <Toggle k="legal" label={t('sh.e.legal', 'Legal')} />
         </div>
       </div>
       <div className="mt-3">
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">Details (JSON)</label>
-          <button type="button" onClick={() => setDetails(JSON.stringify(SHOWCASE_TEMPLATE, null, 2))} className="btn btn-sm"><Wand2 size={13} /> Template</button>
+          <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('sh.e.details', 'Details (JSON)')}</label>
+          <button type="button" onClick={() => setDetails(JSON.stringify(SHOWCASE_TEMPLATE, null, 2))} className="btn btn-sm"><Wand2 size={13} /> {t('sh.e.template', 'Template')}</button>
         </div>
-        <p className="text-[11px] text-[var(--faint)] mb-1.5">links (github/source/discord/kofi/website/custom), downloads[], overview media (image/video/replayUrl/rrwebUrl), progressSource, releaseNotes, community, legal cards.</p>
+        <p className="text-[11px] text-[var(--faint)] mb-1.5">{t('sh.e.detailshint', 'links (github/source/discord/kofi/website/custom), downloads[], overview media (image/video/replayUrl/rrwebUrl), progressSource, releaseNotes, community, legal cards.')}</p>
         <JsonEditor value={details} onChange={setDetails} minH={220} />
       </div>
-      <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} /> Published (visible on /projects)</label>
-      <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer"><input type="checkbox" checked={pinTopbar} onChange={(e) => setPinTopbar(e.target.checked)} /> <Rss size={13} className="text-[var(--primary-2)]" /> Pin as its own topbar pill (not just the /projects grid)</label>
+      <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} /> {t('sh.e.published', 'Published (visible on /projects)')}</label>
+      <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer"><input type="checkbox" checked={pinTopbar} onChange={(e) => setPinTopbar(e.target.checked)} /> <Rss size={13} className="text-[var(--primary-2)]" /> {t('sh.e.pin', 'Pin as its own topbar pill (not just the /projects grid)')}</label>
       <div className="mt-3">
         <VisibilitySection visibility={visibility} whitelist={whitelist} onVisibility={setVisibility}
           onAddWhitelist={(e) => setWhitelist((w) => [...w, e])} onRemoveWhitelist={(e) => setWhitelist((w) => w.filter((a) => !(a.type === e.type && a.id === e.id)))} />

@@ -223,6 +223,32 @@ const DICT = {
     'fh.storage': 'Stockage (Go)', 'fh.upload': 'Envoi (Mbps)', 'fh.cpu': 'Part de CPU', 'fh.plan': 'Plan', 'fh.selectplan': 'Choisir un plan…',
     'fh.listpub': 'Lister publiquement une fois vérifié', 'fh.provision': 'Provisionner (gratuit)',
 
+    // ── Admin : programmer une mise à jour ──
+    'su.pickdate': 'Choisis une date/heure.', 'su.cfginvalid': 'Le JSON de config est invalide.', 'su.scheduled': 'Mise à jour programmée.',
+    'su.cancelsched': 'Annuler la programmation', 'su.cancelled': 'Programmation annulée.', 'su.close': 'Fermer', 'su.schedule': 'Programmer',
+    'su.desc': 'Prépare le nouveau contenu ci-dessous — il remplace automatiquement la version actuelle à la date/heure choisie. Rien ne change avant.',
+    'su.switchat': 'Basculer à', 'su.newname': 'Nouveau nom', 'su.newshort': 'Nouveau court (≤5)', 'su.newconfig': 'Nouvelle config',
+    'su.visual': 'Visuel', 'su.invalidjsontab': 'JSON invalide — passe à l’onglet JSON pour le corriger.', 'su.cancel': 'Annuler',
+    'common.save': 'Enregistrer',
+
+    // ── Admin : autres projets (showcase) ──
+    'sh.del.t': 'Supprimer le projet', 'sh.del.m': 'Supprimer « {name} » ?', 'sh.del.ok': 'Supprimer',
+    'sh.title': 'Autres projets', 'sh.new': 'Nouveau projet',
+    'sh.sub': 'Mets en avant n’importe quel projet sur la page publique /projects. L’aperçu est toujours affiché ; active Notes de version, Communauté et Légal par projet.',
+    'sh.overviewonly': 'aperçu seulement', 'sh.topbar': 'barre du haut', 'sh.published': 'publié', 'sh.hidden': 'masqué',
+    'sh.countdown': 'compte à rebours', 'sh.update': 'màj', 'sh.schedtip': 'Programmer une mise à jour', 'sh.editbtn': 'Modifier',
+    'sh.empty': 'Aucun projet', 'sh.emptysub': 'Ajoute ton premier projet mis en avant.', 'sh.schedmodal': 'Programmer une mise à jour — {name}',
+    // ShowcaseEditModal
+    'sh.e.namereq': 'Le nom est requis.', 'sh.e.shortreq': 'Le nom court est requis.', 'sh.e.jsoninvalid': 'Le JSON des détails est invalide.',
+    'sh.e.revealreq': 'Définis une date/heure de révélation pour l’annonce.', 'sh.e.edit': 'Modifier {name}',
+    'sh.e.pname': 'Nom du projet', 'sh.e.pshort': 'Court (≤5)', 'sh.e.tagline': 'Slogan', 'sh.e.taglineph': 'Description en une ligne',
+    'sh.e.logo': 'Logo / icône', 'sh.e.logohint': 'Pastille de barre + en-tête de page + miniature de blog par défaut. Choisis une icône lucide/marque, importe un svg/png, ou colle une URL de logo.',
+    'sh.e.pick': 'Choisir', 'sh.e.uploading': 'Import…', 'sh.e.uploadfail': 'Échec de l’import.', 'sh.e.upload': 'Importer', 'sh.e.clear': 'Effacer',
+    'sh.e.pickicon': 'Choisis une icône de projet', 'sh.e.subtabs': 'Sous-onglets', 'sh.e.overview': 'Aperçu (toujours)',
+    'sh.e.releases': 'Notes de version', 'sh.e.community': 'Communauté', 'sh.e.legal': 'Légal', 'sh.e.details': 'Détails (JSON)', 'sh.e.template': 'Modèle',
+    'sh.e.detailshint': 'liens (github/source/discord/kofi/site/personnalisé), downloads[], média d’aperçu (image/video/replayUrl/rrwebUrl), progressSource, releaseNotes, community, cartes légales.',
+    'sh.e.published': 'Publié (visible sur /projects)', 'sh.e.pin': 'Épingler comme sa propre pastille de barre (pas seulement la grille /projects)',
+
     'hosting.title': 'Héberger un Server-Repo', 'hosting.sub': 'On l’exécute, tu le gères. Paie selon la taille dont tu as besoin.',
     'hosting.single': 'Dépôt unique', 'hosting.single.d': 'Un seul dépôt avec tout le quota.',
     'hosting.multi': 'Dépôts multiples', 'hosting.multi.d': 'Répartis le stockage sur plusieurs dépôts, gérés par toi.',
