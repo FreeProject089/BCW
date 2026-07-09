@@ -176,7 +176,17 @@ const DICT = {
     'proj.nocontrib': 'Pas encore de contributeurs', 'proj.messages': 'Messages de la communauté',
     'proj.blog': 'Blog', 'proj.noposts': 'Pas encore de billets',
     'common.loading': 'Chargement…', 'common.cancel': 'Annuler',
-    'common.failed': 'Échec.', 'common.deleted': 'Supprimé.', 'common.saved': 'Enregistré.', 'common.removed': 'Retiré.', 'common.copied': 'Copié.', 'common.savefail': 'Échec de l’enregistrement.', 'common.loadfail': 'Échec du chargement.',
+    'common.failed': 'Échec.', 'common.deleted': 'Supprimé.', 'common.saved': 'Enregistré.', 'common.removed': 'Retiré.', 'common.copied': 'Copié.', 'common.savefail': 'Échec de l’enregistrement.', 'common.loadfail': 'Échec du chargement.', 'common.invalidjson': 'JSON invalide.',
+
+    // ── Admin : config des projets ──
+    'ap.title': 'Configuration des projets', 'ap.sub': 'Configure les téléchargements, liens, contributeurs & messages, le suivi d’avancement, les docs légales et la source des notes de version GitHub — par projet.',
+    'ap.refreshcaches': 'Rafraîchir les caches du site', 'ap.cacheflushed': 'Caches du site rafraîchis ({n} entrées) — les changements du repo sont visibles.',
+    'ap.srcsaved': 'Source d’avancement enregistrée.', 'ap.fetched': 'progress.json récupéré ({n} éléments).', 'ap.fetchfail': 'Échec de la récupération.',
+    'ap.saved': '{name} enregistré.', 'ap.vissaved': 'Visibilité enregistrée.',
+    'ap.homenews.on': '{name} apparaîtra dans les « Dernières actus » de l’accueil.', 'ap.homenews.off': '{name} n’apparaît plus dans les « Dernières actus » de l’accueil.',
+    'ap.blogtab.on': '{name} affiche maintenant un onglet Blog.', 'ap.blogtab.off': '{name} n’affiche plus d’onglet Blog.',
+    'ap.progsrc': 'Source du suivi d’avancement', 'ap.test': 'Tester', 'ap.savesource': 'Enregistrer la source',
+    'ap.homenews': 'Afficher dans les « Dernières actus » de l’accueil', 'ap.homenews.d': 'Les articles de {name} apparaissent toujours sur /blog indépendamment de ceci — ça ne contrôle que le fil de l’accueil.',
 
     // ── Admin : objectif de financement Ko-fi ──
     'kg.title': 'Objectif de financement (widget public)',

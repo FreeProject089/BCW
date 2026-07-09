@@ -3611,7 +3611,7 @@ function AdminFreeHost() {
 
 const PROJ_META = { community: { icon: Package, name: 'Community' }, bmm: { icon: Boxes, name: 'BMM' }, bsm: { icon: Music2, name: 'BSM' }, installer: { icon: Download, name: 'Installer' } };
 function AdminProjects() {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const { data, reload } = useAsync(() => api.get('/projects'), []);
   // Showcase ("Other projects") are configurable here too — added automatically.
   const show = useAsync(() => api.get('/admin/showcase'), []);
@@ -3640,25 +3640,25 @@ function AdminProjects() {
       const cfg = JSON.parse(text || '{}');
       if (progUrl.trim()) cfg.progressSource = progUrl.trim(); else delete cfg.progressSource;
       await putConfig(cfg);
-      setText(JSON.stringify(cfg, null, 2)); toast.success('Progress source saved.'); reload(); show.reload?.();
-    } catch (x) { toast.error(x.data?.error || 'Save failed.'); }
+      setText(JSON.stringify(cfg, null, 2)); toast.success(t('ap.srcsaved', 'Progress source saved.')); reload(); show.reload?.();
+    } catch (x) { toast.error(x.data?.error || t('common.savefail', 'Save failed.')); }
   };
   // A change on GitHub (progress.json, release notes…) can sit in the server's
   // 5-min proxy cache — this makes it visible on the site immediately.
   const flushCache = async () => {
-    try { const r = await api.post('/admin/projects/flush-cache'); toast.success(`Site caches refreshed (${r.flushed} entries) — repo changes are live now.`); }
-    catch { toast.error('Failed.'); }
+    try { const r = await api.post('/admin/projects/flush-cache'); toast.success(t('ap.cacheflushed', 'Site caches refreshed ({n} entries) — repo changes are live now.').replace('{n}', r.flushed)); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
   };
   const previewSource = async () => {
-    try { const r = await api.get(`/projects/${active}/progress`); const n = (r.progress?.categories || []).reduce((a, c) => a + (c.items?.length || 0), 0); toast.success(`Fetched progress.json (${n} items).`); }
-    catch (x) { toast.error(x.data?.error || x.data?.detail || 'Fetch failed.'); }
+    try { const r = await api.get(`/projects/${active}/progress`); const n = (r.progress?.categories || []).reduce((a, c) => a + (c.items?.length || 0), 0); toast.success(t('ap.fetched', 'Fetched progress.json ({n} items).').replace('{n}', n)); }
+    catch (x) { toast.error(x.data?.error || x.data?.detail || t('ap.fetchfail', 'Fetch failed.')); }
   };
   let valid = true; try { JSON.parse(text || '{}'); } catch { valid = false; }
-  const format = () => { try { setText(JSON.stringify(JSON.parse(text), null, 2)); } catch { toast.error('Invalid JSON.'); } };
+  const format = () => { try { setText(JSON.stringify(JSON.parse(text), null, 2)); } catch { toast.error(t('common.invalidjson', 'Invalid JSON.')); } };
   const save = async () => {
-    if (!valid) return toast.error('Invalid JSON.');
-    try { await putConfig(JSON.parse(text)); toast.success(`${isShowcase ? activeShow?.name : PROJ_META[active].name} saved.`); reload(); show.reload?.(); }
-    catch (x) { toast.error(x.data?.error || 'Save failed.'); }
+    if (!valid) return toast.error(t('common.invalidjson', 'Invalid JSON.'));
+    try { await putConfig(JSON.parse(text)); toast.success(t('ap.saved', '{name} saved.').replace('{name}', isShowcase ? activeShow?.name : PROJ_META[active].name)); reload(); show.reload?.(); }
+    catch (x) { toast.error(x.data?.error || t('common.savefail', 'Save failed.')); }
   };
   const hint = (label, val) => <div><div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{label}</div><code className="text-[11px] text-[var(--muted)]">{val}</code></div>;
   const taRef = useRef(null); const gutRef = useRef(null);
@@ -3671,9 +3671,9 @@ function AdminProjects() {
     try {
       if (isShowcase) await api.put(`/admin/showcase/${activeShow.id}`, { showOnHomeNews: !showOnHomeNews });
       else await api.put(`/admin/projects/${active}/home-news`, { show: !showOnHomeNews });
-      toast.success(`${M.name} ${!showOnHomeNews ? 'will now show' : 'no longer shows'} in home Latest news.`);
+      toast.success((!showOnHomeNews ? t('ap.homenews.on', '{name} will now show in home Latest news.') : t('ap.homenews.off', '{name} no longer shows in home Latest news.')).replace('{name}', M.name));
       reload(); show.reload?.();
-    } catch { toast.error('Failed.'); }
+    } catch { toast.error(t('common.failed', 'Failed.')); }
   };
   // Opt-in "Blog" tab on the project's own page, showing only this project's posts.
   const showBlogTab = isShowcase ? (activeShow?.showBlogTab === true) : (data?.blogTab?.[active] === true);
@@ -3681,19 +3681,19 @@ function AdminProjects() {
     try {
       if (isShowcase) await api.put(`/admin/showcase/${activeShow.id}`, { showBlogTab: !showBlogTab });
       else await api.put(`/admin/projects/${active}/blog-tab`, { show: !showBlogTab });
-      toast.success(`${M.name} ${!showBlogTab ? 'now shows' : 'no longer shows'} a Blog tab.`);
+      toast.success((!showBlogTab ? t('ap.blogtab.on', '{name} now shows a Blog tab.') : t('ap.blogtab.off', '{name} no longer shows a Blog tab.')).replace('{name}', M.name));
       reload(); show.reload?.();
-    } catch { toast.error('Failed.'); }
+    } catch { toast.error(t('common.failed', 'Failed.')); }
   };
   // Visibility gate — every fixed project except 'community' (which is always public).
   const saveVisibility = async (visibility, whitelist) => {
-    try { await api.put(`/admin/projects/${active}/visibility`, { visibility, whitelist }); toast.success('Visibility saved.'); adminMeta.reload?.(); }
-    catch { toast.error('Failed.'); }
+    try { await api.put(`/admin/projects/${active}/visibility`, { visibility, whitelist }); toast.success(t('ap.vissaved', 'Visibility saved.')); adminMeta.reload?.(); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
   };
   return (
     <div className="mt-10">
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> Projects config</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">Configure downloads, links, contributors & messages, the progress tracker, legal docs, and the GitHub release-notes source — per project.</p>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('ap.title', 'Projects config')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('ap.sub', 'Configure downloads, links, contributors & messages, the progress tracker, legal docs, and the GitHub release-notes source — per project.')}</p>
       <div className="flex flex-wrap items-center gap-2 mb-4">
         {keys.map((k) => { const Pm = PROJ_META[k]; return (
           <button key={k} onClick={() => setActive(k)}
@@ -3709,24 +3709,24 @@ function AdminProjects() {
           </button>
         ))}
         <Button size="sm" variant="ghost" className="ml-auto" onClick={flushCache} title="Repo changes (progress.json, release notes, links) can sit in a 5-min cache — this applies them now.">
-          <RefreshCw size={13} /> Refresh site caches
+          <RefreshCw size={13} /> {t('ap.refreshcaches', 'Refresh site caches')}
         </Button>
       </div>
       {/* Progress tracker source: pull the project's progress.json from a URL. */}
       <Card className="p-4 mb-4">
-        <div className="flex items-center gap-2 mb-2"><TrendingUp size={15} className="text-[var(--primary-2)]" /><span className="font-medium text-sm">Progress tracker source</span></div>
+        <div className="flex items-center gap-2 mb-2"><TrendingUp size={15} className="text-[var(--primary-2)]" /><span className="font-medium text-sm">{t('ap.progsrc', 'Progress tracker source')}</span></div>
         <p className="text-xs text-[var(--muted)] mb-3">A raw URL to a <code>progress.json</code> ({'{ lastUpdate, art, code, categories:[{ name, items:[{ label, status, percent }] }] }'}). Rendered live on the project page; leave empty to use the inline <code>progress</code> in the config below.</p>
         <div className="flex flex-col sm:flex-row gap-2">
           <Input className="flex-1" value={progUrl} onChange={(e) => setProgUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/…/progress.json" />
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={previewSource} disabled={!progUrl.trim()}><Globe size={14} /> Test</Button>
-            <Button variant="primary" onClick={saveSource}><CheckCircle2 size={14} /> Save source</Button>
+            <Button variant="ghost" onClick={previewSource} disabled={!progUrl.trim()}><Globe size={14} /> {t('ap.test', 'Test')}</Button>
+            <Button variant="primary" onClick={saveSource}><CheckCircle2 size={14} /> {t('ap.savesource', 'Save source')}</Button>
           </div>
         </div>
       </Card>
       <Card className="p-4 mb-4 flex items-center gap-3">
         <Newspaper size={15} className="text-[var(--primary-2)] shrink-0" />
-        <div className="flex-1"><span className="font-medium text-sm">Show in home "Latest news"</span><p className="text-xs text-[var(--muted)]">{M.name}'s posts always appear on /blog regardless of this — this only controls the home page feed.</p></div>
+        <div className="flex-1"><span className="font-medium text-sm">{t('ap.homenews', 'Show in home "Latest news"')}</span><p className="text-xs text-[var(--muted)]">{t('ap.homenews.d', "{name}'s posts always appear on /blog regardless of this — this only controls the home page feed.").replace('{name}', M.name)}</p></div>
         <button onClick={toggleHomeNews} className={`relative w-10 h-6 rounded-full transition shrink-0 ${showOnHomeNews ? 'bg-[var(--primary)]' : 'bg-[var(--surface-2)] border border-[var(--line)]'}`}>
           <span className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${showOnHomeNews ? 'translate-x-[18px]' : 'translate-x-0'}`} />
         </button>
