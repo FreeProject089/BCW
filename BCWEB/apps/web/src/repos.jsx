@@ -818,15 +818,20 @@ function PromoRedeem() {
 // One row per hosted repo — its prepaid term, and a renew action. Prepaid hosting
 // never auto-renews (no recurring Stripe subscription behind it, see the sweeper),
 // so this is the only way to extend it short of buying a whole new repo.
-function SubscriptionRow({ repo, onChanged }) {
+function SubscriptionRow({ repo, stripeSub, onChanged }) {
   const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
   const [months, setMonths] = useState(12);
   const [busy, setBusy] = useState(false);
-  const sub = repo.subscription;
-  const hasSub = !!sub?.stripeSubId;                 // a real auto-renewing Stripe subscription
-  const canceling = sub?.status === 'canceling' || sub?.status === 'canceled';
-  const expired = sub?.currentPeriodEnd && new Date(sub.currentPeriodEnd) <= new Date();
-  const soon = sub?.currentPeriodEnd && !expired && (new Date(sub.currentPeriodEnd) - Date.now()) < 7 * 864e5;
+  const localSub = repo.subscription;
+  // The live Stripe subscription (from /me/billing/overview) is the source of truth —
+  // it reflects a just-enabled auto-renew and Stripe's real period end. Fall back to
+  // the local mirror only when Stripe hasn't loaded / isn't configured.
+  const hasSub = !!stripeSub || !!localSub?.stripeSubId;
+  const canceling = stripeSub ? stripeSub.cancelAtPeriodEnd : (localSub?.status === 'canceling' || localSub?.status === 'canceled');
+  const periodEnd = stripeSub?.currentPeriodEnd || localSub?.currentPeriodEnd || null;
+  const subId = stripeSub?.id || localSub?.stripeSubId;
+  const expired = periodEnd && new Date(periodEnd) <= new Date();
+  const soon = periodEnd && !expired && (new Date(periodEnd) - Date.now()) < 7 * 864e5;
   // Legacy prepaid / free repo with no subscription → start auto-renew (subscription checkout).
   const enableAutoRenew = async () => {
     setBusy(true);
@@ -841,22 +846,23 @@ function SubscriptionRow({ repo, onChanged }) {
   // period ends), and flips to "Reactivate" once cancelled.
   const toggleCancel = async () => {
     const resume = canceling;
-    if (!resume && !(await dialog.confirm({ title: t('bill.sub.cancel.t', 'Stop auto-renew?'), message: t('bill.sub.cancel.m', 'This subscription stays active until {d}, then won’t renew. You keep everything you’ve paid for.').replace('{d}', sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : '—'), okLabel: t('bill.sub.cancel.ok', 'Stop auto-renew'), danger: true }))) return;
+    if (!subId) return;
+    if (!resume && !(await dialog.confirm({ title: t('bill.sub.cancel.t', 'Stop auto-renew?'), message: t('bill.sub.cancel.m', 'This subscription stays active until {d}, then won’t renew. You keep everything you’ve paid for.').replace('{d}', periodEnd ? new Date(periodEnd).toLocaleDateString() : '—'), okLabel: t('bill.sub.cancel.ok', 'Stop auto-renew'), danger: true }))) return;
     setBusy(true);
-    try { await api.post(`/me/subscriptions/${sub.stripeSubId}/cancel`, { resume }); toast.success(resume ? t('bill.sub.resumed', 'Auto-renew re-enabled.') : t('bill.sub.canceled', 'Auto-renew stopped — active until the period ends.')); onChanged?.(); }
+    try { await api.post(`/me/subscriptions/${subId}/cancel`, { resume }); toast.success(resume ? t('bill.sub.resumed', 'Auto-renew re-enabled.') : t('bill.sub.canceled', 'Auto-renew stopped — active until the period ends.')); onChanged?.(); }
     catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); }
   };
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm border-t border-[var(--line)] first:border-t-0">
       <Server size={15} className="text-[var(--primary-2)] shrink-0" />
       <div className="flex-1 min-w-0">
-        <div className="font-medium truncate flex items-center gap-2">{repo.name} <Badge tone={repo.status === 'SUSPENDED' ? 'red' : repo.status === 'ONLINE' ? 'green' : ''}>{repo.status}</Badge>{hasSub && canceling && <Badge tone="amber">{t('bill.sub.canceling', 'canceling')}</Badge>}</div>
+        <div className="font-medium truncate flex items-center gap-2">{repo.name} <Badge tone={repo.status === 'SUSPENDED' ? 'red' : repo.status === 'ONLINE' ? 'green' : ''}>{repo.status}</Badge>{hasSub && (canceling ? <Badge tone="amber">{t('bill.sub.canceling', 'canceling')}</Badge> : <Badge tone="green"><RefreshCw size={9} /> {t('bill.ah.auto', 'auto-renew')}</Badge>)}</div>
         <div className="text-xs text-[var(--faint)]">{gb(repo.storageQuotaBytes)} GB · {(repo.uploadLimitKbps / 1024).toFixed(1)} Mbps</div>
       </div>
-      {sub?.currentPeriodEnd && (
+      {periodEnd && (
         <div className={`text-xs text-right shrink-0 ${expired ? 'text-red-400' : soon ? 'text-amber-400' : 'text-[var(--muted)]'}`}>
-          <div className="flex items-center gap-1 justify-end"><Clock size={11} /> {expired ? t('bill.expired', 'Expired') : canceling ? t('bill.ah.ends', 'Ends') : t('bill.renewson', 'Renews/expires')}</div>
-          <div className="font-medium">{new Date(sub.currentPeriodEnd).toLocaleDateString()}</div>
+          <div className="flex items-center gap-1 justify-end"><Clock size={11} /> {expired ? t('bill.expired', 'Expired') : canceling ? t('bill.ah.ends', 'Ends') : hasSub ? t('bill.ah.renews', 'Renews') : t('bill.renewson', 'Renews/expires')}</div>
+          <div className="font-medium">{new Date(periodEnd).toLocaleDateString()}</div>
         </div>
       )}
       {hasSub ? (
@@ -934,22 +940,21 @@ export function Billing() {
               </div>
             )}
           </div>
-          {/* Repo hosting is PREPAID (one-time, per term) — deleting a repo stops any
-              future renewal but doesn't refund the current term; there's no recurring
-              charge to cancel. Manage cards/receipts and any recurring subs below. */}
-          <p className="text-[11px] text-[var(--faint)] mb-2 flex items-center gap-1"><Info size={11} /> {t('bill.prepaid.note', 'Hosting is prepaid per term — deleting a repo stops future renewals (no recurring charge to cancel). Manage cards & receipts via “Manage billing”.')}</p>
+          <p className="text-[11px] text-[var(--faint)] mb-2 flex items-center gap-1"><Info size={11} /> {t('bill.prepaid.note2', 'Auto-renew keeps a repo online automatically; cancel it here anytime (it stays online until the period ends). One-time terms just lapse — no charge to cancel.')}</p>
           <Card className="overflow-hidden p-0">
-            {filteredHosted.length ? filteredHosted.map((r) => <SubscriptionRow key={r.id} repo={r} onChanged={reloadRepos} />)
+            {filteredHosted.length ? filteredHosted.map((r) => <SubscriptionRow key={r.id} repo={r} stripeSub={subs.find((s) => s.repoId === r.id && s.target !== 'boost')} onChanged={() => { reloadRepos(); reloadOverview(); }} />)
               : <div className="px-4 py-6 text-sm text-[var(--muted)] text-center">{t('bill.nomatch', 'No hosting matches your search.')}</div>}
           </Card>
         </div>
       )}
 
-      {subs.length > 0 && (
+      {/* Recurring subscriptions NOT already shown in Active hosting (boosts + any
+          non-repo subscription) — hosting subs are managed on their repo row above. */}
+      {(() => { const otherSubs = subs.filter((s) => !(s.target !== 'boost' && hostedRepos.some((r) => r.id === s.repoId))); return otherSubs.length > 0 && (
         <div className="mb-8">
           <h2 className="font-semibold flex items-center gap-2 mb-3"><RefreshCw size={16} className="text-[var(--primary-2)]" /> {t('bill.recurring', 'Recurring subscriptions')}</h2>
           <Card className="overflow-hidden p-0">
-            {subs.map((s, i) => {
+            {otherSubs.map((s, i) => {
               const cur = (s.currency || 'usd').toUpperCase();
               const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '';
               const amt = sym ? `${sym}${(s.amountCents / 100).toFixed(2)}` : `${(s.amountCents / 100).toFixed(2)} ${cur}`;
@@ -978,7 +983,7 @@ export function Billing() {
           </Card>
           <p className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><Info size={11} /> {t('bill.sub.manage', 'Cancel or change a subscription via “Manage billing”.')}</p>
         </div>
-      )}
+      ); })()}
 
       <div className="flex items-center justify-between gap-2 mb-3">
         <h2 className="font-semibold flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> {invoices.length ? t('bill.history', 'Payment history') : t('bill.title', 'Billing & invoices')}</h2>

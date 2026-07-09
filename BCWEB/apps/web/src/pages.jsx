@@ -1030,13 +1030,13 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
   };
   if (!count) return null;
   if (!open) return (
-    <button onClick={() => setOpen(true)} className="fixed bottom-4 right-4 z-[60] flex items-center gap-2 pl-3.5 pr-4 py-3 rounded-2xl text-white font-semibold shadow-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:brightness-105 transition">
+    <button onClick={() => setOpen(true)} className="fixed bottom-20 md:bottom-4 right-3 md:right-4 z-[60] flex items-center gap-2 pl-3.5 pr-4 py-3 rounded-2xl text-white font-semibold shadow-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:brightness-105 transition">
       <span className="relative"><ShoppingCart size={18} /><span className="absolute -top-2 -right-2 grid place-items-center w-4 h-4 rounded-full bg-white text-orange-600 text-[10px] font-bold">{count}</span></span>
       {t('cart.title', 'Cart')}
     </button>
   );
   return (
-    <div className="fixed z-[60] inset-x-2 bottom-2 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-[24rem] max-h-[82vh] sm:max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl border border-[var(--line-strong)] overflow-hidden" style={{ background: 'var(--bg-solid)', boxShadow: '0 24px 70px -18px rgba(0,0,0,0.6)' }}>
+    <div className="fixed z-[60] inset-x-2 bottom-[4.75rem] md:inset-x-auto md:right-4 md:bottom-4 md:w-[24rem] max-h-[70vh] md:max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl border border-[var(--line-strong)] overflow-hidden" style={{ background: 'var(--bg-solid)', boxShadow: '0 24px 70px -18px rgba(0,0,0,0.6)' }}>
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--line)]">
         <ShoppingCart size={16} className="text-[var(--primary-2)]" />
         <span className="font-semibold flex-1">{t('cart.your', 'Your cart')} <span className="text-[var(--faint)] font-normal">· {count}</span></span>

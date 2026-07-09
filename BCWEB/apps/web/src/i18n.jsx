@@ -629,6 +629,8 @@ const DICT = {
     'bill.autorenew': 'Renouv. auto', 'bill.autorenew.h': 'Démarre un abonnement récurrent — prélevé automatiquement à chaque échéance.', 'bill.subscribe': 'S’abonner',
     'bill.renewonce': 'Renouveler une fois', 'bill.renewonce.h': 'Un seul prélèvement pour la durée choisie.',
     'bill.ah.cancel': 'Annuler le renouvellement', 'bill.ah.reactivate': 'Réactiver', 'bill.ah.enable': 'Activer le renouvellement auto', 'bill.ah.ends': 'Se termine',
+    'bill.ah.auto': 'renouv. auto', 'bill.ah.renews': 'Renouvelle',
+    'bill.prepaid.note2': 'Le renouvellement auto garde un dépôt en ligne automatiquement ; annule-le ici à tout moment (il reste en ligne jusqu’à la fin de la période). Les durées uniques expirent simplement — rien à annuler.',
     'bill.history': 'Historique des paiements', 'bill.recurringtag': 'abonnement', 'bill.download': 'Télécharger le PDF', 'bill.view': 'Voir',
     'bill.h.subscription': 'Abonnement', 'bill.h.boost': 'Mise en avant', 'bill.h.hosting': 'Hébergement', 'bill.h.payment': 'Paiement',
 
