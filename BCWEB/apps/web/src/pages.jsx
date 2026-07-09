@@ -1329,14 +1329,16 @@ export function Dashboard() {
   const cancelDelete = async (it) => { try { await api.post(`/catalog/${it.id}/delete/cancel`); toast.success(t('dash.delcancelled', 'Deletion cancelled.')); items.reload(); } catch { toast.error(t('dash.cancelfail', 'Failed to cancel.')); } };
 
   // Handle the return trip from a Stripe Checkout redirect (?hosting=ok/cancel, ?feature=ok/cancel).
+  // Surfaces a prominent, dismissible confirmation/cancel banner (not just a toast).
   const [sp, setSp] = useSearchParams();
+  const [payReturn, setPayReturn] = useState(null); // { ok, kind } | null
   useEffect(() => {
     const hosting = sp.get('hosting'); const feature = sp.get('feature'); const oauth = sp.get('oauth');
     if (!hosting && !feature && !oauth) return;
-    if (hosting === 'ok') { toast.success(t('dash.stripe.hostingok', 'Payment received — your repo is being provisioned.')); repos.reload(); items.reload(); }
-    else if (hosting === 'cancel') { toast.info(t('dash.stripe.hostingcancel', 'Checkout cancelled — no charge was made.')); }
-    if (feature === 'ok') { toast.success(t('dash.stripe.featureok', 'Payment received — your repo is now featured.')); repos.reload(); }
-    else if (feature === 'cancel') { toast.info(t('dash.stripe.featurecancel', 'Checkout cancelled — no charge was made.')); }
+    if (hosting === 'ok') { setPayReturn({ ok: true, kind: 'hosting' }); repos.reload(); items.reload(); }
+    else if (hosting === 'cancel') { setPayReturn({ ok: false, kind: 'hosting' }); }
+    if (feature === 'ok') { setPayReturn({ ok: true, kind: 'feature' }); repos.reload(); }
+    else if (feature === 'cancel') { setPayReturn({ ok: false, kind: 'feature' }); }
     if (oauth === 'success') toast.success(t('auth.welcome.toast', 'Welcome!'));
     setSp((p) => { const n = new URLSearchParams(p); n.delete('hosting'); n.delete('feature'); n.delete('oauth'); return n; }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1375,6 +1377,22 @@ export function Dashboard() {
   ];
   return (
     <>
+      {payReturn && (
+        <div className="max-w-6xl mx-auto px-4 pt-4">
+          <div className={`rounded-xl border p-4 flex items-start gap-3 anim-fade ${payReturn.ok ? 'border-emerald-500/40 bg-emerald-500/[0.08]' : 'border-amber-500/40 bg-amber-500/[0.08]'}`}>
+            {payReturn.ok ? <CheckCircle2 size={22} className="text-emerald-400 shrink-0 mt-0.5" /> : <XCircle size={22} className="text-amber-400 shrink-0 mt-0.5" />}
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold">{payReturn.ok ? t('dash.pay.ok.t', 'Payment confirmed') : t('dash.pay.cancel.t', 'Checkout cancelled')}</div>
+              <div className="text-sm text-[var(--muted)] mt-0.5">
+                {payReturn.ok
+                  ? (payReturn.kind === 'feature' ? t('dash.pay.feature.m', 'Your repo is now featured on the public listing.') : t('dash.pay.hosting.m', "Your repo is being provisioned — it'll be online shortly.")) + ' ' + t('dash.pay.receipt', 'A receipt is available in the Billing tab.')
+                  : t('dash.pay.cancel.m', 'No charge was made. You can try again anytime.')}
+              </div>
+            </div>
+            <button onClick={() => setPayReturn(null)} className="text-[var(--faint)] hover:text-[var(--text)] shrink-0" aria-label="Dismiss"><X size={16} /></button>
+          </div>
+        </div>
+      )}
       <SideDash icon={LayoutDashboard} title={t('dash.hi', 'Hi, {name}').replace('{name}', user?.displayName || 'there')} subtitle={t('dash.sub', 'Manage your content, repos and billing.')} tabs={tabs}
         headerActions={<Button variant="primary" onClick={() => setOpen(true)}><Upload size={16} /> {t('sub.title', 'Submit content')}</Button>}>
         {(s) => (<>
@@ -2027,21 +2045,25 @@ function AdminPlanUsers() {
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  const [includeStaff, setIncludeStaff] = useState(false);
   const load = async (append = false) => {
     setBusy(true);
     try {
       const skip = append ? (results?.length || 0) : 0;
-      const { users, hasMore: more } = await api.get(`/admin/billing/users?tab=${tab}&skip=${skip}&take=30`);
+      const { users, hasMore: more } = await api.get(`/admin/billing/users?tab=${tab}&skip=${skip}&take=30${includeStaff ? '&includeStaff=1' : ''}`);
       setResults(append ? [...(results || []), ...users] : users); setHasMore(more);
     } catch { if (!append) setResults([]); } finally { setBusy(false); }
   };
-  useEffect(() => { load(false); setExpanded(null); /* eslint-disable-next-line */ }, [tab]);
+  useEffect(() => { load(false); setExpanded(null); /* eslint-disable-next-line */ }, [tab, includeStaff]);
   const since = (d) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   const emptyCopy = [t(`pu.empty.${tab}.t`, ''), t(`pu.empty.${tab}.s`, '')];
   return (
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> {t('pu.title', 'Free vs paid')}</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">{t('pu.desc', "What every customer currently has active: free-tier hosting, paid hosting/boosts, or expired/ended terms. Click a row to see the detail; click the user's name for their full profile.")}</p>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('pu.desc', "What every customer currently has active: free-tier hosting, paid hosting/boosts, or expired/ended terms. Click a row to see the detail; click the user's name for their full profile.")}</p>
+      <label className="flex items-center gap-2 text-xs text-[var(--muted)] mb-4 cursor-pointer w-fit">
+        <input type="checkbox" checked={includeStaff} onChange={(e) => setIncludeStaff(e.target.checked)} /> {t('pu.includestaff', 'Include staff (admins/mods) — normally excluded from this customer report')}
+      </label>
       <div className="flex gap-2 mb-4">
         {PLANUSERS_TABS.map(([id, I, label]) => (
           <button key={id} onClick={() => setTab(id)} className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium border transition ${tab === id ? 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>

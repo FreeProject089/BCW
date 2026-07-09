@@ -408,3 +408,13 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
 .bcw-range { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); outline: none; }
 .bcw-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(120deg, var(--primary), var(--primary-2)); cursor: pointer; box-shadow: 0 2px 8px -2px var(--primary-glow); border: 2px solid var(--bg-solid); }
 .bcw-range::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--primary); cursor: pointer; border: 2px solid var(--bg-solid); }
+
+/* ── Invoice print ── Isolate #invoice-print so "Print / Save PDF" produces a clean
+   one-page receipt (no app chrome, modal overlay, or backdrop). Works wherever the
+   node lives in the DOM (it's rendered inside a modal portal). */
+@media print {
+  body * { visibility: hidden !important; }
+  #invoice-print, #invoice-print * { visibility: visible !important; }
+  #invoice-print { position: absolute !important; left: 0; top: 0; width: 100%; max-width: 640px; margin: 0 auto; padding: 32px; color: #111; background: #fff; }
+  #invoice-print .tabular-nums, #invoice-print b, #invoice-print .font-bold, #invoice-print .font-medium, #invoice-print .font-extrabold { color: #111; }
+}

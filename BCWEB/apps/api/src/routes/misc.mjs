@@ -353,10 +353,15 @@ export default async function miscRoutes(app) {
     const take = Math.min(Number(req.query?.take) || 30, 100);
     const skip = Math.max(0, Number(req.query?.skip) || 0);
     const now = new Date();
+    // Staff (ADMIN/MOD) are excluded by default — a "customers" report shouldn't be
+    // polluted by admins who get free hosting via admin tools. `includeStaff=1` lifts
+    // that filter (useful for testing on an admin-owned instance).
+    const includeStaff = req.query?.includeStaff === '1' || req.query?.includeStaff === 'true';
+    const ownerFilter = includeStaff ? {} : { role: 'USER' };
 
     const [repos, items, payments] = await Promise.all([
-      p.serverRepo.findMany({ where: { hosted: true, owner: { role: 'USER' } }, select: { id: true, ownerId: true, name: true, status: true, deleteAt: true, featuredUntil: true } }),
-      p.catalogItem.findMany({ where: { payloadKey: { not: null }, owner: { role: 'USER' } }, select: { id: true, ownerId: true, name: true, status: true, meta: true } }),
+      p.serverRepo.findMany({ where: { hosted: true, owner: ownerFilter }, select: { id: true, ownerId: true, name: true, status: true, deleteAt: true, featuredUntil: true } }),
+      p.catalogItem.findMany({ where: { payloadKey: { not: null }, owner: ownerFilter }, select: { id: true, ownerId: true, name: true, status: true, meta: true } }),
       p.payment.findMany({ where: { serverRepoId: { not: null } }, select: { serverRepoId: true, kind: true } }),
     ]);
     const paidHostingRepoIds = new Set(payments.filter((x) => x.kind === 'HOSTING').map((x) => x.serverRepoId));

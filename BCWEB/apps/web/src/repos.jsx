@@ -900,16 +900,67 @@ function InvoiceModal({ id, onClose }) {
   const { t } = useI18n();
   const { data, loading } = useFetch(() => api.get(`/me/payments/${id}`), [id]);
   const inv = data?.invoice;
+  const cur = (inv?.currency || 'usd').toUpperCase();
+  const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '';
+  const money = (c) => sym ? `${sym}${(c / 100).toFixed(2)}` : `${(c / 100).toFixed(2)} ${cur}`;
+  const qty = inv?.days ? t('bill.days', '{n} days').replace('{n}', inv.days) : (inv?.description?.match(/(\d+)\s*month/i)?.[1] ? `${inv.description.match(/(\d+)\s*month/i)[1]} mo` : '1');
+  const paid = inv?.status === 'paid';
   return (
-    <Modal open onClose={onClose} title={t('bill.invoice', 'Invoice')} icon={Receipt} width="max-w-md"
+    <Modal open onClose={onClose} title={t('bill.invoice', 'Invoice')} icon={Receipt} width="max-w-lg"
       footer={<><Button variant="ghost" onClick={onClose}>{t('bill.close', 'Close')}</Button><Button variant="primary" onClick={() => window.print()}><Printer size={15} /> {t('bill.print', 'Print / Save PDF')}</Button></>}>
       {loading || !inv ? <div className="text-[var(--muted)] text-sm">{t('common.loading', 'Loading…')}</div> : (
-        <div className="text-sm" id="invoice-print">
-          <div className="flex items-center justify-between mb-4"><div className="font-extrabold text-lg gradient-text">BetterCommunity</div><div className="text-right"><div className="font-mono text-xs text-[var(--faint)]">{inv.number}</div><div className="text-xs text-[var(--muted)]">{new Date(inv.createdAt).toLocaleDateString()}</div></div></div>
-          <div className="text-[var(--muted)] mb-4">{t('bill.billedto', 'Billed to')} <b className="text-[var(--text)]">{inv.user?.displayName}</b> ({inv.user?.email})</div>
-          <div className="flex justify-between py-2 border-y border-[var(--line)]"><span>{inv.description}</span><span className="font-semibold">${(inv.amountCents / 100).toFixed(2)}</span></div>
-          <div className="flex justify-between py-3 font-bold"><span>{t('repos.total', 'Total')} ({inv.currency.toUpperCase()})</span><span>${(inv.amountCents / 100).toFixed(2)}</span></div>
-          <div className="text-xs text-[var(--faint)] mt-2">{t('bill.status', 'Status:')} {inv.status} · {t('bill.thanks', 'Thank you!')}</div>
+        <div className="text-sm invoice-sheet" id="invoice-print">
+          {/* Header band */}
+          <div className="flex items-start justify-between gap-4 pb-4 mb-4 border-b border-[var(--line)]">
+            <div className="flex items-center gap-2.5">
+              <span className="grid place-items-center w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white font-black text-lg shrink-0">B</span>
+              <div><div className="font-extrabold text-base leading-tight">BetterCommunity</div><div className="text-[11px] text-[var(--faint)]">bettercommunity.ch</div></div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--faint)]">{t('bill.receipt', 'Receipt')}</div>
+              <div className="font-mono text-xs mt-0.5">{inv.number}</div>
+              <div className="text-[11px] text-[var(--muted)]">{new Date(inv.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+            </div>
+          </div>
+
+          {/* From / Billed to */}
+          <div className="grid grid-cols-2 gap-4 mb-5">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{t('bill.from', 'From')}</div>
+              <div className="font-medium">BetterCommunity</div>
+              <div className="text-xs text-[var(--muted)]">bettercommunity.ch</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{t('bill.billedto', 'Billed to')}</div>
+              <div className="font-medium">{inv.user?.displayName}</div>
+              <div className="text-xs text-[var(--muted)] break-all">{inv.user?.email}</div>
+            </div>
+          </div>
+
+          {/* Line items */}
+          <div className="rounded-lg border border-[var(--line)] overflow-hidden mb-4">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2 bg-[var(--surface-2)]/60 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">
+              <span>{t('bill.desc', 'Description')}</span><span className="text-right">{t('bill.qty', 'Qty')}</span><span className="text-right">{t('bill.amount', 'Amount')}</span>
+            </div>
+            <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2.5 border-t border-[var(--line)]">
+              <span className="min-w-0">{inv.description}</span><span className="text-right tabular-nums text-[var(--muted)]">{qty}</span><span className="text-right tabular-nums font-medium">{money(inv.amountCents)}</span>
+            </div>
+          </div>
+
+          {/* Totals */}
+          <div className="ml-auto w-full sm:w-1/2 space-y-1.5 mb-4">
+            <div className="flex justify-between text-[var(--muted)]"><span>{t('bill.subtotal', 'Subtotal')}</span><span className="tabular-nums">{money(inv.amountCents)}</span></div>
+            <div className="flex justify-between font-bold text-base pt-1.5 border-t border-[var(--line)]"><span>{t('repos.total', 'Total')} <span className="text-xs font-normal text-[var(--faint)]">({cur})</span></span><span className="tabular-nums">{money(inv.amountCents)}</span></div>
+          </div>
+
+          {/* Status + legal footer */}
+          <div className="flex items-center gap-2 mb-2">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${paid ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-[var(--surface-2)] text-[var(--muted)] border border-[var(--line)]'}`}>
+              {paid && <CheckCircle2 size={12} />} {paid ? t('bill.paid', 'PAID') : inv.status}
+            </span>
+            <span className="text-xs text-[var(--faint)]">{t('bill.paidon', 'Paid on {d}').replace('{d}', new Date(inv.createdAt).toLocaleDateString())}</span>
+          </div>
+          <p className="text-[11px] text-[var(--faint)] leading-relaxed">{t('bill.thanks', 'Thank you!')} {t('bill.legal', 'Keep this receipt for your records. Any applicable taxes are included. Questions? Reach us via the Contact page.')}</p>
         </div>
       )}
     </Modal>
