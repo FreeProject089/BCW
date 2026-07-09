@@ -611,18 +611,27 @@ export default async function hostingRoutes(app) {
     if (!sk || !u?.stripeCustomerId) return { invoices: [] };
     try {
       const inv = await sk.invoices.list({ customer: u.stripeCustomerId, limit: 100 });
-      const invoices = inv.data.map((i) => ({
-        id: i.id,
-        number: i.number || `BCW-${String(i.id).slice(-8).toUpperCase()}`,
-        description: i.lines?.data?.[0]?.description || i.description || (i.subscription ? 'Subscription' : 'Payment'),
-        amountCents: i.amount_paid ?? i.amount_due ?? i.total ?? 0,
-        currency: i.currency || 'usd',
-        status: i.status, // draft | open | paid | uncollectible | void
-        recurring: !!i.subscription,
-        created: i.created ? new Date(i.created * 1000).toISOString() : null,
-        hosted: i.hosted_invoice_url || null,
-        hasPdf: !!i.invoice_pdf,
-      })).filter((i) => i.status === 'paid' || i.status === 'open');
+      // Detect subscription invoices robustly across Stripe API versions — `invoice.subscription`
+      // was removed in newer versions, so fall back to billing_reason and the line/parent links.
+      const isRecurring = (i) => !!(i.subscription
+        || (i.billing_reason && String(i.billing_reason).includes('subscription'))
+        || i.lines?.data?.some((l) => l.subscription || l.parent?.subscription_item_details || l.type === 'subscription')
+        || i.parent?.subscription_details?.subscription);
+      const invoices = inv.data.map((i) => {
+        const recurring = isRecurring(i);
+        return {
+          id: i.id,
+          number: i.number || `BCW-${String(i.id).slice(-8).toUpperCase()}`,
+          description: i.lines?.data?.[0]?.description || i.description || (recurring ? 'Subscription' : 'Payment'),
+          amountCents: i.amount_paid ?? i.amount_due ?? i.total ?? 0,
+          currency: i.currency || 'usd',
+          status: i.status, // draft | open | paid | uncollectible | void
+          recurring,
+          created: i.created ? new Date(i.created * 1000).toISOString() : null,
+          hosted: i.hosted_invoice_url || null,
+          hasPdf: !!i.invoice_pdf,
+        };
+      }).filter((i) => i.status === 'paid' || i.status === 'open');
       return { invoices };
     } catch (e) {
       req.log?.warn?.({ err: e?.message }, 'invoice list failed');

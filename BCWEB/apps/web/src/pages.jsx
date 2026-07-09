@@ -1033,7 +1033,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
     </button>
   );
   return (
-    <div className="fixed bottom-4 right-4 z-[60] w-[24rem] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl border border-[var(--line-strong)] overflow-hidden" style={{ background: 'var(--bg-solid)', boxShadow: '0 24px 70px -18px rgba(0,0,0,0.6)' }}>
+    <div className="fixed z-[60] inset-x-2 bottom-2 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-[24rem] max-h-[82vh] sm:max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl border border-[var(--line-strong)] overflow-hidden" style={{ background: 'var(--bg-solid)', boxShadow: '0 24px 70px -18px rgba(0,0,0,0.6)' }}>
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--line)]">
         <ShoppingCart size={16} className="text-[var(--primary-2)]" />
         <span className="font-semibold flex-1">{t('cart.your', 'Your cart')} <span className="text-[var(--faint)] font-normal">· {count}</span></span>
@@ -1467,8 +1467,8 @@ function TwoFactorNudge() {
 // Card-payment-terminal (TPE) illustration, tinted by outcome. `ok` → the terminal
 // shows an approved slip + green check; else a declined slip + amber cross.
 function PaymentTerminal({ ok }) {
-  const a1 = ok ? '#34d399' : '#fbbf24';
-  const a2 = ok ? '#059669' : '#f59e0b';
+  const a1 = ok ? '#34d399' : '#f87171';
+  const a2 = ok ? '#059669' : '#dc2626';
   const g = ok ? 'ptok' : 'ptfail';
   return (
     <svg viewBox="0 0 240 210" width="150" height="132" className="mx-auto" role="img" aria-hidden="true">
@@ -1560,7 +1560,7 @@ function PaymentResultModal({ result, onClose }) {
       </>}>
       <div className="text-center pt-2 pb-1">
         <PaymentTerminal ok={ok} />
-        <div className="text-xl font-extrabold mt-3">{ok ? t('dash.pay.ok.t', 'Payment confirmed') : failed ? t('dash.pay.fail.t', 'Payment failed') : t('dash.pay.cancel.t', 'Checkout cancelled')}</div>
+        <div className={`text-xl font-extrabold mt-3 ${failed ? 'text-red-400' : ''}`}>{ok ? t('dash.pay.ok.t', 'Payment confirmed') : failed ? t('dash.pay.fail.t', 'Payment failed') : t('dash.pay.cancel.t', 'Checkout cancelled')}</div>
         <p className="text-sm text-[var(--muted)] mt-1.5 max-w-xs mx-auto">
           {ok
             ? (kind === 'feature' ? t('dash.pay.feature.m', 'Your repo is now featured on the public listing.') : t('dash.pay.hosting.m', "Your repo is being provisioned — it'll be online shortly."))
@@ -6185,7 +6185,6 @@ const SETTINGS_GROUPS = [
     ['catalog.freeTierCapMB', 'Free catalog-upload pool cap (MB)', 'Total payload bytes the free catalog tier can ever occupy across every user, once the toggle above is on.', 'number'],
     ['telemetry.storageLimitGB', 'BMM telemetry storage limit (GB)', 'How much storage the (separate) BMM telemetry database is allowed — shown as used vs. allocated in Total capacity above. 0 = untracked.', 'number'],
     ['hosting.maxUploadMbps', 'Max upload per repo (Mbps)', 'Hard ceiling on the upload bandwidth a single repo can request (custom plans + upgrades). Scarcity may lower it further as capacity fills. Default 1000.', 'number'],
-    ['hosting.maxCpuShare', 'Max CPU per repo (vCPU share)', 'Hard ceiling on the CPU share a single repo can request. Scarcity may lower it further as capacity fills. Default 8.', 'number'],
     ['hosting.burstFactor', 'Bandwidth burst factor', 'Smart sharing: while the server is quiet, a repo download may burst to its cap × this factor, borrowing idle capacity. Tightens back to the cap under load. 1 = no bursting. Default 4.', 'number'],
     ['hosting.burstUntilActive', 'Burst until N active transfers', 'Bursting is allowed only while fewer than this many downloads are in flight at once; beyond it, each repo is held to its own cap. Default 3.', 'number'],
   ] },
@@ -6205,7 +6204,6 @@ const SETTINGS_GROUPS = [
     ['pricing.perGBCents', 'Price per GB (¢ / month)', 'Base hosting cost, before the scarcity multiplier. Only applies above the free floor below.', 'number'],
     ['pricing.hostingFreeGB', 'Free hosting floor', 'Every repo\'s first N of storage cost nothing — small personal repos are free. Only the excess is billed.', 'gbmb', 'GB'],
     ['pricing.perUploadMbpsCents', 'Price per Mbps (¢ / month)', 'Cost per Mbps of upload bandwidth allotted to a repo.', 'number'],
-    ['pricing.perCpuShareCents', 'Price per CPU share (¢ / month)', 'Cost per vCPU share allotted to a repo.', 'number'],
     ['pricing.featurePerDayCents', 'Feature (boost) price / day (¢)', 'Cost to keep a repo featured on the public listing.', 'number'],
     ['pricing.catalogHostPerMBCents', 'Catalog file hosting (¢ / MB / month)', 'Charged to non-staff submitters for our-hosted payloads above the free floor below.', 'number'],
     ['pricing.catalogFreeMB', 'Free catalog upload floor', 'Every submission\'s (app/plugin/theme/preset) first N are free — only the excess is billed.', 'gbmb', 'MB'],
