@@ -337,6 +337,40 @@ const DICT = {
     'kf.configured': 'Webhook configuré', 'kf.manualgrant': 'Attribution manuelle',
     'kf.manualsub': 'Pour un don que tu as vérifié à la main (ex. avant la mise en place du webhook).', 'kf.grantcode': 'Accorder un code 25%',
 
+    // ── Admin : détails utilisateur ──
+    'ud.elemcopied': 'Id BC de l’élément copié.', 'ud.elemid': 'Id d’élément unique · {c}', 'ud.title': 'Détails de l’utilisateur',
+    'ud.notfound': 'Introuvable', 'ud.membersince': 'Membre depuis {d}', 'ud.bccopied': 'Id BC unique copié.',
+    'ud.bcidtip': 'Id BC unique — recherchable dans la recherche d’utilisateurs', 'ud.creatorids': 'Ids créateur liés',
+    'ud.nocreator': 'Aucun id créateur lié.', 'ud.linked': 'lié le {d}', 'ud.nodiscord': 'Aucun Discord lié.',
+    'ud.payments': 'Paiements', 'ud.nopayments': 'Aucun paiement — forfait gratuit uniquement.', 'ud.hosted': 'Dépôts hébergés',
+    'ud.none': 'Aucun.', 'ud.listed': 'Dépôts listés', 'ud.verified': 'vérifié', 'ud.catalogitems': 'Éléments de catalogue',
+
+    // ── Admin : contenu du plugin ──
+    'pcm.nosource': 'Ce plugin n’a aucune source téléchargeable.', 'pcm.title': 'Contenu du plugin — {n}', 'pcm.dlplug': 'Télécharger .bmmplug',
+    'pcm.cannotinspect': 'Impossible d’inspecter ce plugin :', 'pcm.nosourcehint': 'Un plugin sans fichier importé ni URL de téléchargement ne peut pas être décompressé. Ajoute une source, puis re-valide.',
+    'pcm.files': 'Fichiers', 'pcm.dlall': 'Tout télécharger (.bmmplug)', 'pcm.dlfile': 'Télécharger ce fichier', 'pcm.manifest': 'plugin.json (jamais exécuté)',
+
+    // ── Admin : projets — mise à jour programmée / éditeur ──
+    'apj.configchanges': 'changements de config', 'apj.schedcancelled': 'Mise à jour programmée annulée.', 'apj.cannotcancel': 'Annulation impossible.',
+    'apj.scheddue': 'Mise à jour programmée à appliquer', 'apj.schedpending': 'Mise à jour programmée en attente',
+    'apj.willapply': 'Appliquera : {p}.', 'apj.stagedupdate': 'Une mise à jour de contenu préparée.', 'apj.appliesnext': ' Elle s’applique à la prochaine consultation publique de la page.',
+    'apj.loadstaged': 'Charger le contenu préparé dans l’éditeur et reprogrammer', 'apj.stagefuture': 'Préparer un remplacement de contenu futur pour cette page',
+    'apj.reschedule': 'Reprogrammer', 'apj.validjson': 'JSON valide', 'apj.invalidjson': 'JSON invalide', 'apj.format': 'Formater',
+
+    // ── Admin : stockage ──
+    'as.backonline': '« {n} » est de nouveau en ligne.', 'as.title': 'Stockage', 'as.refresh': 'Rafraîchir',
+    'as.acrossobjects': 'sur {n} objets dans le stockage objet', 'as.dball': 'Base de données (toutes les tables)',
+    'as.dbdesc': 'Utilisateurs, contenu, logs, métriques & analytics — tout sauf le stockage objet.', 'as.totalcap': 'Capacité totale',
+    'as.gballocated': 'Go alloués', 'as.totalreserved': 'total {t} Go, {r} réservés', 'as.usableallocated': '{p}% de la capacité utilisable allouée · {f} Go libres',
+    'as.pricesrise': ' — les prix augmentent près de la limite.', 'as.hostingquotas': '{h} Go de quotas d’hébergement + {s} Go de soumissions approuvées',
+    'as.realdiskfree': 'disque réel libre :', 'as.gbtotal': '{n} Go au total', 'as.capbypurpose': 'Capacité par usage',
+    'as.capbypurposesub': 'Utilisation réelle par catégorie — les soumissions approuvées quittent la marge temporaire pour leur propre compartiment permanent une fois approuvées.',
+    'as.objects': '{n} objets', 'as.hostedrepos': 'Dépôts hébergés', 'as.searchnameowner': 'Rechercher nom ou propriétaire…',
+    'as.repos': 'dépôts', 'as.used': 'utilisé', 'as.allocatedquota': 'alloué (quota)', 'as.norepomatch': 'Aucun dépôt ne correspond à ta recherche.',
+    'as.nohosted': 'Aucun dépôt hébergé.', 'as.pendingdel': 'Suppressions en attente (délai 72 h)', 'as.searchnameownerkind': 'Rechercher nom, propriétaire ou type…',
+    'as.in': 'dans', 'as.repo': 'dépôt', 'as.nopendmatch': 'Aucune suppression en attente ne correspond à ta recherche.',
+    'as.nothingdel': 'Rien de programmé pour suppression.', 'as.telemreplays': 'Les rejeux de télémétrie (rrweb) sont stockés par le service de télémétrie BMM séparé et ne sont pas comptés ici.',
+
     'hosting.title': 'Héberger un Server-Repo', 'hosting.sub': 'On l’exécute, tu le gères. Paie selon la taille dont tu as besoin.',
     'hosting.single': 'Dépôt unique', 'hosting.single.d': 'Un seul dépôt avec tout le quota.',
     'hosting.multi': 'Dépôts multiples', 'hosting.multi.d': 'Répartis le stockage sur plusieurs dépôts, gérés par toi.',
@@ -862,10 +896,6 @@ const DICT = {
     'ann.active': 'active', 'ann.inactive': 'inactive',
     'ann.banneron': 'Bannière activée', 'ann.banneroff': 'Sans bannière', 'ann.bannertitle': 'Activer/désactiver la bannière de cette annonce',
     'ann.deactivate': 'Désactiver', 'ann.activate': 'Activer',
-
-    // ── Admin : détails utilisateur (modale) ──
-    'ud.title': 'Détails de l’utilisateur', 'ud.close': 'Fermer', 'ud.notfound': 'Introuvable',
-    'ud.membersince': 'Membre depuis', 'ud.elembccopied': 'BC id d’élément copié.', 'ud.bccopied': 'BC id unique copié.',
 
     // ── Admin : onglet Bot Discord ──
     'db.title': 'Bot Discord', 'db.online': 'En ligne', 'db.offline': 'Hors ligne', 'db.save': 'Enregistrer',

@@ -1155,7 +1155,7 @@ export function Auth() {
         // no nav here — the [user] effect above handles it (→ /profile?setup2fa=1)
       } else if (mode === 'forgot') {
         const res = await api.post('/auth/reset/request', { email: f.email });
-        if (res.devToken) { setF((s) => ({ ...s, token: res.devToken })); setMode('reset'); toast.info('Reset token issued (dev). Set a new password.'); }
+        if (res.devToken) { setF((s) => ({ ...s, token: res.devToken })); setMode('reset'); toast.info(t('auth.toast.devtoken', 'Reset token issued (dev). Set a new password.')); }
         else toast.success(t('auth.toast.sent'));
       } else if (mode === 'reset') {
         await api.post('/auth/reset/confirm', { token: f.token, password: f.password });
@@ -3420,34 +3420,34 @@ function AdminAnnouncements() {
 
 function UserDetailModal({ id, onClose }) {
   const { data, loading } = useAsync(() => api.get(`/admin/users/${id}`), [id]);
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const u = data?.user;
   const hosted = (u?.serverRepos || []).filter((r) => r.hosted);
   const listed = (u?.serverRepos || []).filter((r) => !r.hosted);
   const fdate = (d) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
   // Per-element unique BC id chip (copyable) — shown on each repo / catalog item.
   const BcChip = ({ code }) => code ? (
-    <button onClick={() => { navigator.clipboard?.writeText(code); toast.success('Element BC id copied.'); }}
-      className="shrink-0 inline-flex items-center gap-1 text-[10px] font-mono text-[var(--faint)] hover:text-[var(--primary-2)] transition" title={`Unique element id · ${code}`}>
+    <button onClick={() => { navigator.clipboard?.writeText(code); toast.success(t('ud.elemcopied', 'Element BC id copied.')); }}
+      className="shrink-0 inline-flex items-center gap-1 text-[10px] font-mono text-[var(--faint)] hover:text-[var(--primary-2)] transition" title={t('ud.elemid', 'Unique element id · {c}').replace('{c}', code)}>
       <Fingerprint size={10} /> {code}
     </button>
   ) : null;
   return (
-    <Modal open onClose={onClose} title="User details" icon={Users} width="max-w-lg"
-      footer={<Button variant="ghost" onClick={onClose}>Close</Button>}>
-      {loading ? <Loading /> : !u ? <EmptyState icon={XCircle} title="Not found" /> : (
+    <Modal open onClose={onClose} title={t('ud.title', 'User details')} icon={Users} width="max-w-lg"
+      footer={<Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>}>
+      {loading ? <Loading /> : !u ? <EmptyState icon={XCircle} title={t('ud.notfound', 'Not found')} /> : (
         <div className="space-y-5">
           <div className="flex items-center gap-4">
             <Avatar user={u} size={64} />
             <div className="min-w-0">
               <div className="text-lg font-bold flex items-center gap-2">{u.displayName} <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
               <div className="text-sm text-[var(--muted)] flex items-center gap-1.5"><Mail size={13} /> {u.email}</div>
-              <div className="text-xs text-[var(--faint)] mt-0.5 flex items-center gap-1.5"><Cookie size={12} /> Member since {fdate(u.createdAt)}</div>
+              <div className="text-xs text-[var(--faint)] mt-0.5 flex items-center gap-1.5"><Cookie size={12} /> {t('ud.membersince', 'Member since {d}').replace('{d}', fdate(u.createdAt))}</div>
               <div className="text-[11px] text-[var(--faint)] font-mono mt-0.5">{u.id}</div>
               {u.bcId && (
-                <button onClick={() => { navigator.clipboard?.writeText(u.bcId); toast.success('Unique BC id copied.'); }}
+                <button onClick={() => { navigator.clipboard?.writeText(u.bcId); toast.success(t('ud.bccopied', 'Unique BC id copied.')); }}
                   className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-[var(--primary-2)] px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:border-[var(--primary)]/40 transition"
-                  title="Unique BC id — searchable in User search">
+                  title={t('ud.bcidtip', 'Unique BC id — searchable in User search')}>
                   <Fingerprint size={12} /> {u.bcId} <Copy size={11} className="opacity-60" />
                 </button>
               )}
@@ -3456,9 +3456,9 @@ function UserDetailModal({ id, onClose }) {
           {u.bio && <p className="text-sm text-[var(--muted)]">{u.bio}</p>}
 
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><BadgeCheck size={12} /> Linked creator ids</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><BadgeCheck size={12} /> {t('ud.creatorids', 'Linked creator ids')}</div>
             {u.creatorLinks.length ? <div className="flex flex-wrap gap-1.5">{u.creatorLinks.map((c) => <Badge key={c.creatorId} tone="green"><code>{c.creatorId}</code>{c.displayName ? ` · ${c.displayName}` : ''}</Badge>)}</div>
-              : <div className="text-sm text-[var(--faint)]">No creator id linked.</div>}
+              : <div className="text-sm text-[var(--faint)]">{t('ud.nocreator', 'No creator id linked.')}</div>}
           </div>
 
           <div>
@@ -3468,13 +3468,13 @@ function UserDetailModal({ id, onClose }) {
                 <DiscordIcon size={13} className="text-[#5865F2] shrink-0" />
                 <span className="font-medium">{d.username || '—'}</span>
                 <code className="text-xs text-[var(--faint)]">{d.discordId}</code>
-                <span className="text-[11px] text-[var(--faint)] ml-auto shrink-0">linked {fdate(d.linkedAt)}</span>
+                <span className="text-[11px] text-[var(--faint)] ml-auto shrink-0">{t('ud.linked', 'linked {d}').replace('{d}', fdate(d.linkedAt))}</span>
               </div>
-            ))}</div> : <div className="text-sm text-[var(--faint)]">No Discord linked.</div>}
+            ))}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nodiscord', 'No Discord linked.')}</div>}
           </div>
 
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Receipt size={12} /> Payments ({u.payments?.length || 0})</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Receipt size={12} /> {t('ud.payments', 'Payments')} ({u.payments?.length || 0})</div>
             {u.payments?.length ? <div className="space-y-1 max-h-40 overflow-auto pr-1">{u.payments.map((pay) => (
               <div key={pay.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
                 <Receipt size={13} className="text-emerald-400 shrink-0" />
@@ -3482,24 +3482,24 @@ function UserDetailModal({ id, onClose }) {
                 <span className="text-emerald-400 font-medium shrink-0">${(pay.amountCents / 100).toFixed(2)}</span>
                 <span className="text-[11px] text-[var(--faint)] shrink-0">{fdate(pay.createdAt)}</span>
               </div>
-            ))}</div> : <div className="text-sm text-[var(--faint)]">No payments — free plan only.</div>}
+            ))}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nopayments', 'No payments — free plan only.')}</div>}
           </div>
 
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Rocket size={12} /> Hosted repos ({hosted.length})</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Rocket size={12} /> {t('ud.hosted', 'Hosted repos')} ({hosted.length})</div>
             {hosted.length ? <div className="space-y-1 max-h-40 overflow-auto pr-1">{hosted.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><Server size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} /><Badge tone={r.status === 'ONLINE' ? 'green' : ''}>{r.status}</Badge></div>)}</div>
-              : <div className="text-sm text-[var(--faint)]">None.</div>}
+              : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
           </div>
 
           {listed.length > 0 && <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><GitBranch size={12} /> Listed repos ({listed.length})</div>
-            <div className="space-y-1 max-h-40 overflow-auto pr-1">{listed.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><GitBranch size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} />{r.verified && <Badge tone="green">verified</Badge>}</div>)}</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><GitBranch size={12} /> {t('ud.listed', 'Listed repos')} ({listed.length})</div>
+            <div className="space-y-1 max-h-40 overflow-auto pr-1">{listed.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><GitBranch size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} />{r.verified && <Badge tone="green">{t('ud.verified', 'verified')}</Badge>}</div>)}</div>
           </div>}
 
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Package size={12} /> Catalog items ({u.items.length})</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Package size={12} /> {t('ud.catalogitems', 'Catalog items')} ({u.items.length})</div>
             {u.items.length ? <div className="space-y-1 max-h-40 overflow-auto pr-1">{u.items.map((it) => { const I = KIND_ICON[it.kind] || Package; return <div key={it.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><I size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{it.name}</span><BcChip code={it.fingerprint} /><Badge tone={statusTone(it.status)}>{it.status}</Badge></div>; })}</div>
-              : <div className="text-sm text-[var(--faint)]">None.</div>}
+              : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
           </div>
         </div>
       )}
@@ -3509,30 +3509,31 @@ function UserDetailModal({ id, onClose }) {
 
 function PluginContentModal({ item, onClose }) {
   const { data, loading, err } = useAsync(() => api.get(`/admin/catalog/${item.id}/plugin-content`), [item.id]);
+  const { t } = useI18n();
   const kb = (n) => (Number(n) / 1024).toFixed(1);
   // Download a single extracted file (same-origin → session cookie is sent).
   const dlFile = (path) => { const a = document.createElement('a'); a.href = `/api/admin/catalog/${item.id}/plugin-file?path=${encodeURIComponent(path)}`; a.download = path.split('/').pop() || 'file'; document.body.appendChild(a); a.click(); a.remove(); };
   // The endpoint 502s when a plugin has no source (no payload / URL) — surface that
   // gracefully instead of crashing on data.valid.
-  const errMsg = data?.error ? (data.detail || data.error) : err ? (err.data?.detail || err.data?.error || 'This plugin has no downloadable source.') : null;
+  const errMsg = data?.error ? (data.detail || data.error) : err ? (err.data?.detail || err.data?.error || t('pcm.nosource', 'This plugin has no downloadable source.')) : null;
   return (
-    <Modal open onClose={onClose} title={`Plugin content — ${item.name}`} icon={Files} width="max-w-2xl"
-      footer={<><Button variant="ghost" onClick={onClose}>Close</Button>{data?.downloadUrl && <a href={data.downloadUrl} target="_blank" rel="noreferrer"><Button variant="primary"><Download size={15} /> Download .bmmplug</Button></a>}</>}>
+    <Modal open onClose={onClose} title={t('pcm.title', 'Plugin content — {n}').replace('{n}', item.name)} icon={Files} width="max-w-2xl"
+      footer={<><Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>{data?.downloadUrl && <a href={data.downloadUrl} target="_blank" rel="noreferrer"><Button variant="primary"><Download size={15} /> {t('pcm.dlplug', 'Download .bmmplug')}</Button></a>}</>}>
       {loading ? <Loading /> : errMsg ? (
         <div className="flex items-start gap-2.5 text-sm text-[var(--muted)] py-2">
           <XCircle size={18} className="text-amber-400 shrink-0 mt-0.5" />
-          <div>Could not inspect this plugin: <b className="text-[var(--text)]">{errMsg}</b>
-            <div className="text-xs text-[var(--faint)] mt-1">A plugin with no uploaded file or download URL can't be unzipped. Add a source, then re-validate.</div></div>
+          <div>{t('pcm.cannotinspect', 'Could not inspect this plugin:')} <b className="text-[var(--text)]">{errMsg}</b>
+            <div className="text-xs text-[var(--faint)] mt-1">{t('pcm.nosourcehint', "A plugin with no uploaded file or download URL can't be unzipped. Add a source, then re-validate.")}</div></div>
         </div>
       ) : data ? (
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-sm">
-            {data.valid ? <Badge tone="green"><CheckCircle2 size={11} /> Valid</Badge> : <Badge tone="red"><XCircle size={11} /> {data.reason}</Badge>}
+            {data.valid ? <Badge tone="green"><CheckCircle2 size={11} /> {t('pv.valid', 'Valid')}</Badge> : <Badge tone="red"><XCircle size={11} /> {data.reason}</Badge>}
             <span className="text-[var(--faint)] text-xs">{kb(data.size)} KB · sha {String(data.sha256).slice(0, 16)}…</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">Files ({(data.files || []).length})</span>
-            {data.downloadUrl && <a href={data.downloadUrl} target="_blank" rel="noreferrer" className="text-xs text-[var(--primary-2)] hover:underline flex items-center gap-1"><Download size={12} /> Download all (.bmmplug)</a>}
+            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('pcm.files', 'Files')} ({(data.files || []).length})</span>
+            {data.downloadUrl && <a href={data.downloadUrl} target="_blank" rel="noreferrer" className="text-xs text-[var(--primary-2)] hover:underline flex items-center gap-1"><Download size={12} /> {t('pcm.dlall', 'Download all (.bmmplug)')}</a>}
           </div>
           <div className="space-y-1 max-h-[38vh] overflow-auto">
             {(data.files || []).map((fl) => (
@@ -3540,11 +3541,11 @@ function PluginContentModal({ item, onClose }) {
                 {fl.ok ? <CheckCircle2 size={14} className="text-emerald-400 shrink-0" /> : <XCircle size={14} className="text-red-400 shrink-0" />}
                 <span className="flex-1 truncate font-mono text-xs">{fl.path}</span>
                 <span className="text-xs text-[var(--faint)]">{kb(fl.size)} KB</span>
-                <button onClick={() => dlFile(fl.path)} title="Download this file" className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0"><Download size={13} /></button>
+                <button onClick={() => dlFile(fl.path)} title={t('pcm.dlfile', 'Download this file')} className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0"><Download size={13} /></button>
               </div>
             ))}
           </div>
-          {data.manifest && <div><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5">plugin.json (never executed)</div>
+          {data.manifest && <div><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5">{t('pcm.manifest', 'plugin.json (never executed)')}</div>
             <pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-48 overflow-auto">{JSON.stringify(data.manifest, null, 2)}</pre></div>}
         </div>
       ) : null}
@@ -3755,30 +3756,30 @@ function AdminProjects() {
         const when = new Date(sched.scheduledAt);
         const due = when.getTime() <= Date.now();
         const nx = sched.scheduledNext || {};
-        const parts = [nx.name && `name → “${nx.name}”`, nx.short && `short → “${nx.short}”`, nx.config && 'config changes'].filter(Boolean);
+        const parts = [nx.name && `name → “${nx.name}”`, nx.short && `short → “${nx.short}”`, nx.config && t('apj.configchanges', 'config changes')].filter(Boolean);
         const cancelSchedule = async () => {
           try {
             if (isShowcase) await api.put(`/admin/showcase/${activeShow.id}/schedule`, { at: null });
             else await api.put(`/admin/projects/${active}/schedule`, { at: null });
-            toast.success('Scheduled update cancelled.'); reload(); show.reload?.(); adminMeta.reload?.();
-          } catch { toast.error('Could not cancel.'); }
+            toast.success(t('apj.schedcancelled', 'Scheduled update cancelled.')); reload(); show.reload?.(); adminMeta.reload?.();
+          } catch { toast.error(t('apj.cannotcancel', 'Could not cancel.')); }
         };
         return (
           <div className={`mb-3 rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5 ${due ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-[var(--primary)]/40 bg-[var(--primary)]/8'}`}>
             <Clock size={16} className={`shrink-0 mt-0.5 ${due ? 'text-emerald-400' : 'text-[var(--primary-2)]'}`} />
             <div className="flex-1 min-w-0 text-sm">
-              <div className="font-medium">{due ? 'Scheduled update is due' : 'Scheduled update pending'} <span className="font-normal text-[var(--muted)]">· {when.toLocaleString()}</span></div>
-              <div className="text-xs text-[var(--faint)]">{parts.length ? `Will apply: ${parts.join(', ')}.` : 'A staged content update.'}{due ? ' It applies on the next public view of the page.' : ''}</div>
+              <div className="font-medium">{due ? t('apj.scheddue', 'Scheduled update is due') : t('apj.schedpending', 'Scheduled update pending')} <span className="font-normal text-[var(--muted)]">· {when.toLocaleString()}</span></div>
+              <div className="text-xs text-[var(--faint)]">{parts.length ? t('apj.willapply', 'Will apply: {p}.').replace('{p}', parts.join(', ')) : t('apj.stagedupdate', 'A staged content update.')}{due ? t('apj.appliesnext', ' It applies on the next public view of the page.') : ''}</div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <Button size="sm" variant="ghost" onClick={() => { if (nx.config) setText(JSON.stringify(nx.config, null, 2)); setScheduling(true); }} title="Load the staged content into the editor and reschedule"><PenSquare size={13} /> Edit</Button>
-              <Button size="sm" variant="ghost" className="!text-red-400" onClick={cancelSchedule}><X size={13} /> Cancel</Button>
+              <Button size="sm" variant="ghost" onClick={() => { if (nx.config) setText(JSON.stringify(nx.config, null, 2)); setScheduling(true); }} title={t('apj.loadstaged', 'Load the staged content into the editor and reschedule')}><PenSquare size={13} /> {t('sh.editbtn', 'Edit')}</Button>
+              <Button size="sm" variant="ghost" className="!text-red-400" onClick={cancelSchedule}><X size={13} /> {t('su.cancel', 'Cancel')}</Button>
             </div>
           </div>
         );
       })()}
       <div className="flex justify-end mb-4">
-        <Button size="sm" variant="ghost" onClick={() => setScheduling(true)} title="Stage a future content swap for this page"><Clock size={13} /> {(isShowcase ? activeShow : activeMeta)?.scheduledAt ? 'Reschedule' : 'Schedule an update'}</Button>
+        <Button size="sm" variant="ghost" onClick={() => setScheduling(true)} title={t('apj.stagefuture', 'Stage a future content swap for this page')}><Clock size={13} /> {(isShowcase ? activeShow : activeMeta)?.scheduledAt ? t('apj.reschedule', 'Reschedule') : t('sh.schedtip', 'Schedule an update')}</Button>
       </div>
       <div className="rounded-2xl overflow-hidden border border-[var(--line)]" style={{ boxShadow: 'var(--shadow)' }}>
         <div className="flex items-center justify-between gap-2 px-4 py-2.5 code-chrome flex-wrap">
@@ -3786,14 +3787,14 @@ function AdminProjects() {
           <div className="flex items-center gap-2">
             {/* Visual form is the default; raw JSON stays as an advanced escape hatch. */}
             <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
-              {[['form', 'Visual'], ['json', 'JSON']].map(([m, label]) => (
+              {[['form', t('su.visual', 'Visual')], ['json', 'JSON']].map(([m, label]) => (
                 <button key={m} type="button" onClick={() => setEditMode(m)} disabled={m === 'form' && !valid}
                   className={`px-2.5 py-1 rounded-md ${editMode === m ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'} ${m === 'form' && !valid ? 'opacity-40 cursor-not-allowed' : ''}`}>{label}</button>
               ))}
             </div>
-            {editMode === 'json' && <Badge tone={valid ? 'green' : 'red'}>{valid ? 'valid JSON' : 'invalid JSON'}</Badge>}
-            {editMode === 'json' && <Button size="sm" variant="ghost" onClick={format}>Format</Button>}
-            <Button size="sm" variant="primary" disabled={!valid} onClick={save}>Save</Button>
+            {editMode === 'json' && <Badge tone={valid ? 'green' : 'red'}>{valid ? t('apj.validjson', 'valid JSON') : t('apj.invalidjson', 'invalid JSON')}</Badge>}
+            {editMode === 'json' && <Button size="sm" variant="ghost" onClick={format}>{t('apj.format', 'Format')}</Button>}
+            <Button size="sm" variant="primary" disabled={!valid} onClick={save}>{t('common.save', 'Save')}</Button>
           </div>
         </div>
         {editMode === 'form' ? (
@@ -4713,11 +4714,11 @@ function LedgerRow({ row }) {
 }
 
 function AdminStorage() {
-  const toast = useToast();
+  const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/storage'), []);
   const [repoQ, setRepoQ] = useState('');   // search: hosted repos
   const [pendQ, setPendQ] = useState('');   // search: pending deletions
-  const cancelRepoDeletion = async (r) => { try { await api.post(`/admin/repos/${r.id}/delete/cancel`); toast.success(`"${r.name}" is back online.`); reload(); } catch { toast.error('Failed.'); } };
+  const cancelRepoDeletion = async (r) => { try { await api.post(`/admin/repos/${r.id}/delete/cancel`); toast.success(t('as.backonline', '"{n}" is back online.').replace('{n}', r.name)); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   if (loading) return <Loading />;
   const d = data || {};
   const rq = repoQ.trim().toLowerCase();
@@ -4733,14 +4734,14 @@ function AdminStorage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--primary-2)]" /> Storage</h2>
-        <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> Refresh</Button>
+        <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--primary-2)]" /> {t('as.title', 'Storage')}</h2>
+        <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> {t('as.refresh', 'Refresh')}</Button>
       </div>
 
       <div className="grid sm:grid-cols-[2fr_1fr] gap-3 mb-4">
         <Card className="p-5">
           <div className="text-3xl font-bold">{fmtBytes(total)}</div>
-          <div className="text-xs text-[var(--muted)] mb-3">across {d.totals?.count || 0} objects in object storage</div>
+          <div className="text-xs text-[var(--muted)] mb-3">{t('as.acrossobjects', 'across {n} objects in object storage').replace('{n}', d.totals?.count || 0)}</div>
           <div className="h-3 rounded-full overflow-hidden flex bg-[var(--surface-2)]">
             {areas.map((a, i) => <div key={a.key} className={colors[i % colors.length]} style={{ width: `${total ? (a.bytes / total * 100) : 0}%` }} title={`${a.label}: ${fmtBytes(a.bytes)}`} />)}
           </div>
@@ -4749,9 +4750,9 @@ function AdminStorage() {
           </div>
         </Card>
         <Card className="p-5">
-          <div className="flex items-center gap-2 text-xs text-[var(--faint)] mb-1"><HardDrive size={13} /> Database (all tables)</div>
+          <div className="flex items-center gap-2 text-xs text-[var(--faint)] mb-1"><HardDrive size={13} /> {t('as.dball', 'Database (all tables)')}</div>
           <div className="text-2xl font-bold">{d.dbSizeBytes != null ? fmtBytes(d.dbSizeBytes) : '—'}</div>
-          <div className="text-[11px] text-[var(--faint)] mt-1">Users, content, logs, metrics &amp; analytics — everything besides object storage.</div>
+          <div className="text-[11px] text-[var(--faint)] mt-1">{t('as.dbdesc', 'Users, content, logs, metrics & analytics — everything besides object storage.')}</div>
         </Card>
       </div>
 
@@ -4763,14 +4764,14 @@ function AdminStorage() {
         return (
           <Card className={`p-5 mb-4 ${near ? 'border-red-500/40' : ''}`}>
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-              <div className="text-sm font-medium flex items-center gap-2"><HardDrive size={15} className="text-[var(--primary-2)]" /> Total capacity</div>
-              <div className="text-xs text-[var(--muted)]"><b className="text-[var(--text)]">{cap.allocatedGB.toFixed(1)}</b> / {cap.usableGB.toFixed(0)} GB allocated <span className="text-[var(--faint)]">· total {cap.totalGB} GB, {cap.reservedGB} reserved</span></div>
+              <div className="text-sm font-medium flex items-center gap-2"><HardDrive size={15} className="text-[var(--primary-2)]" /> {t('as.totalcap', 'Total capacity')}</div>
+              <div className="text-xs text-[var(--muted)]"><b className="text-[var(--text)]">{cap.allocatedGB.toFixed(1)}</b> / {cap.usableGB.toFixed(0)} {t('as.gballocated', 'GB allocated')} <span className="text-[var(--faint)]">· {t('as.totalreserved', 'total {t} GB, {r} reserved').replace('{t}', cap.totalGB).replace('{r}', cap.reservedGB)}</span></div>
             </div>
             <div className="h-3 rounded-full bg-[var(--surface-2)] overflow-hidden">
               <div className={`h-full transition-all ${near ? 'bg-gradient-to-r from-red-500 to-orange-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} style={{ width: `${pct}%` }} />
             </div>
-            <div className={`text-xs mt-2 ${near ? 'text-red-400' : 'text-[var(--muted)]'}`}>{Math.round(pct)}% of usable capacity allocated · {cap.freeGB.toFixed(1)} GB free{near ? ' — prices rise near the limit.' : ''}</div>
-            <div className="text-[11px] text-[var(--faint)] mt-1.5">{cap.hostingAllocatedGB?.toFixed(1)} GB hosting quotas + {cap.submissionsPublishedGB?.toFixed(2)} GB approved submissions{cap.diskFreeGB != null && <> · real disk free: <b className="text-[var(--text)]">{cap.diskFreeGB.toFixed(0)} GB</b> / {cap.diskTotalGB.toFixed(0)} GB total</>}</div>
+            <div className={`text-xs mt-2 ${near ? 'text-red-400' : 'text-[var(--muted)]'}`}>{t('as.usableallocated', '{p}% of usable capacity allocated · {f} GB free').replace('{p}', Math.round(pct)).replace('{f}', cap.freeGB.toFixed(1))}{near ? t('as.pricesrise', ' — prices rise near the limit.') : ''}</div>
+            <div className="text-[11px] text-[var(--faint)] mt-1.5">{t('as.hostingquotas', '{h} GB hosting quotas + {s} GB approved submissions').replace('{h}', cap.hostingAllocatedGB?.toFixed(1)).replace('{s}', cap.submissionsPublishedGB?.toFixed(2))}{cap.diskFreeGB != null && <> · {t('as.realdiskfree', 'real disk free:')} <b className="text-[var(--text)]">{cap.diskFreeGB.toFixed(0)} GB</b> / {t('as.gbtotal', '{n} GB total').replace('{n}', cap.diskTotalGB.toFixed(0))}</>}</div>
           </Card>
         );
       })()}
@@ -4780,8 +4781,8 @@ function AdminStorage() {
           always answerable instead of one opaque "Total capacity" number. */}
       {d.ledger && (
         <Card className="p-5 mb-4">
-          <div className="text-sm font-medium mb-1 flex items-center gap-2"><Sliders size={15} className="text-[var(--primary-2)]" /> Capacity by purpose</div>
-          <div className="text-[11px] text-[var(--faint)] mb-2">Real usage per category — approved submissions move out of the temp margin and into their own permanent bucket once approved.</div>
+          <div className="text-sm font-medium mb-1 flex items-center gap-2"><Sliders size={15} className="text-[var(--primary-2)]" /> {t('as.capbypurpose', 'Capacity by purpose')}</div>
+          <div className="text-[11px] text-[var(--faint)] mb-2">{t('as.capbypurposesub', 'Real usage per category — approved submissions move out of the temp margin and into their own permanent bucket once approved.')}</div>
           <div className="divide-y divide-[var(--line)]">
             {d.ledger.map((row) => <LedgerRow key={row.key} row={row} />)}
           </div>
@@ -4793,43 +4794,43 @@ function AdminStorage() {
           <Card key={a.key} className="p-4">
             <div className="flex items-center gap-2 text-sm text-[var(--muted)]"><I size={15} className="text-[var(--primary-2)]" /> {a.label}</div>
             <div className="text-2xl font-bold mt-2">{fmtBytes(a.bytes)}</div>
-            <div className="text-xs text-[var(--faint)] mt-0.5">{a.count} objects · <code>{a.prefix}</code></div>
+            <div className="text-xs text-[var(--faint)] mt-0.5">{t('as.objects', '{n} objects').replace('{n}', a.count)} · <code>{a.prefix}</code></div>
           </Card>); })}
       </div>
 
       <Card className="p-4 mb-4">
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <div className="text-sm font-medium">Hosted repos <span className="text-[var(--faint)] font-normal">({(d.topRepos || []).length})</span></div>
+          <div className="text-sm font-medium">{t('as.hostedrepos', 'Hosted repos')} <span className="text-[var(--faint)] font-normal">({(d.topRepos || []).length})</span></div>
           {(d.topRepos || []).length > 2 && (
             <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-              <Input className="!pl-8 !py-1.5 !text-sm" placeholder="Search name or owner…" value={repoQ} onChange={(e) => setRepoQ(e.target.value)} /></div>
+              <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('as.searchnameowner', 'Search name or owner…')} value={repoQ} onChange={(e) => setRepoQ(e.target.value)} /></div>
           )}
         </div>
         <div className="grid grid-cols-3 gap-3 text-center mb-3">
-          <div><div className="text-xl font-bold">{d.db?.hostedRepos || 0}</div><div className="text-xs text-[var(--muted)]">repos</div></div>
-          <div><div className="text-xl font-bold">{fmtBytes(d.db?.repoUsedBytes || 0)}</div><div className="text-xs text-[var(--muted)]">used</div></div>
-          <div><div className="text-xl font-bold">{fmtBytes(d.db?.repoAllocatedBytes || 0)}</div><div className="text-xs text-[var(--muted)]">allocated (quota)</div></div>
+          <div><div className="text-xl font-bold">{d.db?.hostedRepos || 0}</div><div className="text-xs text-[var(--muted)]">{t('as.repos', 'repos')}</div></div>
+          <div><div className="text-xl font-bold">{fmtBytes(d.db?.repoUsedBytes || 0)}</div><div className="text-xs text-[var(--muted)]">{t('as.used', 'used')}</div></div>
+          <div><div className="text-xl font-bold">{fmtBytes(d.db?.repoAllocatedBytes || 0)}</div><div className="text-xs text-[var(--muted)]">{t('as.allocatedquota', 'allocated (quota)')}</div></div>
         </div>
         {filteredRepos.length > 0 ? <div className="space-y-1.5 border-t border-[var(--line)] pt-3 max-h-72 overflow-auto">
           {filteredRepos.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm"><Server size={13} className="text-[var(--faint)] shrink-0" /><span className="flex-1 truncate">{r.name} <span className="text-[var(--faint)]">· {r.owner}</span></span><span className="text-xs text-[var(--muted)] tabular-nums">{fmtBytes(r.used)} / {fmtBytes(r.quota)}</span></div>)}
-        </div> : <div className="text-sm text-[var(--muted)] border-t border-[var(--line)] pt-3">{rq ? 'No repos match your search.' : 'No hosted repos.'}</div>}
+        </div> : <div className="text-sm text-[var(--muted)] border-t border-[var(--line)] pt-3">{rq ? t('as.norepomatch', 'No repos match your search.') : t('as.nohosted', 'No hosted repos.')}</div>}
       </Card>
 
       <Card className="p-4">
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <div className="text-sm font-medium flex items-center gap-2"><Trash2 size={14} className="text-red-400" /> Pending deletions (72h grace){pending > 0 && <Badge tone="red">{pending}</Badge>}</div>
+          <div className="text-sm font-medium flex items-center gap-2"><Trash2 size={14} className="text-red-400" /> {t('as.pendingdel', 'Pending deletions (72h grace)')}{pending > 0 && <Badge tone="red">{pending}</Badge>}</div>
           {pending > 2 && (
             <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-              <Input className="!pl-8 !py-1.5 !text-sm" placeholder="Search name, owner or kind…" value={pendQ} onChange={(e) => setPendQ(e.target.value)} /></div>
+              <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('as.searchnameownerkind', 'Search name, owner or kind…')} value={pendQ} onChange={(e) => setPendQ(e.target.value)} /></div>
           )}
         </div>
         {pending ? ((pendItems.length + pendRepos.length) ? <div className="space-y-1.5 max-h-72 overflow-auto">
-          {pendItems.map((i) => { const I = KIND_ICON[i.kind] || Package; return <div key={i.id} className="flex items-center gap-2 text-sm"><I size={14} className="text-[var(--faint)] shrink-0" /><Badge>{i.kind}</Badge><span className="flex-1 truncate">{i.name}</span><span className="text-xs text-red-400">in {fmtRemaining(i.deleteAt)}</span></div>; })}
-          {pendRepos.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm"><Server size={14} className="text-[var(--faint)] shrink-0" /><Badge>repo</Badge><span className="flex-1 truncate">{r.name} <span className="text-[var(--faint)]">· {r.owner}</span></span><span className="text-xs text-red-400">in {fmtRemaining(r.deleteAt)}</span><Button size="sm" variant="ghost" onClick={() => cancelRepoDeletion(r)}>Cancel</Button></div>)}
-        </div> : <div className="text-sm text-[var(--muted)]">No pending deletions match your search.</div>) : <div className="text-sm text-[var(--muted)]">Nothing scheduled for deletion.</div>}
+          {pendItems.map((i) => { const I = KIND_ICON[i.kind] || Package; return <div key={i.id} className="flex items-center gap-2 text-sm"><I size={14} className="text-[var(--faint)] shrink-0" /><Badge>{i.kind}</Badge><span className="flex-1 truncate">{i.name}</span><span className="text-xs text-red-400">{t('as.in', 'in')} {fmtRemaining(i.deleteAt)}</span></div>; })}
+          {pendRepos.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm"><Server size={14} className="text-[var(--faint)] shrink-0" /><Badge>{t('as.repo', 'repo')}</Badge><span className="flex-1 truncate">{r.name} <span className="text-[var(--faint)]">· {r.owner}</span></span><span className="text-xs text-red-400">{t('as.in', 'in')} {fmtRemaining(r.deleteAt)}</span><Button size="sm" variant="ghost" onClick={() => cancelRepoDeletion(r)}>{t('su.cancel', 'Cancel')}</Button></div>)}
+        </div> : <div className="text-sm text-[var(--muted)]">{t('as.nopendmatch', 'No pending deletions match your search.')}</div>) : <div className="text-sm text-[var(--muted)]">{t('as.nothingdel', 'Nothing scheduled for deletion.')}</div>}
       </Card>
 
-      {d.telemetryExternal && <p className="text-xs text-[var(--faint)] mt-3">Telemetry replays (rrweb) are stored by the separate BMM telemetry service and are not counted here.</p>}
+      {d.telemetryExternal && <p className="text-xs text-[var(--faint)] mt-3">{t('as.telemreplays', 'Telemetry replays (rrweb) are stored by the separate BMM telemetry service and are not counted here.')}</p>}
     </div>
   );
 }
