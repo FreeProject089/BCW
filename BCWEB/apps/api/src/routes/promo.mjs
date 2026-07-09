@@ -90,6 +90,7 @@ export default async function promoRoutes(app) {
       maxRedemptions: z.number().int().min(1).max(1_000_000).nullable().optional(),
       perUserLimit: z.number().int().min(1).max(1000).optional(),
       expiresAt: z.string().datetime().nullable().optional(),
+      stackable: z.boolean().optional(),
       note: z.string().max(200).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -111,17 +112,21 @@ export default async function promoRoutes(app) {
         code, kind: d.kind, percentOff: d.percentOff ?? null, freeMonths: d.freeMonths ?? null, minMonths: d.minMonths ?? null,
         storageGB: d.storageGB ?? null, uploadMbps: d.uploadMbps ?? null, hostMonths: d.hostMonths ?? null,
         boostDays: d.boostDays ?? null, maxRedemptions: d.maxRedemptions ?? null, perUserLimit: d.perUserLimit ?? 1,
-        expiresAt: d.expiresAt ? new Date(d.expiresAt) : null, note: d.note || '',
+        expiresAt: d.expiresAt ? new Date(d.expiresAt) : null, stackable: d.stackable ?? false, note: d.note || '',
       } });
       return reply.code(201).send({ code: created });
     } catch { return reply.code(409).send({ error: 'code_exists' }); }
   });
 
   app.patch('/admin/promo/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const b = z.object({ active: z.boolean() }).safeParse(req.body);
+    const b = z.object({ active: z.boolean().optional(), stackable: z.boolean().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const data = {};
+    if (b.data.active != null) data.active = b.data.active;
+    if (b.data.stackable != null) data.stackable = b.data.stackable;
+    if (!Object.keys(data).length) return reply.code(400).send({ error: 'nothing_to_update' });
     const p = await db();
-    const c = await p.promoCode.update({ where: { id: req.params.id }, data: { active: b.data.active } }).catch(() => null);
+    const c = await p.promoCode.update({ where: { id: req.params.id }, data }).catch(() => null);
     if (!c) return reply.code(404).send({ error: 'not_found' });
     return { code: c };
   });

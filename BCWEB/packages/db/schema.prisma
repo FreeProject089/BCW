@@ -848,6 +848,7 @@ model PromoCode {
   perUserLimit   Int      @default(1)
   expiresAt      DateTime?
   active         Boolean  @default(true)
+  stackable      Boolean  @default(false) // may be combined with OTHER stackable codes in one cart
   note           String   @default("")
   createdAt      DateTime @default(now())
   redemptions    PromoRedemption[]

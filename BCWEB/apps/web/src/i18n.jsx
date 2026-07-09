@@ -207,6 +207,9 @@ const DICT = {
     'pc.f.maxred': 'Utilisations max (vide = ∞)', 'pc.f.peruser': 'Limite par utilisateur', 'pc.f.note': 'Note (interne)', 'pc.f.note.ph': 'ex. promo de lancement',
     'pc.create': 'Créer le code', 'pc.disabled': 'Désactivé', 'pc.disable': 'Désactiver', 'pc.enable': 'Activer',
     'pc.used': 'utilisés', 'pc.noreds': 'Aucune utilisation pour le moment.',
+    'pc.f.stackable': 'Cumulable — peut être combiné avec d’autres codes cumulables',
+    'pc.f.stackable.h': 'Autorise ce code à être combiné avec d’AUTRES codes cumulables dans un même panier. Les codes non cumulables doivent être utilisés seuls.',
+    'pc.stackable': 'cumulable', 'pc.stack': 'Rendre cumulable', 'pc.unstack': 'Non cumulable',
     'pc.none.t': 'Aucun code promo', 'pc.none.s': 'Crée-en un ci-dessus — réduction, hébergement gratuit, ou boost gratuit.',
     'pc.d.off': '{n}% de réduction', 'pc.d.mofree': '{n} mois gratuits', 'pc.d.minterm': 'durée {n} mois+ seulement', 'pc.d.forever': 'pour toujours', 'pc.d.boost': 'boost {n} jours',
 
