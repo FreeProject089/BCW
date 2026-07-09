@@ -179,8 +179,13 @@ from the Fastify route modules in `apps/api/src/routes/`.
 | GET/POST | `/bot/blog/unannounced` · `/blog/announced` | bot | Blog-announce queue. |
 | GET/POST | `/bot/kofi/unannounced` · `/kofi/announced` | bot | Ko-fi tip announce queue. |
 | GET/POST | `/bot/payments/unannounced` · `/payments/announced` | bot | Payment/refund announce queue (+ read-once `test` ping). |
+| GET/POST | `/bot/dm/pending` · `/dm/sent` | bot | DM delivery queue. |
+| GET/POST | `/bot/giveaways/active` · `/:id/posted` · `/:id/enter` · `/:id/drawn` · `/create` | bot | Giveaway sync (post, enter, draw, /giveaway create). |
 | GET/PUT | `/admin/bot/config` · `/admin/bot/token` | admin | Bot config + token (dashboard). |
+| GET | `/admin/bot/logs` | admin | Recent bot console logs (live logs tab). |
 | POST | `/admin/bot/payments/test` | admin | Fire a one-off test payment embed to the configured channels. |
+| POST | `/admin/bot/dm` | admin | DM a user a message + optional minted gift promo code. |
+| GET/POST/DELETE | `/admin/bot/giveaways[/:id]` (+ `/:id/end`) | admin | Create/list/draw/delete giveaways. |
 | GET | `/admin/bot/members` · `/admin/bot/welcome-preview.png` | admin | Members view + welcome image. |
 | GET/POST/DELETE | `/me/discord/links` · `/me/discord/redeem` | user | Link/unlink Discord. |
 
@@ -189,7 +194,7 @@ from the Fastify route modules in `apps/api/src/routes/`.
 |---|---|---|---|
 | GET/POST/DELETE | `/me/creator-links[/:id]` | user | Link BMM creator ids. |
 | POST | `/link/discord` · `/link/request` · `/link/lookup` · GET `/link/status` | user/— | Pairing-code flow. |
-| GET/POST/PATCH/DELETE | `/admin/promo[/:id]` (+ `/:id/redemptions`) | admin | Manage promo codes + see redemptions. |
+| GET/POST/PATCH/DELETE | `/admin/promo[/:id]` (+ `/:id/redemptions`) | admin | Manage promo codes + redemptions. Codes support `stackable` (combine in a cart) and `assignedUserIds`/`assignedEmails` (gift codes — only those accounts may redeem). |
 | GET/POST | `/me/promo/validate` · `/me/promo/redeem` | user | Validate/redeem a code. |
 
 ## 15. Admin: users, settings, storage, contact, stats (`misc.mjs`, `analytics.mjs`)
