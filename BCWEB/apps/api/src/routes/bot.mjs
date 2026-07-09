@@ -383,13 +383,24 @@ export default async function botRoutes(app) {
       guildList: z.array(z.object({ id: z.string().max(32), name: z.string().max(120), icon: z.string().max(400).nullable().optional(), members: z.number().nullable().optional() })).max(200).optional(),
       ping: z.number().nullable().optional(), // gateway latency (ms)
       mod: z.object({ kicks: z.number().optional(), timeouts: z.number().optional(), purged: z.number().optional() }).optional(), // since-restart moderation counters
+      logs: z.array(z.object({ t: z.number(), level: z.string().max(10), msg: z.string().max(500) })).max(200).optional(), // recent bot console output → live logs tab
     }).safeParse(req.body || {});
     const d = b.success ? b.data : {};
     const p = await db();
-    // online defaults to true; a failed-login report posts online:false + an error message.
-    const value = { ...d, at: new Date().toISOString(), online: d.online !== false };
+    // Logs are stored separately (they change every heartbeat and can be large) so the
+    // small bot.status blob the config page reads stays lean.
+    const { logs, ...rest } = d;
+    const value = { ...rest, at: new Date().toISOString(), online: rest.online !== false };
     await p.adminSetting.upsert({ where: { key: 'bot.status' }, create: { key: 'bot.status', value }, update: { value } });
+    if (logs) await p.adminSetting.upsert({ where: { key: 'bot.logs' }, create: { key: 'bot.logs', value: { logs, at: Date.now() } }, update: { value: { logs, at: Date.now() } } });
     return { ok: true };
+  });
+
+  // Admin: recent bot console logs (live logs tab).
+  app.get('/admin/bot/logs', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'bot.logs' } });
+    return { logs: row?.value?.logs || [], at: row?.value?.at || null };
   });
 
   // ── Discord ↔ account linking ──

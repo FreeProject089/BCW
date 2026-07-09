@@ -1036,6 +1036,8 @@ const DICT = {
     'db.f.antiselfbot': 'Filtre anti-selfbot', 'db.f.antiselfbot.sub': '(timeout mentions en masse)',
     'db.f.nopost': 'Salons interdits', 'db.f.nopost.h': 'Poster ici expulse l’utilisateur + purge ses messages. Un id de salon est unique à son serveur.',
     'db.f.chanph': 'ID du salon — Entrée', 'db.f.chanid': 'ID du salon', 'db.f.addchan': 'Ajouter un autre salon',
+    'db.logs': 'Logs du bot en direct', 'db.logs.updated': 'màj {t}', 'db.logs.none': 'Aucun log pour l’instant — le bot les envoie à chaque heartbeat (≤60 s). Si vide, le bot est peut-être hors ligne.',
+    'db.logs.note': 'Rafraîchi toutes les 5 s tant que c’est ouvert. Utilise « Envoyer un message test » ci-dessus et regarde ici pour voir si un paiement se poste.',
     'db.pay.test': 'Envoyer un message test', 'db.pay.testsent': 'Test en file — le bot le publie sous ~2 min. Vérifie le salon (et les logs du bot si rien n’apparaît).',
     'db.pay.testnote': 'Publie un embed d’exemple dans les salons ci-dessus pour vérifier que le bot peut y poster — sans vrai paiement. Enregistre d’abord tes ids de salon. Note : seuls les NOUVEAUX paiements sont annoncés après activation du module (les existants sont ignorés).',
     'db.f.welcomech': 'ID du salon de bienvenue', 'db.f.joinmsg': 'Message d’arrivée', 'db.f.leavemsg': 'Message de départ', 'db.f.enabled': 'Activé',

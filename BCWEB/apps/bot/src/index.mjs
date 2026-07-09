@@ -2,7 +2,9 @@
 // client in sync with the admin dashboard: it connects when a token exists and the bot
 // is enabled, reconnects when the token changes, and disconnects when disabled — so the
 // token can be set/rotated from the dashboard with no container restart.
+import './logbuffer.mjs'; // patch console first so all startup logs are captured
 import { Client, GatewayIntentBits, Partials, Events, REST, Routes } from 'discord.js';
+import { recentLogs } from './logbuffer.mjs';
 import { api } from './api.mjs';
 import { config } from './config.mjs';
 import { commandData, handleInteraction } from './commands.mjs';
@@ -48,7 +50,7 @@ function buildClient() {
       // dashboard renders a real bot-style server picker and can target a specific
       // server for per-server config.
       guildList: [...c.guilds.cache.values()].slice(0, 200).map((g) => ({ id: g.id, name: String(g.name || '').slice(0, 120), icon: g.iconURL?.({ size: 64 }) || null, members: g.memberCount ?? null })),
-      ping: c.ws.ping >= 0 ? c.ws.ping : null, mod: { ...modStats },
+      ping: c.ws.ping >= 0 ? c.ws.ping : null, mod: { ...modStats }, logs: recentLogs(60),
     });
     beat();
     timers.push(setInterval(beat, 60_000));

@@ -4648,6 +4648,38 @@ function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children 
   );
 }
 
+// Live bot console logs (shipped in the heartbeat) — the fastest way to see WHY the
+// bot did or didn't do something (e.g. a payment channel not found / no permission).
+function BotLogsCard() {
+  const { t } = useI18n();
+  const [logs, setLogs] = useState(null);
+  const [at, setAt] = useState(null);
+  const [open, setOpen] = useState(false);
+  const load = () => api.get('/admin/bot/logs').then((r) => { setLogs(r.logs || []); setAt(r.at); }).catch(() => {});
+  useEffect(() => { if (!open) return; load(); const id = setInterval(load, 5000); return () => clearInterval(id); }, [open]);
+  const color = (lv) => lv === 'error' ? 'text-red-400' : lv === 'warn' ? 'text-amber-400' : 'text-[var(--muted)]';
+  return (
+    <Card className="p-4 mb-4">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-left">
+        <span className="font-medium text-sm flex items-center gap-2"><FileText size={14} className="text-[var(--primary-2)]" /> {t('db.logs', 'Live bot logs')}{at && <span className="text-[11px] text-[var(--faint)] font-normal">· {t('db.logs.updated', 'updated {t}').replace('{t}', new Date(at).toLocaleTimeString())}</span>}</span>
+        <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="mt-3">
+          {logs == null ? <div className="text-xs text-[var(--muted)] flex items-center gap-2"><Spinner /> {t('common.loading', 'Loading…')}</div>
+            : logs.length === 0 ? <div className="text-xs text-[var(--faint)]">{t('db.logs.none', 'No logs yet — the bot pushes them on its heartbeat (≤60s). If empty, the bot may be offline.')}</div>
+            : <div className="rounded-lg bg-[#0b1220] border border-[var(--line)] p-2.5 max-h-72 overflow-auto font-mono text-[11px] leading-relaxed">
+                {logs.map((l, i) => (
+                  <div key={i} className="whitespace-pre-wrap break-words"><span className="text-[var(--faint)]">{new Date(l.t).toLocaleTimeString()} </span><span className={color(l.level)}>{l.msg}</span></div>
+                ))}
+              </div>}
+          <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('db.logs.note', 'Auto-refreshes every 5s while open. Use “Send test message” above and watch here to see whether a payment posts.')}</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function AdminBot() {
   const toast = useToast();
   const { t } = useI18n();
@@ -4793,6 +4825,8 @@ function AdminBot() {
           </Card>
         )}
       </div>
+
+      <BotLogsCard />
 
       {/* ═══════════ GLOBAL — cross-server ═══════════ */}
       <SectionTitle icon={Globe} title={t('db.sec.global', 'Global — applies across every server')} sub={t('db.sec.global.sub', 'Announcements route by channel (works in any server); limits are shared.')} />
