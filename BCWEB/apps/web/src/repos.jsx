@@ -734,10 +734,11 @@ function PoolAddModal({ group, onClose, onDone }) {
 function FeatureModal({ repo, onClose }) {
   const toast = useToast(); const { t } = useI18n();
   const [days, setDays] = useState(7);
+  const [autoRenew, setAutoRenew] = useState(true);
   const [price, setPrice] = useState(null);
   useEffect(() => { api.get(`/hosting/feature-price?days=${days}`).then((r) => setPrice(r.priceCents)).catch(() => setPrice(null)); }, [days]);
   const buy = async () => {
-    try { const { url } = await api.post(`/repos/${repo.id}/feature/checkout`, { days }); window.location = url; }
+    try { const { url } = await api.post(`/repos/${repo.id}/feature/checkout`, { days, autoRenew }); window.location = url; }
     catch (x) { toast.error(x.data?.error === 'stripe_not_configured' ? t('hosting.err.stripe', 'Payments not configured yet.') : t('hosting.err.checkout', 'Checkout failed.')); }
   };
   return (
@@ -755,8 +756,15 @@ function FeatureModal({ repo, onClose }) {
           </button>
         ))}
       </div>
+      <label className="flex items-start gap-2.5 text-sm mb-3 cursor-pointer">
+        <input type="checkbox" className="mt-0.5" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} />
+        <span>
+          <span className="font-medium flex items-center gap-1.5"><RefreshCw size={13} className="text-[var(--primary-2)]" /> {t('repos.boost.autorenew', 'Auto-renew this boost')}</span>
+          <span className="block text-xs text-[var(--muted)] mt-0.5">{autoRenew ? t('repos.boost.autorenew.on', 'Re-boosts automatically every {n} days. Cancel anytime from “Manage billing”.').replace('{n}', days) : t('repos.boost.autorenew.off', 'One-time boost — ends after {n} days.').replace('{n}', days)}</span>
+        </span>
+      </label>
       <div className="flex items-end justify-between pt-3 border-t border-[var(--line)]">
-        <span className="text-sm text-[var(--muted)]">{t('repos.total', 'Total')}</span>
+        <span className="text-sm text-[var(--muted)]">{t('repos.total', 'Total')} {autoRenew && <span className="text-xs font-normal text-[var(--faint)]">· {t('repos.boost.perterm', 'per {n}d', ).replace('{n}', days)}</span>}</span>
         <span className="text-2xl font-bold gradient-text">{price == null ? '—' : `$${(price / 100).toFixed(2)}`}</span>
       </div>
     </Modal>

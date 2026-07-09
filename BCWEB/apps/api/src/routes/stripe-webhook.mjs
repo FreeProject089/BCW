@@ -66,6 +66,8 @@ export default async function stripeWebhook(app) {
       }
 
       // Paid feature promotion: extend the repo's featuredUntil + record an invoice.
+      // When it's a recurring (auto-renew) boost, also track a FeatureSubscription so
+      // invoice.paid can re-extend it each cycle.
       if (meta.type === 'feature' && meta.repoId && meta.userId) {
         const days = Number(meta.days || 7);
         const repo = await p.serverRepo.findUnique({ where: { id: meta.repoId } });
@@ -78,7 +80,14 @@ export default async function stripeWebhook(app) {
             description: `Featured listing — "${repo.name}" (${days} days)`,
             amountCents: s.amount_total ?? 0, currency: s.currency || 'usd', days, stripeSessionId: s.id,
           } });
-          await notify(p, meta.userId, 'feature_active', `"${repo.name}" is now featured until ${until.toDateString()}.`);
+          if (s.subscription) {
+            await p.featureSubscription.upsert({
+              where: { stripeSubId: s.subscription },
+              create: { userId: meta.userId, serverRepoId: repo.id, stripeSubId: s.subscription, days, status: 'active', currentPeriodEnd: until },
+              update: { status: 'active', days, currentPeriodEnd: until },
+            });
+          }
+          await notify(p, meta.userId, 'feature_active', `"${repo.name}" is now featured until ${until.toDateString()}${s.subscription ? ' (auto-renews)' : ''}.`);
         }
         return { received: true };
       }
@@ -150,6 +159,24 @@ export default async function stripeWebhook(app) {
       // provisioned it. Only 'subscription_cycle' renewals land here.
       const inv = event.data.object;
       if (inv.billing_reason === 'subscription_cycle' && inv.subscription) {
+        // A recurring FEATURE boost renewal → re-extend featuredUntil by its days.
+        const fsub = await p.featureSubscription.findUnique({ where: { stripeSubId: inv.subscription } });
+        if (fsub) {
+          const repo = await p.serverRepo.findUnique({ where: { id: fsub.serverRepoId }, select: { name: true, ownerId: true, featuredUntil: true } });
+          if (repo) {
+            const base = repo.featuredUntil && repo.featuredUntil > new Date() ? repo.featuredUntil : new Date();
+            const until = new Date(base.getTime() + fsub.days * 864e5);
+            await p.serverRepo.update({ where: { id: fsub.serverRepoId }, data: { featuredUntil: until } });
+            await p.featureSubscription.update({ where: { id: fsub.id }, data: { status: 'active', currentPeriodEnd: until } });
+            await p.payment.create({ data: {
+              userId: fsub.userId, serverRepoId: fsub.serverRepoId, kind: 'FEATURE',
+              description: `Featured listing renewal — "${repo.name}" (${fsub.days} days)`,
+              amountCents: inv.amount_paid ?? 0, currency: inv.currency || 'usd', days: fsub.days, stripeSessionId: inv.id,
+            } });
+            await notify(p, repo.ownerId, 'feature_active', `"${repo.name}" boost auto-renewed — featured until ${until.toDateString()}.`);
+          }
+          return { received: true };
+        }
         const sub = await p.subscription.findUnique({ where: { stripeSubId: inv.subscription } });
         if (sub) {
           // Trust Stripe's own period for the new end date.
@@ -196,6 +223,11 @@ export default async function stripeWebhook(app) {
       await p.adminSetting.upsert({ where: { key: 'bot.refundEvents' }, create: { key: 'bot.refundEvents', value: { events } }, update: { value: { events } } });
     } else if (event.type === 'customer.subscription.deleted') {
       const subId = event.data.object.id;
+      // A cancelled/ended FEATURE boost: mark it so it stops renewing. The repo keeps
+      // its current featuredUntil and simply lapses to normal when it passes — no
+      // suspension (unlike hosting).
+      const fsub = await p.featureSubscription.findUnique({ where: { stripeSubId: subId } });
+      if (fsub) { await p.featureSubscription.update({ where: { id: fsub.id }, data: { status: 'canceled' } }); return { received: true }; }
       const sub = await p.subscription.findUnique({ where: { stripeSubId: subId } });
       if (sub) {
         await p.subscription.update({ where: { id: sub.id }, data: { status: 'canceled' } });

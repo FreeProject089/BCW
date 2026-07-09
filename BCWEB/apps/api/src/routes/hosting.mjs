@@ -327,7 +327,7 @@ export default async function hostingRoutes(app) {
   });
 
   app.post('/repos/:id/feature/checkout', { preHandler: requireRole() }, async (req, reply) => {
-    const b = z.object({ days: z.number().int().min(1).max(365) }).safeParse(req.body);
+    const b = z.object({ days: z.number().int().min(1).max(365), autoRenew: z.boolean().default(false) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { id: req.params.id } });
@@ -339,10 +339,20 @@ export default async function hostingRoutes(app) {
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
     const siteUrl = process.env.SITE_URL || 'http://localhost';
-    const session = await sk.checkout.sessions.create({
+    const md = { type: 'feature', userId: req.user.uid, repoId: repo.id, days: String(b.data.days) };
+    // Auto-renew → a recurring subscription that re-extends featuredUntil every
+    // `days` (Stripe caps a billing interval at 365 days, which is our max anyway).
+    const session = await sk.checkout.sessions.create(b.data.autoRenew ? {
+      mode: 'subscription', customer,
+      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: amount, recurring: { interval: 'day', interval_count: b.data.days }, product_data: { name: `Feature "${repo.name}" — auto-renews every ${b.data.days} days` } } }],
+      subscription_data: { metadata: md },
+      metadata: md,
+      success_url: `${siteUrl}/dashboard?feature=ok`,
+      cancel_url: `${siteUrl}/dashboard?feature=cancel`,
+    } : {
       mode: 'payment', customer,
       line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: amount, product_data: { name: `Feature "${repo.name}" for ${b.data.days} days` } } }],
-      metadata: { type: 'feature', userId: req.user.uid, repoId: repo.id, days: String(b.data.days) },
+      metadata: md,
       success_url: `${siteUrl}/dashboard?feature=ok`,
       cancel_url: `${siteUrl}/dashboard?feature=cancel`,
     });

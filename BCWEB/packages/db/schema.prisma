@@ -796,6 +796,24 @@ model Subscription {
   currentPeriodEnd DateTime?
 }
 
+// Recurring "featured" boost — a Stripe subscription that re-extends a repo's
+// featuredUntil every `days`. Separate from Subscription (which is @unique per
+// repo for hosting), so a repo can be both hosted AND boosted. No relations, on
+// purpose (like Payment), to keep ServerRepo/User untouched — looked up by
+// serverRepoId / stripeSubId in the webhook.
+model FeatureSubscription {
+  id               String   @id @default(cuid())
+  userId           String
+  serverRepoId     String
+  stripeSubId      String   @unique
+  days             Int
+  status           String   @default("active")
+  currentPeriodEnd DateTime?
+  createdAt        DateTime @default(now())
+
+  @@index([serverRepoId])
+}
+
 // Password reset tokens (single-use, short-lived). The raw token is never stored.
 model PasswordReset {
   id        String   @id @default(cuid())
