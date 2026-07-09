@@ -28,8 +28,22 @@ export async function pollPayments(client) {
     const refundTargets = refundChannelIds.length ? refundChannelIds : payChannelIds;
     if (!payChannelIds.length && !refundTargets.length) return;
 
-    const { payments, refunds } = await api.paymentsUnannounced();
+    const { payments, refunds, test } = await api.paymentsUnannounced();
+
+    // Admin "Send test message" → post a sample embed so channel/permissions can be
+    // verified without a real payment. Fired before the early-return below.
+    if (test) {
+      const embed = new EmbedBuilder().setColor(0x16a34a).setTitle('🧪 Test — payments module')
+        .setDescription('This is a **test message**. If you can read this, the bot can post payment & refund notifications to this channel. ✅')
+        .setTimestamp(new Date());
+      const targets = [...new Set([...payChannelIds, ...refundTargets])];
+      let ok = false;
+      for (const id of targets) { const ch = client.channels.cache.get(id) || await client.channels.fetch(id).catch(() => null); if (ch?.send) { try { await ch.send({ embeds: [embed] }); ok = true; } catch (e) { console.warn('[bot] test post to', id, 'failed', e.message); } } }
+      console.log(`[bot] payments test message → ${ok ? `sent to ${targets.length} channel(s)` : 'NO channel reachable — check the channel id + bot permissions'}`);
+    }
+
     if (!payments.length && !refunds.length) return;
+    console.log(`[bot] payments: ${payments.length} new payment(s), ${refunds.length} new refund(s) to announce`);
 
     const marks = { paymentIds: [], refundIds: [] };
 

@@ -315,24 +315,39 @@ export default async function botRoutes(app) {
   app.get('/bot/payments/unannounced', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const p = await db();
-    const [payments, refundRow, seen] = await Promise.all([
+    const [payments, refundRow, seen, testRow] = await Promise.all([
       p.payment.findMany({ where: { status: 'paid' }, orderBy: { createdAt: 'asc' }, take: 500,
         select: { id: true, kind: true, description: true, amountCents: true, currency: true, createdAt: true, user: { select: { displayName: true } } } }),
       p.adminSetting.findUnique({ where: { key: 'bot.refundEvents' } }),
       p.adminSetting.findUnique({ where: { key: 'bot.paymentsAnnounced' } }),
+      p.adminSetting.findUnique({ where: { key: 'bot.paymentsTest' } }),
     ]);
     const refunds = refundRow?.value?.events || [];
+    // Read-once test ping — the admin "Send test message" button sets it; report it
+    // to the bot (which posts a sample embed) and clear it so it fires exactly once.
+    let test = false;
+    if (testRow?.value?.at && Date.now() - testRow.value.at < 10 * 60_000) { test = true; await p.adminSetting.delete({ where: { key: 'bot.paymentsTest' } }).catch(() => {}); }
     if (!seen) {
       // First call ever → seed with everything current so nothing old floods.
       await p.adminSetting.create({ data: { key: 'bot.paymentsAnnounced', value: { paymentIds: payments.map((x) => x.id), refundIds: refunds.map((r) => r.id) } } });
-      return { payments: [], refunds: [] };
+      return { payments: [], refunds: [], test };
     }
     const pSeen = new Set(seen.value?.paymentIds || []);
     const rSeen = new Set(seen.value?.refundIds || []);
     return {
+      test,
       payments: payments.filter((x) => !pSeen.has(x.id)).slice(0, 20).map((x) => ({ id: x.id, kind: x.kind, description: x.description, amountCents: x.amountCents, currency: x.currency, createdAt: x.createdAt, buyer: x.user?.displayName || null })),
       refunds: refunds.filter((r) => !rSeen.has(r.id)).slice(0, 20),
     };
+  });
+
+  // Admin: fire a one-off test payment/refund embed to the configured channels so
+  // you can verify the bot can actually post there (config + permissions) without a
+  // real Stripe payment. The bot picks it up on its next poll (≤2 min).
+  app.post('/admin/bot/payments/test', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    await p.adminSetting.upsert({ where: { key: 'bot.paymentsTest' }, create: { key: 'bot.paymentsTest', value: { at: Date.now() } }, update: { value: { at: Date.now() } } });
+    return { ok: true };
   });
 
   app.post('/bot/payments/announced', async (req, reply) => {

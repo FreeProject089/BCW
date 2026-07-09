@@ -4813,6 +4813,10 @@ function AdminBot() {
           <Field label={t('db.f.refundch', 'Refunds channels')} hint={t('db.f.refundch.h', 'Refunds are posted to each of these. Empty = use the payments channels.')}>
             <MultiChannelInput value={cfg.payments?.refundChannelIds?.length ? cfg.payments.refundChannelIds : (cfg.payments?.refundChannelId ? [cfg.payments.refundChannelId] : [])} onChange={(v) => set('payments.refundChannelIds', v)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
+          <div className="pt-1">
+            <Button size="sm" onClick={async () => { try { await api.post('/admin/bot/payments/test'); toast.success(t('db.pay.testsent', 'Test queued — the bot posts it within ~2 min. Check the channel (and the bot logs if nothing shows).')); } catch { toast.error(t('common.failed', 'Failed.')); } }}><Bell size={13} /> {t('db.pay.test', 'Send test message')}</Button>
+            <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('db.pay.testnote', 'Posts a sample embed to the channels above so you can verify the bot can post there — no real payment needed. Save your channel ids first. Note: only NEW payments are announced after you enable this module (existing ones are skipped).')}</p>
+          </div>
         </ModuleCard>
 
         <ModuleCard icon={Sliders} title={t('db.mod.limits', 'Limits')}>
