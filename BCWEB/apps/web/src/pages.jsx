@@ -4880,7 +4880,7 @@ function AdminBot() {
   return (
     <div>
       {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2 sticky top-0 z-10 py-1.5 bg-[var(--bg-solid)]/85 backdrop-blur-sm">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2 sticky top-0 z-10 py-1.5 sticky-bar">
         <h2 className="font-semibold flex items-center gap-2 text-base"><DiscordIcon size={18} className="text-[#5865F2]" /> {t('db.title', 'Discord bot')}</h2>
         <div className="flex items-center gap-2.5">
           <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${online ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-[var(--faint)] border-[var(--line)]'}`}><span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-[var(--line-strong)]'}`} /> {online ? t('db.online', 'Online') : t('db.offline', 'Offline')}</span>
@@ -6494,7 +6494,7 @@ function AdminSettings() {
   const tempPct = c?.tempMarginGB ? Math.min(100, (c.tempUsedGB / c.tempMarginGB) * 100) : 0;
   return (
     <div className="mt-10">
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2 sticky top-0 z-10 py-1 bg-[var(--bg-solid)]/85 backdrop-blur-sm">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2 sticky top-0 z-10 py-1 sticky-bar">
         <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} /> {t('hs.title', 'Hosting settings')}</h2>
         {dirtyKeys.length > 0 && <Button variant="primary" size="sm" disabled={busy === '__all__'} onClick={saveAll}>{busy === '__all__' ? <Spinner /> : <><CheckCheck size={14} /> {t('hs.saveall', 'Save all')} ({dirtyKeys.length})</>}</Button>}
       </div>
