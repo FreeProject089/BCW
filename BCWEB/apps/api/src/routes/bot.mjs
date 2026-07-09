@@ -428,7 +428,7 @@ export default async function botRoutes(app) {
   app.get('/admin/bot/giveaways', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
     const list = await p.giveaway.findMany({ orderBy: { createdAt: 'desc' }, take: 50 });
-    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, endsAt: g.endsAt, winnersCount: g.winnersCount, status: g.status, entryCount: g.entries.length, winnerIds: g.winnerIds, hasGift: !!g.giftConfig, createdAt: g.createdAt })) };
+    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, endsAt: g.endsAt, winnersCount: g.winnersCount, status: g.status, entryCount: g.entries.length, winnerIds: g.winnerIds, hasGift: !!g.giftConfig, requirements: g.requirements || null, createdAt: g.createdAt })) };
   });
   app.post('/admin/bot/giveaways', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
@@ -437,13 +437,18 @@ export default async function botRoutes(app) {
       durationMinutes: z.number().int().min(1).max(60 * 24 * 60),
       winnersCount: z.number().int().min(1).max(50).default(1),
       gift: giftShape.optional(),
+      // Entry gate: require a linked BetterCommunity account (Discord ⇄ BCWEB) and/or
+      // a linked BMM creator id. Enforced server-side when a user clicks Enter.
+      requirements: z.object({ linked: z.boolean().optional(), creator: z.boolean().optional() }).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    // A creator-id requirement implies a linked account (creator ids live on BCWEB accounts).
+    const reqs = b.data.requirements ? { linked: !!(b.data.requirements.linked || b.data.requirements.creator), creator: !!b.data.requirements.creator } : null;
     const gw = await p.giveaway.create({ data: {
       prize: b.data.prize, channelId: b.data.channelId, winnersCount: b.data.winnersCount,
       endsAt: new Date(Date.now() + b.data.durationMinutes * 60_000),
-      giftConfig: b.data.gift || null, createdBy: req.user.uid,
+      giftConfig: b.data.gift || null, requirements: (reqs && (reqs.linked || reqs.creator)) ? reqs : null, createdBy: req.user.uid,
     } });
     return { ok: true, id: gw.id };
   });
@@ -465,7 +470,7 @@ export default async function botRoutes(app) {
     if (!botAuth(req, reply)) return;
     const p = await db();
     const list = await p.giveaway.findMany({ where: { status: 'active' }, take: 100 });
-    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, messageId: g.messageId, endsAt: g.endsAt, winnersCount: g.winnersCount, entries: g.entries, due: new Date(g.endsAt) <= new Date() })) };
+    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, messageId: g.messageId, endsAt: g.endsAt, winnersCount: g.winnersCount, entries: g.entries, requirements: g.requirements || null, due: new Date(g.endsAt) <= new Date() })) };
   });
   app.post('/bot/giveaways/:id/posted', async (req, reply) => {
     if (!botAuth(req, reply)) return;
@@ -482,6 +487,14 @@ export default async function botRoutes(app) {
     const p = await db();
     const gw = await p.giveaway.findUnique({ where: { id: req.params.id } });
     if (!gw || gw.status !== 'active') return reply.code(409).send({ error: 'not_active' });
+    // Entry requirements: must have a linked BCWEB account (and optionally a BMM
+    // creator id on it). Enforced here — the button on Discord can't be trusted.
+    const gr = gw.requirements || {};
+    if (gr.linked || gr.creator) {
+      const link = await p.discordLink.findUnique({ where: { discordId: b.data.discordId }, include: { user: { select: { _count: { select: { creatorLinks: true } } } } } });
+      if (!link) return reply.code(403).send({ error: 'need_link' });
+      if (gr.creator && !link.user._count.creatorLinks) return reply.code(403).send({ error: 'need_creator' });
+    }
     if (gw.entries.includes(b.data.discordId)) return { ok: true, already: true, count: gw.entries.length };
     await p.giveaway.update({ where: { id: gw.id }, data: { entries: { push: b.data.discordId } } });
     return { ok: true, count: gw.entries.length + 1 };

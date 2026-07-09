@@ -10,7 +10,12 @@ async function call(method, path, body) {
     headers: { 'x-bot-secret': SECRET, ...(body ? { 'content-type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`bcweb ${method} ${path} -> ${res.status}`);
+  if (!res.ok) {
+    let body = null; try { body = await res.json(); } catch { /* non-JSON */ }
+    const e = new Error(`bcweb ${method} ${path} -> ${res.status}`);
+    e.status = res.status; e.body = body;
+    throw e;
+  }
   return res.status === 204 ? null : res.json();
 }
 

@@ -4436,16 +4436,22 @@ function AdminKofiGoal() {
 function AdminPromo() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/promo'), []);
-  const [f, setF] = useState({ kind: 'discount', code: '', percentOff: 20, freeMonths: 0, minMonths: 0, storageGB: 10, uploadMbps: 8, hostMonths: 0, boostDays: 7, maxRedemptions: '', perUserLimit: 1, stackable: false, assignedEmails: '', note: '' });
+  const [f, setF] = useState({ kind: 'discount', code: '', percentOff: 20, freeMonths: 0, minMonths: 0, storageGB: 10, uploadMbps: 8, hostMonths: 0, boostDays: 7, maxRedemptions: '', perUserLimit: 1, stackable: false, assignType: 'email', assignInput: '', assignedTokens: [], note: '' });
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const codes = data?.codes || [];
+  const addToken = () => setF((s) => {
+    const val = s.assignInput.trim(); if (!val) return s;
+    const norm = s.assignType === 'email' ? val.toLowerCase() : val;
+    const tok = `${s.assignType}:${norm}`;
+    return s.assignedTokens.includes(tok) ? { ...s, assignInput: '' } : { ...s, assignedTokens: [...s.assignedTokens, tok], assignInput: '' };
+  });
+  const removeToken = (tok) => setF((s) => ({ ...s, assignedTokens: s.assignedTokens.filter((x) => x !== tok) }));
   const create = async () => {
-    const assignedEmails = f.assignedEmails.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean);
-    const body = { kind: f.kind, code: f.code.trim() || undefined, perUserLimit: Number(f.perUserLimit) || 1, stackable: !!f.stackable, ...(assignedEmails.length ? { assignedEmails } : {}), note: f.note || undefined, maxRedemptions: f.maxRedemptions ? Number(f.maxRedemptions) : null };
+    const body = { kind: f.kind, code: f.code.trim() || undefined, perUserLimit: Number(f.perUserLimit) || 1, stackable: !!f.stackable, ...(f.assignedTokens.length ? { assignedTokens: f.assignedTokens } : {}), note: f.note || undefined, maxRedemptions: f.maxRedemptions ? Number(f.maxRedemptions) : null };
     if (f.kind === 'discount') { if (Number(f.percentOff)) body.percentOff = Number(f.percentOff); if (Number(f.freeMonths)) body.freeMonths = Number(f.freeMonths); if (Number(f.minMonths)) body.minMonths = Number(f.minMonths); }
     if (f.kind === 'free_hosting') { body.storageGB = Number(f.storageGB); if (Number(f.uploadMbps)) body.uploadMbps = Number(f.uploadMbps); if (Number(f.hostMonths)) body.hostMonths = Number(f.hostMonths); }
     if (f.kind === 'free_boost') body.boostDays = Number(f.boostDays);
-    try { const r = await api.post('/admin/promo', body); toast.success(t('pc.created', 'Code {code} created.').replace('{code}', r.code.code)); setF((s) => ({ ...s, code: '' })); reload(); }
+    try { const r = await api.post('/admin/promo', body); toast.success(t('pc.created', 'Code {code} created.').replace('{code}', r.code.code)); setF((s) => ({ ...s, code: '', assignedTokens: [], assignInput: '' })); reload(); }
     catch (x) { toast.error(x.data?.error === 'discount_needs_value' ? t('pc.err.discount', 'Set a % off or free months.') : x.data?.error === 'code_exists' ? t('pc.err.exists', 'That code already exists.') : x.data?.error === 'hosting_needs_storage' ? t('pc.err.storage', 'Set the storage GB.') : x.data?.error === 'boost_needs_days' ? t('pc.err.boost', 'Set the boost days.') : t('common.failed', 'Failed.')); }
   };
   const toggle = async (c) => { try { await api.patch(`/admin/promo/${c.id}`, { active: !c.active }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
@@ -4480,8 +4486,27 @@ function AdminPromo() {
           <input type="checkbox" checked={f.stackable} onChange={(e) => set('stackable', e.target.checked)} /> {t('pc.f.stackable', 'Stackable — can be combined with other stackable codes')}
         </label>
         <div className="mt-3">
-          <Field label={t('pc.f.assign', 'Assign to specific users (gift code)')} hint={t('pc.f.assign.h', 'Comma/space-separated account emails. If set, ONLY these accounts can redeem the code. Leave blank for anyone.')}>
-            <Input value={f.assignedEmails} onChange={(e) => set('assignedEmails', e.target.value)} placeholder="user@email.com, other@email.com" />
+          <Field label={t('pc.f.assign', 'Assign to specific people (gift code)')} hint={t('pc.f.assign.h2', 'If set, ONLY people matching one of these identifiers can redeem. No linked account required — it unlocks the moment that email / Discord id / creator id / BCWEB id belongs to the signed-in account. Leave empty for anyone.')}>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Select className="sm:!w-44" value={f.assignType} onChange={(e) => set('assignType', e.target.value)}>
+                <option value="email">{t('pc.assign.email', 'Email')}</option>
+                <option value="discord">{t('pc.assign.discord', 'Discord id')}</option>
+                <option value="creator">{t('pc.assign.creator', 'BMM creator id')}</option>
+                <option value="bcid">{t('pc.assign.bcid', 'BCWEB user id')}</option>
+              </Select>
+              <Input value={f.assignInput} onChange={(e) => set('assignInput', e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addToken())} placeholder={f.assignType === 'email' ? 'user@email.com' : f.assignType === 'discord' ? '123456789012345678' : f.assignType === 'creator' ? 'creator-id' : 'bcweb-user-id'} />
+              <Button type="button" onClick={addToken}><Plus size={13} /> {t('pc.assign.add', 'Add')}</Button>
+            </div>
+            {f.assignedTokens.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {f.assignedTokens.map((tok) => { const [ty, ...rest] = tok.split(':'); const val = rest.join(':'); return (
+                  <span key={tok} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-xs">
+                    <span className="text-[10px] font-bold uppercase text-[var(--primary-2)]">{ty}</span><span className="font-mono truncate max-w-[14rem]">{val}</span>
+                    <button type="button" onClick={() => removeToken(tok)} className="text-[var(--faint)] hover:text-red-400"><X size={11} /></button>
+                  </span>
+                ); })}
+              </div>
+            )}
           </Field>
         </div>
         <div className="flex justify-end mt-3"><Button variant="primary" onClick={create}><Plus size={15} /> {t('pc.create', 'Create code')}</Button></div>
@@ -4492,7 +4517,7 @@ function AdminPromo() {
             <div className="flex items-center gap-3">
               <Ticket size={18} className={c.active ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap"><code className="font-mono font-semibold">{c.code}</code><button onClick={() => { navigator.clipboard?.writeText(c.code); toast.success(t('common.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button>{!c.active && <Badge>{t('pc.disabled', 'Disabled')}</Badge>}{c.stackable && <Badge tone="green"><Layers size={9} /> {t('pc.stackable', 'stackable')}</Badge>}{c.assignedUserIds?.length > 0 && <Badge tone="primary"><Gift size={9} /> {t('pc.gift', 'gift · {n}').replace('{n}', c.assignedUserIds.length)}</Badge>}</div>
+                <div className="flex items-center gap-2 flex-wrap"><code className="font-mono font-semibold">{c.code}</code><button onClick={() => { navigator.clipboard?.writeText(c.code); toast.success(t('common.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button>{!c.active && <Badge>{t('pc.disabled', 'Disabled')}</Badge>}{c.stackable && <Badge tone="green"><Layers size={9} /> {t('pc.stackable', 'stackable')}</Badge>}{((c.assignedUserIds?.length || 0) + (c.assignedTokens?.length || 0)) > 0 && <Badge tone="primary"><Gift size={9} /> {t('pc.gift', 'gift · {n}').replace('{n}', (c.assignedUserIds?.length || 0) + (c.assignedTokens?.length || 0))}</Badge>}</div>
                 <div className="text-xs text-[var(--muted)] mt-0.5"><Badge tone="primary">{c.kind.replace('_', ' ')}</Badge> {desc(c)}{c.expiresAt ? ` · exp ${new Date(c.expiresAt).toLocaleDateString()}` : ''}{c.note ? ` · ${c.note}` : ''}</div>
               </div>
               <button onClick={() => viewReds(c)} className={`text-xs px-2.5 py-1.5 rounded-lg border ${openId === c.id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Users size={12} className="inline mr-1" />{c.redeemedCount}{c.maxRedemptions ? `/${c.maxRedemptions}` : ''} {t('pc.used', 'used')}</button>
@@ -4718,6 +4743,10 @@ function BotDMCard() {
   const [open, setOpen] = useState(false);
   const [discordId, setDiscordId] = useState('');
   const [message, setMessage] = useState('');
+  const [picker, setPicker] = useState(false);
+  const [mq, setMq] = useState(''); const [mqDeb, setMqDeb] = useState('');
+  useEffect(() => { const id = setTimeout(() => setMqDeb(mq), 300); return () => clearTimeout(id); }, [mq]);
+  const members = useAsync(() => (picker ? api.get(`/admin/bot/members?take=8${mqDeb ? `&q=${encodeURIComponent(mqDeb)}` : ''}`) : Promise.resolve({ members: [] })), [picker, mqDeb]);
   const [withGift, setWithGift] = useState(false);
   const [gift, setGift] = useState({ kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, uploadMbps: 8, hostMonths: 0, boostDays: 7 });
   const [busy, setBusy] = useState(false);
@@ -4754,7 +4783,30 @@ function BotDMCard() {
       {open && (
         <div className="mt-3 space-y-3">
           <p className="text-[11px] text-[var(--faint)]">{t('dm.note', 'The bot DMs the user directly. A gift mints a one-time promo code reserved for their account and appends it to the message. Requires the user shares a server with the bot and has DMs open.')}</p>
-          <Field label={t('dm.userid', 'Discord user id')} hint={t('dm.userid.h', 'Enable Developer Mode in Discord → right-click a user → Copy User ID.')}><Input value={discordId} onChange={(e) => setDiscordId(e.target.value)} placeholder="123456789012345678" /></Field>
+          <Field label={t('dm.userid', 'Discord user id')} hint={t('dm.userid.h', 'Enable Developer Mode in Discord → right-click a user → Copy User ID.')}>
+            <div className="flex gap-2">
+              <Input value={discordId} onChange={(e) => setDiscordId(e.target.value)} placeholder="123456789012345678" />
+              <Button type="button" onClick={() => setPicker((v) => !v)} title={t('dm.pick', 'Pick from members')} className={picker ? '!border-[var(--primary)]' : ''}><Users size={14} /> {t('dm.pick', 'Members')}</Button>
+            </div>
+          </Field>
+          {/* Member picker — search the tracked Discord members and click one to fill the id. */}
+          {picker && (
+            <div className="rounded-lg border border-[var(--line)] p-2 -mt-1">
+              <Input value={mq} onChange={(e) => setMq(e.target.value)} placeholder={t('dm.searchmem', 'Search name or id…')} className="!py-1.5 !text-sm mb-2" />
+              {members.loading ? <div className="py-2"><Loading /></div> : (members.data?.members || []).length ? (
+                <div className="max-h-52 overflow-auto divide-y divide-[var(--line)]">
+                  {members.data.members.map((m) => (
+                    <button key={m.discordId} type="button" onClick={() => { setDiscordId(m.discordId); setPicker(false); }}
+                      className="w-full flex items-center gap-2 px-1.5 py-1.5 text-left text-sm hover:bg-[var(--surface-2)] rounded">
+                      <span className="grid place-items-center w-7 h-7 rounded-full bg-[var(--surface-2)] text-[var(--faint)] shrink-0 text-xs font-bold">{(m.username || '?').slice(0, 2).toUpperCase()}</span>
+                      <span className="flex-1 min-w-0"><span className="font-medium truncate block">{m.username || t('dm.unknownuser', 'unknown')}</span><span className="text-[11px] text-[var(--faint)] font-mono">{m.discordId}</span></span>
+                      {m.linkedUser ? <Badge tone="green"><CheckCircle2 size={9} /> {t('dm.linked', 'linked')}</Badge> : <Badge>{t('dm.unlinked', 'unlinked')}</Badge>}
+                    </button>
+                  ))}
+                </div>
+              ) : <div className="text-xs text-[var(--faint)] px-1.5 py-2">{t('dm.nomembers', 'No members found. The bot populates this once it’s connected and has scanned the server.')}</div>}
+            </div>
+          )}
           <Field label={t('dm.message', 'Message')}><Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder={t('dm.message.ph', 'Thanks for being awesome! Here’s a little something…')} /></Field>
           <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={withGift} onChange={(e) => setWithGift(e.target.checked)} /> <Gift size={13} className="text-[var(--primary-2)]" /> {t('dm.attachgift', 'Attach a gift promo code')}</label>
           {withGift && (
@@ -4778,7 +4830,7 @@ function BotGiveawaysCard() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const { data, loading, reload } = useAsync(() => api.get('/admin/bot/giveaways'), []);
-  const [f, setF] = useState({ prize: '', channelId: '', durationMinutes: 60, winnersCount: 1, withGift: false, gift: { kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, boostDays: 7 } });
+  const [f, setF] = useState({ prize: '', channelId: '', durationMinutes: 60, winnersCount: 1, reqLinked: false, reqCreator: false, withGift: false, gift: { kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, boostDays: 7 } });
   const [busy, setBusy] = useState(false);
   const giveaways = data?.giveaways || [];
   const create = async () => {
@@ -4786,6 +4838,7 @@ function BotGiveawaysCard() {
     setBusy(true);
     try {
       const body = { prize: f.prize.trim(), channelId: f.channelId.trim(), durationMinutes: Number(f.durationMinutes) || 60, winnersCount: Number(f.winnersCount) || 1 };
+      if (f.reqLinked || f.reqCreator) body.requirements = { linked: !!(f.reqLinked || f.reqCreator), creator: !!f.reqCreator };
       if (f.withGift) { const g = { kind: f.gift.kind }; if (f.gift.kind === 'discount') { if (Number(f.gift.percentOff)) g.percentOff = Number(f.gift.percentOff); if (Number(f.gift.freeMonths)) g.freeMonths = Number(f.gift.freeMonths); } if (f.gift.kind === 'free_hosting') g.storageGB = Number(f.gift.storageGB); if (f.gift.kind === 'free_boost') g.boostDays = Number(f.gift.boostDays); body.gift = g; }
       await api.post('/admin/bot/giveaways', body);
       toast.success(t('gw.created', 'Giveaway created — the bot posts it within ~30s.')); setF({ ...f, prize: '' }); reload();
@@ -4808,6 +4861,13 @@ function BotGiveawaysCard() {
             <Field label={t('gw.duration', 'Duration (minutes)')}><Input type="number" value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: e.target.value })} /></Field>
             <Field label={t('gw.winners', 'Winners')}><Input type="number" value={f.winnersCount} onChange={(e) => setF({ ...f, winnersCount: e.target.value })} /></Field>
           </div>
+          {/* Entry requirements — gate who can enter (enforced server-side on Enter). */}
+          <div className="rounded-lg border border-[var(--line)] p-3 space-y-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Lock size={11} /> {t('gw.reqs', 'Entry requirements')}</div>
+            <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqLinked || f.reqCreator} disabled={f.reqCreator} onChange={(e) => setF({ ...f, reqLinked: e.target.checked })} /> {t('gw.req.linked', 'Require a linked BetterCommunity account (Discord ⇄ BCWEB)')}</label>
+            <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqCreator} onChange={(e) => setF({ ...f, reqCreator: e.target.checked, reqLinked: e.target.checked ? true : f.reqLinked })} /> {t('gw.req.creator', 'Require a linked BMM creator id')}</label>
+            <div className="text-[11px] text-[var(--faint)]">{t('gw.req.note', 'Entrants without the required link get a helpful DM/notice pointing them to link — they can enter once linked.')}</div>
+          </div>
           <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.withGift} onChange={(e) => setF({ ...f, withGift: e.target.checked })} /> <Gift size={13} className="text-[var(--primary-2)]" /> {t('gw.attachgift', 'DM each winner a gift code')}</label>
           {f.withGift && (
             <div className="rounded-lg border border-[var(--line)] p-3 grid sm:grid-cols-2 gap-3">
@@ -4824,7 +4884,7 @@ function BotGiveawaysCard() {
               <div key={g.id} className="flex items-center gap-3 text-sm rounded-lg bg-[var(--surface-2)] px-3 py-2">
                 <Gift size={14} className={g.status === 'active' ? 'text-emerald-400 shrink-0' : 'text-[var(--faint)] shrink-0'} />
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{g.prize} {g.hasGift && <Badge tone="primary"><Gift size={9} /> {t('gw.gift', 'gift')}</Badge>}</div>
+                  <div className="font-medium truncate">{g.prize} {g.hasGift && <Badge tone="primary"><Gift size={9} /> {t('gw.gift', 'gift')}</Badge>} {g.requirements?.creator ? <Badge tone="amber"><Lock size={9} /> {t('gw.badge.creator', 'creator id')}</Badge> : g.requirements?.linked ? <Badge tone="amber"><Lock size={9} /> {t('gw.badge.linked', 'linked')}</Badge> : null}</div>
                   <div className="text-[11px] text-[var(--faint)]">{g.status === 'active' ? t('gw.endsat', 'ends {d}').replace('{d}', new Date(g.endsAt).toLocaleString()) : t('gw.ended', 'ended · {n} winner(s)').replace('{n}', g.winnerIds?.length || 0)} · {t('gw.entries', '{n} entries').replace('{n}', g.entryCount)}</div>
                 </div>
                 {g.status === 'active' && <Button size="sm" variant="ghost" onClick={() => end(g)}>{t('gw.drawbtn', 'Draw now')}</Button>}

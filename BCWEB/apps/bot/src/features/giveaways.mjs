@@ -24,8 +24,14 @@ export async function pollGiveaways(client) {
         const ch = await resolveChannel(client, gw.channelId);
         if (!ch?.send) { console.warn('[bot] giveaway channel not found/inaccessible:', gw.channelId); continue; }
         const endTs = Math.floor(new Date(gw.endsAt).getTime() / 1000);
+        const gr = gw.requirements || {};
+        const reqLine = gr.creator
+          ? `\n🔒 **Requires** a linked BetterCommunity account **with a BMM creator id** — link at ${SITE_URL}/profile`
+          : gr.linked
+            ? `\n🔒 **Requires** a linked BetterCommunity account — link at ${SITE_URL}/profile`
+            : '';
         const embed = new EmbedBuilder().setColor(0xf59e0b).setTitle('🎉 Giveaway!')
-          .setDescription(`**Prize:** ${gw.prize}\n**Winners:** ${gw.winnersCount}\n**Ends:** <t:${endTs}:R>\n\nClick **Enter** below to join!`)
+          .setDescription(`**Prize:** ${gw.prize}\n**Winners:** ${gw.winnersCount}\n**Ends:** <t:${endTs}:R>${reqLine}\n\nClick **Enter** below to join!`)
           .setTimestamp(new Date(gw.endsAt));
         const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`gw:enter:${gw.id}`).setLabel('🎉 Enter').setStyle(ButtonStyle.Primary));
         const msg = await ch.send({ embeds: [embed], components: [row] }).catch((e) => { console.warn('[bot] giveaway post failed', e.message); return null; });
@@ -65,7 +71,14 @@ export async function handleGiveawayButton(interaction) {
     const r = await api.giveawayEnter(id, interaction.user.id);
     await interaction.reply({ content: r.already ? "You're already entered — good luck! 🍀" : `You're in! 🎉 (${r.count} entrant${r.count === 1 ? '' : 's'})`, flags: MessageFlags.Ephemeral });
   } catch (e) {
-    const notActive = String(e.message || '').includes('409');
-    await interaction.reply({ content: notActive ? 'This giveaway has ended.' : 'Could not enter — try again in a moment.', flags: MessageFlags.Ephemeral }).catch(() => {});
+    const err = e.body?.error;
+    const msg = err === 'need_link'
+      ? `🔒 You must link your Discord to a BetterCommunity account to enter. Link it at ${SITE_URL}/profile, then click Enter again.`
+      : err === 'need_creator'
+        ? `🔒 This giveaway requires a linked **BMM creator id** on your BetterCommunity account. Add one at ${SITE_URL}/profile, then click Enter again.`
+        : (err === 'not_active' || String(e.message || '').includes('409'))
+          ? 'This giveaway has ended.'
+          : 'Could not enter — try again in a moment.';
+    await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 }

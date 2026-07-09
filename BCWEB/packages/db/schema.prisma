@@ -851,6 +851,7 @@ model PromoCode {
   active         Boolean  @default(true)
   stackable      Boolean  @default(false) // may be combined with OTHER stackable codes in one cart
   assignedUserIds String[] @default([]) // if non-empty, ONLY these users may redeem it (gift codes)
+  assignedTokens String[] @default([]) // typed identifiers that may redeem (no linked account required): "email:x" | "discord:x" | "creator:x" | "bcid:x"; matched to the redeeming user at redeem time
   note           String   @default("")
   createdAt      DateTime @default(now())
   redemptions    PromoRedemption[]
@@ -882,6 +883,7 @@ model Giveaway {
   entries      String[] @default([]) // entrant Discord ids
   winnerIds    String[] @default([]) // drawn winner Discord ids
   giftConfig   Json?    // optional promo gift for each winner ({ kind, percentOff, … })
+  requirements Json?    // optional entry gate: { linked?: bool (Discord⇄BCWEB account), creator?: bool (linked BMM creator id) }
   createdBy    String?
   createdAt    DateTime @default(now())
 

@@ -8,6 +8,28 @@ function genCode() {
   return Array.from({ length: 10 }, () => a[crypto.randomInt(a.length)]).join('').replace(/(.{5})(.{5})/, '$1-$2');
 }
 
+// Does `userId` match a code's assignment (gift/targeted codes)? A code is
+// "restricted" when it has any assignedUserIds OR assignedTokens; then only a
+// matching user may redeem. Tokens are typed identifiers resolved to the redeeming
+// account AT REDEEM TIME (so a code can target an email / Discord id / creator id /
+// BCWEB id that isn't linked yet — the moment that person signs in and their
+// account carries the identifier, the code unlocks). `d` is a Prisma client or tx.
+export async function assignmentMatches(d, promo, userId) {
+  const restricted = (promo.assignedUserIds?.length || promo.assignedTokens?.length);
+  if (!restricted) return true;          // open code — anyone may redeem
+  if (!userId) return false;
+  if (promo.assignedUserIds?.includes(userId)) return true;
+  const toks = promo.assignedTokens || [];
+  if (!toks.length) return false;
+  if (toks.includes(`bcid:${userId}`)) return true;
+  const u = await d.user.findUnique({ where: { id: userId }, select: { email: true, creatorLinks: { select: { creatorId: true } }, discordLinks: { select: { discordId: true } } } });
+  if (!u) return false;
+  if (u.email && toks.includes(`email:${u.email.toLowerCase()}`)) return true;
+  if (u.creatorLinks.some((c) => toks.includes(`creator:${c.creatorId}`))) return true;
+  if (u.discordLinks.some((dl) => toks.includes(`discord:${dl.discordId}`))) return true;
+  return false;
+}
+
 // Validate a code for a user: active, not expired, not depleted, within per-user limit.
 // Exported so the hosting/boost checkout can apply a 'discount' code too.
 // NOTE: this is a pre-flight/informational check only (e.g. GET /me/promo/validate,
@@ -21,8 +43,8 @@ export async function validatePromo(p, rawCode, userId) {
   if (!promo || !promo.active) return { error: 'invalid' };
   if (promo.expiresAt && promo.expiresAt < new Date()) return { error: 'expired' };
   if (promo.maxRedemptions != null && promo.redeemedCount >= promo.maxRedemptions) return { error: 'depleted' };
-  // Gift codes: assigned to one or more users → only they may redeem.
-  if (promo.assignedUserIds?.length && (!userId || !promo.assignedUserIds.includes(userId))) return { error: 'not_yours' };
+  // Gift/targeted codes: assigned to specific users/identifiers → only they redeem.
+  if (!(await assignmentMatches(p, promo, userId))) return { error: 'not_yours' };
   if (userId) { const mine = await p.promoRedemption.count({ where: { promoId: promo.id, userId } }); if (mine >= promo.perUserLimit) return { error: 'already_used' }; }
   return { promo };
 }
@@ -42,7 +64,7 @@ export async function redeemPromoAtomic(p, rawCode, userId, grant) {
       const promo = await tx.promoCode.findUnique({ where: { code } });
       if (!promo || !promo.active) return { error: 'invalid' };
       if (promo.expiresAt && promo.expiresAt < new Date()) return { error: 'expired' };
-      if (promo.assignedUserIds?.length && (!userId || !promo.assignedUserIds.includes(userId))) return { error: 'not_yours' };
+      if (!(await assignmentMatches(tx, promo, userId))) return { error: 'not_yours' };
       const mine = await tx.promoRedemption.count({ where: { promoId: promo.id, userId } });
       if (mine >= promo.perUserLimit) return { error: 'already_used' };
       // Conditional UPDATE re-checks maxRedemptions AT THE DATABASE, inside the
@@ -94,10 +116,14 @@ export default async function promoRoutes(app) {
       perUserLimit: z.number().int().min(1).max(1000).optional(),
       expiresAt: z.string().datetime().nullable().optional(),
       stackable: z.boolean().optional(),
-      // Gift/assign: restrict the code to specific accounts. Accepts user ids and/or
-      // emails; emails are resolved to ids below. Empty = anyone can redeem.
-      assignedUserIds: z.array(z.string().max(40)).max(200).optional(),
-      assignedEmails: z.array(z.string().max(200)).max(200).optional(),
+      // Gift/assign: restrict the code to specific people. `assignedUserIds` are raw
+      // BCWEB ids (kept for gift-DM/giveaway paths). `assignedTokens` are typed and
+      // do NOT require a linked account — "email:x" | "discord:x" | "creator:x" |
+      // "bcid:x" — resolved to the redeemer at redeem time. `assignedEmails` is a
+      // convenience that folds into email: tokens. Empty = anyone can redeem.
+      assignedUserIds: z.array(z.string().max(40)).max(500).optional(),
+      assignedTokens: z.array(z.string().max(220)).max(500).optional(),
+      assignedEmails: z.array(z.string().max(200)).max(500).optional(),
       note: z.string().max(200).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -106,12 +132,19 @@ export default async function promoRoutes(app) {
     if (d.kind === 'free_hosting' && !d.storageGB) return reply.code(400).send({ error: 'hosting_needs_storage' });
     if (d.kind === 'free_boost' && !d.boostDays) return reply.code(400).send({ error: 'boost_needs_days' });
     const p = await db();
-    // Resolve any assigned emails to user ids and merge with any explicit ids.
-    let assignedUserIds = [...(d.assignedUserIds || [])];
-    if (d.assignedEmails?.length) {
-      const users = await p.user.findMany({ where: { email: { in: d.assignedEmails.map((e) => e.trim().toLowerCase()).filter(Boolean) } }, select: { id: true } });
-      assignedUserIds = [...new Set([...assignedUserIds, ...users.map((u) => u.id)])];
+    const assignedUserIds = [...new Set((d.assignedUserIds || []).map((s) => s.trim()).filter(Boolean))];
+    // Normalize typed assignment tokens (+ fold the email convenience list in). A
+    // token is "<type>:<value>"; unknown types are dropped. Emails are lowercased.
+    const TOK_TYPES = ['email', 'discord', 'creator', 'bcid'];
+    const tokenSet = new Set();
+    const pushTok = (type, val) => { val = String(val || '').trim(); if (!val) return; if (type === 'email') val = val.toLowerCase(); tokenSet.add(`${type}:${val}`); };
+    for (const raw of (d.assignedTokens || [])) {
+      const i = String(raw).indexOf(':'); if (i < 0) continue;
+      const type = String(raw).slice(0, i).trim().toLowerCase();
+      if (TOK_TYPES.includes(type)) pushTok(type, String(raw).slice(i + 1));
     }
+    for (const e of (d.assignedEmails || [])) pushTok('email', e);
+    const assignedTokens = [...tokenSet].slice(0, 500);
     let code = (d.code || genCode()).toUpperCase().replace(/\s+/g, '');
     if (d.code) {
       // An explicit code that already exists is an error (don't silently replace it)…
@@ -125,7 +158,7 @@ export default async function promoRoutes(app) {
         code, kind: d.kind, percentOff: d.percentOff ?? null, freeMonths: d.freeMonths ?? null, minMonths: d.minMonths ?? null,
         storageGB: d.storageGB ?? null, uploadMbps: d.uploadMbps ?? null, hostMonths: d.hostMonths ?? null,
         boostDays: d.boostDays ?? null, maxRedemptions: d.maxRedemptions ?? null, perUserLimit: d.perUserLimit ?? 1,
-        expiresAt: d.expiresAt ? new Date(d.expiresAt) : null, stackable: d.stackable ?? false, assignedUserIds, note: d.note || '',
+        expiresAt: d.expiresAt ? new Date(d.expiresAt) : null, stackable: d.stackable ?? false, assignedUserIds, assignedTokens, note: d.note || '',
       } });
       return reply.code(201).send({ code: created });
     } catch { return reply.code(409).send({ error: 'code_exists' }); }
