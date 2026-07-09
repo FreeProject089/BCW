@@ -85,6 +85,8 @@ services:
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       # Append-only anchor for the tamper-evident audit log (sensitive-action hashes).
       # A dedicated volume mounted OUTSIDE /app so neither the DB viewer nor the
       # /app-confined file manager can reach it — closes the end-truncation gap.

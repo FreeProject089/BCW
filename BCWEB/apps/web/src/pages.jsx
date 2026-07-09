@@ -21,7 +21,7 @@ import { MyRepos, AdminRepos, Billing } from './repos.jsx';
 import { AuthorsRow } from './blog.jsx';
 import Avatar from './Avatar.jsx';
 import { createRoot } from 'react-dom/client';
-import { AppLogo, KofiIcon, GithubIcon, DiscordIcon, RedditIcon } from './brand.jsx';
+import { AppLogo, KofiIcon, GithubIcon, DiscordIcon, RedditIcon, GoogleIcon } from './brand.jsx';
 import { Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast } from './ui.jsx';
 import Markdown, { ShowcaseIcon } from './md.jsx';
 import IconPicker from './icon-picker.jsx';
@@ -1201,10 +1201,11 @@ export function Auth() {
           {pw2 && <Field label={t('auth.confirmpw')}><PwInput value={f.confirm} onChange={set('confirm')} /></Field>}
           <Button variant="primary" className="w-full" disabled={busy}>{busy ? <><Spinner /> {step || '…'}</> : cta[mode]}</Button>
         </form>
-        {(mode === 'login' || mode === 'register') && (oauthProviders?.github || oauthProviders?.discord) && (
+        {(mode === 'login' || mode === 'register') && (oauthProviders?.github || oauthProviders?.discord || oauthProviders?.google) && (
           <>
             <div className="flex items-center gap-3 my-4 text-xs text-[var(--faint)]"><div className="flex-1 h-px bg-[var(--line)]" /> {t('auth.or', 'or')} <div className="flex-1 h-px bg-[var(--line)]" /></div>
             <div className="flex flex-col gap-2">
+              {oauthProviders.google && <a href="/api/auth/oauth/google/start"><Button className="w-full"><GoogleIcon size={16} /> {t('auth.oauth.google', 'Continue with Google')}</Button></a>}
               {oauthProviders.github && <a href="/api/auth/oauth/github/start"><Button className="w-full"><GithubIcon size={16} /> {t('auth.oauth.github', 'Continue with GitHub')}</Button></a>}
               {oauthProviders.discord && <a href="/api/auth/oauth/discord/start"><Button className="w-full"><DiscordIcon size={16} className="text-[#5865F2]" /> {t('auth.oauth.discord', 'Continue with Discord')}</Button></a>}
             </div>

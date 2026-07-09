@@ -46,6 +46,20 @@ const PROVIDERS = {
       return { id: u.id, username: u.username, displayName: u.global_name || u.username, email: u.verified ? u.email : null };
     },
   },
+  google: {
+    clientId: () => process.env.GOOGLE_CLIENT_ID,
+    clientSecret: () => process.env.GOOGLE_CLIENT_SECRET,
+    authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenUrl: 'https://oauth2.googleapis.com/token',
+    scope: 'openid email profile',
+    async fetchProfile(accessToken) {
+      const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!res.ok) throw new Error('profile_fetch_failed');
+      const u = await res.json();
+      // Google verifies the address before returning verified_email; only trust it then.
+      return { id: String(u.id), username: (u.email || '').split('@')[0], displayName: u.name || u.email, email: u.verified_email ? u.email : null };
+    },
+  },
 };
 
 function redirectUri(provider) {
@@ -79,6 +93,7 @@ export default async function oauthRoutes(app) {
   app.get('/auth/oauth/providers', async () => ({
     github: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
     discord: !!(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET),
+    google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
   }));
 
   app.get('/auth/oauth/:provider/start', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
