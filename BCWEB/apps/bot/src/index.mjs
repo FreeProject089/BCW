@@ -18,6 +18,7 @@ import { pollAlerts } from './features/alerts.mjs';
 import { pollKofi } from './features/kofi.mjs';
 import { pollPayments } from './features/payments.mjs';
 import { pollDMs } from './features/dm.mjs';
+import { pollGiveaways } from './features/giveaways.mjs';
 import { temp, modStats } from './store.mjs';
 
 let client = null;
@@ -75,6 +76,9 @@ function buildClient() {
     // Admin DMs / gift codes: deliver promptly (30s).
     pollDMs(c).catch(() => {});
     timers.push(setInterval(() => pollDMs(c).catch(() => {}), 30_000));
+    // Giveaways: post new ones + draw due ones (30s).
+    pollGiveaways(c).catch(() => {});
+    timers.push(setInterval(() => pollGiveaways(c).catch(() => {}), 30_000));
   });
   c.on(Events.InteractionCreate, guard(handleInteraction));
   c.on(Events.VoiceStateUpdate, guard((o, n) => onVoiceStateUpdate(c, o, n)));

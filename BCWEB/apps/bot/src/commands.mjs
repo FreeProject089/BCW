@@ -4,6 +4,7 @@ import { api, SITE_URL } from './api.mjs';
 import { clearMessages } from './features/moderation.mjs';
 import { sendPanel, handlePanelInteraction } from './features/panel.mjs';
 import { checkGating } from './features/gating.mjs';
+import { handleGiveawayButton } from './features/giveaways.mjs';
 
 // Every bot response is an embed (brand-colored card) rather than bare text —
 // consistent look across alerts/blog/tips/commands. Shared with panel.mjs.
@@ -19,6 +20,11 @@ export const commandData = [
   new SlashCommandBuilder().setName('clear').setDescription('Delete recent messages (max 100)')
     .addIntegerOption((o) => o.setName('count').setDescription('How many (1-100)').setMinValue(1).setMaxValue(100))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+  new SlashCommandBuilder().setName('giveaway').setDescription('Start a giveaway in this channel')
+    .addStringOption((o) => o.setName('prize').setDescription('What to give away').setRequired(true))
+    .addIntegerOption((o) => o.setName('minutes').setDescription('How long it runs (minutes)').setMinValue(1).setMaxValue(86400).setRequired(true))
+    .addIntegerOption((o) => o.setName('winners').setDescription('Number of winners (default 1)').setMinValue(1).setMaxValue(50))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map((c) => c.toJSON());
 
 export async function handleInteraction(i) {
@@ -31,9 +37,23 @@ export async function handleInteraction(i) {
       const del = await clearMessages(i.channel, n);
       return eReply(i, `Deleted **${del}** message(s).`, { title: '🧹 Clear' });
     }
+    if (i.commandName === 'giveaway') return cmdGiveaway(i);
     return;
   }
+  if (i.isButton() && i.customId.startsWith('gw:enter:')) return handleGiveawayButton(i);
   if (i.isButton() || i.isAnySelectMenu() || i.isModalSubmit()) return handlePanelInteraction(i);
+}
+
+async function cmdGiveaway(i) {
+  const prize = i.options.getString('prize');
+  const minutes = i.options.getInteger('minutes');
+  const winners = i.options.getInteger('winners') || 1;
+  try {
+    await api.giveawayCreate({ prize, channelId: i.channelId, durationMinutes: minutes, winnersCount: winners });
+    return eReply(i, `Giveaway for **${prize}** created (${winners} winner${winners === 1 ? '' : 's'}, ${minutes} min). It appears here within ~30s.`, { title: '🎉 Giveaway' });
+  } catch (e) {
+    return eReply(i, 'Could not create the giveaway — try again in a moment.', { title: '🎉 Giveaway' });
+  }
 }
 
 async function cmdVerify(i) {

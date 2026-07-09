@@ -4747,6 +4747,72 @@ function BotDMCard() {
   );
 }
 
+// Admin: create & manage Discord giveaways — the bot posts an Enter button, collects
+// entries, and draws winners at the end (DMing a gift code to each if configured).
+function BotGiveawaysCard() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [open, setOpen] = useState(false);
+  const { data, loading, reload } = useAsync(() => api.get('/admin/bot/giveaways'), []);
+  const [f, setF] = useState({ prize: '', channelId: '', durationMinutes: 60, winnersCount: 1, withGift: false, gift: { kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, boostDays: 7 } });
+  const [busy, setBusy] = useState(false);
+  const giveaways = data?.giveaways || [];
+  const create = async () => {
+    if (!f.prize.trim() || !f.channelId.trim()) return toast.error(t('gw.needfields', 'Prize and channel id are required.'));
+    setBusy(true);
+    try {
+      const body = { prize: f.prize.trim(), channelId: f.channelId.trim(), durationMinutes: Number(f.durationMinutes) || 60, winnersCount: Number(f.winnersCount) || 1 };
+      if (f.withGift) { const g = { kind: f.gift.kind }; if (f.gift.kind === 'discount') { if (Number(f.gift.percentOff)) g.percentOff = Number(f.gift.percentOff); if (Number(f.gift.freeMonths)) g.freeMonths = Number(f.gift.freeMonths); } if (f.gift.kind === 'free_hosting') g.storageGB = Number(f.gift.storageGB); if (f.gift.kind === 'free_boost') g.boostDays = Number(f.gift.boostDays); body.gift = g; }
+      await api.post('/admin/bot/giveaways', body);
+      toast.success(t('gw.created', 'Giveaway created — the bot posts it within ~30s.')); setF({ ...f, prize: '' }); reload();
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  const end = async (g) => { if (!(await dialog.confirm({ title: t('gw.end.t', 'Draw now?'), message: t('gw.end.m', 'End this giveaway now and draw the winners?'), okLabel: t('gw.end.ok', 'Draw now') }))) return; try { await api.post(`/admin/bot/giveaways/${g.id}/end`); toast.success(t('gw.ending', 'Drawing — winners announced within ~30s.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = async (g) => { try { await api.del(`/admin/bot/giveaways/${g.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  return (
+    <Card className="p-4 mb-4">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-left">
+        <span className="font-medium text-sm flex items-center gap-2"><Gift size={14} className="text-[var(--primary-2)]" /> {t('gw.title', 'Giveaways')}{giveaways.some((g) => g.status === 'active') && <Badge tone="green">{giveaways.filter((g) => g.status === 'active').length}</Badge>}</span>
+        <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          <p className="text-[11px] text-[var(--faint)]">{t('gw.note', 'Also available as /giveaway (Manage-Server perm). The bot posts an “Enter” button; winners are drawn at the end and DMed a gift code if you attach one.')}</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label={t('gw.prize', 'Prize')}><Input value={f.prize} onChange={(e) => setF({ ...f, prize: e.target.value })} placeholder={t('gw.prize.ph', 'e.g. 1 month of hosting')} /></Field>
+            <Field label={t('gw.channel', 'Channel id')} hint={t('db.f.chanid', 'Channel ID')}><Input value={f.channelId} onChange={(e) => setF({ ...f, channelId: e.target.value })} placeholder="123456789012345678" /></Field>
+            <Field label={t('gw.duration', 'Duration (minutes)')}><Input type="number" value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: e.target.value })} /></Field>
+            <Field label={t('gw.winners', 'Winners')}><Input type="number" value={f.winnersCount} onChange={(e) => setF({ ...f, winnersCount: e.target.value })} /></Field>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.withGift} onChange={(e) => setF({ ...f, withGift: e.target.checked })} /> <Gift size={13} className="text-[var(--primary-2)]" /> {t('gw.attachgift', 'DM each winner a gift code')}</label>
+          {f.withGift && (
+            <div className="rounded-lg border border-[var(--line)] p-3 grid sm:grid-cols-2 gap-3">
+              <Field label={t('pc.f.type', 'Type')}><Select value={f.gift.kind} onChange={(e) => setF({ ...f, gift: { ...f.gift, kind: e.target.value } })}><option value="discount">{t('pc.t.discount', 'Discount (% off / months free)')}</option><option value="free_hosting">{t('pc.t.hosting', 'Free hosting')}</option><option value="free_boost">{t('pc.t.boost', 'Free boost')}</option></Select></Field>
+              {f.gift.kind === 'discount' && <><Field label={t('pc.f.pctoff', '% off')}><Input type="number" value={f.gift.percentOff} onChange={(e) => setF({ ...f, gift: { ...f.gift, percentOff: e.target.value } })} /></Field><Field label={t('pc.f.freemonths', 'First months free')}><Input type="number" value={f.gift.freeMonths} onChange={(e) => setF({ ...f, gift: { ...f.gift, freeMonths: e.target.value } })} /></Field></>}
+              {f.gift.kind === 'free_hosting' && <Field label={t('pc.f.storage', 'Storage GB')}><Input type="number" value={f.gift.storageGB} onChange={(e) => setF({ ...f, gift: { ...f.gift, storageGB: e.target.value } })} /></Field>}
+              {f.gift.kind === 'free_boost' && <Field label={t('pc.f.boostdays', 'Boost days')}><Input type="number" value={f.gift.boostDays} onChange={(e) => setF({ ...f, gift: { ...f.gift, boostDays: e.target.value } })} /></Field>}
+            </div>
+          )}
+          <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={create}>{busy ? <Spinner /> : <><Plus size={14} /> {t('gw.create', 'Create giveaway')}</>}</Button></div>
+
+          {loading ? <Loading /> : giveaways.length ? <div className="space-y-2 pt-1">
+            {giveaways.map((g) => (
+              <div key={g.id} className="flex items-center gap-3 text-sm rounded-lg bg-[var(--surface-2)] px-3 py-2">
+                <Gift size={14} className={g.status === 'active' ? 'text-emerald-400 shrink-0' : 'text-[var(--faint)] shrink-0'} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{g.prize} {g.hasGift && <Badge tone="primary"><Gift size={9} /> {t('gw.gift', 'gift')}</Badge>}</div>
+                  <div className="text-[11px] text-[var(--faint)]">{g.status === 'active' ? t('gw.endsat', 'ends {d}').replace('{d}', new Date(g.endsAt).toLocaleString()) : t('gw.ended', 'ended · {n} winner(s)').replace('{n}', g.winnerIds?.length || 0)} · {t('gw.entries', '{n} entries').replace('{n}', g.entryCount)}</div>
+                </div>
+                {g.status === 'active' && <Button size="sm" variant="ghost" onClick={() => end(g)}>{t('gw.drawbtn', 'Draw now')}</Button>}
+                <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(g)}><Trash2 size={13} /></Button>
+              </div>
+            ))}
+          </div> : <div className="text-xs text-[var(--faint)]">{t('gw.none', 'No giveaways yet.')}</div>}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function AdminBot() {
   const toast = useToast();
   const { t } = useI18n();
@@ -4895,6 +4961,7 @@ function AdminBot() {
 
       <BotLogsCard />
       <BotDMCard />
+      <BotGiveawaysCard />
 
       {/* ═══════════ GLOBAL — cross-server ═══════════ */}
       <SectionTitle icon={Globe} title={t('db.sec.global', 'Global — applies across every server')} sub={t('db.sec.global.sub', 'Announcements route by channel (works in any server); limits are shared.')} />

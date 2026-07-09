@@ -868,6 +868,26 @@ model PromoRedemption {
   @@index([userId])
 }
 
+// A Discord giveaway managed from the admin bot dashboard. The bot posts a message
+// with an "Enter" button, collects entrant Discord ids, and at `endsAt` draws random
+// winners, announces them, and (if `giftConfig` is set) DMs each winner a promo code.
+model Giveaway {
+  id           String   @id @default(cuid())
+  prize        String
+  channelId    String
+  messageId    String?  // the Discord message carrying the Enter button (set once posted)
+  endsAt       DateTime
+  winnersCount Int      @default(1)
+  status       String   @default("active") // active | ended
+  entries      String[] @default([]) // entrant Discord ids
+  winnerIds    String[] @default([]) // drawn winner Discord ids
+  giftConfig   Json?    // optional promo gift for each winner ({ kind, percentOff, … })
+  createdBy    String?
+  createdAt    DateTime @default(now())
+
+  @@index([status])
+}
+
 // A hosting shopping-cart checkout, persisted while the user is at Stripe. The
 // resolved line items (hosting plan ids / boost repo+days) + promo codes are stored
 // here and consumed by the checkout.session.completed webhook (metadata carries only

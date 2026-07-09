@@ -38,6 +38,12 @@ export const api = {
   // Pending admin DMs (message + optional gift code) and marking them delivered.
   dmPending: () => call('GET', '/bot/dm/pending').then((r) => r.items || []).catch((e) => { console.warn('[bot] dmPending failed:', e.message); return []; }),
   dmSent: (ids) => call('POST', '/bot/dm/sent', { ids }).catch(() => {}),
+  // Giveaways: fetch active ones, mark posted, record an entry, record the draw.
+  giveawaysActive: () => call('GET', '/bot/giveaways/active').then((r) => r.giveaways || []).catch(() => []),
+  giveawayCreate: (data) => call('POST', '/bot/giveaways/create', data),
+  giveawayPosted: (id, messageId) => call('POST', `/bot/giveaways/${id}/posted`, { messageId }).catch(() => {}),
+  giveawayEnter: (id, discordId) => call('POST', `/bot/giveaways/${id}/enter`, { discordId }),
+  giveawayDrawn: (id, winnerIds) => call('POST', `/bot/giveaways/${id}/drawn`, { winnerIds }).catch(() => ({ gifts: {} })),
   issueLink: (discordId, username) => call('POST', '/bot/link/issue', { discordId, username }),
   account: (discordId) => call('GET', `/bot/account/${discordId}`).catch(() => ({ linked: false })),
   // Bulk-sync the guild roster into the member database (startup + periodic full scan).

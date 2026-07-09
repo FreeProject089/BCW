@@ -415,6 +415,116 @@ export default async function botRoutes(app) {
     return { ok: true };
   });
 
+  // ── Giveaways ──
+  const giftShape = z.object({
+    kind: z.enum(['discount', 'free_hosting', 'free_boost']),
+    percentOff: z.number().int().min(1).max(100).optional(),
+    freeMonths: z.number().int().min(0).max(24).optional(),
+    storageGB: z.number().int().min(1).max(2000).optional(),
+    uploadMbps: z.number().int().min(1).max(2000).optional(),
+    hostMonths: z.number().int().min(0).max(60).optional(),
+    boostDays: z.number().int().min(1).max(3650).optional(),
+  });
+  app.get('/admin/bot/giveaways', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const list = await p.giveaway.findMany({ orderBy: { createdAt: 'desc' }, take: 50 });
+    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, endsAt: g.endsAt, winnersCount: g.winnersCount, status: g.status, entryCount: g.entries.length, winnerIds: g.winnerIds, hasGift: !!g.giftConfig, createdAt: g.createdAt })) };
+  });
+  app.post('/admin/bot/giveaways', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      prize: z.string().min(1).max(200),
+      channelId: z.string().min(5).max(32),
+      durationMinutes: z.number().int().min(1).max(60 * 24 * 60),
+      winnersCount: z.number().int().min(1).max(50).default(1),
+      gift: giftShape.optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const gw = await p.giveaway.create({ data: {
+      prize: b.data.prize, channelId: b.data.channelId, winnersCount: b.data.winnersCount,
+      endsAt: new Date(Date.now() + b.data.durationMinutes * 60_000),
+      giftConfig: b.data.gift || null, createdBy: req.user.uid,
+    } });
+    return { ok: true, id: gw.id };
+  });
+  app.post('/admin/bot/giveaways/:id/end', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    // Bring the end forward to now → the bot draws on its next poll (≤30s).
+    const gw = await p.giveaway.updateMany({ where: { id: req.params.id, status: 'active' }, data: { endsAt: new Date() } });
+    if (!gw.count) return reply.code(404).send({ error: 'not_found' });
+    return { ok: true };
+  });
+  app.delete('/admin/bot/giveaways/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    await p.giveaway.delete({ where: { id: req.params.id } }).catch(() => {});
+    return { ok: true };
+  });
+
+  // Bot-facing giveaway sync
+  app.get('/bot/giveaways/active', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const list = await p.giveaway.findMany({ where: { status: 'active' }, take: 100 });
+    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, messageId: g.messageId, endsAt: g.endsAt, winnersCount: g.winnersCount, entries: g.entries, due: new Date(g.endsAt) <= new Date() })) };
+  });
+  app.post('/bot/giveaways/:id/posted', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ messageId: z.string().max(40) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    await p.giveaway.update({ where: { id: req.params.id }, data: { messageId: b.data.messageId } }).catch(() => {});
+    return { ok: true };
+  });
+  app.post('/bot/giveaways/:id/enter', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ discordId: z.string().min(5).max(32) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const gw = await p.giveaway.findUnique({ where: { id: req.params.id } });
+    if (!gw || gw.status !== 'active') return reply.code(409).send({ error: 'not_active' });
+    if (gw.entries.includes(b.data.discordId)) return { ok: true, already: true, count: gw.entries.length };
+    await p.giveaway.update({ where: { id: gw.id }, data: { entries: { push: b.data.discordId } } });
+    return { ok: true, count: gw.entries.length + 1 };
+  });
+  // Create a giveaway from the /giveaway slash command (bot is the trust boundary;
+  // the command itself is gated to Manage-Server members). No gift via command — use
+  // the dashboard for gift-backed giveaways.
+  app.post('/bot/giveaways/create', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ prize: z.string().min(1).max(200), channelId: z.string().min(5).max(32), durationMinutes: z.number().int().min(1).max(60 * 24 * 60), winnersCount: z.number().int().min(1).max(50).default(1) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const gw = await p.giveaway.create({ data: { prize: b.data.prize, channelId: b.data.channelId, winnersCount: b.data.winnersCount, endsAt: new Date(Date.now() + b.data.durationMinutes * 60_000) } });
+    return { ok: true, id: gw.id };
+  });
+  app.post('/bot/giveaways/:id/drawn', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ winnerIds: z.array(z.string().max(32)).max(50) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const gw = await p.giveaway.findUnique({ where: { id: req.params.id } });
+    if (!gw) return reply.code(404).send({ error: 'not_found' });
+    await p.giveaway.update({ where: { id: gw.id }, data: { status: 'ended', winnerIds: b.data.winnerIds } });
+    // Mint a gift code per winner that has a linked account (the bot DMs each one).
+    const gifts = {};
+    if (gw.giftConfig) {
+      for (const did of b.data.winnerIds) {
+        const link = await p.discordLink.findUnique({ where: { discordId: did } });
+        if (!link) continue;
+        const g = gw.giftConfig;
+        let code = genCode();
+        for (let i = 0; i < 5 && (await p.promoCode.findUnique({ where: { code } })); i++) code = genCode();
+        await p.promoCode.create({ data: {
+          code, kind: g.kind, percentOff: g.percentOff ?? null, freeMonths: g.freeMonths ?? null,
+          storageGB: g.storageGB ?? null, uploadMbps: g.uploadMbps ?? null, hostMonths: g.hostMonths ?? null, boostDays: g.boostDays ?? null,
+          maxRedemptions: 1, perUserLimit: 1, assignedUserIds: [link.userId], note: `giveaway ${gw.id} winner`,
+        } });
+        gifts[did] = code;
+      }
+    }
+    return { ok: true, gifts };
+  });
+
   app.post('/bot/payments/announced', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const b = z.object({
