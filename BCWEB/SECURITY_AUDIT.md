@@ -100,3 +100,51 @@ BMM telemetry service linked to BCWEB) plus a container CVE scan.
 | Live Discord token in pushed history | High | **Rotate in the Discord Developer Portal** (unchanged since first audit) |
 | Residual Docker CVEs (alpine curl / debian perl / bundled npm tar) | Low | Unfixed upstream or non-runtime-reachable bundled tooling; re-scan after base-image refresh |
 | CSRF via per-request tokens on mutations | Low | `sameSite=lax` already blocks standard cross-site cases |
+
+# Re-audit — 2026-07-10 (2FA authenticator, payments/embeds, webhook)
+
+## Fixed / hardened
+
+- **CWE-312 — cleartext storage of secrets (local 2FA authenticator, `twofa.jsx` /
+  `twofa-lib.js`)**: the local TOTP vault (localStorage) now supports **optional
+  passphrase encryption at rest** (AES-256-GCM, PBKDF2-SHA256 210k iters, random
+  salt+IV per write). Exports can likewise be encrypted. Fully offline — the page
+  imports no network client; codes are computed with Web Crypto.
+- **CWE-400 — uncontrolled resource consumption (2FA import / QR)**: `parseOtpauth`
+  and `sanitizeAccount` clamp every field from untrusted QR/import input — `digits`
+  6–8, `period` 15–120, algorithm whitelisted, secret/label/issuer length-capped —
+  so a crafted `digits: 99999` can no longer blow up `10**digits`/`padStart`. QR is
+  decoded locally with jsQR off a canvas (no upload, no third-party network).
+- **CWE-79 / content injection (Discord payment embeds, `payments.mjs`)**:
+  user-controlled display name + description are markdown-stripped and length-capped
+  before entering the embed, so a crafted name can't inject links/formatting into the
+  announcement channel. Customer emails are masked.
+- **Stripe webhook robustness**: raw-body parser scoped to `/hosting/webhook` (+ a
+  `/webhook` alias) verifies the signature against exact bytes; the endpoint 503s
+  (records nothing) if `STRIPE_WEBHOOK_SECRET` is unset. An admin diagnostic surfaces
+  the Stripe-key / webhook-secret state so a misconfigured deploy is obvious rather
+  than silently swallowing checkouts.
+- **Promo assignment (`promo.mjs`)**: `assignmentMatches()` resolves typed assignment
+  tokens (email / discord / creator / bcid) against the redeeming account's *own*
+  verified identifiers at redeem time — an attacker can't satisfy a gift code they
+  don't actually own; redemption stays atomic (Serializable tx, DB-side cap).
+- **Giveaway entry gate (`bot.mjs`)**: linked-account / creator-id requirements are
+  enforced server-side on `/bot/giveaways/:id/enter` (the Discord button can't be
+  trusted); bot-facing endpoints stay behind `x-bot-secret` (constant-time compare).
+
+## Reviewed — safe
+
+- The 2FA authenticator makes **zero network calls** (verified: `twofa.jsx` imports
+  only `i18n`/`ui`/`twofa-lib`). Secrets never leave the device. Camera QR requires a
+  secure context; the stream is stopped on unmount/stop (no leak).
+- Bot `/bot/payments/:id/invoice` (botAuth) returns Stripe's own no-auth
+  `invoice_pdf` URL only — no arbitrary URL passthrough, ownership implied by the
+  Payment→session lookup.
+- `/admin/billing/users?q=` and `/admin/bot/members?q=` pass the query to Prisma
+  `contains` (parameterized) — no injection; both are `requireRole`-gated.
+
+## Open recommendations (unchanged)
+
+- **Rotate the live Discord token** in the Developer Portal — still outstanding.
+- Ensure telemetry `ADMIN_KEY`/`API_KEY` are always set in production (Caddy
+  `forward_auth` covers the edge).

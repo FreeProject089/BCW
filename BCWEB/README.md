@@ -3,7 +3,10 @@
 The web platform uniting **BMM**, **BSM** and future Better* projects: per-project
 blogs & catalogs, user accounts, an admin back-office, and paid Server-Repo hosting.
 
-Full design + feature spec + roadmap → **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+📚 **All guides live in [`guides/`](./guides/)** — deployment (EN/FR), local setup,
+domain & HTTPS, app features, technical analysis, architecture, API reference.
+Full design + feature spec + roadmap → **[guides/ARCHITECTURE.md](./guides/ARCHITECTURE.md)**.
+Deploying to production → **[guides/DEPLOY_EN.md](./guides/DEPLOY_EN.md)** · **[FR](./guides/DEPLOY_FR.md)**.
 
 ## Run it (Docker)
 
@@ -32,8 +35,8 @@ infra/        docker-compose + Caddy reverse proxy (edge anti-bot/CSP)
 ```
 
 > A full, from-scratch developer walkthrough (every file, every subsystem, how to
-> host) lives in **Technical_Analysis_EN.md / _FR.md**; a feature-by-feature tour in
-> **App_Features_EN.md / _FR.md**.
+> host) lives in **[guides/Technical_Analysis_EN.md](./guides/Technical_Analysis_EN.md) / [_FR](./guides/Technical_Analysis_FR.md)**;
+> a feature-by-feature tour in **[guides/App_Features_EN.md](./guides/App_Features_EN.md) / [_FR](./guides/App_Features_FR.md)**.
 
 ## API (implemented so far)
 

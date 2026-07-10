@@ -2,7 +2,22 @@
 
 Full stack under test: Caddy → nginx (SPA) / Fastify API → Postgres, all in Docker Desktop on the dev machine, load generated with autocannon from the same machine (loopback). 10s per level, connection ladder 100 → 1,000 → 5,000 → 10,000.
 
-Rerun anytime: `cd loadtest && npm i autocannon && node run.mjs` (stack must be up).
+Rerun anytime: `cd loadtest && npm install && node run.mjs` (stack must be up). The
+runner is now configurable and writes `last-run.json`:
+```
+BASE=http://localhost:3000 node run.mjs          # hit the API container directly
+BASE=http://localhost      node run.mjs          # through Caddy (auto-adds /api)
+LEVELS=50,200,1000 DURATION=8 node run.mjs        # custom ladder
+```
+
+### Re-run 2026-07-10 (API container directly, :3000)
+Confirms the same picture: the API absorbs **~10–11k req/s at p99 < 20 ms with 0
+errors and 0 timeouts**, and even at low concurrency almost every request past the
+first per-IP window comes back non-2xx — the anti-abuse **rate limiter shedding load
+by design**. The server never falls over under the flood; that's the headline. The
+runner now prints a `2xx/s` (real served throughput) and `non2xx` column, plus a
+per-endpoint headline, so the limiter's effect is explicit rather than hidden in a
+"req/s" number that's mostly rejections.
 
 ## Results
 
