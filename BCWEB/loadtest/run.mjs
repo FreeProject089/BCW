@@ -25,8 +25,25 @@ const TARGETS = [
 
 const fmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
 const pad = (s, n) => String(s).padEnd(n);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-console.log(`\nBCWEB load test → ${API}  (levels: ${LEVELS.join(', ')}, ${DURATION}s each)\n`);
+// ── Phase 1: real per-endpoint latency (a handful of requests at conns=1, which
+// stays under the per-IP rate limiter's fresh window → genuine 2xx responses). This
+// is what a real user actually experiences; the stress ladder below measures how the
+// server behaves under a flood (mostly the rate limiter shedding load).
+console.log(`\nBCWEB load test → ${API}\n`);
+console.log('■ Phase 1 — real latency (light, under the rate limit)');
+console.log(`  ${pad('endpoint', 34)}${pad('reqs', 6)}${pad('2xx', 6)}${pad('p50', 8)}${pad('p99', 8)}avg`);
+const probes = [];
+for (const [label, url] of TARGETS) {
+  const r = await autocannon({ url, connections: 1, amount: 12, timeout: 20 });
+  const ok = (r.requests.total || 0) - (r.non2xx || 0);
+  probes.push({ label, url, reqs: r.requests.total, ok2xx: ok, p50: r.latency.p50, p99: r.latency.p99, avg: r.latency.average });
+  console.log(`  ${pad(label, 34)}${pad(r.requests.total, 6)}${pad(ok, 6)}${pad(`${r.latency.p50}ms`, 8)}${pad(`${r.latency.p99}ms`, 8)}${r.latency.average}ms`);
+  await sleep(300);
+}
+
+console.log(`\n■ Phase 2 — stress ladder (levels: ${LEVELS.join(', ')}, ${DURATION}s each)\n`);
 const results = [];
 for (const [label, url] of TARGETS) {
   console.log(`■ ${label}`);
@@ -47,7 +64,7 @@ console.log('Note: on loopback, a single client easily out-runs the server; most
   'the flood instead of falling over. "2xx/s" is the real served throughput; to\n' +
   'measure a single route raw, lower the levels or relax the limiter for that path.\n');
 
-const out = { base: API, at: new Date().toISOString(), durationSec: DURATION, levels: LEVELS, results };
+const out = { base: API, at: new Date().toISOString(), durationSec: DURATION, levels: LEVELS, probes, results };
 const file = new URL('./last-run.json', import.meta.url);
 writeFileSync(file, JSON.stringify(out, null, 2));
 console.log(`Report written to ${file.pathname}`);

@@ -64,3 +64,62 @@ per-endpoint headline, so the limiter's effect is explicit rather than hidden in
 - Put a CDN (Cloudflare) in front — the SPA shell + assets drop to near-zero origin load, and it absorbs the 100k+ tier for free.
 - Raise Fastify's `connectionTimeout`/`keepAliveTimeout` and consider `reusePort` clustering (2–4 API processes) if sustained >1k concurrent API sockets is ever real.
 - The per-IP 600/min limit is generous for humans (10 req/s); keep it.
+
+---
+
+## Re-run 2026-07-10b — with a real-latency probe
+
+The runner now has **Phase 1** (a light per-endpoint latency probe at 1 connection,
+which stays under the per-IP limiter's fresh window → genuine 2xx responses) and
+**Phase 2** (the stress ladder). This finally separates "how fast is a real request"
+from "how does it behave under a flood".
+
+### Phase 1 — real latency (what a user actually feels)
+
+| Endpoint | p50 | p99 | avg |
+|---|---|---|---|
+| `/health` | 0 ms | 6 ms | 0.6 ms |
+| `GET /projects` (DB + visibility) | 2 ms | 5 ms | 2.6 ms |
+| `GET /showcase` (DB list) | 1 ms | 6 ms | 1.7 ms |
+| `GET /kofi/stats` (DB aggregate) | 1 ms | 5 ms | 1.5 ms |
+
+**Every endpoint answers in 1–6 ms.** The Postgres queries are not a bottleneck.
+
+### Phase 2 — under flood (50 / 250 / 1000 conns, loopback)
+
+- `/health` (rate-limit-exempt): **~8k req/s all-2xx** at p99 10 ms (50 conns),
+  degrading to p99 ~460 ms at 1,000 conns — that's the raw request-handling ceiling
+  of one dev box (Docker Desktop, loopback).
+- DB endpoints: **~0 served 2xx, ~70–80k rejected/window** — the per-IP limiter
+  (600/min) sheds the flood with **0 errors, 0 timeouts, low latency**. Intended DoS
+  posture: one IP can't reach the DB in bulk.
+
+## What to optimize (in priority order)
+
+1. **Put a CDN in front (Cloudflare/R2).** Biggest single win: the SPA shell + assets
+   + hosted-repo downloads leave the origin almost entirely. Absorbs the 100k+ tier
+   for free.
+2. **Postgres connection pooler (PgBouncer)** once you run more than one API replica —
+   the queries are 1–3 ms, so the limit is connection count, not query time.
+3. **Optional Redis cache** on the hot public reads (`/projects`, `/showcase`,
+   `/kofi/stats`) with a short TTL — not needed yet (1–3 ms), worth it only if a CDN
+   isn't fronting them and traffic climbs.
+4. **Keep the per-IP rate limit** (600/min is generous for a human at ~10 req/s) — it's
+   cheap and it's what keeps the DB safe under abuse.
+5. Object storage (hosted files): serve downloads via the CDN / an S3-compatible edge
+   rather than straight from MinIO once download volume is real.
+
+## Server sizing (estimates, this stack = api + web + postgres + redis + minio + caddy + bot + telemetry)
+
+| Tier | Users | vCPU | RAM | Disk | Notes |
+|---|---|---|---|---|---|
+| **Minimum** | up to ~1k registered / low-hundreds concurrent | **2** | **4 GB** | 40 GB SSD + hosting quota | Single VPS, everything in one compose. 2 GB works but is tight with MinIO+PG+Redis+bot. |
+| **Comfortable** | few thousand | 4 | 8 GB | 80 GB SSD + quota | Add a CDN for static; PgBouncer if you add API replicas. |
+| **Scale-out** | 10k+ concurrent | 8+ (spread) | 16 GB+ | managed | CDN + 2–4 API replicas behind Caddy + managed Postgres (read replica) + S3/R2 for files. |
+
+**Estimation basis:** a browsing user makes only a few requests per minute, and each
+is 1–6 ms of server time. A single 2 vCPU / 4 GB box therefore serves **thousands of
+concurrent browsing users** comfortably; the practical ceilings are (a) connection
+handling at very high concurrency and (b) the single Postgres — both solved by a CDN +
+replicas long before CPU/RAM is the limit. Disk is driven almost entirely by how much
+hosted-repo storage you sell, not by the app itself (~5–10 GB base).
