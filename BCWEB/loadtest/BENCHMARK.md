@@ -1,5 +1,7 @@
 # BCWEB Load Benchmark — 2026-07-03
 
+> 🇫🇷 Version française : [BENCHMARK_FR.md](BENCHMARK_FR.md)
+
 Full stack under test: Caddy → nginx (SPA) / Fastify API → Postgres, all in Docker Desktop on the dev machine, load generated with autocannon from the same machine (loopback). 10s per level, connection ladder 100 → 1,000 → 5,000 → 10,000.
 
 Rerun anytime: `cd loadtest && npm install && node run.mjs` (stack must be up). The
@@ -123,3 +125,21 @@ concurrent browsing users** comfortably; the practical ceilings are (a) connecti
 handling at very high concurrency and (b) the single Postgres — both solved by a CDN +
 replicas long before CPU/RAM is the limit. Disk is driven almost entirely by how much
 hosted-repo storage you sell, not by the app itself (~5–10 GB base).
+
+## Stress test 2026-07-10b (up to 5,000 concurrent connections)
+
+Same box, ladder 100 → 1,000 → 5,000 conns, 10 s each. **Headline: the server survives
+5,000 concurrent connections with 0 errors and 0 timeouts** — latency degrades
+gracefully (backpressure) but nothing falls over.
+
+| Endpoint | 100 conns | 1,000 conns | 5,000 conns |
+|---|---|---|---|
+| `/health` (unlimited) | 5.4k rq/s · p99 28 ms | 4.7k · p99 1.1 s | 3.3k · p99 6.2 s |
+| `/projects` (rate-limited) | 9.0k rq/s · p99 27 ms | 10.3k · p99 88 ms | 6.1k · p99 5.3 s |
+| `/showcase` | 7.9k · p99 25 ms | 8.2k · p99 536 ms | 4.2k · p99 9.5 s |
+| `/kofi/stats` | 9.3k · p99 21 ms | 7.1k · p99 1.6 s | 4.5k · p99 8.9 s |
+
+`err` and `timeout` were **0 at every level** — the degradation is pure tail-latency,
+not failure. On real hardware behind a CDN + multiple API replicas, the per-node
+concurrency each node sees is a fraction of this, so these are pessimistic single-box
+loopback numbers.
