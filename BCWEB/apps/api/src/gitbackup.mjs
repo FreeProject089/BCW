@@ -27,6 +27,17 @@ async function git(repoRoot, args) {
   return execFileP('git', args, { cwd: repoRoot, maxBuffer: 32 * 1024 * 1024 });
 }
 
+// CWE-22 guard: resolve a caller-supplied relative path against the repo root and
+// refuse anything that escapes it (`../…`, absolute paths, symlink-y `..`). Defense
+// in depth — callers are behind the elevated-admin gate, but a bad table/pk must
+// never let a backup read/write outside its own git repo.
+function safeJoin(repoRoot, relPath) {
+  const root = path.resolve(repoRoot);
+  const dest = path.resolve(root, String(relPath || ''));
+  if (dest !== root && !dest.startsWith(root + path.sep)) throw new Error('path_escapes_root');
+  return dest;
+}
+
 async function ensureRepo(repoRoot) {
   await fs.mkdir(repoRoot, { recursive: true });
   try { await fs.access(path.join(repoRoot, '.git')); }
@@ -42,7 +53,7 @@ async function ensureRepo(repoRoot) {
 // before a write/delete is applied, so history reads "state before each edit".
 export async function backupFile(repoRoot, relPath, content, message) {
   await ensureRepo(repoRoot);
-  const dest = path.join(repoRoot, relPath);
+  const dest = safeJoin(repoRoot, relPath); // rejects `../` traversal
   await fs.mkdir(path.dirname(dest), { recursive: true });
   if (content == null) { await fs.rm(dest, { force: true }); } // file didn't exist pre-change → nothing to snapshot
   else await fs.writeFile(dest, content);
@@ -87,6 +98,7 @@ export async function snapshotTree(repoRoot, sourceRoot, message) {
 // History for one path — newest first.
 export async function fileHistory(repoRoot, relPath, take = 30) {
   try {
+    safeJoin(repoRoot, relPath); // reject a traversal path before it reaches git
     const { stdout } = await git(repoRoot, ['log', `-${take}`, '--format=%H|%ct|%s', '--', relPath]);
     return stdout.trim().split('\n').filter(Boolean).map((line) => {
       const [hash, ts, ...rest] = line.split('|');
@@ -95,8 +107,12 @@ export async function fileHistory(repoRoot, relPath, take = 30) {
   } catch { return []; }
 }
 
-// The file's content exactly as it was at a given commit.
+// The file's content exactly as it was at a given commit. `hash` must be a plain
+// git object id (hex) and `relPath` must stay inside the repo — both are validated
+// before being composed into the `git show <hash>:<path>` argument.
 export async function fileAtCommit(repoRoot, hash, relPath) {
+  if (!/^[0-9a-fA-F]{7,64}$/.test(String(hash || ''))) throw new Error('bad_hash');
+  safeJoin(repoRoot, relPath); // reject `../` traversal in the tree path
   const { stdout } = await git(repoRoot, ['show', `${hash}:${relPath}`]);
   return stdout;
 }

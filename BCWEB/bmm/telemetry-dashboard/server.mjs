@@ -48,8 +48,14 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use((req, res, next) => { res.set('Access-Control-Allow-Origin', '*'); res.set('Access-Control-Allow-Headers', 'Content-Type,Authorization'); res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS'); req.method === 'OPTIONS' ? res.sendStatus(204) : next(); });
 
-const okKey = (k) => !cfg.API_KEY || k === cfg.API_KEY;
+// Fail CLOSED in production (CWE-306): an unset API_KEY must NOT mean "accept every
+// ingest" once we're live — that would leave the telemetry sink wide open to anyone.
+// In dev we still allow keyless ingest for convenience.
+const IS_PROD = process.env.NODE_ENV === 'production';
+const okKey = (k) => (cfg.API_KEY ? k === cfg.API_KEY : !IS_PROD);
 const isAdmin = (req) => cfg.ADMIN_KEY && (req.get('X-Admin-Key') === cfg.ADMIN_KEY || req.query.admin_key === cfg.ADMIN_KEY || req.body?.admin_key === cfg.ADMIN_KEY);
+if (IS_PROD && !cfg.API_KEY) console.error('[telemetry] SECURITY: NODE_ENV=production but API_KEY is unset — ingest is now REJECTED (fail-closed). Set API_KEY to the value shipped in the BMM client.');
+if (IS_PROD && !cfg.ADMIN_KEY) console.error('[telemetry] SECURITY: ADMIN_KEY unset in production — the admin/approval surface stays locked.');
 
 // Ingest (PostHog-style batch). Each event tagged with the packet id.
 app.post(['/batch', '/batch/', '/capture/'], (req, res) => {

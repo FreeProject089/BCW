@@ -148,3 +148,41 @@ BMM telemetry service linked to BCWEB) plus a container CVE scan.
 - **Rotate the live Discord token** in the Developer Portal — still outstanding.
 - Ensure telemetry `ADMIN_KEY`/`API_KEY` are always set in production (Caddy
   `forward_auth` covers the edge).
+
+# Re-audit — 2026-07-10b (fixing the open items + a fresh sweep)
+
+## Fixed
+
+- **CWE-306 — telemetry ingest open when `API_KEY` unset** (was the standing Medium
+  "runs open"): `okKey` now **fails closed in production** — `cfg.API_KEY ? k === cfg.API_KEY : !IS_PROD`. With `NODE_ENV=production` and no `API_KEY`, ingest is rejected
+  (401) instead of accepting everything, and the server logs a loud SECURITY warning
+  at boot. Dev keeps keyless ingest for convenience. (`bmm/telemetry-dashboard/server.mjs`)
+- **CWE-22 — path traversal in the git-backed backups** (defense-in-depth behind the
+  elevated-admin gate): added a central `safeJoin(repoRoot, relPath)` in
+  `gitbackup.mjs` that resolves the caller path and refuses anything escaping the repo
+  root. Wired into `backupFile`, `fileHistory`, and `fileAtCommit`; `fileAtCommit` also
+  validates the commit `hash` is hex before `git show <hash>:<path>`. So a crafted
+  `table`/`pk`/`hash` on the DB-viewer backup/restore endpoints can no longer read or
+  write outside `/app-backups`.
+
+## Reviewed — safe (this sweep)
+
+- **DB viewer SQL** (`server-control.mjs` `$queryRawUnsafe`): table names validated
+  against `pg_class`, sort/edit columns against `information_schema.columns`, pk column
+  from `singlePkColumn()` — all identifier-allowlisted before interpolation; row values
+  are parameterized (`$1/$2`). Sensitive/log tables blocked (`PROTECTED_TABLES`,
+  `SENSITIVE_COL`). Not injectable.
+- **Bot payment PDF** (`/bot/payments/:id/invoice`, botAuth): returns only Stripe's own
+  no-auth `invoice_pdf` URL for a Payment the caller looked up — no arbitrary-URL
+  passthrough, no SSRF.
+- No `$queryRawUnsafe`/`fetch(<user-url>)`/user-path `readFile` found elsewhere in the
+  API. Telemetry CORS is `*` with **no credentials** (a public ingest sink) — not a
+  CWE-942 credentialed-reflection case.
+
+## Open recommendations (still user-action, not code)
+
+- **Rotate the live Discord token** in the Developer Portal — outstanding.
+- Residual upstream Docker base-image CVEs — re-scan after a base refresh.
+- CSRF: `sameSite=lax` blocks cross-site POST (the cookie isn't sent), so mutations are
+  already protected without per-request tokens; revisit only if a state-changing GET is
+  ever added.
