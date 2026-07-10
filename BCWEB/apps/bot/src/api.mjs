@@ -41,6 +41,7 @@ export const api = {
   paymentsUnannounced: () => call('GET', '/bot/payments/unannounced').then((r) => ({ payments: r.payments || [], refunds: r.refunds || [], test: !!r.test })).catch((e) => { console.warn('[bot] paymentsUnannounced failed:', e.message); return { payments: [], refunds: [], test: false }; }),
   paymentsMarkAnnounced: (marks) => call('POST', '/bot/payments/announced', marks).catch(() => {}),
   // Pending admin DMs (message + optional gift code) and marking them delivered.
+  paymentInvoice: (id) => call('GET', `/bot/payments/${id}/invoice`).catch(() => null),
   dmPending: () => call('GET', '/bot/dm/pending').then((r) => r.items || []).catch((e) => { console.warn('[bot] dmPending failed:', e.message); return []; }),
   dmSent: (ids) => call('POST', '/bot/dm/sent', { ids }).catch(() => {}),
   // Giveaways: fetch active ones, mark posted, record an entry, record the draw.

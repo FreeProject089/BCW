@@ -463,7 +463,18 @@ export default async function miscRoutes(app) {
       }
     } catch (e) { req.log?.warn?.({ err: e?.message }, 'MRR compute failed'); }
 
-    const entries = [...byUser.entries()].filter(([, v]) => v[tab].length > 0).sort((a, b2) => b2[1][tab].length - a[1][tab].length);
+    // Optional search: restrict to users matching name / email / creator id.
+    const q = String(req.query?.q || '').trim();
+    let allowedIds = null;
+    if (q) {
+      const matched = await p.user.findMany({ where: { OR: [
+        { displayName: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { creatorLinks: { some: { creatorId: { contains: q, mode: 'insensitive' } } } },
+      ] }, select: { id: true }, take: 500 });
+      allowedIds = new Set(matched.map((u) => u.id));
+    }
+    const entries = [...byUser.entries()].filter(([id, v]) => v[tab].length > 0 && (!allowedIds || allowedIds.has(id))).sort((a, b2) => b2[1][tab].length - a[1][tab].length);
     const hasMore = entries.length > skip + take;
     const page = entries.slice(skip, skip + take);
     const users = await p.user.findMany({ where: { id: { in: page.map(([id]) => id) } }, select: { id: true, displayName: true, email: true, avatar: true, role: true } });

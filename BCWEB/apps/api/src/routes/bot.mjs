@@ -317,12 +317,15 @@ export default async function botRoutes(app) {
     const p = await db();
     const [payments, refundRow, seen, testRow] = await Promise.all([
       p.payment.findMany({ where: { status: 'paid' }, orderBy: { createdAt: 'asc' }, take: 500,
-        select: { id: true, kind: true, description: true, amountCents: true, currency: true, createdAt: true, user: { select: { displayName: true } } } }),
+        select: { id: true, kind: true, description: true, amountCents: true, currency: true, createdAt: true, userId: true, user: { select: { displayName: true } } } }),
       p.adminSetting.findUnique({ where: { key: 'bot.refundEvents' } }),
       p.adminSetting.findUnique({ where: { key: 'bot.paymentsAnnounced' } }),
       p.adminSetting.findUnique({ where: { key: 'bot.paymentsTest' } }),
     ]);
     const refunds = refundRow?.value?.events || [];
+    // Shared payment → bot payload. Includes the buyer's BCWEB id (for a profile
+    // deep-link in the embed) + a stable invoice number (same scheme as /me/invoices).
+    const mapPay = (x) => ({ id: x.id, kind: x.kind, description: x.description, amountCents: x.amountCents, currency: x.currency, createdAt: x.createdAt, buyer: x.user?.displayName || null, userId: x.userId || null, invoiceNo: `BCW-${String(x.id).slice(-8).toUpperCase()}` });
     // Read-once test ping — the admin "Send test message" button sets it; report it
     // to the bot (which posts a sample embed) and clear it so it fires exactly once.
     let test = false;
@@ -339,7 +342,7 @@ export default async function botRoutes(app) {
       const pSeen0 = new Set(oldPayIds); const rSeen0 = new Set(oldRefundIds);
       return {
         test,
-        payments: payments.filter((x) => !pSeen0.has(x.id)).slice(0, 20).map((x) => ({ id: x.id, kind: x.kind, description: x.description, amountCents: x.amountCents, currency: x.currency, createdAt: x.createdAt, buyer: x.user?.displayName || null })),
+        payments: payments.filter((x) => !pSeen0.has(x.id)).slice(0, 20).map(mapPay),
         refunds: refunds.filter((r) => !rSeen0.has(r.id)).slice(0, 20),
       };
     }
@@ -347,7 +350,7 @@ export default async function botRoutes(app) {
     const rSeen = new Set(seen.value?.refundIds || []);
     return {
       test,
-      payments: payments.filter((x) => !pSeen.has(x.id)).slice(0, 20).map((x) => ({ id: x.id, kind: x.kind, description: x.description, amountCents: x.amountCents, currency: x.currency, createdAt: x.createdAt, buyer: x.user?.displayName || null })),
+      payments: payments.filter((x) => !pSeen.has(x.id)).slice(0, 20).map(mapPay),
       refunds: refunds.filter((r) => !rSeen.has(r.id)).slice(0, 20),
     };
   });
@@ -382,6 +385,25 @@ export default async function botRoutes(app) {
     const stripeKey = !!process.env.STRIPE_SECRET_KEY;
     const webhookSecret = !!process.env.STRIPE_WEBHOOK_SECRET;
     return { totalPayments: total, announced, refundEvents: refunds, lastPaymentAt: last?.createdAt || null, lastPayment: last || null, stripeKey, webhookSecret, webhookHint: total === 0 };
+  });
+
+  // Bot-facing: the real Stripe invoice PDF url + number for a payment, so the bot can
+  // attach the actual invoice PDF to its announcement embed. Stripe's invoice_pdf is a
+  // no-auth hosted link, so we just hand it back for the bot to download.
+  app.get('/bot/payments/:id/invoice', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    if (!process.env.STRIPE_SECRET_KEY) return reply.code(503).send({ error: 'stripe_not_configured' });
+    const p = await db();
+    const pay = await p.payment.findUnique({ where: { id: req.params.id }, select: { stripeSessionId: true } });
+    if (!pay?.stripeSessionId) return reply.code(404).send({ error: 'no_session' });
+    try {
+      const Stripe = (await import('stripe')).default;
+      const sk = new Stripe(process.env.STRIPE_SECRET_KEY);
+      const session = await sk.checkout.sessions.retrieve(pay.stripeSessionId, { expand: ['invoice'] });
+      const inv = session.invoice && typeof session.invoice === 'object' ? session.invoice : null;
+      if (!inv?.invoice_pdf) return reply.code(404).send({ error: 'no_pdf' });
+      return { pdfUrl: inv.invoice_pdf, number: inv.number || null };
+    } catch (e) { return reply.code(502).send({ error: 'stripe_error', detail: String(e.message) }); }
   });
 
   // ── Bot direct messages + gift codes ──

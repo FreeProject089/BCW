@@ -57,13 +57,13 @@ export async function pollPayments(client) {
 
     // Fan a built embed out to every configured channel; returns true if it landed
     // in at least one (so we only mark announced when it was actually delivered).
-    const sendToAll = async (ids, embed) => {
+    const sendToAll = async (ids, embed, files) => {
       let delivered = false;
       for (const id of ids) {
         // Fetch on cache miss so a freshly-configured salon still receives the post.
         const ch = client.channels.cache.get(id) || await client.channels.fetch(id).catch(() => null);
         if (!ch?.send) { console.warn('[bot] payments channel not found/inaccessible:', id); continue; }
-        try { await ch.send({ embeds: [embed] }); delivered = true; }
+        try { await ch.send({ embeds: [embed], ...(files?.length ? { files } : {}) }); delivered = true; }
         catch (e) { console.warn('[bot] payments announce to', id, 'failed', e.message); }
       }
       return delivered;
@@ -72,6 +72,12 @@ export async function pollPayments(client) {
     // Successful payments → green embed in every payment channel.
     if (payChannelIds.length) {
       for (const p of payments) {
+        // Customer → clickable deep-link into the admin dashboard (Free vs paid,
+        // filtered to this account) when we know the buyer's BCWEB id.
+        const customer = p.buyer
+          ? (p.userId ? `[${clean(p.buyer)}](${SITE_URL}/admin?s=planusers&user=${encodeURIComponent(p.userId)})` : clean(p.buyer))
+          : 'Anonymous';
+        const when = p.createdAt ? new Date(p.createdAt) : new Date();
         const embed = new EmbedBuilder()
           .setColor(0x22c55e)
           .setAuthor({ name: 'BetterCommunity · Payment received' })
@@ -79,12 +85,23 @@ export async function pollPayments(client) {
           .setDescription(clean(p.description, 300) || '—')
           .addFields(
             { name: 'Type', value: kindLabel(p.kind), inline: true },
-            { name: 'Customer', value: clean(p.buyer) || 'Anonymous', inline: true },
+            { name: 'Customer', value: customer, inline: true },
+            { name: 'Invoice №', value: `\`${p.invoiceNo || '—'}\``, inline: true },
+            { name: 'Date', value: `<t:${Math.floor(when.getTime() / 1000)}:f>`, inline: false },
           )
           .setThumbnail(BRAND_ICON)
           .setFooter({ text: 'BetterCommunity' })
-          .setTimestamp(p.createdAt ? new Date(p.createdAt) : new Date());
-        if (await sendToAll(payChannelIds, embed)) marks.paymentIds.push(p.id);
+          .setTimestamp(when);
+        // Attach the REAL Stripe invoice PDF (not just a link) when available.
+        let files;
+        try {
+          const info = await api.paymentInvoice(p.id);
+          if (info?.pdfUrl) {
+            const res = await fetch(info.pdfUrl);
+            if (res.ok) { const buf = Buffer.from(await res.arrayBuffer()); files = [{ attachment: buf, name: `invoice-${info.number || p.invoiceNo || p.id}.pdf` }]; }
+          }
+        } catch (e) { console.warn('[bot] invoice pdf fetch failed', e.message); }
+        if (await sendToAll(payChannelIds, embed, files)) marks.paymentIds.push(p.id);
       }
     }
 

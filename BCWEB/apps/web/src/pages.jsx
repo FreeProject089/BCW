@@ -2350,6 +2350,7 @@ const PLANUSERS_TABS = [
 // tab — e.g. one free repo + one paid boost — since the tabs aren't a strict partition.
 function AdminPlanUsers() {
   const { t } = useI18n();
+  const [sp] = useSearchParams();
   const [tab, setTab] = useState('paying');
   const [results, setResults] = useState(null);
   const [hasMore, setHasMore] = useState(false);
@@ -2358,16 +2359,20 @@ function AdminPlanUsers() {
   const [expanded, setExpanded] = useState(null);
   const [includeStaff, setIncludeStaff] = useState(false);
   const [mrr, setMrr] = useState(null); // { totalCents, subCount, annualCents }
+  const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState('');
   const load = async (append = false) => {
     setBusy(true);
     try {
       const skip = append ? (results?.length || 0) : 0;
-      const { users, hasMore: more, mrr: m } = await api.get(`/admin/billing/users?tab=${tab}&skip=${skip}&take=30${includeStaff ? '&includeStaff=1' : ''}`);
+      const { users, hasMore: more, mrr: m } = await api.get(`/admin/billing/users?tab=${tab}&skip=${skip}&take=30${includeStaff ? '&includeStaff=1' : ''}${qApplied ? `&q=${encodeURIComponent(qApplied)}` : ''}`);
       setResults(append ? [...(results || []), ...users] : users); setHasMore(more); if (m) setMrr(m);
     } catch { if (!append) setResults([]); } finally { setBusy(false); }
   };
   const mrrMoney = (c) => `$${((c || 0) / 100).toFixed(2)}`;
-  useEffect(() => { load(false); setExpanded(null); /* eslint-disable-next-line */ }, [tab, includeStaff]);
+  useEffect(() => { load(false); setExpanded(null); /* eslint-disable-next-line */ }, [tab, includeStaff, qApplied]);
+  // Deep-link from the Discord payment embed: /admin?s=planusers&user=<id> opens that
+  // customer's detail straight away.
+  useEffect(() => { const u = sp.get('user'); if (u) setDetail(u); /* eslint-disable-next-line */ }, []);
   const since = (d) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   const emptyCopy = [t(`pu.empty.${tab}.t`, ''), t(`pu.empty.${tab}.s`, '')];
   return (
@@ -2381,6 +2386,13 @@ function AdminPlanUsers() {
           <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><CreditCard size={12} className="text-[var(--primary-2)]" /> {t('pu.activesubs', 'Active subscriptions')}</div><div className="text-2xl font-bold tabular-nums">{mrr.subCount}</div></Card>
         </div>
       )}
+      <div className="flex flex-wrap gap-2 items-center mb-3">
+        <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('pu.search', 'Search a customer — name, email, creator id…')} value={q}
+            onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
+        <Button size="sm" onClick={() => setQApplied(q.trim())}>{t('pu.searchbtn', 'Search')}</Button>
+        {qApplied && <Button size="sm" variant="ghost" onClick={() => { setQ(''); setQApplied(''); }}><X size={13} /> {t('pu.clear', 'Clear')}</Button>}
+      </div>
       <label className="flex items-center gap-2 text-xs text-[var(--muted)] mb-4 cursor-pointer w-fit">
         <input type="checkbox" checked={includeStaff} onChange={(e) => setIncludeStaff(e.target.checked)} /> {t('pu.includestaff', 'Include staff (admins/mods) — normally excluded from this customer report')}
       </label>

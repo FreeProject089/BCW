@@ -403,7 +403,12 @@ export default async function hostingRoutes(app) {
         }
         neededStorageGB += plan.storageGB;
         const baseCents = termTotalCents(plan.priceMonthlyCents, it.months, cf.priceMult);
-        lines.push({ kind: 'hosting', name: `${plan.name} — ${it.months} mo`, baseCents, monthlyCents: Math.round(baseCents / it.months), months: it.months, planId: plan.id, repoName: it.repoName, mode: it.mode, autoRenew: !!it.autoRenew });
+        // Clean, human line name — just the plan, no internal jargon.
+        const moLabel = `${it.months} month${it.months > 1 ? 's' : ''}`;
+        const lineName = it.custom
+          ? `Custom ${it.custom.storageGB}GB ${it.custom.uploadMbps}Mbps · ${moLabel}`
+          : `${plan.storageGB}GB hosting · ${moLabel}`;
+        lines.push({ kind: 'hosting', name: lineName, baseCents, monthlyCents: Math.round(baseCents / it.months), months: it.months, planId: plan.id, repoName: it.repoName, mode: it.mode, autoRenew: !!it.autoRenew });
       } else {
         const repo = await p.serverRepo.findUnique({ where: { id: it.repoId }, select: { id: true, name: true, ownerId: true } });
         if (!repo || repo.ownerId !== req.user.uid) return { error: 'boost_repo_not_found' };
@@ -635,7 +640,10 @@ export default async function hostingRoutes(app) {
           hosted: i.hosted_invoice_url || null,
           hasPdf: !!i.invoice_pdf,
         };
-      }).filter((i) => i.status === 'paid' || i.status === 'open');
+      // Drop $0 invoices: an auto-renew purchase makes Stripe emit a $0 "Trial period"
+      // subscription invoice that masks the real prepaid charge in the history/modal.
+      // Only invoices that actually moved money belong in a payment history.
+      }).filter((i) => (i.status === 'paid' || i.status === 'open') && i.amountCents > 0);
       return { invoices };
     } catch (e) {
       req.log?.warn?.({ err: e?.message }, 'invoice list failed');
