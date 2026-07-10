@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireRole, notify, safeEqual } from '../lib.mjs';
+import { cached, invalidate } from '../cache.mjs';
 
 // Ko-fi's webhook POSTs a single `application/x-www-form-urlencoded` field
 // named `data`, itself a JSON string — see https://ko-fi.com/manage/webhooks.
@@ -65,6 +66,7 @@ export default async function kofiRoutes(app) {
           isSubscription: payload.is_subscription_payment === true || payload.is_subscription_payment === 'true',
         },
       }).catch(() => {}); // duplicate messageId (retry) — ignore
+      invalidate('kofi.stats'); // new tip → drop the cached aggregate so it refreshes now
     }
     if (!payload.email) return reply.code(400).send({ error: 'no_email' });
     const result = await grantKofiDiscount(p, payload.email);
@@ -76,14 +78,20 @@ export default async function kofiRoutes(app) {
   // Public — powers the homepage funding-goal widget. Only meaningful once an
   // admin has set a target via PUT /admin/kofi/goal; goal is null otherwise so
   // the frontend can hide the widget entirely.
-  app.get('/kofi/stats', async () => {
-    const p = await db();
-    const [agg, goalRow] = await Promise.all([
-      p.kofiDonation.aggregate({ _sum: { amount: true }, _count: { _all: true } }),
-      p.adminSetting.findUnique({ where: { key: 'kofi.goal' } }),
-    ]);
-    const goal = goalRow?.value?.targetAmount > 0 ? goalRow.value : null;
-    return { totalAmount: agg._sum.amount || 0, tipCount: agg._count._all, currency: goalRow?.value?.currency || 'USD', goal };
+  app.get('/kofi/stats', async (req, reply) => {
+    // Public aggregate, changes only when a new tip lands → 15s micro-cache (with
+    // request-coalescing) so a burst of visitors is one DB read, not thousands.
+    // Cache-Control lets a CDN/browser hold it briefly too.
+    reply.header('Cache-Control', 'public, max-age=15');
+    return cached('kofi.stats', 15_000, async () => {
+      const p = await db();
+      const [agg, goalRow] = await Promise.all([
+        p.kofiDonation.aggregate({ _sum: { amount: true }, _count: { _all: true } }),
+        p.adminSetting.findUnique({ where: { key: 'kofi.goal' } }),
+      ]);
+      const goal = goalRow?.value?.targetAmount > 0 ? goalRow.value : null;
+      return { totalAmount: agg._sum.amount || 0, tipCount: agg._count._all, currency: goalRow?.value?.currency || 'USD', goal };
+    });
   });
 
   // ── Admin: configure the webhook token, and a manual fallback grant ──

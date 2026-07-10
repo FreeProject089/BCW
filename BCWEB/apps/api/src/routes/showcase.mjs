@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { db, requireRole, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate } from '../lib.mjs';
+import { cached, invalidate } from '../cache.mjs';
 import { safeFetch } from '../net.mjs';
 import { gh, ghCache, versionedRawUrl } from './projects.mjs';
 
@@ -38,20 +39,25 @@ export default async function showcaseRoutes(app) {
   });
 
   // ── Public ──
-  app.get('/showcase', async () => {
-    const p = await db();
-    const rows0 = await p.showcaseProject.findMany({ where: { published: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
-    const rows = await Promise.all(rows0.map((r) => applyScheduledUpdate(p, p.showcaseProject, r)));
-    // Listing = discovery: only 'public' pages show up here (unlisted/private/
-    // whitelist are still directly reachable by slug, just not surfaced) — a
-    // still-announcing page IS listed though, so its topbar pill/grid card can
-    // show the countdown teaser.
-    return {
-      projects: rows.filter((r) => r.visibility === 'public' || isAnnouncing(r)).map((r) => ({
-        slug: r.slug, name: r.name, short: r.short, icon: r.icon || null, tagline: r.config?.tagline || '',
-        pinTopbar: r.pinTopbar, isAnnouncing: isAnnouncing(r), announceTitle: r.announceTitle, announceRevealAt: r.announceRevealAt,
-      })),
-    };
+  app.get('/showcase', async (req, reply) => {
+    // Same for every visitor (public listing only) → 10s micro-cache + Cache-Control.
+    // A scheduled reveal is at most ~10s late, which is fine for a public grid.
+    reply.header('Cache-Control', 'public, max-age=10');
+    return cached('showcase.list', 10_000, async () => {
+      const p = await db();
+      const rows0 = await p.showcaseProject.findMany({ where: { published: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
+      const rows = await Promise.all(rows0.map((r) => applyScheduledUpdate(p, p.showcaseProject, r)));
+      // Listing = discovery: only 'public' pages show up here (unlisted/private/
+      // whitelist are still directly reachable by slug, just not surfaced) — a
+      // still-announcing page IS listed though, so its topbar pill/grid card can
+      // show the countdown teaser.
+      return {
+        projects: rows.filter((r) => r.visibility === 'public' || isAnnouncing(r)).map((r) => ({
+          slug: r.slug, name: r.name, short: r.short, icon: r.icon || null, tagline: r.config?.tagline || '',
+          pinTopbar: r.pinTopbar, isAnnouncing: isAnnouncing(r), announceTitle: r.announceTitle, announceRevealAt: r.announceRevealAt,
+        })),
+      };
+    });
   });
 
   app.get('/showcase/:slug', { preHandler: optionalAuth() }, async (req, reply) => {
@@ -165,6 +171,7 @@ export default async function showcaseRoutes(app) {
     let slug = base; for (let i = 1; await p.showcaseProject.findUnique({ where: { slug } }); i++) slug = `${base}-${i}`;
     const { announceRevealAt, ...data } = b.data;
     const row = await p.showcaseProject.create({ data: { ...data, slug, announceRevealAt: announceRevealAt ? new Date(announceRevealAt) : null } });
+    invalidate('showcase.list');
     return reply.code(201).send({ project: { id: row.id, slug: row.slug } });
   });
 
@@ -176,6 +183,7 @@ export default async function showcaseRoutes(app) {
     if (data.announceRevealAt !== undefined) data.announceRevealAt = data.announceRevealAt ? new Date(data.announceRevealAt) : null;
     const row = await p.showcaseProject.update({ where: { id: req.params.id }, data }).catch(() => null);
     if (!row) return reply.code(404).send({ error: 'not_found' });
+    invalidate('showcase.list');
     return { ok: true };
   });
 
@@ -201,6 +209,7 @@ export default async function showcaseRoutes(app) {
   app.delete('/admin/showcase/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
     await p.showcaseProject.deleteMany({ where: { id: req.params.id } });
+    invalidate('showcase.list');
     return { ok: true };
   });
 }

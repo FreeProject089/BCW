@@ -91,3 +91,30 @@ minute, chacune de 1–9 ms de temps serveur. Une seule boîte **2 vCPU / 4 Go**
 un CDN + des réplicas bien avant que le CPU/RAM soit la limite. Le disque est dicté
 presque entièrement par le stockage de dépôts hébergés que tu vends, pas par l'app
 (~5–10 Go de base).
+
+## Optimisation appliquée — micro-cache sur les lectures publiques chaudes (avant → après)
+
+Ajout d'un petit cache TTL en mémoire (`apps/api/src/cache.mjs`, avec coalescing des
+requêtes) sur les deux lectures publiques indépendantes du visiteur, plus des en-têtes
+`Cache-Control` pour qu'un CDN les garde aussi :
+- `GET /kofi/stats` — TTL 15 s (invalidé à chaque nouveau tip)
+- `GET /showcase` — TTL 10 s (invalidé aux éditions admin)
+
+`/projects` n'est **pas** caché : il est propre à chaque visiteur (whitelist de
+visibilité) et a un effet de bord de swap programmé — le cacher risquerait une
+visibilité périmée/fuitée.
+
+**Sonde de latence réelle, avant vs après (moy) :**
+
+| Endpoint | Avant | Après | Δ |
+|---|---|---|---|
+| `GET /showcase` | 3,34 ms | **0,50 ms** | −85 % |
+| `GET /kofi/stats` | 1,59 ms | **0,34 ms** | −79 % |
+| `GET /projects` (non caché) | 2,75 ms | 1,75 ms | (variance) |
+
+Le **gain le plus important**, côté production, n'apparaît pas dans un benchmark
+mono-IP (le rate limiter plafonne déjà les hits DB par IP) : sous du vrai trafic
+multi-IP, ces endpoints frappent Postgres **une fois par fenêtre de TTL** au lieu d'une
+fois par requête, et le coalescing fait qu'une expiration de cache sous charge est une
+seule requête DB, pas une ruée. Le Cache-Control permet aussi aux navigateurs/CDN de
+servir les répétitions sans toucher l'origine.

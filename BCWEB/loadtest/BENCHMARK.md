@@ -143,3 +143,28 @@ gracefully (backpressure) but nothing falls over.
 not failure. On real hardware behind a CDN + multiple API replicas, the per-node
 concurrency each node sees is a fraction of this, so these are pessimistic single-box
 loopback numbers.
+
+## Optimization applied — micro-cache on hot public reads (before → after)
+
+Applied a small in-process TTL cache (`apps/api/src/cache.mjs`, with request-coalescing)
+to the two visitor-independent public reads, plus `Cache-Control` headers so a CDN can
+hold them too:
+- `GET /kofi/stats` — 15 s TTL (invalidated on a new tip)
+- `GET /showcase` — 10 s TTL (invalidated on admin edits)
+
+`/projects` was **not** cached: it's per-visitor (visibility whitelist) and has a
+scheduled-swap side effect, so caching it would risk stale/leaked visibility.
+
+**Real-latency probe, before vs after (avg):**
+
+| Endpoint | Before | After | Δ |
+|---|---|---|---|
+| `GET /showcase` | 3.34 ms | **0.50 ms** | −85% |
+| `GET /kofi/stats` | 1.59 ms | **0.34 ms** | −79% |
+| `GET /projects` (uncached) | 2.75 ms | 1.75 ms | (variance) |
+
+The **bigger, production-relevant** win doesn't show in a single-IP benchmark (the rate
+limiter already caps DB hits per IP): under real multi-IP traffic, these endpoints now
+hit Postgres **once per TTL window** instead of once per request, and the coalescing
+means a cache-expiry under load is a single DB query, not a stampede. Cache-Control also
+lets browsers/CDN serve repeats with zero origin hits.
