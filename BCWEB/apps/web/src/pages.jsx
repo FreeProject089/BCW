@@ -3053,7 +3053,10 @@ function AdminServerPerf() {
             <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.downtime ? '' : '-rotate-90'}`} />
           </button>
           {sec.downtime && <>
-          <p className="text-[11px] text-[var(--faint)] mb-3">{t('sp.downtime.note', 'Periods where the server stopped reporting — i.e. it was most likely down or restarting.')}</p>
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <p className="text-[11px] text-[var(--faint)]">{t('sp.downtime.note', 'Periods where the server stopped reporting — i.e. it was most likely down or restarting.')}</p>
+            <Button size="sm" variant="ghost" className="shrink-0" onClick={() => { navigator.clipboard?.writeText(downtime.map((d) => `${new Date(d.from).toLocaleString()} → ${new Date(d.to).toLocaleString()} (${d.minutes} min)`).join('\n')); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /> {t('sp.al.copyall', 'Copy all')}</Button>
+          </div>
           <div className="space-y-2">
             {downtime.map((d, i) => {
               const dur = d.minutes >= 90 ? `${(d.minutes / 60).toFixed(1)} h` : `~${d.minutes} min`;
@@ -3062,13 +3065,15 @@ function AdminServerPerf() {
               const time = (x) => x.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               const day = (x) => x.toLocaleDateString([], { day: 'numeric', month: 'short' });
               return (
-                <div key={i} className="flex items-center gap-3 text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">
+                <div key={i} className="flex items-center gap-3 text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 group">
                   <Badge tone={d.minutes >= 60 ? 'red' : 'amber'} className="shrink-0 tabular-nums">{dur}</Badge>
-                  <span className="text-[var(--muted)] min-w-0 truncate">
+                  <span className="text-[var(--muted)] min-w-0 flex-1 truncate">
                     {sameDay
                       ? <>{day(from)} · <span className="tabular-nums">{time(from)} → {time(to)}</span></>
                       : <span className="tabular-nums">{day(from)} {time(from)} → {day(to)} {time(to)}</span>}
                   </span>
+                  <span className="text-[11px] text-[var(--faint)] shrink-0 tabular-nums hidden sm:inline">{d.minutes} min · {from.getFullYear()}</span>
+                  <button onClick={() => { navigator.clipboard?.writeText(`${from.toLocaleString()} → ${to.toLocaleString()} (${d.minutes} min)`); toast.success(t('common.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0 opacity-0 group-hover:opacity-100 transition" title={t('common.copy', 'Copy')}><Copy size={12} /></button>
                 </div>
               );
             })}
@@ -3082,9 +3087,26 @@ function AdminServerPerf() {
           <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">{t('sp.alerts', 'Recent alerts')}{(alerts.data?.alerts || []).length ? <span className="text-[var(--muted)] normal-case tracking-normal">· {alerts.data.alerts.length}</span> : null}</h3>
           <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.alerts ? '' : '-rotate-90'}`} />
         </button>
-        {sec.alerts && (alerts.loading ? <Loading /> : (alerts.data?.alerts || []).length ? <div className="space-y-1.5 max-h-96 overflow-auto pr-1 -mr-1">
-          {alerts.data.alerts.map((a) => <AlertRow key={a.id} a={a} />)}
-        </div> : <EmptyState icon={CheckCircle2} title={t('sp.alerts.none', 'No alerts')} sub={t('sp.alerts.nonesub', 'Nothing has crossed a threshold yet.')} />)}
+        {sec.alerts && (alerts.loading ? <Loading /> : (() => {
+          const list = alerts.data?.alerts || [];
+          if (!list.length) return <EmptyState icon={CheckCircle2} title={t('sp.alerts.none', 'No alerts')} sub={t('sp.alerts.nonesub', 'Nothing has crossed a threshold yet.')} />;
+          // Collapse repeats of the exact same alert (kind+message) into one row with a
+          // count + first/last seen, so a long outage doesn't read as a wall of dupes.
+          const groups = [];
+          const byKey = new Map();
+          for (const a of list) {
+            const key = `${a.kind}::${a.message}`;
+            if (byKey.has(key)) { const g = byKey.get(key); g.count++; g.firstAt = a.createdAt; }
+            else { const g = { ...a, count: 1, firstAt: a.createdAt, lastAt: a.createdAt }; byKey.set(key, g); groups.push(g); }
+          }
+          const copyAll = () => { navigator.clipboard?.writeText(groups.map((g) => `[${g.kind}] ${g.message}${g.count > 1 ? ` (×${g.count})` : ''} — ${new Date(g.lastAt).toLocaleString()}`).join('\n')); toast.success(t('common.copied', 'Copied.')); };
+          return (<>
+            <div className="flex justify-end mb-1.5"><Button size="sm" variant="ghost" onClick={copyAll}><Copy size={12} /> {t('sp.al.copyall', 'Copy all')}</Button></div>
+            <div className="space-y-1.5 max-h-96 overflow-auto pr-1 -mr-1">
+              {groups.map((g) => <AlertRow key={g.id} a={g} />)}
+            </div>
+          </>);
+        })())}
       </div>
     </div>
   );
@@ -6275,17 +6297,21 @@ const ALERT_KIND = {
   service_down: { l: 'sp.al.svc', lf: 'Service unreachable', d: 'sp.al.svc.d', df: 'A dependency (DB, storage, bot, Stripe…) failed its health check.', tone: 'text-red-400' },
 };
 function AlertRow({ a }) {
-  const { t } = useI18n();
+  const { t } = useI18n(); const toast = useToast();
   const [open, setOpen] = useState(false);
   const k = ALERT_KIND[a.kind];
   const info = k ? { label: t(k.l, k.lf), desc: t(k.d, k.df), tone: k.tone } : { label: a.kind, desc: t('sp.al.generic', 'Threshold alert.'), tone: 'text-red-400' };
   const when = new Date(a.createdAt);
   const ago = (() => { const s = Math.max(0, (Date.now() - when.getTime()) / 1000); if (s < 60) return t('sp.ago.now', 'just now'); if (s < 3600) return t('sp.ago.m', '{n}m ago').replace('{n}', Math.floor(s / 60)); if (s < 86400) return t('sp.ago.h', '{n}h ago').replace('{n}', Math.floor(s / 3600)); return t('sp.ago.d', '{n}d ago').replace('{n}', Math.floor(s / 86400)); })();
+  const copy = (e) => { e.stopPropagation(); navigator.clipboard?.writeText(`[${a.kind}] ${a.message} — ${when.toLocaleString()}`); toast.success(t('common.copied', 'Copied.')); };
   return (
     <Card className="p-0 overflow-hidden">
       <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-3 text-left hover:bg-[var(--surface-2)] transition">
         <AlertTriangle size={15} className={`${info.tone} shrink-0`} />
-        <div className="flex-1 min-w-0"><span className="font-medium">{info.label}</span> <span className="text-[var(--muted)] truncate">· {a.message}</span></div>
+        <Badge tone={info.tone.includes('red') ? 'red' : 'amber'} className="shrink-0">{info.label}</Badge>
+        <span className="flex-1 min-w-0 text-[var(--muted)] truncate">{a.message}</span>
+        {a.count > 1 && <Badge className="shrink-0 tabular-nums">×{a.count}</Badge>}
+        <button onClick={copy} className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('common.copy', 'Copy')}><Copy size={13} /></button>
         <span className="text-[11px] text-[var(--faint)] shrink-0 tabular-nums">{ago}</span>
         <ChevronDown size={14} className={`text-[var(--faint)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -6295,7 +6321,9 @@ function AlertRow({ a }) {
           <div className="rounded-lg bg-[var(--surface-2)] border border-[var(--line)] p-2.5 font-mono text-xs text-[var(--text)] whitespace-pre-wrap break-words">{a.message}</div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--faint)]">
             <span>{t('sp.al.kindlbl', 'Kind:')} <code className="text-[var(--muted)]">{a.kind}</code></span>
-            <span>{t('sp.al.whenlbl', 'When:')} {when.toLocaleString()}</span>
+            {a.count > 1
+              ? <><span>{t('sp.al.occ', 'Occurrences:')} <b className="text-[var(--muted)]">{a.count}</b></span><span>{t('sp.al.lastlbl', 'Last:')} {when.toLocaleString()}</span>{a.firstAt && <span>{t('sp.al.firstlbl', 'First:')} {new Date(a.firstAt).toLocaleString()}</span>}</>
+              : <span>{t('sp.al.whenlbl', 'When:')} {when.toLocaleString()}</span>}
             <span>{ago}</span>
           </div>
         </div>

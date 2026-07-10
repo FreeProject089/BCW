@@ -154,9 +154,12 @@ function flushRequestStats() {
   return snap;
 }
 
-const ALERT_DEBOUNCE_MS = 30 * 60 * 1000; // don't re-alert the same kind more than every 30 min
+const ALERT_DEBOUNCE_MS = 30 * 60 * 1000; // don't re-alert the SAME message more than every 30 min
 async function maybeAlert(p, kind, message) {
-  const recent = await p.serverAlertLog.findFirst({ where: { kind }, orderBy: { createdAt: 'desc' } });
+  // Debounce on kind + message (not kind alone): a persistent "Object storage is
+  // unreachable" no longer spams, but a DIFFERENT dependency failing the same tick
+  // still alerts instead of being swallowed by the first one's cooldown.
+  const recent = await p.serverAlertLog.findFirst({ where: { kind, message }, orderBy: { createdAt: 'desc' } });
   if (recent && Date.now() - recent.createdAt.getTime() < ALERT_DEBOUNCE_MS) return null;
   return p.serverAlertLog.create({ data: { kind, message } });
 }
