@@ -2,7 +2,7 @@
 // use the Dialog + Toast providers below. Icons come from lucide-react.
 import { createContext, useContext, useEffect, useState, useCallback, useRef, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, AlertTriangle, Info, Loader2 } from 'lucide-react';
+import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff } from 'lucide-react';
 
 /* ── Primitives ── */
 export function Button({ variant = 'default', size, className = '', children, ...p }) {
@@ -74,11 +74,12 @@ export const useDialog = () => useContext(DialogCtx);
 export function DialogProvider({ children }) {
   const [state, setState] = useState(null); // { kind, opts, resolve }
   const [value, setValue] = useState('');
+  const [reveal, setReveal] = useState(false); // show/hide for password prompts
   const inputRef = useRef(null);
   const close = (result) => { state?.resolve(result); setState(null); };
 
   const api = {
-    prompt: (opts) => new Promise((resolve) => { setValue(opts.defaultValue || ''); setState({ kind: 'prompt', opts, resolve }); }),
+    prompt: (opts) => new Promise((resolve) => { setValue(opts.defaultValue || ''); setReveal(false); setState({ kind: 'prompt', opts, resolve }); }),
     confirm: (opts) => new Promise((resolve) => setState({ kind: 'confirm', opts, resolve })),
     alert: (opts) => new Promise((resolve) => setState({ kind: 'alert', opts, resolve })),
   };
@@ -100,8 +101,18 @@ export function DialogProvider({ children }) {
         {o.message && <p className="text-sm text-[var(--muted)] leading-relaxed">{o.message}</p>}
         {state?.kind === 'prompt' && <div className={o.message ? 'mt-3' : ''}>
           {o.label && <div className="text-xs font-medium text-[var(--muted)] mb-1.5">{o.label}</div>}
-          <Input ref={inputRef} type={o.type || 'text'} value={value} placeholder={o.placeholder} onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && close(value || '')} />
+          {o.type === 'password' ? (
+            <div className="relative">
+              <Input ref={inputRef} type={reveal ? 'text' : 'password'} value={value} placeholder={o.placeholder} onChange={(e) => setValue(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && close(value || '')} className="!pr-10" />
+              <button type="button" onClick={() => setReveal((v) => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]" title={reveal ? 'Hide' : 'Show'} aria-label={reveal ? 'Hide' : 'Show'}>
+                {reveal ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          ) : (
+            <Input ref={inputRef} type={o.type || 'text'} value={value} placeholder={o.placeholder} onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && close(value || '')} />
+          )}
         </div>}
       </Modal>
     </DialogCtx.Provider>

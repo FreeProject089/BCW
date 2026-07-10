@@ -187,12 +187,11 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     background: color-mix(in srgb, var(--bg-solid) calc(var(--glass-alpha, 0.85) * 100%), transparent);
     backdrop-filter: blur(10px) saturate(1.2);
   }
-  /* Segmented topbar nav: labels show by default; JS (Nav.jsx) measures whether the
-     labeled row fits the nav box and adds `.is-compact` to drop to icons-only when it
-     doesn't — so a label is never half-clipped. Default = labels visible (needed so
-     the measurement can read the labeled width). */
-  .seg-nav .nav-lbl { margin-left: 6px; }
-  .seg-nav.is-compact .nav-lbl { display: none; margin-left: 0; }
+  /* Segmented topbar nav: icons+labels from 1250px of viewport up, icons-only below
+     (down to lg, where the hamburger sheet takes over). A fixed, predictable
+     breakpoint — the nav scrolls horizontally in the rare case labels still overflow. */
+  .seg-nav .nav-lbl { display: none; margin-left: 6px; }
+  @media (min-width: 1250px) { .seg-nav .nav-lbl { display: inline; } }
   .nav-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 9px; font-size: 14px; color: var(--muted); transition: all .15s ease; }
   .nav-link:hover { color: var(--text); background: var(--surface-2); }
   .nav-link-active { color: var(--primary); background: var(--surface-2); }

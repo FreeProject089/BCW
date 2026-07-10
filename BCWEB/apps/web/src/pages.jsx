@@ -931,21 +931,14 @@ export function Hosting() {
           return (
           <div key={pl.id} role="button" tabIndex={0} aria-disabled={planDisabled} onClick={() => !planDisabled && addHosting({ planId: pl.id })}
             onKeyDown={(e) => { if (e.key === 'Enter' && !planDisabled) addHosting({ planId: pl.id }); }}
-            className={`group card overflow-hidden text-center relative flex flex-col transition-all duration-200 ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-1.5'} ${recommended && !planDisabled ? 'lg:scale-[1.06] lg:-my-1 z-10' : ''}`}
-            style={recommended && !planDisabled ? { borderColor: 'var(--primary)', boxShadow: '0 0 0 1px var(--primary), 0 22px 55px -20px var(--primary-glow)' } : undefined}>
-            {/* diagonal "MOST POPULAR" corner ribbon (image-3 style) */}
-            {recommended && !planDisabled && (
-              <span className="absolute top-0 right-0 w-[94px] h-[94px] overflow-hidden pointer-events-none z-20">
-                <span className="absolute rotate-45 text-white text-[8.5px] font-extrabold tracking-wider text-center py-1 shadow-md" style={{ width: 132, top: 19, right: -35, background: 'linear-gradient(90deg,#f97316,#f59e0b)' }}>{t('hosting.popular3', 'MOST POPULAR')}</span>
-              </span>
-            )}
-            {/* Tier header. Only the recommended tier wears the brand orange band; the
-                rest stay on the neutral card surface (no rainbow of clashing colors),
-                with just the GB size + a brand-tinted icon for a calm, cohesive grid. */}
-            <div className={`px-5 pt-6 pb-5 ${recommended ? 'text-white' : 'border-b border-[var(--line)]'}`} style={recommended ? { background: 'linear-gradient(135deg,#f97316,#f59e0b)' } : undefined}>
-              <HardDrive size={20} className={`mx-auto transition-transform group-hover:scale-110 ${recommended ? 'opacity-90' : 'text-[var(--primary-2)]'}`} />
-              <div className="text-4xl font-extrabold mt-2 leading-none">{pl.storageGB}<span className={`text-lg font-semibold ${recommended ? 'opacity-90' : 'text-[var(--muted)]'}`}> GB</span></div>
-              <div className={`text-[11px] font-semibold uppercase tracking-wider mt-1 ${recommended ? 'opacity-80' : 'text-[var(--faint)]'}`}>{t('hosting.storage', 'Storage')}</div>
+            className={`group card overflow-hidden text-center relative flex flex-col transition-all duration-200 ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-1.5'}`}>
+            {/* Uniform tier header — every card looks the same; the recommended tier is
+                marked only by a small badge, not a different colour/size/ribbon. */}
+            <div className="px-5 pt-6 pb-5 border-b border-[var(--line)]">
+              <HardDrive size={20} className="mx-auto transition-transform group-hover:scale-110 text-[var(--primary-2)]" />
+              <div className="text-4xl font-extrabold mt-2 leading-none">{pl.storageGB}<span className="text-lg font-semibold text-[var(--muted)]"> GB</span></div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider mt-1 text-[var(--faint)]">{t('hosting.storage', 'Storage')}</div>
+              {recommended && <div className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--primary)]/12 text-[var(--primary-2)] border border-[var(--primary)]/30"><Star size={9} /> {t('hosting.popular2', 'Recommended')}</div>}
             </div>
             {/* body — speed, price, CTA */}
             <div className="p-5 flex-1 flex flex-col">
@@ -4962,13 +4955,16 @@ function AdminBot() {
 
   return (
     <div>
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2 sticky top-0 z-10 py-1.5 sticky-bar">
-        <h2 className="font-semibold flex items-center gap-2 text-base"><DiscordIcon size={18} className="text-[#5865F2]" /> {t('db.title', 'Discord bot')}</h2>
-        <div className="flex items-center gap-2.5">
-          <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${online ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-[var(--faint)] border-[var(--line)]'}`}><span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-[var(--line-strong)]'}`} /> {online ? t('db.online', 'Online') : t('db.offline', 'Offline')}</span>
-          <Button size="sm" variant="primary" onClick={save}><CheckCircle2 size={14} /> {t('db.save', 'Save changes')}</Button>
-        </div>
+      {/* ── Header ── a defined solid rounded toolbar (its own Card surface) so the
+          page's background art never bleeds around the title / Save button. */}
+      <div className="sticky top-0 z-20 mb-4">
+        <Card className="flex items-center justify-between flex-wrap gap-2 px-4 py-2.5">
+          <h2 className="font-semibold flex items-center gap-2 text-base"><DiscordIcon size={18} className="text-[#5865F2]" /> {t('db.title', 'Discord bot')}</h2>
+          <div className="flex items-center gap-2.5">
+            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${online ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-[var(--faint)] border-[var(--line)]'}`}><span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-[var(--line-strong)]'}`} /> {online ? t('db.online', 'Online') : t('db.offline', 'Offline')}</span>
+            <Button size="sm" variant="primary" onClick={save}><CheckCircle2 size={14} /> {t('db.save', 'Save changes')}</Button>
+          </div>
+        </Card>
       </div>
 
       {/* connection error (e.g. privileged intents disabled) — actionable message */}

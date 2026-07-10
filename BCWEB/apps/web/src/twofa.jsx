@@ -5,6 +5,7 @@
 // browser profile doesn't expose the seeds (CWE-312). QR import uses the native
 // BarcodeDetector (no upload, no third-party lib).
 import { useEffect, useRef, useState } from 'react';
+import jsQR from 'jsqr';
 import { ShieldCheck, KeyRound, QrCode, Camera, Download, Upload, Plus, Trash2, Copy, Lock, Unlock, History as HistoryIcon, X, Clock, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useI18n } from './i18n.jsx';
 import { Card, Button, Input, Select, Field, Badge, useToast, useDialog, PageHeader, EmptyState } from './ui.jsx';
@@ -158,13 +159,24 @@ export function TwoFactor() {
     setMf({ issuer: '', label: '', secret: '', digits: 6, period: 30, algorithm: 'SHA1' }); setManualOpen(false);
   };
 
-  // ── QR scanning (native BarcodeDetector; no upload / library) ──
-  const supportsQR = typeof window !== 'undefined' && 'BarcodeDetector' in window;
+  // ── QR scanning (jsQR — pure JS, works in every browser incl. Windows desktop
+  // Chrome where the native BarcodeDetector is unavailable). Everything is decoded
+  // locally from a canvas; no upload, no network. ──
   const [scanning, setScanning] = useState(false);
-  const videoRef = useRef(null); const streamRef = useRef(null);
+  const videoRef = useRef(null); const streamRef = useRef(null); const canvasRef = useRef(null);
+  const getCanvas = () => (canvasRef.current ||= document.createElement('canvas'));
+  const decodeFromSource = (src, w, h) => {
+    if (!w || !h) return null;
+    const cv = getCanvas(); cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(src, 0, 0, w, h);
+    const img = ctx.getImageData(0, 0, w, h);
+    const res = jsQR(img.data, w, h, { inversionAttempts: 'attemptBoth' });
+    return res?.data && res.data.startsWith('otpauth:') ? res.data : null;
+  };
   const stopScan = () => { setScanning(false); streamRef.current?.getTracks().forEach((tr) => tr.stop()); streamRef.current = null; };
   const startScan = async () => {
-    if (!supportsQR) return toast.error(t('tfa.noqr', 'QR scanning isn’t supported in this browser — use “Scan image” or manual entry.'));
+    if (!navigator.mediaDevices?.getUserMedia) return toast.error(t('tfa.nocam', 'Couldn’t access the camera.'));
     try { streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); setScanning(true); }
     catch { toast.error(t('tfa.nocam', 'Couldn’t access the camera.')); }
   };
@@ -172,23 +184,27 @@ export function TwoFactor() {
     if (!scanning) return;
     const v = videoRef.current; if (!v) return;
     v.srcObject = streamRef.current; v.play().catch(() => {});
-    const det = new window.BarcodeDetector({ formats: ['qr_code'] });
     let alive = true;
-    const loop = async () => {
+    const loop = () => {
       if (!alive) return;
-      try { const codes = await det.detect(v); const hit = codes.find((c) => String(c.rawValue).startsWith('otpauth:')); if (hit && handleOtpauth(hit.rawValue)) { stopScan(); return; } } catch { /* frame not ready */ }
-      if (alive) setTimeout(loop, 400);
+      if (v.readyState >= 2 && v.videoWidth) {
+        const uri = decodeFromSource(v, v.videoWidth, v.videoHeight);
+        if (uri && handleOtpauth(uri)) { stopScan(); return; }
+      }
+      if (alive) setTimeout(loop, 350);
     };
-    const id = setTimeout(loop, 600);
+    const id = setTimeout(loop, 500);
     return () => { alive = false; clearTimeout(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanning]);
   useEffect(() => () => stopScan(), []); // stop camera on unmount
   const scanImage = async (file) => {
     if (!file) return;
-    if (!supportsQR) return toast.error(t('tfa.noqr', 'QR scanning isn’t supported in this browser — use manual entry.'));
-    try { const bmp = await createImageBitmap(file); const det = new window.BarcodeDetector({ formats: ['qr_code'] }); const res = await det.detect(bmp); const hit = res.find((c) => String(c.rawValue).startsWith('otpauth:')); if (hit) handleOtpauth(hit.rawValue); else toast.error(t('tfa.noqrfound', 'No TOTP QR code found in that image.')); }
-    catch { toast.error(t('tfa.imgfail', 'Couldn’t read that image.')); }
+    try {
+      const bmp = await createImageBitmap(file);
+      const uri = decodeFromSource(bmp, bmp.width, bmp.height);
+      if (uri) handleOtpauth(uri); else toast.error(t('tfa.noqrfound', 'No TOTP QR code found in that image.'));
+    } catch { toast.error(t('tfa.imgfail', 'Couldn’t read that image.')); }
   };
 
   // ── Export / import JSON ──
