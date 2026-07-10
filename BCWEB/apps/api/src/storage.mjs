@@ -5,7 +5,8 @@
 import { S3Client, CreateBucketCommand, HeadBucketCommand, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-const REGION = 'us-east-1';
+// 'us-east-1' suits MinIO/AWS; Cloudflare R2 wants S3_REGION=auto (see guides/DEPLOY_*).
+const REGION = process.env.S3_REGION || 'us-east-1';
 const BUCKET = process.env.S3_BUCKET || 'bcweb';
 const INTERNAL = process.env.S3_ENDPOINT || 'http://minio:9000';
 const PUBLIC = process.env.S3_PUBLIC_ENDPOINT || 'http://localhost:9000';

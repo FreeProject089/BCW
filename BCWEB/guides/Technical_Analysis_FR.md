@@ -155,14 +155,38 @@ et `safeEqual()` (sha256 → `crypto.timingSafeEqual`, comparaison à temps cons
 
 ### Modules hors-route
 
-`storage.mjs` (S3/MinIO + usage par préfixe), `net.mjs` (`safeFetch` — garde SSRF :
-résolution DNS + blocage des plages privées/loopback/link-local/CGNAT/metadata,
-re-vérif de chaque redirection), `abuse.mjs` (gardes anti-bot/anti-DDoS Fastify),
-`gitbackup.mjs` (backup fichiers/DB façon git via `execFile('git', …)`, sans shell),
+`storage.mjs` (stockage compatible S3 — MinIO par défaut ; endpoint/région pilotés par
+l'env, donc la bascule vers Cloudflare R2 est de la config pure), `net.mjs`
+(`safeFetch` — garde SSRF : résolution DNS + blocage des plages
+privées/loopback/link-local/CGNAT/metadata, re-vérif de chaque redirection),
+`abuse.mjs` (gardes anti-bot/anti-DDoS Fastify), `gitbackup.mjs` (backup fichiers/DB
+façon git via `execFile('git', …)`, sans shell, protégé contre la traversée de chemin),
 `plugin.mjs` (validation d'intégrité de plugin), `monitor.mjs` (échantillonnage perf +
 alertes), `sweeper.mjs` (balayages d'expiration : repos, submissions, deleteAt),
 `totp.mjs` (RFC 6238), `repofingerprint.mjs` (le système de **BC id**, §8), `seed.mjs`
-(bootstrap idempotent).
+(bootstrap idempotent), et la couche performance ci-dessous.
+
+### Couche performance (`cache.mjs`, `redis.mjs`)
+
+- **`redis.mjs`** — un client ioredis partagé, paresseux (depuis `REDIS_URL`) ; tout ce
+  qui l'utilise se dégrade proprement en mode « in-process » si Redis est absent/down.
+- **`cache.mjs`** — cache TTL à deux niveaux pour les lectures publiques chaudes
+  indépendantes du visiteur : L1 Map par process + L2 Redis (partagé entre les réplicas
+  d'api), avec coalescing des requêtes (les miss concurrents partagent UN appel
+  producteur — pas de ruée sur la DB à l'expiration). Utilisé par `GET /kofi/stats`
+  (15 s, invalidé à chaque tip) et `GET /showcase` (10 s, invalidé aux éditions admin).
+  `/projects` n'est volontairement PAS caché (visibilité par visiteur + effet de bord
+  de swap programmé).
+- **Rate limiter** — `@fastify/rate-limit`, 600/min par vraie IP client ; adossé à
+  Redis quand `REDIS_URL` est défini, donc budget partagé entre réplicas. `/health` est
+  exempté (probe Docker) et ses logs silencieux. Les rejets répondent 429 via le
+  gestionnaire d'erreurs central, sans log de niveau erreur.
+- **Cache prêt CDN** — nginx et Caddy marquent les `/assets/*` hashés immutables ; les
+  téléchargements de fichiers hébergés ont `Cache-Control: max-age=300` + un `ETag`
+  (sha256) ; `repo.json` 60 s. Un CDN Cloudflare gratuit devant délestera donc
+  l'essentiel du trafic de lecture sans changer de code. PgBouncer est fourni en profil
+  compose opt-in pour le multi-réplicas (le `directUrl` Prisma garde les migrations en
+  connexion directe). Benchmarks + dimensionnement : `loadtest/BENCHMARK_FR.md`.
 
 ---
 

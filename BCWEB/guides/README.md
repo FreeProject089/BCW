@@ -6,6 +6,7 @@ a separate 🇬🇧 EN and 🇫🇷 FR file, or is bilingual within a single fil
 | Guide | 🇬🇧 EN | 🇫🇷 FR |
 |---|---|---|
 | **Deploy to production** (Docker, HTTPS, Stripe, backups) | [DEPLOY_EN.md](DEPLOY_EN.md) | [DEPLOY_FR.md](DEPLOY_FR.md) |
+| **Docker files explained** (services, volumes, prod updates) | [DOCKER_EN.md](DOCKER_EN.md) | [DOCKER_FR.md](DOCKER_FR.md) |
 | **Local setup / dev** | [SETUP_GUIDE.md](SETUP_GUIDE.md) *(bilingual)* | ↩︎ same file |
 | **Domain & HTTPS** (Caddy + Let's Encrypt) | [DOMAIN_SETUP.md](DOMAIN_SETUP.md) *(bilingual)* | ↩︎ same file |
 | **App features** | [App_Features_EN.md](App_Features_EN.md) | [App_Features_FR.md](App_Features_FR.md) |

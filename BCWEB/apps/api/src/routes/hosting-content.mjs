@@ -86,6 +86,17 @@ function sandboxGate(repo, req, reply, policies, identity) {
   }
   return true;
 }
+// Is any PER-REQUESTER restriction active on this repo (whitelist mode, or ban
+// entries on the repo settings / global / owner policies)? If yes, responses must
+// NOT be shared-cacheable — a CDN would serve the cached copy around sandboxGate
+// (banned/non-whitelisted users getting the file). Open repos can cache freely.
+function repoRestricted(repo, policies) {
+  const s = repo.settings || {};
+  const anyBans = (o) => ((o?.ips || []).length + (o?.keys || []).length + (o?.accounts || []).length) > 0;
+  return !!(s.access?.whitelistEnabled || anyBans(s.bans)
+    || policies.some((pol) => pol?.whitelistOnly
+      || (pol?.bannedIps || []).length || (pol?.bannedKeys || []).length || (pol?.bannedAccounts || []).length));
+}
 // Paces a byte stream. `rate` is either a fixed kbps or a GETTER `() => kbps` that's
 // re-read on every slice — so an in-flight download re-paces live as the smart governor
 // (below) opens or closes the burst window. kbps <= 0 from the getter = full speed.
@@ -351,7 +362,9 @@ export default async function hostingContentRoutes(app) {
     const [globalPolicy, ownerPolicy, identity] = await Promise.all([getGlobalAccessPolicy(p), getUserAccessPolicy(p, repo.ownerId), resolveIdentity(p, req)]);
     if (!sandboxGate(repo, req, reply, [globalPolicy, ownerPolicy], identity)) return; // banned / not whitelisted
     logAccess(p, repo.id, req, 'repo.json', 'connect', identity); // consumer connected / imported the repo
-    return reply.header('Content-Type', 'application/json').header('Cache-Control', 'public, max-age=60').send(repo.repoJson);
+    // no-store when restricted — a shared cache must never serve around the gate.
+    const cc = repoRestricted(repo, [globalPolicy, ownerPolicy]) ? 'private, no-store' : 'public, max-age=60';
+    return reply.header('Content-Type', 'application/json').header('Cache-Control', cc).send(repo.repoJson);
   });
 
   app.get('/hosting/:owner/:repo/files/*', async (req, reply) => {
@@ -367,11 +380,16 @@ export default async function hostingContentRoutes(app) {
       const { body } = await getObject(file.key);
       // Force a non-executable content type (never serve as HTML/JS).
       const ct = file.path.endsWith('.json') ? 'application/json' : 'application/octet-stream';
-      // Let a CDN/browser cache the download briefly (5 min) — hosted mod files change
-      // rarely, so this offloads the bulk of download traffic from the origin while a
-      // re-upload still propagates within the window. ETag = the file's stored sha.
-      reply.header('Content-Type', ct).header('Content-Disposition', 'attachment').header('Cache-Control', 'public, max-age=300');
-      if (file.sha256) reply.header('ETag', `"${file.sha256}"`);
+      // CDN/browser caching — ONLY when the repo is truly open to everyone. If ANY
+      // per-requester restriction is in play (whitelist mode, or ban entries on the
+      // repo/global/owner policies), a shared cache would serve the file around the
+      // sandbox gate (banned/non-whitelisted users getting the cached copy), so those
+      // responses are marked no-store. Open repos get 5 min + an ETag (sha256):
+      // hosted mod files change rarely, and a re-upload propagates within the window.
+      const restricted = repoRestricted(repo, [globalPolicy, ownerPolicy]);
+      reply.header('Content-Type', ct).header('Content-Disposition', 'attachment')
+        .header('Cache-Control', restricted ? 'private, no-store' : 'public, max-age=300');
+      if (!restricted && file.sha256) reply.header('ETag', `"${file.sha256}"`);
       const cap = effKbps(repo);
       // Meter bytes as they flow to the client → live per-repo upload rate on the
       // Server-perf dashboard (0 when idle, the real kbit/s while serving).

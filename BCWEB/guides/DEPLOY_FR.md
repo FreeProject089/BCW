@@ -159,3 +159,33 @@ docker compose up -d --build      # reconstruit les images modifiées, db push a
 - Active le pooler **PgBouncer** : `docker compose --profile pgbouncer up -d`, puis dans
   `.env` mets `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true`
   (`DIRECT_DATABASE_URL` reste sur `db:5432` pour les migrations, géré automatiquement).
+
+## Stockage objet — MinIO maintenant, R2 plus tard
+
+**Ne confonds pas les deux produits Cloudflare :** le **CDN est gratuit** (section
+précédente — active-le quand tu veux) ; **R2** est leur *stockage objet payant à
+l'usage* qui remplacerait le MinIO embarqué. Tu n'as **pas besoin de R2** pour profiter
+du CDN.
+
+**Démarre (et reste longtemps) sur MinIO** — gratuit, les fichiers sont sur le disque de
+ton serveur, et nginx + MinIO servent confortablement une petite/moyenne communauté
+(voir `loadtest/BENCHMARK_FR.md`).
+
+**Passe à R2 quand** l'une de ces choses devient vraie :
+- le stockage des dépôts hébergés déborde du disque du serveur (ou plombe tes sauvegardes),
+- l'egress des téléchargements sature ton lien / ton hébergeur facture le trafic,
+- tu veux que les fichiers survivent indépendamment du VPS.
+
+**Comment (env uniquement, zéro code — l'app parle l'API S3) :**
+1. Crée un bucket R2 + un token API (Access Key ID / Secret) dans le dash Cloudflare.
+2. Dans `infra/compose/.env` :
+   ```
+   S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+   S3_REGION=auto
+   S3_PUBLIC_ENDPOINT=https://<ton-domaine-public-R2-ou-custom>
+   S3_BUCKET=<bucket>  S3_ACCESS_KEY=<clé>  S3_SECRET_KEY=<secret>
+   ```
+3. Copie une fois les objets existants :
+   `rclone sync minio:bcweb r2:bcweb` (ou `mc mirror`).
+4. `docker compose up -d api provisioner`, vérifie upload/download, puis retire le
+   service `minio` + son volume.

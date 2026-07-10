@@ -186,3 +186,44 @@ BMM telemetry service linked to BCWEB) plus a container CVE scan.
 - CSRF: `sameSite=lax` blocks cross-site POST (the cookie isn't sent), so mutations are
   already protected without per-request tokens; revisit only if a state-changing GET is
   ever added.
+
+# Re-audit — 2026-07-10c (perf/infra layer + docs/env pass)
+
+## Fixed
+
+- **CWE-284 — access-control bypass via shared caches (hosted downloads & repo.json)**:
+  the perf pass had added `Cache-Control: public` to `/hosting/:owner/:repo/files/*`
+  (and `repo.json` already shipped `public, max-age=60`) even though both routes
+  enforce PER-REQUESTER access (`sandboxGate`: IP/key/account bans + whitelist mode +
+  global/owner policies). A CDN or shared proxy would have served the cached copy to
+  banned / non-whitelisted requesters, straight around the gate. New `repoRestricted()`
+  helper: any restriction ⇒ `Cache-Control: private, no-store` (and no ETag); only
+  truly open repos are shared-cacheable. Found by auditing our own new code.
+- **Telemetry ingest**: the compose telemetry service now pins `NODE_ENV=production`,
+  so the 2026-07-10b fail-closed guard actually engages if `TELEMETRY_API_KEY` is ever
+  blanked (harmless in dev — the key is always set by compose defaults).
+
+## Reviewed — safe (this sweep)
+
+- **cache.mjs / redis.mjs**: cache keys are fixed strings (no user input → no cache-key
+  injection); cached values are the visitor-independent public payloads only
+  (`/showcase` filters to public/announcing INSIDE the producer; `/kofi/stats` is a
+  public aggregate). Nothing per-session is ever cached. Redis holds only this public
+  cache + rate-limit counters — no secrets.
+- **Redis exposure**: the `redis` service publishes no ports (compose-network only).
+  Note: no AUTH configured — acceptable while unexposed; set `requirepass` if it is
+  ever published or the network is shared.
+- **PgBouncer profile**: opt-in, internal-only, `AUTH_TYPE=scram-sha-256`; Prisma
+  `directUrl` keeps migrations off the pooler. No new exposure by default (profile
+  disabled unless requested).
+- **Caddy `/assets/*` immutable header**: static, content-hashed files only; the HTML
+  shell stays no-cache (deploy freshness).
+- **S3 endpoint/region now env-driven**: same defaults as the previous hardcoded
+  values; R2 migration is config-only. `.env.example` verified to contain placeholders
+  only (no live secrets; `DISCORD_TOKEN` is blank).
+
+## Open recommendations
+
+- Rotate the live Discord token (unchanged — user action).
+- If Redis is ever exposed beyond the compose network, add `requirepass` and point
+  `REDIS_URL` at `redis://:pass@redis:6379`.

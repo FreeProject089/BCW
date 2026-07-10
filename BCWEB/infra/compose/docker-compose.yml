@@ -87,7 +87,11 @@ services:
       # Migrations / db push always use a DIRECT connection (pooler can't run them).
       DIRECT_DATABASE_URL: postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}
       REDIS_URL: redis://redis:6379
-      S3_ENDPOINT: http://minio:9000
+      # S3-compatible storage. Default = the bundled MinIO. Swapping to Cloudflare R2
+      # is env-only: set S3_ENDPOINT/S3_PUBLIC_ENDPOINT/S3_REGION=auto + creds in .env
+      # (see guides/DEPLOY_EN.md "Object storage" for the full migration).
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_REGION: ${S3_REGION:-us-east-1}
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
       S3_BUCKET: ${S3_BUCKET:-bcweb}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
@@ -151,7 +155,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}
       DIRECT_DATABASE_URL: postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_REGION: ${S3_REGION:-us-east-1}
       S3_BUCKET: ${S3_BUCKET:-bcweb}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
@@ -202,6 +207,9 @@ services:
     environment:
       DATABASE_URL: postgres://bmm:bmm@telemetry-db:5432/telemetry
       PORT: "8900"
+      # With NODE_ENV=production the ingest FAILS CLOSED if API_KEY is ever blanked
+      # (CWE-306 guard in server.mjs). Harmless in dev: API_KEY is always set here.
+      NODE_ENV: production
       API_KEY: ${TELEMETRY_API_KEY:-change-me}
       ADMIN_KEY: ${TELEMETRY_ADMIN_KEY:-change-me-admin}
       STATIC_DIR: /app/public
