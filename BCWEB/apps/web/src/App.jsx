@@ -189,30 +189,27 @@ function Nav() {
     }, 60);
     return () => clearTimeout(id);
   }, [loc.pathname]);
-  // Labels vs icons-only is decided by REAL available room, not a fixed breakpoint,
-  // and drives BOTH the segmented pills AND the Dashboard/Admin labels together — so
-  // you never get the buggy split state (pills icon-only while Dashboard shows text).
-  // Oscillation guard: hiding the Dashboard/Admin labels gives the nav ~170px back,
-  // which could flip it straight back to "fits" — so we require that much extra
-  // headroom (hysteresis) before expanding again. `neededRef` caches the labeled
-  // seg-nav width, refreshed only while labels are actually shown.
+  // Pill labels show only when the WHOLE labeled row fits the seg-nav's box — so a
+  // label is never half-clipped, and they DO appear the moment there's room. No
+  // hysteresis and no coupling to the Dashboard/Admin labels: those are on their own
+  // fixed breakpoint (xl:inline), so toggling the pills can't change the seg-nav's
+  // box width and there's nothing to oscillate against. `neededRef` caches the
+  // labeled width (measured only while labels show) so the icon-only scrollWidth
+  // never fools the "does it fit?" test. Under 1250px it's always icons-only.
   useLayoutEffect(() => {
     const el = segNavRef.current;
     if (!el) return;
     const measure = () => {
-      // Hard floor: under 1250px viewport it's always icons-only (labels only when
-      // there's genuinely room above that).
       if (window.innerWidth < 1250) { setCompact(true); return; }
       if (!el.classList.contains('is-compact')) neededRef.current = el.scrollWidth;
       const need = neededRef.current || el.scrollWidth;
-      setCompact((was) => (was ? el.clientWidth < need + 170 : el.clientWidth < need));
+      setCompact(el.clientWidth < need - 2); // -2 for sub-pixel rounding
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, [lang, visibleNav.length, pinnedShowcase.length, !!user, (user && (user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN'))]);
-  const rightLbl = compact ? 'hidden' : 'inline';
   return (
     <header className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       <div className="max-w-7xl mx-auto rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
@@ -250,8 +247,8 @@ function Nav() {
         <div className="hidden lg:flex items-center gap-1 shrink-0 pl-1 ml-1 border-l border-[var(--line)]">
           {user ? (
             <>
-              <NavLink to="/dashboard" className={(s) => pill(s) + ' !py-2'} title={t('nav.dashboard')}><LayoutDashboard size={15} /><span className={rightLbl}>{t("nav.dashboard")}</span></NavLink>
-              {(user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN') && <NavLink to="/admin" className={(s) => pill(s) + ' !py-2'} title={t('nav.admin')}><Shield size={15} /><span className={rightLbl}>{t("nav.admin")}</span></NavLink>}
+              <NavLink to="/dashboard" className={(s) => pill(s) + ' !py-2'} title={t('nav.dashboard')}><LayoutDashboard size={15} /><span className="hidden xl:inline">{t("nav.dashboard")}</span></NavLink>
+              {(user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN') && <NavLink to="/admin" className={(s) => pill(s) + ' !py-2'} title={t('nav.admin')}><Shield size={15} /><span className="hidden xl:inline">{t("nav.admin")}</span></NavLink>}
               <Link to="/profile" className="rounded-full p-0.5 hover:ring-2 hover:ring-[var(--line-strong)] transition" title={user.displayName}><Avatar user={user} size={28} /></Link>
               <Button variant="ghost" size="sm" onClick={logout} title={t('nav.signout')}><LogOut size={15} /></Button>
             </>

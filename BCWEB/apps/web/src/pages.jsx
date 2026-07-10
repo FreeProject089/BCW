@@ -4899,6 +4899,42 @@ function BotGiveawaysCard() {
   );
 }
 
+// Diagnostic under the Payments module: shows whether Payment rows even exist, so
+// "the bot doesn't post real payments" can be told apart from "no payments recorded
+// at all" (= the Stripe webhook isn't reaching the API).
+function PaymentsDiag() {
+  const { t } = useI18n();
+  const { data } = useAsync(() => api.get('/admin/bot/payments/status').catch(() => null), []);
+  if (!data) return null;
+  const fdate = (d) => d ? new Date(d).toLocaleString() : '—';
+  return (
+    <div className="mt-2 pt-2 border-t border-[var(--line)] text-[11px] space-y-1">
+      <div className="flex items-center gap-3 text-[var(--muted)] flex-wrap">
+        <span><b className="text-[var(--text)] tabular-nums">{data.totalPayments}</b> {t('db.pay.diag.total', 'payments recorded')}</span>
+        <span><b className="text-[var(--text)] tabular-nums">{data.announced}</b> {t('db.pay.diag.announced', 'announced')}</span>
+        <span><b className="text-[var(--text)] tabular-nums">{data.refundEvents}</b> {t('db.pay.diag.refunds', 'refund events')}</span>
+        {data.lastPaymentAt && <span>{t('db.pay.diag.last', 'last')}: {fdate(data.lastPaymentAt)}</span>}
+      </div>
+      <div className="flex items-center gap-2 flex-wrap text-[var(--faint)]">
+        <span className={data.stripeKey ? 'text-emerald-400' : 'text-red-400'}>{data.stripeKey ? '✓' : '✗'} {t('db.pay.diag.key', 'Stripe key')}</span>
+        <span className={data.webhookSecret ? 'text-emerald-400' : 'text-red-400'}>{data.webhookSecret ? '✓' : '✗'} {t('db.pay.diag.whsecret', 'Webhook secret')}</span>
+      </div>
+      {!data.webhookSecret && (
+        <div className="flex items-start gap-1.5 text-red-400">
+          <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+          <span>{t('db.pay.diag.nowh', 'STRIPE_WEBHOOK_SECRET is not set — the /hosting/webhook endpoint returns 503, so no checkout is ever recorded or provisioned (and nothing can be announced). Set it in compose .env.')}</span>
+        </div>
+      )}
+      {data.webhookSecret && data.webhookHint && (
+        <div className="flex items-start gap-1.5 text-amber-400">
+          <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+          <span>{t('db.pay.diag.hint', 'No payments recorded yet. If a real checkout still shows nothing here, Stripe events aren’t reaching the API — forward them in local test mode with: stripe listen --forward-to <api-url>/hosting/webhook (use the printed whsec_… as STRIPE_WEBHOOK_SECRET).')}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminBot() {
   const toast = useToast();
   const { t } = useI18n();
@@ -5084,6 +5120,7 @@ function AdminBot() {
           <div className="pt-1">
             <Button size="sm" onClick={async () => { try { await api.post('/admin/bot/payments/test'); toast.success(t('db.pay.testsent', 'Test queued — the bot posts it within ~2 min. Check the channel (and the bot logs if nothing shows).')); } catch { toast.error(t('common.failed', 'Failed.')); } }}><Bell size={13} /> {t('db.pay.test', 'Send test message')}</Button>
             <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('db.pay.testnote', 'Posts a sample embed to the channels above so you can verify the bot can post there — no real payment needed. Save your channel ids first. Note: only NEW payments are announced after you enable this module (existing ones are skipped).')}</p>
+            <PaymentsDiag />
           </div>
         </ModuleCard>
 

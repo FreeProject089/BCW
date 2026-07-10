@@ -361,6 +361,29 @@ export default async function botRoutes(app) {
     return { ok: true };
   });
 
+  // Diagnostic for "the bot doesn't post real payments": tells the admin whether any
+  // Payment rows even EXIST. If total stays 0 after a checkout, the Stripe webhook
+  // isn't reaching the API (nothing is recorded OR provisioned) — that's an infra
+  // wiring issue (run `stripe listen --forward-to <api>/hosting/webhook`), not a bot
+  // bug. If total > announced, the bot has new activity queued to post.
+  app.get('/admin/bot/payments/status', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const [total, last, seen, refundRow] = await Promise.all([
+      p.payment.count({ where: { status: 'paid' } }),
+      p.payment.findFirst({ where: { status: 'paid' }, orderBy: { createdAt: 'desc' }, select: { createdAt: true, amountCents: true, currency: true, kind: true } }),
+      p.adminSetting.findUnique({ where: { key: 'bot.paymentsAnnounced' } }),
+      p.adminSetting.findUnique({ where: { key: 'bot.refundEvents' } }),
+    ]);
+    const announced = (seen?.value?.paymentIds || []).length;
+    const refunds = (refundRow?.value?.events || []).length;
+    // Env flags so the admin can see WHY nothing is recorded: without a Stripe key
+    // there are no checkouts; without the webhook secret the /hosting/webhook handler
+    // 503s and never records/provisions anything (the #1 cause of "no notifications").
+    const stripeKey = !!process.env.STRIPE_SECRET_KEY;
+    const webhookSecret = !!process.env.STRIPE_WEBHOOK_SECRET;
+    return { totalPayments: total, announced, refundEvents: refunds, lastPaymentAt: last?.createdAt || null, lastPayment: last || null, stripeKey, webhookSecret, webhookHint: total === 0 };
+  });
+
   // ── Bot direct messages + gift codes ──
   // Admin sends a DM to a Discord user; optionally mints a one-off promo code assigned
   // to the recipient's linked account and appends it. The bot delivers on its next poll.
