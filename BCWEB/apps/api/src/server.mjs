@@ -73,13 +73,33 @@ const clientKey = (req) => {
 // almost nothing to reject. keyGenerator is the real client IP (see above).
 await app.register(rateLimit, {
   max: 600, timeWindow: '1 minute', keyGenerator: clientKey, ban: 4,
-  errorResponseBuilder: (req, ctx) => ({ error: 'rate_limited', retryAfterSec: Math.ceil(ctx.ttl / 1000) }),
+  // The plugin THROWS whatever this returns — so it must carry a statusCode, else
+  // Fastify's default handler turns it into a 500 (was logging every rate-limit as
+  // an error). Return an Error with the plugin's status (429, or 403 on ban) + a
+  // `payload` our error handler sends as the JSON body.
+  errorResponseBuilder: (req, ctx) => {
+    const err = new Error('rate_limited');
+    err.statusCode = ctx.statusCode;
+    err.payload = { error: 'rate_limited', retryAfterSec: Math.ceil(ctx.ttl / 1000) };
+    return err;
+  },
+});
+// Central error handler: 4xx (rate limit, validation, thrown client errors) reply
+// cleanly and are NOT logged at error level — that killed the flood of level-50
+// "rate_limited → 500" lines. Only real 5xx are logged as errors.
+app.setErrorHandler((err, req, reply) => {
+  const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+  if (status < 500) return reply.code(status).send(err.payload || { error: err.message || 'error' });
+  req.log.error({ err: { message: err.message, stack: err.stack }, url: req.url }, 'request error');
+  return reply.code(500).send({ error: 'internal_error' });
 });
 // Anti-bot / anti-scan guards (bad-UA denylist + repeat-offender soft block),
 // running before any route. Runs after rate-limit so a banned IP is cheap.
 installAbuseGuards(app);
 
-app.get('/health', async () => {
+// Liveness probe: exempt from the rate limiter (Docker's healthcheck + probes hit it
+// constantly and must never 429) and silence its per-request logs (pure noise).
+app.get('/health', { config: { rateLimit: false }, logLevel: 'silent' }, async () => {
   let dbOk = false;
   try { await (await db()).$queryRaw`SELECT 1`; dbOk = true; } catch { /* not ready */ }
   return { ok: true, db: dbOk, ts: Date.now() };

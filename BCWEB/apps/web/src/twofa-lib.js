@@ -118,3 +118,26 @@ export function takePending() {
   try { const s = sessionStorage.getItem(PENDING_KEY); if (s) { sessionStorage.removeItem(PENDING_KEY); return JSON.parse(s); } } catch { /* ignore */ }
   return null;
 }
+
+// Fired whenever the vault changes so live widgets (TotpQuickFill) re-read it.
+const VAULT_EVENT = 'bcw-2fa-vault-changed';
+export function onVaultChange(fn) { if (typeof window === 'undefined') return () => {}; window.addEventListener(VAULT_EVENT, fn); return () => window.removeEventListener(VAULT_EVENT, fn); }
+function emitVaultChange() { try { window.dispatchEvent(new Event(VAULT_EVENT)); } catch { /* ignore */ } }
+
+// Add an account straight into the LOCAL vault (used by Profile's "Add to BCWEB
+// Authenticator"). If the vault is passphrase-encrypted we can't write without the
+// passphrase, so we stage it for the /2fa page to import on next unlock.
+// Returns { added } | { added, dup } | { staged } | { error }.
+export function addLocalAccount(input) {
+  const acct = sanitizeAccount(input);
+  if (!acct) return { error: 'bad_account' };
+  const raw = readVaultRaw();
+  if (raw?.enc) { stagePending(input); return { staged: true }; }
+  const accounts = Array.isArray(raw?.accounts) ? raw.accounts : [];
+  const history = Array.isArray(raw?.history) ? raw.history : [];
+  if (accounts.some((a) => a.secret === acct.secret)) { emitVaultChange(); return { added: true, dup: true }; }
+  accounts.push(acct);
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ v: 1, enc: false, accounts, history })); } catch { return { error: 'save_failed' }; }
+  emitVaultChange();
+  return { added: true };
+}

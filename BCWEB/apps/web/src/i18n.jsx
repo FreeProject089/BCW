@@ -1075,7 +1075,7 @@ const DICT = {
     'tfa.imp.pass': 'Phrase secrète d’import', 'tfa.imp.passm': 'Cet export est chiffré. Entre la phrase secrète utilisée lors de l’export.',
     'tfa.bk.title': 'Codes de secours', 'tfa.bk.add': 'Ajouter des codes de secours', 'tfa.bk.addm': 'Colle tes codes de secours/récupération à usage unique (un par ligne ou séparés par des virgules). Ils sont stockés localement avec ce compte.', 'tfa.bk.codes': 'Codes de secours', 'tfa.bk.added': 'Codes de secours enregistrés.',
     'tfa.pending': 'Un nouveau compte (« {n} ») sera ajouté après déverrouillage.',
-    'tfa.fill.locked': 'Codes dans l’Authentificateur (verrouillé)', 'tfa.fill.hint': 'Remplir depuis ton Authentificateur BCWEB local',
+    'tfa.fill.locked': 'Codes dans l’Authentificateur (verrouillé)', 'tfa.fill.hint': 'Remplir depuis ton Authentificateur BCWEB local', 'tfa.fill.from': 'Depuis ton Authentificateur',
     'tfa.pass.set': 'Définir une phrase secrète', 'tfa.pass.setm': 'Ton coffre sera chiffré au repos avec cette phrase secrète. Si tu l’oublies, les secrets seront irrécupérables.', 'tfa.pass.short': 'Utilise au moins 6 caractères.', 'tfa.pass.on': 'Coffre chiffré.',
     'tfa.pass.rem': 'Retirer le chiffrement ?', 'tfa.pass.remm': 'Le coffre sera de nouveau stocké en clair sur cet appareil.', 'tfa.pass.rem.ok': 'Retirer', 'tfa.pass.off': 'Chiffrement retiré.',
     'tfa.wrongpass': 'Phrase secrète incorrecte.', 'tfa.savefail': 'Impossible d’enregistrer le coffre.',

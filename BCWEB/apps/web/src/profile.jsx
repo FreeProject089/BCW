@@ -10,7 +10,7 @@ import { DiscordIcon } from './brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from './Avatar.jsx';
 import { Link, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone } from 'lucide-react';
-import { stagePending } from './twofa-lib.js';
+import { stagePending, addLocalAccount } from './twofa-lib.js';
 import { TotpQuickFill } from './twofa-fill.jsx';
 
 // A small section heading used to group the profile cards into clear zones
@@ -365,7 +365,16 @@ function TwoFactorCard() {
           <p className="text-xs text-[var(--muted)]">{t('prof.2fa.scan', 'Scan this in your authenticator app (Google Authenticator, Authy, …) — or enter the key manually — then confirm with the code it shows:')}</p>
           {qrDataUrl && <img src={qrDataUrl} alt="2FA QR code" width={160} height={160} className="rounded-lg border border-[var(--line)] bg-white p-1.5" />}
           <div className="text-xs font-mono bg-[var(--surface-2)] rounded-lg p-3 break-all">{setup.secret}</div>
+          {/* One-click: drop this account into the local BCWEB Authenticator (/2fa) so
+              the code below (and every future prompt) can be filled without an app. */}
+          <Button size="sm" onClick={() => {
+            const r = addLocalAccount({ secret: setup.secret, otpauth: setup.otpauth, issuer: 'BetterCommunity', label: user?.email || 'BetterCommunity' });
+            if (r.staged) toast.success(t('prof.2fa.local.staged', 'Saved — unlock the Authenticator (/2fa) to finish adding it.'));
+            else if (r.added) toast.success(t('prof.2fa.local.added', 'Added to your BCWEB Authenticator — use the code below to confirm.'));
+            else toast.error(t('common.failed', 'Failed.'));
+          }}><Smartphone size={13} /> {t('prof.2fa.addlocalnow', 'Add to BCWEB Authenticator')}</Button>
           <Input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" />
+          <TotpQuickFill onFill={(c) => setCode(c)} />
           <div className="flex gap-2">
             <Button variant="primary" disabled={busy} onClick={confirmSetup}>{busy ? <Spinner /> : t('prof.2fa.confirm', 'Confirm & enable')}</Button>
             <Button onClick={() => { setSetup(null); setQrDataUrl(null); }}>{t('prof.2fa.cancel', 'Cancel')}</Button>
