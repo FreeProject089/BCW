@@ -328,9 +328,20 @@ export default async function botRoutes(app) {
     let test = false;
     if (testRow?.value?.at && Date.now() - testRow.value.at < 10 * 60_000) { test = true; await p.adminSetting.delete({ where: { key: 'bot.paymentsTest' } }).catch(() => {}); }
     if (!seen) {
-      // First call ever → seed with everything current so nothing old floods.
-      await p.adminSetting.create({ data: { key: 'bot.paymentsAnnounced', value: { paymentIds: payments.map((x) => x.id), refundIds: refunds.map((r) => r.id) } } });
-      return { payments: [], refunds: [], test };
+      // First call ever → bury only genuinely OLD activity so a purchase made right
+      // around the moment you enabled the module still announces (previously we
+      // seeded EVERYTHING, which silently swallowed a just-made payment → "it doesn't
+      // send"). Anything newer than the cutoff is left unseen and announces next poll.
+      const cutoff = Date.now() - 10 * 60_000;
+      const oldPayIds = payments.filter((x) => new Date(x.createdAt).getTime() < cutoff).map((x) => x.id);
+      const oldRefundIds = refunds.filter((r) => (r.at ? new Date(r.at).getTime() : 0) < cutoff).map((r) => r.id);
+      await p.adminSetting.create({ data: { key: 'bot.paymentsAnnounced', value: { paymentIds: oldPayIds, refundIds: oldRefundIds } } });
+      const pSeen0 = new Set(oldPayIds); const rSeen0 = new Set(oldRefundIds);
+      return {
+        test,
+        payments: payments.filter((x) => !pSeen0.has(x.id)).slice(0, 20).map((x) => ({ id: x.id, kind: x.kind, description: x.description, amountCents: x.amountCents, currency: x.currency, createdAt: x.createdAt, buyer: x.user?.displayName || null })),
+        refunds: refunds.filter((r) => !rSeen0.has(r.id)).slice(0, 20),
+      };
     }
     const pSeen = new Set(seen.value?.paymentIds || []);
     const rSeen = new Set(seen.value?.refundIds || []);

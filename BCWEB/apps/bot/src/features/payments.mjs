@@ -5,13 +5,20 @@
 // blog/kofi, so bot restarts never re-announce old activity.
 import { EmbedBuilder } from 'discord.js';
 import { config } from '../config.mjs';
-import { api } from '../api.mjs';
+import { api, SITE_URL } from '../api.mjs';
 
 let _running = false;
 
-const money = (cents, ccy) => `${(Math.abs(cents || 0) / 100).toFixed(2)} ${(ccy || 'usd').toUpperCase()}`;
+const BRAND_ICON = `${SITE_URL}/logo.png`;
+const money = (cents, ccy) => { const cur = (ccy || 'usd').toUpperCase(); const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : ''; const n = (Math.abs(cents || 0) / 100).toFixed(2); return sym ? `${sym}${n}` : `${n} ${cur}`; };
 // Don't leak a full customer email into a Discord channel — mask the local part.
 const maskEmail = (e) => { if (!e) return ''; const [u, d] = String(e).split('@'); return d ? `${u.slice(0, 1)}***@${d}` : '***'; };
+// Neutralise Discord markdown in user-controlled text (display names) so a crafted
+// name can't inject links/formatting into the announcement embed. Length-capped too.
+const clean = (s, n = 100) => String(s || '').replace(/[`*_~|>\\[\]()]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
+const KIND = { HOSTING: ['🖥️', 'Hosting'], FEATURE: ['🚀', 'Featured boost'], CATALOG: ['📦', 'Catalog listing'], SUBSCRIPTION: ['🔁', 'Subscription'] };
+const kindEmoji = (k) => (KIND[k] || ['💳', String(k || 'Payment')])[0];
+const kindLabel = (k) => (KIND[k] || ['💳', String(k || 'Payment')])[1];
 
 export async function pollPayments(client) {
   if (_running) return;
@@ -33,8 +40,9 @@ export async function pollPayments(client) {
     // Admin "Send test message" → post a sample embed so channel/permissions can be
     // verified without a real payment. Fired before the early-return below.
     if (test) {
-      const embed = new EmbedBuilder().setColor(0x16a34a).setTitle('🧪 Test — payments module')
-        .setDescription('This is a **test message**. If you can read this, the bot can post payment & refund notifications to this channel. ✅')
+      const embed = new EmbedBuilder().setColor(0x22c55e).setAuthor({ name: 'BetterCommunity · Payments' }).setTitle('🧪 Test message')
+        .setDescription('If you can read this, the bot can post payment & refund notifications to this channel. ✅')
+        .setThumbnail(BRAND_ICON).setFooter({ text: 'BetterCommunity' })
         .setTimestamp(new Date());
       const targets = [...new Set([...payChannelIds, ...refundTargets])];
       let ok = false;
@@ -65,22 +73,31 @@ export async function pollPayments(client) {
     if (payChannelIds.length) {
       for (const p of payments) {
         const embed = new EmbedBuilder()
-          .setColor(0x16a34a)
-          .setTitle('💳 New payment')
-          .setDescription(`**${money(p.amountCents, p.currency)}** — ${p.description}`)
-          .addFields({ name: 'Type', value: String(p.kind || '—'), inline: true }, ...(p.buyer ? [{ name: 'Customer', value: p.buyer, inline: true }] : []))
+          .setColor(0x22c55e)
+          .setAuthor({ name: 'BetterCommunity · Payment received' })
+          .setTitle(`${kindEmoji(p.kind)}  ${money(p.amountCents, p.currency)}`)
+          .setDescription(clean(p.description, 300) || '—')
+          .addFields(
+            { name: 'Type', value: kindLabel(p.kind), inline: true },
+            { name: 'Customer', value: clean(p.buyer) || 'Anonymous', inline: true },
+          )
+          .setThumbnail(BRAND_ICON)
+          .setFooter({ text: 'BetterCommunity' })
           .setTimestamp(p.createdAt ? new Date(p.createdAt) : new Date());
         if (await sendToAll(payChannelIds, embed)) marks.paymentIds.push(p.id);
       }
     }
 
-    // Refunds → amber embed in every refund channel (or the payment channels).
+    // Refunds → red embed in every refund channel (or the payment channels).
     if (refundTargets.length) {
       for (const r of refunds) {
         const embed = new EmbedBuilder()
-          .setColor(0xf59e0b)
-          .setTitle('↩️ Refund issued')
-          .setDescription(`**${money(r.amountCents, r.currency)}** refunded${r.email ? ` to ${maskEmail(r.email)}` : ''}.`)
+          .setColor(0xef4444)
+          .setAuthor({ name: 'BetterCommunity · Refund issued' })
+          .setTitle(`↩️  −${money(r.amountCents, r.currency)}`)
+          .setDescription(`A refund was issued${r.email ? ` to **${maskEmail(r.email)}**` : ''}.`)
+          .setThumbnail(BRAND_ICON)
+          .setFooter({ text: 'BetterCommunity' })
           .setTimestamp(r.at ? new Date(r.at) : new Date());
         if (await sendToAll(refundTargets, embed)) marks.refundIds.push(r.id);
       }

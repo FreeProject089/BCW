@@ -903,7 +903,7 @@ export function Hosting() {
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shrink-0 shadow-lg shadow-emerald-500/25"><Gift size={22} /></span>
               <div className="flex-1 text-center sm:text-left min-w-0">
-                <div className="font-semibold text-lg flex items-center justify-center sm:justify-start gap-2 flex-wrap">{t('hosting.freeplan.title', 'Just want to try it out?')} <span className="inline-flex items-center text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-500 text-white shadow-sm shadow-emerald-500/30">{t('hosting.freeplan.badge3', '$0 · Free')}</span></div>
+                <div className="font-semibold text-lg">{t('hosting.freeplan.title', 'Just want to try it out?')}</div>
                 <div className="text-sm text-[var(--muted)]">{t('hosting.freeplan.sub', 'Host a small repo at no cost — {gb} GB storage, {mbps} Mbps upload, forever free.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
                 <div className="text-xs text-[var(--faint)] mt-1">{t('hosting.freeplan.note', 'One free repo per account. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
               </div>
@@ -933,13 +933,17 @@ export function Hosting() {
           <div key={pl.id} role="button" tabIndex={0} aria-disabled={planDisabled} onClick={() => !planDisabled && addHosting({ planId: pl.id })}
             onKeyDown={(e) => { if (e.key === 'Enter' && !planDisabled) addHosting({ planId: pl.id }); }}
             className={`group card overflow-hidden text-center relative flex flex-col transition-all duration-200 ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-1.5'}`}>
-            {/* Uniform tier header — every card looks the same; the recommended tier is
-                marked only by a small badge, not a different colour/size/ribbon. */}
+            {/* Diagonal corner ribbon on the recommended tier (image-2 style). */}
+            {recommended && !planDisabled && (
+              <span className="absolute top-0 right-0 w-[104px] h-[104px] overflow-hidden pointer-events-none z-20">
+                <span className="absolute rotate-45 text-white text-[9px] font-extrabold tracking-wider text-center py-1 shadow-md" style={{ width: 150, top: 22, right: -40, background: 'linear-gradient(90deg,#f97316,#f59e0b)' }}>{t('hosting.popular2', 'RECOMMENDED')}</span>
+              </span>
+            )}
+            {/* Uniform tier header — every card looks the same. */}
             <div className="px-5 pt-6 pb-5 border-b border-[var(--line)]">
               <HardDrive size={20} className="mx-auto transition-transform group-hover:scale-110 text-[var(--primary-2)]" />
               <div className="text-4xl font-extrabold mt-2 leading-none">{pl.storageGB}<span className="text-lg font-semibold text-[var(--muted)]"> GB</span></div>
               <div className="text-[11px] font-semibold uppercase tracking-wider mt-1 text-[var(--faint)]">{t('hosting.storage', 'Storage')}</div>
-              {recommended && <div className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--primary)]/12 text-[var(--primary-2)] border border-[var(--primary)]/30"><Star size={9} /> {t('hosting.popular2', 'Recommended')}</div>}
             </div>
             {/* body — speed, price, CTA */}
             <div className="p-5 flex-1 flex flex-col">

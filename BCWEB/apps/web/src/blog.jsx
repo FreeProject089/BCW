@@ -47,7 +47,9 @@ export function AuthorsRow({ authors, size = 22 }) {
   return (
     <span className="flex items-center gap-1.5 min-w-0">
       <span className="flex -space-x-2 shrink-0">
-        {list.slice(0, 4).map((a, i) => <span key={a.id || i} className="ring-2 ring-[var(--bg-solid)] rounded-full" title={a.displayName}><Avatar user={a} size={size} /></span>)}
+        {/* ring only when several avatars overlap (to separate them); a single
+            avatar gets no ring so it doesn't read as an odd framed box. */}
+        {list.slice(0, 4).map((a, i) => <span key={a.id || i} className={list.length > 1 ? 'ring-2 ring-[var(--bg-solid)] rounded-full' : ''} title={a.displayName}><Avatar user={a} size={size} /></span>)}
       </span>
       {list.length === 1 && <span className="text-xs text-[var(--faint)] truncate">{list[0].displayName}</span>}
     </span>
