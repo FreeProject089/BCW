@@ -100,7 +100,7 @@ export function DialogProvider({ children }) {
         {o.message && <p className="text-sm text-[var(--muted)] leading-relaxed">{o.message}</p>}
         {state?.kind === 'prompt' && <div className={o.message ? 'mt-3' : ''}>
           {o.label && <div className="text-xs font-medium text-[var(--muted)] mb-1.5">{o.label}</div>}
-          <Input ref={inputRef} value={value} placeholder={o.placeholder} onChange={(e) => setValue(e.target.value)}
+          <Input ref={inputRef} type={o.type || 'text'} value={value} placeholder={o.placeholder} onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && close(value || '')} />
         </div>}
       </Modal>

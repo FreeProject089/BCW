@@ -923,15 +923,11 @@ export function Hosting() {
       })()}
 
       {plans.loading ? <Loading /> : <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 items-stretch pt-2">
-        {(plans.data?.plans || []).filter((pl) => pl.priceMonthlyCents > 0).map((pl, idx) => {
+        {(plans.data?.plans || []).filter((pl) => pl.priceMonthlyCents > 0).map((pl) => {
           // A plan can be individually unavailable (not enough free space for ITS
           // size) even while the pool isn't fully soldOut — disable just that card.
           const planDisabled = soldOut || (!!c && pl.storageGB > c.freeGB);
           const recommended = pl.storageGB === 25;
-          // Distinct header accents per tier (pricing-table look). The recommended
-          // tier always wears the brand orange and sits raised with a corner ribbon.
-          const ACCENTS = [['#0ea5e9', '#06b6d4'], ['#8b5cf6', '#d946ef'], ['#f97316', '#f59e0b'], ['#f43f5e', '#ec4899']];
-          const [a1, a2] = recommended ? ['#f97316', '#f59e0b'] : ACCENTS[idx % ACCENTS.length];
           return (
           <div key={pl.id} role="button" tabIndex={0} aria-disabled={planDisabled} onClick={() => !planDisabled && addHosting({ planId: pl.id })}
             onKeyDown={(e) => { if (e.key === 'Enter' && !planDisabled) addHosting({ planId: pl.id }); }}
@@ -943,11 +939,13 @@ export function Hosting() {
                 <span className="absolute rotate-45 text-white text-[8.5px] font-extrabold tracking-wider text-center py-1 shadow-md" style={{ width: 132, top: 19, right: -35, background: 'linear-gradient(90deg,#f97316,#f59e0b)' }}>{t('hosting.popular3', 'MOST POPULAR')}</span>
               </span>
             )}
-            {/* colored tier header — the "name band" from a classic pricing table */}
-            <div className="px-5 pt-6 pb-5 text-white" style={{ background: `linear-gradient(135deg, ${a1}, ${a2})` }}>
-              <HardDrive size={20} className="mx-auto opacity-90 transition-transform group-hover:scale-110" />
-              <div className="text-4xl font-extrabold mt-2 leading-none">{pl.storageGB}<span className="text-lg font-semibold opacity-90"> GB</span></div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider opacity-80 mt-1">{t('hosting.storage', 'Storage')}</div>
+            {/* Tier header. Only the recommended tier wears the brand orange band; the
+                rest stay on the neutral card surface (no rainbow of clashing colors),
+                with just the GB size + a brand-tinted icon for a calm, cohesive grid. */}
+            <div className={`px-5 pt-6 pb-5 ${recommended ? 'text-white' : 'border-b border-[var(--line)]'}`} style={recommended ? { background: 'linear-gradient(135deg,#f97316,#f59e0b)' } : undefined}>
+              <HardDrive size={20} className={`mx-auto transition-transform group-hover:scale-110 ${recommended ? 'opacity-90' : 'text-[var(--primary-2)]'}`} />
+              <div className="text-4xl font-extrabold mt-2 leading-none">{pl.storageGB}<span className={`text-lg font-semibold ${recommended ? 'opacity-90' : 'text-[var(--muted)]'}`}> GB</span></div>
+              <div className={`text-[11px] font-semibold uppercase tracking-wider mt-1 ${recommended ? 'opacity-80' : 'text-[var(--faint)]'}`}>{t('hosting.storage', 'Storage')}</div>
             </div>
             {/* body — speed, price, CTA */}
             <div className="p-5 flex-1 flex flex-col">
@@ -5050,7 +5048,10 @@ function AdminBot() {
 
       {/* ═══════════ GLOBAL — cross-server ═══════════ */}
       <SectionTitle icon={Globe} title={t('db.sec.global', 'Global — applies across every server')} sub={t('db.sec.global.sub', 'Announcements route by channel (works in any server); limits are shared.')} />
-      <div className="grid md:grid-cols-2 gap-4 items-start">
+      {/* Masonry columns (not a 2-col grid): the expanded Payments card is much
+          taller than the collapsed ones, so a grid left a big empty gap beside it.
+          Columns let the short cards pack tight regardless of neighbour height. */}
+      <div className="columns-1 md:columns-2 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
         <ModuleCard icon={Newspaper} title={t('db.mod.blog', 'Blog announcements')} desc={t('db.mod.blog.d', 'Post new blog posts to any channel — filter each route by project.')} enabled={!!cfg.blog?.enabled} onToggle={(v) => set('blog.enabled', v)}>
           <BlogRoutes routes={blogRoutes} onChange={(r) => set('blog.routes', r)} guildList={guildList} />
         </ModuleCard>

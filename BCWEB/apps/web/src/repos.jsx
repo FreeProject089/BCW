@@ -345,16 +345,30 @@ export function MyRepos() {
   const [poolAdd, setPoolAdd] = useState(null);
   const repos = data?.repos || [];
   const shared = data?.shared || [];
-  // Search + status filter for the repo list.
+  // Search + status + type filters and a sort for the repo list.
   const [q, setQ] = useState('');
   const [statusF, setStatusF] = useState('all'); // all | online | offline | deleting
+  const [typeF, setTypeF] = useState('all');     // all | hosted | external | listed | unlisted
+  const [sortF, setSortF] = useState('created_desc'); // created_desc | created_asc | name | storage
   const nq = q.trim().toLowerCase();
+  const typeOk = (r) => typeF === 'all'
+    || (typeF === 'hosted' ? !!r.hosted
+      : typeF === 'external' ? !r.hosted
+      : typeF === 'listed' ? !!r.listed
+      : /* unlisted */ !r.listed);
   const filteredRepos = repos.filter((r) =>
     (!nq || r.name?.toLowerCase().includes(nq) || r.description?.toLowerCase().includes(nq) || r.fingerprint?.toLowerCase().includes(nq))
+    && typeOk(r)
     && (statusF === 'all'
       || (statusF === 'deleting' ? !!r.deleteAt
         : statusF === 'online' ? (r.status === 'ONLINE' && !r.deleteAt)
-        : /* offline */ (r.status !== 'ONLINE' && !r.deleteAt))));
+        : /* offline */ (r.status !== 'ONLINE' && !r.deleteAt))))
+    .sort((a, b) => {
+      if (sortF === 'name') return (a.name || '').localeCompare(b.name || '');
+      if (sortF === 'storage') return Number(b.storageUsedBytes || 0) - Number(a.storageUsedBytes || 0);
+      const ta = new Date(a.createdAt || 0).getTime(), tb = new Date(b.createdAt || 0).getTime();
+      return sortF === 'created_asc' ? ta - tb : tb - ta;
+    });
   const isFeatured = (r) => r.featuredUntil && new Date(r.featuredUntil) > new Date();
 
   // Push re-runs the auto check: the SHA is recomputed from the live repo.json and
@@ -414,11 +428,24 @@ export function MyRepos() {
         <div className="flex flex-wrap gap-2 mb-3">
           <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
             <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('repos.search', 'Search by name, description or ID…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <Select className="!w-auto !py-1.5 !text-sm" value={typeF} onChange={(e) => setTypeF(e.target.value)}>
+            <option value="all">{t('repos.f.type.all', 'All types')}</option>
+            <option value="hosted">{t('repos.hosted', 'Hosted')}</option>
+            <option value="external">{t('repos.f.external', 'External')}</option>
+            <option value="listed">{t('repos.listed', 'Listed')}</option>
+            <option value="unlisted">{t('repos.unlisted', 'Unlisted')}</option>
+          </Select>
           <Select className="!w-auto !py-1.5 !text-sm" value={statusF} onChange={(e) => setStatusF(e.target.value)}>
             <option value="all">{t('repos.f.all', 'All')}</option>
             <option value="online">{t('repos.online', 'Online')}</option>
             <option value="offline">{t('repos.offline', 'Offline')}</option>
             <option value="deleting">{t('repos.f.deleting', 'Deleting')}</option>
+          </Select>
+          <Select className="!w-auto !py-1.5 !text-sm" value={sortF} onChange={(e) => setSortF(e.target.value)}>
+            <option value="created_desc">{t('repos.sort.newest', 'Newest first')}</option>
+            <option value="created_asc">{t('repos.sort.oldest', 'Oldest first')}</option>
+            <option value="name">{t('repos.sort.name', 'Name (A–Z)')}</option>
+            <option value="storage">{t('repos.sort.storage', 'Storage used')}</option>
           </Select>
         </div>
       )}

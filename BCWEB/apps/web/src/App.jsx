@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
 import { useAuth } from './auth.jsx';
@@ -22,6 +22,7 @@ import Docs from './docs.jsx';
 import { ReposPage } from './repos.jsx';
 import { RepoDashboard } from './repo-dashboard.jsx';
 import { Home, Catalog, ItemDetail, Hosting, Auth, Dashboard, Admin, Legal, Contact, Settings, NOTIF, NOTIF_FALLBACK } from './pages.jsx';
+import { TwoFactor } from './twofa.jsx';
 
 const KOFI = 'https://ko-fi.com/bettercommunity';
 const NAV = [
@@ -145,10 +146,12 @@ const BOTTOM = [
 
 function Nav() {
   const { user, logout } = useAuth();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   const segNavRef = useRef(null);
+  const neededRef = useRef(0);       // cached width the pills need WITH their labels
+  const [compact, setCompact] = useState(false); // icons-only when labels wouldn't fit
   // Which fixed-project pills the CURRENT visitor can actually view (per-key
   // visibility, computed server-side) + any showcase projects an admin pinned
   // to the topbar (task: Project Announcement pages / visibility system).
@@ -186,11 +189,25 @@ function Nav() {
     }, 60);
     return () => clearTimeout(id);
   }, [loc.pathname]);
-  // Pill labels vs icons-only is decided purely by CSS: the nav is a size container
-  // (`.seg-nav`, container-type inline-size) and a @container query shows `.nav-lbl`
-  // once the nav's own box is wide enough. No JS measurement (the old approach kept
-  // sticking in compact mode because the sticky-header flex width isn't final on
-  // first paint). See index.css `.seg-nav`.
+  // Pill labels vs icons-only, decided by real measurement so we NEVER show a
+  // half-clipped label: labels stay on only while the whole labeled row fits the
+  // nav's box; otherwise we drop to icons. The trick that avoids the old oscillation
+  // (drop labels → row shrinks → "fits" → re-add → overflow → …) is caching the
+  // LABELED width in a ref and only refreshing it while labels are actually showing;
+  // the compact decision then compares that stable number against the live box width.
+  useLayoutEffect(() => {
+    const el = segNavRef.current;
+    if (!el) return;
+    const measure = () => {
+      if (!el.classList.contains('is-compact')) neededRef.current = el.scrollWidth;
+      const need = neededRef.current || el.scrollWidth;
+      setCompact(el.clientWidth < need - 2); // 2px tolerance for sub-pixel rounding
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [lang, visibleNav.length, pinnedShowcase.length, !!user]);
   return (
     <header className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       <div className="max-w-7xl mx-auto rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
@@ -204,7 +221,7 @@ function Nav() {
             with the dashboard/admin/profile cluster below at in-between widths —
             that's what caused the overlapping/cut-off "buggy" look around
             700-950px. Below `lg:` everything lives in the hamburger sheet instead. */}
-        <nav ref={segNavRef} className="seg-nav hidden lg:flex flex-1 items-center gap-0.5 rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] min-w-0 overflow-x-auto no-scrollbar">
+        <nav ref={segNavRef} className={`seg-nav ${compact ? 'is-compact' : ''} hidden lg:flex flex-1 items-center gap-0.5 rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] min-w-0 overflow-x-auto no-scrollbar`}>
           {visibleNav.map((n) => <NavLink key={n.to} to={n.to} title={t(n.k)} aria-label={t(n.k)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={n} size={16} /><span className="nav-lbl">{t(n.k)}</span></NavLink>)}
           {pinnedShowcase.map((p) => (
             <NavLink key={p.slug} to={`/project/${p.slug}`} title={p.name} aria-label={p.name} className={(s) => pill(s) + ' shrink-0'}>
@@ -343,7 +360,7 @@ function Footer() {
           </div>
         </div>
         <FooterCol title={t('foot.products')} links={[['BMM', '/p/bmm'], ['BSM', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting']]} />
-        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('nav.repos'), '/repos'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
+        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('nav.repos'), '/repos'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
         <FooterCol title={t('foot.legal')} links={[[t('foot.privacy'), '/privacy'], [t('foot.terms'), '/terms'], [t('foot.cookies'), '/cookies'], [t('foot.refunds', 'Payments & Refunds'), '/refunds']]} />
       </div>
       <div className="border-t border-[var(--line)]"><div className="max-w-6xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 text-xs text-[var(--faint)] pb-24 md:pb-5">
@@ -385,7 +402,7 @@ function Protected({ children, role }) {
   return children;
 }
 
-const TITLES = { '/': 'Home', '/catalog': 'Catalog', '/blog': 'Blog', '/repos': 'Server Repos', '/hosting': 'Hosting', '/projects': 'Projects', '/contact': 'Contact', '/auth': 'Sign in', '/profile': 'Profile', '/dashboard': 'Dashboard', '/admin': 'Admin', '/settings': 'Settings', '/about': 'About', '/privacy': 'Privacy', '/terms': 'Terms', '/cookies': 'Cookies', '/refunds': 'Payments & Refunds' };
+const TITLES = { '/': 'Home', '/catalog': 'Catalog', '/blog': 'Blog', '/repos': 'Server Repos', '/hosting': 'Hosting', '/projects': 'Projects', '/contact': 'Contact', '/auth': 'Sign in', '/profile': 'Profile', '/dashboard': 'Dashboard', '/admin': 'Admin', '/settings': 'Settings', '/2fa': 'Authenticator', '/about': 'About', '/privacy': 'Privacy', '/terms': 'Terms', '/cookies': 'Cookies', '/refunds': 'Payments & Refunds' };
 
 // Site-wide banner(s) for active admin announcements. Dismissal is per-announcement
 // (by id) and persisted in localStorage, so re-dismissing after a page reload isn't
@@ -481,6 +498,7 @@ export default function App() {
               <Route path="/auth" element={<Auth />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/2fa" element={<TwoFactor />} />
               <Route path="/about" element={<Legal page="about" />} />
               <Route path="/privacy" element={<Legal page="privacy" />} />
               <Route path="/terms" element={<Legal page="terms" />} />
