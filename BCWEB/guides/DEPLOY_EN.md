@@ -134,10 +134,25 @@ docker compose up -d --build      # rebuilds changed images, runs db push on boo
   and recent alerts (deduped, copyable).
 - Load test: `cd loadtest && npm install && BASE=https://community.example.com node run.mjs`.
 
-## Scaling notes
+## Performance & scaling
 
-- Put a **CDN (Cloudflare)** in front for the static shell + assets — it absorbs the
-  bulk of read traffic and the 100k+ tier for free.
-- The per-IP API rate limiter is generous for humans and cheap under abuse; keep it.
-- For sustained >1k concurrent API sockets, run 2–4 API replicas behind Caddy and a
-  Postgres connection pooler. See `loadtest/BENCHMARK.md`.
+**Already built in** (see `loadtest/BENCHMARK.md`):
+- Hot public reads (`/kofi/stats`, `/showcase`) are cached in **Redis** (shared across
+  API replicas) with request-coalescing.
+- The per-IP rate limiter is **Redis-backed** when `REDIS_URL` is set, so the 600/min
+  budget is shared across replicas.
+- **CDN-ready headers**: Caddy sets `Cache-Control: immutable` on `/assets/*` (Vite's
+  content-hashed bundles) and hosted file downloads get `max-age=300` + an ETag.
+
+**The one external step — put a CDN (Cloudflare) in front:**
+1. Add your domain to Cloudflare, set the DNS records to **proxied** (orange cloud).
+2. SSL/TLS mode **Full (strict)** — Caddy still terminates real TLS at the origin.
+3. That's it: hashed `/assets/*` and repeat downloads are now served from the edge
+   with ~0 origin hits; the HTML shell stays uncached so deploys are instant.
+
+**When you outgrow one API container:**
+- Run 2–4 `api` replicas behind Caddy (`docker compose up -d --scale api=3` + a Caddy
+  upstream list) — the Redis cache/limiter already make that safe.
+- Enable the **PgBouncer** pooler: `docker compose --profile pgbouncer up -d`, then in
+  `.env` set `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true`
+  (`DIRECT_DATABASE_URL` stays on `db:5432` for migrations, handled automatically).

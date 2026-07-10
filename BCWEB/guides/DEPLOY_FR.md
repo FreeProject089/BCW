@@ -135,11 +135,27 @@ docker compose up -d --build      # reconstruit les images modifiées, db push a
   l'historique de downtime et les alertes récentes (dédupliquées, copiables).
 - Test de charge : `cd loadtest && npm install && BASE=https://community.example.com node run.mjs`.
 
-## Notes de montée en charge
+## Performance & montée en charge
 
-- Mets un **CDN (Cloudflare)** devant pour le shell statique + les assets — il absorbe
-  l'essentiel du trafic de lecture et le palier 100k+ gratuitement.
-- Le rate limiter par IP de l'API est généreux pour les humains et peu coûteux face à
-  l'abus ; garde-le.
-- Pour >1k sockets API concurrents en continu, lance 2–4 réplicas d'API derrière Caddy
-  et un pooler de connexions Postgres. Voir `loadtest/BENCHMARK.md`.
+**Déjà en place** (voir `loadtest/BENCHMARK.md`) :
+- Les lectures publiques chaudes (`/kofi/stats`, `/showcase`) sont cachées dans **Redis**
+  (partagé entre les réplicas d'API) avec coalescing des requêtes.
+- Le rate limiter par IP est **adossé à Redis** quand `REDIS_URL` est défini — le budget
+  600/min est donc partagé entre les réplicas.
+- **En-têtes prêts pour un CDN** : Caddy met `Cache-Control: immutable` sur `/assets/*`
+  (bundles hashés de Vite), et les téléchargements de fichiers hébergés ont `max-age=300`
+  + un ETag.
+
+**La seule étape externe — mettre un CDN (Cloudflare) devant :**
+1. Ajoute ton domaine à Cloudflare, mets les enregistrements DNS en **proxied** (nuage orange).
+2. Mode SSL/TLS **Full (strict)** — Caddy termine quand même le vrai TLS à l'origine.
+3. C'est tout : les `/assets/*` hashés et les téléchargements répétés sont servis depuis
+   l'edge avec ~0 hit à l'origine ; le shell HTML reste non caché donc les déploiements
+   sont instantanés.
+
+**Quand un seul conteneur API ne suffit plus :**
+- Lance 2–4 réplicas `api` derrière Caddy (`docker compose up -d --scale api=3` + une
+  liste d'upstreams Caddy) — le cache/limiter Redis rendent déjà ça sûr.
+- Active le pooler **PgBouncer** : `docker compose --profile pgbouncer up -d`, puis dans
+  `.env` mets `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true`
+  (`DIRECT_DATABASE_URL` reste sur `db:5432` pour les migrations, géré automatiquement).
