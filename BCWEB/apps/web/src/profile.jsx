@@ -8,8 +8,10 @@ import { useI18n } from './i18n.jsx';
 import { useToast, Button, Card, Badge, Input, Textarea, Field, PageHeader, Spinner } from './ui.jsx';
 import { DiscordIcon } from './brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from './Avatar.jsx';
-import { Link } from 'react-router-dom';
-import { LayoutDashboard, Copy, RefreshCw, Terminal } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone } from 'lucide-react';
+import { stagePending } from './twofa-lib.js';
+import { TotpQuickFill } from './twofa-fill.jsx';
 
 // A small section heading used to group the profile cards into clear zones
 // (Public profile / Security / Connections / Account) instead of one flat stack.
@@ -254,12 +256,13 @@ function ApiTokenCard() {
 // fresh step-up code) to reach the server-control tools once canControlServer is granted.
 function TwoFactorCard() {
   const { user, refresh } = useAuth();
-  const { t } = useI18n(); const toast = useToast();
+  const { t } = useI18n(); const toast = useToast(); const nav = useNavigate();
   const [status, setStatus] = useState(null);
   const [setup, setSetup] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState(null);
   const [code, setCode] = useState('');
   const [recoveryCodes, setRecoveryCodes] = useState(null);
+  const [enrolled, setEnrolled] = useState(null); // { secret, otpauth } captured at enable, for the local-authenticator hand-off
   const [disablePw, setDisablePw] = useState(''); const [disableCode, setDisableCode] = useState('');
   const [disableErr, setDisableErr] = useState(null); // { field: 'pw'|'code', msg }
   const [busy, setBusy] = useState(false);
@@ -302,7 +305,7 @@ function TwoFactorCard() {
     setBusy(true);
     // refresh() re-fetches /me so user.totpEnabled flips in the auth context —
     // without it the admin dashboard's 2FA gate stays closed until a hard reload.
-    try { const r = await api.post('/me/2fa/enable', { secret: setup.secret, code: code.trim() }); setRecoveryCodes(r.recoveryCodes); setSetup(null); setCode(''); load(); refresh(); toast.success(t('prof.2fa.enabled', 'Two-factor authentication enabled.')); }
+    try { const r = await api.post('/me/2fa/enable', { secret: setup.secret, code: code.trim() }); setEnrolled({ secret: setup.secret, otpauth: setup.otpauth }); setRecoveryCodes(r.recoveryCodes); setSetup(null); setCode(''); load(); refresh(); toast.success(t('prof.2fa.enabled', 'Two-factor authentication enabled.')); }
     catch (x) { toast.error(x.data?.error === 'invalid_code' ? t('prof.2fa.badcode', 'Invalid code.') : t('prof.2fa.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const disable = async () => {
@@ -331,17 +334,28 @@ function TwoFactorCard() {
           <div className="grid grid-cols-2 gap-1.5 font-mono text-xs bg-[var(--surface-2)] rounded-lg p-3">
             {recoveryCodes.map((c) => <div key={c}>{c}</div>)}
           </div>
-          <div className="flex gap-2 mt-2">
+          <div className="flex gap-2 mt-2 flex-wrap">
             <Button size="sm" variant="primary" onClick={() => downloadRecoveryCodes(recoveryCodes)}><Download size={13} /> {t('prof.2fa.downloadcodes', 'Download codes')}</Button>
+            {enrolled && (
+              <Button size="sm" onClick={() => {
+                // Hand the freshly-enrolled account (+ backup codes) to the local /2fa authenticator.
+                stagePending({ otpauth: enrolled.otpauth, secret: enrolled.secret, issuer: 'BetterCommunity', label: user?.email || 'BetterCommunity', backupCodes: recoveryCodes });
+                nav('/2fa');
+              }}><Smartphone size={13} /> {t('prof.2fa.addlocal', 'Add to BCWEB Authenticator')}</Button>
+            )}
             <Button size="sm" onClick={() => setRecoveryCodes(null)}>{t('prof.2fa.done', "I've saved them")}</Button>
           </div>
+          <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('prof.2fa.addlocal.h', '“Add to BCWEB Authenticator” saves this account and its backup codes into the fully-local /2fa authenticator on this device.')}</p>
         </div>
       ) : status.enabled ? (
         <div className="space-y-2">
           <div className="text-xs text-[var(--faint)]">{t('prof.2fa.recoveryleft', '{n} recovery codes left.').replace('{n}', status.recoveryCodesLeft)}</div>
           <div className="grid sm:grid-cols-2 gap-2">
             <Input type="password" value={disablePw} onChange={(e) => { setDisablePw(e.target.value); setDisableErr(null); }} placeholder={t('prof.2fa.pwph', 'Your password')} className={disableErr?.field === 'pw' ? '!border-red-500/50' : ''} />
-            <Input value={disableCode} onChange={(e) => { setDisableCode(e.target.value.replace(/[^0-9A-Za-z-]/g, '').slice(0, 9)); setDisableErr(null); }} placeholder={t('prof.2fa.codeph', 'Current code or recovery code')} className={disableErr?.field === 'code' ? '!border-red-500/50' : ''} />
+            <div>
+              <Input value={disableCode} onChange={(e) => { setDisableCode(e.target.value.replace(/[^0-9A-Za-z-]/g, '').slice(0, 9)); setDisableErr(null); }} placeholder={t('prof.2fa.codeph', 'Current code or recovery code')} className={disableErr?.field === 'code' ? '!border-red-500/50' : ''} />
+              <div className="mt-1"><TotpQuickFill onFill={(c) => { setDisableCode(c); setDisableErr(null); }} /></div>
+            </div>
           </div>
           {disableErr && <div className="text-xs text-red-400">{disableErr.msg}</div>}
           <Button className="!text-red-400" disabled={busy} onClick={disable}>{busy ? <Spinner /> : t('prof.2fa.disable', 'Disable 2FA')}</Button>

@@ -2,113 +2,14 @@
 // network: secrets are generated/entered on the device, codes are computed with
 // the Web Crypto API, and the vault is stored in localStorage — optionally
 // encrypted at rest with a passphrase (AES-GCM + PBKDF2) so a leaked disk / shared
-// browser profile doesn't expose the seeds (CWE-312). QR import uses the native
-// BarcodeDetector (no upload, no third-party lib).
+// browser profile doesn't expose the seeds (CWE-312). QR import uses jsQR (local).
+// TOTP/vault primitives live in twofa-lib.js (shared with the inline quick-fill).
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
-import { ShieldCheck, KeyRound, QrCode, Camera, Download, Upload, Plus, Trash2, Copy, Lock, Unlock, History as HistoryIcon, X, Clock, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, KeyRound, QrCode, Camera, Download, Upload, Plus, Trash2, Copy, Lock, Unlock, History as HistoryIcon, X, Clock, KeyRound as KeyIcon } from 'lucide-react';
 import { useI18n } from './i18n.jsx';
-import { Card, Button, Input, Select, Field, Badge, useToast, useDialog, PageHeader, EmptyState } from './ui.jsx';
-
-const LS_KEY = 'bcw_2fa_vault';
-const A2H = { SHA1: 'SHA-1', SHA256: 'SHA-256', SHA512: 'SHA-512' };
-
-// ── Base32 (RFC 4648, no padding required) ──
-function base32Decode(input) {
-  const alph = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  const clean = String(input || '').toUpperCase().replace(/=+$/,'').replace(/\s+/g,'');
-  if (!clean) throw new Error('empty');
-  let bits = 0, value = 0; const out = [];
-  for (const ch of clean) {
-    const idx = alph.indexOf(ch);
-    if (idx === -1) throw new Error('bad base32');
-    value = (value << 5) | idx; bits += 5;
-    if (bits >= 8) { out.push((value >>> (bits - 8)) & 0xff); bits -= 8; }
-  }
-  return new Uint8Array(out);
-}
-
-// ── TOTP code for a given time ──
-async function totp(secretB32, { digits = 6, period = 30, algorithm = 'SHA1' } = {}, at = Date.now()) {
-  const key = base32Decode(secretB32);
-  const counter = Math.floor(at / 1000 / period);
-  const msg = new Uint8Array(8);
-  let c = counter;
-  for (let i = 7; i >= 0; i--) { msg[i] = c & 0xff; c = Math.floor(c / 256); }
-  const ck = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: { name: A2H[algorithm] || 'SHA-1' } }, false, ['sign']);
-  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', ck, msg));
-  const off = sig[sig.length - 1] & 0x0f;
-  const bin = ((sig[off] & 0x7f) << 24) | ((sig[off + 1] & 0xff) << 16) | ((sig[off + 2] & 0xff) << 8) | (sig[off + 3] & 0xff);
-  return String(bin % 10 ** digits).padStart(digits, '0');
-}
-
-// ── otpauth://totp/Issuer:Label?secret=…&issuer=…&digits=…&period=…&algorithm=… ──
-function parseOtpauth(uri) {
-  const u = new URL(uri);
-  if (u.protocol !== 'otpauth:') throw new Error('not otpauth');
-  if (u.host !== 'totp') throw new Error('only TOTP is supported');
-  const path = decodeURIComponent(u.pathname.replace(/^\//, ''));
-  const [maybeIssuer, maybeLabel] = path.includes(':') ? path.split(/:(.+)/) : [null, path];
-  const q = u.searchParams;
-  const secret = (q.get('secret') || '').replace(/\s+/g, '').slice(0, 512);
-  if (!secret) throw new Error('missing secret');
-  base32Decode(secret); // validate now so a bad QR is rejected up front
-  // Cap the free-text fields — the QR content is untrusted input; without a cap a
-  // hostile/oversized QR could bloat localStorage or the UI. Rendering is via React
-  // text nodes (auto-escaped), so there's no XSS vector, just size hygiene.
-  const algo = (q.get('algorithm') || 'SHA1').toUpperCase();
-  return {
-    issuer: (q.get('issuer') || maybeIssuer || '').slice(0, 128),
-    label: (maybeLabel || maybeIssuer || 'Account').trim().slice(0, 128),
-    secret,
-    digits: Math.min(8, Math.max(6, Number(q.get('digits')) || 6)),
-    period: Math.min(120, Math.max(15, Number(q.get('period')) || 30)),
-    algorithm: algo in A2H ? algo : 'SHA1',
-  };
-}
-
-// ── base64 helpers for the encrypted blob ──
-const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
-const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-
-async function deriveKey(pass, salt) {
-  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 210000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-}
-async function encryptVault(obj, pass) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveKey(pass, salt);
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(obj))));
-  return { v: 1, enc: true, salt: b64(salt), iv: b64(iv), ct: b64(ct) };
-}
-async function decryptVault(blob, pass) {
-  const key = await deriveKey(pass, unb64(blob.salt));
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(blob.iv) }, key, unb64(blob.ct));
-  return JSON.parse(new TextDecoder().decode(pt));
-}
-
-const rid = () => Math.random().toString(36).slice(2, 10);
-
-// Clamp/validate an account from an untrusted source (import file). Rejects a bad
-// secret and bounds every numeric field so e.g. digits:99999 can't blow up
-// `10**digits`/`padStart` (CWE-400) or bloat storage. Returns null if unusable.
-function sanitizeAccount(a) {
-  if (!a || typeof a.secret !== 'string') return null;
-  const secret = a.secret.replace(/\s+/g, '').slice(0, 512);
-  try { base32Decode(secret); } catch { return null; }
-  const algo = String(a.algorithm || 'SHA1').toUpperCase();
-  return {
-    id: rid(),
-    label: String(a.label || 'Account').slice(0, 128),
-    issuer: String(a.issuer || '').slice(0, 128),
-    secret,
-    digits: Math.min(8, Math.max(6, Number(a.digits) || 6)),
-    period: Math.min(120, Math.max(15, Number(a.period) || 30)),
-    algorithm: algo in A2H ? algo : 'SHA1',
-    addedAt: Number(a.addedAt) || Date.now(),
-  };
-}
+import { Card, Button, Input, Select, Field, useToast, useDialog, PageHeader, EmptyState } from './ui.jsx';
+import { base32Decode, totp, parseOtpauth, sanitizeAccount, encryptVault, decryptVault, rid, takePending, LS_KEY } from './twofa-lib.js';
 
 export function TwoFactor() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
@@ -120,16 +21,21 @@ export function TwoFactor() {
   const [locked, setLocked] = useState(false);       // encrypted + not yet unlocked this session
   const passRef = useRef(null);                        // active passphrase (memory only)
   const [showHistory, setShowHistory] = useState(false);
+  const [pendingImport, setPendingImport] = useState(null); // account handed off from Profile, waiting for an unlock
 
-  // ── Load once ──
+  // ── Load once (+ consume any account handed off from Profile's 2FA setup) ──
   useEffect(() => {
+    let accts = [], hist = [], enc = false;
     try {
       const raw = localStorage.getItem(LS_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed.enc) { setEncrypted(true); setLocked(true); }
-      else { setAccounts(parsed.accounts || []); setHistory(parsed.history || []); }
+      if (raw) { const parsed = JSON.parse(raw); if (parsed.enc) enc = true; else { accts = parsed.accounts || []; hist = parsed.history || []; } }
     } catch { /* corrupt vault — start fresh */ }
+    const pend = takePending();
+    const pendAcct = pend ? sanitizeAccount(pend) : null;
+    if (enc) { setEncrypted(true); setLocked(true); if (pendAcct) setPendingImport(pendAcct); return; }
+    if (pendAcct && !accts.some((a) => a.secret === pendAcct.secret)) { accts = [...accts, pendAcct]; persist(accts, hist); toast.success(t('tfa.added', 'Added “{n}”.').replace('{n}', pendAcct.issuer || pendAcct.label)); }
+    setAccounts(accts); setHistory(hist);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Persist (encrypt if a passphrase is set) ──
@@ -157,7 +63,7 @@ export function TwoFactor() {
 
   // ── Add / import ──
   const addAccount = (a) => {
-    const acct = { id: rid(), label: a.label || 'Account', issuer: a.issuer || '', secret: a.secret, digits: a.digits || 6, period: a.period || 30, algorithm: a.algorithm || 'SHA1', addedAt: Date.now() };
+    const acct = { id: rid(), label: a.label || 'Account', issuer: a.issuer || '', secret: a.secret, digits: a.digits || 6, period: a.period || 30, algorithm: a.algorithm || 'SHA1', backupCodes: Array.isArray(a.backupCodes) ? a.backupCodes : [], addedAt: Date.now() };
     commit([...accounts, acct]);
     toast.success(t('tfa.added', 'Added “{n}”.').replace('{n}', acct.issuer || acct.label));
   };
@@ -297,15 +203,32 @@ export function TwoFactor() {
     try {
       const blob = JSON.parse(localStorage.getItem(LS_KEY));
       const data = await decryptVault(blob, unlockPass);
-      passRef.current = unlockPass; setAccounts(data.accounts || []); setHistory(data.history || []); setLocked(false); setUnlockPass('');
+      passRef.current = unlockPass;
+      let accts = data.accounts || []; const hist = data.history || [];
+      // Fold in an account that was handed off from Profile while the vault was locked.
+      if (pendingImport && !accts.some((a) => a.secret === pendingImport.secret)) { accts = [...accts, pendingImport]; }
+      setAccounts(accts); setHistory(hist); setLocked(false); setUnlockPass('');
+      if (pendingImport) { await persist(accts, hist); setPendingImport(null); }
     } catch { toast.error(t('tfa.wrongpass', 'Wrong passphrase.')); }
   };
+  // Add / append backup (recovery) codes to an account.
+  const addBackupCodes = async (a) => {
+    const raw = await dialog.prompt({ title: t('tfa.bk.add', 'Add backup codes'), message: t('tfa.bk.addm', 'Paste your one-time backup/recovery codes (one per line or comma-separated). They’re stored locally with this account.'), label: t('tfa.bk.codes', 'Backup codes') });
+    if (!raw) return;
+    const codes = String(raw).split(/[\s,;]+/).map((c) => c.trim().slice(0, 64)).filter(Boolean).slice(0, 50);
+    if (!codes.length) return;
+    const existing = a.backupCodes || [];
+    commit(accounts.map((x) => (x.id === a.id ? { ...x, backupCodes: [...new Set([...existing, ...codes])] } : x)));
+    toast.success(t('tfa.bk.added', 'Backup codes saved.'));
+  };
+  const removeBackupCode = (a, code) => commit(accounts.map((x) => (x.id === a.id ? { ...x, backupCodes: (x.backupCodes || []).filter((c) => c !== code) } : x)));
 
   // ── Locked screen ──
   if (locked) return (
     <div className="max-w-md mx-auto">
       <PageHeader icon={Lock} title={t('tfa.title', 'Authenticator (2FA)')} subtitle={t('tfa.locked.sub', 'This vault is encrypted. Enter your passphrase to unlock.')} />
       <Card className="p-5 space-y-3">
+        {pendingImport && <div className="text-xs text-[var(--primary-2)] flex items-center gap-1.5"><KeyIcon size={13} /> {t('tfa.pending', 'A new account (“{n}”) will be added once you unlock.').replace('{n}', pendingImport.issuer || pendingImport.label)}</div>}
         <Input type="password" autoFocus value={unlockPass} onChange={(e) => setUnlockPass(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && unlock()} placeholder={t('tfa.pass.l', 'Passphrase')} />
         <Button variant="primary" className="w-full" onClick={unlock}><Unlock size={15} /> {t('tfa.unlock', 'Unlock')}</Button>
       </Card>
@@ -397,6 +320,23 @@ export function TwoFactor() {
               </span>
             </button>
             <div className="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden mt-2"><div className={`h-full transition-all duration-1000 ease-linear ${remaining <= 5 ? 'bg-red-500' : 'bg-gradient-to-r from-orange-500 to-amber-500'}`} style={{ width: `${pct}%` }} /></div>
+            {/* Backup / recovery codes stored alongside this account. */}
+            <details className="mt-2.5 group/bk">
+              <summary className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] cursor-pointer flex items-center gap-1.5 select-none list-none"><KeyIcon size={11} /> {t('tfa.bk.title', 'Backup codes')} {(a.backupCodes?.length || 0) > 0 && <span className="text-[var(--primary-2)]">({a.backupCodes.length})</span>}</summary>
+              <div className="mt-1.5">
+                {(a.backupCodes?.length || 0) > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-1.5">
+                    {a.backupCodes.map((bc) => (
+                      <span key={bc} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px] font-mono">
+                        <button type="button" onClick={() => { navigator.clipboard?.writeText(bc); toast.success(t('tfa.copied', 'Code copied.')); }} className="hover:text-[var(--primary-2)]">{bc}</button>
+                        <button type="button" onClick={() => removeBackupCode(a, bc)} className="text-[var(--faint)] hover:text-red-400"><X size={9} /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <button type="button" onClick={() => addBackupCodes(a)} className="text-[11px] text-[var(--primary-2)] hover:underline flex items-center gap-1"><Plus size={11} /> {t('tfa.bk.add', 'Add backup codes')}</button>
+              </div>
+            </details>
           </Card>
         ); })}
       </div> : <EmptyState icon={KeyRound} title={t('tfa.empty.t', 'No accounts yet')} sub={t('tfa.empty.s', 'Add one by scanning a QR code or entering a setup key. Everything stays on this device.')} />}

@@ -200,6 +200,9 @@ function Nav() {
     const el = segNavRef.current;
     if (!el) return;
     const measure = () => {
+      // Hard floor: under 1250px viewport it's always icons-only (labels only when
+      // there's genuinely room above that).
+      if (window.innerWidth < 1250) { setCompact(true); return; }
       if (!el.classList.contains('is-compact')) neededRef.current = el.scrollWidth;
       const need = neededRef.current || el.scrollWidth;
       setCompact((was) => (was ? el.clientWidth < need + 170 : el.clientWidth < need));
@@ -361,7 +364,7 @@ function Footer() {
             ))}
           </div>
         </div>
-        <FooterCol title={t('foot.products')} links={[['BMM', '/p/bmm'], ['BSM', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting']]} />
+        <FooterCol title={t('foot.products')} links={[['BetterModsManager', '/p/bmm'], ['BetterSavesManager', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting']]} />
         <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('nav.repos'), '/repos'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
         <FooterCol title={t('foot.legal')} links={[[t('foot.privacy'), '/privacy'], [t('foot.terms'), '/terms'], [t('foot.cookies'), '/cookies'], [t('foot.refunds', 'Payments & Refunds'), '/refunds']]} />
       </div>
