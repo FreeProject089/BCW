@@ -6,6 +6,7 @@ import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { db } from './lib.mjs';
+import { getRedis } from './redis.mjs';
 import { ensureBucket } from './storage.mjs';
 import { startSweeper } from './sweeper.mjs';
 import authRoutes from './routes/auth.mjs';
@@ -71,8 +72,13 @@ const clientKey = (req) => {
 // `ban: 4` — after an IP exceeds the limit 4 windows in a row the plugin stops
 // even counting and just 403s it, so a sustained flood from one address costs
 // almost nothing to reject. keyGenerator is the real client IP (see above).
+// Back the limiter with Redis when available so the per-IP budget is SHARED across
+// every API replica (behind Caddy) instead of each replica keeping its own count —
+// otherwise N replicas would let an IP do N×600/min. Falls back to in-process.
+const rlRedis = getRedis();
 await app.register(rateLimit, {
   max: 600, timeWindow: '1 minute', keyGenerator: clientKey, ban: 4,
+  ...(rlRedis ? { redis: rlRedis } : {}),
   // The plugin THROWS whatever this returns — so it must carry a statusCode, else
   // Fastify's default handler turns it into a 500 (was logging every rate-limit as
   // an error). Return an Error with the plugin's status (429, or 403 on ban) + a

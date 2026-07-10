@@ -367,7 +367,11 @@ export default async function hostingContentRoutes(app) {
       const { body } = await getObject(file.key);
       // Force a non-executable content type (never serve as HTML/JS).
       const ct = file.path.endsWith('.json') ? 'application/json' : 'application/octet-stream';
-      reply.header('Content-Type', ct).header('Content-Disposition', 'attachment');
+      // Let a CDN/browser cache the download briefly (5 min) — hosted mod files change
+      // rarely, so this offloads the bulk of download traffic from the origin while a
+      // re-upload still propagates within the window. ETag = the file's stored sha.
+      reply.header('Content-Type', ct).header('Content-Disposition', 'attachment').header('Cache-Control', 'public, max-age=300');
+      if (file.sha256) reply.header('ETag', `"${file.sha256}"`);
       const cap = effKbps(repo);
       // Meter bytes as they flow to the client → live per-repo upload rate on the
       // Server-perf dashboard (0 when idle, the real kbit/s while serving).

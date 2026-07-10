@@ -1,24 +1,46 @@
-// Tiny in-process TTL cache for hot, low-churn public reads. Two wins:
-//   1. fewer DB round-trips (the value is reused for `ttlMs`), and
-//   2. request-coalescing: concurrent misses share ONE producer call (no thundering
-//      herd hammering Postgres when a popular key expires under load).
-// In-memory is per-process; with multiple API replicas each keeps its own copy
-// (fine for a few-seconds TTL). Swap the Map for Redis if you need a shared cache.
-const store = new Map();     // key -> { at, val }
+// Two-tier TTL cache for hot, low-churn public reads:
+//   L1 — a per-process Map (near-zero latency, absorbs the local burst), and
+//   L2 — Redis (shared across ALL api replicas, so N replicas do ~1 DB read per TTL
+//        window between them, not N). Plus request-coalescing so concurrent misses
+//        share ONE producer call (no thundering herd on Postgres at expiry).
+// If Redis is unavailable it silently runs L1-only (still correct, just per-process).
+import { getRedis } from './redis.mjs';
+
+const l1 = new Map();        // key -> { at, ttl, val }
 const inflight = new Map();  // key -> Promise (dedupes concurrent misses)
+const PREFIX = 'bcw:cache:';
 
 export async function cached(key, ttlMs, producer) {
-  const hit = store.get(key);
-  if (hit && Date.now() - hit.at < ttlMs) return hit.val;
+  const now = Date.now();
+  const hit = l1.get(key);
+  if (hit && now - hit.at < hit.ttl) return hit.val;
   const pending = inflight.get(key);
   if (pending) return pending;
+
   const promise = (async () => {
-    try { const val = await producer(); store.set(key, { at: Date.now(), val }); return val; }
-    finally { inflight.delete(key); }
+    try {
+      const r = getRedis();
+      // L2: shared Redis copy — a value another replica already computed.
+      if (r) {
+        try {
+          const raw = await r.get(PREFIX + key);
+          if (raw != null) { const val = JSON.parse(raw); l1.set(key, { at: Date.now(), ttl: ttlMs, val }); return val; }
+        } catch { /* Redis down → fall through to producer */ }
+      }
+      const val = await producer();
+      l1.set(key, { at: Date.now(), ttl: ttlMs, val });
+      if (r) { try { await r.set(PREFIX + key, JSON.stringify(val), 'PX', ttlMs); } catch { /* ignore */ } }
+      return val;
+    } finally { inflight.delete(key); }
   })();
   inflight.set(key, promise);
   return promise;
 }
 
-// Drop a cached key (call after a write that invalidates it).
-export function invalidate(key) { store.delete(key); }
+// Drop a cached key from BOTH tiers after a write that invalidates it. Other replicas'
+// L1 self-heals within its TTL (these are seconds-long public reads, so that's fine).
+export function invalidate(key) {
+  l1.delete(key);
+  const r = getRedis();
+  if (r) { try { r.del(PREFIX + key); } catch { /* ignore */ } }
+}

@@ -78,6 +78,15 @@
 		reverse_proxy api:3000
 	}
 
+	# Content-hashed static assets (Vite emits immutable `assets/*.[hash].js|css`) →
+	# cache hard at the browser/CDN so a CDN serves repeats with zero origin hits.
+	# The HTML shell (handled below) stays uncached so a deploy is picked up at once.
+	@assets path /assets/*
+	handle @assets {
+		header Cache-Control "public, max-age=31536000, immutable"
+		reverse_proxy web:80
+	}
+
 	# Everything else → the web SPA
 	handle {
 		reverse_proxy web:80

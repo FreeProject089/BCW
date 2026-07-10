@@ -6,8 +6,14 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Runtime queries go through `url` (which can point at PgBouncer in transaction
+  // pooling mode, `?pgbouncer=true`), while migrations / `db push` use `directUrl`
+  // (a direct Postgres connection — PgBouncer transaction mode can't run them).
+  // By default both are the same direct connection, so nothing changes until you
+  // actually enable the pgbouncer compose profile.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 enum Role {
