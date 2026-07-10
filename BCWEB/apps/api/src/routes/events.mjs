@@ -3,10 +3,10 @@
 // endpoint is hot (every visitor asks "what's active?") → micro-cached; hosting.mjs
 // imports getActiveEvent() to apply the discount server-side at quote/checkout time.
 import { z } from 'zod';
-import { db, requireRole } from '../lib.mjs';
+import { db, requireRole, notify } from '../lib.mjs';
 import { cached, invalidate } from '../cache.mjs';
 
-export const EVENT_THEMES = ['halloween', 'newyear', 'valentine', 'christmas', 'blackfriday', 'national', 'spring', 'summer', 'autumn', 'winter', 'easter', 'none'];
+export const EVENT_THEMES = ['halloween', 'newyear', 'valentine', 'christmas', 'blackfriday', 'national', 'spring', 'summer', 'autumn', 'winter', 'easter', 'custom', 'none'];
 
 // The one active event right now (enabled + inside its window). If several overlap,
 // the most recently started wins. Cached 30 s (invalidated on every admin write).
@@ -31,6 +31,34 @@ async function findOverlap(p, { startsAt, endsAt, excludeId }) {
     ...(excludeId ? { id: { not: excludeId } } : {}),
     startsAt: { lt: endsAt }, endsAt: { gt: startsAt },
   } });
+}
+
+// ── On-visit event notifications (called from GET /me — fire-and-forget) ──
+// `soon`: within 7 days before an enabled event starts. `start`: while it's live.
+// Each is delivered at most ONCE per user per event (deduped on the kind string).
+// Custom texts come from the event; blanks fall back to sensible templates.
+const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+async function notifyWindows(p) {
+  return cached('events.notifywin', 60_000, async () => {
+    const now = new Date();
+    const soon = await p.siteEvent.findFirst({ where: { enabled: true, startsAt: { gt: now, lte: new Date(now.getTime() + 7 * 864e5) } }, orderBy: { startsAt: 'asc' } });
+    const live = await p.siteEvent.findFirst({ where: { enabled: true, startsAt: { lte: now }, endsAt: { gte: now } }, orderBy: { startsAt: 'desc' } });
+    const pctTxt = (ev) => (ev.discountPct > 0 ? ` — ${ev.discountPct}% off` : '');
+    return {
+      soon: soon ? { id: soon.id, kind: `event_soon_${soon.id}`, body: soon.notifySoonMsg?.trim() || `🎉 "${soon.name}" starts ${fmtDate(soon.startsAt)}${pctTxt(soon)}${soon.discountPct > 0 ? ' on everything bought during the event!' : '!'}` } : null,
+      start: live ? { id: live.id, kind: `event_start_${live.id}`, body: live.notifyStartMsg?.trim() || `🎊 "${live.name}" is LIVE${pctTxt(live)}${live.discountPct > 0 ? ` until ${fmtDate(live.endsAt)}!` : `— until ${fmtDate(live.endsAt)}!`}` } : null,
+    };
+  });
+}
+export async function maybeNotifyEvents(p, userId) {
+  try {
+    const win = await notifyWindows(p);
+    for (const n of [win.soon, win.start]) {
+      if (!n) continue;
+      const seen = await p.notification.findFirst({ where: { userId, kind: n.kind }, select: { id: true } });
+      if (!seen) await notify(p, userId, n.kind, n.body);
+    }
+  } catch { /* never block /me on this */ }
 }
 
 // Does the active event's discount apply to this purchase kind ('hosting'|'boost')?
@@ -58,7 +86,11 @@ export default async function eventRoutes(app) {
     opacity: z.number().min(0.1).max(1).optional(),   // particle opacity multiplier
     wind: z.number().min(-3).max(3).optional(),       // constant horizontal push
     intensity: z.number().min(0.2).max(3).optional(), // fireworks launch rate/burst size
-    glyphs: z.string().max(60).optional(),            // custom emoji set (overrides the theme's)
+    glyphs: z.string().max(60).optional(),            // legacy custom emoji set
+    icons: z.array(z.string().max(20)).max(8).optional(),   // particle icons from the built-in SVG library
+    colors: z.array(z.string().regex(/^#[0-9a-fA-F]{3,8}$/)).max(8).optional(), // particle color palette
+    kind: z.enum(['fall', 'rise', 'float', 'snow', 'fireworks']).optional(),    // custom-theme behavior
+    overlay: z.boolean().optional(),                  // draw particles OVER content (default: behind)
     strip: z.boolean().optional(),                    // seasonal bottom illustration
     fog: z.boolean().optional(),                      // halloween fog layer
     sound: z.boolean().optional(),                    // halloween sound toggle button
@@ -74,8 +106,11 @@ export default async function eventRoutes(app) {
     discountPct: z.number().int().min(0).max(90).optional(),
     scope: z.enum(['all', 'hosting', 'boost']).optional(),
     fx: fxSchema,
+    notifySoonMsg: z.string().max(300).optional(),
+    notifyStartMsg: z.string().max(300).optional(),
     note: z.string().max(300).optional(),
   });
+  const invalidateAll = () => { invalidate('events.active'); invalidate('events.notifywin'); };
 
   app.get('/admin/events', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
@@ -97,9 +132,10 @@ export default async function eventRoutes(app) {
       name: b.data.name, theme: b.data.theme, flag: b.data.flag || null,
       startsAt, endsAt,
       enabled: b.data.enabled ?? true, discountPct: b.data.discountPct ?? 0,
-      scope: b.data.scope ?? 'all', fx: b.data.fx ?? undefined, note: b.data.note ?? '',
+      scope: b.data.scope ?? 'all', fx: b.data.fx ?? undefined,
+      notifySoonMsg: b.data.notifySoonMsg ?? '', notifyStartMsg: b.data.notifyStartMsg ?? '', note: b.data.note ?? '',
     } });
-    invalidate('events.active');
+    invalidateAll();
     return reply.code(201).send({ event: ev });
   });
 
@@ -125,14 +161,14 @@ export default async function eventRoutes(app) {
     if (data.endsAt) data.endsAt = new Date(data.endsAt);
     if (data.flag !== undefined) data.flag = data.flag || null;
     const ev = await p.siteEvent.update({ where: { id: req.params.id }, data });
-    invalidate('events.active');
+    invalidateAll();
     return { event: ev };
   });
 
   app.delete('/admin/events/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
     await p.siteEvent.deleteMany({ where: { id: req.params.id } });
-    invalidate('events.active');
+    invalidateAll();
     return { ok: true };
   });
 }

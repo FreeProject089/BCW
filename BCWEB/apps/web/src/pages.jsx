@@ -20,7 +20,7 @@ import { SKIP_KEY, useIntro } from './IntroContext.jsx';
 import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from './prefs.js';
 import { MyRepos, AdminRepos, Billing } from './repos.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
-import { fxDisabled, setFxDisabled, useActiveEvent, EventFxLayers, FX_DEFAULTS } from './events-fx.jsx';
+import { fxDisabled, setFxDisabled, useActiveEvent, EventFxLayers, FX_DEFAULTS, ICON_NAMES, IconPreview } from './events-fx.jsx';
 import { AuthorsRow } from './blog.jsx';
 import Avatar from './Avatar.jsx';
 import { createRoot } from 'react-dom/client';
@@ -4998,6 +4998,7 @@ const EVENT_THEMES_UI = [
   ['halloween', '🎃 Halloween'], ['newyear', '🎆 New Year'], ['valentine', '💘 Valentine'],
   ['easter', '🐣 Easter'], ['national', '🎇 National day (set the flag)'],
   ['spring', '🌸 Spring'], ['summer', '☀️ Summer'], ['autumn', '🍂 Autumn'], ['winter', '❄️ Winter'],
+  ['custom', '🧩 Custom (build your own)'],
 ];
 // Quick presets — prefill the form with this year's usual window (all editable).
 const EVENT_PRESETS = [
@@ -5014,7 +5015,7 @@ const dtLocal = (d) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.
 function AdminEvents() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/admin/events'), []);
-  const blank = { name: '', theme: 'none', flag: '', startsAt: dtLocal(new Date()), endsAt: dtLocal(new Date(Date.now() + 7 * 864e5)), discountPct: 0, scope: 'all', enabled: true, note: '', fx: {} };
+  const blank = { name: '', theme: 'none', flag: '', startsAt: dtLocal(new Date()), endsAt: dtLocal(new Date(Date.now() + 7 * 864e5)), discountPct: 0, scope: 'all', enabled: true, note: '', fx: {}, notifySoonMsg: '', notifyStartMsg: '' };
   const [f, setF] = useState(blank);
   const [editing, setEditing] = useState(null); // event id being edited (null = create)
   const [busy, setBusy] = useState(false);
@@ -5034,7 +5035,7 @@ function AdminEvents() {
     if (!f.name.trim()) return toast.error(t('evadm.needname', 'Give the event a name.'));
     setBusy(true);
     try {
-      const body = { name: f.name.trim(), theme: f.theme, flag: f.theme === 'national' ? (f.flag || null) : null, startsAt: new Date(f.startsAt).toISOString(), endsAt: new Date(f.endsAt).toISOString(), discountPct: Number(f.discountPct) || 0, scope: f.scope, enabled: !!f.enabled, fx: f.fx || {}, note: f.note || '' };
+      const body = { name: f.name.trim(), theme: f.theme, flag: f.theme === 'national' ? (f.flag || null) : null, startsAt: new Date(f.startsAt).toISOString(), endsAt: new Date(f.endsAt).toISOString(), discountPct: Number(f.discountPct) || 0, scope: f.scope, enabled: !!f.enabled, fx: f.fx || {}, notifySoonMsg: f.notifySoonMsg || '', notifyStartMsg: f.notifyStartMsg || '', note: f.note || '' };
       if (editing) await api.put(`/admin/events/${editing}`, body); else await api.post('/admin/events', body);
       toast.success(t('evadm.saved', 'Event saved — active site-wide during its window.'));
       setF(blank); setEditing(null); setPreview(false); reload();
@@ -5045,7 +5046,7 @@ function AdminEvents() {
         : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
-  const edit = (ev) => { setEditing(ev.id); setF({ name: ev.name, theme: ev.theme, flag: ev.flag || '', startsAt: dtLocal(ev.startsAt), endsAt: dtLocal(ev.endsAt), discountPct: ev.discountPct, scope: ev.scope, enabled: ev.enabled, note: ev.note || '', fx: ev.fx || {} }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const edit = (ev) => { setEditing(ev.id); setF({ name: ev.name, theme: ev.theme, flag: ev.flag || '', startsAt: dtLocal(ev.startsAt), endsAt: dtLocal(ev.endsAt), discountPct: ev.discountPct, scope: ev.scope, enabled: ev.enabled, note: ev.note || '', fx: ev.fx || {}, notifySoonMsg: ev.notifySoonMsg || '', notifyStartMsg: ev.notifyStartMsg || '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   // The toggle enable button can also hit the one-event-at-a-time rule.
   const toggleErr = (x) => toast.error(x?.data?.error === 'overlaps' ? t('evadm.overlaps', 'Only ONE event can run at a time — this window overlaps “{n}”. Change the dates or disable it first.').replace('{n}', x.data?.with || '?') : t('common.failed', 'Failed.'));
   const del = async (ev) => { if (!(await dialog.confirm({ title: t('evadm.del.t', 'Delete event?'), message: ev.name, okLabel: t('evadm.del.ok', 'Delete'), danger: true }))) return; try { await api.del(`/admin/events/${ev.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
@@ -5071,13 +5072,22 @@ function AdminEvents() {
           <Field label={t('evadm.pct', 'Discount % (0 = visuals only)')} hint={t('evadm.pct.h', 'Applied automatically at checkout on everything bought during the window — a 1-year prepay gets the full cut; later renewals bill full price.')}><Input type="number" min="0" max="90" value={f.discountPct} onChange={(e) => setF({ ...f, discountPct: e.target.value })} /></Field>
           <Field label={t('evadm.scope', 'Discount applies to')}><Select value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })}><option value="all">{t('evadm.scope.all', 'All articles (hosting + boosts)')}</option><option value="hosting">{t('evadm.scope.hosting', 'Hosting only')}</option><option value="boost">{t('evadm.scope.boost', 'Boosts only')}</option></Select></Field>
           <Field label={t('evadm.note', 'Note (internal)')}><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
+          <Field label={t('evadm.notifysoon', 'Notification — 7 days before (blank = auto)')} hint={t('evadm.notifysoon.h', 'Sent ONCE per user who visits the site in the 7 days before the start.')}>
+            <Input value={f.notifySoonMsg} onChange={(e) => setF({ ...f, notifySoonMsg: e.target.value })} placeholder={t('evadm.notifysoon.ph', '🎉 Black Friday starts Nov 24 — −30% on everything!')} />
+          </Field>
+          <Field label={t('evadm.notifystart', 'Notification — when it goes live (blank = auto)')} hint={t('evadm.notifystart.h', 'Sent ONCE per user who visits while the event is live.')}>
+            <Input value={f.notifyStartMsg} onChange={(e) => setF({ ...f, notifyStartMsg: e.target.value })} placeholder={t('evadm.notifystart.ph', '🎊 Black Friday is LIVE — −30% until Dec 1!')} />
+          </Field>
         </div>
         <label className="flex items-center gap-2 text-sm text-[var(--muted)] mt-3 cursor-pointer w-fit"><input type="checkbox" checked={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} /> {t('evadm.enabled', 'Enabled')}</label>
 
         {/* ── Effects editor — every knob of the visual layer, with a live preview ── */}
         {f.theme !== 'none' && (() => {
-          const isFireworks = f.theme === 'newyear' || f.theme === 'national';
+          const isFireworks = f.theme === 'newyear' || f.theme === 'national' || (f.theme === 'custom' && f.fx?.kind === 'fireworks');
           const hasStrip = ['winter', 'christmas', 'halloween', 'valentine', 'spring', 'summer', 'autumn', 'easter'].includes(f.theme);
+          const icons = f.fx?.icons || [];
+          const colors = f.fx?.colors || [];
+          const toggleIcon = (name) => setFx('icons', icons.includes(name) ? icons.filter((x) => x !== name) : [...icons, name].slice(0, 8));
           // Plain JSX-returning helpers (NOT components) — a component defined inside
           // render would remount its <input> every keystroke and break slider drags.
           const slider = (k, label, min, max, step = 0.1, fmt = (v) => `×${v}`) => (
@@ -5101,16 +5111,52 @@ function AdminEvents() {
                 {slider('opacity', t('evadm.fx.opacity', 'Opacity'), 0.1, 1, 0.05, (v) => `${Math.round(v * 100)}%`)}
                 {slider('wind', t('evadm.fx.wind', 'Wind'), -3, 3, 0.1, (v) => (v > 0 ? `→ ${v}` : v < 0 ? `← ${Math.abs(v)}` : '0'))}
                 {isFireworks && slider('density', t('evadm.fx.confetti', 'Confetti / flags'), 0.1, 3)}
-                {!isFireworks && (
-                  <Field label={t('evadm.fx.glyphs', 'Custom particles (emoji — overrides the theme set)')} hint={t('evadm.fx.glyphs.h', 'e.g. 🎃👻🦇 or ❄️⛄ — leave empty for the theme defaults.')}>
-                    <Input value={f.fx?.glyphs || ''} onChange={(e) => setFx('glyphs', e.target.value)} placeholder="🎃👻🦇" />
+                {f.theme === 'custom' && (
+                  <Field label={t('evadm.fx.kind', 'Behavior')} hint={t('evadm.fx.kind.h', 'How your particles move.')}>
+                    <Select value={f.fx?.kind || 'fall'} onChange={(e) => setFx('kind', e.target.value)}>
+                      <option value="fall">{t('evadm.fx.kind.fall', 'Fall (like leaves)')}</option>
+                      <option value="rise">{t('evadm.fx.kind.rise', 'Rise (like hearts)')}</option>
+                      <option value="float">{t('evadm.fx.kind.float', 'Float & pulse (like ghosts)')}</option>
+                      <option value="snow">{t('evadm.fx.kind.snow', 'Snow (soft dots + icons)')}</option>
+                      <option value="fireworks">{t('evadm.fx.kind.fireworks', 'Fireworks + confetti')}</option>
+                    </Select>
                   </Field>
                 )}
+                {!isFireworks && (
+                  <div>
+                    <div className="text-xs font-medium text-[var(--muted)] mb-1.5">{t('evadm.fx.icons', 'Particle icons (vector — overrides the theme set)')}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ICON_NAMES.map((name) => (
+                        <button key={name} type="button" onClick={() => toggleIcon(name)} title={name}
+                          className={`w-9 h-9 grid place-items-center rounded-lg border transition ${icons.includes(name) ? 'border-[var(--primary)] bg-[var(--primary)]/12' : 'border-[var(--line)] bg-[var(--surface-2)] hover:border-[var(--line-strong)]'}`}>
+                          <IconPreview name={name} size={18} />
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-[11px] text-[var(--faint)] mt-1">{t('evadm.fx.icons.h', 'None selected = the theme’s default icons. Max 8.')}</div>
+                  </div>
+                )}
+                <div>
+                  <div className="text-xs font-medium text-[var(--muted)] mb-1.5">{t('evadm.fx.colors', 'Color palette (particles / confetti)')}</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {colors.map((c, i) => (
+                      <span key={i} className="relative inline-flex">
+                        <input type="color" value={c} onChange={(e) => setFx('colors', colors.map((x, j) => (j === i ? e.target.value : x)))} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer" />
+                        <button type="button" onClick={() => setFx('colors', colors.filter((_, j) => j !== i))} className="absolute -top-1.5 -right-1.5 w-4 h-4 grid place-items-center rounded-full bg-[var(--bg-solid)] border border-[var(--line)] text-[var(--faint)] hover:text-red-400"><X size={9} /></button>
+                      </span>
+                    ))}
+                    {colors.length < 8 && <Button size="sm" type="button" onClick={() => setFx('colors', [...colors, '#f97316'])}><Plus size={13} /></Button>}
+                  </div>
+                  <div className="text-[11px] text-[var(--faint)] mt-1">{t('evadm.fx.colors.h', 'Empty = each icon’s natural color (theme default).')}</div>
+                </div>
                 <div className="flex items-center gap-4 flex-wrap pt-1">
                   {hasStrip && fxCheck('strip', t('evadm.fx.strip', 'Bottom seasonal illustration'))}
                   {f.theme === 'halloween' && fxCheck('fog', t('evadm.fx.fog', 'Fog'))}
                   {f.theme === 'halloween' && fxCheck('sound', t('evadm.fx.sound', 'Spooky-sound button'))}
                   {f.theme === 'newyear' && fxCheck('countdown', t('evadm.fx.countdown', 'Midnight countdown'))}
+                  <label className="flex items-center gap-2 text-xs text-[var(--muted)] cursor-pointer w-fit" title={t('evadm.fx.overlay.h', 'Default: particles are drawn BEHIND the content, so text stays perfectly readable.')}>
+                    <input type="checkbox" checked={f.fx?.overlay === true} onChange={(e) => setFx('overlay', e.target.checked)} /> {t('evadm.fx.overlay', 'Particles over content')}
+                  </label>
                 </div>
                 <div className="flex items-center justify-between gap-2 pt-1">
                   <Button size="sm" variant="ghost" onClick={() => setF((s) => ({ ...s, fx: {} }))}><RefreshCw size={12} /> {t('evadm.fx.reset', 'Reset to defaults')}</Button>
