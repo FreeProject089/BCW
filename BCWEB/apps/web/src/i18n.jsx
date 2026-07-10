@@ -711,7 +711,7 @@ const DICT = {
     'dash.pay.feature.m': 'Ton dépôt est maintenant mis en avant sur la liste publique.',
     'dash.pay.receipt': 'Un reçu est disponible dans l’onglet Facturation.',
     'dash.pay.dl': 'Télécharger la facture', 'dash.pay.done': 'Terminé', 'dash.pay.retry': 'Réessayer',
-    'dash.pay.item': 'Article', 'dash.pay.amount': 'Montant', 'dash.pay.processing': 'traitement…',
+    'dash.pay.item': 'Article', 'dash.pay.amount': 'Montant', 'dash.pay.processing': 'traitement…', 'dash.pay.invoice': 'Facture №', 'dash.pay.items': '{n} articles',
     'dash.pay.boost': 'Mise en avant du dépôt', 'dash.pay.hostingitem': 'Hébergement du dépôt',
     'dash.pay.fail.t': 'Paiement échoué', 'dash.pay.fail.m': 'Le paiement n’a pas pu être effectué — aucun montant n’a été débité. Vérifie les informations de ta carte et réessaie.',
     'dash.items': 'Éléments', 'dash.published': 'Publiés', 'dash.pending': 'En attente', 'dash.repos': 'Dépôts', 'dash.featured': 'Mis en avant',

@@ -626,6 +626,7 @@ export default async function hostingRoutes(app) {
           id: i.id,
           number: i.number || `BCW-${String(i.id).slice(-8).toUpperCase()}`,
           description: i.lines?.data?.[0]?.description || i.description || (recurring ? 'Subscription' : 'Payment'),
+          lines: (i.lines?.data || []).map((l) => ({ description: l.description || 'Item', amountCents: l.amount ?? 0 })),
           amountCents: i.amount_paid ?? i.amount_due ?? i.total ?? 0,
           currency: i.currency || 'usd',
           status: i.status, // draft | open | paid | uncollectible | void

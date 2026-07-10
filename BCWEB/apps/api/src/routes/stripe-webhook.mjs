@@ -8,7 +8,7 @@ import { redeemPromoAtomic } from './promo.mjs';
 export default async function stripeWebhook(app) {
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
 
-  app.post('/hosting/webhook', async (req, reply) => {
+  const handler = async (req, reply) => {
     const secret = process.env.STRIPE_WEBHOOK_SECRET;
     const sk = process.env.STRIPE_SECRET_KEY ? (await import('stripe')).default : null;
     if (!sk || !secret) return reply.code(503).send({ error: 'stripe_not_configured' });
@@ -309,5 +309,11 @@ export default async function stripeWebhook(app) {
       }
     }
     return { received: true };
-  });
+  };
+
+  // Register both the canonical path and a `/webhook` alias, so a `stripe listen
+  // --forward-to <api>/webhook` (the sample default path) works too — only the
+  // host:port has to be right (the api container is on :3000, not Stripe's :4242).
+  app.post('/hosting/webhook', handler);
+  app.post('/webhook', handler);
 }

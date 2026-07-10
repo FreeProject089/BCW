@@ -1597,19 +1597,47 @@ function PaymentResultModal({ result, onClose }) {
             : failed ? t('dash.pay.fail.m', 'The payment could not be completed — no charge was made. Check your card details and try again.')
             : t('dash.pay.cancel.m', 'No charge was made. You can try again anytime.')}
         </p>
-        {ok && (
+        {ok && (() => {
+          const lines = inv?.lines || [];
+          const money2 = (c) => { const cur = (inv?.currency || pay?.currency || 'usd').toUpperCase(); const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : ''; return sym ? `${sym}${(c / 100).toFixed(2)}` : `${(c / 100).toFixed(2)} ${cur}`; };
+          const single = pay?.description || (kind === 'feature' ? t('dash.pay.boost', 'Repo boost') : t('dash.pay.hostingitem', 'Repo hosting'));
+          return (
           <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-4 py-3 text-left text-sm max-w-xs mx-auto">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[var(--faint)]">{t('dash.pay.item', 'Item')}</span>
-              <span className="font-medium truncate">{pay?.description || (kind === 'feature' ? t('dash.pay.boost', 'Repo boost') : t('dash.pay.hostingitem', 'Repo hosting'))}</span>
-            </div>
-            <div className="flex items-center justify-between gap-3 mt-1.5">
-              <span className="text-[var(--faint)]">{t('dash.pay.amount', 'Amount')}</span>
-              <span className="font-semibold tabular-nums">{amount || <span className="text-[var(--faint)]">{t('dash.pay.processing', 'processing…')}</span>}</span>
-            </div>
+            {inv?.number && (
+              <div className="flex items-center justify-between gap-3 mb-1.5 pb-1.5 border-b border-[var(--line)]">
+                <span className="text-[var(--faint)]">{t('dash.pay.invoice', 'Invoice №')}</span>
+                <span className="font-mono text-xs">{inv.number}</span>
+              </div>
+            )}
+            {lines.length > 1 ? (
+              <details open className="group/items">
+                <summary className="flex items-center justify-between gap-3 cursor-pointer select-none list-none">
+                  <span className="text-[var(--faint)] flex items-center gap-1"><ChevronDown size={13} className="transition-transform group-open/items:rotate-180" /> {t('dash.pay.items', '{n} items').replace('{n}', lines.length)}</span>
+                  <span className="font-semibold tabular-nums">{amount || money2(lines.reduce((s, l) => s + l.amountCents, 0))}</span>
+                </summary>
+                <div className="mt-2 space-y-1">
+                  {lines.map((l, i) => (
+                    <div key={i} className="flex items-center justify-between gap-3 text-[13px]">
+                      <span className="truncate text-[var(--muted)]">{l.description}</span>
+                      <span className="tabular-nums shrink-0 text-[var(--faint)]">{money2(l.amountCents)}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : (<>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[var(--faint)]">{t('dash.pay.item', 'Item')}</span>
+                <span className="font-medium truncate">{lines[0]?.description || single}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 mt-1.5">
+                <span className="text-[var(--faint)]">{t('dash.pay.amount', 'Amount')}</span>
+                <span className="font-semibold tabular-nums">{amount || <span className="text-[var(--faint)]">{t('dash.pay.processing', 'processing…')}</span>}</span>
+              </div>
+            </>)}
             <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><Info size={11} /> {t('dash.pay.receipt', 'A receipt is available in the Billing tab.')}</div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </Modal>
   );
@@ -4922,13 +4950,13 @@ function PaymentsDiag() {
       {!data.webhookSecret && (
         <div className="flex items-start gap-1.5 text-red-400">
           <AlertTriangle size={12} className="shrink-0 mt-0.5" />
-          <span>{t('db.pay.diag.nowh', 'STRIPE_WEBHOOK_SECRET is not set — the /hosting/webhook endpoint returns 503, so no checkout is ever recorded or provisioned (and nothing can be announced). Set it in compose .env.')}</span>
+          <span>{t('db.pay.diag.nowh', 'STRIPE_WEBHOOK_SECRET is not set — the webhook endpoint returns 503, so no checkout is ever recorded or provisioned (and nothing can be announced). Set it in compose .env.')}</span>
         </div>
       )}
       {data.webhookSecret && data.webhookHint && (
         <div className="flex items-start gap-1.5 text-amber-400">
           <AlertTriangle size={12} className="shrink-0 mt-0.5" />
-          <span>{t('db.pay.diag.hint', 'No payments recorded yet. If a real checkout still shows nothing here, Stripe events aren’t reaching the API — forward them in local test mode with: stripe listen --forward-to <api-url>/hosting/webhook (use the printed whsec_… as STRIPE_WEBHOOK_SECRET).')}</span>
+          <span>{t('db.pay.diag.hint2', 'No payments recorded yet. Stripe events aren’t reaching the API. Forward them to the API container (port 3000, not Stripe’s sample :4242): stripe listen --forward-to http://localhost:3000/hosting/webhook — and use the printed whsec_… as STRIPE_WEBHOOK_SECRET.')}</span>
         </div>
       )}
     </div>

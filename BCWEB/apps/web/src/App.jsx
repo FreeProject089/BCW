@@ -223,14 +223,20 @@ function Nav() {
             with the dashboard/admin/profile cluster below at in-between widths —
             that's what caused the overlapping/cut-off "buggy" look around
             700-950px. Below `lg:` everything lives in the hamburger sheet instead. */}
-        <nav ref={segNavRef} className={`seg-nav ${compact ? 'is-compact' : ''} hidden lg:flex flex-1 items-center gap-0.5 rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] min-w-0 overflow-x-auto no-scrollbar`}>
-          {visibleNav.map((n) => <NavLink key={n.to} to={n.to} title={t(n.k)} aria-label={t(n.k)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={n} size={16} /><span className="nav-lbl">{t(n.k)}</span></NavLink>)}
-          {pinnedShowcase.map((p) => (
-            <NavLink key={p.slug} to={`/project/${p.slug}`} title={p.name} aria-label={p.name} className={(s) => pill(s) + ' shrink-0'}>
-              <ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /><span className="nav-lbl">{p.isAnnouncing ? p.announceTitle || p.name : p.name}</span>
-            </NavLink>
-          ))}
-        </nav>
+        {/* Outer flex-1 track = the room the nav may use (drives the fit measurement +
+            horizontal scroll). The rounded background lives on the INNER nav which is
+            content-width, so the pill bar ends right after the last tab instead of
+            stretching the whole width. */}
+        <div ref={segNavRef} className={`seg-nav ${compact ? 'is-compact' : ''} hidden lg:flex flex-1 min-w-0 overflow-x-auto no-scrollbar`}>
+          <nav className="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] shrink-0">
+            {visibleNav.map((n) => <NavLink key={n.to} to={n.to} title={t(n.k)} aria-label={t(n.k)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={n} size={16} /><span className="nav-lbl">{t(n.k)}</span></NavLink>)}
+            {pinnedShowcase.map((p) => (
+              <NavLink key={p.slug} to={`/project/${p.slug}`} title={p.name} aria-label={p.name} className={(s) => pill(s) + ' shrink-0'}>
+                <ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /><span className="nav-lbl">{p.isAnnouncing ? p.announceTitle || p.name : p.name}</span>
+              </NavLink>
+            ))}
+          </nav>
+        </div>
         {/* Below lg the segmented nav is hidden, so this spacer takes the slack and
             pushes the whole right cluster to the right edge (was left-glued). */}
         <div className="flex-1 min-w-[8px] lg:flex-none lg:w-2 shrink-0" />
@@ -247,8 +253,8 @@ function Nav() {
         <div className="hidden lg:flex items-center gap-1 shrink-0 pl-1 ml-1 border-l border-[var(--line)]">
           {user ? (
             <>
-              <NavLink to="/dashboard" className={(s) => pill(s) + ' !py-2'} title={t('nav.dashboard')}><LayoutDashboard size={15} /><span className="hidden xl:inline">{t("nav.dashboard")}</span></NavLink>
-              {(user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN') && <NavLink to="/admin" className={(s) => pill(s) + ' !py-2'} title={t('nav.admin')}><Shield size={15} /><span className="hidden xl:inline">{t("nav.admin")}</span></NavLink>}
+              <NavLink to="/dashboard" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.dashboard')} aria-label={t('nav.dashboard')}><LayoutDashboard size={15} /></NavLink>
+              {(user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN') && <NavLink to="/admin" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.admin')} aria-label={t('nav.admin')}><Shield size={15} /></NavLink>}
               <Link to="/profile" className="rounded-full p-0.5 hover:ring-2 hover:ring-[var(--line-strong)] transition" title={user.displayName}><Avatar user={user} size={28} /></Link>
               <Button variant="ghost" size="sm" onClick={logout} title={t('nav.signout')}><LogOut size={15} /></Button>
             </>
