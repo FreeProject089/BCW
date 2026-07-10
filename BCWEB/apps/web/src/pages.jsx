@@ -2349,7 +2349,7 @@ const PLANUSERS_TABS = [
 // Classified by CURRENT state (see the endpoint): a user can appear in more than one
 // tab — e.g. one free repo + one paid boost — since the tabs aren't a strict partition.
 function AdminPlanUsers() {
-  const { t } = useI18n();
+  const { t } = useI18n(); const toast = useToast();
   const [sp] = useSearchParams();
   const [tab, setTab] = useState('paying');
   const [results, setResults] = useState(null);
@@ -2450,6 +2450,14 @@ function AdminPlanUsers() {
                         {bits.length > 0 && <div className="text-xs text-[var(--faint)] mt-0.5">{bits.join(' · ')}</div>}
                         {a.spend && a.spend.spentCents > 0 && (
                           <div className="text-xs text-emerald-400/90 mt-0.5">{money(a.spend.spentCents, a.spend.currency)} {t('pu.d.acrosspay', 'across {n} payment(s)').replace('{n}', a.spend.count)}{a.spend.lastAt ? ` · ${t('pu.last', 'last')} ${since(a.spend.lastAt)}` : ''}</div>
+                        )}
+                        {a.spend?.invoiceNos?.length > 0 && (
+                          <div className="text-[11px] text-[var(--faint)] mt-0.5 flex items-center gap-1.5 flex-wrap"><Receipt size={10} className="shrink-0" /> {t('pu.d.invoices', 'Invoices:')}
+                            {a.spend.invoiceNos.slice(-3).map((n) => (
+                              <button key={n} onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(n); toast.success(t('common.copied', 'Copied.')); }} className="font-mono hover:text-[var(--primary-2)]" title={t('common.copy', 'Copy')}>{n}</button>
+                            ))}
+                            {a.spend.invoiceNos.length > 3 && <span>+{a.spend.invoiceNos.length - 3}</span>}
+                          </div>
                         )}
                         {a.type === 'subscription' && a.mrrCents > 0 && (
                           <div className="text-xs text-emerald-400/90 mt-0.5">≈ {money(a.mrrCents, a.currency)} {t('pu.permo', 'per month')}</div>
@@ -3042,7 +3050,9 @@ function AdminServerPerf() {
         </Card>
         <Card className="p-4">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Lock size={11} /> {t('sp.ssl', 'SSL certificate')}</div>
-          {ssl ? <div className="text-sm">{ssl.daysLeft <= 14 ? <Badge tone="red">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge> : ssl.daysLeft <= 30 ? <Badge tone="amber">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge> : <Badge tone="green">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge>} <span className="text-[var(--faint)] text-xs">{t('sp.ssl.expires', 'expires {d}').replace('{d}', new Date(ssl.expiresAt).toLocaleDateString())}</span></div> : <div className="text-xs text-[var(--faint)]">{t('sp.ssl.noprobe', "Couldn't probe SITE_URL's certificate.")}</div>}
+          {ssl?.notHttps ? <div className="text-xs text-[var(--muted)] flex items-center gap-1.5"><Info size={12} className="text-[var(--primary-2)] shrink-0" /> {t('sp.ssl.nohttps', 'SITE_URL is http:// — no certificate to probe. HTTPS is provisioned & auto-renewed by Caddy/Let’s Encrypt in production.')}</div>
+            : ssl?.daysLeft != null ? <div className="text-sm">{ssl.daysLeft <= 14 ? <Badge tone="red">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge> : ssl.daysLeft <= 30 ? <Badge tone="amber">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge> : <Badge tone="green">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge>} <span className="text-[var(--faint)] text-xs">{t('sp.ssl.expires', 'expires {d}').replace('{d}', new Date(ssl.expiresAt).toLocaleDateString())}</span></div>
+            : <div className="text-xs text-[var(--faint)]">{t('sp.ssl.noprobe', "Couldn't probe SITE_URL's certificate.")}</div>}
         </Card>
       </div>
 

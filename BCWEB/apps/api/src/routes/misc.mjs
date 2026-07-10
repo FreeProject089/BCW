@@ -378,17 +378,19 @@ export default async function miscRoutes(app) {
     const [repos, items, payments] = await Promise.all([
       p.serverRepo.findMany({ where: { hosted: true, owner: ownerFilter }, select: { id: true, ownerId: true, name: true, status: true, deleteAt: true, featuredUntil: true, storageQuotaBytes: true, uploadLimitKbps: true, cpuShare: true } }),
       p.catalogItem.findMany({ where: { payloadKey: { not: null }, owner: ownerFilter }, select: { id: true, ownerId: true, name: true, status: true, kind: true, payloadSize: true, meta: true } }),
-      p.payment.findMany({ where: { serverRepoId: { not: null } }, select: { serverRepoId: true, kind: true, amountCents: true, currency: true, createdAt: true, days: true, description: true } }),
+      p.payment.findMany({ where: { serverRepoId: { not: null } }, select: { id: true, serverRepoId: true, kind: true, amountCents: true, currency: true, createdAt: true, days: true, description: true } }),
     ]);
     const paidHostingRepoIds = new Set(payments.filter((x) => x.kind === 'HOSTING').map((x) => x.serverRepoId));
     const paidFeatureRepoIds = new Set(payments.filter((x) => x.kind === 'FEATURE').map((x) => x.serverRepoId));
-    // Per-repo × kind spend rollup so each detail row can show real amounts/dates.
+    const invNo = (id) => `BCW-${String(id).slice(-8).toUpperCase()}`; // same scheme as /me/invoices
+    // Per-repo × kind spend rollup so each detail row can show real amounts/dates/invoices.
     const spendKey = (repoId, kind) => `${repoId}::${kind}`;
-    const repoSpend = new Map(); // "repoId::KIND" -> { spentCents, count, lastAt, currency, lastDesc }
+    const repoSpend = new Map(); // "repoId::KIND" -> { spentCents, count, lastAt, currency, lastDesc, invoiceNos[] }
     for (const x of payments) {
       const k = spendKey(x.serverRepoId, x.kind);
-      const cur = repoSpend.get(k) || { spentCents: 0, count: 0, lastAt: null, currency: x.currency || 'usd', lastDesc: null };
+      const cur = repoSpend.get(k) || { spentCents: 0, count: 0, lastAt: null, currency: x.currency || 'usd', lastDesc: null, invoiceNos: [] };
       cur.spentCents += x.amountCents || 0; cur.count += 1;
+      cur.invoiceNos.push(invNo(x.id));
       if (!cur.lastAt || x.createdAt > cur.lastAt) { cur.lastAt = x.createdAt; cur.lastDesc = x.description; }
       repoSpend.set(k, cur);
     }

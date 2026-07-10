@@ -10,7 +10,7 @@ import { DiscordIcon } from './brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from './Avatar.jsx';
 import { Link, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone } from 'lucide-react';
-import { stagePending, addLocalAccount } from './twofa-lib.js';
+import { stagePending, addLocalAccount, attachBackupCodesBySecret } from './twofa-lib.js';
 import { TotpQuickFill } from './twofa-fill.jsx';
 
 // A small section heading used to group the profile cards into clear zones
@@ -305,7 +305,7 @@ function TwoFactorCard() {
     setBusy(true);
     // refresh() re-fetches /me so user.totpEnabled flips in the auth context —
     // without it the admin dashboard's 2FA gate stays closed until a hard reload.
-    try { const r = await api.post('/me/2fa/enable', { secret: setup.secret, code: code.trim() }); setEnrolled({ secret: setup.secret, otpauth: setup.otpauth }); setRecoveryCodes(r.recoveryCodes); setSetup(null); setCode(''); load(); refresh(); toast.success(t('prof.2fa.enabled', 'Two-factor authentication enabled.')); }
+    try { const r = await api.post('/me/2fa/enable', { secret: setup.secret, code: code.trim() }); setEnrolled({ secret: setup.secret, otpauth: setup.otpauth }); attachBackupCodesBySecret(setup.secret, r.recoveryCodes); setRecoveryCodes(r.recoveryCodes); setSetup(null); setCode(''); load(); refresh(); toast.success(t('prof.2fa.enabled', 'Two-factor authentication enabled.')); }
     catch (x) { toast.error(x.data?.error === 'invalid_code' ? t('prof.2fa.badcode', 'Invalid code.') : t('prof.2fa.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const disable = async () => {
@@ -338,9 +338,12 @@ function TwoFactorCard() {
             <Button size="sm" variant="primary" onClick={() => downloadRecoveryCodes(recoveryCodes)}><Download size={13} /> {t('prof.2fa.downloadcodes', 'Download codes')}</Button>
             {enrolled && (
               <Button size="sm" onClick={() => {
-                // Hand the freshly-enrolled account (+ backup codes) to the local /2fa authenticator.
-                stagePending({ otpauth: enrolled.otpauth, secret: enrolled.secret, issuer: 'BetterCommunity', label: user?.email || 'BetterCommunity', backupCodes: recoveryCodes });
-                nav('/2fa');
+                // Add the freshly-enrolled account + its backup codes to the local /2fa
+                // authenticator in place (merges if already added at setup).
+                const r = addLocalAccount({ otpauth: enrolled.otpauth, secret: enrolled.secret, issuer: 'BetterCommunity', label: user?.email || 'BetterCommunity', backupCodes: recoveryCodes });
+                if (r.staged) toast.success(t('prof.2fa.local.staged', 'Saved — unlock the Authenticator (/2fa) to finish adding it.'));
+                else if (r.added) toast.success(t('prof.2fa.local.addedcodes', 'Added to your BCWEB Authenticator, with backup codes.'));
+                else toast.error(t('common.failed', 'Failed.'));
               }}><Smartphone size={13} /> {t('prof.2fa.addlocal', 'Add to BCWEB Authenticator')}</Button>
             )}
             <Button size="sm" onClick={() => setRecoveryCodes(null)}>{t('prof.2fa.done', "I've saved them")}</Button>

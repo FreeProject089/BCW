@@ -928,6 +928,7 @@ export function Billing() {
   const [portalBusy, setPortalBusy] = useState(false);
   const [dlBusy, setDlBusy] = useState(null); // invoice id currently downloading
   const [expandedInv, setExpandedInv] = useState(null); // invoice id expanded for details
+  const [expandedSub, setExpandedSub] = useState(null); // subscription id expanded for details
   // A short, human summary instead of Stripe's long line-item description.
   const invSummary = (inv) => inv.recurring ? t('bill.h.subscription', 'Subscription') : /boost/i.test(inv.description || '') ? t('bill.h.boost', 'Boost') : /host|repo|gb/i.test(inv.description || '') ? t('bill.h.hosting', 'Hosting') : t('bill.h.payment', 'Payment');
   const payments = data?.payments || [];
@@ -989,21 +990,37 @@ export function Billing() {
               const isBoost = s.target === 'boost';
               const label = isBoost ? t('bill.sub.boost2', 'Boost') : t('bill.sub.hosting2', 'Hosting');
               const startsSoon = s.status === 'trialing' && s.trialEnd;
+              const isOpen = expandedSub === s.id;
+              const when = startsSoon ? t('bill.sub.starts', 'First renewal {d}').replace('{d}', new Date(s.trialEnd).toLocaleDateString())
+                : s.currentPeriodEnd ? (s.cancelAtPeriodEnd ? t('bill.sub.endson', 'Ends {d}') : t('bill.sub.renews', 'Renews {d}')).replace('{d}', new Date(s.currentPeriodEnd).toLocaleDateString()) : '';
               return (
-                <div key={s.id} className={`flex items-center gap-3 px-4 py-3 text-sm ${i ? 'border-t border-[var(--line)]' : ''}`}>
-                  {isBoost ? <Rocket size={15} className="text-amber-400 shrink-0" /> : <Server size={15} className="text-[var(--primary-2)] shrink-0" />}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{label}{s.repoName ? <> · <span className="text-[var(--primary-2)]">{s.repoName}</span></> : ''}</div>
-                    <div className="text-xs text-[var(--faint)]">
-                      {startsSoon ? t('bill.sub.starts', 'First renewal {d}').replace('{d}', new Date(s.trialEnd).toLocaleDateString())
-                        : s.currentPeriodEnd ? (s.cancelAtPeriodEnd ? t('bill.sub.endson', 'Ends {d}') : t('bill.sub.renews', 'Renews {d}')).replace('{d}', new Date(s.currentPeriodEnd).toLocaleDateString()) : ''}
-                    </div>
+                <div key={s.id} className={`${i ? 'border-t border-[var(--line)]' : ''}`}>
+                  <div className="flex items-center gap-3 px-4 py-3 text-sm">
+                    <button onClick={() => setExpandedSub(isOpen ? null : s.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                      <ChevronDown size={15} className={`shrink-0 text-[var(--faint)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                      {isBoost ? <Rocket size={15} className="text-amber-400 shrink-0" /> : <Server size={15} className="text-[var(--primary-2)] shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{label}{s.repoName ? <> · <span className="text-[var(--primary-2)]">{s.repoName}</span></> : ''}</div>
+                        <div className="text-xs text-[var(--faint)]">{when}</div>
+                      </div>
+                    </button>
+                    <Badge tone={s.cancelAtPeriodEnd ? 'amber' : (s.status === 'active' || s.status === 'trialing' ? 'green' : 'amber')}>{s.cancelAtPeriodEnd ? t('bill.sub.canceling', 'canceling') : s.status}</Badge>
+                    <span className="font-semibold text-right whitespace-nowrap">{amt} <span className="text-[var(--faint)] font-normal text-xs">{per}</span></span>
+                    <Button size="sm" variant="ghost" disabled={subBusy === s.id} onClick={() => cancelSub(s)} title={s.cancelAtPeriodEnd ? t('bill.sub.resume.h', 'Turn auto-renew back on') : t('bill.sub.cancel.h', 'Stop auto-renew (stays active until the period ends)')}>
+                      {subBusy === s.id ? <Spinner /> : s.cancelAtPeriodEnd ? <><RefreshCw size={13} /> {t('bill.sub.resume', 'Resume')}</> : <><X size={13} /> {t('bill.sub.cancel', 'Cancel')}</>}
+                    </Button>
                   </div>
-                  <Badge tone={s.cancelAtPeriodEnd ? 'amber' : (s.status === 'active' || s.status === 'trialing' ? 'green' : 'amber')}>{s.cancelAtPeriodEnd ? t('bill.sub.canceling', 'canceling') : s.status}</Badge>
-                  <span className="font-semibold text-right whitespace-nowrap">{amt} <span className="text-[var(--faint)] font-normal text-xs">{per}</span></span>
-                  <Button size="sm" variant="ghost" disabled={subBusy === s.id} onClick={() => cancelSub(s)} title={s.cancelAtPeriodEnd ? t('bill.sub.resume.h', 'Turn auto-renew back on') : t('bill.sub.cancel.h', 'Stop auto-renew (stays active until the period ends)')}>
-                    {subBusy === s.id ? <Spinner /> : s.cancelAtPeriodEnd ? <><RefreshCw size={13} /> {t('bill.sub.resume', 'Resume')}</> : <><X size={13} /> {t('bill.sub.cancel', 'Cancel')}</>}
-                  </Button>
+                  {isOpen && (
+                    <div className="px-4 pb-3 pl-11">
+                      <div className="rounded-lg bg-[var(--surface-2)]/60 p-3 text-sm space-y-1.5">
+                        <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.desc', 'Description')}</span><span className="text-right">{label}{s.repoName ? ` · ${s.repoName}` : ''}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.amount', 'Amount')}</span><span className="font-semibold text-right">{amt} <span className="text-[var(--faint)] font-normal text-xs">{per}</span></span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.status', 'Status')}</span><span className="text-right">{s.cancelAtPeriodEnd ? t('bill.sub.canceling', 'canceling') : s.status}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{s.cancelAtPeriodEnd ? t('bill.sub.endson2', 'Ends') : t('bill.sub.renews2', 'Next renewal')}</span><span className="text-right">{(s.currentPeriodEnd || s.trialEnd) ? new Date(s.currentPeriodEnd || s.trialEnd).toLocaleString() : '—'}</span></div>
+                      </div>
+                      <p className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><Info size={11} /> {t('bill.sub.pdfnote', 'Each billing cycle appears as its own invoice with a downloadable PDF in Payment history below.')}</p>
+                    </div>
+                  )}
                 </div>
               );
             })}

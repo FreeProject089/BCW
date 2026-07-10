@@ -1,11 +1,12 @@
 // Inline helper shown next to any BetterCommunity 2FA code input (login, profile
 // setup + disable, server-control step-up). If the user saved their BCWEB account(s)
-// in the local /2fa authenticator, this lists them with their live code and fills the
-// input in one click — no trip to the /2fa page. Fully local: reads the vault +
-// computes the code here, and re-reads whenever the vault changes.
+// in the local /2fa authenticator, this lists them (title + live code) and fills the
+// input in one click — no trip to the /2fa page. Collapsible so it never blows out
+// the surrounding card. Fully local: reads the vault + computes the code here, and
+// re-reads whenever the vault changes.
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { KeyRound, ShieldCheck } from 'lucide-react';
+import { KeyRound, ShieldCheck, ChevronDown } from 'lucide-react';
 import { readAccounts, totp, onVaultChange } from './twofa-lib.js';
 import { useI18n } from './i18n.jsx';
 
@@ -14,6 +15,7 @@ export function TotpQuickFill({ onFill, match = 'bettercommunity', className = '
   const [status, setStatus] = useState('none'); // none | locked | ready
   const [accts, setAccts] = useState([]);
   const [codes, setCodes] = useState({}); // id -> current code
+  const [open, setOpen] = useState(false);
 
   // (Re)read the vault on mount + whenever it changes (e.g. Profile just added one).
   useEffect(() => {
@@ -28,37 +30,43 @@ export function TotpQuickFill({ onFill, match = 'bettercommunity', className = '
     return onVaultChange(read);
   }, [match]);
 
-  // Tick the live codes for the matched accounts every second.
+  // Tick the live codes for the matched accounts every second (only while expanded).
   useEffect(() => {
-    if (status !== 'ready' || !accts.length) return;
+    if (status !== 'ready' || !accts.length || !open) return;
     let alive = true;
     const tick = async () => { const out = {}; for (const a of accts) { try { out[a.id] = await totp(a.secret, a); } catch { /* bad secret */ } } if (alive) setCodes(out); };
     tick();
     const id = setInterval(tick, 1000);
     return () => { alive = false; clearInterval(id); };
-  }, [status, accts]);
+  }, [status, accts, open]);
 
   if (status === 'none') return null;
   if (status === 'locked') return (
     <Link to="/2fa" className={`text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-1 ${className}`}><KeyRound size={11} /> {t('tfa.fill.locked', 'Codes are in the Authenticator (locked)')}</Link>
   );
+  const title = (a) => a.issuer || a.label || 'Account';
   return (
-    <div className={`flex flex-col gap-1 ${className}`}>
-      <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] font-semibold">{t('tfa.fill.from', 'From your Authenticator')}</span>
-      <div className="flex flex-wrap gap-1.5">
-        {accts.map((a) => {
-          const code = codes[a.id];
-          return (
-            <button key={a.id} type="button" onClick={() => code && onFill(code)}
-              className="text-xs inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/10 text-[var(--primary-2)] hover:bg-[var(--primary)]/15 transition"
-              title={t('tfa.fill.hint', 'Fill from your local BCWEB Authenticator')}>
-              <ShieldCheck size={12} className="shrink-0" />
-              {accts.length > 1 && <span className="text-[var(--muted)] max-w-[8rem] truncate">{a.label || a.issuer}</span>}
-              <span className="font-mono tabular-nums">{code ? code.replace(/(\d{3})(\d+)/, '$1 $2') : '••••••'}</span>
-            </button>
-          );
-        })}
-      </div>
+    <div className={`min-w-0 ${className}`}>
+      <button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] hover:text-[var(--text)] transition">
+        <ShieldCheck size={12} className="text-[var(--primary-2)]" /> {t('tfa.fill.from', 'From your Authenticator')} <span className="text-[var(--muted)]">({accts.length})</span>
+        <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="mt-1.5 flex flex-col gap-1">
+          {accts.map((a) => {
+            const code = codes[a.id];
+            return (
+              <button key={a.id} type="button" onClick={() => code && onFill(code)}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/10 hover:bg-[var(--primary)]/15 transition text-left"
+                title={t('tfa.fill.hint', 'Fill from your local BCWEB Authenticator')}>
+                <ShieldCheck size={13} className="text-[var(--primary-2)] shrink-0" />
+                <span className="flex-1 min-w-0 truncate text-xs text-[var(--muted)]">{title(a)}</span>
+                <span className="font-mono tabular-nums text-sm text-[var(--primary-2)] shrink-0">{code ? code.replace(/(\d{3})(\d+)/, '$1 $2') : '••••••'}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

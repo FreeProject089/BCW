@@ -135,9 +135,34 @@ export function addLocalAccount(input) {
   if (raw?.enc) { stagePending(input); return { staged: true }; }
   const accounts = Array.isArray(raw?.accounts) ? raw.accounts : [];
   const history = Array.isArray(raw?.history) ? raw.history : [];
-  if (accounts.some((a) => a.secret === acct.secret)) { emitVaultChange(); return { added: true, dup: true }; }
+  const existing = accounts.find((a) => a.secret === acct.secret);
+  if (existing) {
+    // Already there — merge in any new backup codes (e.g. added at setup, then the
+    // recovery codes arrive on enable) rather than duplicating the account.
+    if (acct.backupCodes?.length) existing.backupCodes = [...new Set([...(existing.backupCodes || []), ...acct.backupCodes])];
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ v: 1, enc: false, accounts, history })); } catch { return { error: 'save_failed' }; }
+    emitVaultChange();
+    return { added: true, dup: true };
+  }
   accounts.push(acct);
   try { localStorage.setItem(LS_KEY, JSON.stringify({ v: 1, enc: false, accounts, history })); } catch { return { error: 'save_failed' }; }
   emitVaultChange();
   return { added: true };
+}
+
+// Attach backup/recovery codes to an EXISTING local account by secret (used on 2FA
+// enable, once the recovery codes are known, to complete a setup-time add). No-op if
+// the account isn't present or the vault is encrypted (nothing to safely update).
+export function attachBackupCodesBySecret(secret, codes) {
+  const norm = (s) => String(s || '').replace(/\s+/g, '');
+  if (!norm(secret) || !Array.isArray(codes) || !codes.length) return { skipped: true };
+  const raw = readVaultRaw();
+  if (!raw || raw.enc) return { skipped: true };
+  const accounts = Array.isArray(raw.accounts) ? raw.accounts : [];
+  const a = accounts.find((x) => norm(x.secret) === norm(secret));
+  if (!a) return { skipped: true };
+  a.backupCodes = [...new Set([...(a.backupCodes || []), ...codes.map((c) => String(c).slice(0, 64))])].slice(0, 50);
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ ...raw, accounts })); } catch { return { error: 'save_failed' }; }
+  emitVaultChange();
+  return { updated: true };
 }

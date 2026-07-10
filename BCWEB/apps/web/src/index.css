@@ -135,6 +135,18 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   .input::placeholder { color: var(--faint); }
   .input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px rgba(249,115,22,0.16); }
   textarea.input { resize: vertical; min-height: 84px; }
+  /* Kill the browser's yellow/blue autofill background (password managers) — paint the
+     field's own bg via an inset box-shadow, keep the text/caret readable, and freeze
+     the background transition so there's no yellow flash. */
+  .input:-webkit-autofill, .input:-webkit-autofill:hover, .input:-webkit-autofill:focus, .input:-webkit-autofill:active {
+    -webkit-text-fill-color: var(--text);
+    -webkit-box-shadow: 0 0 0 1000px var(--bg-solid) inset;
+    caret-color: var(--text);
+    transition: background-color 9999s ease-in-out 0s;
+  }
+  [data-theme="dark"] .input:-webkit-autofill, [data-theme="dark"] .input:-webkit-autofill:hover, [data-theme="dark"] .input:-webkit-autofill:focus, [data-theme="dark"] .input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px #1c1913 inset;
+  }
 
   .badge {
     display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px;

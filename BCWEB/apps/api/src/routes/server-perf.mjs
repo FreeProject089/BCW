@@ -20,9 +20,14 @@ const PROBE_TTL = 2 * 60e3;
 function refreshProbes(p) {
   if (_probeCache.refreshing) return;
   _probeCache.refreshing = true;
+  const siteUrl = process.env.SITE_URL || '';
+  const isHttps = /^https:\/\//i.test(siteUrl);
+  const host = siteUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || null;
   Promise.all([
     checkDependencies(p),
-    checkSslExpiry((process.env.SITE_URL || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '') || null),
+    // Only probe a cert when SITE_URL is actually https — in dev it's http://localhost
+    // and Caddy provisions TLS in prod, so there's simply nothing to probe.
+    isHttps ? checkSslExpiry(host) : Promise.resolve({ notHttps: true, url: siteUrl || null }),
   ]).then(([deps, ssl]) => { _probeCache = { ..._probeCache, deps, ssl, at: Date.now() }; })
     .catch(() => {})
     .finally(() => { _probeCache.refreshing = false; });
