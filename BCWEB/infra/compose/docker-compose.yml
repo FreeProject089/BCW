@@ -22,7 +22,9 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "60", "1"]
+    # AUTH always on (audit hardening) — the default only matters inside the compose
+    # network (redis publishes no ports); override REDIS_PASSWORD in .env for prod.
+    command: ["redis-server", "--save", "60", "1", "--requirepass", "${REDIS_PASSWORD:-bcweb-redis-internal}"]
     volumes:
       - redis-data:/data
 
@@ -86,7 +88,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@${DB_HOST:-db}:${DB_PORT:-5432}/${POSTGRES_DB:-bcweb}${DB_URL_PARAMS:-}
       # Migrations / db push always use a DIRECT connection (pooler can't run them).
       DIRECT_DATABASE_URL: postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:-bcweb-redis-internal}@redis:6379
       # S3-compatible storage. Default = the bundled MinIO. Swapping to Cloudflare R2
       # is env-only: set S3_ENDPOINT/S3_PUBLIC_ENDPOINT/S3_REGION=auto + creds in .env
       # (see guides/DEPLOY_EN.md "Object storage" for the full migration).

@@ -23,6 +23,7 @@ import { ReposPage } from './repos.jsx';
 import { RepoDashboard } from './repo-dashboard.jsx';
 import { Home, Catalog, ItemDetail, Hosting, Auth, Dashboard, Admin, Legal, Contact, Settings, NOTIF, NOTIF_FALLBACK } from './pages.jsx';
 import { TwoFactor } from './twofa.jsx';
+import EventEffects from './events-fx.jsx';
 
 const KOFI = 'https://ko-fi.com/bettercommunity';
 const NAV = [
@@ -520,6 +521,8 @@ export default function App() {
           <Footer />
           <MobileTabBar />
           <CookieConsent />
+          {/* Seasonal/event effects overlay — pointer-events-none, killable from Settings. */}
+          <EventEffects />
         </AppReveal>
       </div>
     </IntroProvider>

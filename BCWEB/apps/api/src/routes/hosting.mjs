@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { statfsSync } from 'node:fs';
 import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim } from '../lib.mjs';
 import { validatePromo, redeemPromoAtomic } from './promo.mjs';
+import { getActiveEvent, eventDiscountFor } from './events.mjs';
 
 const GiB = 1024 ** 3;
 
@@ -253,6 +254,18 @@ export default async function hostingRoutes(app) {
     const months = b.data.months;
     let total = termTotalCents(plan.priceMonthlyCents, months, cf.priceMult);
 
+    // Active site event (e.g. Black Friday): auto-discount on what's paid NOW.
+    // Only applied when the result stays a chargeable amount (≥ 50¢ Stripe floor),
+    // and it forces the one-time path below so a recurring price never bakes the
+    // event cut into future renewals (renewals bill full price).
+    const activeEv = await getActiveEvent(p);
+    const evPct = eventDiscountFor(activeEv, 'hosting');
+    let evLabel = '';
+    if (evPct && total > 0 && Math.round(total * (1 - evPct / 100)) >= 50) {
+      total = Math.round(total * (1 - evPct / 100));
+      evLabel = ` · ${activeEv.name} −${evPct}%`;
+    }
+
     // The plan itself (before any promo) already prices to zero — e.g. a small repo
     // fully within pricing.hostingFreeGB with no extra Mbps/CPU cost. Provision it
     // directly, the same way a free-hosting promo grant does, instead of routing a
@@ -285,9 +298,9 @@ export default async function hostingRoutes(app) {
     }
     // Recurring only when opted in, no one-off promo, and the term fits Stripe's
     // 1-year max billing interval. Otherwise a one-time prepaid charge (unchanged).
-    const recurring = b.data.autoRenew && !promo && months <= 12;
+    const recurring = b.data.autoRenew && !promo && !evLabel && months <= 12;
     const md = { userId: req.user.uid, planId: plan.id, repoName: b.data.repoName, hostMode: b.data.mode, months: String(months), promoCode: promo?.code || '' };
-    const productName = `${plan.name} hosting — ${recurring ? `auto-renews every ${months} month${months > 1 ? 's' : ''}` : `${months} month${months > 1 ? 's' : ''}`}${TERM_DISCOUNT[months] ? ` (−${Math.round(TERM_DISCOUNT[months] * 100)}%)` : ''}${promoLabel}`;
+    const productName = `${plan.name} hosting — ${recurring ? `auto-renews every ${months} month${months > 1 ? 's' : ''}` : `${months} month${months > 1 ? 's' : ''}`}${TERM_DISCOUNT[months] ? ` (−${Math.round(TERM_DISCOUNT[months] * 100)}%)` : ''}${promoLabel}${evLabel}`;
     const session = await sk.checkout.sessions.create(recurring ? {
       mode: 'subscription', customer,
       line_items: [{ quantity: 1, price_data: {
@@ -339,7 +352,16 @@ export default async function hostingRoutes(app) {
     if (!repo) return reply.code(404).send({ error: 'not_found' });
     if (repo.ownerId !== req.user.uid && req.user.role === 'USER') return reply.code(403).send({ error: 'forbidden' });
     const s = await settings(p);
-    const amount = featurePrice(s, b.data.days);
+    let amount = featurePrice(s, b.data.days);
+    // Site event discount on boosts — one-time path only (never baked into the
+    // recurring auto-renew price; renewals bill full).
+    const bev = await getActiveEvent(p);
+    const bevPct = b.data.autoRenew ? 0 : eventDiscountFor(bev, 'boost');
+    let bevLabel = '';
+    if (bevPct && Math.round(amount * (1 - bevPct / 100)) >= 50) {
+      amount = Math.round(amount * (1 - bevPct / 100));
+      bevLabel = ` · ${bev.name} −${bevPct}%`;
+    }
     const sk = await stripe();
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
@@ -356,7 +378,7 @@ export default async function hostingRoutes(app) {
       cancel_url: `${siteUrl}/dashboard?feature=cancel`,
     } : {
       mode: 'payment', customer,
-      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: amount, product_data: { name: `Feature "${repo.name}" for ${b.data.days} days` } } }],
+      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: amount, product_data: { name: `Feature "${repo.name}" for ${b.data.days} days${bevLabel}` } } }],
       invoice_creation: { enabled: true },
       metadata: md,
       success_url: `${siteUrl}/dashboard?feature=ok`,
@@ -433,14 +455,21 @@ export default async function hostingRoutes(app) {
       combinedPct = Math.min(90, combinedPct);
       if (minMonthsReq && lines.some((l) => l.kind === 'hosting' && l.months < minMonthsReq)) return { error: 'promo_min_months', minMonths: minMonthsReq };
     }
-    let subtotal = 0, total = 0;
+    // Active site event (Black Friday & co): its % applies automatically to every
+    // line its scope covers, on the amount PAID NOW — a 1-year prepay bought during
+    // the event gets the full cut; later auto-renewals bill from baseCents (full).
+    const ev = await getActiveEvent(p);
+    let subtotal = 0, total = 0, eventApplied = false;
     for (const l of lines) {
       let c = l.baseCents;
+      const evPct = eventDiscountFor(ev, l.kind === 'boost' ? 'boost' : 'hosting');
+      if (evPct) { c = Math.round(c * (1 - evPct / 100)); eventApplied = true; }
       if (l.kind === 'hosting' && freeMonths) c = Math.max(0, c - l.monthlyCents * freeMonths);
       if (combinedPct) c = Math.round(c * (1 - combinedPct / 100));
       l.finalCents = c; subtotal += l.baseCents; total += c;
     }
-    return { lines, subtotal, total, discount: subtotal - total, combinedPct, freeMonths, appliedCodes };
+    const event = ev && eventApplied ? { name: ev.name, pct: ev.discountPct, scope: ev.scope, theme: ev.theme } : null;
+    return { lines, subtotal, total, discount: subtotal - total, combinedPct, freeMonths, appliedCodes, event };
   }
 
   app.post('/hosting/cart/quote', { preHandler: requireRole() }, async (req, reply) => {
@@ -449,7 +478,7 @@ export default async function hostingRoutes(app) {
     const p = await db();
     const r = await resolveCart(p, req, b.data, { persistPlans: false });
     if (r.error) return reply.code(r.error.startsWith('promo_') ? 400 : 409).send(r);
-    return { lines: r.lines.map((l) => ({ name: l.name, baseCents: l.baseCents, finalCents: l.finalCents, kind: l.kind })), subtotalCents: r.subtotal, discountCents: r.discount, totalCents: r.total, appliedCodes: r.appliedCodes, combinedPct: r.combinedPct, freeMonths: r.freeMonths };
+    return { lines: r.lines.map((l) => ({ name: l.name, baseCents: l.baseCents, finalCents: l.finalCents, kind: l.kind })), subtotalCents: r.subtotal, discountCents: r.discount, totalCents: r.total, appliedCodes: r.appliedCodes, combinedPct: r.combinedPct, freeMonths: r.freeMonths, event: r.event || null };
   });
 
   app.post('/hosting/cart/checkout', { preHandler: requireRole() }, async (req, reply) => {
@@ -468,7 +497,7 @@ export default async function hostingRoutes(app) {
     const customer = await ensureCustomer(p, sk, req.user.uid);
     const siteUrl = process.env.SITE_URL || 'http://localhost';
     const cart = await p.pendingCart.create({ data: { userId: req.user.uid, payload: { items: r.lines, promoCodes: r.appliedCodes } } });
-    const suffix = (r.combinedPct || r.freeMonths) ? ` (${[r.combinedPct ? `−${r.combinedPct}%` : null, r.freeMonths ? `${r.freeMonths}mo free` : null].filter(Boolean).join(', ')})` : '';
+    const suffix = (r.combinedPct || r.freeMonths || r.event) ? ` (${[r.event ? `${r.event.name} −${r.event.pct}%` : null, r.combinedPct ? `−${r.combinedPct}%` : null, r.freeMonths ? `${r.freeMonths}mo free` : null].filter(Boolean).join(', ')})` : '';
     // If any hosting line opted into auto-renew, save the card off-session so the
     // webhook can start each such repo's subscription (anchored at its prepaid term end).
     const wantsRenew = r.lines.some((l) => l.autoRenew);
