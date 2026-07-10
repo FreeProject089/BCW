@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
 import { useAuth } from './auth.jsx';
@@ -146,10 +146,12 @@ const BOTTOM = [
 
 function Nav() {
   const { user, logout } = useAuth();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   const segNavRef = useRef(null);
+  const neededRef = useRef(0);                     // seg-nav width needed WITH labels
+  const [compact, setCompact] = useState(false);   // icons-only (pills + Dashboard/Admin) when tight
   // Which fixed-project pills the CURRENT visitor can actually view (per-key
   // visibility, computed server-side) + any showcase projects an admin pinned
   // to the topbar (task: Project Announcement pages / visibility system).
@@ -187,9 +189,27 @@ function Nav() {
     }, 60);
     return () => clearTimeout(id);
   }, [loc.pathname]);
-  // Pill labels vs icons-only is a fixed viewport breakpoint (index.css `.seg-nav`):
-  // labels show at ≥1250px, icons-only below. Simple and predictable — that's the
-  // width the user asked for.
+  // Labels vs icons-only is decided by REAL available room, not a fixed breakpoint,
+  // and drives BOTH the segmented pills AND the Dashboard/Admin labels together — so
+  // you never get the buggy split state (pills icon-only while Dashboard shows text).
+  // Oscillation guard: hiding the Dashboard/Admin labels gives the nav ~170px back,
+  // which could flip it straight back to "fits" — so we require that much extra
+  // headroom (hysteresis) before expanding again. `neededRef` caches the labeled
+  // seg-nav width, refreshed only while labels are actually shown.
+  useLayoutEffect(() => {
+    const el = segNavRef.current;
+    if (!el) return;
+    const measure = () => {
+      if (!el.classList.contains('is-compact')) neededRef.current = el.scrollWidth;
+      const need = neededRef.current || el.scrollWidth;
+      setCompact((was) => (was ? el.clientWidth < need + 170 : el.clientWidth < need));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [lang, visibleNav.length, pinnedShowcase.length, !!user, (user && (user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN'))]);
+  const rightLbl = compact ? 'hidden' : 'inline';
   return (
     <header className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       <div className="max-w-7xl mx-auto rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
@@ -203,7 +223,7 @@ function Nav() {
             with the dashboard/admin/profile cluster below at in-between widths —
             that's what caused the overlapping/cut-off "buggy" look around
             700-950px. Below `lg:` everything lives in the hamburger sheet instead. */}
-        <nav ref={segNavRef} className="seg-nav hidden lg:flex flex-1 items-center gap-0.5 rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] min-w-0 overflow-x-auto no-scrollbar">
+        <nav ref={segNavRef} className={`seg-nav ${compact ? 'is-compact' : ''} hidden lg:flex flex-1 items-center gap-0.5 rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] min-w-0 overflow-x-auto no-scrollbar`}>
           {visibleNav.map((n) => <NavLink key={n.to} to={n.to} title={t(n.k)} aria-label={t(n.k)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={n} size={16} /><span className="nav-lbl">{t(n.k)}</span></NavLink>)}
           {pinnedShowcase.map((p) => (
             <NavLink key={p.slug} to={`/project/${p.slug}`} title={p.name} aria-label={p.name} className={(s) => pill(s) + ' shrink-0'}>
@@ -227,8 +247,8 @@ function Nav() {
         <div className="hidden lg:flex items-center gap-1 shrink-0 pl-1 ml-1 border-l border-[var(--line)]">
           {user ? (
             <>
-              <NavLink to="/dashboard" className={(s) => pill(s) + ' !py-2'} title={t('nav.dashboard')}><LayoutDashboard size={15} /><span className="hidden xl:inline">{t("nav.dashboard")}</span></NavLink>
-              {(user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN') && <NavLink to="/admin" className={(s) => pill(s) + ' !py-2'} title={t('nav.admin')}><Shield size={15} /><span className="hidden xl:inline">{t("nav.admin")}</span></NavLink>}
+              <NavLink to="/dashboard" className={(s) => pill(s) + ' !py-2'} title={t('nav.dashboard')}><LayoutDashboard size={15} /><span className={rightLbl}>{t("nav.dashboard")}</span></NavLink>
+              {(user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN') && <NavLink to="/admin" className={(s) => pill(s) + ' !py-2'} title={t('nav.admin')}><Shield size={15} /><span className={rightLbl}>{t("nav.admin")}</span></NavLink>}
               <Link to="/profile" className="rounded-full p-0.5 hover:ring-2 hover:ring-[var(--line-strong)] transition" title={user.displayName}><Avatar user={user} size={28} /></Link>
               <Button variant="ghost" size="sm" onClick={logout} title={t('nav.signout')}><LogOut size={15} /></Button>
             </>

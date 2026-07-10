@@ -50,16 +50,20 @@ function parseOtpauth(uri) {
   const path = decodeURIComponent(u.pathname.replace(/^\//, ''));
   const [maybeIssuer, maybeLabel] = path.includes(':') ? path.split(/:(.+)/) : [null, path];
   const q = u.searchParams;
-  const secret = (q.get('secret') || '').replace(/\s+/g, '');
+  const secret = (q.get('secret') || '').replace(/\s+/g, '').slice(0, 512);
   if (!secret) throw new Error('missing secret');
   base32Decode(secret); // validate now so a bad QR is rejected up front
+  // Cap the free-text fields — the QR content is untrusted input; without a cap a
+  // hostile/oversized QR could bloat localStorage or the UI. Rendering is via React
+  // text nodes (auto-escaped), so there's no XSS vector, just size hygiene.
+  const algo = (q.get('algorithm') || 'SHA1').toUpperCase();
   return {
-    issuer: q.get('issuer') || maybeIssuer || '',
-    label: (maybeLabel || maybeIssuer || 'Account').trim(),
+    issuer: (q.get('issuer') || maybeIssuer || '').slice(0, 128),
+    label: (maybeLabel || maybeIssuer || 'Account').trim().slice(0, 128),
     secret,
     digits: Math.min(8, Math.max(6, Number(q.get('digits')) || 6)),
     period: Math.min(120, Math.max(15, Number(q.get('period')) || 30)),
-    algorithm: (q.get('algorithm') || 'SHA1').toUpperCase() in A2H ? (q.get('algorithm') || 'SHA1').toUpperCase() : 'SHA1',
+    algorithm: algo in A2H ? algo : 'SHA1',
   };
 }
 
@@ -85,6 +89,26 @@ async function decryptVault(blob, pass) {
 }
 
 const rid = () => Math.random().toString(36).slice(2, 10);
+
+// Clamp/validate an account from an untrusted source (import file). Rejects a bad
+// secret and bounds every numeric field so e.g. digits:99999 can't blow up
+// `10**digits`/`padStart` (CWE-400) or bloat storage. Returns null if unusable.
+function sanitizeAccount(a) {
+  if (!a || typeof a.secret !== 'string') return null;
+  const secret = a.secret.replace(/\s+/g, '').slice(0, 512);
+  try { base32Decode(secret); } catch { return null; }
+  const algo = String(a.algorithm || 'SHA1').toUpperCase();
+  return {
+    id: rid(),
+    label: String(a.label || 'Account').slice(0, 128),
+    issuer: String(a.issuer || '').slice(0, 128),
+    secret,
+    digits: Math.min(8, Math.max(6, Number(a.digits) || 6)),
+    period: Math.min(120, Math.max(15, Number(a.period) || 30)),
+    algorithm: algo in A2H ? algo : 'SHA1',
+    addedAt: Number(a.addedAt) || Date.now(),
+  };
+}
 
 export function TwoFactor() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
@@ -208,19 +232,47 @@ export function TwoFactor() {
   };
 
   // ── Export / import JSON ──
-  const exportJson = () => {
-    const blob = new Blob([JSON.stringify({ type: 'bcw-2fa-export', version: 1, exportedAt: new Date().toISOString(), accounts, history }, null, 2)], { type: 'application/json' });
+  // The export can be encrypted with a passphrase (AES-GCM), so the file never has to
+  // hold secrets in the clear. If the vault already has a passphrase we reuse it;
+  // otherwise we offer to set one for the file.
+  const download = (obj) => {
+    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `bcw-2fa-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(a.href);
-    toast.success(t('tfa.exported', 'Exported — keep this file somewhere safe; it contains your secrets.'));
+  };
+  const exportJson = async () => {
+    if (!accounts.length) return toast.error(t('tfa.empty.t', 'No accounts yet'));
+    let pass = passRef.current; // reuse the active vault passphrase if there is one
+    if (!pass) {
+      const wantEnc = await dialog.confirm({ title: t('tfa.exp.enc.t', 'Encrypt the export?'), message: t('tfa.exp.enc.m', 'Protect the file with a passphrase (AES-256) so your secrets aren’t written in plain text. Strongly recommended.'), okLabel: t('tfa.exp.enc.ok', 'Encrypt'), cancelLabel: t('tfa.exp.enc.no', 'Plain text') });
+      if (wantEnc) {
+        pass = await dialog.prompt({ title: t('tfa.exp.pass', 'Export passphrase'), label: t('tfa.pass.l', 'Passphrase'), type: 'password' });
+        if (!pass) return;
+        if (String(pass).length < 6) return toast.error(t('tfa.pass.short', 'Use at least 6 characters.'));
+      }
+    }
+    if (pass) {
+      const blob = await encryptVault({ accounts, history }, String(pass));
+      download({ type: 'bcw-2fa-export', version: 1, exportedAt: new Date().toISOString(), ...blob });
+      toast.success(t('tfa.exported.enc', 'Exported (encrypted) — you’ll need the passphrase to import it.'));
+    } else {
+      download({ type: 'bcw-2fa-export', version: 1, enc: false, exportedAt: new Date().toISOString(), accounts, history });
+      toast.success(t('tfa.exported', 'Exported — keep this file somewhere safe; it contains your secrets.'));
+    }
   };
   const importJson = async (file) => {
     if (!file) return;
     try {
       const parsed = JSON.parse(await file.text());
-      const incoming = (parsed.accounts || []).filter((a) => a.secret);
+      let data = parsed;
+      if (parsed.enc) {
+        const pass = await dialog.prompt({ title: t('tfa.imp.pass', 'Import passphrase'), message: t('tfa.imp.passm', 'This export is encrypted. Enter the passphrase it was exported with.'), label: t('tfa.pass.l', 'Passphrase'), type: 'password' });
+        if (!pass) return;
+        try { data = await decryptVault(parsed, String(pass)); } catch { return toast.error(t('tfa.wrongpass', 'Wrong passphrase.')); }
+      }
+      const incoming = (Array.isArray(data.accounts) ? data.accounts : []).map(sanitizeAccount).filter(Boolean);
       if (!incoming.length) return toast.error(t('tfa.noimport', 'No accounts found in that file.'));
       const have = new Set(accounts.map((a) => a.secret));
-      const merged = [...accounts, ...incoming.filter((a) => !have.has(a.secret)).map((a) => ({ ...a, id: rid(), addedAt: a.addedAt || Date.now() }))];
+      const merged = [...accounts, ...incoming.filter((a) => !have.has(a.secret))];
       commit(merged);
       toast.success(t('tfa.imported', 'Imported {n} account(s).').replace('{n}', merged.length - accounts.length));
     } catch { toast.error(t('tfa.importfail', 'That file isn’t a valid export.')); }
