@@ -1089,6 +1089,10 @@ model SiteEvent {
   enabled     Boolean  @default(true)
   discountPct Int      @default(0)      // 0 = visual-only event, no promo
   scope       String   @default("all")  // what the discount applies to: all | hosting | boost
+  // Effect-editor overrides consumed by events-fx.jsx: { density, speed, size,
+  // opacity, wind, intensity, glyphs, strip, fog, sound, countdown } — all optional,
+  // theme defaults apply for anything unset.
+  fx          Json?
   note        String   @default("")
 
   createdAt   DateTime @default(now())

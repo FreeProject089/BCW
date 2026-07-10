@@ -4,14 +4,17 @@
 //   • a seasonal silhouette strip along the bottom of the page,
 //   • a dismissible promo banner when the event carries a discount,
 //   • a New-Year countdown chip and an opt-in spooky-sound toggle for Halloween.
-// Everything is pointer-events-none (never blocks the UI), mobile-scaled (particle
-// count follows viewport, DPR capped, paused when the tab is hidden), and the whole
-// layer can be killed in one click from Settings (localStorage `bcw_event_fx_off`).
+// Every knob is tunable per-event from the admin Effects editor (event.fx), with
+// safe theme defaults. Everything is pointer-events-none (never blocks the UI),
+// mobile-scaled (particle counts follow the viewport, DPR capped, paused when the
+// tab is hidden), fully hidden during the intro, and killable in one click from
+// Settings (localStorage `bcw_event_fx_off`).
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { X, Tag } from 'lucide-react';
 import { api } from './api.js';
 import { useI18n } from './i18n.jsx';
+import { useIntro } from './IntroContext.jsx';
 
 export const FX_OFF_KEY = 'bcw_event_fx_off';
 export const FX_EVENT = 'bcw-event-fx-changed';
@@ -33,30 +36,44 @@ export function useActiveEvent() {
   return event;
 }
 
+/* ── Fx config (admin Effects editor) ────────────────────────────────────────── */
+export const FX_DEFAULTS = { density: 1, speed: 1, size: 1, opacity: 1, wind: 0, intensity: 1, glyphs: '', strip: true, fog: true, sound: true, countdown: true };
+const fxOf = (fx) => ({ ...FX_DEFAULTS, ...(fx || {}) });
+// Split a custom emoji string into glyphs — Intl.Segmenter keeps flags/ZWJ intact.
+function splitGlyphs(s) {
+  const str = String(s || '').replace(/[\s,;]+/g, '');
+  if (!str) return null;
+  try { return [...new Intl.Segmenter().segment(str)].map((x) => x.segment).filter(Boolean).slice(0, 12); }
+  catch { return Array.from(str).slice(0, 12); }
+}
+
 /* ── Particle canvas ─────────────────────────────────────────────────────────── */
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-// Falling/floating emoji or dot particles per theme. `null` = no particle layer.
+// Theme base configs. kinds: snow | fall | rise | float | fireworks
 const THEME_PARTICLES = {
   christmas: { kind: 'snow' },
   winter: { kind: 'snow' },
   valentine: { kind: 'rise', glyphs: ['💗', '❤️', '💘', '💕'], density: 26 },
-  autumn: { kind: 'fall', glyphs: ['🍂', '🍁'], density: 22 },
-  spring: { kind: 'fall', glyphs: ['🌸', '🌷', '🌼'], density: 18 },
+  autumn: { kind: 'fall', glyphs: ['🍂', '🍁'], density: 22, tumble: true },
+  spring: { kind: 'fall', glyphs: ['🌸', '🌷', '🌼'], density: 18, tumble: true },
   summer: { kind: 'fall', glyphs: ['✨', '☀️'], density: 8, slow: true },
-  easter: { kind: 'fall', glyphs: ['🥚', '🐣', '🌼'], density: 12 },
-  blackfriday: { kind: 'fall', glyphs: ['%', '🏷️'], density: 10, color: '#f59e0b' },
-  halloween: { kind: 'float', glyphs: ['🎃', '👻', '🦇'], density: 10 },
-  newyear: { kind: 'fireworks', confetti: true },
+  easter: { kind: 'fall', glyphs: ['🥚', '🐣', '🌼'], density: 12, tumble: true },
+  blackfriday: { kind: 'fall', glyphs: ['%', '🏷️'], density: 12, color: '#f59e0b' },
+  halloween: { kind: 'float', glyphs: ['🎃', '👻', '🦇'], density: 10, pulse: true },
+  newyear: { kind: 'fireworks', confetti: true, glitter: true },
   national: { kind: 'fireworks', flagRain: true },
 };
 
-function FxCanvas({ theme, flag }) {
+function FxCanvas({ theme, flag, fx }) {
   const ref = useRef(null);
   useEffect(() => {
     const cfg = THEME_PARTICLES[theme];
     if (!cfg) return;
+    const F = fxOf(fx);
+    const custom = splitGlyphs(F.glyphs);
+    const glyphs = custom || cfg.glyphs || null;
     const cv = ref.current; if (!cv) return;
     const ctx = cv.getContext('2d');
     const dpr = Math.min(1.5, window.devicePixelRatio || 1);
@@ -65,40 +82,50 @@ function FxCanvas({ theme, flag }) {
     resize();
     window.addEventListener('resize', resize);
 
-    // Mobile-friendly counts: scale with viewport width.
+    // Mobile-friendly counts: scale with viewport width, then the admin density knob.
     const scale = Math.min(1, w / 1200);
     const parts = [];   // ambient particles
-    const sparks = [];  // firework sparks
+    const sparks = [];  // firework sparks (with trails)
     const rockets = [];
     let lastRocket = 0;
 
     const spawnAmbient = () => {
-      const n = Math.max(6, Math.round((cfg.density || 30) * scale * (cfg.kind === 'snow' ? 3 : 1)));
+      const base = (cfg.density || 30) * (cfg.kind === 'snow' ? 3.2 : 1);
+      const n = Math.max(4, Math.round(base * scale * F.density));
       for (let i = 0; i < n; i++) {
+        const depth = rnd(0.35, 1); // parallax: far = smaller, slower, fainter
         parts.push({
-          x: rnd(0, w), y: rnd(-h, h), size: cfg.kind === 'snow' ? rnd(1, 3.4) : rnd(14, 26),
-          vy: (cfg.slow ? rnd(8, 18) : rnd(20, 55)) * (cfg.kind === 'rise' || cfg.kind === 'float' ? -0.6 : 1),
-          drift: rnd(-14, 14), phase: rnd(0, Math.PI * 2), rot: rnd(-0.6, 0.6),
-          glyph: cfg.glyphs ? pick(cfg.glyphs) : null, alpha: rnd(0.55, 0.95),
+          x: rnd(0, w), y: rnd(-h, h), depth,
+          size: (cfg.kind === 'snow' ? rnd(1.2, 3.6) : rnd(15, 27)) * F.size * (cfg.kind === 'snow' ? depth : rnd(0.8, 1.1)),
+          vy: (cfg.slow ? rnd(8, 18) : rnd(22, 58)) * F.speed * depth * (cfg.kind === 'rise' || cfg.kind === 'float' ? -0.55 : 1),
+          drift: rnd(-14, 14), phase: rnd(0, Math.PI * 2), spin: rnd(0.4, 1.4) * (Math.random() < 0.5 ? -1 : 1),
+          glyph: glyphs ? pick(glyphs) : null, alpha: rnd(0.5, 0.95) * (cfg.kind === 'snow' ? (0.35 + 0.65 * depth) : 1) * F.opacity,
         });
       }
     };
     if (cfg.kind !== 'fireworks') spawnAmbient();
-    if (cfg.confetti || cfg.flagRain) {
-      const n = Math.round(24 * scale) + 6;
+    if (cfg.confetti || cfg.flagRain || cfg.glitter) {
+      const n = Math.round(26 * scale * F.density) + 6;
       for (let i = 0; i < n; i++) {
-        parts.push(cfg.flagRain && flag
-          ? { x: rnd(0, w), y: rnd(-h, 0), size: rnd(16, 26), vy: rnd(25, 55), drift: rnd(-12, 12), phase: rnd(0, 7), rot: rnd(-0.8, 0.8), glyph: flag, alpha: 0.9 }
-          : { x: rnd(0, w), y: rnd(-h, 0), size: rnd(3, 6), vy: rnd(40, 90), drift: rnd(-20, 20), phase: rnd(0, 7), rot: rnd(-3, 3), glyph: null, alpha: 0.9, color: pick(['#f97316', '#f59e0b', '#22c55e', '#3b82f6', '#ec4899', '#eab308']) });
+        if (cfg.flagRain && flag) {
+          parts.push({ x: rnd(0, w), y: rnd(-h, 0), size: rnd(17, 27) * F.size, vy: rnd(28, 58) * F.speed, drift: rnd(-12, 12), phase: rnd(0, 7), spin: rnd(-1, 1), glyph: flag, alpha: 0.92 * F.opacity, depth: 1 });
+        } else if (cfg.glitter && i % 3 === 0) {
+          parts.push({ x: rnd(0, w), y: rnd(-h, 0), size: rnd(1.4, 2.6) * F.size, vy: rnd(30, 70) * F.speed, drift: rnd(-10, 10), phase: rnd(0, 7), spin: 0, glyph: null, glitter: true, alpha: 0.9 * F.opacity, depth: 1 });
+        } else {
+          parts.push({ x: rnd(0, w), y: rnd(-h, 0), size: rnd(3.5, 6.5) * F.size, vy: rnd(42, 95) * F.speed, drift: rnd(-20, 20), phase: rnd(0, 7), spin: rnd(-3, 3), glyph: null, alpha: 0.92 * F.opacity, depth: 1, color: pick(['#f97316', '#f59e0b', '#22c55e', '#3b82f6', '#ec4899', '#eab308', '#a78bfa']) });
+        }
       }
     }
 
     const explode = (x, y) => {
-      const n = Math.round(34 * Math.max(0.5, scale));
+      // Double burst: a dense core ring + a sparse wide halo, warm-shifted hues.
       const hue = Math.floor(rnd(0, 360));
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2, sp = rnd(40, 150);
-        sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.8, 1.5), age: 0, color: `hsl(${hue + rnd(-20, 20)} 90% 65%)` });
+      const rings = [[Math.round(30 * Math.max(0.5, scale) * F.intensity), 60, 170], [Math.round(14 * Math.max(0.5, scale) * F.intensity), 150, 260]];
+      for (const [n, sMin, sMax] of rings) {
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2 + rnd(-0.08, 0.08), sp = rnd(sMin, sMax);
+          sparks.push({ x, y, px: x, py: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.8, 1.6), age: 0, hue: hue + rnd(-24, 24), flicker: rnd(4, 9) });
+        }
       }
     };
 
@@ -107,39 +134,60 @@ function FxCanvas({ theme, flag }) {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       ctx.clearRect(0, 0, w, h);
 
-      // fireworks: launch a rocket every ~0.9–1.6 s (fewer on phones)
-      if (cfg.kind === 'fireworks' && now - lastRocket > rnd(900, 1600) && rockets.length < (w < 640 ? 2 : 4)) {
-        rockets.push({ x: rnd(w * 0.15, w * 0.85), y: h + 8, vy: -rnd(220, 320), targetY: rnd(h * 0.15, h * 0.45) });
+      // ── fireworks: launch a rocket every so often (rate follows the intensity knob)
+      if (cfg.kind === 'fireworks' && now - lastRocket > rnd(900, 1700) / F.intensity && rockets.length < (w < 640 ? 2 : 4)) {
+        rockets.push({ x: rnd(w * 0.15, w * 0.85), y: h + 8, vy: -rnd(230, 330) * Math.max(0.7, F.speed), targetY: rnd(h * 0.14, h * 0.45), wob: rnd(0, 7) });
         lastRocket = now;
       }
       for (let i = rockets.length - 1; i >= 0; i--) {
-        const r = rockets[i]; r.y += r.vy * dt;
-        ctx.globalAlpha = 0.9; ctx.fillStyle = '#fde68a'; ctx.fillRect(r.x - 1, r.y, 2, 8);
-        if (r.y <= r.targetY) { explode(r.x, r.y); rockets.splice(i, 1); }
+        const r = rockets[i]; r.y += r.vy * dt; r.wob += dt * 9;
+        const rx = r.x + Math.sin(r.wob) * 2.5;
+        ctx.globalAlpha = 0.9; ctx.strokeStyle = '#fde68a'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(rx, r.y + 14); ctx.lineTo(rx, r.y); ctx.stroke();
+        if (r.y <= r.targetY) { explode(rx, r.y); rockets.splice(i, 1); }
       }
-      for (let i = sparks.length - 1; i >= 0; i--) {
-        const s = sparks[i]; s.age += dt;
-        if (s.age >= s.life) { sparks.splice(i, 1); continue; }
-        s.vy += 60 * dt; s.x += s.vx * dt; s.y += s.vy * dt;
-        ctx.globalAlpha = Math.max(0, 1 - s.age / s.life);
-        ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(s.x, s.y, 2, 0, Math.PI * 2); ctx.fill();
+      // sparks: additive blending + motion trails + end-of-life flicker
+      if (sparks.length) {
+        ctx.globalCompositeOperation = 'lighter';
+        for (let i = sparks.length - 1; i >= 0; i--) {
+          const s = sparks[i]; s.age += dt;
+          if (s.age >= s.life) { sparks.splice(i, 1); continue; }
+          s.px = s.x; s.py = s.y;
+          s.vy += 70 * dt; s.vx *= (1 - 0.5 * dt); s.x += s.vx * dt; s.y += s.vy * dt;
+          const t = s.age / s.life;
+          const flick = t > 0.6 ? (0.6 + 0.4 * Math.abs(Math.sin(s.age * s.flicker))) : 1;
+          ctx.globalAlpha = Math.max(0, (1 - t)) * flick * F.opacity;
+          ctx.strokeStyle = `hsl(${s.hue} 95% ${65 - t * 20}%)`; ctx.lineWidth = 2.2 * (1 - t) + 0.6;
+          ctx.beginPath(); ctx.moveTo(s.px, s.py); ctx.lineTo(s.x, s.y); ctx.stroke();
+        }
+        ctx.globalCompositeOperation = 'source-over';
       }
 
-      // ambient particles
+      // ── ambient particles
       for (const p of parts) {
-        p.phase += dt; p.y += p.vy * dt; p.x += Math.sin(p.phase) * p.drift * dt; p.rot += dt * 0.4;
-        if (p.vy > 0 && p.y > h + 30) { p.y = -30; p.x = rnd(0, w); }
-        if (p.vy < 0 && p.y < -30) { p.y = h + 30; p.x = rnd(0, w); }
-        ctx.globalAlpha = p.alpha;
+        p.phase += dt * p.spin || dt; p.y += p.vy * dt;
+        p.x += (Math.sin(p.phase) * p.drift + F.wind * 26 * (p.depth || 1)) * dt;
+        if (p.vy > 0 && p.y > h + 34) { p.y = -34; p.x = rnd(0, w); }
+        if (p.vy < 0 && p.y < -34) { p.y = h + 34; p.x = rnd(0, w); }
+        if (p.x > w + 40) p.x = -40; else if (p.x < -40) p.x = w + 40;
+        const pulse = cfg.pulse ? (0.65 + 0.35 * Math.sin(p.phase * 0.8)) : 1; // ghosts fade in/out
+        ctx.globalAlpha = p.alpha * pulse;
         if (p.glyph) {
-          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.sin(p.phase) * 0.25);
+          ctx.save(); ctx.translate(p.x, p.y);
+          ctx.rotate(cfg.tumble ? p.phase : Math.sin(p.phase) * 0.3); // leaves tumble, others sway
           ctx.font = `${p.size}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
           if (cfg.color && p.glyph === '%') { ctx.fillStyle = cfg.color; ctx.font = `bold ${p.size}px sans-serif`; }
           ctx.fillText(p.glyph, 0, 0); ctx.restore();
-        } else if (p.color) { // confetti rects
-          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2); ctx.restore();
-        } else { // snow
-          ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+        } else if (p.color) { // confetti: spin on both axes
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.phase);
+          ctx.scale(1, Math.max(0.15, Math.abs(Math.sin(p.phase * 2.3)))); // flip shimmer
+          ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2); ctx.restore();
+        } else if (p.glitter) { // NY gold glitter
+          ctx.fillStyle = '#fde68a'; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.7 + 0.3 * Math.sin(p.phase * 5)), 0, Math.PI * 2); ctx.fill();
+        } else { // snow: soft-edged flakes (radial glow)
+          const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+          g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
         }
       }
       ctx.globalAlpha = 1;
@@ -149,10 +197,25 @@ function FxCanvas({ theme, flag }) {
     const onVis = () => { if (document.hidden) cancelAnimationFrame(raf); else { last = performance.now(); raf = requestAnimationFrame(tick); } };
     document.addEventListener('visibilitychange', onVis);
     return () => { alive = false; cancelAnimationFrame(raf); window.removeEventListener('resize', resize); document.removeEventListener('visibilitychange', onVis); };
-  }, [theme, flag]);
+  }, [theme, flag, JSON.stringify(fx || {})]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!THEME_PARTICLES[theme]) return null;
   return <canvas ref={ref} className="fixed inset-0 z-[2] pointer-events-none" aria-hidden="true" />;
 }
+
+/* ── Theme overlays ──────────────────────────────────────────────────────────── */
+function FogLayer() {
+  // Two drifting fog banks — CSS keyframes (bcwFogDrift in index.css), GPU-cheap.
+  return (
+    <div className="fixed inset-x-0 bottom-0 h-52 -z-[4] pointer-events-none overflow-hidden" aria-hidden="true">
+      <div className="absolute inset-0 opacity-45" style={{ background: 'linear-gradient(to top, rgba(148,163,184,0.32), transparent 75%)', animation: 'bcwFogDrift 13s ease-in-out infinite alternate' }} />
+      <div className="absolute inset-0 opacity-30" style={{ background: 'linear-gradient(to top, rgba(100,116,139,0.38), transparent 60%)', animation: 'bcwFogDrift 19s ease-in-out infinite alternate-reverse' }} />
+    </div>
+  );
+}
+const ValentineVignette = () => (
+  <div className="fixed inset-0 -z-[4] pointer-events-none" aria-hidden="true"
+    style={{ background: 'radial-gradient(ellipse at 50% 110%, rgba(236,72,153,0.15), transparent 60%)' }} />
+);
 
 /* ── Seasonal bottom silhouette strip ────────────────────────────────────────── */
 // A decorative full-width illustration pinned to the bottom of the viewport,
@@ -302,37 +365,40 @@ function PromoBanner({ event }) {
   );
 }
 
+/* ── Visual layer stack (shared by the live site AND the admin editor preview) ── */
+export function EventFxLayers({ event, preview = false }) {
+  if (!event || event.theme === 'none') return null;
+  const F = fxOf(event.fx);
+  const theme = event.theme;
+  return (
+    <>
+      {F.strip && <SeasonStrip theme={theme} />}
+      <FxCanvas theme={theme} flag={event.flag} fx={event.fx} />
+      {theme === 'halloween' && F.fog && <FogLayer />}
+      {theme === 'valentine' && <ValentineVignette />}
+      {!preview && theme === 'halloween' && F.sound && <SpookyAudio />}
+      {!preview && theme === 'newyear' && F.countdown && <NYCountdown />}
+    </>
+  );
+}
+
 /* ── Root ────────────────────────────────────────────────────────────────────── */
 export default function EventEffects() {
   const event = useActiveEvent();
+  const { active: introActive } = useIntro();
   const [off, setOff] = useState(fxDisabled());
   useEffect(() => {
     const onChange = () => setOff(fxDisabled());
     window.addEventListener(FX_EVENT, onChange);
     return () => window.removeEventListener(FX_EVENT, onChange);
   }, []);
-  if (!event) return null;
-  const theme = event.theme;
+  // NOTHING during the intro — only the intro's own skip/don't-show controls exist.
+  if (!event || introActive) return null;
   return (
     <>
       {/* The promo banner stays even with effects off — it's pricing info, not decor. */}
       {event.discountPct > 0 && <PromoBanner event={event} />}
-      {!off && theme !== 'none' && (
-        <>
-          <SeasonStrip theme={theme} />
-          <FxCanvas theme={theme} flag={event.flag} />
-          {theme === 'halloween' && (
-            <div className="fixed inset-x-0 bottom-0 h-44 -z-[4] pointer-events-none opacity-50" aria-hidden="true"
-              style={{ background: 'linear-gradient(to top, rgba(148,163,184,0.28), transparent)', animation: 'fadeIn 2s ease' }} />
-          )}
-          {theme === 'valentine' && (
-            <div className="fixed inset-0 -z-[4] pointer-events-none" aria-hidden="true"
-              style={{ background: 'radial-gradient(ellipse at 50% 110%, rgba(236,72,153,0.14), transparent 60%)' }} />
-          )}
-          {theme === 'halloween' && <SpookyAudio />}
-          {theme === 'newyear' && <NYCountdown />}
-        </>
-      )}
+      {!off && <EventFxLayers event={event} />}
     </>
   );
 }

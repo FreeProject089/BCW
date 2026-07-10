@@ -20,7 +20,7 @@ import { SKIP_KEY, useIntro } from './IntroContext.jsx';
 import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from './prefs.js';
 import { MyRepos, AdminRepos, Billing } from './repos.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
-import { fxDisabled, setFxDisabled, useActiveEvent } from './events-fx.jsx';
+import { fxDisabled, setFxDisabled, useActiveEvent, EventFxLayers, FX_DEFAULTS } from './events-fx.jsx';
 import { AuthorsRow } from './blog.jsx';
 import Avatar from './Avatar.jsx';
 import { createRoot } from 'react-dom/client';
@@ -1020,6 +1020,9 @@ function BoostAddCard({ repos, onAdd, evPct = 0, evName = '' }) {
 // desktop, near-fullscreen sheet on mobile) with a collapsed pill when closed.
 function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew }) {
   const { t } = useI18n(); const toast = useToast(); const { user } = useAuth(); const nav = useNavigate();
+  // The cart is portaled to <body>, so it escapes AppReveal's intro fade — gate it
+  // explicitly: NOTHING may show during the intro (only the intro's own controls).
+  const { active: introActive } = useIntro();
   const [codes, setCodes] = useState([]);
   const [codeInput, setCodeInput] = useState('');
   const [quote, setQuote] = useState(null);
@@ -1060,7 +1063,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
       else toast.error(t('hosting.err.checkout', 'Checkout failed — {e}').replace('{e}', e || (x.status ? `HTTP ${x.status}` : 'unknown')));
     } finally { setBusy(false); }
   };
-  if (!count) return null;
+  if (!count || introActive) return null;
   // Rendered through a portal to <body> so no page-level ancestor (opacity/anim
   // wrappers, reveal transforms) can turn `fixed` into a clipped absolute — that
   // was making the cart + its button hide under the footer and go un-clickable.
@@ -5011,10 +5014,13 @@ const dtLocal = (d) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.
 function AdminEvents() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/admin/events'), []);
-  const blank = { name: '', theme: 'none', flag: '', startsAt: dtLocal(new Date()), endsAt: dtLocal(new Date(Date.now() + 7 * 864e5)), discountPct: 0, scope: 'all', enabled: true, note: '' };
+  const blank = { name: '', theme: 'none', flag: '', startsAt: dtLocal(new Date()), endsAt: dtLocal(new Date(Date.now() + 7 * 864e5)), discountPct: 0, scope: 'all', enabled: true, note: '', fx: {} };
   const [f, setF] = useState(blank);
   const [editing, setEditing] = useState(null); // event id being edited (null = create)
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(false); // live effects preview on this page
+  const setFx = (k, v) => setF((s) => ({ ...s, fx: { ...s.fx, [k]: v } }));
+  const fxVal = (k) => f.fx?.[k] ?? FX_DEFAULTS[k];
   const events = data?.events || [];
   const now = Date.now();
   const applyPreset = (pr) => {
@@ -5028,15 +5034,22 @@ function AdminEvents() {
     if (!f.name.trim()) return toast.error(t('evadm.needname', 'Give the event a name.'));
     setBusy(true);
     try {
-      const body = { name: f.name.trim(), theme: f.theme, flag: f.theme === 'national' ? (f.flag || null) : null, startsAt: new Date(f.startsAt).toISOString(), endsAt: new Date(f.endsAt).toISOString(), discountPct: Number(f.discountPct) || 0, scope: f.scope, enabled: !!f.enabled, note: f.note || '' };
+      const body = { name: f.name.trim(), theme: f.theme, flag: f.theme === 'national' ? (f.flag || null) : null, startsAt: new Date(f.startsAt).toISOString(), endsAt: new Date(f.endsAt).toISOString(), discountPct: Number(f.discountPct) || 0, scope: f.scope, enabled: !!f.enabled, fx: f.fx || {}, note: f.note || '' };
       if (editing) await api.put(`/admin/events/${editing}`, body); else await api.post('/admin/events', body);
       toast.success(t('evadm.saved', 'Event saved — active site-wide during its window.'));
-      setF(blank); setEditing(null); reload();
-    } catch (x) { toast.error(x.data?.error === 'ends_before_starts' ? t('evadm.dates', 'End must be after start.') : t('common.failed', 'Failed.')); } finally { setBusy(false); }
+      setF(blank); setEditing(null); setPreview(false); reload();
+    } catch (x) {
+      const e = x.data?.error;
+      toast.error(e === 'ends_before_starts' ? t('evadm.dates', 'End must be after start.')
+        : e === 'overlaps' ? t('evadm.overlaps', 'Only ONE event can run at a time — this window overlaps “{n}”. Change the dates or disable it first.').replace('{n}', x.data?.with || '?')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
   };
-  const edit = (ev) => { setEditing(ev.id); setF({ name: ev.name, theme: ev.theme, flag: ev.flag || '', startsAt: dtLocal(ev.startsAt), endsAt: dtLocal(ev.endsAt), discountPct: ev.discountPct, scope: ev.scope, enabled: ev.enabled, note: ev.note || '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const edit = (ev) => { setEditing(ev.id); setF({ name: ev.name, theme: ev.theme, flag: ev.flag || '', startsAt: dtLocal(ev.startsAt), endsAt: dtLocal(ev.endsAt), discountPct: ev.discountPct, scope: ev.scope, enabled: ev.enabled, note: ev.note || '', fx: ev.fx || {} }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  // The toggle enable button can also hit the one-event-at-a-time rule.
+  const toggleErr = (x) => toast.error(x?.data?.error === 'overlaps' ? t('evadm.overlaps', 'Only ONE event can run at a time — this window overlaps “{n}”. Change the dates or disable it first.').replace('{n}', x.data?.with || '?') : t('common.failed', 'Failed.'));
   const del = async (ev) => { if (!(await dialog.confirm({ title: t('evadm.del.t', 'Delete event?'), message: ev.name, okLabel: t('evadm.del.ok', 'Delete'), danger: true }))) return; try { await api.del(`/admin/events/${ev.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
-  const toggle = async (ev) => { try { await api.put(`/admin/events/${ev.id}`, { enabled: !ev.enabled }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const toggle = async (ev) => { try { await api.put(`/admin/events/${ev.id}`, { enabled: !ev.enabled }); reload(); } catch (x) { toggleErr(x); } };
   const statusOf = (ev) => !ev.enabled ? ['', t('evadm.disabled', 'disabled')]
     : new Date(ev.startsAt) > now ? ['amber', t('evadm.upcoming', 'upcoming')]
     : new Date(ev.endsAt) < now ? ['', t('evadm.past', 'past')]
@@ -5060,8 +5073,60 @@ function AdminEvents() {
           <Field label={t('evadm.note', 'Note (internal)')}><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
         </div>
         <label className="flex items-center gap-2 text-sm text-[var(--muted)] mt-3 cursor-pointer w-fit"><input type="checkbox" checked={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} /> {t('evadm.enabled', 'Enabled')}</label>
+
+        {/* ── Effects editor — every knob of the visual layer, with a live preview ── */}
+        {f.theme !== 'none' && (() => {
+          const isFireworks = f.theme === 'newyear' || f.theme === 'national';
+          const hasStrip = ['winter', 'christmas', 'halloween', 'valentine', 'spring', 'summer', 'autumn', 'easter'].includes(f.theme);
+          // Plain JSX-returning helpers (NOT components) — a component defined inside
+          // render would remount its <input> every keystroke and break slider drags.
+          const slider = (k, label, min, max, step = 0.1, fmt = (v) => `×${v}`) => (
+            <div key={k} className="flex items-center gap-3">
+              <span className="text-xs text-[var(--muted)] w-28 shrink-0">{label}</span>
+              <input type="range" min={min} max={max} step={step} value={fxVal(k)} onChange={(e) => setFx(k, Number(e.target.value))} className="flex-1 accent-[var(--primary)]" />
+              <span className="text-xs font-medium tabular-nums w-12 text-right">{fmt(fxVal(k))}</span>
+            </div>
+          );
+          const fxCheck = (k, label) => (
+            <label key={k} className="flex items-center gap-2 text-xs text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={fxVal(k) !== false} onChange={(e) => setFx(k, e.target.checked)} /> {label}</label>
+          );
+          return (
+            <details className="mt-3 rounded-xl border border-[var(--line)] open:bg-[var(--surface-2)]/30">
+              <summary className="px-3 py-2.5 text-sm font-medium cursor-pointer select-none flex items-center gap-2"><Sliders size={14} className="text-[var(--primary-2)]" /> {t('evadm.fx', 'Effects editor')} <span className="text-[11px] text-[var(--faint)] font-normal">{t('evadm.fx.h', '— tune the visuals; unset knobs use the theme defaults')}</span></summary>
+              <div className="px-3 pb-3 space-y-2.5">
+                {!isFireworks && slider('density', t('evadm.fx.density', 'Density'), 0.1, 3)}
+                {isFireworks && slider('intensity', t('evadm.fx.intensity', 'Fireworks intensity'), 0.2, 3)}
+                {slider('speed', t('evadm.fx.speed', 'Speed'), 0.2, 3)}
+                {!isFireworks && slider('size', t('evadm.fx.size', 'Size'), 0.4, 2.5)}
+                {slider('opacity', t('evadm.fx.opacity', 'Opacity'), 0.1, 1, 0.05, (v) => `${Math.round(v * 100)}%`)}
+                {slider('wind', t('evadm.fx.wind', 'Wind'), -3, 3, 0.1, (v) => (v > 0 ? `→ ${v}` : v < 0 ? `← ${Math.abs(v)}` : '0'))}
+                {isFireworks && slider('density', t('evadm.fx.confetti', 'Confetti / flags'), 0.1, 3)}
+                {!isFireworks && (
+                  <Field label={t('evadm.fx.glyphs', 'Custom particles (emoji — overrides the theme set)')} hint={t('evadm.fx.glyphs.h', 'e.g. 🎃👻🦇 or ❄️⛄ — leave empty for the theme defaults.')}>
+                    <Input value={f.fx?.glyphs || ''} onChange={(e) => setFx('glyphs', e.target.value)} placeholder="🎃👻🦇" />
+                  </Field>
+                )}
+                <div className="flex items-center gap-4 flex-wrap pt-1">
+                  {hasStrip && fxCheck('strip', t('evadm.fx.strip', 'Bottom seasonal illustration'))}
+                  {f.theme === 'halloween' && fxCheck('fog', t('evadm.fx.fog', 'Fog'))}
+                  {f.theme === 'halloween' && fxCheck('sound', t('evadm.fx.sound', 'Spooky-sound button'))}
+                  {f.theme === 'newyear' && fxCheck('countdown', t('evadm.fx.countdown', 'Midnight countdown'))}
+                </div>
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <Button size="sm" variant="ghost" onClick={() => setF((s) => ({ ...s, fx: {} }))}><RefreshCw size={12} /> {t('evadm.fx.reset', 'Reset to defaults')}</Button>
+                  <Button size="sm" variant={preview ? 'primary' : 'default'} onClick={() => setPreview((v) => !v)}>
+                    {preview ? <><EyeOff size={13} /> {t('evadm.fx.stoppreview', 'Stop preview')}</> : <><Eye size={13} /> {t('evadm.fx.preview', 'Preview on this page')}</>}
+                  </Button>
+                </div>
+              </div>
+            </details>
+          );
+        })()}
+        {/* Live preview: renders the exact same layer stack the visitors get. */}
+        {preview && f.theme !== 'none' && <EventFxLayers preview event={{ theme: f.theme, flag: f.flag || null, fx: f.fx }} />}
+
         <div className="flex justify-end gap-2 mt-3">
-          {editing && <Button onClick={() => { setEditing(null); setF(blank); }}>{t('common.cancel', 'Cancel')}</Button>}
+          {editing && <Button onClick={() => { setEditing(null); setF(blank); setPreview(false); }}>{t('common.cancel', 'Cancel')}</Button>}
           <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : editing ? t('evadm.update', 'Update event') : <><Plus size={14} /> {t('evadm.create', 'Create event')}</>}</Button>
         </div>
       </Card>
