@@ -67,9 +67,7 @@ export default async function stripeWebhook(app) {
                 if (l.autoRenew && savedPm) {
                   try {
                     const trialEnd = Math.floor(until.getTime() / 1000);
-                    // Renewals bill the FULL price (baseCents) — event/promo discounts
-                    // only apply to the amount paid during the event window.
-                    const price = await stripe.prices.create({ currency: 'usd', unit_amount: Math.max(50, l.baseCents || 50), recurring: { interval: 'day', interval_count: l.days }, product_data: { name: `Feature "${repo.name}" (auto-renews every ${l.days} days)` } });
+                    const price = await stripe.prices.create({ currency: 'usd', unit_amount: Math.max(50, l.finalCents || l.baseCents || 50), recurring: { interval: 'day', interval_count: l.days }, product_data: { name: `Feature "${repo.name}" (auto-renews every ${l.days} days)` } });
                     const sub = await stripe.subscriptions.create({ customer: s.customer, items: [{ price: price.id }], default_payment_method: savedPm, trial_end: trialEnd, proration_behavior: 'none', metadata: { type: 'feature', kind: 'feature', repoId: repo.id, userId: cart.userId, days: String(l.days) } });
                     await p.featureSubscription.upsert({ where: { stripeSubId: sub.id }, create: { userId: cart.userId, serverRepoId: repo.id, stripeSubId: sub.id, days: l.days, status: 'active', currentPeriodEnd: until }, update: { status: 'active', currentPeriodEnd: until } });
                   } catch (e) { req.log?.warn?.({ err: e?.message }, 'cart boost auto-renew sub create failed'); }

@@ -1073,33 +1073,3 @@ model WebVital {
   @@index([path])
   @@index([metric])
 }
-
-// Site-wide events (Black Friday, Christmas, Halloween, national days, seasons…):
-// a scheduled window that can carry BOTH a visual theme (frontend effects/decor) and
-// an automatic price discount applied to purchases made DURING the window (a 1-year
-// prepay bought during a -30% event gets -30% on that whole prepaid year; later
-// auto-renewals bill full price). Admin-managed from the dashboard Events tab.
-model SiteEvent {
-  id          String   @id @default(cuid())
-  name        String   // shown on badges/banner ("Black Friday", "Fête nationale suisse"…)
-  theme       String   // halloween|newyear|valentine|christmas|blackfriday|national|spring|summer|autumn|winter|easter|none
-  flag        String?  // emoji flag for `national` theme (🇨🇭 🇫🇷 🇺🇸 …) — same effect, different flag
-  startsAt    DateTime
-  endsAt      DateTime
-  enabled     Boolean  @default(true)
-  discountPct Int      @default(0)      // 0 = visual-only event, no promo
-  scope       String   @default("all")  // what the discount applies to: all | hosting | boost
-  // Effect-editor overrides consumed by events-fx.jsx: { density, speed, size,
-  // opacity, wind, intensity, icons, colors, kind, overlay, strip, fog, sound,
-  // countdown } — all optional, theme defaults apply for anything unset.
-  fx          Json?
-  // Custom notification texts (empty = sensible default templates). Delivered
-  // on-visit, once per user: `soon` within 7 days before startsAt, `start` while live.
-  notifySoonMsg  String @default("")
-  notifyStartMsg String @default("")
-  note        String   @default("")
-
-  createdAt   DateTime @default(now())
-
-  @@index([enabled, startsAt, endsAt])
-}

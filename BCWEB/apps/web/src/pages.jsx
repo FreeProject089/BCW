@@ -4,7 +4,7 @@ import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload,
   Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive,
-  Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, PartyPopper,
+  Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2,
   Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight,
   Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket,
   CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss,
@@ -20,7 +20,6 @@ import { SKIP_KEY, useIntro } from './IntroContext.jsx';
 import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from './prefs.js';
 import { MyRepos, AdminRepos, Billing } from './repos.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
-import { fxDisabled, setFxDisabled, useActiveEvent, EventFxLayers, FX_DEFAULTS, ICON_NAMES, IconPreview } from './events-fx.jsx';
 import { AuthorsRow } from './blog.jsx';
 import Avatar from './Avatar.jsx';
 import { createRoot } from 'react-dom/client';
@@ -786,11 +785,6 @@ export function Hosting() {
   const { user } = useAuth(); const nav = useNavigate(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
   const plans = useAsync(() => api.get('/hosting/plans'), []);
   const cap = useAsync(() => api.get('/hosting/capacity'), []);
-  // Active site event → automatic discount badges + struck-through prices. The
-  // server re-applies the same % at quote/checkout, so this is display-only.
-  const activeEvent = useActiveEvent();
-  const evHostPct = activeEvent?.discountPct > 0 && (activeEvent.scope === 'all' || activeEvent.scope === 'hosting') ? activeEvent.discountPct : 0;
-  const evBoostPct = activeEvent?.discountPct > 0 && (activeEvent.scope === 'all' || activeEvent.scope === 'boost') ? activeEvent.discountPct : 0;
   const [customOpen, setCustomOpen] = useState(false);
   const [mode, setMode] = useState('single'); // single = one repo; multi = a shared storage pool
   const [months, setMonths] = useState(12); // prepaid term (1yr recommended)
@@ -945,10 +939,6 @@ export function Hosting() {
                 <span className="absolute rotate-45 text-white text-[9px] font-extrabold tracking-wider text-center py-1 shadow-md" style={{ width: 150, top: 22, right: -40, background: 'linear-gradient(90deg,#f97316,#f59e0b)' }}>{t('hosting.popular2', 'RECOMMENDED')}</span>
               </span>
             )}
-            {/* Event discount badge (top-left; the ribbon owns the top-right corner). */}
-            {evHostPct > 0 && !planDisabled && (
-              <span className="absolute top-2 left-2 z-20 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-red-500 text-white shadow animate-pulse pointer-events-none">−{evHostPct}%</span>
-            )}
             {/* Uniform tier header — every card looks the same. */}
             <div className="px-5 pt-6 pb-5 border-b border-[var(--line)]">
               <HardDrive size={20} className="mx-auto transition-transform group-hover:scale-110 text-[var(--primary-2)]" />
@@ -958,13 +948,8 @@ export function Hosting() {
             {/* body — speed, price, CTA */}
             <div className="p-5 flex-1 flex flex-col">
               <div className="text-xs text-[var(--faint)] flex items-center justify-center gap-1"><Zap size={12} />{(pl.uploadLimitKbps / 1024).toFixed(0)} Mbps {t('hosting.uploadword', 'upload')}</div>
-              {(() => { const full = termTotal(pl.priceMonthlyCents); const disc = evHostPct ? Math.round(full * (1 - evHostPct / 100)) : full; return (<>
-                <div className="text-3xl font-bold gradient-text mt-3">
-                  {evHostPct > 0 && <span className="text-base font-medium text-[var(--faint)] line-through mr-1.5">${(full / 100 / months).toFixed(2)}</span>}
-                  ${(disc / 100 / months).toFixed(2)}<span className="text-sm text-[var(--muted)] font-medium">{t('hosting.permo', '/mo')}</span>
-                </div>
-                <div className="text-[11px] text-[var(--muted)] mb-4">{months > 1 ? <>${(disc / 100).toFixed(2)} {t('hosting.billedfor', 'billed for')} {months} {t('hosting.mo', 'mo')}</> : t('hosting.billedmonthly', 'billed monthly')}{evHostPct > 0 && <span className="text-red-400 font-semibold"> · {activeEvent.name}</span>}</div>
-              </>); })()}
+              <div className="text-3xl font-bold gradient-text mt-3">${(termTotal(pl.priceMonthlyCents) / 100 / months).toFixed(2)}<span className="text-sm text-[var(--muted)] font-medium">{t('hosting.permo', '/mo')}</span></div>
+              <div className="text-[11px] text-[var(--muted)] mb-4">{months > 1 ? <>${(termTotal(pl.priceMonthlyCents) / 100).toFixed(2)} {t('hosting.billedfor', 'billed for')} {months} {t('hosting.mo', 'mo')}</> : t('hosting.billedmonthly', 'billed monthly')}</div>
               <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full mt-auto" onClick={(e) => { e.stopPropagation(); addHosting({ planId: pl.id }); }}>
                 {planDisabled ? t('hosting.nospace', 'Not enough space') : <><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}</>}</Button>
             </div>
@@ -982,7 +967,7 @@ export function Hosting() {
 
       {/* Boost an existing repo — added to the same cart (one-time, priced per day). */}
       {user && (myRepos.data?.repos || []).some((r) => r.hosted || r.listed) && (
-        <BoostAddCard repos={(myRepos.data?.repos || []).filter((r) => r.hosted || r.listed)} onAdd={addBoost} evPct={evBoostPct} evName={activeEvent?.name} />
+        <BoostAddCard repos={(myRepos.data?.repos || []).filter((r) => r.hosted || r.listed)} onAdd={addBoost} />
       )}
 
       <p className="text-xs text-[var(--faint)] mt-5 flex items-center gap-1.5"><ShieldCheck size={13} /> {t('hosting.note', 'Updates only require a valid SHA. We set the upload limit per repo.')}</p>
@@ -993,7 +978,7 @@ export function Hosting() {
 }
 
 // A small "add a boost to the cart" card: pick one of your repos + a duration.
-function BoostAddCard({ repos, onAdd, evPct = 0, evName = '' }) {
+function BoostAddCard({ repos, onAdd }) {
   const { t } = useI18n();
   const [repoId, setRepoId] = useState(repos[0]?.id || '');
   const [days, setDays] = useState(7);
@@ -1003,7 +988,7 @@ function BoostAddCard({ repos, onAdd, evPct = 0, evName = '' }) {
     <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-amber-500/10 to-transparent">
       <Rocket size={26} className="text-amber-400 shrink-0" />
       <div className="flex-1 w-full">
-        <div className="font-semibold text-lg flex items-center gap-2 flex-wrap">{t('cart.boost.title', 'Boost a repo to the top')}{evPct > 0 && <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-red-500 text-white animate-pulse">−{evPct}% {evName}</span>}</div>
+        <div className="font-semibold text-lg">{t('cart.boost.title', 'Boost a repo to the top')}</div>
         <div className="text-sm text-[var(--muted)] mb-2">{t('cart.boost.sub', 'Feature one of your repos at the top of the public listing for a set number of days.')}</div>
         <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 items-end">
           <Select value={repoId} onChange={(e) => setRepoId(e.target.value)}>{repos.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select>
@@ -1115,7 +1100,6 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
       <div className="border-t border-[var(--line)] p-3 space-y-1.5">
         {quote && (<>
           <div className="flex justify-between text-sm text-[var(--muted)]"><span>{t('cart.subtotal', 'Subtotal')}</span><span className="tabular-nums">{money(quote.subtotalCents)}</span></div>
-          {quote.event && <div className="flex justify-between text-sm text-red-400 font-medium"><span>🏷️ {quote.event.name}</span><span>−{quote.event.pct}%</span></div>}
           {quote.discountCents > 0 && <div className="flex justify-between text-sm text-emerald-400"><span>{t('cart.discount', 'Discount')}{quote.combinedPct ? ` (−${quote.combinedPct}%)` : ''}</span><span className="tabular-nums">−{money(quote.discountCents)}</span></div>}
           <div className="flex justify-between font-bold text-base pt-1 border-t border-[var(--line)]"><span>{t('cart.total', 'Total')}</span><span className="tabular-nums">{money(quote.totalCents)}</span></div>
         </>)}
@@ -2091,7 +2075,6 @@ export function Admin() {
     isAdmin && { id: 'projects', label: t('adm.tab.projects', 'Projects'), icon: Settings2 },
     isAdmin && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
     isAdmin && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
-    isAdmin && { id: 'events', label: t('adm.tab.events', 'Events'), icon: PartyPopper },
 
     isAdmin && { heading: t('adm.h.server', 'Server') },
     isAdmin && { id: 'serverperf', label: t('adm.tab.serverperf', 'Server perf'), icon: Cpu },
@@ -2157,7 +2140,6 @@ export function Admin() {
         {s === 'analytics' && <AdminAnalytics />}
         {s === 'projects' && <AdminProjects />}
         {s === 'showcase' && <AdminShowcase />}
-        {s === 'events' && <AdminEvents />}
         {s === 'settings' && <AdminSettings />}
       </>)}
     </SideDash>
@@ -4992,208 +4974,6 @@ function BotGiveawaysCard() {
   );
 }
 
-// ── Admin: site events (themes/effects + automatic discounts) ────────────────
-const EVENT_THEMES_UI = [
-  ['none', 'No visual theme'], ['blackfriday', '🏷️ Black Friday'], ['christmas', '🎄 Christmas'],
-  ['halloween', '🎃 Halloween'], ['newyear', '🎆 New Year'], ['valentine', '💘 Valentine'],
-  ['easter', '🐣 Easter'], ['national', '🎇 National day (set the flag)'],
-  ['spring', '🌸 Spring'], ['summer', '☀️ Summer'], ['autumn', '🍂 Autumn'], ['winter', '❄️ Winter'],
-  ['custom', '🧩 Custom (build your own)'],
-];
-// Quick presets — prefill the form with this year's usual window (all editable).
-const EVENT_PRESETS = [
-  { label: '🏷️ Black Friday', name: 'Black Friday', theme: 'blackfriday', m1: 10, d1: 24, m2: 11, d2: 1, pct: 30 },
-  { label: '🎄 Christmas', name: 'Christmas', theme: 'christmas', m1: 11, d1: 1, m2: 11, d2: 26 },
-  { label: '🎃 Halloween', name: 'Halloween', theme: 'halloween', m1: 9, d1: 24, m2: 10, d2: 1 },
-  { label: '🎆 New Year', name: 'New Year', theme: 'newyear', m1: 11, d1: 31, m2: 0, d2: 2, nextYearEnd: true },
-  { label: '💘 Valentine', name: "Valentine's Day", theme: 'valentine', m1: 1, d1: 12, m2: 1, d2: 15 },
-  { label: '🇨🇭 Fête nationale suisse', name: 'Fête nationale suisse', theme: 'national', flag: '🇨🇭', m1: 7, d1: 1, m2: 7, d2: 2 },
-  { label: '🇫🇷 Fête nationale française', name: 'Fête nationale française', theme: 'national', flag: '🇫🇷', m1: 6, d1: 14, m2: 6, d2: 15 },
-  { label: '🇺🇸 Independence Day', name: 'Independence Day', theme: 'national', flag: '🇺🇸', m1: 6, d1: 4, m2: 6, d2: 5 },
-];
-const dtLocal = (d) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 16); };
-function AdminEvents() {
-  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
-  const { data, loading, reload } = useAsync(() => api.get('/admin/events'), []);
-  const blank = { name: '', theme: 'none', flag: '', startsAt: dtLocal(new Date()), endsAt: dtLocal(new Date(Date.now() + 7 * 864e5)), discountPct: 0, scope: 'all', enabled: true, note: '', fx: {}, notifySoonMsg: '', notifyStartMsg: '' };
-  const [f, setF] = useState(blank);
-  const [editing, setEditing] = useState(null); // event id being edited (null = create)
-  const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState(false); // live effects preview on this page
-  const setFx = (k, v) => setF((s) => ({ ...s, fx: { ...s.fx, [k]: v } }));
-  const fxVal = (k) => f.fx?.[k] ?? FX_DEFAULTS[k];
-  const events = data?.events || [];
-  const now = Date.now();
-  const applyPreset = (pr) => {
-    const y = new Date().getFullYear();
-    const start = new Date(y, pr.m1, pr.d1, 0, 0);
-    const end = new Date(pr.nextYearEnd ? y + 1 : y, pr.m2, pr.d2, 23, 59);
-    setF({ ...blank, name: pr.name, theme: pr.theme, flag: pr.flag || '', startsAt: dtLocal(start), endsAt: dtLocal(end), discountPct: pr.pct || 0 });
-    setEditing(null);
-  };
-  const save = async () => {
-    if (!f.name.trim()) return toast.error(t('evadm.needname', 'Give the event a name.'));
-    setBusy(true);
-    try {
-      const body = { name: f.name.trim(), theme: f.theme, flag: f.theme === 'national' ? (f.flag || null) : null, startsAt: new Date(f.startsAt).toISOString(), endsAt: new Date(f.endsAt).toISOString(), discountPct: Number(f.discountPct) || 0, scope: f.scope, enabled: !!f.enabled, fx: f.fx || {}, notifySoonMsg: f.notifySoonMsg || '', notifyStartMsg: f.notifyStartMsg || '', note: f.note || '' };
-      if (editing) await api.put(`/admin/events/${editing}`, body); else await api.post('/admin/events', body);
-      toast.success(t('evadm.saved', 'Event saved — active site-wide during its window.'));
-      setF(blank); setEditing(null); setPreview(false); reload();
-    } catch (x) {
-      const e = x.data?.error;
-      toast.error(e === 'ends_before_starts' ? t('evadm.dates', 'End must be after start.')
-        : e === 'overlaps' ? t('evadm.overlaps', 'Only ONE event can run at a time — this window overlaps “{n}”. Change the dates or disable it first.').replace('{n}', x.data?.with || '?')
-        : t('common.failed', 'Failed.'));
-    } finally { setBusy(false); }
-  };
-  const edit = (ev) => { setEditing(ev.id); setF({ name: ev.name, theme: ev.theme, flag: ev.flag || '', startsAt: dtLocal(ev.startsAt), endsAt: dtLocal(ev.endsAt), discountPct: ev.discountPct, scope: ev.scope, enabled: ev.enabled, note: ev.note || '', fx: ev.fx || {}, notifySoonMsg: ev.notifySoonMsg || '', notifyStartMsg: ev.notifyStartMsg || '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  // The toggle enable button can also hit the one-event-at-a-time rule.
-  const toggleErr = (x) => toast.error(x?.data?.error === 'overlaps' ? t('evadm.overlaps', 'Only ONE event can run at a time — this window overlaps “{n}”. Change the dates or disable it first.').replace('{n}', x.data?.with || '?') : t('common.failed', 'Failed.'));
-  const del = async (ev) => { if (!(await dialog.confirm({ title: t('evadm.del.t', 'Delete event?'), message: ev.name, okLabel: t('evadm.del.ok', 'Delete'), danger: true }))) return; try { await api.del(`/admin/events/${ev.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
-  const toggle = async (ev) => { try { await api.put(`/admin/events/${ev.id}`, { enabled: !ev.enabled }); reload(); } catch (x) { toggleErr(x); } };
-  const statusOf = (ev) => !ev.enabled ? ['', t('evadm.disabled', 'disabled')]
-    : new Date(ev.startsAt) > now ? ['amber', t('evadm.upcoming', 'upcoming')]
-    : new Date(ev.endsAt) < now ? ['', t('evadm.past', 'past')]
-    : ['green', t('evadm.live', 'LIVE')];
-  return (
-    <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><PartyPopper size={16} className="text-[var(--primary-2)]" /> {t('evadm.title', 'Site events')}</h2>
-      <p className="text-sm text-[var(--muted)] mb-3">{t('evadm.sub', 'Scheduled windows with a visual theme (snow, fireworks, hearts…) and/or an automatic discount on everything bought during them. Visitors can disable the visuals in Settings; the pricing always applies.')}</p>
-      <div className="flex flex-wrap gap-1.5 mb-3">
-        {EVENT_PRESETS.map((pr) => <button key={pr.label} onClick={() => applyPreset(pr)} className="text-xs px-2.5 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)] hover:border-[var(--primary)] transition">{pr.label}</button>)}
-      </div>
-      <Card className="p-4 mb-4">
-        <div className="grid sm:grid-cols-2 gap-3">
-          <Field label={t('evadm.name', 'Name (shown on badges/banner)')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Black Friday" /></Field>
-          <Field label={t('evadm.theme', 'Visual theme')}><Select value={f.theme} onChange={(e) => setF({ ...f, theme: e.target.value })}>{EVENT_THEMES_UI.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></Field>
-          {f.theme === 'national' && <Field label={t('evadm.flag', 'Flag emoji')} hint={t('evadm.flag.h', 'Same fireworks effect, this flag rains down (🇨🇭 🇫🇷 🇺🇸 …).')}><Input value={f.flag} onChange={(e) => setF({ ...f, flag: e.target.value })} placeholder="🇨🇭" /></Field>}
-          <Field label={t('evadm.start', 'Starts')}><Input type="datetime-local" value={f.startsAt} onChange={(e) => setF({ ...f, startsAt: e.target.value })} /></Field>
-          <Field label={t('evadm.end', 'Ends')}><Input type="datetime-local" value={f.endsAt} onChange={(e) => setF({ ...f, endsAt: e.target.value })} /></Field>
-          <Field label={t('evadm.pct', 'Discount % (0 = visuals only)')} hint={t('evadm.pct.h', 'Applied automatically at checkout on everything bought during the window — a 1-year prepay gets the full cut; later renewals bill full price.')}><Input type="number" min="0" max="90" value={f.discountPct} onChange={(e) => setF({ ...f, discountPct: e.target.value })} /></Field>
-          <Field label={t('evadm.scope', 'Discount applies to')}><Select value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })}><option value="all">{t('evadm.scope.all', 'All articles (hosting + boosts)')}</option><option value="hosting">{t('evadm.scope.hosting', 'Hosting only')}</option><option value="boost">{t('evadm.scope.boost', 'Boosts only')}</option></Select></Field>
-          <Field label={t('evadm.note', 'Note (internal)')}><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
-          <Field label={t('evadm.notifysoon', 'Notification — 7 days before (blank = auto)')} hint={t('evadm.notifysoon.h', 'Sent ONCE per user who visits the site in the 7 days before the start.')}>
-            <Input value={f.notifySoonMsg} onChange={(e) => setF({ ...f, notifySoonMsg: e.target.value })} placeholder={t('evadm.notifysoon.ph', '🎉 Black Friday starts Nov 24 — −30% on everything!')} />
-          </Field>
-          <Field label={t('evadm.notifystart', 'Notification — when it goes live (blank = auto)')} hint={t('evadm.notifystart.h', 'Sent ONCE per user who visits while the event is live.')}>
-            <Input value={f.notifyStartMsg} onChange={(e) => setF({ ...f, notifyStartMsg: e.target.value })} placeholder={t('evadm.notifystart.ph', '🎊 Black Friday is LIVE — −30% until Dec 1!')} />
-          </Field>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-[var(--muted)] mt-3 cursor-pointer w-fit"><input type="checkbox" checked={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} /> {t('evadm.enabled', 'Enabled')}</label>
-
-        {/* ── Effects editor — every knob of the visual layer, with a live preview ── */}
-        {f.theme !== 'none' && (() => {
-          const isFireworks = f.theme === 'newyear' || f.theme === 'national' || (f.theme === 'custom' && f.fx?.kind === 'fireworks');
-          const hasStrip = ['winter', 'christmas', 'halloween', 'valentine', 'spring', 'summer', 'autumn', 'easter'].includes(f.theme);
-          const icons = f.fx?.icons || [];
-          const colors = f.fx?.colors || [];
-          const toggleIcon = (name) => setFx('icons', icons.includes(name) ? icons.filter((x) => x !== name) : [...icons, name].slice(0, 8));
-          // Plain JSX-returning helpers (NOT components) — a component defined inside
-          // render would remount its <input> every keystroke and break slider drags.
-          const slider = (k, label, min, max, step = 0.1, fmt = (v) => `×${v}`) => (
-            <div key={k} className="flex items-center gap-3">
-              <span className="text-xs text-[var(--muted)] w-28 shrink-0">{label}</span>
-              <input type="range" min={min} max={max} step={step} value={fxVal(k)} onChange={(e) => setFx(k, Number(e.target.value))} className="flex-1 accent-[var(--primary)]" />
-              <span className="text-xs font-medium tabular-nums w-12 text-right">{fmt(fxVal(k))}</span>
-            </div>
-          );
-          const fxCheck = (k, label) => (
-            <label key={k} className="flex items-center gap-2 text-xs text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={fxVal(k) !== false} onChange={(e) => setFx(k, e.target.checked)} /> {label}</label>
-          );
-          return (
-            <details className="mt-3 rounded-xl border border-[var(--line)] open:bg-[var(--surface-2)]/30">
-              <summary className="px-3 py-2.5 text-sm font-medium cursor-pointer select-none flex items-center gap-2"><Sliders size={14} className="text-[var(--primary-2)]" /> {t('evadm.fx', 'Effects editor')} <span className="text-[11px] text-[var(--faint)] font-normal">{t('evadm.fx.h', '— tune the visuals; unset knobs use the theme defaults')}</span></summary>
-              <div className="px-3 pb-3 space-y-2.5">
-                {!isFireworks && slider('density', t('evadm.fx.density', 'Density'), 0.1, 3)}
-                {isFireworks && slider('intensity', t('evadm.fx.intensity', 'Fireworks intensity'), 0.2, 3)}
-                {slider('speed', t('evadm.fx.speed', 'Speed'), 0.2, 3)}
-                {!isFireworks && slider('size', t('evadm.fx.size', 'Size'), 0.4, 2.5)}
-                {slider('opacity', t('evadm.fx.opacity', 'Opacity'), 0.1, 1, 0.05, (v) => `${Math.round(v * 100)}%`)}
-                {slider('wind', t('evadm.fx.wind', 'Wind'), -3, 3, 0.1, (v) => (v > 0 ? `→ ${v}` : v < 0 ? `← ${Math.abs(v)}` : '0'))}
-                {isFireworks && slider('density', t('evadm.fx.confetti', 'Confetti / flags'), 0.1, 3)}
-                {f.theme === 'custom' && (
-                  <Field label={t('evadm.fx.kind', 'Behavior')} hint={t('evadm.fx.kind.h', 'How your particles move.')}>
-                    <Select value={f.fx?.kind || 'fall'} onChange={(e) => setFx('kind', e.target.value)}>
-                      <option value="fall">{t('evadm.fx.kind.fall', 'Fall (like leaves)')}</option>
-                      <option value="rise">{t('evadm.fx.kind.rise', 'Rise (like hearts)')}</option>
-                      <option value="float">{t('evadm.fx.kind.float', 'Float & pulse (like ghosts)')}</option>
-                      <option value="snow">{t('evadm.fx.kind.snow', 'Snow (soft dots + icons)')}</option>
-                      <option value="fireworks">{t('evadm.fx.kind.fireworks', 'Fireworks + confetti')}</option>
-                    </Select>
-                  </Field>
-                )}
-                {!isFireworks && (
-                  <div>
-                    <div className="text-xs font-medium text-[var(--muted)] mb-1.5">{t('evadm.fx.icons', 'Particle icons (vector — overrides the theme set)')}</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {ICON_NAMES.map((name) => (
-                        <button key={name} type="button" onClick={() => toggleIcon(name)} title={name}
-                          className={`w-9 h-9 grid place-items-center rounded-lg border transition ${icons.includes(name) ? 'border-[var(--primary)] bg-[var(--primary)]/12' : 'border-[var(--line)] bg-[var(--surface-2)] hover:border-[var(--line-strong)]'}`}>
-                          <IconPreview name={name} size={18} />
-                        </button>
-                      ))}
-                    </div>
-                    <div className="text-[11px] text-[var(--faint)] mt-1">{t('evadm.fx.icons.h', 'None selected = the theme’s default icons. Max 8.')}</div>
-                  </div>
-                )}
-                <div>
-                  <div className="text-xs font-medium text-[var(--muted)] mb-1.5">{t('evadm.fx.colors', 'Color palette (particles / confetti)')}</div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {colors.map((c, i) => (
-                      <span key={i} className="relative inline-flex">
-                        <input type="color" value={c} onChange={(e) => setFx('colors', colors.map((x, j) => (j === i ? e.target.value : x)))} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer" />
-                        <button type="button" onClick={() => setFx('colors', colors.filter((_, j) => j !== i))} className="absolute -top-1.5 -right-1.5 w-4 h-4 grid place-items-center rounded-full bg-[var(--bg-solid)] border border-[var(--line)] text-[var(--faint)] hover:text-red-400"><X size={9} /></button>
-                      </span>
-                    ))}
-                    {colors.length < 8 && <Button size="sm" type="button" onClick={() => setFx('colors', [...colors, '#f97316'])}><Plus size={13} /></Button>}
-                  </div>
-                  <div className="text-[11px] text-[var(--faint)] mt-1">{t('evadm.fx.colors.h', 'Empty = each icon’s natural color (theme default).')}</div>
-                </div>
-                <div className="flex items-center gap-4 flex-wrap pt-1">
-                  {hasStrip && fxCheck('strip', t('evadm.fx.strip', 'Bottom seasonal illustration'))}
-                  {f.theme === 'halloween' && fxCheck('fog', t('evadm.fx.fog', 'Fog'))}
-                  {f.theme === 'halloween' && fxCheck('sound', t('evadm.fx.sound', 'Spooky-sound button'))}
-                  {f.theme === 'newyear' && fxCheck('countdown', t('evadm.fx.countdown', 'Midnight countdown'))}
-                  <label className="flex items-center gap-2 text-xs text-[var(--muted)] cursor-pointer w-fit" title={t('evadm.fx.overlay.h', 'Default: particles are drawn BEHIND the content, so text stays perfectly readable.')}>
-                    <input type="checkbox" checked={f.fx?.overlay === true} onChange={(e) => setFx('overlay', e.target.checked)} /> {t('evadm.fx.overlay', 'Particles over content')}
-                  </label>
-                </div>
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <Button size="sm" variant="ghost" onClick={() => setF((s) => ({ ...s, fx: {} }))}><RefreshCw size={12} /> {t('evadm.fx.reset', 'Reset to defaults')}</Button>
-                  <Button size="sm" variant={preview ? 'primary' : 'default'} onClick={() => setPreview((v) => !v)}>
-                    {preview ? <><EyeOff size={13} /> {t('evadm.fx.stoppreview', 'Stop preview')}</> : <><Eye size={13} /> {t('evadm.fx.preview', 'Preview on this page')}</>}
-                  </Button>
-                </div>
-              </div>
-            </details>
-          );
-        })()}
-        {/* Live preview: renders the exact same layer stack the visitors get. */}
-        {preview && f.theme !== 'none' && <EventFxLayers preview event={{ theme: f.theme, flag: f.flag || null, fx: f.fx }} />}
-
-        <div className="flex justify-end gap-2 mt-3">
-          {editing && <Button onClick={() => { setEditing(null); setF(blank); setPreview(false); }}>{t('common.cancel', 'Cancel')}</Button>}
-          <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : editing ? t('evadm.update', 'Update event') : <><Plus size={14} /> {t('evadm.create', 'Create event')}</>}</Button>
-        </div>
-      </Card>
-      {loading ? <Loading /> : events.length ? <div className="space-y-2">
-        {events.map((ev) => { const [tone, st] = statusOf(ev); return (
-          <Card key={ev.id} className="p-4 flex items-center gap-3 flex-wrap">
-            <span className="text-xl shrink-0">{(EVENT_THEMES_UI.find(([v]) => v === ev.theme) || ['', '🎉'])[1].split(' ')[0]}</span>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium flex items-center gap-2 flex-wrap">{ev.name} {ev.flag && <span>{ev.flag}</span>} <Badge tone={tone}>{st}</Badge> {ev.discountPct > 0 && <Badge tone="primary">−{ev.discountPct}% · {ev.scope}</Badge>}</div>
-              <div className="text-xs text-[var(--faint)]">{new Date(ev.startsAt).toLocaleString()} → {new Date(ev.endsAt).toLocaleString()}{ev.note ? ` · ${ev.note}` : ''}</div>
-            </div>
-            <Button size="sm" variant="ghost" onClick={() => toggle(ev)}>{ev.enabled ? t('evadm.disable', 'Disable') : t('evadm.enable', 'Enable')}</Button>
-            <Button size="sm" variant="ghost" onClick={() => edit(ev)}>{t('common.edit', 'Edit')}</Button>
-            <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(ev)}><Trash2 size={13} /></Button>
-          </Card>
-        ); })}
-      </div> : <EmptyState icon={PartyPopper} title={t('evadm.none.t', 'No events yet')} sub={t('evadm.none.s', 'Use a preset above or create one — theme, dates, and an optional automatic discount.')} />}
-    </div>
-  );
-}
-
 // Diagnostic under the Payments module: shows whether Payment rows even exist, so
 // "the bot doesn't post real payments" can be told apart from "no payments recorded
 // at all" (= the Stripe webhook isn't reaching the API).
@@ -7054,7 +6834,6 @@ export function Settings() {
   const [skipIntro, setSkipIntro] = useState(() => { try { return localStorage.getItem(SKIP_KEY) === '1'; } catch { return false; } });
   const [consent, setConsentState] = useState(() => getConsent() || 'essential');
   const [glass, setGlass] = useState(() => getGlassPrefs());
-  const [eventFxOff, setEventFxOff] = useState(() => fxDisabled());
   const [orbTransition, setOrbTransition] = useState(() => getOrbTransitionPref());
 
   const setIntro = (skip) => { setSkipIntro(skip); try { skip ? localStorage.setItem(SKIP_KEY, '1') : localStorage.removeItem(SKIP_KEY); } catch {} };
@@ -7103,9 +6882,6 @@ export function Settings() {
             <span className="text-xs font-medium tabular-nums w-10 text-right">{glass.pct}%</span>
           </div>
         )}
-        <Row icon={Sparkles} title={t('set.eventfx', 'Seasonal event effects')} desc={t('set.eventfx.d', 'Snow, fireworks, hearts & other decorations during site events. Promo banners stay either way.')}>
-          <Switch on={!eventFxOff} onChange={(v) => { setFxDisabled(!v); setEventFxOff(!v); }} />
-        </Row>
       </Card>
 
       <Card className="p-4 sm:p-5">

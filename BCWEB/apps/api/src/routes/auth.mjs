@@ -4,7 +4,6 @@ import argon2 from 'argon2';
 import crypto from 'node:crypto';
 import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual } from '../lib.mjs';
 import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '../totp.mjs';
-import { maybeNotifyEvents } from './events.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 // The real client IP as observed by our trusted proxy (Caddy appends it last).
@@ -209,9 +208,6 @@ export default async function authRoutes(app) {
     if (!req.user?.uid) return { user: null };
     const p = await db();
     const user = await p.user.findUnique({ where: { id: req.user.uid }, select: profileSelect });
-    // On-visit event notifications (soon/live, once per user per event) — fire and
-    // forget so /me never waits on it. No-op unless an event window is relevant.
-    maybeNotifyEvents(p, req.user.uid);
     return { user };
   });
 
