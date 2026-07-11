@@ -199,7 +199,20 @@ export async function registerRepoFile(p, repo, { path: rawPath, key, size, cont
   await recomputeUsage(p, repo.id);
   // Content changed → must be re-published to be served again. The manifest is
   // auto-hashed + auto-verified: a valid repo.json → verified, else not.
-  const data = { published: false, pendingReview: false };
+  const data = { published: false };
+  // A LISTED repo's content change must be RE-REVIEWED before it re-appears in the
+  // public list (external repos do the same in /push) — otherwise a verified listing
+  // could be silently swapped. Notify mods once, on the transition into review, so a
+  // multi-file upload (one call per file) doesn't spam them.
+  if (repo.listed) {
+    data.pendingReview = true;
+    if (!repo.pendingReview) {
+      const mods = await p.user.findMany({ where: { role: { in: ['MOD', 'ADMIN', 'SUPERADMIN'] } }, select: { id: true } });
+      await Promise.all(mods.map((m) => notify(p, m.id, 'repo_review', `"${repo.name}" changed its hosted content and is back in the review queue.`).catch(() => {})));
+    }
+  } else {
+    data.pendingReview = false;
+  }
   if (path === 'repo.json') {
     // Parse + validate against the CURRENT format — an old/invalid manifest is stored
     // (so the owner can see it) but stays UNVERIFIED, so it won't be listed publicly.

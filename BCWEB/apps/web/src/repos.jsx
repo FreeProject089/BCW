@@ -394,8 +394,12 @@ export function MyRepos() {
   // Push re-runs the auto check: the SHA is recomputed from the live repo.json and
   // the repo is re-verified automatically (valid → verified, else unverified).
   const push = async (r) => {
-    try { const res = await api.post(`/repos/${r.id}/push`, {}); toast[res.verified ? 'success' : 'info'](res.verified ? t('repos.push.ok', 'Pushed — re-checked & verified.') : t('repos.push.bad', 'Pushed — content is not a valid repo.json (unverified).')); reload(); }
-    catch (x) { toast.error(x.data?.error || t('repos.failed', 'Failed.')); }
+    try {
+      const res = await api.post(`/repos/${r.id}/push`, {});
+      if (res.reReview) toast.info(t('repos.push.review', 'Pushed — your change is back in review before it re-appears in the public list.'));
+      else toast[res.verified ? 'success' : 'info'](res.verified ? t('repos.push.ok', 'Pushed — re-checked & verified.') : t('repos.push.bad', 'Pushed — content is not a valid repo.json (unverified).'));
+      reload();
+    } catch (x) { toast.error(x.data?.error === 'repo_suspended' ? t('repos.suspended.short', 'This repo is suspended — contact support.') : x.data?.error || t('repos.failed', 'Failed.')); }
   };
   const toggleList = async (r) => {
     try {
@@ -490,6 +494,13 @@ export function MyRepos() {
                 <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--warning-border)] bg-[var(--warning-bg)] px-3 py-2 text-xs">
                   <Clock size={14} className="text-[var(--warning)] shrink-0 mt-0.5" />
                   <span className="flex-1 text-[var(--warning)]">{t('repos.inreview.notice', 'In review — a moderator is verifying it before it appears in the public list. It keeps serving normally; any new change restarts the review.')}</span>
+                </div>
+              )}
+              {r.status === 'PROVISIONING' && !repoLocked(r) && !r.deleteAt && (
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--info-border)] bg-[var(--info-bg)] px-3 py-2 text-xs">
+                  <RefreshCw size={14} className="text-[var(--info)] shrink-0 mt-0.5 animate-spin" />
+                  <span className="flex-1 text-[var(--info)]">{t('repos.provisioning.notice', 'Provisioning — open the dashboard, upload your files (including repo.json) and publish to bring it online.')}</span>
+                  <Link to={`/repo/${r.id}`}><Button size="sm" variant="primary"><LayoutDashboard size={12} /> {t('repos.opendash', 'Dashboard')}</Button></Link>
                 </div>
               )}
               <div className="flex items-start gap-3">

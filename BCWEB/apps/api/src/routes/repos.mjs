@@ -73,6 +73,21 @@ async function autoVerify(p, repoId) {
   return { repo: out, health: h };
 }
 
+// When a LISTED repo's CONTENT changes (new SHA), it must be re-reviewed before it
+// re-appears in the public list — otherwise a verified listing could be silently
+// swapped for anything. The repo keeps serving; it just drops out of the public list
+// (which requires pendingReview:false) until a mod re-approves. Staff-owned repos
+// bypass the queue. Returns true if it re-entered review.
+async function restartReviewIfListed(p, repo, user, oldSha, newSha) {
+  const isStaff = ['MOD', 'ADMIN', 'SUPERADMIN'].includes(user.role);
+  if (!repo.listed || isStaff || !newSha || newSha === oldSha || repo.pendingReview) return false;
+  await p.serverRepo.update({ where: { id: repo.id }, data: { pendingReview: true } });
+  const mods = await p.user.findMany({ where: { role: { in: ['MOD', 'ADMIN', 'SUPERADMIN'] } }, select: { id: true } });
+  await Promise.all(mods.map((m) => notify(p, m.id, 'repo_review', `"${repo.name}" changed its content and is back in the review queue.`).catch(() => {})));
+  await notify(p, repo.ownerId, 'repo_review', `Your change to "${repo.name}" is under review before it re-appears in the public list.`).catch(() => {});
+  return true;
+}
+
 // Re-verify listed, URL-based repos (health + SHA + verified). Hosted repos verify
 // from their uploaded repo.json and are managed by the provisioner, so they're skipped.
 // Used by the periodic auto-check and the admin "Check all" button.
@@ -510,7 +525,8 @@ export default async function repoRoutes(app) {
     if (b.data.sizeBytes != null) data.storageUsedBytes = BigInt(b.data.sizeBytes);
     if (Object.keys(data).length) await p.serverRepo.update({ where: { id: repo.id }, data });
     const res = await autoVerify(p, repo.id); // recompute sha + verify from the live content
-    return { ok: true, verified: !!res?.repo?.verified };
+    const reReview = await restartReviewIfListed(p, repo, req.user, repo.sha, res?.repo?.sha);
+    return { ok: true, verified: !!res?.repo?.verified, reReview };
   });
 
   // Toggle public listing. Going public requires a valid manifest (SHA): if it isn't
