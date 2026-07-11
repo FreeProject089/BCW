@@ -2904,6 +2904,21 @@ function AdminSecurity() {
 
 // A compact multi-line SVG chart for cpu/mem/disk % history — same hand-rolled
 // approach as the repo dashboard's traffic chart (no charting library dependency).
+// Smooth path through points [{x,y}] via Catmull-Rom → cubic Bézier. Turns jagged
+// straight-segment line charts into polished flowing curves (the "pro chart" look).
+function smoothPath(pts) {
+  if (!pts.length) return '';
+  if (pts.length < 3) return pts.map((p, i) => `${i ? 'L' : 'M'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
 function MetricChart({ history }) {
   const [wrapRef, W] = useElementWidth(760); const H = 200; const padL = 32; const padR = 8; const padY = 16;
   const [hoverIdx, setHoverIdx] = useState(null);
@@ -2914,12 +2929,15 @@ function MetricChart({ history }) {
   // A lone point (or two) has no meaningful line yet — draw dots too, so the chart
   // is never blank while history is still building up (a single "M ..." path with
   // no "L" segment renders invisibly, which looked like a broken/empty graph).
-  const series = (key, color) => (
-    <g key={key}>
-      {n > 1 && <path d={history.map((h, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(h[key]).toFixed(1)}`).join(' ')} fill="none" stroke={color} strokeWidth={2} />}
-      {history.map((h, i) => <circle key={i} cx={x(i)} cy={y(h[key])} r={hoverIdx === i ? (n > 12 ? 3 : 4) : (n > 12 ? 1.5 : 2.5)} fill={color} />)}
-    </g>
-  );
+  const series = (key, color) => {
+    const d = smoothPath(history.map((h, i) => ({ x: x(i), y: y(h[key]) })));
+    return (
+      <g key={key}>
+        {n > 1 && <path d={d} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />}
+        {history.map((h, i) => <circle key={i} cx={x(i)} cy={y(h[key])} r={hoverIdx === i ? (n > 12 ? 3 : 4) : (n > 12 ? 1.5 : 2.5)} fill={color} />)}
+      </g>
+    );
+  };
   // Map mouse position -> nearest sample by comparing against the SVG's own
   // viewBox coordinate space (via its rendered bounding box), so this stays
   // correct regardless of how wide the chart is actually drawn on screen.
@@ -6055,8 +6073,8 @@ function TrafficChart({ series, gran = 'day', onZoom, compare }) {
   const max = Math.max(1, ...series.map((s) => Math.max(s.count, s.visitors || 0)));
   const x = (i) => padL + (n <= 1 ? (W - padL - padR) / 2 : (i / (n - 1)) * (W - padL - padR));
   const y = (v) => H - padY - (v / max) * (H - padY * 2);
-  const path = (key) => series.map((s, i) => `${i ? 'L' : 'M'} ${x(i).toFixed(1)} ${y(s[key] || 0).toFixed(1)}`).join(' ');
-  const area = `${path('count')} L ${x(n - 1).toFixed(1)} ${H - padY} L ${x(0).toFixed(1)} ${H - padY} Z`;
+  const linePath = (key) => smoothPath(series.map((s, i) => ({ x: x(i), y: y(s[key] || 0) })));
+  const area = `${linePath('count')} L ${x(n - 1).toFixed(1)} ${H - padY} L ${x(0).toFixed(1)} ${H - padY} Z`;
   const labelEvery = Math.ceil(n / 8);
   // Y-axis gridlines at 0 / ¼ / ½ / ¾ / max — finer scale so the exact height of
   // each point is readable, not just "somewhere between zero and the peak".
@@ -6075,8 +6093,8 @@ function TrafficChart({ series, gran = 'day', onZoom, compare }) {
           </g>
         ))}
         <path d={area} fill="url(#viewsGrad)" />
-        <path d={path('count')} fill="none" stroke="var(--primary)" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
-        <path d={path('visitors')} fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+        <path d={linePath('count')} fill="none" stroke="var(--primary)" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={linePath('visitors')} fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
         {/* the latest point stays marked even without hovering, so the line doesn't just trail off */}
         {!hover && <circle cx={x(n - 1)} cy={y(last.count)} r="3" fill="var(--primary)" />}
         {hover && <line x1={x(hover.i)} y1={padY} x2={x(hover.i)} y2={H - padY} stroke="var(--line-strong)" strokeWidth="1" vectorEffect="non-scaling-stroke" />}
@@ -6120,7 +6138,7 @@ function Sparkline({ data, className = '', stroke = 'var(--primary)' }) {
   const W = 120, H = 40, max = Math.max(1, ...data), n = data.length;
   const x = (i) => (i / (n - 1)) * W;
   const y = (v) => H - (v / max) * (H - 3) - 1.5;
-  const line = data.map((v, i) => `${i ? 'L' : 'M'} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+  const line = smoothPath(data.map((v, i) => ({ x: x(i), y: y(v) })));
   const area = `${line} L ${W} ${H} L 0 ${H} Z`;
   const gid = `spk-${Math.random().toString(36).slice(2, 8)}`;
   return (
