@@ -1288,6 +1288,7 @@ export function Auth() {
   const [busy, setBusy] = useState(false); const [step, setStep] = useState('');
   const [twoFa, setTwoFa] = useState(null); // { tempToken } once password is verified and a TOTP code is needed
   const [code, setCode] = useState('');
+  const [emailTaken, setEmailTaken] = useState(false); // inline field-level error (register)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const { data: oauthProviders } = useAsync(() => api.get('/auth/oauth/providers').catch(() => ({})), []);
 
@@ -1360,9 +1361,11 @@ export function Auth() {
         toast.success(t('auth.toast.updated')); setMode('login'); setF((s) => ({ ...s, password: '', confirm: '', token: '' }));
       }
     } catch (x) {
-      toast.error(x.data?.error === 'invalid_credentials' ? t('auth.err.creds')
+      // "Email already exists" is best shown INLINE under the field (with a one-tap
+      // path to login), not as a transient toast — the error is about that input.
+      if (x.data?.error === 'email_taken') { setEmailTaken(true); }
+      else toast.error(x.data?.error === 'invalid_credentials' ? t('auth.err.creds')
         : x.data?.error === 'oauth_only_account' ? t('auth.err.oauthOnly', 'This account was created with GitHub or Discord — use that to sign in, or set a password from your profile once signed in.')
-        : x.data?.error === 'email_taken' ? t('auth.err.taken')
         : x.data?.error === 'invalid_token' ? t('auth.err.token')
         : x.data?.error === 'pow_required' ? t('auth.err.pow') : t('auth.err.fail'));
     } finally { setBusy(false); setStep(''); }
@@ -1415,7 +1418,14 @@ export function Auth() {
           <p className="text-sm text-[var(--muted)] mt-1">{titles[mode][1]}</p></div>
         <form onSubmit={submit} className="space-y-3">
           {mode === 'register' && <Field label={t('auth.name')}><Input value={f.displayName} onChange={set('displayName')} /></Field>}
-          {mode !== 'reset' && <Field label={t('auth.email')}><Input type="email" value={f.email} onChange={set('email')} placeholder="you@example.com" /></Field>}
+          {mode !== 'reset' && <Field label={t('auth.email')}>
+            <Input type="email" value={f.email} aria-invalid={emailTaken || undefined}
+              onChange={(e) => { if (emailTaken) setEmailTaken(false); setF({ ...f, email: e.target.value }); }} placeholder="you@example.com" />
+            {emailTaken && <div className="text-xs text-[var(--error)] mt-1.5 anim-fade">
+              {t('auth.err.taken', 'This email already exists.')}{' '}
+              <button type="button" onClick={() => { setEmailTaken(false); setMode('login'); }} className="underline underline-offset-2 font-semibold hover:opacity-80 press-sm">{t('auth.err.taken.login', 'Login instead?')}</button>
+            </div>}
+          </Field>}
           {mode === 'reset' && <Field label={t('auth.token')}><Input value={f.token} onChange={set('token')} placeholder={t('auth.token.ph')} /></Field>}
           {mode !== 'forgot' && <Field label={pw2 ? t('auth.newpw') : t('auth.password')}><PwInput value={f.password} onChange={set('password')} /></Field>}
           {pw2 && <Field label={t('auth.confirmpw')}><PwInput value={f.confirm} onChange={set('confirm')} /></Field>}
@@ -1432,8 +1442,8 @@ export function Auth() {
           </>
         )}
         <div className="mt-4 flex flex-col items-center gap-1.5 text-sm">
-          {mode === 'login' && <button className="text-[var(--muted)] hover:text-[var(--text)]" onClick={() => setMode('forgot')}>{t('auth.forgot')}</button>}
-          <button className="text-[var(--muted)] hover:text-[var(--text)]" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
+          {mode === 'login' && <button className="text-[var(--muted)] hover:text-[var(--text)]" onClick={() => { setEmailTaken(false); setMode('forgot'); }}>{t('auth.forgot')}</button>}
+          <button className="text-[var(--muted)] hover:text-[var(--text)]" onClick={() => { setEmailTaken(false); setMode(mode === 'login' ? 'register' : 'login'); }}>
             {mode === 'login' ? t('auth.toRegister') : t('auth.toLogin')}
           </button>
         </div>
