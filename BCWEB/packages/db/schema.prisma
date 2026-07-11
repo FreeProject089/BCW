@@ -973,8 +973,10 @@ model Event {
   active          Boolean  @default(true)        // master switch (must ALSO be within the window)
   effect          String   @default("fireworks") // the effect kind (same everywhere = fireworks)
   fxDensity       Int      @default(5)           // 1..10 — how many fireworks (rocket rate)
+  fxSize          Int      @default(5)           // 1..10 — particle size
   fxFlagDrops     Int      @default(2)           // how many times the flag forms (random time/place)
   badgeIcon       String   @default("sparkles")  // announcement icon (named lucide icon, NOT an emoji)
+  linkUrl         String?                        // where the announcement badge links (internal path or full URL)
   titleEn         String   @default("")
   titleFr         String   @default("")
   messageEn       String   @default("")

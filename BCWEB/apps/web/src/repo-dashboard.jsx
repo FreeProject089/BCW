@@ -130,13 +130,13 @@ function Dashboard({ data, reload }) {
           )}
         </div>
         {r.description && <p className="text-sm text-[var(--muted)] mt-3">{r.description}</p>}
-        {/* Suspended: the repo itself is frozen (can't be published/listed/edited or
-            deleted), but its CONTENT stays manageable here — so the owner can still
-            clean up files. Publishing/settings actions are gated in their own tabs. */}
+        {/* Suspended: the repo is FULLY FROZEN — read-only. Every mutation (files,
+            publish/list, settings, access, state) is disabled here and refused by the
+            server. Contact support to resolve it. */}
         {repoLocked(r) && (
           <div className="mt-3 flex items-start gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-bg)] px-3 py-2 text-xs">
             <Ban size={14} className="text-[var(--error)] shrink-0 mt-0.5" />
-            <span className="flex-1 text-[var(--error)]">{t('rd.suspended.notice', 'This repo is suspended — it stays offline and can’t be published, listed, edited or deleted. You can still delete its content below. Contact support to resolve it.')}</span>
+            <span className="flex-1 text-[var(--error)]">{t('rd.suspended.notice', 'This repo is suspended and fully frozen — nothing can be added, deleted or changed (files, publishing, settings or access). Contact support to resolve it.')}</span>
           </div>
         )}
       </Card>
@@ -343,8 +343,14 @@ function FilesTab({ r, reload }) {
   });
   const tree = view === 'tree' ? buildFileTree(shown) : null;
 
+  const locked = repoLocked(r);
   return (
     <div className="space-y-4">
+      {locked ? (
+        <div className="rounded-2xl border border-[var(--error-border)] bg-[var(--error-bg)] px-4 py-3 text-sm text-[var(--error)] flex items-center gap-2.5">
+          <Ban size={16} className="shrink-0" /> {t('rd.files.frozen', 'This repo is suspended — files are read-only. You can still browse and download, but can’t add or delete anything.')}
+        </div>
+      ) : (
       <div onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={onDrop}
            className={`rounded-2xl border-2 border-dashed px-4 py-7 text-center transition-colors ${dragOver ? 'border-[var(--primary)] bg-orange-500/[0.06]' : 'border-[var(--line)]'}`}>
         <UploadCloud size={26} className={`mx-auto mb-2 ${dragOver ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} />
@@ -355,6 +361,7 @@ function FilesTab({ r, reload }) {
         </div>
         <div className="text-[11px] text-[var(--faint)] mt-2.5">{t('repos.includejson', 'Include a')} <code>repo.json</code> {t('repos.tomanifest', 'manifest. SHA / checksum is computed automatically.')}</div>
       </div>
+      )}
 
       {/* In-context upload progress/result (not just the corner dock). */}
       <RepoUploadPanel jobs={myJobs} cancel={cancel} />
@@ -386,7 +393,7 @@ function FilesTab({ r, reload }) {
             <button type="button" onClick={() => setView('tree')} className={`px-2.5 py-1.5 text-xs flex items-center gap-1 border-l border-[var(--line)] ${view === 'tree' ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><FolderUp size={12} /> {t('rd.view.tree', 'Tree')}</button>
           </div>
           {sel.size > 0 && <Button size="sm" disabled={zipping} onClick={downloadSelected}>{zipping ? <Spinner /> : <><Download size={12} /> {t('rd.dlsel.btn', 'Download {n}').replace('{n}', sel.size)}</>}</Button>}
-          {sel.size > 0 && <Button size="sm" onClick={delSelected} className="!text-red-400"><Trash2 size={12} /> {t('rd.delsel.btn', 'Delete {n}').replace('{n}', sel.size)}</Button>}
+          {!locked && sel.size > 0 && <Button size="sm" onClick={delSelected} className="!text-red-400"><Trash2 size={12} /> {t('rd.delsel.btn', 'Delete {n}').replace('{n}', sel.size)}</Button>}
         </div>
         <div className="max-h-[46vh] overflow-auto">
           {!shown.length ? <div className="text-sm text-[var(--faint)] px-4 py-4">{q.trim() ? t('rd.nomatch', 'No files match.') : t('repos.nofiles', 'No files yet.')}</div>
@@ -405,7 +412,7 @@ function FilesTab({ r, reload }) {
                     {f.sha256 && <span className="hidden md:flex items-center gap-1 text-[10px] text-[var(--faint)] font-mono" title={`SHA-256: ${f.sha256}`}><Hash size={10} /> {f.sha256.slice(0, 10)}…</span>}
                     <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
                     {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
-                    <button className="text-[var(--faint)] hover:text-red-400 shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>
+                    {!locked && <button className="text-[var(--faint)] hover:text-red-400 shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>}
                   </>}
                 </div>
               );})}

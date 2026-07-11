@@ -47,6 +47,10 @@ function resolve(opts = {}) {
     const { level, uid, actor } = await accessLevel(req, p, repo);
     if (!level) return reply.code(401).send({ error: repo.dashPassword ? 'password_required' : 'auth_required', name: repo.name });
     if (opts.ownerOnly && level !== 'owner') return reply.code(403).send({ error: 'owner_only' });
+    // A SUSPENDED repo is fully FROZEN: the dashboard stays viewable (GET) but every
+    // mutation — files add/delete, publish/list, settings, access, ban, state — is
+    // refused. All mutations flow through here, so one guard covers them all.
+    if (repo.status === 'SUSPENDED' && req.method !== 'GET') return reply.code(403).send({ error: 'repo_suspended' });
     req._p = p; req.repo = repo; req.level = level; req.uid = uid; req.actor = actor;
   };
 }

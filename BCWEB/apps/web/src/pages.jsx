@@ -5189,7 +5189,7 @@ function AdminEvents() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/events'), []);
   const toLocal = (d) => { const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
-  const blank = () => ({ name: '', kind: 'custom', countryCode: '', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 2 * 864e5)), titleEn: '', titleFr: '', messageEn: '', messageFr: '', notifyDaysBefore: 3, eventCode: '', fxDensity: 5, fxFlagDrops: 2, badgeIcon: 'sparkles', promoPercent: 0 });
+  const blank = () => ({ name: '', kind: 'custom', countryCode: '', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 2 * 864e5)), titleEn: '', titleFr: '', messageEn: '', messageFr: '', notifyDaysBefore: 3, eventCode: '', fxDensity: 4, fxSize: 5, fxFlagDrops: 2, badgeIcon: 'sparkles', linkUrl: '', promoPercent: 0 });
   const [f, setF] = useState(blank);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const list = data?.events || [];
@@ -5201,7 +5201,7 @@ function AdminEvents() {
       name: f.name.trim(), kind: f.kind, startsAt: new Date(f.startsAt).toISOString(), endsAt: new Date(f.endsAt).toISOString(),
       titleEn: f.titleEn || '', titleFr: f.titleFr || '', messageEn: f.messageEn || '', messageFr: f.messageFr || '',
       notifyDaysBefore: Number(f.notifyDaysBefore) || 0, eventCode: f.eventCode.trim() || '',
-      fxDensity: Number(f.fxDensity) || 5, fxFlagDrops: Number(f.fxFlagDrops) || 0, badgeIcon: f.badgeIcon, promoPercent: Number(f.promoPercent) || 0,
+      fxDensity: Number(f.fxDensity) || 4, fxSize: Number(f.fxSize) || 5, fxFlagDrops: Number(f.fxFlagDrops) || 0, badgeIcon: f.badgeIcon, linkUrl: (f.linkUrl || '').trim(), promoPercent: Number(f.promoPercent) || 0,
       ...(f.kind === 'national_holiday' ? { countryCode: f.countryCode.trim().toUpperCase() } : {}),
     };
     try { await api.post('/admin/events', body); toast.success(t('ev.created', 'Event created.')); setF(blank()); reload(); }
@@ -5236,8 +5236,10 @@ function AdminEvents() {
           <Field label={t('ev.f.kind', 'Kind')}><Dropdown className="w-full" value={f.kind} onChange={(v) => set('kind', v)} options={[{ value: 'custom', label: t('ev.k.custom', 'Custom') }, { value: 'new_year', label: t('ev.k.ny', 'New Year') }, { value: 'national_holiday', label: t('ev.k.holiday', 'National holiday') }]} /></Field>
           {f.kind === 'national_holiday' && <Field label={t('ev.f.country', 'Country code (ISO, e.g. FR, US)')}><Input value={f.countryCode} onChange={(e) => set('countryCode', e.target.value.toUpperCase().slice(0, 2))} placeholder="FR" /></Field>}
           <Field label={t('ev.f.notify', 'Notify users (days before)')}><Input type="number" value={f.notifyDaysBefore} onChange={(e) => set('notifyDaysBefore', e.target.value)} /></Field>
-          <Field label={t('ev.f.density', 'Fireworks amount (1–10)')}><Input type="number" min="1" max="10" value={f.fxDensity} onChange={(e) => set('fxDensity', e.target.value)} /></Field>
+          <Field label={t('ev.f.density', 'Fireworks amount (1–10)')} hint={t('ev.f.density.h', 'How many at once. Lower = calmer / less intrusive.')}><Input type="number" min="1" max="10" value={f.fxDensity} onChange={(e) => set('fxDensity', e.target.value)} /></Field>
+          <Field label={t('ev.f.size', 'Fireworks size (1–10)')}><Input type="number" min="1" max="10" value={f.fxSize} onChange={(e) => set('fxSize', e.target.value)} /></Field>
           <Field label={t('ev.f.flagdrops', 'Flag drops (times the flag forms, random)')}><Input type="number" min="0" max="20" value={f.fxFlagDrops} onChange={(e) => set('fxFlagDrops', e.target.value)} /></Field>
+          <Field label={t('ev.f.link', 'Badge link (path or URL, optional)')} hint={t('ev.f.link.h', 'Where the announcement badge sends the user. e.g. /hosting or https://…')}><Input value={f.linkUrl} onChange={(e) => set('linkUrl', e.target.value)} placeholder="/hosting" /></Field>
           <Field label={t('ev.f.icon', 'Announcement icon (no emoji)')}><Select value={f.badgeIcon} onChange={(e) => set('badgeIcon', e.target.value)}><option value="sparkles">Sparkles</option><option value="party">Party</option><option value="flag">Flag</option><option value="gift">Gift</option><option value="star">Star</option><option value="rocket">Rocket</option><option value="calendar">Calendar</option><option value="bell">Bell</option></Select></Field>
           <Field label={t('ev.f.start', 'Starts')}><Input type="datetime-local" value={f.startsAt} onChange={(e) => set('startsAt', e.target.value)} /></Field>
           <Field label={t('ev.f.end', 'Ends')}><Input type="datetime-local" value={f.endsAt} onChange={(e) => set('endsAt', e.target.value)} /></Field>
@@ -5249,7 +5251,7 @@ function AdminEvents() {
           <Field label={t('ev.f.code', 'Event-only promo code (optional)')} hint={t('ev.f.code.h', 'A code valid ONLY during the event window, broadcast to users in the event notification.')}><Input value={f.eventCode} onChange={(e) => set('eventCode', e.target.value.toUpperCase())} placeholder="NY2027" /></Field>
         </div>
         <div className="flex items-center justify-end gap-2 mt-3">
-          <Button variant="ghost" onClick={() => window.dispatchEvent(new CustomEvent('bcw:fx-preview', { detail: { effect: 'fireworks', kind: f.kind, countryCode: (f.countryCode || '').trim().toUpperCase(), fxDensity: Number(f.fxDensity) || 5, fxFlagDrops: Number(f.fxFlagDrops) || 0 } }))}
+          <Button variant="ghost" onClick={() => window.dispatchEvent(new CustomEvent('bcw:fx-preview', { detail: { effect: 'fireworks', kind: f.kind, countryCode: (f.countryCode || '').trim().toUpperCase(), fxDensity: Number(f.fxDensity) || 4, fxSize: Number(f.fxSize) || 5, fxFlagDrops: Number(f.fxFlagDrops) || 0 } }))}
             title={t('ev.preview.h', 'Plays the fireworks now with the current density / flag-drops (ignores reduce-motion) so you can tune it.')}><Sparkles size={15} /> {t('ev.preview', 'Preview effect')}</Button>
           <Button variant="primary" onClick={create}><Plus size={15} /> {t('ev.create', 'Create event')}</Button>
         </div>
@@ -7695,7 +7697,9 @@ export function Settings() {
   const [consent, setConsentState] = useState(() => getConsent() || 'essential');
   const [glass, setGlass] = useState(() => getGlassPrefs());
   const [orbTransition, setOrbTransition] = useState(() => getOrbTransitionPref());
+  const [fxOff, setFxOff] = useState(() => { try { return localStorage.getItem('bcw_fx_off') === '1'; } catch { return false; } });
 
+  const setFx = (off) => { setFxOff(off); try { off ? localStorage.setItem('bcw_fx_off', '1') : localStorage.removeItem('bcw_fx_off'); } catch {} };
   const setIntro = (skip) => { setSkipIntro(skip); try { skip ? localStorage.setItem(SKIP_KEY, '1') : localStorage.removeItem(SKIP_KEY); } catch {} };
   const setOrbTr = (on) => { setOrbTransition(on); setOrbTransitionPref(on); };
   const setCookie = (v) => { setConsentState(v); setConsent(v); toast.success(t('set.saved', 'Saved.')); };
@@ -7731,6 +7735,9 @@ export function Settings() {
         </Row>
         <Row icon={Orbit} title={t('set.orbtr', 'Orb page transitions')} desc={t('set.orbtr.d', 'On each navigation, the hero orb shatters and dives into a random shard, then rebuilds. Off by default.')}>
           <Switch on={orbTransition} onChange={setOrbTr} />
+        </Row>
+        <Row icon={Sparkles} title={t('set.fx', 'Event fireworks')} desc={t('set.fx.d', 'Full-screen fireworks during a live event (New Year, national days…). The announcement badge still shows.')}>
+          <Switch on={!fxOff} onChange={(v) => setFx(!v)} />
         </Row>
         <Row icon={Eye} title={t('set.glass', 'Translucent surfaces')} desc={t('set.glass.d', 'Frosted-glass cards & dialogs instead of solid ones.')}>
           <Switch on={glass.on} onChange={(v) => applyGlass({ ...glass, on: v })} />

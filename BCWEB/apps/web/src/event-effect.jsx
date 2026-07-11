@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import gsap from 'gsap';
-import { X, Sparkles, PartyPopper, Flag, Gift, Star, Rocket, CalendarDays, Bell } from 'lucide-react';
+import { X, Sparkles, PartyPopper, Flag, Gift, Star, Rocket, CalendarDays, Bell, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { api } from './api.js';
 import { useI18n } from './i18n.jsx';
 
@@ -17,12 +18,25 @@ const BADGE_ICONS = { sparkles: Sparkles, party: PartyPopper, flag: Flag, gift: 
 // Stripe-based flags (dir 'v'=vertical, 'h'=horizontal) + a couple of specials. Covers
 // the common cases (incl. FR); unknown countries fall back to a generic colour finale.
 const FLAG_SPECS = {
+  // Vertical tricolours
   FR: ['v', '#0055A4', '#FFFFFF', '#EF4135'], IT: ['v', '#008C45', '#F4F5F0', '#CD212A'],
   IE: ['v', '#169B62', '#FFFFFF', '#FF883E'], BE: ['v', '#2D2926', '#FDDA24', '#EF3340'],
-  RO: ['v', '#002B7F', '#FCD116', '#CE1126'], DE: ['h', '#000000', '#DD0000', '#FFCE00'],
-  NL: ['h', '#AE1C28', '#FFFFFF', '#21468B'], RU: ['h', '#FFFFFF', '#0039A6', '#D52B1E'],
-  UA: ['h', '#0057B7', '#FFD700'], PL: ['h', '#FFFFFF', '#DC143C'], ID: ['h', '#FF0000', '#FFFFFF'],
-  AT: ['h', '#ED2939', '#FFFFFF', '#ED2939'], JP: ['jp'], CH: ['ch'],
+  RO: ['v', '#002B7F', '#FCD116', '#CE1126'], PT: ['v', '#046A38', '#DA020E'],
+  // Horizontal tricolours / bands
+  DE: ['h', '#000000', '#DD0000', '#FFCE00'], NL: ['h', '#AE1C28', '#FFFFFF', '#21468B'],
+  RU: ['h', '#FFFFFF', '#0039A6', '#D52B1E'], UA: ['h', '#0057B7', '#FFD700'],
+  PL: ['h', '#FFFFFF', '#DC143C'], ID: ['h', '#FF0000', '#FFFFFF'], MC: ['h', '#CE1126', '#FFFFFF'],
+  AT: ['h', '#ED2939', '#FFFFFF', '#ED2939'], ES: ['h', '#AA151B', '#F1BF00', '#AA151B'],
+  HU: ['h', '#CD2A3E', '#FFFFFF', '#436F4D'], BG: ['h', '#FFFFFF', '#00966E', '#D62612'],
+  LT: ['h', '#FDB913', '#006A44', '#C1272D'], EE: ['h', '#0072CE', '#000000', '#FFFFFF'],
+  LV: ['h', '#9E3039', '#FFFFFF', '#9E3039'], LU: ['h', '#ED2939', '#FFFFFF', '#00A1DE'],
+  AM: ['h', '#D90012', '#0033A0', '#F2A800'], CO: ['h', '#FCD116', '#003893', '#CE1126'],
+  GR: ['h', '#0D5EAF', '#FFFFFF', '#0D5EAF', '#FFFFFF', '#0D5EAF'],
+  // Specials
+  JP: ['jp'], CH: ['ch'], US: ['us'], GB: ['gb'], UK: ['gb'],
+  SE: ['nordic', '#006AA7', '#FECC00'], NO: ['nordic', '#EF2B2D', '#FFFFFF', '#002868'],
+  DK: ['nordic', '#C60C30', '#FFFFFF'], FI: ['nordic', '#FFFFFF', '#003580'],
+  IS: ['nordic', '#02529C', '#FFFFFF', '#DC1E35'],
 };
 
 // Draw the flag to a small offscreen canvas (3:2). Returns the canvas or null.
@@ -45,6 +59,24 @@ function drawFlag(cc) {
     g.fillStyle = '#D52B1E'; g.fillRect(0, 0, W, H);
     g.fillStyle = '#FFFFFF'; const t = H * 0.13, cx = W / 2, cy = H / 2, a = H * 0.32;
     g.fillRect(cx - t / 2, cy - a / 2, t, a); g.fillRect(cx - a / 2, cy - t / 2, a, t);
+  } else if (dir === 'nordic') {
+    // Offset Scandinavian cross: spec = ['nordic', bg, cross, (innerCross)]
+    const bg = spec[1], cross = spec[2], inner = spec[3];
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    const t = H * 0.2, cx = W * 0.36; // vertical bar offset toward the hoist
+    g.fillStyle = cross; g.fillRect(cx - t / 2, 0, t, H); g.fillRect(0, H / 2 - t / 2, W, t);
+    if (inner) { const it2 = t * 0.45; g.fillStyle = inner; g.fillRect(cx - it2 / 2, 0, it2, H); g.fillRect(0, H / 2 - it2 / 2, W, it2); }
+  } else if (dir === 'us') {
+    for (let i = 0; i < 13; i++) { g.fillStyle = i % 2 ? '#FFFFFF' : '#B22234'; g.fillRect(0, Math.round(i * H / 13), W, Math.ceil(H / 13)); }
+    g.fillStyle = '#3C3B6E'; g.fillRect(0, 0, W * 0.4, H * 7 / 13);
+    g.fillStyle = '#FFFFFF'; for (let r = 0; r < 5; r++) for (let c = 0; c < 6; c++) { g.fillRect(W * 0.4 * (0.1 + c * 0.16), H * (7 / 13) * (0.12 + r * 0.19), 1.4, 1.4); }
+  } else if (dir === 'gb') {
+    // Union Jack (approximate): blue field, white then red St George + diagonals.
+    g.fillStyle = '#012169'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = '#FFFFFF'; g.lineWidth = H * 0.28; g.beginPath(); g.moveTo(0, 0); g.lineTo(W, H); g.moveTo(W, 0); g.lineTo(0, H); g.stroke();
+    g.strokeStyle = '#C8102E'; g.lineWidth = H * 0.1; g.beginPath(); g.moveTo(0, 0); g.lineTo(W, H); g.moveTo(W, 0); g.lineTo(0, H); g.stroke();
+    g.fillStyle = '#FFFFFF'; g.fillRect(0, H / 2 - H * 0.18, W, H * 0.36); g.fillRect(W / 2 - H * 0.18, 0, H * 0.36, H);
+    g.fillStyle = '#C8102E'; g.fillRect(0, H / 2 - H * 0.1, W, H * 0.2); g.fillRect(W / 2 - H * 0.1, 0, H * 0.2, H);
   }
   return cv;
 }
@@ -105,9 +137,12 @@ export default function EventEffect() {
   // override (`bcw_fx_preview=1`) forces the effect on — a preview hook for admins
   // (and for testing in reduced-motion environments like headless browsers).
   const prefersReduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let forcePreview = false;
+  let forcePreview = false, fxOff = false;
   try { forcePreview = localStorage.getItem('bcw_fx_preview') === '1'; } catch {}
-  const reduced = prefersReduced && !forcePreview;
+  // Device setting (Settings → Appearance): turn the fireworks canvas off entirely while
+  // keeping the (informational) event badge. A preview still bypasses it for admins.
+  try { fxOff = localStorage.getItem('bcw_fx_off') === '1'; } catch {}
+  const reduced = (prefersReduced && !forcePreview) || fxOff;
 
   useEffect(() => {
     // A preview always plays (bypasses reduce-motion + the live gate); otherwise the
@@ -117,7 +152,12 @@ export default function EventEffect() {
     const el = mount.current; if (!el) return;
     const W = () => window.innerWidth, H = () => window.innerHeight;
     let renderer;
-    try { renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true }); } catch { return; }
+    // premultipliedAlpha:false — with the default (true), additive sprites over a
+    // transparent canvas render with dark fringes / a black wash that lingers after each
+    // burst ("le fond noir après chaque firework"). Disabling it + an explicit 0-alpha
+    // clear keeps the canvas truly transparent between and around particles.
+    try { renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, premultipliedAlpha: false }); } catch { return; }
+    renderer.setClearColor(0x000000, 0);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(W(), H());
     el.appendChild(renderer.domElement);
@@ -131,7 +171,9 @@ export default function EventEffect() {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    const mat = new THREE.PointsMaterial({ size: 11, sizeAttenuation: false, vertexColors: true, map: makeSprite(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    // Particle size is admin-configurable (fxSize 1..10 → ~5..16 px).
+    const sizePx = 5 + Math.max(1, Math.min(10, fx.fxSize || 5)) * 1.1;
+    const mat = new THREE.PointsMaterial({ size: sizePx, sizeAttenuation: false, vertexColors: true, map: makeSprite(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     const points = new THREE.Points(geo, mat);
     scene.add(points);
 
@@ -140,14 +182,19 @@ export default function EventEffect() {
     const rand = (a, b) => a + Math.random() * (b - a);
     const density = Math.max(1, Math.min(10, fx.fxDensity || 5));       // fireworks amount
     const flagDrops = Math.max(0, Math.min(20, fx.fxFlagDrops ?? 2));   // how many flag formations
+    // Rockets launch fast enough to burst in the UPPER part of the screen (the "sky"),
+    // then explode at their apex — so the show stays overhead and doesn't cover the
+    // content the user is reading lower down.
     const launchRocket = () => {
-      const x = rand(-aspect * 0.8, aspect * 0.8);
-      ps.push({ x, y: -1.05, vx: rand(-0.05, 0.05), vy: rand(1.3, 1.75), life: rand(0.7, 0.98), max: 0.98, r: 1, g: 0.9, b: 0.7, rocket: true, hx: x });
+      const x = rand(-aspect * 0.75, aspect * 0.75);
+      ps.push({ x, y: -1.05, vx: rand(-0.04, 0.04), vy: rand(1.7, 2.05), life: 3, max: 3, r: 1, g: 0.9, b: 0.7, rocket: true });
     };
-    const explode = (x, y, col, count = 120) => {
+    // Burst size scales gently with density; tighter spread + shorter life so bursts read
+    // as crisp overhead fireworks instead of a screen-filling wall that lingers.
+    const explode = (x, y, col, count = 70) => {
       for (let i = 0; i < count && ps.length < MAX; i++) {
-        const a = Math.random() * Math.PI * 2, sp = rand(0.2, 0.95);
-        ps.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(1.2, 2.2), max: 2.2, r: col[0], g: col[1], b: col[2] });
+        const a = Math.random() * Math.PI * 2, sp = rand(0.15, 0.6);
+        ps.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(0.9, 1.6), max: 1.6, r: col[0], g: col[1], b: col[2] });
       }
     };
     // Flag finale: particles rush to the sampled flag positions, hold, then fall.
@@ -170,16 +217,16 @@ export default function EventEffect() {
 
     let raf, last = performance.now(), t0 = last, stopped = false;
     const DURATION = 15000; // one festive show, then fade out
-    // Rockets fire in WAVES (several at once) on a tight cadence — a lone rocket at a
-    // time looked empty ("not working"). `perWave` + burst size scale with density.
-    const perWave = Math.max(1, Math.round(density / 2.2)); // ~1..5 rockets per wave
+    // Amount is driven by density but kept CALM by default so it never overwhelms the
+    // page: at most ~1..3 rockets per wave, with a gap that widens as density drops.
+    const perWave = Math.max(1, Math.round(density / 3.5)); // ~1..3 rockets per wave
+    const burst = () => 55 + density * 6; // ~60..115 particles per burst
     const timers = [];
-    // Opening volley so the show starts with an unmistakable bang: a burst of rockets +
-    // a couple of instant mid-air explosions in the first moments.
-    for (let i = 0; i < perWave + 2; i++) timers.push(setTimeout(() => launchRocket(), 60 + i * 100));
-    for (let i = 0; i < 3; i++) timers.push(setTimeout(() => explode(rand(-aspect * 0.65, aspect * 0.65), rand(0.15, 0.6), PALETTE[(Math.random() * PALETTE.length) | 0], 130 + density * 8), 200 + i * 260));
-    let nextRocket = rand(300, 550);
-    const rocketGap = () => rand(200, 460) + (10 - density) * 45; // tighter than before
+    // A gentle opener (one rocket + one high burst) — enough to notice, not a wall.
+    timers.push(setTimeout(() => launchRocket(), 80));
+    timers.push(setTimeout(() => explode(rand(-aspect * 0.5, aspect * 0.5), rand(0.35, 0.6), PALETTE[(Math.random() * PALETTE.length) | 0], burst()), 260));
+    let nextRocket = rand(500, 800);
+    const rocketGap = () => rand(520, 900) + (10 - density) * 70; // calmer cadence
     const flagTimes = Array.from({ length: flagDrops }, () => rand(1200, DURATION - 2500)).sort((a, b) => a - b);
     let dropIdx = 0;
     const tick = (now) => {
@@ -188,7 +235,7 @@ export default function EventEffect() {
       if (!stopped) {
         if (elapsed > nextRocket && elapsed < DURATION - 2000) { for (let i = 0; i < perWave; i++) launchRocket(); nextRocket = elapsed + rocketGap(); }
         while (dropIdx < flagTimes.length && elapsed > flagTimes[dropIdx]) {
-          flagDrop(rand(-aspect * 0.55, aspect * 0.55), rand(0.0, 0.55), rand(aspect * 0.5, aspect * 1.05));
+          flagDrop(rand(-aspect * 0.5, aspect * 0.5), rand(0.2, 0.6), rand(aspect * 0.45, aspect * 0.85));
           dropIdx++;
         }
       }
@@ -196,7 +243,8 @@ export default function EventEffect() {
       let n = 0;
       for (const p of ps) {
         if (!p.frozen) { p.vy -= 0.9 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
-        if (p.rocket && p.life <= 0) explode(p.x, p.y, PALETTE[(Math.random() * PALETTE.length) | 0], 90 + density * 9);
+        // A rocket bursts at its APEX (vy crosses 0) — always high in the sky.
+        if (p.rocket && !p.done && (p.vy <= 0 || p.y > 0.85)) { p.done = true; explode(p.x, p.y, PALETTE[(Math.random() * PALETTE.length) | 0], burst()); p.life = 0; }
         if (p.life <= 0) continue;
         if (n < MAX) {
           const k = p.frozen ? 1 : Math.max(0, p.life / p.max);
@@ -238,21 +286,34 @@ export default function EventEffect() {
   if (!title && !message && reduced && !preview) return null;
 
   const isHoliday = ev?.kind === 'national_holiday' && ev?.countryCode;
+  const link = ev?.linkUrl || null;
+  const external = link && /^https?:\/\//.test(link);
+  // Icon + text + (a "go" arrow when the badge links somewhere).
+  const inner = (
+    <>
+      {isHoliday
+        ? <img src={flagUrl(ev.countryCode)} alt="" width={32} height={24} className="shrink-0 rounded-[3px] object-cover ring-1 ring-[var(--line-strong)]" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+        : <BadgeIcon size={24} className="shrink-0 text-[var(--primary-2)]" />}
+      <div className="min-w-0 flex-1">
+        {title && <div className="font-bold gradient-text text-base sm:text-lg leading-tight truncate">{title}</div>}
+        {message && <div className="text-xs sm:text-sm text-[var(--muted)] truncate">{message}</div>}
+      </div>
+      {link && <ArrowRight size={16} className="shrink-0 text-[var(--faint)]" />}
+    </>
+  );
+  const rowCls = `flex items-center gap-2.5 sm:gap-3 px-3.5 sm:px-5 py-2.5 sm:py-3 pr-9 ${link ? 'rounded-2xl transition hover:bg-[var(--surface-2)]/50' : ''}`;
   return (
     <>
       {(!reduced || preview) && <div ref={mount} aria-hidden className="fixed inset-0 z-[45]" style={{ pointerEvents: 'none' }} />}
       {(title || message) && (
-        <div className="fixed left-1/2 -translate-x-1/2 top-20 z-[46] max-w-[92vw] anim-fade" style={{ pointerEvents: 'auto' }}>
-          <div className="relative flex items-center gap-3 rounded-2xl border border-[var(--line-strong)] px-5 py-3 pr-10 shadow-2xl" style={{ background: 'var(--bg-solid)' }}>
-            {/* National holiday → the country flag; otherwise the chosen lucide icon. */}
-            {isHoliday
-              ? <img src={flagUrl(ev.countryCode)} alt="" width={34} height={26} className="shrink-0 rounded-[3px] object-cover ring-1 ring-[var(--line-strong)]" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-              : <BadgeIcon size={26} className="shrink-0 text-[var(--primary-2)]" />}
-            <div className="min-w-0">
-              {title && <div className="font-bold gradient-text text-lg leading-tight">{title}</div>}
-              {message && <div className="text-sm text-[var(--muted)] truncate">{message}</div>}
-            </div>
-            <button onClick={() => setDismissed(true)} aria-label={t('promo.badge.dismiss', 'Dismiss')} className="absolute right-2 top-2 rounded p-1 text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]"><X size={15} /></button>
+        <div className="fixed left-1/2 -translate-x-1/2 top-16 md:top-20 z-[46] w-[min(94vw,26rem)] anim-fade" style={{ pointerEvents: 'auto' }}>
+          <div className="relative rounded-2xl border border-[var(--line-strong)] shadow-2xl overflow-hidden" style={{ background: 'var(--bg-solid)' }}>
+            {link
+              ? (external
+                ? <a href={link} target="_blank" rel="noopener noreferrer" className={rowCls}>{inner}</a>
+                : <Link to={link} onClick={() => setDismissed(true)} className={rowCls}>{inner}</Link>)
+              : <div className={rowCls}>{inner}</div>}
+            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDismissed(true); }} aria-label={t('promo.badge.dismiss', 'Dismiss')} className="absolute right-1.5 top-1.5 rounded p-1 text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]"><X size={15} /></button>
           </div>
         </div>
       )}
