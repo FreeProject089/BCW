@@ -470,6 +470,15 @@ export default async function repoRoutes(app) {
     if (repo.ownerId !== user.uid && user.role === 'USER') return { err: 403 };
     return { repo };
   }
+  // Owner AND not frozen. A SUSPENDED repo is read-only for its owner — no list, edit,
+  // delete, plan change, or online toggle. Staff still manage it via /admin/repos.
+  // Returns `code: 'repo_suspended'` so the UI can explain the 403 precisely.
+  async function ownRepoMutable(p, id, user) {
+    const res = await ownRepo(p, id, user);
+    if (res.err) return res;
+    if (res.repo.status === 'SUSPENDED' && user.role === 'USER') return { err: 403, code: 'repo_suspended' };
+    return res;
+  }
 
   // Edit content/metadata. Changing the source re-runs the auto check (status/sha/verify).
   app.patch('/repos/:id', { preHandler: requireRole() }, async (req, reply) => {
@@ -480,8 +489,8 @@ export default async function repoRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const { repo, err } = await ownRepo(p, req.params.id, req.user);
-    if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     const urlChanged = b.data.repoUrl && b.data.repoUrl !== repo.repoUrl;
     await p.serverRepo.update({ where: { id: repo.id }, data: b.data });
     const out = urlChanged ? (await autoVerify(p, repo.id)).repo : await p.serverRepo.findUnique({ where: { id: repo.id } });
@@ -493,8 +502,8 @@ export default async function repoRoutes(app) {
     const b = z.object({ sha: z.string().regex(SHA).optional(), sizeBytes: z.number().int().nonnegative().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const { repo, err } = await ownRepo(p, req.params.id, req.user);
-    if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     if (b.data.sizeBytes != null && BigInt(b.data.sizeBytes) > repo.storageQuotaBytes && repo.hosted) return reply.code(413).send({ error: 'quota_exceeded' });
     const data = {};
     if (b.data.sha) data.sha = b.data.sha; // manual override; otherwise auto-computed below
@@ -510,8 +519,8 @@ export default async function repoRoutes(app) {
     const b = z.object({ listed: z.boolean() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const { repo, err } = await ownRepo(p, req.params.id, req.user);
-    if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     if (!b.data.listed) {
       await p.serverRepo.update({ where: { id: repo.id }, data: { listed: false, pendingReview: false } });
       return { ok: true, listed: false };
@@ -547,8 +556,8 @@ export default async function repoRoutes(app) {
   // On-demand health check → ONLINE/OFFLINE + validity + auto SHA + auto verify.
   app.post('/repos/:id/check', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
-    const { repo, err } = await ownRepo(p, req.params.id, req.user);
-    if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     const res = await autoVerify(p, repo.id);
     return { ...res.health, verified: !!res.repo.verified, sha: res.repo.sha };
   });
@@ -558,8 +567,8 @@ export default async function repoRoutes(app) {
   // until the sweeper hard-deletes the bytes + subscription + row after `deleteAt`.
   app.delete('/repos/:id', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
-    const { repo, err } = await ownRepo(p, req.params.id, req.user);
-    if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     if (repo.ownerId !== req.user.uid) return reply.code(403).send({ error: 'owner_only' });
     const deleteAt = new Date(Date.now() + 72 * 3600 * 1000);
     await p.serverRepo.update({ where: { id: repo.id }, data: { deleteAt, status: repo.hosted ? 'SUSPENDED' : repo.status } });

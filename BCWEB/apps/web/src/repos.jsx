@@ -201,6 +201,26 @@ export function ReposPage() {
   );
 }
 
+// Effective repo status → { label, tone } for a badge. Priority order matters:
+// SUSPENDED (locked) wins over everything; PROVISIONING is the transient setup state;
+// a listed repo still awaiting admin verification reads "In review"; then online/offline.
+export function repoStatusMeta(r, t) {
+  if (r.status === 'SUSPENDED') return { key: 'suspended', label: t('repos.st.suspended', 'Suspended'), tone: 'red' };
+  if (r.status === 'PROVISIONING') return { key: 'provisioning', label: t('repos.st.provisioning', 'Provisioning'), tone: 'amber' };
+  if (r.pendingReview) return { key: 'inreview', label: t('repos.st.inreview', 'In review'), tone: 'amber' };
+  if (r.status === 'ONLINE') return { key: 'online', label: t('repos.online', 'Online'), tone: 'green' };
+  return { key: 'offline', label: t('repos.offline', 'Offline'), tone: '' };
+}
+// i18n label for a RAW enum value (admin status dropdown sets the raw status).
+export const rawStatusLabel = (s, t) => ({
+  ONLINE: t('repos.online', 'Online'), OFFLINE: t('repos.offline', 'Offline'),
+  SUSPENDED: t('repos.st.suspended', 'Suspended'), PROVISIONING: t('repos.st.provisioning', 'Provisioning'),
+}[s] || s);
+
+// Whether the owner is locked out of managing this repo (suspended = read-only, no
+// online/list/edit/delete — matches the server-side guard).
+export const repoLocked = (r) => r.status === 'SUSPENDED';
+
 function StatusBadges({ r }) {
   const { t } = useI18n();
   return (
@@ -460,13 +480,25 @@ export function MyRepos() {
                   <Button size="sm" variant="primary" onClick={() => undoDelete(r)}><RefreshCw size={12} /> {t('repos.del.undo', 'Undo')}</Button>
                 </div>
               )}
+              {repoLocked(r) && !r.deleteAt && (
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-bg)] px-3 py-2 text-xs">
+                  <Ban size={14} className="text-[var(--error)] shrink-0 mt-0.5" />
+                  <span className="flex-1 text-[var(--error)]">{t('repos.suspended.notice', 'This repo is suspended — it stays offline, can’t be listed, edited or deleted. Contact support to resolve it.')}</span>
+                </div>
+              )}
+              {!repoLocked(r) && r.listed && r.pendingReview && !r.deleteAt && (
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--warning-border)] bg-[var(--warning-bg)] px-3 py-2 text-xs">
+                  <Clock size={14} className="text-[var(--warning)] shrink-0 mt-0.5" />
+                  <span className="flex-1 text-[var(--warning)]">{t('repos.inreview.notice', 'In review — a moderator is verifying it before it appears in the public list. It keeps serving normally; any new change restarts the review.')}</span>
+                </div>
+              )}
               <div className="flex items-start gap-3">
                 <GitBranch size={18} className="text-[var(--primary-2)] mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <div className="font-medium">{r.name}</div>
                   {r.description && <div className="text-sm text-[var(--muted)] line-clamp-1">{r.description}</div>}
                   <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                    <Badge tone={r.status === 'ONLINE' ? 'green' : 'red'}>{r.status === 'ONLINE' ? `● ${t('repos.online', 'Online')}` : `● ${t('repos.offline', 'Offline')}`}</Badge>
+                    {(() => { const st = repoStatusMeta(r, t); return <Badge tone={st.tone}>● {st.label}</Badge>; })()}
                     <StatusBadges r={r} />{isFeatured(r) && <Badge tone="amber"><Star size={10} /> {t('repos.featureduntil', 'Featured until')} {new Date(r.featuredUntil).toLocaleDateString()}</Badge>}</div>
                   <div className="text-xs text-[var(--faint)] mt-1.5 flex items-center gap-3 flex-wrap font-mono">
                     {r.sha && <span>sha {r.sha.slice(0, 12)}…</span>}
@@ -487,23 +519,28 @@ export function MyRepos() {
               </div>
               {/* Clean primary row — everything else lives in the ⋯ menu. The dashboard is
                   the full management surface (files, publishing, sandbox, access). */}
+              {(() => { const locked = repoLocked(r); return (
               <div className="flex flex-wrap items-center gap-2 mt-3">
+                {/* A suspended repo is read-only for its owner: only the dashboard (to view
+                    state) stays open — every mutating action is disabled here AND on the
+                    server. */}
                 <Link to={`/repo/${r.id}`}><Button size="sm" variant="primary"><LayoutDashboard size={14} /> {t('repos.opendash', 'Dashboard')}</Button></Link>
-                <Button size="sm" onClick={() => toggleList(r)}>{r.listed ? <><EyeOff size={14} /> {t('repos.unlist', 'Unlist')}</> : <><Eye size={14} /> {t('repos.listpublicly', 'List publicly')}</>}</Button>
-                <Button size="sm" onClick={() => setFeaturing(r)}><Rocket size={14} /> {isFeatured(r) ? t('repos.extendboost', 'Extend boost') : t('repos.boost', 'Boost')}</Button>
+                <Button size="sm" disabled={locked} onClick={() => toggleList(r)}>{r.listed ? <><EyeOff size={14} /> {t('repos.unlist', 'Unlist')}</> : <><Eye size={14} /> {t('repos.listpublicly', 'List publicly')}</>}</Button>
+                <Button size="sm" disabled={locked} onClick={() => setFeaturing(r)}><Rocket size={14} /> {isFeatured(r) ? t('repos.extendboost', 'Extend boost') : t('repos.boost', 'Boost')}</Button>
                 <RepoMenu>
                   {repoJsonUrl(r) && <MenuItem icon={Copy} onClick={() => { navigator.clipboard?.writeText(repoJsonUrl(r)); toast.success(t('repos.copy.ok', 'repo.json link copied.')); }}>{t('repos.copylink', 'Copy repo.json link')}</MenuItem>}
-                  {r.hosted && <MenuItem icon={Files} onClick={() => setManaging(r)}>{t('repos.quickfiles', 'Quick files')}</MenuItem>}
-                  {r.hosted && <MenuItem icon={HardDrive} onClick={() => { setSandboxTab('limits'); setSandbox(r); }}>{t('repos.upgradeplan', 'Upgrade storage / plan')}</MenuItem>}
-                  {r.hosted && <MenuItem icon={ShieldCheck} onClick={() => { setSandboxTab('access'); setSandbox(r); }}>{t('repos.sandbox', 'Sandbox settings')}</MenuItem>}
-                  {!r.hosted && <MenuItem icon={UploadCloud} onClick={() => push(r)}>{t('repos.push', 'Push')}</MenuItem>}
-                  {!r.hosted && <MenuItem icon={CheckCircle2} onClick={() => check(r)}>{t('repos.check', 'Check')}</MenuItem>}
-                  {r.hosted && <MenuItem icon={HardDrive} onClick={() => switchMode(r)}>{r.groupId ? t('repos.tosingle', 'Switch to single') : t('repos.tomulti', 'Switch to multi')}</MenuItem>}
-                  {r.hosted && r.group && <MenuItem icon={Plus} onClick={() => setPoolAdd(r.group)}>{t('repos.addtopool', 'Add repo to pool')}</MenuItem>}
-                  <MenuItem icon={Pencil} onClick={() => setEditing(r)}>{t('repos.editdetails', 'Edit details')}</MenuItem>
-                  <MenuItem icon={Trash2} danger onClick={() => del(r)}>{t('repos.delete', 'Delete repo')}</MenuItem>
+                  {r.hosted && !locked && <MenuItem icon={Files} onClick={() => setManaging(r)}>{t('repos.quickfiles', 'Quick files')}</MenuItem>}
+                  {r.hosted && !locked && <MenuItem icon={HardDrive} onClick={() => { setSandboxTab('limits'); setSandbox(r); }}>{t('repos.upgradeplan', 'Upgrade storage / plan')}</MenuItem>}
+                  {r.hosted && !locked && <MenuItem icon={ShieldCheck} onClick={() => { setSandboxTab('access'); setSandbox(r); }}>{t('repos.sandbox', 'Sandbox settings')}</MenuItem>}
+                  {!r.hosted && !locked && <MenuItem icon={UploadCloud} onClick={() => push(r)}>{t('repos.push', 'Push')}</MenuItem>}
+                  {!r.hosted && !locked && <MenuItem icon={CheckCircle2} onClick={() => check(r)}>{t('repos.check', 'Check')}</MenuItem>}
+                  {r.hosted && !locked && <MenuItem icon={HardDrive} onClick={() => switchMode(r)}>{r.groupId ? t('repos.tosingle', 'Switch to single') : t('repos.tomulti', 'Switch to multi')}</MenuItem>}
+                  {r.hosted && r.group && !locked && <MenuItem icon={Plus} onClick={() => setPoolAdd(r.group)}>{t('repos.addtopool', 'Add repo to pool')}</MenuItem>}
+                  {!locked && <MenuItem icon={Pencil} onClick={() => setEditing(r)}>{t('repos.editdetails', 'Edit details')}</MenuItem>}
+                  {!locked && <MenuItem icon={Trash2} danger onClick={() => del(r)}>{t('repos.delete', 'Delete repo')}</MenuItem>}
                 </RepoMenu>
               </div>
+              ); })()}
             </Card>
           ))}
         </div> : <EmptyState icon={Search} title={t('repos.nomatch.t', 'No matches')} sub={t('repos.nomatch.s', 'Try a different search or clear the filters.')} />)
@@ -1431,7 +1468,14 @@ export function AdminRepos() {
   const reject = async (r) => { const reason = await dialog.prompt({ title: t('arp.reject', 'Reject / unlist'), label: t('arp.reason', 'Reason (sent to owner)'), okLabel: t('arp.rejectbtn', 'Reject'), danger: true }); if (!reason) return; try { await api.post(`/admin/repos/${r.id}/reject`, { reason }); toast.success(t('arp.rejected', 'Rejected.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
   const setStatus = async (r, status) => { try { await api.patch(`/admin/repos/${r.id}`, { status }); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
   // Manually re-run validation: recompute the content SHA and re-verify.
-  const revalidate = async (r) => { try { const res = await api.post(`/admin/repos/${r.id}/revalidate`); toast[res.verified ? 'success' : 'error'](res.verified ? t('arp.revalok', 'Revalidated — verified (sha {s}…).').replace('{s}', String(res.sha).slice(0, 10)) : t('arp.revalbad', 'Revalidated — invalid ({r}).').replace('{r}', res.reason || t('arp.norepojson', 'no valid repo.json'))); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
+  const revalidate = async (r) => {
+    try {
+      const res = await api.post(`/admin/repos/${r.id}/revalidate`);
+      if (res.verified) toast.success(t('arp.revalok', 'Verified “{n}” — its content matches a valid repo.json (sha {s}…).').replace('{n}', r.name).replace('{s}', String(res.sha).slice(0, 10)));
+      else toast.error(t('arp.revalbad', 'Couldn’t verify “{n}” — {r}. It stays unverified until a valid repo.json is uploaded.').replace('{n}', r.name).replace('{r}', res.reason || t('arp.norepojson', 'no valid repo.json found')));
+      reload();
+    } catch { toast.error(t('repos.failed', 'Failed.')); }
+  };
   const [checkingAll, setCheckingAll] = useState(false);
   const checkAll = async () => { setCheckingAll(true); try { const r = await api.post('/admin/repos/check-all'); toast.success(t('arp.checked', 'Checked {c} repos — {o} online, {v} verified.').replace('{c}', r.checked).replace('{o}', r.online).replace('{v}', r.verified)); reload(); } catch { toast.error(t('arp.checkfail', 'Check failed.')); } finally { setCheckingAll(false); } };
   const [limitsRepo, setLimitsRepo] = useState(null); // repo whose CPU/upload/storage limits are being edited
@@ -1469,7 +1513,7 @@ export function AdminRepos() {
                   )}
                 </div>
                 <Select className="!w-auto !py-1.5 text-xs" value={r.status} onChange={(e) => setStatus(r, e.target.value)}>
-                  {['ONLINE', 'OFFLINE', 'SUSPENDED', 'PROVISIONING'].map((s) => <option key={s}>{s}</option>)}
+                  {['ONLINE', 'OFFLINE', 'SUSPENDED', 'PROVISIONING'].map((s) => <option key={s} value={s}>{rawStatusLabel(s, t)}</option>)}
                 </Select>
               </div>
               <div className="flex flex-wrap gap-2 mt-3">

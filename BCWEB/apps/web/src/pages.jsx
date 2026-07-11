@@ -18,7 +18,7 @@ import { useTheme } from './theme.jsx';
 import { getConsent, setConsent } from './analytics.js';
 import { SKIP_KEY, useIntro } from './IntroContext.jsx';
 import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from './prefs.js';
-import { MyRepos, AdminRepos, Billing } from './repos.jsx';
+import { MyRepos, AdminRepos, Billing, rawStatusLabel } from './repos.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
 import { AuthorsRow } from './blog.jsx';
 import Avatar from './Avatar.jsx';
@@ -3151,7 +3151,7 @@ function AdminServerPerf() {
                           <tr key={r.id} className="hover:bg-[var(--surface-2)]/40">
                             <td className="py-2 pl-1 pr-3 min-w-[150px]">
                               <div className="font-medium break-all leading-tight">{r.name}</div>
-                              <div className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 flex-wrap">{r.owner}{r.status !== 'ONLINE' && <Badge tone={r.status === 'SUSPENDED' ? 'red' : ''}>{r.status}</Badge>}</div>
+                              <div className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 flex-wrap">{r.owner}{r.status !== 'ONLINE' && <Badge tone={r.status === 'SUSPENDED' ? 'red' : ''}>{rawStatusLabel(r.status, t)}</Badge>}</div>
                             </td>
                             {/* Live upload actually served now vs the plan limit (0 = idle). */}
                             <td className="py-2 px-3">

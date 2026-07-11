@@ -677,8 +677,9 @@ const DICT = {
 
     // ── Admin : dépôts ──
     'arp.verified': 'Vérifié « {n} ».', 'arp.reject': 'Rejeter / retirer', 'arp.reason': 'Raison (envoyée au propriétaire)',
-    'arp.rejectbtn': 'Rejeter', 'arp.rejected': 'Rejeté.', 'arp.revalok': 'Re-validé — vérifié (sha {s}…).',
-    'arp.revalbad': 'Re-validé — invalide ({r}).', 'arp.norepojson': 'aucun repo.json valide',
+    'arp.rejectbtn': 'Rejeter', 'arp.rejected': 'Rejeté.',
+    'arp.revalok': 'Vérifié « {n} » — son contenu correspond à un repo.json valide (sha {s}…).',
+    'arp.revalbad': 'Impossible de vérifier « {n} » — {r}. Il reste non vérifié tant qu\'un repo.json valide n\'est pas envoyé.', 'arp.norepojson': 'aucun repo.json valide trouvé',
     'arp.checked': '{c} dépôts vérifiés — {o} en ligne, {v} validés.', 'arp.checkfail': 'Échec de la vérification.',
     'arp.storagebelow': 'Le stockage ne peut pas être inférieur à ce qui est déjà utilisé ({n} Go).',
 
@@ -767,6 +768,9 @@ const DICT = {
     'repos.nomatch.t': 'Aucun résultat', 'repos.nomatch.s': 'Essaie une autre recherche ou efface les filtres.',
     'repos.one': 'dépôt', 'repos.many': 'dépôts', 'repos.featured': 'Mis en avant', 'repos.verified': 'Vérifié',
     'repos.online': 'En ligne', 'repos.offline': 'Hors ligne', 'repos.openbmm': 'Ouvrir dans BMM', 'repos.copyjson': 'Copier repo.json',
+    'repos.st.suspended': 'Suspendu', 'repos.st.provisioning': 'Provisionnement', 'repos.st.inreview': 'En révision',
+    'repos.suspended.notice': "Ce dépôt est suspendu — il reste hors ligne et ne peut être ni listé, ni modifié, ni supprimé. Contacte le support pour le résoudre.",
+    'repos.inreview.notice': "En révision — un modérateur le vérifie avant qu'il apparaisse dans la liste publique. Il continue de fonctionner normalement ; toute nouvelle modification relance la révision.",
     'repos.source': 'Source', 'repos.website': 'Site web', 'repos.changelog': 'Journal',
     'repos.hosted': 'Hébergé', 'repos.listed': 'Listé', 'repos.unlisted': 'Non listé', 'repos.pending': 'En attente de revue', 'repos.unverified': 'Non vérifié',
     'repos.push.ok': 'Poussé — revérifié & vérifié.', 'repos.push.bad': 'Poussé — le contenu n’est pas un repo.json valide (non vérifié).', 'repos.failed': 'Échec.',
