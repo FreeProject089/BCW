@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { db, requireRole, optionalAuth, slugify, logAudit, notify, clearAccountLockCache } from '../lib.mjs';
-import { sendMail, mailShell, emailEnabled } from '../mail.mjs';
+import { sendMail, mailShell, emailEnabled, escapeHtml } from '../mail.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 import { prefixUsage } from '../storage.mjs';
@@ -71,8 +71,15 @@ export default async function miscRoutes(app) {
   const reviewSchema = z.object({
     author: z.string().min(1).max(80), role: z.string().max(80).optional(),
     body: z.string().min(1).max(1000), bodyFr: z.string().max(1000).optional(),
-    rating: z.number().int().min(1).max(5).nullish(), avatar: z.any().optional(),
-    enabled: z.boolean().optional(), order: z.number().int().optional(),
+    rating: z.number().int().min(1).max(5).nullish(),
+    // Structured + bounded (not z.any()) — image must be a real http(s) URL, so an
+    // arbitrary/`javascript:` value can't be stored and later rendered as <img src>.
+    avatar: z.object({
+      variant: z.string().max(20).optional(), seed: z.string().max(80).optional(),
+      colors: z.array(z.string().max(24)).max(6).optional(),
+      image: z.string().url().startsWith('http').max(500).optional(),
+    }).nullish(),
+    enabled: z.boolean().optional(), order: z.number().int().min(0).max(100000).optional(),
   });
   app.get('/admin/reviews', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
@@ -506,7 +513,7 @@ export default async function miscRoutes(app) {
       await logAudit(p, req.user.uid, 'user.reactivate', `${target.displayName} (${target.email})`, clientIp(req));
       await notify(p, target.id, 'account', 'Your account has been reactivated — welcome back.').catch(() => {});
       if (emailEnabled()) sendMail({ to: target.email, subject: 'Your BetterCommunity account has been reactivated',
-        html: mailShell('Account reactivated', `<p>Hi ${target.displayName},</p><p>Your account has been reactivated. You can sign in again.</p>`, { url: `${SITE_URL}/auth`, label: 'Sign in' }),
+        html: mailShell('Account reactivated', `<p>Hi ${escapeHtml(target.displayName)},</p><p>Your account has been reactivated. You can sign in again.</p>`, { url: `${SITE_URL}/auth`, label: 'Sign in' }),
         text: `Your BetterCommunity account has been reactivated. Sign in: ${SITE_URL}/auth` }).catch(() => {});
       return { ok: true, status: 'active' };
     }
@@ -521,7 +528,7 @@ export default async function miscRoutes(app) {
     await logAudit(p, req.user.uid, `user.${status}`, `${target.displayName} (${target.email}) ${until ? `until ${until.toISOString()}` : 'permanently'}${reason ? ` — ${reason}` : ''}`, clientIp(req));
     await notify(p, target.id, 'account', `Your account has been ${label} ${dur}.${reason ? ` Reason: ${reason}` : ''}`).catch(() => {});
     if (emailEnabled()) sendMail({ to: target.email, subject: `Your BetterCommunity account has been ${label}`,
-      html: mailShell(`Account ${label}`, `<p>Hi ${target.displayName},</p><p>Your account has been <b>${label}</b> ${dur}.</p>${reason ? `<p style="margin-top:12px"><b>Reason:</b><br>${reason}</p>` : ''}${until ? '' : '<p style="margin-top:12px">If you believe this was a mistake, you can appeal by contacting support.</p>'}`, until ? null : { url: `${SITE_URL}/contact?ref=appeal`, label: 'Contact support' }),
+      html: mailShell(`Account ${label}`, `<p>Hi ${escapeHtml(target.displayName)},</p><p>Your account has been <b>${label}</b> ${dur}.</p>${reason ? `<p style="margin-top:12px"><b>Reason:</b><br>${escapeHtml(reason)}</p>` : ''}${until ? '' : '<p style="margin-top:12px">If you believe this was a mistake, you can appeal by contacting support.</p>'}`, until ? null : { url: `${SITE_URL}/contact?ref=appeal`, label: 'Contact support' }),
       text: `Your BetterCommunity account has been ${label} ${dur}.${reason ? ` Reason: ${reason}` : ''}${until ? '' : ` Appeal: ${SITE_URL}/contact`}` }).catch(() => {});
     return { ok: true, status, until: until ? until.toISOString() : null };
   });

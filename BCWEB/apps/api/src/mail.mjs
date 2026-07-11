@@ -26,6 +26,13 @@ export async function sendMail({ to, subject, html, text }) {
   return true;
 }
 
+// Escape user/admin-supplied text before interpolating it into an email's HTML body,
+// so a display name or reason like `<img onerror=…>` can't inject markup into the mail
+// (CWE-79). Always run untrusted values through this when building email HTML.
+export function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 // Branded HTML wrapper with an optional CTA button (+ the raw link as a fallback).
 export function mailShell(title, bodyHtml, cta) {
   const btn = cta
