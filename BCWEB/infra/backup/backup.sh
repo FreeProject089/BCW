@@ -47,14 +47,21 @@ log "  → $(du -h "$PG_OUT" | cut -f1)  $PG_OUT"
 # A read-only helper container tars each named volume. Volume names are
 # <project>_<key> (compose prefixes them). Skips any volume that doesn't exist.
 archive_volume() {
-  local vol="$1" name="$2" out="$BACKUP_DIR/$name-$TS.tar.gz"
-  if docker volume inspect "$vol" >/dev/null 2>&1; then
-    log "archiving volume $vol…"
-    docker run --rm -v "$vol":/data:ro -v "$BACKUP_DIR":/backup alpine \
-      tar czf "/backup/$name-$TS.tar.gz" -C /data . 2>/dev/null
+  # NOTE: separate `local` lines on purpose — a single `local a=$1 b=$a` expands all
+  # words before assigning, so `$name` would be unbound under `set -u`.
+  local vol="$1"
+  local name="$2"
+  local out="$BACKUP_DIR/$name-$TS.tar.gz"
+  if ! docker volume inspect "$vol" >/dev/null 2>&1; then
+    log "skip $vol (not found)"; return 0
+  fi
+  log "archiving volume $vol…"
+  # Non-fatal: a volume hiccup must never abort the (already-saved) Postgres dump.
+  if docker run --rm -v "$vol":/data:ro -v "$BACKUP_DIR":/backup alpine \
+       tar czf "/backup/$name-$TS.tar.gz" -C /data . ; then
     log "  → $(du -h "$out" | cut -f1)  $out"
   else
-    log "skip $vol (not found)"
+    log "WARN: failed to archive $vol — backup continues"; rm -f "$out"
   fi
 }
 archive_volume "${PROJECT}_minio-data"    "minio"
