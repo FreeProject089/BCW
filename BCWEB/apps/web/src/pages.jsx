@@ -9,7 +9,7 @@ import {
   Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket,
   CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss,
   Info, Orbit, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, ShoppingCart,
-  Mic, KeyRound,
+  Mic, KeyRound, MousePointerClick, PanelTop,
 } from 'lucide-react';
 import { api, uploadPayload, uploadImage } from './api.js';
 import { useAuth } from './auth.jsx';
@@ -6269,6 +6269,45 @@ const NICK_ANIMAL = ['Chimpanzee', 'Tiglon', 'Koi', 'Lynx', 'Anteater', 'Krill',
 const hashSeed = (seed) => { let h = 0; const s = String(seed || ''); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
 function fakeNick(seed) { const h = hashSeed(seed); return `${NICK_ADJ[h % NICK_ADJ.length]} ${NICK_ANIMAL[(h >> 5) % NICK_ANIMAL.length]}`; }
 
+// One row in a session's activity timeline — a pageview or an in-page interaction
+// (click / copy / field edit / submit / modal), each with its own icon, tint and a
+// human label, connected by a vertical rail so it reads like a session replay.
+const EVENT_META = {
+  page:        { Icon: Eye,                tint: 'text-[var(--primary-2)]', dot: 'bg-[var(--primary-2)]', key: 'an.evPage',   fb: 'Viewed' },
+  click:       { Icon: MousePointerClick,  tint: 'text-sky-400',            dot: 'bg-sky-400',            key: 'an.evClick',  fb: 'Clicked' },
+  copy:        { Icon: Copy,               tint: 'text-emerald-400',        dot: 'bg-emerald-400',        key: 'an.evCopy',   fb: 'Copied' },
+  input:       { Icon: PenSquare,          tint: 'text-amber-400',          dot: 'bg-amber-400',          key: 'an.evInput',  fb: 'Edited' },
+  submit:      { Icon: Send,               tint: 'text-violet-400',         dot: 'bg-violet-400',         key: 'an.evSubmit', fb: 'Submitted' },
+  modal_open:  { Icon: PanelTop,           tint: 'text-fuchsia-400',        dot: 'bg-fuchsia-400',        key: 'an.evModal',  fb: 'Opened modal' },
+  modal_close: { Icon: X,                  tint: 'text-[var(--faint)]',     dot: 'bg-[var(--faint)]',     key: 'an.evModalX', fb: 'Closed modal' },
+};
+function SessionEventRow({ e, idx, t }) {
+  const m = EVENT_META[e.kind] || EVENT_META.click;
+  const verb = t(m.key, m.fb);
+  const isPage = e.kind === 'page';
+  return (
+    <div className="flex items-start gap-2.5 text-xs relative pb-2 last:pb-0">
+      {/* vertical rail connecting the timeline dots */}
+      <span className="absolute left-[9px] top-4 bottom-0 w-px bg-[var(--line)]" aria-hidden />
+      <span className={`relative shrink-0 mt-0.5 w-[18px] h-[18px] rounded-full grid place-items-center ${m.tint}`}>
+        <span className={`absolute inset-0 rounded-full opacity-15 ${m.dot}`} />
+        <m.Icon size={11} className="relative" />
+      </span>
+      <div className="flex-1 min-w-0 flex items-baseline gap-1.5">
+        {isPage ? (
+          <span className="font-mono text-[var(--muted)] truncate">{e.path}</span>
+        ) : (
+          <>
+            <span className="text-[var(--faint)] shrink-0">{verb}</span>
+            {e.label && <span className="font-medium text-[var(--fg)] truncate">{e.label}</span>}
+            <span className="font-mono text-[10px] text-[var(--faint)]/70 truncate">· {e.path}</span>
+          </>
+        )}
+      </div>
+      <span className="text-[var(--faint)] shrink-0 tabular-nums mt-px">{new Date(e.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+    </div>
+  );
+}
 function SessionRow({ s }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -6304,15 +6343,8 @@ function SessionRow({ s }) {
         <ChevronDown size={15} className={`text-[var(--faint)] transition-transform shrink-0 ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="border-t border-[var(--line)] bg-[var(--surface)]/40 px-3 py-2 space-y-1.5">
-          {s.events.map((e, i) => (
-            <div key={i} className="flex items-center gap-2 text-xs">
-              <span className="w-5 text-center text-[10px] text-[var(--faint)] shrink-0">{i + 1}</span>
-              <Eye size={12} className="text-[var(--primary-2)] shrink-0" />
-              <span className="font-mono text-[var(--muted)] truncate flex-1">{e.path}</span>
-              <span className="text-[var(--faint)] shrink-0 tabular-nums">{new Date(e.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-            </div>
-          ))}
+        <div className="border-t border-[var(--line)] bg-[var(--surface)]/40 px-3 py-2">
+          {s.events.map((e, i) => <SessionEventRow key={i} e={e} idx={i} t={t} />)}
         </div>
       )}
     </div>

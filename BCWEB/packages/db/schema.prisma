@@ -1209,3 +1209,23 @@ model WebVital {
   @@index([path])
   @@index([metric])
 }
+
+// First-party in-page interaction events (clicks, copies, field edits, form submits,
+// modal open/close). Same trust/consent model as AnalyticsEvent (daily anonymous
+// visitor hash, no PII, no cookie) but kept in a SEPARATE table so it never pollutes
+// pageview aggregates. Merged back into each visitor's session timeline in the admin
+// Sessions feed (which button / which modal, à la a session-replay timeline) — without
+// any heavyweight recording. `label` is a short human tag (button text / field name /
+// modal title), never a field VALUE.
+model InteractionEvent {
+  id        String   @id @default(cuid())
+  visitor   String?  // daily anonymous hash (matches AnalyticsEvent.visitor)
+  path      String   // page path where it happened
+  kind      String   // click | copy | input | submit | modal_open | modal_close | nav
+  label     String?  // button text / field name / modal title (never a value)
+  device    String?  // mobile | tablet | desktop
+  createdAt DateTime @default(now())
+
+  @@index([visitor, createdAt])
+  @@index([createdAt])
+}

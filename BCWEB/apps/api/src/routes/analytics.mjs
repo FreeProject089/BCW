@@ -171,6 +171,30 @@ export default async function analyticsRoutes(app) {
     return reply.code(204).send();
   });
 
+  // First-party in-page interactions (clicks, field edits, submits, modal open/close),
+  // batched by the client. Same trust/consent model as pageviews — the visitor hash is
+  // recomputed server-side (client can't spoof identity), labels are short and bounded,
+  // and `kind` is a strict enum. Stored in a separate table so pageview aggregates stay
+  // clean; merged into the admin Sessions timeline. Never carries a field value.
+  app.post('/analytics/interactions', { config: { rateLimit: { max: 600, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = z.object({
+      items: z.array(z.object({
+        path: z.string().max(300),
+        kind: z.enum(['click', 'copy', 'input', 'submit', 'modal_open', 'modal_close', 'nav']),
+        label: z.string().max(80).nullish(),
+      })).max(40),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid' });
+    if (!b.data.items.length) return reply.code(204).send();
+    const p = await db();
+    const { device } = parseUA(req.headers['user-agent']);
+    const visitor = visitorHash(req);
+    await p.interactionEvent.createMany({
+      data: b.data.items.map((it) => ({ path: it.path, kind: it.kind, label: it.label || null, visitor, device })),
+    }).catch(() => {});
+    return reply.code(204).send();
+  });
+
   // Rich admin overview (telemetry-grade): totals, unique visitors, live, per-day
   // series (views + visitors), top pages/referrers, device & browser breakdowns.
   app.get('/admin/analytics', { preHandler: requireRole('ADMIN') }, async (req) => {
@@ -333,35 +357,53 @@ export default async function analyticsRoutes(app) {
   app.get('/admin/analytics/sessions', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
     const limit = Math.min(Math.max(Number(req.query?.limit) || 40, 1), 100);
-    // Pull the most recent events, then sessionize newest-first in JS (bounded scan).
-    const rows = await p.analyticsEvent.findMany({
-      where: { visitor: { not: null } },
-      orderBy: { createdAt: 'desc' }, take: 4000,
-      select: { visitor: true, path: true, ref: true, device: true, browser: true, os: true, country: true, region: true, city: true, lat: true, lng: true, createdAt: true },
-    });
+    // Pull the most recent pageviews AND in-page interactions, then sessionize
+    // newest-first in JS (bounded scan). Interactions are merged into each session's
+    // timeline so the feed shows the real activity — which button, which field, which
+    // modal — not just page hops.
+    const [rows, interactions] = await Promise.all([
+      p.analyticsEvent.findMany({
+        where: { visitor: { not: null } },
+        orderBy: { createdAt: 'desc' }, take: 4000,
+        select: { visitor: true, path: true, ref: true, device: true, browser: true, os: true, country: true, region: true, city: true, lat: true, lng: true, createdAt: true },
+      }),
+      p.interactionEvent.findMany({
+        where: { visitor: { not: null } },
+        orderBy: { createdAt: 'desc' }, take: 8000,
+        select: { visitor: true, path: true, kind: true, label: true, createdAt: true },
+      }),
+    ]);
     const GAP = 30 * 60e3, LIVE = 5 * 60e3, now = Date.now();
-    // Group by visitor (events are desc; reverse each group to chronological).
+    // Interleave pageviews (kind 'page') and interactions into one chronological stream
+    // per visitor. Pageviews still anchor the session's identity (device/geo) and the
+    // page/entry/exit counters; interactions are timeline-only.
     const byVisitor = new Map();
-    for (const e of rows) { if (!byVisitor.has(e.visitor)) byVisitor.set(e.visitor, []); byVisitor.get(e.visitor).push(e); }
+    const bump = (v) => { if (!byVisitor.has(v)) byVisitor.set(v, []); return byVisitor.get(v); };
+    for (const e of rows) bump(e.visitor).push({ ...e, kind: 'page' });
+    for (const e of interactions) bump(e.visitor).push({ kind: e.kind, path: e.path, label: e.label, createdAt: e.createdAt, _int: true });
     const sessions = [];
     for (const [visitor, evs] of byVisitor) {
-      evs.reverse(); // chronological
+      // Chronological. A session must START on a pageview (interactions before the first
+      // pageview in the scan window would otherwise spawn a page-less ghost session).
+      evs.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
       let cur = null;
       for (const e of evs) {
         const t = new Date(e.createdAt).getTime();
         if (!cur || t - cur._last > GAP) {
-          cur = { visitor, start: e.createdAt, _startMs: t, _last: t, events: [], device: e.device, browser: e.browser, os: e.os, country: e.country, region: e.region, city: e.city, lat: e.lat, lng: e.lng, ref: e.ref };
+          if (e._int) continue; // don't open a session on a stray interaction
+          cur = { visitor, start: e.createdAt, _startMs: t, _last: t, events: [], pages: 0, device: e.device, browser: e.browser, os: e.os, country: e.country, region: e.region, city: e.city, lat: e.lat, lng: e.lng, ref: e.ref };
           sessions.push(cur);
         }
-        cur.events.push({ path: e.path, at: e.createdAt });
-        cur._last = t; cur.end = e.createdAt;
+        if (e._int) cur.events.push({ kind: e.kind, path: e.path, label: e.label, at: e.createdAt });
+        else { cur.events.push({ kind: 'page', path: e.path, at: e.createdAt }); cur.pages++; cur.end = e.createdAt; cur._lastPage = e.path; cur._firstPage = cur._firstPage || e.path; }
+        cur._last = t;
       }
     }
     sessions.sort((a, b) => b._startMs - a._startMs);
     const out = sessions.slice(0, limit).map((s) => ({
       visitor: s.visitor, start: s.start, end: s.end,
       durationSec: Math.max(0, Math.round((new Date(s.end).getTime() - s._startMs) / 1000)),
-      pages: s.events.length, entry: s.events[0]?.path, exit: s.events[s.events.length - 1]?.path,
+      pages: s.pages, entry: s._firstPage, exit: s._lastPage,
       events: s.events, device: s.device, browser: s.browser, os: s.os,
       country: s.country, region: s.region, city: s.city, lat: s.lat, lng: s.lng, ref: s.ref,
       live: now - new Date(s.end).getTime() < LIVE,

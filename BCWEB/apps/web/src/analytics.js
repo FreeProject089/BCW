@@ -16,6 +16,111 @@ export function trackPageview(path) {
   beacon('/api/analytics/pageview', { path, ref: document.referrer || undefined });
 }
 
+// ── First-party in-page interaction tracking ─────────────────────────────────
+// Captures the coarse SHAPE of a session — which button was clicked, which field
+// was edited, which modal opened — so the admin Sessions feed can show a real
+// activity timeline (like a session replay) WITHOUT any heavyweight recording or
+// third-party script. Consent-gated (analytics = 'all'), no field VALUES are ever
+// read, only short human labels (button text / field name / modal title). Events
+// are batched and beaconed; a short debounce keeps each event's server timestamp
+// close to when it actually happened so it interleaves correctly with pageviews.
+const clip = (s, n = 60) => { const v = String(s || '').replace(/\s+/g, ' ').trim(); return v.length > n ? v.slice(0, n - 1) + '…' : v; };
+// A readable label for an actionable element: explicit override → aria-label →
+// visible text → title → name/placeholder → element role. Never its value.
+function elLabel(el) {
+  if (!el) return '';
+  return clip(
+    el.getAttribute?.('data-track')
+    || el.getAttribute?.('aria-label')
+    || el.textContent
+    || el.getAttribute?.('title')
+    || el.getAttribute?.('name')
+    || el.getAttribute?.('placeholder')
+    || el.getAttribute?.('type')
+    || (el.tagName ? el.tagName.toLowerCase() : ''),
+  );
+}
+// Nearest heading/label text inside a container (for modals & forms).
+function titleOf(node) {
+  if (!node) return '';
+  const t = node.getAttribute?.('data-modal-title') || node.getAttribute?.('aria-label');
+  if (t) return clip(t);
+  const h = node.querySelector?.('h1,h2,h3,[data-title],legend,.modal-title');
+  return clip(h?.textContent || '');
+}
+
+let _queue = [];
+let _flushTimer = null;
+function push(kind, label) {
+  if (getConsent() !== 'all') return;
+  _queue.push({ kind, label: clip(label) || null, path: location.pathname + location.search });
+  if (_queue.length > 40) _queue = _queue.slice(-40); // bound memory if flushes fail
+  // Debounced flush: keeps the server-side timestamp within ~1.2s of the real event
+  // so interactions interleave with pageviews in the session timeline.
+  if (!_flushTimer) _flushTimer = setTimeout(flushInteractions, 1200);
+}
+function flushInteractions() {
+  _flushTimer = null;
+  if (!_queue.length || getConsent() !== 'all') return;
+  const items = _queue; _queue = [];
+  beacon('/api/analytics/interactions', { items });
+}
+
+export function initInteractions() {
+  if (getConsent() !== 'all') return;
+  if (window.__bcwInteractions) return;
+  window.__bcwInteractions = true;
+
+  // Clicks on anything actionable. `copy`-style buttons get their own kind so the
+  // timeline can show "Copied …" distinctly (matches our copy-to-clipboard buttons).
+  document.addEventListener('click', (e) => {
+    const el = e.target?.closest?.('button,a[href],[role="button"],[role="tab"],[data-track],summary,input[type="submit"],input[type="button"]');
+    if (!el) return;
+    const label = elLabel(el);
+    const hay = (label + ' ' + (el.getAttribute('data-track') || '') + ' ' + (el.className || '')).toLowerCase();
+    const kind = (el.hasAttribute('data-copy') || /\bcopy|copier\b/.test(hay)) ? 'copy' : 'click';
+    push(kind, label);
+  }, { capture: true, passive: true });
+
+  // Field edits — the FACT that a field changed and its identity, never the value.
+  // `change` fires on commit/blur (not per keystroke), so this stays low-volume.
+  document.addEventListener('change', (e) => {
+    const el = e.target;
+    if (!el || !/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return;
+    if (/^(password|hidden)$/i.test(el.type || '')) return; // never touch secret fields
+    let label = el.getAttribute('aria-label') || '';
+    if (!label && el.id) label = clip(document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.textContent || '');
+    if (!label) label = el.closest('label') ? clip(el.closest('label').textContent) : '';
+    if (!label) label = el.getAttribute('name') || el.getAttribute('placeholder') || (el.tagName === 'SELECT' ? 'select' : 'field');
+    push('input', label);
+  }, { capture: true, passive: true });
+
+  // Form submissions.
+  document.addEventListener('submit', (e) => {
+    const f = e.target;
+    if (!f || f.tagName !== 'FORM') return;
+    const submitEl = f.querySelector('[type="submit"]');
+    push('submit', titleOf(f) || elLabel(submitEl) || f.getAttribute('name') || 'form');
+  }, { capture: true, passive: true });
+
+  // Modal open/close. Our modals mount/unmount a `.modal`/[role=dialog] node, so a
+  // childList observer catches both without touching component code.
+  const openModals = new WeakSet();
+  const isModal = (n) => n?.nodeType === 1 && (n.matches?.('.modal,[role="dialog"],[aria-modal="true"]') || n.querySelector?.('.modal,[role="dialog"],[aria-modal="true"]'));
+  const modalNode = (n) => (n.matches?.('.modal,[role="dialog"],[aria-modal="true"]') ? n : n.querySelector?.('.modal,[role="dialog"],[aria-modal="true"]'));
+  const mo = new MutationObserver((muts) => {
+    for (const m of muts) {
+      for (const n of m.addedNodes) { if (isModal(n)) { const md = modalNode(n); if (md && !openModals.has(md)) { openModals.add(md); push('modal_open', titleOf(md) || 'modal'); } } }
+      for (const n of m.removedNodes) { if (isModal(n)) { const md = modalNode(n); if (md) { openModals.delete(md); push('modal_close', titleOf(md) || 'modal'); } } }
+    }
+  });
+  try { mo.observe(document.body, { childList: true, subtree: true }); } catch {}
+
+  // Never lose the tail of a session.
+  addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushInteractions(); });
+  addEventListener('pagehide', flushInteractions);
+}
+
 // ── Real-user Web Vitals (native, no web-vitals dep, no CDN) ───────────────────
 // Collects Core Web Vitals (LCP, CLS, INP) + FCP + TTFB with PerformanceObserver and
 // flushes them once when the page is backgrounded/unloaded. web.dev "good/poor"

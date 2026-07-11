@@ -1046,6 +1046,7 @@ const DICT = {
     'an.replay.short': 'Enregistrement trop court pour être lu.', 'an.replay.err': 'Impossible de charger cette relecture.',
     'an.replay.btn': 'Relecture', 'an.replay.play.title': 'Lire la relecture de session',
     'an.unknown': 'Inconnu', 'an.liveLabel': 'en direct', 'an.pg': 'pg', 'an.ago': 'il y a {n}', 'an.map.none': 'Aucune donnée géolocalisée pour l’instant.',
+    'an.evPage': 'Vu', 'an.evClick': 'Clic sur', 'an.evCopy': 'Copié', 'an.evInput': 'Champ modifié', 'an.evSubmit': 'Envoyé', 'an.evModal': 'Modal ouverte', 'an.evModalX': 'Modal fermée',
     'an.sess.title': 'Sessions', 'an.sess.autorefresh': 'rafraîchissement auto 15 s',
     'an.sess.descGlobe': 'Sessions récentes des visiteurs — placées sur le globe par géolocalisation IP. En direct = actif dans les 5 dernières minutes.',
     'an.sess.descList': 'Sessions récentes des visiteurs — clique sur l’une pour voir son parcours page par page. En direct = actif dans les 5 dernières minutes.',

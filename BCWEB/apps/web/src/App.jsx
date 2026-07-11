@@ -8,7 +8,7 @@ import { ThemeToggle } from './theme.jsx';
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
 import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon } from './brand.jsx';
 import { ShowcaseIcon } from './md.jsx';
-import { trackPageview, initVitals } from './analytics.js';
+import { trackPageview, initVitals, initInteractions } from './analytics.js';
 import { loadGtmIfConsented } from './gtm.js';
 import { getOrbTransitionPref } from './prefs.js';
 import CookieConsent from './CookieConsent.jsx';
@@ -462,7 +462,7 @@ function AnnouncementBanner() {
 
 export default function App() {
   const loc = useLocation();
-  useEffect(() => { loadGtmIfConsented(); initVitals(); }, []);
+  useEffect(() => { loadGtmIfConsented(); initVitals(); initInteractions(); }, []);
   useEffect(() => { trackPageview(loc.pathname + loc.search); }, [loc.pathname, loc.search]);
   // Optional cinematic route transition — let the hero orb know we navigated so it
   // can shatter + dive into a random shard + recompose. OFF by default (pref read
