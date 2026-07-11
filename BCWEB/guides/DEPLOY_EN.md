@@ -195,6 +195,21 @@ Then `docker compose up -d api provisioner`; once verified, `docker compose stop
 volume is kept as a backup). Neon / Supabase / RDS give you backups + read-replicas for
 free. To keep pooling in front of it, set `PGBOUNCER_UPSTREAM_HOST` to the managed host.
 
+**Self-hosted variant — your own second VPS for the DB (same flip, still free, no K8s).**
+The identical `.env` change points the app VPS at a Postgres you run on a second box you
+control. Four things to get right:
+- **Private networking:** link the two VPS over the provider's private network (Hetzner / DO /
+  …) or a WireGuard tunnel, and **never expose Postgres `5432` to the public internet** —
+  firewall it to the app VPS's IP only.
+- **Same region / datacenter:** keep both boxes in the same location. Every query round-trips to
+  the DB, so cross-region latency wrecks performance; same-DC is < 1 ms.
+- **TLS:** add `?sslmode=require` (or `verify-full` with a CA) unless the hop is a trusted
+  private LAN.
+- **Split of duties:** the DB VPS runs only Postgres (+ optionally PgBouncer and its own
+  backups); the app VPS runs everything else (api / web / redis / minio / caddy / bot).
+Do this when one box can't comfortably hold both — until then, vertically scaling the single
+VPS is simpler and cheaper.
+
 **Going further — scale up first, orchestrate only if you must:**
 - **Scale the VPS vertically first** — more CPU/RAM/disk on the one box is the cheapest,
   simplest win and takes you a very long way. A 2 vCPU / 4 GB box already serves thousands

@@ -201,6 +201,21 @@ Puis `docker compose up -d api provisioner` ; une fois vérifié, `docker compos
 réplicas de lecture gratuitement. Pour garder un pooler devant, mets
 `PGBOUNCER_UPSTREAM_HOST` sur le host managé.
 
+**Variante auto-hébergée — ton propre 2ᵉ VPS pour la DB (même bascule, toujours gratuit,
+sans K8s).** Le même changement de `.env` fait pointer le VPS applicatif vers un Postgres que
+tu fais tourner sur un 2ᵉ serveur à toi. 4 points à faire correctement :
+- **Réseau privé :** relie les 2 VPS via le réseau privé du provider (Hetzner / DO / …) ou un
+  tunnel WireGuard, et **n'expose JAMAIS le port `5432` sur Internet** — filtre-le au pare-feu
+  vers la seule IP du VPS applicatif.
+- **Même région / datacenter :** garde les 2 machines au même endroit. Chaque requête fait un
+  aller-retour vers la DB → la latence inter-région tue les perfs ; même-DC = < 1 ms.
+- **TLS :** ajoute `?sslmode=require` (ou `verify-full` avec une CA) sauf si le lien est un LAN
+  privé de confiance.
+- **Répartition :** le VPS DB ne fait tourner que Postgres (+ éventuellement PgBouncer et ses
+  propres backups) ; le VPS applicatif fait tout le reste (api / web / redis / minio / caddy / bot).
+Fais-le quand une seule machine ne peut plus tenir les deux confortablement — avant ça,
+agrandir verticalement le VPS unique est plus simple et moins cher.
+
 **Aller plus loin — scale vertical d'abord, orchestrer seulement si nécessaire :**
 - **Agrandis le VPS verticalement d'abord** — plus de CPU/RAM/disque sur la même machine,
   c'est le gain le plus simple et le moins cher, et ça t'emmène très loin. Une machine
