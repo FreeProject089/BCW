@@ -176,7 +176,7 @@ export default async function miscRoutes(app) {
   app.get('/sitemap.xml', async (req, reply) => {
     const p = await db();
     const site = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
-    const staticRoutes = ['/', '/catalog', '/blog', '/repos', '/hosting', '/projects', '/contact', '/privacy', '/terms', '/cookies', '/p/bmm', '/p/bsm', '/p/installer'];
+    const staticRoutes = ['/', '/catalog', '/blog', '/repos', '/hosting', '/projects', '/contact', '/legal', '/legal/about', '/legal/privacy', '/legal/terms', '/legal/cookies', '/legal/refunds', '/p/bmm', '/p/bsm', '/p/installer'];
     const [showcase, posts] = await Promise.all([
       p.showcaseProject.findMany({ where: { published: true }, select: { slug: true, updatedAt: true } }),
       p.blogPost.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true, updatedAt: true } }),

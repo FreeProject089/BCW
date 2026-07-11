@@ -4856,9 +4856,9 @@ function AdminOAuthClients() {
         <div className="mt-3"><Field label={t('oc.f.uris', 'Redirect URIs (one per line)')} hint={t('oc.f.uris.h', 'Absolute URLs the login flow may return to, e.g. https://app.example.com/callback')}><textarea className="input" rows={2} value={f.redirectUris} onChange={(e) => setF((s) => ({ ...s, redirectUris: e.target.value }))} placeholder="https://app.example.com/callback" /></Field></div>
         <div className="mt-3">
           <div className="text-sm text-[var(--muted)] mb-1.5">{t('oc.f.scopes', 'Scopes')}</div>
-          <div className="flex flex-wrap gap-3">
-            {['openid', 'profile', 'email'].map((s) => (
-              <label key={s} className="flex items-center gap-1.5 text-sm cursor-pointer">
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {['openid', 'profile', 'email', 'items', 'repos'].map((s) => (
+              <label key={s} className="flex items-center gap-1.5 text-sm cursor-pointer" title={{ openid: 'Sign-in / identity (required)', profile: 'Display name & avatar', email: 'Email address', items: 'Read the user\'s catalog items', repos: 'Read the user\'s hosted Server-Repos' }[s]}>
                 <input type="checkbox" checked={f.scopes.includes(s)} disabled={s === 'openid'} onChange={() => toggleScope(s)} /> {s}
               </label>
             ))}
@@ -7152,7 +7152,7 @@ export function Settings() {
           <Select value={consent} onChange={(e) => setCookie(e.target.value)} className="!w-auto"><option value="essential">{t('set.essential', 'Essential only')}</option><option value="all">{t('set.all', 'Accept all')}</option></Select>
         </Row>
         <div className="pt-3 text-xs text-[var(--muted)]">
-          {t('set.privacy.more', 'Read more in the')} <Link to="/cookies" className="text-[var(--primary-2)] hover:underline">{t('nav.cookies', 'Cookie Policy')}</Link> {t('set.and', 'and')} <Link to="/privacy" className="text-[var(--primary-2)] hover:underline">{t('nav.privacy', 'Privacy Policy')}</Link>.
+          {t('set.privacy.more', 'Read more in the')} <Link to="/legal/cookies" className="text-[var(--primary-2)] hover:underline">{t('nav.cookies', 'Cookie Policy')}</Link> {t('set.and', 'and')} <Link to="/legal/privacy" className="text-[var(--primary-2)] hover:underline">{t('nav.privacy', 'Privacy Policy')}</Link>.
         </div>
       </Card>
     </div>
@@ -7174,7 +7174,13 @@ export function Authorize() {
     if (!rt) { setInfo({ error: 'no_request' }); return; }
     api.get(`/oauth2/consent-info?rt=${encodeURIComponent(rt)}`).then(setInfo).catch(() => setInfo({ error: 'invalid' }));
   }, [rt]);
-  const SCOPE_LABEL = { openid: t('oauth.scope.openid', 'Confirm your identity'), profile: t('oauth.scope.profile', 'Your display name'), email: t('oauth.scope.email', 'Your email address') };
+  const SCOPE_META = {
+    openid: [ShieldCheck, t('oauth.scope.openid', 'Confirm your identity'), t('oauth.scope.openid.s', 'Verify who you are')],
+    profile: [Users, t('oauth.scope.profile', 'Your profile'), t('oauth.scope.profile.s', 'Display name & avatar')],
+    email: [Mail, t('oauth.scope.email', 'Your email address'), t('oauth.scope.email.s', 'To identify & contact you')],
+    items: [Package, t('oauth.scope.items', 'Your catalog items'), t('oauth.scope.items.s', 'Read your items & submissions')],
+    repos: [Server, t('oauth.scope.repos', 'Your Server-Repos'), t('oauth.scope.repos.s', 'Read the hosted repos you own')],
+  };
   if (authLoading || (user && !info)) return <div className="max-w-md mx-auto py-20 text-center text-[var(--muted)]"><Spinner /></div>;
   if (!user) return (
     <div className="max-w-md mx-auto py-20 text-center">
@@ -7186,20 +7192,30 @@ export function Authorize() {
   return (
     <div className="max-w-md mx-auto py-12">
       <Card className="p-7">
-        <div className="flex items-center gap-3 mb-5">
-          <span className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shrink-0 shadow-lg shadow-orange-500/25"><Shield size={20} /></span>
-          <div className="min-w-0"><div className="font-semibold text-lg leading-tight truncate">{info.clientName}</div><div className="text-sm text-[var(--muted)]">{t('oauth.wants', 'wants to access your BetterCommunity account')}</div></div>
+        <div className="flex items-center gap-3.5 mb-6">
+          <span className="grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white text-xl font-bold shrink-0 shadow-lg shadow-orange-500/25">{(info.clientName || '?').charAt(0).toUpperCase()}</span>
+          <div className="min-w-0">
+            <div className="font-bold text-[17px] leading-tight truncate">{info.clientName}</div>
+            <div className="text-sm text-[var(--muted)]">{t('oauth.wants', 'wants to access your BetterCommunity account')}</div>
+          </div>
         </div>
-        <p className="text-sm text-[var(--muted)] mb-2">{t('oauth.willshare', 'This will share:')}</p>
-        <ul className="space-y-2 mb-6">
-          {(info.scopes || []).map((s) => <li key={s} className="flex items-center gap-2 text-sm"><CheckCircle2 size={15} className="text-[var(--primary-2)] shrink-0" /> {SCOPE_LABEL[s] || s}</li>)}
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('oauth.willaccess', 'It will be able to access')}</div>
+        <ul className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)] mb-4 overflow-hidden">
+          {(info.scopes || []).map((s) => { const [I, label, sub] = SCOPE_META[s] || [CheckCircle2, s, '']; return (
+            <li key={s} className="flex items-center gap-3 px-3.5 py-2.5">
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0"><I size={16} /></span>
+              <div className="min-w-0"><div className="text-sm font-medium leading-tight">{label}</div>{sub && <div className="text-xs text-[var(--muted)] truncate">{sub}</div>}</div>
+              <CheckCircle2 size={16} className="text-emerald-400 ml-auto shrink-0" />
+            </li>
+          ); })}
         </ul>
+        <p className="text-xs text-[var(--muted)] mb-5 flex items-start gap-1.5"><Lock size={13} className="mt-0.5 shrink-0 text-[var(--faint)]" /> {t('oauth.readonly', "Read-only access — it can't change your password, spend money, or post as you.")}</p>
         <form method="post" action="/oauth2/authorize/decision" className="flex gap-3">
           <input type="hidden" name="request_token" value={rt} />
           <button type="submit" name="decision" value="deny" className="btn flex-1">{t('oauth.deny', 'Deny')}</button>
           <button type="submit" name="decision" value="approve" className="btn btn-primary flex-1">{t('oauth.allow', 'Allow')}</button>
         </form>
-        <p className="text-[11px] text-[var(--faint)] mt-3 text-center">{t('oauth.signedin', 'Signed in as {name}').replace('{name}', user.displayName || user.email || '')}</p>
+        <p className="text-[11px] text-[var(--faint)] mt-3.5 text-center">{t('oauth.signedin', 'Signed in as {name}').replace('{name}', user.displayName || user.email || '')}</p>
       </Card>
     </div>
   );
@@ -7455,7 +7471,7 @@ export function Legal({ page }) {
   return (
     <div className="max-w-4xl mx-auto">
       <PageHeader icon={d.icon} title={d.title} subtitle={`${lang === 'fr' ? 'Mis à jour le' : 'Last updated'} ${new Date().toLocaleDateString()}`} />
-      <div className="flex flex-wrap gap-2 mb-5">{tabs.map(([k, l, I]) => <Link key={k} to={`/${k}`}><Button size="sm" variant={k === page ? 'primary' : 'default'}><I size={14} /> {l}</Button></Link>)}</div>
+      <div className="flex flex-wrap gap-2 mb-5"><Link to="/legal"><Button size="sm" variant="default"><FileText size={14} /> {t('legal.all', 'All')}</Button></Link>{tabs.map(([k, l, I]) => <Link key={k} to={`/legal/${k}`}><Button size="sm" variant={k === page ? 'primary' : 'default'}><I size={14} /> {l}</Button></Link>)}</div>
       {/* plain-language summary */}
       <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-orange-500/10 to-transparent">
         <d.icon size={18} className="text-[var(--primary-2)] mt-0.5 shrink-0" />
@@ -7475,6 +7491,27 @@ export function Legal({ page }) {
           ))}
           <div className="pt-4 border-t border-[var(--line)] text-sm text-[var(--muted)]">{lang === 'fr' ? 'Des questions sur cette politique ? Contacte-nous via les liens du pied de page.' : 'Questions about this policy? Reach us via the links in the footer.'}</div>
         </Card>
+      </div>
+    </div>
+  );
+}
+
+// The /legal hub — lists every legal/policy document.
+export function LegalIndex() {
+  const { lang, t } = useI18n();
+  const L = LEGAL[lang] || LEGAL.en;
+  const S = LEGAL_SUMMARY[lang] || LEGAL_SUMMARY.en;
+  const pages = ['about', 'privacy', 'terms', 'cookies', 'refunds'];
+  return (
+    <div className="max-w-4xl mx-auto">
+      <PageHeader icon={FileText} title={t('legal.title', 'Legal & policies')} subtitle={t('legal.sub', 'Our policies and terms, in plain language.')} />
+      <div className="grid sm:grid-cols-2 gap-4">
+        {pages.map((k) => { const d = L[k]; const I = d.icon; return (
+          <Link key={k} to={`/legal/${k}`} className="card card-hover p-5 flex items-start gap-3">
+            <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0"><I size={18} /></span>
+            <div className="min-w-0"><div className="font-semibold">{d.title}</div><div className="text-sm text-[var(--muted)] mt-0.5 line-clamp-2">{S[k]}</div></div>
+          </Link>
+        ); })}
       </div>
     </div>
   );

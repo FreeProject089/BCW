@@ -7,7 +7,7 @@ import { jwks, issuer, signRs256, verifyRs256 } from '../oidc.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
-const SCOPES = ['openid', 'profile', 'email'];
+const SCOPES = ['openid', 'profile', 'email', 'items', 'repos'];
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sep = (u) => (u.includes('?') ? '&' : '?');
 const backTo = (redir, params) => `${redir}${sep(redir)}${new URLSearchParams(params).toString()}`;
@@ -209,6 +209,27 @@ export default async function oidcProviderRoutes(app) {
   app.get('/oauth2/userinfo', userinfo);
   app.post('/oauth2/userinfo', userinfo);
 
+  // ── OAuth-scoped resources: a client with the granted scope can read these with the
+  // Bearer access token (verified against our JWKS). Read-only. ──
+  const oauthBearer = (scope) => async (req, reply) => {
+    const m = /^Bearer\s+(.+)$/i.exec(req.headers['authorization'] || '');
+    if (!m) { reply.header('WWW-Authenticate', 'Bearer'); return reply.code(401).send({ error: 'invalid_token' }); }
+    let c; try { c = await verifyRs256(m[1]); } catch { return reply.code(401).send({ error: 'invalid_token' }); }
+    if (c.token_use !== 'access') return reply.code(401).send({ error: 'invalid_token' });
+    if (scope && !String(c.scope || '').split(' ').includes(scope)) return reply.code(403).send({ error: 'insufficient_scope', scope });
+    req.oauthUser = { sub: c.sub, scope: c.scope };
+  };
+  app.get('/oauth2/me/items', { preHandler: oauthBearer('items') }, async (req) => {
+    const p = await db();
+    const items = await p.catalogItem.findMany({ where: { ownerId: req.oauthUser.sub }, select: { id: true, name: true, slug: true, kind: true, status: true }, orderBy: { createdAt: 'desc' }, take: 200 });
+    return { items };
+  });
+  app.get('/oauth2/me/repos', { preHandler: oauthBearer('repos') }, async (req) => {
+    const p = await db();
+    const repos = await p.serverRepo.findMany({ where: { ownerId: req.oauthUser.sub }, select: { id: true, name: true, hosted: true, listed: true, status: true, publicUrl: true }, orderBy: { createdAt: 'desc' }, take: 200 });
+    return { repos };
+  });
+
   // ── Revocation (RFC 7009) — revokes a refresh token; always 200 for a valid client. ──
   app.post('/oauth2/revoke', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
     const b = req.body || {};
@@ -233,7 +254,7 @@ export default async function oidcProviderRoutes(app) {
       name: z.string().min(1).max(120),
       confidential: z.boolean().optional(),
       redirectUris: z.array(z.string().url()).min(1).max(20),
-      scopes: z.array(z.enum(['openid', 'profile', 'email'])).optional(),
+      scopes: z.array(z.enum(['openid', 'profile', 'email', 'items', 'repos'])).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const d = b.data;
@@ -255,7 +276,7 @@ export default async function oidcProviderRoutes(app) {
     const b = z.object({
       active: z.boolean().optional(),
       redirectUris: z.array(z.string().url()).min(1).max(20).optional(),
-      scopes: z.array(z.enum(['openid', 'profile', 'email'])).optional(),
+      scopes: z.array(z.enum(['openid', 'profile', 'email', 'items', 'repos'])).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const data = {};

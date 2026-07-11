@@ -21,7 +21,7 @@ export default function CookieConsent() {
           <div className="font-semibold">{t('cookie.title')}</div>
         </div>
         <p className="text-sm text-[var(--muted)] leading-relaxed">
-          {t('cookie.body')} <Link to="/cookies" className="text-orange-400 underline">{t('cookie.policy')}</Link>.
+          {t('cookie.body')} <Link to="/legal/cookies" className="text-orange-400 underline">{t('cookie.policy')}</Link>.
         </p>
         <div className="flex gap-2 mt-4">
           <Button variant="primary" className="flex-1" onClick={() => decide('all')}>{t('cookie.all')}</Button>

@@ -23,7 +23,7 @@ import { BlogList, BlogPostPage } from './blog.jsx';
 import Docs from './docs.jsx';
 import { ReposPage } from './repos.jsx';
 import { RepoDashboard } from './repo-dashboard.jsx';
-import { Home, Catalog, ItemDetail, Hosting, Auth, Dashboard, Admin, Legal, Contact, Settings, Authorize, NOTIF, NOTIF_FALLBACK } from './pages.jsx';
+import { Home, Catalog, ItemDetail, Hosting, Auth, Dashboard, Admin, Legal, LegalIndex, Contact, Settings, Authorize, NOTIF, NOTIF_FALLBACK } from './pages.jsx';
 import { TwoFactor } from './twofa.jsx';
 
 const KOFI = 'https://ko-fi.com/bettercommunity';
@@ -370,8 +370,8 @@ function Footer() {
           </div>
         </div>
         <FooterCol title={t('foot.products')} links={[['BetterModsManager', '/p/bmm'], ['BetterSavesManager', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting']]} />
-        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('nav.repos'), '/repos'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
-        <FooterCol title={t('foot.legal')} links={[[t('foot.privacy'), '/privacy'], [t('foot.terms'), '/terms'], [t('foot.cookies'), '/cookies'], [t('foot.refunds', 'Payments & Refunds'), '/refunds']]} />
+        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/legal/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('nav.repos'), '/repos'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
+        <FooterCol title={t('foot.legal')} links={[[t('legal.all', 'All'), '/legal'], [t('foot.privacy'), '/legal/privacy'], [t('foot.terms'), '/legal/terms'], [t('foot.cookies'), '/legal/cookies'], [t('foot.refunds', 'Payments & Refunds'), '/legal/refunds']]} />
       </div>
       <div className="border-t border-[var(--line)]"><div className="max-w-6xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 text-xs text-[var(--faint)] pb-24 md:pb-5">
         <span>© {new Date().getFullYear()} BetterCommunity. {t('foot.rights')}</span>
@@ -412,7 +412,7 @@ function Protected({ children, role }) {
   return children;
 }
 
-const TITLES = { '/': 'Home', '/catalog': 'Catalog', '/blog': 'Blog', '/repos': 'Server Repos', '/hosting': 'Hosting', '/projects': 'Projects', '/contact': 'Contact', '/auth': 'Sign in', '/profile': 'Profile', '/dashboard': 'Dashboard', '/admin': 'Admin', '/settings': 'Settings', '/2fa': 'Authenticator', '/about': 'About', '/privacy': 'Privacy', '/terms': 'Terms', '/cookies': 'Cookies', '/refunds': 'Payments & Refunds' };
+const TITLES = { '/': 'Home', '/catalog': 'Catalog', '/blog': 'Blog', '/repos': 'Server Repos', '/hosting': 'Hosting', '/projects': 'Projects', '/contact': 'Contact', '/auth': 'Sign in', '/profile': 'Profile', '/dashboard': 'Dashboard', '/admin': 'Admin', '/settings': 'Settings', '/2fa': 'Authenticator', '/legal': 'Legal', '/legal/about': 'About', '/legal/privacy': 'Privacy', '/legal/terms': 'Terms', '/legal/cookies': 'Cookies', '/legal/refunds': 'Payments & Refunds' };
 
 // Site-wide banner(s) for active admin announcements. Dismissal is per-announcement
 // (by id) and persisted in localStorage, so re-dismissing after a page reload isn't
@@ -512,11 +512,18 @@ export default function App() {
               <Route path="/contact" element={<Contact />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/2fa" element={<TwoFactor />} />
-              <Route path="/about" element={<Legal page="about" />} />
-              <Route path="/privacy" element={<Legal page="privacy" />} />
-              <Route path="/terms" element={<Legal page="terms" />} />
-              <Route path="/cookies" element={<Legal page="cookies" />} />
-              <Route path="/refunds" element={<Legal page="refunds" />} />
+              <Route path="/legal" element={<LegalIndex />} />
+              <Route path="/legal/about" element={<Legal page="about" />} />
+              <Route path="/legal/privacy" element={<Legal page="privacy" />} />
+              <Route path="/legal/terms" element={<Legal page="terms" />} />
+              <Route path="/legal/cookies" element={<Legal page="cookies" />} />
+              <Route path="/legal/refunds" element={<Legal page="refunds" />} />
+              {/* Old flat URLs → new /legal/* (keep existing links & SEO working) */}
+              <Route path="/about" element={<Navigate to="/legal/about" replace />} />
+              <Route path="/privacy" element={<Navigate to="/legal/privacy" replace />} />
+              <Route path="/terms" element={<Navigate to="/legal/terms" replace />} />
+              <Route path="/cookies" element={<Navigate to="/legal/cookies" replace />} />
+              <Route path="/refunds" element={<Navigate to="/legal/refunds" replace />} />
               <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
               <Route path="/admin" element={<Protected role={['MOD', 'ADMIN']}><Admin /></Protected>} />
               <Route path="*" element={<div className="text-[var(--muted)]">Not found.</div>} />
