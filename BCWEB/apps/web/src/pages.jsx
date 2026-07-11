@@ -2070,6 +2070,7 @@ export function Admin() {
     isAdmin && { id: 'promo', label: t('adm.tab.promo', 'Promo codes'), icon: Ticket },
     isAdmin && { id: 'campaigns', label: t('adm.tab.campaigns', 'Promotions'), icon: Megaphone },
     isAdmin && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
+    isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
     isAdmin && { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
 
     isAdmin && { heading: t('adm.h.content', 'Content') },
@@ -2139,6 +2140,7 @@ export function Admin() {
         {s === 'promo' && <AdminPromo />}
         {s === 'campaigns' && <AdminCampaigns />}
         {s === 'events' && <AdminEvents />}
+        {s === 'sso' && <AdminOAuthClients />}
         {s === 'storage' && <AdminStorage />}
         {s === 'bot' && <AdminBot />}
         {s === 'analytics' && <AdminAnalytics />}
@@ -4791,6 +4793,82 @@ function AdminEvents() {
           </Card>
         ); })}
       </div> : <EmptyState icon={Sparkles} title={t('ev.none.t', 'No events yet')} sub={t('ev.none.s', 'Create one above — New Year, a national holiday, anything.')} />}
+    </div>
+  );
+}
+
+// Admin: OAuth/OIDC clients — register a service to "Sign in with BetterCommunity".
+// BCWEB is the identity provider; discovery lives at /.well-known/openid-configuration.
+function AdminOAuthClients() {
+  const toast = useToast(); const { t } = useI18n();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/oauth-clients'), []);
+  const [f, setF] = useState({ name: '', confidential: true, redirectUris: '', scopes: ['openid', 'profile', 'email'] });
+  const [created, setCreated] = useState(null); // { id, secret } — shown once
+  const list = data?.clients || [];
+  const toggleScope = (s) => setF((st) => ({ ...st, scopes: st.scopes.includes(s) ? st.scopes.filter((x) => x !== s) : [...st.scopes, s] }));
+  const copy = (v) => { navigator.clipboard?.writeText(v); toast.success(t('common.copied', 'Copied.')); };
+  const create = async () => {
+    const uris = f.redirectUris.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+    if (!f.name.trim()) return toast.error(t('oc.err.name', 'Name is required.'));
+    if (!uris.length) return toast.error(t('oc.err.uris', 'Add at least one redirect URI.'));
+    try {
+      const r = await api.post('/admin/oauth-clients', { name: f.name.trim(), confidential: f.confidential, redirectUris: uris, scopes: f.scopes.length ? f.scopes : undefined });
+      setCreated({ id: r.client.id, secret: r.clientSecret });
+      setF({ name: '', confidential: true, redirectUris: '', scopes: ['openid', 'profile', 'email'] });
+      reload();
+    } catch (x) { toast.error(x.data?.error === 'invalid_input' ? t('oc.err.input', 'Check the fields — redirect URIs must be valid absolute URLs.') : t('common.failed', 'Failed.')); }
+  };
+  const toggle = async (c) => { try { await api.patch(`/admin/oauth-clients/${c.id}`, { active: !c.active }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = async (c) => { try { await api.del(`/admin/oauth-clients/${c.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const rotate = async (c) => { try { const r = await api.post(`/admin/oauth-clients/${c.id}/rotate`); setCreated({ id: c.id, secret: r.clientSecret }); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  return (
+    <div>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('oc.title', 'SSO — OAuth / OpenID Connect clients')}</h2>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('oc.sub', 'Register another service to “Sign in with BetterCommunity”. It discovers everything at')} <code className="text-[11px]">/.well-known/openid-configuration</code>.</p>
+      {created && (
+        <Card className="p-4 mb-4 border-[var(--primary)]">
+          <div className="text-sm font-semibold text-[var(--primary-2)] mb-2">{t('oc.created', 'Client ready — copy the secret now, it is shown only once.')}</div>
+          <div className="flex items-center gap-2 text-sm mb-1"><span className="text-[var(--muted)] w-24">client_id</span><code className="font-mono break-anywhere flex-1">{created.id}</code><button onClick={() => copy(created.id)} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button></div>
+          {created.secret
+            ? <div className="flex items-center gap-2 text-sm"><span className="text-[var(--muted)] w-24">client_secret</span><code className="font-mono break-anywhere flex-1">{created.secret}</code><button onClick={() => copy(created.secret)} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button></div>
+            : <div className="text-xs text-[var(--muted)]">{t('oc.public', 'Public client — no secret; it must use PKCE.')}</div>}
+          <div className="flex justify-end mt-3"><Button size="sm" onClick={() => setCreated(null)}>{t('common.done', 'Done')}</Button></div>
+        </Card>
+      )}
+      <Card className="p-4 mb-4">
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label={t('oc.f.name', 'Client name')}><Input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} placeholder="My service" /></Field>
+          <Field label={t('oc.f.type', 'Type')}><Select value={f.confidential ? 'conf' : 'pub'} onChange={(e) => setF((s) => ({ ...s, confidential: e.target.value === 'conf' }))}><option value="conf">{t('oc.t.conf', 'Confidential (server, has a secret)')}</option><option value="pub">{t('oc.t.pub', 'Public (SPA/mobile, PKCE only)')}</option></Select></Field>
+        </div>
+        <div className="mt-3"><Field label={t('oc.f.uris', 'Redirect URIs (one per line)')} hint={t('oc.f.uris.h', 'Absolute URLs the login flow may return to, e.g. https://app.example.com/callback')}><textarea className="input" rows={2} value={f.redirectUris} onChange={(e) => setF((s) => ({ ...s, redirectUris: e.target.value }))} placeholder="https://app.example.com/callback" /></Field></div>
+        <div className="mt-3">
+          <div className="text-sm text-[var(--muted)] mb-1.5">{t('oc.f.scopes', 'Scopes')}</div>
+          <div className="flex flex-wrap gap-3">
+            {['openid', 'profile', 'email'].map((s) => (
+              <label key={s} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <input type="checkbox" checked={f.scopes.includes(s)} disabled={s === 'openid'} onChange={() => toggleScope(s)} /> {s}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end mt-3"><Button variant="primary" onClick={create}><Plus size={15} /> {t('oc.create', 'Create client')}</Button></div>
+      </Card>
+      {loading ? <Loading /> : list.length ? <div className="space-y-2">
+        {list.map((c) => (
+          <Card key={c.id} className="p-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Shield size={18} className={c.active ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold">{c.name}</span>{!c.active && <Badge>{t('oc.disabled', 'Disabled')}</Badge>}<Badge tone="primary">{c.confidential ? t('oc.conf', 'confidential') : t('oc.pub', 'public')}</Badge>{c.scopes.map((s) => <Badge key={s}>{s}</Badge>)}</div>
+                <div className="text-xs text-[var(--muted)] mt-0.5 flex items-center gap-1.5"><code className="font-mono break-anywhere">{c.id}</code><button onClick={() => copy(c.id)} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={12} /></button> · {c.redirectUris.join(', ')}</div>
+              </div>
+              {c.confidential && <Button size="sm" variant="ghost" onClick={() => rotate(c)}>{t('oc.rotate', 'Rotate secret')}</Button>}
+              <Button size="sm" onClick={() => toggle(c)}>{c.active ? t('oc.disable', 'Disable') : t('oc.enable', 'Enable')}</Button>
+              <Button size="sm" className="!text-red-400" onClick={() => del(c)}><Trash2 size={14} /></Button>
+            </div>
+          </Card>
+        ))}
+      </div> : <EmptyState icon={Shield} title={t('oc.none.t', 'No OAuth clients yet')} sub={t('oc.none.s', 'Register a service above to let it sign users in with BetterCommunity.')} />}
     </div>
   );
 }

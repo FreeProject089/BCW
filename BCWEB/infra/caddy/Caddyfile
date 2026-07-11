@@ -78,6 +78,19 @@
 		reverse_proxy api:3000
 	}
 
+	# OpenID Connect provider: discovery + JWKS (issuer-root paths, NOT under /api) and
+	# the OAuth2 authorize/token/userinfo endpoints. Specific well-known paths only, so
+	# Caddy still answers /.well-known/acme-challenge/* itself for TLS.
+	handle /.well-known/openid-configuration {
+		reverse_proxy api:3000
+	}
+	handle /.well-known/jwks.json {
+		reverse_proxy api:3000
+	}
+	handle /oauth2/* {
+		reverse_proxy api:3000
+	}
+
 	# Content-hashed static assets (Vite emits immutable `assets/*.[hash].js|css`) →
 	# cache hard at the browser/CDN so a CDN serves repeats with zero origin hits.
 	# The HTML shell (handled below) stays uncached so a deploy is picked up at once.

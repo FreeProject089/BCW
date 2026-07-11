@@ -933,6 +933,66 @@ model Event {
   @@index([active, startsAt, endsAt])
 }
 
+// ── OpenID Connect provider (BCWEB as an SSO identity provider for other services) ──
+// RSA signing key. The public half is served at /.well-known/jwks.json; the private
+// PEM is server-only and NEVER leaves the API. Generated once on first use.
+model OidcKey {
+  id         String   @id                  // kid
+  alg        String   @default("RS256")
+  publicJwk  Json                          // JWK (public) for JWKS
+  privatePem String                        // PKCS8 PEM — secret, never exposed
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+}
+
+model OAuthClient {
+  id           String   @id @default(cuid())  // client_id
+  name         String
+  secretHash   String   @default("")          // sha256(client_secret); empty for public clients
+  confidential Boolean  @default(true)         // false = public client (PKCE required, no secret)
+  redirectUris String[] @default([])
+  scopes       String[] @default(["openid", "profile", "email"])
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+}
+
+model OAuthCode {
+  code          String    @id                 // authorization code (random, single-use)
+  clientId      String
+  userId        String
+  redirectUri   String
+  scope         String
+  nonce         String    @default("")
+  codeChallenge String    @default("")         // PKCE S256 challenge
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
+model OAuthConsent {
+  id        String   @id @default(cuid())
+  userId    String
+  clientId  String
+  scope     String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, clientId])
+}
+
+model OAuthRefreshToken {
+  token     String    @id                     // sha256 of the refresh token
+  clientId  String
+  userId    String
+  scope     String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
 // A Discord giveaway managed from the admin bot dashboard. The bot posts a message
 // with an "Enter" button, collects entrant Discord ids, and at `endsAt` draws random
 // winners, announces them, and (if `giftConfig` is set) DMs each winner a promo code.
