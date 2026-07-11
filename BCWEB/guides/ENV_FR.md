@@ -2,7 +2,7 @@
 
 > Le vrai `.env` vit dans `infra/compose/.env` (copié depuis `.env.example`). Il n'est
 > **jamais commité** (il contient tes secrets). Ce document explique chaque variable.
-> 🇬🇧 pour le déploiement complet : [DEPLOY_EN.md](DEPLOY_EN.md) · add-ons : [ADDONS_FR.md](ADDONS_FR.md)
+> 🇬🇧 [ENV_EN.md](ENV_EN.md) · déploiement complet : [DEPLOY_FR.md](DEPLOY_FR.md) · add-ons : [ADDONS_FR.md](ADDONS_FR.md)
 
 **Générer les secrets** : `openssl rand -hex 32` pour les clés (`JWT_SECRET`, etc.).
 
