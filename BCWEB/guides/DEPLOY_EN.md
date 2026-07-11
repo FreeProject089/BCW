@@ -126,11 +126,27 @@ the rollout is effectively invisible to users.
 
 ## 10. Backups
 
-- **Postgres:** `docker compose exec db pg_dump -U bcweb bcweb | gzip > bcweb-$(date +%F).sql.gz`
-- **MinIO (uploads/hosted repos):** back up the `minio-data` volume (or mirror the
-  bucket with `mc mirror`).
-- **Never** run `docker compose down -v` in production — `-v` deletes the volumes
-  (database + object storage).
+Use the bundled script — it makes a consistent `pg_dump`, archives the MinIO + audit-anchor
+volumes, prunes old copies, and can push off-site with rclone:
+```bash
+infra/backup/backup.sh                                       # → /var/backups/bcweb
+BACKUP_DIR=/mnt/backups BACKUP_REMOTE=b2:bucket/bcweb infra/backup/backup.sh   # + off-site
+```
+Automate it daily (03:30) with `crontab -e`:
+```
+30 3 * * * BACKUP_DIR=/mnt/backups /path/to/BCW/BCWEB/infra/backup/backup.sh >> /var/log/bcweb-backup.log 2>&1
+```
+**Restore:**
+```bash
+# Postgres:
+gunzip -c pg-bcweb-YYYYMMDD-HHMMSS.sql.gz | docker compose exec -T db psql -U bcweb bcweb
+# MinIO objects:
+docker run --rm -v bcweb_minio-data:/data -v "$PWD":/backup alpine \
+  sh -c 'cd /data && tar xzf /backup/minio-YYYYMMDD-HHMMSS.tar.gz'
+```
+> **Never** run `docker compose down -v` in production — `-v` deletes the volumes
+> (database + object storage). And **test a restore at least once** — an untested backup
+> isn't a backup.
 
 ## 11. Health & monitoring
 
@@ -179,17 +195,18 @@ Then `docker compose up -d api provisioner`; once verified, `docker compose stop
 volume is kept as a backup). Neon / Supabase / RDS give you backups + read-replicas for
 free. To keep pooling in front of it, set `PGBOUNCER_UPSTREAM_HOST` to the managed host.
 
-**Going further — managed platforms, then Kubernetes (only if you truly need it):**
-- Before reaching for an orchestrator, a managed container platform (**Fly.io / Railway
-  / Render**) runs these same Docker images with autoscaling + rollouts and far less ops.
-- **Kubernetes** is worth it only once a single box genuinely isn't enough and you need
-  multi-node autoscaling + self-healing. A ready-to-adapt manifest set already lives in
-  [`infra/k8s/`](../infra/k8s/README.md) — Deployments with the `/live` + `/ready` probes
-  and graceful drain wired in, an HPA, a migrate Job, and an Ingress. Use **managed** K8s
-  (GKE Autopilot / DO Kubernetes / EKS), never a hand-rolled control plane.
-- **Don't migrate prematurely:** a 2 vCPU / 4 GB box already serves thousands of
-  concurrent users (`loadtest/BENCHMARK.md`); the real ceiling is Postgres connections,
-  solved by the managed-DB + PgBouncer path above, not by an orchestrator.
+**Going further — scale up first, orchestrate only if you must:**
+- **Scale the VPS vertically first** — more CPU/RAM/disk on the one box is the cheapest,
+  simplest win and takes you a very long way. A 2 vCPU / 4 GB box already serves thousands
+  of concurrent users (`loadtest/BENCHMARK.md`); the real ceiling is Postgres connections,
+  solved by the PgBouncer / managed-DB path above, not by an orchestrator.
+- **Need multiple app nodes?** A managed container platform (**Fly.io / Railway / Render**)
+  runs these same images with autoscaling + rollouts and far less ops than any orchestrator.
+- **Genuinely multi-node, self-hosted?** Reach for **Nomad** (much simpler than Kubernetes),
+  or — only if you become a large multi-tenant platform — **managed** Kubernetes, never a
+  hand-rolled control plane. You are a long way from needing either. (Kubernetes is *not*
+  the tool for the user-project container hosting described in
+  [USER_PROJECT_HOSTING.md](USER_PROJECT_HOSTING.md) — see that doc.)
 
 ## Object storage — MinIO now, R2 later
 

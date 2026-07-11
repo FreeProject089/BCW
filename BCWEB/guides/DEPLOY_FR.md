@@ -127,11 +127,27 @@ quitter (budget de 10 s) — un rebuild ne coupe jamais une requête en vol. Ave
 
 ## 10. Sauvegardes
 
-- **Postgres :** `docker compose exec db pg_dump -U bcweb bcweb | gzip > bcweb-$(date +%F).sql.gz`
-- **MinIO (uploads / dépôts hébergés) :** sauvegarde le volume `minio-data` (ou
-  réplique le bucket avec `mc mirror`).
-- **Ne fais jamais** `docker compose down -v` en prod — `-v` supprime les volumes
-  (base de données + stockage objet).
+Utilise le script fourni — il fait un `pg_dump` cohérent, archive les volumes MinIO +
+audit-anchor, purge les vieilles copies, et peut envoyer hors-site avec rclone :
+```bash
+infra/backup/backup.sh                                       # → /var/backups/bcweb
+BACKUP_DIR=/mnt/backups BACKUP_REMOTE=b2:bucket/bcweb infra/backup/backup.sh   # + hors-site
+```
+Automatise-le chaque jour (03:30) avec `crontab -e` :
+```
+30 3 * * * BACKUP_DIR=/mnt/backups /chemin/vers/BCW/BCWEB/infra/backup/backup.sh >> /var/log/bcweb-backup.log 2>&1
+```
+**Restauration :**
+```bash
+# Postgres :
+gunzip -c pg-bcweb-YYYYMMDD-HHMMSS.sql.gz | docker compose exec -T db psql -U bcweb bcweb
+# Objets MinIO :
+docker run --rm -v bcweb_minio-data:/data -v "$PWD":/backup alpine \
+  sh -c 'cd /data && tar xzf /backup/minio-YYYYMMDD-HHMMSS.tar.gz'
+```
+> **Ne fais jamais** `docker compose down -v` en prod — `-v` supprime les volumes
+> (base de données + stockage objet). Et **teste une restauration au moins une fois** — une
+> sauvegarde jamais testée n'en est pas une.
 
 ## 11. Santé & supervision
 
@@ -185,20 +201,20 @@ Puis `docker compose up -d api provisioner` ; une fois vérifié, `docker compos
 réplicas de lecture gratuitement. Pour garder un pooler devant, mets
 `PGBOUNCER_UPSTREAM_HOST` sur le host managé.
 
-**Aller plus loin — plateformes managées, puis Kubernetes (seulement si nécessaire) :**
-- Avant de sortir un orchestrateur, une plateforme conteneurs managée (**Fly.io / Railway
-  / Render**) fait tourner ces mêmes images Docker avec autoscaling + rollouts, pour bien
-  moins d'ops.
-- **Kubernetes** ne se justifie que lorsqu'une seule machine ne suffit vraiment plus et que
-  tu as besoin d'autoscaling multi-nœuds + auto-réparation. Un jeu de manifests prêt à
-  adapter existe déjà dans [`infra/k8s/`](../infra/k8s/README.md) — Deployments avec les
-  sondes `/live` + `/ready` et l'arrêt gracieux câblés, un HPA, un Job de migration, un
-  Ingress. Utilise du K8s **managé** (GKE Autopilot / DO Kubernetes / EKS), jamais un
-  control plane fait main.
-- **Ne migre pas trop tôt :** une machine 2 vCPU / 4 Go sert déjà des milliers
-  d'utilisateurs simultanés (`loadtest/BENCHMARK.md`) ; le vrai plafond, ce sont les
-  connexions Postgres, réglées par le chemin DB managée + PgBouncer ci-dessus, pas par un
-  orchestrateur.
+**Aller plus loin — scale vertical d'abord, orchestrer seulement si nécessaire :**
+- **Agrandis le VPS verticalement d'abord** — plus de CPU/RAM/disque sur la même machine,
+  c'est le gain le plus simple et le moins cher, et ça t'emmène très loin. Une machine
+  2 vCPU / 4 Go sert déjà des milliers d'utilisateurs simultanés (`loadtest/BENCHMARK.md`) ;
+  le vrai plafond, ce sont les connexions Postgres, réglées par PgBouncer / DB managée
+  ci-dessus, pas par un orchestrateur.
+- **Besoin de plusieurs nœuds applicatifs ?** Une plateforme conteneurs managée (**Fly.io /
+  Railway / Render**) fait tourner ces mêmes images avec autoscaling + rollouts, pour bien
+  moins d'ops que n'importe quel orchestrateur.
+- **Vraiment multi-nœuds auto-hébergé ?** Prends **Nomad** (bien plus simple que Kubernetes),
+  ou — seulement si tu deviens une grosse plateforme multi-locataires — du Kubernetes
+  **managé**, jamais un control plane fait main. Tu es très loin d'en avoir besoin.
+  (Kubernetes n'est *pas* l'outil pour l'hébergement des conteneurs de projets utilisateurs
+  décrit dans [USER_PROJECT_HOSTING.md](USER_PROJECT_HOSTING.md) — voir ce doc.)
 
 ## Stockage objet — MinIO maintenant, R2 plus tard
 
