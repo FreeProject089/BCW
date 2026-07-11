@@ -34,6 +34,9 @@
 - **Héberger un repo** (payant ou free-tier), **auto-publication** par l'owner, URL auto.
 - **Niveaux de confiance** — badges Communauté / Partenaire / Officiel (officiel + partenaire
   remontent en tête de la liste publique) ; filtrables sur /repos et dans la liste admin.
+- **Suspendu = totalement figé** — un repo suspendu est en lecture seule partout : aucun
+  ajout/suppression de fichier, ni publication, ni changement de réglages/accès/état
+  (client + serveur). Le dashboard reste consultable ; contacter le support pour lever.
 - **Dashboard par repo** — gestionnaire de fichiers, téléchargement groupé en zip,
   graphe de trafic/usage, backup/rollback façon git, favoris (étoile + compteur visible
   par l'owner), contrôle d'accès (owner / email / mot de passe), et un **BC id**
@@ -79,9 +82,10 @@
   stockage (tous les consommateurs).
 - **Contenu** — catalogues, config projets, other projects, **avis** (témoignages
   d'accueil gérés par l'admin : texte EN + FR, note, bascule par avis + section entière),
-  **events** (Nouvel An / fête nationale / custom : aperçu des feux d'artifice à la
-  demande, densité + taux d'apparition du drapeau configurables, badge fête nationale avec
-  le drapeau du pays), annonces (bannière site +
+  **events** (Nouvel An / fête nationale / custom : **aperçu** des feux d'artifice à la
+  demande, **quantité + taille + taux d'apparition du drapeau** configurables, feux calmes
+  cantonnés au ciel, badge fête nationale avec le drapeau du pays et un lien cliquable au
+  choix ; désactivables par l'utilisateur dans les Réglages), annonces (bannière site +
   notifications typées, limite de taille de corps, icônes par type).
 - **Serveur** — dashboard perf en direct (totaux CPU/RAM/disque/uptime + valeurs au
   survol + alertes Discord) ; Advanced server management (DB viewer avec journal

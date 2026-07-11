@@ -32,6 +32,9 @@
 - **Trust tiers** — Community / Partner / Official badges (official + partner float to the
   top of the public list); filterable on the public /repos page and searchable/filterable
   in the admin list. Shown in My Repos and the per-repo dashboard.
+- **Suspended = fully frozen** — a suspended repo is read-only everywhere: no file add/
+  delete, no publish/list, no settings/access/state change (enforced client + server).
+  The dashboard stays viewable; the owner contacts support to lift it.
 - **Per-repo dashboard** — file manager, bulk-download as zip, traffic/usage graph,
   git-style backup/rollback, favorites (star + owner-visible count), access control
   (owner / email / password), and a per-repo element **BC id** (`BCR-…`).
@@ -74,8 +77,10 @@
   telemetry) each labelled **local or remote** so a backend on another server is clear.
 - **Content** — catalogs, projects config, other projects, **reviews** (admin-curated
   landing testimonials: EN + FR text, rating, per-review + whole-section toggle),
-  **events** (New Year / national holiday / custom: on-demand fireworks preview,
-  configurable density + flag-drop rate, national-day badge shows the country flag),
+  **events** (New Year / national holiday / custom: on-demand fireworks **preview**,
+  configurable **amount + size + flag-drop rate**, calm sky-confined bursts, national-day
+  badge shows the country flag and can link to a URL you choose; users can turn the
+  fireworks off in Settings),
   announcements (site-wide banner + typed notifications, body size limit, per-type icons).
 - **Server** — live perf dashboard (CPU/RAM/disk/uptime totals + hover values +
   Discord alerts); Advanced server management (DB viewer with audit log, file manager,

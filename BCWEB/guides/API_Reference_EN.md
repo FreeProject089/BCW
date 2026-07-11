@@ -125,10 +125,12 @@ from the Fastify route modules in `apps/api/src/routes/`.
 ## 7. Repo owner dashboard (`repo-dashboard.mjs`)
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/repos/:id/dashboard` · `/activity` · `/traffic` | user (owner) | Dashboard, activity log, traffic graph. |
+| GET | `/repos/:id/dashboard` · `/activity` · `/traffic` | user (owner) | Dashboard (incl. status + trust tier), activity log, traffic graph — stays viewable even when suspended. |
 | POST | `/repos/:id/dashboard/files` · `/files/presign` · `/files/download-zip` · DELETE `/files/:fid` | owner | File manager + bulk zip. |
 | POST | `/repos/:id/dashboard/publish` · `/unpublish` · `/lock` · `/unlock` · `/ban` · `/unban` | owner | Publish/lock/ban controls. |
 | PUT | `/repos/:id/dashboard/access` · `/settings` | owner | Access control + settings. |
+
+> **Suspended repos are fully frozen**: a `SUSPENDED` repo refuses **every** non-GET here (files add/delete, publish/list, settings, access, state) with `403 repo_suspended` — the dashboard stays read-only until an admin lifts it.
 
 ## 8. Hosted repo content & files (`hosting-content.mjs`)
 | Method | Path | Auth | Purpose |
@@ -223,7 +225,7 @@ from the Fastify route modules in `apps/api/src/routes/`.
 | GET | `/admin/analytics` · `/admin/analytics/sessions` | admin | Analytics dashboard; sessions interleave pageviews with **in-page interactions** (clicks/edits/submits/modals) into each visitor's timeline. |
 | POST | `/analytics/pageview` · `/analytics/vital` · `/analytics/interactions` | — | First-party, consent-gated ingest (pageview, Web Vital, batched interaction events — labels only, never field values). |
 | GET | `/events/active` | — | The live event (drives the fireworks effect + announcement badge; national-day badge shows the country flag). |
-| GET/POST/PATCH/DELETE | `/admin/events[/:id]` | admin | Manage events (New Year / national holiday / custom): window, `fxDensity`, `fxFlagDrops`, country, promo %, event code. |
+| GET/POST/PATCH/DELETE | `/admin/events[/:id]` | admin | Manage events (New Year / national holiday / custom): window, fireworks `fxDensity` (amount) / `fxSize` / `fxFlagDrops`, country flag, badge `linkUrl` (clickable → path or URL), promo %, event code. The admin UI has a live **Preview** (dispatches the effect on-demand); users can disable the effect per-device in Settings. |
 | GET | `/sitemap.xml` · `/robots.txt` | — | SEO files. |
 
 ## 16. Server performance & alerts (`server-perf.mjs`)
