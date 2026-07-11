@@ -18,6 +18,18 @@ const fmtBytes = (n) => {
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
 };
 
+// Robust clipboard copy — navigator.clipboard is unavailable on non-HTTPS origins and
+// inside some embedded webviews, so fall back to a hidden <textarea> + execCommand.
+async function copyText(text) {
+  try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; } } catch { /* fall through */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.style.pointerEvents = 'none';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    const ok = document.execCommand('copy'); document.body.removeChild(ta); return ok;
+  } catch { return false; }
+}
+
 let _id = 0;
 export function UploadProvider({ children }) {
   const toast = useToast(); const { t } = useI18n();
@@ -73,7 +85,11 @@ export function UploadProvider({ children }) {
         } catch (e) {
           if (e?.aborted) break;         // cancelled — stop the whole job
           failed++;
-          if (failedFiles.length < 200) failedFiles.push({ name: (f.webkitRelativePath || f.name || '?'), reason: String(e?.data?.error || e?.message || 'failed').slice(0, 80) });
+          // network_error / status 0 = the browser's direct PUT was blocked (CORS /
+          // offline / storage down) — spell that out so the copied log is actionable.
+          const raw = String(e?.data?.error || e?.message || 'failed');
+          const reason = (raw === 'network_error' || e?.status === 0) ? 'network/CORS error — the upload was blocked before reaching storage' : raw.slice(0, 140);
+          if (failedFiles.length < 200) failedFiles.push({ name: (f.webkitRelativePath || f.name || '?'), reason, status: e?.status });
         }
         done++;
         patch(id, { done, failed, sentBytes, failedFiles: [...failedFiles], curLoaded: 0 });
@@ -156,15 +172,27 @@ export function UploadProvider({ children }) {
                         <summary className="cursor-pointer text-[11px] text-amber-400 hover:text-amber-300 select-none">
                           {t('up.failedfiles', '{n} failed file(s) — view list').replace('{n}', j.failedFiles.length)}
                         </summary>
-                        <div className="mt-1 max-h-36 overflow-auto rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2 space-y-0.5">
+                        <div className="mt-1 max-h-36 overflow-auto scroll-thin rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2 space-y-0.5">
                           {j.failedFiles.map((ff, i) => (
-                            <div key={i} className="text-[10.5px] font-mono truncate" title={`${ff.name} — ${ff.reason}`}>
-                              <span className="text-[var(--text)]">{ff.name}</span> <span className="text-[var(--faint)]">· {ff.reason}</span>
+                            <div key={i} className="text-[10.5px] font-mono break-anywhere" title={`${ff.name} — ${ff.reason}`}>
+                              <span className="text-[var(--text)]">{ff.name}</span> <span className="text-[var(--faint)]">· {ff.reason}{ff.status != null ? ` [${ff.status}]` : ''}</span>
                             </div>
                           ))}
                         </div>
-                        <button onClick={() => { navigator.clipboard?.writeText(j.failedFiles.map((ff) => `${ff.name}\t${ff.reason}`).join('\n')).then(() => toast.success(t('up.listcopied', 'Failed-file list copied.'))).catch(() => {}); }}
-                          className="mt-1 text-[10.5px] text-[var(--muted)] hover:text-[var(--text)] underline">{t('up.copylist', 'Copy list')}</button>
+                        <button onClick={async () => {
+                          // A full, timestamped log — copyable even off HTTPS / in a webview.
+                          const log = [
+                            `BetterCommunity upload log`,
+                            `repo: ${j.repoName}`,
+                            `when: ${new Date().toISOString()}`,
+                            `result: ${j.done - j.failed}/${j.total} uploaded · ${j.failed} failed`,
+                            ``,
+                            ...j.failedFiles.map((ff) => `FAILED\t${ff.name}\t${ff.reason}${ff.status != null ? `\t[status ${ff.status}]` : ''}`),
+                          ].join('\n');
+                          const ok = await copyText(log);
+                          ok ? toast.success(t('up.listcopied', 'Error log copied.')) : toast.error(t('up.copyfail', 'Could not copy — select the list manually.'));
+                        }}
+                          className="press-sm mt-1.5 text-[10.5px] text-[var(--muted)] hover:text-[var(--text)] underline underline-offset-2">{t('up.copylog', 'Copy error log')}</button>
                       </details>
                     )}
                   </div>

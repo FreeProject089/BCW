@@ -71,8 +71,10 @@ export default function HistoryModal({ base, onClose, onRestore }) {
         <Button variant="ghost" onClick={onClose}>{t('hm.close', 'Close')}</Button>
         {canRestore && <Button variant="primary" disabled={!preview} onClick={restore}><RotateCcw size={14} /> {t('hm.restorebtn', 'Restore this version')}</Button>}
       </>}>
-      <div className="grid sm:grid-cols-[240px_1fr] gap-4 min-h-[50vh]">
-        <div className="max-h-[56vh] overflow-auto -mr-1 pr-1 space-y-1">
+      <div className="grid sm:grid-cols-[240px_1fr] gap-4 sm:min-h-[50vh]">
+        {/* On a phone the two panes stack: cap the version list short so the preview
+            below is reachable without scrolling past every snapshot. */}
+        <div className="max-h-[30vh] sm:max-h-[56vh] overflow-auto scroll-thin -mr-1 pr-1 space-y-1">
           {revs === null ? <div className="grid place-items-center py-10"><Spinner /></div>
             : revs.length ? revs.map((r, i) => (
               <button key={r.id} onClick={() => select(i)}
@@ -86,7 +88,7 @@ export default function HistoryModal({ base, onClose, onRestore }) {
               </button>
             )) : <EmptyState icon={History} title={t('hm.nohistory', 'No history yet')} sub={t('hm.nohistorysub', 'Snapshots appear here after each save.')} />}
         </div>
-        <div className="min-w-0 border-l border-[var(--line)] pl-4 max-h-[56vh] overflow-auto">
+        <div className="min-w-0 border-t sm:border-t-0 sm:border-l border-[var(--line)] pt-4 sm:pt-0 sm:pl-4 max-h-[52vh] sm:max-h-[56vh] overflow-auto scroll-thin">
           {loading ? <div className="grid place-items-center py-10"><Spinner /></div>
             : preview ? <>
               <div className="flex items-center justify-between gap-2 mb-2.5 flex-wrap">

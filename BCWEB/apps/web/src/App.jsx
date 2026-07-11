@@ -491,7 +491,10 @@ export default function App() {
           <PromoBadge />
           <EventEffect />
           <Nav />
-          <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-10 anim-fade">
+          {/* relative z-10: keep the page content (and any in-page overlays like the
+              mobile dashboard nav sheet) stacked ABOVE the footer, which follows in the
+              DOM and would otherwise paint over an open dropdown on short pages. */}
+          <main className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-10 anim-fade">
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/catalog" element={<Catalog />} />

@@ -6,7 +6,10 @@ import UserAvatar from './Avatar.jsx';
 import Markdown from './md.jsx';
 import { MarkdownEditor } from './blog.jsx';
 import DiffMergeModal from './diff-merge-modal.jsx';
-import { MessageSquare, CornerDownRight, Check, Pencil, Trash2, Send, Tag, Globe, Lock, Hash, History, Clock } from 'lucide-react';
+import { MessageSquare, CornerDownRight, Check, Pencil, Trash2, Send, Tag, Globe, Lock, Hash, History, Clock, ChevronRight, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
+
+// Strip markdown to a short plain-text preview for a collapsed thread's one-liner.
+const plainPreview = (md) => String(md || '').replace(/```[\s\S]*?```/g, ' ').replace(/[#>*`_~\[\]!-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80);
 
 // Heading anchor slug — must match the docs/blog renderer (md.jsx) so a comment pinned
 // to a section can scroll to it.
@@ -87,7 +90,9 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
   const [conflict, setConflict] = useState(null); // { id, base, mine, theirs } — concurrent-edit merge
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState(null); // { id, revisions } — a comment's edit history
+  const [collapsed, setCollapsed] = useState(() => new Set()); // root ids whose thread is folded
   const sections = useMemo(() => extractSections(body), [body]);
+  const toggleCollapse = (id) => setCollapsed((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const openHistory = async (id) => {
     setHistory({ id, revisions: null });
@@ -153,19 +158,52 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
         <Button variant="ghost" onClick={onClose}>Close</Button>
       </>}>
       {data === null ? <div className="grid place-items-center py-10"><Spinner /></div> : (
-        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
-          {roots.length === 0 && <EmptyState icon={MessageSquare} title="No comments yet" sub={canWrite ? 'Start the discussion below.' : 'Nothing here yet.'} />}
-          {roots.map((c) => (
-            <div key={c.id} className="rounded-xl border border-[var(--line)] p-3">
-              <CommentBody c={c} ctx={ctx} />
-              {repliesOf(c.id).length > 0 && (
-                <div className="ml-4 mt-3 pl-3 border-l-2 border-[var(--line)] space-y-3">
-                  {repliesOf(c.id).map((r) => <CommentBody key={r.id} c={r} isReply ctx={ctx} />)}
-                </div>
-              )}
+        <>
+          {/* When a page has many discussion threads, let editors fold them (per-thread
+              chevron, or collapse/expand all) so the list stays scannable on any screen. */}
+          {roots.length > 1 && (
+            <div className="flex items-center justify-between gap-2 mb-2.5 text-xs text-[var(--muted)]">
+              <span>{roots.length} {t('cm.threads', 'threads')}</span>
+              {collapsed.size >= roots.length
+                ? <button onClick={() => setCollapsed(new Set())} className="press-sm inline-flex items-center gap-1 hover:text-[var(--text)]"><ChevronsUpDown size={13} /> {t('cm.expandall', 'Expand all')}</button>
+                : <button onClick={() => setCollapsed(new Set(roots.map((c) => c.id)))} className="press-sm inline-flex items-center gap-1 hover:text-[var(--text)]"><ChevronsDownUp size={13} /> {t('cm.collapseall', 'Collapse all')}</button>}
             </div>
-          ))}
-        </div>
+          )}
+          <div className="space-y-3 max-h-[58vh] overflow-y-auto scroll-thin pr-1">
+            {roots.length === 0 && <EmptyState icon={MessageSquare} title="No comments yet" sub={canWrite ? 'Start the discussion below.' : 'Nothing here yet.'} />}
+            {roots.map((c) => {
+              const isCol = collapsed.has(c.id);
+              const replies = repliesOf(c.id);
+              return (
+                <div key={c.id} className="rounded-xl border border-[var(--line)] p-3">
+                  <div className="flex items-start gap-2">
+                    <button onClick={() => toggleCollapse(c.id)} className="press-sm mt-0.5 text-[var(--faint)] hover:text-[var(--text)] shrink-0" title={isCol ? t('cm.expand', 'Expand') : t('cm.collapse', 'Collapse')} aria-label={isCol ? t('cm.expand', 'Expand') : t('cm.collapse', 'Collapse')}>
+                      <ChevronRight size={15} className={`transition-transform ${isCol ? '' : 'rotate-90'}`} />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      {isCol ? (
+                        <button onClick={() => toggleCollapse(c.id)} className="w-full text-left flex items-center gap-2">
+                          <CAvatar a={c} />
+                          <span className="text-sm font-medium shrink-0">{c.author?.name}</span>
+                          <span className="text-[11px] text-[var(--faint)] truncate flex-1 min-w-0">{plainPreview(c.body) || '—'}</span>
+                          {c.resolved && <Check size={11} className="text-emerald-400 shrink-0" />}
+                          {replies.length > 0 && <span className="text-[11px] text-[var(--faint)] shrink-0 flex items-center gap-0.5"><CornerDownRight size={10} /> {replies.length}</span>}
+                        </button>
+                      ) : (<>
+                        <CommentBody c={c} ctx={ctx} />
+                        {replies.length > 0 && (
+                          <div className="ml-3 sm:ml-4 mt-3 pl-2.5 sm:pl-3 border-l-2 border-[var(--line)] space-y-3">
+                            {replies.map((r) => <CommentBody key={r.id} c={r} isReply ctx={ctx} />)}
+                          </div>
+                        )}
+                      </>)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
       {canWrite && (
         <div className="mt-4 pt-3 border-t border-[var(--line)]">
