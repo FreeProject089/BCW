@@ -969,7 +969,7 @@ export function Hosting() {
       <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-[var(--primary)]/10 to-transparent" style={{ borderColor: 'var(--ring)' }}>
         <Building2 size={26} className="text-[var(--primary-2)] shrink-0" />
         <div className="flex-1 text-center sm:text-left">
-          <div className="font-semibold text-lg flex items-center gap-2 justify-center sm:justify-start">{t('hosting.enterprise.title', 'Enterprise / bespoke')} <Badge tone="primary">{t('hosting.enterprise.badge', 'Custom quote')}</Badge></div>
+          <div className="font-semibold text-lg">{t('hosting.enterprise.title', 'Enterprise / bespoke')}</div>
           <div className="text-sm text-[var(--muted)]">{t('hosting.enterprise.sub', "Bigger needs — high storage/bandwidth, dedicated resources, an SLA, custom terms. No fixed price: tell us what you need and we'll tailor a plan.")}</div>
         </div>
         <Button variant="primary" onClick={() => nav('/contact?topic=enterprise-hosting')}><Mail size={16} /> {t('hosting.enterprise.cta', 'Contact us')}</Button>
@@ -1265,6 +1265,14 @@ export function Auth() {
   const [code, setCode] = useState('');
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const { data: oauthProviders } = useAsync(() => api.get('/auth/oauth/providers').catch(() => ({})), []);
+
+  // Arriving from a password-reset email link (/auth?reset=<token>) → jump straight to
+  // the "set a new password" step with the token prefilled.
+  useEffect(() => {
+    const rtok = params.get('reset');
+    if (rtok) { setF((s) => ({ ...s, token: rtok })); setMode('reset'); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Already signed in? There's nothing to do on the auth page — send them to
   // their profile (respecting a ?next= target if one was passed, e.g. from a
@@ -7160,6 +7168,35 @@ export function Settings() {
 }
 
 /* ─────────────────────────  Contact  ───────────────────────── */
+// Email-confirmation landing page (the link in the confirmation email → /verify-email?token=).
+export function VerifyEmail() {
+  const { t } = useI18n();
+  const [params] = useSearchParams();
+  const token = params.get('token') || '';
+  const [state, setState] = useState('working'); // working | ok | error
+  useEffect(() => {
+    if (!token) { setState('error'); return; }
+    api.post('/auth/verify-email', { token }).then(() => setState('ok')).catch(() => setState('error'));
+  }, [token]);
+  return (
+    <div className="max-w-md mx-auto py-20 text-center">
+      {state === 'working' && <><Spinner /><p className="text-[var(--muted)] mt-3">{t('verify.working', 'Confirming your email…')}</p></>}
+      {state === 'ok' && <>
+        <CheckCircle2 size={40} className="mx-auto text-emerald-400 mb-3" />
+        <h1 className="text-xl font-semibold mb-1">{t('verify.ok.title', 'Email confirmed')}</h1>
+        <p className="text-[var(--muted)] mb-5">{t('verify.ok.sub', 'Your email address is verified — thanks!')}</p>
+        <Link to="/dashboard"><Button variant="primary">{t('verify.ok.cta', 'Go to dashboard')}</Button></Link>
+      </>}
+      {state === 'error' && <>
+        <XCircle size={40} className="mx-auto text-red-400 mb-3" />
+        <h1 className="text-xl font-semibold mb-1">{t('verify.err.title', 'Link invalid or expired')}</h1>
+        <p className="text-[var(--muted)] mb-5">{t('verify.err.sub', 'This confirmation link is no longer valid. You can request a new one from your profile.')}</p>
+        <Link to="/profile"><Button>{t('nav.profile', 'Profile')}</Button></Link>
+      </>}
+    </div>
+  );
+}
+
 // OAuth/OIDC consent screen (the /authorize SPA route). The API's /oauth2/authorize
 // redirects here with a signed ?rt= token once the user is logged in; we show the
 // client + scopes and POST the decision (full-page, so the browser follows the 302

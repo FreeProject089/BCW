@@ -127,6 +127,13 @@ services:
       TELEMETRY_INTERNAL_URL: ${TELEMETRY_INTERNAL_URL:-http://telemetry:8900}
       TELEMETRY_ADMIN_KEY: ${TELEMETRY_ADMIN_KEY:-change-me-admin}
       DISCORD_CONTACT_WEBHOOK: ${DISCORD_CONTACT_WEBHOOK:-}
+      # Transactional email (account confirmation + password reset). Off unless EMAIL_ENABLED=true.
+      EMAIL_ENABLED: ${EMAIL_ENABLED:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       BOT_SHARED_SECRET: ${BOT_SHARED_SECRET:-${LINK_LOOKUP_SECRET:-dev-bot-secret}}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}

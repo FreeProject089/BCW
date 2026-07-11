@@ -23,7 +23,7 @@ import { BlogList, BlogPostPage } from './blog.jsx';
 import Docs from './docs.jsx';
 import { ReposPage } from './repos.jsx';
 import { RepoDashboard } from './repo-dashboard.jsx';
-import { Home, Catalog, ItemDetail, Hosting, Auth, Dashboard, Admin, Legal, LegalIndex, Contact, Settings, Authorize, NOTIF, NOTIF_FALLBACK } from './pages.jsx';
+import { Home, Catalog, ItemDetail, Hosting, Auth, Dashboard, Admin, Legal, LegalIndex, Contact, Settings, Authorize, VerifyEmail, NOTIF, NOTIF_FALLBACK } from './pages.jsx';
 import { TwoFactor } from './twofa.jsx';
 
 const KOFI = 'https://ko-fi.com/bettercommunity';
@@ -509,6 +509,7 @@ export default function App() {
               <Route path="/profile" element={<Protected><Profile /></Protected>} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/authorize" element={<Authorize />} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/2fa" element={<TwoFactor />} />

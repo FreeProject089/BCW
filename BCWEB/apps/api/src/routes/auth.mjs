@@ -4,6 +4,23 @@ import argon2 from 'argon2';
 import crypto from 'node:crypto';
 import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual } from '../lib.mjs';
 import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '../totp.mjs';
+import { sendMail, mailShell, emailEnabled } from '../mail.mjs';
+
+const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
+
+// Create + email an account-confirmation token (non-blocking; no-op if email is off).
+async function sendVerificationEmail(p, user) {
+  if (!emailEnabled() || user.emailVerified) return;
+  const token = crypto.randomBytes(24).toString('hex');
+  await p.emailVerification.create({ data: { userId: user.id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 24 * 3600e3) } });
+  const url = `${SITE_URL}/verify-email?token=${token}`;
+  await sendMail({
+    to: user.email,
+    subject: 'Confirm your BetterCommunity email',
+    html: mailShell('Confirm your email', 'Welcome to BetterCommunity! Confirm your email address to finish securing your account. This link is valid for 24 hours.', { url, label: 'Confirm my email' }),
+    text: `Confirm your BetterCommunity email: ${url}`,
+  }).catch(() => {});
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 // The real client IP as observed by our trusted proxy (Caddy appends it last).
@@ -65,7 +82,31 @@ export default async function authRoutes(app) {
     if (await p.user.findUnique({ where: { email } })) return reply.code(409).send({ error: 'email_taken' });
     const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
     const user = await p.user.create({ data: { email, passwordHash, displayName: displayName || email.split('@')[0] } });
+    sendVerificationEmail(p, user).catch(() => {}); // fire-and-forget confirmation email
     return issueSession(reply, user);
+  });
+
+  // Confirm an email with the token from the confirmation email.
+  app.post('/auth/verify-email', authLimit, async (req, reply) => {
+    const b = z.object({ token: z.string().min(10).max(200) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const ev = await p.emailVerification.findUnique({ where: { tokenHash: sha256(b.data.token) } });
+    if (!ev || ev.usedAt || ev.expiresAt < new Date()) return reply.code(400).send({ error: 'invalid_token' });
+    await p.user.update({ where: { id: ev.userId }, data: { emailVerified: true } });
+    await p.emailVerification.update({ where: { id: ev.id }, data: { usedAt: new Date() } });
+    return { ok: true };
+  });
+
+  // Resend the confirmation email to the signed-in user (rate-limited).
+  app.post('/auth/verify-email/resend', { preHandler: requireRole(), config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const p = await db();
+    const user = await p.user.findUnique({ where: { id: req.user.uid } });
+    if (!user) return reply.code(404).send({ error: 'not_found' });
+    if (user.emailVerified) return { ok: true, already: true };
+    if (!emailEnabled()) return reply.code(503).send({ error: 'email_disabled' });
+    await sendVerificationEmail(p, user);
+    return { ok: true };
   });
 
   // Request a password reset. Always returns ok (never leaks whether the email exists).
@@ -79,7 +120,14 @@ export default async function authRoutes(app) {
     if (user) {
       const token = crypto.randomBytes(24).toString('hex');
       await p.passwordReset.create({ data: { userId: user.id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 3600e3) } });
-      if (process.env.EMAIL_ENABLED !== 'true') devToken = token; // TODO: email this in prod
+      const url = `${SITE_URL}/auth?reset=${token}`;
+      const sent = await sendMail({
+        to: user.email,
+        subject: 'Reset your BetterCommunity password',
+        html: mailShell('Reset your password', "We received a request to reset your password. This link is valid for 1 hour. If you didn't request it, you can safely ignore this email.", { url, label: 'Reset my password' }),
+        text: `Reset your BetterCommunity password: ${url}`,
+      }).catch(() => false);
+      if (!sent) devToken = token; // no email backend → return it so the dev flow still works
     }
     return { ok: true, ...(devToken ? { devToken } : {}) };
   });

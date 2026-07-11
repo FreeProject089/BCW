@@ -833,6 +833,19 @@ model PasswordReset {
   @@index([userId])
 }
 
+// Email-confirmation token, emailed on sign-up (and re-sendable). Same shape as
+// PasswordReset — sha256 of the token, single-use, expiring.
+model EmailVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
 // Global, admin-editable settings: total hosting capacity, reserved free margin,
 // price/GB, price/upload, price/cpu, feature flags, etc. (key -> JSON value).
 // Admin-generated promo code. Three kinds:
