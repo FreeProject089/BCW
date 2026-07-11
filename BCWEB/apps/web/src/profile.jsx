@@ -104,29 +104,30 @@ export default function Profile() {
 
           <div className={avatar.image ? 'opacity-40 pointer-events-none' : ''}>
           <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-5 mb-1.5 text-left">{t('prof.style', 'Style')}</div>
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-3 gap-2">
             {VARIANTS.map((v) => (
               <button key={v} onClick={() => setAvatar((a) => ({ ...a, variant: v }))}
-                className={`rounded-lg p-1 border ${avatar.variant === v ? 'border-[var(--primary)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`} title={v}>
+                className={`press rounded-xl p-1 border ${avatar.variant === v ? 'border-[var(--primary)] ring-2 ring-[var(--ring)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`} title={v}>
                 <Avatar variant={v} seed={avatar.seed || user.id} colors={avatar.colors} size={48} />
               </button>
             ))}
           </div>
           <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-4 mb-1.5 text-left">{t('prof.presets', 'Presets')}</div>
-          <div className="flex gap-1.5 flex-wrap">
+          {/* Give the presets room to breathe: a 3-col grid of taller chips instead of a
+              cramped wrap row — reads cleanly on a phone where the card is full-width. */}
+          <div className="grid grid-cols-3 gap-2">
             {Object.entries(PALETTES).map(([name, cols]) => (
               <button key={name} onClick={() => setAvatar((a) => ({ ...a, colors: cols }))} title={name}
-                className={`flex rounded-md overflow-hidden border ${JSON.stringify(avatar.colors) === JSON.stringify(cols) ? 'border-[var(--primary)]' : 'border-[var(--line)]'}`}>
-                {cols.slice(0, 4).map((c, i) => <span key={i} style={{ background: c, width: 14, height: 22 }} />)}
+                className={`press flex h-9 rounded-lg overflow-hidden border ${JSON.stringify(avatar.colors) === JSON.stringify(cols) ? 'border-[var(--primary)] ring-2 ring-[var(--ring)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                {cols.slice(0, 4).map((c, i) => <span key={i} className="flex-1" style={{ background: c }} />)}
               </button>
             ))}
           </div>
           <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-4 mb-1.5 text-left flex items-center gap-1"><Palette size={11} /> {t('prof.custompalette', 'Custom palette')}</div>
-          {/* Fluid swatches: they share the row evenly at ANY width (no fixed gaps
-              that used to jam the layout on phone screens). */}
-          <div className="flex gap-1.5">
+          {/* Fluid swatches: they share the row evenly at ANY width, with room to breathe. */}
+          <div className="flex gap-2">
             {colors.map((col, i) => (
-              <label key={i} className="relative flex-1 aspect-square max-w-[44px] rounded-md overflow-hidden border border-[var(--line)] cursor-pointer" title={`${t('prof.color', 'Color')} ${i + 1}`} style={{ background: col }}>
+              <label key={i} className="press relative flex-1 aspect-square max-w-[48px] rounded-lg overflow-hidden border border-[var(--line)] hover:border-[var(--line-strong)] cursor-pointer" title={`${t('prof.color', 'Color')} ${i + 1}`} style={{ background: col }}>
                 <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(col) ? col : '#f97316'} onChange={(e) => setColorAt(i, e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
               </label>
             ))}

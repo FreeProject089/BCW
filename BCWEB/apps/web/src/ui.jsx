@@ -138,10 +138,14 @@ export function ToastProvider({ children }) {
       {children}
       {createPortal(
         <div className="fixed bottom-5 right-5 z-[60] flex flex-col gap-2 w-80 max-w-[calc(100vw-2.5rem)]">
-          {items.map((t) => { const I = Ico[t.tone] || Info; return (
-            <div key={t.id} className="card anim-slide px-4 py-3 flex items-start gap-2.5" style={{ boxShadow: '0 12px 34px -12px rgba(0,0,0,0.6)' }}>
-              <I size={17} className={t.tone === 'success' ? 'text-emerald-400' : t.tone === 'error' ? 'text-red-400' : 'text-orange-400'} />
-              <div className="text-sm flex-1">{t.msg}</div>
+          {items.map((t) => { const I = Ico[t.tone] || Info;
+            const tone = t.tone === 'success' ? 'var(--success)' : t.tone === 'error' ? 'var(--error)' : 'var(--info)';
+            return (
+            <div key={t.id} className="card anim-slide relative overflow-hidden pl-4 pr-4 py-3 flex items-start gap-2.5" style={{ boxShadow: '0 12px 34px -12px rgba(0,0,0,0.6)' }}>
+              {/* semantic accent rail + a spring-in icon chip: explicit success / error / info cue */}
+              <span className="absolute left-0 top-0 bottom-0 w-1" style={{ background: tone }} />
+              <span className="toast-icon-in grid place-items-center w-6 h-6 rounded-lg shrink-0" style={{ background: `color-mix(in srgb, ${tone} 16%, transparent)`, color: tone }}><I size={15} /></span>
+              <div className="text-sm flex-1 pt-0.5">{t.msg}</div>
             </div>); })}
         </div>, document.body)}
     </ToastCtx.Provider>

@@ -99,27 +99,52 @@ function JsonEditor({ value, onChange, placeholder, minH = 170 }) {
 // Persists the active tab in the URL (?s=).
 function SideDash({ title, subtitle, icon, tabs, headerActions, children }) {
   const [sp, setSp] = useSearchParams();
+  const [navOpen, setNavOpen] = useState(false);
   const realTabs = tabs.filter((t) => t.id);
   const active = sp.get('s') || realTabs[0]?.id;
-  const set = (id) => setSp((p) => { const n = new URLSearchParams(p); n.set('s', id); return n; }, { replace: true });
+  const set = (id) => { setSp((p) => { const n = new URLSearchParams(p); n.set('s', id); return n; }, { replace: true }); setNavOpen(false); };
   const current = realTabs.find((t) => t.id === active) || realTabs[0];
+  const idx = realTabs.findIndex((t) => t.id === active);
+  // One row renderer, reused by the desktop sidebar and the mobile sheet.
+  const renderTab = (tb, big) => (
+    <button key={tb.id} onClick={() => set(tb.id)}
+      className={`flex items-center gap-2.5 px-3 ${big ? 'py-2.5' : 'py-2'} rounded-xl text-sm text-left w-full whitespace-nowrap transition-colors press ${active === tb.id ? 'bg-[var(--surface-2)] text-[var(--text)] border border-[var(--line)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border border-transparent'}`}>
+      <tb.icon size={16} className={active === tb.id ? 'text-[var(--primary-2)]' : ''} /> {tb.label}
+      {tb.badge ? <Badge tone="primary" className="ml-auto">{tb.badge}</Badge> : null}
+    </button>
+  );
   return (
     <div>
       <PageHeader icon={icon} title={title} subtitle={subtitle} actions={headerActions} />
+
+      {/* Mobile (<md): the ~15-tab sidebar becomes a proper dropdown sheet — a
+          cramped horizontal scroll strip of tabs + section headings is unusable on
+          a phone. Shows the current section; tapping opens the grouped list. */}
+      <div className="md:hidden mb-4 relative z-20">
+        <button onClick={() => setNavOpen((o) => !o)} aria-expanded={navOpen}
+          className="card w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium press">
+          {current?.icon && <current.icon size={16} className="text-[var(--primary-2)]" />}
+          <span className="flex-1 text-left truncate">{current?.label}</span>
+          <span className="text-[11px] text-[var(--faint)] tabular-nums">{idx + 1}/{realTabs.length}</span>
+          <ChevronDown size={16} className={`text-[var(--muted)] transition-transform duration-200 ${navOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {navOpen && <>
+          <div className="fixed inset-0 z-10" onClick={() => setNavOpen(false)} />
+          <div className="card absolute left-0 right-0 mt-2 p-2 anim-pop z-20 max-h-[62vh] overflow-y-auto scroll-thin shadow-lg">
+            {tabs.map((tb, i) => tb.heading
+              ? <div key={`h-${i}`} className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] first:pt-1">{tb.heading}</div>
+              : renderTab(tb, true))}
+          </div>
+        </>}
+      </div>
+
       <div className="grid md:grid-cols-[220px_1fr] gap-6">
-        {/* A real card panel behind the whole nav (not just the active pill) — it
-            used to float directly on the page background, which looked ungrounded
-            next to the content cards beside it. */}
-        <nav className="card p-2 flex md:flex-col gap-1 overflow-x-auto md:overflow-visible md:sticky md:top-20 self-start pb-2 md:pb-2">
+        {/* Desktop sidebar — a real card panel behind the whole nav (not just the
+            active pill) so it feels grounded next to the content cards. */}
+        <nav className="hidden md:flex card p-2 flex-col gap-1 md:sticky md:top-20 self-start pb-2">
           {tabs.map((tb, i) => tb.heading ? (
-            <div key={`h-${i}`} className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] shrink-0 first:pt-1">{tb.heading}</div>
-          ) : (
-            <button key={tb.id} onClick={() => set(tb.id)}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-left whitespace-nowrap transition shrink-0 ${active === tb.id ? 'bg-[var(--surface-2)] text-[var(--text)] border border-[var(--line)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border border-transparent'}`}>
-              <tb.icon size={16} className={active === tb.id ? 'text-[var(--primary-2)]' : ''} /> {tb.label}
-              {tb.badge ? <Badge tone="primary" className="ml-auto">{tb.badge}</Badge> : null}
-            </button>
-          ))}
+            <div key={`h-${i}`} className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] first:pt-1">{tb.heading}</div>
+          ) : renderTab(tb))}
         </nav>
         <div className="min-w-0">{typeof children === 'function' ? children(current.id) : children}</div>
       </div>

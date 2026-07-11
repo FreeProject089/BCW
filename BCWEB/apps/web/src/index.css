@@ -141,7 +141,8 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     cursor: pointer; transition: all .16s ease; white-space: nowrap; line-height: 1;
   }
   .btn:hover { border-color: var(--ring); }
-  .btn:active { transform: translateY(1px); }
+  .btn:active { transform: translateY(1px) scale(.985); }
+  .btn-primary:active { transform: translateY(1px) scale(.985); }
   .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(249,115,22,0.35); }
   .btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
   /* Loading: aria-busy="true" swaps the label for a spinner and blocks clicks. */
@@ -265,6 +266,50 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   .nav-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 9px; font-size: 14px; color: var(--muted); transition: all .15s ease; }
   .nav-link:hover { color: var(--text); background: var(--surface-2); }
   .nav-link-active { color: var(--primary); background: var(--surface-2); }
+
+  /* ── Micro-interactions ─────────────────────────────────────────────────
+     `.press` gives any tappable surface (nav rows, tiles, list items, cards
+     used as buttons) a tactile spring on click/tap — confirms the action
+     physically. Pair with a hover state on the element itself. */
+  .press { transition: transform .13s cubic-bezier(.2,0,.2,1), background-color .15s ease, border-color .15s ease, color .15s ease; }
+  .press:active { transform: scale(.97); }
+  .press-sm:active { transform: scale(.985); }
+  /* A pressable that also lifts on hover (tiles / selectable cards). */
+  .lift { transition: transform .16s cubic-bezier(.2,0,.2,1), box-shadow .16s ease, border-color .16s ease; }
+  .lift:hover { transform: translateY(-2px); }
+  .lift:active { transform: translateY(0) scale(.99); }
+
+  /* Success/confirm burst — a ring that expands & fades once. Add `.burst` to an
+     element (e.g. a check chip) when an action succeeds; remove after ~600ms. */
+  .burst { position: relative; }
+  .burst::after { content: ""; position: absolute; inset: -4px; border-radius: inherit;
+    border: 2px solid var(--success); opacity: 0; animation: burstRing .6s cubic-bezier(.16,1,.3,1); }
+
+  /* Value pop — a number/label that just changed gives a tiny scale kick. */
+  .pop-in { animation: popKick .34s cubic-bezier(.16,1,.3,1); }
+
+  /* Animated determinate progress fill (updates, uploads). Width is set inline. */
+  .progress-track { height: 6px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--primary), var(--primary-2)); transition: width .5s cubic-bezier(.22,1,.36,1); position: relative; }
+  .progress-fill.is-success { background: linear-gradient(90deg, var(--success), #4ade80); }
+  /* moving sheen so an in-progress bar reads as alive, not stalled */
+  .progress-fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); transform: translateX(-100%); animation: progressSheen 1.4s ease-in-out infinite; }
+  .progress-fill.is-done::after { animation: none; }
+}
+
+@keyframes burstRing { 0% { opacity: .8; transform: scale(.6); } 100% { opacity: 0; transform: scale(1.35); } }
+@keyframes popKick { 0% { transform: scale(1); } 40% { transform: scale(1.14); } 100% { transform: scale(1); } }
+@keyframes progressSheen { 0% { transform: translateX(-100%); } 60%,100% { transform: translateX(100%); } }
+/* Toast accent + icon entrance (richer than a plain slide). */
+@keyframes toastIcon { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
+.toast-icon-in { animation: toastIcon .32s cubic-bezier(.16,1,.3,1) both; }
+
+/* Respect a genuine OS reduced-motion request for the OPT-IN micro-interactions
+   (not the scroll reveal, which Windows silently force-enables). Transforms
+   collapse; opacity/colour cues stay. */
+@media (prefers-reduced-motion: reduce) {
+  .press:active, .press-sm:active, .lift:hover, .lift:active, .btn:active, .btn-primary:active { transform: none; }
+  .burst::after, .pop-in, .progress-fill::after, .toast-icon-in { animation: none; }
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
