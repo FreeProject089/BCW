@@ -1554,8 +1554,8 @@ function TwoFactorNudge() {
     <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-orange-500/12 to-transparent border-[var(--ring)]">
       <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><ShieldCheck size={18} className="text-[var(--primary-2)]" /></span>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold">{t('twofa.nudge.title', 'Secure your account with 2FA')}</div>
-        <div className="text-xs text-[var(--muted)] mt-0.5">{t('twofa.nudge.d', 'Add a second factor so a leaked password alone can’t get in. Takes about a minute — it’s optional.')}</div>
+        <div className="text-sm font-semibold">{t('twofa.nudge.title', 'Don’t risk losing access to your account')}</div>
+        <div className="text-xs text-[var(--muted)] mt-0.5">{t('twofa.nudge.d', 'A single leaked password could cost you your repos, submissions and payment history. Add a second factor — about a minute, and you stay in control.')}</div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         <Link to="/profile?setup2fa=1"><Button size="sm" variant="primary"><ShieldCheck size={14} /> {t('twofa.nudge.setup', 'Set up')}</Button></Link>
