@@ -281,7 +281,7 @@ const DICT = {
     'prof.2fa.wrongpw': "Mauvais mot de passe.",
     'prof.hide': "Masquer",
     'prof.personalinfo': "Informations personnelles",
-    'prof.sec.account': "Compte et préférences",
+    'prof.sec.account': "Compte et développeur", 'prof.changepw.d': "Utilise un mot de passe fort que tu ne réutilises nulle part ailleurs.",
     'prof.sec.connections': "Connexions",
     'prof.sec.public': "Profil public",
     'prof.sec.security': "Sécurité",

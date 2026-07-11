@@ -85,12 +85,12 @@ export default function Profile() {
   };
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-4xl">
       <PageHeader icon={User} title={t('prof.title', 'Profile')} subtitle={t('prof.sub', 'Manage your account, avatar and password.')}
         actions={<Link to="/dashboard"><Button variant="ghost"><LayoutDashboard size={15} /> {t('prof.godash', 'Go to dashboard')}</Button></Link>} />
       <div className="grid md:grid-cols-[260px_minmax(0,1fr)] gap-6">
-        {/* avatar */}
-        <Card className="p-6 text-center self-start min-w-0">
+        {/* avatar — sticky on desktop so it stays in view while scrolling the sections */}
+        <Card className="p-6 text-center self-start min-w-0 md:sticky md:top-20">
           <Avatar variant={avatar.variant} seed={avatar.seed || user.id} colors={avatar.colors} image={avatar.image} size={120} className="mx-auto" />
           <div className="font-semibold mt-3">{form.displayName || user.displayName}</div>
           <Badge tone={user.role === 'SUPERADMIN' ? 'red' : user.role === 'ADMIN' ? 'amber' : 'primary'} className="mt-1">{user.role}</Badge>
@@ -153,22 +153,23 @@ export default function Profile() {
 
           <div className="space-y-4">
           <SectionLabel icon={ShieldCheck}>{t('prof.sec.security', 'Security')}</SectionLabel>
+          {/* 2FA leads Security — it now gates repo creation and server-control access, so
+              it's the most important thing to set up. Password change sits below it. */}
+          <TwoFactorCard />
           <Card className="p-5">
             <div className="text-sm font-semibold mb-1 flex items-center gap-2"><KeyRound size={15} className="text-[var(--primary-2)]" /> {t('prof.changepw', 'Change password')}</div>
-            <div className="grid sm:grid-cols-3 gap-3 mt-2">
-              <Field label={t('prof.currentpw', 'Current password')}><Input type="password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} /></Field>
-              <Field label={t('prof.newpw', 'New password')}><Input type="password" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} placeholder={t('prof.pw8', '8+ characters')} /></Field>
-              <Field label={t('prof.confirmnew', 'Confirm new')}><Input type="password" value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} placeholder={t('prof.repeat', 'repeat')} /></Field>
+            <p className="text-xs text-[var(--muted)] mb-3">{t('prof.changepw.d', 'Use a strong password you don’t reuse anywhere else.')}</p>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <Field label={t('prof.currentpw', 'Current password')}><Input type="password" autoComplete="current-password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} aria-invalid={msg === 'pwwrong' || undefined} /></Field>
+              <Field label={t('prof.newpw', 'New password')}><Input type="password" autoComplete="new-password" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} placeholder={t('prof.pw8', '8+ characters')} aria-invalid={msg === 'pwshort' || undefined} /></Field>
+              <Field label={t('prof.confirmnew', 'Confirm new')}><Input type="password" autoComplete="new-password" value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} placeholder={t('prof.repeat', 'repeat')} aria-invalid={msg === 'pwmismatch' || undefined} /></Field>
             </div>
-            <div className="flex items-center gap-3 mt-3"><Button disabled={pwBusy} onClick={changePw}>{pwBusy ? <Spinner /> : t('prof.updatepw', 'Update password')}</Button>
-              {msg === 'pwok' && <span className="text-sm text-emerald-400 flex items-center gap-1"><Check size={14} /> {t('prof.updated', 'Updated')}</span>}
-              {msg === 'pwwrong' && <span className="text-sm text-red-400">{t('prof.pwwrong', 'Wrong current password')}</span>}
-              {msg === 'pwshort' && <span className="text-sm text-red-400">{t('prof.pwshort', 'Min 8 characters')}</span>}
-              {msg === 'pwmismatch' && <span className="text-sm text-red-400">{t('prof.pwmismatch', "Passwords don't match")}</span>}</div>
+            <div className="flex items-center gap-3 mt-3 flex-wrap"><Button disabled={pwBusy} onClick={changePw}>{pwBusy ? <Spinner /> : t('prof.updatepw', 'Update password')}</Button>
+              {msg === 'pwok' && <span className="text-sm text-[var(--success)] flex items-center gap-1"><Check size={14} /> {t('prof.updated', 'Updated')}</span>}
+              {msg === 'pwwrong' && <span className="text-sm text-[var(--error)]">{t('prof.pwwrong', 'Wrong current password')}</span>}
+              {msg === 'pwshort' && <span className="text-sm text-[var(--error)]">{t('prof.pwshort', 'Min 8 characters')}</span>}
+              {msg === 'pwmismatch' && <span className="text-sm text-[var(--error)]">{t('prof.pwmismatch', "Passwords don't match")}</span>}</div>
           </Card>
-
-          <TwoFactorCard />
-          <ApiTokenCard />
           </div>
 
           <div className="space-y-4">
@@ -178,7 +179,8 @@ export default function Profile() {
           </div>
 
           <div className="space-y-4">
-          <SectionLabel icon={SettingsIcon}>{t('prof.sec.account', 'Account & preferences')}</SectionLabel>
+          <SectionLabel icon={SettingsIcon}>{t('prof.sec.account', 'Account & developer')}</SectionLabel>
+          <ApiTokenCard />
 
           {/* Device preferences (intro animation, theme, language, translucency,
               cookies) all live on the Settings page now — link there instead of
