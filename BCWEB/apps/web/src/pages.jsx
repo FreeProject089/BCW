@@ -1266,6 +1266,9 @@ export function Auth() {
     // already-logged-in visitor who just hit /auth goes to their profile / ?next.
     if (justRegistered.current) { nav('/profile?setup2fa=1', { replace: true }); return; }
     const next = params.get('next');
+    // `/oauth2/*` is served by the API (OIDC authorize), not an SPA route — do a real
+    // navigation so it hits the backend rather than the SPA's not-found.
+    if (next && next.startsWith('/oauth2/')) { window.location.href = next; return; }
     nav(next && next.startsWith('/') ? next : '/profile', { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);

@@ -1,10 +1,49 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole } from '../lib.mjs';
-import { jwks, issuer } from '../oidc.mjs';
+import querystring from 'node:querystring';
+import jwt from 'jsonwebtoken';
+import { db, requireRole, optionalAuth } from '../lib.mjs';
+import { jwks, issuer, signRs256 } from '../oidc.mjs';
 
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const SCOPES = ['openid', 'profile', 'email'];
+const SCOPE_DESC = { openid: 'Confirm your identity', profile: 'Your display name', email: 'Your email address' };
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const sep = (u) => (u.includes('?') ? '&' : '?');
+const backTo = (redir, params) => `${redir}${sep(redir)}${new URLSearchParams(params).toString()}`;
+const parseBasicAuth = (h) => {
+  const m = /^Basic\s+(.+)$/i.exec(h || ''); if (!m) return null;
+  try { const [id, secret] = Buffer.from(m[1], 'base64').toString('utf8').split(':'); return { id, secret }; } catch { return null; }
+};
+async function issueCode(p, { client, userId, redirectUri, scope, nonce, codeChallenge }) {
+  const code = crypto.randomBytes(32).toString('base64url');
+  await p.oAuthCode.create({ data: { code, clientId: client.id, userId, redirectUri, scope, nonce: nonce || '', codeChallenge: codeChallenge || '', expiresAt: new Date(Date.now() + 5 * 60000) } });
+  return code;
+}
+// Minimal, self-contained HTML pages (no SPA dependency) — brand-tinted.
+const shell = (title, inner) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
+  body{margin:0;background:#0e0c09;color:#f3efe9;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:grid;place-items:center;min-height:100vh}
+  .card{background:#15120d;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:28px;max-width:420px;width:92%;box-shadow:0 20px 60px -12px rgba(0,0,0,.6)}
+  h1{font-size:19px;margin:0 0 6px} p{color:#a39b8f;font-size:14px;margin:.4em 0}
+  .brand{color:#f97316;font-weight:700} ul{list-style:none;padding:0;margin:14px 0}
+  li{display:flex;gap:8px;align-items:center;padding:7px 0;border-top:1px solid rgba(255,255,255,.08);font-size:14px}
+  .dot{width:6px;height:6px;border-radius:99px;background:#f59e0b;flex:none}
+  .row{display:flex;gap:10px;margin-top:18px} button{flex:1;padding:11px;border-radius:11px;font-size:14px;font-weight:600;cursor:pointer;border:1px solid transparent}
+  .approve{background:linear-gradient(120deg,#f97316,#f59e0b);color:#fff} .deny{background:transparent;border-color:rgba(255,255,255,.16);color:#a39b8f}
+</style></head><body><div class="card">${inner}</div></body></html>`;
+const consentPage = (client, scopes, reqToken) => shell('Authorize', `
+  <h1><span class="brand">${esc(client.name)}</span> wants to access your account</h1>
+  <p>Signing in with your <b>BetterCommunity</b> account will share:</p>
+  <ul>${scopes.map((s) => `<li><span class="dot"></span>${esc(SCOPE_DESC[s] || s)}</li>`).join('')}</ul>
+  <form method="post" action="/oauth2/authorize/decision">
+    <input type="hidden" name="request_token" value="${esc(reqToken)}">
+    <div class="row">
+      <button class="deny" name="decision" value="deny">Deny</button>
+      <button class="approve" name="decision" value="approve">Allow</button>
+    </div>
+  </form>`);
+const errPage = (msg) => shell('Error', `<h1>Authorization error</h1><p>${esc(msg)}</p>`);
 
 export default async function oidcProviderRoutes(app) {
   // ── Discovery + JWKS (public; the whole point is that anyone can fetch these) ──
@@ -27,6 +66,94 @@ export default async function oidcProviderRoutes(app) {
     };
   });
   app.get('/.well-known/jwks.json', { config: { rateLimit: false } }, async () => jwks());
+
+  // The token endpoint receives application/x-www-form-urlencoded (per OAuth2). Add a
+  // parser scoped to this plugin so req.body is an object there (JSON still works too).
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (req, body, done) => {
+    try { done(null, querystring.parse(body)); } catch (e) { done(e); }
+  });
+
+  // ── Authorization endpoint (browser flow) ──
+  app.get('/oauth2/authorize', { preHandler: optionalAuth() }, async (req, reply) => {
+    const q = req.query || {};
+    const p = await db();
+    const client = q.client_id ? await p.oAuthClient.findUnique({ where: { id: String(q.client_id) } }) : null;
+    // client_id + redirect_uri must be valid BEFORE we may redirect back anywhere.
+    if (!client || !client.active) return reply.code(400).type('text/html').send(errPage('Unknown or disabled client.'));
+    const redir = String(q.redirect_uri || '');
+    if (!redir || !client.redirectUris.includes(redir)) return reply.code(400).type('text/html').send(errPage('Invalid redirect_uri (not registered for this client).'));
+    const state = q.state ? String(q.state) : '';
+    const bad = (error) => reply.redirect(backTo(redir, { error, ...(state ? { state } : {}) }));
+    if (q.response_type !== 'code') return bad('unsupported_response_type');
+    const scopes = String(q.scope || '').split(/\s+/).filter(Boolean);
+    if (!scopes.includes('openid') || scopes.some((s) => !client.scopes.includes(s))) return bad('invalid_scope');
+    const challenge = q.code_challenge ? String(q.code_challenge) : '';
+    if (challenge && q.code_challenge_method !== 'S256') return bad('invalid_request');
+    if (!client.confidential && !challenge) return bad('invalid_request'); // public clients MUST use PKCE
+    // Require a BCWEB login; bounce through the SPA login, returning here after.
+    if (!req.user?.uid) return reply.redirect(`${issuer()}/auth?next=${encodeURIComponent(req.raw.url)}`);
+    // Skip the prompt if this user already consented to (at least) these scopes.
+    const consent = await p.oAuthConsent.findUnique({ where: { userId_clientId: { userId: req.user.uid, clientId: client.id } } }).catch(() => null);
+    const scopeStr = scopes.join(' ');
+    if (consent && scopes.every((s) => consent.scope.split(' ').includes(s))) {
+      const code = await issueCode(p, { client, userId: req.user.uid, redirectUri: redir, scope: scopeStr, nonce: String(q.nonce || ''), codeChallenge: challenge });
+      return reply.redirect(backTo(redir, { code, ...(state ? { state } : {}) }));
+    }
+    const reqToken = jwt.sign({ purpose: 'oauth-consent', uid: req.user.uid, clientId: client.id, redirectUri: redir, scope: scopeStr, state, nonce: String(q.nonce || ''), codeChallenge: challenge }, JWT_SECRET, { expiresIn: 600 });
+    return reply.type('text/html').send(consentPage(client, scopes, reqToken));
+  });
+
+  // Consent decision (POST from the consent page).
+  app.post('/oauth2/authorize/decision', { preHandler: optionalAuth() }, async (req, reply) => {
+    let c;
+    try { c = jwt.verify((req.body || {}).request_token, JWT_SECRET); } catch { return reply.code(400).type('text/html').send(errPage('This authorization request expired — please start again.')); }
+    if (c.purpose !== 'oauth-consent') return reply.code(400).type('text/html').send(errPage('Bad request.'));
+    if (!req.user?.uid || req.user.uid !== c.uid) return reply.code(403).type('text/html').send(errPage('Session mismatch — please start again.'));
+    const redir = c.redirectUri, state = c.state || '';
+    if ((req.body || {}).decision !== 'approve') return reply.redirect(backTo(redir, { error: 'access_denied', ...(state ? { state } : {}) }));
+    const p = await db();
+    const client = await p.oAuthClient.findUnique({ where: { id: c.clientId } });
+    if (!client || !client.active) return reply.code(400).type('text/html').send(errPage('Client no longer available.'));
+    await p.oAuthConsent.upsert({ where: { userId_clientId: { userId: c.uid, clientId: client.id } }, create: { userId: c.uid, clientId: client.id, scope: c.scope }, update: { scope: c.scope } });
+    const code = await issueCode(p, { client, userId: c.uid, redirectUri: redir, scope: c.scope, nonce: c.nonce, codeChallenge: c.codeChallenge });
+    return reply.redirect(backTo(redir, { code, ...(state ? { state } : {}) }));
+  });
+
+  // ── Token endpoint (authorization_code grant) ──
+  app.post('/oauth2/token', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = req.body || {};
+    reply.header('Cache-Control', 'no-store');
+    if (b.grant_type !== 'authorization_code') return reply.code(400).send({ error: 'unsupported_grant_type' });
+    const p = await db();
+    const basic = parseBasicAuth(req.headers['authorization']);
+    const clientId = String(b.client_id || basic?.id || '');
+    const clientSecret = b.client_secret || basic?.secret || '';
+    const client = clientId ? await p.oAuthClient.findUnique({ where: { id: clientId } }) : null;
+    if (!client || !client.active) return reply.code(401).send({ error: 'invalid_client' });
+    if (client.confidential && (!clientSecret || sha256(String(clientSecret)) !== client.secretHash)) return reply.code(401).send({ error: 'invalid_client' });
+    const code = await p.oAuthCode.findUnique({ where: { code: String(b.code || '') } });
+    if (!code || code.clientId !== client.id || code.usedAt || code.expiresAt < new Date() || code.redirectUri !== String(b.redirect_uri || '')) return reply.code(400).send({ error: 'invalid_grant' });
+    // PKCE verification when a challenge was bound to the code.
+    if (code.codeChallenge) {
+      const chal = crypto.createHash('sha256').update(String(b.code_verifier || '')).digest('base64url');
+      if (!b.code_verifier || chal !== code.codeChallenge) return reply.code(400).send({ error: 'invalid_grant' });
+    }
+    // Single-use: atomically claim the code (loser of a race gets invalid_grant).
+    const claimed = await p.oAuthCode.updateMany({ where: { code: code.code, usedAt: null }, data: { usedAt: new Date() } });
+    if (claimed.count === 0) return reply.code(400).send({ error: 'invalid_grant' });
+    const user = await p.user.findUnique({ where: { id: code.userId }, select: { id: true, displayName: true, email: true } });
+    if (!user) return reply.code(400).send({ error: 'invalid_grant' });
+    const scopes = code.scope.split(' ');
+    const idClaims = { sub: user.id, aud: client.id };
+    if (code.nonce) idClaims.nonce = code.nonce;
+    if (scopes.includes('profile')) idClaims.name = user.displayName || '';
+    if (scopes.includes('email')) { idClaims.email = user.email || ''; idClaims.email_verified = true; }
+    const id_token = await signRs256(idClaims, 3600);
+    const access_token = await signRs256({ sub: user.id, aud: client.id, scope: code.scope, token_use: 'access' }, 3600);
+    const refresh = crypto.randomBytes(32).toString('base64url');
+    await p.oAuthRefreshToken.create({ data: { token: sha256(refresh), clientId: client.id, userId: user.id, scope: code.scope, expiresAt: new Date(Date.now() + 30 * 864e5) } });
+    return { access_token, token_type: 'Bearer', expires_in: 3600, id_token, refresh_token: refresh, scope: code.scope };
+  });
 
   // ── Admin: OAuth client registry ──
   app.get('/admin/oauth-clients', { preHandler: requireRole('ADMIN') }, async () => {
