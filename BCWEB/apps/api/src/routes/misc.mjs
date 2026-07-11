@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, slugify, logAudit } from '../lib.mjs';
+import { db, requireRole, optionalAuth, slugify, logAudit, notify, clearAccountLockCache } from '../lib.mjs';
+import { sendMail, mailShell, emailEnabled } from '../mail.mjs';
+
+const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 import { prefixUsage } from '../storage.mjs';
 import { capacityStatus, realDiskStats, stripe } from './hosting.mjs';
 import { powVerify } from './auth.mjs';
@@ -344,15 +347,20 @@ export default async function miscRoutes(app) {
       where, take: take + 1, skip, orderBy: { createdAt: 'desc' },
       select: { id: true, displayName: true, email: true, role: true, avatar: true, createdAt: true,
         totpEnabled: true, canControlServer: true, canViewTelemetry: true,
+        status: true, moderationUntil: true, moderationReason: true,
         creatorLinks: { select: { creatorId: true } }, discordLinks: { select: { discordId: true, username: true } },
         _count: { select: { serverRepos: true, items: true } } },
     });
     const hasMore = rows.length > take;
+    // Surface the CURRENT effective moderation state — a temp lock whose date has
+    // passed reads as active (it auto-lifts at next login) so the admin isn't misled.
+    const effStatus = (u) => (u.status && u.status !== 'active' && (!u.moderationUntil || new Date(u.moderationUntil) > new Date())) ? u.status : 'active';
     return {
       hasMore,
       users: rows.slice(0, take).map((u) => ({
         id: u.id, bcId: userBcId(u.id), displayName: u.displayName, email: u.email, role: u.role, avatar: u.avatar, createdAt: u.createdAt,
         totpEnabled: u.totpEnabled, canControlServer: u.canControlServer, canViewTelemetry: u.canViewTelemetry,
+        status: effStatus(u), moderationUntil: u.moderationUntil, moderationReason: u.moderationReason,
         creatorIds: u.creatorLinks.map((c) => c.creatorId),
         discord: u.discordLinks[0] ? { id: u.discordLinks[0].discordId, username: u.discordLinks[0].username } : null,
         repoCount: u._count.serverRepos, itemCount: u._count.items,
@@ -364,6 +372,7 @@ export default async function miscRoutes(app) {
     const p = await db();
     const u = await p.user.findUnique({ where: { id: req.params.id }, select: {
       id: true, displayName: true, email: true, role: true, avatar: true, bio: true, createdAt: true, stripeCustomerId: true,
+      status: true, moderationUntil: true, moderationReason: true, moderatedAt: true,
       serverRepos: { select: { id: true, name: true, hosted: true, status: true, listed: true, verified: true }, orderBy: { createdAt: 'desc' } },
       items: { select: { id: true, name: true, slug: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' } },
       creatorLinks: { select: { creatorId: true, displayName: true, linkedAt: true, unlinkableAt: true } },
@@ -411,6 +420,52 @@ export default async function miscRoutes(app) {
     const user = await p.user.update({ where: { id: req.params.id }, data: { role: b.data.role }, select: { id: true, displayName: true, email: true, role: true } });
     await logAudit(p, req.user.uid, 'user.role_change', `${target.displayName} (${target.email}): ${target.role} -> ${b.data.role}`, clientIp(req));
     return { user };
+  });
+
+  // ── Admin: suspend / ban / reactivate an account ──────────────────────────────
+  // suspend = a lighter temporary lock; ban = the harsher one. Both take an optional
+  // durationHours (absent/0 = permanent) and a reason that is shown to the user, emailed
+  // to them, and dropped in their notifications. A locked account is signed out within
+  // ~15s (lib.mjs accountLock cache) and can't sign back in until the lock lifts —
+  // permanent locks point the user at support to appeal. Staff can't be moderated here,
+  // and you can't moderate yourself.
+  app.post('/admin/users/:id/moderate', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      action: z.enum(['suspend', 'ban', 'reactivate']),
+      durationHours: z.number().int().positive().max(24 * 3650).optional(), // absent = permanent
+      reason: z.string().trim().max(1000).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (req.params.id === req.user.uid) return reply.code(400).send({ error: 'cannot_moderate_self' });
+    const p = await db();
+    const target = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, displayName: true, email: true, role: true, status: true } });
+    if (!target) return reply.code(404).send({ error: 'not_found' });
+    if (['MOD', 'ADMIN', 'SUPERADMIN'].includes(target.role)) return reply.code(403).send({ error: 'cannot_moderate_staff' });
+
+    if (b.data.action === 'reactivate') {
+      await p.user.update({ where: { id: target.id }, data: { status: 'active', moderationUntil: null, moderationReason: null, moderatedAt: new Date(), moderatedById: req.user.uid } });
+      clearAccountLockCache(target.id);
+      await logAudit(p, req.user.uid, 'user.reactivate', `${target.displayName} (${target.email})`, clientIp(req));
+      await notify(p, target.id, 'account', 'Your account has been reactivated — welcome back.').catch(() => {});
+      if (emailEnabled()) sendMail({ to: target.email, subject: 'Your BetterCommunity account has been reactivated',
+        html: mailShell('Account reactivated', `<p>Hi ${target.displayName},</p><p>Your account has been reactivated. You can sign in again.</p>`, { url: `${SITE_URL}/auth`, label: 'Sign in' }),
+        text: `Your BetterCommunity account has been reactivated. Sign in: ${SITE_URL}/auth` }).catch(() => {});
+      return { ok: true, status: 'active' };
+    }
+
+    const status = b.data.action === 'ban' ? 'banned' : 'suspended';
+    const until = b.data.durationHours ? new Date(Date.now() + b.data.durationHours * 3600e3) : null;
+    const reason = b.data.reason || null;
+    await p.user.update({ where: { id: target.id }, data: { status, moderationUntil: until, moderationReason: reason, moderatedAt: new Date(), moderatedById: req.user.uid } });
+    clearAccountLockCache(target.id);
+    const label = status === 'banned' ? 'banned' : 'suspended';
+    const dur = until ? `until ${until.toLocaleString('en-US', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' })} UTC` : 'permanently';
+    await logAudit(p, req.user.uid, `user.${status}`, `${target.displayName} (${target.email}) ${until ? `until ${until.toISOString()}` : 'permanently'}${reason ? ` — ${reason}` : ''}`, clientIp(req));
+    await notify(p, target.id, 'account', `Your account has been ${label} ${dur}.${reason ? ` Reason: ${reason}` : ''}`).catch(() => {});
+    if (emailEnabled()) sendMail({ to: target.email, subject: `Your BetterCommunity account has been ${label}`,
+      html: mailShell(`Account ${label}`, `<p>Hi ${target.displayName},</p><p>Your account has been <b>${label}</b> ${dur}.</p>${reason ? `<p style="margin-top:12px"><b>Reason:</b><br>${reason}</p>` : ''}${until ? '' : '<p style="margin-top:12px">If you believe this was a mistake, you can appeal by contacting support.</p>'}`, until ? null : { url: `${SITE_URL}/contact?ref=appeal`, label: 'Contact support' }),
+      text: `Your BetterCommunity account has been ${label} ${dur}.${reason ? ` Reason: ${reason}` : ''}${until ? '' : ` Appeal: ${SITE_URL}/contact`}` }).catch(() => {});
+    return { ok: true, status, until: until ? until.toISOString() : null };
   });
 
   // ── Admin: free-plan vs. paying vs. archived users ──

@@ -346,22 +346,22 @@ export function Home() {
         <SectionKicker n="03" label={t('home.k.start', 'Get started')} />
         <div className="reveal-on-scroll text-center mb-9"><h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.steps.title')}</h2><p className="text-[var(--muted)] mt-2.5">{t('home.steps.sub')}</p></div>
         <div className="reveal-stagger relative grid md:grid-cols-3 gap-5">
-          {/* Animated flow connector — desktop only, threaded through the icon row (badge
-              center ≈ 52px down). A dotted wave baseline with a glowing pulse that travels
-              left→right through the three steps, so the journey reads as forward motion.
-              Lives OUTSIDE the cards (not clipped) and behind them (z-0). */}
-          <div className="hidden md:block absolute top-[52px] left-[16.5%] right-[16.5%] h-8 -translate-y-1/2 z-0 pointer-events-none">
-            <svg className="w-full h-full" viewBox="0 0 300 24" preserveAspectRatio="none" aria-hidden="true">
-              <defs>
-                <linearGradient id="stepflowg" x1="0" y1="0" x2="300" y2="0" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stopColor="var(--primary)" stopOpacity="0" />
-                  <stop offset="0.5" stopColor="var(--primary-2)" />
-                  <stop offset="1" stopColor="var(--primary)" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path d="M0 12 C 50 2, 100 22, 150 12 S 250 2, 300 12" fill="none" stroke="var(--line-strong)" strokeWidth="1.5" strokeDasharray="1 7" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-              <path d="M0 12 C 50 2, 100 22, 150 12 S 250 2, 300 12" fill="none" stroke="url(#stepflowg)" strokeWidth="3" strokeLinecap="round" strokeDasharray="46 254" vectorEffect="non-scaling-stroke" className="step-flow" />
-            </svg>
+          {/* Animated flow connector — desktop only, threaded through the numbered icon
+              row (badge center ≈ 52px down). A crisp gradient track carries a glowing
+              comet left→right, broken by directional arrow-chips sitting in the gaps
+              between the three steps, so the journey reads as a forward stepper. Lives
+              OUTSIDE the cards (not clipped) and behind them (z-0). */}
+          <div className="hidden md:block absolute top-[52px] left-0 right-0 -translate-y-1/2 z-0 pointer-events-none">
+            {/* baseline track spanning card-1 → card-3 icon centers, with a sweeping comet */}
+            <div className="absolute left-[16.5%] right-[16.5%] top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-[var(--line)]/70 overflow-hidden">
+              <div className="absolute inset-y-0 left-0 w-1/4 rounded-full bg-gradient-to-r from-transparent via-[var(--primary)] to-transparent step-flow-x" />
+            </div>
+            {/* directional arrows breaking the line in the two gaps between the cards */}
+            {[33.33, 66.66].map((x) => (
+              <span key={x} className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 grid place-items-center w-6 h-6 rounded-full bg-[var(--bg-solid)] border border-[var(--primary)]/40 text-[var(--primary-2)] shadow-sm shadow-orange-500/10" style={{ left: `${x}%` }}>
+                <ArrowRight size={12} />
+              </span>
+            ))}
           </div>
           {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth', user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free')],
             [Upload, t('home.step2'), t('home.step2.d'), '/catalog', t('home.step2.cta', 'Browse the catalog')],
@@ -1309,6 +1309,54 @@ function PwInput({ value, onChange, placeholder = '••••••••' }) 
   );
 }
 
+// Shown on the sign-in page when a suspended/banned account tries to sign in: the
+// reason the admin entered, a live countdown for a temporary lock, or a support-appeal
+// link for a permanent one. Mirrors the account-moderation gate in the API.
+function AccountLockedPanel({ data, onBack }) {
+  const { t } = useI18n();
+  const banned = data.status === 'banned';
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { if (!data.until) return; const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, [data.until]);
+  const remainMs = data.until ? new Date(data.until).getTime() - now : 0;
+  const fmtRemain = (ms) => {
+    if (ms <= 0) return t('lock.soon', 'any moment now');
+    const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    if (d) return `${d}d ${h}h ${m}m`;
+    if (h) return `${h}h ${m}m ${sec}s`;
+    if (m) return `${m}m ${sec}s`;
+    return `${sec}s`;
+  };
+  const Ico = banned ? Ban : Lock;
+  return (
+    <div className="max-w-md mx-auto mt-16">
+      <Card className="p-6 text-center" style={{ borderColor: 'var(--error-border)' }}>
+        <span className="grid place-items-center w-14 h-14 rounded-2xl mx-auto" style={{ background: 'var(--error-bg)', border: '1px solid var(--error-border)' }}><Ico size={26} style={{ color: 'var(--error)' }} /></span>
+        <h1 className="text-xl font-bold mt-4">{banned ? t('lock.banned.title', 'Account banned') : t('lock.susp.title', 'Account suspended')}</h1>
+        <p className="text-sm text-[var(--muted)] mt-1.5">{banned ? t('lock.banned.sub', 'Your account has been banned and you can’t sign in.') : t('lock.susp.sub', 'Your account is temporarily suspended.')}</p>
+        {data.reason && (
+          <div className="mt-4 text-left rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{t('lock.reason', 'Reason')}</div>
+            <div className="text-sm break-words">{data.reason}</div>
+          </div>
+        )}
+        {data.permanent ? (
+          <div className="mt-4">
+            <div className="text-sm text-[var(--muted)]">{t('lock.perm', 'This is permanent. If you believe it’s a mistake, you can appeal.')}</div>
+            <Link to="/contact?ref=appeal"><Button variant="primary" className="mt-3 w-full"><MessageSquare size={15} /> {t('lock.support', 'Contact support')}</Button></Link>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center justify-center gap-1"><Clock size={12} /> {t('lock.liftsin', 'Access returns in')}</div>
+            <div className="text-2xl font-bold tabular-nums text-[var(--primary-2)]">{fmtRemain(remainMs)}</div>
+            <div className="text-[11px] text-[var(--faint)] mt-1">{new Date(data.until).toLocaleString()}</div>
+          </div>
+        )}
+        <button onClick={onBack} className="text-xs text-[var(--faint)] hover:text-[var(--primary-2)] mt-4">{t('lock.back', '← Back to sign in')}</button>
+      </Card>
+    </div>
+  );
+}
+
 export function Auth() {
   const { user, loading: authLoading, login, loginWith2fa, register } = useAuth(); const nav = useNavigate(); const toast = useToast(); const { t } = useI18n();
   const [params, setParams] = useSearchParams();
@@ -1318,6 +1366,7 @@ export function Auth() {
   const [twoFa, setTwoFa] = useState(null); // { tempToken } once password is verified and a TOTP code is needed
   const [code, setCode] = useState('');
   const [emailTaken, setEmailTaken] = useState(false); // inline field-level error (register)
+  const [lock, setLock] = useState(null); // { status, reason, until, permanent } when the account is suspended/banned
   const nameTouched = useRef(false); // did the user edit the display name themselves?
   // Smart default: derive a friendly display name from the email local-part until the
   // user types their own — one less field to think about at the highest-friction moment.
@@ -1397,6 +1446,9 @@ export function Auth() {
       // "Email already exists" is best shown INLINE under the field (with a one-tap
       // path to login), not as a transient toast — the error is about that input.
       if (x.data?.error === 'email_taken') { setEmailTaken(true); }
+      // Suspended / banned account → a dedicated panel with the reason + remaining time
+      // (or a support link when permanent), instead of a generic error toast.
+      else if (x.data?.error === 'account_suspended' || x.data?.error === 'account_banned') { setLock(x.data); }
       else toast.error(x.data?.error === 'invalid_credentials' ? t('auth.err.creds')
         : x.data?.error === 'oauth_only_account' ? t('auth.err.oauthOnly', 'This account was created with GitHub or Discord — use that to sign in, or set a password from your profile once signed in.')
         : x.data?.error === 'invalid_token' ? t('auth.err.token')
@@ -1431,6 +1483,7 @@ export function Auth() {
       </div>
     );
   }
+  if (lock) return <AccountLockedPanel data={lock} onBack={() => setLock(null)} />;
 
   if (twoFa) {
     return (
@@ -2477,7 +2530,7 @@ function AdminUsers() {
             <button key={u.id} onClick={() => setDetail(u.id)} className="w-full text-left card card-hover p-4 flex items-center gap-3">
               <Avatar user={u} size={40} />
               <div className="flex-1 min-w-0">
-                <div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
+                <div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge>{u.status === 'banned' ? <Badge tone="red"><Ban size={10} /> {t('au.banned', 'banned')}</Badge> : u.status === 'suspended' ? <Badge tone="amber"><Clock size={10} /> {t('au.suspended', 'suspended')}</Badge> : null}</div>
                 <div className="text-xs text-[var(--faint)] truncate">{u.email} · {t('au.since', 'since')} {since(u.createdAt)}</div>
                 <div className="text-xs text-[var(--faint)] mt-0.5 font-mono truncate flex items-center gap-2">
                   {u.bcId && <span className="inline-flex items-center gap-1 text-[var(--primary-2)]"><Fingerprint size={11} /> {u.bcId}</span>}
@@ -3972,8 +4025,82 @@ function AdminAnnouncements() {
   );
 }
 
+// Admin account-moderation control inside the user modal: suspend / ban (temporary or
+// permanent, with a reason) or reactivate. Mirrors POST /admin/users/:id/moderate — the
+// target is signed out within ~15s and emailed the reason.
+const MOD_DURATIONS = [
+  { key: '1h', label: '1 hour', hours: 1 },
+  { key: '24h', label: '24 hours', hours: 24 },
+  { key: '7d', label: '7 days', hours: 168 },
+  { key: '30d', label: '30 days', hours: 720 },
+  { key: 'perm', label: 'Permanent', hours: 0 },
+];
+function UserModerationCard({ user, onChange }) {
+  const { t } = useI18n(); const toast = useToast();
+  const [form, setForm] = useState(null); // { action:'suspend'|'ban' } when composing
+  const [dur, setDur] = useState('24h');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const isStaff = ['MOD', 'ADMIN', 'SUPERADMIN'].includes(user.role);
+  const locked = user.status && user.status !== 'active';
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const d = MOD_DURATIONS.find((x) => x.key === dur);
+      const body = { action: form.action, reason: reason.trim() || undefined };
+      if (d && d.hours > 0) body.durationHours = d.hours;
+      const r = await api.post(`/admin/users/${user.id}/moderate`, body);
+      toast.success(form.action === 'ban' ? t('mod.banned', 'Account banned.') : t('mod.suspended', 'Account suspended.'));
+      setForm(null); setReason(''); onChange?.(r);
+    } catch (x) { toast.error(x.data?.error === 'cannot_moderate_staff' ? t('mod.staff', "Staff accounts can't be moderated.") : x.data?.error === 'cannot_moderate_self' ? t('mod.self', "You can't moderate your own account.") : t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const reactivate = async () => {
+    setBusy(true);
+    try { const r = await api.post(`/admin/users/${user.id}/moderate`, { action: 'reactivate' }); toast.success(t('mod.reactivated', 'Account reactivated.')); onChange?.(r); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  return (
+    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Ban size={12} /> {t('mod.title', 'Account moderation')}</div>
+        <Badge tone={user.status === 'banned' ? 'red' : user.status === 'suspended' ? 'amber' : 'green'}>{user.status || 'active'}</Badge>
+      </div>
+      {isStaff ? (
+        <div className="text-sm text-[var(--faint)] mt-2">{t('mod.staffnote', 'Staff accounts (MOD / ADMIN) can’t be suspended or banned here.')}</div>
+      ) : locked ? (
+        <div className="mt-2">
+          <div className="text-sm">{user.status === 'banned' ? t('mod.isbanned', 'This account is banned') : t('mod.issusp', 'This account is suspended')} {user.moderationUntil ? t('mod.until', 'until {d}').replace('{d}', new Date(user.moderationUntil).toLocaleString()) : t('mod.permlabel', '(permanent)')}.</div>
+          {user.moderationReason && <div className="text-xs text-[var(--muted)] mt-1"><b>{t('lock.reason', 'Reason')}:</b> {user.moderationReason}</div>}
+          <Button size="sm" variant="primary" className="mt-2" disabled={busy} onClick={reactivate}>{busy ? <Spinner /> : <><CheckCircle2 size={14} /> {t('mod.reactivate', 'Reactivate account')}</>}</Button>
+        </div>
+      ) : form ? (
+        <div className="mt-2 space-y-2">
+          <div className="text-sm font-medium">{form.action === 'ban' ? t('mod.banning', 'Ban this account') : t('mod.suspending', 'Suspend this account')}</div>
+          <div>
+            <div className="text-[11px] text-[var(--faint)] mb-1">{t('mod.duration', 'Duration')}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {MOD_DURATIONS.map((d) => <button key={d.key} type="button" onClick={() => setDur(d.key)} className={`px-2.5 py-1 rounded-lg text-xs border transition ${dur === d.key ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>{t(`mod.dur.${d.key}`, d.label)}</button>)}
+            </div>
+          </div>
+          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('mod.reasonph', 'Reason — shown to the user and emailed to them…')} rows={2} />
+          <div className="flex gap-2">
+            <Button size="sm" variant="primary" className={form.action === 'ban' ? '!bg-red-500 hover:!bg-red-600' : ''} disabled={busy} onClick={submit}>{busy ? <Spinner /> : (form.action === 'ban' ? t('mod.confirmban', 'Ban account') : t('mod.confirmsusp', 'Suspend account'))}</Button>
+            <Button size="sm" variant="ghost" onClick={() => setForm(null)}>{t('su.cancel', 'Cancel')}</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-2 mt-2">
+          <Button size="sm" variant="ghost" onClick={() => { setForm({ action: 'suspend' }); setDur('24h'); }}><Clock size={14} /> {t('mod.suspend', 'Suspend')}</Button>
+          <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => { setForm({ action: 'ban' }); setDur('perm'); }}><Ban size={14} /> {t('mod.ban', 'Ban')}</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UserDetailModal({ id, onClose }) {
-  const { data, loading } = useAsync(() => api.get(`/admin/users/${id}`), [id]);
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/users/${id}`), [id]);
   const toast = useToast(); const { t } = useI18n();
   const u = data?.user;
   const hosted = (u?.serverRepos || []).filter((r) => r.hosted);
@@ -4008,6 +4135,8 @@ function UserDetailModal({ id, onClose }) {
             </div>
           </div>
           {u.bio && <p className="text-sm text-[var(--muted)]">{u.bio}</p>}
+
+          <UserModerationCard user={u} onChange={reload} />
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><BadgeCheck size={12} /> {t('ud.creatorids', 'Linked creator ids')}</div>

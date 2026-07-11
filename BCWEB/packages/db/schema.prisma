@@ -103,6 +103,21 @@ model User {
   // (or webhook retries) don't mint duplicate codes.
   kofiDonorAt       DateTime?
 
+  // ── Account moderation (admin suspend / ban) ──────────────────────────────────
+  // `status` gates login AND live sessions (enforced via a short-TTL cache in lib.mjs
+  // so a JWT session dies within ~15s of a ban). `suspended` is a lighter temporary
+  // lock; `banned` is the harsher one — same mechanics, different label + messaging.
+  // Both carry a reason (shown to the user + emailed) and an optional lift date
+  // (`moderationUntil` null = permanent). Expired locks read as active and are cleared
+  // lazily at next login.
+  status            String    @default("active") // active | suspended | banned
+  moderationUntil   DateTime? // when a temp lock lifts; null = permanent
+  moderationReason  String?   // reason shown to the user + emailed
+  moderatedAt       DateTime?
+  moderatedById     String?
+
+  @@index([status])
+
   items         CatalogItem[]
   submissions   Submission[]
   notifications Notification[]

@@ -1219,6 +1219,21 @@ const DICT = {
 
     // ── Admin : recherche d'utilisateurs ──
     'au.title': 'Recherche d’utilisateurs',
+    'au.banned': 'banni', 'au.suspended': 'suspendu',
+    // Account moderation (admin)
+    'mod.title': 'Modération du compte', 'mod.staffnote': 'Les comptes staff (MOD / ADMIN) ne peuvent pas être suspendus ou bannis ici.',
+    'mod.isbanned': 'Ce compte est banni', 'mod.issusp': 'Ce compte est suspendu', 'mod.until': 'jusqu’au {d}', 'mod.permlabel': '(permanent)',
+    'mod.reactivate': 'Réactiver le compte', 'mod.reactivated': 'Compte réactivé.',
+    'mod.banning': 'Bannir ce compte', 'mod.suspending': 'Suspendre ce compte', 'mod.duration': 'Durée',
+    'mod.reasonph': 'Raison — montrée à l’utilisateur et envoyée par e-mail…',
+    'mod.confirmban': 'Bannir le compte', 'mod.confirmsusp': 'Suspendre le compte', 'mod.suspend': 'Suspendre', 'mod.ban': 'Bannir',
+    'mod.banned': 'Compte banni.', 'mod.suspended': 'Compte suspendu.', 'mod.staff': 'Les comptes staff ne peuvent pas être modérés.', 'mod.self': 'Vous ne pouvez pas modérer votre propre compte.',
+    'mod.dur.1h': '1 heure', 'mod.dur.24h': '24 heures', 'mod.dur.7d': '7 jours', 'mod.dur.30d': '30 jours', 'mod.dur.perm': 'Permanent',
+    // Suspended/banned sign-in panel
+    'lock.banned.title': 'Compte banni', 'lock.susp.title': 'Compte suspendu',
+    'lock.banned.sub': 'Votre compte a été banni et vous ne pouvez pas vous connecter.', 'lock.susp.sub': 'Votre compte est temporairement suspendu.',
+    'lock.reason': 'Raison', 'lock.perm': 'C’est permanent. Si vous pensez que c’est une erreur, vous pouvez faire appel.',
+    'lock.support': 'Contacter le support', 'lock.liftsin': 'Accès rétabli dans', 'lock.soon': 'd’un instant à l’autre', 'lock.back': '← Retour à la connexion',
     'au.desc': 'Recherche par id utilisateur, id BC unique (BC-XXXX-XXXX), nom affiché, e-mail, un creator id lié, ou un Discord lié (pseudo / id). Clique sur un utilisateur pour voir tous les détails.',
     'au.search.ph': 'id / nom affiché / e-mail / creator id / Discord…', 'au.search': 'Rechercher',
     'au.find.t': 'Trouver un utilisateur', 'au.find.s': 'Entre un terme ci-dessus pour rechercher.',

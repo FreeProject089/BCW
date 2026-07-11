@@ -2,7 +2,7 @@ import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
-import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual } from '../lib.mjs';
+import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache } from '../lib.mjs';
 import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '../totp.mjs';
 import { sendMail, mailShell, emailEnabled } from '../mail.mjs';
 
@@ -158,6 +158,18 @@ export default async function authRoutes(app) {
     if (!(await argon2.verify(user.passwordHash, parsed.data.password))) {
       await logLogin(p, { email: parsed.data.email, ip, success: false, reason: 'bad_password', userId: user.id });
       return reply.code(401).send({ error: 'invalid_credentials' });
+    }
+    // Account moderation gate: a suspended/banned account can't sign in — it gets the
+    // reason + remaining time (permanent → contact support). An expired temporary lock
+    // auto-lifts here, so the user regains access without any admin action.
+    if (user.status && user.status !== 'active') {
+      const until = user.moderationUntil ? new Date(user.moderationUntil) : null;
+      if (!until || until.getTime() > Date.now()) {
+        await logLogin(p, { email: user.email, ip, success: false, reason: `account_${user.status}`, userId: user.id });
+        return reply.code(403).send({ error: `account_${user.status}`, status: user.status, reason: user.moderationReason || null, until: until ? until.toISOString() : null, permanent: !until });
+      }
+      await p.user.update({ where: { id: user.id }, data: { status: 'active', moderationUntil: null, moderationReason: null } }).catch(() => {});
+      clearAccountLockCache(user.id);
     }
     if (user.totpEnabled) {
       // Password verified, but the session isn't issued yet — a short-lived token

@@ -186,10 +186,39 @@ export async function pruneAuditLog(p) {
 // for SUPERADMIN. A password alone isn't enough for a surface this privileged.
 const ADMIN_TIER_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
 
+// Account moderation gate. JWT sessions are stateless, so to lock out a suspended/
+// banned user's LIVE session we look up their status — cached briefly so this doesn't
+// add a DB hit to every guarded request (a ban then takes effect within MOD_TTL).
+// Returns the active lock ({ status, until, reason }) or null (active / expired lock).
+const MOD_TTL = 15_000;
+const _modCache = new Map(); // uid -> { at, state }
+export function clearAccountLockCache(uid) { if (uid) _modCache.delete(uid); else _modCache.clear(); }
+export async function accountLock(uid) {
+  if (!uid) return null;
+  const hit = _modCache.get(uid);
+  if (hit && Date.now() - hit.at < MOD_TTL) return hit.state;
+  let state = null;
+  try {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: uid }, select: { status: true, moderationUntil: true, moderationReason: true } });
+    if (u && u.status && u.status !== 'active') {
+      const until = u.moderationUntil ? new Date(u.moderationUntil) : null;
+      if (!until || until.getTime() > Date.now()) state = { status: u.status, until, reason: u.moderationReason || null };
+    }
+  } catch { state = null; }
+  _modCache.set(uid, { at: Date.now(), state });
+  return state;
+}
+// 403 body a locked account gets — the client turns this into the "you're suspended/
+// banned" screen (reason + countdown, or a support link when permanent).
+const lockBody = (lock) => ({ error: `account_${lock.status}`, status: lock.status, reason: lock.reason || null, until: lock.until ? lock.until.toISOString() : null, permanent: !lock.until });
+
 export function requireRole(...roles) {
   return async (req, reply) => {
     try {
       const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
+      const lock = await accountLock(claims.uid);
+      if (lock) return reply.code(403).send(lockBody(lock));
       if (roles.length && claims.role !== 'SUPERADMIN' && !roles.includes(claims.role)) return reply.code(403).send({ error: 'forbidden' });
       if (roles.length && ADMIN_TIER_ROLES.includes(claims.role)) {
         const p = await db();
@@ -212,6 +241,8 @@ export function tokenAuth() {
     const p = await db();
     const u = await p.user.findUnique({ where: { apiToken: token }, select: { id: true, role: true } });
     if (!u) return reply.code(401).send({ error: 'invalid_token' });
+    const lock = await accountLock(u.id);
+    if (lock) return reply.code(403).send(lockBody(lock));
     req.user = { uid: u.id, role: u.role };
   };
 }
@@ -221,8 +252,11 @@ export function tokenAuth() {
  * 200 { user: null } instead of a noisy 401 in the console. */
 export function optionalAuth() {
   return async (req) => {
-    try { req.user = jwt.verify(req.cookies?.bcw_session, JWT_SECRET); }
-    catch { req.user = null; }
+    try {
+      const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
+      // A suspended/banned account reads as logged-out on soft-auth endpoints.
+      req.user = (await accountLock(claims.uid)) ? null : claims;
+    } catch { req.user = null; }
   };
 }
 

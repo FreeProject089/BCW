@@ -316,7 +316,10 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 /* Home "get started" steps: a glowing pulse travels the wave left→right. */
 @keyframes stepFlow { from { stroke-dashoffset: 300; } to { stroke-dashoffset: -46; } }
 .step-flow { animation: stepFlow 3.4s cubic-bezier(.45,0,.55,1) infinite; }
-@media (prefers-reduced-motion: reduce) { .step-flow { animation: none; opacity: .5; } }
+/* "Get going" connector: a comet sweeps the gradient track left→right. */
+@keyframes stepFlowX { 0% { transform: translateX(-100%); } 100% { transform: translateX(500%); } }
+.step-flow-x { animation: stepFlowX 3.4s cubic-bezier(.45,0,.55,1) infinite; }
+@media (prefers-reduced-motion: reduce) { .step-flow, .step-flow-x { animation: none; opacity: .5; } }
 @keyframes btnspin { to { transform: rotate(360deg); } }
 /* Repo-dashboard file delete: slide the row out before it leaves the list. */
 @keyframes fileOut { to { opacity: 0; transform: translateX(28px); max-height: 0; padding-top: 0; padding-bottom: 0; } }
