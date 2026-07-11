@@ -1,5 +1,11 @@
 # Other Projects — Complete Guide
 
+> 🇫🇷 **Résumé FR.** Guide de la fonctionnalité **« Autres projets » / vitrine** : créer un
+> projet, le **JSON de config**, la **visibilité**, les **annonces** (teaser à compte à
+> rebours), les **mises à jour planifiées**, l'intégration **blog**, les notes de **cache** et
+> des **recettes rapides**. (Corps détaillé ci-dessous en EN — traduction FR intégrale sur
+> demande.)
+
 "Other projects" lets an admin feature ANY project on the site with the same rich page style as BMM/BSM (tabs, downloads, progress tracker, release notes, community, legal) — without touching code. Each one gets a public page at `/project/<slug>` and a card on the `/projects` grid.
 
 Everything here is managed from **Admin → Content → Other projects** (create/edit/delete) and **Admin → Content → Projects** (the shared config editor, where each Other Project appears as its own tab).

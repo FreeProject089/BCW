@@ -1,5 +1,11 @@
 # BCWEB — Step-by-step setup guide
 
+> 🇫🇷 **Résumé FR.** Parcours pas-à-pas pour monter une instance BCWEB neuve : premier boot,
+> compte **admin**, **2FA**, **rôles**, et les intégrations optionnelles (**bot Discord**,
+> **Stripe**). Pour la mise en ligne rapide, préfère le [QUICKSTART_FR.md](QUICKSTART_FR.md) ;
+> pour les détails de déploiement, [DEPLOY_FR.md](DEPLOY_FR.md). (Corps détaillé ci-dessous en
+> EN — traduction FR intégrale sur demande.)
+
 A practical, in-order walkthrough for standing up a fresh BCWEB instance: first boot,
 the admin account, 2FA, roles, and the optional integrations (Discord bot, Stripe).
 For the architecture/feature overview see [README.md](./README.md) and

@@ -1,5 +1,12 @@
 # BetterCommunity Web (BCWEB) — Architecture
 
+> 🇫🇷 **Résumé FR.** Ce document décrit l'**architecture** de BCWEB : le choix de la stack
+> (Node/Fastify + Postgres/Prisma + Redis + MinIO + Caddy, tout auto-hébergeable), le layout
+> du monorepo, les domaines fonctionnels, le **modèle de données** (entités Prisma), la
+> **sécurité**, la **scalabilité** et la **roadmap** par phases. C'est le *pourquoi* de la
+> conception ; le *comment* détaillé est dans [Technical_Analysis_FR.md](Technical_Analysis_FR.md).
+> (Corps technique ci-dessous en EN — traduction FR intégrale sur demande.)
+
 The hub that unites **BMM** (Better Mods Manager), **BSM** (Better Sound Maker) and
 future Better* projects: one site, one account system, per-project blogs &
 catalogs, an admin back-office, and paid Server-Repo hosting.
