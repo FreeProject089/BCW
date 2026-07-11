@@ -85,7 +85,7 @@ const DICT = {
     'common.loading': 'Loading…',
   },
   fr: {
-    'adm.tab.campaigns': "Promotions",
+    'adm.tab.campaigns': "Promotions", 'adm.tab.promotions': 'Promotions & codes', 'adm.tab.kofi': 'Ko-fi & financement',
     'adm.tab.events': "Événements",
     'adm.tab.sso': "SSO / OAuth",
     'auth.toast.devtoken': "Jeton de réinitialisation émis (dev). Définis un nouveau mot de passe.",
@@ -460,7 +460,7 @@ const DICT = {
     'kg.rm.t': 'Retirer l’objectif de financement', 'kg.rm.m': 'Le widget public disparaîtra de l’accueil. Le total et le nombre de dons continuent de s’accumuler en arrière-plan.', 'kg.rm.ok': 'Retirer',
 
     // ── Admin : codes promo ──
-    'pc.title': 'Codes promo', 'pc.created': 'Code {code} créé.',
+    'pc.title': 'Codes promo', 'pc.sub': 'Codes de réduction, hébergement gratuit et boost — à usage unique ou limité, distincts des Promotions à l’échelle du site ci-dessus.', 'pc.created': 'Code {code} créé.',
     'pc.err.discount': 'Définis un % de réduction ou des mois gratuits.', 'pc.err.exists': 'Ce code existe déjà.', 'pc.err.storage': 'Définis le stockage (Go).', 'pc.err.boost': 'Définis les jours de boost.',
     'pc.f.type': 'Type', 'pc.t.discount': 'Réduction (% / mois gratuits)', 'pc.t.hosting': 'Hébergement gratuit', 'pc.t.boost': 'Boost gratuit',
     'pc.f.code': 'Code (vide = auto-généré)', 'pc.f.pctoff': '% de réduction', 'pc.f.freemonths': 'Premiers mois gratuits', 'pc.f.minterm': 'Durée min. (mois, 0 = toutes)',
@@ -602,7 +602,7 @@ const DICT = {
     'kf.title': 'Récompenses des donateurs Ko-fi',
     'kf.sub': "Un donateur dont l’e-mail Ko-fi correspond à son compte BetterCommunity reçoit automatiquement un code de réduction hébergement unique de {off}% (valable sur les forfaits {min}+ mois). Colle cette URL de webhook + un jeton secret dans <b>Réglages → Webhooks</b> de Ko-fi, avec le même jeton ci-dessous.",
     'kf.tokenset': 'Jeton configuré — saisis-en un nouveau pour le remplacer', 'kf.tokenph': 'Jeton de vérification Ko-fi', 'kf.savetoken': 'Enregistrer le jeton',
-    'kf.configured': 'Webhook configuré', 'kf.manualgrant': 'Attribution manuelle',
+    'kf.configured': 'Webhook configuré', 'kf.configuredenv': 'Configuré via env', 'kf.tokenenv': "Le token de vérification est défini via la variable d'environnement KOFI_WEBHOOK_TOKEN et géré en dehors du tableau de bord.", 'kf.manualgrant': 'Attribution manuelle',
     'kf.manualsub': 'Pour un don que tu as vérifié à la main (ex. avant la mise en place du webhook).', 'kf.grantcode': 'Accorder un code 25%',
 
     // ── Admin : détails utilisateur ──

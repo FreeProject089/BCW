@@ -48,8 +48,11 @@ export default async function kofiRoutes(app) {
   // secret embedded in the payload, matching Ko-fi's own webhook design).
   app.post('/webhooks/kofi', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
     const p = await db();
-    const tokenRow = await p.adminSetting.findUnique({ where: { key: 'kofi.token' } });
-    const expected = tokenRow?.value?.token;
+    // KOFI_WEBHOOK_TOKEN (env) wins over the admin-set token, mirroring DISCORD_TOKEN
+    // for the bot — so ops can pin the secret in the .env and lock it from the UI.
+    const envToken = process.env.KOFI_WEBHOOK_TOKEN?.trim();
+    const tokenRow = envToken ? null : await p.adminSetting.findUnique({ where: { key: 'kofi.token' } });
+    const expected = envToken || tokenRow?.value?.token;
     if (!expected) return reply.code(503).send({ error: 'not_configured' });
     let payload;
     try { payload = JSON.parse(req.body?.data); }
@@ -97,12 +100,14 @@ export default async function kofiRoutes(app) {
   // ── Admin: configure the webhook token, and a manual fallback grant ──
   app.get('/admin/kofi/settings', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
-    const row = await p.adminSetting.findUnique({ where: { key: 'kofi.token' } });
+    const envToken = process.env.KOFI_WEBHOOK_TOKEN?.trim();
+    const row = envToken ? null : await p.adminSetting.findUnique({ where: { key: 'kofi.token' } });
     const siteUrl = process.env.SITE_URL || 'http://localhost';
-    return { configured: !!row?.value?.token, webhookUrl: `${siteUrl}/api/webhooks/kofi`, percentOff: KOFI_PERCENT_OFF, minMonths: KOFI_MIN_MONTHS };
+    return { configured: !!(envToken || row?.value?.token), fromEnv: !!envToken, webhookUrl: `${siteUrl}/api/webhooks/kofi`, percentOff: KOFI_PERCENT_OFF, minMonths: KOFI_MIN_MONTHS };
   });
 
   app.put('/admin/kofi/settings', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    if (process.env.KOFI_WEBHOOK_TOKEN?.trim()) return reply.code(409).send({ error: 'token_from_env' });
     const b = z.object({ token: z.string().min(4).max(200) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();

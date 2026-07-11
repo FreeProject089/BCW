@@ -118,6 +118,9 @@ services:
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-localhost}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      # Ko-fi webhook verification token — if set, wins over the admin-set token and
+      # locks it in the dashboard (same pattern as DISCORD_TOKEN). Blank = admin-managed.
+      KOFI_WEBHOOK_TOKEN: ${KOFI_WEBHOOK_TOKEN:-}
       LINK_LOOKUP_SECRET: ${LINK_LOOKUP_SECRET:-dev-link-secret}
       # BMM telemetry SSO handoff (signs with LINK_LOOKUP_SECRET, which the telemetry
       # service verifies as BC_LINK_SECRET) + read-only DB access for the DB viewer.

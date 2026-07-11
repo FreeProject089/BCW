@@ -2225,8 +2225,8 @@ export function Admin() {
     { heading: t('adm.h.repos', 'Repos & hosting') },
     { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
     isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
-    isAdmin && { id: 'promo', label: t('adm.tab.promo', 'Promo codes'), icon: Ticket },
-    isAdmin && { id: 'campaigns', label: t('adm.tab.campaigns', 'Promotions'), icon: Megaphone },
+    isAdmin && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
+    isAdmin && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon },
     isAdmin && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
     isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
     isAdmin && { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
@@ -2296,8 +2296,8 @@ export function Admin() {
         {s === 'repos' && <AdminRepos />}
         {s === 'catalogs' && <><AdminCatalogCreator /><PluginVerifier /><ThemeVerifier /></>}
         {s === 'hosting' && <AdminFreeHost />}
-        {s === 'promo' && <AdminPromo />}
-        {s === 'campaigns' && <AdminCampaigns />}
+        {s === 'promotions' && <><AdminCampaigns /><div className="mt-8"><AdminPromo /></div></>}
+        {s === 'kofi' && <AdminKofi />}
         {s === 'events' && <AdminEvents />}
         {s === 'sso' && <AdminOAuthClients />}
         {s === 'storage' && <AdminStorage />}
@@ -4613,11 +4613,15 @@ function AdminKofi() {
           <code className="flex-1 bg-[var(--surface-2)] rounded-lg px-2.5 py-1.5 truncate">{data?.webhookUrl}</code>
           <Button size="sm" onClick={() => { navigator.clipboard?.writeText(data?.webhookUrl || ''); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
         </div>
-        <div className="grid sm:grid-cols-[1fr_auto] gap-2 mb-4">
-          <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder={data?.configured ? t('kf.tokenset', 'Token configured — enter a new one to replace it') : t('kf.tokenph', 'Ko-fi verification token')} />
-          <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('kf.savetoken', 'Save token')}</Button>
-        </div>
-        {data?.configured && <Badge tone="green" className="mb-3"><CheckCircle2 size={11} /> {t('kf.configured', 'Webhook configured')}</Badge>}
+        {data?.fromEnv ? (
+          <div className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--muted)] flex items-center gap-2"><Lock size={13} className="text-[var(--primary-2)] shrink-0" /> {t('kf.tokenenv', 'The verification token is set via the KOFI_WEBHOOK_TOKEN environment variable and is managed outside the dashboard.')}</div>
+        ) : (
+          <div className="grid sm:grid-cols-[1fr_auto] gap-2 mb-4">
+            <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder={data?.configured ? t('kf.tokenset', 'Token configured — enter a new one to replace it') : t('kf.tokenph', 'Ko-fi verification token')} />
+            <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('kf.savetoken', 'Save token')}</Button>
+          </div>
+        )}
+        {data?.configured && <Badge tone="green" className="mb-3"><CheckCircle2 size={11} /> {data?.fromEnv ? t('kf.configuredenv', 'Configured via env') : t('kf.configured', 'Webhook configured')}</Badge>}
         <div className="pt-3 border-t border-[var(--line)]">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('kf.manualgrant', 'Manual grant')}</div>
           <p className="text-xs text-[var(--muted)] mb-2">{t('kf.manualsub', 'For a donation you verified by hand (e.g. before the webhook was set up).')}</p>
@@ -4719,8 +4723,8 @@ function AdminPromo() {
     : t('pc.d.boost', 'boost {n} days').replace('{n}', c.boostDays);
   return (
     <div>
-      <h2 className="font-semibold mb-3 flex items-center gap-2"><Ticket size={16} className="text-[var(--primary-2)]" /> {t('pc.title', 'Promo codes')}</h2>
-      <AdminKofi />
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Ticket size={16} className="text-[var(--primary-2)]" /> {t('pc.title', 'Promo codes')}</h2>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('pc.sub', 'Single-use / limited discount, free-hosting and boost codes — separate from the site-wide Promotions above.')}</p>
       <Card className="p-4 mb-4">
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('pc.f.type', 'Type')}><Select value={f.kind} onChange={(e) => set('kind', e.target.value)}><option value="discount">{t('pc.t.discount', 'Discount (% off / months free)')}</option><option value="free_hosting">{t('pc.t.hosting', 'Free hosting')}</option><option value="free_boost">{t('pc.t.boost', 'Free boost')}</option></Select></Field>
