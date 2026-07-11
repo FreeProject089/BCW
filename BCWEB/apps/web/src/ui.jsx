@@ -4,6 +4,19 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef, fo
 import { createPortal } from 'react-dom';
 import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff } from 'lucide-react';
 
+// Robust clipboard copy — navigator.clipboard is unavailable on non-HTTPS origins and
+// inside some embedded webviews, so fall back to a hidden <textarea> + execCommand.
+// Returns true on success so callers can give honest success/error feedback.
+export async function copyText(text) {
+  try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; } } catch { /* fall through */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.style.pointerEvents = 'none';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    const ok = document.execCommand('copy'); document.body.removeChild(ta); return ok;
+  } catch { return false; }
+}
+
 /* ── Primitives ── */
 export function Button({ variant = 'default', size, className = '', loading = false, disabled, children, ...p }) {
   const v = variant === 'primary' ? 'btn-primary' : variant === 'ghost' ? 'btn-ghost' : '';

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { UploadCloud, CheckCircle2, X, AlertTriangle, Loader2, Ban, ChevronDown, ChevronUp } from 'lucide-react';
 import { uploadRepoFile } from './api.js';
-import { useToast } from './ui.jsx';
+import { useToast, copyText } from './ui.jsx';
 import { useI18n } from './i18n.jsx';
 
 // Global background-upload manager. Repo file/folder uploads run here (not inside a
@@ -17,18 +17,6 @@ const fmtBytes = (n) => {
   if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
 };
-
-// Robust clipboard copy — navigator.clipboard is unavailable on non-HTTPS origins and
-// inside some embedded webviews, so fall back to a hidden <textarea> + execCommand.
-async function copyText(text) {
-  try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; } } catch { /* fall through */ }
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.style.pointerEvents = 'none';
-    document.body.appendChild(ta); ta.focus(); ta.select();
-    const ok = document.execCommand('copy'); document.body.removeChild(ta); return ok;
-  } catch { return false; }
-}
 
 let _id = 0;
 export function UploadProvider({ children }) {
@@ -57,7 +45,7 @@ export function UploadProvider({ children }) {
     const totalBytes = files.reduce((a, f) => a + (f.size || 0), 0);
     ctrl.current.set(id, { cancelled: false, ac: null });
     setJobs((js) => [...js, {
-      id, repoName, total: files.length, done: 0, failed: 0, status: 'uploading',
+      id, repoId, repoName, total: files.length, done: 0, failed: 0, status: 'uploading',
       totalBytes, sentBytes: 0, curLoaded: 0, curName: files[0]?.name || '', bps: 0,
     }]);
     setMinimized(false);
@@ -99,9 +87,13 @@ export function UploadProvider({ children }) {
       const cancelled = !!c?.cancelled;
       const status = cancelled ? 'cancelled' : (failed ? 'error' : 'done');
       patch(id, { status, done, failed, sentBytes });
-      if (cancelled) toast.info(`${repoName}: upload cancelled (${done} sent)`);
-      else if (failed) toast.error(`${repoName}: ${done - failed}/${files.length} uploaded · ${failed} failed`);
-      else toast.success(`${repoName}: ${files.length} file(s) uploaded`);
+      // Dashboard uploads render their own in-context panel (RepoUploadPanel) with the
+      // full result + copyable error log, so skip the redundant corner toast for those.
+      if (!opts.dashboard) {
+        if (cancelled) toast.info(`${repoName}: upload cancelled (${done} sent)`);
+        else if (failed) toast.error(`${repoName}: ${done - failed}/${files.length} uploaded · ${failed} failed`);
+        else toast.success(`${repoName}: ${files.length} file(s) uploaded`);
+      }
       opts.onDone?.({ done, failed, total: files.length, cancelled });
       if (status === 'done') setTimeout(() => dismiss(id), 6000); // auto-clear a clean job
     })();

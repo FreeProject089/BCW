@@ -7,7 +7,7 @@ import {
   UploadCloud as UploadIcon, Trash, Wifi as WifiOn, WifiOff as WifiGone, Download, Ban, Radio, Star,
 } from 'lucide-react';
 import { api } from './api.js';
-import { useToast, useDialog, Button, Card, Badge, Input, Select, Spinner } from './ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Select, Spinner, copyText } from './ui.jsx';
 import { useUploads } from './uploads.jsx';
 import { useI18n } from './i18n.jsx';
 
@@ -200,8 +200,56 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, t, removin
   );
 }
 
+const kbps = (bps) => { const k = (Number(bps) || 0) / 1024; return k < 1024 ? `${k.toFixed(0)} KB/s` : `${(k / 1024).toFixed(1)} MB/s`; };
+
+// In-context upload feedback for the Files tab — a real panel in the modal rather than
+// only the corner dock: live progress bar + speed, cancel, and a copyable error log on
+// failure. The global dock still handles background jobs after the tab is closed.
+function RepoUploadPanel({ jobs, cancel }) {
+  const { t } = useI18n(); const toast = useToast();
+  if (!jobs.length) return null;
+  return (
+    <div className="space-y-2">
+      {jobs.map((j) => {
+        const sent = j.sentBytes + j.curLoaded;
+        const pct = j.totalBytes ? Math.min(100, Math.round((sent / j.totalBytes) * 100)) : (j.status === 'done' ? 100 : 0);
+        const up = j.status === 'uploading';
+        return (
+          <Card key={j.id} className="p-3">
+            <div className="flex items-center gap-2 mb-1.5 text-sm">
+              {up ? <Loader2 size={15} className="text-[var(--primary-2)] animate-spin shrink-0" />
+                : j.status === 'cancelled' ? <Ban size={15} className="text-[var(--faint)] shrink-0" />
+                : j.failed ? <AlertTriangle size={15} className="text-[var(--warning)] shrink-0" />
+                : <CheckCircle2 size={15} className="text-[var(--success)] shrink-0 burst" />}
+              <span className="font-medium flex-1 truncate">
+                {up ? t('rd.up.uploading', 'Uploading…') : j.status === 'cancelled' ? t('rd.up.cancelled', 'Upload cancelled') : j.failed ? t('rd.up.witherrors', 'Finished with errors') : t('rd.up.complete', 'Upload complete')}
+              </span>
+              {up && <button onClick={() => cancel(j.id)} className="press-sm text-[11px] px-2 py-0.5 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-[var(--error)] hover:border-[var(--error)]/50 flex items-center gap-1"><Ban size={11} /> {t('up.cancel', 'Cancel')}</button>}
+            </div>
+            <div className="progress-track"><div className={`progress-fill ${up ? '' : 'is-done'} ${!up && !j.failed ? 'is-success' : ''}`} style={{ width: `${pct}%` }} /></div>
+            <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--muted)] mt-1.5">
+              <span className="truncate">{up ? `${j.done}/${j.total} · ${j.curName}` : `${j.done - j.failed}/${j.total} ${t('rd.up.uploaded', 'uploaded')}${j.failed ? ` · ${j.failed} ${t('rd.up.failedn', 'failed')}` : ''}`}</span>
+              <span className="tabular-nums shrink-0">{pct}%{up && j.bps ? ` · ${kbps(j.bps)}` : ''}</span>
+            </div>
+            {j.failedFiles?.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[11px] text-[var(--warning)]">{t('up.failedfiles', '{n} failed file(s) — view list').replace('{n}', j.failedFiles.length)}</summary>
+                <div className="mt-1 max-h-32 overflow-auto scroll-thin rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2 space-y-0.5">
+                  {j.failedFiles.map((ff, i) => <div key={i} className="text-[10.5px] font-mono break-anywhere"><span className="text-[var(--text)]">{ff.name}</span> <span className="text-[var(--faint)]">· {ff.reason}{ff.status != null ? ` [${ff.status}]` : ''}</span></div>)}
+                </div>
+                <button onClick={async () => { const log = [`BetterCommunity upload log`, `repo: ${j.repoName}`, `when: ${new Date().toISOString()}`, `result: ${j.done - j.failed}/${j.total} uploaded · ${j.failed} failed`, '', ...j.failedFiles.map((ff) => `FAILED\t${ff.name}\t${ff.reason}${ff.status != null ? `\t[status ${ff.status}]` : ''}`)].join('\n'); const ok = await copyText(log); ok ? toast.success(t('up.listcopied', 'Error log copied.')) : toast.error(t('up.copyfail', 'Could not copy — select the list manually.')); }} className="press-sm mt-1.5 text-[10.5px] text-[var(--muted)] hover:text-[var(--text)] underline underline-offset-2">{t('up.copylog', 'Copy error log')}</button>
+              </details>
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
 function FilesTab({ r, reload }) {
-  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { enqueue } = useUploads();
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { enqueue, jobs, cancel } = useUploads();
+  const myJobs = jobs.filter((j) => j.repoId === r.id);
   const [dragOver, setDragOver] = useState(false);
   const [q, setQ] = useState('');
   const [sort, setSort] = useState('name'); // name | size | -size
@@ -294,6 +342,9 @@ function FilesTab({ r, reload }) {
         </div>
         <div className="text-[11px] text-[var(--faint)] mt-2.5">{t('repos.includejson', 'Include a')} <code>repo.json</code> {t('repos.tomanifest', 'manifest. SHA / checksum is computed automatically.')}</div>
       </div>
+
+      {/* In-context upload progress/result (not just the corner dock). */}
+      <RepoUploadPanel jobs={myJobs} cancel={cancel} />
 
       <Card className="p-0 overflow-hidden relative">
         {bulkDeleting > 0 && (
