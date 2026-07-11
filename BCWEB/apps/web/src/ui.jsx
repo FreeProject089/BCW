@@ -5,9 +5,10 @@ import { createPortal } from 'react-dom';
 import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff } from 'lucide-react';
 
 /* ── Primitives ── */
-export function Button({ variant = 'default', size, className = '', children, ...p }) {
+export function Button({ variant = 'default', size, className = '', loading = false, disabled, children, ...p }) {
   const v = variant === 'primary' ? 'btn-primary' : variant === 'ghost' ? 'btn-ghost' : '';
-  return <button className={`btn ${v} ${size === 'sm' ? 'btn-sm' : ''} ${className}`} {...p}>{children}</button>;
+  // `loading` → aria-busy shows the CSS spinner and blocks the click (also disables).
+  return <button className={`btn ${v} ${size === 'sm' ? 'btn-sm' : ''} ${className}`} aria-busy={loading || undefined} disabled={disabled || loading} {...p}>{children}</button>;
 }
 export const Card = ({ hover, className = '', children, ...p }) =>
   <div className={`card ${hover ? 'card-hover' : ''} ${className}`} {...p}>{children}</div>;

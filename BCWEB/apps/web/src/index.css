@@ -11,12 +11,16 @@
   --bg-solid: #ffffff;
   --surface: #ffffff;
   --surface-2: #f5f3ef;
+  --surface-3: #ece7df;   /* +1 elevation step (hover / popovers / raised rows) */
   --line: rgba(24, 20, 14, 0.10);
   --line-strong: rgba(24, 20, 14, 0.17);
   --text: #1a1714;
   --muted: #5d5750;
   --faint: #918a80;
-  --shadow: 0 10px 30px -14px rgba(40, 30, 10, 0.18);
+  /* Light depth = SUBTLE shadows: low opacity, generous blur, no dark border. */
+  --shadow-sm: 0 1px 2px rgba(30, 20, 5, 0.05);
+  --shadow: 0 4px 24px -10px rgba(30, 20, 5, 0.12);
+  --shadow-lg: 0 14px 44px -14px rgba(30, 20, 5, 0.16);
   --glow-a: rgba(249, 115, 22, 0.14);
   --glow-b: rgba(245, 158, 11, 0.12);
 }
@@ -26,22 +30,39 @@
   --bg-solid: #0e0c09;
   --surface: rgba(255, 255, 255, 0.028);
   --surface-2: rgba(255, 255, 255, 0.05);
+  --surface-3: rgba(255, 255, 255, 0.085); /* elevation = a LIGHTER surface, not a shadow */
   --line: rgba(255, 255, 255, 0.09);
   --line-strong: rgba(255, 255, 255, 0.16);
   --text: #f3efe9;
   --muted: #a39b8f;
   --faint: #6f685d;
-  --shadow: 0 18px 50px -18px rgba(0, 0, 0, 0.7);
+  /* Dark depth = NO shadows. Elevation comes from surface lightness steps + borders. */
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-lg: none;
   --glow-a: rgba(249, 115, 22, 0.16);
   --glow-b: rgba(245, 158, 11, 0.12);
 }
 
-/* shared brand tokens */
+/* shared brand + system tokens */
 :root {
   --primary: #f97316;
   --primary-2: #f59e0b;
   --primary-glow: rgba(249, 115, 22, 0.4);
   --ring: rgba(249, 115, 22, 0.55);
+  /* Radius scale — 4px grid. */
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px;
+  /* Semantic colours — used for MEANING, not decoration: blue=info, green=success,
+     amber=warning, red=error. Each: a solid tone, a tint background, a border. */
+  --info: #2563eb;    --info-bg: rgba(37,99,235,.12);   --info-border: rgba(37,99,235,.30);
+  --success: #16a34a; --success-bg: rgba(22,163,74,.12); --success-border: rgba(22,163,74,.30);
+  --warning: #d97706; --warning-bg: rgba(217,119,6,.13); --warning-border: rgba(217,119,6,.30);
+  --error: #dc2626;   --error-bg: rgba(220,38,38,.12);   --error-border: rgba(220,38,38,.30);
+}
+/* Dark: brighter semantic TONES so text/icons keep contrast on dark surfaces
+   (placed after :root so it wins in dark mode). The tint bg/border stay the same. */
+[data-theme="dark"] {
+  --info: #60a5fa; --success: #4ade80; --warning: #fbbf24; --error: #f87171;
 }
 
 * { box-sizing: border-box; }
@@ -59,7 +80,14 @@ body {
   transition: background-color .3s ease, color .3s ease;
 }
 a { color: inherit; text-decoration: none; }
-h1, h2, h3 { letter-spacing: -0.025em; }
+/* Typography hierarchy (font unchanged). Big titles read best with tight tracking +
+   tight leading; the bigger the type, the tighter both. Utility leading- classes on the
+   element still win, so this only sets a better DEFAULT. */
+h1, h2, h3, h4 { letter-spacing: -0.025em; text-wrap: balance; }
+h1 { letter-spacing: -0.03em; line-height: 1.1; }
+h2 { letter-spacing: -0.028em; line-height: 1.15; }
+h3 { line-height: 1.2; }
+.text-balance { text-wrap: balance; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 99px; border: 2px solid transparent; background-clip: content-box; }
@@ -92,26 +120,37 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   .card {
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 16px;
+    border-radius: var(--r-lg);
     box-shadow: var(--shadow);
-    transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+    transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease, background-color .18s ease;
   }
-  /* Dark cards are SOLID by default — the old translucent surface (rgba white
-     2.8%) + blur was unreadable over the bright orb/page glow (see the security
-     log screenshot). Users who want the glassy look opt in via Settings →
-     Translucent surfaces, handled by the [data-surface-glass] rules below. */
+  /* Dark cards are SOLID + LIGHTER than the bg — in dark, that lightness IS the depth
+     (no shadow). Users who want the glassy look opt in via Settings → Translucent
+     surfaces, handled by the [data-surface-glass] rules below. */
   [data-theme="dark"] .card { background: #15120d; }
-  .card-hover:hover { border-color: var(--ring); transform: translateY(-3px); box-shadow: 0 16px 40px -16px var(--primary-glow); }
+  /* Hover lift: light = brand glow; dark = a lighter surface + accent border (no shadow). */
+  .card-hover:hover { border-color: var(--ring); transform: translateY(-3px); box-shadow: 0 14px 40px -16px var(--primary-glow); }
+  [data-theme="dark"] .card-hover:hover { box-shadow: none; background: #1c1811; }
 
+  /* Every interactive control carries a full state set: default · hover · active/pressed
+     · focus-visible · disabled · loading (aria-busy). */
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 9px 15px; border-radius: 11px; font-size: 14px; font-weight: 500;
+    padding: 10px 16px; border-radius: var(--r-md); font-size: 14px; font-weight: 500;
     border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text);
     cursor: pointer; transition: all .16s ease; white-space: nowrap; line-height: 1;
   }
   .btn:hover { border-color: var(--ring); }
   .btn:active { transform: translateY(1px); }
-  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(249,115,22,0.35); }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+  /* Loading: aria-busy="true" swaps the label for a spinner and blocks clicks. */
+  .btn[aria-busy="true"] { color: transparent !important; pointer-events: none; position: relative; }
+  .btn[aria-busy="true"]::after {
+    content: ""; position: absolute; width: 15px; height: 15px; border-radius: 50%;
+    border: 2px solid #fff; border-top-color: transparent; animation: btnspin .6s linear infinite;
+  }
+  .btn:not(.btn-primary)[aria-busy="true"]::after { border-color: var(--text); border-top-color: transparent; }
   .btn-primary {
     border: 1px solid transparent; color: #fff;
     background: linear-gradient(120deg, var(--primary), var(--primary-2));
@@ -120,13 +159,14 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   .btn-primary:hover { box-shadow: 0 10px 28px -6px var(--primary-glow); filter: brightness(1.05); }
   .btn-ghost { background: transparent; border-color: transparent; color: var(--muted); }
   .btn-ghost:hover { color: var(--text); background: var(--surface-2); }
-  .btn-sm { padding: 6px 11px; font-size: 13px; border-radius: 9px; }
+  .btn-sm { padding: 6px 12px; font-size: 13px; border-radius: var(--r-sm); }
 
   .input {
-    width: 100%; padding: 10px 13px; border-radius: 11px; font-size: 14px;
+    width: 100%; padding: 10px 14px; border-radius: var(--r-md); font-size: 14px;
     background: var(--bg-solid); border: 1px solid var(--line); color: var(--text);
     transition: border-color .16s ease, box-shadow .16s ease; outline: none;
   }
+  .input[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 3px var(--error-bg); }
   /* Inputs (incl. search + filter bars — <Select> is a styled .input too) are
      SOLID by default so "Translucent surfaces = off" is actually honoured. The
      frosted variant lives under [data-surface-glass] below. */
@@ -155,12 +195,30 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   }
   .badge-primary { background: rgba(249,115,22,0.13); border-color: rgba(249,115,22,0.32); color: #d97706; }
   [data-theme="dark"] .badge-primary { color: #fdba74; }
-  .badge-green { background: rgba(22,163,74,0.13); border-color: rgba(22,163,74,0.3); color: #16a34a; }
-  [data-theme="dark"] .badge-green { color: #86efac; }
-  .badge-amber { background: rgba(217,119,6,0.14); border-color: rgba(217,119,6,0.3); color: #b45309; }
-  [data-theme="dark"] .badge-amber { color: #fcd34d; }
-  .badge-red { background: rgba(220,38,38,0.12); border-color: rgba(220,38,38,0.3); color: #dc2626; }
-  [data-theme="dark"] .badge-red { color: #fca5a5; }
+  /* Semantic badges — colour follows the shared tokens, so light/dark switch automatically. */
+  .badge-green { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
+  .badge-amber { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning); }
+  .badge-red   { background: var(--error-bg);   border-color: var(--error-border);   color: var(--error); }
+  .badge-blue  { background: var(--info-bg);    border-color: var(--info-border);    color: var(--info); }
+
+  /* Feedback messages (semantic) — explicit success / error / warning / info blocks.
+     Usage: <div class="alert alert-error">…</div> */
+  .alert { display: flex; gap: 8px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-md);
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font-size: 14px; line-height: 1.45; }
+  .alert-info    { background: var(--info-bg);    border-color: var(--info-border);    color: var(--info); }
+  .alert-success { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
+  .alert-warning { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning); }
+  .alert-error   { background: var(--error-bg);   border-color: var(--error-border);   color: var(--error); }
+
+  /* Image overlays: a linear gradient (bottom-dark → transparent) so overlaid text
+     stays legible over ANY photo. Put on an absolutely-positioned child of the image
+     wrapper, text above it. */
+  .overlay-gradient   { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.74) 0%, rgba(0,0,0,.35) 40%, transparent 70%); pointer-events: none; }
+  .overlay-gradient-b { position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(0,0,0,.6) 0%, transparent 55%); pointer-events: none; }
+
+  /* Keyboard-only focus ring on bare interactive elements (a11y). :where() keeps
+     specificity 0 so components can still override. */
+  :where(button, [role="button"], summary, [tabindex]):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 6px; }
 
   .topbar { background: color-mix(in srgb, var(--bg-solid) 82%, transparent); backdrop-filter: blur(14px); }
   /* Dark theme: the glassy 82% + blur reads fine on white, but over the dark
@@ -210,6 +268,7 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes btnspin { to { transform: rotate(360deg); } }
 /* Repo-dashboard file delete: slide the row out before it leaves the list. */
 @keyframes fileOut { to { opacity: 0; transform: translateX(28px); max-height: 0; padding-top: 0; padding-bottom: 0; } }
 .file-row-out { animation: fileOut .3s ease forwards; overflow: hidden; max-height: 48px; pointer-events: none; }
