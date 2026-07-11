@@ -126,12 +126,12 @@ export default function EventEffect() {
     const cam = new THREE.OrthographicCamera(-aspect, aspect, 1, -1, 0.1, 10);
     cam.position.z = 2;
 
-    const MAX = 1600;
+    const MAX = 4000;
     const positions = new Float32Array(MAX * 3), colors = new Float32Array(MAX * 3);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    const mat = new THREE.PointsMaterial({ size: 8, sizeAttenuation: false, vertexColors: true, map: makeSprite(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const mat = new THREE.PointsMaterial({ size: 11, sizeAttenuation: false, vertexColors: true, map: makeSprite(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     const points = new THREE.Points(geo, mat);
     scene.add(points);
 
@@ -144,10 +144,10 @@ export default function EventEffect() {
       const x = rand(-aspect * 0.8, aspect * 0.8);
       ps.push({ x, y: -1.05, vx: rand(-0.05, 0.05), vy: rand(1.3, 1.75), life: rand(0.7, 0.98), max: 0.98, r: 1, g: 0.9, b: 0.7, rocket: true, hx: x });
     };
-    const explode = (x, y, col, count = 90) => {
+    const explode = (x, y, col, count = 120) => {
       for (let i = 0; i < count && ps.length < MAX; i++) {
-        const a = Math.random() * Math.PI * 2, sp = rand(0.15, 0.75);
-        ps.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(1.1, 1.9), max: 1.9, r: col[0], g: col[1], b: col[2] });
+        const a = Math.random() * Math.PI * 2, sp = rand(0.2, 0.95);
+        ps.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(1.2, 2.2), max: 2.2, r: col[0], g: col[1], b: col[2] });
       }
     };
     // Flag finale: particles rush to the sampled flag positions, hold, then fall.
@@ -170,17 +170,23 @@ export default function EventEffect() {
 
     let raf, last = performance.now(), t0 = last, stopped = false;
     const DURATION = 15000; // one festive show, then fade out
-    // Randomised schedule: rocket cadence scales with density; the flag forms at
-    // `flagDrops` random moments, each at a random spot + size.
-    let nextRocket = rand(200, 500);
-    const rocketGap = () => rand(250, 650) + (10 - density) * 95;
+    // Rockets fire in WAVES (several at once) on a tight cadence — a lone rocket at a
+    // time looked empty ("not working"). `perWave` + burst size scale with density.
+    const perWave = Math.max(1, Math.round(density / 2.2)); // ~1..5 rockets per wave
+    const timers = [];
+    // Opening volley so the show starts with an unmistakable bang: a burst of rockets +
+    // a couple of instant mid-air explosions in the first moments.
+    for (let i = 0; i < perWave + 2; i++) timers.push(setTimeout(() => launchRocket(), 60 + i * 100));
+    for (let i = 0; i < 3; i++) timers.push(setTimeout(() => explode(rand(-aspect * 0.65, aspect * 0.65), rand(0.15, 0.6), PALETTE[(Math.random() * PALETTE.length) | 0], 130 + density * 8), 200 + i * 260));
+    let nextRocket = rand(300, 550);
+    const rocketGap = () => rand(200, 460) + (10 - density) * 45; // tighter than before
     const flagTimes = Array.from({ length: flagDrops }, () => rand(1200, DURATION - 2500)).sort((a, b) => a - b);
     let dropIdx = 0;
     const tick = (now) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       const elapsed = now - t0;
       if (!stopped) {
-        if (elapsed > nextRocket && elapsed < DURATION - 2000) { launchRocket(); nextRocket = elapsed + rocketGap(); }
+        if (elapsed > nextRocket && elapsed < DURATION - 2000) { for (let i = 0; i < perWave; i++) launchRocket(); nextRocket = elapsed + rocketGap(); }
         while (dropIdx < flagTimes.length && elapsed > flagTimes[dropIdx]) {
           flagDrop(rand(-aspect * 0.55, aspect * 0.55), rand(0.0, 0.55), rand(aspect * 0.5, aspect * 1.05));
           dropIdx++;
@@ -190,7 +196,7 @@ export default function EventEffect() {
       let n = 0;
       for (const p of ps) {
         if (!p.frozen) { p.vy -= 0.9 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
-        if (p.rocket && p.life <= 0) explode(p.x, p.y, PALETTE[(Math.random() * PALETTE.length) | 0], 80);
+        if (p.rocket && p.life <= 0) explode(p.x, p.y, PALETTE[(Math.random() * PALETTE.length) | 0], 90 + density * 9);
         if (p.life <= 0) continue;
         if (n < MAX) {
           const k = p.frozen ? 1 : Math.max(0, p.life / p.max);
@@ -214,6 +220,7 @@ export default function EventEffect() {
     window.addEventListener('resize', onResize);
     return () => {
       cancelAnimationFrame(raf); window.removeEventListener('resize', onResize);
+      timers.forEach(clearTimeout);
       gsap.globalTimeline.getChildren().forEach((c) => c.kill());
       geo.dispose(); mat.dispose(); mat.map?.dispose(); renderer.dispose();
       if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
@@ -222,10 +229,13 @@ export default function EventEffect() {
   }, [ev, reduced, dismissed, preview]);
 
   if ((!ev || dismissed) && !preview) return null;
-  const title = (lang?.startsWith('fr') ? ev.titleFr : ev.titleEn) || '';
-  const message = (lang?.startsWith('fr') ? ev.messageFr : ev.messageEn) || '';
-  const BadgeIcon = BADGE_ICONS[ev.badgeIcon] || Sparkles;
-  if (!title && !message && reduced) return null;
+  // `ev` can be null during a preview-only run — keep every access optional so a preview
+  // fired before any event is live never crashes the app (that was the real "fireworks
+  // don't work": the render threw on ev.titleEn and blanked the page).
+  const title = (lang?.startsWith('fr') ? ev?.titleFr : ev?.titleEn) || '';
+  const message = (lang?.startsWith('fr') ? ev?.messageFr : ev?.messageEn) || '';
+  const BadgeIcon = BADGE_ICONS[ev?.badgeIcon] || Sparkles;
+  if (!title && !message && reduced && !preview) return null;
 
   const isHoliday = ev?.kind === 'national_holiday' && ev?.countryCode;
   return (
