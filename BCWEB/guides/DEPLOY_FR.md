@@ -173,6 +173,18 @@ L'API expose trois sondes (toutes exemptées du rate limiter, sans logs de requ�
   `.env` mets `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true`
   (`DIRECT_DATABASE_URL` reste sur `db:5432` pour les migrations, géré automatiquement).
 
+**Mettre Postgres sur son propre serveur (managé — c'est ton objectif « DB sur un serveur
+séparé », sans K8s).** Simple changement de `.env` — les URLs complètes écrasent les
+valeurs locales :
+```
+DATABASE_URL=postgresql://user:pass@managed-host:5432/bcweb?sslmode=require        # endpoint poolé
+DIRECT_DATABASE_URL=postgresql://user:pass@managed-host:5432/bcweb?sslmode=require # direct (migrations)
+```
+Puis `docker compose up -d api provisioner` ; une fois vérifié, `docker compose stop db`
+(son volume est conservé comme backup). Neon / Supabase / RDS te donnent backups +
+réplicas de lecture gratuitement. Pour garder un pooler devant, mets
+`PGBOUNCER_UPSTREAM_HOST` sur le host managé.
+
 **Aller plus loin — plateformes managées, puis Kubernetes (seulement si nécessaire) :**
 - Avant de sortir un orchestrateur, une plateforme conteneurs managée (**Fly.io / Railway
   / Render**) fait tourner ces mêmes images Docker avec autoscaling + rollouts, pour bien

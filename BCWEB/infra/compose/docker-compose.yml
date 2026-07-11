@@ -41,8 +41,10 @@ services:
     restart: unless-stopped
     profiles: ["pgbouncer"]
     environment:
-      DB_HOST: db
-      DB_PORT: "5432"
+      # Defaults to the bundled db; point at a managed/remote Postgres by setting
+      # PGBOUNCER_UPSTREAM_HOST/PORT in .env (so the pooler can front barreau ② too).
+      DB_HOST: ${PGBOUNCER_UPSTREAM_HOST:-db}
+      DB_PORT: "${PGBOUNCER_UPSTREAM_PORT:-5432}"
       DB_USER: ${POSTGRES_USER:-bcweb}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_NAME: ${POSTGRES_DB:-bcweb}
@@ -85,9 +87,13 @@ services:
     environment:
       # Runtime URL — defaults to a DIRECT connection (DB_HOST=db). Set DB_HOST=pgbouncer,
       # DB_PORT=6432, DB_URL_PARAMS=?pgbouncer=true in .env to route through the pooler.
-      DATABASE_URL: postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@${DB_HOST:-db}:${DB_PORT:-5432}/${POSTGRES_DB:-bcweb}${DB_URL_PARAMS:-}
-      # Migrations / db push always use a DIRECT connection (pooler can't run them).
-      DIRECT_DATABASE_URL: postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}
+      # A full DATABASE_URL set in .env WINS (→ managed / separate-server Postgres,
+      # barreau ②); otherwise it's composed from the parts below (bundled db, or
+      # pgbouncer when DB_HOST=pgbouncer). Switching to a managed DB is a pure .env flip.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@${DB_HOST:-db}:${DB_PORT:-5432}/${POSTGRES_DB:-bcweb}${DB_URL_PARAMS:-}}
+      # Migrations / db push always use a DIRECT connection (a pooler can't run them).
+      # On a managed DB, set DIRECT_DATABASE_URL in .env to its direct (non-pooled) endpoint.
+      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:-postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}}
       REDIS_URL: redis://:${REDIS_PASSWORD:-bcweb-redis-internal}@redis:6379
       # S3-compatible storage. Default = the bundled MinIO. Swapping to Cloudflare R2
       # is env-only: set S3_ENDPOINT/S3_PUBLIC_ENDPOINT/S3_REGION=auto + creds in .env
@@ -155,8 +161,9 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}
-      DIRECT_DATABASE_URL: postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}
+      # Provisioner talks DIRECTLY to Postgres → follows the same managed-DB override.
+      DATABASE_URL: ${DIRECT_DATABASE_URL:-postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}}
+      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:-postgresql://${POSTGRES_USER:-bcweb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bcweb}}
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_BUCKET: ${S3_BUCKET:-bcweb}
