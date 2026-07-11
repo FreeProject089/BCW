@@ -1366,6 +1366,8 @@ const DICT = {
     'gw.title': 'Concours (giveaways)', 'gw.note': 'Aussi disponible via /giveaway (perm. Gérer le serveur). Le bot poste un bouton « Participer » ; les gagnants sont tirés à la fin et reçoivent un code cadeau en MP si tu en attaches un.',
     'gw.prize': 'Lot', 'gw.prize.ph': 'ex. 1 mois d’hébergement', 'gw.channel': 'Id du salon', 'gw.duration': 'Durée (minutes)', 'gw.winners': 'Gagnants',
     'gw.attachgift': 'Envoyer un code cadeau en MP à chaque gagnant', 'gw.create': 'Créer le concours', 'gw.needfields': 'Le lot et l’id du salon sont requis.',
+    'gw.winnermsg': 'Message MP au gagnant', 'gw.winnermsg.h': 'Envoyé en MP à chaque gagnant à la fin du concours.', 'gw.winnermsg.ph': 'Félicitations {user} — tu as gagné {prize} ! 🎉',
+    'botvar.insert': 'Insérer', 'botvar.preview': 'Aperçu', 'botvar.empty': '(le message que verra le destinataire)',
     'gw.reqs': 'Conditions de participation', 'gw.req.linked': 'Exiger un compte BetterCommunity lié (Discord ⇄ BCWEB)', 'gw.req.creator': 'Exiger un id créateur BMM lié',
     'gw.req.note': 'Les participants sans le lien requis reçoivent un message leur indiquant comment se lier — ils peuvent participer une fois liés.', 'gw.badge.creator': 'id créateur', 'gw.badge.linked': 'lié',
     'gw.created': 'Concours créé — le bot le poste sous ~30 s.', 'gw.end.t': 'Tirer maintenant ?', 'gw.end.m': 'Terminer ce concours maintenant et tirer les gagnants ?', 'gw.end.ok': 'Tirer',

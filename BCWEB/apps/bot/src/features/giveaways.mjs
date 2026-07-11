@@ -52,11 +52,26 @@ export async function pollGiveaways(client) {
             : `The giveaway for **${gw.prize}** ended with no entries. 😢`;
           await ch.send({ content }).catch(() => {});
         }
-        // DM the minted gift codes to winners who have a linked account.
+        // DM every winner the customizable message (English default), substituting the
+        // bot variables. {code} resolves to their minted gift code when a gift is attached
+        // (else the token is stripped); a redeem line is appended when there's a code.
         const gifts = res?.gifts || {};
-        for (const [did, code] of Object.entries(gifts)) {
-          try { const u = await client.users.fetch(did); await u.send({ content: `🎁 You won **${gw.prize}**!\nYour gift code: \`${code}\` — redeem it at ${SITE_URL}/dashboard (Billing → “Redeem a promo code”).` }); }
-          catch (e) { console.warn('[bot] giveaway gift DM failed', did, e.message); }
+        const tpl = (gw.winnerMessage && gw.winnerMessage.trim()) || 'Congrats {user} — you won {prize}! 🎉';
+        for (const did of winners) {
+          const code = gifts[did];
+          try {
+            const u = await client.users.fetch(did);
+            let content = tpl
+              .replaceAll('{user}', `<@${did}>`)
+              .replaceAll('{username}', u?.username || 'there')
+              .replaceAll('{server}', ch?.guild?.name || 'the server')
+              .replaceAll('{prize}', gw.prize);
+            content = code ? content.replaceAll('{code}', `\`${code}\``) : content.replace(/\s*`?\{code\}`?/g, '');
+            if (code) content += tpl.includes('{code}')
+              ? `\nRedeem it at ${SITE_URL}/dashboard (Billing → “Redeem a promo code”).`
+              : `\nYour gift code: \`${code}\` — redeem it at ${SITE_URL}/dashboard (Billing → “Redeem a promo code”).`;
+            await u.send({ content });
+          } catch (e) { console.warn('[bot] giveaway winner DM failed', did, e.message); }
         }
         console.log(`[bot] giveaway ${gw.id} drawn: ${winners.length} winner(s)`);
       }

@@ -28,7 +28,7 @@ export const Card = ({ hover, className = '', children, ...p }) =>
 export const Badge = ({ tone = '', className = '', children }) =>
   <span className={`badge ${tone ? `badge-${tone}` : ''} ${className}`}>{children}</span>;
 export const Input = forwardRef((p, ref) => <input ref={ref} {...p} className={`input ${p.className || ''}`} />);
-export const Textarea = (p) => <textarea className={`input ${p.className || ''}`} {...p} />;
+export const Textarea = forwardRef((p, ref) => <textarea ref={ref} {...p} className={`input ${p.className || ''}`} />);
 export const Select = ({ className = '', children, ...p }) => <select className={`input ${className}`} {...p}>{children}</select>;
 
 // Themed dropdown replacing OS-native <select> popups (which ignore the app theme and

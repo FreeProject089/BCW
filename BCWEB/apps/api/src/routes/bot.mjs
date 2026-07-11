@@ -444,8 +444,16 @@ export default async function botRoutes(app) {
       } });
       giftCode = code;
       const siteUrl = process.env.SITE_URL || 'http://localhost';
-      message += `\n\n🎁 **Your gift code:** \`${code}\`\nRedeem it at ${siteUrl}/dashboard (Billing → “Redeem a promo code”). It’s reserved for your account.`;
+      const redeem = `Redeem it at ${siteUrl}/dashboard (Billing → “Redeem a promo code”). It’s reserved for your account.`;
+      // If the admin's message uses {code}, substitute it inline; otherwise append the
+      // gift block. ({user}/{username}/{server} are substituted bot-side, where the user
+      // + guild are known.)
+      message = message.includes('{code}')
+        ? `${message.replaceAll('{code}', `\`${code}\``)}\n\n${redeem}`
+        : `${message}\n\n🎁 **Your gift code:** \`${code}\`\n${redeem}`;
     }
+    // No gift → a stray {code} token shouldn't leak into the DM.
+    if (!giftCode) message = message.replace(/\s*`?\{code\}`?/g, '');
     if (!message.trim()) return reply.code(400).send({ error: 'empty_message' });
     const row = await p.adminSetting.findUnique({ where: { key: 'bot.dmQueue' } });
     const items = [...(row?.value?.items || []), { id: genCode(), discordId: b.data.discordId, message: message.slice(0, 1900), at: Date.now() }].slice(-200);
@@ -493,6 +501,7 @@ export default async function botRoutes(app) {
       durationMinutes: z.number().int().min(1).max(60 * 24 * 60),
       winnersCount: z.number().int().min(1).max(50).default(1),
       gift: giftShape.optional(),
+      winnerMessage: z.string().max(1500).optional(),
       // Entry gate: require a linked BetterCommunity account (Discord ⇄ BCWEB) and/or
       // a linked BMM creator id. Enforced server-side when a user clicks Enter.
       requirements: z.object({ linked: z.boolean().optional(), creator: z.boolean().optional() }).optional(),
@@ -504,7 +513,8 @@ export default async function botRoutes(app) {
     const gw = await p.giveaway.create({ data: {
       prize: b.data.prize, channelId: b.data.channelId, winnersCount: b.data.winnersCount,
       endsAt: new Date(Date.now() + b.data.durationMinutes * 60_000),
-      giftConfig: b.data.gift || null, requirements: (reqs && (reqs.linked || reqs.creator)) ? reqs : null, createdBy: req.user.uid,
+      giftConfig: b.data.gift || null, requirements: (reqs && (reqs.linked || reqs.creator)) ? reqs : null,
+      winnerMessage: b.data.winnerMessage?.trim() || null, createdBy: req.user.uid,
     } });
     return { ok: true, id: gw.id };
   });
@@ -526,7 +536,7 @@ export default async function botRoutes(app) {
     if (!botAuth(req, reply)) return;
     const p = await db();
     const list = await p.giveaway.findMany({ where: { status: 'active' }, take: 100 });
-    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, messageId: g.messageId, endsAt: g.endsAt, winnersCount: g.winnersCount, entries: g.entries, requirements: g.requirements || null, due: new Date(g.endsAt) <= new Date() })) };
+    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, messageId: g.messageId, endsAt: g.endsAt, winnersCount: g.winnersCount, entries: g.entries, requirements: g.requirements || null, winnerMessage: g.winnerMessage || null, due: new Date(g.endsAt) <= new Date() })) };
   });
   app.post('/bot/giveaways/:id/posted', async (req, reply) => {
     if (!botAuth(req, reply)) return;

@@ -5233,6 +5233,56 @@ function BotLogsCard() {
   );
 }
 
+// Bot message variables — the bot substitutes these when it sends. {code} only resolves
+// when a gift is attached. Kept in sync with the bot's substitution (apps/bot).
+const BOT_VARS_BASE = [
+  { v: '{user}', d: 'Mention the recipient (@Name)' },
+  { v: '{username}', d: "The recipient's username" },
+  { v: '{server}', d: 'The server name' },
+];
+const DM_VARS = [...BOT_VARS_BASE, { v: '{code}', d: 'The gift code (only if a gift is attached)' }];
+const GIVEAWAY_VARS = [...BOT_VARS_BASE, { v: '{prize}', d: 'The giveaway prize' }, { v: '{code}', d: 'The gift code (only if a gift is attached)' }];
+
+// Substitute variables with sample values for the live preview.
+function previewBotMsg(tpl, { code } = {}) {
+  return String(tpl || '').replace(/\{user\}/g, '@Alex').replace(/\{username\}/g, 'Alex')
+    .replace(/\{server\}/g, 'BetterCommunity').replace(/\{prize\}/g, '1 month of hosting').replace(/\{code\}/g, code || 'BC-7K2M-9XQ4');
+}
+
+// A message editor with an insert-at-cursor variable palette + a live preview. `giftCode`
+// undefined = no gift line in the preview; '' or a value = show a gift-code chip.
+function MessageField({ label, hint, value, onChange, vars, placeholder, giftCode }) {
+  const { t } = useI18n();
+  const ref = useRef(null);
+  const insert = (token) => {
+    const el = ref.current;
+    if (!el) return onChange(`${value || ''}${token}`);
+    const s = el.selectionStart ?? (value || '').length, e = el.selectionEnd ?? (value || '').length;
+    const next = (value || '').slice(0, s) + token + (value || '').slice(e);
+    onChange(next);
+    requestAnimationFrame(() => { try { el.focus(); el.selectionStart = el.selectionEnd = s + token.length; } catch {} });
+  };
+  return (
+    <Field label={label} hint={hint}>
+      <Textarea ref={ref} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('botvar.insert', 'Insert')}:</span>
+        {vars.map((vr) => (
+          <button key={vr.v} type="button" onClick={() => insert(vr.v)} title={vr.d}
+            className="press-sm text-[11px] font-mono px-1.5 py-0.5 rounded-md border border-[var(--line)] bg-[var(--surface-2)] text-[var(--primary-2)] hover:border-[var(--ring)] transition-colors">{vr.v}</button>
+        ))}
+      </div>
+      <div className="mt-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1"><Eye size={10} /> {t('botvar.preview', 'Preview')}</div>
+        <div className="text-sm whitespace-pre-wrap break-words">
+          {(value || '').trim() ? previewBotMsg(value) : <span className="text-[var(--faint)]">{t('botvar.empty', '(the message the recipient will see)')}</span>}
+          {giftCode !== undefined && <div className="mt-1.5"><Badge tone="primary"><Gift size={9} /> {giftCode || 'BC-7K2M-9XQ4'}</Badge></div>}
+        </div>
+      </div>
+    </Field>
+  );
+}
+
 // Admin: DM a Discord user — plain message and/or a one-off gift promo code minted
 // against their linked account. The bot delivers it within ~30s.
 function BotDMCard() {
@@ -5304,7 +5354,8 @@ function BotDMCard() {
               ) : <div className="text-xs text-[var(--faint)] px-1.5 py-2">{t('dm.nomembers', 'No members found. The bot populates this once it’s connected and has scanned the server.')}</div>}
             </div>
           )}
-          <Field label={t('dm.message', 'Message')}><Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder={t('dm.message.ph', 'Thanks for being awesome! Here’s a little something…')} /></Field>
+          <MessageField label={t('dm.message', 'Message')} value={message} onChange={setMessage} vars={DM_VARS}
+            placeholder={t('dm.message.ph', 'Thanks for being awesome, {user}! Here’s a little something…')} giftCode={withGift ? '' : undefined} />
           <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={withGift} onChange={(e) => setWithGift(e.target.checked)} /> <Gift size={13} className="text-[var(--primary-2)]" /> {t('dm.attachgift', 'Attach a gift promo code')}</label>
           {withGift && (
             <div className="rounded-lg border border-[var(--line)] p-3 grid sm:grid-cols-2 gap-3">
@@ -5327,7 +5378,7 @@ function BotGiveawaysCard() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const { data, loading, reload } = useAsync(() => api.get('/admin/bot/giveaways'), []);
-  const [f, setF] = useState({ prize: '', channelId: '', durationMinutes: 60, winnersCount: 1, reqLinked: false, reqCreator: false, withGift: false, gift: { kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, boostDays: 7 } });
+  const [f, setF] = useState({ prize: '', channelId: '', durationMinutes: 60, winnersCount: 1, reqLinked: false, reqCreator: false, withGift: false, winnerMessage: 'Congrats {user} — you won {prize}! 🎉 Thanks for entering.', gift: { kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, boostDays: 7 } });
   const [busy, setBusy] = useState(false);
   const giveaways = data?.giveaways || [];
   const create = async () => {
@@ -5335,6 +5386,7 @@ function BotGiveawaysCard() {
     setBusy(true);
     try {
       const body = { prize: f.prize.trim(), channelId: f.channelId.trim(), durationMinutes: Number(f.durationMinutes) || 60, winnersCount: Number(f.winnersCount) || 1 };
+      if (f.winnerMessage.trim()) body.winnerMessage = f.winnerMessage.trim();
       if (f.reqLinked || f.reqCreator) body.requirements = { linked: !!(f.reqLinked || f.reqCreator), creator: !!f.reqCreator };
       if (f.withGift) { const g = { kind: f.gift.kind }; if (f.gift.kind === 'discount') { if (Number(f.gift.percentOff)) g.percentOff = Number(f.gift.percentOff); if (Number(f.gift.freeMonths)) g.freeMonths = Number(f.gift.freeMonths); } if (f.gift.kind === 'free_hosting') g.storageGB = Number(f.gift.storageGB); if (f.gift.kind === 'free_boost') g.boostDays = Number(f.gift.boostDays); body.gift = g; }
       await api.post('/admin/bot/giveaways', body);
@@ -5365,6 +5417,11 @@ function BotGiveawaysCard() {
             <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqCreator} onChange={(e) => setF({ ...f, reqCreator: e.target.checked, reqLinked: e.target.checked ? true : f.reqLinked })} /> {t('gw.req.creator', 'Require a linked BMM creator id')}</label>
             <div className="text-[11px] text-[var(--faint)]">{t('gw.req.note', 'Entrants without the required link get a helpful DM/notice pointing them to link — they can enter once linked.')}</div>
           </div>
+          {/* Winner DM — customizable, English by default, with insert-at-cursor variables
+              + a live preview. The bot substitutes {user}/{prize}/{code} when it sends. */}
+          <MessageField label={t('gw.winnermsg', 'Winner DM message')} hint={t('gw.winnermsg.h', 'DMed to each winner when the giveaway ends.')}
+            value={f.winnerMessage} onChange={(v) => setF({ ...f, winnerMessage: v })} vars={GIVEAWAY_VARS}
+            placeholder={t('gw.winnermsg.ph', 'Congrats {user} — you won {prize}! 🎉')} giftCode={f.withGift ? '' : undefined} />
           <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.withGift} onChange={(e) => setF({ ...f, withGift: e.target.checked })} /> <Gift size={13} className="text-[var(--primary-2)]" /> {t('gw.attachgift', 'DM each winner a gift code')}</label>
           {f.withGift && (
             <div className="rounded-lg border border-[var(--line)] p-3 grid sm:grid-cols-2 gap-3">

@@ -1025,6 +1025,7 @@ model Giveaway {
   winnerIds    String[] @default([]) // drawn winner Discord ids
   giftConfig   Json?    // optional promo gift for each winner ({ kind, percentOff, … })
   requirements Json?    // optional entry gate: { linked?: bool (Discord⇄BCWEB account), creator?: bool (linked BMM creator id) }
+  winnerMessage String? // customizable winner DM template; bot substitutes {user}/{prize}/{code}
   createdBy    String?
   createdAt    DateTime @default(now())
 

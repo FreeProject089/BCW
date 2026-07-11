@@ -19,7 +19,14 @@ export async function pollDMs(client) {
     for (const it of items) {
       try {
         const user = await client.users.fetch(it.discordId);
-        await user.send({ content: String(it.message || '').slice(0, 2000) });
+        // Substitute the recipient-scoped variables ({code} was already resolved server-
+        // side, where the minted code is known).
+        const content = String(it.message || '')
+          .replaceAll('{user}', `<@${it.discordId}>`)
+          .replaceAll('{username}', user?.username || 'there')
+          .replaceAll('{server}', 'BetterCommunity')
+          .slice(0, 2000);
+        await user.send({ content });
         done.push(it.id);
         console.log(`[bot] DM delivered to ${it.discordId}`);
       } catch (e) {
