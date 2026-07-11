@@ -4669,7 +4669,7 @@ function AdminCampaigns() {
       <Card className="p-4 mb-4">
         <div className="flex flex-wrap gap-2 mb-3">
           <Button size="sm" onClick={presetRandom}><Sparkles size={13} /> {t('cmp.preset.random', 'Random flash sale')}</Button>
-          <Button size="sm" onClick={presetBlackFriday}>🛍️ {t('cmp.preset.bf', 'Black Friday')}</Button>
+          <Button size="sm" onClick={presetBlackFriday}><Tag size={13} /> {t('cmp.preset.bf', 'Black Friday')}</Button>
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('cmp.f.name', 'Name (internal)')}><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Black Friday 2026" /></Field>
@@ -4715,18 +4715,19 @@ function AdminEvents() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/events'), []);
   const toLocal = (d) => { const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
-  const blank = () => ({ name: '', kind: 'custom', countryCode: '', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 2 * 864e5)), titleEn: '', titleFr: '', messageEn: '', messageFr: '', notifyDaysBefore: 3, eventCode: '' });
+  const blank = () => ({ name: '', kind: 'custom', countryCode: '', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 2 * 864e5)), titleEn: '', titleFr: '', messageEn: '', messageFr: '', notifyDaysBefore: 3, eventCode: '', fxDensity: 5, fxFlagDrops: 2, badgeIcon: 'sparkles' });
   const [f, setF] = useState(blank);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const list = data?.events || [];
-  const presetNY = () => setF((s) => ({ ...s, name: 'New Year', kind: 'new_year', countryCode: '', titleEn: 'Happy New Year!', titleFr: 'Bonne année !', messageEn: 'Fireworks on us 🎆', messageFr: 'Des feux d\'artifice pour vous 🎆' }));
-  const presetHoliday = () => setF((s) => ({ ...s, name: 'National day', kind: 'national_holiday', countryCode: s.countryCode || 'FR', titleEn: 'National day', titleFr: 'Fête nationale', messageEn: 'Celebrating with a flag in the sky', messageFr: 'On célèbre avec un drapeau dans le ciel' }));
+  const presetNY = () => setF((s) => ({ ...s, name: 'New Year', kind: 'new_year', countryCode: '', badgeIcon: 'party', titleEn: 'Happy New Year!', titleFr: 'Bonne année !', messageEn: 'Fireworks on us', messageFr: 'Des feux d\'artifice pour vous' }));
+  const presetHoliday = () => setF((s) => ({ ...s, name: 'National day', kind: 'national_holiday', countryCode: s.countryCode || 'FR', badgeIcon: 'flag', titleEn: 'National day', titleFr: 'Fête nationale', messageEn: 'Celebrating with a flag in the sky', messageFr: 'On célèbre avec un drapeau dans le ciel' }));
   const create = async () => {
     if (!f.name.trim()) return toast.error(t('ev.err.name', 'Name is required.'));
     const body = {
       name: f.name.trim(), kind: f.kind, startsAt: new Date(f.startsAt).toISOString(), endsAt: new Date(f.endsAt).toISOString(),
       titleEn: f.titleEn || '', titleFr: f.titleFr || '', messageEn: f.messageEn || '', messageFr: f.messageFr || '',
       notifyDaysBefore: Number(f.notifyDaysBefore) || 0, eventCode: f.eventCode.trim() || '',
+      fxDensity: Number(f.fxDensity) || 5, fxFlagDrops: Number(f.fxFlagDrops) || 0, badgeIcon: f.badgeIcon,
       ...(f.kind === 'national_holiday' ? { countryCode: f.countryCode.trim().toUpperCase() } : {}),
     };
     try { await api.post('/admin/events', body); toast.success(t('ev.created', 'Event created.')); setF(blank()); reload(); }
@@ -4753,14 +4754,17 @@ function AdminEvents() {
       <p className="text-xs text-[var(--muted)] mb-3">{t('ev.sub', 'One event runs at a time. While live it plays a fireworks effect (a national holiday forms the country flag) and shows your announcement. Notifications + the event promo/code arrive in the next phases.')}</p>
       <Card className="p-4 mb-4">
         <div className="flex flex-wrap gap-2 mb-3">
-          <Button size="sm" onClick={presetNY}>🎆 {t('ev.preset.ny', 'New Year')}</Button>
-          <Button size="sm" onClick={presetHoliday}>🎇 {t('ev.preset.holiday', 'National holiday')}</Button>
+          <Button size="sm" onClick={presetNY}><Sparkles size={13} /> {t('ev.preset.ny', 'New Year')}</Button>
+          <Button size="sm" onClick={presetHoliday}><Flag size={13} /> {t('ev.preset.holiday', 'National holiday')}</Button>
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('ev.f.name', 'Name (internal)')}><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="New Year 2027" /></Field>
           <Field label={t('ev.f.kind', 'Kind')}><Select value={f.kind} onChange={(e) => set('kind', e.target.value)}><option value="custom">{t('ev.k.custom', 'Custom')}</option><option value="new_year">{t('ev.k.ny', 'New Year')}</option><option value="national_holiday">{t('ev.k.holiday', 'National holiday')}</option></Select></Field>
           {f.kind === 'national_holiday' && <Field label={t('ev.f.country', 'Country code (ISO, e.g. FR, US)')}><Input value={f.countryCode} onChange={(e) => set('countryCode', e.target.value.toUpperCase().slice(0, 2))} placeholder="FR" /></Field>}
           <Field label={t('ev.f.notify', 'Notify users (days before)')}><Input type="number" value={f.notifyDaysBefore} onChange={(e) => set('notifyDaysBefore', e.target.value)} /></Field>
+          <Field label={t('ev.f.density', 'Fireworks amount (1–10)')}><Input type="number" min="1" max="10" value={f.fxDensity} onChange={(e) => set('fxDensity', e.target.value)} /></Field>
+          <Field label={t('ev.f.flagdrops', 'Flag drops (times the flag forms, random)')}><Input type="number" min="0" max="20" value={f.fxFlagDrops} onChange={(e) => set('fxFlagDrops', e.target.value)} /></Field>
+          <Field label={t('ev.f.icon', 'Announcement icon (no emoji)')}><Select value={f.badgeIcon} onChange={(e) => set('badgeIcon', e.target.value)}><option value="sparkles">Sparkles</option><option value="party">Party</option><option value="flag">Flag</option><option value="gift">Gift</option><option value="star">Star</option><option value="rocket">Rocket</option><option value="calendar">Calendar</option><option value="bell">Bell</option></Select></Field>
           <Field label={t('ev.f.start', 'Starts')}><Input type="datetime-local" value={f.startsAt} onChange={(e) => set('startsAt', e.target.value)} /></Field>
           <Field label={t('ev.f.end', 'Ends')}><Input type="datetime-local" value={f.endsAt} onChange={(e) => set('endsAt', e.target.value)} /></Field>
           <Field label={t('ev.f.titleen', 'Title (EN)')}><Input value={f.titleEn} onChange={(e) => set('titleEn', e.target.value)} placeholder="Happy New Year!" /></Field>
@@ -4778,7 +4782,7 @@ function AdminEvents() {
               <Sparkles size={18} className={st.tone === 'green' ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold">{e.name}</span><Badge tone={st.tone}>{st.label}</Badge><Badge tone="primary">{e.kind.replace('_', ' ')}</Badge>{e.countryCode && <Badge>{e.countryCode}</Badge>}{e.eventCode && <Badge tone="green"><Ticket size={9} /> {e.eventCode}</Badge>}</div>
-                <div className="text-xs text-[var(--muted)] mt-0.5">🎆 {e.effect} · {new Date(e.startsAt).toLocaleString()} → {new Date(e.endsAt).toLocaleString()}{e.notifyDaysBefore ? ` · ${t('ev.notifd', 'notify {n}d before').replace('{n}', e.notifyDaysBefore)}` : ''}{(e.titleFr || e.titleEn) ? ` · "${e.titleFr || e.titleEn}"` : ''}</div>
+                <div className="text-xs text-[var(--muted)] mt-0.5">{e.effect} · fx {e.fxDensity}/10 · {e.fxFlagDrops} {t('ev.flags', 'flag drops')} · {new Date(e.startsAt).toLocaleString()} → {new Date(e.endsAt).toLocaleString()}{e.notifyDaysBefore ? ` · ${t('ev.notifd', 'notify {n}d before').replace('{n}', e.notifyDaysBefore)}` : ''}{(e.titleFr || e.titleEn) ? ` · "${e.titleFr || e.titleEn}"` : ''}</div>
               </div>
               <Button size="sm" onClick={() => toggle(e)}>{e.active ? t('ev.disable', 'Disable') : t('ev.enable', 'Enable')}</Button>
               <Button size="sm" className="!text-red-400" onClick={() => del(e)}><Trash2 size={14} /></Button>

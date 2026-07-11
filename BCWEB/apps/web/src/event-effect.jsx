@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import gsap from 'gsap';
-import { X } from 'lucide-react';
+import { X, Sparkles, PartyPopper, Flag, Gift, Star, Rocket, CalendarDays, Bell } from 'lucide-react';
 import { api } from './api.js';
 import { useI18n } from './i18n.jsx';
+
+// Announcement icon options (named lucide icons — never a unicode emoji).
+const BADGE_ICONS = { sparkles: Sparkles, party: PartyPopper, flag: Flag, gift: Gift, star: Star, rocket: Rocket, calendar: CalendarDays, bell: Bell };
 
 // ── Full-screen EVENT effect: fireworks. For a national holiday the finale burst
 // forms the country's flag (particles tween to positions sampled from a procedurally
@@ -119,9 +122,11 @@ export default function EventEffect() {
     /** @type {{x:number,y:number,vx:number,vy:number,life:number,max:number,r:number,g:number,b:number,rocket?:boolean,hx?:number,frozen?:boolean}[]} */
     let ps = [];
     const rand = (a, b) => a + Math.random() * (b - a);
+    const density = Math.max(1, Math.min(10, ev.fxDensity || 5));       // fireworks amount
+    const flagDrops = Math.max(0, Math.min(20, ev.fxFlagDrops ?? 2));   // how many flag formations
     const launchRocket = () => {
-      const x = rand(-aspect * 0.7, aspect * 0.7);
-      ps.push({ x, y: -1.05, vx: rand(-0.04, 0.04), vy: rand(1.35, 1.7), life: rand(0.75, 0.95), max: 0.95, r: 1, g: 0.9, b: 0.7, rocket: true, hx: x });
+      const x = rand(-aspect * 0.8, aspect * 0.8);
+      ps.push({ x, y: -1.05, vx: rand(-0.05, 0.05), vy: rand(1.3, 1.75), life: rand(0.7, 0.98), max: 0.98, r: 1, g: 0.9, b: 0.7, rocket: true, hx: x });
     };
     const explode = (x, y, col, count = 90) => {
       for (let i = 0; i < count && ps.length < MAX; i++) {
@@ -131,29 +136,39 @@ export default function EventEffect() {
     };
     // Flag finale: particles rush to the sampled flag positions, hold, then fall.
     const flagCanvas = ev.kind === 'national_holiday' && ev.countryCode ? drawFlag(ev.countryCode) : null;
-    const flagFinale = () => {
-      if (!flagCanvas) { // generic finale: a big multi-colour burst
-        for (let k = 0; k < 3; k++) setTimeout(() => explode(rand(-0.6, 0.6), rand(0.2, 0.7), PALETTE[k % PALETTE.length], 120), k * 120);
+    // A "flag drop": particles rush to the flag shape at a RANDOM place + size, hold,
+    // then fall. With no drawable flag it's a big multi-colour burst at that spot.
+    const flagDrop = (cx, cy, worldW) => {
+      if (!flagCanvas) {
+        for (let k = 0; k < 4; k++) setTimeout(() => explode(cx + rand(-0.2, 0.2), cy + rand(-0.12, 0.12), PALETTE[(Math.random() * PALETTE.length) | 0], 110), k * 90);
         return;
       }
-      const targets = sampleFlagTargets(flagCanvas, 750, aspect * 1.15);
+      const targets = sampleFlagTargets(flagCanvas, 460, worldW);
       for (const tg of targets) {
         if (ps.length >= MAX) break;
-        const p = { x: 0, y: 0.2, vx: 0, vy: 0, life: 4.2, max: 4.2, r: tg.r, g: tg.g, b: tg.b, frozen: true };
+        const p = { x: cx, y: cy, vx: 0, vy: 0, life: 4.4, max: 4.4, r: tg.r, g: tg.g, b: tg.b, frozen: true };
         ps.push(p);
-        gsap.to(p, { x: tg.x, y: tg.y, duration: rand(0.7, 1.0), ease: 'power3.out', onComplete: () => { gsap.delayedCall(rand(2.2, 2.8), () => { p.frozen = false; p.vy = rand(-0.05, 0.05); p.vx = rand(-0.1, 0.1); p.life = Math.min(p.life, 1.2); p.max = 1.2; }); } });
+        gsap.to(p, { x: cx + tg.x, y: cy + tg.y, duration: rand(0.6, 0.95), ease: 'power3.out', onComplete: () => { gsap.delayedCall(rand(1.8, 2.6), () => { p.frozen = false; p.vy = rand(-0.05, 0.05); p.vx = rand(-0.1, 0.1); p.life = Math.min(p.life, 1.2); p.max = 1.2; }); } });
       }
     };
 
     let raf, last = performance.now(), t0 = last, stopped = false;
-    let nextRocket = 300, finaleAt = 3200, finaleDone = false;
     const DURATION = 15000; // one festive show, then fade out
+    // Randomised schedule: rocket cadence scales with density; the flag forms at
+    // `flagDrops` random moments, each at a random spot + size.
+    let nextRocket = rand(200, 500);
+    const rocketGap = () => rand(250, 650) + (10 - density) * 95;
+    const flagTimes = Array.from({ length: flagDrops }, () => rand(1200, DURATION - 2500)).sort((a, b) => a - b);
+    let dropIdx = 0;
     const tick = (now) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       const elapsed = now - t0;
       if (!stopped) {
-        if (elapsed > nextRocket && elapsed < DURATION - 2500) { launchRocket(); nextRocket = elapsed + rand(500, 1100); }
-        if (!finaleDone && elapsed > finaleAt) { finaleDone = true; flagFinale(); if (flagCanvas) gsap.delayedCall(6.5, () => { finaleDone = false; finaleAt = (performance.now() - t0) + 400; }); }
+        if (elapsed > nextRocket && elapsed < DURATION - 2000) { launchRocket(); nextRocket = elapsed + rocketGap(); }
+        while (dropIdx < flagTimes.length && elapsed > flagTimes[dropIdx]) {
+          flagDrop(rand(-aspect * 0.55, aspect * 0.55), rand(0.0, 0.55), rand(aspect * 0.5, aspect * 1.05));
+          dropIdx++;
+        }
       }
       // physics + write buffers
       let n = 0;
@@ -192,6 +207,7 @@ export default function EventEffect() {
   if (!ev || dismissed) return null;
   const title = (lang?.startsWith('fr') ? ev.titleFr : ev.titleEn) || '';
   const message = (lang?.startsWith('fr') ? ev.messageFr : ev.messageEn) || '';
+  const BadgeIcon = BADGE_ICONS[ev.badgeIcon] || Sparkles;
   if (!title && !message && reduced) return null;
 
   return (
@@ -200,7 +216,7 @@ export default function EventEffect() {
       {(title || message) && (
         <div className="fixed left-1/2 -translate-x-1/2 top-20 z-[46] max-w-[92vw] anim-fade" style={{ pointerEvents: 'auto' }}>
           <div className="relative flex items-center gap-3 rounded-2xl border border-[var(--line-strong)] px-5 py-3 pr-10 shadow-2xl" style={{ background: 'var(--bg-solid)' }}>
-            <span className="text-2xl leading-none">🎆</span>
+            <BadgeIcon size={26} className="shrink-0 text-[var(--primary-2)]" />
             <div className="min-w-0">
               {title && <div className="font-bold gradient-text text-lg leading-tight">{title}</div>}
               {message && <div className="text-sm text-[var(--muted)] truncate">{message}</div>}

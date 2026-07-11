@@ -18,6 +18,7 @@ function publicEvent(e) {
   if (!e) return null;
   return {
     id: e.id, kind: e.kind, effect: e.effect, countryCode: e.countryCode, endsAt: e.endsAt,
+    fxDensity: e.fxDensity, fxFlagDrops: e.fxFlagDrops, badgeIcon: e.badgeIcon,
     titleEn: e.titleEn, titleFr: e.titleFr, messageEn: e.messageEn, messageFr: e.messageFr,
   };
 }
@@ -30,6 +31,9 @@ const bodySchema = z.object({
   endsAt: z.string().datetime(),
   active: z.boolean().optional(),
   effect: z.enum(['fireworks']).optional(),
+  fxDensity: z.number().int().min(1).max(10).optional(),
+  fxFlagDrops: z.number().int().min(0).max(20).optional(),
+  badgeIcon: z.enum(['sparkles', 'party', 'flag', 'gift', 'star', 'rocket', 'calendar', 'bell']).optional(),
   titleEn: z.string().max(120).optional(),
   titleFr: z.string().max(120).optional(),
   messageEn: z.string().max(300).optional(),
@@ -75,6 +79,7 @@ export default async function eventRoutes(app) {
     const e = await p.event.create({ data: {
       name: d.name, kind: d.kind ?? 'custom', countryCode: (d.countryCode || '').toUpperCase(),
       startsAt: starts, endsAt: ends, active: d.active ?? true, effect: d.effect ?? 'fireworks',
+      fxDensity: d.fxDensity ?? 5, fxFlagDrops: d.fxFlagDrops ?? 2, badgeIcon: d.badgeIcon ?? 'sparkles',
       titleEn: d.titleEn ?? '', titleFr: d.titleFr ?? '', messageEn: d.messageEn ?? '', messageFr: d.messageFr ?? '',
       notifyDaysBefore: d.notifyDaysBefore ?? 0, eventCode: (d.eventCode || '').toUpperCase().replace(/\s+/g, ''),
     } });
@@ -89,7 +94,7 @@ export default async function eventRoutes(app) {
     const cur = await p.event.findUnique({ where: { id: req.params.id } });
     if (!cur) return reply.code(404).send({ error: 'not_found' });
     const data = {};
-    for (const k of ['name', 'kind', 'active', 'effect', 'titleEn', 'titleFr', 'messageEn', 'messageFr', 'notifyDaysBefore']) {
+    for (const k of ['name', 'kind', 'active', 'effect', 'fxDensity', 'fxFlagDrops', 'badgeIcon', 'titleEn', 'titleFr', 'messageEn', 'messageFr', 'notifyDaysBefore']) {
       if (d[k] !== undefined) data[k] = d[k];
     }
     if (d.countryCode !== undefined) data.countryCode = (d.countryCode || '').toUpperCase();
