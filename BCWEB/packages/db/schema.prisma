@@ -875,6 +875,30 @@ model PromoRedemption {
   @@index([userId])
 }
 
+// A site-wide, time-boxed promo CAMPAIGN (Black Friday, New Year sale, a random flash
+// sale…). Unlike PromoCode (the user types a code), a campaign AUTO-applies its discount
+// to purchases during its window and shows an announcement badge across the whole site.
+// A campaign may also be owned by an Event (Phase 2) — eventId links them.
+model PromoCampaign {
+  id             String   @id @default(cuid())
+  name           String                       // internal label, e.g. "Black Friday 2026"
+  kind           String   @default("custom")  // "custom" | "black_friday" | "new_year" | "flash"
+  percentOff     Int                          // 1..100, applied site-wide to purchases in-window
+  appliesTo      String   @default("all")     // "all" | "hosting" | "boost"
+  startsAt       DateTime
+  endsAt         DateTime
+  active         Boolean  @default(true)      // master switch (must ALSO be within [startsAt,endsAt])
+  badgeEnabled   Boolean  @default(true)      // show the site-wide announcement badge
+  badgeMessageEn String   @default("")        // custom announcement (EN); blank → sensible default
+  badgeMessageFr String   @default("")        // custom announcement (FR)
+  badgeColor     String   @default("")        // optional accent hex (validated); blank → brand color
+  promoCodeId    String?                      // optional PromoCode created alongside the campaign
+  eventId        String?  @unique             // set when the campaign belongs to an Event (Phase 2)
+  createdAt      DateTime @default(now())
+
+  @@index([active, startsAt, endsAt])
+}
+
 // A Discord giveaway managed from the admin bot dashboard. The bot posts a message
 // with an "Enter" button, collects entrant Discord ids, and at `endsAt` draws random
 // winners, announces them, and (if `giftConfig` is set) DMs each winner a promo code.

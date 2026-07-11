@@ -13,6 +13,7 @@ import { loadGtmIfConsented } from './gtm.js';
 import { getOrbTransitionPref } from './prefs.js';
 import CookieConsent from './CookieConsent.jsx';
 import Hero3D from './Hero3D.jsx';
+import PromoBadge from './promo-badge.jsx';
 import { IntroProvider, useIntro } from './IntroContext.jsx';
 import ProjectPage, { OtherProjects, ShowcaseProjectPage } from './project.jsx';
 import Profile from './profile.jsx';
@@ -486,6 +487,7 @@ export default function App() {
       <div className="min-h-screen flex flex-col">
         <Hero3D />
         <AppReveal>
+          <PromoBadge />
           <Nav />
           <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-10 anim-fade">
             <Routes>

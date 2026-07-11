@@ -1,0 +1,101 @@
+import { z } from 'zod';
+import { db, requireRole } from '../lib.mjs';
+
+// Strict hex color (#rgb / #rrggbb) — the badge color is rendered into a style
+// attribute on the client, so anything else is rejected to avoid CSS injection.
+const isSafeHex = (s) => typeof s === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s);
+
+// Resolve the single campaign that is live RIGHT NOW (active + within its window).
+// If several overlap, the most recently started one wins. Returns null when none.
+export async function getActiveCampaign(p) {
+  const now = new Date();
+  return p.promoCampaign.findFirst({
+    where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } },
+    orderBy: { startsAt: 'desc' },
+  });
+}
+
+// Public shape (no internal fields like `name`/`active` leak to anonymous users).
+function publicCampaign(c) {
+  if (!c) return null;
+  return {
+    id: c.id, kind: c.kind, percentOff: c.percentOff, appliesTo: c.appliesTo, endsAt: c.endsAt,
+    badgeEnabled: c.badgeEnabled, badgeMessageEn: c.badgeMessageEn, badgeMessageFr: c.badgeMessageFr,
+    badgeColor: isSafeHex(c.badgeColor) ? c.badgeColor : '',
+  };
+}
+
+const bodySchema = z.object({
+  name: z.string().min(1).max(120),
+  kind: z.enum(['custom', 'black_friday', 'new_year', 'flash']).optional(),
+  percentOff: z.number().int().min(1).max(100),
+  appliesTo: z.enum(['all', 'hosting', 'boost']).optional(),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+  active: z.boolean().optional(),
+  badgeEnabled: z.boolean().optional(),
+  badgeMessageEn: z.string().max(200).optional(),
+  badgeMessageFr: z.string().max(200).optional(),
+  badgeColor: z.string().max(7).optional(),
+});
+
+export default async function campaignRoutes(app) {
+  // ── Public: the currently-live campaign (drives the site-wide badge + auto-discount) ──
+  app.get('/promo/campaign/active', async () => {
+    const p = await db();
+    return { campaign: publicCampaign(await getActiveCampaign(p)) };
+  });
+
+  // ── Admin: manage campaigns ──
+  app.get('/admin/campaigns', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    return { campaigns: await p.promoCampaign.findMany({ orderBy: { startsAt: 'desc' } }) };
+  });
+
+  app.post('/admin/campaigns', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = bodySchema.safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const d = b.data;
+    const starts = new Date(d.startsAt), ends = new Date(d.endsAt);
+    if (ends <= starts) return reply.code(400).send({ error: 'end_before_start' });
+    if (d.badgeColor && !isSafeHex(d.badgeColor)) return reply.code(400).send({ error: 'bad_color' });
+    const p = await db();
+    const c = await p.promoCampaign.create({ data: {
+      name: d.name, kind: d.kind ?? 'custom', percentOff: d.percentOff, appliesTo: d.appliesTo ?? 'all',
+      startsAt: starts, endsAt: ends, active: d.active ?? true, badgeEnabled: d.badgeEnabled ?? true,
+      badgeMessageEn: d.badgeMessageEn ?? '', badgeMessageFr: d.badgeMessageFr ?? '', badgeColor: d.badgeColor ?? '',
+    } });
+    return reply.code(201).send({ campaign: c });
+  });
+
+  app.patch('/admin/campaigns/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = bodySchema.partial().safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const d = b.data;
+    if (d.badgeColor && !isSafeHex(d.badgeColor)) return reply.code(400).send({ error: 'bad_color' });
+    const data = {};
+    for (const k of ['name', 'kind', 'percentOff', 'appliesTo', 'active', 'badgeEnabled', 'badgeMessageEn', 'badgeMessageFr', 'badgeColor']) {
+      if (d[k] !== undefined) data[k] = d[k];
+    }
+    if (d.startsAt) data.startsAt = new Date(d.startsAt);
+    if (d.endsAt) data.endsAt = new Date(d.endsAt);
+    if ((data.startsAt || data.endsAt)) {
+      const p0 = await db();
+      const cur = await p0.promoCampaign.findUnique({ where: { id: req.params.id } });
+      if (!cur) return reply.code(404).send({ error: 'not_found' });
+      const s = data.startsAt || cur.startsAt, e = data.endsAt || cur.endsAt;
+      if (e <= s) return reply.code(400).send({ error: 'end_before_start' });
+    }
+    if (!Object.keys(data).length) return reply.code(400).send({ error: 'nothing_to_update' });
+    const p = await db();
+    const c = await p.promoCampaign.update({ where: { id: req.params.id }, data }).catch(() => null);
+    if (!c) return reply.code(404).send({ error: 'not_found' });
+    return { campaign: c };
+  });
+
+  app.delete('/admin/campaigns/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    await p.promoCampaign.delete({ where: { id: req.params.id } }).catch(() => {});
+    return { ok: true };
+  });
+}

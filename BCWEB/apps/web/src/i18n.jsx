@@ -5,6 +5,7 @@ import { Languages } from 'lucide-react';
 // English, then to the key, so missing translations never break the UI.
 const DICT = {
   en: {
+    'promo.badge.default': 'Limited-time offer', 'promo.badge.dismiss': 'Dismiss', 'promo.badge.d': 'd', 'promo.badge.h': 'h', 'promo.badge.m': 'm',
     'nav.home': 'Home', 'nav.bmm': 'BMM', 'nav.bsm': 'BSM', 'nav.installer': 'BI', 'nav.blog': 'Blog',
     'nav.repos': 'Repos', 'nav.hosting': 'Hosting', 'nav.projects': 'Projects', 'nav.dashboard': 'Dashboard', 'nav.admin': 'Admin',
     'nav.settings': 'Settings', 'nav.docs': 'Docs',
@@ -84,6 +85,7 @@ const DICT = {
     'common.loading': 'Loading…',
   },
   fr: {
+    'promo.badge.default': 'Offre à durée limitée', 'promo.badge.dismiss': 'Fermer', 'promo.badge.d': 'j', 'promo.badge.h': 'h', 'promo.badge.m': 'min',
     'intro.brand': 'BetterCommunity', 'intro.dontshow': 'Ne plus afficher', 'intro.skip': "Passer l'intro",
     'admin.2fa.title': 'Authentification à deux facteurs requise', 'admin.2fa.sub': "Le tableau de bord admin nécessite la 2FA sur ton compte, même pour les admins. Active-la dans ton profil pour continuer.", 'admin.2fa.cta': 'Aller au profil',
     'nav.home': 'Accueil', 'nav.bmm': 'BMM', 'nav.bsm': 'BSM', 'nav.installer': 'BI', 'nav.blog': 'Blog',
