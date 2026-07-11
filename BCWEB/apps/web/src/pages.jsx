@@ -7178,21 +7178,24 @@ export function VerifyEmail() {
     if (!token) { setState('error'); return; }
     api.post('/auth/verify-email', { token }).then(() => setState('ok')).catch(() => setState('error'));
   }, [token]);
+  // One card shell for every state — a bare centered message would sit over the orb backdrop.
   return (
-    <div className="max-w-md mx-auto py-20 text-center">
-      {state === 'working' && <><Spinner /><p className="text-[var(--muted)] mt-3">{t('verify.working', 'Confirming your email…')}</p></>}
-      {state === 'ok' && <>
-        <CheckCircle2 size={40} className="mx-auto text-emerald-400 mb-3" />
-        <h1 className="text-xl font-semibold mb-1">{t('verify.ok.title', 'Email confirmed')}</h1>
-        <p className="text-[var(--muted)] mb-5">{t('verify.ok.sub', 'Your email address is verified — thanks!')}</p>
-        <Link to="/dashboard"><Button variant="primary">{t('verify.ok.cta', 'Go to dashboard')}</Button></Link>
-      </>}
-      {state === 'error' && <>
-        <XCircle size={40} className="mx-auto text-red-400 mb-3" />
-        <h1 className="text-xl font-semibold mb-1">{t('verify.err.title', 'Link invalid or expired')}</h1>
-        <p className="text-[var(--muted)] mb-5">{t('verify.err.sub', 'This confirmation link is no longer valid. You can request a new one from your profile.')}</p>
-        <Link to="/profile"><Button>{t('nav.profile', 'Profile')}</Button></Link>
-      </>}
+    <div className="max-w-md mx-auto py-12">
+      <Card className="p-8 text-center">
+        {state === 'working' && <div className="grid place-items-center text-[var(--muted)] py-2"><Spinner /><p className="mt-3">{t('verify.working', 'Confirming your email…')}</p></div>}
+        {state === 'ok' && <>
+          <span className="grid place-items-center w-12 h-12 rounded-2xl bg-[var(--success-bg)] border border-[var(--success-border)] mx-auto mb-4"><CheckCircle2 size={24} className="text-[var(--success)]" /></span>
+          <h1 className="text-xl font-semibold mb-1">{t('verify.ok.title', 'Email confirmed')}</h1>
+          <p className="text-[var(--muted)] mb-5">{t('verify.ok.sub', 'Your email address is verified — thanks!')}</p>
+          <Link to="/dashboard"><Button variant="primary">{t('verify.ok.cta', 'Go to dashboard')}</Button></Link>
+        </>}
+        {state === 'error' && <>
+          <span className="grid place-items-center w-12 h-12 rounded-2xl bg-[var(--error-bg)] border border-[var(--error-border)] mx-auto mb-4"><XCircle size={24} className="text-[var(--error)]" /></span>
+          <h1 className="text-xl font-semibold mb-1">{t('verify.err.title', 'Link invalid or expired')}</h1>
+          <p className="text-[var(--muted)] mb-5">{t('verify.err.sub', 'This confirmation link is no longer valid. You can request a new one from your profile.')}</p>
+          <Link to="/profile"><Button>{t('nav.profile', 'Profile')}</Button></Link>
+        </>}
+      </Card>
     </div>
   );
 }
@@ -7218,14 +7221,28 @@ export function Authorize() {
     items: [Package, t('oauth.scope.items', 'Your catalog items'), t('oauth.scope.items.s', 'Read your items & submissions')],
     repos: [Server, t('oauth.scope.repos', 'Your Server-Repos'), t('oauth.scope.repos.s', 'Read the hosted repos you own')],
   };
-  if (authLoading || (user && !info)) return <div className="max-w-md mx-auto py-20 text-center text-[var(--muted)]"><Spinner /></div>;
+  // Loading / signed-out / error all use the same card shell as the consent screen —
+  // a bare centered message would sit over the orb backdrop and lose legibility.
+  if (authLoading || (user && !info)) return (
+    <div className="max-w-md mx-auto py-12"><Card className="p-10"><div className="grid place-items-center text-[var(--muted)]"><Spinner /></div></Card></div>
+  );
   if (!user) return (
-    <div className="max-w-md mx-auto py-20 text-center">
-      <p className="text-[var(--muted)] mb-4">{t('oauth.needlogin', 'Please sign in to continue.')}</p>
-      <Button variant="primary" onClick={() => { window.location.href = `/auth?next=${encodeURIComponent('/authorize?rt=' + rt)}`; }}>{t('nav.login', 'Sign in')}</Button>
+    <div className="max-w-md mx-auto py-12">
+      <Card className="p-7 text-center">
+        <span className="grid place-items-center w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] mx-auto mb-4"><Shield size={22} className="text-[var(--primary-2)]" /></span>
+        <p className="text-[var(--muted)] mb-4">{t('oauth.needlogin', 'Please sign in to continue.')}</p>
+        <Button variant="primary" onClick={() => { window.location.href = `/auth?next=${encodeURIComponent('/authorize?rt=' + rt)}`; }}>{t('nav.login', 'Sign in')}</Button>
+      </Card>
     </div>
   );
-  if (info?.error) return <div className="max-w-md mx-auto py-20 text-center"><Shield size={30} className="mx-auto text-[var(--faint)] mb-3" /><p className="text-red-400">{t('oauth.err', 'This authorization request is invalid or expired — please start again from the app.')}</p></div>;
+  if (info?.error) return (
+    <div className="max-w-md mx-auto py-12">
+      <Card className="p-7 text-center">
+        <span className="grid place-items-center w-12 h-12 rounded-2xl bg-[var(--error-bg)] border border-[var(--error-border)] mx-auto mb-4"><Shield size={22} className="text-[var(--error)]" /></span>
+        <p className="text-sm text-[var(--muted)]">{t('oauth.err', 'This authorization request is invalid or expired — please start again from the app.')}</p>
+      </Card>
+    </div>
+  );
   return (
     <div className="max-w-md mx-auto py-12">
       <Card className="p-7">
