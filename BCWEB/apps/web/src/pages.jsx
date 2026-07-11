@@ -5248,7 +5248,11 @@ function AdminEvents() {
           <Field label={t('ev.f.promo', 'Event discount % (0 = none)')} hint={t('ev.f.promo.h', 'Creates a site-wide discount + badge for the event window, and (with a code below) an event-only code carrying this %.')}><Input type="number" min="0" max="100" value={f.promoPercent} onChange={(e) => set('promoPercent', e.target.value)} /></Field>
           <Field label={t('ev.f.code', 'Event-only promo code (optional)')} hint={t('ev.f.code.h', 'A code valid ONLY during the event window, broadcast to users in the event notification.')}><Input value={f.eventCode} onChange={(e) => set('eventCode', e.target.value.toUpperCase())} placeholder="NY2027" /></Field>
         </div>
-        <div className="flex justify-end mt-3"><Button variant="primary" onClick={create}><Plus size={15} /> {t('ev.create', 'Create event')}</Button></div>
+        <div className="flex items-center justify-end gap-2 mt-3">
+          <Button variant="ghost" onClick={() => window.dispatchEvent(new CustomEvent('bcw:fx-preview', { detail: { effect: 'fireworks', kind: f.kind, countryCode: (f.countryCode || '').trim().toUpperCase(), fxDensity: Number(f.fxDensity) || 5, fxFlagDrops: Number(f.fxFlagDrops) || 0 } }))}
+            title={t('ev.preview.h', 'Plays the fireworks now with the current density / flag-drops (ignores reduce-motion) so you can tune it.')}><Sparkles size={15} /> {t('ev.preview', 'Preview effect')}</Button>
+          <Button variant="primary" onClick={create}><Plus size={15} /> {t('ev.create', 'Create event')}</Button>
+        </div>
       </Card>
       {loading ? <Loading /> : list.length ? <div className="space-y-2">
         {list.map((e) => { const st = status(e); return (

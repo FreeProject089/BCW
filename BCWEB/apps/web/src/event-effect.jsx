@@ -76,16 +76,29 @@ function makeSprite() {
 
 const PALETTE = [[1, 0.32, 0.18], [1, 0.78, 0.2], [0.3, 0.7, 1], [0.7, 0.4, 1], [0.3, 1, 0.6], [1, 0.4, 0.7]];
 
+// Small flag image (same CDN the rest of the app uses) — shown in the event badge.
+const flagUrl = (cc) => `https://flagcdn.com/32x24/${String(cc).toLowerCase()}.png`;
+
 export default function EventEffect() {
   const { t, lang } = useI18n();
   const [ev, setEv] = useState(null);
   const [dismissed, setDismissed] = useState(false);
+  // Ad-hoc preview config, fired from the admin Events page via a window event — plays
+  // the fireworks on demand (ignoring reduce-motion / the live-event gate) so an admin
+  // can actually SEE and tune density / flag drops / the country flag before going live.
+  const [preview, setPreview] = useState(null);
   const mount = useRef(null);
 
   useEffect(() => {
     let alive = true;
     api.get('/events/active').then((r) => { if (alive) setEv(r?.event || null); }).catch(() => {});
     return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    const onPreview = (e) => setPreview({ effect: 'fireworks', kind: 'custom', ...(e.detail || {}) });
+    window.addEventListener('bcw:fx-preview', onPreview);
+    return () => window.removeEventListener('bcw:fx-preview', onPreview);
   }, []);
 
   // Respect prefers-reduced-motion (no canvas, announcement only). A localStorage
@@ -97,7 +110,10 @@ export default function EventEffect() {
   const reduced = prefersReduced && !forcePreview;
 
   useEffect(() => {
-    if (!ev || ev.effect !== 'fireworks' || reduced || dismissed) return;
+    // A preview always plays (bypasses reduce-motion + the live gate); otherwise the
+    // live event plays when it's a fireworks effect and motion is allowed.
+    const fx = preview || (ev && ev.effect === 'fireworks' && !reduced && !dismissed ? ev : null);
+    if (!fx) return;
     const el = mount.current; if (!el) return;
     const W = () => window.innerWidth, H = () => window.innerHeight;
     let renderer;
@@ -122,8 +138,8 @@ export default function EventEffect() {
     /** @type {{x:number,y:number,vx:number,vy:number,life:number,max:number,r:number,g:number,b:number,rocket?:boolean,hx?:number,frozen?:boolean}[]} */
     let ps = [];
     const rand = (a, b) => a + Math.random() * (b - a);
-    const density = Math.max(1, Math.min(10, ev.fxDensity || 5));       // fireworks amount
-    const flagDrops = Math.max(0, Math.min(20, ev.fxFlagDrops ?? 2));   // how many flag formations
+    const density = Math.max(1, Math.min(10, fx.fxDensity || 5));       // fireworks amount
+    const flagDrops = Math.max(0, Math.min(20, fx.fxFlagDrops ?? 2));   // how many flag formations
     const launchRocket = () => {
       const x = rand(-aspect * 0.8, aspect * 0.8);
       ps.push({ x, y: -1.05, vx: rand(-0.05, 0.05), vy: rand(1.3, 1.75), life: rand(0.7, 0.98), max: 0.98, r: 1, g: 0.9, b: 0.7, rocket: true, hx: x });
@@ -135,7 +151,7 @@ export default function EventEffect() {
       }
     };
     // Flag finale: particles rush to the sampled flag positions, hold, then fall.
-    const flagCanvas = ev.kind === 'national_holiday' && ev.countryCode ? drawFlag(ev.countryCode) : null;
+    const flagCanvas = fx.kind === 'national_holiday' && fx.countryCode ? drawFlag(fx.countryCode) : null;
     // A "flag drop": particles rush to the flag shape at a RANDOM place + size, hold,
     // then fall. With no drawable flag it's a big multi-colour burst at that spot.
     const flagDrop = (cx, cy, worldW) => {
@@ -188,7 +204,7 @@ export default function EventEffect() {
       geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
       geo.setDrawRange(0, MAX);
       // fade the whole canvas out at the end of the show
-      if (elapsed > DURATION) { stopped = true; el.style.transition = 'opacity 1.5s ease'; el.style.opacity = '0'; if (elapsed > DURATION + 1600) { cancelAnimationFrame(raf); return; } }
+      if (elapsed > DURATION) { stopped = true; el.style.transition = 'opacity 1.5s ease'; el.style.opacity = '0'; if (elapsed > DURATION + 1600) { cancelAnimationFrame(raf); if (preview) setPreview(null); return; } }
       renderer.render(scene, cam);
       raf = requestAnimationFrame(tick);
     };
@@ -201,22 +217,27 @@ export default function EventEffect() {
       gsap.globalTimeline.getChildren().forEach((c) => c.kill());
       geo.dispose(); mat.dispose(); mat.map?.dispose(); renderer.dispose();
       if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
+      el.style.opacity = ''; el.style.transition = '';
     };
-  }, [ev, reduced, dismissed]);
+  }, [ev, reduced, dismissed, preview]);
 
-  if (!ev || dismissed) return null;
+  if ((!ev || dismissed) && !preview) return null;
   const title = (lang?.startsWith('fr') ? ev.titleFr : ev.titleEn) || '';
   const message = (lang?.startsWith('fr') ? ev.messageFr : ev.messageEn) || '';
   const BadgeIcon = BADGE_ICONS[ev.badgeIcon] || Sparkles;
   if (!title && !message && reduced) return null;
 
+  const isHoliday = ev?.kind === 'national_holiday' && ev?.countryCode;
   return (
     <>
-      {!reduced && <div ref={mount} aria-hidden className="fixed inset-0 z-[45]" style={{ pointerEvents: 'none' }} />}
+      {(!reduced || preview) && <div ref={mount} aria-hidden className="fixed inset-0 z-[45]" style={{ pointerEvents: 'none' }} />}
       {(title || message) && (
         <div className="fixed left-1/2 -translate-x-1/2 top-20 z-[46] max-w-[92vw] anim-fade" style={{ pointerEvents: 'auto' }}>
           <div className="relative flex items-center gap-3 rounded-2xl border border-[var(--line-strong)] px-5 py-3 pr-10 shadow-2xl" style={{ background: 'var(--bg-solid)' }}>
-            <BadgeIcon size={26} className="shrink-0 text-[var(--primary-2)]" />
+            {/* National holiday → the country flag; otherwise the chosen lucide icon. */}
+            {isHoliday
+              ? <img src={flagUrl(ev.countryCode)} alt="" width={34} height={26} className="shrink-0 rounded-[3px] object-cover ring-1 ring-[var(--line-strong)]" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              : <BadgeIcon size={26} className="shrink-0 text-[var(--primary-2)]" />}
             <div className="min-w-0">
               {title && <div className="font-bold gradient-text text-lg leading-tight">{title}</div>}
               {message && <div className="text-sm text-[var(--muted)] truncate">{message}</div>}
