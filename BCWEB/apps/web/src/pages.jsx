@@ -957,7 +957,7 @@ export function Hosting() {
           return (
           <div key={pl.id} role="button" tabIndex={0} aria-disabled={planDisabled} onClick={() => !planDisabled && addHosting({ planId: pl.id })}
             onKeyDown={(e) => { if (e.key === 'Enter' && !planDisabled) addHosting({ planId: pl.id }); }}
-            className={`group card overflow-hidden text-center relative flex flex-col transition-all duration-200 ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-1.5'}`}>
+            className={`group card overflow-hidden text-center relative flex flex-col transition-all duration-200 ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-1.5'} ${recommended && !planDisabled ? 'md:scale-[1.04] md:z-10 !border-[var(--primary)] shadow-lg shadow-orange-500/15' : ''}`}>
             {/* Diagonal corner ribbon on the recommended tier (image-2 style). */}
             {recommended && !planDisabled && (
               <span className="absolute top-0 right-0 w-[104px] h-[104px] overflow-hidden pointer-events-none z-20">
@@ -973,8 +973,24 @@ export function Hosting() {
             {/* body — speed, price, CTA */}
             <div className="p-5 flex-1 flex flex-col">
               <div className="text-xs text-[var(--faint)] flex items-center justify-center gap-1"><Zap size={12} />{(pl.uploadLimitKbps / 1024).toFixed(0)} Mbps {t('hosting.uploadword', 'upload')}</div>
-              <div className="text-3xl font-bold gradient-text mt-3">${(termTotal(pl.priceMonthlyCents) / 100 / months).toFixed(2)}<span className="text-sm text-[var(--muted)] font-medium">{t('hosting.permo', '/mo')}</span></div>
-              <div className="text-[11px] text-[var(--muted)] mb-4">{months > 1 ? <>${(termTotal(pl.priceMonthlyCents) / 100).toFixed(2)} {t('hosting.billedfor', 'billed for')} {months} {t('hosting.mo', 'mo')}</> : t('hosting.billedmonthly', 'billed monthly')}</div>
+              {(() => {
+                // Price anchoring: show the un-discounted monthly rate struck through next
+                // to the (lower) prepaid-term rate, plus a "−N%" pill — the saving reads
+                // instantly instead of being buried in a "billed for 12 mo" line.
+                const eff = termTotal(pl.priceMonthlyCents) / 100 / months;
+                const base = pl.priceMonthlyCents / 100;
+                const save = months > 1 ? Math.round((1 - eff / base) * 100) : 0;
+                return (<>
+                  <div className="mt-3 flex items-end justify-center gap-1.5">
+                    {save > 0 && <span className="text-sm text-[var(--faint)] line-through mb-1">${base.toFixed(2)}</span>}
+                    <span className="text-3xl font-bold gradient-text leading-none">${eff.toFixed(2)}</span>
+                    <span className="text-sm text-[var(--muted)] font-medium mb-0.5">{t('hosting.permo', '/mo')}</span>
+                  </div>
+                  <div className="text-[11px] text-[var(--muted)] mb-4 mt-1 flex items-center justify-center gap-1.5 flex-wrap">
+                    {months > 1 ? <><span>${(termTotal(pl.priceMonthlyCents) / 100).toFixed(2)} {t('hosting.billedfor', 'billed for')} {months} {t('hosting.mo', 'mo')}</span>{save > 0 && <span className="text-[10px] font-bold text-[var(--success)] bg-[var(--success-bg)] border border-[var(--success-border)] rounded-full px-1.5 py-0.5">−{save}%</span>}</> : t('hosting.billedmonthly', 'billed monthly')}
+                  </div>
+                </>);
+              })()}
               <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full mt-auto" onClick={(e) => { e.stopPropagation(); addHosting({ planId: pl.id }); }}>
                 {planDisabled ? t('hosting.nospace', 'Not enough space') : <><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}</>}</Button>
             </div>
@@ -1289,6 +1305,10 @@ export function Auth() {
   const [twoFa, setTwoFa] = useState(null); // { tempToken } once password is verified and a TOTP code is needed
   const [code, setCode] = useState('');
   const [emailTaken, setEmailTaken] = useState(false); // inline field-level error (register)
+  const nameTouched = useRef(false); // did the user edit the display name themselves?
+  // Smart default: derive a friendly display name from the email local-part until the
+  // user types their own — one less field to think about at the highest-friction moment.
+  const suggestName = (email) => (email.split('@')[0] || '').replace(/[._-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 40);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const { data: oauthProviders } = useAsync(() => api.get('/auth/oauth/providers').catch(() => ({})), []);
 
@@ -1424,10 +1444,10 @@ export function Auth() {
           <h1 className="text-xl font-bold">{titles[mode][0]}</h1>
           <p className="text-sm text-[var(--muted)] mt-1">{titles[mode][1]}</p></div>
         <form onSubmit={submit} className="space-y-3">
-          {mode === 'register' && <Field label={t('auth.name')}><Input value={f.displayName} onChange={set('displayName')} /></Field>}
+          {mode === 'register' && <Field label={t('auth.name')}><Input value={f.displayName} onChange={(e) => { nameTouched.current = true; setF({ ...f, displayName: e.target.value }); }} placeholder={t('auth.name.ph', 'How should we call you?')} /></Field>}
           {mode !== 'reset' && <Field label={t('auth.email')}>
             <Input type="email" value={f.email} aria-invalid={(emailTaken || emailBad) || undefined}
-              onChange={(e) => { if (emailTaken) setEmailTaken(false); setF({ ...f, email: e.target.value }); }} placeholder="you@example.com" />
+              onChange={(e) => { if (emailTaken) setEmailTaken(false); const email = e.target.value; setF((s) => ({ ...s, email, displayName: (mode === 'register' && !nameTouched.current) ? suggestName(email) : s.displayName })); }} placeholder="you@example.com" />
             {emailTaken ? <div className="text-xs text-[var(--error)] mt-1.5 anim-fade">
                 {t('auth.err.taken', 'This email already exists.')}{' '}
                 <button type="button" onClick={() => { setEmailTaken(false); setMode('login'); }} className="underline underline-offset-2 font-semibold hover:opacity-80 press-sm">{t('auth.err.taken.login', 'Login instead?')}</button>
@@ -1544,7 +1564,53 @@ function NotificationsPanel() {
 // every path in: a password signup, a GitHub/Discord OAuth signup (they land
 // here with no 2FA), and a normal login of an account that never enrolled. One
 // tap goes to the 2FA setup; dismissal is per-device so it's never naggy.
+// Getting-started checklist (Goal-Gradient effect): a brand-new dashboard is a wall of
+// zeros, which reads as "0% done" and kills momentum. This starts users ABOVE zero
+// (account already ✓) and shows a visible path to first value. Controlled by the parent
+// so it can hand off to the 2FA nudge once dismissed. Auto-hides when every step is done.
+function GettingStarted({ user, items, repos, onSubmit, onDismiss }) {
+  const { t } = useI18n();
+  const steps = [
+    { key: 'account', label: t('gs.account', 'Create your account'), done: true },
+    { key: '2fa', label: t('gs.2fa', 'Secure it with 2FA'), done: !!user?.totpEnabled, to: '/profile?setup2fa=1' },
+    { key: 'item', label: t('gs.item', 'Submit your first item'), done: (items?.length || 0) > 0, action: 'submit' },
+    { key: 'repo', label: t('gs.repo', 'Host your first Server-Repo'), done: (repos?.length || 0) > 0, to: '/hosting' },
+  ];
+  const done = steps.filter((s) => s.done).length;
+  const pct = Math.round((done / steps.length) * 100);
+  return (
+    <Card className="p-5 mb-6">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <div className="font-semibold flex items-center gap-2"><Rocket size={16} className="text-[var(--primary-2)]" /> {t('gs.title', 'Getting started')}</div>
+          <div className="text-xs text-[var(--muted)] mt-0.5">{t('gs.sub', "You're already {pct}% set up — finish the last steps to get the most out of it.").replace('{pct}', pct)}</div>
+        </div>
+        <button onClick={onDismiss} className="text-[var(--faint)] hover:text-[var(--text)] p-1 shrink-0" title={t('gs.dismiss', 'Dismiss')}><X size={15} /></button>
+      </div>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="progress-track flex-1"><div className="progress-fill is-done pop-in" style={{ width: `${pct}%` }} /></div>
+        <span className="text-xs font-semibold tabular-nums text-[var(--muted)] shrink-0">{done}/{steps.length}</span>
+      </div>
+      <div className="space-y-1">
+        {steps.map((st) => {
+          const inner = (
+            <div className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors ${!st.done && (st.to || st.action) ? 'hover:bg-[var(--surface-2)] press cursor-pointer' : ''}`}>
+              {st.done ? <CheckCircle2 size={18} className="text-[var(--success)] shrink-0" /> : <span className="w-[18px] h-[18px] rounded-full border-2 border-[var(--line-strong)] shrink-0" />}
+              <span className={`text-sm flex-1 ${st.done ? 'text-[var(--faint)] line-through' : 'font-medium'}`}>{st.label}</span>
+              {!st.done && (st.to || st.action) && <ArrowRight size={14} className="text-[var(--primary-2)] shrink-0" />}
+            </div>
+          );
+          if (st.done || (!st.to && !st.action)) return <div key={st.key}>{inner}</div>;
+          if (st.action === 'submit') return <button key={st.key} type="button" className="w-full text-left" onClick={onSubmit}>{inner}</button>;
+          return <Link key={st.key} to={st.to}>{inner}</Link>;
+        })}
+      </div>
+    </Card>
+  );
+}
+
 const TWOFA_NUDGE_KEY = 'bcw_2fa_nudge_dismissed';
+const GS_DISMISS_KEY = 'bcw_gs_dismissed';
 function TwoFactorNudge() {
   const { user } = useAuth(); const { t } = useI18n();
   const [dismissed, setDismissed] = useState(() => { try { return localStorage.getItem(TWOFA_NUDGE_KEY) === '1'; } catch { return false; } });
@@ -1722,6 +1788,7 @@ export function Dashboard() {
   const items = useAsync(() => api.get('/me/items'), []);
   const repos = useAsync(() => api.get('/me/repos'), []);
   const [open, setOpen] = useState(false);
+  const [gsDismissed, setGsDismissed] = useState(() => { try { return localStorage.getItem(GS_DISMISS_KEY) === '1'; } catch { return false; } });
   const [editing, setEditing] = useState(null); // the item opened in the view/edit modal
   const cancelDelete = async (it) => { try { await api.post(`/catalog/${it.id}/delete/cancel`); toast.success(t('dash.delcancelled', 'Deletion cancelled.')); items.reload(); } catch { toast.error(t('dash.cancelfail', 'Failed to cancel.')); } };
 
@@ -1782,7 +1849,14 @@ export function Dashboard() {
         headerActions={<Button variant="primary" onClick={() => setOpen(true)}><Upload size={16} /> {t('sub.title', 'Submit content')}</Button>}>
         {(s) => (<>
           {s === 'overview' && <>
-            <TwoFactorNudge />
+            {/* Goal-gradient onboarding: the checklist owns first-run guidance (incl. 2FA);
+                once it's done or dismissed, fall back to the standalone 2FA nudge. */}
+            {(() => {
+              const complete = !!user?.totpEnabled && list.length > 0 && rlist.length > 0;
+              return (!gsDismissed && !complete)
+                ? <GettingStarted user={user} items={list} repos={rlist} onSubmit={() => setOpen(true)} onDismiss={() => { setGsDismissed(true); try { localStorage.setItem(GS_DISMISS_KEY, '1'); } catch {} }} />
+                : <TwoFactorNudge />;
+            })()}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
               {actions.map((a) => (
                 <button key={a.label} onClick={() => a.onClick ? a.onClick() : nav(a.to)} className="card card-hover p-4 text-left flex items-center gap-2.5">

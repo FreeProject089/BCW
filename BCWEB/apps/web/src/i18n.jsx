@@ -58,7 +58,7 @@ const DICT = {
 
     'auth.welcome': 'Welcome back', 'auth.create': 'Create your account',
     'auth.subin': 'Sign in to manage your content.', 'auth.subup': 'Join to publish and host.',
-    'auth.name': 'Display name', 'auth.email': 'Email', 'auth.password': 'Password',
+    'auth.name': 'Display name', 'auth.name.ph': 'How should we call you?', 'auth.email': 'Email', 'auth.password': 'Password',
     'auth.toRegister': 'Need an account? Register', 'auth.toLogin': 'Have an account? Sign in',
     'auth.or': 'or', 'auth.oauth.github': 'Continue with GitHub', 'auth.oauth.discord': 'Continue with Discord', 'auth.oauth.google': 'Continue with Google',
     'auth.err.oauthOnly': "This account was created with GitHub or Discord — use that to sign in, or set a password from your profile once signed in.",
@@ -412,7 +412,7 @@ const DICT = {
 
     'auth.welcome': 'Content de te revoir', 'auth.create': 'Crée ton compte',
     'auth.subin': 'Connecte-toi pour gérer ton contenu.', 'auth.subup': 'Rejoins pour publier et héberger.',
-    'auth.name': 'Nom affiché', 'auth.email': 'E-mail', 'auth.password': 'Mot de passe',
+    'auth.name': 'Nom affiché', 'auth.name.ph': 'Comment on t\'appelle ?', 'auth.email': 'E-mail', 'auth.password': 'Mot de passe',
     'auth.toRegister': 'Pas de compte ? Inscris-toi', 'auth.toLogin': 'Déjà un compte ? Connecte-toi',
     'auth.or': 'ou', 'auth.oauth.github': 'Continuer avec GitHub', 'auth.oauth.discord': 'Continuer avec Discord', 'auth.oauth.google': 'Continuer avec Google',
     'auth.err.oauthOnly': "Ce compte a été créé avec GitHub ou Discord — utilise ça pour te connecter, ou définis un mot de passe depuis ton profil une fois connecté.",
@@ -979,6 +979,8 @@ const DICT = {
     'dash.items': 'Éléments', 'dash.published': 'Publiés', 'dash.pending': 'En attente', 'dash.repos': 'Dépôts', 'dash.featured': 'Mis en avant',
     'dash.hostrepo': 'Héberger un dépôt', 'dash.browse': 'Voir le catalogue', 'dash.editprofile': 'Modifier le profil',
     'dash.overview': 'Aperçu', 'dash.myitems': 'Mes éléments', 'dash.myrepos': 'Mes dépôts', 'dash.billing': 'Facturation',
+    'gs.title': 'Bien démarrer', 'gs.sub': "Tu es déjà configuré à {pct}% — termine les dernières étapes pour en profiter pleinement.",
+    'gs.account': 'Créer ton compte', 'gs.2fa': 'Le sécuriser avec la 2FA', 'gs.item': 'Publier ton premier élément', 'gs.repo': 'Héberger ton premier Server-Repo', 'gs.dismiss': 'Masquer',
     'dash.hi': 'Salut, {name}', 'dash.sub': 'Gère ton contenu, tes dépôts et ta facturation.', 'dash.new': 'Nouveau',
     'dash.hostedhere': 'hébergé ici', 'dash.verified': 'vérifié', 'dash.invalid': 'invalide', 'dash.deletingin': 'Suppression dans', 'dash.viewedit': 'Voir / modifier',
     'dash.noitems': 'Aucun élément pour le moment', 'dash.noitems.s': 'Soumets ta première app, plugin, thème ou preset.', 'dash.submitted': 'Soumis — en attente de modération.',
