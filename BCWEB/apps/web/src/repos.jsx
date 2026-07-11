@@ -100,6 +100,7 @@ export function ReposPage() {
   const [hostedOnly, setHostedOnly] = useState(false);
   const [onlineOnly, setOnlineOnly] = useState(false);
   const [favOnly, setFavOnly] = useState(false);
+  const [cat, setCat] = useState('all'); // trust tier filter: all | official | partner | community
   // Optimistic local overlay so a click updates instantly, without waiting on a
   // full-list refetch — reload() (on the next 60s tick) reconciles with the server.
   const [favOverlay, setFavOverlay] = useState({}); // { [repoId]: { favorited, favoriteCount } }
@@ -117,6 +118,7 @@ export function ReposPage() {
     if (hostedOnly && !r.hosted) return false;
     if (onlineOnly && r.status !== 'ONLINE') return false;
     if (favOnly && !r.favorited) return false;
+    if (cat !== 'all' && (r.category || 'community') !== cat) return false;
     if (tag && !(r.tags || []).includes(tag)) return false;
     if (q) { const s = q.toLowerCase(); if (!`${r.name} ${r.description || ''} ${(r.tags || []).join(' ')} ${r.owner?.displayName || ''}`.toLowerCase().includes(s)) return false; }
     return true;
@@ -138,6 +140,17 @@ export function ReposPage() {
           <button onClick={() => setOnlineOnly((v) => !v)} className={`btn ${onlineOnly ? 'btn-primary' : ''}`}><Wifi size={14} /> {t('repos.onlineonly', 'Online only')}</button>
           {user && <button onClick={() => setFavOnly((v) => !v)} className={`btn ${favOnly ? 'btn-primary' : ''}`}><Star size={14} /> {t('repos.favonly', 'Favorited')}</button>}
         </div>
+      </div>
+      {/* Trust-tier filter — official / partner / community (same tiers as the badges). */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {[['all', t('repos.tier.all', 'All tiers'), null],
+          ['official', t('repos.cat.official', 'Official'), BadgeCheck],
+          ['partner', t('repos.cat.partner', 'Partner'), Handshake],
+          ['community', t('repos.cat.community', 'Community'), Users]].map(([key, label, Ico]) => (
+          <button key={key} onClick={() => setCat(key)} className={`text-xs px-2.5 py-1 rounded-full border flex items-center gap-1 transition ${cat === key ? 'border-[var(--primary)] text-[var(--text)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            {Ico && <Ico size={11} />} {label}
+          </button>
+        ))}
       </div>
       {allTags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-5">
@@ -224,9 +237,12 @@ export const repoLocked = (r) => r.status === 'SUSPENDED';
 
 // Trust tier → badge. Official (BMM team, green) / Partner (trusted, blue) get a badge;
 // community repos get none. Mirrors the Better_ModManager_ServerBrowse classification.
-export function repoCategoryMeta(cat, t) {
+export function repoCategoryMeta(cat, t, includeCommunity = false) {
   if (cat === 'official') return { key: 'official', label: t('repos.cat.official', 'Official'), tone: 'green', Icon: BadgeCheck };
   if (cat === 'partner') return { key: 'partner', label: t('repos.cat.partner', 'Partner'), tone: 'blue', Icon: Handshake };
+  // In owner/admin surfaces we badge community too (so all three tiers are easy to tell
+  // apart); the public list stays clean and only badges official/partner.
+  if (includeCommunity) return { key: 'community', label: t('repos.cat.community', 'Community'), tone: '', Icon: Users };
   return null;
 }
 
@@ -283,7 +299,7 @@ function RepoCategorySelect({ value, onChange }) {
 
 function StatusBadges({ r }) {
   const { t } = useI18n();
-  const cat = repoCategoryMeta(r.category, t);
+  const cat = repoCategoryMeta(r.category, t, true);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {cat && <Badge tone={cat.tone}><cat.Icon size={10} /> {cat.label}</Badge>}
@@ -539,12 +555,6 @@ export function MyRepos() {
                   <Button size="sm" variant="primary" onClick={() => undoDelete(r)}><RefreshCw size={12} /> {t('repos.del.undo', 'Undo')}</Button>
                 </div>
               )}
-              {repoLocked(r) && !r.deleteAt && (
-                <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-bg)] px-3 py-2 text-xs">
-                  <Ban size={14} className="text-[var(--error)] shrink-0 mt-0.5" />
-                  <span className="flex-1 text-[var(--error)]">{t('repos.suspended.notice', 'This repo is suspended — it stays offline, can’t be listed, edited or deleted. Contact support to resolve it.')}</span>
-                </div>
-              )}
               {!repoLocked(r) && r.listed && r.pendingReview && !r.deleteAt && (
                 <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--warning-border)] bg-[var(--warning-bg)] px-3 py-2 text-xs">
                   <Clock size={14} className="text-[var(--warning)] shrink-0 mt-0.5" />
@@ -563,6 +573,13 @@ export function MyRepos() {
                 <div className="flex-1 min-w-0">
                   <div className="font-medium">{r.name}</div>
                   {r.description && <div className="text-sm text-[var(--muted)] line-clamp-1">{r.description}</div>}
+                  {/* Suspended notice sits directly UNDER the repo name (per design). */}
+                  {repoLocked(r) && !r.deleteAt && (
+                    <div className="mt-1.5 flex items-start gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-bg)] px-2.5 py-1.5 text-xs">
+                      <Ban size={13} className="text-[var(--error)] shrink-0 mt-0.5" />
+                      <span className="flex-1 text-[var(--error)]">{t('repos.suspended.notice', 'This repo is suspended — it stays offline, can’t be listed, edited or deleted. Contact support to resolve it.')}</span>
+                    </div>
+                  )}
                   <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                     {(() => { const st = repoStatusMeta(r, t); return <Badge tone={st.tone}>● {st.label}</Badge>; })()}
                     <StatusBadges r={r} />{isFeatured(r) && <Badge tone="amber"><Star size={10} /> {t('repos.featureduntil', 'Featured until')} {new Date(r.featuredUntil).toLocaleDateString()}</Badge>}</div>
@@ -1564,8 +1581,15 @@ export function AdminRepos() {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useFetch(() => api.get('/admin/repos'), []);
   const [review, setReview] = useState(null);
-  const repos = data?.repos || [];
-  const pending = repos.filter((r) => r.pendingReview).length;
+  const [q, setQ] = useState(''); const [catF, setCatF] = useState('all'); const [statF, setStatF] = useState('all');
+  const allRepos = data?.repos || [];
+  const pending = allRepos.filter((r) => r.pendingReview).length;
+  const repos = allRepos.filter((r) => {
+    if (catF !== 'all' && (r.category || 'community') !== catF) return false;
+    if (statF !== 'all' && r.status !== statF) return false;
+    if (q) { const s = q.toLowerCase(); if (!`${r.name} ${r.description || ''} ${r.owner?.displayName || ''} ${r.fingerprint || ''} ${(r.tags || []).join(' ')}`.toLowerCase().includes(s)) return false; }
+    return true;
+  });
   const verify = async (r) => { try { await api.post(`/admin/repos/${r.id}/verify`); toast.success(t('arp.verified', 'Verified "{n}".').replace('{n}', r.name)); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
   const reject = async (r) => { const reason = await dialog.prompt({ title: t('arp.reject', 'Reject / unlist'), label: t('arp.reason', 'Reason (sent to owner)'), okLabel: t('arp.rejectbtn', 'Reject'), danger: true }); if (!reason) return; try { await api.post(`/admin/repos/${r.id}/reject`, { reason }); toast.success(t('arp.rejected', 'Rejected.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
   const setStatus = async (r, status) => { try { await api.patch(`/admin/repos/${r.id}`, { status }); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
@@ -1601,8 +1625,29 @@ export function AdminRepos() {
           <Button size="sm" disabled={checkingAll} onClick={checkAll}>{checkingAll ? <Spinner /> : <><RefreshCw size={14} /> Check all</>}</Button>
         </div>
       </div>
+      {/* Search + tier/status filters — the admin list can get long. */}
+      <div className="flex flex-col sm:flex-row gap-2 mb-3">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <input className="input !pl-9" placeholder={t('arp.search', 'Search by name, owner, repo ID or tag…')} value={q} onChange={(e) => setQ(e.target.value)} />
+          {q && <button onClick={() => setQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]"><X size={15} /></button>}
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <DotDropdown value={catF} onChange={setCatF} options={[
+            { value: 'all', label: t('repos.tier.all', 'All tiers'), color: 'var(--faint)' }, { value: 'official', label: t('repos.cat.official', 'Official'), color: 'var(--success)' },
+            { value: 'partner', label: t('repos.cat.partner', 'Partner'), color: 'var(--info)' }, { value: 'community', label: t('repos.cat.community', 'Community'), color: 'var(--muted)' },
+          ]} />
+          <DotDropdown value={statF} onChange={setStatF} options={[
+            { value: 'all', label: t('arp.allstatus', 'All statuses'), color: 'var(--faint)' }, { value: 'ONLINE', label: t('repos.online', 'Online'), color: 'var(--success)' },
+            { value: 'OFFLINE', label: t('repos.offline', 'Offline'), color: 'var(--faint)' }, { value: 'PROVISIONING', label: t('repos.st.provisioning', 'Provisioning'), color: 'var(--warning)' },
+            { value: 'SUSPENDED', label: t('repos.st.suspended', 'Suspended'), color: 'var(--error)' },
+          ]} />
+        </div>
+      </div>
       {loading ? <div className="text-[var(--muted)] text-sm py-4">Loading…</div>
-        : repos.length ? <div className="space-y-2">
+        : !allRepos.length ? <div className="text-[var(--muted)] text-sm py-4">No repos.</div>
+        : !repos.length ? <EmptyState icon={Search} title={t('arp.nomatch', 'No repos match your filters')} />
+        : <div className="space-y-2">
           {repos.map((r) => (
             <Card key={r.id} className={`p-4 ${r.pendingReview ? 'border-[var(--ring)]' : ''}`}>
               <div className="flex items-start gap-3">
@@ -1641,7 +1686,7 @@ export function AdminRepos() {
               </div>
             </Card>
           ))}
-        </div> : <EmptyState icon={Server} title="No repos" />}
+        </div>}
       {review && <HostFilesModal repo={review} admin onClose={() => setReview(null)} onChanged={reload} />}
       {limitsRepo && <RepoLimitsModal repo={limitsRepo} onClose={() => setLimitsRepo(null)} onSaved={() => { setLimitsRepo(null); reload(); }} />}
     </div>

@@ -21,7 +21,17 @@ import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPre
 import { MyRepos, AdminRepos, Billing, rawStatusLabel } from './repos.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
 import { AuthorsRow } from './blog.jsx';
-import Avatar from './Avatar.jsx';
+import Avatar, { VARIANTS as AV_VARIANTS, PALETTES as AV_PALETTES } from './Avatar.jsx';
+
+// A stable-but-varied Boring-avatar look for an anonymous analytics session (keyed by
+// the visitor hash) — so each session gets its OWN geometric avatar instead of the
+// generic BC brand icon, and the same visitor always looks the same.
+const AV_PAL_LIST = Object.values(AV_PALETTES);
+function seededAvatar(seed) {
+  let h = 0; const s = String(seed || '');
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return { variant: AV_VARIANTS[h % AV_VARIANTS.length], colors: AV_PAL_LIST[(h >> 5) % AV_PAL_LIST.length] };
+}
 import { createRoot } from 'react-dom/client';
 import { AppLogo, KofiIcon, GithubIcon, DiscordIcon, RedditIcon, GoogleIcon } from './brand.jsx';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from './ui.jsx';
@@ -345,38 +355,35 @@ export function Home() {
       <section>
         <SectionKicker n="03" label={t('home.k.start', 'Get started')} />
         <div className="reveal-on-scroll text-center mb-9"><h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.steps.title')}</h2><p className="text-[var(--muted)] mt-2.5">{t('home.steps.sub')}</p></div>
-        <div className="reveal-stagger relative grid md:grid-cols-3 gap-5">
-          {/* Animated flow connector — desktop only, threaded through the numbered icon
-              row (badge center ≈ 52px down). A crisp gradient track carries a glowing
-              comet left→right, broken by directional arrow-chips sitting in the gaps
-              between the three steps, so the journey reads as a forward stepper. Lives
-              OUTSIDE the cards (not clipped) and behind them (z-0). */}
-          <div className="hidden md:block absolute top-[52px] left-0 right-0 -translate-y-1/2 z-0 pointer-events-none">
-            {/* baseline track spanning card-1 → card-3 icon centers, with a sweeping comet */}
-            <div className="absolute left-[16.5%] right-[16.5%] top-1/2 -translate-y-1/2 h-[3px] rounded-full bg-[var(--line)]/70 overflow-hidden">
-              <div className="absolute inset-y-0 left-0 w-1/4 rounded-full bg-gradient-to-r from-transparent via-[var(--primary)] to-transparent step-flow-x" />
-            </div>
-            {/* directional arrows breaking the line in the two gaps between the cards */}
-            {[33.33, 66.66].map((x) => (
-              <span key={x} className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 grid place-items-center w-6 h-6 rounded-full bg-[var(--bg-solid)] border border-[var(--primary)]/40 text-[var(--primary-2)] shadow-sm shadow-orange-500/10" style={{ left: `${x}%` }}>
-                <ArrowRight size={12} />
-              </span>
+        {/* Roadmap: three numbered milestone nodes threaded on a connecting rail (the
+            journey), each with a card hanging below it. The rail runs through the node
+            centres with a sweeping comet; nodes punch through it with a bg-coloured ring
+            so it reads as a real path, not a flat row of cards. */}
+        <div className="reveal-stagger relative">
+          <div className="hidden md:block absolute top-8 left-[16.66%] right-[16.66%] h-[3px] -translate-y-1/2 z-0 rounded-full overflow-hidden bg-gradient-to-r from-[var(--primary)]/25 via-[var(--primary)]/55 to-[var(--primary)]/25">
+            <div className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-transparent via-[var(--primary-2)] to-transparent step-flow-x" />
+          </div>
+          <div className="grid md:grid-cols-3 gap-8 md:gap-5">
+            {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth', user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free')],
+              [Upload, t('home.step2'), t('home.step2.d'), '/catalog', t('home.step2.cta', 'Browse the catalog')],
+              [Rocket, t('home.step3'), t('home.step3.d'), '/hosting', t('home.step3.cta', 'See hosting plans')]].map(([I, title, d, to, cta], i) => (
+              <div key={title} className="relative z-[1] flex flex-col">
+                {/* milestone node — centred on the rail, punched out with a bg-coloured ring */}
+                <div className="relative mx-auto grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-lg shadow-orange-500/30 ring-4 ring-[var(--bg-solid)] group-hover:scale-105 transition-transform">
+                  <I size={24} className="text-white" />
+                  <span className="absolute -top-2 -right-2 grid place-items-center w-7 h-7 rounded-full bg-[var(--bg-solid)] border-2 border-[var(--primary)] text-xs font-extrabold text-[var(--primary-2)]">{i + 1}</span>
+                </div>
+                <Link to={to} className="group mt-5 flex-1">
+                  <Card hover className="p-6 h-full flex flex-col text-center" style={{ background: 'var(--bg-solid)' }}>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--primary-2)]/70">{t('home.step.n', 'Step {n}').replace('{n}', i + 1)}</div>
+                    <div className="font-semibold mt-1 text-base">{title}</div>
+                    <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed flex-1">{d}</div>
+                    <div className="text-xs text-[var(--primary-2)] mt-4 flex items-center justify-center gap-1 font-medium">{cta} <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" /></div>
+                  </Card>
+                </Link>
+              </div>
             ))}
           </div>
-          {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth', user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free')],
-            [Upload, t('home.step2'), t('home.step2.d'), '/catalog', t('home.step2.cta', 'Browse the catalog')],
-            [Rocket, t('home.step3'), t('home.step3.d'), '/hosting', t('home.step3.cta', 'See hosting plans')]].map(([I, title, d, to, cta], i) => (
-            <Link key={title} to={to} className="group relative z-[1]">
-              <Card hover className="p-6 h-full flex flex-col border-t-2" style={{ background: 'var(--bg-solid)', borderTopColor: 'var(--primary)' }}>
-                <div className="relative grid place-items-center w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-lg shadow-orange-500/25 shrink-0">
-                  <I size={22} className="text-white" />
-                  <span className="absolute -bottom-2 -right-2 grid place-items-center w-6 h-6 rounded-full bg-[var(--bg-solid)] border-2 border-[var(--primary)] text-[11px] font-bold text-[var(--primary-2)]">{i + 1}</span>
-                </div>
-                <div className="font-semibold mt-4 text-[15px]">{title}</div><div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed flex-1">{d}</div>
-                <div className="text-xs text-[var(--primary-2)] mt-4 flex items-center gap-1 font-medium">{cta} <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" /></div>
-              </Card>
-            </Link>
-          ))}
         </div>
       </section>
 
@@ -6512,7 +6519,7 @@ function SessionRow({ s }) {
     <div className="rounded-xl border border-[var(--line)] overflow-hidden">
       <button onClick={() => setOpen((x) => !x)} className="w-full flex items-center gap-3 p-3 text-left hover:bg-[var(--surface-2)]/50">
         <span className="relative shrink-0">
-          <Avatar seed={s.visitor} size={30} />
+          <Avatar seed={s.visitor} {...seededAvatar(s.visitor)} size={30} />
           {s.country && <span className="absolute -bottom-1 -right-1 rounded-[2px] overflow-hidden ring-1 ring-[var(--bg-solid)]"><Flag cc={s.country} className="w-3.5 h-2.5" /></span>}
         </span>
         <div className="flex items-center gap-1.5 shrink-0">
