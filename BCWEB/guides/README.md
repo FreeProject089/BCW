@@ -35,3 +35,7 @@ a full parallel FR translation if you want one.*
   isn't reaching the API — see [DEPLOY_EN.md](DEPLOY_EN.md) §6.
 - **Load / benchmark.** See [`../loadtest/BENCHMARK.md`](../loadtest/BENCHMARK.md) and
   run `cd loadtest && npm install && node run.mjs`.
+- **Let another app "Sign in with BetterCommunity"?** BCWEB is an OpenID Connect provider —
+  register the app in Admin → **SSO / OAuth**, then point its OIDC library at
+  `<SITE_URL>/.well-known/openid-configuration`. Zero config; details in
+  [DEPLOY_EN.md](DEPLOY_EN.md) §8b.

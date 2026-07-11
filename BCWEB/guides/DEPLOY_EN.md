@@ -112,6 +112,28 @@ The BMM telemetry dashboard runs as its own service (`telemetry` + `telemetry-db
 Point `telemetry.example.com` at the server and set `TELEMETRY_INTERNAL_URL` +
 `TELEMETRY_ADMIN_KEY` in `.env` to manage its limits from the BCWEB admin.
 
+## 8b. SSO — "Sign in with BetterCommunity" (OpenID Connect provider)
+
+BCWEB is a standards **OpenID Connect provider** — other services (yours or third-party)
+can let users sign in with their BetterCommunity account. **Zero config:** the RS256
+signing key is generated automatically on first use and the issuer is your `SITE_URL`.
+Caddy already routes `/.well-known/*` and `/oauth2/*` to the API.
+
+1. **Register the client** in Admin → **SSO / OAuth**: a name, redirect URI(s), and scopes
+   (`openid`, `profile`, `email`). You get a **client_id**, and for confidential (server)
+   clients a **client_secret shown once** (store it; you can rotate it later). Public
+   clients (SPA / mobile) use **PKCE** and have no secret.
+2. **Point the client's OIDC library at the discovery document** — it finds everything else:
+   ```
+   https://community.example.com/.well-known/openid-configuration
+   ```
+   It advertises the authorize / token / userinfo / jwks / revoke endpoints, `RS256`, and
+   PKCE `S256`.
+
+Flow: standard **authorization code + PKCE**; users see a branded consent screen (remembered
+after the first time); tokens are RS256 (verify via the JWKS); refresh tokens **rotate**
+(reuse is detected and revokes the whole token family).
+
 ## 9. Updating
 
 ```bash
