@@ -41,6 +41,7 @@ export async function validatePromo(p, rawCode, userId) {
   if (!code) return { error: 'invalid' };
   const promo = await p.promoCode.findUnique({ where: { code } });
   if (!promo || !promo.active) return { error: 'invalid' };
+  if (promo.notBefore && promo.notBefore > new Date()) return { error: 'not_yet' };
   if (promo.expiresAt && promo.expiresAt < new Date()) return { error: 'expired' };
   if (promo.maxRedemptions != null && promo.redeemedCount >= promo.maxRedemptions) return { error: 'depleted' };
   // Gift/targeted codes: assigned to specific users/identifiers → only they redeem.
@@ -63,6 +64,7 @@ export async function redeemPromoAtomic(p, rawCode, userId, grant) {
     return await p.$transaction(async (tx) => {
       const promo = await tx.promoCode.findUnique({ where: { code } });
       if (!promo || !promo.active) return { error: 'invalid' };
+      if (promo.notBefore && promo.notBefore > new Date()) return { error: 'not_yet' };
       if (promo.expiresAt && promo.expiresAt < new Date()) return { error: 'expired' };
       if (!(await assignmentMatches(tx, promo, userId))) return { error: 'not_yours' };
       const mine = await tx.promoRedemption.count({ where: { promoId: promo.id, userId } });

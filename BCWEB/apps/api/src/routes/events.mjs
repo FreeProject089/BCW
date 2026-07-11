@@ -34,6 +34,7 @@ const bodySchema = z.object({
   fxDensity: z.number().int().min(1).max(10).optional(),
   fxFlagDrops: z.number().int().min(0).max(20).optional(),
   badgeIcon: z.enum(['sparkles', 'party', 'flag', 'gift', 'star', 'rocket', 'calendar', 'bell']).optional(),
+  promoPercent: z.number().int().min(0).max(100).optional(),
   titleEn: z.string().max(120).optional(),
   titleFr: z.string().max(120).optional(),
   messageEn: z.string().max(300).optional(),
@@ -76,13 +77,31 @@ export default async function eventRoutes(app) {
       const clash = await overlaps(p, starts, ends, null);
       if (clash) return reply.code(409).send({ error: 'overlap', with: clash.name });
     }
-    const e = await p.event.create({ data: {
+    let e = await p.event.create({ data: {
       name: d.name, kind: d.kind ?? 'custom', countryCode: (d.countryCode || '').toUpperCase(),
       startsAt: starts, endsAt: ends, active: d.active ?? true, effect: d.effect ?? 'fireworks',
       fxDensity: d.fxDensity ?? 5, fxFlagDrops: d.fxFlagDrops ?? 2, badgeIcon: d.badgeIcon ?? 'sparkles',
+      promoPercent: d.promoPercent ?? 0,
       titleEn: d.titleEn ?? '', titleFr: d.titleFr ?? '', messageEn: d.messageEn ?? '', messageFr: d.messageFr ?? '',
       notifyDaysBefore: d.notifyDaysBefore ?? 0, eventCode: (d.eventCode || '').toUpperCase().replace(/\s+/g, ''),
     } });
+    // Event promo: a linked site-wide campaign (discount + badge for the window) and,
+    // if an event-code is set, a promo code valid ONLY during the event window.
+    if (e.promoPercent > 0) {
+      const camp = await p.promoCampaign.create({ data: {
+        name: `Event: ${e.name}`, kind: 'custom', percentOff: e.promoPercent, appliesTo: 'all',
+        startsAt: starts, endsAt: ends, active: true, badgeEnabled: true,
+        badgeMessageEn: e.titleEn || e.messageEn || 'Event offer', badgeMessageFr: e.titleFr || e.messageFr || 'Offre événement',
+        eventId: e.id,
+      } }).catch(() => null);
+      if (camp) e = await p.event.update({ where: { id: e.id }, data: { campaignId: camp.id } });
+      if (e.eventCode) {
+        await p.promoCode.create({ data: {
+          code: e.eventCode, kind: 'discount', percentOff: e.promoPercent, active: true,
+          notBefore: starts, expiresAt: ends, note: `event: ${e.name}`,
+        } }).catch(() => { /* a code with that name already exists — leave it be */ });
+      }
+    }
     return reply.code(201).send({ event: e });
   });
 
@@ -94,7 +113,7 @@ export default async function eventRoutes(app) {
     const cur = await p.event.findUnique({ where: { id: req.params.id } });
     if (!cur) return reply.code(404).send({ error: 'not_found' });
     const data = {};
-    for (const k of ['name', 'kind', 'active', 'effect', 'fxDensity', 'fxFlagDrops', 'badgeIcon', 'titleEn', 'titleFr', 'messageEn', 'messageFr', 'notifyDaysBefore']) {
+    for (const k of ['name', 'kind', 'active', 'effect', 'fxDensity', 'fxFlagDrops', 'badgeIcon', 'promoPercent', 'titleEn', 'titleFr', 'messageEn', 'messageFr', 'notifyDaysBefore']) {
       if (d[k] !== undefined) data[k] = d[k];
     }
     if (d.countryCode !== undefined) data.countryCode = (d.countryCode || '').toUpperCase();
@@ -116,7 +135,49 @@ export default async function eventRoutes(app) {
 
   app.delete('/admin/events/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
-    await p.event.delete({ where: { id: req.params.id } }).catch(() => {});
+    const e = await p.event.findUnique({ where: { id: req.params.id } });
+    if (e) {
+      // Tear down the linked campaign + event-only code alongside the event.
+      if (e.campaignId) await p.promoCampaign.delete({ where: { id: e.campaignId } }).catch(() => {});
+      if (e.eventCode) await p.promoCode.deleteMany({ where: { code: e.eventCode, note: `event: ${e.name}` } }).catch(() => {});
+      await p.event.delete({ where: { id: e.id } }).catch(() => {});
+    }
     return { ok: true };
   });
+}
+
+// Notification body for an event (prefer FR then EN; append the event-only code).
+function eventNotifBody(e, pre) {
+  const title = e.titleFr || e.titleEn || e.name;
+  const msg = e.messageFr || e.messageEn || '';
+  const code = e.eventCode ? ` · code ${e.eventCode} (−${e.promoPercent}%, ${'event only'})` : '';
+  return pre
+    ? `Bientôt / Upcoming: ${title}${msg ? ` — ${msg}` : ''}${code}`
+    : `${title}${msg ? ` — ${msg}` : ''}${code}`;
+}
+
+async function broadcastEventNotif(p, e, pre) {
+  const users = await p.user.findMany({ select: { id: true } });
+  if (!users.length) return;
+  const body = eventNotifBody(e, pre);
+  await p.notification.createMany({ data: users.map((u) => ({ userId: u.id, kind: 'event', body })) }).catch(() => {});
+}
+
+// Periodic (called from the sweeper): fire the pre-event notification once
+// `notifyDaysBefore` days out, and the activation notification once the event goes
+// live. Idempotent via preNotifiedAt / startNotifiedAt.
+export async function runEventScheduler(p) {
+  const now = new Date();
+  const pre = await p.event.findMany({ where: { active: true, notifyDaysBefore: { gt: 0 }, preNotifiedAt: null, startsAt: { gt: now } } });
+  for (const e of pre) {
+    if (new Date(e.startsAt.getTime() - e.notifyDaysBefore * 86400000) <= now) {
+      await broadcastEventNotif(p, e, true);
+      await p.event.update({ where: { id: e.id }, data: { preNotifiedAt: now } }).catch(() => {});
+    }
+  }
+  const started = await p.event.findMany({ where: { active: true, startNotifiedAt: null, startsAt: { lte: now }, endsAt: { gte: now } } });
+  for (const e of started) {
+    await broadcastEventNotif(p, e, false);
+    await p.event.update({ where: { id: e.id }, data: { startNotifiedAt: now } }).catch(() => {});
+  }
 }

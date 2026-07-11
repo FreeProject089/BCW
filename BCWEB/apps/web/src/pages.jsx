@@ -4715,7 +4715,7 @@ function AdminEvents() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/events'), []);
   const toLocal = (d) => { const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
-  const blank = () => ({ name: '', kind: 'custom', countryCode: '', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 2 * 864e5)), titleEn: '', titleFr: '', messageEn: '', messageFr: '', notifyDaysBefore: 3, eventCode: '', fxDensity: 5, fxFlagDrops: 2, badgeIcon: 'sparkles' });
+  const blank = () => ({ name: '', kind: 'custom', countryCode: '', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 2 * 864e5)), titleEn: '', titleFr: '', messageEn: '', messageFr: '', notifyDaysBefore: 3, eventCode: '', fxDensity: 5, fxFlagDrops: 2, badgeIcon: 'sparkles', promoPercent: 0 });
   const [f, setF] = useState(blank);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const list = data?.events || [];
@@ -4727,7 +4727,7 @@ function AdminEvents() {
       name: f.name.trim(), kind: f.kind, startsAt: new Date(f.startsAt).toISOString(), endsAt: new Date(f.endsAt).toISOString(),
       titleEn: f.titleEn || '', titleFr: f.titleFr || '', messageEn: f.messageEn || '', messageFr: f.messageFr || '',
       notifyDaysBefore: Number(f.notifyDaysBefore) || 0, eventCode: f.eventCode.trim() || '',
-      fxDensity: Number(f.fxDensity) || 5, fxFlagDrops: Number(f.fxFlagDrops) || 0, badgeIcon: f.badgeIcon,
+      fxDensity: Number(f.fxDensity) || 5, fxFlagDrops: Number(f.fxFlagDrops) || 0, badgeIcon: f.badgeIcon, promoPercent: Number(f.promoPercent) || 0,
       ...(f.kind === 'national_holiday' ? { countryCode: f.countryCode.trim().toUpperCase() } : {}),
     };
     try { await api.post('/admin/events', body); toast.success(t('ev.created', 'Event created.')); setF(blank()); reload(); }
@@ -4771,7 +4771,8 @@ function AdminEvents() {
           <Field label={t('ev.f.titlefr', 'Title (FR)')}><Input value={f.titleFr} onChange={(e) => set('titleFr', e.target.value)} placeholder="Bonne année !" /></Field>
           <Field label={t('ev.f.msgen', 'Message (EN)')}><Input value={f.messageEn} onChange={(e) => set('messageEn', e.target.value)} /></Field>
           <Field label={t('ev.f.msgfr', 'Message (FR)')}><Input value={f.messageFr} onChange={(e) => set('messageFr', e.target.value)} /></Field>
-          <Field label={t('ev.f.code', 'Event-only promo code (optional)')} hint={t('ev.f.code.h', 'A code valid only during the event, shared with users via notification (wired in a later phase).')}><Input value={f.eventCode} onChange={(e) => set('eventCode', e.target.value.toUpperCase())} placeholder="NY2027" /></Field>
+          <Field label={t('ev.f.promo', 'Event discount % (0 = none)')} hint={t('ev.f.promo.h', 'Creates a site-wide discount + badge for the event window, and (with a code below) an event-only code carrying this %.')}><Input type="number" min="0" max="100" value={f.promoPercent} onChange={(e) => set('promoPercent', e.target.value)} /></Field>
+          <Field label={t('ev.f.code', 'Event-only promo code (optional)')} hint={t('ev.f.code.h', 'A code valid ONLY during the event window, broadcast to users in the event notification.')}><Input value={f.eventCode} onChange={(e) => set('eventCode', e.target.value.toUpperCase())} placeholder="NY2027" /></Field>
         </div>
         <div className="flex justify-end mt-3"><Button variant="primary" onClick={create}><Plus size={15} /> {t('ev.create', 'Create event')}</Button></div>
       </Card>
@@ -4781,7 +4782,7 @@ function AdminEvents() {
             <div className="flex items-center gap-3 flex-wrap">
               <Sparkles size={18} className={st.tone === 'green' ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold">{e.name}</span><Badge tone={st.tone}>{st.label}</Badge><Badge tone="primary">{e.kind.replace('_', ' ')}</Badge>{e.countryCode && <Badge>{e.countryCode}</Badge>}{e.eventCode && <Badge tone="green"><Ticket size={9} /> {e.eventCode}</Badge>}</div>
+                <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold">{e.name}</span><Badge tone={st.tone}>{st.label}</Badge><Badge tone="primary">{e.kind.replace('_', ' ')}</Badge>{e.countryCode && <Badge>{e.countryCode}</Badge>}{e.promoPercent > 0 && <Badge tone="primary">−{e.promoPercent}%</Badge>}{e.eventCode && <Badge tone="green"><Ticket size={9} /> {e.eventCode}</Badge>}</div>
                 <div className="text-xs text-[var(--muted)] mt-0.5">{e.effect} · fx {e.fxDensity}/10 · {e.fxFlagDrops} {t('ev.flags', 'flag drops')} · {new Date(e.startsAt).toLocaleString()} → {new Date(e.endsAt).toLocaleString()}{e.notifyDaysBefore ? ` · ${t('ev.notifd', 'notify {n}d before').replace('{n}', e.notifyDaysBefore)}` : ''}{(e.titleFr || e.titleEn) ? ` · "${e.titleFr || e.titleEn}"` : ''}</div>
               </div>
               <Button size="sm" onClick={() => toggle(e)}>{e.active ? t('ev.disable', 'Disable') : t('ev.enable', 'Enable')}</Button>

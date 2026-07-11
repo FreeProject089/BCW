@@ -853,6 +853,7 @@ model PromoCode {
   maxRedemptions Int?     // null = unlimited
   redeemedCount  Int      @default(0)
   perUserLimit   Int      @default(1)
+  notBefore      DateTime? // if set, the code is NOT valid before this (e.g. an event-only code)
   expiresAt      DateTime?
   active         Boolean  @default(true)
   stackable      Boolean  @default(false) // may be combined with OTHER stackable codes in one cart
@@ -924,6 +925,7 @@ model Event {
   notifyDaysBefore Int     @default(0)           // X days before → notify users currently on the site
   preNotifiedAt   DateTime?                      // set once the pre-event notification fired (idempotent)
   startNotifiedAt DateTime?                      // set once the at-activation notification fired
+  promoPercent    Int      @default(0)           // event discount % (0 = no promo); drives the linked campaign + code
   campaignId      String?  @unique               // linked PromoCampaign (the event's discount + badge)
   eventCode       String   @default("")          // event-only promo code (valid only during the window)
   createdAt       DateTime @default(now())
