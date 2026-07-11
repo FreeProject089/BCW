@@ -55,19 +55,50 @@ DB_URL_PARAMS=?pgbouncer=true
 ## 3. API replicas (free)
 
 **When to add it:** when **one API container saturates** (high CPU / latency rising under
-load). Enable **PgBouncer (§2) first**.
+load). Why it's safe: the API is **stateless**, and the cache + rate-limiter are **shared
+via Redis**, so N replicas behave as one. Enable **PgBouncer (§2) first** (each replica opens
+DB connections — the pooler keeps the total bounded).
 
-**How:**
-```bash
-docker compose up -d --scale api=3
-```
-Then list the 3 upstreams in Caddy (Redis cache + limiter already make this safe: the budget
-is shared across replicas).
+**How — three concrete changes:**
+
+1. **Free the host port.** The `api` service publishes `3000:3000` on the host, which lets
+   only ONE container bind it — a 2nd replica would fail with "port already allocated".
+   Comment it out in `docker-compose.yml` (Caddy reaches the API on the internal network, it
+   doesn't need the host port):
+   ```yaml
+   api:
+     # ports: ["3000:3000"]   # ← comment out to allow multiple replicas
+   ```
+
+2. **Scale up:**
+   ```bash
+   docker compose --profile pgbouncer up -d --scale api=3   # 3 API containers + the pooler
+   ```
+
+3. **Load-balance in Caddy.** All replicas share the `api` DNS name; make Caddy re-resolve it
+   and spread traffic across every replica IP. In `infra/caddy/Caddyfile`, replace the two
+   `reverse_proxy api:3000` lines (the `/api/*` and the telemetry `forward_auth`/proxy) with a
+   dynamic upstream, then `docker compose restart caddy`:
+   ```
+   reverse_proxy {
+     dynamic a {
+       name api
+       port 3000
+       refresh 5s
+     }
+     lb_policy round_robin
+   }
+   ```
 
 **After (verify):**
-- Requests spread across the containers (check all 3 logs).
-- A `docker compose up -d --build` replaces replicas **one at a time** → invisible rollout
-  (thanks to the graceful SIGTERM shutdown already in place).
+- Requests spread across the containers — `docker compose logs api | grep "incoming request"`
+  shows all replicas serving.
+- `docker compose up -d --build --scale api=3` replaces them **one at a time** (graceful
+  SIGTERM drain already built in) → **zero-downtime** rollout.
+- The Redis-backed 600/min rate limit stays a single shared budget across all replicas.
+
+> Beyond one big box: when even a scaled-up VPS isn't enough, a managed platform
+> (Fly.io/Railway) or Nomad runs these same images across nodes — see DEPLOY_EN.md.
 
 ---
 

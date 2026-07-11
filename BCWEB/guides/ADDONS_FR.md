@@ -56,19 +56,52 @@ DB_URL_PARAMS=?pgbouncer=true
 ## 3. Réplicas d'API (gratuit)
 
 **Quand l'ajouter :** quand **un seul conteneur API sature** (CPU élevé / latence qui monte
-sous charge). Active **PgBouncer (§2) d'abord**.
+sous charge). Pourquoi c'est sûr : l'API est **stateless**, et le cache + le rate-limiter sont
+**partagés via Redis**, donc N réplicas se comportent comme un seul. Active **PgBouncer (§2)
+d'abord** (chaque réplica ouvre des connexions DB — le pooler borne le total).
 
-**Comment :**
-```bash
-docker compose up -d --scale api=3
-```
-Puis liste les 3 upstreams côté Caddy (le cache + rate-limiter Redis rendent déjà ça sûr :
-budget partagé entre réplicas).
+**Comment — trois changements concrets :**
+
+1. **Libérer le port de l'hôte.** Le service `api` publie `3000:3000` sur l'hôte, ce qui
+   n'autorise **qu'un seul** conteneur à le prendre — un 2ᵉ réplica échouerait avec « port
+   already allocated ». Commente-le dans `docker-compose.yml` (Caddy joint l'API sur le réseau
+   interne, il n'a pas besoin du port hôte) :
+   ```yaml
+   api:
+     # ports: ["3000:3000"]   # ← à commenter pour autoriser plusieurs réplicas
+   ```
+
+2. **Monter en réplicas :**
+   ```bash
+   docker compose --profile pgbouncer up -d --scale api=3   # 3 conteneurs API + le pooler
+   ```
+
+3. **Répartir la charge dans Caddy.** Tous les réplicas partagent le nom DNS `api` ; fais
+   re-résoudre ce nom à Caddy et répartis le trafic sur chaque IP de réplica. Dans
+   `infra/caddy/Caddyfile`, remplace les deux `reverse_proxy api:3000` (le `/api/*` et le
+   `forward_auth`/proxy télémétrie) par un upstream dynamique, puis
+   `docker compose restart caddy` :
+   ```
+   reverse_proxy {
+     dynamic a {
+       name api
+       port 3000
+       refresh 5s
+     }
+     lb_policy round_robin
+   }
+   ```
 
 **Après (à vérifier) :**
-- Les requêtes se répartissent (logs des 3 conteneurs).
-- Un `docker compose up -d --build` remplace les réplicas **un par un** → rollout invisible
-  (grâce à l'arrêt gracieux SIGTERM déjà en place).
+- Les requêtes se répartissent — `docker compose logs api | grep "incoming request"` montre
+  tous les réplicas qui servent.
+- `docker compose up -d --build --scale api=3` les remplace **un par un** (drain gracieux
+  SIGTERM déjà en place) → rollout **zéro-downtime**.
+- Le rate-limit 600/min (Redis) reste un **budget unique partagé** entre tous les réplicas.
+
+> Au-delà d'une grosse machine : quand même un VPS agrandi ne suffit plus, une plateforme
+> managée (Fly.io/Railway) ou Nomad fait tourner ces mêmes images sur plusieurs nœuds — voir
+> DEPLOY_FR.md.
 
 ---
 

@@ -19,10 +19,15 @@ export function avatarOf(user) {
 
 export default function Avatar({ user, variant, seed, colors, image, size = 40, className = '' }) {
   const a = user ? avatarOf(user) : { variant: variant || 'beam', seed: seed || 'bcw', colors: colors || DEFAULT, image: image || null };
-  const img = image ?? a.image; // custom uploaded photo wins over the generated avatar
+  const img = image ?? a.image; // custom uploaded photo wins over everything
+  // Uncustomised (no photo AND no chosen variant) → the BetterCommunity brand icon as the
+  // default profile picture, instead of a random geometric one. Users who upload a photo or
+  // pick a geometric variant keep theirs.
+  const uncustomised = user ? (!user.avatar?.image && !user.avatar?.variant) : (!image && !variant);
   return (
     <span className={`inline-block rounded-full overflow-hidden align-middle bg-[var(--surface-2)] ${className}`} style={{ width: size, height: size }}>
       {img ? <img src={img} alt="" width={size} height={size} className="w-full h-full object-cover" />
+        : uncustomised ? <img src="/logo.png" alt="" width={size} height={size} className="w-full h-full object-cover" />
         : <BoringAvatar size={size} name={seed || a.seed} variant={variant || a.variant} colors={colors || a.colors} />}
     </span>
   );
