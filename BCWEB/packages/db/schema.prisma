@@ -892,6 +892,7 @@ model PromoCampaign {
   badgeMessageEn String   @default("")        // custom announcement (EN); blank → sensible default
   badgeMessageFr String   @default("")        // custom announcement (FR)
   badgeColor     String   @default("")        // optional accent hex (validated); blank → brand color
+  badgeLink      String   @default("")        // optional click target: internal "/blog/x" or "https://…" (validated)
   promoCodeId    String?                      // optional PromoCode created alongside the campaign
   eventId        String?  @unique             // set when the campaign belongs to an Event (Phase 2)
   createdAt      DateTime @default(now())

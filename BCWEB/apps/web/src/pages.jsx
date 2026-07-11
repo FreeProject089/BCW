@@ -4633,7 +4633,7 @@ function AdminCampaigns() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/campaigns'), []);
   const toLocal = (d) => { const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
-  const blank = () => ({ name: '', kind: 'custom', percentOff: 20, appliesTo: 'all', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 3 * 864e5)), badgeMessageEn: '', badgeMessageFr: '', badgeColor: '', badgeEnabled: true });
+  const blank = () => ({ name: '', kind: 'custom', percentOff: 20, appliesTo: 'all', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 3 * 864e5)), badgeMessageEn: '', badgeMessageFr: '', badgeColor: '', badgeLink: '', badgeEnabled: true });
   const [f, setF] = useState(blank);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const list = data?.campaigns || [];
@@ -4646,10 +4646,10 @@ function AdminCampaigns() {
       name: f.name.trim(), kind: f.kind, percentOff: Number(f.percentOff), appliesTo: f.appliesTo,
       startsAt: new Date(f.startsAt).toISOString(), endsAt: new Date(f.endsAt).toISOString(),
       badgeEnabled: !!f.badgeEnabled, badgeMessageEn: f.badgeMessageEn || '', badgeMessageFr: f.badgeMessageFr || '',
-      badgeColor: f.badgeColor.trim() || '',
+      badgeColor: f.badgeColor.trim() || '', badgeLink: f.badgeLink.trim() || '',
     };
     try { await api.post('/admin/campaigns', body); toast.success(t('cmp.created', 'Campaign created.')); setF(blank()); reload(); }
-    catch (x) { toast.error(x.data?.error === 'end_before_start' ? t('cmp.err.dates', 'End must be after start.') : x.data?.error === 'bad_color' ? t('cmp.err.color', 'Color must be a hex like #f97316.') : t('common.failed', 'Failed.')); }
+    catch (x) { toast.error(x.data?.error === 'end_before_start' ? t('cmp.err.dates', 'End must be after start.') : x.data?.error === 'bad_color' ? t('cmp.err.color', 'Color must be a hex like #f97316.') : x.data?.error === 'bad_link' ? t('cmp.err.link', 'Link must be an internal /path or an https:// URL.') : t('common.failed', 'Failed.')); }
   };
   const toggle = async (c) => { try { await api.patch(`/admin/campaigns/${c.id}`, { active: !c.active }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const del = async (c) => { try { await api.del(`/admin/campaigns/${c.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
@@ -4679,6 +4679,7 @@ function AdminCampaigns() {
           <Field label={t('cmp.f.msgen', 'Badge message (EN)')}><Input value={f.badgeMessageEn} onChange={(e) => set('badgeMessageEn', e.target.value)} placeholder="Black Friday — 30% off!" /></Field>
           <Field label={t('cmp.f.msgfr', 'Badge message (FR)')}><Input value={f.badgeMessageFr} onChange={(e) => set('badgeMessageFr', e.target.value)} placeholder="Black Friday — 30% !" /></Field>
           <Field label={t('cmp.f.color', 'Badge color (hex, blank = brand)')}><Input value={f.badgeColor} onChange={(e) => set('badgeColor', e.target.value)} placeholder="#f97316" /></Field>
+          <Field label={t('cmp.f.link', 'Badge link (optional)')} hint={t('cmp.f.link.h', 'Where clicking the badge goes: an internal path like /blog/black-friday, or a full https:// URL.')}><Input value={f.badgeLink} onChange={(e) => set('badgeLink', e.target.value)} placeholder="/blog/… or https://…" /></Field>
         </div>
         <label className="flex items-center gap-2 text-sm text-[var(--muted)] mt-3 cursor-pointer w-fit">
           <input type="checkbox" checked={f.badgeEnabled} onChange={(e) => set('badgeEnabled', e.target.checked)} /> {t('cmp.f.badge', 'Show the announcement badge across the site')}

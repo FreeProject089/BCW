@@ -5,6 +5,10 @@ import { db, requireRole } from '../lib.mjs';
 // attribute on the client, so anything else is rejected to avoid CSS injection.
 const isSafeHex = (s) => typeof s === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s);
 
+// Badge click target: empty, an INTERNAL path ("/blog/x" — not "//" which is external
+// protocol-relative), or an http(s) URL. Rejects javascript:/data:/etc. (CWE-79).
+const isSafeLink = (s) => typeof s === 'string' && (s === '' || /^\/(?!\/)/.test(s) || /^https?:\/\/./i.test(s));
+
 // Resolve the single campaign that is live RIGHT NOW (active + within its window).
 // If several overlap, the most recently started one wins. Returns null when none.
 export async function getActiveCampaign(p) {
@@ -22,6 +26,7 @@ function publicCampaign(c) {
     id: c.id, kind: c.kind, percentOff: c.percentOff, appliesTo: c.appliesTo, endsAt: c.endsAt,
     badgeEnabled: c.badgeEnabled, badgeMessageEn: c.badgeMessageEn, badgeMessageFr: c.badgeMessageFr,
     badgeColor: isSafeHex(c.badgeColor) ? c.badgeColor : '',
+    badgeLink: isSafeLink(c.badgeLink) ? c.badgeLink : '',
   };
 }
 
@@ -37,6 +42,7 @@ const bodySchema = z.object({
   badgeMessageEn: z.string().max(200).optional(),
   badgeMessageFr: z.string().max(200).optional(),
   badgeColor: z.string().max(7).optional(),
+  badgeLink: z.string().max(300).optional(),
 });
 
 export default async function campaignRoutes(app) {
@@ -59,11 +65,13 @@ export default async function campaignRoutes(app) {
     const starts = new Date(d.startsAt), ends = new Date(d.endsAt);
     if (ends <= starts) return reply.code(400).send({ error: 'end_before_start' });
     if (d.badgeColor && !isSafeHex(d.badgeColor)) return reply.code(400).send({ error: 'bad_color' });
+    if (d.badgeLink && !isSafeLink(d.badgeLink)) return reply.code(400).send({ error: 'bad_link' });
     const p = await db();
     const c = await p.promoCampaign.create({ data: {
       name: d.name, kind: d.kind ?? 'custom', percentOff: d.percentOff, appliesTo: d.appliesTo ?? 'all',
       startsAt: starts, endsAt: ends, active: d.active ?? true, badgeEnabled: d.badgeEnabled ?? true,
       badgeMessageEn: d.badgeMessageEn ?? '', badgeMessageFr: d.badgeMessageFr ?? '', badgeColor: d.badgeColor ?? '',
+      badgeLink: d.badgeLink ?? '',
     } });
     return reply.code(201).send({ campaign: c });
   });
@@ -73,8 +81,9 @@ export default async function campaignRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const d = b.data;
     if (d.badgeColor && !isSafeHex(d.badgeColor)) return reply.code(400).send({ error: 'bad_color' });
+    if (d.badgeLink && !isSafeLink(d.badgeLink)) return reply.code(400).send({ error: 'bad_link' });
     const data = {};
-    for (const k of ['name', 'kind', 'percentOff', 'appliesTo', 'active', 'badgeEnabled', 'badgeMessageEn', 'badgeMessageFr', 'badgeColor']) {
+    for (const k of ['name', 'kind', 'percentOff', 'appliesTo', 'active', 'badgeEnabled', 'badgeMessageEn', 'badgeMessageFr', 'badgeColor', 'badgeLink']) {
       if (d[k] !== undefined) data[k] = d[k];
     }
     if (d.startsAt) data.startsAt = new Date(d.startsAt);

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { X, Tag } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { X, Tag, ArrowUpRight } from 'lucide-react';
 import { api } from './api.js';
 import { useI18n } from './i18n.jsx';
 
@@ -47,18 +48,31 @@ export default function PromoBadge() {
   const left = fmtLeft(c.endsAt, t);
   const dismiss = () => { try { localStorage.setItem(KEY(c.id), '1'); } catch {} setGone(true); };
 
-  return (
-    <div
-      role="status"
-      className="relative z-50 flex items-center justify-center gap-2 px-9 py-1.5 text-[13px] font-semibold text-white text-center"
-      style={accent
-        ? { background: accent }
-        : { background: 'linear-gradient(90deg, var(--primary), var(--primary-2))' }}
-    >
+  const link = c.badgeLink || '';
+  const external = /^https?:\/\//i.test(link);
+  const inner = (
+    <>
       <Tag size={14} className="shrink-0 opacity-90" />
       <span className="truncate">{msg}</span>
       <span className="shrink-0 rounded-full bg-white/25 px-2 py-0.5 text-[12px] font-bold tabular-nums">−{c.percentOff}%</span>
       {left && <span className="shrink-0 hidden sm:inline opacity-90 tabular-nums">· {left}</span>}
+      {link && <ArrowUpRight size={14} className="shrink-0 opacity-90" />}
+    </>
+  );
+  const contentCls = `flex items-center justify-center gap-2 min-w-0 px-9 py-1.5${link ? ' hover:underline underline-offset-2' : ''}`;
+  return (
+    <div
+      role="status"
+      className="relative z-50 text-[13px] font-semibold text-white text-center"
+      style={accent
+        ? { background: accent }
+        : { background: 'linear-gradient(90deg, var(--primary), var(--primary-2))' }}
+    >
+      {link
+        ? (external
+          ? <a href={link} target="_blank" rel="noopener noreferrer" className={contentCls}>{inner}</a>
+          : <Link to={link} className={contentCls}>{inner}</Link>)
+        : <div className={contentCls}>{inner}</div>}
       <button
         onClick={dismiss}
         aria-label={t('promo.badge.dismiss', 'Dismiss')}
