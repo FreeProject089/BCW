@@ -12,7 +12,14 @@ const INTERNAL = process.env.S3_ENDPOINT || 'http://minio:9000';
 const PUBLIC = process.env.S3_PUBLIC_ENDPOINT || 'http://localhost:9000';
 const creds = { accessKeyId: process.env.S3_ACCESS_KEY, secretAccessKey: process.env.S3_SECRET_KEY };
 
-const common = { region: REGION, credentials: creds, forcePathStyle: true };
+// `requestChecksumCalculation: WHEN_REQUIRED` — the AWS SDK v3 (>=3.729) started
+// injecting a default CRC32 flexible-checksum, which stamps `x-amz-checksum-crc32` +
+// `x-amz-sdk-checksum-algorithm` into PRE-SIGNED URLs. S3-compatible stores (MinIO,
+// Cloudflare R2) reject those on the browser's direct PUT → the upload fails CORS
+// (status null) and the object never stores (later GETs then 404). Opting out of the
+// default checksum makes presigned PUT/GET work again against MinIO and R2.
+const common = { region: REGION, credentials: creds, forcePathStyle: true,
+  requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED' };
 const internal = new S3Client({ ...common, endpoint: INTERNAL });
 const signer = new S3Client({ ...common, endpoint: PUBLIC });
 

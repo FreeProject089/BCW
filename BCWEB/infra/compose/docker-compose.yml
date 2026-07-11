@@ -67,6 +67,10 @@ services:
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set in .env}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set in .env}
+      # Allow the browser to PUT/GET pre-signed objects directly from the web origin.
+      # (Default is already "*", set explicitly so direct-to-storage uploads never 404
+      #  on a CORS preflight regardless of the MinIO version.)
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN:-*}
     volumes:
       - minio-data:/data
 
