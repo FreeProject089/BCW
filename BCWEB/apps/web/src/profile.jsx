@@ -29,7 +29,6 @@ export default function Profile() {
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [pwBusy, setPwBusy] = useState(false);
   const [msg, setMsg] = useState('');
-  const [showInfo, setShowInfo] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -140,8 +139,16 @@ export default function Profile() {
 
         {/* details + password — grouped into labelled sections */}
         <div className="min-w-0 space-y-7">
+          {/* Account facts lead the page (name / email / role / member since) — the
+              most-referenced info, so it sits at the top instead of buried in a
+              collapsible at the bottom. */}
           <div>
-          <SectionLabel icon={User}>{t('prof.sec.public', 'Public profile')}</SectionLabel>
+          <SectionLabel icon={User}>{t('prof.sec.account2', 'Account')}</SectionLabel>
+          <AccountInfoCard user={user} />
+          </div>
+
+          <div>
+          <SectionLabel icon={Sparkles}>{t('prof.sec.public', 'Public profile')}</SectionLabel>
           <Card className="p-5 space-y-3">
             <Field label={t('prof.dispname', 'Display name')}><Input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} /></Field>
             <Field label={t('prof.bio', 'Bio')}><Textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder={t('prof.bio.ph', 'A little about you…')} /></Field>
@@ -179,7 +186,7 @@ export default function Profile() {
           </div>
 
           <div className="space-y-4">
-          <SectionLabel icon={SettingsIcon}>{t('prof.sec.account', 'Account & developer')}</SectionLabel>
+          <SectionLabel icon={Terminal}>{t('prof.sec.developer', 'Developer & preferences')}</SectionLabel>
           <ApiTokenCard />
 
           {/* Device preferences (intro animation, theme, language, translucency,
@@ -195,25 +202,47 @@ export default function Profile() {
               <ArrowRight size={16} className="text-[var(--faint)] group-hover:text-[var(--primary-2)] group-hover:translate-x-0.5 transition shrink-0" />
             </Card>
           </Link>
-
-          <Card className="p-5">
-            <button onClick={() => setShowInfo((s) => !s)} className="w-full flex items-center justify-between text-sm font-semibold">
-              <span className="flex items-center gap-2">{showInfo ? <EyeOff size={14} className="text-[var(--primary-2)]" /> : <Eye size={14} className="text-[var(--primary-2)]" />} {t('prof.personalinfo', 'Personal info')}</span>
-              <span className="text-xs text-[var(--faint)] font-normal">{showInfo ? t('prof.hide', 'Hide') : t('prof.show', 'Show')}</span>
-            </button>
-            {showInfo && (
-              <div className="mt-3 text-sm text-[var(--muted)] space-y-2">
-                <div className="flex items-center gap-2"><User size={14} /> {user.displayName}</div>
-                <div className="flex items-center gap-2"><Mail size={14} /> {user.email}</div>
-                <div className="flex items-center gap-2"><Shield size={14} /> {t('prof.role', 'Role:')} {user.role}</div>
-                <div className="flex items-center gap-2"><CalendarDays size={14} /> {t('prof.membersince', 'Member since')} {new Date(user.createdAt).toLocaleDateString()}</div>
-              </div>
-            )}
-          </Card>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+// Read-only account facts, shown at the TOP of the profile (name / email / role /
+// member since). Email is masked by default with a one-tap reveal so it's safe to have
+// on screen while sharing.
+function AccountInfoCard({ user }) {
+  const { t } = useI18n();
+  const [showEmail, setShowEmail] = useState(false);
+  const maskEmail = (e) => {
+    if (!e) return '';
+    const [u, d] = e.split('@');
+    if (!d) return '•'.repeat(e.length);
+    const um = u.length <= 2 ? u[0] + '•' : u.slice(0, 2) + '•'.repeat(Math.max(1, u.length - 2));
+    return `${um}@${d}`;
+  };
+  const rows = [
+    { icon: User, label: t('prof.info.name', 'Display name'), value: user.displayName },
+    { icon: Mail, label: t('prof.info.email', 'Email'), value: showEmail ? user.email : maskEmail(user.email),
+      action: <button onClick={() => setShowEmail((v) => !v)} className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={showEmail ? t('prof.hide', 'Hide') : t('prof.show', 'Show')} aria-label={showEmail ? t('prof.hide', 'Hide') : t('prof.show', 'Show')}>{showEmail ? <EyeOff size={13} /> : <Eye size={13} />}</button> },
+    { icon: Shield, label: t('prof.info.role', 'Role'), value: <Badge tone={user.role === 'SUPERADMIN' ? 'red' : user.role === 'ADMIN' ? 'amber' : 'primary'}>{user.role}</Badge> },
+    { icon: CalendarDays, label: t('prof.info.since', 'Member since'), value: new Date(user.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) },
+  ];
+  return (
+    <Card className="p-5">
+      <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4">
+        {rows.map((r, i) => (
+          <div key={i} className="flex items-center gap-3 min-w-0">
+            <span className="grid place-items-center w-9 h-9 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><r.icon size={16} className="text-[var(--primary-2)]" /></span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{r.label}</div>
+              <div className="text-sm font-medium truncate flex items-center gap-2">{r.value}{r.action}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 
@@ -228,23 +257,47 @@ function ApiTokenCard() {
   const reset = async () => { setBusy(true); try { const r = await api.post('/me/api-token/reset', {}); setToken(r.token); setReveal(true); toast.success(t('prof.token.reset', 'New token generated.')); } catch { toast.error(t('prof.failed', 'Failed.')); } finally { setBusy(false); } };
   const revoke = async () => { setBusy(true); try { await api.del('/me/api-token'); setToken(null); setReveal(false); toast.success(t('prof.token.revoked', 'Token revoked.')); } catch { toast.error(t('prof.failed', 'Failed.')); } finally { setBusy(false); } };
   const copy = () => { navigator.clipboard?.writeText(token).then(() => toast.success(t('prof.token.copied', 'Copied.'))).catch(() => {}); };
+  const exampleCmd = `curl -H "Authorization: Bearer ${reveal ? token : '<token>'}" ${location.origin}/api/v1/me`;
+  const copyExample = () => { navigator.clipboard?.writeText(exampleCmd).then(() => toast.success(t('prof.token.copied', 'Copied.'))).catch(() => {}); };
   const masked = token ? token.slice(0, 8) + '•'.repeat(Math.max(6, token.length - 12)) + token.slice(-4) : '';
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Terminal size={15} className="text-[var(--primary-2)]" /> {t('prof.token.title', 'API token')}</div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('prof.token.desc', 'Use this personal token to drive the account API on your behalf. Keep it secret — anyone with it can act as you.')}</p>
-      {token === undefined ? <Spinner /> : token ? (<>
-        <div className="flex flex-wrap items-center gap-2">
-          <code className="flex-1 min-w-[180px] text-xs font-mono px-3 py-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] break-all">{reveal ? token : masked}</code>
-          <Button size="sm" variant="ghost" onClick={() => setReveal((v) => !v)}>{reveal ? <EyeOff size={14} /> : <Eye size={14} />}</Button>
-          <Button size="sm" onClick={copy}><Copy size={14} /> {t('prof.token.copy', 'Copy')}</Button>
+      {token === undefined ? <div className="py-2"><Spinner /></div> : token ? (<>
+        {/* Framed secret field: the token prefix stays visible; the full value is behind
+            a reveal toggle, with reveal + copy inline on the right — reads like a proper
+            credential field instead of a wrapping row of buttons. */}
+        <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--line)] bg-[var(--surface)]/40">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><KeyRound size={11} className="text-[var(--primary-2)]" /> {t('prof.token.personal', 'Personal token')}</span>
+            <span className="text-[10px] font-mono text-[var(--faint)]">{token.slice(0, 4)}…{token.slice(-4)}</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-2.5">
+            <code className="flex-1 min-w-0 text-xs font-mono break-all">{reveal ? token : masked}</code>
+            <div className="flex items-center gap-0.5 shrink-0">
+              <button onClick={() => setReveal((v) => !v)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface)] transition" title={reveal ? t('prof.token.hide', 'Hide') : t('prof.token.reveal', 'Reveal')} aria-label={reveal ? t('prof.token.hide', 'Hide') : t('prof.token.reveal', 'Reveal')}>{reveal ? <EyeOff size={14} /> : <Eye size={14} />}</button>
+              <button onClick={copy} className="p-1.5 rounded-md text-[var(--faint)] hover:text-[var(--primary-2)] hover:bg-[var(--surface)] transition" title={t('prof.token.copy', 'Copy')} aria-label={t('prof.token.copy', 'Copy')}><Copy size={14} /></button>
+            </div>
+          </div>
+        </div>
+        {/* Manage actions + secrecy reminder */}
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
           <Button size="sm" variant="ghost" disabled={busy} onClick={reset}><RefreshCw size={14} /> {t('prof.token.resetbtn', 'Reset')}</Button>
           <Button size="sm" variant="ghost" className="!text-red-400" disabled={busy} onClick={revoke}><Trash2 size={14} /> {t('prof.token.revoke', 'Revoke')}</Button>
+          <span className="text-[11px] text-[var(--faint)] flex items-center gap-1 ml-auto"><Lock size={11} /> {t('prof.token.secret', 'Anyone with this token can act as you.')}</span>
         </div>
-        <div className="mt-3 text-xs text-[var(--muted)]">
-          <div className="font-semibold mb-1">{t('prof.token.example', 'Example')}</div>
-          <code className="block text-[11px] font-mono px-3 py-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] break-all">curl -H "Authorization: Bearer {reveal ? token : '<token>'}" {location.origin}/api/v1/me</code>
-          <div className="mt-1.5 text-[var(--faint)]">{t('prof.token.rl', 'Token endpoints are rate-limited. GET /v1/me · GET /v1/me/repos · PATCH /v1/me.')}</div>
+        {/* Example request */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('prof.token.example', 'Example request')}</span>
+            <button onClick={copyExample} className="text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-1 transition"><Copy size={11} /> {t('prof.token.copy', 'Copy')}</button>
+          </div>
+          <code className="block text-[11px] font-mono px-3 py-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] break-all">{exampleCmd}</code>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {['GET /v1/me', 'GET /v1/me/repos', 'PATCH /v1/me'].map((e) => <span key={e} className="text-[10px] font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{e}</span>)}
+          </div>
+          <div className="mt-1.5 text-[11px] text-[var(--faint)]">{t('prof.token.rl2', 'Token endpoints are rate-limited.')}</div>
         </div>
       </>) : (
         <Button size="sm" variant="primary" disabled={busy} onClick={reset}><KeyRound size={14} /> {t('prof.token.generate', 'Generate token')}</Button>
@@ -356,9 +409,12 @@ function TwoFactorCard() {
       ) : status.enabled ? (
         <div className="space-y-2">
           <div className="text-xs text-[var(--faint)]">{t('prof.2fa.recoveryleft', '{n} recovery codes left.').replace('{n}', status.recoveryCodesLeft)}</div>
-          <div className="grid sm:grid-cols-2 gap-2">
+          {/* items-start so the password field keeps its natural height — otherwise the
+              grid stretches it to match the right column when the "From your
+              Authenticator" list is expanded (that was the layout blow-out). */}
+          <div className="grid sm:grid-cols-2 gap-2 items-start">
             <Input type="password" value={disablePw} onChange={(e) => { setDisablePw(e.target.value); setDisableErr(null); }} placeholder={t('prof.2fa.pwph', 'Your password')} className={disableErr?.field === 'pw' ? '!border-red-500/50' : ''} />
-            <div>
+            <div className="min-w-0">
               <Input value={disableCode} onChange={(e) => { setDisableCode(e.target.value.replace(/[^0-9A-Za-z-]/g, '').slice(0, 9)); setDisableErr(null); }} placeholder={t('prof.2fa.codeph', 'Current code or recovery code')} className={disableErr?.field === 'code' ? '!border-red-500/50' : ''} />
               <div className="mt-1"><TotpQuickFill onFill={(c) => { setDisableCode(c); setDisableErr(null); }} /></div>
             </div>

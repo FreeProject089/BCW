@@ -126,7 +126,30 @@ export default async function miscRoutes(app) {
         }
       } catch { telemetryBytes = null; }
     }
+    // ── Storage tiers & where each one physically lives ──────────────────────────
+    // Answers "what if a backend is on another server (tier service / a second VPS)?".
+    // Object storage (S3/MinIO/R2), the app DB and BMM telemetry can each sit on a
+    // different host. We label every tier local-vs-remote from its configured endpoint,
+    // and sum a GRAND TOTAL across all measurable tiers — so the headline reflects ALL
+    // stored bytes, not just the object bucket, and so "Total capacity" (which meters
+    // THIS host's disk) is never mistaken for bytes that live elsewhere.
+    const hostOf = (u) => { try { return new URL(u).hostname || null; } catch { return null; } };
+    const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'db', 'minio', 'postgres', 'redis', 'telemetry']);
+    const locOf = (h) => { if (!h) return 'unknown'; const x = String(h).toLowerCase(); return (LOCAL_HOSTS.has(x) || x.endsWith('.localhost') || x.endsWith('.local')) ? 'local' : 'remote'; };
+    const s3Host = hostOf(process.env.S3_ENDPOINT || 'http://minio:9000');
+    const dbHost = hostOf(process.env.DATABASE_URL || '') || process.env.DB_HOST || 'db';
+    const teleHost = hostOf(process.env.TELEMETRY_INTERNAL_URL || process.env.TELEMETRY_DATABASE_URL || '') || null;
+    const backupsBytes = filesBackupBytes + dbBackupBytes;
+    const tiers = [
+      { key: 'object', label: 'Object storage (S3/MinIO)', bytes: wholeBucket.bytes, count: wholeBucket.count, host: s3Host, location: locOf(s3Host), available: true },
+      { key: 'database', label: 'Database (Postgres)', bytes: dbSizeBytes, host: dbHost, location: locOf(dbHost), available: dbSizeBytes != null },
+      { key: 'backups', label: 'Server backups (app disk)', bytes: backupsBytes, host: null, location: 'local', available: true },
+      { key: 'telemetry', label: 'BMM telemetry (separate service)', bytes: telemetryBytes, host: teleHost, location: teleHost ? locOf(teleHost) : 'external', available: telemetryBytes != null, source: telemetrySource },
+    ];
+    const grandTotalBytes = tiers.reduce((a, x) => a + (Number.isFinite(x.bytes) ? x.bytes : 0), 0);
+    const remoteTiers = tiers.some((x) => x.location === 'remote');
     return {
+      tiers, grandTotalBytes, remoteTiers,
       areas: [
         { key: 'repos', label: 'Hosted repos', prefix: 'hosting/', ...repos },
         { key: 'catalog', label: 'Catalog payloads (apps/plugins/themes)', prefix: 'uploads/', ...uploads },

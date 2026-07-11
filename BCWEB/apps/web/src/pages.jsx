@@ -5928,23 +5928,49 @@ function AdminStorage() {
         <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> {t('as.refresh', 'Refresh')}</Button>
       </div>
 
-      <div className="grid sm:grid-cols-[2fr_1fr] gap-3 mb-4">
-        <Card className="p-5">
-          <div className="text-3xl font-bold">{fmtBytes(total)}</div>
-          <div className="text-xs text-[var(--muted)] mb-3">{t('as.acrossobjects', 'across {n} objects in object storage').replace('{n}', d.totals?.count || 0)}</div>
-          <div className="h-3 rounded-full overflow-hidden flex bg-[var(--surface-2)]">
-            {areas.map((a, i) => <div key={a.key} className={colors[i % colors.length]} style={{ width: `${total ? (a.bytes / total * 100) : 0}%` }} title={`${a.label}: ${fmtBytes(a.bytes)}`} />)}
+      {/* Headline = grand total across ALL storage tiers (object storage + database +
+          backups + telemetry), not just the object bucket — with each tier's real size
+          and WHERE it physically lives (local vs. another server). */}
+      {(() => {
+        const tiers = d.tiers || [];
+        const grand = d.grandTotalBytes || 0;
+        const objTier = tiers.find((x) => x.key === 'object');
+        const TIER_COLOR = { object: 'bg-orange-500', database: 'bg-sky-400', backups: 'bg-violet-400', telemetry: 'bg-emerald-400' };
+        const locBadge = (x) => x.location === 'remote' ? <Badge tone="amber">{t('as.remote', 'remote')}</Badge>
+          : x.location === 'local' ? <Badge tone="green">{t('as.local', 'local')}</Badge>
+          : x.available === false ? <Badge tone="red">{t('as.offline', 'offline')}</Badge>
+          : <Badge>{t('as.external', 'external')}</Badge>;
+        return (
+          <div className="grid sm:grid-cols-[1.7fr_1fr] gap-3 mb-4">
+            <Card className="p-5">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <div className="text-3xl font-bold">{fmtBytes(grand)}</div>
+                <div className="text-xs text-[var(--muted)]">{t('as.alltiers', 'total across all storage tiers')}</div>
+              </div>
+              <div className="h-3 rounded-full overflow-hidden flex bg-[var(--surface-2)] mt-3">
+                {tiers.filter((x) => x.bytes > 0).map((x) => <div key={x.key} className={TIER_COLOR[x.key] || 'bg-[var(--faint)]'} style={{ width: `${grand ? (x.bytes / grand * 100) : 0}%` }} title={`${x.label}: ${fmtBytes(x.bytes)}`} />)}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 text-xs">
+                {tiers.map((x) => <span key={x.key} className="flex items-center gap-1.5"><span className={`w-2.5 h-2.5 rounded-sm ${TIER_COLOR[x.key] || 'bg-[var(--faint)]'}`} />{x.label} · <b>{x.bytes != null ? fmtBytes(x.bytes) : '—'}</b>{x.key === 'object' && x.count != null ? ` (${x.count})` : ''}</span>)}
+              </div>
+              <div className="text-[11px] text-[var(--faint)] mt-2">{t('as.objsub', 'Object storage alone: {b} across {n} objects.').replace('{b}', fmtBytes(objTier?.bytes || total)).replace('{n}', objTier?.count ?? (d.totals?.count || 0))}</div>
+            </Card>
+            <Card className="p-5">
+              <div className="flex items-center gap-2 text-xs text-[var(--faint)] mb-2"><Globe size={13} /> {t('as.locations', 'Storage locations')}</div>
+              <div className="space-y-2">
+                {tiers.map((x) => (
+                  <div key={x.key} className="flex items-center gap-2 text-xs">
+                    <span className={`w-2 h-2 rounded-sm shrink-0 ${TIER_COLOR[x.key] || 'bg-[var(--faint)]'}`} />
+                    <span className="flex-1 min-w-0 truncate" title={x.host || ''}>{x.label}{x.host ? <span className="text-[var(--faint)]"> · {x.host}</span> : ''}</span>
+                    {locBadge(x)}
+                  </div>
+                ))}
+              </div>
+              <div className="text-[11px] text-[var(--faint)] mt-2.5">{t('as.locnote', '“Total capacity” below meters this host’s disk. A tier on another server (object storage, telemetry, a managed DB) is metered by its own usage & limit instead.')}</div>
+            </Card>
           </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 text-xs">
-            {areas.map((a, i) => <span key={a.key} className="flex items-center gap-1.5"><span className={`w-2.5 h-2.5 rounded-sm ${colors[i % colors.length]}`} />{a.label} · <b>{fmtBytes(a.bytes)}</b> ({a.count})</span>)}
-          </div>
-        </Card>
-        <Card className="p-5">
-          <div className="flex items-center gap-2 text-xs text-[var(--faint)] mb-1"><HardDrive size={13} /> {t('as.dball', 'Database (all tables)')}</div>
-          <div className="text-2xl font-bold">{d.dbSizeBytes != null ? fmtBytes(d.dbSizeBytes) : '—'}</div>
-          <div className="text-[11px] text-[var(--faint)] mt-1">{t('as.dbdesc', 'Users, content, logs, metrics & analytics — everything besides object storage.')}</div>
-        </Card>
-      </div>
+        );
+      })()}
 
       {/* Hosting capacity vs the Total capacity configured in Hosting settings */}
       {d.capacity && (() => {
@@ -5962,6 +5988,7 @@ function AdminStorage() {
             </div>
             <div className={`text-xs mt-2 ${near ? 'text-red-400' : 'text-[var(--muted)]'}`}>{t('as.usableallocated', '{p}% of usable capacity allocated · {f} GB free').replace('{p}', Math.round(pct)).replace('{f}', cap.freeGB.toFixed(1))}{near ? t('as.pricesrise', ' — prices rise near the limit.') : ''}</div>
             <div className="text-[11px] text-[var(--faint)] mt-1.5">{t('as.hostingquotas', '{h} GB hosting quotas + {s} GB approved submissions').replace('{h}', cap.hostingAllocatedGB?.toFixed(1)).replace('{s}', cap.submissionsPublishedGB?.toFixed(2))}{cap.diskFreeGB != null && <> · {t('as.realdiskfree', 'real disk free:')} <b className="text-[var(--text)]">{cap.diskFreeGB.toFixed(0)} GB</b> / {t('as.gbtotal', '{n} GB total').replace('{n}', cap.diskTotalGB.toFixed(0))}</>}</div>
+            {d.remoteTiers && <div className="text-[11px] text-amber-400/90 mt-1.5">{t('as.caplocnote', 'Object storage and/or telemetry run on another server — those bytes don’t consume this disk; each is metered by its own usage & limit (see Storage locations above).')}</div>}
           </Card>
         );
       })()}
