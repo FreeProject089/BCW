@@ -131,7 +131,7 @@ function Dashboard({ data, reload }) {
       {/* tab bar */}
       <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar">
         {tabs.map(([tid, label, I]) => (
-          <button key={tid} onClick={() => setTab(tid)} className={`flex items-center gap-1.5 px-3.5 py-2.5 text-sm border-b-2 -mb-px whitespace-nowrap ${tab === tid ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={15} /> {label}</button>
+          <button key={tid} onClick={() => setTab(tid)} className={`press-sm flex items-center gap-1.5 px-3.5 py-2.5 text-sm border-b-2 -mb-px whitespace-nowrap transition-colors ${tab === tid ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={15} /> {label}</button>
         ))}
       </div>
 
