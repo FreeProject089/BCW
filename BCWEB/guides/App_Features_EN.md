@@ -20,9 +20,18 @@
   as a dropdown), and a copyable `catalog.json` link (BMM-consumable feed).
 - **Submit** an item or propose an update → goes to the moderation queue; presets and
   plugin packages are validated (integrity + checksums).
+- **Private-by-default visibility** (like Server-Repos): an item appears in the public
+  catalog + `catalog.json` feed only once an admin validates it. Before then it stays
+  **private** but reachable via its own **share link** (`?k=…`) — the owner can share/test
+  it, and the same link works once it's public.
+- **Suspend** (admin) is harsher than reject: a suspended item is frozen and the owner
+  **can't** resubmit it (reject → the owner fixes & resubmits; suspend → contact support).
 
 ## Server-Repo hosting
 - **Host a repo** (paid or free-tier), owner **self-publish**, auto URL.
+- **Trust tiers** — Community / Partner / Official badges (official + partner float to the
+  top of the public list); filterable on the public /repos page and searchable/filterable
+  in the admin list. Shown in My Repos and the per-repo dashboard.
 - **Per-repo dashboard** — file manager, bulk-download as zip, traffic/usage graph,
   git-style backup/rollback, favorites (star + owner-visible count), access control
   (owner / email / password), and a per-repo element **BC id** (`BCR-…`).
@@ -48,21 +57,35 @@
   25% hosting discount.
 
 ## Admin back-office
-- **Moderation queue** — search / filter / tag / comment on pending submissions.
+- **Moderation queue** — search / filter (incl. by status: pending / rejected /
+  suspended / published) / tag / comment; approve, reject (owner can fix & resubmit), or
+  **suspend** (owner can't resubmit).
 - **Users** — search by id / name / email / creator id / Discord / **Unique BC id**;
   user modal shows the BC id + each repo/item's element id, roles, links, payments.
+- **Account moderation** — **suspend or ban** an account (temporary with a countdown, or
+  permanent), with a reason that's shown at sign-in, emailed, and notified; the account is
+  signed out within ~15s and blocked from logging back in until it lifts (permanent →
+  contact support). Staff/self are protected.
 - **Roles & access** (SUPERADMIN) — reassign roles; global whitelist/ban policy;
   grant the server-control permission.
-- **Repos & hosting** — server repos (expiry, payment status, cancellation), free
-  hosting, promo codes (discount / free hosting / free boost), storage (all consumers).
-- **Content** — catalogs, projects config, other projects, announcements (site-wide
-  banner + typed notifications, body size limit, per-type icons).
+- **Repos & hosting** — server repos (search + tier/status filters; expiry, payment
+  status, cancellation), free hosting, promo codes (discount / free hosting / free boost),
+  storage — a **grand total across all tiers** (object storage, database, backups,
+  telemetry) each labelled **local or remote** so a backend on another server is clear.
+- **Content** — catalogs, projects config, other projects, **reviews** (admin-curated
+  landing testimonials: EN + FR text, rating, per-review + whole-section toggle),
+  **events** (New Year / national holiday / custom: on-demand fireworks preview,
+  configurable density + flag-drop rate, national-day badge shows the country flag),
+  announcements (site-wide banner + typed notifications, body size limit, per-type icons).
 - **Server** — live perf dashboard (CPU/RAM/disk/uptime totals + hover values +
   Discord alerts); Advanced server management (DB viewer with audit log, file manager,
   Docker, restart/power) behind a server-control grant + step-up 2FA.
 - **Security log** — login attempts, connected IPs, admin actions; DB-viewer reads are
   logged and audit tables are tamper-protected.
-- **Bot & analytics**, **Settings** (pricing knobs, hosting caps, free-tier limits).
+- **Bot & analytics** — privacy-friendly first-party analytics with a **sessions feed**
+  (per-session Boring-avatar + geo) whose timeline interleaves pageviews with **in-page
+  interactions** (which button was clicked / field edited / modal opened — labels only,
+  never values; consent-gated). **Settings** (pricing knobs, hosting caps, free-tier limits).
 
 ## Look & feel
 - **Three.js hero orb** — builds itself from shards on intro, spirals as you scroll

@@ -24,9 +24,16 @@
   téléchargement en dropdown), et un lien `catalog.json` copiable (flux consommable par BMM).
 - **Soumettre** un item ou proposer une mise à jour → file de modération ; les presets et
   paquets de plugins sont validés (intégrité + checksums).
+- **Privé par défaut** (comme les Server-Repos) : un item n'apparaît dans le catalogue
+  public + le flux `catalog.json` qu'une fois validé par un admin. Avant ça il reste
+  **privé** mais accessible via son **lien de partage** (`?k=…`) ; ce lien marche aussi
+  une fois public. **Suspendre** (admin) est plus fort qu'un rejet : l'owner ne peut plus
+  resoumettre (rejet → il corrige et resoumet ; suspension → contacter le support).
 
 ## Hébergement Server-Repo
 - **Héberger un repo** (payant ou free-tier), **auto-publication** par l'owner, URL auto.
+- **Niveaux de confiance** — badges Communauté / Partenaire / Officiel (officiel + partenaire
+  remontent en tête de la liste publique) ; filtrables sur /repos et dans la liste admin.
 - **Dashboard par repo** — gestionnaire de fichiers, téléchargement groupé en zip,
   graphe de trafic/usage, backup/rollback façon git, favoris (étoile + compteur visible
   par l'owner), contrôle d'accès (owner / email / mot de passe), et un **BC id**
@@ -55,16 +62,26 @@
   d'hébergement de 25% lié aux dons.
 
 ## Back-office admin
-- **File de modération** — recherche / filtre / tag / commentaire sur les soumissions.
+- **File de modération** — recherche / filtre (dont par statut : en attente / rejeté /
+  suspendu / publié) / tag / commentaire ; approuver, rejeter (l'owner corrige et
+  resoumet) ou **suspendre** (l'owner ne peut plus resoumettre).
 - **Utilisateurs** — recherche par id / nom / email / id créateur / Discord /
   **Unique BC id** ; le modal utilisateur montre le BC id + l'id d'élément de chaque
   repo/item, les rôles, les liens, les paiements.
+- **Modération de compte** — **suspendre ou bannir** un compte (temporaire avec compte à
+  rebours, ou permanent), avec une raison affichée à la connexion, envoyée par e-mail et
+  en notification ; le compte est déconnecté sous ~15s et bloqué à la reconnexion jusqu'à
+  la levée (permanent → contacter le support). Staff/soi-même protégés.
 - **Rôles & accès** (SUPERADMIN) — réassigner les rôles ; politique whitelist/ban
   globale ; accorder la permission server-control.
 - **Repos & hosting** — server repos (expiration, statut de paiement, annulation),
   hébergement gratuit, codes promo (discount / hébergement gratuit / boost gratuit),
   stockage (tous les consommateurs).
-- **Contenu** — catalogues, config projets, other projects, annonces (bannière site +
+- **Contenu** — catalogues, config projets, other projects, **avis** (témoignages
+  d'accueil gérés par l'admin : texte EN + FR, note, bascule par avis + section entière),
+  **events** (Nouvel An / fête nationale / custom : aperçu des feux d'artifice à la
+  demande, densité + taux d'apparition du drapeau configurables, badge fête nationale avec
+  le drapeau du pays), annonces (bannière site +
   notifications typées, limite de taille de corps, icônes par type).
 - **Serveur** — dashboard perf en direct (totaux CPU/RAM/disque/uptime + valeurs au
   survol + alertes Discord) ; Advanced server management (DB viewer avec journal

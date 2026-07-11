@@ -64,10 +64,10 @@ from the Fastify route modules in `apps/api/src/routes/`.
 ## 3. Catalog & moderation (`catalog.mjs`, `uploads.mjs`)
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/catalog` | — | Browse published items (filter by project/kind/search). |
-| GET | `/catalog/:slug` | — | One item's detail. |
-| GET | `/catalog/:slug/download` · `/dl` | — | Pre-signed download of a published payload. |
-| GET | `/catalog.json` · `/catalog/:slug/catalog.json` | — | BMM-consumable catalog feed. |
+| GET | `/catalog` | — | Browse **published** items only (filter by project/kind/search). |
+| GET | `/catalog/:slug` | — / owner / `?k=` | One item's detail. A non-published item stays **private**: reachable only via its own share link (`?k=<shareKey>`) or by its owner/an admin — it returns `private:true` and is never in the public list/feed. Mirrors Server-Repos. |
+| GET | `/catalog/:slug/download` · `/dl` | — / owner / `?k=` | Pre-signed download of a payload — same private-link gate; downloads only count on a genuine public hit. |
+| GET | `/catalog.json` · `/catalog/:slug/catalog.json` | — / `?k=` | BMM-consumable catalog feed. Public feed is published-only; the per-item feed honours `?k=` so an owner can import an unlisted item into BMM. |
 | GET | `/catalog/hosting-quote` | user | Price preview for hosting an item. |
 | POST | `/catalog` | user | Submit a new item (→ moderation). |
 | POST | `/catalog/:id/update` | user | Propose an update. |
@@ -75,8 +75,9 @@ from the Fastify route modules in `apps/api/src/routes/`.
 | POST | `/catalog/:id/hosting/cancel` | user | Cancel an item's paid hosting. |
 | POST | `/catalog/downloads` | — | Record download events. |
 | GET | `/me/items` · `/me/items/:id/payload` | user | My items + payload access. |
-| GET | `/mod/submissions` | mod | Moderation queue. |
-| POST | `/mod/submissions/:id/approve` · `/reject` | mod | Approve/reject a submission. |
+| GET | `/mod/submissions` | mod | Moderation queue. `?status=PENDING\|REJECTED\|SUSPENDED\|PUBLISHED` (default PENDING) + `?q/kind/type/sort`. |
+| POST | `/mod/submissions/:id/approve` · `/reject` | mod | Approve → published, or reject (reason → owner; owner can then edit & resubmit). |
+| POST | `/mod/submissions/:id/suspend` | admin | **Suspend** an item (reason). Harsher than reject: the owner **can't** resubmit (`/catalog/:id/update` returns `item_suspended`). Reversible via approve/reject. |
 | PUT | `/mod/submissions/:id/tags` | mod | Tag a submission. |
 | POST/DELETE | `/mod/submissions/:id/comments[/:cid]` | mod | Moderation comments. |
 | GET | `/admin/catalog` · `/admin/catalog/:id/file` | admin | Admin catalog view + raw file. |
@@ -118,7 +119,8 @@ from the Fastify route modules in `apps/api/src/routes/`.
 | POST | `/me/hosting/groups/:id/repos` | user | Add a repo to a pool. |
 | GET | `/admin/repos` · `/admin/repos/identify?fp=` | admin | Admin list + **BC-id lookup**. |
 | POST | `/admin/repos/host` · `/:id/verify` · `/reject` · `/revalidate` · `/delete/cancel` · `/check-all` | admin | Admin provisioning/moderation. |
-| PATCH | `/admin/repos/:id` | admin | Admin edit. |
+| PATCH | `/admin/repos/:id` | admin | Admin edit — incl. `status` and `category` (**trust tier**: community / partner / official; official+partner float to the top of the public list and get a badge). |
+| POST | `/admin/repos/:id/feature` | admin | Boost (feature) a repo for N days (free). |
 
 ## 7. Repo owner dashboard (`repo-dashboard.mjs`)
 | Method | Path | Auth | Purpose |
@@ -207,14 +209,21 @@ from the Fastify route modules in `apps/api/src/routes/`.
 ## 15. Admin: users, settings, storage, contact, stats (`misc.mjs`, `analytics.mjs`)
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/admin/users` · `/admin/users/:id` | admin | User search (id/name/email/creator id/Discord/**BC id**) + detail. |
+| GET | `/admin/users` · `/admin/users/:id` | admin | User search (id/name/email/creator id/Discord/**BC id**) + detail; both include the account moderation state. |
 | PUT | `/admin/users/:id/role` | superadmin | Reassign role. |
+| POST | `/admin/users/:id/moderate` | admin | **Suspend / ban / reactivate** an account (`action`, optional `durationHours` = temporary else permanent, `reason`). Signs the user out within ~15s, blocks login with the reason + remaining time, emails + notifies them. Staff/self are protected. |
 | GET | `/admin/settings` · PUT `/admin/settings/:key` | admin | Pricing/hosting knobs. |
-| GET | `/admin/storage` · `/admin/billing/users` | admin | Storage consumers + paying/free users. |
+| GET | `/admin/storage` · `/admin/billing/users` | admin | Storage: per-area object usage **+ a grand total across all tiers** (object storage, DB, backups, telemetry) each labelled local/remote; + paying/free users. |
+| GET | `/reviews` | — | Landing testimonials feed: `{ enabled, reviews[] }` (each with EN `body` + `bodyFr`). |
+| GET/POST/PATCH/DELETE | `/admin/reviews[/:id]` | admin | Manage landing testimonials (author/role/EN+FR text/rating/enabled/order). |
+| PUT | `/admin/reviews/settings` | admin | Toggle the whole reviews section on/off (`{ enabled }`). |
 | GET/POST/DELETE | `/admin/contact[/:id]` (+ `/:id/read`) | admin | Contact-message inbox. |
 | POST | `/contact` | pow | Public contact form. |
 | GET | `/accounts/search` · `/stats` | user/— | Account search + public stats. |
-| GET/POST | `/admin/analytics` · `/analytics/pageview` | admin/— | Analytics dashboard + first-party pageview. |
+| GET | `/admin/analytics` · `/admin/analytics/sessions` | admin | Analytics dashboard; sessions interleave pageviews with **in-page interactions** (clicks/edits/submits/modals) into each visitor's timeline. |
+| POST | `/analytics/pageview` · `/analytics/vital` · `/analytics/interactions` | — | First-party, consent-gated ingest (pageview, Web Vital, batched interaction events — labels only, never field values). |
+| GET | `/events/active` | — | The live event (drives the fireworks effect + announcement badge; national-day badge shows the country flag). |
+| GET/POST/PATCH/DELETE | `/admin/events[/:id]` | admin | Manage events (New Year / national holiday / custom): window, `fxDensity`, `fxFlagDrops`, country, promo %, event code. |
 | GET | `/sitemap.xml` · `/robots.txt` | — | SEO files. |
 
 ## 16. Server performance & alerts (`server-perf.mjs`)
@@ -242,7 +251,8 @@ from the Fastify route modules in `apps/api/src/routes/`.
 
 ---
 
-*Generated from `apps/api/src/routes/` (last refreshed 2026-07 — includes the shopping cart,
-invoice history/PDF, subscription cancel, MRR reporting, live telemetry config, and the bot
-payments queue). For request/response shapes, read the corresponding route module — each is
+*Generated from `apps/api/src/routes/` (last refreshed 2026-07 — includes account
+suspend/ban moderation, catalog private-link visibility + suspended submissions, landing
+reviews, events/fireworks, repo trust tiers, first-party interaction analytics, and the
+multi-tier storage overview). For request/response shapes, read the corresponding route module — each is
 small and commented.*
