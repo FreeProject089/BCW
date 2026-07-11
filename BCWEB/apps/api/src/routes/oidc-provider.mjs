@@ -8,7 +8,6 @@ import { jwks, issuer, signRs256, verifyRs256 } from '../oidc.mjs';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const SCOPES = ['openid', 'profile', 'email'];
-const SCOPE_DESC = { openid: 'Confirm your identity', profile: 'Your display name', email: 'Your email address' };
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sep = (u) => (u.includes('?') ? '&' : '?');
 const backTo = (redir, params) => `${redir}${sep(redir)}${new URLSearchParams(params).toString()}`;
@@ -46,17 +45,6 @@ const shell = (title, inner) => `<!doctype html><html><head><meta charset="utf-8
   .row{display:flex;gap:10px;margin-top:18px} button{flex:1;padding:11px;border-radius:11px;font-size:14px;font-weight:600;cursor:pointer;border:1px solid transparent}
   .approve{background:linear-gradient(120deg,#f97316,#f59e0b);color:#fff} .deny{background:transparent;border-color:rgba(255,255,255,.16);color:#a39b8f}
 </style></head><body><div class="card">${inner}</div></body></html>`;
-const consentPage = (client, scopes, reqToken) => shell('Authorize', `
-  <h1><span class="brand">${esc(client.name)}</span> wants to access your account</h1>
-  <p>Signing in with your <b>BetterCommunity</b> account will share:</p>
-  <ul>${scopes.map((s) => `<li><span class="dot"></span>${esc(SCOPE_DESC[s] || s)}</li>`).join('')}</ul>
-  <form method="post" action="/oauth2/authorize/decision">
-    <input type="hidden" name="request_token" value="${esc(reqToken)}">
-    <div class="row">
-      <button class="deny" name="decision" value="deny">Deny</button>
-      <button class="approve" name="decision" value="approve">Allow</button>
-    </div>
-  </form>`);
 const errPage = (msg) => shell('Error', `<h1>Authorization error</h1><p>${esc(msg)}</p>`);
 
 export default async function oidcProviderRoutes(app) {
@@ -115,7 +103,20 @@ export default async function oidcProviderRoutes(app) {
       return reply.redirect(backTo(redir, { code, ...(state ? { state } : {}) }));
     }
     const reqToken = jwt.sign({ purpose: 'oauth-consent', uid: req.user.uid, clientId: client.id, redirectUri: redir, scope: scopeStr, state, nonce: String(q.nonce || ''), codeChallenge: challenge }, JWT_SECRET, { expiresIn: 600 });
-    return reply.type('text/html').send(consentPage(client, scopes, reqToken));
+    // Hand off to the branded SPA consent screen; the signed reqToken carries the
+    // validated request so the decision endpoint can trust it.
+    return reply.redirect(`${issuer()}/authorize?rt=${encodeURIComponent(reqToken)}`);
+  });
+
+  // Consent details for the SPA screen (verifies the signed request token).
+  app.get('/oauth2/consent-info', async (req, reply) => {
+    let c;
+    try { c = jwt.verify(String(req.query?.rt || ''), JWT_SECRET); } catch { return reply.code(400).send({ error: 'invalid' }); }
+    if (c.purpose !== 'oauth-consent') return reply.code(400).send({ error: 'invalid' });
+    const p = await db();
+    const client = await p.oAuthClient.findUnique({ where: { id: c.clientId } });
+    if (!client) return reply.code(404).send({ error: 'not_found' });
+    return { clientName: client.name, scopes: c.scope.split(' ') };
   });
 
   // Consent decision (POST from the consent page).
@@ -171,7 +172,14 @@ export default async function oidcProviderRoutes(app) {
 
     if (b.grant_type === 'refresh_token') {
       const rt = await p.oAuthRefreshToken.findUnique({ where: { token: sha256(String(b.refresh_token || '')) } });
-      if (!rt || rt.clientId !== client.id || rt.revokedAt || rt.expiresAt < new Date()) return reply.code(400).send({ error: 'invalid_grant' });
+      if (!rt || rt.clientId !== client.id) return reply.code(400).send({ error: 'invalid_grant' });
+      if (rt.revokedAt) {
+        // Reuse of an already-rotated token = likely theft → revoke the WHOLE family for
+        // this user+client (OAuth security BCP reuse-detection), forcing a re-login.
+        await p.oAuthRefreshToken.updateMany({ where: { userId: rt.userId, clientId: client.id, revokedAt: null }, data: { revokedAt: new Date() } });
+        return reply.code(400).send({ error: 'invalid_grant' });
+      }
+      if (rt.expiresAt < new Date()) return reply.code(400).send({ error: 'invalid_grant' });
       // Rotate: revoke the presented token before issuing a fresh set.
       await p.oAuthRefreshToken.update({ where: { token: rt.token }, data: { revokedAt: new Date() } });
       const user = await p.user.findUnique({ where: { id: rt.userId }, select: { id: true, displayName: true, email: true } });

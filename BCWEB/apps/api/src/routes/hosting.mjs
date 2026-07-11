@@ -353,15 +353,24 @@ export default async function hostingRoutes(app) {
     if (!repo) return reply.code(404).send({ error: 'not_found' });
     if (repo.ownerId !== req.user.uid && req.user.role === 'USER') return reply.code(403).send({ error: 'forbidden' });
     const s = await settings(p);
-    const amount = featurePrice(s, b.data.days);
+    let amount = featurePrice(s, b.data.days);
+    // Site-wide campaign discount (appliesTo all|boost) — one-time, floored at Stripe's min.
+    const camp = await getActiveCampaign(p);
+    let campLabel = '';
+    if (camp && (camp.appliesTo === 'all' || camp.appliesTo === 'boost')) {
+      amount = Math.max(50, Math.round(amount * (1 - camp.percentOff / 100)));
+      campLabel = ` · −${camp.percentOff}% ${camp.kind === 'black_friday' ? 'Black Friday' : 'sale'}`;
+    }
     const sk = await stripe();
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
     const siteUrl = process.env.SITE_URL || 'http://localhost';
     const md = { type: 'feature', userId: req.user.uid, repoId: repo.id, days: String(b.data.days) };
+    // A campaign discount forces a one-time charge so the sale never recurs.
+    const recurring = b.data.autoRenew && !campLabel;
     // Auto-renew → a recurring subscription that re-extends featuredUntil every
     // `days` (Stripe caps a billing interval at 365 days, which is our max anyway).
-    const session = await sk.checkout.sessions.create(b.data.autoRenew ? {
+    const session = await sk.checkout.sessions.create(recurring ? {
       mode: 'subscription', customer,
       line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: amount, recurring: { interval: 'day', interval_count: b.data.days }, product_data: { name: `Feature "${repo.name}" — auto-renews every ${b.data.days} days` } } }],
       subscription_data: { metadata: md },
@@ -370,7 +379,7 @@ export default async function hostingRoutes(app) {
       cancel_url: `${siteUrl}/dashboard?feature=cancel`,
     } : {
       mode: 'payment', customer,
-      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: amount, product_data: { name: `Feature "${repo.name}" for ${b.data.days} days` } } }],
+      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: amount, product_data: { name: `Feature "${repo.name}" for ${b.data.days} days${campLabel}` } } }],
       invoice_creation: { enabled: true },
       metadata: md,
       success_url: `${siteUrl}/dashboard?feature=ok`,

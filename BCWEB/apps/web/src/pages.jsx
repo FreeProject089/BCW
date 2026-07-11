@@ -965,6 +965,16 @@ export function Hosting() {
         <Button variant="primary" disabled={soldOut} onClick={() => setCustomOpen(true)}><Sliders size={16} /> {soldOut ? t('hosting.soldout.short', 'Sold out') : t('hosting.custom.cta', 'Build custom plan')}</Button>
       </Card>
 
+      {/* Enterprise / bespoke — no fixed price, contact us for a tailored quote. */}
+      <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-[var(--primary)]/10 to-transparent" style={{ borderColor: 'var(--ring)' }}>
+        <Building2 size={26} className="text-[var(--primary-2)] shrink-0" />
+        <div className="flex-1 text-center sm:text-left">
+          <div className="font-semibold text-lg flex items-center gap-2 justify-center sm:justify-start">{t('hosting.enterprise.title', 'Enterprise / bespoke')} <Badge tone="primary">{t('hosting.enterprise.badge', 'Custom quote')}</Badge></div>
+          <div className="text-sm text-[var(--muted)]">{t('hosting.enterprise.sub', "Bigger needs — high storage/bandwidth, dedicated resources, an SLA, custom terms. No fixed price: tell us what you need and we'll tailor a plan.")}</div>
+        </div>
+        <Button variant="primary" onClick={() => nav('/contact?topic=enterprise-hosting')}><Mail size={16} /> {t('hosting.enterprise.cta', 'Contact us')}</Button>
+      </Card>
+
       {/* Boost an existing repo — added to the same cart (one-time, priced per day). */}
       {user && (myRepos.data?.repos || []).some((r) => r.hosted || r.listed) && (
         <BoostAddCard repos={(myRepos.data?.repos || []).filter((r) => r.hosted || r.listed)} onAdd={addBoost} />
@@ -7150,6 +7160,51 @@ export function Settings() {
 }
 
 /* ─────────────────────────  Contact  ───────────────────────── */
+// OAuth/OIDC consent screen (the /authorize SPA route). The API's /oauth2/authorize
+// redirects here with a signed ?rt= token once the user is logged in; we show the
+// client + scopes and POST the decision (full-page, so the browser follows the 302
+// back to the requesting app).
+export function Authorize() {
+  const { t } = useI18n();
+  const { user, loading: authLoading } = useAuth();
+  const [params] = useSearchParams();
+  const rt = params.get('rt') || '';
+  const [info, setInfo] = useState(null);
+  useEffect(() => {
+    if (!rt) { setInfo({ error: 'no_request' }); return; }
+    api.get(`/oauth2/consent-info?rt=${encodeURIComponent(rt)}`).then(setInfo).catch(() => setInfo({ error: 'invalid' }));
+  }, [rt]);
+  const SCOPE_LABEL = { openid: t('oauth.scope.openid', 'Confirm your identity'), profile: t('oauth.scope.profile', 'Your display name'), email: t('oauth.scope.email', 'Your email address') };
+  if (authLoading || (user && !info)) return <div className="max-w-md mx-auto py-20 text-center text-[var(--muted)]"><Spinner /></div>;
+  if (!user) return (
+    <div className="max-w-md mx-auto py-20 text-center">
+      <p className="text-[var(--muted)] mb-4">{t('oauth.needlogin', 'Please sign in to continue.')}</p>
+      <Button variant="primary" onClick={() => { window.location.href = `/auth?next=${encodeURIComponent('/authorize?rt=' + rt)}`; }}>{t('nav.login', 'Sign in')}</Button>
+    </div>
+  );
+  if (info?.error) return <div className="max-w-md mx-auto py-20 text-center"><Shield size={30} className="mx-auto text-[var(--faint)] mb-3" /><p className="text-red-400">{t('oauth.err', 'This authorization request is invalid or expired — please start again from the app.')}</p></div>;
+  return (
+    <div className="max-w-md mx-auto py-12">
+      <Card className="p-7">
+        <div className="flex items-center gap-3 mb-5">
+          <span className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shrink-0 shadow-lg shadow-orange-500/25"><Shield size={20} /></span>
+          <div className="min-w-0"><div className="font-semibold text-lg leading-tight truncate">{info.clientName}</div><div className="text-sm text-[var(--muted)]">{t('oauth.wants', 'wants to access your BetterCommunity account')}</div></div>
+        </div>
+        <p className="text-sm text-[var(--muted)] mb-2">{t('oauth.willshare', 'This will share:')}</p>
+        <ul className="space-y-2 mb-6">
+          {(info.scopes || []).map((s) => <li key={s} className="flex items-center gap-2 text-sm"><CheckCircle2 size={15} className="text-[var(--primary-2)] shrink-0" /> {SCOPE_LABEL[s] || s}</li>)}
+        </ul>
+        <form method="post" action="/oauth2/authorize/decision" className="flex gap-3">
+          <input type="hidden" name="request_token" value={rt} />
+          <button type="submit" name="decision" value="deny" className="btn flex-1">{t('oauth.deny', 'Deny')}</button>
+          <button type="submit" name="decision" value="approve" className="btn btn-primary flex-1">{t('oauth.allow', 'Allow')}</button>
+        </form>
+        <p className="text-[11px] text-[var(--faint)] mt-3 text-center">{t('oauth.signedin', 'Signed in as {name}').replace('{name}', user.displayName || user.email || '')}</p>
+      </Card>
+    </div>
+  );
+}
+
 export function Contact() {
   const { lang } = useI18n();
   const { user } = useAuth();
@@ -7161,6 +7216,16 @@ export function Contact() {
   // Prefill from the account when logged in — the message is linked to the
   // account server-side regardless, this is just a convenience.
   useEffect(() => { if (user) setMsg((m) => ({ ...m, name: m.name || user.displayName || '', email: m.email || user.email || '' })); }, [user]);
+  // Prefill the body from a ?topic= (e.g. the Enterprise hosting "Contact us" button).
+  const [params] = useSearchParams();
+  useEffect(() => {
+    if (params.get('topic') === 'enterprise-hosting') {
+      const tmpl = fr
+        ? "Bonjour, je souhaite un plan d'hébergement sur mesure (entreprise).\nMes besoins :\n- Stockage :\n- Bande passante / upload :\n- Ressources dédiées / SLA :\n- Autre :"
+        : 'Hi, I\'d like a custom (enterprise) hosting plan.\nMy needs:\n- Storage:\n- Bandwidth / upload:\n- Dedicated resources / SLA:\n- Other:';
+      setMsg((m) => ({ ...m, body: m.body || tmpl }));
+    }
+  }, [params, fr]);
   const channels = [
     { icon: DiscordIcon, label: 'Discord', sub: fr ? 'Support & communauté, en direct' : 'Fastest support & community', href: 'https://discord.com/invite/CTaaEF9R75' },
     { icon: GithubIcon, label: 'GitHub', sub: fr ? 'Signaler un bug / une issue' : 'Report bugs & issues', href: 'https://github.com/FreeProject089' },
