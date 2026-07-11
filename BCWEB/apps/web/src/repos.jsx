@@ -4,7 +4,7 @@ import {
   Server, GitBranch, Star, Plus, Pencil, Trash2, UploadCloud, Eye, EyeOff, CheckCircle2,
   XCircle, Clock, ShieldCheck, ExternalLink, Tag, Users, HardDrive, Settings2, Receipt, Printer, Rocket,
   Files, FileText, FileJson, FolderUp, CreditCard, Search, X, Wifi, WifiOff, Zap, Lock, Download, Copy, RefreshCw, AlertTriangle, LayoutDashboard, MoreHorizontal, Ticket,
-  Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu,
+  Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api, uploadRepoFile } from './api.js';
@@ -162,6 +162,7 @@ export function ReposPage() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-semibold flex items-center gap-2 min-w-0"><GitBranch size={16} className="text-[var(--primary-2)] shrink-0" /> <span className="truncate">{r.name}</span></div>
                       <div className="flex items-center gap-1.5 shrink-0">
+                        {(() => { const cat = repoCategoryMeta(r.category, t); return cat && <Badge tone={cat.tone}><cat.Icon size={11} /> {cat.label}</Badge>; })()}
                         {r.featured && <Badge tone="amber"><Star size={11} /> {t('repos.featured', 'Featured')}</Badge>}
                         <Badge tone="green"><ShieldCheck size={11} /> {t('repos.verified', 'Verified')}</Badge>
                         <button onClick={() => toggleFavorite(r)} title={r.favorited ? t('repos.unfavorite', 'Unfavorite') : t('repos.favorite', 'Favorite')}
@@ -221,10 +222,71 @@ export const rawStatusLabel = (s, t) => ({
 // online/list/edit/delete — matches the server-side guard).
 export const repoLocked = (r) => r.status === 'SUSPENDED';
 
+// Trust tier → badge. Official (BMM team, green) / Partner (trusted, blue) get a badge;
+// community repos get none. Mirrors the Better_ModManager_ServerBrowse classification.
+export function repoCategoryMeta(cat, t) {
+  if (cat === 'official') return { key: 'official', label: t('repos.cat.official', 'Official'), tone: 'green', Icon: BadgeCheck };
+  if (cat === 'partner') return { key: 'partner', label: t('repos.cat.partner', 'Partner'), tone: 'blue', Icon: Handshake };
+  return null;
+}
+
+// A themed dropdown (portal-based so it's never clipped by a card): a trigger button +
+// a floating menu of colour-dotted options. Replaces the OS-native <select> popup that
+// ignored the app theme. Used for the admin repo status + category pickers.
+function DotDropdown({ value, options, onChange, className = '' }) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef(null);
+  const [pos, setPos] = useState(null);
+  const cur = options.find((o) => o.value === value) || options[0];
+  const openMenu = () => { const r = btnRef.current?.getBoundingClientRect(); if (r) setPos({ top: r.bottom + 6, right: window.innerWidth - r.right, minWidth: Math.max(r.width, 168) }); setOpen(true); };
+  return (
+    <>
+      <button ref={btnRef} type="button" onClick={() => (open ? setOpen(false) : openMenu())} aria-expanded={open}
+        className={`press-sm inline-flex items-center gap-2 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs font-medium hover:border-[var(--ring)] transition-colors ${className}`}>
+        {cur.Icon ? <cur.Icon size={13} style={{ color: cur.color }} /> : <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cur.color || 'var(--faint)' }} />}
+        <span className="whitespace-nowrap">{cur.label}</span>
+        <ChevronDown size={13} className={`text-[var(--muted)] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && pos && createPortal(
+        <>
+          <div className="fixed inset-0 z-[70]" onClick={() => setOpen(false)} />
+          <div className="fixed z-[71] rounded-xl border border-[var(--line-strong)] p-1 shadow-lg anim-pop" style={{ top: pos.top, right: pos.right, minWidth: pos.minWidth, background: 'var(--bg-solid)' }}>
+            {options.map((o) => (
+              <button key={o.value} type="button" onClick={() => { setOpen(false); if (o.value !== value) onChange(o.value); }}
+                className={`press-sm w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs text-left transition-colors ${o.value === value ? 'bg-[var(--surface-2)] font-medium' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'}`}>
+                {o.Icon ? <o.Icon size={14} style={{ color: o.color }} /> : <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: o.color }} />}
+                <span className="flex-1 whitespace-nowrap">{o.label}</span>
+                {o.value === value && <Check size={13} className="text-[var(--primary-2)]" />}
+              </button>
+            ))}
+          </div>
+        </>, document.body)}
+    </>
+  );
+}
+
+const STATUS_COLOR = { ONLINE: 'var(--success)', OFFLINE: 'var(--faint)', SUSPENDED: 'var(--error)', PROVISIONING: 'var(--warning)' };
+function RepoStatusSelect({ value, onChange }) {
+  const { t } = useI18n();
+  const options = ['ONLINE', 'OFFLINE', 'SUSPENDED', 'PROVISIONING'].map((s) => ({ value: s, label: rawStatusLabel(s, t), color: STATUS_COLOR[s] }));
+  return <DotDropdown value={value} options={options} onChange={onChange} />;
+}
+function RepoCategorySelect({ value, onChange }) {
+  const { t } = useI18n();
+  const options = [
+    { value: 'community', label: t('repos.cat.community', 'Community'), color: 'var(--faint)', Icon: Users },
+    { value: 'official', label: t('repos.cat.official', 'Official'), color: 'var(--success)', Icon: BadgeCheck },
+    { value: 'partner', label: t('repos.cat.partner', 'Partner'), color: 'var(--info)', Icon: Handshake },
+  ];
+  return <DotDropdown value={value || 'community'} options={options} onChange={onChange} />;
+}
+
 function StatusBadges({ r }) {
   const { t } = useI18n();
+  const cat = repoCategoryMeta(r.category, t);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
+      {cat && <Badge tone={cat.tone}><cat.Icon size={10} /> {cat.label}</Badge>}
       {r.hosted && <Badge tone="primary">{t('repos.hosted', 'Hosted')}</Badge>}
       {r.listed ? <Badge tone="green"><Eye size={10} /> {t('repos.listed', 'Listed')}</Badge> : <Badge><EyeOff size={10} /> {t('repos.unlisted', 'Unlisted')}</Badge>}
       {r.pendingReview ? <Badge tone="amber"><Clock size={10} /> {t('repos.pending', 'Pending review')}</Badge>
@@ -1478,6 +1540,15 @@ export function AdminRepos() {
   const verify = async (r) => { try { await api.post(`/admin/repos/${r.id}/verify`); toast.success(t('arp.verified', 'Verified "{n}".').replace('{n}', r.name)); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
   const reject = async (r) => { const reason = await dialog.prompt({ title: t('arp.reject', 'Reject / unlist'), label: t('arp.reason', 'Reason (sent to owner)'), okLabel: t('arp.rejectbtn', 'Reject'), danger: true }); if (!reason) return; try { await api.post(`/admin/repos/${r.id}/reject`, { reason }); toast.success(t('arp.rejected', 'Rejected.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
   const setStatus = async (r, status) => { try { await api.patch(`/admin/repos/${r.id}`, { status }); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
+  const setCategory = async (r, category) => { try { await api.patch(`/admin/repos/${r.id}`, { category }); toast.success(category === 'community' ? t('arp.cat.community', 'Set to community.') : category === 'official' ? t('arp.cat.official', 'Marked as OFFICIAL.') : t('arp.cat.partner', 'Marked as PARTNER.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
+  const boost = async (r, days) => { try { await api.post(`/admin/repos/${r.id}/feature`, { days }); toast.success(days === 0 ? t('arp.boost.cleared', 'Boost cleared.') : t('arp.boost.ok', 'Boosted for {d} days (free).').replace('{d}', days)); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
+  const boostPick = async (r) => {
+    const featured = r.featuredUntil && new Date(r.featuredUntil) > new Date();
+    const v = await dialog.prompt({ title: t('arp.boost.title', 'Boost repo (free)'), label: t('arp.boost.days', 'Feature for how many days? (0 to clear)'), defaultValue: featured ? '0' : '30', placeholder: '30', okLabel: t('arp.boost.apply', 'Apply') });
+    if (v === false) return;
+    const days = Math.max(0, Math.min(3650, parseInt(v, 10) || 0));
+    boost(r, days);
+  };
   // Manually re-run validation: recompute the content SHA and re-verify.
   const revalidate = async (r) => {
     try {
@@ -1523,12 +1594,17 @@ export function AdminRepos() {
                     </div>
                   )}
                 </div>
-                <Select className="!w-auto !py-1.5 text-xs" value={r.status} onChange={(e) => setStatus(r, e.target.value)}>
-                  {['ONLINE', 'OFFLINE', 'SUSPENDED', 'PROVISIONING'].map((s) => <option key={s} value={s}>{rawStatusLabel(s, t)}</option>)}
-                </Select>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <RepoCategorySelect value={r.category} onChange={(c) => setCategory(r, c)} />
+                  <RepoStatusSelect value={r.status} onChange={(s) => setStatus(r, s)} />
+                </div>
               </div>
               <div className="flex flex-wrap gap-2 mt-3">
                 {r.pendingReview && <Button size="sm" variant="primary" onClick={() => verify(r)}><ShieldCheck size={14} /> Verify</Button>}
+                <Button size="sm" onClick={() => boostPick(r)}>
+                  <Rocket size={14} className={r.featuredUntil && new Date(r.featuredUntil) > new Date() ? 'text-[var(--primary-2)]' : ''} />
+                  {r.featuredUntil && new Date(r.featuredUntil) > new Date() ? t('arp.boosted', 'Boosted') : t('arp.boost', 'Boost')}
+                </Button>
                 <Button size="sm" onClick={() => revalidate(r)}><ShieldCheck size={14} /> Revalidate SHA</Button>
                 {r.hosted && <Button size="sm" onClick={() => setReview(r)}><Files size={14} /> Review &amp; download</Button>}
                 <Button size="sm" onClick={() => reject(r)}><XCircle size={14} /> Reject / unlist</Button>

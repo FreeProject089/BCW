@@ -598,6 +598,10 @@ model ServerRepo {
   listed           Boolean    @default(false)  // owner wants it in the public list
   verified         Boolean    @default(false)  // content checked by a mod/admin
   pendingReview    Boolean    @default(false)  // a change is awaiting verification
+  // Admin-set classification for the public browser: "community" (default),
+  // "official" (maintained by the BMM team — green badge) or "partner" (trusted
+  // community members — blue badge). Official/partner float to the top of the list.
+  category         String     @default("community")
   featuredUntil    DateTime?  // paid promotion expiry (listing boost)
   // Hosted-content publishing (for repos we host): admin validates → repo.json served.
   hostPath         String?    @unique  // "<ownerSlug>/<repoSlug>" for the public URL

@@ -115,7 +115,7 @@ export default async function repoRoutes(app) {
       where: { listed: true, verified: true, pendingReview: false },
       orderBy: { createdAt: 'desc' },
       select: { id: true, ownerId: true, name: true, description: true, tags: true, links: true, publicUrl: true, repoUrl: true, status: true, hosted: true, hostPath: true, published: true,
-                featuredUntil: true, storageQuotaBytes: true, storageUsedBytes: true, sha: true, verified: true, owner: { select: { displayName: true } },
+                featuredUntil: true, storageQuotaBytes: true, storageUsedBytes: true, sha: true, verified: true, category: true, owner: { select: { displayName: true } },
                 _count: { select: { favorites: true } } },
     });
     // Batch-load owner identities once (not per repo) so each row can carry its
@@ -128,14 +128,20 @@ export default async function repoRoutes(app) {
     let filtered = all;
     if (req.query?.online === '1') filtered = filtered.filter((r) => r.status === 'ONLINE');
     if (req.query?.favorited === '1' && myFavorites) filtered = filtered.filter((r) => myFavorites.has(r.id));
-    const featured = filtered.filter(isFeat);
-    const rest = filtered.filter((r) => !isFeat(r));
+    // Trust tiers float above everything: OFFICIAL (BMM team) first, then PARTNER, then
+    // boosted community repos (rotated), then the rest. So the browser always leads with
+    // the safest, curated repos.
+    const official = filtered.filter((r) => r.category === 'official');
+    const partner = filtered.filter((r) => r.category === 'partner');
+    const community = filtered.filter((r) => r.category !== 'official' && r.category !== 'partner');
+    const featured = community.filter(isFeat);
+    const rest = community.filter((r) => !isFeat(r));
     // Fair boost rotation: boosted repos share the top slots. Shuffle them on every
     // request so no single booster permanently owns #1 — the more repos are boosted at
     // once, the smaller (and more rotating) each one's share of the top becomes.
     for (let i = featured.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [featured[i], featured[j]] = [featured[j], featured[i]]; }
     return {
-      repos: [...featured, ...rest].map((r) => {
+      repos: [...official, ...partner, ...featured, ...rest].map((r) => {
         const { _count, ownerId, ...rest2 } = r;
         const idn = identities.get(ownerId) || {};
         return { ...ser(rest2), fingerprint: repoFingerprint({ repoId: r.id, ownerId, ...idn }), featured: isFeat(r), favoriteCount: _count.favorites, favorited: myFavorites ? myFavorites.has(r.id) : false };
@@ -761,10 +767,11 @@ export default async function repoRoutes(app) {
     return { ok: true };
   });
 
-  // Set status / limits (admin).
+  // Set status / limits / classification (admin).
   app.patch('/admin/repos/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
       status: z.enum(['PROVISIONING', 'ONLINE', 'SUSPENDED', 'OFFLINE']).optional(),
+      category: z.enum(['community', 'official', 'partner']).optional(),
       storageGB: z.number().min(0).max(4000).optional(),
       uploadMbps: z.number().min(0).max(4000).optional(),
       uploadLimitKbps: z.number().int().min(0).optional(),
@@ -774,11 +781,29 @@ export default async function repoRoutes(app) {
     const p = await db();
     const data = {};
     if (b.data.status) data.status = b.data.status;
+    if (b.data.category) data.category = b.data.category;
     if (b.data.storageGB != null) data.storageQuotaBytes = BigInt(Math.round(b.data.storageGB * 1024 ** 3));
     if (b.data.uploadMbps != null) data.uploadLimitKbps = Math.round(b.data.uploadMbps * 1024);
     if (b.data.uploadLimitKbps != null) data.uploadLimitKbps = b.data.uploadLimitKbps;
     if (b.data.cpuShare != null) data.cpuShare = b.data.cpuShare;
     const repo = await p.serverRepo.update({ where: { id: req.params.id }, data });
+    if (b.data.category) await notify(p, repo.ownerId, 'repo_verified', b.data.category === 'community' ? `"${repo.name}" is now a community repo.` : `"${repo.name}" was designated ${b.data.category === 'official' ? 'an OFFICIAL' : 'a PARTNER'} repo by the team.`).catch(() => {});
     return { repo: ser(repo) };
+  });
+
+  // Admin easy-boost: grant (or extend) a free featured boost for N days — no payment.
+  // For putting official/partner or great community repos on top instantly.
+  app.post('/admin/repos/:id/feature', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({ days: z.number().int().min(0).max(3650) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const repo = await p.serverRepo.findUnique({ where: { id: req.params.id } });
+    if (!repo) return reply.code(404).send({ error: 'not_found' });
+    // days=0 clears the boost; otherwise extend from the later of now / current expiry.
+    const base = repo.featuredUntil && repo.featuredUntil > new Date() ? repo.featuredUntil : new Date();
+    const featuredUntil = b.data.days === 0 ? null : new Date(base.getTime() + b.data.days * 864e5);
+    const out = await p.serverRepo.update({ where: { id: repo.id }, data: { featuredUntil } });
+    if (featuredUntil) await notify(p, repo.ownerId, 'feature_active', `"${repo.name}" was boosted by the team — featured until ${featuredUntil.toDateString()} (free).`).catch(() => {});
+    return { repo: ser(out) };
   });
 }
