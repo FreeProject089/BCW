@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import querystring from 'node:querystring';
 import jwt from 'jsonwebtoken';
 import { db, requireRole, optionalAuth } from '../lib.mjs';
-import { jwks, issuer, signRs256 } from '../oidc.mjs';
+import { jwks, issuer, signRs256, verifyRs256 } from '../oidc.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -20,6 +20,20 @@ async function issueCode(p, { client, userId, redirectUri, scope, nonce, codeCha
   const code = crypto.randomBytes(32).toString('base64url');
   await p.oAuthCode.create({ data: { code, clientId: client.id, userId, redirectUri, scope, nonce: nonce || '', codeChallenge: codeChallenge || '', expiresAt: new Date(Date.now() + 5 * 60000) } });
   return code;
+}
+// Mint the token set for a user+client+scope (shared by the code and refresh grants).
+// The refresh token is opaque; only its sha256 is stored (rotated on each refresh).
+async function mintTokens(p, { client, user, scope, nonce }) {
+  const scopes = scope.split(' ');
+  const idClaims = { sub: user.id, aud: client.id };
+  if (nonce) idClaims.nonce = nonce;
+  if (scopes.includes('profile')) idClaims.name = user.displayName || '';
+  if (scopes.includes('email')) { idClaims.email = user.email || ''; idClaims.email_verified = true; }
+  const id_token = await signRs256(idClaims, 3600);
+  const access_token = await signRs256({ sub: user.id, aud: client.id, scope, token_use: 'access' }, 3600);
+  const refresh = crypto.randomBytes(32).toString('base64url');
+  await p.oAuthRefreshToken.create({ data: { token: sha256(refresh), clientId: client.id, userId: user.id, scope, expiresAt: new Date(Date.now() + 30 * 864e5) } });
+  return { access_token, token_type: 'Bearer', expires_in: 3600, id_token, refresh_token: refresh, scope };
 }
 // Minimal, self-contained HTML pages (no SPA dependency) — brand-tinted.
 const shell = (title, inner) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
@@ -54,6 +68,7 @@ export default async function oidcProviderRoutes(app) {
       authorization_endpoint: `${iss}/oauth2/authorize`,
       token_endpoint: `${iss}/oauth2/token`,
       userinfo_endpoint: `${iss}/oauth2/userinfo`,
+      revocation_endpoint: `${iss}/oauth2/revoke`,
       jwks_uri: `${iss}/.well-known/jwks.json`,
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
@@ -119,40 +134,82 @@ export default async function oidcProviderRoutes(app) {
     return reply.redirect(backTo(redir, { code, ...(state ? { state } : {}) }));
   });
 
-  // ── Token endpoint (authorization_code grant) ──
-  app.post('/oauth2/token', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
-    const b = req.body || {};
-    reply.header('Cache-Control', 'no-store');
-    if (b.grant_type !== 'authorization_code') return reply.code(400).send({ error: 'unsupported_grant_type' });
-    const p = await db();
+  // Shared token-endpoint client authentication (client_secret_post/basic, or public).
+  async function authClient(p, req, b) {
     const basic = parseBasicAuth(req.headers['authorization']);
     const clientId = String(b.client_id || basic?.id || '');
     const clientSecret = b.client_secret || basic?.secret || '';
     const client = clientId ? await p.oAuthClient.findUnique({ where: { id: clientId } }) : null;
-    if (!client || !client.active) return reply.code(401).send({ error: 'invalid_client' });
-    if (client.confidential && (!clientSecret || sha256(String(clientSecret)) !== client.secretHash)) return reply.code(401).send({ error: 'invalid_client' });
-    const code = await p.oAuthCode.findUnique({ where: { code: String(b.code || '') } });
-    if (!code || code.clientId !== client.id || code.usedAt || code.expiresAt < new Date() || code.redirectUri !== String(b.redirect_uri || '')) return reply.code(400).send({ error: 'invalid_grant' });
-    // PKCE verification when a challenge was bound to the code.
-    if (code.codeChallenge) {
-      const chal = crypto.createHash('sha256').update(String(b.code_verifier || '')).digest('base64url');
-      if (!b.code_verifier || chal !== code.codeChallenge) return reply.code(400).send({ error: 'invalid_grant' });
+    if (!client || !client.active) return { error: 'invalid_client' };
+    if (client.confidential && (!clientSecret || sha256(String(clientSecret)) !== client.secretHash)) return { error: 'invalid_client' };
+    return { client };
+  }
+
+  // ── Token endpoint (authorization_code + refresh_token grants) ──
+  app.post('/oauth2/token', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = req.body || {};
+    reply.header('Cache-Control', 'no-store');
+    const p = await db();
+    const auth = await authClient(p, req, b);
+    if (auth.error) return reply.code(401).send({ error: auth.error });
+    const client = auth.client;
+
+    if (b.grant_type === 'authorization_code') {
+      const code = await p.oAuthCode.findUnique({ where: { code: String(b.code || '') } });
+      if (!code || code.clientId !== client.id || code.usedAt || code.expiresAt < new Date() || code.redirectUri !== String(b.redirect_uri || '')) return reply.code(400).send({ error: 'invalid_grant' });
+      if (code.codeChallenge) { // PKCE
+        const chal = crypto.createHash('sha256').update(String(b.code_verifier || '')).digest('base64url');
+        if (!b.code_verifier || chal !== code.codeChallenge) return reply.code(400).send({ error: 'invalid_grant' });
+      }
+      // Single-use: atomically claim the code (loser of a race → invalid_grant).
+      const claimed = await p.oAuthCode.updateMany({ where: { code: code.code, usedAt: null }, data: { usedAt: new Date() } });
+      if (claimed.count === 0) return reply.code(400).send({ error: 'invalid_grant' });
+      const user = await p.user.findUnique({ where: { id: code.userId }, select: { id: true, displayName: true, email: true } });
+      if (!user) return reply.code(400).send({ error: 'invalid_grant' });
+      return mintTokens(p, { client, user, scope: code.scope, nonce: code.nonce });
     }
-    // Single-use: atomically claim the code (loser of a race gets invalid_grant).
-    const claimed = await p.oAuthCode.updateMany({ where: { code: code.code, usedAt: null }, data: { usedAt: new Date() } });
-    if (claimed.count === 0) return reply.code(400).send({ error: 'invalid_grant' });
-    const user = await p.user.findUnique({ where: { id: code.userId }, select: { id: true, displayName: true, email: true } });
-    if (!user) return reply.code(400).send({ error: 'invalid_grant' });
-    const scopes = code.scope.split(' ');
-    const idClaims = { sub: user.id, aud: client.id };
-    if (code.nonce) idClaims.nonce = code.nonce;
-    if (scopes.includes('profile')) idClaims.name = user.displayName || '';
-    if (scopes.includes('email')) { idClaims.email = user.email || ''; idClaims.email_verified = true; }
-    const id_token = await signRs256(idClaims, 3600);
-    const access_token = await signRs256({ sub: user.id, aud: client.id, scope: code.scope, token_use: 'access' }, 3600);
-    const refresh = crypto.randomBytes(32).toString('base64url');
-    await p.oAuthRefreshToken.create({ data: { token: sha256(refresh), clientId: client.id, userId: user.id, scope: code.scope, expiresAt: new Date(Date.now() + 30 * 864e5) } });
-    return { access_token, token_type: 'Bearer', expires_in: 3600, id_token, refresh_token: refresh, scope: code.scope };
+
+    if (b.grant_type === 'refresh_token') {
+      const rt = await p.oAuthRefreshToken.findUnique({ where: { token: sha256(String(b.refresh_token || '')) } });
+      if (!rt || rt.clientId !== client.id || rt.revokedAt || rt.expiresAt < new Date()) return reply.code(400).send({ error: 'invalid_grant' });
+      // Rotate: revoke the presented token before issuing a fresh set.
+      await p.oAuthRefreshToken.update({ where: { token: rt.token }, data: { revokedAt: new Date() } });
+      const user = await p.user.findUnique({ where: { id: rt.userId }, select: { id: true, displayName: true, email: true } });
+      if (!user) return reply.code(400).send({ error: 'invalid_grant' });
+      return mintTokens(p, { client, user, scope: rt.scope });
+    }
+
+    return reply.code(400).send({ error: 'unsupported_grant_type' });
+  });
+
+  // ── UserInfo (Bearer access token → claims for the granted scopes) ──
+  const userinfo = async (req, reply) => {
+    const m = /^Bearer\s+(.+)$/i.exec(req.headers['authorization'] || '');
+    if (!m) { reply.header('WWW-Authenticate', 'Bearer'); return reply.code(401).send({ error: 'invalid_token' }); }
+    let claims;
+    try { claims = await verifyRs256(m[1]); } catch { reply.header('WWW-Authenticate', 'Bearer error="invalid_token"'); return reply.code(401).send({ error: 'invalid_token' }); }
+    if (claims.token_use !== 'access') return reply.code(401).send({ error: 'invalid_token' });
+    const p = await db();
+    const user = await p.user.findUnique({ where: { id: claims.sub }, select: { id: true, displayName: true, email: true } });
+    if (!user) return reply.code(401).send({ error: 'invalid_token' });
+    const scopes = String(claims.scope || '').split(' ');
+    const out = { sub: user.id };
+    if (scopes.includes('profile')) out.name = user.displayName || '';
+    if (scopes.includes('email')) { out.email = user.email || ''; out.email_verified = true; }
+    return out;
+  };
+  app.get('/oauth2/userinfo', userinfo);
+  app.post('/oauth2/userinfo', userinfo);
+
+  // ── Revocation (RFC 7009) — revokes a refresh token; always 200 for a valid client. ──
+  app.post('/oauth2/revoke', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = req.body || {};
+    const p = await db();
+    const auth = await authClient(p, req, b);
+    if (auth.error) return reply.code(401).send({ error: auth.error });
+    const tok = String(b.token || '');
+    if (tok) await p.oAuthRefreshToken.updateMany({ where: { token: sha256(tok), clientId: auth.client.id }, data: { revokedAt: new Date() } }).catch(() => {});
+    return reply.code(200).send({});
   });
 
   // ── Admin: OAuth client registry ──
