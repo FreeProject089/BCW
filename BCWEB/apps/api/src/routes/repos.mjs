@@ -476,6 +476,8 @@ export default async function repoRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    const gate = await repoCreateGate(p, req.user);
+    if (!gate.ok) return reply.code(403).send({ error: gate.reason });
     let repo = await p.serverRepo.create({ data: { ...b.data, ownerId: req.user.uid, hosted: false, status: 'OFFLINE' } });
     // Auto health-check + auto content-SHA (like BMM's repo check) so status/sha are real from the start.
     if (repo.repoUrl) {
@@ -484,6 +486,21 @@ export default async function repoRoutes(app) {
     }
     return reply.code(201).send({ repo: ser(repo) });
   });
+
+  // Gate for creating a Server-Repo: a verified BMM creator id, a verified email, AND
+  // 2FA — so every repo traces to a real, secured, BMM-linked identity. Staff bypass.
+  // Returns { ok } or { ok:false, reason } (email_unverified | twofa_required |
+  // creator_link_required) so the client can point the user at the exact missing step.
+  async function repoCreateGate(p, user) {
+    if (['MOD', 'ADMIN', 'SUPERADMIN'].includes(user.role)) return { ok: true };
+    const u = await p.user.findUnique({ where: { id: user.uid }, select: { emailVerified: true, totpEnabled: true } });
+    if (!u) return { ok: false, reason: 'not_found' };
+    if (!u.emailVerified) return { ok: false, reason: 'email_unverified' };
+    if (!u.totpEnabled) return { ok: false, reason: 'twofa_required' };
+    const links = await p.creatorLink.count({ where: { userId: user.uid } });
+    if (!links) return { ok: false, reason: 'creator_link_required' };
+    return { ok: true };
+  }
 
   async function ownRepo(p, id, user) {
     const repo = await p.serverRepo.findUnique({ where: { id } });

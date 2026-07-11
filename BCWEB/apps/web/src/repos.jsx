@@ -1276,9 +1276,23 @@ function InvoiceModal({ id, onClose }) {
 }
 
 function RepoEditor({ repo, onClose, onSaved }) {
-  const toast = useToast(); const { t } = useI18n();
+  const toast = useToast(); const { t } = useI18n(); const { user } = useAuth();
   const [f, setF] = useState({ name: '', description: '', repoUrl: '', tags: '', discord: '', website: '', changelog: '' });
   const [busy, setBusy] = useState(false);
+  const [resending, setResending] = useState(false);
+  // Creating a public repo now requires a real, secured, BMM-linked identity — verified
+  // email + 2FA + a linked creator id (enforced server-side too). Show it upfront when
+  // creating so the user isn't surprised at submit. Staff bypass. (Editing is unaffected.)
+  const cl = useFetch(() => (repo ? Promise.resolve({ links: [] }) : api.get('/me/creator-links').catch(() => ({ links: [] }))), [repo]);
+  const isStaff = ['MOD', 'ADMIN', 'SUPERADMIN'].includes(user?.role);
+  const reqs = [
+    { key: 'email', ok: !!user?.emailVerified, label: t('repos.req.email', 'A verified email address'), action: 'resend' },
+    { key: '2fa', ok: !!user?.totpEnabled, label: t('repos.req.2fa', 'Two-factor authentication (2FA)'), to: '/profile?setup2fa=1' },
+    { key: 'creator', ok: (cl.data?.links || []).length > 0, label: t('repos.req.creator', 'A linked BMM creator id'), to: '/profile' },
+  ];
+  const missing = (!repo && !isStaff && !cl.loading) ? reqs.filter((r) => !r.ok) : [];
+  const blocked = missing.length > 0;
+  const resendVerify = async () => { setResending(true); try { await api.post('/auth/verify-email/resend', {}); toast.success(t('repos.req.emailsent', 'Verification email sent — check your inbox.')); } catch { toast.error(t('repos.req.emailfail', 'Could not send the email.')); } finally { setResending(false); } };
   useEffect(() => { if (repo) setF({ name: repo.name, description: repo.description || '', repoUrl: repo.repoUrl || '', tags: (repo.tags || []).join(', '), discord: repo.links?.discord || '', website: repo.links?.website || '', changelog: repo.links?.changelog || '' }); }, [repo]);
   const save = async () => {
     if (f.name.length < 2) return toast.error(t('repos.nameshort', 'Name too short.'));
@@ -1286,11 +1300,33 @@ function RepoEditor({ repo, onClose, onSaved }) {
     const links = {}; if (f.discord) links.discord = f.discord; if (f.website) links.website = f.website; if (f.changelog) links.changelog = f.changelog;
     const body = { name: f.name, description: f.description, repoUrl: f.repoUrl || undefined, tags: f.tags.split(',').map((s) => s.trim()).filter(Boolean), links };
     try { if (repo) await api.patch(`/repos/${repo.id}`, body); else await api.post('/repos', body); toast.success(repo ? t('repos.saved', 'Saved.') : t('repos.added', 'Repo added.')); onSaved(); }
-    catch (x) { toast.error(x.data?.error || t('repos.failed', 'Failed.')); } finally { setBusy(false); }
+    catch (x) {
+      const e = x.data?.error;
+      toast.error(e === 'email_unverified' ? t('repos.gate.email', 'Verify your email address before creating a repo.')
+        : e === 'twofa_required' ? t('repos.gate.2fa', 'Enable 2FA on your account before creating a repo.')
+        : e === 'creator_link_required' ? t('repos.gate.creator', 'Link a BMM creator id before creating a repo.')
+        : e || t('repos.failed', 'Failed.'));
+    } finally { setBusy(false); }
   };
   return (
     <Modal open onClose={onClose} title={repo ? t('repos.edit.title', 'Edit repo') : t('repos.add.title', 'Add a repo')} icon={GitBranch} width="max-w-lg"
-      footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (repo ? t('repos.save', 'Save') : t('repos.addshort', 'Add'))}</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" disabled={busy || blocked} onClick={save}>{busy ? <Spinner /> : (repo ? t('repos.save', 'Save') : t('repos.addshort', 'Add'))}</Button></>}>
+      {blocked && (
+        <div className="mb-4 rounded-xl border border-[var(--warning-border)] bg-[var(--warning-bg)] p-3">
+          <div className="text-sm font-medium text-[var(--warning)] flex items-center gap-2 mb-2"><ShieldCheck size={15} /> {t('repos.gate.title', 'A few steps before you can publish a repo')}</div>
+          <div className="space-y-1.5">
+            {reqs.map((r) => (
+              <div key={r.key} className="flex items-center gap-2 text-sm">
+                {r.ok ? <CheckCircle2 size={16} className="text-[var(--success)] shrink-0" /> : <span className="w-4 h-4 rounded-full border-2 border-[var(--warning)] shrink-0" />}
+                <span className={`flex-1 ${r.ok ? 'text-[var(--faint)] line-through' : ''}`}>{r.label}</span>
+                {!r.ok && (r.action === 'resend'
+                  ? <button onClick={resendVerify} disabled={resending} className="press-sm text-xs text-[var(--primary-2)] underline underline-offset-2 shrink-0">{resending ? t('repos.req.sending', 'Sending…') : t('repos.req.resend', 'Resend email')}</button>
+                  : <Link to={r.to} onClick={onClose} className="press-sm text-xs text-[var(--primary-2)] underline underline-offset-2 shrink-0">{t('repos.req.fix', 'Set up')}</Link>)}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="space-y-3">
         <Field label={t('repos.f.name', 'Name')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={t('repos.f.name.ph', 'My mods repo')} /></Field>
         <Field label={t('repos.f.desc', 'Description')}><Textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder={t('repos.f.desc.ph', "What's in it?")} /></Field>
