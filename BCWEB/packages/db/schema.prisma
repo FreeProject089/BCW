@@ -900,6 +900,34 @@ model PromoCampaign {
   @@index([active, startsAt, endsAt])
 }
 
+// A site EVENT (New Year, a national holiday…). One event is live at a time. While
+// live it plays a full-screen effect (fireworks; for a national holiday the burst
+// forms the country's flag) and shows a custom announcement. An event may own a promo
+// (a PromoCampaign via campaignId) and an event-only code (eventCode, valid only for
+// its window). Notifications fire `notifyDaysBefore` days ahead and again at start.
+model Event {
+  id              String   @id @default(cuid())
+  name            String                        // internal label
+  kind            String   @default("custom")   // "custom" | "national_holiday" | "new_year"
+  countryCode     String   @default("")         // ISO-3166 alpha-2 (national_holiday → which flag)
+  startsAt        DateTime
+  endsAt          DateTime
+  active          Boolean  @default(true)        // master switch (must ALSO be within the window)
+  effect          String   @default("fireworks") // the effect kind (same everywhere = fireworks)
+  titleEn         String   @default("")
+  titleFr         String   @default("")
+  messageEn       String   @default("")
+  messageFr       String   @default("")
+  notifyDaysBefore Int     @default(0)           // X days before → notify users currently on the site
+  preNotifiedAt   DateTime?                      // set once the pre-event notification fired (idempotent)
+  startNotifiedAt DateTime?                      // set once the at-activation notification fired
+  campaignId      String?  @unique               // linked PromoCampaign (the event's discount + badge)
+  eventCode       String   @default("")          // event-only promo code (valid only during the window)
+  createdAt       DateTime @default(now())
+
+  @@index([active, startsAt, endsAt])
+}
+
 // A Discord giveaway managed from the admin bot dashboard. The bot posts a message
 // with an "Enter" button, collects entrant Discord ids, and at `endsAt` draws random
 // winners, announces them, and (if `giftConfig` is set) DMs each winner a promo code.
