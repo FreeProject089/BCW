@@ -1220,6 +1220,14 @@ const DICT = {
     // ── Admin : recherche d'utilisateurs ──
     'au.title': 'Recherche d’utilisateurs',
     'au.banned': 'banni', 'au.suspended': 'suspendu',
+    // Catalog private-link visibility + suspend
+    'dash.copypublic': 'Copier le lien public', 'dash.copyprivate': 'Copier le lien privé',
+    'dash.pubcopied': 'Lien public copié.', 'dash.privcopied': 'Lien privé copié.',
+    'dash.suspendednote': 'Suspendu par un admin — vous ne pouvez pas le modifier ni le resoumettre. Contactez le support pour faire appel.',
+    'ie.suspended': 'Cet élément a été suspendu par un admin — vous ne pouvez pas le modifier ni le resoumettre. Contactez le support.',
+    'item.private.t': 'Privé — non listé publiquement', 'item.private.d': 'Cet élément n’est pas encore dans le catalogue public. Seules les personnes ayant ce lien direct peuvent le voir ; il sera listé une fois validé par un admin.',
+    'mod.suspend': 'Suspendre', 'mod.suspend.title': 'Suspendre la soumission', 'mod.suspend.label': 'Raison (envoyée à l’auteur)', 'mod.suspend.ph': 'Pourquoi est-ce suspendu ? L’auteur ne pourra pas resoumettre.', 'mod.suspend.ok': 'Suspendre', 'mod.suspended2': 'Suspendu — l’auteur ne peut plus resoumettre.',
+    'mod.reasonlabel': 'Raison', 'mod.s.pending': 'En attente', 'mod.s.rejected': 'Rejeté', 'mod.s.suspended': 'Suspendu', 'mod.s.published': 'Publié',
     // Account moderation (admin)
     'mod.title': 'Modération du compte', 'mod.staffnote': 'Les comptes staff (MOD / ADMIN) ne peuvent pas être suspendus ou bannis ici.',
     'mod.isbanned': 'Ce compte est banni', 'mod.issusp': 'Ce compte est suspendu', 'mod.until': 'jusqu’au {d}', 'mod.permlabel': '(permanent)',

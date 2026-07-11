@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import crypto from 'node:crypto';
 import AdmZip from 'adm-zip';
-import { db, requireRole, slugify, notify, hasFreeTierClaim, recordFreeTierClaim } from '../lib.mjs';
+import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim } from '../lib.mjs';
 import { presignGet, getObject } from '../storage.mjs';
 import { validatePlugin, fetchPluginBytes } from '../plugin.mjs';
 import { powVerify } from './auth.mjs';
@@ -16,6 +17,24 @@ const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
 // as valid (nothing to invalidate them).
 const NOT_INVALID = { NOT: { meta: { path: ['validation', 'valid'], equals: false } } };
 const isInvalid = (item) => item?.meta?.validation?.valid === false;
+const mkShareKey = () => crypto.randomBytes(16).toString('base64url');
+
+// Access model — mirrors Server-Repos. PUBLISHED = public (listed + feed + link). A
+// not-yet-approved item (PENDING/REJECTED) is PRIVATE: never listed, but reachable via
+// its OWN share link (?k=shareKey) or by its owner / an admin. SUSPENDED (admin lock)
+// and HIDDEN (deletion / hosting-unpaid) are owner/admin-only — no share link. Requires
+// optionalAuth() on the route so req.user is populated when a session is present.
+function mayViewItem(item, req) {
+  if (!item) return false;
+  const staffOrOwner = req.user && (req.user.uid === item.ownerId || (req.user.role && req.user.role !== 'USER'));
+  if (item.status === 'PUBLISHED') return !isInvalid(item) || !!staffOrOwner;
+  if (staffOrOwner) return true;
+  const key = String(req.query?.k || '').trim();
+  return !!(key && item.shareKey && key === item.shareKey && (item.status === 'PENDING' || item.status === 'REJECTED'));
+}
+// Whether a fetch is a genuine PUBLIC hit (so views/downloads aren't inflated by the
+// owner previewing, or by private share-link traffic on an unlisted item).
+const isPublicHit = (item) => item.status === 'PUBLISHED' && !isInvalid(item);
 
 // Storage for an our-hosted catalog file is billed by size (monthly). Admins host for
 // free (they use /admin/catalog). The per-MB price is an admin-tunable knob; when it's
@@ -123,14 +142,21 @@ export default async function catalogRoutes(app) {
     return { items };
   });
 
-  app.get('/catalog/:slug', async (req, reply) => {
+  app.get('/catalog/:slug', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
     const item = await p.catalogItem.findUnique({ where: { slug: req.params.slug }, include: { owner: { select: { displayName: true } } } });
-    if (!item || item.status !== 'PUBLISHED' || isInvalid(item)) return reply.code(404).send({ error: 'not_found' });
-    // Count a view: one fetch of the item = one view.
-    p.catalogItem.update({ where: { id: item.id }, data: { views: { increment: 1 } } }).catch(() => {});
-    p.catalogEvent.create({ data: { itemId: item.id, kind: 'view' } }).catch(() => {});
-    return { item: { ...item, views: item.views + 1 } };
+    if (!mayViewItem(item, req)) return reply.code(404).send({ error: 'not_found' });
+    const pub = isPublicHit(item);
+    // Only a genuine public fetch counts as a view — not the owner previewing an
+    // unlisted item or private share-link traffic.
+    if (pub) {
+      p.catalogItem.update({ where: { id: item.id }, data: { views: { increment: 1 } } }).catch(() => {});
+      p.catalogEvent.create({ data: { itemId: item.id, kind: 'view' } }).catch(() => {});
+    }
+    // Never leak the private share key to a non-owner viewer.
+    const canSeeKey = req.user && (req.user.uid === item.ownerId || (req.user.role && req.user.role !== 'USER'));
+    const { shareKey, ...safe } = item;
+    return { item: { ...safe, ...(canSeeKey ? { shareKey } : {}), private: !pub, views: item.views + (pub ? 1 : 0) } };
   });
 
   async function countDownload(p, item) {
@@ -139,12 +165,12 @@ export default async function catalogRoutes(app) {
   }
 
   // ── Download: short-lived pre-signed GET for a published payload ──
-  app.get('/catalog/:slug/download', async (req, reply) => {
+  app.get('/catalog/:slug/download', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
     const item = await p.catalogItem.findUnique({ where: { slug: req.params.slug } });
-    if (!item || item.status !== 'PUBLISHED' || isInvalid(item)) return reply.code(404).send({ error: 'not_found' });
+    if (!mayViewItem(item, req)) return reply.code(404).send({ error: 'not_found' });
     if (!item.payloadKey) return reply.code(404).send({ error: 'no_payload' });
-    await countDownload(p, item);
+    if (isPublicHit(item)) await countDownload(p, item); // don't inflate on owner/private-link pulls
     return { url: await presignGet(item.payloadKey) };
   });
 
@@ -161,24 +187,28 @@ export default async function catalogRoutes(app) {
 
   // Stable download link for an uploaded payload (302 → fresh presigned GET), so the
   // catalog.json feed can hand BMM a permanent URL instead of an expiring presigned one.
-  app.get('/catalog/:slug/dl', async (req, reply) => {
+  app.get('/catalog/:slug/dl', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
     const item = await p.catalogItem.findUnique({ where: { slug: req.params.slug } });
-    if (!item || item.status !== 'PUBLISHED' || !item.payloadKey || isInvalid(item)) return reply.code(404).send({ error: 'not_found' });
-    await countDownload(p, item);
+    if (!mayViewItem(item, req) || !item.payloadKey) return reply.code(404).send({ error: 'not_found' });
+    if (isPublicHit(item)) await countDownload(p, item);
     return reply.redirect(await presignGet(item.payloadKey));
   });
 
   // ── Per-item catalog.json: a single-item BMM-native catalog, so each app/plugin/
   // theme can be imported INDIVIDUALLY as a source in BMM (no global bundle needed).
-  app.get('/catalog/:slug/catalog.json', async (req, reply) => {
+  app.get('/catalog/:slug/catalog.json', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
     const origin = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
     const it = await p.catalogItem.findUnique({ where: { slug: req.params.slug }, include: { owner: { select: { displayName: true } } } });
-    if (!it || it.status !== 'PUBLISHED' || !['APP', 'PLUGIN', 'THEME'].includes(it.kind) || isInvalid(it)) return reply.code(404).send({ error: 'not_found' });
-    const dl = it.meta?.download_url || it.meta?.downloadUrl || (it.payloadKey ? `${origin}/api/catalog/${it.slug}/dl` : null);
+    // Owner/share-link may import an unlisted item into BMM via its own link; the public
+    // import path still requires PUBLISHED. The private-link download carries the key on.
+    if (!it || !['APP', 'PLUGIN', 'THEME'].includes(it.kind) || !mayViewItem(it, req)) return reply.code(404).send({ error: 'not_found' });
+    const priv = !isPublicHit(it);
+    const keySuffix = priv && req.query?.k ? `?k=${encodeURIComponent(String(req.query.k))}` : '';
+    const dl = it.meta?.download_url || it.meta?.downloadUrl || (it.payloadKey ? `${origin}/api/catalog/${it.slug}/dl${keySuffix}` : null);
     if (!dl) return reply.code(404).send({ error: 'no_payload' });
-    reply.header('Cache-Control', 'public, max-age=300');
+    reply.header('Cache-Control', priv ? 'private, no-store' : 'public, max-age=300');
     if (it.kind === 'PLUGIN') {
       return { version: '1.0', name: it.name, plugins: [{ id: it.slug, name: it.name, version: it.version, author: it.owner?.displayName || '', description: it.description || '', game: it.meta?.game || '', official: false, download_url: dl, tags: it.tags || [], icon_url: it.meta?.icon_url || it.meta?.thumb || null }] };
     }
@@ -272,7 +302,7 @@ export default async function catalogRoutes(app) {
     }
     const slug = `${d.projectKey}-${slugify(d.name)}-${Math.random().toString(36).slice(2, 6)}`;
     const item = await p.catalogItem.create({
-      data: { projectId: project.id, kind: d.kind, ownerId: req.user.uid, name: d.name, slug,
+      data: { projectId: project.id, kind: d.kind, ownerId: req.user.uid, name: d.name, slug, shareKey: mkShareKey(),
               description: d.description, tags: d.tags, version: d.version, payloadKey: d.payloadKey,
               payloadSize: d.payloadKey ? (d.payloadSize || 0) : 0, // counted against the temp margin
               meta: hostCents > 0 ? { ...d.meta, _hostingUnpaid: true } : d.meta, status: 'PENDING' },
@@ -315,7 +345,7 @@ export default async function catalogRoutes(app) {
     if (!project) return reply.code(400).send({ error: 'unknown_project' });
     const slug = `${d.projectKey}-${slugify(d.name)}-${Math.random().toString(36).slice(2, 6)}`;
     const item = await p.catalogItem.create({
-      data: { projectId: project.id, kind: d.kind, ownerId: req.user.uid, name: d.name, slug,
+      data: { projectId: project.id, kind: d.kind, ownerId: req.user.uid, name: d.name, slug, shareKey: mkShareKey(),
               description: d.description, tags: d.tags, version: d.version, payloadKey: d.payloadKey,
               meta: { ...d.meta, official: true }, status: 'PUBLISHED' },
     });
@@ -402,6 +432,9 @@ export default async function catalogRoutes(app) {
     const item = await p.catalogItem.findUnique({ where: { id: req.params.id } });
     if (!item) return reply.code(404).send({ error: 'not_found' });
     if (item.ownerId !== req.user.uid && req.user.role === 'USER') return reply.code(403).send({ error: 'forbidden' });
+    // A SUSPENDED item is admin-locked — the owner can't edit/resubmit it (unlike a
+    // REJECTED one, which is theirs to fix and send back). Staff can still act on it.
+    if (item.status === 'SUSPENDED' && req.user.role === 'USER') return reply.code(403).send({ error: 'item_suspended' });
     const patch = z.object({
       description: z.string().max(4000).optional(), version: z.string().max(24).optional(), tags: z.array(z.string()).optional(),
       payloadKey: z.string().optional(), payloadSize: z.number().int().positive().optional(), meta: z.record(z.any()).optional(),
@@ -488,7 +521,16 @@ export default async function catalogRoutes(app) {
   // ── My items ──
   app.get('/me/items', { preHandler: requireRole() }, async (req) => {
     const p = await db();
-    return { items: await p.catalogItem.findMany({ where: { ownerId: req.user.uid }, orderBy: { updatedAt: 'desc' } }) };
+    const items = await p.catalogItem.findMany({ where: { ownerId: req.user.uid }, orderBy: { updatedAt: 'desc' } });
+    // Backfill a share key for any pre-existing item that predates the field, so the
+    // owner always has a private direct link to copy (bounded to their own items).
+    for (const it of items) {
+      if (!it.shareKey) {
+        it.shareKey = mkShareKey();
+        await p.catalogItem.update({ where: { id: it.id }, data: { shareKey: it.shareKey } }).catch(() => { it.shareKey = null; });
+      }
+    }
+    return { items };
   });
 
   const GRACE_MS = 72 * 3600 * 1000; // 72h grace, in sync with the hosting-deletion policy
@@ -530,7 +572,10 @@ export default async function catalogRoutes(app) {
     const type = String(req.query?.type || '').trim();
     const tag = String(req.query?.tag || '').trim();
     const sort = req.query?.sort === 'newest' ? 'desc' : 'asc';
-    const where = { status: 'PENDING' };
+    // Default queue = actionable PENDING; a status filter lets admins find REJECTED /
+    // SUSPENDED submissions to reopen or lift them.
+    const statusReq = String(req.query?.status || 'PENDING').toUpperCase();
+    const where = ['PENDING', 'REJECTED', 'SUSPENDED', 'PUBLISHED'].includes(statusReq) ? { status: statusReq } : { status: 'PENDING' };
     if (kind) where.item = { ...(where.item || {}), kind };
     if (type) where.type = type;
     if (tag) where.tags = { has: tag };
@@ -606,6 +651,23 @@ export default async function catalogRoutes(app) {
       p.catalogItem.update({ where: { id: sub.itemId }, data: { status: 'REJECTED' } }),
     ]);
     await notify(p, sub.ownerId, 'submission_rejected', `"${sub.item.name}" was rejected: ${reason.data.reason}`);
+    return { ok: true };
+  });
+
+  // Suspend: harsher than reject — the item is taken out of public AND the owner CANNOT
+  // resubmit/edit it (the update route refuses a SUSPENDED item). Used for abuse / repeat
+  // offenders. Reversible by an admin via approve (→ live) or reject (→ owner can fix).
+  app.post('/mod/submissions/:id/suspend', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const reason = z.object({ reason: z.string().min(1).max(500) }).safeParse(req.body);
+    if (!reason.success) return reply.code(400).send({ error: 'reason_required' });
+    const p = await db();
+    const sub = await p.submission.findUnique({ where: { id: req.params.id }, include: { item: true } });
+    if (!sub) return reply.code(404).send({ error: 'not_found' });
+    await p.$transaction([
+      p.submission.update({ where: { id: sub.id }, data: { status: 'SUSPENDED', reviewerId: req.user.uid, reason: reason.data.reason } }),
+      p.catalogItem.update({ where: { id: sub.itemId }, data: { status: 'SUSPENDED' } }),
+    ]);
+    await notify(p, sub.ownerId, 'submission_suspended', `"${sub.item.name}" was suspended: ${reason.data.reason}. You can't resubmit it — contact support to appeal.`);
     return { ok: true };
   });
 }

@@ -54,7 +54,7 @@ function useElementWidth(fallback = 760) {
   return [ref, w];
 }
 const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson };
-const statusTone = (s) => s === 'PUBLISHED' ? 'green' : s === 'REJECTED' ? 'red' : 'amber';
+const statusTone = (s) => s === 'PUBLISHED' ? 'green' : (s === 'REJECTED' || s === 'SUSPENDED') ? 'red' : 'amber';
 const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> Loading…</div>;
 // Coarse "time left" for a scheduled deletion.
 function fmtRemaining(deleteAt) {
@@ -559,14 +559,19 @@ export function Catalog() {
 
 export function ItemDetail() {
   const { slug } = useParams();
+  const [sp] = useSearchParams();
   const toast = useToast(); const { t } = useI18n();
-  const { data, loading, err } = useAsync(() => api.get(`/catalog/${slug}`), [slug]);
+  // A private/unlisted item is reachable only with its share key (?k=…) — carry it
+  // through to the detail + download calls so the owner's shared link works end-to-end.
+  const key = sp.get('k');
+  const kq = key ? `?k=${encodeURIComponent(key)}` : '';
+  const { data, loading, err } = useAsync(() => api.get(`/catalog/${slug}${kq}`), [slug, kq]);
   const [warn, setWarn] = useState(false);
   if (loading) return <Loading />;
   if (err) return <EmptyState icon={XCircle} title={t('item.notfound', 'Not found')} />;
   const it = data.item; const I = KIND_ICON[it.kind] || Package;
   const v = it.kind === 'PLUGIN' ? it.meta?.validation : null; // { valid, reason, sha256, files }
-  const doDownload = async () => { try { const { url } = await api.get(`/catalog/${slug}/download`); window.open(url, '_blank'); } catch { toast.error(t('cat.dlfail', 'Download failed.')); } };
+  const doDownload = async () => { try { const { url } = await api.get(`/catalog/${slug}/download${kq}`); window.open(url, '_blank'); } catch { toast.error(t('cat.dlfail', 'Download failed.')); } };
   // Invalid plugins pop a warning first; the user must confirm to proceed.
   const download = () => { if (v && v.valid === false) return setWarn(true); doDownload(); };
   // BMM installs APP/PLUGIN/THEME via a bmm://catalog/<kind>/install deeplink (handled
@@ -574,7 +579,7 @@ export function ItemDetail() {
   const bmmInstallable = ['APP', 'PLUGIN', 'THEME'].includes(it.kind) && (it.payloadKey || it.meta?.download_url || it.meta?.download?.url);
   const openInBmm = async () => {
     let url = it.meta?.download_url || it.meta?.download?.url;
-    if (!url && it.payloadKey) { try { const r = await api.get(`/catalog/${slug}/download`); url = r.url; } catch {} }
+    if (!url && it.payloadKey) { try { const r = await api.get(`/catalog/${slug}/download${kq}`); url = r.url; } catch {} }
     if (!url) return toast.error(t('item.nourl', 'No download URL for this item.'));
     const type = it.kind === 'APP' ? (it.meta?.download?.file_type || 'exe') : '';
     const dl = `bmm://catalog/${it.kind.toLowerCase()}/install?name=${encodeURIComponent(it.name)}&url=${encodeURIComponent(url)}${type ? `&type=${type}` : ''}`;
@@ -582,6 +587,12 @@ export function ItemDetail() {
   };
   return (
     <div className="max-w-3xl">
+      {it.private && (
+        <Card className="p-3.5 mb-5 flex items-center gap-2.5 bg-amber-500/8 border-amber-500/30">
+          <Lock size={17} className="text-amber-400 shrink-0" />
+          <div className="text-sm"><b>{t('item.private.t', 'Private — not listed publicly')}</b> <span className="text-[var(--muted)]">{t('item.private.d', 'This item isn’t in the public catalog yet. Only people with this direct link can see it; it’ll be listed once an admin validates it.')}</span></div>
+        </Card>
+      )}
       {v && (
         <Card className={`p-3.5 mb-5 flex items-center gap-2.5 ${v.valid ? 'bg-emerald-500/8' : 'bg-red-500/8 border-red-500/30'}`}>
           {v.valid ? <BadgeCheck size={18} className="text-emerald-400 shrink-0" /> : <XCircle size={18} className="text-red-400 shrink-0" />}
@@ -1950,7 +1961,7 @@ export function Dashboard() {
                 <Select className="!w-auto !py-1.5 !text-sm" value={itemKind} onChange={(e) => setItemKind(e.target.value)}>
                   <option value="all">{t('dash.allkinds', 'All kinds')}</option><option value="APP">APP</option><option value="PLUGIN">PLUGIN</option><option value="THEME">THEME</option><option value="PRESET">PRESET</option></Select>
                 <Select className="!w-auto !py-1.5 !text-sm" value={itemStatus} onChange={(e) => setItemStatus(e.target.value)}>
-                  <option value="all">{t('dash.allstatus', 'All statuses')}</option><option value="PUBLISHED">Published</option><option value="PENDING">Pending</option><option value="REJECTED">Rejected</option><option value="deleting">Deleting</option></Select>
+                  <option value="all">{t('dash.allstatus', 'All statuses')}</option><option value="PUBLISHED">Published</option><option value="PENDING">Pending</option><option value="REJECTED">Rejected</option><option value="SUSPENDED">Suspended</option><option value="deleting">Deleting</option></Select>
               </div>
             )}
             {items.loading ? <Loading /> : (list.length ? (filteredItems.length ? <div className="space-y-2">
@@ -1964,6 +1975,20 @@ export function Dashboard() {
                       {it.payloadKey && !it.meta?.download_url && <span className="text-[var(--primary-2)]">· {t('dash.hostedhere', 'hosted here')}</span>}
                       {v && (v.valid ? <span className="text-emerald-400 flex items-center gap-1"><BadgeCheck size={12} /> {t('dash.verified', 'verified')}</span> : <span className="text-red-400 flex items-center gap-1"><XCircle size={12} /> {t('dash.invalid', 'invalid')}</span>)}
                     </div>
+                    {/* Public listing needs admin validation; until then the item is private
+                        but the owner can always share its own direct link (like a repo). */}
+                    {(() => {
+                      const isPub = it.status === 'PUBLISHED';
+                      const link = isPub ? `${location.origin}/catalog/${it.slug}` : (it.shareKey ? `${location.origin}/catalog/${it.slug}?k=${it.shareKey}` : null);
+                      if (!link || it.deleteAt) return null;
+                      return (
+                        <button onClick={() => { copyText(link); toast.success(isPub ? t('dash.pubcopied', 'Public link copied.') : t('dash.privcopied', 'Private share link copied.')); }}
+                          className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] transition" title={link}>
+                          {isPub ? <Globe size={11} /> : <Lock size={11} />} {isPub ? t('dash.copypublic', 'Copy public link') : t('dash.copyprivate', 'Copy private link')}
+                        </button>
+                      );
+                    })()}
+                    {it.status === 'SUSPENDED' && <div className="text-[11px] text-red-400 mt-0.5">{t('dash.suspendednote', 'Suspended by an admin — you can’t edit or resubmit it. Contact support to appeal.')}</div>}
                   </div>
                   {it.deleteAt
                     ? <><Badge tone="red"><Trash2 size={11} /> {t('dash.deletingin', 'Deleting in')} {fmtRemaining(it.deleteAt)}</Badge>
@@ -2043,7 +2068,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
       else if (res?.validation?.valid) toast.success(t('ie.saveverified', 'Saved — plugin re-verified. Pending admin re-approval.'));
       else toast.success(t('ie.savepending', 'Saved — changes are pending admin re-approval.'));
       onClose(); onDone();
-    } catch (x) { toast.error(x.data?.error || x.message || t('ie.savefail2', 'Failed to save.')); } finally { setBusy(false); }
+    } catch (x) { toast.error(x.data?.error === 'item_suspended' ? t('ie.suspended', 'This item was suspended by an admin — you can’t edit or resubmit it. Contact support to appeal.') : (x.data?.error || x.message || t('ie.savefail2', 'Failed to save.'))); } finally { setBusy(false); }
   };
   const doDelete = async () => {
     setBusy(true);
@@ -2252,13 +2277,19 @@ function SubmitModal({ open, onClose, onDone }) {
 export function Admin() {
   const { user } = useAuth(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
   const [modQ, setModQ] = useState(''); const [modQApplied, setModQApplied] = useState('');
-  const [modSort, setModSort] = useState('oldest'); const [modKind, setModKind] = useState(''); const [modType, setModType] = useState('');
-  const subs = useAsync(() => api.get(`/mod/submissions?q=${encodeURIComponent(modQApplied)}&sort=${modSort}&kind=${modKind}&type=${modType}`), [modQApplied, modSort, modKind, modType]);
+  const [modSort, setModSort] = useState('oldest'); const [modKind, setModKind] = useState(''); const [modType, setModType] = useState(''); const [modStatus, setModStatus] = useState('PENDING');
+  const subs = useAsync(() => api.get(`/mod/submissions?q=${encodeURIComponent(modQApplied)}&sort=${modSort}&kind=${modKind}&type=${modType}&status=${modStatus}`), [modQApplied, modSort, modKind, modType, modStatus]);
   const approve = async (s) => { try { await api.post(`/mod/submissions/${s.id}/approve`); toast.success(t('mod.approved', 'Approved "{name}".').replace('{name}', s.item?.name)); subs.reload(); } catch { toast.error(t('mod.failed', 'Failed.')); } };
   const reject = async (s) => {
     const reason = await dialog.prompt({ title: t('mod.reject.title', 'Reject submission'), label: t('mod.reject.label', 'Reason (sent to the author)'), placeholder: t('mod.reject.ph', 'Why is this rejected?'), okLabel: t('mod.reject.ok', 'Reject'), danger: true });
     if (!reason) return;
     try { await api.post(`/mod/submissions/${s.id}/reject`, { reason }); toast.success(t('mod.rejected', 'Rejected and author notified.')); subs.reload(); } catch { toast.error(t('mod.failed', 'Failed.')); }
+  };
+  // Suspend (ADMIN): harsher than reject — the owner can't resubmit. Reversible via approve/reject.
+  const suspend = async (s) => {
+    const reason = await dialog.prompt({ title: t('mod.suspend.title', 'Suspend submission'), label: t('mod.suspend.label', 'Reason (sent to the author)'), placeholder: t('mod.suspend.ph', "Why is this suspended? The author can't resubmit."), okLabel: t('mod.suspend.ok', 'Suspend'), danger: true });
+    if (!reason) return;
+    try { await api.post(`/mod/submissions/${s.id}/suspend`, { reason }); toast.success(t('mod.suspended2', 'Suspended — the author can no longer resubmit.')); subs.reload(); } catch { toast.error(t('mod.failed', 'Failed.')); }
   };
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPERADMIN';
   const isSuperAdmin = user?.role === 'SUPERADMIN';
@@ -2320,6 +2351,10 @@ export function Admin() {
             <Dropdown value={modSort} onChange={setModSort} options={[
               { value: 'oldest', label: t('mod.oldest', 'Oldest first') }, { value: 'newest', label: t('mod.newest', 'Newest first') },
             ]} />
+            <Dropdown value={modStatus} onChange={setModStatus} options={[
+              { value: 'PENDING', label: t('mod.s.pending', 'Pending') }, { value: 'REJECTED', label: t('mod.s.rejected', 'Rejected') },
+              { value: 'SUSPENDED', label: t('mod.s.suspended', 'Suspended') }, { value: 'PUBLISHED', label: t('mod.s.published', 'Published') },
+            ]} />
           </div>
           {subs.loading ? <Loading /> : (queue.length ? <div className="space-y-2">
             {queue.map((sub) => { const I = KIND_ICON[sub.item?.kind] || Package; return (
@@ -2327,14 +2362,18 @@ export function Admin() {
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{sub.item?.name} {sub.item?.version && <span className="text-xs text-[var(--faint)] font-normal">v{sub.item.version}</span>}</div>
                   <div className="text-xs text-[var(--faint)] flex items-center gap-1.5 flex-wrap">
-                    <Badge>{sub.type}</Badge> <Badge tone="primary">{sub.item?.kind}</Badge> {sub.item?.project?.key && <span className="uppercase">{sub.item.project.key}</span>} · {sub.item?.owner?.displayName || '—'}
+                    <Badge>{sub.type}</Badge> <Badge tone="primary">{sub.item?.kind}</Badge>
+                    {sub.status && sub.status !== 'PENDING' && <Badge tone={sub.status === 'SUSPENDED' ? 'red' : sub.status === 'REJECTED' ? 'amber' : sub.status === 'PUBLISHED' ? 'green' : ''}>{sub.status}</Badge>}
+                    {sub.item?.project?.key && <span className="uppercase">{sub.item.project.key}</span>} · {sub.item?.owner?.displayName || '—'}
                     {sub.tags?.map((tg) => <Badge key={tg} tone="amber"><Tag size={9} /> {tg}</Badge>)}
                     {sub.comments?.length > 0 && <span className="flex items-center gap-1 text-[var(--faint)]"><MessageSquare size={11} /> {sub.comments.length}</span>}
                   </div>
+                  {sub.reason && (sub.status === 'REJECTED' || sub.status === 'SUSPENDED') && <div className="text-[11px] text-[var(--muted)] mt-1 truncate" title={sub.reason}><b>{t('mod.reasonlabel', 'Reason')}:</b> {sub.reason}</div>}
                 </div>
                 <Button size="sm" onClick={() => setReview(sub)}><Eye size={15} /> {t('mod.review', 'Review')}</Button>
-                <Button size="sm" variant="primary" onClick={() => approve(sub)}><CheckCircle2 size={15} /> {t('mod.approve', 'Approve')}</Button>
-                <Button size="sm" onClick={() => reject(sub)}><XCircle size={15} /> {t('mod.reject', 'Reject')}</Button></Card>); })}
+                {sub.status !== 'PUBLISHED' && <Button size="sm" variant="primary" onClick={() => approve(sub)}><CheckCircle2 size={15} /> {t('mod.approve', 'Approve')}</Button>}
+                {sub.status !== 'REJECTED' && <Button size="sm" onClick={() => reject(sub)}><XCircle size={15} /> {t('mod.reject', 'Reject')}</Button>}
+                {isAdmin && sub.status !== 'SUSPENDED' && <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => suspend(sub)}><Ban size={15} /> {t('mod.suspend', 'Suspend')}</Button>}</Card>); })}
           </div> : <EmptyState icon={CheckCircle2} title={t('mod.empty.t', 'Queue is empty')} sub={t('mod.empty.s', 'Nothing waiting for review.')} />)}
           {review && <SubmissionReview sub={review} onClose={() => setReview(null)} onApprove={() => { approve(review); setReview(null); }} onReject={() => { reject(review); setReview(null); }} reload={subs.reload} />}
         </div>}

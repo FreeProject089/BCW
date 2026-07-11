@@ -42,6 +42,7 @@ enum ItemStatus {
   PUBLISHED
   REJECTED
   HIDDEN
+  SUSPENDED // admin-locked: not public, and the owner CANNOT resubmit (unlike REJECTED)
 }
 
 enum SubmissionType {
@@ -489,6 +490,10 @@ model CatalogItem {
   ownerId     String
   name        String
   slug        String      @unique
+  // Unguessable key for the item's PRIVATE direct link (?k=…). Mirrors Server-Repos:
+  // an item that isn't PUBLISHED stays reachable via its own link (owner-shared) but is
+  // never in the public list/feed. Public listing requires admin validation (PUBLISHED).
+  shareKey    String?     @unique
   description String      @default("")
   tags        String[]    @default([])
   version     String      @default("1.0.0")
