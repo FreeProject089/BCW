@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api, uploadRepoFile } from './api.js';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal } from './ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal } from './ui.jsx';
 import { useUploads } from './uploads.jsx';
 import { useI18n } from './i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -514,25 +514,18 @@ export function MyRepos() {
         <div className="flex flex-wrap gap-2 mb-3">
           <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
             <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('repos.search', 'Search by name, description or ID…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          <Select className="!w-auto !py-1.5 !text-sm" value={typeF} onChange={(e) => setTypeF(e.target.value)}>
-            <option value="all">{t('repos.f.type.all', 'All types')}</option>
-            <option value="hosted">{t('repos.hosted', 'Hosted')}</option>
-            <option value="external">{t('repos.f.external', 'External')}</option>
-            <option value="listed">{t('repos.listed', 'Listed')}</option>
-            <option value="unlisted">{t('repos.unlisted', 'Unlisted')}</option>
-          </Select>
-          <Select className="!w-auto !py-1.5 !text-sm" value={statusF} onChange={(e) => setStatusF(e.target.value)}>
-            <option value="all">{t('repos.f.all', 'All')}</option>
-            <option value="online">{t('repos.online', 'Online')}</option>
-            <option value="offline">{t('repos.offline', 'Offline')}</option>
-            <option value="deleting">{t('repos.f.deleting', 'Deleting')}</option>
-          </Select>
-          <Select className="!w-auto !py-1.5 !text-sm" value={sortF} onChange={(e) => setSortF(e.target.value)}>
-            <option value="created_desc">{t('repos.sort.newest', 'Newest first')}</option>
-            <option value="created_asc">{t('repos.sort.oldest', 'Oldest first')}</option>
-            <option value="name">{t('repos.sort.name', 'Name (A–Z)')}</option>
-            <option value="storage">{t('repos.sort.storage', 'Storage used')}</option>
-          </Select>
+          <Dropdown size="sm" value={typeF} onChange={setTypeF} options={[
+            { value: 'all', label: t('repos.f.type.all', 'All types') }, { value: 'hosted', label: t('repos.hosted', 'Hosted') },
+            { value: 'external', label: t('repos.f.external', 'External') }, { value: 'listed', label: t('repos.listed', 'Listed') }, { value: 'unlisted', label: t('repos.unlisted', 'Unlisted') },
+          ]} />
+          <Dropdown size="sm" value={statusF} onChange={setStatusF} options={[
+            { value: 'all', label: t('repos.f.all', 'All') }, { value: 'online', label: t('repos.online', 'Online') },
+            { value: 'offline', label: t('repos.offline', 'Offline') }, { value: 'deleting', label: t('repos.f.deleting', 'Deleting') },
+          ]} />
+          <Dropdown size="sm" value={sortF} onChange={setSortF} options={[
+            { value: 'created_desc', label: t('repos.sort.newest', 'Newest first') }, { value: 'created_asc', label: t('repos.sort.oldest', 'Oldest first') },
+            { value: 'name', label: t('repos.sort.name', 'Name (A–Z)') }, { value: 'storage', label: t('repos.sort.storage', 'Storage used') },
+          ]} />
         </div>
       )}
       {loading ? <div className="text-[var(--muted)] text-sm py-4">{t('common.loading', 'Loading…')}</div>
