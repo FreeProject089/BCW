@@ -134,6 +134,23 @@ Flow: standard **authorization code + PKCE**; users see a branded consent screen
 after the first time); tokens are RS256 (verify via the JWKS); refresh tokens **rotate**
 (reuse is detected and revokes the whole token family).
 
+## 8c. Email (account confirmation + password reset)
+
+Transactional email is **off by default** — without it, password reset returns the token in
+the API response (dev flow) and no confirmation email is sent. To enable it in production,
+set these in `.env` and `docker compose up -d api`:
+```
+EMAIL_ENABLED=true
+SMTP_HOST=smtp.your-provider.com
+SMTP_PORT=587                # 465 = implicit TLS, otherwise STARTTLS
+SMTP_USER=…
+SMTP_PASS=…
+SMTP_FROM=BetterCommunity <no-reply@your-domain.com>
+```
+Once on: new sign-ups receive a **confirmation email** (link → `/verify-email`), and
+**password resets** email a one-hour link (→ `/auth?reset=…`). Both tokens are single-use.
+Any SMTP provider works — your host's, SendGrid, Mailgun, Amazon SES, or a self-hosted relay.
+
 ## 9. Updating
 
 ```bash

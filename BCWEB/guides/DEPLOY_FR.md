@@ -134,6 +134,24 @@ Flux : **authorization code + PKCE** standard ; écran de consentement brandé (
 la première fois) ; tokens RS256 (vérifiés via le JWKS) ; les refresh tokens **tournent** (la
 réutilisation est détectée et révoque toute la famille de tokens).
 
+## 8c. Email (confirmation de compte + réinitialisation du mot de passe)
+
+L'email transactionnel est **désactivé par défaut** — sans lui, la réinitialisation du mot de
+passe renvoie le token dans la réponse de l'API (flux dev) et aucun email de confirmation
+n'est envoyé. Pour l'activer en production, mets ceci dans `.env` puis `docker compose up -d api` :
+```
+EMAIL_ENABLED=true
+SMTP_HOST=smtp.ton-fournisseur.com
+SMTP_PORT=587                # 465 = TLS implicite, sinon STARTTLS
+SMTP_USER=…
+SMTP_PASS=…
+SMTP_FROM=BetterCommunity <no-reply@ton-domaine.com>
+```
+Une fois activé : les nouvelles inscriptions reçoivent un **email de confirmation** (lien →
+`/verify-email`), et les **réinitialisations** envoient un lien valable 1 heure (→
+`/auth?reset=…`). Les deux tokens sont à usage unique. N'importe quel fournisseur SMTP
+convient — celui de ton hébergeur, SendGrid, Mailgun, Amazon SES, ou un relais auto-hébergé.
+
 ## 9. Mise à jour
 
 ```bash
