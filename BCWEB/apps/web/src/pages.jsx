@@ -247,8 +247,9 @@ function CountUp({ value }) {
 export function Home() {
   const { data } = useAsync(() => api.get('/blog?home=1'), []);
   const { data: stats } = useAsync(() => api.get('/stats').catch(() => null), []);
+  const { data: reviewsData } = useAsync(() => api.get('/reviews').catch(() => null), []);
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const root = useScrollReveal();
   const products = [
     { icon: Boxes, logo: 'bmm', name: 'BMM', desc: t('prod.bmm.d'), to: '/p/bmm', tint: 'from-orange-500/20' },
@@ -387,9 +388,43 @@ export function Home() {
         </div>
       </section>
 
+      {/* community reviews / testimonials — admin-curated, hidden when off or empty */}
+      {reviewsData?.enabled && reviewsData.reviews?.length > 0 && (
+        <section>
+          <SectionKicker n="04" label={t('home.k.reviews', 'Reviews')} />
+          <div className="reveal-on-scroll text-center mb-9">
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.reviews.title', 'What the community says')}</h2>
+            <p className="text-[var(--muted)] mt-2.5">{t('home.reviews.sub', 'Real words from people building with Better* tools.')}</p>
+          </div>
+          <div className="reveal-stagger grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {reviewsData.reviews.map((rv) => {
+              const text = (lang === 'fr' && rv.bodyFr) ? rv.bodyFr : rv.body;
+              const av = rv.avatar || {};
+              return (
+                <Card key={rv.id} className="p-6 flex flex-col" style={{ background: 'var(--bg-solid)' }}>
+                  {rv.rating > 0 && (
+                    <div className="flex items-center gap-0.5 mb-3">
+                      {[1, 2, 3, 4, 5].map((n) => <Star key={n} size={15} className={n <= rv.rating ? 'text-amber-400' : 'text-[var(--line-strong)]'} fill={n <= rv.rating ? 'currentColor' : 'none'} />)}
+                    </div>
+                  )}
+                  <p className="text-sm text-[var(--muted)] leading-relaxed flex-1">“{text}”</p>
+                  <div className="flex items-center gap-3 mt-4 pt-4 border-t border-[var(--line)]">
+                    <Avatar image={av.image} variant={av.variant || 'beam'} seed={av.seed || rv.author} colors={av.colors} size={38} />
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold truncate">{rv.author}</div>
+                      {rv.role && <div className="text-xs text-[var(--faint)] truncate">{rv.role}</div>}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* latest posts */}
       <section>
-        <SectionKicker n="04" label={t('home.k.news', 'From the blog')} />
+        <SectionKicker n={reviewsData?.enabled && reviewsData.reviews?.length ? '05' : '04'} label={t('home.k.news', 'From the blog')} />
         <div className="reveal-on-scroll flex items-center justify-between mb-5"><h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{t('home.news')}</h2><Link to="/blog" className="text-sm text-[var(--primary-2)] flex items-center gap-1 hover:gap-2 transition-all">{t('home.news.all')} <ArrowRight size={13} /></Link></div>
         {!data?.posts?.length ? <Card className="p-6 text-[var(--muted)] text-sm">{t('home.news.none')}</Card> : (() => {
           const posts = data.posts; const featured = posts[0]; const rest = posts.slice(1, 4);
@@ -2326,6 +2361,7 @@ export function Admin() {
     isAdmin && { id: 'catalogs', label: t('adm.tab.catalogs', 'Catalogs'), icon: Boxes },
     isAdmin && { id: 'projects', label: t('adm.tab.projects', 'Projects'), icon: Settings2 },
     isAdmin && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
+    isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: MessageSquare },
     isAdmin && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
 
     isAdmin && { heading: t('adm.h.server', 'Server') },
@@ -2404,6 +2440,7 @@ export function Admin() {
         {s === 'analytics' && <AdminAnalytics />}
         {s === 'projects' && <AdminProjects />}
         {s === 'showcase' && <AdminShowcase />}
+        {s === 'reviews' && <AdminReviews />}
         {s === 'settings' && <AdminSettings />}
       </>)}
     </SideDash>
@@ -3988,6 +4025,76 @@ export const ANN_TONE_ICON = { info: Info, warning: AlertTriangle, success: Chec
 const ANN_BODY_MAX = 500; // banner bodies stay short/scannable; hard-capped server-side too
 // Admin: site-wide banner announcements (auto-notifies every user on publish) plus
 // a standalone "notify everyone" action for a one-off ping with no persistent banner.
+// Admin-curated landing testimonials: add/edit/delete, per-review + whole-section
+// toggles, and both EN + FR text (the landing shows the visitor's language).
+function AdminReviews() {
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/reviews'), []);
+  const [f, setF] = useState({ author: '', role: '', body: '', bodyFr: '', rating: '', enabled: true });
+  const [editId, setEditId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const reviews = data?.reviews || [];
+  const sectionOn = data?.enabled !== false;
+  const reset = () => { setF({ author: '', role: '', body: '', bodyFr: '', rating: '', enabled: true }); setEditId(null); };
+  const toggleSection = async () => { try { await api.put('/admin/reviews/settings', { enabled: !sectionOn }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const save = async () => {
+    if (!f.author.trim() || !f.body.trim()) return toast.error(t('arv.req', 'Author and English text are required.'));
+    setBusy(true);
+    const payload = { author: f.author.trim(), role: f.role.trim(), body: f.body.trim(), bodyFr: f.bodyFr.trim(), rating: f.rating ? Number(f.rating) : null, enabled: f.enabled };
+    try {
+      if (editId) await api.patch(`/admin/reviews/${editId}`, payload); else await api.post('/admin/reviews', payload);
+      toast.success(editId ? t('arv.updated', 'Review updated.') : t('arv.added', 'Review added.'));
+      reset(); reload();
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  const edit = (rv) => { setEditId(rv.id); setF({ author: rv.author, role: rv.role || '', body: rv.body, bodyFr: rv.bodyFr || '', rating: rv.rating ? String(rv.rating) : '', enabled: rv.enabled }); };
+  const toggleEnabled = async (rv) => { try { await api.patch(`/admin/reviews/${rv.id}`, { enabled: !rv.enabled }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = async (rv) => { if (!(await dialog.confirm({ title: t('arv.del', 'Delete review?'), message: rv.author, okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/admin/reviews/${rv.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('arv.title', 'Landing reviews')}</h2>
+        <button onClick={toggleSection} className={`btn ${sectionOn ? 'btn-primary' : ''}`}>{sectionOn ? <><Eye size={14} /> {t('arv.on', 'Section shown')}</> : <><EyeOff size={14} /> {t('arv.off', 'Section hidden')}</>}</button>
+      </div>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('arv.desc', 'Curated testimonials shown on the landing page. Each has an English and a French text (the site shows the one matching the visitor’s language). Turn the whole section — or individual reviews — on/off.')}</p>
+
+      <Card className="p-5 mb-5">
+        <div className="text-sm font-semibold mb-3">{editId ? t('arv.editing', 'Edit review') : t('arv.new', 'Add a review')}</div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label={t('arv.author', 'Author')}><Input value={f.author} onChange={(e) => setF({ ...f, author: e.target.value })} placeholder="Jane D." /></Field>
+          <Field label={t('arv.role', 'Role / subtitle')}><Input value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} placeholder="BMM power user" /></Field>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3 mt-3">
+          <Field label={t('arv.bodyen', 'Text (English)')}><Textarea rows={3} value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} /></Field>
+          <Field label={t('arv.bodyfr', 'Text (French)')}><Textarea rows={3} value={f.bodyFr} onChange={(e) => setF({ ...f, bodyFr: e.target.value })} placeholder={t('arv.frph', 'Optional — falls back to English.')} /></Field>
+        </div>
+        <div className="flex items-end gap-3 mt-3 flex-wrap">
+          <Field label={t('arv.rating', 'Rating (1-5, optional)')}><Input type="number" min="1" max="5" className="!w-28" value={f.rating} onChange={(e) => setF({ ...f, rating: e.target.value })} /></Field>
+          <label className="flex items-center gap-2 text-sm pb-2.5"><input type="checkbox" checked={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} /> {t('arv.enabled', 'Enabled')}</label>
+          <div className="flex-1" />
+          {editId && <Button variant="ghost" onClick={reset}>{t('common.cancel', 'Cancel')}</Button>}
+          <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (editId ? t('arv.savebtn', 'Save changes') : <><Plus size={15} /> {t('arv.addbtn', 'Add review')}</>)}</Button>
+        </div>
+      </Card>
+
+      {loading ? <Loading /> : reviews.length ? <div className="space-y-2">
+        {reviews.map((rv) => (
+          <Card key={rv.id} className="p-4 flex items-start gap-3">
+            <Avatar variant={rv.avatar?.variant || 'beam'} seed={rv.avatar?.seed || rv.author} image={rv.avatar?.image} colors={rv.avatar?.colors} size={36} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap"><span className="font-medium">{rv.author}</span>{rv.role && <span className="text-xs text-[var(--faint)]">{rv.role}</span>}{rv.rating > 0 && <span className="text-xs text-amber-400 flex items-center gap-0.5"><Star size={11} fill="currentColor" /> {rv.rating}</span>}{!rv.enabled && <Badge>{t('arv.hiddenb', 'hidden')}</Badge>}{rv.bodyFr && <Badge tone="primary">FR</Badge>}</div>
+              <p className="text-sm text-[var(--muted)] mt-1 line-clamp-2">{rv.body}</p>
+            </div>
+            <button onClick={() => toggleEnabled(rv)} title={rv.enabled ? t('arv.hide', 'Hide') : t('arv.show', 'Show')} className="text-[var(--faint)] hover:text-[var(--primary-2)] p-1">{rv.enabled ? <Eye size={16} /> : <EyeOff size={16} />}</button>
+            <button onClick={() => edit(rv)} title={t('common.edit', 'Edit')} className="text-[var(--faint)] hover:text-[var(--primary-2)] p-1"><PenSquare size={16} /></button>
+            <button onClick={() => del(rv)} title={t('common.delete', 'Delete')} className="text-[var(--faint)] hover:text-red-400 p-1"><Trash2 size={16} /></button>
+          </Card>
+        ))}
+      </div> : <EmptyState icon={MessageSquare} title={t('arv.none', 'No reviews yet')} sub={t('arv.none.s', 'Add your first testimonial above.')} />}
+    </div>
+  );
+}
+
 function AdminAnnouncements() {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/announcements'), []);
@@ -7525,7 +7632,7 @@ function AdminSettings() {
       )}
       <div className="space-y-5">
         {SETTINGS_GROUPS.map((g) => (
-          <div key={g.title} className="rounded-2xl border border-[var(--line)] overflow-hidden" style={{ boxShadow: 'var(--shadow)' }}>
+          <div key={g.title} className="card rounded-2xl overflow-hidden">
             <div className="flex items-center gap-2.5 px-4 py-3 bg-[var(--surface-2)]/40 border-b border-[var(--line)]">
               <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><g.icon size={15} className="text-[var(--primary-2)]" /></span>
               <div className="min-w-0"><div className="text-sm font-semibold">{t(`hs.g.${g.gk}`, g.title)}</div>{GROUP_DESC[g.title] && <div className="text-[11px] text-[var(--faint)] truncate">{t(`hs.gd.${g.gk}`, GROUP_DESC[g.title])}</div>}</div>

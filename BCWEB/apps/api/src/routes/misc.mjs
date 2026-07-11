@@ -55,6 +55,64 @@ export default async function miscRoutes(app) {
     return data;
   });
 
+  // ── Landing reviews / testimonials (admin-curated) ──────────────────────────
+  // Public feed: the enabled reviews (ordered) + whether the section is on. Each review
+  // carries an EN and a FR body so the client renders the active-locale text.
+  app.get('/reviews', async () => {
+    const p = await db();
+    const [rows, setting] = await Promise.all([
+      p.review.findMany({ where: { enabled: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
+      p.adminSetting.findUnique({ where: { key: 'reviews.enabled' } }),
+    ]);
+    const enabled = setting?.value?.on !== false; // default ON
+    return { enabled, reviews: rows.map((r) => ({ id: r.id, author: r.author, role: r.role, body: r.body, bodyFr: r.bodyFr || r.body, rating: r.rating, avatar: r.avatar })) };
+  });
+
+  const reviewSchema = z.object({
+    author: z.string().min(1).max(80), role: z.string().max(80).optional(),
+    body: z.string().min(1).max(1000), bodyFr: z.string().max(1000).optional(),
+    rating: z.number().int().min(1).max(5).nullish(), avatar: z.any().optional(),
+    enabled: z.boolean().optional(), order: z.number().int().optional(),
+  });
+  app.get('/admin/reviews', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const [reviews, setting] = await Promise.all([
+      p.review.findMany({ orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
+      p.adminSetting.findUnique({ where: { key: 'reviews.enabled' } }),
+    ]);
+    return { reviews, enabled: setting?.value?.on !== false };
+  });
+  app.put('/admin/reviews/settings', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const b = z.object({ enabled: z.boolean() }).safeParse(req.body);
+    if (!b.success) return { ok: false };
+    const p = await db();
+    await p.adminSetting.upsert({ where: { key: 'reviews.enabled' }, create: { key: 'reviews.enabled', value: { on: b.data.enabled } }, update: { value: { on: b.data.enabled } } });
+    return { ok: true, enabled: b.data.enabled };
+  });
+  app.post('/admin/reviews', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = reviewSchema.safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
+    const p = await db();
+    const max = await p.review.aggregate({ _max: { order: true } });
+    const review = await p.review.create({ data: { author: b.data.author, role: b.data.role || '', body: b.data.body, bodyFr: b.data.bodyFr || '', rating: b.data.rating ?? null, avatar: b.data.avatar ?? null, enabled: b.data.enabled ?? true, order: b.data.order ?? ((max._max.order ?? 0) + 1) } });
+    return { review };
+  });
+  app.patch('/admin/reviews/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = reviewSchema.partial().safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const data = {};
+    for (const k of ['author', 'role', 'body', 'bodyFr', 'rating', 'avatar', 'enabled', 'order']) if (b.data[k] !== undefined) data[k] = b.data[k];
+    const review = await p.review.update({ where: { id: req.params.id }, data }).catch(() => null);
+    if (!review) return reply.code(404).send({ error: 'not_found' });
+    return { review };
+  });
+  app.delete('/admin/reviews/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    await p.review.delete({ where: { id: req.params.id } }).catch(() => {});
+    return { ok: true };
+  });
+
   // ── Admin: storage overview (real object-storage usage + pending deletions) ──
   app.get('/admin/storage', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();

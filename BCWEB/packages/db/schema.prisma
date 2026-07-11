@@ -561,6 +561,26 @@ model Notification {
   createdAt DateTime @default(now())
 }
 
+// Admin-curated testimonials/reviews shown on the landing page. The admin provides the
+// list from the dashboard; each carries an English AND a French body (the client shows
+// the one matching the active locale), and can be individually disabled. The whole
+// section can also be turned off via the `reviews.enabled` admin setting.
+model Review {
+  id        String   @id @default(cuid())
+  author    String
+  role      String   @default("") // subtitle: role / handle / "BMM user"
+  body      String   // English
+  bodyFr    String   @default("") // French (falls back to `body` when empty)
+  rating    Int?     // optional 1..5 stars
+  avatar    Json?    // { variant, seed, colors } Boring-avatar, or { image }
+  enabled   Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled, order])
+}
+
 // Site-wide banner announcements. Publishing one also broadcasts a Notification to
 // every user (see announcements.mjs) — the banner is the persistent/dismissible
 // form, the notification is the "you have something new" ping in the bell menu.
