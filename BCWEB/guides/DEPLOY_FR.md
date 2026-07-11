@@ -29,14 +29,15 @@ cp infra/compose/.env.example infra/compose/.env
 
 | Clé | Rôle |
 |---|---|
-| `SITE_URL` | URL publique, ex. `https://community.example.com` (mails, redirections Stripe, liens du bot) |
-| `CADDY_DOMAIN` | Le domaine servi par Caddy, dont il provisionne le TLS |
+| `SITE_URL` | URL publique complète, ex. `https://community.example.com` (mails, redirections Stripe, liens du bot) |
+| `SITE_DOMAIN` | Ton domaine **nu**, ex. `community.example.com` — Caddy s'y attache et **provisionne le HTTPS**. (Défaut dev local : `http://localhost:5176`) |
+| `COOKIE_DOMAIN` | `.ton-domaine.com` (point initial) pour que le cookie de session atteigne aussi les sous-domaines (telemetry) |
 | `POSTGRES_PASSWORD` | Un mot de passe DB solide |
 | `JWT_SECRET` | Une longue chaîne aléatoire (`openssl rand -hex 32`) |
 | `BOT_SHARED_SECRET` | Longue chaîne aléatoire — le secret partagé API↔bot |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Depuis le dashboard Stripe (voir §6) |
 | `DISCORD_TOKEN` | Optionnel — sinon défini depuis le dashboard admin |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | Identifiants du stockage objet |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Identifiants du stockage objet (MinIO) |
 
 > **Ne commit jamais `.env`.** Il contient des secrets réels et est gitignore. Seul
 > `.env.example` est versionné.
@@ -63,7 +64,7 @@ docker compose logs -f caddy # regarde le certificat TLS s'émettre
 ```
 
 Caddy provisionne et renouvelle automatiquement un certificat Let's Encrypt pour
-`CADDY_DOMAIN` — **aucune gestion manuelle de certificat**. La première émission prend
+`SITE_DOMAIN` — **aucune gestion manuelle de certificat**. La première émission prend
 quelques secondes une fois le DNS résolu.
 
 L'API applique les migrations au démarrage (`prisma db push`), le schéma est donc créé
@@ -163,6 +164,19 @@ L'API expose trois sondes (toutes exemptées du rate limiter, sans logs de requ�
 - L'onglet admin **Server perf** montre CPU/RAM/disque, la santé des dépendances,
   l'historique de downtime et les alertes récentes (dédupliquées, copiables).
 - Test de charge : `cd loadtest && npm install && BASE=https://community.example.com node run.mjs`.
+
+## 12. Verrouille — pare-feu (juste après le premier déploiement)
+
+Seul Caddy doit être exposé à Internet. Le compose publie aussi `3000` (api) et
+`9000`/`9001` (MinIO) sur l'hôte par confort ; ferme tout sauf SSH + HTTP(S) :
+```bash
+ufw allow 22 && ufw allow 80 && ufw allow 443 && ufw enable
+```
+Postgres, Redis et les données MinIO restent sur le réseau Docker interne — ne les expose
+jamais. (Le `9000` de MinIO n'est nécessaire publiquement que si tu sers des URLs d'upload
+pré-signées en direct ; dans ce cas, mets-le derrière un sous-domaine Caddy plutôt que
+d'ouvrir le port brut.) Le **CDN** est l'étape juste après — voir *Performance & montée en
+charge → mettre un CDN devant* ci-dessous.
 
 ## Performance & montée en charge
 

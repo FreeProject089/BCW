@@ -29,14 +29,15 @@ Edit `infra/compose/.env` — the important keys:
 
 | Key | What it is |
 |---|---|
-| `SITE_URL` | Public URL, e.g. `https://community.example.com` (used in emails, Stripe redirects, bot links) |
-| `CADDY_DOMAIN` | The domain Caddy serves + auto-provisions TLS for |
+| `SITE_URL` | Full public URL, e.g. `https://community.example.com` (used in emails, Stripe redirects, bot links) |
+| `SITE_DOMAIN` | Your **bare** domain, e.g. `community.example.com` — Caddy binds to it and **auto-provisions HTTPS**. (Local dev default: `http://localhost:5176`) |
+| `COOKIE_DOMAIN` | `.your-domain.com` (leading dot) so the session cookie also reaches sub-domains (telemetry) |
 | `POSTGRES_PASSWORD` | A strong DB password |
 | `JWT_SECRET` | A long random string (`openssl rand -hex 32`) |
 | `BOT_SHARED_SECRET` | Long random string — the API↔bot shared secret |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | From the Stripe dashboard (see §6) |
 | `DISCORD_TOKEN` | Optional — else set the token from the admin dashboard |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | Object-storage credentials |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Object-storage (MinIO) credentials |
 
 > **Never commit `.env`.** It holds live secrets and is gitignored. Only
 > `.env.example` is tracked.
@@ -62,7 +63,7 @@ docker compose ps            # every service should be "healthy"/"running"
 docker compose logs -f caddy # watch the TLS certificate get issued
 ```
 
-Caddy provisions and auto-renews a Let's Encrypt certificate for `CADDY_DOMAIN` —
+Caddy provisions and auto-renews a Let's Encrypt certificate for `SITE_DOMAIN` —
 **no manual cert handling**. First issuance takes a few seconds once DNS resolves.
 
 The API runs migrations on boot (`prisma db push`), so the schema is created
@@ -161,6 +162,18 @@ The API exposes three probes (all exempt from the rate limiter, no request logs)
 - Admin **Server perf** tab shows CPU/RAM/disk, dependency health, downtime history
   and recent alerts (deduped, copyable).
 - Load test: `cd loadtest && npm install && BASE=https://community.example.com node run.mjs`.
+
+## 12. Lock it down — firewall (do this right after the first deploy)
+
+Only Caddy should face the internet. The compose file also publishes `3000` (api) and
+`9000`/`9001` (MinIO) on the host for convenience; close everything except SSH + HTTP(S):
+```bash
+ufw allow 22 && ufw allow 80 && ufw allow 443 && ufw enable
+```
+Postgres, Redis and MinIO's data stay on the internal Docker network — never expose them.
+(MinIO's `9000` is only needed publicly if you serve pre-signed upload URLs directly; in
+that case put it behind a Caddy sub-domain rather than opening the raw port.) The **CDN**
+setup is the very next thing — see *Performance & scaling → put a CDN in front* below.
 
 ## Performance & scaling
 
