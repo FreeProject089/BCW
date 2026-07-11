@@ -1296,6 +1296,7 @@ const DICT = {
     'db.cantconnect': 'Le bot ne peut pas se connecter', 'db.saved': 'Configuration du bot enregistrée.', 'db.savefail': 'Échec de l’enregistrement.',
     'db.enabled': 'Bot activé', 'db.disabled': 'Bot désactivé', 'db.master': 'interrupteur principal',
     'db.servers': 'serveurs', 'db.users': 'utilisateurs', 'db.tempvoice': 'salons temp', 'db.ping': 'ping', 'db.uptime': 'disponibilité',
+    'db.justnow': "à l'instant", 'db.lastseen': 'vu il y a {t}', 'db.neverseen': 'jamais connecté',
     'db.kicked': 'expulsés', 'db.timedout': 'exclus', 'db.purged': 'purgés', 'db.session': '(cette session)',
     'db.token': 'Token du bot', 'db.set': 'Défini', 'db.notset': 'Non défini',
     'db.token.env': 'Le token est fourni via la variable d’environnement DISCORD_TOKEN et géré en dehors du dashboard.',

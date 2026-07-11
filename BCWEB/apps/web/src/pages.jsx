@@ -5425,6 +5425,14 @@ function AdminBot() {
   if (loading || !cfg) return <Loading />;
   const status = data?.status;
   const online = status?.online && status?.at && (Date.now() - new Date(status.at).getTime() < 180000);
+  // When the bot is OFFLINE, ping/uptime are stale — showing them as live numbers
+  // reads as a contradiction next to the "Offline" pill. Compute an honest "last seen"
+  // instead, and only surface the live metrics while genuinely online.
+  const lastSeen = (() => {
+    if (!status?.at) return null;
+    const m = Math.round((Date.now() - new Date(status.at).getTime()) / 60000);
+    return m < 1 ? t('db.justnow', 'just now') : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
+  })();
   // set a nested field: set('welcome.channelId', v)
   const set = (path, val) => setCfg((c) => {
     const next = structuredClone(c); const keys = path.split('.'); let o = next;
@@ -5513,8 +5521,12 @@ function AdminBot() {
             <span><b className="text-[var(--text)]">{status?.guilds ?? '—'}</b> {t('db.servers', 'servers')}</span>
             <span><b className="text-[var(--text)]">{status?.users ?? '—'}</b> {t('db.users', 'users')}</span>
             <span><b className="text-[var(--text)]">{status?.tempChannels ?? 0}</b> {t('db.tempvoice', 'temp voice')}</span>
-            <span><b className="text-[var(--text)]">{status?.ping != null ? `${status.ping}ms` : '—'}</b> {t('db.ping', 'ping')}</span>
-            <span><b className="text-[var(--text)]">{status?.uptimeSec != null ? `${Math.floor(status.uptimeSec / 3600)}h ${Math.floor((status.uptimeSec % 3600) / 60)}m` : '—'}</b> {t('db.uptime', 'uptime')}</span>
+            {online ? <>
+              <span><b className="text-[var(--text)]">{status?.ping != null ? `${status.ping}ms` : '—'}</b> {t('db.ping', 'ping')}</span>
+              <span><b className="text-[var(--text)]">{status?.uptimeSec != null ? `${Math.floor(status.uptimeSec / 3600)}h ${Math.floor((status.uptimeSec % 3600) / 60)}m` : '—'}</b> {t('db.uptime', 'uptime')}</span>
+            </> : (
+              <span className="flex items-center gap-1 text-[var(--faint)]"><Clock size={11} /> {lastSeen ? t('db.lastseen', 'last seen {t} ago').replace('{t}', lastSeen) : t('db.neverseen', 'never connected')}</span>
+            )}
           </div>
         </div>
         {(status?.mod && (status.mod.kicks || status.mod.timeouts || status.mod.purged)) ? (
