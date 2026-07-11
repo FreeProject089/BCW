@@ -7,6 +7,7 @@ import {
   UploadCloud as UploadIcon, Trash, Wifi as WifiOn, WifiOff as WifiGone, Download, Ban, Radio, Star,
 } from 'lucide-react';
 import { api } from './api.js';
+import { repoStatusMeta, repoCategoryMeta, repoLocked } from './repos.jsx';
 import { useToast, useDialog, Button, Card, Badge, Input, Select, Spinner, copyText } from './ui.jsx';
 import { useUploads } from './uploads.jsx';
 import { useI18n } from './i18n.jsx';
@@ -106,6 +107,9 @@ function Dashboard({ data, reload }) {
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-bold truncate">{r.name}</h1>
+                {/* Explicit status + trust-tier so they're identifiable at a glance. */}
+                {(() => { const st = repoStatusMeta(r, t); return st && <Badge tone={st.tone}>● {st.label}</Badge>; })()}
+                {(() => { const cat = repoCategoryMeta(r.category, t, true); return cat && <Badge tone={cat.tone}><cat.Icon size={11} /> {cat.label}</Badge>; })()}
                 <Badge tone={levelBadge[0]}><ShieldCheck size={11} /> {levelBadge[1]}</Badge>
               </div>
               <div className="text-xs text-[var(--faint)] mt-1 flex items-center gap-3 flex-wrap">
@@ -126,6 +130,15 @@ function Dashboard({ data, reload }) {
           )}
         </div>
         {r.description && <p className="text-sm text-[var(--muted)] mt-3">{r.description}</p>}
+        {/* Suspended: the repo itself is frozen (can't be published/listed/edited or
+            deleted), but its CONTENT stays manageable here — so the owner can still
+            clean up files. Publishing/settings actions are gated in their own tabs. */}
+        {repoLocked(r) && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-bg)] px-3 py-2 text-xs">
+            <Ban size={14} className="text-[var(--error)] shrink-0 mt-0.5" />
+            <span className="flex-1 text-[var(--error)]">{t('rd.suspended.notice', 'This repo is suspended — it stays offline and can’t be published, listed, edited or deleted. You can still delete its content below. Contact support to resolve it.')}</span>
+          </div>
+        )}
       </Card>
 
       {/* tab bar */}

@@ -80,6 +80,7 @@ export default async function repoDashboardRoutes(app) {
     const favoriteCount = await req._p.repoFavorite.count({ where: { serverRepoId: r.id } });
     return {
       id: r.id, name: r.name, description: r.description, hosted: r.hosted, status: r.status,
+      category: r.category || 'community',
       published: r.published, listed: r.listed, verified: r.verified, hostPath: r.hostPath,
       repoUrl: r.repoUrl, links: r.links, tags: r.tags, sha: r.sha, repoJson: r.repoJson,
       ownerName: r.owner?.displayName || null, favoriteCount,

@@ -789,6 +789,7 @@ const DICT = {
     'repos.gate.email': 'Vérifie ton adresse e-mail avant de créer un dépôt.', 'repos.gate.2fa': 'Active la 2FA sur ton compte avant de créer un dépôt.', 'repos.gate.creator': 'Lie un creator id BMM avant de créer un dépôt.',
     'repos.cat.community': 'Communauté', 'repos.cat.official': 'Officiel', 'repos.cat.partner': 'Partenaire',
     'repos.tier.all': 'Tous les niveaux', 'arp.search': 'Rechercher par nom, propriétaire, ID de repo ou tag…', 'arp.allstatus': 'Tous les statuts', 'arp.nomatch': 'Aucun repo ne correspond aux filtres',
+    'rd.suspended.notice': 'Ce repo est suspendu — il reste hors ligne et ne peut pas être publié, listé, modifié ni supprimé. Vous pouvez encore supprimer son contenu ci-dessous. Contactez le support pour le résoudre.',
     'arp.cat.community': 'Défini comme communauté.', 'arp.cat.official': 'Marqué OFFICIEL.', 'arp.cat.partner': 'Marqué PARTENAIRE.',
     'arp.boost': 'Booster', 'arp.boosted': 'Boosté', 'arp.boost.title': 'Booster le dépôt (gratuit)',
     'arp.boost.days': "Mettre en avant pendant combien de jours ? (0 pour retirer)", 'arp.boost.apply': 'Appliquer',
