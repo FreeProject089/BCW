@@ -24,7 +24,7 @@ import { AuthorsRow } from './blog.jsx';
 import Avatar from './Avatar.jsx';
 import { createRoot } from 'react-dom/client';
 import { AppLogo, KofiIcon, GithubIcon, DiscordIcon, RedditIcon, GoogleIcon } from './brand.jsx';
-import { Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from './ui.jsx';
+import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from './ui.jsx';
 import Markdown, { ShowcaseIcon } from './md.jsx';
 import IconPicker from './icon-picker.jsx';
 import ProjectConfigEditor from './project-config-editor.jsx';
@@ -346,10 +346,23 @@ export function Home() {
         <SectionKicker n="03" label={t('home.k.start', 'Get started')} />
         <div className="reveal-on-scroll text-center mb-9"><h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.steps.title')}</h2><p className="text-[var(--muted)] mt-2.5">{t('home.steps.sub')}</p></div>
         <div className="reveal-stagger relative grid md:grid-cols-3 gap-5">
-          {/* connecting dotted line — desktop only, threaded through the icon row (56px
-              badge + 24px card padding ⇒ center ≈ 52px down). Lives OUTSIDE the cards so
-              it isn't clipped, and sits behind them (z-0) so the icon badges read on top. */}
-          <div className="hidden md:block absolute top-[52px] left-[16.5%] right-[16.5%] h-0 border-t-2 border-dotted border-[var(--line-strong)] z-0" />
+          {/* Animated flow connector — desktop only, threaded through the icon row (badge
+              center ≈ 52px down). A dotted wave baseline with a glowing pulse that travels
+              left→right through the three steps, so the journey reads as forward motion.
+              Lives OUTSIDE the cards (not clipped) and behind them (z-0). */}
+          <div className="hidden md:block absolute top-[52px] left-[16.5%] right-[16.5%] h-8 -translate-y-1/2 z-0 pointer-events-none">
+            <svg className="w-full h-full" viewBox="0 0 300 24" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="stepflowg" x1="0" y1="0" x2="300" y2="0" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stopColor="var(--primary)" stopOpacity="0" />
+                  <stop offset="0.5" stopColor="var(--primary-2)" />
+                  <stop offset="1" stopColor="var(--primary)" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <path d="M0 12 C 50 2, 100 22, 150 12 S 250 2, 300 12" fill="none" stroke="var(--line-strong)" strokeWidth="1.5" strokeDasharray="1 7" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+              <path d="M0 12 C 50 2, 100 22, 150 12 S 250 2, 300 12" fill="none" stroke="url(#stepflowg)" strokeWidth="3" strokeLinecap="round" strokeDasharray="46 254" vectorEffect="non-scaling-stroke" className="step-flow" />
+            </svg>
+          </div>
           {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth', user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free')],
             [Upload, t('home.step2'), t('home.step2.d'), '/catalog', t('home.step2.cta', 'Browse the catalog')],
             [Rocket, t('home.step3'), t('home.step3.d'), '/hosting', t('home.step3.cta', 'See hosting plans')]].map(([I, title, d, to, cta], i) => (
@@ -2244,15 +2257,16 @@ export function Admin() {
             <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
               <Input className="!pl-9" placeholder={t('mod.search.ph', 'Search by item name, author or email…')} value={modQ} onChange={(e) => setModQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setModQApplied(modQ)} /></div>
             <Button variant="primary" onClick={() => setModQApplied(modQ)}><Search size={15} /> {t('mod.search', 'Search')}</Button>
-            <Select className="!w-auto" value={modKind} onChange={(e) => setModKind(e.target.value)}>
-              <option value="">{t('mod.allkinds', 'All kinds')}</option><option value="APP">{t('mod.k.app', 'App')}</option><option value="PLUGIN">{t('mod.k.plugin', 'Plugin')}</option><option value="THEME">{t('mod.k.theme', 'Theme')}</option><option value="PRESET">{t('mod.k.preset', 'Preset')}</option>
-            </Select>
-            <Select className="!w-auto" value={modType} onChange={(e) => setModType(e.target.value)}>
-              <option value="">{t('mod.alltypes', 'All types')}</option><option value="NEW">{t('mod.t.new', 'New')}</option><option value="UPDATE">{t('mod.t.update', 'Update')}</option>
-            </Select>
-            <Select className="!w-auto" value={modSort} onChange={(e) => setModSort(e.target.value)}>
-              <option value="oldest">{t('mod.oldest', 'Oldest first')}</option><option value="newest">{t('mod.newest', 'Newest first')}</option>
-            </Select>
+            <Dropdown value={modKind} onChange={setModKind} options={[
+              { value: '', label: t('mod.allkinds', 'All kinds') }, { value: 'APP', label: t('mod.k.app', 'App') },
+              { value: 'PLUGIN', label: t('mod.k.plugin', 'Plugin') }, { value: 'THEME', label: t('mod.k.theme', 'Theme') }, { value: 'PRESET', label: t('mod.k.preset', 'Preset') },
+            ]} />
+            <Dropdown value={modType} onChange={setModType} options={[
+              { value: '', label: t('mod.alltypes', 'All types') }, { value: 'NEW', label: t('mod.t.new', 'New') }, { value: 'UPDATE', label: t('mod.t.update', 'Update') },
+            ]} />
+            <Dropdown value={modSort} onChange={setModSort} options={[
+              { value: 'oldest', label: t('mod.oldest', 'Oldest first') }, { value: 'newest', label: t('mod.newest', 'Newest first') },
+            ]} />
           </div>
           {subs.loading ? <Loading /> : (queue.length ? <div className="space-y-2">
             {queue.map((sub) => { const I = KIND_ICON[sub.item?.kind] || Package; return (

@@ -2,7 +2,7 @@
 // use the Dialog + Toast providers below. Icons come from lucide-react.
 import { createContext, useContext, useEffect, useState, useCallback, useRef, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff } from 'lucide-react';
+import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown } from 'lucide-react';
 
 // Robust clipboard copy — navigator.clipboard is unavailable on non-HTTPS origins and
 // inside some embedded webviews, so fall back to a hidden <textarea> + execCommand.
@@ -30,6 +30,40 @@ export const Badge = ({ tone = '', className = '', children }) =>
 export const Input = forwardRef((p, ref) => <input ref={ref} {...p} className={`input ${p.className || ''}`} />);
 export const Textarea = (p) => <textarea className={`input ${p.className || ''}`} {...p} />;
 export const Select = ({ className = '', children, ...p }) => <select className={`input ${className}`} {...p}>{children}</select>;
+
+// Themed dropdown replacing OS-native <select> popups (which ignore the app theme and
+// render as ugly square OS menus). `options`: [{ value, label, icon? }]. Portal-based so
+// it's never clipped by a card/overflow. `onChange(value)`.
+export function Dropdown({ value, options, onChange, className = '', size, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef(null);
+  const [pos, setPos] = useState(null);
+  const cur = options.find((o) => String(o.value) === String(value));
+  const openMenu = () => { const r = btnRef.current?.getBoundingClientRect(); if (r) setPos({ top: r.bottom + 6, left: r.left, minWidth: Math.max(r.width, 160) }); setOpen(true); };
+  useEffect(() => { if (!open) return; const onKey = (e) => e.key === 'Escape' && setOpen(false); window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey); }, [open]);
+  const pad = size === 'sm' ? 'px-2.5 py-1.5 text-xs' : 'px-3 py-2 text-sm';
+  return (
+    <>
+      <button ref={btnRef} type="button" onClick={() => (open ? setOpen(false) : openMenu())} aria-expanded={open}
+        className={`press-sm inline-flex items-center justify-between gap-2 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] font-medium hover:border-[var(--ring)] transition-colors ${pad} ${className}`}>
+        <span className="truncate flex items-center gap-1.5">{cur?.icon}{cur ? cur.label : <span className="text-[var(--faint)]">{placeholder || '—'}</span>}</span>
+        <ChevronDown size={14} className={`text-[var(--muted)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && pos && createPortal(<>
+        <div className="fixed inset-0 z-[70]" onClick={() => setOpen(false)} />
+        <div className="fixed z-[71] rounded-xl border border-[var(--line-strong)] p-1 shadow-lg anim-pop max-h-[60vh] overflow-auto scroll-thin" style={{ top: pos.top, left: pos.left, minWidth: pos.minWidth, background: 'var(--bg-solid)' }}>
+          {options.map((o) => (
+            <button key={String(o.value)} type="button" onClick={() => { setOpen(false); if (String(o.value) !== String(value)) onChange(o.value); }}
+              className={`press-sm w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-left transition-colors ${String(o.value) === String(value) ? 'bg-[var(--surface-2)] font-medium text-[var(--text)]' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'}`}>
+              {o.icon}<span className="flex-1 truncate">{o.label}</span>
+              {String(o.value) === String(value) && <Check size={14} className="text-[var(--primary-2)]" />}
+            </button>
+          ))}
+        </div>
+      </>, document.body)}
+    </>
+  );
+}
 export const Spinner = ({ className = '' }) => <Loader2 className={`animate-spin ${className}`} size={18} />;
 
 export function Field({ label, hint, children }) {
