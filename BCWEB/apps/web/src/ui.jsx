@@ -144,7 +144,7 @@ export function ToastProvider({ children }) {
             <div key={t.id} className="card anim-slide relative overflow-hidden pl-4 pr-4 py-3 flex items-start gap-2.5" style={{ boxShadow: '0 12px 34px -12px rgba(0,0,0,0.6)' }}>
               {/* semantic accent rail + a spring-in icon chip: explicit success / error / info cue */}
               <span className="absolute left-0 top-0 bottom-0 w-1" style={{ background: tone }} />
-              <span className="toast-icon-in grid place-items-center w-6 h-6 rounded-lg shrink-0" style={{ background: `color-mix(in srgb, ${tone} 16%, transparent)`, color: tone }}><I size={15} /></span>
+              <span className={`toast-icon-in grid place-items-center w-6 h-6 rounded-lg shrink-0 ${t.tone === 'success' ? 'burst' : ''}`} style={{ background: `color-mix(in srgb, ${tone} 16%, transparent)`, color: tone }}><I size={15} /></span>
               <div className="text-sm flex-1 pt-0.5">{t.msg}</div>
             </div>); })}
         </div>, document.body)}
