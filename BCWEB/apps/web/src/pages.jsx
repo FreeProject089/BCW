@@ -24,7 +24,7 @@ import { AuthorsRow } from './blog.jsx';
 import Avatar from './Avatar.jsx';
 import { createRoot } from 'react-dom/client';
 import { AppLogo, KofiIcon, GithubIcon, DiscordIcon, RedditIcon, GoogleIcon } from './brand.jsx';
-import { Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast } from './ui.jsx';
+import { Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from './ui.jsx';
 import Markdown, { ShowcaseIcon } from './md.jsx';
 import IconPicker from './icon-picker.jsx';
 import ProjectConfigEditor from './project-config-editor.jsx';
@@ -1374,6 +1374,13 @@ export function Auth() {
   const titles = { login: [t('auth.welcome'), t('auth.subin')], register: [t('auth.create'), t('auth.subup')], forgot: [t('auth.reset.title'), t('auth.reset.sub')], reset: [t('auth.newpw.title'), t('auth.newpw.sub')] };
   const cta = { login: t('nav.signin'), register: t('auth.create'), forgot: t('auth.sendreset'), reset: t('auth.updatepw') };
   const pw2 = mode === 'register' || mode === 'reset';
+  // Live, as-you-type validation — show the problem the instant it's clear (a wrong
+  // email format, a too-short password, a mismatch) instead of waiting for submit.
+  // Guarded so an empty / barely-started field doesn't nag prematurely.
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emailBad = mode !== 'reset' && f.email.length > 3 && !emailRe.test(f.email);
+  const pwShort = pw2 && f.password.length > 0 && f.password.length < 8;
+  const pwMismatch = pw2 && f.confirm.length > 0 && f.confirm !== f.password;
 
   // Don't flash the login form before we know the auth state. While the session
   // is still resolving (hard load / bookmark), show a neutral spinner; once we
@@ -1419,16 +1426,24 @@ export function Auth() {
         <form onSubmit={submit} className="space-y-3">
           {mode === 'register' && <Field label={t('auth.name')}><Input value={f.displayName} onChange={set('displayName')} /></Field>}
           {mode !== 'reset' && <Field label={t('auth.email')}>
-            <Input type="email" value={f.email} aria-invalid={emailTaken || undefined}
+            <Input type="email" value={f.email} aria-invalid={(emailTaken || emailBad) || undefined}
               onChange={(e) => { if (emailTaken) setEmailTaken(false); setF({ ...f, email: e.target.value }); }} placeholder="you@example.com" />
-            {emailTaken && <div className="text-xs text-[var(--error)] mt-1.5 anim-fade">
-              {t('auth.err.taken', 'This email already exists.')}{' '}
-              <button type="button" onClick={() => { setEmailTaken(false); setMode('login'); }} className="underline underline-offset-2 font-semibold hover:opacity-80 press-sm">{t('auth.err.taken.login', 'Login instead?')}</button>
-            </div>}
+            {emailTaken ? <div className="text-xs text-[var(--error)] mt-1.5 anim-fade">
+                {t('auth.err.taken', 'This email already exists.')}{' '}
+                <button type="button" onClick={() => { setEmailTaken(false); setMode('login'); }} className="underline underline-offset-2 font-semibold hover:opacity-80 press-sm">{t('auth.err.taken.login', 'Login instead?')}</button>
+              </div>
+             : emailBad ? <div className="text-xs text-[var(--error)] mt-1.5 anim-fade">{t('auth.err.emailformat', 'Enter a valid email address.')}</div>
+             : null}
           </Field>}
           {mode === 'reset' && <Field label={t('auth.token')}><Input value={f.token} onChange={set('token')} placeholder={t('auth.token.ph')} /></Field>}
-          {mode !== 'forgot' && <Field label={pw2 ? t('auth.newpw') : t('auth.password')}><PwInput value={f.password} onChange={set('password')} /></Field>}
-          {pw2 && <Field label={t('auth.confirmpw')}><PwInput value={f.confirm} onChange={set('confirm')} /></Field>}
+          {mode !== 'forgot' && <Field label={pw2 ? t('auth.newpw') : t('auth.password')}>
+            <PwInput value={f.password} onChange={set('password')} />
+            {pwShort && <div className="text-xs text-[var(--warning)] mt-1.5 anim-fade">{t('auth.err.short', 'Password must be at least 8 characters.')}</div>}
+          </Field>}
+          {pw2 && <Field label={t('auth.confirmpw')}>
+            <PwInput value={f.confirm} onChange={set('confirm')} />
+            {pwMismatch && <div className="text-xs text-[var(--error)] mt-1.5 anim-fade">{t('auth.err.match', "Passwords don't match.")}</div>}
+          </Field>}
           <Button variant="primary" className="w-full" disabled={busy}>{busy ? <><Spinner /> {step || '…'}</> : cta[mode]}</Button>
         </form>
         {(mode === 'login' || mode === 'register') && (oauthProviders?.github || oauthProviders?.discord || oauthProviders?.google) && (
@@ -3174,7 +3189,16 @@ function AdminServerPerf() {
             if (byKey.has(key)) { const g = byKey.get(key); g.count++; g.firstAt = a.createdAt; }
             else { const g = { ...a, count: 1, firstAt: a.createdAt, lastAt: a.createdAt }; byKey.set(key, g); groups.push(g); }
           }
-          const copyAll = () => { navigator.clipboard?.writeText(groups.map((g) => `[${g.kind}] ${g.message}${g.count > 1 ? ` (×${g.count})` : ''} — ${new Date(g.lastAt).toLocaleString()}`).join('\n')); toast.success(t('common.copied', 'Copied.')); };
+          const copyAll = async () => {
+            const log = [
+              `BetterCommunity server-perf alerts`,
+              `exported: ${new Date().toISOString()}`,
+              ``,
+              ...groups.map((g) => `[${g.kind}] ${g.message}${g.count > 1 ? ` (×${g.count})` : ''} — last ${new Date(g.lastAt).toLocaleString()}${g.count > 1 ? `, first ${new Date(g.firstAt).toLocaleString()}` : ''}`),
+            ].join('\n');
+            const ok = await copyText(log);
+            ok ? toast.success(t('common.copied', 'Copied.')) : toast.error(t('sp.al.copyfail', 'Could not copy — select the alerts manually.'));
+          };
           return (<>
             <div className="flex justify-end mb-1.5"><Button size="sm" variant="ghost" onClick={copyAll}><Copy size={12} /> {t('sp.al.copyall', 'Copy all')}</Button></div>
             <div className="space-y-1.5 max-h-96 overflow-auto pr-1 -mr-1">
@@ -6927,13 +6951,13 @@ const convertUnit = (value, fromUnit, toUnit) => fromUnit === toUnit ? Number(va
 // edit / restart), unlike the display-only telemetry.storageLimitGB setting.
 function TelemetryConfigCard() {
   const { t } = useI18n(); const toast = useToast();
-  const { data, loading, reload } = useAsync(() => api.get('/admin/telemetry/config').then((d) => d).catch((x) => ({ __err: x?.data?.error || 'telemetry_unreachable' })), []);
+  const { data, loading, reload } = useAsync(() => api.get('/admin/telemetry/config').catch((x) => ({ available: false, error: x?.data?.error || 'telemetry_unreachable' })), []);
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (data?.config) setF({ storageGB: String(Math.round((data.config.storageLimitMb / 1024) * 100) / 100), retentionDays: String(data.config.retentionDays), deleteDelayH: String(data.config.deleteDelayH) }); }, [data]);
   if (loading) return null;
-  if (data?.__err) {
-    const notcfg = data.__err === 'telemetry_not_configured';
+  if (data && data.available === false) {
+    const notcfg = data.error === 'telemetry_not_configured';
     return (
       <Card className="p-4 mb-3">
         <div className="text-sm font-medium flex items-center gap-2 mb-1"><Gauge size={15} className="text-sky-400" /> {t('tc.title', 'BMM telemetry (live)')}</div>
@@ -7009,10 +7033,17 @@ function AdminSettings() {
   const tempPct = c?.tempMarginGB ? Math.min(100, (c.tempUsedGB / c.tempMarginGB) * 100) : 0;
   return (
     <div className="mt-10">
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2 sticky top-0 z-10 py-1 sticky-bar">
-        <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} /> {t('hs.title', 'Hosting settings')}</h2>
-        {dirtyKeys.length > 0 && <Button variant="primary" size="sm" disabled={busy === '__all__'} onClick={saveAll}>{busy === '__all__' ? <Spinner /> : <><CheckCheck size={14} /> {t('hs.saveall', 'Save all')} ({dirtyKeys.length})</>}</Button>}
+      {/* Plain header — consistent with every other admin panel (Events, Campaigns…).
+          The "Save all" pill still floats to a sticky dock at the bottom-right when
+          there are unsaved edits, so pinning the header isn't needed. */}
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('hs.title', 'Hosting settings')}</h2>
       </div>
+      {dirtyKeys.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 anim-slide">
+          <Button variant="primary" disabled={busy === '__all__'} onClick={saveAll} className="shadow-lg">{busy === '__all__' ? <Spinner /> : <><CheckCheck size={15} /> {t('hs.saveall', 'Save all')} ({dirtyKeys.length})</>}</Button>
+        </div>
+      )}
       {/* At-a-glance stacked bar of the WHOLE Total capacity — where every GB goes
           (hosting quotas, approved submissions, temp margin, reserved, free) plus the
           separately-tracked free-plan pool. */}

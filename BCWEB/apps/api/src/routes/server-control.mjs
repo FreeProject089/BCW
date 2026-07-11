@@ -373,12 +373,16 @@ export default async function serverControlRoutes(app) {
   const teleBase = () => (process.env.TELEMETRY_INTERNAL_URL || '').replace(/\/+$/, '');
   const teleKey = () => process.env.TELEMETRY_ADMIN_KEY || process.env.TELEMETRY_ADMIN || '';
   app.get('/admin/telemetry/config', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    if (!teleBase() || !teleKey()) return reply.code(503).send({ error: 'telemetry_not_configured' });
+    // Telemetry is an OPTIONAL companion service. When it isn't wired up or is down,
+    // answer 200 with { available:false } instead of 503/502 — the admin panel treats
+    // it as "offline" and it avoids a scary console error + a ~4s hang for an expected
+    // absence. A short timeout makes an unreachable host fail fast.
+    if (!teleBase() || !teleKey()) return reply.send({ available: false, error: 'telemetry_not_configured' });
     try {
-      const r = await fetch(`${teleBase()}/api/admin/config`, { headers: { 'X-Admin-Key': teleKey() } });
-      if (!r.ok) return reply.code(502).send({ error: 'telemetry_unreachable', status: r.status });
-      return await r.json();
-    } catch (e) { return reply.code(502).send({ error: 'telemetry_unreachable', detail: String(e?.message || e) }); }
+      const r = await fetch(`${teleBase()}/api/admin/config`, { headers: { 'X-Admin-Key': teleKey() }, signal: AbortSignal.timeout(2500) });
+      if (!r.ok) return reply.send({ available: false, error: 'telemetry_unreachable', status: r.status });
+      return { available: true, ...(await r.json()) };
+    } catch (e) { return reply.send({ available: false, error: 'telemetry_unreachable', detail: String(e?.message || e) }); }
   });
   app.put('/admin/telemetry/config', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     if (!teleBase() || !teleKey()) return reply.code(503).send({ error: 'telemetry_not_configured' });
@@ -391,7 +395,7 @@ export default async function serverControlRoutes(app) {
     try {
       const r = await fetch(`${teleBase()}/api/admin/config`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': teleKey() },
-        body: JSON.stringify(b.data),
+        body: JSON.stringify(b.data), signal: AbortSignal.timeout(2500),
       });
       if (!r.ok) return reply.code(502).send({ error: 'telemetry_unreachable', status: r.status });
       const out = await r.json();
