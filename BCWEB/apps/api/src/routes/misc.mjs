@@ -5,6 +5,7 @@ import { capacityStatus, realDiskStats, stripe } from './hosting.mjs';
 import { powVerify } from './auth.mjs';
 import { FILES_BACKUP_ROOT, DB_BACKUP_ROOT, repoSizeBytes } from '../gitbackup.mjs';
 import { userBcId, itemFingerprint, repoFingerprint, loadOwnerIdentities, looksLikeBcId, findUserIdByBcId } from '../repofingerprint.mjs';
+import { telemetryDb } from './server-control.mjs';
 
 // The real client IP as observed by our trusted proxy (Caddy appends it last).
 function clientIp(req) {
@@ -93,11 +94,25 @@ export default async function miscRoutes(app) {
     // management — its own real disk usage, separate from the app's own data.
     const backupLimitRow = await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } });
     const [filesBackupBytes, dbBackupBytes] = await Promise.all([repoSizeBytes(FILES_BACKUP_ROOT), repoSizeBytes(DB_BACKUP_ROOT)]);
+    // Telemetry lives in its OWN Postgres (separate service). Report its real DB size
+    // when it's wired up + reachable — a short timeout means an offline telemetry
+    // never stalls this endpoint; otherwise it stays external/uncounted.
+    let telemetryDbBytes = null;
+    try {
+      const tpool = telemetryDb();
+      if (tpool) {
+        const r = await Promise.race([
+          tpool.query('SELECT pg_database_size(current_database())::bigint AS bytes'),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2000)),
+        ]);
+        telemetryDbBytes = Number(r.rows[0].bytes);
+      }
+    } catch { telemetryDbBytes = null; }
     return {
       areas: [
         { key: 'repos', label: 'Hosted repos', prefix: 'hosting/', ...repos },
         { key: 'catalog', label: 'Catalog payloads (apps/plugins/themes)', prefix: 'uploads/', ...uploads },
-        { key: 'blog', label: 'Blog media', prefix: 'blog/', ...blog },
+        { key: 'blog', label: 'Blog, docs & page media', prefix: 'blog/', ...blog },
         // Only surfaced when non-zero — most instances will never have anything
         // here, and an always-visible empty "Other" card would just be noise.
         ...(other.bytes > 0 ? [{ key: 'other', label: 'Other / unaccounted (object storage)', prefix: '(bucket-wide, minus known prefixes)', ...other }] : []),
@@ -119,7 +134,7 @@ export default async function miscRoutes(app) {
         { key: 'hosting', label: 'Server-Repo hosting', usedBytes: repos.bytes, allocatedBytes: Number(hostedAgg._sum.storageQuotaBytes || 0n), count: hostedCount },
         { key: 'submissionsPending', label: 'Pending submissions (temp margin)', usedBytes: cap.tempUsedGB * GiB, allocatedBytes: cap.tempMarginGB * GiB, count: null },
         { key: 'submissionsPublished', label: 'Approved submissions (permanent)', usedBytes: cap.submissionsPublishedGB * GiB, allocatedBytes: null, count: null },
-        { key: 'blog', label: 'Blog media', usedBytes: blog.bytes, allocatedBytes: null, count: blog.count },
+        { key: 'blog', label: 'Blog, docs & page media', usedBytes: blog.bytes, allocatedBytes: null, count: blog.count, note: 'Blog covers, docs images and project-page media (shared blog/ prefix).' },
         { key: 'otherProjects', label: 'Other projects (showcase)', usedBytes: 0, allocatedBytes: null, count: showcaseCount, note: 'Media referenced by URL, not uploaded here.' },
         // The DB's own on-disk size, whole — every table at once (users, catalog
         // rows, submissions/comments, contact messages, login/audit logs, metric
@@ -127,7 +142,8 @@ export default async function miscRoutes(app) {
         // it's the actual answer to "besides object storage, what else is using
         // real disk" without needing one line item per Prisma model.
         { key: 'database', label: 'Database (all tables — users, content, logs, metrics, analytics)', usedBytes: dbSizeBytes, allocatedBytes: null, count: null, note: `${analyticsCount} analytics events, ${promoCount} promo codes, ${messageCount} contact messages among them.` },
-        { key: 'backups', label: 'Server backups (git — file & DB edit history)', usedBytes: filesBackupBytes + dbBackupBytes, allocatedBytes: backupLimitRow?.value?.maxBytes ?? null, count: null, note: `${(filesBackupBytes / 1024 / 1024).toFixed(1)} MB file history, ${(dbBackupBytes / 1024 / 1024).toFixed(1)} MB DB row history. Limit configured from Advanced server management.` },
+        { key: 'backups', label: 'Server backups (cron — git file & DB edit history)', usedBytes: filesBackupBytes + dbBackupBytes, allocatedBytes: backupLimitRow?.value?.maxBytes ?? null, count: null, note: `${(filesBackupBytes / 1024 / 1024).toFixed(1)} MB file history, ${(dbBackupBytes / 1024 / 1024).toFixed(1)} MB DB row history. Limit configured from Advanced server management.` },
+        { key: 'telemetry', label: 'BMM telemetry (separate DB)', usedBytes: telemetryDbBytes, allocatedBytes: null, count: null, note: telemetryDbBytes != null ? 'Live on-disk size of the separate BMM telemetry Postgres.' : 'Stored by the separate telemetry service — offline or not wired up, so not counted here.' },
         ...(other.bytes > 0 ? [{ key: 'other', label: 'Other / unaccounted (object storage)', usedBytes: other.bytes, allocatedBytes: null, count: other.count, note: 'Objects in the bucket outside the known hosting/uploads/blog prefixes.' }] : []),
         { key: 'margin', label: 'Reserved free margin', usedBytes: 0, allocatedBytes: cap.reservedGB * GiB, count: null },
       ],
