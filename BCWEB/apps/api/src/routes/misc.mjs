@@ -94,20 +94,38 @@ export default async function miscRoutes(app) {
     // management — its own real disk usage, separate from the app's own data.
     const backupLimitRow = await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } });
     const [filesBackupBytes, dbBackupBytes] = await Promise.all([repoSizeBytes(FILES_BACKUP_ROOT), repoSizeBytes(DB_BACKUP_ROOT)]);
-    // Telemetry lives in its OWN Postgres (separate service). Report its real DB size
-    // when it's wired up + reachable — a short timeout means an offline telemetry
-    // never stalls this endpoint; otherwise it stays external/uncounted.
-    let telemetryDbBytes = null;
+    // Telemetry is a SEPARATE service (possibly on another server). Get its REAL storage
+    // footprint two ways, most-authoritative first, so we always have a number if it's
+    // reachable at all: (1) the service's own accounting via its admin API (used_bytes +
+    // configured limit — counts events AND rrweb replays, same- or cross-server); (2) a
+    // direct Postgres size query as a fallback. Short timeouts keep an offline telemetry
+    // from stalling this endpoint.
+    let telemetryBytes = null, telemetryLimitBytes = null, telemetrySource = null;
     try {
-      const tpool = telemetryDb();
-      if (tpool) {
-        const r = await Promise.race([
-          tpool.query('SELECT pg_database_size(current_database())::bigint AS bytes'),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2000)),
-        ]);
-        telemetryDbBytes = Number(r.rows[0].bytes);
+      const base = (process.env.TELEMETRY_INTERNAL_URL || '').replace(/\/+$/, '');
+      const key = process.env.TELEMETRY_ADMIN_KEY || process.env.TELEMETRY_ADMIN || '';
+      if (base && key) {
+        const r = await fetch(`${base}/api/admin/config`, { headers: { 'X-Admin-Key': key }, signal: AbortSignal.timeout(2500) });
+        if (r.ok) {
+          const j = await r.json();
+          if (j.used_bytes != null) { telemetryBytes = Number(j.used_bytes); telemetrySource = 'service'; }
+          const limMb = j.config?.storageLimitMb ?? j.storageLimitMb;
+          if (limMb) telemetryLimitBytes = Number(limMb) * 1024 * 1024;
+        }
       }
-    } catch { telemetryDbBytes = null; }
+    } catch { /* service unreachable — try the DB directly below */ }
+    if (telemetryBytes == null) {
+      try {
+        const tpool = telemetryDb();
+        if (tpool) {
+          const r = await Promise.race([
+            tpool.query('SELECT pg_database_size(current_database())::bigint AS bytes'),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2000)),
+          ]);
+          telemetryBytes = Number(r.rows[0].bytes); telemetrySource = 'db';
+        }
+      } catch { telemetryBytes = null; }
+    }
     return {
       areas: [
         { key: 'repos', label: 'Hosted repos', prefix: 'hosting/', ...repos },
@@ -143,7 +161,10 @@ export default async function miscRoutes(app) {
         // real disk" without needing one line item per Prisma model.
         { key: 'database', label: 'Database (all tables — users, content, logs, metrics, analytics)', usedBytes: dbSizeBytes, allocatedBytes: null, count: null, note: `${analyticsCount} analytics events, ${promoCount} promo codes, ${messageCount} contact messages among them.` },
         { key: 'backups', label: 'Server backups (cron — git file & DB edit history)', usedBytes: filesBackupBytes + dbBackupBytes, allocatedBytes: backupLimitRow?.value?.maxBytes ?? null, count: null, note: `${(filesBackupBytes / 1024 / 1024).toFixed(1)} MB file history, ${(dbBackupBytes / 1024 / 1024).toFixed(1)} MB DB row history. Limit configured from Advanced server management.` },
-        { key: 'telemetry', label: 'BMM telemetry (separate DB)', usedBytes: telemetryDbBytes, allocatedBytes: null, count: null, note: telemetryDbBytes != null ? 'Live on-disk size of the separate BMM telemetry Postgres.' : 'Stored by the separate telemetry service — offline or not wired up, so not counted here.' },
+        { key: 'telemetry', label: 'BMM telemetry (separate service)', usedBytes: telemetryBytes, allocatedBytes: telemetryLimitBytes, count: null,
+          note: telemetryBytes != null
+            ? (telemetrySource === 'service' ? 'Reported by the telemetry service — events + rrweb replays (works even on another server).' : 'Telemetry Postgres on-disk size (service admin API unreachable, DB reached directly).')
+            : 'Telemetry service offline or not wired up — size unavailable. Set TELEMETRY_INTERNAL_URL + TELEMETRY_ADMIN_KEY (or TELEMETRY_DATABASE_URL).' },
         ...(other.bytes > 0 ? [{ key: 'other', label: 'Other / unaccounted (object storage)', usedBytes: other.bytes, allocatedBytes: null, count: other.count, note: 'Objects in the bucket outside the known hosting/uploads/blog prefixes.' }] : []),
         { key: 'margin', label: 'Reserved free margin', usedBytes: 0, allocatedBytes: cap.reservedGB * GiB, count: null },
       ],
