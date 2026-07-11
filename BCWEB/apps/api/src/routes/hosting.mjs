@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { statfsSync } from 'node:fs';
 import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim } from '../lib.mjs';
 import { validatePromo, redeemPromoAtomic } from './promo.mjs';
+import { getActiveCampaign } from './campaigns.mjs';
 
 const GiB = 1024 ** 3;
 
@@ -269,6 +270,16 @@ export default async function hostingRoutes(app) {
     const sk = await stripe();
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
+    // Site-wide promo CAMPAIGN — an auto-applied discount (no code) live right now. It
+    // stacks with a personal discount code below; a campaign only ever DISCOUNTS (never
+    // makes it free — that's what free-hosting grant codes are for), so we floor the
+    // charge at Stripe's minimum further down.
+    const camp = await getActiveCampaign(p);
+    let campaignLabel = '';
+    if (camp && (camp.appliesTo === 'all' || camp.appliesTo === 'hosting')) {
+      total = Math.round(total * (1 - camp.percentOff / 100));
+      campaignLabel = ` · −${camp.percentOff}% ${camp.kind === 'black_friday' ? 'Black Friday' : 'sale'}`;
+    }
     // Optional discount promo: % off and/or first N months free (applied to the prepaid
     // total). A fully-free result is rejected here — use a free-hosting grant code for that.
     let promo = null; let promoLabel = '';
@@ -283,11 +294,14 @@ export default async function hostingRoutes(app) {
       if (total < 50) return reply.code(400).send({ error: 'promo_makes_free', detail: 'This code makes it free — an admin should issue a free-hosting code instead.' });
       promoLabel = promo.percentOff ? ` · −${promo.percentOff}% (${promo.code})` : promo.freeMonths ? ` · ${promo.freeMonths}mo free (${promo.code})` : ` · ${promo.code}`;
     }
-    // Recurring only when opted in, no one-off promo, and the term fits Stripe's
-    // 1-year max billing interval. Otherwise a one-time prepaid charge (unchanged).
-    const recurring = b.data.autoRenew && !promo && months <= 12;
+    // A campaign is a one-time sale: floor it at Stripe's minimum (never free) since
+    // the code path above only rejects sub-minimum totals when an actual code is used.
+    if (campaignLabel && total < 50) total = 50;
+    // Recurring only when opted in, no one-off promo, no one-off campaign discount, and
+    // the term fits Stripe's 1-year max interval. Otherwise a one-time prepaid charge.
+    const recurring = b.data.autoRenew && !promo && !campaignLabel && months <= 12;
     const md = { userId: req.user.uid, planId: plan.id, repoName: b.data.repoName, hostMode: b.data.mode, months: String(months), promoCode: promo?.code || '' };
-    const productName = `${plan.name} hosting — ${recurring ? `auto-renews every ${months} month${months > 1 ? 's' : ''}` : `${months} month${months > 1 ? 's' : ''}`}${TERM_DISCOUNT[months] ? ` (−${Math.round(TERM_DISCOUNT[months] * 100)}%)` : ''}${promoLabel}`;
+    const productName = `${plan.name} hosting — ${recurring ? `auto-renews every ${months} month${months > 1 ? 's' : ''}` : `${months} month${months > 1 ? 's' : ''}`}${TERM_DISCOUNT[months] ? ` (−${Math.round(TERM_DISCOUNT[months] * 100)}%)` : ''}${campaignLabel}${promoLabel}`;
     const session = await sk.checkout.sessions.create(recurring ? {
       mode: 'subscription', customer,
       line_items: [{ quantity: 1, price_data: {

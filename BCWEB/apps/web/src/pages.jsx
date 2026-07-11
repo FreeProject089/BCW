@@ -2068,6 +2068,7 @@ export function Admin() {
     { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
     isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
     isAdmin && { id: 'promo', label: t('adm.tab.promo', 'Promo codes'), icon: Ticket },
+    isAdmin && { id: 'campaigns', label: t('adm.tab.campaigns', 'Promotions'), icon: Megaphone },
     isAdmin && { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
 
     isAdmin && { heading: t('adm.h.content', 'Content') },
@@ -2135,6 +2136,7 @@ export function Admin() {
         {s === 'catalogs' && <><AdminCatalogCreator /><PluginVerifier /><ThemeVerifier /></>}
         {s === 'hosting' && <AdminFreeHost />}
         {s === 'promo' && <AdminPromo />}
+        {s === 'campaigns' && <AdminCampaigns />}
         {s === 'storage' && <AdminStorage />}
         {s === 'bot' && <AdminBot />}
         {s === 'analytics' && <AdminAnalytics />}
@@ -4620,6 +4622,84 @@ function AdminPromo() {
           </Card>
         ))}
       </div> : <EmptyState icon={Ticket} title={t('pc.none.t', 'No promo codes yet')} sub={t('pc.none.s', 'Create one above — discount, free hosting, or a free boost.')} />}
+    </div>
+  );
+}
+
+// Admin: site-wide promo CAMPAIGNS (auto-applied discount + announcement badge) —
+// distinct from the code-based promo codes above. One resolver picks the campaign
+// live right now; its % is applied at checkout and its badge shows across the site.
+function AdminCampaigns() {
+  const toast = useToast(); const { t } = useI18n();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/campaigns'), []);
+  const toLocal = (d) => { const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+  const blank = () => ({ name: '', kind: 'custom', percentOff: 20, appliesTo: 'all', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 3 * 864e5)), badgeMessageEn: '', badgeMessageFr: '', badgeColor: '', badgeEnabled: true });
+  const [f, setF] = useState(blank);
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const list = data?.campaigns || [];
+  // Quick presets the admin can then tweak.
+  const presetRandom = () => setF((s) => ({ ...s, name: 'Flash sale', kind: 'flash', percentOff: 10 + Math.floor(Math.random() * 41), appliesTo: 'all', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 2 * 864e5)), badgeMessageEn: 'Flash sale — limited time!', badgeMessageFr: 'Vente flash — durée limitée !' }));
+  const presetBlackFriday = () => setF((s) => ({ ...s, name: 'Black Friday', kind: 'black_friday', percentOff: 30, appliesTo: 'all', badgeMessageEn: 'Black Friday — 30% off all purchases!', badgeMessageFr: 'Black Friday — 30% sur tous les achats !', badgeColor: '#111111' }));
+  const create = async () => {
+    if (!f.name.trim()) return toast.error(t('cmp.err.name', 'Name is required.'));
+    const body = {
+      name: f.name.trim(), kind: f.kind, percentOff: Number(f.percentOff), appliesTo: f.appliesTo,
+      startsAt: new Date(f.startsAt).toISOString(), endsAt: new Date(f.endsAt).toISOString(),
+      badgeEnabled: !!f.badgeEnabled, badgeMessageEn: f.badgeMessageEn || '', badgeMessageFr: f.badgeMessageFr || '',
+      badgeColor: f.badgeColor.trim() || '',
+    };
+    try { await api.post('/admin/campaigns', body); toast.success(t('cmp.created', 'Campaign created.')); setF(blank()); reload(); }
+    catch (x) { toast.error(x.data?.error === 'end_before_start' ? t('cmp.err.dates', 'End must be after start.') : x.data?.error === 'bad_color' ? t('cmp.err.color', 'Color must be a hex like #f97316.') : t('common.failed', 'Failed.')); }
+  };
+  const toggle = async (c) => { try { await api.patch(`/admin/campaigns/${c.id}`, { active: !c.active }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = async (c) => { try { await api.del(`/admin/campaigns/${c.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const status = (c) => {
+    const now = Date.now(), s = new Date(c.startsAt).getTime(), e = new Date(c.endsAt).getTime();
+    if (!c.active) return { label: t('cmp.st.off', 'Disabled'), tone: undefined };
+    if (now < s) return { label: t('cmp.st.scheduled', 'Scheduled'), tone: 'primary' };
+    if (now > e) return { label: t('cmp.st.ended', 'Ended'), tone: undefined };
+    return { label: t('cmp.st.live', 'Live now'), tone: 'green' };
+  };
+  return (
+    <div>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Megaphone size={16} className="text-[var(--primary-2)]" /> {t('cmp.title', 'Promotions (campaigns)')}</h2>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('cmp.sub', 'A site-wide, time-boxed sale: auto-applies its % at checkout and shows an announcement badge across the whole site. One campaign is live at a time (the most recently started wins).')}</p>
+      <Card className="p-4 mb-4">
+        <div className="flex flex-wrap gap-2 mb-3">
+          <Button size="sm" onClick={presetRandom}><Sparkles size={13} /> {t('cmp.preset.random', 'Random flash sale')}</Button>
+          <Button size="sm" onClick={presetBlackFriday}>🛍️ {t('cmp.preset.bf', 'Black Friday')}</Button>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label={t('cmp.f.name', 'Name (internal)')}><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Black Friday 2026" /></Field>
+          <Field label={t('cmp.f.kind', 'Kind')}><Select value={f.kind} onChange={(e) => set('kind', e.target.value)}><option value="custom">{t('cmp.k.custom', 'Custom')}</option><option value="black_friday">Black Friday</option><option value="new_year">{t('cmp.k.ny', 'New Year')}</option><option value="flash">{t('cmp.k.flash', 'Flash sale')}</option></Select></Field>
+          <Field label={t('cmp.f.pct', '% off')}><Input type="number" value={f.percentOff} onChange={(e) => set('percentOff', e.target.value)} /></Field>
+          <Field label={t('cmp.f.applies', 'Applies to')}><Select value={f.appliesTo} onChange={(e) => set('appliesTo', e.target.value)}><option value="all">{t('cmp.a.all', 'All purchases')}</option><option value="hosting">{t('cmp.a.hosting', 'Hosting only')}</option><option value="boost">{t('cmp.a.boost', 'Boost only')}</option></Select></Field>
+          <Field label={t('cmp.f.start', 'Starts')}><Input type="datetime-local" value={f.startsAt} onChange={(e) => set('startsAt', e.target.value)} /></Field>
+          <Field label={t('cmp.f.end', 'Ends')}><Input type="datetime-local" value={f.endsAt} onChange={(e) => set('endsAt', e.target.value)} /></Field>
+          <Field label={t('cmp.f.msgen', 'Badge message (EN)')}><Input value={f.badgeMessageEn} onChange={(e) => set('badgeMessageEn', e.target.value)} placeholder="Black Friday — 30% off!" /></Field>
+          <Field label={t('cmp.f.msgfr', 'Badge message (FR)')}><Input value={f.badgeMessageFr} onChange={(e) => set('badgeMessageFr', e.target.value)} placeholder="Black Friday — 30% !" /></Field>
+          <Field label={t('cmp.f.color', 'Badge color (hex, blank = brand)')}><Input value={f.badgeColor} onChange={(e) => set('badgeColor', e.target.value)} placeholder="#f97316" /></Field>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-[var(--muted)] mt-3 cursor-pointer w-fit">
+          <input type="checkbox" checked={f.badgeEnabled} onChange={(e) => set('badgeEnabled', e.target.checked)} /> {t('cmp.f.badge', 'Show the announcement badge across the site')}
+        </label>
+        <div className="flex justify-end mt-3"><Button variant="primary" onClick={create}><Plus size={15} /> {t('cmp.create', 'Create campaign')}</Button></div>
+      </Card>
+      {loading ? <Loading /> : list.length ? <div className="space-y-2">
+        {list.map((c) => { const st = status(c); return (
+          <Card key={c.id} className="p-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Megaphone size={18} className={st.label === t('cmp.st.live', 'Live now') ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold">{c.name}</span><Badge tone={st.tone}>{st.label}</Badge><Badge tone="primary">−{c.percentOff}%</Badge>{c.badgeEnabled && <Badge><Megaphone size={9} /> {t('cmp.badgeon', 'badge')}</Badge>}</div>
+                <div className="text-xs text-[var(--muted)] mt-0.5">{c.kind.replace('_', ' ')} · {c.appliesTo} · {new Date(c.startsAt).toLocaleString()} → {new Date(c.endsAt).toLocaleString()}{(c.badgeMessageFr || c.badgeMessageEn) ? ` · "${c.badgeMessageFr || c.badgeMessageEn}"` : ''}</div>
+              </div>
+              <Button size="sm" onClick={() => toggle(c)}>{c.active ? t('cmp.disable', 'Disable') : t('cmp.enable', 'Enable')}</Button>
+              <Button size="sm" className="!text-red-400" onClick={() => del(c)}><Trash2 size={14} /></Button>
+            </div>
+          </Card>
+        ); })}
+      </div> : <EmptyState icon={Megaphone} title={t('cmp.none.t', 'No campaigns yet')} sub={t('cmp.none.s', 'Create one above — a Black Friday sale, a flash sale, anything.')} />}
     </div>
   );
 }
