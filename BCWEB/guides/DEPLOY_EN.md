@@ -119,6 +119,11 @@ cd infra/compose
 docker compose up -d --build      # rebuilds changed images, runs db push on boot
 ```
 
+Updates are **graceful**: when the API container is replaced it catches `SIGTERM`,
+finishes in-flight requests, then closes its DB/Redis handles before exiting (10 s
+budget) — a rebuild never hard-drops a live request. With 2+ replicas (next section)
+the rollout is effectively invisible to users.
+
 ## 10. Backups
 
 - **Postgres:** `docker compose exec db pg_dump -U bcweb bcweb | gzip > bcweb-$(date +%F).sql.gz`
@@ -129,7 +134,14 @@ docker compose up -d --build      # rebuilds changed images, runs db push on boo
 
 ## 11. Health & monitoring
 
-- `GET /health` on the API returns 200 when live.
+The API exposes three probes (all exempt from the rate limiter, no request logs):
+
+- **Liveness — `GET /live`**: cheap, **no dependencies**, 200 while the process is up.
+  It deliberately never touches the DB, so a database blip can't trigger a restart loop.
+- **Readiness — `GET /ready`**: 200 when the DB is reachable, **503** when it isn't — so a
+  load balancer / orchestrator takes the instance out of rotation *without killing it*.
+- **`GET /health`**: the combined probe (always 200 with a `db: true/false` flag); the
+  Docker healthcheck and Caddy's `depends_on` use this one.
 - Admin **Server perf** tab shows CPU/RAM/disk, dependency health, downtime history
   and recent alerts (deduped, copyable).
 - Load test: `cd loadtest && npm install && BASE=https://community.example.com node run.mjs`.
@@ -156,6 +168,18 @@ docker compose up -d --build      # rebuilds changed images, runs db push on boo
 - Enable the **PgBouncer** pooler: `docker compose --profile pgbouncer up -d`, then in
   `.env` set `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true`
   (`DIRECT_DATABASE_URL` stays on `db:5432` for migrations, handled automatically).
+
+**Going further — managed platforms, then Kubernetes (only if you truly need it):**
+- Before reaching for an orchestrator, a managed container platform (**Fly.io / Railway
+  / Render**) runs these same Docker images with autoscaling + rollouts and far less ops.
+- **Kubernetes** is worth it only once a single box genuinely isn't enough and you need
+  multi-node autoscaling + self-healing. A ready-to-adapt manifest set already lives in
+  [`infra/k8s/`](../infra/k8s/README.md) — Deployments with the `/live` + `/ready` probes
+  and graceful drain wired in, an HPA, a migrate Job, and an Ingress. Use **managed** K8s
+  (GKE Autopilot / DO Kubernetes / EKS), never a hand-rolled control plane.
+- **Don't migrate prematurely:** a 2 vCPU / 4 GB box already serves thousands of
+  concurrent users (`loadtest/BENCHMARK.md`); the real ceiling is Postgres connections,
+  solved by the managed-DB + PgBouncer path above, not by an orchestrator.
 
 ## Object storage — MinIO now, R2 later
 

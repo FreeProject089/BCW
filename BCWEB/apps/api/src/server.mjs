@@ -103,12 +103,28 @@ app.setErrorHandler((err, req, reply) => {
 // running before any route. Runs after rate-limit so a banned IP is cheap.
 installAbuseGuards(app);
 
-// Liveness probe: exempt from the rate limiter (Docker's healthcheck + probes hit it
-// constantly and must never 429) and silence its per-request logs (pure noise).
-app.get('/health', { config: { rateLimit: false }, logLevel: 'silent' }, async () => {
+// ── Health probes ─────────────────────────────────────────────────────────────
+// Split on purpose, for load-balancer / Kubernetes semantics:
+//  • /live  — LIVENESS: cheap, NO dependencies. "Is the event loop responding?" A
+//    liveness failure means "restart me". It deliberately never touches the DB: if
+//    Postgres is down, restarting won't help and would just crash-loop the pod.
+//  • /ready — READINESS: checks the deps needed to actually serve (DB). A 503 means
+//    "pull me out of the LB rotation until deps recover" WITHOUT killing the process.
+//  • /health — the original combined probe, kept unchanged so the Docker healthcheck
+//    and Caddy's `depends_on` keep working: always 200 with a `db` flag (never 5xx).
+// All are exempt from the rate limiter (probes hammer them) and silence their logs.
+const PROBE_OPTS = { config: { rateLimit: false }, logLevel: 'silent' };
+app.get('/live', PROBE_OPTS, async () => ({ ok: true, ts: Date.now() }));
+app.get('/health', PROBE_OPTS, async () => {
   let dbOk = false;
   try { await (await db()).$queryRaw`SELECT 1`; dbOk = true; } catch { /* not ready */ }
   return { ok: true, db: dbOk, ts: Date.now() };
+});
+app.get('/ready', PROBE_OPTS, async (req, reply) => {
+  let dbOk = false;
+  try { await (await db()).$queryRaw`SELECT 1`; dbOk = true; } catch { /* not ready */ }
+  return dbOk ? { ok: true, db: true, ts: Date.now() }
+             : reply.code(503).send({ ok: false, db: false, ts: Date.now() });
 });
 
 // Feeds the server-perf dashboard's response-time/status-code stats (monitor.mjs
@@ -153,9 +169,38 @@ ensureBucket().catch((e) => app.log.warn({ e: String(e) }, 'ensureBucket failed 
 startSweeper(app);
 
 // Periodic repo re-verification (health + SHA) so listed statuses stay fresh.
-setInterval(() => recheckRepos().then((r) => { if (r.checked) app.log.info(`[repos] re-checked ${r.checked} (${r.online} online, ${r.verified} verified)`); }).catch(() => {}), 15 * 60 * 1000);
+const repoRecheckTimer = setInterval(() => recheckRepos().then((r) => { if (r.checked) app.log.info(`[repos] re-checked ${r.checked} (${r.online} online, ${r.verified} verified)`); }).catch(() => {}), 15 * 60 * 1000);
 
 const port = Number(process.env.PORT || 3000);
 app.listen({ port, host: '0.0.0.0' })
   .then(() => app.log.info(`BCWEB API listening on :${port}`))
   .catch((e) => { app.log.error(e); process.exit(1); });
+
+// ── Graceful shutdown ─────────────────────────────────────────────────────────
+// On SIGTERM/SIGINT (`docker stop`, `compose up --build` replacing the container,
+// a Kubernetes rolling deploy) stop accepting new connections, let in-flight
+// requests finish, then close the DB/Redis handles — so a redeploy never drops a
+// live request or leaks a connection. A hard timeout guarantees we still exit even
+// if a request is wedged. This is what makes zero-downtime rollouts possible today
+// and is exactly the SIGTERM contract Kubernetes expects.
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;                 // a second signal shouldn't re-enter
+  shuttingDown = true;
+  app.log.info(`[shutdown] ${signal} received — draining in-flight requests…`);
+  const hard = setTimeout(() => { app.log.error('[shutdown] drain timed out — forcing exit'); process.exit(1); }, 10_000);
+  hard.unref();                             // don't let the timer itself keep us alive
+  try {
+    clearInterval(repoRecheckTimer);
+    await app.close();                      // stops the listener, awaits open requests
+    try { await (await db()).$disconnect(); } catch { /* already gone */ }
+    try { await getRedis()?.quit(); } catch { /* already gone */ }
+    clearTimeout(hard);
+    app.log.info('[shutdown] clean exit');
+    process.exit(0);
+  } catch (e) {
+    app.log.error(e, '[shutdown] error during close');
+    process.exit(1);
+  }
+}
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => shutdown(sig));

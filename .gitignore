@@ -20,6 +20,8 @@ build/
 !.env.example
 **/keys/
 *.private.key
+# Filled Kubernetes Secret (copy of secret.example.yaml with real values) — never commit
+**/infra/k8s/secret.yaml
 
 # Logs / OS
 *.log

@@ -120,6 +120,11 @@ cd infra/compose
 docker compose up -d --build      # reconstruit les images modifiées, db push au boot
 ```
 
+Les mises à jour sont **gracieuses** : quand le conteneur API est remplacé, il capte le
+`SIGTERM`, termine les requêtes en cours, puis ferme ses connexions DB/Redis avant de
+quitter (budget de 10 s) — un rebuild ne coupe jamais une requête en vol. Avec 2+ réplicas
+(section suivante), le déploiement est invisible pour les utilisateurs.
+
 ## 10. Sauvegardes
 
 - **Postgres :** `docker compose exec db pg_dump -U bcweb bcweb | gzip > bcweb-$(date +%F).sql.gz`
@@ -130,7 +135,15 @@ docker compose up -d --build      # reconstruit les images modifiées, db push a
 
 ## 11. Santé & supervision
 
-- `GET /health` sur l'API renvoie 200 quand elle est vivante.
+L'API expose trois sondes (toutes exemptées du rate limiter, sans logs de requête) :
+
+- **Liveness — `GET /live`** : légère, **sans dépendance**, 200 tant que le process tourne.
+  Elle ne touche jamais la DB : une panne de base ne peut donc pas provoquer de boucle de
+  redémarrage.
+- **Readiness — `GET /ready`** : 200 quand la DB est joignable, **503** sinon — un load
+  balancer / orchestrateur sort alors l'instance de la rotation *sans la tuer*.
+- **`GET /health`** : la sonde combinée (toujours 200 avec un drapeau `db: true/false`) ;
+  c'est celle qu'utilisent le healthcheck Docker et le `depends_on` de Caddy.
 - L'onglet admin **Server perf** montre CPU/RAM/disque, la santé des dépendances,
   l'historique de downtime et les alertes récentes (dédupliquées, copiables).
 - Test de charge : `cd loadtest && npm install && BASE=https://community.example.com node run.mjs`.
@@ -159,6 +172,21 @@ docker compose up -d --build      # reconstruit les images modifiées, db push a
 - Active le pooler **PgBouncer** : `docker compose --profile pgbouncer up -d`, puis dans
   `.env` mets `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true`
   (`DIRECT_DATABASE_URL` reste sur `db:5432` pour les migrations, géré automatiquement).
+
+**Aller plus loin — plateformes managées, puis Kubernetes (seulement si nécessaire) :**
+- Avant de sortir un orchestrateur, une plateforme conteneurs managée (**Fly.io / Railway
+  / Render**) fait tourner ces mêmes images Docker avec autoscaling + rollouts, pour bien
+  moins d'ops.
+- **Kubernetes** ne se justifie que lorsqu'une seule machine ne suffit vraiment plus et que
+  tu as besoin d'autoscaling multi-nœuds + auto-réparation. Un jeu de manifests prêt à
+  adapter existe déjà dans [`infra/k8s/`](../infra/k8s/README.md) — Deployments avec les
+  sondes `/live` + `/ready` et l'arrêt gracieux câblés, un HPA, un Job de migration, un
+  Ingress. Utilise du K8s **managé** (GKE Autopilot / DO Kubernetes / EKS), jamais un
+  control plane fait main.
+- **Ne migre pas trop tôt :** une machine 2 vCPU / 4 Go sert déjà des milliers
+  d'utilisateurs simultanés (`loadtest/BENCHMARK.md`) ; le vrai plafond, ce sont les
+  connexions Postgres, réglées par le chemin DB managée + PgBouncer ci-dessus, pas par un
+  orchestrateur.
 
 ## Stockage objet — MinIO maintenant, R2 plus tard
 

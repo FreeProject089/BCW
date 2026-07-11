@@ -1,0 +1,23 @@
+# Runs the schema sync ONCE per deploy, so the N API replicas never race it. Uses a
+# DIRECT DB connection (poolers can't run DDL). Re-run on each rollout (idempotent);
+# swap `db push` for `prisma migrate deploy` once migrations are committed.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bcweb-migrate
+  namespace: bcweb
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: ghcr.io/OWNER/bcweb-api:latest   # ← set your registry/tag
+          command: ["sh", "-c"]
+          args:
+            - 'DATABASE_URL="$DIRECT_DATABASE_URL" npx prisma db push --skip-generate --accept-data-loss'
+          envFrom:
+            - configMapRef: { name: bcweb-config }
+            - secretRef: { name: bcweb-secrets }
