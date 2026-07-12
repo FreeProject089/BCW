@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { useToast, Button, Spinner, Modal, EmptyState } from './ui.jsx';
 import { useI18n } from './i18n.jsx';
 import Markdown from './md.jsx';
+import Avatar from './Avatar.jsx';
 import { diffLines, lineStat } from './merge3.js';
 import { History, RotateCcw, Clock, User as UserIcon, Eye, GitCompare, Languages } from 'lucide-react';
 
@@ -83,8 +84,11 @@ export default function HistoryModal({ base, onClose, onRestore }) {
                   <span className="text-sm font-medium">v{r.version}{i === 0 && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-400">{t('hm.latest', 'latest')}</span>}</span>
                   <span className="text-[11px] text-[var(--faint)]">{(r.bytes / 1024).toFixed(1)} KB</span>
                 </div>
-                <div className="text-[11px] text-[var(--faint)] flex items-center gap-1 mt-0.5"><UserIcon size={10} /> {r.editor}</div>
-                <div className="text-[11px] text-[var(--faint)] flex items-center gap-1"><Clock size={10} /> {fmt(r.createdAt)}</div>
+                <div className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 mt-1" title={r.editor}>
+                  {r.editorUser ? <Avatar user={r.editorUser} size={16} /> : <UserIcon size={12} />}
+                  <span className="truncate">{r.editor}</span>
+                </div>
+                <div className="text-[11px] text-[var(--faint)] flex items-center gap-1 mt-0.5"><Clock size={10} /> {fmt(r.createdAt)}</div>
               </button>
             )) : <EmptyState icon={History} title={t('hm.nohistory', 'No history yet')} sub={t('hm.nohistorysub', 'Snapshots appear here after each save.')} />}
         </div>

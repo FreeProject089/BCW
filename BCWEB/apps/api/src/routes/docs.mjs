@@ -213,9 +213,10 @@ export default async function docRoutes(app) {
     const editor = isEditor(req);
     if (!editor && !page.published) return reply.code(403).send({ error: 'forbidden' });
     const revs = await p.docRevision.findMany({ where: { pageId: req.params.id }, orderBy: { version: 'desc' }, take: 50 });
-    const editors = await p.user.findMany({ where: { id: { in: [...new Set(revs.map((r) => r.editorId).filter(Boolean))] } }, select: { id: true, displayName: true } });
-    const nameOf = new Map(editors.map((u) => [u.id, u.displayName]));
-    return { canRestore: editor, revisions: revs.map((r) => ({ id: r.id, version: r.version, title: r.title, editor: nameOf.get(r.editorId) || 'Unknown', createdAt: r.createdAt, bytes: Buffer.byteLength(r.body || '') })) };
+    const editors = await p.user.findMany({ where: { id: { in: [...new Set(revs.map((r) => r.editorId).filter(Boolean))] } }, select: { id: true, displayName: true, avatar: true } });
+    const userOf = new Map(editors.map((u) => [u.id, u]));
+    return { canRestore: editor, revisions: revs.map((r) => { const u = userOf.get(r.editorId);
+      return { id: r.id, version: r.version, title: r.title, editor: u?.displayName || 'Unknown', editorUser: u ? { id: u.id, displayName: u.displayName, avatar: u.avatar } : null, createdAt: r.createdAt, bytes: Buffer.byteLength(r.body || '') }; }) };
   });
   app.get('/docs/:id/history/:revId', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
