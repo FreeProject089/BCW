@@ -156,7 +156,11 @@ export default function EventEffect() {
     // transparent canvas render with dark fringes / a black wash that lingers after each
     // burst ("le fond noir après chaque firework"). Disabling it + an explicit 0-alpha
     // clear keeps the canvas truly transparent between and around particles.
-    try { renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, premultipliedAlpha: false }); } catch { return; }
+    // antialias:false — with alpha + premultipliedAlpha:false, the MSAA resolve blends
+    // particle edges toward the transparent-BLACK clear, leaving faint dark outlines
+    // ("ombres noires") around bright particles. The sprites are already soft radial
+    // gradients, so multisampling adds nothing but that artifact — turn it off.
+    try { renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, premultipliedAlpha: false }); } catch { return; }
     renderer.setClearColor(0x000000, 0);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(W(), H());
@@ -254,9 +258,11 @@ export default function EventEffect() {
         }
       }
       ps = ps.filter((p) => p.life > 0);
-      for (let i = n; i < MAX; i++) { colors[i * 3] = colors[i * 3 + 1] = colors[i * 3 + 2] = 0; }
       geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
-      geo.setDrawRange(0, MAX);
+      // Draw ONLY the active particles — not the whole 4000-slot buffer. The stale
+      // slots kept old positions (only their colour was zeroed); drawing them was wasted
+      // work and one more chance for an edge artifact. Now they're simply not drawn.
+      geo.setDrawRange(0, n);
       // fade the whole canvas out at the end of the show
       if (elapsed > DURATION) { stopped = true; el.style.transition = 'opacity 1.5s ease'; el.style.opacity = '0'; if (elapsed > DURATION + 1600) { cancelAnimationFrame(raf); if (preview) setPreview(null); return; } }
       renderer.render(scene, cam);
