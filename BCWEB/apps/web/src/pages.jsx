@@ -4256,10 +4256,23 @@ function AdminNewsletter() {
 
   const recipientCount = mode === 'all' ? counts.active : mode === 'en' ? counts.activeEn : mode === 'fr' ? counts.activeFr : picked.size;
 
+  const validComposed = () => {
+    if (f.subject.trim().length < 2) { toast.error(t('nl.subj.req', 'A subject is required.')); return false; }
+    if (f.title.trim().length < 2) { toast.error(t('nl.title.req', 'A title is required.')); return false; }
+    if (f.body.trim().length < 2) { toast.error(t('nl.body.req', 'A message body is required.')); return false; }
+    return true;
+  };
+  const payloadOf = () => { const pl = { subject: f.subject.trim(), title: f.title.trim(), body: f.body.trim() }; if (f.url.trim()) pl.url = f.url.trim(); return pl; };
+  const [testing, setTesting] = useState(false);
+  const sendTest = async () => {
+    if (!validComposed()) return;
+    setTesting(true);
+    try { const r = await api.post('/admin/newsletter/test', payloadOf()); toast.success(t('nl.test.sent', 'Test sent to {to}.').replace('{to}', r.to)); }
+    catch (x) { toast.error(x.data?.error === 'email_disabled' ? t('nl.err.disabled', 'Email is not configured on this server (SMTP).') : t('nl.test.err', 'Could not send the test.')); }
+    finally { setTesting(false); }
+  };
   const send = async () => {
-    if (f.subject.trim().length < 2) return toast.error(t('nl.subj.req', 'A subject is required.'));
-    if (f.title.trim().length < 2) return toast.error(t('nl.title.req', 'A title is required.'));
-    if (f.body.trim().length < 2) return toast.error(t('nl.body.req', 'A message body is required.'));
+    if (!validComposed()) return;
     if (mode === 'pick' && picked.size === 0) return toast.error(t('nl.pick.req', 'Select at least one recipient.'));
     if (!(await dialog.confirm({
       title: t('nl.send.t', 'Send newsletter email'),
@@ -4268,8 +4281,7 @@ function AdminNewsletter() {
     }))) return;
     setBusy(true);
     try {
-      const payload = { subject: f.subject.trim(), title: f.title.trim(), body: f.body.trim() };
-      if (f.url.trim()) payload.url = f.url.trim();
+      const payload = payloadOf();
       if (mode === 'pick') payload.emails = [...picked];
       else if (mode === 'en' || mode === 'fr') payload.locale = mode;
       const r = await api.post('/admin/newsletter/broadcast', payload);
@@ -4316,13 +4328,13 @@ function AdminNewsletter() {
         </div>
 
         {mode === 'pick' && (loading ? <Loading /> : <div className="rounded-xl border border-[var(--line)] overflow-hidden">
-          <div className="flex items-center gap-2 p-2 border-b border-[var(--line)] bg-[var(--bg-2)]">
+          <div className="flex items-center gap-2 p-2 border-b border-[var(--line)] bg-[var(--surface-2)]">
             <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer select-none"><input type="checkbox" checked={allShownPicked} onChange={toggleAllShown} /> {t('nl.pick.all', 'Select all shown')}</label>
             <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-8 !py-1.5 text-sm" placeholder={t('nl.pick.search', 'Filter by email…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           </div>
           <div className="max-h-64 overflow-y-auto divide-y divide-[var(--line)]">
             {shown.length ? shown.map((s) => (
-              <label key={s.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--bg-2)]">
+              <label key={s.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--surface-2)]">
                 <input type="checkbox" checked={picked.has(s.email)} onChange={() => toggle(s.email)} />
                 <span className="flex-1 min-w-0 truncate">{s.email}</span>
                 <Badge tone="">{s.locale?.toUpperCase() || 'EN'}</Badge>
@@ -4331,9 +4343,16 @@ function AdminNewsletter() {
           </div>
         </div>)}
 
-        <div className="flex items-center justify-between gap-3 pt-1">
+        {/* Nobody to send to yet? Double opt-in means new sign-ups stay "pending" until
+            they click the confirm email. The test send below works regardless. */}
+        {counts.active === 0 && <div className="text-xs text-[var(--muted)] rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 p-2.5">{t('nl.noactive', 'No confirmed subscribers yet — sign-ups stay “pending” until they click the confirm email. You can still send yourself a test below.')}</div>}
+
+        <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
           <span className="text-xs text-[var(--faint)]">{t('nl.willsend', 'Will send to {n} subscriber(s).').replace('{n}', recipientCount)}</span>
-          <Button variant="primary" disabled={busy || recipientCount === 0} onClick={send}>{busy ? <Spinner /> : <><Send size={15} /> {t('nl.send.btn', 'Send email')}</>}</Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" disabled={testing} onClick={sendTest}>{testing ? <Spinner /> : <><Mail size={15} /> {t('nl.test.btn', 'Send test to me')}</>}</Button>
+            <Button variant="primary" disabled={busy || recipientCount === 0} onClick={send}>{busy ? <Spinner /> : <><Send size={15} /> {t('nl.send.btn', 'Send email')}</>}</Button>
+          </div>
         </div>
       </Card>
 

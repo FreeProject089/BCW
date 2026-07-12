@@ -69,6 +69,7 @@ const DICT = {
     'nl.subj.req': 'A subject is required.', 'nl.title.req': 'A title is required.', 'nl.body.req': 'A message body is required.', 'nl.pick.req': 'Select at least one recipient.',
     'nl.send.t': 'Send newsletter email', 'nl.send.m': 'Send this email to {n} subscriber(s)? This cannot be undone.', 'nl.send.ok': 'Send',
     'nl.sent': 'Sent to {n} of {total} subscriber(s).', 'nl.err.disabled': 'Email is not configured on this server (SMTP).', 'nl.err': 'Failed to send.',
+    'nl.test.btn': 'Send test to me', 'nl.test.sent': 'Test sent to {to}.', 'nl.test.err': 'Could not send the test.', 'nl.noactive': 'No confirmed subscribers yet — sign-ups stay “pending” until they click the confirm email. You can still send yourself a test below.',
     'arp.dashboard': 'Manage (admin)', 'an.wv.export': 'Export CSV',
 
     'cookie.title': 'Cookies',
@@ -458,6 +459,7 @@ const DICT = {
     'nl.subj.req': 'Un objet est requis.', 'nl.title.req': 'Un titre est requis.', 'nl.body.req': 'Un message est requis.', 'nl.pick.req': 'Sélectionne au moins un destinataire.',
     'nl.send.t': "Envoyer l'email de newsletter", 'nl.send.m': 'Envoyer cet email à {n} abonné(s) ? Action irréversible.', 'nl.send.ok': 'Envoyer',
     'nl.sent': 'Envoyé à {n} abonné(s) sur {total}.', 'nl.err.disabled': "L'email n'est pas configuré sur ce serveur (SMTP).", 'nl.err': "Échec de l'envoi.",
+    'nl.test.btn': 'Envoyer un test', 'nl.test.sent': 'Test envoyé à {to}.', 'nl.test.err': "Impossible d'envoyer le test.", 'nl.noactive': 'Aucun abonné confirmé pour le moment — les inscriptions restent « en attente » jusqu\'au clic sur l\'email de confirmation. Tu peux quand même t\'envoyer un test ci-dessous.',
     'arp.dashboard': 'Gérer (admin)', 'an.wv.export': 'Exporter CSV',
 
     'cookie.title': 'Cookies',

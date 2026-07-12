@@ -12,6 +12,29 @@ import { sendMail, mailShell, emailEnabled, escapeHtml } from '../mail.mjs';
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 const tok = () => crypto.randomBytes(24).toString('hex');
 
+// Send one branded newsletter email to a single subscriber, with the one-click
+// unsubscribe footer + List-Unsubscribe header. `sub` = { email, unsubToken }.
+export async function sendNewsletterTo(sub, { subject, title, body, url }) {
+  const unsubUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${sub.unsubToken}`;
+  const footer = `<p style="font-size:12px;color:#475569;margin:26px 0 0;padding-top:16px;border-top:1px solid #1f2937">You receive this because you subscribed to BetterCommunity updates. <a href="${unsubUrl}" style="color:#94a3b8">Unsubscribe in one click</a>.</p>`;
+  const safeBody = escapeHtml(body).replace(/\n/g, '<br>');
+  return sendMail({
+    to: sub.email, subject,
+    html: mailShell(escapeHtml(title), safeBody + footer, url ? { url, label: 'Read on the blog' } : undefined),
+    headers: { 'List-Unsubscribe': `<${unsubUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+  }).catch(() => false);
+}
+
+// Broadcast to a set of subscribers (default: all active). Returns { sent, total }.
+// Shared by the admin broadcast route and the auto "new blog post" notification.
+export async function sendNewsletter(p, { subject, title, body, url, where = { status: 'active' } }) {
+  if (!emailEnabled()) return { sent: 0, total: 0, disabled: true };
+  const subs = await p.newsletterSubscriber.findMany({ where, select: { email: true, unsubToken: true } });
+  let sent = 0;
+  for (const s of subs) { const ok = await sendNewsletterTo(s, { subject, title, body, url }); if (ok !== false) sent++; }
+  return { sent, total: subs.length };
+}
+
 // Standalone, branded landing page for the confirm / unsubscribe links (no SPA, no
 // login). `opts`: { tone: 'ok'|'info'|'muted', icon, cta:{href,label}, extra }.
 function page(title, body, opts = {}) {
@@ -149,19 +172,24 @@ export default async function newsletterRoutes(app) {
     const where = { status: 'active' };
     if (b.data.emails?.length) where.email = { in: b.data.emails.map((e) => e.trim().toLowerCase()) };
     else if (b.data.locale) where.locale = b.data.locale; // whole-segment send (no hand-picking)
-    const subs = await p.newsletterSubscriber.findMany({ where, select: { email: true, unsubToken: true } });
-    const safeBody = escapeHtml(b.data.body).replace(/\n/g, '<br>');
-    let sent = 0;
-    for (const s of subs) {
-      const unsubUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${s.unsubToken}`;
-      const footer = `<p style="font-size:12px;color:#475569;margin:26px 0 0;padding-top:16px;border-top:1px solid #1f2937">You receive this because you subscribed to BetterCommunity updates. <a href="${unsubUrl}" style="color:#94a3b8">Unsubscribe in one click</a>.</p>`;
-      const ok = await sendMail({
-        to: s.email, subject: b.data.subject,
-        html: mailShell(escapeHtml(b.data.title), safeBody + footer, b.data.url ? { url: b.data.url, label: 'Read on the blog' } : undefined),
-        headers: { 'List-Unsubscribe': `<${unsubUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
-      }).catch(() => false);
-      if (ok !== false) sent++;
-    }
-    return { ok: true, sent, total: subs.length };
+    const { sent, total } = await sendNewsletter(p, { subject: b.data.subject, title: b.data.title, body: b.data.body, url: b.data.url, where });
+    return { ok: true, sent, total };
+  });
+
+  // ── Admin: send a TEST of the composed email to the admin's own inbox ────────
+  // So the newsletter can be verified end-to-end even with zero active subscribers.
+  app.post('/admin/newsletter/test', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      subject: z.string().min(1).max(200), title: z.string().min(1).max(200),
+      body: z.string().min(1).max(5000), url: z.string().url().max(500).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (!emailEnabled()) return reply.code(400).send({ error: 'email_disabled' });
+    const p = await db();
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { email: true } });
+    if (!me?.email) return reply.code(400).send({ error: 'no_email' });
+    const ok = await sendNewsletterTo({ email: me.email, unsubToken: 'test' }, { subject: `[TEST] ${b.data.subject}`, title: b.data.title, body: b.data.body, url: b.data.url });
+    if (ok === false) return reply.code(502).send({ error: 'send_failed' });
+    return { ok: true, to: me.email };
   });
 }
