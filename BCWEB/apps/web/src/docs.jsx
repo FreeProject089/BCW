@@ -164,7 +164,10 @@ export default function Docs() {
 
         {loading ? <div className="py-20 grid place-items-center"><Spinner /></div>
           : page ? (
-            <article ref={articleRef}>
+            // Card surface behind the article so the text is legible over the page/orb
+            // background — and it responds to Settings → Translucent surfaces
+            // automatically ([data-surface-glass] .card).
+            <article ref={articleRef} className="card p-5 sm:p-7">
               <h1 className="text-2xl md:text-3xl font-extrabold mb-1">{page.title}</h1>
               <div className="text-xs text-[var(--faint)] mb-6"><button onClick={() => setReaderHistory(true)} title={t('docs.history.hint', 'View edit history')} className="inline-flex items-center gap-1 hover:text-[var(--primary-2)] transition">{t('docs.updated')} {new Date(page.updatedAt).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US')} <History size={11} className="opacity-60" /></button></div>
               <PageTocMobile body={body} />
