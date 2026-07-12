@@ -369,7 +369,7 @@ function Footer() {
             ))}
           </div>
         </div>
-        <FooterCol title={t('foot.products')} links={[['BetterModsManager', '/p/bmm'], ['BetterSavesManager', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting']]} />
+        <FooterCol title={t('foot.products')} links={[['BetterModsManager', '/p/bmm'], ['BetterSoundMaker', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting']]} />
         <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/legal/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('nav.repos'), '/repos'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
         <FooterCol title={t('foot.legal')} links={[[t('legal.all', 'All'), '/legal'], [t('foot.privacy'), '/legal/privacy'], [t('foot.terms'), '/legal/terms'], [t('foot.cookies'), '/legal/cookies'], [t('foot.refunds', 'Payments & Refunds'), '/legal/refunds']]} />
       </div>
