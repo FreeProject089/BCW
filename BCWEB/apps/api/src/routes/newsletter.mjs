@@ -129,26 +129,32 @@ export default async function newsletterRoutes(app) {
     return { subscribers, counts: { active, pending, unsubscribed } };
   });
 
-  // ── Admin: manual broadcast to ACTIVE subscribers ──────────────────────────
+  // ── Admin: manual broadcast / custom email ─────────────────────────────────
   // Deliberately manual — no auto-send on publish, so nothing blasts everyone by
-  // accident. Every email carries the one-click unsubscribe footer.
+  // accident. Send to every ACTIVE subscriber, or to a chosen subset (`emails`).
+  // Every message carries a one-click unsubscribe footer AND a List-Unsubscribe
+  // header (native "Unsubscribe" button in Gmail/Outlook).
   app.post('/admin/newsletter/broadcast', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
       subject: z.string().min(1).max(200), title: z.string().min(1).max(200),
       body: z.string().min(1).max(5000), url: z.string().url().max(500).optional(),
+      emails: z.array(z.string().email()).max(5000).optional(), // subset; omitted = all active
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     if (!emailEnabled()) return reply.code(400).send({ error: 'email_disabled' });
     const p = await db();
-    const subs = await p.newsletterSubscriber.findMany({ where: { status: 'active' }, select: { email: true, unsubToken: true } });
+    const where = { status: 'active' };
+    if (b.data.emails?.length) where.email = { in: b.data.emails.map((e) => e.trim().toLowerCase()) };
+    const subs = await p.newsletterSubscriber.findMany({ where, select: { email: true, unsubToken: true } });
     const safeBody = escapeHtml(b.data.body).replace(/\n/g, '<br>');
     let sent = 0;
     for (const s of subs) {
       const unsubUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${s.unsubToken}`;
-      const footer = `<p style="font-size:12px;color:#6f685d;margin-top:24px">You receive this because you subscribed to BetterCommunity updates. <a href="${unsubUrl}" style="color:#a39b8f">Unsubscribe</a>.</p>`;
+      const footer = `<p style="font-size:12px;color:#475569;margin:26px 0 0;padding-top:16px;border-top:1px solid #1f2937">You receive this because you subscribed to BetterCommunity updates. <a href="${unsubUrl}" style="color:#94a3b8">Unsubscribe in one click</a>.</p>`;
       const ok = await sendMail({
         to: s.email, subject: b.data.subject,
         html: mailShell(escapeHtml(b.data.title), safeBody + footer, b.data.url ? { url: b.data.url, label: 'Read on the blog' } : undefined),
+        headers: { 'List-Unsubscribe': `<${unsubUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
       }).catch(() => false);
       if (ok !== false) sent++;
     }

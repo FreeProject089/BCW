@@ -2366,6 +2366,7 @@ export function Admin() {
     isAdmin && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
     isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: MessageSquare },
     isAdmin && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
+    isAdmin && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
 
     isAdmin && { heading: t('adm.h.server', 'Server') },
     isAdmin && { id: 'serverperf', label: t('adm.tab.serverperf', 'Server perf'), icon: Cpu },
@@ -2431,6 +2432,7 @@ export function Admin() {
         {s === 'serverperf' && <AdminServerPerf />}
         {s === 'serveradv' && <AdminServerAdvanced />}
         {s === 'announcements' && <AdminAnnouncements />}
+        {s === 'newsletter' && <AdminNewsletter />}
         {s === 'repos' && <AdminRepos />}
         {s === 'catalogs' && <><AdminCatalogCreator /><PluginVerifier /><ThemeVerifier /></>}
         {s === 'hosting' && <AdminFreeHost />}
@@ -4188,6 +4190,111 @@ function AdminAnnouncements() {
           })}
         </div> : <EmptyState icon={BellIcon} title={t('ann.none', 'No announcements yet')} />}
       </div>
+    </div>
+  );
+}
+
+// Admin: compose & send a custom email to newsletter subscribers — to everyone active
+// or to a hand-picked subset. Backed by POST /admin/newsletter/broadcast; every message
+// carries the BetterCommunity brand header and a one-click unsubscribe footer + header.
+function AdminNewsletter() {
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/newsletter'), []);
+  const [f, setF] = useState({ subject: '', title: '', body: '', url: '' });
+  const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState('all');            // 'all' active | 'pick' a subset
+  const [picked, setPicked] = useState(() => new Set());
+  const [q, setQ] = useState('');
+
+  const counts = data?.counts || { active: 0, pending: 0, unsubscribed: 0 };
+  const subscribers = data?.subscribers || [];
+  const activeSubs = subscribers.filter((s) => s.status === 'active');
+  const shown = activeSubs.filter((s) => !q.trim() || s.email.toLowerCase().includes(q.trim().toLowerCase()));
+
+  const toggle = (email) => setPicked((prev) => { const n = new Set(prev); n.has(email) ? n.delete(email) : n.add(email); return n; });
+  const allShownPicked = shown.length > 0 && shown.every((s) => picked.has(s.email));
+  const toggleAllShown = () => setPicked((prev) => {
+    const n = new Set(prev);
+    if (allShownPicked) shown.forEach((s) => n.delete(s.email)); else shown.forEach((s) => n.add(s.email));
+    return n;
+  });
+
+  const recipientCount = mode === 'all' ? counts.active : picked.size;
+
+  const send = async () => {
+    if (f.subject.trim().length < 2) return toast.error(t('nl.subj.req', 'A subject is required.'));
+    if (f.title.trim().length < 2) return toast.error(t('nl.title.req', 'A title is required.'));
+    if (f.body.trim().length < 2) return toast.error(t('nl.body.req', 'A message body is required.'));
+    if (mode === 'pick' && picked.size === 0) return toast.error(t('nl.pick.req', 'Select at least one recipient.'));
+    if (!(await dialog.confirm({
+      title: t('nl.send.t', 'Send newsletter email'),
+      message: t('nl.send.m', 'Send this email to {n} subscriber(s)? This cannot be undone.').replace('{n}', recipientCount),
+      okLabel: t('nl.send.ok', 'Send'),
+    }))) return;
+    setBusy(true);
+    try {
+      const payload = { subject: f.subject.trim(), title: f.title.trim(), body: f.body.trim() };
+      if (f.url.trim()) payload.url = f.url.trim();
+      if (mode === 'pick') payload.emails = [...picked];
+      const r = await api.post('/admin/newsletter/broadcast', payload);
+      toast.success(t('nl.sent', 'Sent to {n} of {total} subscriber(s).').replace('{n}', r.sent).replace('{total}', r.total));
+      setF({ subject: '', title: '', body: '', url: '' }); setPicked(new Set());
+    } catch (x) {
+      toast.error(x.data?.error === 'email_disabled' ? t('nl.err.disabled', 'Email is not configured on this server (SMTP).') : (x.data?.error || t('nl.err', 'Failed to send.')));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Mail size={16} className="text-[var(--primary-2)]" /> {t('nl.h', 'Newsletter')}</h2>
+        <p className="text-sm text-[var(--muted)] mb-3">{t('nl.sub', 'Send a custom email to your subscribers — everyone, or a hand-picked list. Every message is branded and includes a one-click unsubscribe link.')}</p>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <Badge tone="green"><CheckCircle2 size={11} /> {t('nl.c.active', '{n} active').replace('{n}', counts.active)}</Badge>
+          <Badge tone="amber"><Clock size={11} /> {t('nl.c.pending', '{n} pending').replace('{n}', counts.pending)}</Badge>
+          <Badge>{t('nl.c.unsub', '{n} unsubscribed').replace('{n}', counts.unsubscribed)}</Badge>
+        </div>
+      </div>
+
+      <Card className="p-4 space-y-3">
+        <Field label={t('nl.f.subject', 'Subject (email subject line)')}><Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} placeholder={t('nl.f.subject.ph', 'New on BetterCommunity: …')} maxLength={200} /></Field>
+        <Field label={t('nl.f.title', 'Heading (shown inside the email)')}><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={t('nl.f.title.ph', "What's new")} maxLength={200} /></Field>
+        <Field label={<span className="flex items-center justify-between w-full">{t('nl.f.body', 'Message')} <span className={`text-[10px] tabular-nums ${f.body.length > 5000 ? 'text-red-400' : 'text-[var(--faint)]'}`}>{f.body.length}/5000</span></span>}>
+          <Textarea rows={7} value={f.body} maxLength={5000} onChange={(e) => setF({ ...f, body: e.target.value.slice(0, 5000) })} placeholder={t('nl.f.body.ph', 'Write your update. Line breaks are preserved.')} />
+        </Field>
+        <Field label={t('nl.f.url', 'Call-to-action link (optional)')} hint={t('nl.f.url.h', 'Adds a “Read on the blog” button pointing here.')}><Input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder="https://bettercommunity.ch/blog/…" /></Field>
+
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('nl.rec', 'Recipients')}</div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setMode('all')} className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${mode === 'all' ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('nl.rec.all', 'All active ({n})').replace('{n}', counts.active)}</button>
+            <button type="button" onClick={() => setMode('pick')} className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${mode === 'pick' ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('nl.rec.pick', 'Pick subscribers ({n})').replace('{n}', picked.size)}</button>
+          </div>
+        </div>
+
+        {mode === 'pick' && (loading ? <Loading /> : <div className="rounded-xl border border-[var(--line)] overflow-hidden">
+          <div className="flex items-center gap-2 p-2 border-b border-[var(--line)] bg-[var(--bg-2)]">
+            <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer select-none"><input type="checkbox" checked={allShownPicked} onChange={toggleAllShown} /> {t('nl.pick.all', 'Select all shown')}</label>
+            <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-8 !py-1.5 text-sm" placeholder={t('nl.pick.search', 'Filter by email…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          </div>
+          <div className="max-h-64 overflow-y-auto divide-y divide-[var(--line)]">
+            {shown.length ? shown.map((s) => (
+              <label key={s.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--bg-2)]">
+                <input type="checkbox" checked={picked.has(s.email)} onChange={() => toggle(s.email)} />
+                <span className="flex-1 min-w-0 truncate">{s.email}</span>
+                <Badge tone="">{s.locale?.toUpperCase() || 'EN'}</Badge>
+              </label>
+            )) : <div className="px-3 py-6 text-center text-sm text-[var(--faint)]">{t('nl.pick.none', 'No matching active subscribers.')}</div>}
+          </div>
+        </div>)}
+
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <span className="text-xs text-[var(--faint)]">{t('nl.willsend', 'Will send to {n} subscriber(s).').replace('{n}', recipientCount)}</span>
+          <Button variant="primary" disabled={busy || recipientCount === 0} onClick={send}>{busy ? <Spinner /> : <><Send size={15} /> {t('nl.send.btn', 'Send email')}</>}</Button>
+        </div>
+      </Card>
+
+      <div className="flex justify-end"><Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /> {t('nl.refresh', 'Refresh')}</Button></div>
     </div>
   );
 }
