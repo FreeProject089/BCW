@@ -3449,6 +3449,10 @@ function AdminServerPerf() {
           </>);
         })())}
       </div>
+
+      {/* Real-user Web Vitals — moved here from the Site-analytics tab so all
+          performance (server-side + client-side) lives on one Server-perf tab. */}
+      <WebVitals />
     </div>
   );
 }
@@ -6511,19 +6515,37 @@ const VITAL_META = {
 const vitalRating = (m, v) => v == null ? null : v <= VITAL_META[m].good ? 'good' : v <= VITAL_META[m].poor ? 'ni' : 'poor';
 const vitalColor = (r) => r === 'good' ? 'text-emerald-400' : r === 'ni' ? 'text-amber-400' : r === 'poor' ? 'text-red-400' : 'text-[var(--faint)]';
 
-function WebVitals({ days, hours }) {
+function WebVitals({ days = 7, hours }) {
   const { t } = useI18n();
   const [pct, setPct] = useState('p75');
   const { data, loading } = useAsync(() => api.get(`/admin/analytics/vitals?${hours ? `hours=${hours}` : `days=${days}`}`), [days, hours]);
   const metrics = data?.metrics || [];
   const pages = data?.pages || [];
   const cell = (m, v) => <span className={vitalRating(m, v) ? vitalColor(vitalRating(m, v)) : ''}>{v == null ? '—' : VITAL_META[m].fmt(v)}</span>;
+  // Export the raw Web Vitals (overall percentiles + per-page p75) as CSV.
+  const exportCsv = () => {
+    const esc = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+    const lines = [];
+    lines.push(['scope', 'metric', 'p50', 'p75', 'p90', 'p99', 'samples', 'good_share_pct'].join(','));
+    for (const m of metrics) lines.push(['overall', m.metric, m.p50, m.p75, m.p90, m.p99, m.n, m.goodShare].map(esc).join(','));
+    lines.push('');
+    lines.push(['page', 'LCP', 'CLS', 'INP', 'FCP', 'TTFB', 'samples'].join(','));
+    for (const pg of pages) lines.push([pg.path, pg.lcp, pg.cls, pg.inp, pg.fcp, pg.ttfb, pg.samples].map(esc).join(','));
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `web-vitals-${hours ? `${hours}h` : `${days}d`}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
   return (
     <Card className="p-5 mb-4">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="text-sm font-semibold flex items-center gap-2"><Activity size={15} /> Web Vitals <span className="text-[11px] font-normal text-[var(--faint)]">{t('an.wv.sub', 'real-user performance')}</span></div>
-        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
-          {['p50', 'p75', 'p90', 'p99'].map((p) => <button key={p} onClick={() => setPct(p)} className={`px-2.5 py-1 text-xs uppercase ${pct === p ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{p}</button>)}
+        <div className="flex items-center gap-2">
+          <button onClick={exportCsv} disabled={!pages.length} className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] disabled:opacity-40 disabled:cursor-not-allowed transition"><Download size={13} /> {t('an.wv.export', 'Export CSV')}</button>
+          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+            {['p50', 'p75', 'p90', 'p99'].map((p) => <button key={p} onClick={() => setPct(p)} className={`px-2.5 py-1 text-xs uppercase ${pct === p ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{p}</button>)}
+          </div>
         </div>
       </div>
       {loading ? <div className="h-24 grid place-items-center"><Spinner /></div> : !metrics.some((m) => m.n) ? (
@@ -6974,7 +6996,7 @@ function AdminAnalytics() {
 
       {/* Sub-tab bar — horizontal-scrolls on narrow screens so it never overflows. */}
       <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
-        {[['overview', t('an.tab.overview', 'Overview'), TrendingUp], ['sessions', t('an.tab.sessions', 'Sessions'), Activity], ['geo', t('an.tab.geo', 'Geography'), Globe2], ['tech', t('an.tab.tech', 'Tech'), Monitor], ['perf', t('an.tab.perf', 'Performance'), Gauge]].map(([id, label, I]) => (
+        {[['overview', t('an.tab.overview', 'Overview'), TrendingUp], ['sessions', t('an.tab.sessions', 'Sessions'), Activity], ['geo', t('an.tab.geo', 'Geography'), Globe2], ['tech', t('an.tab.tech', 'Tech'), Monitor]].map(([id, label, I]) => (
           <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={14} /> {label}</button>
         ))}
       </div>
@@ -7037,7 +7059,6 @@ function AdminAnalytics() {
         </div>
       )}
 
-      {tab === 'perf' && <WebVitals days={days} hours={hours} />}
 
       <p className="text-[11px] text-[var(--faint)] mt-4">{t('an.geonote', 'Geo is resolved from the visitor IP (CDN country header, else an offline GeoIP lookup; local/private IPs get a sample location in dev). The privacy-friendly daily-rotating visitor hash can\'t track people across days.')}</p>
     </div>
