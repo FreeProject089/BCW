@@ -175,9 +175,11 @@ export function ToastProvider({ children }) {
   const [items, setItems] = useState([]);
   const push = useCallback((toast) => {
     const id = Math.random().toString(36).slice(2);
-    setItems((s) => [...s, { id, ...toast }]);
-    setTimeout(() => setItems((s) => s.filter((t) => t.id !== id)), toast.duration || 3800);
+    const duration = toast.duration || 4200;
+    setItems((s) => [...s, { id, ...toast, duration }]);
+    setTimeout(() => setItems((s) => s.filter((t) => t.id !== id)), duration);
   }, []);
+  const dismiss = useCallback((id) => setItems((s) => s.filter((t) => t.id !== id)), []);
   const api = { success: (msg) => push({ tone: 'success', msg }), error: (msg) => push({ tone: 'error', msg }), info: (msg) => push({ tone: 'info', msg }) };
   const Ico = { success: Check, error: AlertTriangle, info: Info };
   return (
@@ -188,11 +190,14 @@ export function ToastProvider({ children }) {
           {items.map((t) => { const I = Ico[t.tone] || Info;
             const tone = t.tone === 'success' ? 'var(--success)' : t.tone === 'error' ? 'var(--error)' : 'var(--info)';
             return (
-            <div key={t.id} className="card anim-slide relative overflow-hidden pl-4 pr-4 py-3 flex items-start gap-2.5" style={{ boxShadow: '0 12px 34px -12px rgba(0,0,0,0.6)' }}>
-              {/* semantic accent rail + a spring-in icon chip: explicit success / error / info cue */}
-              <span className="absolute left-0 top-0 bottom-0 w-1" style={{ background: tone }} />
-              <span className={`toast-icon-in grid place-items-center w-6 h-6 rounded-lg shrink-0 ${t.tone === 'success' ? 'burst' : ''}`} style={{ background: `color-mix(in srgb, ${tone} 16%, transparent)`, color: tone }}><I size={15} /></span>
-              <div className="text-sm flex-1 pt-0.5">{t.msg}</div>
+            <div key={t.id} role="alert" className="anim-slide relative overflow-hidden rounded-xl border flex items-start gap-3 pl-3.5 pr-2 py-3"
+              style={{ background: `color-mix(in srgb, ${tone} 8%, var(--bg-solid))`, borderColor: `color-mix(in srgb, ${tone} 32%, var(--line))`, boxShadow: '0 14px 40px -14px rgba(0,0,0,0.62)' }}>
+              {/* tone-tinted, spring-in icon chip: an explicit success / error / info cue */}
+              <span className={`toast-icon-in grid place-items-center w-7 h-7 rounded-lg shrink-0 mt-px ${t.tone === 'success' ? 'burst' : ''}`} style={{ background: `color-mix(in srgb, ${tone} 18%, transparent)`, color: tone }}><I size={16} /></span>
+              <div className="text-sm flex-1 min-w-0 pt-1 break-words leading-snug">{t.msg}</div>
+              <button onClick={() => dismiss(t.id)} aria-label="Dismiss" className="shrink-0 -mt-0.5 -mr-0.5 p-1 rounded-lg text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition"><X size={14} /></button>
+              {/* auto-dismiss countdown bar */}
+              <span className="absolute left-0 bottom-0 h-[3px] rounded-full toast-progress" style={{ background: tone, animationDuration: `${t.duration}ms` }} />
             </div>); })}
         </div>, document.body)}
     </ToastCtx.Provider>

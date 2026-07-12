@@ -303,6 +303,9 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 /* Toast accent + icon entrance (richer than a plain slide). */
 @keyframes toastIcon { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
 .toast-icon-in { animation: toastIcon .32s cubic-bezier(.16,1,.3,1) both; }
+/* Toast auto-dismiss countdown bar — width shrinks over the toast's duration. */
+@keyframes toastProgress { from { width: 100%; } to { width: 0%; } }
+.toast-progress { width: 100%; opacity: .55; animation: toastProgress linear forwards; }
 
 /* Respect a genuine OS reduced-motion request for the OPT-IN micro-interactions
    (not the scroll reveal, which Windows silently force-enables). Transforms
