@@ -2059,7 +2059,7 @@ export function Dashboard() {
         </>)}
       </SideDash>
 
-      <SubmitModal open={open} onClose={() => setOpen(false)} onDone={() => { items.reload(); toast.success(t('dash.submitted', 'Submitted — pending moderation.')); }} />
+      <SubmitModal open={open} onClose={() => setOpen(false)} onReopen={() => setOpen(true)} onDone={() => { items.reload(); toast.success(t('dash.submitted', 'Submitted — pending moderation.')); }} />
       <ItemEditModal open={!!editing} item={editing} onClose={() => setEditing(null)} onDone={() => items.reload()} />
     </>
   );
@@ -2226,14 +2226,21 @@ const KIND_COPY = {
   PRESET: { name: 'Afterburner Boom', desc: 'A punchy engine sound preset.', file: 'Preset .json file', tmpl: { name: '', version: '1.0.0', assetPaths: [] } },
 };
 
-function SubmitModal({ open, onClose, onDone }) {
+function SubmitModal({ open, onClose, onReopen, onDone }) {
   const toast = useToast(); const { t } = useI18n();
   const [form, setForm] = useState(SUBMIT_INIT);
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [quote, setQuote] = useState(null); // { monthlyCents, free } for an our-hosted file
   const [cap, setCap] = useState(null); // hosting capacity — used to pre-empt temp_storage_full
-  useEffect(() => { if (open) { setForm(SUBMIT_INIT); setFile(null); setQuote(null); api.get('/hosting/capacity').then((r) => setCap(r.capacity)).catch(() => setCap(null)); } }, [open]);
+  // When the submit toast is cancelled (or the deferred submit fails) we reopen this modal
+  // with the author's exact form + file instead of resetting it — see submit().
+  const restoreRef = useRef(null);
+  useEffect(() => { if (open) {
+    if (restoreRef.current) { setForm(restoreRef.current.form); setFile(restoreRef.current.file); restoreRef.current = null; }
+    else { setForm(SUBMIT_INIT); setFile(null); setQuote(null); }
+    api.get('/hosting/capacity').then((r) => setCap(r.capacity)).catch(() => setCap(null));
+  } }, [open]);
   // Submission payloads draw from the dedicated temp margin (separate from hosted-
   // repo capacity) — pre-empt the server's temp_storage_full error with a clear banner.
   const noSubmitSpace = !!cap && (cap.tempMarginGB - cap.tempUsedGB) <= 0.01;
@@ -2265,19 +2272,16 @@ function SubmitModal({ open, onClose, onDone }) {
     setForm((s) => ({ ...s, meta: JSON.stringify(base, null, 2) }));
     toast.success(t('sub.tmplgen', 'Template generated — edit the values.'));
   };
-  const submit = async () => {
-    if (form.name.length < 2) return toast.error(t('sub.namereq', 'Name is required.'));
-    if (file && noSubmitSpace) return toast.error(t('sub.tempfull', 'Submission storage is full right now — try again once moderation clears space.'));
-    let meta = {}; try { meta = JSON.parse(form.meta || '{}'); } catch { return toast.error(t('sub.metajson', 'Meta must be valid JSON.')); }
-    setBusy(true);
+  // The actual submission work (PoW + optional upload + create), factored out so it can
+  // run after the undo window elapses. Returns nothing; surfaces its own toasts.
+  const runSubmit = async (snapForm, snapFile, meta) => {
     try {
       const { solvePow } = await import('./pow.js');
       const pow = await solvePow(() => api.get('/auth/pow')); // anti-spam proof-of-work
-      let payloadKey; if (file) payloadKey = await uploadPayload(form.kind, file);
-      const res = await api.post('/catalog', { ...form, tags: [], meta, payloadKey, payloadSize: file?.size, pow });
+      let payloadKey; if (snapFile) payloadKey = await uploadPayload(snapForm.kind, snapFile);
+      const res = await api.post('/catalog', { ...snapForm, tags: [], meta, payloadKey, payloadSize: snapFile?.size, pow });
       // Our-hosted files may require a hosting payment first → redirect to Stripe.
       if (res?.checkoutUrl) { window.location.href = res.checkoutUrl; return; }
-      onClose();
       // Plugins are SHA-verified on submit; warn the user if the checksum failed.
       if (res?.validation && res.validation.valid === false) toast.error(t('sub.checksum.fail', 'Submitted, but the plugin failed checksum verification ({reason}). A moderator will review it.').replace('{reason}', res.validation.reason));
       else if (res?.validation?.valid) toast.success(t('sub.checksum.ok', 'Checksum verified — sent to moderators.'));
@@ -2290,7 +2294,30 @@ function SubmitModal({ open, onClose, onDone }) {
         : e === 'free_tier_full' ? t('sub.freetierfull', 'Free hosting for catalog files is full right now — try again later, or self-host and paste a URL instead.')
         : e === 'free_tier_already_used' ? t('sub.freeused', "You've already used your one free hosted upload (per account and per linked creator id) — self-host and paste a URL instead, or pay for hosting.")
         : e || x.message || t('repos.failed', 'Failed.'));
-    } finally { setBusy(false); }
+      // Failed → bring the author back to the filled-in form so nothing is lost.
+      restoreRef.current = { form: snapForm, file: snapFile }; onReopen?.();
+    }
+  };
+  const submit = async () => {
+    if (form.name.length < 2) return toast.error(t('sub.namereq', 'Name is required.'));
+    if (file && noSubmitSpace) return toast.error(t('sub.tempfull', 'Submission storage is full right now — try again once moderation clears space.'));
+    let meta = {}; try { meta = JSON.parse(form.meta || '{}'); } catch { return toast.error(t('sub.metajson', 'Meta must be valid JSON.')); }
+    // Optimistic submit with an undo window: close the modal now and run the actual
+    // upload+create only when the toast elapses. Cancel (× / Undo) reopens the modal with
+    // the exact form + file and nothing is uploaded or submitted.
+    const snapForm = form; const snapFile = file;
+    if (onReopen) {
+      onClose();
+      toast.action({
+        tone: 'success', duration: 6000, cancelLabel: t('be.undo', 'Undo'),
+        msg: t('sub.sent', 'Submitted for review.'),
+        onCommit: () => runSubmit(snapForm, snapFile, meta),
+        onCancel: () => { restoreRef.current = { form: snapForm, file: snapFile }; onReopen(); },
+      });
+      return;
+    }
+    setBusy(true);
+    try { await runSubmit(snapForm, snapFile, meta); } finally { setBusy(false); }
   };
   return (
     <Modal open={open} onClose={onClose} title={t('sub.title', 'Submit content')} icon={Upload} width="max-w-lg"

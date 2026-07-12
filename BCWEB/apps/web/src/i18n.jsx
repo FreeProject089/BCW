@@ -987,7 +987,7 @@ const DICT = {
     'bill.h.subscription': 'Abonnement', 'bill.h.boost': 'Mise en avant', 'bill.h.hosting': 'Hébergement', 'bill.h.payment': 'Paiement',
 
     'sub.presetjson': 'Le preset n’est pas un JSON valide.', 'sub.tmplgen': 'Modèle généré — modifie les valeurs.',
-    'sub.namereq': 'Le nom est requis.', 'sub.metajson': 'Les métadonnées doivent être un JSON valide.',
+    'sub.namereq': 'Le nom est requis.', 'sub.metajson': 'Les métadonnées doivent être un JSON valide.', 'sub.sent': 'Envoyé pour révision.',
     'sub.checksum.fail': 'Envoyé, mais le plugin a échoué à la vérification du checksum ({reason}). Un modérateur l’examinera.',
     'sub.checksum.ok': 'Checksum vérifié — envoyé aux modérateurs.', 'sub.hostunavail': 'Le paiement de l’hébergement est indisponible pour le moment.',
     'sub.title': 'Soumettre du contenu', 'sub.forreview': 'Soumettre pour revue',
