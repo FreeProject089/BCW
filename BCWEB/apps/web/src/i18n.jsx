@@ -1113,6 +1113,7 @@ const DICT = {
     'sp.ssl.nohttps': 'SITE_URL est en http:// — aucun certificat à sonder. Le HTTPS est provisionné et renouvelé automatiquement par Caddy/Let’s Encrypt en production.',
     'sp.downtime': 'Historique des pannes', 'sp.downtime.note': 'Périodes où le serveur a cessé de reporter — il était donc probablement hors-ligne ou en redémarrage.',
     'sp.alerts': 'Alertes récentes', 'sp.alerts.none': 'Aucune alerte', 'sp.alerts.nonesub': 'Rien n’a encore franchi un seuil.',
+    'sp.vitals': 'Web Vitals (utilisateurs réels)',
     'sp.al.cpu': 'CPU élevé', 'sp.al.cpu.d': 'L’utilisation CPU a franchi le seuil d’alerte (>90%).',
     'sp.al.mem': 'Mémoire élevée', 'sp.al.mem.d': 'L’utilisation mémoire a franchi le seuil d’alerte (>90%).',
     'sp.al.disk': 'Disque faible', 'sp.al.disk.d': 'L’utilisation disque a franchi le seuil d’alerte (>90%).',

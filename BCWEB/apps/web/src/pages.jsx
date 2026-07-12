@@ -3151,7 +3151,7 @@ function AdminServerPerf() {
   // Live network rate: diff the cumulative rx/tx byte counters between two 30s refreshes.
   const netPrevRef = useRef(null);
   const [liveNet, setLiveNet] = useState({ rx: null, tx: null });
-  const [sec, setSec] = useState({ alloc: true, downtime: true, alerts: true }); // collapsible sections
+  const [sec, setSec] = useState({ alloc: true, downtime: true, alerts: true, vitals: true }); // collapsible sections
   const toggleSec = (k) => setSec((s) => ({ ...s, [k]: !s[k] }));
   useEffect(() => {
     const cur = data?.net; if (!cur) return;
@@ -3422,7 +3422,7 @@ function AdminServerPerf() {
         </Card>
       )}
 
-      <div>
+      <div className="mt-8 pt-6 border-t border-[var(--line)]">
         <button onClick={() => toggleSec('alerts')} className="w-full flex items-center justify-between text-left mb-2">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">{t('sp.alerts', 'Recent alerts')}{(alerts.data?.alerts || []).length ? <span className="text-[var(--muted)] normal-case tracking-normal">· {alerts.data.alerts.length}</span> : null}</h3>
           <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.alerts ? '' : '-rotate-90'}`} />
@@ -3459,8 +3459,15 @@ function AdminServerPerf() {
       </div>
 
       {/* Real-user Web Vitals — moved here from the Site-analytics tab so all
-          performance (server-side + client-side) lives on one Server-perf tab. */}
-      <WebVitals />
+          performance (server-side + client-side) lives on one Server-perf tab.
+          Collapsible + separated so it isn't jammed against the alerts list. */}
+      <div className="mt-8 pt-6 border-t border-[var(--line)]">
+        <button onClick={() => toggleSec('vitals')} className="w-full flex items-center justify-between text-left mb-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Gauge size={13} /> {t('sp.vitals', 'Web Vitals (real-user)')}</h3>
+          <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.vitals ? '' : '-rotate-90'}`} />
+        </button>
+        {sec.vitals && <WebVitals />}
+      </div>
     </div>
   );
 }
