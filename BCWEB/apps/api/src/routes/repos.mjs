@@ -240,8 +240,8 @@ export default async function repoRoutes(app) {
     const b = settingsSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const { repo, err } = await ownRepo(p, req.params.id, req.user);
-    if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     const cur = repo.settings || DEFAULT_SETTINGS;
     const next = {
       access: { ...DEFAULT_SETTINGS.access, ...cur.access, ...(b.data.access || {}) },
@@ -258,8 +258,8 @@ export default async function repoRoutes(app) {
     const b = z.object({ storageGB: z.number().min(0.5).max(2000) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const { repo, err } = await ownRepo(p, req.params.id, req.user);
-    if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     if (!repo.groupId) return reply.code(400).send({ error: 'not_grouped', detail: 'Single-repo hosting has a fixed quota.' });
     const group = await p.hostingGroup.findUnique({ where: { id: repo.groupId }, include: { repos: true } });
     const newBytes = BigInt(Math.round(b.data.storageGB * GiB));
@@ -287,8 +287,8 @@ export default async function repoRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const { repo, err } = await ownRepo(p, req.params.id, req.user);
-    if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     if (repo.ownerId !== req.user.uid) return reply.code(403).send({ error: 'owner_only' }); // billing action — owner only, not collaborators
     if (repo.groupId) return reply.code(400).send({ error: 'grouped', detail: 'Grouped repos resize for free within their pool — use /quota instead.' });
     if (!repo.hosted) return reply.code(400).send({ error: 'not_hosted' });
@@ -426,8 +426,8 @@ export default async function repoRoutes(app) {
   // Free switch: single hosted repo → multi (mints a pool sized to its quota), and back.
   app.post('/me/repos/:id/to-multi', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
-    const { repo, err } = await ownRepo(p, req.params.id, req.user);
-    if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     if (repo.groupId) return { ok: true, groupId: repo.groupId, mode: 'multi' };
     if (!repo.hosted) return reply.code(400).send({ error: 'not_hosted' });
     const group = await p.hostingGroup.create({ data: { ownerId: repo.ownerId, name: `${repo.name} pool`, poolBytes: repo.storageQuotaBytes, uploadLimitKbps: repo.uploadLimitKbps, cpuShare: repo.cpuShare } });
@@ -436,8 +436,8 @@ export default async function repoRoutes(app) {
   });
   app.post('/me/repos/:id/to-single', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
-    const { repo, err } = await ownRepo(p, req.params.id, req.user);
-    if (err) return reply.code(err).send({ error: err === 404 ? 'not_found' : 'forbidden' });
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     if (!repo.groupId) return { ok: true, mode: 'single' };
     const group = await p.hostingGroup.findUnique({ where: { id: repo.groupId }, include: { repos: true } });
     if (group && group.repos.length > 1) return reply.code(409).send({ error: 'pool_has_multiple_repos' });
