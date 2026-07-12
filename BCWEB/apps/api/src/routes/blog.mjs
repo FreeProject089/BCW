@@ -151,9 +151,23 @@ export default async function blogRoutes(app) {
     if (req.query?.project) AND.push({ project: { key: req.query.project } });
     if (req.query?.page) AND.push({ showcaseProject: { slug: req.query.page } });
     if (req.query?.home) AND.push({ OR: [{ project: { showOnHomeNews: true } }, { showcaseProject: { showOnHomeNews: true } }] });
-    const posts = await p.blogPost.findMany({ where: { AND }, orderBy: { publishedAt: 'desc' }, select: POST_SELECT });
+    const where = { AND };
+    // Opt-in pagination: callers that pass ?limit page through the list (blog page's
+    // "load more"). Without ?limit the behaviour is unchanged — every matching post —
+    // so the home-news and per-project feeds keep working as before.
+    const limit = req.query?.limit != null ? Math.min(Math.max(parseInt(req.query.limit, 10) || 0, 1), 48) : null;
+    const offset = Math.max(parseInt(req.query?.offset, 10) || 0, 0);
+    if (limit == null) {
+      const posts = await p.blogPost.findMany({ where, orderBy: { publishedAt: 'desc' }, select: POST_SELECT });
+      await attachAuthors(p, posts);
+      return { posts, total: posts.length, hasMore: false };
+    }
+    const [total, posts] = await Promise.all([
+      p.blogPost.count({ where }),
+      p.blogPost.findMany({ where, orderBy: { publishedAt: 'desc' }, select: POST_SELECT, skip: offset, take: limit }),
+    ]);
     await attachAuthors(p, posts);
-    return { posts };
+    return { posts, total, hasMore: offset + posts.length < total };
   });
 
   app.get('/blog/:slug', { preHandler: optionalAuth() }, async (req, reply) => {

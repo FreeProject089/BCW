@@ -1009,7 +1009,7 @@ const DICT = {
 
     'blog.title': 'Blog', 'blog.sub': 'Actus et mises à jour de tous les projets.', 'blog.write': 'Écrire un article',
     'blog.untranslated': 'non traduit', 'blog.empty': 'Aucun article pour le moment', 'blog.writefirst': 'Écris le premier.',
-    'blog.newpost': 'Nouvel article', 'blog.notfound': 'Article introuvable',
+    'blog.newpost': 'Nouvel article', 'blog.notfound': 'Article introuvable', 'blog.loadmore': 'Voir plus',
     'blog.rx.label': 'Réactions', 'blog.rx.signin': 'Connecte-toi pour réagir.', 'blog.rx.failed': 'Réaction impossible.',
     'blog.by.one': 'Écrit par {name}', 'blog.by.multi': 'Écrit par {names}',
 

@@ -78,9 +78,24 @@ function TypeTag({ post, className = '' }) {
 }
 
 /* ── Blog list ── */
+const BLOG_PAGE = 12; // posts fetched per "load more"
 export function BlogList() {
   const { user } = useAuth(); const { lang, t } = useI18n();
-  const { data, loading, reload } = useFetch(() => api.get('/blog'), []);
+  // Paginated load: keep a growing list of posts + a "load more" button rather than
+  // fetching the whole blog up front.
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const loadPage = async (offset) => {
+    const r = await api.get(`/blog?limit=${BLOG_PAGE}&offset=${offset}`);
+    setHasMore(!!r.hasMore);
+    setPosts((prev) => offset === 0 ? (r.posts || []) : [...prev, ...(r.posts || [])]);
+    return r;
+  };
+  const reload = () => { setLoading(true); loadPage(0).catch(() => setPosts([])).finally(() => setLoading(false)); };
+  const loadMore = () => { setLoadingMore(true); loadPage(posts.length).catch(() => {}).finally(() => setLoadingMore(false)); };
+  useEffect(() => { reload(); /* eslint-disable-next-line */ }, []);
   const { data: scopeData } = useFetch(() => (user ? api.get('/blog/my-scopes') : Promise.resolve(null)), [user?.id]);
   const [editing, setEditing] = useState(null); // null = closed, {} = new, post = edit
   const isStaff = user && (user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN');
@@ -88,7 +103,6 @@ export function BlogList() {
   // staff's or another grantee's.
   const canWrite = isStaff || !!scopeData;
   const canEdit = (p) => isStaff || p.authorId === user?.id || (p.coAuthorIds || []).includes(user?.id);
-  const posts = data?.posts || [];
   return (
     <div>
       <PageHeader icon={Newspaper} title={t('blog.title', 'Blog')} subtitle={t('blog.sub', 'News and updates across every project.')}
@@ -116,6 +130,9 @@ export function BlogList() {
             ); })}
           </div>
         ) : <EmptyState icon={Newspaper} title={t('blog.empty', 'No posts yet')} sub={canWrite ? t('blog.writefirst', 'Write the first one.') : undefined}>{canWrite && <Button variant="primary" onClick={() => setEditing({})}><Plus size={16} /> {t('blog.newpost', 'New post')}</Button>}</EmptyState>}
+      {!loading && hasMore && <div className="flex justify-center mt-8">
+        <Button onClick={loadMore} disabled={loadingMore}>{loadingMore ? <><Spinner /> {t('common.loading', 'Loading…')}</> : <><ChevronDown size={16} /> {t('blog.loadmore', 'Load more')}</>}</Button>
+      </div>}
       <NewsletterSignup />
       {editing !== null && <BlogEditor post={editing.id ? editing : null} scopes={scopeData} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
     </div>
