@@ -95,6 +95,17 @@ from the Fastify route modules in `apps/api/src/routes/`.
 | GET | `/blog-admin` | admin | Admin blog overview. |
 | GET/POST/DELETE | `/admin/blog-permissions[/:id]` | admin | Granular blog-permission grants. |
 
+## 4b. Newsletter (`newsletter.mjs`)
+GDPR-correct: double opt-in on subscribe, one-click no-login unsubscribe in every email,
+and sends are admin-triggered only (no auto-send on publish).
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/newsletter/subscribe` | — | Subscribe (double opt-in): create a `pending` row + email a confirm link. Body `{ email, locale? }`. Idempotent; never leaks whether an address exists. |
+| GET | `/newsletter/confirm?token=` | — | Confirm from the email link → `active`. Returns an HTML page. |
+| GET | `/newsletter/unsubscribe?token=` | — | One-click, no-login unsubscribe (GDPR). Returns an HTML page. |
+| GET | `/admin/newsletter` | admin | List subscribers + counts (active / pending / unsubscribed). |
+| POST | `/admin/newsletter/broadcast` | admin | Manual send to ACTIVE subscribers. Body `{ subject, title, body, url? }`. Each email carries the unsubscribe footer. |
+
 ## 5. Projects & "Other projects" showcase (`projects.mjs`, `showcase.mjs`)
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
@@ -121,6 +132,12 @@ from the Fastify route modules in `apps/api/src/routes/`.
 | POST | `/admin/repos/host` · `/:id/verify` · `/reject` · `/revalidate` · `/delete/cancel` · `/check-all` | admin | Admin provisioning/moderation. |
 | PATCH | `/admin/repos/:id` | admin | Admin edit — incl. `status` and `category` (**trust tier**: community / partner / official; official+partner float to the top of the public list and get a badge). |
 | POST | `/admin/repos/:id/feature` | admin | Boost (feature) a repo for N days (free). |
+
+> **SUSPENDED repos are frozen for the owner.** When a repo's status is `SUSPENDED`, the
+> owner (USER role) config mutations — `PATCH /repos/:id`, `PUT /me/repos/:id/settings`
+> · `/quota`, `POST /me/repos/:id/upgrade` · `/to-multi` · `/to-single` — return
+> `403 { error: 'repo_suspended' }`. Only recovery (`/renew`, `/delete/cancel`) stays open
+> to the owner; staff manage everything via `/admin/repos` regardless of status.
 
 ## 7. Repo owner dashboard (`repo-dashboard.mjs`)
 | Method | Path | Auth | Purpose |
