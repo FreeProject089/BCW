@@ -46,10 +46,10 @@ export function AuthorsRow({ authors, size = 22 }) {
   if (!list.length) return null;
   return (
     <span className="flex items-center gap-1.5 min-w-0">
-      {/* Clean side-by-side avatars — no overlap ring/frame (it read as an ugly
-          box around each pfp when there were several collaborators). */}
-      <span className="flex items-center gap-1 shrink-0">
-        {list.slice(0, 4).map((a, i) => <span key={a.id || i} title={a.displayName}><Avatar user={a} size={size} /></span>)}
+      {/* Overlapping (stacked) avatars — a ring in the deep surface colour separates
+          them cleanly; a single avatar gets no ring so it isn't a lone framed box. */}
+      <span className="flex -space-x-2 shrink-0">
+        {list.slice(0, 4).map((a, i) => <span key={a.id || i} className={list.length > 1 ? 'ring-2 ring-[var(--bg-solid)] rounded-full' : ''} title={a.displayName}><Avatar user={a} size={size} /></span>)}
       </span>
       {list.length === 1 && <span className="text-xs text-[var(--faint)] truncate">{list[0].displayName}</span>}
     </span>
@@ -264,8 +264,8 @@ export function BlogPostPage() {
         {/* author + collaborators */}
         {authors.length > 0 && (
           <div className="mt-6 pt-5 border-t border-[var(--line)] flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              {authors.map((a) => <div key={a.id}><Avatar user={a} size={30} /></div>)}
+            <div className="flex -space-x-2">
+              {authors.map((a) => <div key={a.id} className={authors.length > 1 ? 'ring-2 ring-[var(--bg-solid)] rounded-full' : ''}><Avatar user={a} size={30} /></div>)}
             </div>
             <div className="text-xs text-[var(--muted)]">
               {authors.length > 1 ? t('blog.by.multi', 'Written by {names}').replace('{names}', authors.map((a) => a.displayName).join(', ')) : t('blog.by.one', 'Written by {name}').replace('{name}', p.author?.displayName || '')}

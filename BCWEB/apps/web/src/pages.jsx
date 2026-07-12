@@ -172,12 +172,13 @@ function useScrollReveal() {
       entries.forEach((e) => {
         if (!e.isIntersecting) return;
         const el = e.target;
-        // If, by the time this fires, the element is already well inside (or above)
-        // the viewport — i.e. the user fast-scrolled or jumped past the trigger —
-        // snap it in with a short fade instead of playing the long rise+blur while
-        // it's on screen (which reads as a glitchy late "spawn"). Fresh-measure
-        // rather than trusting the possibly-stale entry rect on a fast scroll.
-        if (el.getBoundingClientRect().top < window.innerHeight * 0.55) el.classList.add('reveal-instant');
+        // If, by the time this fires, the element is already substantially inside (or
+        // above) the viewport — i.e. the user fast-scrolled or jumped past the trigger —
+        // snap it in with a short fade instead of playing the long rise+blur while it's
+        // on screen (that's the glitchy "late spawn" seen on Latest news / reviews when
+        // scrolling fast). Threshold raised to 0.85 so only elements JUST entering at the
+        // very bottom edge get the full animation. Fresh-measured (not the stale rect).
+        if (el.getBoundingClientRect().top < window.innerHeight * 0.85) el.classList.add('reveal-instant');
         el.classList.add('in');
         io.unobserve(el);
       });
@@ -362,41 +363,27 @@ export function Home() {
       <section>
         <SectionKicker n="03" label={t('home.k.start', 'Get started')} />
         <div className="reveal-on-scroll text-center mb-9"><h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.steps.title')}</h2><p className="text-[var(--muted)] mt-2.5">{t('home.steps.sub')}</p></div>
-        {/* Roadmap: three numbered milestone nodes threaded on a connecting rail (the
-            journey), each with a card hanging below it. The rail runs through the node
-            centres with a sweeping comet; nodes punch through it with a bg-coloured ring
-            so it reads as a real path, not a flat row of cards. */}
-        <div className="reveal-stagger relative">
-          <div className="hidden md:block absolute top-8 left-[16.66%] right-[16.66%] h-[3px] -translate-y-1/2 z-0 rounded-full overflow-hidden bg-gradient-to-r from-[var(--primary)]/25 via-[var(--primary)]/55 to-[var(--primary)]/25">
-            <div className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-transparent via-[var(--primary-2)] to-transparent step-flow-x" />
-          </div>
-          <div className="grid md:grid-cols-3 gap-8 md:gap-5">
-            {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth', user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free')],
-              [Upload, t('home.step2'), t('home.step2.d'), '/catalog', t('home.step2.cta', 'Browse the catalog')],
-              [Rocket, t('home.step3'), t('home.step3.d'), '/hosting', t('home.step3.cta', 'See hosting plans')]].map(([I, title, d, to, cta], i) => (
-              <div key={title} className="group relative z-[1] flex flex-col">
-                {/* milestone node — centred on the rail, punched out with a bg-coloured ring.
-                    `group` on this wrapper so hovering the step lifts the node AND its card
-                    together (the node's group-hover previously had no .group ancestor). */}
-                <div className="relative mx-auto grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-lg shadow-orange-500/30 ring-4 ring-[var(--bg-solid)] transition-transform duration-300 group-hover:scale-110 group-hover:-translate-y-0.5">
-                  <I size={24} className="text-white" />
-                  <span className="absolute -top-2 -right-2 grid place-items-center w-7 h-7 rounded-full bg-[var(--bg-solid)] border-2 border-[var(--primary)] text-xs font-extrabold text-[var(--primary-2)]">{i + 1}</span>
+        {/* Clean self-contained step cards — no roadmap rail. Icon chip + a big ghost
+            step-number, then Step N · title · description · CTA. */}
+        <div className="reveal-stagger grid md:grid-cols-3 gap-5">
+          {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth', user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free')],
+            [Upload, t('home.step2'), t('home.step2.d'), '/catalog', t('home.step2.cta', 'Browse the catalog')],
+            [Rocket, t('home.step3'), t('home.step3.d'), '/hosting', t('home.step3.cta', 'See hosting plans')]].map(([I, title, d, to, cta], i) => (
+            <Link key={title} to={to} className="group">
+              <Card hover className="relative p-7 h-full flex flex-col overflow-hidden group-hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--line))] transition-colors">
+                <span aria-hidden className="absolute -top-3 right-4 text-[76px] leading-none font-black text-[var(--line)] select-none pointer-events-none">{i + 1}</span>
+                <div className="relative flex flex-col h-full">
+                  <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-lg shadow-orange-500/25 transition-transform duration-300 group-hover:scale-105">
+                    <I size={22} className="text-white" />
+                  </span>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--primary-2)]/70 mt-5">{t('home.step.n', 'Step {n}').replace('{n}', i + 1)}</div>
+                  <div className="font-bold mt-1 text-lg leading-snug">{title}</div>
+                  <div className="text-sm text-[var(--muted)] mt-2 leading-relaxed flex-1">{d}</div>
+                  <div className="text-sm text-[var(--primary-2)] mt-5 flex items-center gap-1.5 font-semibold">{cta} <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" /></div>
                 </div>
-                <Link to={to} className="group mt-5 flex-1">
-                  <Card hover className="relative p-6 h-full flex flex-col overflow-hidden group-hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--line))] transition-colors" style={{ background: 'var(--bg-solid)' }}>
-                    {/* big ghost step number — a premium, scannable cue behind the copy */}
-                    <span aria-hidden className="absolute -top-4 right-2 text-[68px] leading-none font-black text-[var(--line)] select-none pointer-events-none">{i + 1}</span>
-                    <div className="relative flex flex-col h-full">
-                      <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--primary-2)]/70">{t('home.step.n', 'Step {n}').replace('{n}', i + 1)}</div>
-                      <div className="font-bold mt-1 text-lg leading-snug">{title}</div>
-                      <div className="text-sm text-[var(--muted)] mt-2 leading-relaxed flex-1">{d}</div>
-                      <div className="text-xs text-[var(--primary-2)] mt-5 flex items-center gap-1 font-semibold">{cta} <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" /></div>
-                    </div>
-                  </Card>
-                </Link>
-              </div>
-            ))}
-          </div>
+              </Card>
+            </Link>
+          ))}
         </div>
       </section>
 
@@ -408,28 +395,32 @@ export function Home() {
             <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.reviews.title', 'What the community says')}</h2>
             <p className="text-[var(--muted)] mt-2.5">{t('home.reviews.sub', 'Real words from people building with Better* tools.')}</p>
           </div>
-          <div className="reveal-stagger grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {reviewsData.reviews.map((rv) => {
-              const text = (lang === 'fr' && rv.bodyFr) ? rv.bodyFr : rv.body;
-              const av = rv.avatar || {};
-              return (
-                <Card key={rv.id} className="p-6 flex flex-col" style={{ background: 'var(--bg-solid)' }}>
-                  {rv.rating > 0 && (
-                    <div className="flex items-center gap-0.5 mb-3">
-                      {[1, 2, 3, 4, 5].map((n) => <Star key={n} size={15} className={n <= rv.rating ? 'text-amber-400' : 'text-[var(--line-strong)]'} fill={n <= rv.rating ? 'currentColor' : 'none'} />)}
+          {/* Auto-scrolling marquee (pauses on hover). The list is duplicated so it
+              loops seamlessly; speed scales with how many reviews there are. */}
+          <div className="reveal-on-scroll reviews-marquee relative overflow-hidden">
+            <div className="reviews-track flex gap-5 py-1" style={{ animationDuration: `${Math.max(24, reviewsData.reviews.length * 10)}s` }}>
+              {[...reviewsData.reviews, ...reviewsData.reviews].map((rv, idx) => {
+                const text = (lang === 'fr' && rv.bodyFr) ? rv.bodyFr : rv.body;
+                const av = rv.avatar || {};
+                return (
+                  <Card key={idx} className="w-[340px] max-w-[80vw] shrink-0 p-6 flex flex-col" style={{ background: 'var(--bg-solid)' }} aria-hidden={idx >= reviewsData.reviews.length}>
+                    {rv.rating > 0 && (
+                      <div className="flex items-center gap-0.5 mb-3">
+                        {[1, 2, 3, 4, 5].map((n) => <Star key={n} size={15} className={n <= rv.rating ? 'text-amber-400' : 'text-[var(--line-strong)]'} fill={n <= rv.rating ? 'currentColor' : 'none'} />)}
+                      </div>
+                    )}
+                    <p className="text-sm text-[var(--muted)] leading-relaxed flex-1">“{text}”</p>
+                    <div className="flex items-center gap-3 mt-4 pt-4 border-t border-[var(--line)]">
+                      <Avatar image={av.image} variant={av.variant || 'beam'} seed={av.seed || rv.author} colors={av.colors} size={38} />
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold truncate">{rv.author}</div>
+                        {rv.role && <div className="text-xs text-[var(--faint)] truncate">{rv.role}</div>}
+                      </div>
                     </div>
-                  )}
-                  <p className="text-sm text-[var(--muted)] leading-relaxed flex-1">“{text}”</p>
-                  <div className="flex items-center gap-3 mt-4 pt-4 border-t border-[var(--line)]">
-                    <Avatar image={av.image} variant={av.variant || 'beam'} seed={av.seed || rv.author} colors={av.colors} size={38} />
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold truncate">{rv.author}</div>
-                      {rv.role && <div className="text-xs text-[var(--faint)] truncate">{rv.role}</div>}
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
+                  </Card>
+                );
+              })}
+            </div>
           </div>
         </section>
       )}

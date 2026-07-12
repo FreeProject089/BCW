@@ -307,6 +307,14 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 @keyframes toastProgress { from { width: 100%; } to { width: 0%; } }
 .toast-progress { width: 100%; opacity: .55; animation: toastProgress linear forwards; }
 
+/* Landing reviews — horizontal auto-scroll marquee (list is duplicated in the DOM,
+   so translating by -50% loops seamlessly). Pauses on hover; static under reduced-motion. */
+@keyframes reviewsScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.reviews-track { width: max-content; animation: reviewsScroll linear infinite; }
+.reviews-marquee:hover .reviews-track { animation-play-state: paused; }
+.reviews-marquee { -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent); mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent); }
+@media (prefers-reduced-motion: reduce) { .reviews-track { animation: none; } .reviews-marquee { -webkit-mask-image: none; mask-image: none; } .reviews-track { overflow-x: auto; } }
+
 /* Respect a genuine OS reduced-motion request for the OPT-IN micro-interactions
    (not the scroll reveal, which Windows silently force-enables). Transforms
    collapse; opacity/colour cues stay. */
