@@ -126,7 +126,15 @@ export default async function docRoutes(app) {
     const p = await db();
     const page = await p.docPage.findUnique({ where: { slug: req.params.slug } });
     if (!page || (!page.published && !isEditor(req))) return reply.code(404).send({ error: 'not_found' });
-    return { page, canEdit: isEditor(req) };
+    // Contributors — everyone who has edited this page, earliest first (the original
+    // author leads). Derived from the revision history, so collaborators are credited
+    // automatically (like a blog post's author + co-authors).
+    const revs = await p.docRevision.findMany({ where: { pageId: page.id }, orderBy: { version: 'asc' }, select: { editorId: true } });
+    const orderedIds = [...new Set(revs.map((r) => r.editorId).filter(Boolean))];
+    const users = orderedIds.length ? await p.user.findMany({ where: { id: { in: orderedIds } }, select: { id: true, displayName: true, avatar: true } }) : [];
+    const byId = new Map(users.map((u) => [u.id, u]));
+    const contributors = orderedIds.map((id) => byId.get(id)).filter(Boolean);
+    return { page, canEdit: isEditor(req), contributors };
   });
 
   // "Was this helpful?" — a single yes/no tally bump. Deduping is client-side

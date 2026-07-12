@@ -10,7 +10,7 @@ import CommentsModal from './comments-modal.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from './i18n.jsx';
 import Markdown, { IconGlyph } from './md.jsx';
-import { MarkdownEditor, useSectionComments, useSectionCommentPills } from './blog.jsx';
+import { MarkdownEditor, useSectionComments, useSectionCommentPills, AuthorsRow } from './blog.jsx';
 import { useToast, useDialog, Button, Spinner, Modal, Input, Select, Field, EmptyState } from './ui.jsx';
 
 // BCWEB documentation — a GitBook-style space rendered with the doc-block markdown
@@ -22,6 +22,7 @@ export default function Docs() {
   const [tree, setTree] = useState([]);
   const [canEdit, setCanEdit] = useState(false);
   const [page, setPage] = useState(null);
+  const [contributors, setContributors] = useState([]); // everyone who edited this page
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [sidebar, setSidebar] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768);
@@ -42,7 +43,7 @@ export default function Docs() {
     const target = slug || firstSlug;
     if (!target) { setPage(null); setLoading(false); return; }
     setLoading(true);
-    api.get(`/docs/${target}`).then((r) => setPage(r.page)).catch(() => setPage(null)).finally(() => setLoading(false));
+    api.get(`/docs/${target}`).then((r) => { setPage(r.page); setContributors(r.contributors || []); }).catch(() => { setPage(null); setContributors([]); }).finally(() => setLoading(false));
   }, [slug, firstSlug]);
 
   // Global ⌘K / Ctrl-K opens the search palette.
@@ -86,7 +87,7 @@ export default function Docs() {
   useSectionCommentPills(articleRef, sectionComments, () => setReaderComments(true), [sectionComments, page?.body, lang]);
   // Map of /docs/<slug> → { title, category } for link hover-previews.
   const pageMap = useMemo(() => { const m = {}; tree.forEach((c) => c.pages.forEach((p) => { m[`/docs/${p.slug}`] = { title: p.title, category: c.category }; })); return m; }, [tree]);
-  const onSaved = async (savedSlug) => { setEditing(null); await loadTree(); if (savedSlug) nav(`/docs/${savedSlug}`); else if (slug) { const r = await api.get(`/docs/${slug}`).catch(() => null); if (r) setPage(r.page); } };
+  const onSaved = async (savedSlug) => { setEditing(null); await loadTree(); if (savedSlug) nav(`/docs/${savedSlug}`); else if (slug) { const r = await api.get(`/docs/${slug}`).catch(() => null); if (r) { setPage(r.page); setContributors(r.contributors || []); } } };
   const activeSlug = slug || firstSlug;
   const goTo = (r) => {
     setSearch(false);
@@ -169,7 +170,13 @@ export default function Docs() {
             // automatically ([data-surface-glass] .card).
             <article ref={articleRef} className="card p-5 sm:p-7">
               <h1 className="text-2xl md:text-3xl font-extrabold mb-1">{page.title}</h1>
-              <div className="text-xs text-[var(--faint)] mb-6"><button onClick={() => setReaderHistory(true)} title={t('docs.history.hint', 'View edit history')} className="inline-flex items-center gap-1 hover:text-[var(--primary-2)] transition">{t('docs.updated')} {new Date(page.updatedAt).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US')} <History size={11} className="opacity-60" /></button></div>
+              <div className="flex items-center flex-wrap gap-x-3 gap-y-1.5 text-xs text-[var(--faint)] mb-6">
+                <button onClick={() => setReaderHistory(true)} title={t('docs.history.hint', 'View edit history')} className="inline-flex items-center gap-1 hover:text-[var(--primary-2)] transition">{t('docs.updated')} {new Date(page.updatedAt).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US')} <History size={11} className="opacity-60" /></button>
+                {contributors.length > 0 && <span className="inline-flex items-center gap-1.5">·
+                  <AuthorsRow authors={contributors} size={20} />
+                  {contributors.length > 1 && <span>{t('docs.contributors', '{n} contributors').replace('{n}', contributors.length)}</span>}
+                </span>}
+              </div>
               <PageTocMobile body={body} />
               {lang === 'fr' && !page.bodyFr && <div className="mb-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--primary-2)]" /> {t('docs.notfr')}</div>}
               <Markdown pageMap={pageMap}>{body || t('docs.empty')}</Markdown>
