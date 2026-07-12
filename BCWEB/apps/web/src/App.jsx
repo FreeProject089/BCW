@@ -3,7 +3,7 @@ import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from
 import { Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
 import { useAuth } from './auth.jsx';
 import { api } from './api.js';
-import { Button } from './ui.jsx';
+import { Button, useToast } from './ui.jsx';
 import { ThemeToggle } from './theme.jsx';
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
 import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon } from './brand.jsx';
@@ -349,6 +349,36 @@ function FooterCol({ title, links }) {
     </div>
   );
 }
+// Compact newsletter signup for the footer — mobile-clean (input + button stack /
+// stay side-by-side with min-w-0). Shows a success toast on subscribe (#5).
+function FooterNewsletter() {
+  const { t, lang } = useI18n();
+  const toast = useToast();
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!email.trim() || busy) return;
+    setBusy(true);
+    try {
+      await api.post('/newsletter/subscribe', { email: email.trim(), locale: lang === 'fr' ? 'fr' : 'en' });
+      toast.success(t('news.check', 'Almost there — check your inbox to confirm your subscription.'));
+      setEmail('');
+    } catch { toast.error(t('news.err', 'Could not subscribe — check the address and try again.')); }
+    finally { setBusy(false); }
+  };
+  return (
+    <form onSubmit={submit} className="mt-6 max-w-xs">
+      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('news.foot', 'Newsletter')}</div>
+      <div className="flex gap-2">
+        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('news.ph', 'you@example.com')}
+          className="flex-1 min-w-0 rounded-lg border border-[var(--line)] bg-[var(--bg-solid)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]" />
+        <button type="submit" disabled={busy} className="shrink-0 rounded-lg bg-[var(--primary)] text-white px-3.5 py-2 text-sm font-semibold hover:brightness-110 disabled:opacity-50 transition">{busy ? '…' : t('news.cta', 'Subscribe')}</button>
+      </div>
+    </form>
+  );
+}
+
 function Footer() {
   const { t } = useI18n();
   return (
@@ -368,6 +398,7 @@ function Footer() {
               </a>
             ))}
           </div>
+          <FooterNewsletter />
         </div>
         <FooterCol title={t('foot.products')} links={[['BetterModsManager', '/p/bmm'], ['BetterSoundMaker', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting']]} />
         <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/legal/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('nav.repos'), '/repos'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
