@@ -308,12 +308,15 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 .toast-progress { width: 100%; opacity: .55; animation: toastProgress linear forwards; }
 
 /* Landing reviews — horizontal auto-scroll marquee (list is duplicated in the DOM,
-   so translating by -50% loops seamlessly). Pauses on hover; static under reduced-motion. */
+   so translating by -50% loops seamlessly). Pauses on hover.
+   NOTE: intentionally NOT disabled under prefers-reduced-motion — Windows silently
+   enables that flag (battery saver / animation settings), which was killing the loop
+   entirely ("les reviews ne défilent pas"). Same reason the reveal + credits marquee
+   ignore it. A continuous, non-flashing translate is safe for motion sensitivity. */
 @keyframes reviewsScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .reviews-track { width: max-content; animation: reviewsScroll linear infinite; }
 .reviews-marquee:hover .reviews-track { animation-play-state: paused; }
 .reviews-marquee { -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent); mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent); }
-@media (prefers-reduced-motion: reduce) { .reviews-track { animation: none; } .reviews-marquee { -webkit-mask-image: none; mask-image: none; } .reviews-track { overflow-x: auto; } }
 
 /* Respect a genuine OS reduced-motion request for the OPT-IN micro-interactions
    (not the scroll reveal, which Windows silently force-enables). Transforms
@@ -372,11 +375,16 @@ html.js-anim .reveal-stagger.in > * { will-change: auto; }
    (animation settings/battery saver) and it silently flattened every reveal. */
 html.js-anim .reveal-stagger.in > * { transition-delay: calc(min(var(--i, 0), 6) * 105ms); }
 /* Fast scroll / jump: JS adds .reveal-instant when a reveal fires while its element
-   is already well inside (or above) the viewport. Playing the long rise+blur then
-   would visibly animate on-screen content and read as a glitchy late "spawn", so
-   collapse it to a short fade in place with no stagger delay. */
+   is already well inside (or above) the viewport. Playing the rise+blur then visibly
+   animates ON-SCREEN content and reads as a glitchy late "spawn" (the "truc bizarre"
+   on Latest news when scrolling fast). Kill the movement entirely — force transform &
+   filter to their final values with no transition, and fade opacity only. The element
+   is already in place, so it just fades in cleanly with zero motion. */
 html.js-anim .reveal-on-scroll.reveal-instant,
-html.js-anim .reveal-stagger.reveal-instant > * { transition-duration: .34s; transition-delay: 0ms; }
+html.js-anim .reveal-stagger.reveal-instant > * {
+  transform: none !important; filter: none !important;
+  transition: opacity .3s ease !important; transition-delay: 0ms !important;
+}
 
 
 /* Theme-distinct page atmosphere — light is airy & editorial, dark is deep & rich,
