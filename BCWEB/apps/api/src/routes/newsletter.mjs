@@ -120,13 +120,15 @@ export default async function newsletterRoutes(app) {
   // ── Admin: list + counts ────────────────────────────────────────────────────
   app.get('/admin/newsletter', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
-    const [subscribers, active, pending, unsubscribed] = await Promise.all([
+    const [subscribers, active, pending, unsubscribed, activeEn, activeFr] = await Promise.all([
       p.newsletterSubscriber.findMany({ orderBy: { createdAt: 'desc' }, take: 500, select: { id: true, email: true, status: true, locale: true, createdAt: true, confirmedAt: true } }),
       p.newsletterSubscriber.count({ where: { status: 'active' } }),
       p.newsletterSubscriber.count({ where: { status: 'pending' } }),
       p.newsletterSubscriber.count({ where: { status: 'unsubscribed' } }),
+      p.newsletterSubscriber.count({ where: { status: 'active', locale: 'en' } }),
+      p.newsletterSubscriber.count({ where: { status: 'active', locale: 'fr' } }),
     ]);
-    return { subscribers, counts: { active, pending, unsubscribed } };
+    return { subscribers, counts: { active, pending, unsubscribed, activeEn, activeFr } };
   });
 
   // ── Admin: manual broadcast / custom email ─────────────────────────────────
@@ -139,12 +141,14 @@ export default async function newsletterRoutes(app) {
       subject: z.string().min(1).max(200), title: z.string().min(1).max(200),
       body: z.string().min(1).max(5000), url: z.string().url().max(500).optional(),
       emails: z.array(z.string().email()).max(5000).optional(), // subset; omitted = all active
+      locale: z.enum(['en', 'fr']).optional(),                  // language segment (all EN / all FR)
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     if (!emailEnabled()) return reply.code(400).send({ error: 'email_disabled' });
     const p = await db();
     const where = { status: 'active' };
     if (b.data.emails?.length) where.email = { in: b.data.emails.map((e) => e.trim().toLowerCase()) };
+    else if (b.data.locale) where.locale = b.data.locale; // whole-segment send (no hand-picking)
     const subs = await p.newsletterSubscriber.findMany({ where, select: { email: true, unsubToken: true } });
     const safeBody = escapeHtml(b.data.body).replace(/\n/g, '<br>');
     let sent = 0;

@@ -4210,11 +4210,11 @@ function AdminNewsletter() {
   const { data, loading, reload } = useAsync(() => api.get('/admin/newsletter'), []);
   const [f, setF] = useState({ subject: '', title: '', body: '', url: '' });
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState('all');            // 'all' active | 'pick' a subset
+  const [mode, setMode] = useState('all');            // 'all' | 'en' | 'fr' segment | 'pick' a subset
   const [picked, setPicked] = useState(() => new Set());
   const [q, setQ] = useState('');
 
-  const counts = data?.counts || { active: 0, pending: 0, unsubscribed: 0 };
+  const counts = data?.counts || { active: 0, pending: 0, unsubscribed: 0, activeEn: 0, activeFr: 0 };
   const subscribers = data?.subscribers || [];
   const activeSubs = subscribers.filter((s) => s.status === 'active');
   const shown = activeSubs.filter((s) => !q.trim() || s.email.toLowerCase().includes(q.trim().toLowerCase()));
@@ -4227,7 +4227,7 @@ function AdminNewsletter() {
     return n;
   });
 
-  const recipientCount = mode === 'all' ? counts.active : picked.size;
+  const recipientCount = mode === 'all' ? counts.active : mode === 'en' ? counts.activeEn : mode === 'fr' ? counts.activeFr : picked.size;
 
   const send = async () => {
     if (f.subject.trim().length < 2) return toast.error(t('nl.subj.req', 'A subject is required.'));
@@ -4244,6 +4244,7 @@ function AdminNewsletter() {
       const payload = { subject: f.subject.trim(), title: f.title.trim(), body: f.body.trim() };
       if (f.url.trim()) payload.url = f.url.trim();
       if (mode === 'pick') payload.emails = [...picked];
+      else if (mode === 'en' || mode === 'fr') payload.locale = mode;
       const r = await api.post('/admin/newsletter/broadcast', payload);
       toast.success(t('nl.sent', 'Sent to {n} of {total} subscriber(s).').replace('{n}', r.sent).replace('{total}', r.total));
       setF({ subject: '', title: '', body: '', url: '' }); setPicked(new Set());
@@ -4275,9 +4276,16 @@ function AdminNewsletter() {
         <div>
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('nl.rec', 'Recipients')}</div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setMode('all')} className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${mode === 'all' ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('nl.rec.all', 'All active ({n})').replace('{n}', counts.active)}</button>
-            <button type="button" onClick={() => setMode('pick')} className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${mode === 'pick' ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('nl.rec.pick', 'Pick subscribers ({n})').replace('{n}', picked.size)}</button>
+            {[
+              ['all', t('nl.rec.all', 'Everyone ({n})').replace('{n}', counts.active)],
+              ['en', t('nl.rec.en', 'English ({n})').replace('{n}', counts.activeEn)],
+              ['fr', t('nl.rec.fr', 'French ({n})').replace('{n}', counts.activeFr)],
+              ['pick', t('nl.rec.pick', 'Pick subscribers ({n})').replace('{n}', picked.size)],
+            ].map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setMode(k)} className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${mode === k ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
+            ))}
           </div>
+          <p className="text-[11px] text-[var(--faint)] mt-2">{t('nl.rec.note', 'Language = the one each subscriber signed up in (footer/blog/registration use the site language at the time; defaults to English). “English” / “French” send to that whole segment — no need to hand-pick.')}</p>
         </div>
 
         {mode === 'pick' && (loading ? <Loading /> : <div className="rounded-xl border border-[var(--line)] overflow-hidden">
