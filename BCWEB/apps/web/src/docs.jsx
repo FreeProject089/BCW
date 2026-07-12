@@ -194,7 +194,9 @@ export default function Docs() {
       {search && <SearchPalette onClose={() => setSearch(false)} onPick={goTo} />}
       {readerComments && page && <CommentsModal base={`/docs/${page.id}`} body={body} onClose={() => setReaderComments(false)} onJump={(slug) => { const el = document.getElementById(slug); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />}
       {readerHistory && page && <HistoryModal base={`/docs/${page.id}`} onClose={() => setReaderHistory(false)} />}
-      {editing && <DocEditor page={editing.id ? editing : null} tree={tree} onClose={() => setEditing(null)} onSaved={onSaved} />}
+      {editing && <DocEditor page={editing.id ? editing : null} draft={editing._draft || null} draftBase={editing._base || null} conflictReopen={!!editing._conflict}
+        reopenDraft={(d, opts = {}) => setEditing(opts.page ? { ...opts.page, _draft: d, _base: opts.base || null, _conflict: !!opts.conflict } : { _draft: d })}
+        tree={tree} onClose={() => setEditing(null)} onSaved={onSaved} />}
     </div>
   );
 }
@@ -430,7 +432,7 @@ function HelpfulWidget({ page, canEdit }) {
 }
 
 /* Role-gated page editor (title, category, icon, order, publish, EN + FR body). */
-function DocEditor({ page, tree, onClose, onSaved }) {
+function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReopen, reopenDraft }) {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const categories = [...new Set(tree.map((c) => c.category))];
   const [f, setF] = useState({ title: '', category: 'General', icon: '', order: 0, published: true, body: '', bodyFr: '', commentsPublic: false });
@@ -444,6 +446,9 @@ function DocEditor({ page, tree, onClose, onSaved }) {
   const [mergeUI, setMergeUI] = useState(null); // visual conflict resolver queue
   const [showHistory, setShowHistory] = useState(false);
   useEffect(() => {
+    // Restored after an "undo" on the save toast — re-seed the exact editor state (and
+    // the original base version, so a post-conflict re-save can still 3-way-merge).
+    if (draft) { setF(draft); if (draftBase) baseRef.current = draftBase; return; }
     if (page) setF({ title: page.title || '', category: page.category || 'General', icon: page.icon || '', order: page.order || 0, published: page.published !== false, body: '', bodyFr: '', commentsPublic: page.commentsPublic === true });
     // full bodies aren't in the sidebar tree — fetch the page.
     if (page?.slug) api.get(`/docs/${page.slug}`).then((r) => { setF((s) => ({ ...s, body: r.page.body || '', bodyFr: r.page.bodyFr || '' })); baseRef.current = { version: r.page.version ?? null, body: r.page.body || '', bodyFr: r.page.bodyFr || '' }; }).catch(() => {});
@@ -453,10 +458,39 @@ function DocEditor({ page, tree, onClose, onSaved }) {
   const save = async () => {
     if (f.title.trim().length < 1) return toast.error(t('de.titlereq', 'A title is required.'));
     if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) return toast.error(t('be.conflicts', 'Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.'));
+    const b = { title: f.title, category: f.category || 'General', icon: f.icon || null, order: Number(f.order) || 0, published: f.published, body: f.body, bodyFr: f.bodyFr || null, commentsPublic: f.commentsPublic,
+      ...(page && baseRef.current.version != null ? { baseVersion: baseRef.current.version } : {}) };
+
+    // Optimistic save with an undo window (see the blog editor). Skipped mid-merge or on a
+    // conflict re-save, which must save immediately so the resolver can engage.
+    const canOptimistic = reopenDraft && !conflictReopen && merge == null && mergeUI == null;
+    if (canOptimistic) {
+      const snapshot = { ...f };
+      const origBase = { ...baseRef.current };
+      onClose();
+      toast.action({
+        tone: 'success', duration: 6000, cancelLabel: t('be.undo', 'Undo'),
+        msg: page ? t('de.pagesaved', 'Page saved.') : t('de.pagecreated', 'Page created.'),
+        onCommit: async () => {
+          try { const r = page ? await api.patch(`/docs/${page.id}`, b) : await api.post('/docs', b); onSaved(r.page?.slug); }
+          catch (x) {
+            if (page && x.status === 409 && x.data?.current) { toast.error(t('be.conflict.reopen', 'Someone else edited this — reopened so you can merge, then Save.')); reopenDraft(snapshot, { page, base: origBase, conflict: true }); }
+            else { toast.error(x.data?.error || t('be.failed', 'Failed.')); reopenDraft(snapshot, { page, base: origBase }); }
+          }
+        },
+        onCancel: () => reopenDraft(snapshot, { page, base: origBase }),
+      });
+      return;
+    }
+
+    await commitSave(b);
+  };
+
+  // Immediate save (no undo window) — runs while the editor is open so the 3-way-merge
+  // resolver can engage on a 409 conflict.
+  const commitSave = async (b) => {
     setBusy(true);
     try {
-      const b = { title: f.title, category: f.category || 'General', icon: f.icon || null, order: Number(f.order) || 0, published: f.published, body: f.body, bodyFr: f.bodyFr || null, commentsPublic: f.commentsPublic,
-        ...(page && baseRef.current.version != null ? { baseVersion: baseRef.current.version } : {}) };
       const r = page ? await api.patch(`/docs/${page.id}`, b) : await api.post('/docs', b);
       toast.success(page ? t('de.pagesaved', 'Page saved.') : t('de.pagecreated', 'Page created.'));
       onSaved(r.page?.slug);
