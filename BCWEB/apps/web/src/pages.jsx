@@ -6639,14 +6639,38 @@ const VITAL_META = {
 };
 const vitalRating = (m, v) => v == null ? null : v <= VITAL_META[m].good ? 'good' : v <= VITAL_META[m].poor ? 'ni' : 'poor';
 const vitalColor = (r) => r === 'good' ? 'text-emerald-400' : r === 'ni' ? 'text-amber-400' : r === 'poor' ? 'text-red-400' : 'text-[var(--faint)]';
+const RATING_ORDER = { poor: 3, ni: 2, good: 1 };
+const RATING_DOT = { good: 'bg-emerald-400', ni: 'bg-amber-400', poor: 'bg-red-400' };
+// A page's overall health = its worst-rated metric (one slow metric drags the page).
+const pageRating = (pg) => {
+  let worst = null;
+  for (const [m, v] of [['LCP', pg.lcp], ['CLS', pg.cls], ['INP', pg.inp], ['FCP', pg.fcp], ['TTFB', pg.ttfb]]) {
+    const r = vitalRating(m, v); if (r && (!worst || RATING_ORDER[r] > RATING_ORDER[worst])) worst = r;
+  }
+  return worst;
+};
 
 function WebVitals({ days = 7, hours }) {
   const { t } = useI18n();
   const [pct, setPct] = useState('p75');
+  const [sort, setSort] = useState('worst'); // worst-health first | most traffic | page name
   const { data, loading } = useAsync(() => api.get(`/admin/analytics/vitals?${hours ? `hours=${hours}` : `days=${days}`}`), [days, hours]);
   const metrics = data?.metrics || [];
   const pages = data?.pages || [];
-  const cell = (m, v) => <span className={vitalRating(m, v) ? vitalColor(vitalRating(m, v)) : ''}>{v == null ? '—' : VITAL_META[m].fmt(v)}</span>;
+  // Metric value as a tinted rating chip (good/needs-improvement/poor) — far easier to
+  // scan than plain coloured text across a wide table.
+  const chip = (m, v) => {
+    const r = vitalRating(m, v);
+    const tint = r === 'good' ? 'bg-emerald-500/12 text-emerald-400' : r === 'ni' ? 'bg-amber-500/12 text-amber-400' : r === 'poor' ? 'bg-red-500/12 text-red-400' : 'text-[var(--faint)]';
+    return <span className={`inline-block px-2 py-0.5 rounded-md text-xs tabular-nums ${tint}`}>{v == null ? '—' : VITAL_META[m].fmt(v)}</span>;
+  };
+  const sortedPages = [...pages].sort((a, b) => {
+    if (sort === 'samples') return (b.samples || 0) - (a.samples || 0);
+    if (sort === 'page') return String(a.path).localeCompare(String(b.path));
+    // 'worst': poorest-health pages first, ties broken by traffic.
+    const d = (RATING_ORDER[pageRating(b)] || 0) - (RATING_ORDER[pageRating(a)] || 0);
+    return d !== 0 ? d : (b.samples || 0) - (a.samples || 0);
+  });
   // Export the raw Web Vitals (overall percentiles + per-page p75) as CSV.
   const exportCsv = () => {
     const esc = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
@@ -6692,23 +6716,45 @@ function WebVitals({ days = 7, hours }) {
             </div>
           ); })}
         </div>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold flex items-center gap-1.5"><Gauge size={13} /> {t('an.wv.byPage', 'By page (p75)')}</div>
+          <div className="flex items-center gap-3">
+            {/* Rating legend */}
+            <div className="hidden sm:flex items-center gap-2.5 text-[10px] text-[var(--faint)]">
+              {[['good', t('an.wv.leg.good', 'Good')], ['ni', t('an.wv.leg.ni', 'Needs work')], ['poor', t('an.wv.leg.poor', 'Poor')]].map(([r, lbl]) =>
+                <span key={r} className="inline-flex items-center gap-1"><span className={`w-2 h-2 rounded-full ${RATING_DOT[r]}`} /> {lbl}</span>)}
+            </div>
+            <div className="flex rounded-lg border border-[var(--line)] overflow-hidden text-xs">
+              {[['worst', t('an.wv.sort.worst', 'Worst')], ['samples', t('an.wv.sort.traffic', 'Traffic')], ['page', t('an.wv.sort.page', 'Page')]].map(([k, lbl]) =>
+                <button key={k} onClick={() => setSort(k)} className={`px-2.5 py-1 ${sort === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}</button>)}
+            </div>
+          </div>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[560px]">
+          <table className="w-full text-sm min-w-[600px]">
             <thead><tr className="text-[11px] uppercase text-[var(--faint)] text-left border-b border-[var(--line)]">
-              <th className="py-2 font-semibold">{t('an.wv.page', 'Page')}</th><th className="py-2 font-semibold text-right">LCP</th><th className="py-2 font-semibold text-right">CLS</th><th className="py-2 font-semibold text-right">INP</th><th className="py-2 font-semibold text-right">FCP</th><th className="py-2 font-semibold text-right">TTFB</th><th className="py-2 font-semibold text-right">{t('an.wv.samplesCol', 'Samples')}</th>
+              <th className="py-2 font-semibold pl-5">{t('an.wv.page', 'Page')}</th><th className="py-2 font-semibold text-right">LCP</th><th className="py-2 font-semibold text-right">CLS</th><th className="py-2 font-semibold text-right">INP</th><th className="py-2 font-semibold text-right">FCP</th><th className="py-2 font-semibold text-right">TTFB</th><th className="py-2 font-semibold text-right pr-1">{t('an.wv.samplesCol', 'Samples')}</th>
             </tr></thead>
             <tbody>
-              {pages.map((pg) => (
-                <tr key={pg.path} className="border-b border-[var(--line)]/60">
-                  <td className="py-2 pr-3 font-mono text-xs text-[var(--muted)] truncate max-w-[220px]" title={pg.path}>{pg.path}</td>
-                  <td className="py-2 text-right tabular-nums">{cell('LCP', pg.lcp)}</td>
-                  <td className="py-2 text-right tabular-nums">{cell('CLS', pg.cls)}</td>
-                  <td className="py-2 text-right tabular-nums">{cell('INP', pg.inp)}</td>
-                  <td className="py-2 text-right tabular-nums">{cell('FCP', pg.fcp)}</td>
-                  <td className="py-2 text-right tabular-nums">{cell('TTFB', pg.ttfb)}</td>
-                  <td className="py-2 text-right text-[var(--faint)] tabular-nums">{pg.samples}</td>
+              {sortedPages.map((pg) => { const r = pageRating(pg); const maxN = Math.max(...pages.map((x) => x.samples || 0), 1); return (
+                <tr key={pg.path} className="border-b border-[var(--line)]/60 hover:bg-[var(--surface-2)]/40 transition-colors">
+                  <td className="py-2 pr-3 relative">
+                    <span className={`absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${r ? RATING_DOT[r] : 'bg-[var(--line-strong)]'}`} title={r || 'no data'} />
+                    <span className="font-mono text-xs text-[var(--muted)] truncate max-w-[220px] inline-block pl-4 align-middle" title={pg.path}>{pg.path}</span>
+                  </td>
+                  <td className="py-2 text-right">{chip('LCP', pg.lcp)}</td>
+                  <td className="py-2 text-right">{chip('CLS', pg.cls)}</td>
+                  <td className="py-2 text-right">{chip('INP', pg.inp)}</td>
+                  <td className="py-2 text-right">{chip('FCP', pg.fcp)}</td>
+                  <td className="py-2 text-right">{chip('TTFB', pg.ttfb)}</td>
+                  <td className="py-2 pl-3 pr-1">
+                    <div className="flex items-center justify-end gap-2">
+                      <div className="h-1 w-10 rounded-full bg-[var(--surface-2)] overflow-hidden hidden md:block"><div className="h-full bg-[var(--primary)]/70" style={{ width: `${Math.round((pg.samples || 0) / maxN * 100)}%` }} /></div>
+                      <span className="text-[var(--faint)] tabular-nums text-xs w-8 text-right">{pg.samples}</span>
+                    </div>
+                  </td>
                 </tr>
-              ))}
+              ); })}
             </tbody>
           </table>
         </div>

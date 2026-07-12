@@ -1099,6 +1099,8 @@ const DICT = {
     'an.geo.none': 'Aucune donnée pour l’instant — nécessite des visites géolocalisées.',
     'an.wv.sub': 'performance des vrais utilisateurs', 'an.wv.none': 'Aucun échantillon de performance — collecté depuis les vraies visites (nécessite le consentement analytique).',
     'an.wv.good': 'bon', 'an.wv.goodle': 'bon ≤', 'an.wv.samples': 'échantillons', 'an.wv.page': 'Page', 'an.wv.samplesCol': 'Échantillons',
+    'an.wv.byPage': 'Par page (p75)', 'an.wv.leg.good': 'Bon', 'an.wv.leg.ni': 'À améliorer', 'an.wv.leg.poor': 'Mauvais',
+    'an.wv.sort.worst': 'Pire', 'an.wv.sort.traffic': 'Trafic', 'an.wv.sort.page': 'Page',
     'an.wv.note': 'p75 (75e centile) de chaque métrique par page — la valeur sous laquelle 75 % des vraies visites sont plus rapides. Vert ≤ « bon », ambre ≤ « à améliorer », rouge au-dessus. CLS est sans unité ; le reste est du temps.',
     'an.replay.title': 'Relecture de session', 'an.replay.masked': 'Les saisies sont masquées — le texte tapé n’est jamais enregistré.',
     'an.replay.restart': 'Redémarrer', 'an.replay.pause': 'Pause', 'an.replay.play': 'Lecture',
