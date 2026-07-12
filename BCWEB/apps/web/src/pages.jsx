@@ -383,11 +383,15 @@ export function Home() {
                   <span className="absolute -top-2 -right-2 grid place-items-center w-7 h-7 rounded-full bg-[var(--bg-solid)] border-2 border-[var(--primary)] text-xs font-extrabold text-[var(--primary-2)]">{i + 1}</span>
                 </div>
                 <Link to={to} className="group mt-5 flex-1">
-                  <Card hover className="p-6 h-full flex flex-col text-center" style={{ background: 'var(--bg-solid)' }}>
-                    <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--primary-2)]/70">{t('home.step.n', 'Step {n}').replace('{n}', i + 1)}</div>
-                    <div className="font-semibold mt-1 text-base">{title}</div>
-                    <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed flex-1">{d}</div>
-                    <div className="text-xs text-[var(--primary-2)] mt-4 flex items-center justify-center gap-1 font-medium">{cta} <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" /></div>
+                  <Card hover className="relative p-6 h-full flex flex-col overflow-hidden group-hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--line))] transition-colors" style={{ background: 'var(--bg-solid)' }}>
+                    {/* big ghost step number — a premium, scannable cue behind the copy */}
+                    <span aria-hidden className="absolute -top-4 right-2 text-[68px] leading-none font-black text-[var(--line)] select-none pointer-events-none">{i + 1}</span>
+                    <div className="relative flex flex-col h-full">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--primary-2)]/70">{t('home.step.n', 'Step {n}').replace('{n}', i + 1)}</div>
+                      <div className="font-bold mt-1 text-lg leading-snug">{title}</div>
+                      <div className="text-sm text-[var(--muted)] mt-2 leading-relaxed flex-1">{d}</div>
+                      <div className="text-xs text-[var(--primary-2)] mt-5 flex items-center gap-1 font-semibold">{cta} <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" /></div>
+                    </div>
                   </Card>
                 </Link>
               </div>
