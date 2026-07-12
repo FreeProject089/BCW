@@ -705,6 +705,7 @@ const DICT = {
     'be.fullcount': 'Le blog est plein — {where} autorise au plus {limit} article(s) (actuellement {current}). Supprime-en un ou augmente la limite.',
     'be.fullsize': 'Le blog est plein — la limite de taille de {where} ({kb} Ko) serait dépassée. Raccourcis cet article, supprime-en un ancien, ou augmente la limite.',
     'be.noperm': 'Tu n’as pas la permission de publier dans ce blog.', 'be.failed': 'Échec.', 'be.delpost': 'Supprimer le billet',
+    'be.undo': 'Annuler', 'be.publishing': 'Publication de ton billet — annuler ?', 'be.savingdraft': 'Enregistrement du brouillon — annuler ?', 'be.published': 'Billet publié.', 'be.draftsaved': 'Brouillon enregistré.',
     'be.cannotundo': 'Ceci est irréversible.', 'be.delete': 'Supprimer', 'be.deleted': 'Supprimé.', 'be.editpost': 'Modifier le billet', 'be.writepost': 'Écrire un billet',
 
     // ── Éditeur de docs ──

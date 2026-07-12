@@ -2,7 +2,7 @@
 // use the Dialog + Toast providers below. Icons come from lucide-react.
 import { createContext, useContext, useEffect, useState, useCallback, useRef, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown } from 'lucide-react';
+import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown, Undo2 } from 'lucide-react';
 
 // Robust clipboard copy — navigator.clipboard is unavailable on non-HTTPS origins and
 // inside some embedded webviews, so fall back to a hidden <textarea> + execCommand.
@@ -173,14 +173,42 @@ export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }) {
   const [items, setItems] = useState([]);
+  // Per-toast control: the pending timer + optional commit/cancel callbacks. `done`
+  // guards against a toast being resolved twice (timer AND click racing).
+  const ctl = useRef(new Map());
+  const remove = useCallback((id) => setItems((s) => s.filter((t) => t.id !== id)), []);
+
+  // Resolve a toast exactly once. `how`:
+  //  • 'commit' — the timer elapsed (or a plain toast was dismissed): run onCommit, the
+  //    deferred side effect (e.g. actually publish the post).
+  //  • 'cancel' — the user hit × / Undo: run onCancel to restore the previous state; the
+  //    deferred side effect never happens.
+  const finalize = useCallback((id, how) => {
+    const c = ctl.current.get(id);
+    if (c?.done) return;
+    if (c) { c.done = true; clearTimeout(c.timer); ctl.current.delete(id); }
+    remove(id);
+    try { if (how === 'cancel') c?.onCancel?.(); else c?.onCommit?.(); } catch { /* a callback must never crash the toast host */ }
+  }, [remove]);
+
   const push = useCallback((toast) => {
     const id = Math.random().toString(36).slice(2);
     const duration = toast.duration || 4200;
     setItems((s) => [...s, { id, ...toast, duration }]);
-    setTimeout(() => setItems((s) => s.filter((t) => t.id !== id)), duration);
-  }, []);
-  const dismiss = useCallback((id) => setItems((s) => s.filter((t) => t.id !== id)), []);
-  const api = { success: (msg) => push({ tone: 'success', msg }), error: (msg) => push({ tone: 'error', msg }), info: (msg) => push({ tone: 'info', msg }) };
+    const timer = setTimeout(() => finalize(id, 'commit'), duration);
+    ctl.current.set(id, { timer, onCommit: toast.onCommit, onCancel: toast.onCancel, done: false });
+    return id;
+  }, [finalize]);
+
+  const dismiss = useCallback((id) => finalize(id, 'commit'), [finalize]);
+  const api = {
+    success: (msg, opts) => push({ tone: 'success', msg, ...opts }),
+    error: (msg, opts) => push({ tone: 'error', msg, ...opts }),
+    info: (msg, opts) => push({ tone: 'info', msg, ...opts }),
+    // Optimistic action with an undo window: the toast counts down; on expiry onCommit
+    // fires (do the real work), or the user cancels (× / Undo) → onCancel restores state.
+    action: ({ tone = 'info', duration = 6000, ...rest }) => push({ tone, action: true, duration, ...rest }),
+  };
   const Ico = { success: Check, error: AlertTriangle, info: Info };
   return (
     <ToastCtx.Provider value={api}>
@@ -194,9 +222,13 @@ export function ToastProvider({ children }) {
               style={{ background: `color-mix(in srgb, ${tone} 8%, var(--bg-solid))`, borderColor: `color-mix(in srgb, ${tone} 32%, var(--line))`, boxShadow: '0 14px 40px -14px rgba(0,0,0,0.62)' }}>
               {/* tone-tinted, spring-in icon chip: an explicit success / error / info cue */}
               <span className={`toast-icon-in grid place-items-center w-7 h-7 rounded-lg shrink-0 mt-px ${t.tone === 'success' ? 'burst' : ''}`} style={{ background: `color-mix(in srgb, ${tone} 18%, transparent)`, color: tone }}><I size={16} /></span>
-              <div className="text-sm flex-1 min-w-0 pt-1 break-words leading-snug">{t.msg}</div>
-              <button onClick={() => dismiss(t.id)} aria-label="Dismiss" className="shrink-0 -mt-0.5 -mr-0.5 p-1 rounded-lg text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition"><X size={14} /></button>
-              {/* auto-dismiss countdown bar */}
+              <div className="text-sm flex-1 min-w-0 pt-1 break-words leading-snug">
+                {t.msg}
+                {t.action && <button onClick={() => finalize(t.id, 'cancel')} className="mt-1.5 flex items-center gap-1 text-xs font-semibold rounded-md px-2 py-1 -ml-1 transition hover:bg-[var(--surface-2)]" style={{ color: tone }}><Undo2 size={12} /> {t.cancelLabel || 'Undo'}</button>}
+              </div>
+              {/* × cancels an action toast (restores prior state); on a plain toast it just closes */}
+              <button onClick={() => finalize(t.id, t.action ? 'cancel' : 'commit')} aria-label={t.action ? 'Cancel' : 'Dismiss'} className="shrink-0 -mt-0.5 -mr-0.5 p-1 rounded-lg text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition"><X size={14} /></button>
+              {/* countdown bar — for action toasts this is the undo window before commit */}
               <span className="absolute left-0 bottom-0 h-[3px] rounded-full toast-progress" style={{ background: tone, animationDuration: `${t.duration}ms` }} />
             </div>); })}
         </div>, document.body)}

@@ -134,7 +134,7 @@ export function BlogList() {
         <Button onClick={loadMore} disabled={loadingMore}>{loadingMore ? <><Spinner /> {t('common.loading', 'Loading…')}</> : <><ChevronDown size={16} /> {t('blog.loadmore', 'Load more')}</>}</Button>
       </div>}
       <NewsletterSignup />
-      {editing !== null && <BlogEditor post={editing.id ? editing : null} scopes={scopeData} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
+      {editing !== null && <BlogEditor post={editing.id ? editing : null} draft={editing._draft || null} reopenDraft={(d) => setEditing({ _draft: d })} scopes={scopeData} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
     </div>
   );
 }
@@ -458,7 +458,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
 // `global: true` (every blog); a granted regular USER gets only the blogs listed.
 // `scope` values are encoded "project:<key>" or "showcase:<slug>" to disambiguate
 // the two blog "spaces" in one dropdown.
-function BlogEditor({ post, scopes, onClose, onSaved }) {
+function BlogEditor({ post, scopes, onClose, onSaved, draft, reopenDraft }) {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const defaultScope = scopes?.projects?.[0] ? `project:${scopes.projects[0].key}` : scopes?.showcases?.[0] ? `showcase:${scopes.showcases[0].slug}` : 'project:community';
   const [f, setF] = useState({ scope: defaultScope, cover: '', coverInBody: true, publish: true, title: '', excerpt: '', body: '', titleFr: '', excerptFr: '', bodyFr: '', reactionsEnabled: false, reactionTypes: [], coAuthorEmails: [], showToc: false, tocTitle: '', commentsPublic: false });
@@ -475,6 +475,9 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
   // real conflicts after the 3-way merge. Resolved one at a time in DiffMergeModal.
   const [mergeUI, setMergeUI] = useState(null); // null | { queue: [{ field, langLabel, base, mine, theirs }] }
   useEffect(() => {
+    // Restored after an "undo" on the publish toast — re-seed the exact form state the
+    // author had, so they land back in the editor exactly where they left off.
+    if (draft) { setF(draft); return; }
     if (post) {
       setF({ scope: post.showcaseProject ? `showcase:${post.showcaseProject.slug}` : `project:${post.project?.key || 'community'}`, cover: post.cover || '', coverInBody: post.coverInBody !== false, publish: post.status === 'PUBLISHED',
         title: post.title || '', excerpt: post.excerpt || '', body: post.body || '',
@@ -516,16 +519,36 @@ function BlogEditor({ post, scopes, onClose, onSaved }) {
     if (f.title.length < 2 || !f.body) return toast.error(t('be.titlereq', 'English (base) title and content are required.'));
     // Don't let unresolved merge markers get saved.
     if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) return toast.error(t('be.conflicts', 'Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.'));
+    const [scopeKind, scopeVal] = f.scope.split(':');
+    const body = { projectKey: scopeKind === 'project' ? scopeVal : undefined, showcaseSlug: scopeKind === 'showcase' ? scopeVal : undefined,
+      cover: f.cover || null, coverInBody: f.coverInBody, publish: f.publish,
+      title: f.title, excerpt: f.excerpt, body: f.body,
+      titleFr: f.titleFr || null, excerptFr: f.excerptFr || null, bodyFr: f.bodyFr || null,
+      reactionsEnabled: f.reactionsEnabled, reactionTypes: f.reactionTypes, coAuthorEmails: f.coAuthorEmails,
+      showToc: f.showToc, tocTitle: f.tocTitle || null, commentsPublic: f.commentsPublic,
+      ...(post && baseRef.current.version != null ? { baseVersion: baseRef.current.version } : {}) };
+
+    // NEW post: optimistic publish with an undo window. Close the editor now and show a
+    // toast that counts down; when it elapses the post is actually created. If the author
+    // hits Undo (or ×) the create never fires and the editor reopens in its exact state.
+    // (Existing-post edits keep the immediate save + 3-way-merge path below.)
+    if (!post && reopenDraft) {
+      const snapshot = { ...f };
+      onClose();
+      toast.action({
+        tone: 'success', duration: 6000, cancelLabel: t('be.undo', 'Undo'),
+        msg: f.publish ? t('be.publishing', 'Publishing your post — undo?') : t('be.savingdraft', 'Saving your draft — undo?'),
+        onCommit: async () => {
+          try { await api.post('/blog', body); toast.success(f.publish ? t('be.published', 'Post published.') : t('be.draftsaved', 'Draft saved.')); onSaved(); }
+          catch { toast.error(t('be.failed', 'Failed.')); reopenDraft(snapshot); }
+        },
+        onCancel: () => reopenDraft(snapshot),
+      });
+      return;
+    }
+
     setBusy(true);
     try {
-      const [scopeKind, scopeVal] = f.scope.split(':');
-      const body = { projectKey: scopeKind === 'project' ? scopeVal : undefined, showcaseSlug: scopeKind === 'showcase' ? scopeVal : undefined,
-        cover: f.cover || null, coverInBody: f.coverInBody, publish: f.publish,
-        title: f.title, excerpt: f.excerpt, body: f.body,
-        titleFr: f.titleFr || null, excerptFr: f.excerptFr || null, bodyFr: f.bodyFr || null,
-        reactionsEnabled: f.reactionsEnabled, reactionTypes: f.reactionTypes, coAuthorEmails: f.coAuthorEmails,
-        showToc: f.showToc, tocTitle: f.tocTitle || null, commentsPublic: f.commentsPublic,
-        ...(post && baseRef.current.version != null ? { baseVersion: baseRef.current.version } : {}) };
       if (post) await api.patch(`/blog/${post.id}`, body); else await api.post('/blog', body);
       toast.success(post ? 'Post updated.' : 'Post published.'); onSaved();
     } catch (x) {
