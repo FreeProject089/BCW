@@ -4325,13 +4325,19 @@ const MOD_DURATIONS = [
   { key: '30d', label: '30 days', hours: 720 },
   { key: 'perm', label: 'Permanent', hours: 0 },
 ];
+const MOD_RANK = { USER: 0, MOD: 1, ADMIN: 2, SUPERADMIN: 3 };
 function UserModerationCard({ user, onChange }) {
-  const { t } = useI18n(); const toast = useToast();
+  const { t } = useI18n(); const toast = useToast(); const { user: me } = useAuth();
   const [form, setForm] = useState(null); // { action:'suspend'|'ban' } when composing
   const [dur, setDur] = useState('24h');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
-  const isStaff = ['MOD', 'ADMIN', 'SUPERADMIN'].includes(user.role);
+  // Moderation hierarchy (mirrors the API): you can act only on someone strictly below
+  // your own rank, and only ADMIN+ may ban — a MOD can suspend users but never ban.
+  const myRank = MOD_RANK[me?.role] ?? 0;
+  const targetRank = MOD_RANK[user.role] ?? 0;
+  const canModerate = myRank > targetRank;
+  const canBan = me?.role === 'ADMIN' || me?.role === 'SUPERADMIN';
   const locked = user.status && user.status !== 'active';
   const submit = async () => {
     setBusy(true);
@@ -4342,7 +4348,11 @@ function UserModerationCard({ user, onChange }) {
       const r = await api.post(`/admin/users/${user.id}/moderate`, body);
       toast.success(form.action === 'ban' ? t('mod.banned', 'Account banned.') : t('mod.suspended', 'Account suspended.'));
       setForm(null); setReason(''); onChange?.(r);
-    } catch (x) { toast.error(x.data?.error === 'cannot_moderate_staff' ? t('mod.staff', "Staff accounts can't be moderated.") : x.data?.error === 'cannot_moderate_self' ? t('mod.self', "You can't moderate your own account.") : t('common.failed', 'Failed.')); }
+    } catch (x) { toast.error(
+      x.data?.error === 'cannot_moderate_higher' ? t('mod.higher', "You can only moderate accounts below your own level.")
+      : x.data?.error === 'mod_cannot_ban' ? t('mod.nobanperm', 'Moderators can suspend but not ban.')
+      : x.data?.error === 'cannot_moderate_self' ? t('mod.self', "You can't moderate your own account.")
+      : t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
   const reactivate = async () => {
@@ -4356,8 +4366,8 @@ function UserModerationCard({ user, onChange }) {
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Ban size={12} /> {t('mod.title', 'Account moderation')}</div>
         <Badge tone={user.status === 'banned' ? 'red' : user.status === 'suspended' ? 'amber' : 'green'}>{user.status || 'active'}</Badge>
       </div>
-      {isStaff ? (
-        <div className="text-sm text-[var(--faint)] mt-2">{t('mod.staffnote', 'Staff accounts (MOD / ADMIN) can’t be suspended or banned here.')}</div>
+      {!canModerate ? (
+        <div className="text-sm text-[var(--faint)] mt-2">{t('mod.higher', 'You can only moderate accounts below your own level.')}</div>
       ) : locked ? (
         <div className="mt-2">
           <div className="text-sm">{user.status === 'banned' ? t('mod.isbanned', 'This account is banned') : t('mod.issusp', 'This account is suspended')} {user.moderationUntil ? t('mod.until', 'until {d}').replace('{d}', new Date(user.moderationUntil).toLocaleString()) : t('mod.permlabel', '(permanent)')}.</div>
@@ -4382,7 +4392,8 @@ function UserModerationCard({ user, onChange }) {
       ) : (
         <div className="flex gap-2 mt-2">
           <Button size="sm" variant="ghost" onClick={() => { setForm({ action: 'suspend' }); setDur('24h'); }}><Clock size={14} /> {t('mod.suspend', 'Suspend')}</Button>
-          <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => { setForm({ action: 'ban' }); setDur('perm'); }}><Ban size={14} /> {t('mod.ban', 'Ban')}</Button>
+          {canBan && <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => { setForm({ action: 'ban' }); setDur('perm'); }}><Ban size={14} /> {t('mod.ban', 'Ban')}</Button>}
+          {!canBan && <span className="text-[11px] text-[var(--faint)] self-center">{t('mod.suspendonly', 'Mods can suspend, not ban.')}</span>}
         </div>
       )}
     </div>

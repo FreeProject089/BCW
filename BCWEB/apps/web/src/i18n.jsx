@@ -1286,6 +1286,7 @@ const DICT = {
     'mod.reasonlabel': 'Raison', 'mod.s.pending': 'En attente', 'mod.s.rejected': 'Rejeté', 'mod.s.suspended': 'Suspendu', 'mod.s.published': 'Publié',
     // Account moderation (admin)
     'mod.title': 'Modération du compte', 'mod.staffnote': 'Les comptes staff (MOD / ADMIN) ne peuvent pas être suspendus ou bannis ici.',
+    'mod.higher': 'Tu ne peux modérer que les comptes de niveau inférieur au tien.', 'mod.nobanperm': 'Les modérateurs peuvent suspendre mais pas bannir.', 'mod.suspendonly': 'Les mods peuvent suspendre, pas bannir.',
     'mod.isbanned': 'Ce compte est banni', 'mod.issusp': 'Ce compte est suspendu', 'mod.until': 'jusqu’au {d}', 'mod.permlabel': '(permanent)',
     'mod.reactivate': 'Réactiver le compte', 'mod.reactivated': 'Compte réactivé.',
     'mod.banning': 'Bannir ce compte', 'mod.suspending': 'Suspendre ce compte', 'mod.duration': 'Durée',

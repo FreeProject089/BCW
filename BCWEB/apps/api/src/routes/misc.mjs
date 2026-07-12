@@ -3,6 +3,8 @@ import { db, requireRole, optionalAuth, slugify, logAudit, notify, clearAccountL
 import { sendMail, mailShell, emailEnabled, escapeHtml } from '../mail.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
+// Staff seniority for moderation: an actor can only moderate a strictly lower rank.
+const MOD_RANK = { USER: 0, MOD: 1, ADMIN: 2, SUPERADMIN: 3 };
 import { prefixUsage } from '../storage.mjs';
 import { capacityStatus, realDiskStats, stripe } from './hosting.mjs';
 import { powVerify } from './auth.mjs';
@@ -494,7 +496,7 @@ export default async function miscRoutes(app) {
   // ~15s (lib.mjs accountLock cache) and can't sign back in until the lock lifts —
   // permanent locks point the user at support to appeal. Staff can't be moderated here,
   // and you can't moderate yourself.
-  app.post('/admin/users/:id/moderate', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/users/:id/moderate', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
     const b = z.object({
       action: z.enum(['suspend', 'ban', 'reactivate']),
       durationHours: z.number().int().positive().max(24 * 3650).optional(), // absent = permanent
@@ -505,7 +507,14 @@ export default async function miscRoutes(app) {
     const p = await db();
     const target = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, displayName: true, email: true, role: true, status: true } });
     if (!target) return reply.code(404).send({ error: 'not_found' });
-    if (['MOD', 'ADMIN', 'SUPERADMIN'].includes(target.role)) return reply.code(403).send({ error: 'cannot_moderate_staff' });
+    // Moderation hierarchy: you can only act on someone strictly below your own level.
+    //   MOD (1)  → regular users (suspend only, never ban)
+    //   ADMIN (2) → users + MODs
+    //   SUPERADMIN (3) → users + MODs + ADMINs
+    // Nobody can moderate a peer or anyone above them (and not another SUPERADMIN).
+    if (MOD_RANK[req.user.role] <= MOD_RANK[target.role ?? 'USER']) return reply.code(403).send({ error: 'cannot_moderate_higher' });
+    // Mods may temporarily suspend but never permanently ban.
+    if (req.user.role === 'MOD' && b.data.action === 'ban') return reply.code(403).send({ error: 'mod_cannot_ban' });
 
     if (b.data.action === 'reactivate') {
       await p.user.update({ where: { id: target.id }, data: { status: 'active', moderationUntil: null, moderationReason: null, moderatedAt: new Date(), moderatedById: req.user.uid } });
