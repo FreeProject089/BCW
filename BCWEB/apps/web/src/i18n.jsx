@@ -1260,6 +1260,7 @@ const DICT = {
     'adm.title': 'Admin', 'adm.subtitle': 'Modération, catalogues, hébergement, analytique et réglages.',
     'adm.h.moderation': 'Modération', 'adm.h.users': 'Utilisateurs & accès', 'adm.h.repos': 'Dépôts & hébergement',
     'adm.h.content': 'Contenu', 'adm.h.server': 'Serveur', 'adm.h.botanalytics': 'Bot & analytique', 'adm.h.settings': 'Réglages',
+    'adm.h.growth': 'Croissance & monétisation', 'adm.h.integrations': 'Intégrations', 'adm.h.serverdata': 'Serveur & données',
     'adm.tab.moderation': 'Modération', 'adm.tab.messages': 'Messages', 'adm.tab.users': 'Utilisateurs',
     'adm.tab.planusers': 'Gratuit vs payant', 'adm.tab.access': 'Accès & permissions', 'adm.tab.security': 'Journal de sécurité',
     'adm.tab.repos': 'Dépôts serveur', 'adm.tab.hosting': 'Hébergement gratuit', 'adm.tab.promo': 'Codes promo', 'adm.tab.storage': 'Stockage',

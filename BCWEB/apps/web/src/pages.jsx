@@ -2386,15 +2386,6 @@ export function Admin() {
     isAdmin && { id: 'access', label: t('adm.tab.access', 'Access & permissions'), icon: Shield },
     isAdmin && { id: 'security', label: t('adm.tab.security', 'Security log'), icon: Lock },
 
-    { heading: t('adm.h.repos', 'Repos & hosting') },
-    { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
-    isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
-    isAdmin && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
-    isAdmin && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon },
-    isAdmin && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
-    isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
-    isAdmin && { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
-
     isAdmin && { heading: t('adm.h.content', 'Content') },
     isAdmin && { id: 'catalogs', label: t('adm.tab.catalogs', 'Catalogs'), icon: Boxes },
     isAdmin && { id: 'projects', label: t('adm.tab.projects', 'Projects'), icon: Settings2 },
@@ -2403,12 +2394,23 @@ export function Admin() {
     isAdmin && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
     isAdmin && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
 
-    isAdmin && { heading: t('adm.h.server', 'Server') },
+    { heading: t('adm.h.repos', 'Repos & hosting') },
+    { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
+    isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
+
+    isAdmin && { heading: t('adm.h.growth', 'Growth & monetization') },
+    isAdmin && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
+    isAdmin && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon },
+    isAdmin && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
+
+    isAdmin && { heading: t('adm.h.integrations', 'Integrations') },
+    isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
+    isAdmin && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: MessageSquare },
+
+    isAdmin && { heading: t('adm.h.serverdata', 'Server & data') },
     isAdmin && { id: 'serverperf', label: t('adm.tab.serverperf', 'Server perf'), icon: Cpu },
     isAdmin && { id: 'serveradv', label: t('adm.tab.serveradv', 'Advanced server'), icon: AlertTriangle },
-
-    isAdmin && { heading: t('adm.h.botanalytics', 'Bot & analytics') },
-    isAdmin && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: MessageSquare },
+    isAdmin && { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
     isAdmin && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp },
 
     isAdmin && { heading: t('adm.h.settings', 'Settings') },
