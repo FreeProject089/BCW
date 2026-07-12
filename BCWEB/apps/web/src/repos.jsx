@@ -1674,6 +1674,9 @@ export function AdminRepos() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 mt-3">
+                {/* Admin repo dashboard: opens the SAME dashboard as the owner, but staff
+                    are not frozen by suspension and every action is logged with "(admin)". */}
+                <Link to={`/repo/${r.id}`}><Button size="sm" variant="primary"><LayoutDashboard size={14} /> {t('arp.dashboard', 'Manage (admin)')}</Button></Link>
                 {r.pendingReview && <Button size="sm" variant="primary" onClick={() => verify(r)}><ShieldCheck size={14} /> Verify</Button>}
                 <Button size="sm" onClick={() => boostPick(r)}>
                   <Rocket size={14} className={r.featuredUntil && new Date(r.featuredUntil) > new Date() ? 'text-[var(--primary-2)]' : ''} />

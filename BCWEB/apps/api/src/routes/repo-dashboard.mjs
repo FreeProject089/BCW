@@ -26,9 +26,10 @@ async function accessLevel(req, p, repo) {
   let claims = null; try { claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET); } catch { /* not logged in */ }
   if (claims?.uid) {
     const u = await p.user.findUnique({ where: { id: claims.uid }, select: { email: true, displayName: true } });
-    if (repo.ownerId === claims.uid || claims.role === 'ADMIN' || claims.role === 'MOD' || claims.role === 'SUPERADMIN') {
+    const staff = claims.role === 'ADMIN' || claims.role === 'MOD' || claims.role === 'SUPERADMIN';
+    if (repo.ownerId === claims.uid || staff) {
       const asAdmin = repo.ownerId !== claims.uid;
-      return { level: 'owner', uid: claims.uid, actor: `${u?.displayName || 'owner'}${asAdmin ? ' (admin)' : ''}` };
+      return { level: 'owner', uid: claims.uid, staff, actor: `${u?.displayName || 'owner'}${asAdmin ? ' (admin)' : ''}` };
     }
     const emails = (repo.accessEmails || []).map((e) => e.toLowerCase());
     if (u?.email && emails.includes(u.email.toLowerCase())) return { level: 'collab', uid: claims.uid, actor: u.email };
@@ -44,14 +45,16 @@ function resolve(opts = {}) {
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { id: req.params.id }, include: { files: true, owner: { select: { id: true, displayName: true } } } });
     if (!repo) return reply.code(404).send({ error: 'not_found' });
-    const { level, uid, actor } = await accessLevel(req, p, repo);
+    const { level, uid, actor, staff } = await accessLevel(req, p, repo);
     if (!level) return reply.code(401).send({ error: repo.dashPassword ? 'password_required' : 'auth_required', name: repo.name });
     if (opts.ownerOnly && level !== 'owner') return reply.code(403).send({ error: 'owner_only' });
-    // A SUSPENDED repo is fully FROZEN: the dashboard stays viewable (GET) but every
-    // mutation — files add/delete, publish/list, settings, access, ban, state — is
-    // refused. All mutations flow through here, so one guard covers them all.
-    if (repo.status === 'SUSPENDED' && req.method !== 'GET') return reply.code(403).send({ error: 'repo_suspended' });
-    req._p = p; req.repo = repo; req.level = level; req.uid = uid; req.actor = actor;
+    // A SUSPENDED repo is FROZEN for the OWNER — the dashboard stays viewable (GET) but
+    // every mutation (files, publish/list, settings, access, ban, state) is refused.
+    // STAFF (admin/mod) are NOT frozen: the admin version of the dashboard can act on a
+    // suspended repo — their actions are still logged with the "(admin)" actor tag. All
+    // mutations flow through here, so one guard covers them.
+    if (repo.status === 'SUSPENDED' && req.method !== 'GET' && !staff) return reply.code(403).send({ error: 'repo_suspended' });
+    req._p = p; req.repo = repo; req.level = level; req.uid = uid; req.actor = actor; req.staff = !!staff;
   };
 }
 
