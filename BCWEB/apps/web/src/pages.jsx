@@ -190,6 +190,12 @@ function useScrollReveal() {
       if (el.dataset.revealBound) return;
       el.dataset.revealBound = '1';
       if (el.classList.contains('reveal-stagger')) [...el.children].forEach((c, i) => c.style.setProperty('--i', i));
+      // If the element is already at or ABOVE the fold when we start observing it —
+      // e.g. async content (the reviews grid) that renders after a FAST scroll past
+      // its position — reveal it now. The IntersectionObserver only fires for elements
+      // crossing INTO view from below, so it would leave these stuck at opacity:0
+      // ("reviews hidden / buggy when you scroll fast").
+      if (el.getBoundingClientRect().top < window.innerHeight) { el.classList.add('reveal-instant', 'in'); return; }
       io.observe(el);
     };
     const scan = () => root.current?.querySelectorAll('.reveal-on-scroll, .reveal-stagger').forEach(observe);

@@ -12,13 +12,43 @@ import { sendMail, mailShell, emailEnabled, escapeHtml } from '../mail.mjs';
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 const tok = () => crypto.randomBytes(24).toString('hex');
 
-// Standalone landing page for the confirm / unsubscribe links (no SPA, no login).
-function page(title, body) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title>
-<style>body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#0b0f1a;color:#e2e8f0;display:grid;place-items:center;min-height:100vh;margin:0}
-.card{max-width:460px;padding:34px;text-align:center;background:#111827;border:1px solid #1f2937;border-radius:18px;margin:16px}
-h1{font-size:20px;margin:0 0 10px}p{color:#94a3b8;line-height:1.6;margin:0 0 16px}a{color:#f59e0b;text-decoration:none;font-weight:600}</style></head>
-<body><div class="card"><h1>${escapeHtml(title)}</h1><p>${body}</p><a href="${SITE_URL}">← BetterCommunity</a></div></body></html>`;
+// Standalone, branded landing page for the confirm / unsubscribe links (no SPA, no
+// login). `opts`: { tone: 'ok'|'info'|'muted', icon, cta:{href,label}, extra }.
+function page(title, body, opts = {}) {
+  const tone = opts.tone === 'muted' ? '#64748b' : opts.tone === 'info' ? '#38bdf8' : '#22c55e';
+  const icon = opts.icon || (opts.tone === 'muted'
+    ? '<path d="M18 6 6 18M6 6l12 12"/>'                                  // ✕
+    : opts.tone === 'info' ? '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'
+    : '<path d="M20 6 9 17l-5-5"/>');                                     // ✓
+  const cta = opts.cta ? `<a class="btn" href="${opts.cta.href}">${escapeHtml(opts.cta.label)}</a>` : '';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} — BetterCommunity</title>
+<style>
+  :root{--tone:${tone}}
+  *{box-sizing:border-box}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:radial-gradient(1200px 600px at 50% -10%,rgba(249,115,22,.10),transparent),#0a0e17;color:#e8edf5;display:grid;place-items:center;min-height:100vh;margin:0;padding:20px}
+  .card{width:100%;max-width:480px;padding:38px 34px;text-align:center;background:#101725;border:1px solid #1e293b;border-radius:22px;box-shadow:0 30px 80px -30px rgba(0,0,0,.7)}
+  .brand{display:inline-flex;align-items:center;gap:8px;font-weight:800;font-size:15px;margin-bottom:22px;color:#f8fafc}
+  .brand b{color:#f97316}
+  .brand img{width:22px;height:22px;border-radius:6px}
+  .ico{width:60px;height:60px;margin:0 auto 18px;border-radius:16px;display:grid;place-items:center;background:color-mix(in srgb,var(--tone) 16%,transparent);color:var(--tone)}
+  .ico svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  h1{font-size:22px;margin:0 0 10px;letter-spacing:-.02em}
+  p{color:#94a3b8;line-height:1.65;margin:0 0 18px;font-size:15px}
+  .btn{display:inline-block;background:#f97316;color:#fff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:12px;transition:filter .15s}
+  .btn:hover{filter:brightness(1.08)}
+  .home{display:inline-block;margin-top:16px;color:#64748b;text-decoration:none;font-size:13px}
+  .home:hover{color:#e8edf5}
+  .extra{margin-top:14px;font-size:13px;color:#64748b}.extra a{color:#f59e0b;text-decoration:none;font-weight:600}
+</style></head>
+<body><div class="card">
+  <div class="brand"><img src="${SITE_URL}/logo.png" alt=""> <span><b>Better</b>Community</span></div>
+  <div class="ico"><svg viewBox="0 0 24 24">${icon}</svg></div>
+  <h1>${escapeHtml(title)}</h1>
+  <p>${body}</p>
+  ${cta}
+  ${opts.extra ? `<div class="extra">${opts.extra}</div>` : ''}
+  <div><a class="home" href="${SITE_URL}">← Back to BetterCommunity</a></div>
+</div></body></html>`;
 }
 
 export default async function newsletterRoutes(app) {
@@ -58,24 +88,33 @@ export default async function newsletterRoutes(app) {
   app.get('/newsletter/confirm', async (req, reply) => {
     reply.type('text/html');
     const token = String(req.query?.token || '');
-    if (!token) return page('Invalid link', 'This confirmation link is invalid.');
+    if (!token) return page('Invalid link', 'This confirmation link is invalid.', { tone: 'muted' });
     const p = await db();
     const rec = await p.newsletterSubscriber.findUnique({ where: { confirmToken: token } });
-    if (!rec) return page('Link expired', 'This confirmation link is invalid or has already been used.');
+    if (!rec) return page('Link expired', 'This confirmation link is invalid or has already been used.', { tone: 'muted' });
     await p.newsletterSubscriber.update({ where: { id: rec.id }, data: { status: 'active', confirmedAt: new Date(), confirmToken: null } });
-    return page('You’re subscribed 🎉', "You'll now receive BetterCommunity blog updates. Every email has a one-click unsubscribe link.");
+    const unsubUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${rec.unsubToken}`;
+    return page('You’re subscribed 🎉', "You'll now get BetterCommunity blog updates in your inbox.", {
+      tone: 'ok',
+      cta: { href: `${SITE_URL}/blog`, label: 'Read the blog' },
+      extra: `Changed your mind? <a href="${unsubUrl}">Unsubscribe in one click</a> — the link is also in every email.`,
+    });
   });
 
   // ── Public: unsubscribe (GET one-click, GDPR — no login required) ───────────
   app.get('/newsletter/unsubscribe', async (req, reply) => {
     reply.type('text/html');
     const token = String(req.query?.token || '');
-    if (!token) return page('Invalid link', 'This unsubscribe link is invalid.');
+    if (!token) return page('Invalid link', 'This unsubscribe link is invalid.', { tone: 'muted' });
     const p = await db();
     const rec = await p.newsletterSubscriber.findUnique({ where: { unsubToken: token } });
-    if (!rec) return page('Already unsubscribed', 'This link is invalid, or you are already unsubscribed.');
+    if (!rec) return page('Already unsubscribed', 'This link is invalid, or you are already unsubscribed.', { tone: 'muted' });
     if (rec.status !== 'unsubscribed') await p.newsletterSubscriber.update({ where: { id: rec.id }, data: { status: 'unsubscribed', unsubscribedAt: new Date(), confirmToken: null } });
-    return page('Unsubscribed', "You won't receive any more newsletter emails. You can re-subscribe anytime from the site.");
+    return page('You’re unsubscribed', "You won't receive any more newsletter emails. Sorry to see you go!", {
+      tone: 'muted',
+      cta: { href: `${SITE_URL}/blog`, label: 'Browse the blog' },
+      extra: 'Changed your mind? Re-subscribe anytime from the box at the bottom of the blog.',
+    });
   });
 
   // ── Admin: list + counts ────────────────────────────────────────────────────

@@ -51,6 +51,10 @@ const DICT = {
     'foot.products': 'Products', 'foot.community': 'Community', 'foot.legal': 'Legal',
     'foot.tagline': 'The home for all Better projects.', 'foot.kofi': 'Support us on Ko-fi',
     'foot.privacy': 'Privacy', 'foot.terms': 'Terms', 'foot.cookies': 'Cookies', 'foot.rights': 'All rights reserved.', 'foot.about': 'About', 'foot.refunds': 'Payments & Refunds',
+    'news.title': 'Get blog updates by email', 'news.sub': 'New posts, straight to your inbox. Double opt-in, and one-click unsubscribe in every email.',
+    'news.ph': 'you@example.com', 'news.cta': 'Subscribe', 'news.sending': 'Subscribing…',
+    'news.check': 'Almost there — check your inbox to confirm your subscription.', 'news.err': 'Could not subscribe — check the address and try again.',
+    'arp.dashboard': 'Manage (admin)', 'an.wv.export': 'Export CSV',
 
     'cookie.title': 'Cookies',
     'cookie.body': 'We use an essential cookie to keep you signed in. With your consent we also collect privacy-friendly, first-party page analytics — no third parties, no ad tracking.',
@@ -420,6 +424,10 @@ const DICT = {
     'foot.products': 'Produits', 'foot.community': 'Communauté', 'foot.legal': 'Légal',
     'foot.tagline': 'La maison de tous les projets Better.', 'foot.kofi': 'Soutiens-nous sur Ko-fi',
     'foot.privacy': 'Confidentialité', 'foot.terms': 'Conditions', 'foot.cookies': 'Cookies', 'foot.rights': 'Tous droits réservés.', 'foot.about': 'À propos', 'foot.refunds': 'Paiements & Remboursements',
+    'news.title': 'Reçois les nouveautés du blog par email', 'news.sub': 'Les nouveaux articles, directement dans ta boîte mail. Double opt-in, et désinscription en un clic dans chaque email.',
+    'news.ph': 'toi@exemple.com', 'news.cta': "S'inscrire", 'news.sending': 'Inscription…',
+    'news.check': 'Presque fini — vérifie ta boîte mail pour confirmer ton inscription.', 'news.err': "Inscription impossible — vérifie l'adresse et réessaie.",
+    'arp.dashboard': 'Gérer (admin)', 'an.wv.export': 'Exporter CSV',
 
     'cookie.title': 'Cookies',
     'cookie.body': 'Nous utilisons un cookie essentiel pour te garder connecté. Avec ton accord, nous collectons aussi des statistiques de pages respectueuses de la vie privée, en interne — aucun tiers, aucun pistage publicitaire.',
