@@ -4,7 +4,7 @@ import {
   Newspaper, PenSquare, ImagePlus, Youtube, Link2, Video, Bold, Heading, List, Eye,
   Trash2, Pencil, ArrowLeft, CalendarDays, User as UserIcon, Plus, X, Tag as TagIcon, HelpCircle, Languages, Sparkles,
   Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge, History, MessageSquare, Globe,
-  Table, Quote, Minus, AlignLeft, AlignRight,
+  Table, Quote, Minus, AlignLeft, AlignRight, Mail,
 } from 'lucide-react';
 import { api, uploadBlogImage } from './api.js';
 import { useAuth } from './auth.jsx';
@@ -463,7 +463,8 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
 function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflictReopen, reopenDraft }) {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const defaultScope = scopes?.projects?.[0] ? `project:${scopes.projects[0].key}` : scopes?.showcases?.[0] ? `showcase:${scopes.showcases[0].slug}` : 'project:community';
-  const [f, setF] = useState({ scope: defaultScope, cover: '', coverInBody: true, publish: true, title: '', excerpt: '', body: '', titleFr: '', excerptFr: '', bodyFr: '', reactionsEnabled: false, reactionTypes: [], coAuthorEmails: [], showToc: false, tocTitle: '', commentsPublic: false });
+  const [f, setF] = useState({ scope: defaultScope, cover: '', coverInBody: true, publish: true, title: '', excerpt: '', body: '', titleFr: '', excerptFr: '', bodyFr: '', reactionsEnabled: false, reactionTypes: [], coAuthorEmails: [], showToc: false, tocTitle: '', commentsPublic: false, notifyNewsletter: !post, newsletterSubject: '', newsletterIntro: '' });
+  const [nlSent, setNlSent] = useState(null); // post.newsletterSentAt — already announced?
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('en'); // en (base) | fr (optional)
   const [collab, setCollab] = useState(''); // pending co-author email input
@@ -486,13 +487,16 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
       setF({ scope: post.showcaseProject ? `showcase:${post.showcaseProject.slug}` : `project:${post.project?.key || 'community'}`, cover: post.cover || '', coverInBody: post.coverInBody !== false, publish: post.status === 'PUBLISHED',
         title: post.title || '', excerpt: post.excerpt || '', body: post.body || '',
         titleFr: post.titleFr || '', excerptFr: post.excerptFr || '', bodyFr: post.bodyFr || '',
-        reactionsEnabled: !!post.reactionsEnabled, reactionTypes: post.reactionTypes || [], coAuthorEmails: [], showToc: !!post.showToc, tocTitle: post.tocTitle || '', commentsPublic: post.commentsPublic === true });
+        reactionsEnabled: !!post.reactionsEnabled, reactionTypes: post.reactionTypes || [], coAuthorEmails: [], showToc: !!post.showToc, tocTitle: post.tocTitle || '', commentsPublic: post.commentsPublic === true,
+        notifyNewsletter: false, newsletterSubject: '', newsletterIntro: '' });
+      setNlSent(post.newsletterSentAt || null);
       // The list payload (POST_SELECT) has no body — fetch the full post so the
       // editor is pre-filled (otherwise saving trips the "content required" guard).
       if (post.slug) api.get(`/blog/${post.slug}`).then((r) => { const fp = r.post || {}; setF((s) => ({ ...s,
         title: fp.title ?? s.title, excerpt: fp.excerpt ?? s.excerpt, body: fp.body ?? s.body,
         titleFr: fp.titleFr ?? s.titleFr, excerptFr: fp.excerptFr ?? s.excerptFr, bodyFr: fp.bodyFr ?? s.bodyFr,
         reactionsEnabled: !!fp.reactionsEnabled, reactionTypes: fp.reactionTypes || s.reactionTypes }));
+        setNlSent(fp.newsletterSentAt || null);
         baseRef.current = { version: fp.version ?? null, body: fp.body || '', bodyFr: fp.bodyFr || '' }; }).catch(() => {});
       // co-author emails aren't on the public post — fetch them for the editor.
       api.get(`/blog/${post.id}/collab`).then((r) => setF((s) => ({ ...s, coAuthorEmails: r.coAuthorEmails || [] }))).catch(() => {});
@@ -530,6 +534,8 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
       titleFr: f.titleFr || null, excerptFr: f.excerptFr || null, bodyFr: f.bodyFr || null,
       reactionsEnabled: f.reactionsEnabled, reactionTypes: f.reactionTypes, coAuthorEmails: f.coAuthorEmails,
       showToc: f.showToc, tocTitle: f.tocTitle || null, commentsPublic: f.commentsPublic,
+      // Announce to the newsletter (once per post) — only when publishing and not yet sent.
+      ...(f.notifyNewsletter && f.publish && !nlSent ? { notifyNewsletter: true, newsletterSubject: f.newsletterSubject.trim() || undefined, newsletterIntro: f.newsletterIntro.trim() || undefined } : {}),
       ...(post && baseRef.current.version != null ? { baseVersion: baseRef.current.version } : {}) };
 
     // Optimistic save with an undo window (BOTH new posts and edits). Close the editor
@@ -720,6 +726,25 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
             <span className="text-xs"><span className="font-medium flex items-center gap-1">{f.commentsPublic ? <Globe size={12} className="text-emerald-400" /> : <MessageSquare size={12} />} Comments visible to readers</span>
               <span className="text-[var(--faint)]">{f.commentsPublic ? 'Readers can read the comment thread (they still can’t post — comments are an editor tool).' : 'Comments stay private to editors (author, co-authors, staff).'}</span></span>
           </label>
+          {/* Newsletter announcement — send subscribers an email about this post (once).
+              Uses the standard template; the subject/intro can be overridden. */}
+          <div className="mt-3 pt-3 border-t border-[var(--line)]">
+            {nlSent ? (
+              <div className="text-xs text-[var(--faint)] flex items-center gap-1.5"><Mail size={12} className="text-emerald-400" /> {t('be.nl.already', 'Newsletter already sent on {d}.').replace('{d}', new Date(nlSent).toLocaleDateString())}</div>
+            ) : (<>
+              <label className={`flex items-start gap-2 ${f.publish ? 'cursor-pointer' : 'opacity-50'}`}>
+                <input type="checkbox" className="mt-0.5" disabled={!f.publish} checked={f.notifyNewsletter && f.publish} onChange={(e) => setF({ ...f, notifyNewsletter: e.target.checked })} />
+                <span className="text-xs"><span className="font-medium flex items-center gap-1"><Mail size={12} className="text-[var(--primary-2)]" /> {t('be.nl.notify', 'Announce to newsletter subscribers')}</span>
+                  <span className="text-[var(--faint)]">{f.publish ? t('be.nl.notifyhint', 'Emails active subscribers about this new article (with a link). Sent once.') : t('be.nl.draftnote', 'Publish the post to announce it.')}</span></span>
+              </label>
+              {f.notifyNewsletter && f.publish && (
+                <div className="mt-2.5 ml-6 space-y-2">
+                  <Input value={f.newsletterSubject} onChange={(e) => setF({ ...f, newsletterSubject: e.target.value })} placeholder={t('be.nl.subjectph', 'Subject (optional) — default: “New on BetterCommunity: {title}”').replace('{title}', f.title || '…')} maxLength={200} className="!text-sm" />
+                  <Textarea rows={2} value={f.newsletterIntro} onChange={(e) => setF({ ...f, newsletterIntro: e.target.value })} placeholder={t('be.nl.introph', 'Intro message (optional) — defaults to the post excerpt.')} maxLength={2000} className="!text-sm" />
+                </div>
+              )}
+            </>)}
+          </div>
         </div>
       </div>
       {showHistory && post && <HistoryModal base={`/blog/${post.id}`} onClose={() => setShowHistory(false)}

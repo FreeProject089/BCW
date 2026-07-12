@@ -1,5 +1,22 @@
 import { z } from 'zod';
 import { db, requireRole, optionalAuth, slugify, pruneRevisions } from '../lib.mjs';
+import { emailEnabled } from '../mail.mjs';
+import { sendNewsletter } from './newsletter.mjs';
+
+const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
+
+// Notify newsletter subscribers about a freshly published post — ONCE per post (guarded
+// by BlogPost.newsletterSentAt). Uses the same branded template as a manual broadcast; the
+// author can override the subject / intro line, otherwise it's derived from the post. The
+// send runs in the background so it never delays the editor's save response.
+async function notifyNewsletterOfPost(p, post, opts) {
+  if (!opts?.notifyNewsletter || post.status !== 'PUBLISHED' || post.newsletterSentAt || !emailEnabled()) return;
+  await p.blogPost.update({ where: { id: post.id }, data: { newsletterSentAt: new Date() } }).catch(() => {});
+  const url = `${SITE_URL}/blog/${post.slug}`;
+  const subject = (opts.newsletterSubject || '').trim() || `New on BetterCommunity: ${post.title}`;
+  const intro = (opts.newsletterIntro || '').trim() || post.excerpt?.trim() || 'A new article is out — read it on the blog.';
+  sendNewsletter(p, { subject, title: post.title, body: intro, url }).catch(() => {});
+}
 
 // A post belongs to exactly one blog "space": a fixed Project (bmm/bsm/community/
 // installer) OR an admin-created ShowcaseProject ("custom" page, e.g. an Other
@@ -30,6 +47,11 @@ const postSchema = z.object({
   tocTitle: z.string().max(60).optional().nullable(),
   // Editor-collaboration comments visible to readers on the published post.
   commentsPublic: z.boolean().optional(),
+  // Announce a newly published post to newsletter subscribers (once per post). The
+  // subject/intro are optional overrides — otherwise a default template is used.
+  notifyNewsletter: z.boolean().optional(),
+  newsletterSubject: z.string().max(200).optional(),
+  newsletterIntro: z.string().max(2000).optional(),
 });
 
 // Save an edit-history snapshot of a post's current content, then prune per the
@@ -284,6 +306,7 @@ export default async function blogRoutes(app) {
     if (limitErr) return reply.code(409).send(limitErr);
     const post = await p.blogPost.create({ data });
     await snapshotBlog(p, post, req.user.uid);
+    await notifyNewsletterOfPost(p, post, b.data);
     return reply.code(201).send({ post });
   });
 
@@ -336,6 +359,7 @@ export default async function blogRoutes(app) {
     }
     const post = await p.blogPost.update({ where: { id: req.params.id }, data });
     if (touchesContent) await snapshotBlog(p, post, req.user.uid);
+    await notifyNewsletterOfPost(p, post, d);
     return { post };
   });
 

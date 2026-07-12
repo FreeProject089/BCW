@@ -711,6 +711,8 @@ const DICT = {
     'be.noperm': 'Tu n’as pas la permission de publier dans ce blog.', 'be.failed': 'Échec.', 'be.delpost': 'Supprimer le billet',
     'be.undo': 'Annuler', 'be.published': 'Billet publié.', 'be.draftsaved': 'Brouillon enregistré.', 'be.updated': 'Billet mis à jour.',
     'be.conflict.reopen': "Quelqu'un a modifié ce billet — rouvert pour que tu fusionnes, puis Enregistre.", 'be.full': 'Le blog est plein — raccourcis ou supprime un article, ou augmente la limite.',
+    'be.nl.notify': 'Annoncer aux abonnés de la newsletter', 'be.nl.notifyhint': 'Envoie un email aux abonnés actifs au sujet de ce nouvel article (avec un lien). Envoyé une seule fois.', 'be.nl.draftnote': 'Publie le billet pour pouvoir l’annoncer.',
+    'be.nl.already': 'Newsletter déjà envoyée le {d}.', 'be.nl.subjectph': 'Objet (optionnel) — par défaut : « Du nouveau sur BetterCommunity : {title} »', 'be.nl.introph': "Message d'intro (optionnel) — par défaut, l'extrait du billet.",
     'be.cannotundo': 'Ceci est irréversible.', 'be.delete': 'Supprimer', 'be.deleted': 'Supprimé.', 'be.editpost': 'Modifier le billet', 'be.writepost': 'Écrire un billet',
 
     // ── Éditeur de docs ──

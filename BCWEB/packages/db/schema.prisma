@@ -327,6 +327,9 @@ model BlogPost {
   // them on the published article (they still can't post — comments are an editor tool).
   comments         BlogComment[]
   commentsPublic   Boolean  @default(false)
+  // Set the first time this post is announced to newsletter subscribers, so editing a
+  // published post later never re-blasts everyone (see notifyNewsletterOfPost).
+  newsletterSentAt DateTime?
 
   @@index([showcaseProjectId])
 }
