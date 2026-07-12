@@ -368,9 +368,11 @@ export function Home() {
             {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth', user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free')],
               [Upload, t('home.step2'), t('home.step2.d'), '/catalog', t('home.step2.cta', 'Browse the catalog')],
               [Rocket, t('home.step3'), t('home.step3.d'), '/hosting', t('home.step3.cta', 'See hosting plans')]].map(([I, title, d, to, cta], i) => (
-              <div key={title} className="relative z-[1] flex flex-col">
-                {/* milestone node — centred on the rail, punched out with a bg-coloured ring */}
-                <div className="relative mx-auto grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-lg shadow-orange-500/30 ring-4 ring-[var(--bg-solid)] group-hover:scale-105 transition-transform">
+              <div key={title} className="group relative z-[1] flex flex-col">
+                {/* milestone node — centred on the rail, punched out with a bg-coloured ring.
+                    `group` on this wrapper so hovering the step lifts the node AND its card
+                    together (the node's group-hover previously had no .group ancestor). */}
+                <div className="relative mx-auto grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-lg shadow-orange-500/30 ring-4 ring-[var(--bg-solid)] transition-transform duration-300 group-hover:scale-110 group-hover:-translate-y-0.5">
                   <I size={24} className="text-white" />
                   <span className="absolute -top-2 -right-2 grid place-items-center w-7 h-7 rounded-full bg-[var(--bg-solid)] border-2 border-[var(--primary)] text-xs font-extrabold text-[var(--primary-2)]">{i + 1}</span>
                 </div>
