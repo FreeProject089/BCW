@@ -116,7 +116,39 @@ export function BlogList() {
             ); })}
           </div>
         ) : <EmptyState icon={Newspaper} title={t('blog.empty', 'No posts yet')} sub={canWrite ? t('blog.writefirst', 'Write the first one.') : undefined}>{canWrite && <Button variant="primary" onClick={() => setEditing({})}><Plus size={16} /> {t('blog.newpost', 'New post')}</Button>}</EmptyState>}
+      <NewsletterSignup />
       {editing !== null && <BlogEditor post={editing.id ? editing : null} scopes={scopeData} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
+    </div>
+  );
+}
+
+// Blog newsletter signup — double opt-in (the API sends a confirm email; nothing is
+// active until the visitor clicks it). One-click unsubscribe lives in every email.
+export function NewsletterSignup() {
+  const { t, lang } = useI18n();
+  const [email, setEmail] = useState('');
+  const [state, setState] = useState('idle'); // idle | sending | done | error
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!email.trim() || state === 'sending') return;
+    setState('sending');
+    try { await api.post('/newsletter/subscribe', { email: email.trim(), locale: lang === 'fr' ? 'fr' : 'en' }); setState('done'); }
+    catch { setState('error'); }
+  };
+  return (
+    <div className="mt-12 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-6 sm:p-8 text-center">
+      <h3 className="text-lg font-bold">{t('news.title', 'Get blog updates by email')}</h3>
+      <p className="text-sm text-[var(--muted)] mt-1.5 max-w-md mx-auto">{t('news.sub', 'New posts, straight to your inbox. Double opt-in, and one-click unsubscribe in every email.')}</p>
+      {state === 'done'
+        ? <p className="mt-4 text-sm text-[var(--primary-2)] font-semibold">{t('news.check', 'Almost there — check your inbox to confirm your subscription.')}</p>
+        : (
+          <form onSubmit={submit} className="mt-4 flex flex-col sm:flex-row gap-2 max-w-md mx-auto">
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('news.ph', 'you@example.com')}
+              className="flex-1 rounded-full border border-[var(--line)] bg-[var(--bg-solid)] px-4 py-2.5 text-sm outline-none focus:border-[var(--primary)]" />
+            <Button type="submit" variant="primary" disabled={state === 'sending'}>{state === 'sending' ? t('news.sending', 'Subscribing…') : t('news.cta', 'Subscribe')}</Button>
+          </form>
+        )}
+      {state === 'error' && <p className="mt-3 text-sm text-red-400">{t('news.err', 'Could not subscribe — check the address and try again.')}</p>}
     </div>
   );
 }

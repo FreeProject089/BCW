@@ -12,6 +12,7 @@ import { startSweeper } from './sweeper.mjs';
 import authRoutes from './routes/auth.mjs';
 import catalogRoutes from './routes/catalog.mjs';
 import miscRoutes from './routes/misc.mjs';
+import newsletterRoutes from './routes/newsletter.mjs';
 import uploadRoutes from './routes/uploads.mjs';
 import hostingRoutes from './routes/hosting.mjs';
 import stripeWebhook from './routes/stripe-webhook.mjs';
@@ -140,6 +141,7 @@ app.addHook('onResponse', (req, reply, done) => {
 await app.register(authRoutes);
 await app.register(catalogRoutes);
 await app.register(miscRoutes);
+await app.register(newsletterRoutes);
 await app.register(uploadRoutes);
 await app.register(hostingRoutes);
 await app.register(analyticsRoutes);

@@ -1271,3 +1271,21 @@ model InteractionEvent {
   @@index([visitor, createdAt])
   @@index([createdAt])
 }
+
+// Blog newsletter subscribers. Double opt-in (GDPR): a signup starts `pending` and only
+// becomes `active` once the confirm link is clicked. Every email carries a one-click,
+// no-login unsubscribe link (unsubToken). We store only the email + status + timestamps
+// + preferred locale — no other PII. Unsubscribing is always honoured.
+model NewsletterSubscriber {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  status         String    @default("pending") // pending | active | unsubscribed
+  locale         String    @default("en")      // preferred email language (en | fr)
+  confirmToken   String?   @unique              // consumed when the confirm link is clicked
+  unsubToken     String    @unique              // stable; embedded in every email
+  createdAt      DateTime  @default(now())
+  confirmedAt    DateTime?
+  unsubscribedAt DateTime?
+
+  @@index([status])
+}
