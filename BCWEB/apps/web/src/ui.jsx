@@ -218,16 +218,15 @@ export function ToastProvider({ children }) {
           {items.map((t) => { const I = Ico[t.tone] || Info;
             const tone = t.tone === 'success' ? 'var(--success)' : t.tone === 'error' ? 'var(--error)' : 'var(--info)';
             return (
-            <div key={t.id} role="alert" className="anim-slide relative overflow-hidden rounded-xl border flex items-start gap-3 pl-3.5 pr-2 py-3"
+            <div key={t.id} role="alert" className="anim-slide relative overflow-hidden rounded-xl border flex items-center gap-3 pl-3.5 pr-2 py-3"
               style={{ background: `color-mix(in srgb, ${tone} 8%, var(--bg-solid))`, borderColor: `color-mix(in srgb, ${tone} 32%, var(--line))`, boxShadow: '0 14px 40px -14px rgba(0,0,0,0.62)' }}>
               {/* tone-tinted, spring-in icon chip: an explicit success / error / info cue */}
-              <span className={`toast-icon-in grid place-items-center w-7 h-7 rounded-lg shrink-0 mt-px ${t.tone === 'success' ? 'burst' : ''}`} style={{ background: `color-mix(in srgb, ${tone} 18%, transparent)`, color: tone }}><I size={16} /></span>
-              <div className="text-sm flex-1 min-w-0 pt-1 break-words leading-snug">
-                {t.msg}
-                {t.action && <button onClick={() => finalize(t.id, 'cancel')} className="mt-1.5 flex items-center gap-1 text-xs font-semibold rounded-md px-2 py-1 -ml-1 transition hover:bg-[var(--surface-2)]" style={{ color: tone }}><Undo2 size={12} /> {t.cancelLabel || 'Undo'}</button>}
-              </div>
-              {/* × cancels an action toast (restores prior state); on a plain toast it just closes */}
-              <button onClick={() => finalize(t.id, t.action ? 'cancel' : 'commit')} aria-label={t.action ? 'Cancel' : 'Dismiss'} className="shrink-0 -mt-0.5 -mr-0.5 p-1 rounded-lg text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition"><X size={14} /></button>
+              <span className={`toast-icon-in grid place-items-center w-7 h-7 rounded-lg shrink-0 ${t.tone === 'success' ? 'burst' : ''}`} style={{ background: `color-mix(in srgb, ${tone} 18%, transparent)`, color: tone }}><I size={16} /></span>
+              <div className="text-sm flex-1 min-w-0 break-words leading-snug">{t.msg}</div>
+              {/* Gmail-style: a done statement + one clear Cancel button (which restores the
+                  previous state). The × does the same, so nothing is ambiguous. */}
+              {t.action && <button onClick={() => finalize(t.id, 'cancel')} className="shrink-0 flex items-center gap-1 text-[13px] font-bold rounded-lg px-2.5 py-1.5 transition hover:bg-[color-mix(in_srgb,var(--text)_10%,transparent)]" style={{ color: tone }}><Undo2 size={13} /> {t.cancelLabel || 'Cancel'}</button>}
+              <button onClick={() => finalize(t.id, t.action ? 'cancel' : 'commit')} aria-label={t.action ? 'Cancel' : 'Dismiss'} className="shrink-0 -mr-0.5 p-1 rounded-lg text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition"><X size={14} /></button>
               {/* countdown bar — for action toasts this is the undo window before commit */}
               <span className="absolute left-0 bottom-0 h-[3px] rounded-full toast-progress" style={{ background: tone, animationDuration: `${t.duration}ms` }} />
             </div>); })}

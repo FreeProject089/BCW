@@ -134,7 +134,9 @@ export function BlogList() {
         <Button onClick={loadMore} disabled={loadingMore}>{loadingMore ? <><Spinner /> {t('common.loading', 'Loading…')}</> : <><ChevronDown size={16} /> {t('blog.loadmore', 'Load more')}</>}</Button>
       </div>}
       <NewsletterSignup />
-      {editing !== null && <BlogEditor post={editing.id ? editing : null} draft={editing._draft || null} reopenDraft={(d) => setEditing({ _draft: d })} scopes={scopeData} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
+      {editing !== null && <BlogEditor post={editing.id ? editing : null} draft={editing._draft || null} draftBase={editing._base || null} conflictReopen={!!editing._conflict}
+        reopenDraft={(d, opts = {}) => setEditing(opts.post ? { ...opts.post, _draft: d, _base: opts.base || null, _conflict: !!opts.conflict } : { _draft: d })}
+        scopes={scopeData} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
     </div>
   );
 }
@@ -458,7 +460,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
 // `global: true` (every blog); a granted regular USER gets only the blogs listed.
 // `scope` values are encoded "project:<key>" or "showcase:<slug>" to disambiguate
 // the two blog "spaces" in one dropdown.
-function BlogEditor({ post, scopes, onClose, onSaved, draft, reopenDraft }) {
+function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflictReopen, reopenDraft }) {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const defaultScope = scopes?.projects?.[0] ? `project:${scopes.projects[0].key}` : scopes?.showcases?.[0] ? `showcase:${scopes.showcases[0].slug}` : 'project:community';
   const [f, setF] = useState({ scope: defaultScope, cover: '', coverInBody: true, publish: true, title: '', excerpt: '', body: '', titleFr: '', excerptFr: '', bodyFr: '', reactionsEnabled: false, reactionTypes: [], coAuthorEmails: [], showToc: false, tocTitle: '', commentsPublic: false });
@@ -476,8 +478,10 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, reopenDraft }) {
   const [mergeUI, setMergeUI] = useState(null); // null | { queue: [{ field, langLabel, base, mine, theirs }] }
   useEffect(() => {
     // Restored after an "undo" on the publish toast — re-seed the exact form state the
-    // author had, so they land back in the editor exactly where they left off.
-    if (draft) { setF(draft); return; }
+    // author had, so they land back in the editor exactly where they left off. When the
+    // reopen was caused by a save conflict, restore the ORIGINAL base version too so the
+    // next save can 3-way-merge correctly.
+    if (draft) { setF(draft); if (draftBase) baseRef.current = draftBase; return; }
     if (post) {
       setF({ scope: post.showcaseProject ? `showcase:${post.showcaseProject.slug}` : `project:${post.project?.key || 'community'}`, cover: post.cover || '', coverInBody: post.coverInBody !== false, publish: post.status === 'PUBLISHED',
         title: post.title || '', excerpt: post.excerpt || '', body: post.body || '',
@@ -528,29 +532,41 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, reopenDraft }) {
       showToc: f.showToc, tocTitle: f.tocTitle || null, commentsPublic: f.commentsPublic,
       ...(post && baseRef.current.version != null ? { baseVersion: baseRef.current.version } : {}) };
 
-    // NEW post: optimistic publish with an undo window. Close the editor now and show a
-    // toast that counts down; when it elapses the post is actually created. If the author
-    // hits Undo (or ×) the create never fires and the editor reopens in its exact state.
-    // (Existing-post edits keep the immediate save + 3-way-merge path below.)
-    if (!post && reopenDraft) {
+    // Optimistic save with an undo window (BOTH new posts and edits). Close the editor
+    // now and show a "done · Undo" toast that counts down; the write fires only when it
+    // elapses. Undo (× or Cancel) reopens the editor in its exact state and nothing is
+    // written. Skipped when a merge is in progress or we're re-saving after a conflict —
+    // those must save immediately so the 3-way-merge resolver can engage.
+    const canOptimistic = reopenDraft && !conflictReopen && merge == null && mergeUI == null;
+    if (canOptimistic) {
       const snapshot = { ...f };
+      const origBase = { ...baseRef.current };
       onClose();
       toast.action({
         tone: 'success', duration: 6000, cancelLabel: t('be.undo', 'Undo'),
-        msg: f.publish ? t('be.publishing', 'Publishing your post — undo?') : t('be.savingdraft', 'Saving your draft — undo?'),
+        msg: post ? t('be.updated', 'Post updated.') : (f.publish ? t('be.published', 'Post published.') : t('be.draftsaved', 'Draft saved.')),
         onCommit: async () => {
-          try { await api.post('/blog', body); toast.success(f.publish ? t('be.published', 'Post published.') : t('be.draftsaved', 'Draft saved.')); onSaved(); }
-          catch { toast.error(t('be.failed', 'Failed.')); reopenDraft(snapshot); }
+          try { if (post) await api.patch(`/blog/${post.id}`, body); else await api.post('/blog', body); onSaved(); }
+          catch (x) {
+            if (post && x.status === 409 && x.data?.current) { toast.error(t('be.conflict.reopen', 'Someone else edited this — reopened so you can merge, then Save.')); reopenDraft(snapshot, { post, base: origBase, conflict: true }); }
+            else { toast.error(x.data?.error === 'blog_limit' ? t('be.full', 'Blog is full — trim or delete an article, or raise the limit.') : (x.data?.error || t('be.failed', 'Failed.'))); reopenDraft(snapshot, { post, base: origBase }); }
+          }
         },
-        onCancel: () => reopenDraft(snapshot),
+        onCancel: () => reopenDraft(snapshot, { post, base: origBase }),
       });
       return;
     }
 
+    await commitSave(body);
+  };
+
+  // Immediate save (no undo window) — runs while the editor is open so the 3-way-merge
+  // resolver can engage on a 409 conflict. Used for the conflict-reopen re-save.
+  const commitSave = async (body) => {
     setBusy(true);
     try {
       if (post) await api.patch(`/blog/${post.id}`, body); else await api.post('/blog', body);
-      toast.success(post ? 'Post updated.' : 'Post published.'); onSaved();
+      toast.success(post ? t('be.updated', 'Post updated.') : t('be.published', 'Post published.')); onSaved();
     } catch (x) {
       // Someone else saved since we loaded → 3-way merge their copy into ours (git-style).
       if (x.status === 409 && x.data?.current) {
