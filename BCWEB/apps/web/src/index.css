@@ -12,6 +12,10 @@
   --surface: #ffffff;
   --surface-2: #f5f3ef;
   --surface-3: #ece7df;   /* +1 elevation step (hover / popovers / raised rows) */
+  /* Opaque separator ring for OVERLAPPING avatars — must match the card/page colour so
+     the gap reads clean. Using translucent --surface or flat --bg-solid showed a
+     mismatched frame over the translucent cards + page glows ("le cadre buggé"). */
+  --avatar-ring: #ffffff;
   --line: rgba(24, 20, 14, 0.10);
   --line-strong: rgba(24, 20, 14, 0.17);
   --text: #1a1714;
@@ -31,6 +35,7 @@
   --surface: rgba(255, 255, 255, 0.028);
   --surface-2: rgba(255, 255, 255, 0.05);
   --surface-3: rgba(255, 255, 255, 0.085); /* elevation = a LIGHTER surface, not a shadow */
+  --avatar-ring: #16130f;  /* opaque, ~ the dark card colour (surface over bg-solid) */
   --line: rgba(255, 255, 255, 0.09);
   --line-strong: rgba(255, 255, 255, 0.16);
   --text: #f3efe9;

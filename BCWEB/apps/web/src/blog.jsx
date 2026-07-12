@@ -49,7 +49,7 @@ export function AuthorsRow({ authors, size = 22 }) {
       {/* Overlapping (stacked) avatars — a ring in the deep surface colour separates
           them cleanly; a single avatar gets no ring so it isn't a lone framed box. */}
       <span className="flex -space-x-2 shrink-0">
-        {list.slice(0, 4).map((a, i) => <span key={a.id || i} className={list.length > 1 ? 'ring-2 ring-[var(--bg-solid)] rounded-full' : ''} title={a.displayName}><Avatar user={a} size={size} /></span>)}
+        {list.slice(0, 4).map((a, i) => <span key={a.id || i} className={list.length > 1 ? 'ring-2 ring-[var(--avatar-ring)] rounded-full' : ''} title={a.displayName}><Avatar user={a} size={size} /></span>)}
       </span>
       {list.length === 1 && <span className="text-xs text-[var(--faint)] truncate">{list[0].displayName}</span>}
     </span>
@@ -282,7 +282,7 @@ export function BlogPostPage() {
         {authors.length > 0 && (
           <div className="mt-6 pt-5 border-t border-[var(--line)] flex items-center gap-3">
             <div className="flex -space-x-2">
-              {authors.map((a) => <div key={a.id} className={authors.length > 1 ? 'ring-2 ring-[var(--bg-solid)] rounded-full' : ''}><Avatar user={a} size={30} /></div>)}
+              {authors.map((a) => <div key={a.id} className={authors.length > 1 ? 'ring-2 ring-[var(--avatar-ring)] rounded-full' : ''}><Avatar user={a} size={30} /></div>)}
             </div>
             <div className="text-xs text-[var(--muted)]">
               {authors.length > 1 ? t('blog.by.multi', 'Written by {names}').replace('{names}', authors.map((a) => a.displayName).join(', ')) : t('blog.by.one', 'Written by {name}').replace('{name}', p.author?.displayName || '')}
