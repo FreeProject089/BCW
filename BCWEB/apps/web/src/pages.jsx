@@ -1414,9 +1414,10 @@ function AccountLockedPanel({ data, onBack }) {
 }
 
 export function Auth() {
-  const { user, loading: authLoading, login, loginWith2fa, register } = useAuth(); const nav = useNavigate(); const toast = useToast(); const { t } = useI18n();
+  const { user, loading: authLoading, login, loginWith2fa, register } = useAuth(); const nav = useNavigate(); const toast = useToast(); const { t, lang } = useI18n();
   const [params, setParams] = useSearchParams();
   const [mode, setMode] = useState('login'); // login | register | forgot | reset
+  const [newsletter, setNewsletter] = useState(true); // opt-in pre-checked at sign-up
   const [f, setF] = useState({ email: '', password: '', confirm: '', displayName: '', token: '' });
   const [busy, setBusy] = useState(false); const [step, setStep] = useState('');
   const [twoFa, setTwoFa] = useState(null); // { tempToken } once password is verified and a TOTP code is needed
@@ -1488,6 +1489,9 @@ export function Auth() {
         setStep('Creating account…');
         justRegistered.current = true; // the auth-redirect effect routes new accounts to the 2FA setup
         await register(f.email, f.password, f.displayName, pow);
+        // Newsletter opt-in (pre-checked). Fire-and-forget double opt-in — a confirm
+        // email is sent; a failure here must never block a successful registration.
+        if (newsletter) api.post('/newsletter/subscribe', { email: f.email.trim(), locale: lang === 'fr' ? 'fr' : 'en' }).catch(() => {});
         toast.success(t('auth.welcome.toast'));
         // no nav here — the [user] effect above handles it (→ /profile?setup2fa=1)
       } else if (mode === 'forgot') {
@@ -1586,6 +1590,10 @@ export function Auth() {
             <PwInput value={f.confirm} onChange={set('confirm')} />
             {pwMismatch && <div className="text-xs text-[var(--error)] mt-1.5 anim-fade">{t('auth.err.match', "Passwords don't match.")}</div>}
           </Field>}
+          {mode === 'register' && <label className="flex items-start gap-2.5 text-sm text-[var(--muted)] cursor-pointer select-none pt-1">
+            <input type="checkbox" className="mt-0.5" checked={newsletter} onChange={(e) => setNewsletter(e.target.checked)} />
+            <span>{t('auth.newsletter', 'Send me BetterCommunity news and blog updates by email.')} <span className="text-[var(--faint)]">{t('auth.newsletter.hint', 'Double opt-in — unsubscribe anytime.')}</span></span>
+          </label>}
           <Button variant="primary" className="w-full" disabled={busy}>{busy ? <><Spinner /> {step || '…'}</> : cta[mode]}</Button>
         </form>
         {(mode === 'login' || mode === 'register') && (oauthProviders?.github || oauthProviders?.discord || oauthProviders?.google) && (
