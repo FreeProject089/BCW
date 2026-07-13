@@ -196,6 +196,22 @@ export default async function analyticsRoutes(app) {
     return reply.code(204).send();
   });
 
+  // Client error report (uncaught error / unhandled rejection). Best-effort, consent-
+  // gated on the client; strictly bounded here so it can't be used to store large blobs.
+  app.post('/analytics/error', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = z.object({
+      path: z.string().max(300),
+      message: z.string().min(1).max(400),
+      stack: z.string().max(6000).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid' });
+    const p = await db();
+    const { device, browser, os } = parseUA(req.headers['user-agent']);
+    const geo = await geoOf(req).catch(() => ({}));
+    await p.errorEvent.create({ data: { path: b.data.path, message: b.data.message, stack: b.data.stack || null, visitor: visitorHash(req), device, browser, os, country: geo?.country || null } }).catch(() => {});
+    return reply.code(204).send();
+  });
+
   // Rich admin overview (telemetry-grade): totals, unique visitors, live, per-day
   // series (views + visitors), top pages/referrers, device & browser breakdowns.
   app.get('/admin/analytics', { preHandler: requireRole('ADMIN') }, async (req) => {
@@ -417,6 +433,40 @@ export default async function analyticsRoutes(app) {
     const counts = { pageview: pvCount };
     ixCounts.forEach((c) => { counts[c.kind] = c._count.kind; });
     return { events, counts };
+  });
+
+  // Client errors, grouped by message: occurrences, distinct sessions (visitors), first/
+  // last seen, and a latest sample (path + stack + device/browser/OS/country) for detail.
+  app.get('/admin/analytics/errors', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
+    const days = Math.min(Math.max(Number(req.query?.days) || 7, 1), 365);
+    const since = hours ? new Date(Date.now() - hours * 3600e3) : new Date(Date.now() - days * 864e5);
+    const q = String(req.query?.path || '').trim();
+    const where = { createdAt: { gte: since }, ...(q ? { path: { contains: q, mode: 'insensitive' } } : {}) };
+    // Aggregate per message: occurrences, distinct visitors, first/last seen.
+    const groups = await p.$queryRawUnsafe(
+      `SELECT message, count(*)::int AS occurrences, count(DISTINCT visitor)::int AS sessions,
+              min("createdAt") AS "firstSeen", max("createdAt") AS "lastSeen"
+         FROM "ErrorEvent" WHERE "createdAt" >= $1 ${q ? 'AND path ILIKE $2' : ''}
+         GROUP BY message ORDER BY max("createdAt") DESC LIMIT 100`,
+      ...(q ? [since, `%${q}%`] : [since]));
+    // Latest sample per message (path/stack/device/browser/os/country) for the detail view.
+    const msgs = groups.map((g) => g.message);
+    const samples = new Map();
+    if (msgs.length) {
+      const rows = await p.errorEvent.findMany({ where: { ...where, message: { in: msgs } }, orderBy: { createdAt: 'desc' }, distinct: ['message'], select: { message: true, path: true, stack: true, device: true, browser: true, os: true, country: true, createdAt: true } });
+      rows.forEach((r) => samples.set(r.message, r));
+    }
+    const total = await p.errorEvent.count({ where });
+    return {
+      total,
+      errors: groups.map((g) => { const s = samples.get(g.message) || {}; return {
+        message: g.message, occurrences: Number(g.occurrences), sessions: Number(g.sessions),
+        firstSeen: g.firstSeen, lastSeen: g.lastSeen,
+        path: s.path || null, stack: s.stack || null, device: s.device || null, browser: s.browser || null, os: s.os || null, country: s.country || null,
+      }; }),
+    };
   });
 
   // Recent visitor sessions (Rybbit-style live feed). Pageviews are grouped per visitor

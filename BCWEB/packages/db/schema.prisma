@@ -1278,6 +1278,25 @@ model InteractionEvent {
   @@index([createdAt])
 }
 
+// Client-side errors captured in the wild (uncaught errors + unhandled rejections). Same
+// consent model as the other analytics (daily anonymous visitor, no PII). Grouped by
+// message in the admin error view (occurrences + distinct sessions + latest sample).
+model ErrorEvent {
+  id        String   @id @default(cuid())
+  message   String                 // error message (bounded, client-clipped)
+  stack     String?                // stack trace (bounded)
+  path      String                 // page path where it fired
+  visitor   String?                // daily anonymous hash
+  device    String?
+  browser   String?
+  os        String?
+  country   String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([message])
+}
+
 // Blog newsletter subscribers. Double opt-in (GDPR): a signup starts `pending` and only
 // becomes `active` once the confirm link is clicked. Every email carries a one-click,
 // no-login unsubscribe link (unsubToken). We store only the email + status + timestamps

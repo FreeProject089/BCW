@@ -2425,6 +2425,7 @@ export function Admin() {
     isAdmin && { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
     isAdmin && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp },
     isAdmin && { id: 'eventsfeed', label: t('adm.tab.eventsfeed', 'Events feed'), icon: Activity },
+    isAdmin && { id: 'errors', label: t('adm.tab.errors', 'Errors'), icon: AlertTriangle },
 
     isAdmin && { heading: t('adm.h.settings', 'Settings') },
     isAdmin && { id: 'settings', label: t('adm.tab.settings', 'Settings'), icon: Sliders },
@@ -2494,6 +2495,7 @@ export function Admin() {
         {s === 'bot' && <AdminBot />}
         {s === 'analytics' && <AdminAnalytics />}
         {s === 'eventsfeed' && <AdminEventsFeed />}
+        {s === 'errors' && <AdminErrors />}
         {s === 'projects' && <AdminProjects />}
         {s === 'showcase' && <AdminShowcase />}
         {s === 'reviews' && <AdminReviews />}
@@ -7351,6 +7353,67 @@ function AdminEventsFeed() {
           ); })}</tbody>
         </table>
       </div> : <EmptyState icon={Activity} title={t('ev.none', 'No events in this window')} sub={t('ev.none.s', 'Adjust the range or filters.')} />}
+    </div>
+  );
+}
+
+// Client-error dashboard: uncaught errors + rejections grouped by message, with
+// occurrences, distinct sessions, first/last seen, and an expandable stack trace.
+function AdminErrors() {
+  const { t } = useI18n();
+  const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState('');
+  const [range, setRange] = useState('7d'); const [open, setOpen] = useState(null);
+  const rq = Object.fromEntries(WV_RANGES)[range] || { days: 7 };
+  const qs = `${rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`}${qApplied ? `&path=${encodeURIComponent(qApplied)}` : ''}`;
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/errors?${qs}`), [qs]);
+  const errors = data?.errors || [];
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="font-semibold flex items-center gap-2"><AlertTriangle size={16} className="text-red-400" /> {t('er.title', 'Errors')} {data?.total ? <Badge tone="red">{data.total}</Badge> : null}</h2>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+            {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
+          </div>
+          <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
+        </div>
+      </div>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('er.sub', 'Uncaught JavaScript errors and unhandled promise rejections captured from real visits, grouped by message.')}</p>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <div className="relative flex-1 min-w-[220px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <Input className="!pl-9" placeholder={t('er.pathph', 'Filter by page path…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
+        <Button variant="primary" onClick={() => setQApplied(q.trim())}><Search size={15} /> {t('ev.filter', 'Filter')}</Button>
+      </div>
+      {loading ? <Loading /> : errors.length ? <div className="space-y-2">
+        {errors.map((e, i) => { const isOpen = open === i; return (
+          <Card key={i} className="overflow-hidden">
+            <button onClick={() => setOpen(isOpen ? null : i)} className="w-full text-left p-4 flex items-start gap-3 hover:bg-[var(--surface-2)]/40 transition">
+              <AlertTriangle size={16} className="text-red-400 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm text-red-300 break-words">{e.message}</div>
+                <div className="text-xs text-[var(--faint)] mt-1 flex items-center gap-3 flex-wrap">
+                  {e.country ? <span className="inline-flex items-center gap-1"><Flag cc={e.country} className="w-4 h-3" /></span> : null}
+                  {e.browser && <span>{e.browser}{e.os ? ` · ${e.os}` : ''}</span>}
+                  <span className="font-mono truncate max-w-[220px]" title={e.path}>{e.path}</span>
+                  <span>{t('er.last', 'last {t}').replace('{t}', fmtAgo(e.lastSeen))}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 text-center shrink-0">
+                <div><div className="font-bold tabular-nums">{e.occurrences}</div><div className="text-[10px] text-[var(--faint)] uppercase">{t('er.occ', 'occurrences')}</div></div>
+                <div><div className="font-bold tabular-nums">{e.sessions}</div><div className="text-[10px] text-[var(--faint)] uppercase">{t('er.sess', 'sessions')}</div></div>
+                <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+            {isOpen && <div className="px-4 pb-4 border-t border-[var(--line)] pt-3 space-y-2">
+              <div className="text-xs text-[var(--muted)]"><b>{t('er.page', 'Page')}:</b> <span className="font-mono">{e.path}</span> · <b>{t('er.firstseen', 'First seen')}:</b> {new Date(e.firstSeen).toLocaleString()}</div>
+              {e.stack ? <div>
+                <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1 flex items-center gap-1.5"><FileText size={12} /> {t('er.stack', 'Stack trace')}</div>
+                <pre className="text-[11px] font-mono bg-[var(--surface-2)] rounded-lg p-3 overflow-x-auto whitespace-pre text-[var(--muted)] max-h-72">{e.stack}</pre>
+              </div> : <div className="text-xs text-[var(--faint)]">{t('er.nostack', 'No stack trace captured.')}</div>}
+            </div>}
+          </Card>
+        ); })}
+      </div> : <EmptyState icon={ShieldCheck} title={t('er.none', 'No errors')} sub={t('er.none.s', 'Nothing broke in this window.')} />}
     </div>
   );
 }

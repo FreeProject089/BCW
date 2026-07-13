@@ -174,3 +174,25 @@ export function initVitals() {
   addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
   addEventListener('pagehide', flush);
 }
+
+// ── Client error capture (consent-gated) ──────────────────────────────────────
+// Reports uncaught errors + unhandled promise rejections so the admin can see what's
+// breaking in the wild (à la Rybbit). Consent-gated; message/stack are bounded and
+// lightly de-duped (same message within a short window is dropped) to avoid floods.
+export function initErrors() {
+  if (getConsent() !== 'all') return;
+  const seen = new Map(); // message → last-sent ts (drop repeats within 30s)
+  const report = (message, stack) => {
+    const msg = clip(message, 300); if (!msg) return;
+    const now = Date.now(); const last = seen.get(msg) || 0;
+    if (now - last < 30000) return; seen.set(msg, now);
+    beacon('/api/analytics/error', { path: location.pathname, message: msg, stack: String(stack || '').slice(0, 4000) || undefined });
+  };
+  addEventListener('error', (e) => {
+    if (e?.error) report(e.error.message || e.message, e.error.stack);
+    else if (e?.message) report(e.message, `${e.filename || ''}:${e.lineno || ''}:${e.colno || ''}`);
+  });
+  addEventListener('unhandledrejection', (e) => {
+    const r = e?.reason; report(r?.message || String(r), r?.stack);
+  });
+}
