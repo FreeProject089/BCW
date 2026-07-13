@@ -45,7 +45,9 @@ function page(title, body, opts = {}) {
     ? '<path d="M18 6 6 18M6 6l12 12"/>'                                  // ✕
     : opts.tone === 'info' ? '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'
     : '<path d="M20 6 9 17l-5-5"/>');                                     // ✓
-  const cta = opts.cta ? `<a class="btn" href="${opts.cta.href}">${escapeHtml(opts.cta.label)}</a>` : '';
+  // href is always an internal (SITE_URL/token) link, but escape it anyway — attribute
+  // context, defence-in-depth (CWE-79). `body`/`extra` are trusted internal HTML.
+  const cta = opts.cta ? `<a class="btn" href="${escapeHtml(opts.cta.href)}">${escapeHtml(opts.cta.label)}</a>` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} — BetterCommunity</title>
 <style>
   :root{--tone:${tone};--bg:#faf8f5;--card:#ffffff;--line:#eae4da;--text:#1a1714;--muted:#5d5750;--faint:#918a80;--link:#c2410c;--glowa:rgba(249,115,22,.14);--glowb:rgba(245,158,11,.12);--shadow:rgba(30,20,5,.22)}

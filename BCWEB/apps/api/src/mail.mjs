@@ -87,9 +87,13 @@ export function mdToEmailHtml(md) {
 // (Apple/iOS Mail, Outlook.com…); elsewhere it degrades to light. Optional CTA button (+
 // raw link fallback) and a footer. `cta`: { url, label }.
 export function mailShell(title, bodyHtml, cta) {
+  // Escape the CTA url/label even though callers validate them — they can carry the
+  // admin-supplied broadcast link, and this is HTML attribute + text context (CWE-79).
+  const url = cta ? escapeHtml(cta.url) : '';
+  const label = cta ? escapeHtml(cta.label) : '';
   const btn = cta
-    ? `<tr><td style="padding-top:26px"><a href="${cta.url}" style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;padding:13px 30px;border-radius:12px;font-weight:700;font-size:15px;box-shadow:0 6px 18px -6px rgba(249,115,22,.5)">${cta.label}</a></td></tr>
-       <tr><td class="bc-faint" style="padding-top:18px;color:#918a80;font-size:12px;line-height:1.5">Or paste this link into your browser:<br><a href="${cta.url}" style="color:#c2410c;word-break:break-all;text-decoration:none">${cta.url}</a></td></tr>`
+    ? `<tr><td style="padding-top:26px"><a href="${url}" style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;padding:13px 30px;border-radius:12px;font-weight:700;font-size:15px;box-shadow:0 6px 18px -6px rgba(249,115,22,.5)">${label}</a></td></tr>
+       <tr><td class="bc-faint" style="padding-top:18px;color:#918a80;font-size:12px;line-height:1.5">Or paste this link into your browser:<br><a href="${url}" style="color:#c2410c;word-break:break-all;text-decoration:none">${url}</a></td></tr>`
     : '';
   const style = `<style>
     @media (prefers-color-scheme: dark){
