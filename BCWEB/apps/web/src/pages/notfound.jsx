@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Home as HomeIcon, Trophy, Play, RotateCcw, Gamepad2 } from 'lucide-react';
+import { Home as HomeIcon, Trophy, Play, RotateCcw, Gamepad2, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -21,6 +21,7 @@ export default function NotFound() {
   const [best, setBest] = useState(0);
   const [board, setBoard] = useState([]);
   const [saved, setSaved] = useState(null); // { improved } after submitting
+  const [boardOpen, setBoardOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768); // collapsed by default on phones
 
   const loadBoard = () => api.get('/game/leaderboard?game=orbfall').then((r) => setBoard(r.leaderboard || [])).catch(() => {});
   useEffect(() => { loadBoard(); }, []);
@@ -42,34 +43,61 @@ export default function NotFound() {
   const start = () => {
     const c = canvasRef.current; if (!c) return; const ctx = c.getContext('2d');
     const col = colors();
-    const st = { px: W / 2, pw: 62, orbs: [], spawn: 0, speed: 1, score: 0, last: performance.now(), raf: 0, alive: true };
+    // Slow-drifting starfield for depth (regenerated each game).
+    const stars = Array.from({ length: 46 }, () => ({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 1.4 + 0.3, s: Math.random() * 0.25 + 0.05 }));
+    const st = { px: W / 2, pw: 60, orbs: [], parts: [], spawn: 0, speed: 1, score: 0, shake: 0, last: performance.now(), raf: 0, alive: true, stars };
     g.current = st; setScore(0); setSaved(null); setPhase('playing');
     const loop = (now) => {
       if (!st.alive) return;
       const dt = Math.min(50, now - st.last); st.last = now; const f = dt / 16;
-      st.speed += dt / 60000;                                  // gentle ramp
+      st.speed += dt / 34000;                                  // steeper ramp = harder over time
+      st.pw = Math.max(38, 60 - st.score * 0.45);              // paddle shrinks as you score
       st.spawn -= dt;
-      if (st.spawn <= 0) { st.spawn = Math.max(360, 900 - st.score * 12); const bad = Math.random() < Math.min(0.42, 0.14 + st.score * 0.01); st.orbs.push({ x: 18 + Math.random() * (W - 36), y: -14, r: 11, bad, vy: (1.6 + Math.random() * 1.1) * st.speed }); }
+      if (st.spawn <= 0) {
+        st.spawn = Math.max(260, 820 - st.score * 16);          // faster spawns
+        const bad = Math.random() < Math.min(0.52, 0.16 + st.score * 0.014); // more red over time
+        const drift = (Math.random() - 0.5) * Math.min(1.6, st.score * 0.05); // sideways drift late-game
+        st.orbs.push({ x: 20 + Math.random() * (W - 40), y: -14, r: bad ? 12 : 11, bad, vy: (1.9 + Math.random() * 1.2) * st.speed, vx: drift });
+      }
       const py = H - 26;
-      for (const o of st.orbs) o.y += o.vy * f;
+      for (const o of st.orbs) { o.y += o.vy * f; o.x += (o.vx || 0) * f; if (o.x < o.r || o.x > W - o.r) o.vx = -(o.vx || 0); }
       st.orbs = st.orbs.filter((o) => {
-        if (o.y >= py - 10 && o.y <= py + 14 && Math.abs(o.x - st.px) < st.pw / 2 + o.r) {
-          if (o.bad) { st.alive = false; end(st.score); return false; }
-          st.score += 1; setScore(st.score); return false;
+        if (o.y >= py - 12 && o.y <= py + 16 && Math.abs(o.x - st.px) < st.pw / 2 + o.r) {
+          if (o.bad) { st.alive = false; burst(st, o.x, o.y, '#ef4444', 18); st.shake = 12; end(st.score); return false; }
+          st.score += 1; setScore(st.score); burst(st, o.x, py, col.primary, 8); return false;
         }
         return o.y < H + 20;
       });
-      // draw
+      // particles
+      for (const pt of st.parts) { pt.x += pt.vx * f; pt.y += pt.vy * f; pt.vy += 0.12 * f; pt.life -= dt; }
+      st.parts = st.parts.filter((pt) => pt.life > 0);
+      st.shake = Math.max(0, st.shake - dt * 0.05);
+
+      // ── draw ──
       ctx.clearRect(0, 0, W, H);
+      ctx.save();
+      if (st.shake > 0.5) ctx.translate((Math.random() - 0.5) * st.shake, (Math.random() - 0.5) * st.shake);
+      // starfield
+      for (const s of st.stars) { s.y += s.s * f; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } ctx.fillStyle = `rgba(255,255,255,${0.10 + s.r * 0.12})`; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill(); }
+      // orbs (glow + highlight + faint trail)
       for (const o of st.orbs) {
-        ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, 7); ctx.fillStyle = o.bad ? '#ef4444' : col.primary; ctx.fill();
-        ctx.beginPath(); ctx.arc(o.x - 3, o.y - 3, o.r / 3, 0, 7); ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fill();
+        const cc = o.bad ? '#ef4444' : col.primary;
+        ctx.globalAlpha = 0.18; ctx.fillStyle = cc; ctx.beginPath(); ctx.arc(o.x, o.y - o.vy, o.r * 0.9, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+        ctx.shadowColor = cc; ctx.shadowBlur = 14; ctx.fillStyle = cc; ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(o.x - o.r / 3, o.y - o.r / 3, o.r / 3.2, 0, 7); ctx.fill();
       }
-      ctx.fillStyle = col.primary; roundRect(ctx, st.px - st.pw / 2, py, st.pw, 9, 5); ctx.fill();
+      // particles
+      for (const pt of st.parts) { ctx.globalAlpha = Math.max(0, pt.life / 400); ctx.fillStyle = pt.c; ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.r, 0, 7); ctx.fill(); }
+      ctx.globalAlpha = 1;
+      // paddle (glow)
+      ctx.shadowColor = col.primary; ctx.shadowBlur = 12; ctx.fillStyle = col.primary; roundRect(ctx, st.px - st.pw / 2, py, st.pw, 9, 5); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.restore();
       st.raf = requestAnimationFrame(loop);
     };
     st.raf = requestAnimationFrame(loop);
   };
+  // Spawn a little particle burst (catch / crash feedback).
+  function burst(st, x, y, c, n) { for (let i = 0; i < n; i++) { const a = Math.random() * 7, sp = Math.random() * 2.6 + 0.6; st.parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1, r: Math.random() * 2 + 1, c, life: 400 }); } }
 
   // Controls — pointer / touch position the paddle; arrow keys nudge it.
   const move = (clientX) => { const st = g.current, c = canvasRef.current; if (!st?.alive || !c) return; const rect = c.getBoundingClientRect(); st.px = Math.max(st.pw / 2, Math.min(W - st.pw / 2, (clientX - rect.left) * (W / rect.width))); };
@@ -108,10 +136,13 @@ export default function NotFound() {
           )}
         </div>
 
-        {/* Leaderboard */}
+        {/* Leaderboard — collapsible (collapsed by default on phones). */}
         <Card className="p-4 w-full md:max-w-xs text-left">
-          <div className="text-sm font-semibold flex items-center gap-2 mb-3"><Trophy size={15} className="text-amber-400" /> {t('nf.leaderboard', 'Leaderboard')}</div>
-          {board.length ? <div className="space-y-1.5">
+          <button onClick={() => setBoardOpen((v) => !v)} className="w-full text-sm font-semibold flex items-center gap-2 md:cursor-default" aria-expanded={boardOpen}>
+            <Trophy size={15} className="text-amber-400" /> <span className="flex-1 text-left">{t('nf.leaderboard', 'Leaderboard')}</span>
+            <ChevronDown size={16} className={`md:hidden text-[var(--faint)] transition-transform ${boardOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {boardOpen && (board.length ? <div className="space-y-1.5 mt-3">
             {board.map((r) => (
               <div key={r.rank} className="flex items-center gap-2.5 text-sm">
                 <span className={`w-5 text-center font-bold tabular-nums ${r.rank <= 3 ? 'text-amber-400' : 'text-[var(--faint)]'}`}>{r.rank}</span>
@@ -120,7 +151,7 @@ export default function NotFound() {
                 <span className="font-bold tabular-nums text-[var(--primary-2)]">{r.score}</span>
               </div>
             ))}
-          </div> : <div className="text-sm text-[var(--faint)] py-3 text-center">{t('nf.noscores', 'No scores yet — be the first!')}</div>}
+          </div> : <div className="text-sm text-[var(--faint)] py-3 text-center">{t('nf.noscores', 'No scores yet — be the first!')}</div>)}
         </Card>
       </div>
 
