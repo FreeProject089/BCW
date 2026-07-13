@@ -2435,6 +2435,7 @@ export function Admin() {
     can('manage_analytics') && { id: 'goals', label: t('adm.tab.goals', 'Goals'), icon: Target },
 
     { heading: t('adm.h.settings', 'Settings') },
+    isAdmin && { id: 'navui', label: t('adm.tab.navui', 'Topbar navigation'), icon: Navigation },
     isAdmin && { id: 'settings', label: t('adm.tab.settings', 'Settings'), icon: Sliders },
   ].filter(Boolean);
   // Drop group headings whose whole group is hidden (no visible tab follows before the
@@ -2511,6 +2512,7 @@ export function Admin() {
         {s === 'projects' && <AdminProjects />}
         {s === 'showcase' && <AdminShowcase />}
         {s === 'reviews' && <AdminReviews />}
+        {s === 'navui' && <AdminNav />}
         {s === 'settings' && <AdminSettings />}
       </>)}
     </SideDash>
@@ -8227,6 +8229,157 @@ function TelemetryConfigCard() {
         <Field label={t('tc.delay', 'Erase delay (h)')} hint={t('tc.delay.h', 'Review window before an erasure request auto-applies.')}><Input type="number" min="0" max="720" value={f.deleteDelayH} onChange={(e) => setF({ ...f, deleteDelayH: e.target.value })} /></Field>
       </div>
     </Card>
+  );
+}
+
+// Icon names an admin may attach to a nav item — must mirror NAV_ICONS in App.jsx
+// (an unknown name harmlessly falls back to the Boxes icon at render time).
+const NAV_ICON_CHOICES = ['Boxes', 'Music2', 'Newspaper', 'Server', 'Rocket', 'Shield', 'Download', 'Sparkles', 'Mail', 'Home', 'BookOpen', 'LayoutGrid', 'Info', 'Bell'];
+// A ready-to-edit starting point mirroring the built-in topbar, so an admin isn't
+// staring at a blank editor. Uses plain labels + icon names (both languages).
+const DEFAULT_NAV_SEED = [
+  { type: 'group', label: 'Apps', labelFr: 'Applications', icon: 'Boxes', children: [
+    { label: 'BetterModsManager', labelFr: 'BetterModsManager', to: '/p/bmm', desc: 'Mod manager', descFr: 'Gestionnaire de mods', icon: 'Boxes' },
+    { label: 'BetterSaveManager', labelFr: 'BetterSaveManager', to: '/p/bsm', desc: 'Save & preset manager', descFr: 'Gestion sauvegardes & presets', icon: 'Music2' },
+    { label: 'BetterInstaller', labelFr: 'BetterInstaller', to: '/p/installer', desc: 'One-click installer', descFr: 'Installateur en un clic', icon: 'Download' },
+  ] },
+  { type: 'link', label: 'Blog', labelFr: 'Blog', to: '/blog', icon: 'Newspaper', children: [] },
+  { type: 'link', label: 'Docs', labelFr: 'Docs', to: '/docs', icon: 'BookOpen', children: [] },
+  { type: 'link', label: 'Server repos', labelFr: 'Dépôts serveur', to: '/repos', icon: 'Server', children: [] },
+  { type: 'link', label: 'Hosting', labelFr: 'Hébergement', to: '/hosting', icon: 'Rocket', children: [] },
+];
+const blankItem = (type) => ({ type, label: '', labelFr: '', to: type === 'link' ? '/' : '', icon: 'Boxes', children: [] });
+const blankChild = () => ({ label: '', labelFr: '', to: '/', desc: '', descFr: '', icon: 'Boxes' });
+// Immutably move element `i` of `arr` by `dir` (±1); returns the same array if out of range.
+const moveIn = (arr, i, dir) => { const j = i + dir; if (j < 0 || j >= arr.length) return arr; const c = arr.slice(); [c[i], c[j]] = [c[j], c[i]]; return c; };
+
+// Admin: build the public topbar — an ordered list of links and hover-dropdown groups,
+// each with an icon + FR/EN label. Saved as one JSON blob (AdminSetting 'nav.config');
+// while disabled or empty the site falls back to its built-in navigation.
+function AdminNav() {
+  const toast = useToast();
+  const { t, lang } = useI18n();
+  const loaded = useAsync(() => api.get('/admin/nav'), []);
+  const [enabled, setEnabled] = useState(false);
+  const [items, setItems] = useState([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const n = loaded.data?.nav;
+    if (!n) return;
+    setEnabled(!!n.enabled);
+    setItems((n.items || []).map((it) => ({ type: it.type === 'group' ? 'group' : 'link', label: it.label || '', labelFr: it.labelFr || '', to: it.to || '', icon: it.icon || 'Boxes', children: (it.children || []).map((c) => ({ label: c.label || '', labelFr: c.labelFr || '', to: c.to || '/', desc: c.desc || '', descFr: c.descFr || '', icon: c.icon || 'Boxes' })) })));
+  }, [loaded.data]);
+
+  const patchItem = (i, patch) => setItems((s) => s.map((it, k) => k === i ? { ...it, ...patch } : it));
+  const moveItem = (i, dir) => setItems((s) => moveIn(s, i, dir));
+  const removeItem = (i) => setItems((s) => s.filter((_, k) => k !== i));
+  const addItem = (type) => setItems((s) => [...s, blankItem(type)]);
+  const patchChild = (i, j, patch) => setItems((s) => s.map((it, k) => k === i ? { ...it, children: it.children.map((c, m) => m === j ? { ...c, ...patch } : c) } : it));
+  const moveChild = (i, j, dir) => setItems((s) => s.map((it, k) => k === i ? { ...it, children: moveIn(it.children, j, dir) } : it));
+  const removeChild = (i, j) => setItems((s) => s.map((it, k) => k === i ? { ...it, children: it.children.filter((_, m) => m !== j) } : it));
+  const addChild = (i) => setItems((s) => s.map((it, k) => k === i ? { ...it, children: [...it.children, blankChild()] } : it));
+
+  // Trim + drop incomplete rows the same way the server would reject them, so what an
+  // admin previews as valid is exactly what gets saved.
+  const buildClean = () => {
+    const out = [];
+    for (const it of items) {
+      if (it.type === 'group') {
+        const children = it.children.map((c) => ({ label: c.label.trim(), labelFr: (c.labelFr || '').trim(), to: c.to.trim(), desc: (c.desc || '').trim(), descFr: (c.descFr || '').trim(), icon: c.icon || '' })).filter((c) => c.label && c.to.startsWith('/'));
+        if (it.label.trim() && children.length) out.push({ type: 'group', label: it.label.trim(), labelFr: (it.labelFr || '').trim(), icon: it.icon || '', children });
+      } else if (it.label.trim() && it.to.trim().startsWith('/')) {
+        out.push({ type: 'link', label: it.label.trim(), labelFr: (it.labelFr || '').trim(), to: it.to.trim(), icon: it.icon || '', children: [] });
+      }
+    }
+    return { enabled, items: out };
+  };
+
+  const save = async () => {
+    setBusy(true);
+    try { await api.put('/admin/nav', buildClean()); toast.success(t('nav.saved', 'Navigation saved.')); loaded.reload?.(); }
+    catch (x) { toast.error(x.data?.detail || x.data?.error || t('acc.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+
+  const IconSelect = ({ value, onChange }) => (
+    <Select className="!w-auto" value={value} onChange={(e) => onChange(e.target.value)} title={t('nav.icon', 'Icon')}>
+      {NAV_ICON_CHOICES.map((n) => <option key={n} value={n}>{n}</option>)}
+    </Select>
+  );
+  const validCount = buildClean().items.length;
+
+  if (loaded.loading) return <Loading />;
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Navigation size={16} className="text-[var(--primary-2)]" /> {t('nav.title', 'Topbar navigation')}</h2>
+        <p className="text-sm text-[var(--muted)]">{t('nav.desc', 'Design the public topbar: an ordered list of links and hover-dropdown groups, each with an icon and a name in both languages. While this is off (or empty) the site uses its built-in navigation.')}</p>
+      </div>
+
+      <Card className="p-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-medium text-sm">{t('nav.enable', 'Use this custom navigation')}</div>
+          <div className="text-xs text-[var(--faint)]">{enabled ? t('nav.enable.on', 'The topbar shows your configured items below.') : t('nav.enable.off', 'The topbar shows the built-in navigation.')}{enabled && validCount === 0 && <span className="text-amber-400"> · {t('nav.enable.empty', 'no valid items yet — the built-in nav still shows')}</span>}</div>
+        </div>
+        <button type="button" onClick={() => setEnabled((v) => !v)} aria-pressed={enabled} className={`w-11 h-6 rounded-full relative shrink-0 transition ${enabled ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${enabled ? 'left-[22px]' : 'left-0.5'}`} /></button>
+      </Card>
+
+      {items.length === 0 ? (
+        <EmptyState icon={Navigation} title={t('nav.none.t', 'No items yet')} sub={t('nav.none.s', 'Add a link or a dropdown group, or start from the built-in navigation.')} />
+      ) : <div className="space-y-3">
+        {items.map((it, i) => (
+          <Card key={i} className="p-4 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge tone={it.type === 'group' ? 'primary' : ''}>{it.type === 'group' ? <><Layers size={11} /> {t('nav.group', 'Dropdown')}</> : <><Link2 size={11} /> {t('nav.link', 'Link')}</>}</Badge>
+              <div className="flex-1" />
+              <button className="nav-icon-btn p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] disabled:opacity-30" disabled={i === 0} onClick={() => moveItem(i, -1)} title={t('nav.up', 'Move up')}><ChevronDown size={14} className="rotate-180" /></button>
+              <button className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] disabled:opacity-30" disabled={i === items.length - 1} onClick={() => moveItem(i, 1)} title={t('nav.down', 'Move down')}><ChevronDown size={14} /></button>
+              <button className="p-1.5 rounded-lg border border-[var(--line)] text-red-400 hover:bg-red-500/10" onClick={() => removeItem(i)} title={t('nav.remove', 'Remove')}><Trash2 size={14} /></button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2.5">
+              <Field label={t('nav.label.en', 'Label (EN)')}><Input value={it.label} onChange={(e) => patchItem(i, { label: e.target.value })} placeholder="Apps" /></Field>
+              <Field label={t('nav.label.fr', 'Label (FR)')}><Input value={it.labelFr} onChange={(e) => patchItem(i, { labelFr: e.target.value })} placeholder="Applications" /></Field>
+            </div>
+            <div className="flex flex-wrap items-end gap-2.5">
+              <Field label={t('nav.icon', 'Icon')}><IconSelect value={it.icon} onChange={(v) => patchItem(i, { icon: v })} /></Field>
+              {it.type === 'link' && <div className="flex-1 min-w-[180px]"><Field label={t('nav.to', 'Links to (internal path)')} hint={t('nav.to.hint', 'Must start with /')}><Input value={it.to} onChange={(e) => patchItem(i, { to: e.target.value })} placeholder="/blog" /></Field></div>}
+            </div>
+
+            {it.type === 'group' && <div className="pt-2 border-t border-[var(--line)] space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('nav.children', 'Dropdown links')}</div>
+              {it.children.length === 0 && <div className="text-xs text-[var(--faint)]">{t('nav.children.none', 'Add at least one link — an empty group is dropped on save.')}</div>}
+              {it.children.map((c, j) => (
+                <div key={j} className="rounded-xl border border-[var(--line)] p-2.5 space-y-2 bg-[var(--surface-2)]/40">
+                  <div className="flex items-center gap-2">
+                    <IconSelect value={c.icon} onChange={(v) => patchChild(i, j, { icon: v })} />
+                    <div className="flex-1" />
+                    <button className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] disabled:opacity-30" disabled={j === 0} onClick={() => moveChild(i, j, -1)} title={t('nav.up', 'Move up')}><ChevronDown size={13} className="rotate-180" /></button>
+                    <button className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] disabled:opacity-30" disabled={j === it.children.length - 1} onClick={() => moveChild(i, j, 1)} title={t('nav.down', 'Move down')}><ChevronDown size={13} /></button>
+                    <button className="p-1.5 rounded-lg border border-[var(--line)] text-red-400 hover:bg-red-500/10" onClick={() => removeChild(i, j)} title={t('nav.remove', 'Remove')}><Trash2 size={13} /></button>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <Input value={c.label} onChange={(e) => patchChild(i, j, { label: e.target.value })} placeholder={t('nav.label.en', 'Label (EN)')} />
+                    <Input value={c.labelFr} onChange={(e) => patchChild(i, j, { labelFr: e.target.value })} placeholder={t('nav.label.fr', 'Label (FR)')} />
+                    <Input value={c.to} onChange={(e) => patchChild(i, j, { to: e.target.value })} placeholder="/p/bmm" />
+                    <Input value={c.desc} onChange={(e) => patchChild(i, j, { desc: e.target.value })} placeholder={t('nav.sub.en', 'Sub-text (EN, optional)')} />
+                    <Input value={c.descFr} onChange={(e) => patchChild(i, j, { descFr: e.target.value })} placeholder={t('nav.sub.fr', 'Sub-text (FR, optional)')} />
+                  </div>
+                </div>
+              ))}
+              <Button size="sm" variant="ghost" onClick={() => addChild(i)}><Plus size={13} /> {t('nav.addchild', 'Add dropdown link')}</Button>
+            </div>}
+          </Card>
+        ))}
+      </div>}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="default" onClick={() => addItem('link')}><Plus size={14} /> {t('nav.addlink', 'Add link')}</Button>
+        <Button size="sm" variant="default" onClick={() => addItem('group')}><Plus size={14} /> {t('nav.addgroup', 'Add dropdown')}</Button>
+        <Button size="sm" variant="ghost" onClick={() => setItems(DEFAULT_NAV_SEED.map((x) => ({ ...x, children: (x.children || []).map((c) => ({ ...c })) })))}><Layers size={14} /> {t('nav.seed', 'Start from built-in')}</Button>
+        <div className="flex-1" />
+        <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> {t('nav.save', 'Save navigation')}</>}</Button>
+      </div>
+    </div>
   );
 }
 

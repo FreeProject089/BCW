@@ -724,4 +724,53 @@ export default async function miscRoutes(app) {
     await p.adminSetting.upsert({ where: { key: req.params.key }, create: { key: req.params.key, value }, update: { value } });
     return { ok: true };
   });
+
+  // ── Admin-configurable topbar navigation ──────────────────────────────────────
+  // The whole nav is an optional JSON blob in AdminSetting['nav.config'] — no schema
+  // change. When disabled or empty the frontend falls back to its hardcoded NAV, so
+  // this is purely additive. `to` is constrained to an internal path (leading "/") so
+  // a configured link can never become an open-redirect or a javascript: URL. Labels
+  // render as React text (no XSS) but are length-capped anyway.
+  const navChild = z.object({
+    label: z.string().trim().min(1).max(40),
+    labelFr: z.string().trim().max(40).optional().default(''),
+    to: z.string().trim().min(1).max(200).refine((v) => v.startsWith('/'), 'must be an internal path'),
+    desc: z.string().trim().max(120).optional().default(''),
+    descFr: z.string().trim().max(120).optional().default(''),
+    icon: z.string().trim().max(30).optional().default(''),
+  });
+  const navItem = z.object({
+    type: z.enum(['link', 'group']),
+    label: z.string().trim().min(1).max(40),
+    labelFr: z.string().trim().max(40).optional().default(''),
+    to: z.string().trim().max(200).optional().default(''),
+    icon: z.string().trim().max(30).optional().default(''),
+    children: z.array(navChild).max(12).optional().default([]),
+  }).refine((it) => it.type === 'group' || (it.to && it.to.startsWith('/')), { message: 'a link needs an internal "to"' })
+    .refine((it) => it.type === 'link' || it.children.length > 0, { message: 'a group needs at least one link' });
+  const navSchema = z.object({ enabled: z.boolean(), items: z.array(navItem).max(16) });
+
+  // Admin editor reads the RAW config (even when disabled) so it can be edited.
+  app.get('/admin/nav', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'nav.config' } });
+    return { nav: row?.value || { enabled: false, items: [] } };
+  });
+  app.put('/admin/nav', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const parsed = navSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', detail: parsed.error.issues?.[0]?.message });
+    const p = await db();
+    await p.adminSetting.upsert({ where: { key: 'nav.config' }, create: { key: 'nav.config', value: parsed.data }, update: { value: parsed.data } });
+    await logAudit(p, req.user.uid, 'nav.config', `${parsed.data.items.length} items · ${parsed.data.enabled ? 'enabled' : 'disabled'}`, clientIp(req));
+    return { ok: true };
+  });
+  // Public: the effective nav for the topbar. Returns null unless it's enabled AND has
+  // items, so the client cleanly falls back to its built-in NAV.
+  app.get('/nav', async () => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'nav.config' } });
+    const cfg = row?.value;
+    const usable = cfg && cfg.enabled && Array.isArray(cfg.items) && cfg.items.length > 0;
+    return { nav: usable ? { items: cfg.items } : null };
+  });
 }

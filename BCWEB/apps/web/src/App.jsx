@@ -39,12 +39,97 @@ const NAV = [
   { to: '/hosting', k: 'nav.hosting', icon: Rocket },
 ];
 
-// Real app icon when /icons/<app>.png exists, otherwise the lucide fallback.
+// Icons an admin can pick for a configured nav item — a curated, safe whitelist
+// (only these render; an unknown name falls back to Boxes). Keys are the values
+// stored in the nav config; keep them stable.
+const NAV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell };
+export const NAV_ICON_NAMES = Object.keys(NAV_ICONS);
+
+// Real app icon when /icons/<app>.png exists, otherwise a lucide component. `item.icon`
+// may be a component (hardcoded NAV) or a string name (admin-configured nav → mapped).
 function NavIcon({ item, size = 15 }) {
   const [ok, setOk] = useState(!!item.img);
   if (item.img && ok) return <img src={item.img} alt="" width={size + 3} height={size + 3} className="rounded-[4px] object-contain" onError={() => setOk(false)} />;
-  const I = item.icon;
+  const I = typeof item.icon === 'string' ? (NAV_ICONS[item.icon] || Boxes) : (item.icon || Boxes);
   return <I size={size} />;
+}
+
+// A nav item's visible text. Hardcoded items carry a translation key `k`; admin-configured
+// items carry raw label / labelFr (the visitor's language wins, falling back to label).
+function navLabel(item, t, lang) {
+  if (item.k) return t(item.k);
+  return (lang === 'fr' && item.labelFr) ? item.labelFr : (item.label || '');
+}
+function navSubLabel(item, lang) {
+  return (lang === 'fr' && item.descFr) ? item.descFr : (item.desc || '');
+}
+
+// Segmented "pill" nav link (desktop) + hamburger-sheet row. Module-scope so the
+// dropdown/accordion components below can share the exact same styling.
+const pill = ({ isActive }) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition ${isActive ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
+const sheet = ({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm ${isActive ? 'bg-[var(--surface-2)] text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]'}`;
+
+// Desktop dropdown pill for a configured "group" nav item — Twenty-style: opens on
+// hover (with a small close delay so the pointer can travel to the panel) and on click,
+// closes on outside-click / Esc / route change. Keyboard-focusable + aria-expanded.
+function NavDropdown({ item, t, lang }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const closeT = useRef(null);
+  const loc = useLocation();
+  const children = item.children || [];
+  const active = children.some((c) => loc.pathname === c.to || loc.pathname.startsWith(c.to + '/'));
+  useEffect(() => { setOpen(false); }, [loc.pathname]);
+  useEffect(() => {
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onEsc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onEsc);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onEsc); };
+  }, []);
+  const enter = () => { clearTimeout(closeT.current); setOpen(true); };
+  const leave = () => { clearTimeout(closeT.current); closeT.current = setTimeout(() => setOpen(false), 140); };
+  return (
+    <div ref={ref} className="relative shrink-0" onMouseEnter={enter} onMouseLeave={leave}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="true" aria-expanded={open} className={pill({ isActive: active }) + ' shrink-0'}>
+        <NavIcon item={item} size={16} /><span className="nav-lbl">{navLabel(item, t, lang)}</span><ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1.5 z-50 min-w-[248px] p-1.5 rounded-2xl border border-[var(--line)] topbar anim-fade" style={{ boxShadow: '0 14px 44px -12px rgba(0,0,0,0.42)' }}>
+          {children.map((c, i) => (
+            <NavLink key={c.to + i} to={c.to} onClick={() => setOpen(false)} className={({ isActive }) => `flex items-start gap-2.5 p-2 rounded-xl transition ${isActive ? 'bg-[var(--surface-2)]' : 'hover:bg-[var(--surface-2)]'}`}>
+              <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><NavIcon item={c} size={15} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-[var(--text)] truncate">{navLabel(c, t, lang)}</span>
+                {navSubLabel(c, lang) && <span className="block text-xs text-[var(--faint)] truncate">{navSubLabel(c, lang)}</span>}
+              </span>
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Mobile hamburger-sheet accordion for a configured "group" — tap the header to
+// expand its links inline (no floating panel on a touch surface).
+function NavSheetGroup({ item, t, lang, onNavigate }) {
+  const [open, setOpen] = useState(false);
+  const children = item.children || [];
+  return (
+    <div className="col-span-2">
+      <button type="button" onClick={() => setOpen((o) => !o)} className={sheet({ isActive: false }) + ' w-full text-left'} aria-expanded={open}>
+        <NavIcon item={item} size={16} /><span className="flex-1">{navLabel(item, t, lang)}</span><ChevronDown size={15} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="pl-3 mt-0.5 space-y-0.5 border-l border-[var(--line)] ml-3">
+          {children.map((c, i) => (
+            <NavLink key={c.to + i} to={c.to} className={sheet} onClick={onNavigate}><NavIcon item={c} size={16} />{navLabel(c, t, lang)}</NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function timeAgo(d, justnow) {
@@ -161,17 +246,24 @@ function Nav() {
   // to the topbar (task: Project Announcement pages / visibility system).
   const [projVisible, setProjVisible] = useState(null); // { bmm: true, bsm: false, ... } | null (not loaded yet -> show all)
   const [pinnedShowcase, setPinnedShowcase] = useState([]);
+  const [navCfg, setNavCfg] = useState(null); // admin-configured nav (null -> use hardcoded NAV)
   useEffect(() => {
     api.get('/projects').then((r) => setProjVisible(r.visible || null)).catch(() => {});
     api.get('/showcase').then((r) => setPinnedShowcase((r.projects || []).filter((p) => p.pinTopbar))).catch(() => {});
+    api.get('/nav').then((r) => setNavCfg(r.nav || null)).catch(() => {});
   }, []);
-  const visibleNav = NAV.filter((n) => {
-    const key = n.to.replace('/p/', '');
-    return !projVisible || projVisible[key] !== false;
-  });
-  // Segmented "pill" nav links (desktop).
-  const pill = ({ isActive }) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition ${isActive ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
-  const sheet = ({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm ${isActive ? 'bg-[var(--surface-2)] text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]'}`;
+  // Per-project visibility still applies to any nav link that points at a project page,
+  // whether it comes from the hardcoded NAV or an admin's custom config.
+  const gateTo = (to) => { const m = /^\/p\/([^/]+)/.exec(to || ''); return !m || !projVisible || projVisible[m[1]] !== false; };
+  // Effective top-level items: the admin config when present, else the built-in NAV
+  // (adapted to the same shape). Groups drop children the visitor can't see, and a
+  // group with no visible children (or a hidden link) disappears entirely.
+  const rawItems = (navCfg?.items?.length)
+    ? navCfg.items
+    : NAV.map((n) => ({ type: 'link', to: n.to, k: n.k, icon: n.icon, img: n.img }));
+  const effItems = rawItems
+    .map((it) => it.type === 'group' ? { ...it, children: (it.children || []).filter((c) => gateTo(c.to)) } : it)
+    .filter((it) => it.type === 'group' ? it.children.length > 0 : gateTo(it.to));
   // Now that the segmented nav scrolls horizontally when it doesn't all fit, keep
   // the current page's pill actually in view instead of possibly scrolled off.
   // scrollIntoView() was unreliable here (this row sits in a `position:sticky`
@@ -213,7 +305,7 @@ function Nav() {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [lang, visibleNav.length, pinnedShowcase.length, !!user, (user && (user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN'))]);
+  }, [lang, effItems.length, pinnedShowcase.length, !!user, (user && (user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN'))]);
   return (
     <header className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       <div className="max-w-7xl mx-auto rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
@@ -233,7 +325,9 @@ function Nav() {
             stretching the whole width. */}
         <div ref={segNavRef} className={`seg-nav ${compact ? 'is-compact' : ''} hidden lg:flex flex-1 min-w-0 overflow-x-auto no-scrollbar`}>
           <nav className="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] shrink-0">
-            {visibleNav.map((n) => <NavLink key={n.to} to={n.to} title={t(n.k)} aria-label={t(n.k)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={n} size={16} /><span className="nav-lbl">{t(n.k)}</span></NavLink>)}
+            {effItems.map((it, i) => it.type === 'group'
+              ? <NavDropdown key={'g' + i} item={it} t={t} lang={lang} />
+              : <NavLink key={it.to} to={it.to} title={navLabel(it, t, lang)} aria-label={navLabel(it, t, lang)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={it} size={16} /><span className="nav-lbl">{navLabel(it, t, lang)}</span></NavLink>)}
             {pinnedShowcase.map((p) => (
               <NavLink key={p.slug} to={`/project/${p.slug}`} title={p.name} aria-label={p.name} className={(s) => pill(s) + ' shrink-0'}>
                 <ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /><span className="nav-lbl">{p.isAnnouncing ? p.announceTitle || p.name : p.name}</span>
@@ -277,7 +371,9 @@ function Nav() {
       {open && (
         <div className="lg:hidden mt-2 mx-2 sm:mx-3 rounded-2xl border border-[var(--line)] p-2 topbar anim-fade" style={{ boxShadow: '0 10px 34px -14px rgba(0,0,0,0.30)' }}>
           <div className="grid grid-cols-2 gap-1">
-            {visibleNav.map((n) => <NavLink key={n.to} to={n.to} className={sheet} onClick={() => setOpen(false)}><NavIcon item={n} size={16} />{t(n.k)}</NavLink>)}
+            {effItems.map((it, i) => it.type === 'group'
+              ? <NavSheetGroup key={'g' + i} item={it} t={t} lang={lang} onNavigate={() => setOpen(false)} />
+              : <NavLink key={it.to} to={it.to} className={sheet} onClick={() => setOpen(false)}><NavIcon item={it} size={16} />{navLabel(it, t, lang)}</NavLink>)}
             {pinnedShowcase.map((p) => <NavLink key={p.slug} to={`/project/${p.slug}`} className={sheet} onClick={() => setOpen(false)}><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} />{p.isAnnouncing ? p.announceTitle || p.name : p.name}</NavLink>)}
             <NavLink to="/projects" className={sheet} onClick={() => setOpen(false)}><Boxes size={16} /> {t('nav.projects')}</NavLink>
             <NavLink to="/contact" className={sheet} onClick={() => setOpen(false)}><Mail size={16} /> Contact</NavLink>

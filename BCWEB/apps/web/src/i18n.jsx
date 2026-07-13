@@ -1299,7 +1299,19 @@ const DICT = {
     'adm.tab.repos': 'Dépôts serveur', 'adm.tab.hosting': 'Hébergement gratuit', 'adm.tab.promo': 'Codes promo', 'adm.tab.storage': 'Stockage',
     'adm.tab.catalogs': 'Catalogues', 'adm.tab.projects': 'Projets', 'adm.tab.showcase': 'Autres projets', 'adm.tab.announcements': 'Annonces',
     'adm.tab.serverperf': 'Perf serveur', 'adm.tab.serveradv': 'Serveur avancé', 'adm.tab.bot': 'Bot Discord', 'adm.tab.analytics': 'Analytique',
-    'adm.tab.settings': 'Réglages',
+    'adm.tab.settings': 'Réglages', 'adm.tab.navui': 'Navigation du menu',
+
+    // ── Admin : navigation configurable du menu ──
+    'nav.title': 'Navigation du menu', 'nav.desc': 'Conçois le menu public : une liste ordonnée de liens et de groupes déroulants, chacun avec une icône et un nom dans les deux langues. Tant que c’est désactivé (ou vide), le site utilise sa navigation par défaut.',
+    'nav.enable': 'Utiliser cette navigation personnalisée', 'nav.enable.on': 'Le menu affiche les éléments configurés ci-dessous.', 'nav.enable.off': 'Le menu affiche la navigation par défaut.', 'nav.enable.empty': 'aucun élément valide — la navigation par défaut reste affichée',
+    'nav.none.t': 'Aucun élément', 'nav.none.s': 'Ajoute un lien ou un groupe déroulant, ou pars de la navigation par défaut.',
+    'nav.group': 'Déroulant', 'nav.link': 'Lien', 'nav.up': 'Monter', 'nav.down': 'Descendre', 'nav.remove': 'Retirer',
+    'nav.label.en': 'Libellé (EN)', 'nav.label.fr': 'Libellé (FR)', 'nav.icon': 'Icône',
+    'nav.to': 'Lien vers (chemin interne)', 'nav.to.hint': 'Doit commencer par /',
+    'nav.children': 'Liens du déroulant', 'nav.children.none': 'Ajoute au moins un lien — un groupe vide est retiré à l’enregistrement.',
+    'nav.sub.en': 'Sous-texte (EN, optionnel)', 'nav.sub.fr': 'Sous-texte (FR, optionnel)',
+    'nav.addchild': 'Ajouter un lien au déroulant', 'nav.addlink': 'Ajouter un lien', 'nav.addgroup': 'Ajouter un déroulant', 'nav.seed': 'Partir de la navigation par défaut',
+    'nav.save': 'Enregistrer la navigation', 'nav.saved': 'Navigation enregistrée.',
 
     // ── Admin : file de modération ──
     'mod.approved': 'Approuvé « {name} ».', 'mod.failed': 'Échec.',
