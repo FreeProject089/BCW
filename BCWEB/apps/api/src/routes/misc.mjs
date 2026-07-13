@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, slugify, logAudit, notify, clearAccountLockCache } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalAuth, slugify, logAudit, notify, clearAccountLockCache, clearUserCache, CAPABILITIES } from '../lib/lib.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
@@ -390,7 +390,7 @@ export default async function miscRoutes(app) {
 
   // ── Admin: user search + detail ──
   // Search by exact user id, exact creator id, or a displayName/email substring.
-  app.get('/admin/users', { preHandler: requireRole('MOD', 'ADMIN') }, async (req) => {
+  app.get('/admin/users', { preHandler: requireCap('manage_users', 'MOD') }, async (req) => {
     const p = await db();
     const q = String(req.query?.q || '').trim();
     const take = Math.min(Number(req.query?.take) || 30, 100);
@@ -413,7 +413,7 @@ export default async function miscRoutes(app) {
     const rows = await p.user.findMany({
       where, take: take + 1, skip, orderBy: { createdAt: 'desc' },
       select: { id: true, displayName: true, email: true, role: true, avatar: true, createdAt: true,
-        totpEnabled: true, canControlServer: true, canViewTelemetry: true,
+        totpEnabled: true, canControlServer: true, canViewTelemetry: true, permissions: true,
         status: true, moderationUntil: true, moderationReason: true,
         creatorLinks: { select: { creatorId: true } }, discordLinks: { select: { discordId: true, username: true } },
         _count: { select: { serverRepos: true, items: true } } },
@@ -426,7 +426,7 @@ export default async function miscRoutes(app) {
       hasMore,
       users: rows.slice(0, take).map((u) => ({
         id: u.id, bcId: userBcId(u.id), displayName: u.displayName, email: u.email, role: u.role, avatar: u.avatar, createdAt: u.createdAt,
-        totpEnabled: u.totpEnabled, canControlServer: u.canControlServer, canViewTelemetry: u.canViewTelemetry,
+        totpEnabled: u.totpEnabled, canControlServer: u.canControlServer, canViewTelemetry: u.canViewTelemetry, permissions: u.permissions || [],
         status: effStatus(u), moderationUntil: u.moderationUntil, moderationReason: u.moderationReason,
         creatorIds: u.creatorLinks.map((c) => c.creatorId),
         discord: u.discordLinks[0] ? { id: u.discordLinks[0].discordId, username: u.discordLinks[0].username } : null,
@@ -435,10 +435,10 @@ export default async function miscRoutes(app) {
     };
   });
 
-  app.get('/admin/users/:id', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+  app.get('/admin/users/:id', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
     const p = await db();
     const u = await p.user.findUnique({ where: { id: req.params.id }, select: {
-      id: true, displayName: true, email: true, role: true, avatar: true, bio: true, createdAt: true, stripeCustomerId: true,
+      id: true, displayName: true, email: true, role: true, permissions: true, avatar: true, bio: true, createdAt: true, stripeCustomerId: true,
       status: true, moderationUntil: true, moderationReason: true, moderatedAt: true,
       serverRepos: { select: { id: true, name: true, hosted: true, status: true, listed: true, verified: true }, orderBy: { createdAt: 'desc' } },
       items: { select: { id: true, name: true, slug: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' } },
@@ -485,8 +485,26 @@ export default async function miscRoutes(app) {
     const target = await p.user.findUnique({ where: { id: req.params.id } });
     if (!target) return reply.code(404).send({ error: 'not_found' });
     const user = await p.user.update({ where: { id: req.params.id }, data: { role: b.data.role }, select: { id: true, displayName: true, email: true, role: true } });
+    clearUserCache(target.id); // role change takes effect within ~15s, no re-login needed
     await logAudit(p, req.user.uid, 'user.role_change', `${target.displayName} (${target.email}): ${target.role} -> ${b.data.role}`, clientIp(req));
     return { user };
+  });
+
+  // ── SUPERADMIN? no — ADMIN can grant fine-grained capabilities to any user (layered on
+  // top of their role). Only real ADMIN/SUPERADMIN can grant (a granted user can't escalate
+  // itself). Cleared live so the grantee sees their new access without re-login. ──
+  app.put('/admin/users/:id/permissions', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({ permissions: z.array(z.enum(CAPABILITIES)).max(CAPABILITIES.length) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (req.params.id === req.user.uid) return reply.code(400).send({ error: 'cannot_change_own_permissions' });
+    const p = await db();
+    const target = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, displayName: true, email: true } });
+    if (!target) return reply.code(404).send({ error: 'not_found' });
+    const perms = [...new Set(b.data.permissions)];
+    await p.user.update({ where: { id: req.params.id }, data: { permissions: perms } });
+    clearUserCache(target.id);
+    await logAudit(p, req.user.uid, 'user.permissions', `${target.displayName} (${target.email}): [${perms.join(', ')}]`, clientIp(req));
+    return { ok: true, permissions: perms };
   });
 
   // ── Admin: suspend / ban / reactivate an account ──────────────────────────────
@@ -496,7 +514,7 @@ export default async function miscRoutes(app) {
   // ~15s (lib.mjs accountLock cache) and can't sign back in until the lock lifts —
   // permanent locks point the user at support to appeal. Staff can't be moderated here,
   // and you can't moderate yourself.
-  app.post('/admin/users/:id/moderate', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+  app.post('/admin/users/:id/moderate', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
     const b = z.object({
       action: z.enum(['suspend', 'ban', 'reactivate']),
       durationHours: z.number().int().positive().max(24 * 3650).optional(), // absent = permanent

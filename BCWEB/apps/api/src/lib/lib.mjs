@@ -193,6 +193,37 @@ const ADMIN_TIER_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
 const MOD_TTL = 15_000;
 const _modCache = new Map(); // uid -> { at, state }
 export function clearAccountLockCache(uid) { if (uid) _modCache.delete(uid); else _modCache.clear(); }
+
+// Fine-grained admin capabilities that can be granted to a user on top of their role.
+// Each maps to an admin surface enforced by requireCap(...) on the server AND gates the
+// matching admin tab client-side. Extend this list as more areas are capability-gated.
+export const CAPABILITIES = ['manage_users', 'manage_repos', 'manage_analytics', 'manage_newsletter', 'manage_faq'];
+// Default capabilities a MOD holds without explicit grants.
+const MOD_DEFAULT_CAPS = ['manage_users'];
+
+// Live role + permissions, short-TTL cached so an admin's role/permission change takes
+// effect WITHOUT the target having to log out and back in (the JWT still carries the OLD
+// role; we look up the current one here). Cache is cleared on any role/permission change.
+const _userCache = new Map(); // uid -> { at, role, perms }
+export function clearUserCache(uid) { if (uid) _userCache.delete(uid); else _userCache.clear(); }
+export async function currentUser(uid) {
+  if (!uid) return { role: null, perms: [] };
+  const hit = _userCache.get(uid);
+  if (hit && Date.now() - hit.at < MOD_TTL) return hit;
+  let role = null, perms = [];
+  try { const p = await db(); const u = await p.user.findUnique({ where: { id: uid }, select: { role: true, permissions: true } }); if (u) { role = u.role; perms = u.permissions || []; } } catch { /* keep nulls */ }
+  const rec = { at: Date.now(), role, perms };
+  _userCache.set(uid, rec);
+  return rec;
+}
+// Does `req.user` (with a live role + perms) hold a capability? ADMIN/SUPERADMIN → all;
+// MOD → its defaults + explicit grants; anyone else → only explicit grants.
+export function hasCap(user, cap) {
+  if (!user) return false;
+  if (user.role === 'ADMIN' || user.role === 'SUPERADMIN') return true;
+  if (user.role === 'MOD' && MOD_DEFAULT_CAPS.includes(cap)) return true;
+  return (user.perms || []).includes(cap);
+}
 export async function accountLock(uid) {
   if (!uid) return null;
   const hit = _modCache.get(uid);
@@ -213,19 +244,47 @@ export async function accountLock(uid) {
 // banned" screen (reason + countdown, or a support link when permanent).
 const lockBody = (lock) => ({ error: `account_${lock.status}`, status: lock.status, reason: lock.reason || null, until: lock.until ? lock.until.toISOString() : null, permanent: !lock.until });
 
+// Require 2FA once we know the caller is on the admin surface (admin-tier role OR any
+// granted capability) — a helper shared by requireRole/requireCap.
+async function ensure2fa(uid, reply) {
+  const p = await db();
+  const u = await p.user.findUnique({ where: { id: uid }, select: { totpEnabled: true } });
+  if (!u?.totpEnabled) { reply.code(403).send({ error: '2fa_required' }); return false; }
+  return true;
+}
 export function requireRole(...roles) {
   return async (req, reply) => {
     try {
       const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
       const lock = await accountLock(claims.uid);
       if (lock) return reply.code(403).send(lockBody(lock));
-      if (roles.length && claims.role !== 'SUPERADMIN' && !roles.includes(claims.role)) return reply.code(403).send({ error: 'forbidden' });
-      if (roles.length && ADMIN_TIER_ROLES.includes(claims.role)) {
-        const p = await db();
-        const u = await p.user.findUnique({ where: { id: claims.uid }, select: { totpEnabled: true } });
-        if (!u?.totpEnabled) return reply.code(403).send({ error: '2fa_required' });
-      }
-      req.user = claims; // { uid, role }
+      // Use the LIVE role (not the possibly-stale JWT), so role changes propagate without
+      // requiring the user to re-login.
+      const cur = await currentUser(claims.uid);
+      const role = cur.role || claims.role;
+      if (roles.length && role !== 'SUPERADMIN' && !roles.includes(role)) return reply.code(403).send({ error: 'forbidden' });
+      if (roles.length && ADMIN_TIER_ROLES.includes(role)) { if (!(await ensure2fa(claims.uid, reply))) return; }
+      req.user = { ...claims, role, perms: cur.perms }; // { uid, role (live), perms }
+    } catch { return reply.code(401).send({ error: 'unauthenticated' }); }
+  };
+}
+// Require a specific capability. Allowed if the (live) role is ADMIN/SUPERADMIN, or one of
+// `alsoRoles` (e.g. 'MOD' for moderation routes), or the user has `cap` granted. A denial
+// returns { error:'missing_permission', capability } so the client can say exactly what's
+// missing. 2FA is enforced for any admin-surface access.
+export function requireCap(cap, ...alsoRoles) {
+  return async (req, reply) => {
+    try {
+      const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
+      const lock = await accountLock(claims.uid);
+      if (lock) return reply.code(403).send(lockBody(lock));
+      const cur = await currentUser(claims.uid);
+      const role = cur.role || claims.role;
+      const user = { ...claims, role, perms: cur.perms };
+      const allowed = hasCap(user, cap) || alsoRoles.includes(role);
+      if (!allowed) return reply.code(403).send({ error: 'missing_permission', capability: cap });
+      if (!(await ensure2fa(claims.uid, reply))) return;
+      req.user = user;
     } catch { return reply.code(401).send({ error: 'unauthenticated' }); }
   };
 }

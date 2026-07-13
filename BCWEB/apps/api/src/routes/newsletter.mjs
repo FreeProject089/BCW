@@ -6,7 +6,7 @@
 //     publish — so a draft/typo can't blast every subscriber.
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole } from '../lib/lib.mjs';
+import { db, requireRole, requireCap } from '../lib/lib.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
 import { BRAND_LOGO_DATA_URI } from '../lib/brand-logo-data.mjs';
 
@@ -147,7 +147,7 @@ export default async function newsletterRoutes(app) {
   });
 
   // ── Admin: list + counts ────────────────────────────────────────────────────
-  app.get('/admin/newsletter', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/newsletter', { preHandler: requireCap('manage_newsletter') }, async () => {
     const p = await db();
     const [subscribers, active, pending, unsubscribed, activeEn, activeFr] = await Promise.all([
       p.newsletterSubscriber.findMany({ orderBy: { createdAt: 'desc' }, take: 500, select: { id: true, email: true, status: true, locale: true, createdAt: true, confirmedAt: true } }),
@@ -162,7 +162,7 @@ export default async function newsletterRoutes(app) {
 
   // ── Admin: add a subscriber directly (bypasses double opt-in) ───────────────
   // For manually importing an address the admin already has consent for.
-  app.post('/admin/newsletter/add', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/newsletter/add', { preHandler: requireCap('manage_newsletter') }, async (req, reply) => {
     const b = z.object({ email: z.string().email().max(160), locale: z.enum(['en', 'fr']).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_email' });
     const email = b.data.email.trim().toLowerCase();
@@ -176,7 +176,7 @@ export default async function newsletterRoutes(app) {
   });
 
   // ── Admin: remove a subscriber (hard delete) ────────────────────────────────
-  app.delete('/admin/newsletter/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.delete('/admin/newsletter/:id', { preHandler: requireCap('manage_newsletter') }, async (req, reply) => {
     const p = await db();
     await p.newsletterSubscriber.delete({ where: { id: req.params.id } }).catch(() => {});
     return { ok: true };
@@ -187,7 +187,7 @@ export default async function newsletterRoutes(app) {
   // accident. Send to every ACTIVE subscriber, or to a chosen subset (`emails`).
   // Every message carries a one-click unsubscribe footer AND a List-Unsubscribe
   // header (native "Unsubscribe" button in Gmail/Outlook).
-  app.post('/admin/newsletter/broadcast', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/newsletter/broadcast', { preHandler: requireCap('manage_newsletter') }, async (req, reply) => {
     const b = z.object({
       subject: z.string().min(1).max(200), title: z.string().min(1).max(200),
       body: z.string().min(1).max(5000), url: z.string().url().max(500).optional(),
@@ -206,7 +206,7 @@ export default async function newsletterRoutes(app) {
 
   // ── Admin: send a TEST of the composed email to the admin's own inbox ────────
   // So the newsletter can be verified end-to-end even with zero active subscribers.
-  app.post('/admin/newsletter/test', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/newsletter/test', { preHandler: requireCap('manage_newsletter') }, async (req, reply) => {
     const b = z.object({
       subject: z.string().min(1).max(200), title: z.string().min(1).max(200),
       body: z.string().min(1).max(5000), url: z.string().url().max(500).optional(),

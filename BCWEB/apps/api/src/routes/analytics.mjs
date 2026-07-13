@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
-import { db, requireRole } from '../lib/lib.mjs';
+import { db, requireRole, requireCap } from '../lib/lib.mjs';
 
 // Real client IP as seen by our trusted proxy (Caddy appends it last on X-Forwarded-For).
 function clientIp(req) {
@@ -214,7 +214,7 @@ export default async function analyticsRoutes(app) {
 
   // Rich admin overview (telemetry-grade): totals, unique visitors, live, per-day
   // series (views + visitors), top pages/referrers, device & browser breakdowns.
-  app.get('/admin/analytics', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/analytics', { preHandler: requireCap('manage_analytics') }, async (req) => {
     const p = await db();
     // `hours` (1..168) → hourly buckets over the last N hours (zoom-in view);
     // otherwise `days` (1..365) → daily buckets. Granularity is echoed back.
@@ -321,7 +321,7 @@ export default async function analyticsRoutes(app) {
   // An optional `?path=` filter (case-insensitive contains) narrows everything to a page.
   // Percentiles computed in Postgres (percentile_cont); dimension column is whitelisted and
   // since/path are bound params ($1/$2) → no SQL injection.
-  app.get('/admin/analytics/vitals', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/analytics/vitals', { preHandler: requireCap('manage_analytics') }, async (req) => {
     const p = await db();
     const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
     const gran = hours ? 'hour' : 'day';
@@ -372,7 +372,7 @@ export default async function analyticsRoutes(app) {
   // interactions (click/copy/input/submit/modal/nav), newest first, filterable by path
   // (contains) and kind. Interaction rows are enriched with the visitor's browser/OS/
   // country from their latest pageview (those columns live on AnalyticsEvent).
-  app.get('/admin/analytics/events', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/analytics/events', { preHandler: requireCap('manage_analytics') }, async (req) => {
     const p = await db();
     const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
     const days = Math.min(Math.max(Number(req.query?.days) || 7, 1), 365);
@@ -411,7 +411,7 @@ export default async function analyticsRoutes(app) {
 
   // Client errors, grouped by message: occurrences, distinct sessions (visitors), first/
   // last seen, and a latest sample (path + stack + device/browser/OS/country) for detail.
-  app.get('/admin/analytics/errors', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/analytics/errors', { preHandler: requireCap('manage_analytics') }, async (req) => {
     const p = await db();
     const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
     const days = Math.min(Math.max(Number(req.query?.days) || 7, 1), 365);
@@ -452,7 +452,7 @@ export default async function analyticsRoutes(app) {
     active: z.boolean().optional(),
   });
   // List goals with their completions + unique-visitor conversion rate over the window.
-  app.get('/admin/analytics/goals', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/analytics/goals', { preHandler: requireCap('manage_analytics') }, async (req) => {
     const p = await db();
     const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
     const days = Math.min(Math.max(Number(req.query?.days) || 30, 1), 365);
@@ -483,14 +483,14 @@ export default async function analyticsRoutes(app) {
     }));
     return { goals: withStats, totalVisitors };
   });
-  app.post('/admin/analytics/goals', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/analytics/goals', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
     const b = goalSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const g = await p.analyticsGoal.create({ data: { name: b.data.name, kind: b.data.kind, path: b.data.path || null, label: b.data.label || null, active: b.data.active ?? true } });
     return { ok: true, goal: g };
   });
-  app.patch('/admin/analytics/goals/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/admin/analytics/goals/:id', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
     const b = goalSchema.partial().safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -502,7 +502,7 @@ export default async function analyticsRoutes(app) {
     if (!g) return reply.code(404).send({ error: 'not_found' });
     return { ok: true, goal: g };
   });
-  app.delete('/admin/analytics/goals/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.delete('/admin/analytics/goals/:id', { preHandler: requireCap('manage_analytics') }, async (req) => {
     const p = await db();
     await p.analyticsGoal.delete({ where: { id: req.params.id } }).catch(() => {});
     return { ok: true };
@@ -512,7 +512,7 @@ export default async function analyticsRoutes(app) {
   // and split into sessions on a 30-min inactivity gap; each session carries its ordered
   // page timeline, entry/exit, duration, device/geo, and a `live` flag (active < 5 min
   // ago). Built from the pageview stream we already collect — no extra recording needed.
-  app.get('/admin/analytics/sessions', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/analytics/sessions', { preHandler: requireCap('manage_analytics') }, async (req) => {
     const p = await db();
     const limit = Math.min(Math.max(Number(req.query?.limit) || 40, 1), 100);
     // Pull the most recent pageviews AND in-page interactions, then sessionize
@@ -573,7 +573,7 @@ export default async function analyticsRoutes(app) {
   // count, previous-equal-window count (→ % change vs the period before, e.g. "vs
   // yesterday"), and average coordinates (for region bubbles). Totals let the client show
   // each area's share of all located traffic. Powers Geography→Map and Sessions→Globe.
-  app.get('/admin/analytics/geo', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/analytics/geo', { preHandler: requireCap('manage_analytics') }, async (req) => {
     const p = await db();
     const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
     const days = Math.min(Math.max(Number(req.query?.days) || 30, 1), 365);

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
-import { db, requireRole, optionalAuth, notify, isValidRepoManifest, accountEntrySchema } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema } from '../lib/lib.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities } from '../lib/repofingerprint.mjs';
 import { capacityStatus, capacityFactors, priceCents, termTotalCents, TERM_MONTHS, stripe, settings, ensureCustomer } from './hosting.mjs';
@@ -103,7 +103,7 @@ export async function recheckRepos() {
 
 export default async function repoRoutes(app) {
   // Admin: re-check every listed repo now (returns counts).
-  app.post('/admin/repos/check-all', { preHandler: requireRole('MOD', 'ADMIN') }, async () => await recheckRepos());
+  app.post('/admin/repos/check-all', { preHandler: requireCap('manage_repos', 'MOD') }, async () => await recheckRepos());
 
   // Public list: only listed + verified repos. Featured (paid) ones float to the top.
   // optionalAuth so a logged-in caller also gets `favorited` per repo (and can use
@@ -629,7 +629,7 @@ export default async function repoRoutes(app) {
   // ── Admin / mod ──
   // Admin: host a repo directly, no payment (free host). Optionally for another user.
   // mode 'multi' creates a shared storage pool (HostingGroup) + an initial repo.
-  app.post('/admin/repos/host', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/repos/host', { preHandler: requireCap('manage_repos') }, async (req, reply) => {
     const b = z.object({
       name: z.string().min(2).max(60),
       ownerEmail: z.string().email().optional(),
@@ -678,7 +678,7 @@ export default async function repoRoutes(app) {
     return reply.code(201).send({ repo: ser(repo) });
   });
 
-  app.get('/admin/repos', { preHandler: requireRole('MOD', 'ADMIN') }, async () => {
+  app.get('/admin/repos', { preHandler: requireCap('manage_repos', 'MOD') }, async () => {
     const p = await db();
     const repos = await p.serverRepo.findMany({
       orderBy: [{ pendingReview: 'desc' }, { createdAt: 'desc' }],
@@ -698,7 +698,7 @@ export default async function repoRoutes(app) {
   // creator ids, linked Discord ids, Ko-fi donor status). Recomputes each repo's
   // fingerprint live and matches — repo counts are modest, so the scan is fine
   // and always agrees with whatever the user is currently seeing on their card.
-  app.get('/admin/repos/identify', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+  app.get('/admin/repos/identify', { preHandler: requireCap('manage_repos', 'MOD') }, async (req, reply) => {
     const fp = normalizeFingerprint(req.query?.fp);
     if (!fp) return reply.code(400).send({ error: 'invalid_fingerprint' });
     const p = await db();
@@ -717,7 +717,7 @@ export default async function repoRoutes(app) {
 
   // Admin: live traffic across every repo — the last 15 minutes of access events
   // (a "who is downloading what right now" feed) plus a 24h per-repo rollup.
-  app.get('/admin/repos/traffic', { preHandler: requireRole('MOD', 'ADMIN') }, async () => {
+  app.get('/admin/repos/traffic', { preHandler: requireCap('manage_repos', 'MOD') }, async () => {
     const p = await db();
     const since = new Date(Date.now() - 15 * 60e3);
     const day = new Date(Date.now() - 24 * 3600e3);
@@ -737,7 +737,7 @@ export default async function repoRoutes(app) {
   });
 
   // Admin: manually re-run validation (recompute the content SHA + verify) for a repo.
-  app.post('/admin/repos/:id/revalidate', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+  app.post('/admin/repos/:id/revalidate', { preHandler: requireCap('manage_repos', 'MOD') }, async (req, reply) => {
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { id: req.params.id } });
     if (!repo) return reply.code(404).send({ error: 'not_found' });
@@ -752,7 +752,7 @@ export default async function repoRoutes(app) {
     return { ok: true, verified: !!res.repo.verified, sha: res.repo.sha, valid: !!res.health.valid, reason: res.health.reason };
   });
 
-  app.post('/admin/repos/:id/verify', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+  app.post('/admin/repos/:id/verify', { preHandler: requireCap('manage_repos', 'MOD') }, async (req, reply) => {
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { id: req.params.id } });
     if (!repo) return reply.code(404).send({ error: 'not_found' });
@@ -761,7 +761,7 @@ export default async function repoRoutes(app) {
     return { ok: true };
   });
 
-  app.post('/admin/repos/:id/reject', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+  app.post('/admin/repos/:id/reject', { preHandler: requireCap('manage_repos', 'MOD') }, async (req, reply) => {
     const reason = z.object({ reason: z.string().min(1).max(400) }).safeParse(req.body);
     if (!reason.success) return reply.code(400).send({ error: 'reason_required' });
     const p = await db();
@@ -775,7 +775,7 @@ export default async function repoRoutes(app) {
   // Admin override: cancel a repo's scheduled 72h deletion (e.g. the owner reached
   // out and paid outside the normal flow, or the suspension was a mistake) — mirrors
   // the existing /catalog/:id/delete/cancel for catalog items.
-  app.post('/admin/repos/:id/delete/cancel', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/repos/:id/delete/cancel', { preHandler: requireCap('manage_repos') }, async (req, reply) => {
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { id: req.params.id } });
     if (!repo) return reply.code(404).send({ error: 'not_found' });
@@ -785,7 +785,7 @@ export default async function repoRoutes(app) {
   });
 
   // Set status / limits / classification (admin).
-  app.patch('/admin/repos/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/admin/repos/:id', { preHandler: requireCap('manage_repos') }, async (req, reply) => {
     const b = z.object({
       status: z.enum(['PROVISIONING', 'ONLINE', 'SUSPENDED', 'OFFLINE']).optional(),
       category: z.enum(['community', 'official', 'partner']).optional(),
@@ -810,7 +810,7 @@ export default async function repoRoutes(app) {
 
   // Admin easy-boost: grant (or extend) a free featured boost for N days — no payment.
   // For putting official/partner or great community repos on top instantly.
-  app.post('/admin/repos/:id/feature', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/repos/:id/feature', { preHandler: requireCap('manage_repos') }, async (req, reply) => {
     const b = z.object({ days: z.number().int().min(0).max(3650) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();

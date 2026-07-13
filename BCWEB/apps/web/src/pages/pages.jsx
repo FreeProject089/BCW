@@ -2385,53 +2385,61 @@ export function Admin() {
   };
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPERADMIN';
   const isSuperAdmin = user?.role === 'SUPERADMIN';
+  const isMod = isAdmin || user?.role === 'MOD';
+  // A tab is visible if the user is an admin, has the capability granted, or is a MOD for
+  // the capabilities MODs hold by default (users/repos) — mirrors the server's requireCap.
+  const caps = user?.permissions || [];
+  const can = (c) => isAdmin || caps.includes(c) || (isMod && ['manage_users', 'manage_repos'].includes(c));
   const queue = subs.data?.submissions || [];
   const [review, setReview] = useState(null);
-  const tabs = [
+  const raw = [
     { heading: t('adm.h.moderation', 'Moderation') },
-    { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: Inbox, badge: queue.length || undefined },
-    { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail },
+    isMod && { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: Inbox, badge: queue.length || undefined },
+    isMod && { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail },
 
     { heading: t('adm.h.users', 'Users & access') },
-    { id: 'users', label: t('adm.tab.users', 'Users'), icon: Users },
-    { id: 'planusers', label: t('adm.tab.planusers', 'Free vs paid'), icon: Receipt },
+    can('manage_users') && { id: 'users', label: t('adm.tab.users', 'Users'), icon: Users },
+    can('manage_users') && { id: 'planusers', label: t('adm.tab.planusers', 'Free vs paid'), icon: Receipt },
     isAdmin && { id: 'access', label: t('adm.tab.access', 'Access & permissions'), icon: Shield },
     isAdmin && { id: 'security', label: t('adm.tab.security', 'Security log'), icon: Lock },
 
-    isAdmin && { heading: t('adm.h.content', 'Content') },
+    { heading: t('adm.h.content', 'Content') },
     isAdmin && { id: 'catalogs', label: t('adm.tab.catalogs', 'Catalogs'), icon: Boxes },
     isAdmin && { id: 'projects', label: t('adm.tab.projects', 'Projects'), icon: Settings2 },
     isAdmin && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
     isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: MessageSquare },
     isAdmin && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
-    isAdmin && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
-    isAdmin && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
+    can('manage_newsletter') && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
+    can('manage_faq') && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
 
     { heading: t('adm.h.repos', 'Repos & hosting') },
-    { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
+    can('manage_repos') && { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
     isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
 
-    isAdmin && { heading: t('adm.h.growth', 'Growth & monetization') },
+    { heading: t('adm.h.growth', 'Growth & monetization') },
     isAdmin && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
     isAdmin && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon },
     isAdmin && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
 
-    isAdmin && { heading: t('adm.h.integrations', 'Integrations') },
+    { heading: t('adm.h.integrations', 'Integrations') },
     isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
     isAdmin && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: MessageSquare },
 
-    isAdmin && { heading: t('adm.h.serverdata', 'Server & data') },
+    { heading: t('adm.h.serverdata', 'Server & data') },
     isAdmin && { id: 'serverperf', label: t('adm.tab.serverperf', 'Server perf'), icon: Cpu },
     isAdmin && { id: 'serveradv', label: t('adm.tab.serveradv', 'Advanced server'), icon: AlertTriangle },
     isAdmin && { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
-    isAdmin && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp },
-    isAdmin && { id: 'eventsfeed', label: t('adm.tab.eventsfeed', 'Events feed'), icon: Activity },
-    isAdmin && { id: 'errors', label: t('adm.tab.errors', 'Errors'), icon: AlertTriangle },
-    isAdmin && { id: 'goals', label: t('adm.tab.goals', 'Goals'), icon: Target },
+    can('manage_analytics') && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp },
+    can('manage_analytics') && { id: 'eventsfeed', label: t('adm.tab.eventsfeed', 'Events feed'), icon: Activity },
+    can('manage_analytics') && { id: 'errors', label: t('adm.tab.errors', 'Errors'), icon: AlertTriangle },
+    can('manage_analytics') && { id: 'goals', label: t('adm.tab.goals', 'Goals'), icon: Target },
 
-    isAdmin && { heading: t('adm.h.settings', 'Settings') },
+    { heading: t('adm.h.settings', 'Settings') },
     isAdmin && { id: 'settings', label: t('adm.tab.settings', 'Settings'), icon: Sliders },
   ].filter(Boolean);
+  // Drop group headings whose whole group is hidden (no visible tab follows before the
+  // next heading / the end) — so a granted non-admin sees only their sections.
+  const tabs = raw.filter((it, i) => !it.heading || (raw[i + 1] && !raw[i + 1].heading));
   return (
     <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}>
       {(s) => (<>
@@ -3952,6 +3960,16 @@ function BackupManager() {
 // and blog-post grants (ADMIN+) — plus the site-wide access policy and a full grants
 // overview. Replaces the old split "Roles & access" / "Blog access" tabs, so an
 // admin no longer hunts across screens to see what a user can do.
+// Granular admin capabilities a non-admin user can be granted (mirrors CAPABILITIES in
+// the API's lib/lib.mjs). Each unlocks exactly one dashboard section + its endpoints.
+const ADMIN_CAPS = [
+  { id: 'manage_users', icon: Users, label: 'Manage users', labelFr: 'Gérer les utilisateurs', desc: 'View users, moderate, suspend/ban.', descFr: 'Voir les utilisateurs, modérer, suspendre/bannir.' },
+  { id: 'manage_repos', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
+  { id: 'manage_analytics', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, events feed, errors and goals.', descFr: "Analyses, flux d'événements, erreurs et objectifs." },
+  { id: 'manage_newsletter', icon: Mail, label: 'Manage newsletter', labelFr: 'Gérer la newsletter', desc: 'Compose and send newsletters.', descFr: 'Rédiger et envoyer des newsletters.' },
+  { id: 'manage_faq', icon: HelpCircle, label: 'Manage FAQ', labelFr: 'Gérer la FAQ', desc: 'Create and edit FAQ entries.', descFr: 'Créer et modifier les entrées de la FAQ.' },
+];
+
 function AdminAccess({ isSuperAdmin }) {
   const toast = useToast();
   const { t } = useI18n();
@@ -3961,6 +3979,7 @@ function AdminAccess({ isSuperAdmin }) {
   const [picked, setPicked] = useState(null);
   const [roleSel, setRoleSel] = useState('USER');
   const [scopeSel, setScopeSel] = useState('global');
+  const [permsSel, setPermsSel] = useState([]);
   const scopes = useAsync(() => api.get('/blog/my-scopes'), []);
   const grants = useAsync(() => api.get('/admin/blog-permissions'), []);
 
@@ -3969,7 +3988,19 @@ function AdminAccess({ isSuperAdmin }) {
     setBusy(true);
     try { const { users } = await api.get(`/admin/users?q=${encodeURIComponent(q)}&take=10`); setResults(users); } catch { setResults([]); } finally { setBusy(false); }
   };
-  const pick = (u) => { setPicked(u); setRoleSel(u.role); setScopeSel('global'); };
+  const pick = (u) => { setPicked(u); setRoleSel(u.role); setScopeSel('global'); setPermsSel(u.permissions || []); };
+  const togglePerm = (cap) => setPermsSel((s) => s.includes(cap) ? s.filter((c) => c !== cap) : [...s, cap]);
+  const savePerms = async () => {
+    setBusy(true);
+    try {
+      await api.put(`/admin/users/${picked.id}/permissions`, { permissions: permsSel });
+      setPicked((prev) => ({ ...prev, permissions: permsSel }));
+      setResults((rs) => rs ? rs.map((u) => u.id === picked.id ? { ...u, permissions: permsSel } : u) : rs);
+      toast.success(t('acc.perms.saved', 'Permissions updated for {name}.').replace('{name}', picked.displayName));
+    } catch (x) {
+      toast.error(x.data?.error === 'cannot_change_own_permissions' ? t('acc.perms.own', "You can't change your own permissions.") : x.data?.error || t('acc.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
   const saveRole = async () => {
     setBusy(true);
     try { await api.put(`/admin/users/${picked.id}/role`, { role: roleSel }); toast.success(t('acc.rolenow', '{name} is now {role}.').replace('{name}', picked.displayName).replace('{role}', roleSel)); setPicked((p) => ({ ...p, role: roleSel })); }
@@ -4016,7 +4047,7 @@ function AdminAccess({ isSuperAdmin }) {
           {results.map((u) => (
             <button key={u.id} onClick={() => pick(u)} className={`w-full text-left card p-3 flex items-center gap-3 ${picked?.id === u.id ? 'border-[var(--primary)]' : ''}`}>
               <Avatar user={u} size={32} />
-              <div className="flex-1 min-w-0"><div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={roleTone(u.role)}>{u.role}</Badge>{u.canControlServer && <Badge tone="red"><Server size={9} /> {t('acc.server', 'server')}</Badge>}{u.canViewTelemetry && <Badge tone="primary"><TrendingUp size={9} /> {t('acc.telemetry', 'telemetry')}</Badge>}</div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
+              <div className="flex-1 min-w-0"><div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={roleTone(u.role)}>{u.role}</Badge>{u.canControlServer && <Badge tone="red"><Server size={9} /> {t('acc.server', 'server')}</Badge>}{u.canViewTelemetry && <Badge tone="primary"><TrendingUp size={9} /> {t('acc.telemetry', 'telemetry')}</Badge>}{u.permissions?.length > 0 && !['ADMIN', 'SUPERADMIN'].includes(u.role) && <Badge tone="amber"><Shield size={9} /> {t('acc.perms.count', '{n} perms').replace('{n}', u.permissions.length)}</Badge>}</div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
             </button>
           ))}
         </div> : <div className="text-sm text-[var(--faint)]">{t('acc.nousers', 'No users found.')}</div>)}
@@ -4037,6 +4068,32 @@ function AdminAccess({ isSuperAdmin }) {
               </div>
             </div>
           )}
+
+          <div className="pt-4 border-t border-[var(--line)]">
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Shield size={12} /> {t('acc.perms.title', 'Dashboard permissions')}</div>
+            {['ADMIN', 'SUPERADMIN'].includes(picked.role) ? (
+              <p className="text-xs text-[var(--muted)]">{t('acc.perms.isadmin', 'Admins already have every permission. Lower the role to USER or MOD to grant specific capabilities instead.')}</p>
+            ) : (<>
+              <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.perms.desc', 'Grant this user access to specific admin sections — each unlocks exactly that area of the dashboard and nothing else. Actions are still checked on the server.')} {!picked.totpEnabled && <span className="text-amber-400">{t('acc.perms.no2fa', 'They must enable 2FA before the dashboard will open.')}</span>}</p>
+              <div className="space-y-1.5 mb-3">
+                {ADMIN_CAPS.map((c) => {
+                  const on = permsSel.includes(c.id);
+                  const Icon = c.icon;
+                  return (
+                    <button key={c.id} onClick={() => togglePerm(c.id)} className={`w-full text-left flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                      <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'bg-[var(--primary)]/15 text-[var(--primary-2)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-medium">{t('acc.perm.' + c.id, c.label)}</span>
+                        <span className="block text-xs text-[var(--faint)]">{t('acc.permd.' + c.id, c.desc)}</span>
+                      </span>
+                      <span className={`w-9 h-5 rounded-full relative shrink-0 transition ${on ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} /></span>
+                    </button>
+                  );
+                })}
+              </div>
+              <Button size="sm" variant="primary" disabled={busy || JSON.stringify([...permsSel].sort()) === JSON.stringify([...(picked.permissions || [])].sort())} onClick={savePerms}>{busy ? <Spinner /> : t('acc.perms.save', 'Save permissions')}</Button>
+            </>)}
+          </div>
 
           {isSuperAdmin && (picked.role === 'ADMIN' || picked.role === 'SUPERADMIN' || picked.canControlServer) && (
             <div className="pt-4 border-t border-[var(--line)]">

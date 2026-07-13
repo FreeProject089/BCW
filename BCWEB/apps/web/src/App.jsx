@@ -258,7 +258,7 @@ function Nav() {
           {user ? (
             <>
               <NavLink to="/dashboard" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.dashboard')} aria-label={t('nav.dashboard')}><LayoutDashboard size={15} /></NavLink>
-              {(user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN') && <NavLink to="/admin" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.admin')} aria-label={t('nav.admin')}><Shield size={15} /></NavLink>}
+              {canAdmin(user) && <NavLink to="/admin" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.admin')} aria-label={t('nav.admin')}><Shield size={15} /></NavLink>}
               <Link to="/profile" className="rounded-full p-0.5 hover:ring-2 hover:ring-[var(--line-strong)] transition" title={user.displayName}><Avatar user={user} size={28} /></Link>
               <Button variant="ghost" size="sm" onClick={logout} title={t('nav.signout')}><LogOut size={15} /></Button>
             </>
@@ -287,7 +287,7 @@ function Nav() {
           <div className="grid grid-cols-2 gap-1">
             {user ? (<>
               <NavLink to="/dashboard" className={sheet} onClick={() => setOpen(false)}><LayoutDashboard size={16} />{t("nav.dashboard")}</NavLink>
-              {(user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN') && <NavLink to="/admin" className={sheet} onClick={() => setOpen(false)}><Shield size={16} />{t("nav.admin")}</NavLink>}
+              {canAdmin(user) && <NavLink to="/admin" className={sheet} onClick={() => setOpen(false)}><Shield size={16} />{t("nav.admin")}</NavLink>}
               <NavLink to="/profile" className={sheet} onClick={() => setOpen(false)}><Avatar user={user} size={18} /> Profile</NavLink>
               <button className={sheet({ isActive: false }) + ' text-left'} onClick={() => { logout(); setOpen(false); }}><LogOut size={16} />{t("nav.signout")}</button>
             </>) : <Link to="/auth" className="col-span-2" onClick={() => setOpen(false)}><Button variant="primary" className="w-full">{t("nav.signin")}</Button></Link>}
@@ -419,6 +419,15 @@ function Footer() {
 
 const ADMIN_TIER_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
 
+// May this user reach the admin dashboard at all? True for the staff roles, and also
+// for a plain user who has been granted at least one capability (manage_repos, etc.) —
+// the dashboard then shows only the sections their capabilities unlock. The API enforces
+// each action independently via requireCap(), so this only governs surface visibility.
+function canAdmin(user) {
+  if (!user) return false;
+  return ADMIN_TIER_ROLES.includes(user.role) || (user.permissions?.length > 0);
+}
+
 function Protected({ children, role }) {
   const { t } = useI18n();
   const { user, loading } = useAuth();
@@ -426,11 +435,14 @@ function Protected({ children, role }) {
   if (!user) return <Navigate to="/auth" replace />;
   // SUPERADMIN implicitly satisfies every route role-gate — same reasoning as the
   // backend's requireRole() — instead of retrofitting every <Protected role={...}> call site.
-  if (role && user.role !== 'SUPERADMIN' && !role.includes(user.role)) return <Navigate to="/" replace />;
+  // A capability-granted user is also admitted to a role-gated surface (the dashboard hides
+  // what they can't touch); the backend still gates each action with requireCap().
+  const elevated = user.role === 'SUPERADMIN' || (user.permissions?.length > 0);
+  if (role && !elevated && !role.includes(user.role)) return <Navigate to="/" replace />;
   // The admin dashboard (and everything it talks to — the API enforces this too,
-  // in requireRole()) requires 2FA, whatever the exact role — a password alone
-  // isn't enough for a surface this privileged.
-  if (role && ADMIN_TIER_ROLES.includes(user.role) && !user.totpEnabled) {
+  // in requireRole()/requireCap()) requires 2FA, whatever the exact role or grant — a
+  // password alone isn't enough for a surface this privileged.
+  if (role && (ADMIN_TIER_ROLES.includes(user.role) || user.permissions?.length > 0) && !user.totpEnabled) {
     return (
       <div className="max-w-sm mx-auto py-16">
         <div className="card p-6 text-center">
@@ -495,7 +507,18 @@ function AnnouncementBanner() {
 
 export default function App() {
   const loc = useLocation();
+  const toast = useToast();
+  const { t } = useI18n();
   useEffect(() => { loadGtmIfConsented(); initVitals(); initInteractions(); initErrors(); }, []);
+  // Global "you don't have permission" toast — the api client dispatches bcw:forbidden on
+  // any missing_permission 403, so the user is told exactly what they lack no matter which
+  // screen triggered it.
+  useEffect(() => {
+    const onForbidden = (e) => { const cap = e.detail?.capability; toast.error(t('perm.denied', "You don't have permission for this — “{cap}” is required.").replace('{cap}', t('perm.cap.' + cap, cap || 'this action'))); };
+    window.addEventListener('bcw:forbidden', onForbidden);
+    return () => window.removeEventListener('bcw:forbidden', onForbidden);
+    // eslint-disable-next-line
+  }, []);
   useEffect(() => { trackPageview(loc.pathname + loc.search); }, [loc.pathname, loc.search]);
   // Optional cinematic route transition — let the hero orb know we navigated so it
   // can shatter + dive into a random shard + recompose. OFF by default (pref read

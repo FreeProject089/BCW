@@ -11,7 +11,14 @@ async function req(method, path, body) {
   });
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
-  if (!res.ok) throw Object.assign(new Error('api_error'), { status: res.status, data });
+  if (!res.ok) {
+    // A capability denial → surface an explicit, global toast so the user is told exactly
+    // what they lack, regardless of which component made the call (App listens for this).
+    if (res.status === 403 && data?.error === 'missing_permission' && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('bcw:forbidden', { detail: { capability: data.capability } }));
+    }
+    throw Object.assign(new Error('api_error'), { status: res.status, data });
+  }
   return data;
 }
 

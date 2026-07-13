@@ -2,7 +2,7 @@
 // is gated to ADMIN/SUPERADMIN (the same "special role" that edits the docs). Answers are
 // the BetterCommunity doc-block markdown, rendered client-side with the shared md.jsx.
 import { z } from 'zod';
-import { db, requireRole, optionalAuth } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalAuth } from '../lib/lib.mjs';
 
 const faqSchema = z.object({
   question: z.string().min(1).max(300),
@@ -25,11 +25,11 @@ export default async function faqRoutes(app) {
   });
 
   // ── Admin CRUD (ADMIN/SUPERADMIN) ───────────────────────────────────────────
-  app.get('/admin/faq', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/faq', { preHandler: requireCap('manage_faq') }, async () => {
     const p = await db();
     return { items: await p.faqItem.findMany({ orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }) };
   });
-  app.post('/admin/faq', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/faq', { preHandler: requireCap('manage_faq') }, async (req, reply) => {
     const b = faqSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -41,7 +41,7 @@ export default async function faqRoutes(app) {
     } });
     return { ok: true, item };
   });
-  app.patch('/admin/faq/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/admin/faq/:id', { preHandler: requireCap('manage_faq') }, async (req, reply) => {
     const b = faqSchema.partial().safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -52,7 +52,7 @@ export default async function faqRoutes(app) {
     if (!item) return reply.code(404).send({ error: 'not_found' });
     return { ok: true, item };
   });
-  app.delete('/admin/faq/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.delete('/admin/faq/:id', { preHandler: requireCap('manage_faq') }, async (req) => {
     const p = await db();
     await p.faqItem.delete({ where: { id: req.params.id } }).catch(() => {});
     return { ok: true };

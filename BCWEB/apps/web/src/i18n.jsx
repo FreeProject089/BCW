@@ -1405,6 +1405,22 @@ const DICT = {
     'acc.grant': 'Accorder', 'acc.revoke.title': 'Retirer',
     'acc.all.title': 'Tous les accès blog', 'acc.all.desc': 'Toutes les personnes autorisées à écrire des articles, et où. Choisis un utilisateur ci-dessus pour modifier les siens.',
     'acc.all.none.t': 'Aucun accès pour le moment', 'acc.all.none.s': 'Les utilisateurs normaux ne peuvent pas écrire d’articles tant que tu n’accordes pas l’accès ci-dessus.', 'acc.deleted': '(supprimé)',
+    // Permissions granulaires du tableau de bord
+    'acc.perms.title': 'Permissions du tableau de bord',
+    'acc.perms.isadmin': 'Les admins ont déjà toutes les permissions. Rétrograde le rôle en USER ou MOD pour accorder des capacités précises.',
+    'acc.perms.desc': 'Donne à cet utilisateur l’accès à des sections précises de l’admin — chacune ne débloque que cette zone du tableau de bord, rien d’autre. Les actions restent vérifiées côté serveur.',
+    'acc.perms.no2fa': 'Il doit activer la 2FA avant que le tableau de bord ne s’ouvre.',
+    'acc.perms.save': 'Enregistrer les permissions', 'acc.perms.saved': 'Permissions mises à jour pour {name}.',
+    'acc.perms.own': 'Tu ne peux pas changer tes propres permissions.', 'acc.perms.count': '{n} perms',
+    'acc.perm.manage_users': 'Gérer les utilisateurs', 'acc.permd.manage_users': 'Voir les utilisateurs, modérer, suspendre/bannir.',
+    'acc.perm.manage_repos': 'Gérer les dépôts serveur', 'acc.permd.manage_repos': 'Vérifier, valider et modérer les dépôts hébergés.',
+    'acc.perm.manage_analytics': 'Voir les analyses', 'acc.permd.manage_analytics': 'Analyses, flux d’événements, erreurs et objectifs.',
+    'acc.perm.manage_newsletter': 'Gérer la newsletter', 'acc.permd.manage_newsletter': 'Rédiger et envoyer des newsletters.',
+    'acc.perm.manage_faq': 'Gérer la FAQ', 'acc.permd.manage_faq': 'Créer et modifier les entrées de la FAQ.',
+    // Toast « permission refusée » (global)
+    'perm.denied': 'Tu n’as pas la permission pour ça — « {cap} » est requise.',
+    'perm.cap.manage_users': 'Gérer les utilisateurs', 'perm.cap.manage_repos': 'Gérer les dépôts serveur',
+    'perm.cap.manage_analytics': 'Voir les analyses', 'perm.cap.manage_newsletter': 'Gérer la newsletter', 'perm.cap.manage_faq': 'Gérer la FAQ',
 
     // ── Admin : annonces ──
     'ann.new': 'Nouvelle annonce', 'ann.new.sub': 'S’affiche en bannière fermable sur chaque page et notifie immédiatement tous les utilisateurs.',

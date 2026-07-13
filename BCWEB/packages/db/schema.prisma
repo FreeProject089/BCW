@@ -71,6 +71,10 @@ model User {
   passwordHash  String?
   displayName   String
   role          Role     @default(USER)
+  // Fine-grained capability grants layered ON TOP of the role (e.g. a MOD/USER granted
+  // "manage_repos"). ADMIN/SUPERADMIN implicitly have every capability; see CAPABILITIES
+  // in lib/lib.mjs. Empty for most accounts.
+  permissions   String[] @default([])
   emailVerified Boolean  @default(false)
   bio           String   @default("")
   avatar        Json?    // { variant, seed } for the Boring Avatar

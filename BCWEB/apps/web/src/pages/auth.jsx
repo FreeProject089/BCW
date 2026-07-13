@@ -19,6 +19,17 @@ export function AuthProvider({ children }) {
     finally { setLoading(false); }
   };
   useEffect(() => { refresh(); }, []);
+  // Re-fetch the profile when the tab regains focus, so a role/permission change an admin
+  // just made takes effect (new access + admin tabs) WITHOUT the user logging out and back
+  // in. Throttled to at most once every 20s so it can't hammer the API. Only while signed in.
+  useEffect(() => {
+    let last = 0;
+    const onFocus = () => { if (user && Date.now() - last > 20000) { last = Date.now(); refresh(); } };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') onFocus(); });
+    return () => window.removeEventListener('focus', onFocus);
+    // eslint-disable-next-line
+  }, [user?.id]);
 
   // Returns { twoFactorRequired: true, tempToken } when the account has 2FA
   // enabled — the caller must then call loginWith2fa() to actually get a session.
