@@ -7,7 +7,8 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireRole } from '../lib.mjs';
-import { sendMail, mailShell, emailEnabled, escapeHtml } from '../mail.mjs';
+import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../mail.mjs';
+import { BRAND_LOGO_DATA_URI } from '../brand-logo-data.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 const tok = () => crypto.randomBytes(24).toString('hex');
@@ -16,8 +17,9 @@ const tok = () => crypto.randomBytes(24).toString('hex');
 // unsubscribe footer + List-Unsubscribe header. `sub` = { email, unsubToken }.
 export async function sendNewsletterTo(sub, { subject, title, body, url }) {
   const unsubUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${sub.unsubToken}`;
-  const footer = `<p style="font-size:12px;color:#918a80;margin:28px 0 0;padding-top:18px;border-top:1px solid #eae4da">You receive this because you subscribed to BetterCommunity updates. <a href="${unsubUrl}" style="color:#c2410c">Unsubscribe in one click</a>.</p>`;
-  const safeBody = escapeHtml(body).replace(/\n/g, '<br>');
+  const footer = `<p class="bc-faint bc-hr" style="font-size:12px;color:#918a80;margin:28px 0 0;padding-top:18px;border-top:1px solid #eae4da">You receive this because you subscribed to BetterCommunity updates. <a href="${unsubUrl}" style="color:#c2410c">Unsubscribe in one click</a>.</p>`;
+  // Body may contain markdown (incl. BetterCommunity custom blocks) — render it to HTML.
+  const safeBody = mdToEmailHtml(body);
   return sendMail({
     to: sub.email, subject,
     html: mailShell(escapeHtml(title), safeBody + footer, url ? { url, label: 'Read on the blog' } : undefined),
@@ -44,27 +46,29 @@ function page(title, body, opts = {}) {
     : opts.tone === 'info' ? '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'
     : '<path d="M20 6 9 17l-5-5"/>');                                     // ✓
   const cta = opts.cta ? `<a class="btn" href="${opts.cta.href}">${escapeHtml(opts.cta.label)}</a>` : '';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} — BetterCommunity</title>
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="google" content="notranslate"><title>${escapeHtml(title)} — BetterCommunity</title>
 <style>
-  :root{--tone:${tone}}
+  :root{--tone:${tone};--bg:#faf8f5;--card:#ffffff;--line:#eae4da;--text:#1a1714;--muted:#5d5750;--faint:#918a80;--link:#c2410c;--glowa:rgba(249,115,22,.14);--glowb:rgba(245,158,11,.12);--shadow:rgba(30,20,5,.22)}
+  /* Follow the viewer's OS/browser theme — light default, dark when they prefer it. */
+  @media (prefers-color-scheme: dark){:root{--bg:#0a0907;--card:#141210;--line:#242019;--text:#f3efe9;--muted:#a39b8f;--faint:#6f685d;--link:#fb923c;--glowa:rgba(249,115,22,.16);--glowb:rgba(245,158,11,.10);--shadow:rgba(0,0,0,.6)}}
   *{box-sizing:border-box}
-  body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:radial-gradient(58rem 42rem at 80% -12%,rgba(249,115,22,.14),transparent 60%),radial-gradient(46rem 40rem at -6% 6%,rgba(245,158,11,.12),transparent 56%),#faf8f5;color:#1a1714;display:grid;place-items:center;min-height:100vh;margin:0;padding:20px}
-  .card{width:100%;max-width:460px;padding:40px 36px;text-align:center;background:#ffffff;border:1px solid #eae4da;border-radius:24px;box-shadow:0 30px 80px -32px rgba(30,20,5,.22)}
-  .brand{display:inline-flex;align-items:center;gap:9px;font-weight:800;font-size:15px;margin-bottom:24px;color:#1a1714}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:radial-gradient(58rem 42rem at 80% -12%,var(--glowa),transparent 60%),radial-gradient(46rem 40rem at -6% 6%,var(--glowb),transparent 56%),var(--bg);color:var(--text);display:grid;place-items:center;min-height:100vh;margin:0;padding:20px}
+  .card{width:100%;max-width:460px;padding:40px 36px;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:24px;box-shadow:0 30px 80px -32px var(--shadow)}
+  .brand{display:inline-flex;align-items:center;gap:9px;font-weight:800;font-size:15px;margin-bottom:24px;color:var(--text)}
   .brand b{color:#f97316}
   .brand img{width:26px;height:26px;border-radius:7px}
   .ico{width:62px;height:62px;margin:0 auto 20px;border-radius:18px;display:grid;place-items:center;background:color-mix(in srgb,var(--tone) 14%,transparent);color:var(--tone)}
   .ico svg{width:31px;height:31px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
   h1{font-size:23px;margin:0 0 10px;letter-spacing:-.02em;font-weight:800}
-  p{color:#5d5750;line-height:1.66;margin:0 0 20px;font-size:15px}
+  p{color:var(--muted);line-height:1.66;margin:0 0 20px;font-size:15px}
   .btn{display:inline-block;background:#f97316;color:#fff;text-decoration:none;font-weight:700;padding:13px 28px;border-radius:12px;transition:filter .15s;box-shadow:0 8px 22px -8px rgba(249,115,22,.5)}
   .btn:hover{filter:brightness(1.06)}
-  .home{display:inline-block;margin-top:18px;color:#918a80;text-decoration:none;font-size:13px}
-  .home:hover{color:#1a1714}
-  .extra{margin-top:16px;font-size:13px;color:#918a80}.extra a{color:#c2410c;text-decoration:none;font-weight:600}
+  .home{display:inline-block;margin-top:18px;color:var(--faint);text-decoration:none;font-size:13px}
+  .home:hover{color:var(--text)}
+  .extra{margin-top:16px;font-size:13px;color:var(--faint)}.extra a{color:var(--link);text-decoration:none;font-weight:600}
 </style></head>
 <body><div class="card">
-  <div class="brand"><img src="${SITE_URL}/logo.png" alt=""> <span><b>Better</b>Community</span></div>
+  <div class="brand" translate="no"><img src="${BRAND_LOGO_DATA_URI}" alt=""> <span><b>Better</b>Community</span></div>
   <div class="ico"><svg viewBox="0 0 24 24">${icon}</svg></div>
   <h1>${escapeHtml(title)}</h1>
   <p>${body}</p>
@@ -117,7 +121,7 @@ export default async function newsletterRoutes(app) {
     if (!rec) return page('Link expired', 'This confirmation link is invalid or has already been used.', { tone: 'muted' });
     await p.newsletterSubscriber.update({ where: { id: rec.id }, data: { status: 'active', confirmedAt: new Date(), confirmToken: null } });
     const unsubUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${rec.unsubToken}`;
-    return page('You’re subscribed 🎉', "You'll now get BetterCommunity blog updates in your inbox.", {
+    return page('You’re subscribed', "You'll now get BetterCommunity blog updates in your inbox.", {
       tone: 'ok',
       cta: { href: `${SITE_URL}/blog`, label: 'Read the blog' },
       extra: `Changed your mind? <a href="${unsubUrl}">Unsubscribe in one click</a> — the link is also in every email.`,
