@@ -8,6 +8,7 @@ a separate 🇬🇧 EN and 🇫🇷 FR file, or is bilingual within a single fil
 | ⭐ **Production quickstart** (fresh VPS → live in ~15 min) | [QUICKSTART_EN.md](QUICKSTART_EN.md) | [QUICKSTART_FR.md](QUICKSTART_FR.md) |
 | **Deploy to production** (full guide: Docker, HTTPS, Stripe, backups, scaling) | [DEPLOY_EN.md](DEPLOY_EN.md) | [DEPLOY_FR.md](DEPLOY_FR.md) |
 | **Enable the optional add-ons** (CDN, PgBouncer, replicas, R2, separate DB, off-site backup) | [ADDONS_EN.md](ADDONS_EN.md) | [ADDONS_FR.md](ADDONS_FR.md) |
+| **Backup & restore** (Postgres + MinIO + audit anchor, cron, off-site, restore steps) | [BACKUP_EN.md](BACKUP_EN.md) | [BACKUP_FR.md](BACKUP_FR.md) |
 | **`.env` variables explained** | [ENV_EN.md](ENV_EN.md) | [ENV_FR.md](ENV_FR.md) |
 | **Docker files explained** (services, volumes, prod updates) | [DOCKER_EN.md](DOCKER_EN.md) | [DOCKER_FR.md](DOCKER_FR.md) |
 | **Domain & HTTPS** (Caddy + Let's Encrypt) | [DOMAIN_SETUP.md](DOMAIN_SETUP.md) *(bilingual)* | ↩︎ same file |

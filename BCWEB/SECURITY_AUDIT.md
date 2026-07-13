@@ -1,5 +1,14 @@
 # Security / CWE Audit — 2026-07-03
 
+> **Re-verified 2026-07-13** — remediations still in place after the `src` reorg (shared api
+> services moved to `apps/api/src/lib/`, so `safeEqual` now lives in `apps/api/src/lib/lib.mjs`,
+> `safeFetch` in `lib/net.mjs`, git backup in `lib/gitbackup.mjs`; routes unchanged). The
+> July analytics additions (Web Vitals breakdowns, events feed, error tracking, goals) were
+> reviewed the same day: SQL uses whitelisted identifiers + bound params (no injection), the
+> admin routes are `requireRole('ADMIN')`, ingestion is consent-gated + rate-limited + bounded,
+> React escapes all rendered error/stack/label text, and CSV exports go through `csvCell`
+> (CWE-1236). No new high-severity issues.
+
 Scope: BCWEB (Fastify API + Discord bot + React web), BMM (Tauri/Rust desktop app), BetterInstaller (Rust). Focus on the OWASP/CWE classes that actually apply to this stack: injection (SQL/command), path traversal (CWE-22), SSRF (CWE-918), auth/authorization gaps (CWE-285/287), secrets exposure (CWE-798), and archive extraction (zip-slip).
 
 **Headline: no high-severity issues found.** The load-bearing danger spots are already defended, mostly with the right patterns and explaining comments. A few low-severity / defense-in-depth notes below.
@@ -43,7 +52,7 @@ BetterInstaller now HAS code (a Rust workspace under `BetterInstaller/crates`, c
 
 ## Remediation (applied 2026-07-03)
 
-- **Constant-time secret comparisons — DONE.** Added `safeEqual()` in `apps/api/src/lib.mjs` (sha256 both sides → `crypto.timingSafeEqual`, length-safe, never throws) and applied it everywhere a shared secret / signature was compared with `===`/`!==`: the Ko-fi webhook `verification_token` (`routes/kofi.mjs`), the bot shared secret `x-bot-secret` (`routes/bot.mjs`), the proof-of-work HMAC signature (`routes/auth.mjs`), and the OAuth `state` CSRF HMAC (`routes/oauth.mjs`). This closes the timing side-channel for all of them.
+- **Constant-time secret comparisons — DONE.** Added `safeEqual()` in `apps/api/src/lib/lib.mjs` (sha256 both sides → `crypto.timingSafeEqual`, length-safe, never throws) and applied it everywhere a shared secret / signature was compared with `===`/`!==`: the Ko-fi webhook `verification_token` (`routes/kofi.mjs`), the bot shared secret `x-bot-secret` (`routes/bot.mjs`), the proof-of-work HMAC signature (`routes/auth.mjs`), and the OAuth `state` CSRF HMAC (`routes/oauth.mjs`). This closes the timing side-channel for all of them.
 - **DB-viewer audit-table protection — DONE** (separate hardening pass): `AuditLogEntry`/`LoginAttempt`/`RepoAuditLog` are read-only in the viewer; edit/restore attempts are refused and logged.
 - **SSRF DNS-rebind TOCTOU — accepted/low.** `safeFetch` resolves + blocks private ranges and re-checks every redirect hop. The residual rebind gap (check-then-fetch resolve independently) is inherent to Node's `fetch`, which doesn't expose per-request IP pinning; the risk requires an attacker-controlled DNS server *and* precise timing, and matches common practice. Documented, not changed.
 - **Launch-pack VBS/PS escaping — no change.** Local user's own files only (not a remote/other-user surface); the `"`→`""` / `'`→`''` escapes are correct for their contexts. Revisit only if launch-pack definitions ever become shareable/importable from untrusted sources.

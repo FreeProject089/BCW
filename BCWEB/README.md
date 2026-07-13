@@ -110,7 +110,10 @@ Before pointing a real domain at this:
 4. **MinIO/S3** — for scale, point at a managed S3 (or a hardened MinIO with its own
    credentials + backups); the `9000` port only needs to be reachable by browsers for
    pre-signed PUT/GET.
-5. **Backups** — schedule dumps of the `db-data` volume (and `minio-data`).
+5. **Backups** — run `infra/backup/backup.sh` on a cron (consistent `pg_dump` + MinIO +
+   audit-anchor archives, retention, optional off-site via rclone). Full run/restore steps:
+   [guides/BACKUP_EN.md](./guides/BACKUP_EN.md) · [FR](./guides/BACKUP_FR.md). *(Don't tar the
+   `db-data` volume under a live server — `pg_dump` is the safe path.)*
 6. **Bring it up** — `docker compose up -d`, then seed once:
    `docker compose exec api npm run seed` and change the seeded admin password.
 
@@ -123,8 +126,15 @@ Before pointing a real domain at this:
 - **Ops/admin**: server-perf dashboard + alerts, advanced server management (DB
   viewer/file manager/Docker/power, audit-logged), security log, promo codes,
   free-tier claims, per-element **BC ids** + admin lookup.
+- **Analytics** (first-party, consent-gated, Rybbit-style): Site analytics (geo + globe,
+  OS/browser/device, sessions), **Web Vitals** (24h/7d/30d/90d, sortable tables + tabs by
+  page/country/device/browser/OS + path filter), **Events feed** (pageviews + clicks/
+  submits/edits), **Errors** (grouped JS errors + stack traces), **Goals** (conversion
+  goals + rate). See [guides/API_Reference_EN.md](./guides/API_Reference_EN.md) §15.
 - **Abuse/security**: Caddy + Fastify anti-bot/anti-DDoS, proof-of-work on
-  signup/contact, constant-time secret compares, SSRF-guarded outbound fetch.
+  signup/contact, constant-time secret compares (`safeEqual`), SSRF-guarded outbound
+  fetch. Full CWE audit + remediations: [`SECURITY_AUDIT.md`](./SECURITY_AUDIT.md)
+  (no high-severity issues; secret compares fixed, DB-viewer audit tables read-only).
 
 ### Still open (scale / ops, not blockers)
 - **OS-level** repo isolation in `apps/provisioner` (`spinUpRepoContainer` extension
