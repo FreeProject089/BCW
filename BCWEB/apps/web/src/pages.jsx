@@ -398,12 +398,15 @@ export function Home() {
           {/* Auto-scrolling marquee (pauses on hover). The list is duplicated so it
               loops seamlessly; speed scales with how many reviews there are. */}
           <div className="reveal-on-scroll reviews-marquee relative overflow-hidden">
-            <div className="reviews-track flex gap-5 py-1" style={{ animationDuration: `${Math.max(24, reviewsData.reviews.length * 10)}s` }}>
+            {/* Each card carries its OWN right margin (not a flex `gap`) so the duplicated
+                list is exactly two equal-width copies — translateX(-50%) then lands on a
+                perfect seam and the loop is continuous with no pause/jump. */}
+            <div className="reviews-track flex py-1" style={{ animationDuration: `${Math.max(24, reviewsData.reviews.length * 10)}s` }}>
               {[...reviewsData.reviews, ...reviewsData.reviews].map((rv, idx) => {
                 const text = (lang === 'fr' && rv.bodyFr) ? rv.bodyFr : rv.body;
                 const av = rv.avatar || {};
                 return (
-                  <Card key={idx} className="w-[340px] max-w-[80vw] shrink-0 p-6 flex flex-col" style={{ background: 'var(--bg-solid)' }} aria-hidden={idx >= reviewsData.reviews.length}>
+                  <Card key={idx} className="w-[340px] max-w-[80vw] shrink-0 mr-5 p-6 flex flex-col" style={{ background: 'var(--bg-solid)' }} aria-hidden={idx >= reviewsData.reviews.length}>
                     {rv.rating > 0 && (
                       <div className="flex items-center gap-0.5 mb-3">
                         {[1, 2, 3, 4, 5].map((n) => <Star key={n} size={15} className={n <= rv.rating ? 'text-amber-400' : 'text-[var(--line-strong)]'} fill={n <= rv.rating ? 'currentColor' : 'none'} />)}

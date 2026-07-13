@@ -40,7 +40,7 @@ function CommentBody({ c, isReply, ctx }) {
         {c.participants?.length > 1 && (
           <span className="flex items-center -space-x-1.5 ml-auto" title={`Contributors: ${c.participants.map((u) => u.name).join(', ')}`}>
             {c.participants.slice(0, 5).map((u) => (
-              <UserAvatar key={u.id} user={{ id: u.id, displayName: u.name, avatar: u.avatar }} size={18} className="ring-1 ring-[var(--avatar-ring)] rounded-full" />
+              <UserAvatar key={u.id} user={{ id: u.id, displayName: u.name, avatar: u.avatar }} size={18} className="rounded-full" />
             ))}
             {c.participants.length > 5 && <span className="text-[10px] text-[var(--faint)] pl-2">+{c.participants.length - 5}</span>}
           </span>
