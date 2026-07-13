@@ -53,30 +53,32 @@ export function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// Branded, email-client-safe HTML wrapper (table layout, inline styles). Optional CTA
-// button (+ the raw link as a fallback) and a footer. `cta`: { url, label }.
+// Branded, email-client-safe HTML wrapper (table layout, inline styles). LIGHT theme to
+// match BetterCommunity's default (white + orange) look. Optional CTA button (+ raw link
+// fallback) and a footer. `cta`: { url, label }.
 export function mailShell(title, bodyHtml, cta) {
   const btn = cta
-    ? `<tr><td style="padding-top:24px"><a href="${cta.url}" style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;padding:13px 28px;border-radius:12px;font-weight:700;font-size:15px">${cta.label}</a></td></tr>
-       <tr><td style="padding-top:16px;color:#6f685d;font-size:12px;line-height:1.5">Or paste this link into your browser:<br><a href="${cta.url}" style="color:#a39b8f;word-break:break-all;text-decoration:none">${cta.url}</a></td></tr>`
+    ? `<tr><td style="padding-top:26px"><a href="${cta.url}" style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;padding:13px 30px;border-radius:12px;font-weight:700;font-size:15px;box-shadow:0 6px 18px -6px rgba(249,115,22,.5)">${cta.label}</a></td></tr>
+       <tr><td style="padding-top:18px;color:#918a80;font-size:12px;line-height:1.5">Or paste this link into your browser:<br><a href="${cta.url}" style="color:#c2410c;word-break:break-all;text-decoration:none">${cta.url}</a></td></tr>`
     : '';
-  return `<div style="margin:0;padding:32px 16px;background:#0a0e17;font-family:ui-sans-serif,system-ui,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto">
-    <tr><td style="padding-bottom:18px">
+  return `<div style="margin:0;padding:36px 16px;background:#f4f1ec;font-family:ui-sans-serif,system-ui,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:500px;margin:0 auto">
+    <tr><td style="padding:0 4px 20px">
       <table role="presentation" cellpadding="0" cellspacing="0"><tr>
         <td>${brandLogo()}</td>
-        <td style="padding-left:11px;font-weight:800;font-size:18px;color:#f8fafc"><span style="color:#f97316">Better</span>Community</td>
+        <td style="padding-left:11px;font-weight:800;font-size:18px;color:#1a1714;letter-spacing:-.01em"><span style="color:#f97316">Better</span>Community</td>
       </tr></table>
     </td></tr>
-    <tr><td style="background:#111827;border:1px solid #1f2937;border-radius:18px;padding:30px">
+    <tr><td style="background:#ffffff;border:1px solid #eae4da;border-radius:20px;padding:34px;box-shadow:0 12px 40px -18px rgba(30,20,5,.18)">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-        <tr><td><h1 style="margin:0 0 10px;font-size:20px;color:#f1f5f9;letter-spacing:-.02em">${title}</h1></td></tr>
-        <tr><td style="color:#94a3b8;font-size:14.5px;line-height:1.65">${bodyHtml}</td></tr>
+        <tr><td style="border-bottom:3px solid #f97316;width:38px;padding-bottom:16px"></td></tr>
+        <tr><td style="padding-top:16px"><h1 style="margin:0 0 12px;font-size:22px;color:#1a1714;letter-spacing:-.02em;font-weight:800">${title}</h1></td></tr>
+        <tr><td style="color:#5d5750;font-size:15px;line-height:1.66">${bodyHtml}</td></tr>
         ${btn}
       </table>
     </td></tr>
-    <tr><td style="padding-top:18px;text-align:center;color:#475569;font-size:12px">
-      © ${new Date().getFullYear()} BetterCommunity · <a href="${SITE}" style="color:#64748b;text-decoration:none">bettercommunity.ch</a>
+    <tr><td style="padding:20px 4px 0;text-align:center;color:#a39b8f;font-size:12px">
+      © ${new Date().getFullYear()} BetterCommunity · <a href="${SITE}" style="color:#918a80;text-decoration:none">bettercommunity.ch</a>
     </td></tr>
   </table>
 </div>`;

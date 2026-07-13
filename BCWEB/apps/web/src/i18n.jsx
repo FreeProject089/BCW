@@ -69,7 +69,9 @@ const DICT = {
     'nl.subj.req': 'A subject is required.', 'nl.title.req': 'A title is required.', 'nl.body.req': 'A message body is required.', 'nl.pick.req': 'Select at least one recipient.',
     'nl.send.t': 'Send newsletter email', 'nl.send.m': 'Send this email to {n} subscriber(s)? This cannot be undone.', 'nl.send.ok': 'Send',
     'nl.sent': 'Sent to {n} of {total} subscriber(s).', 'nl.err.disabled': 'Email is not configured on this server (SMTP).', 'nl.err': 'Failed to send.',
-    'nl.test.btn': 'Send test to me', 'nl.test.sent': 'Test sent to {to}.', 'nl.test.err': 'Could not send the test.', 'nl.noactive': 'No confirmed subscribers yet — sign-ups stay “pending” until they click the confirm email. You can still send yourself a test below.',
+    'nl.test.btn': 'Send test to me', 'nl.test.btn2': 'Test', 'nl.test.to': 'Test recipient', 'nl.test.emailreq': 'Enter a valid email to send the test to.', 'nl.test.errdetail': 'Send failed: {d}', 'nl.test.sent': 'Test sent to {to}.', 'nl.test.err': 'Could not send the test.', 'nl.noactive': 'No confirmed subscribers yet — sign-ups stay “pending” until they click the confirm email. You can still send yourself a test below.',
+    'nl.subs': 'Subscribers', 'nl.subs.none': 'No subscribers yet.', 'nl.add.ph': 'email to add…', 'nl.add.btn': 'Add', 'nl.add.emailreq': 'Enter a valid email.', 'nl.add.done': 'Subscriber added.', 'nl.add.err': 'Could not add.',
+    'nl.rm.t': 'Remove subscriber', 'nl.rm.m': 'Remove {e} from the newsletter?', 'nl.rm.ok': 'Remove', 'nl.rm.done': 'Removed.', 'nl.rm.err': 'Could not remove.',
     'arp.dashboard': 'Manage (admin)', 'an.wv.export': 'Export CSV',
 
     'cookie.title': 'Cookies',
@@ -459,7 +461,9 @@ const DICT = {
     'nl.subj.req': 'Un objet est requis.', 'nl.title.req': 'Un titre est requis.', 'nl.body.req': 'Un message est requis.', 'nl.pick.req': 'Sélectionne au moins un destinataire.',
     'nl.send.t': "Envoyer l'email de newsletter", 'nl.send.m': 'Envoyer cet email à {n} abonné(s) ? Action irréversible.', 'nl.send.ok': 'Envoyer',
     'nl.sent': 'Envoyé à {n} abonné(s) sur {total}.', 'nl.err.disabled': "L'email n'est pas configuré sur ce serveur (SMTP).", 'nl.err': "Échec de l'envoi.",
-    'nl.test.btn': 'Envoyer un test', 'nl.test.sent': 'Test envoyé à {to}.', 'nl.test.err': "Impossible d'envoyer le test.", 'nl.noactive': 'Aucun abonné confirmé pour le moment — les inscriptions restent « en attente » jusqu\'au clic sur l\'email de confirmation. Tu peux quand même t\'envoyer un test ci-dessous.',
+    'nl.test.btn': 'Envoyer un test', 'nl.test.btn2': 'Test', 'nl.test.to': 'Destinataire du test', 'nl.test.emailreq': 'Entre un email valide pour le test.', 'nl.test.errdetail': "Échec de l'envoi : {d}", 'nl.test.sent': 'Test envoyé à {to}.', 'nl.test.err': "Impossible d'envoyer le test.", 'nl.noactive': 'Aucun abonné confirmé pour le moment — les inscriptions restent « en attente » jusqu\'au clic sur l\'email de confirmation. Tu peux quand même t\'envoyer un test ci-dessous.',
+    'nl.subs': 'Abonnés', 'nl.subs.none': 'Aucun abonné pour le moment.', 'nl.add.ph': 'email à ajouter…', 'nl.add.btn': 'Ajouter', 'nl.add.emailreq': 'Entre un email valide.', 'nl.add.done': 'Abonné ajouté.', 'nl.add.err': "Impossible d'ajouter.",
+    'nl.rm.t': "Retirer l'abonné", 'nl.rm.m': 'Retirer {e} de la newsletter ?', 'nl.rm.ok': 'Retirer', 'nl.rm.done': 'Retiré.', 'nl.rm.err': 'Impossible de retirer.',
     'arp.dashboard': 'Gérer (admin)', 'an.wv.export': 'Exporter CSV',
 
     'cookie.title': 'Cookies',

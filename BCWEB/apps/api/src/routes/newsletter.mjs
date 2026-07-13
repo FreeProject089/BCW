@@ -16,7 +16,7 @@ const tok = () => crypto.randomBytes(24).toString('hex');
 // unsubscribe footer + List-Unsubscribe header. `sub` = { email, unsubToken }.
 export async function sendNewsletterTo(sub, { subject, title, body, url }) {
   const unsubUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${sub.unsubToken}`;
-  const footer = `<p style="font-size:12px;color:#475569;margin:26px 0 0;padding-top:16px;border-top:1px solid #1f2937">You receive this because you subscribed to BetterCommunity updates. <a href="${unsubUrl}" style="color:#94a3b8">Unsubscribe in one click</a>.</p>`;
+  const footer = `<p style="font-size:12px;color:#918a80;margin:28px 0 0;padding-top:18px;border-top:1px solid #eae4da">You receive this because you subscribed to BetterCommunity updates. <a href="${unsubUrl}" style="color:#c2410c">Unsubscribe in one click</a>.</p>`;
   const safeBody = escapeHtml(body).replace(/\n/g, '<br>');
   return sendMail({
     to: sub.email, subject,
@@ -48,20 +48,20 @@ function page(title, body, opts = {}) {
 <style>
   :root{--tone:${tone}}
   *{box-sizing:border-box}
-  body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:radial-gradient(1200px 600px at 50% -10%,rgba(249,115,22,.10),transparent),#0a0e17;color:#e8edf5;display:grid;place-items:center;min-height:100vh;margin:0;padding:20px}
-  .card{width:100%;max-width:480px;padding:38px 34px;text-align:center;background:#101725;border:1px solid #1e293b;border-radius:22px;box-shadow:0 30px 80px -30px rgba(0,0,0,.7)}
-  .brand{display:inline-flex;align-items:center;gap:8px;font-weight:800;font-size:15px;margin-bottom:22px;color:#f8fafc}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:radial-gradient(58rem 42rem at 80% -12%,rgba(249,115,22,.14),transparent 60%),radial-gradient(46rem 40rem at -6% 6%,rgba(245,158,11,.12),transparent 56%),#faf8f5;color:#1a1714;display:grid;place-items:center;min-height:100vh;margin:0;padding:20px}
+  .card{width:100%;max-width:460px;padding:40px 36px;text-align:center;background:#ffffff;border:1px solid #eae4da;border-radius:24px;box-shadow:0 30px 80px -32px rgba(30,20,5,.22)}
+  .brand{display:inline-flex;align-items:center;gap:9px;font-weight:800;font-size:15px;margin-bottom:24px;color:#1a1714}
   .brand b{color:#f97316}
-  .brand img{width:22px;height:22px;border-radius:6px}
-  .ico{width:60px;height:60px;margin:0 auto 18px;border-radius:16px;display:grid;place-items:center;background:color-mix(in srgb,var(--tone) 16%,transparent);color:var(--tone)}
-  .ico svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
-  h1{font-size:22px;margin:0 0 10px;letter-spacing:-.02em}
-  p{color:#94a3b8;line-height:1.65;margin:0 0 18px;font-size:15px}
-  .btn{display:inline-block;background:#f97316;color:#fff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:12px;transition:filter .15s}
-  .btn:hover{filter:brightness(1.08)}
-  .home{display:inline-block;margin-top:16px;color:#64748b;text-decoration:none;font-size:13px}
-  .home:hover{color:#e8edf5}
-  .extra{margin-top:14px;font-size:13px;color:#64748b}.extra a{color:#f59e0b;text-decoration:none;font-weight:600}
+  .brand img{width:26px;height:26px;border-radius:7px}
+  .ico{width:62px;height:62px;margin:0 auto 20px;border-radius:18px;display:grid;place-items:center;background:color-mix(in srgb,var(--tone) 14%,transparent);color:var(--tone)}
+  .ico svg{width:31px;height:31px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  h1{font-size:23px;margin:0 0 10px;letter-spacing:-.02em;font-weight:800}
+  p{color:#5d5750;line-height:1.66;margin:0 0 20px;font-size:15px}
+  .btn{display:inline-block;background:#f97316;color:#fff;text-decoration:none;font-weight:700;padding:13px 28px;border-radius:12px;transition:filter .15s;box-shadow:0 8px 22px -8px rgba(249,115,22,.5)}
+  .btn:hover{filter:brightness(1.06)}
+  .home{display:inline-block;margin-top:18px;color:#918a80;text-decoration:none;font-size:13px}
+  .home:hover{color:#1a1714}
+  .extra{margin-top:16px;font-size:13px;color:#918a80}.extra a{color:#c2410c;text-decoration:none;font-weight:600}
 </style></head>
 <body><div class="card">
   <div class="brand"><img src="${SITE_URL}/logo.png" alt=""> <span><b>Better</b>Community</span></div>
@@ -154,6 +154,28 @@ export default async function newsletterRoutes(app) {
     return { subscribers, counts: { active, pending, unsubscribed, activeEn, activeFr } };
   });
 
+  // ── Admin: add a subscriber directly (bypasses double opt-in) ───────────────
+  // For manually importing an address the admin already has consent for.
+  app.post('/admin/newsletter/add', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({ email: z.string().email().max(160), locale: z.enum(['en', 'fr']).optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_email' });
+    const email = b.data.email.trim().toLowerCase();
+    const locale = b.data.locale || 'en';
+    const p = await db();
+    const existing = await p.newsletterSubscriber.findUnique({ where: { email } });
+    const sub = existing
+      ? await p.newsletterSubscriber.update({ where: { email }, data: { status: 'active', confirmedAt: existing.confirmedAt || new Date(), confirmToken: null, locale } })
+      : await p.newsletterSubscriber.create({ data: { email, locale, status: 'active', confirmedAt: new Date(), unsubToken: tok() } });
+    return { ok: true, subscriber: { id: sub.id, email: sub.email, status: sub.status, locale: sub.locale } };
+  });
+
+  // ── Admin: remove a subscriber (hard delete) ────────────────────────────────
+  app.delete('/admin/newsletter/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    await p.newsletterSubscriber.delete({ where: { id: req.params.id } }).catch(() => {});
+    return { ok: true };
+  });
+
   // ── Admin: manual broadcast / custom email ─────────────────────────────────
   // Deliberately manual — no auto-send on publish, so nothing blasts everyone by
   // accident. Send to every ACTIVE subscriber, or to a chosen subset (`emails`).
@@ -182,14 +204,23 @@ export default async function newsletterRoutes(app) {
     const b = z.object({
       subject: z.string().min(1).max(200), title: z.string().min(1).max(200),
       body: z.string().min(1).max(5000), url: z.string().url().max(500).optional(),
+      to: z.string().email().max(200).optional(), // deliverable address to test against
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     if (!emailEnabled()) return reply.code(400).send({ error: 'email_disabled' });
     const p = await db();
-    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { email: true } });
-    if (!me?.email) return reply.code(400).send({ error: 'no_email' });
-    const ok = await sendNewsletterTo({ email: me.email, unsubToken: 'test' }, { subject: `[TEST] ${b.data.subject}`, title: b.data.title, body: b.data.body, url: b.data.url });
-    if (ok === false) return reply.code(502).send({ error: 'send_failed' });
-    return { ok: true, to: me.email };
+    let to = b.data.to?.trim().toLowerCase();
+    if (!to) { const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { email: true } }); to = me?.email; }
+    if (!to) return reply.code(400).send({ error: 'no_email' });
+    // sendMail can throw (e.g. the SMTP server rejects a non-deliverable address like the
+    // seed admin's *.local) — surface that instead of a bare 502 so the admin knows to use
+    // a real inbox.
+    try {
+      const ok = await sendNewsletterTo({ email: to, unsubToken: 'test' }, { subject: `[TEST] ${b.data.subject}`, title: b.data.title, body: b.data.body, url: b.data.url });
+      if (ok === false) return reply.code(502).send({ error: 'send_failed' });
+      return { ok: true, to };
+    } catch (e) {
+      return reply.code(502).send({ error: 'send_failed', detail: String(e?.message || e).slice(0, 200) });
+    }
   });
 }

@@ -4266,12 +4266,27 @@ function AdminNewsletter() {
   };
   const payloadOf = () => { const pl = { subject: f.subject.trim(), title: f.title.trim(), body: f.body.trim() }; if (f.url.trim()) pl.url = f.url.trim(); return pl; };
   const [testing, setTesting] = useState(false);
+  const [testTo, setTestTo] = useState('');
   const sendTest = async () => {
     if (!validComposed()) return;
+    if (!testTo.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testTo.trim())) return toast.error(t('nl.test.emailreq', 'Enter a valid email to send the test to.'));
     setTesting(true);
-    try { const r = await api.post('/admin/newsletter/test', payloadOf()); toast.success(t('nl.test.sent', 'Test sent to {to}.').replace('{to}', r.to)); }
-    catch (x) { toast.error(x.data?.error === 'email_disabled' ? t('nl.err.disabled', 'Email is not configured on this server (SMTP).') : t('nl.test.err', 'Could not send the test.')); }
+    try { const r = await api.post('/admin/newsletter/test', { ...payloadOf(), to: testTo.trim() }); toast.success(t('nl.test.sent', 'Test sent to {to}.').replace('{to}', r.to)); }
+    catch (x) { toast.error(x.data?.error === 'email_disabled' ? t('nl.err.disabled', 'Email is not configured on this server (SMTP).') : x.data?.detail ? t('nl.test.errdetail', 'Send failed: {d}').replace('{d}', x.data.detail) : t('nl.test.err', 'Could not send the test.')); }
     finally { setTesting(false); }
+  };
+  // Add / remove subscribers manually (admin already has consent).
+  const [addEmail, setAddEmail] = useState(''); const [addLocale, setAddLocale] = useState('en'); const [adding, setAdding] = useState(false);
+  const addSub = async () => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addEmail.trim())) return toast.error(t('nl.add.emailreq', 'Enter a valid email.'));
+    setAdding(true);
+    try { await api.post('/admin/newsletter/add', { email: addEmail.trim(), locale: addLocale }); toast.success(t('nl.add.done', 'Subscriber added.')); setAddEmail(''); reload(); }
+    catch (x) { toast.error(x.data?.error || t('nl.add.err', 'Could not add.')); } finally { setAdding(false); }
+  };
+  const removeSub = async (sub) => {
+    if (!(await dialog.confirm({ title: t('nl.rm.t', 'Remove subscriber'), message: t('nl.rm.m', 'Remove {e} from the newsletter?').replace('{e}', sub.email), okLabel: t('nl.rm.ok', 'Remove'), danger: true }))) return;
+    try { await api.del(`/admin/newsletter/${sub.id}`); toast.success(t('nl.rm.done', 'Removed.')); reload(); }
+    catch { toast.error(t('nl.rm.err', 'Could not remove.')); }
   };
   const send = async () => {
     if (!validComposed()) return;
@@ -4349,14 +4364,42 @@ function AdminNewsletter() {
             they click the confirm email. The test send below works regardless. */}
         {counts.active === 0 && <div className="text-xs text-[var(--muted)] rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 p-2.5">{t('nl.noactive', 'No confirmed subscribers yet — sign-ups stay “pending” until they click the confirm email. You can still send yourself a test below.')}</div>}
 
-        <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
-          <span className="text-xs text-[var(--faint)]">{t('nl.willsend', 'Will send to {n} subscriber(s).').replace('{n}', recipientCount)}</span>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" disabled={testing} onClick={sendTest}>{testing ? <Spinner /> : <><Mail size={15} /> {t('nl.test.btn', 'Send test to me')}</>}</Button>
+        <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0 sm:max-w-xs w-full">
+            <div className="text-[11px] text-[var(--faint)] mb-1">{t('nl.test.to', 'Test recipient')}</div>
+            <div className="flex gap-2">
+              <Input type="email" value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder="you@example.com" className="!py-1.5 text-sm" />
+              <Button variant="ghost" className="shrink-0" disabled={testing} onClick={sendTest}>{testing ? <Spinner /> : <><Mail size={15} /> {t('nl.test.btn2', 'Test')}</>}</Button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 sm:flex-col sm:items-end">
+            <span className="text-xs text-[var(--faint)] sm:mb-1">{t('nl.willsend', 'Will send to {n} subscriber(s).').replace('{n}', recipientCount)}</span>
             <Button variant="primary" disabled={busy || recipientCount === 0} onClick={send}>{busy ? <Spinner /> : <><Send size={15} /> {t('nl.send.btn', 'Send email')}</>}</Button>
           </div>
         </div>
       </Card>
+
+      {/* Manage subscribers — add an address directly (already-consented import) or remove one. */}
+      <div>
+        <h3 className="font-semibold mb-1 flex items-center gap-2 text-sm"><Users size={15} className="text-[var(--primary-2)]" /> {t('nl.subs', 'Subscribers')}</h3>
+        <Card className="p-4 space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Input type="email" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} placeholder={t('nl.add.ph', 'email to add…')} className="flex-1 min-w-[180px] !py-2 text-sm" onKeyDown={(e) => e.key === 'Enter' && addSub()} />
+            <Dropdown value={addLocale} onChange={setAddLocale} options={[{ value: 'en', label: 'EN' }, { value: 'fr', label: 'FR' }]} />
+            <Button variant="primary" disabled={adding} onClick={addSub}>{adding ? <Spinner /> : <><Plus size={15} /> {t('nl.add.btn', 'Add')}</>}</Button>
+          </div>
+          {loading ? <Loading /> : subscribers.length ? <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)] max-h-80 overflow-y-auto">
+            {subscribers.map((s) => (
+              <div key={s.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                <span className="flex-1 min-w-0 truncate">{s.email}</span>
+                <Badge tone={s.status === 'active' ? 'green' : s.status === 'pending' ? 'amber' : ''}>{s.status}</Badge>
+                <Badge tone="">{s.locale?.toUpperCase() || 'EN'}</Badge>
+                <button onClick={() => removeSub(s)} title={t('nl.rm.ok', 'Remove')} className="shrink-0 p-1 rounded-md text-[var(--faint)] hover:text-red-400 hover:bg-[var(--surface-2)] transition"><Trash2 size={14} /></button>
+              </div>
+            ))}
+          </div> : <div className="text-sm text-[var(--faint)] text-center py-4">{t('nl.subs.none', 'No subscribers yet.')}</div>}
+        </Card>
+      </div>
 
       <div className="flex justify-end"><Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /> {t('nl.refresh', 'Refresh')}</Button></div>
     </div>
