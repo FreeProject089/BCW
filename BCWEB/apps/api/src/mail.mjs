@@ -43,43 +43,124 @@ export function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// Inline markdown (on already-escaped text): images, links, bold, italic, inline code.
-// Only `http(s)` URLs are linked/embedded so a `javascript:`/`data:` value can't sneak in.
-function inlineMd(s) {
-  return s
+// ── Markdown → email-safe HTML ────────────────────────────────────────────────
+// Renders standard markdown AND BetterCommunity's custom md.jsx blocks (callouts, cards,
+// columns, :badge chips, tables…) with inline styles for email clients. Everything is
+// escaped at the text/attribute level (only http(s) URLs, sanitised colours) so trusted-
+// author content still can't inject markup/CSS (CWE-79).
+function safeUrl(u) { const v = String(u ?? '').trim(); return /^https?:\/\//i.test(v) ? v : ''; }
+function safeColor(c) { const v = String(c ?? '').trim(); return (/^#[0-9a-f]{3,8}$/i.test(v) || /^[a-z]+$/i.test(v) || /^rgba?\([\d.,\s%]+\)$/i.test(v)) ? v : ''; }
+function mdAttrs(s) { const out = {}; if (!s) return out; const re = /([\w-]+)=("[^"]*"|'[^']*'|[^\s}]+)/g; let m; while ((m = re.exec(s))) out[m[1]] = m[2].replace(/^["']|["']$/g, ''); return out; }
+
+// Inline markdown on RAW text. `:badge[…]{color}` is extracted first (its colour comes
+// from the raw source) into a placeholder, then the text is escaped, standard inline
+// tokens are applied, and the placeholders are restored. `:icon[…]` can't render in email.
+function inlineMd(raw) {
+  const holders = [];
+  let s = String(raw ?? '')
+    .replace(/:badge\[([^\]]*)\](?:\{([^}]*)\})?/g, (_, txt, at) => {
+      const c = safeColor(mdAttrs(at).color) || '#64748b';
+      holders.push(`<span style="display:inline-block;background:${c};color:#fff;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;vertical-align:1px">${escapeHtml(txt)}</span>`);
+      return `${holders.length - 1}`;
+    })
+    .replace(/:icon\[[^\]]*\](?:\{[^}]*\})?/g, '');
+  s = escapeHtml(s)
     .replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%;border-radius:10px;margin:6px 0">')
     .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" style="color:#c2410c;text-decoration:underline">$1</a>')
     .replace(/`([^`]+)`/g, '<code style="background:rgba(120,120,120,.16);padding:1px 5px;border-radius:5px;font-size:.92em">$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_]+)__/g, '<strong>$1</strong>')
     .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>').replace(/(^|[^_])_([^_\n]+)_/g, '$1<em>$2</em>');
+  return s.replace(/(\d+)/g, (_, i) => holders[+i]);
 }
 
-// Convert a markdown string to email-safe HTML. Escapes first (so embedded raw HTML is
-// inert), strips BetterCommunity custom md.jsx directives (::name[…] / ::: fences — they
-// can't render in an email), then renders standard blocks with inline styles. Trusted-
-// author content (admin broadcast / blog intro), but escaping keeps it injection-safe.
-export function mdToEmailHtml(md) {
-  const src = String(md ?? '')
-    .replace(/^:::.*$/gm, '')                              // container fences → drop, keep inner
-    .replace(/^\s*::\w+(?:\[[^\]]*\])?(?:\{[^}]*\})?\s*$/gm, '') // leaf directive lines → drop
-    .replace(/::\w+\[([^\]]*)\](?:\{[^}]*\})?/g, '$1');    // inline directive → keep its label
-  const lines = src.replace(/\r\n/g, '\n').split('\n');
-  const out = []; let para = []; let list = null; // list = {type:'ul'|'ol', items:[]}
-  const flushPara = () => { if (para.length) { out.push(`<p style="margin:0 0 14px">${inlineMd(escapeHtml(para.join('\n')).replace(/\n/g, '<br>'))}</p>`); para = []; } };
-  const flushList = () => { if (list) { const tag = list.type; out.push(`<${tag} style="margin:0 0 14px;padding-left:22px">${list.items.map((it) => `<li style="margin:4px 0">${inlineMd(escapeHtml(it))}</li>`).join('')}</${tag}>`); list = null; } };
-  for (const raw of lines) {
-    const line = raw.replace(/\s+$/, '');
+const MAIL_CALLOUT = { tip: '#16a34a', note: '#2563eb', info: '#2563eb', hint: '#16a34a', success: '#16a34a', check: '#16a34a', warning: '#d97706', caution: '#d97706', important: '#7c3aed', danger: '#dc2626', error: '#dc2626', callout: '#7c3aed' };
+
+// Render one BetterCommunity container directive to email HTML. Inner content is rendered
+// recursively so nested blocks (cards inside :::cards, etc.) work.
+function renderDirective(name, label, attrs, innerLines) {
+  const body = renderBlocks(innerLines);
+  if (name === 'card' || name === 'ref') {
+    const title = attrs.title || label; const href = safeUrl(attrs.href || attrs.link); const img = safeUrl(attrs.image);
+    const inside = `${img ? `<img src="${img}" alt="" style="max-width:100%;border-radius:10px;margin:0 0 10px">` : ''}${title ? `<div style="font-weight:700;font-size:16px;margin-bottom:6px">${inlineMd(title)}</div>` : ''}${body}`;
+    const box = `<div style="border:1px solid #eae4da;border-radius:14px;padding:16px;margin:0 0 14px">${inside}</div>`;
+    return href ? `<a href="${href}" style="text-decoration:none;color:inherit;display:block">${box}</a>` : box;
+  }
+  if (name === 'details' || name === 'collapse') return `<div style="border:1px solid #eae4da;border-radius:12px;padding:14px 16px;margin:0 0 14px"><div style="font-weight:700;margin-bottom:8px">${inlineMd(label || attrs.title || 'Details')}</div>${body}</div>`;
+  if (name === 'file') { const href = safeUrl(attrs.href || attrs.url); return `<div style="border:1px solid #eae4da;border-radius:12px;padding:12px 16px;margin:0 0 14px"><a href="${href}" style="color:#c2410c;font-weight:600;text-decoration:none">&#x2913; ${inlineMd(label || attrs.name || 'Download')}</a>${attrs.size ? ` <span style="color:#918a80;font-size:12px">(${escapeHtml(attrs.size)})</span>` : ''}</div>`; }
+  if (name === 'center' || name === 'left' || name === 'right') return `<div style="text-align:${name};margin:0 0 14px">${body}</div>`;
+  // Grid/step wrappers: email can't do real columns — stack the children.
+  if (['cards', 'columns', 'steps', 'column', 'step'].includes(name)) return body;
+  // Everything else → a callout box (tip/note/warning/danger/info/success/custom…).
+  const color = safeColor(attrs.color) || MAIL_CALLOUT[name] || '#2563eb';
+  const title = label || attrs.title || '';
+  return `<div style="border:1px solid #eae4da;border-left:4px solid ${color};border-radius:12px;padding:14px 16px;margin:0 0 14px;background:rgba(120,120,120,.05)">${title ? `<div style="font-weight:700;color:${color};margin-bottom:6px">${inlineMd(title)}</div>` : ''}${body}</div>`;
+}
+
+// Render plain markdown (no ::: containers): headings, GFM tables, lists, quotes, hr, paras.
+function renderMarkdown(text) {
+  const lines = String(text).split('\n');
+  const out = []; let para = []; let list = null;
+  const flushPara = () => { if (para.length) { out.push(`<p style="margin:0 0 14px">${inlineMd(para.join('\n')).replace(/\n/g, '<br>')}</p>`); para = []; } };
+  const flushList = () => { if (list) { out.push(`<${list.type} style="margin:0 0 14px;padding-left:22px">${list.items.map((it) => `<li style="margin:4px 0">${inlineMd(it)}</li>`).join('')}</${list.type}>`); list = null; } };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\s+$/, '');
     let m;
     if (!line.trim()) { flushPara(); flushList(); continue; }
+    // GFM table: a `| … |` row followed by a `|---|---|` separator.
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1]) && lines[i + 1].includes('-')) {
+      flushPara(); flushList();
+      const cells = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+      const head = cells(line); const rows = []; i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(cells(lines[i])); i++; }
+      i--;
+      const th = head.map((c) => `<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #eae4da;font-weight:700">${inlineMd(c)}</th>`).join('');
+      const tb = rows.map((r) => `<tr>${r.map((c) => `<td style="padding:8px 12px;border-bottom:1px solid #eae4da">${inlineMd(c)}</td>`).join('')}</tr>`).join('');
+      out.push(`<table role="presentation" style="border-collapse:collapse;width:100%;margin:0 0 16px;font-size:14px"><thead><tr>${th}</tr></thead><tbody>${tb}</tbody></table>`);
+      continue;
+    }
     if (/^\s*(?:---|\*\*\*|___)\s*$/.test(line)) { flushPara(); flushList(); out.push('<hr style="border:none;border-top:1px solid #eae4da;margin:18px 0">'); continue; }
-    if ((m = line.match(/^(#{1,4})\s+(.*)$/))) { flushPara(); flushList(); const sz = [22, 19, 17, 15][m[1].length - 1]; out.push(`<h${m[1].length} style="margin:18px 0 10px;font-size:${sz}px;font-weight:800;line-height:1.3">${inlineMd(escapeHtml(m[2]))}</h${m[1].length}>`); continue; }
-    if ((m = line.match(/^\s*>\s?(.*)$/))) { flushPara(); flushList(); out.push(`<blockquote style="margin:0 0 14px;padding:8px 16px;border-left:3px solid #f97316;color:#6f685d">${inlineMd(escapeHtml(m[1]))}</blockquote>`); continue; }
+    if ((m = line.match(/^(#{1,4})\s+(.*)$/))) { flushPara(); flushList(); const sz = [22, 19, 17, 15][m[1].length - 1]; out.push(`<h${m[1].length} style="margin:18px 0 10px;font-size:${sz}px;font-weight:800;line-height:1.3">${inlineMd(m[2])}</h${m[1].length}>`); continue; }
+    if ((m = line.match(/^\s*>\s?(.*)$/))) { flushPara(); flushList(); out.push(`<blockquote style="margin:0 0 14px;padding:8px 16px;border-left:3px solid #f97316;color:#6f685d">${inlineMd(m[1])}</blockquote>`); continue; }
     if ((m = line.match(/^\s*[-*+]\s+(.*)$/))) { flushPara(); if (!list || list.type !== 'ul') { flushList(); list = { type: 'ul', items: [] }; } list.items.push(m[1]); continue; }
     if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { flushPara(); if (!list || list.type !== 'ol') { flushList(); list = { type: 'ol', items: [] }; } list.items.push(m[1]); continue; }
     flushList(); para.push(line);
   }
   flushPara(); flushList();
-  return out.join('\n') || '<p style="margin:0"></p>';
+  return out.join('\n');
+}
+
+// Render an array of lines, peeling off ::: container directives (matched by colon count
+// so nesting like :::: cards > ::: card works) and passing everything else to renderMarkdown.
+function renderBlocks(lines) {
+  const out = []; let plain = [];
+  const flushPlain = () => { if (plain.length) { const h = renderMarkdown(plain.join('\n')); if (h.trim()) out.push(h); plain = []; } };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const open = line.match(/^(:{3,})([a-zA-Z][\w-]*)\s*(\[[^\]]*\])?\s*(\{[^}]*\})?\s*$/);
+    if (open) {
+      const n = open[1].length; const name = open[2].toLowerCase();
+      const label = open[3] ? open[3].slice(1, -1) : ''; const attrs = mdAttrs(open[4] || '');
+      const inner = []; let depth = 1; let j = i + 1;
+      const closeRe = new RegExp(`^:{${n},}\\s*$`); const openRe = new RegExp(`^:{${n},}[a-zA-Z]`);
+      for (; j < lines.length; j++) {
+        if (closeRe.test(lines[j])) { depth--; if (depth === 0) break; inner.push(lines[j]); }
+        else { if (openRe.test(lines[j])) depth++; inner.push(lines[j]); }
+      }
+      i = j;
+      flushPlain();
+      out.push(renderDirective(name, label, attrs, inner));
+      continue;
+    }
+    // Leaf directive line (`::toc[…]` etc.) — nothing to render in an email → drop.
+    if (/^::[a-zA-Z][\w-]*(?:\[[^\]]*\])?(?:\{[^}]*\})?\s*$/.test(line)) continue;
+    plain.push(line);
+  }
+  flushPlain();
+  return out.join('\n');
+}
+
+export function mdToEmailHtml(md) {
+  return renderBlocks(String(md ?? '').replace(/\r\n/g, '\n').split('\n')) || '<p style="margin:0"></p>';
 }
 
 // Branded, email-client-safe HTML wrapper (table layout, inline styles = LIGHT default).
