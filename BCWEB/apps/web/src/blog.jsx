@@ -410,7 +410,21 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
     { icon: Smile, label: 'Icon', onPick: () => { setBlocksOpen(false); setIconPick(true); } },
     { icon: ListTree, label: 'Table of contents', snip: '\n::toc[On this page]\n' },
   ];
-  const insertBlock = (snip) => { insert(snip); setBlocksOpen(false); };
+  // Insert a block snippet as its OWN block: remark-directive only parses `:::name…`
+  // when it's separated from surrounding text by BLANK lines. Inserting a snippet at a
+  // mid-paragraph cursor with just single newlines left the directive glued to the text,
+  // so it rendered as raw `:::tip[…]` in the content. Force a blank line before/after.
+  const insertBlock = (snip) => {
+    const ta = ref.current; const v = value || ''; const at = ta ? ta.selectionStart : v.length;
+    const before = v.slice(0, at); const after = v.slice(at);
+    const core = snip.replace(/^\n+/, '').replace(/\n+$/, '');
+    const pre = !before || /\n[ \t]*\n$/.test(before) ? '' : (before.endsWith('\n') ? '\n' : '\n\n');
+    const post = !after || /^\n[ \t]*\n/.test(after) ? '' : (after.startsWith('\n') ? '\n' : '\n\n');
+    const chunk = pre + core + post;
+    const next = before + chunk + after; onChange(next);
+    setBlocksOpen(false);
+    setTimeout(() => { if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = before.length + chunk.length; } }, 0);
+  };
   return (
     <div className="rounded-xl border border-[var(--line)] overflow-hidden bg-[var(--surface-2)]">
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-[var(--line)]">

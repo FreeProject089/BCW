@@ -243,14 +243,18 @@ function remarkDocBlocks() {
             children: [{ type: 'paragraph', data: { hName: 'a', hProperties: { href: `#${h.id}` } }, children: [{ type: 'text', value: h.text }] }] })) }];
       }
     });
-    // Pass 3 — safety net: drop orphan ":::" fence lines that remark-directive left
-    // behind (e.g. a mis-nested block), so raw colons never show up in the output.
+    // Pass 3 — safety net: drop orphan directive-fence lines that remark-directive left
+    // behind as raw text (e.g. a block inserted mid-paragraph with no blank line around
+    // it, or a mis-nested block), so raw `:::tip[…]` / `:::` colons never show up.
+    // 3–4 colons only (container fences `:::`/`::::`), so a 2-colon CSS pseudo-element
+    // like `::before` written in prose is never mistaken for a leaked directive.
+    const FENCE_LINE = /(^|\n)[ \t]*:{3,4}(?:[a-zA-Z][\w-]*(?:\[[^\]\n]*\])?(?:\{[^}\n]*\})?)?[ \t]*(?=\n|$)/g;
     visit(tree, 'paragraph', (node, index, parent) => {
       if (!parent || typeof index !== 'number') return;
-      if (/^:{3,}$/.test(nodeText(node).trim())) { parent.children.splice(index, 1); return index; }
+      if (/^:{3,4}(?:[a-zA-Z][\w-]*(?:\[[^\]]*\])?(?:\{[^}]*\})?)?$/.test(nodeText(node).trim())) { parent.children.splice(index, 1); return index; }
     });
     visit(tree, 'text', (node) => {
-      node.value = node.value.replace(/(^|\n)[ \t]*:{3,}[ \t]*(?=\n|$)/g, '$1');
+      node.value = node.value.replace(FENCE_LINE, '$1');
     });
   };
 }
