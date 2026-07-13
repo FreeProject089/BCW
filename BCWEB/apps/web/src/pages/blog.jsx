@@ -6,21 +6,21 @@ import {
   Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge, History, MessageSquare, Globe,
   Table, Quote, Minus, AlignLeft, AlignRight, Mail,
 } from 'lucide-react';
-import { api, uploadBlogImage } from './api.js';
+import { api, uploadBlogImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
-import { useI18n } from './i18n.jsx';
-import Markdown from './md.jsx';
-import Avatar from './Avatar.jsx';
-import { REACTION_OPTIONS, ReactionIcon } from './reactions.jsx';
-import VisualEditor from './visual-editor.jsx';
-import IconPicker from './icon-picker.jsx';
-import SelectionToolbar from './selection-toolbar.jsx';
-import KbdPicker from './kbd-picker.jsx';
-import { merge3, hasConflictMarkers } from './merge3.js';
-import HistoryModal from './history-modal.jsx';
-import DiffMergeModal from './diff-merge-modal.jsx';
-import CommentsModal from './comments-modal.jsx';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal } from './ui.jsx';
+import { useI18n } from '../i18n.jsx';
+import Markdown from '../ui/md.jsx';
+import Avatar from '../ui/Avatar.jsx';
+import { REACTION_OPTIONS, ReactionIcon } from '../ui/reactions.jsx';
+import VisualEditor from '../editor/visual-editor.jsx';
+import IconPicker from '../editor/icon-picker.jsx';
+import SelectionToolbar from '../editor/selection-toolbar.jsx';
+import KbdPicker from '../editor/kbd-picker.jsx';
+import { merge3, hasConflictMarkers } from '../lib/merge3.js';
+import HistoryModal from '../editor/history-modal.jsx';
+import DiffMergeModal from '../editor/diff-merge-modal.jsx';
+import CommentsModal from '../editor/comments-modal.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal } from '../ui/ui.jsx';
 
 // Pick the reader's language version of a post. EN is the base (always present);
 // FR is optional — when it's missing the reader sees the base marked "not translated".

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { X, Tag, ArrowUpRight } from 'lucide-react';
-import { api } from './api.js';
-import { useI18n } from './i18n.jsx';
+import { api } from '../lib/api.js';
+import { useI18n } from '../i18n.jsx';
 
 // Site-wide promo announcement badge. Polls the public resolver for the campaign that
 // is live right now and, if any (and not dismissed), shows a thin bar at the very top

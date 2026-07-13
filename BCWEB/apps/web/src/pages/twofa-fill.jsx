@@ -7,8 +7,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { KeyRound, ShieldCheck, ChevronDown } from 'lucide-react';
-import { readAccounts, totp, onVaultChange } from './twofa-lib.js';
-import { useI18n } from './i18n.jsx';
+import { readAccounts, totp, onVaultChange } from '../lib/twofa-lib.js';
+import { useI18n } from '../i18n.jsx';
 
 export function TotpQuickFill({ onFill, match = 'bettercommunity', className = '' }) {
   const { t } = useI18n();

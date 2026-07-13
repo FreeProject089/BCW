@@ -4,9 +4,9 @@ import {
   Code2, Quote, Minus, ChevronDown, ChevronUp, Table as TableIcon, X, FileDown, ListOrdered,
   AlignLeft, AlignCenter, AlignRight, Tags as TagsIcon,
 } from 'lucide-react';
-import { Input, Select } from './ui.jsx';
+import { Input, Select } from '../ui/ui.jsx';
 import IconPicker from './icon-picker.jsx';
-import { IconGlyph } from './md.jsx';
+import { IconGlyph } from '../ui/md.jsx';
 
 // Small "pick an icon" field: shows the chosen glyph + name, opens the picker.
 function IconField({ value, onChange, placeholder = 'Pick icon' }) {

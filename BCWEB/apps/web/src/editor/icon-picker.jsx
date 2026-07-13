@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
-import { ICON_NAMES, IconGlyph } from './md.jsx';
+import { ICON_NAMES, IconGlyph } from '../ui/md.jsx';
 
 // Icon picker searching the FULL catalogues: every lucide icon (name list from the
 // lucide-static CDN, previews rendered as colour-inheriting CSS-mask images) and

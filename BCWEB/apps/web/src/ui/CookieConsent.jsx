@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Cookie } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from './ui.jsx';
-import { useI18n } from './i18n.jsx';
-import { getConsent, setConsent } from './analytics.js';
-import { loadGtmIfConsented } from './gtm.js';
+import { useI18n } from '../i18n.jsx';
+import { getConsent, setConsent } from '../lib/analytics.js';
+import { loadGtmIfConsented } from '../lib/gtm.js';
 
 // GDPR cookie banner. Essential cookies (the session) are always on; analytics
 // is opt-in. Choice persists in localStorage.

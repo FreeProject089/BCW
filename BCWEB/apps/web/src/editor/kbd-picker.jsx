@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { Button } from './ui.jsx';
+import { Button } from '../ui/ui.jsx';
 
 // Shortcut builder: pick Windows or macOS style, toggle modifiers, type the key —
 // live preview, then insert `:kbd[…]`. Touch-friendly (all taps, one text field).

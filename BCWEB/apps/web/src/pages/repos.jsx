@@ -7,10 +7,10 @@ import {
   Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { api, uploadRepoFile } from './api.js';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal } from './ui.jsx';
+import { api, uploadRepoFile } from '../lib/api.js';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal } from '../ui/ui.jsx';
 import { useUploads } from './uploads.jsx';
-import { useI18n } from './i18n.jsx';
+import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
 
 function useFetch(fn, deps) {

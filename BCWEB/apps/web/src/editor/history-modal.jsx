@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from './api.js';
-import { useToast, Button, Spinner, Modal, EmptyState } from './ui.jsx';
-import { useI18n } from './i18n.jsx';
-import Markdown from './md.jsx';
-import Avatar from './Avatar.jsx';
-import { diffLines, lineStat } from './merge3.js';
+import { api } from '../lib/api.js';
+import { useToast, Button, Spinner, Modal, EmptyState } from '../ui/ui.jsx';
+import { useI18n } from '../i18n.jsx';
+import Markdown from '../ui/md.jsx';
+import Avatar from '../ui/Avatar.jsx';
+import { diffLines, lineStat } from '../lib/merge3.js';
 import { History, RotateCcw, Clock, User as UserIcon, Eye, GitCompare, Languages } from 'lucide-react';
 
 const bodyOf = (rev, lang) => (lang === 'fr' ? (rev?.bodyFr ?? rev?.body) : rev?.body) || '';

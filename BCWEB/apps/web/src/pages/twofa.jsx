@@ -7,9 +7,9 @@
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { ShieldCheck, KeyRound, QrCode, Camera, Download, Upload, Plus, Trash2, Copy, Lock, Unlock, History as HistoryIcon, X, Clock, KeyRound as KeyIcon } from 'lucide-react';
-import { useI18n } from './i18n.jsx';
-import { Card, Button, Input, Select, Field, useToast, useDialog, PageHeader, EmptyState } from './ui.jsx';
-import { base32Decode, totp, parseOtpauth, sanitizeAccount, encryptVault, decryptVault, rid, takePending, LS_KEY } from './twofa-lib.js';
+import { useI18n } from '../i18n.jsx';
+import { Card, Button, Input, Select, Field, useToast, useDialog, PageHeader, EmptyState } from '../ui/ui.jsx';
+import { base32Decode, totp, parseOtpauth, sanitizeAccount, encryptVault, decryptVault, rid, takePending, LS_KEY } from '../lib/twofa-lib.js';
 
 export function TwoFactor() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();

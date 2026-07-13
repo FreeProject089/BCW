@@ -6,11 +6,11 @@ import {
   Users, Mail, Plus, X, Eye, EyeOff, Files, Settings2, Loader2, Globe, History, Hash, Search, ChevronDown,
   UploadCloud as UploadIcon, Trash, Wifi as WifiOn, WifiOff as WifiGone, Download, Ban, Radio, Star,
 } from 'lucide-react';
-import { api } from './api.js';
+import { api } from '../lib/api.js';
 import { repoStatusMeta, repoCategoryMeta, repoLocked } from './repos.jsx';
-import { useToast, useDialog, Button, Card, Badge, Input, Select, Spinner, copyText } from './ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Select, Spinner, copyText } from '../ui/ui.jsx';
 import { useUploads } from './uploads.jsx';
-import { useI18n } from './i18n.jsx';
+import { useI18n } from '../i18n.jsx';
 
 const gb = (n) => (Number(n) / 1024 ** 3).toFixed(1);
 const mb = (n) => (Number(n) / 1024 / 1024).toFixed(1);

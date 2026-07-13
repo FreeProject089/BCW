@@ -5,7 +5,7 @@
 //   { lastUpdate, art, code, categories: [{ name, items:[{ label, status, percent, eta }] }] }
 // and the legacy flat array [{ title, status, percent, eta }].
 import { CheckCircle2, Clock, Circle, CalendarDays, ListTodo } from 'lucide-react';
-import { Card } from './ui.jsx';
+import { Card } from '../ui/ui.jsx';
 
 const PROG_STATUS = {
   done: { tone: 'green', icon: CheckCircle2, label: 'Done', color: 'text-emerald-400' },

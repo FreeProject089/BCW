@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from './api.js';
-import { useToast, Button, Spinner, Modal, EmptyState, Input, Textarea, Select } from './ui.jsx';
-import { useI18n } from './i18n.jsx';
-import UserAvatar from './Avatar.jsx';
-import Markdown from './md.jsx';
-import { MarkdownEditor } from './blog.jsx';
+import { api } from '../lib/api.js';
+import { useToast, Button, Spinner, Modal, EmptyState, Input, Textarea, Select } from '../ui/ui.jsx';
+import { useI18n } from '../i18n.jsx';
+import UserAvatar from '../ui/Avatar.jsx';
+import Markdown from '../ui/md.jsx';
+import { MarkdownEditor } from '../pages/blog.jsx';
 import DiffMergeModal from './diff-merge-modal.jsx';
 import { MessageSquare, CornerDownRight, Check, Pencil, Trash2, Send, Tag, Globe, Lock, Hash, History, Clock, ChevronRight, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 

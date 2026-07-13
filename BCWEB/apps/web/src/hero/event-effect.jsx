@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import gsap from 'gsap';
 import { X, Sparkles, PartyPopper, Flag, Gift, Star, Rocket, CalendarDays, Bell, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { api } from './api.js';
-import { useI18n } from './i18n.jsx';
+import { api } from '../lib/api.js';
+import { useI18n } from '../i18n.jsx';
 
 // Announcement icon options (named lucide icons — never a unicode emoji).
 const BADGE_ICONS = { sparkles: Sparkles, party: PartyPopper, flag: Flag, gift: Gift, star: Star, rocket: Rocket, calendar: CalendarDays, bell: Bell };

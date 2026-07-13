@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { UploadCloud, CheckCircle2, X, AlertTriangle, Loader2, Ban, ChevronDown, ChevronUp } from 'lucide-react';
-import { uploadRepoFile } from './api.js';
-import { useToast, copyText } from './ui.jsx';
-import { useI18n } from './i18n.jsx';
+import { uploadRepoFile } from '../lib/api.js';
+import { useToast, copyText } from '../ui/ui.jsx';
+import { useI18n } from '../i18n.jsx';
 
 // Global background-upload manager. Repo file/folder uploads run here (not inside a
 // modal), so they keep going after the modal is closed. A floating dock shows live

@@ -2,15 +2,15 @@ import { useEffect, useState, useRef } from 'react';
 import BoringAvatar from 'boring-avatars';
 import QRCode from 'qrcode';
 import { User, Shield, ShieldCheck, Mail, CalendarDays, Shuffle, KeyRound, Check, Palette, Sparkles, ImagePlus, Trash2, FileArchive, Link2, BadgeCheck, Lock, Download, Eye, EyeOff, Settings as SettingsIcon, ArrowRight } from 'lucide-react';
-import { api, uploadImage } from './api.js';
+import { api, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
-import { useI18n } from './i18n.jsx';
-import { useToast, Button, Card, Badge, Input, Textarea, Field, PageHeader, Spinner } from './ui.jsx';
-import { DiscordIcon } from './brand.jsx';
-import Avatar, { VARIANTS, PALETTES, avatarOf } from './Avatar.jsx';
+import { useI18n } from '../i18n.jsx';
+import { useToast, Button, Card, Badge, Input, Textarea, Field, PageHeader, Spinner } from '../ui/ui.jsx';
+import { DiscordIcon } from '../ui/brand.jsx';
+import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Link, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone } from 'lucide-react';
-import { stagePending, addLocalAccount, attachBackupCodesBySecret } from './twofa-lib.js';
+import { stagePending, addLocalAccount, attachBackupCodesBySecret } from '../lib/twofa-lib.js';
 import { TotpQuickFill } from './twofa-fill.jsx';
 
 // A small section heading used to group the profile cards into clear zones

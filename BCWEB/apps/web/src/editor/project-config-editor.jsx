@@ -3,13 +3,13 @@ import {
   ChevronDown, Plus, Trash2, GripVertical, Star, Link2, Download, Image as ImageIcon,
   Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github,
 } from 'lucide-react';
-import { Button, Input, Textarea, Field, Badge, Spinner } from './ui.jsx';
-import { useToast } from './ui.jsx';
-import { useI18n } from './i18n.jsx';
-import { api, uploadMedia } from './api.js';
+import { Button, Input, Textarea, Field, Badge, Spinner } from '../ui/ui.jsx';
+import { useToast } from '../ui/ui.jsx';
+import { useI18n } from '../i18n.jsx';
+import { api, uploadMedia } from '../lib/api.js';
 import IconPicker from './icon-picker.jsx';
-import { IconGlyph } from './md.jsx';
-import { ProgressTracker } from './project.jsx';
+import { IconGlyph } from '../ui/md.jsx';
+import { ProgressTracker } from '../pages/project.jsx';
 
 // ── Visual project-config editor ──────────────────────────────────────────────
 // A form-based editor for a project / showcase page's config, so admins don't have

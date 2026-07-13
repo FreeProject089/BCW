@@ -1,13 +1,13 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { AuthProvider } from './auth.jsx';
-import { ThemeProvider } from './theme.jsx';
+import { AuthProvider } from './pages/auth.jsx';
+import { ThemeProvider } from './ui/theme.jsx';
 import { I18nProvider } from './i18n.jsx';
-import { DialogProvider, ToastProvider } from './ui.jsx';
-import { UploadProvider } from './uploads.jsx';
+import { DialogProvider, ToastProvider } from './ui/ui.jsx';
+import { UploadProvider } from './pages/uploads.jsx';
 import App from './App.jsx';
-import { applyGlassPrefs } from './prefs.js';
+import { applyGlassPrefs } from './lib/prefs.js';
 import './index.css';
 
 // Apply saved translucent-surface prefs before first paint (no style flash).

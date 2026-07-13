@@ -7,8 +7,8 @@ import rehypeRaw from 'rehype-raw';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
-import { ProgressTracker } from './progress-tracker.jsx';
-import { useI18n } from './i18n.jsx';
+import { ProgressTracker } from '../hero/progress-tracker.jsx';
+import { useI18n } from '../i18n.jsx';
 
 // Sanitisation schema (CWE-79): author-written raw HTML in blog/doc bodies is stripped
 // of anything executable (scripts, on* handlers, javascript: URLs) by extending the

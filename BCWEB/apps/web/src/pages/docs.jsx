@@ -2,16 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash, GitMerge, History, MessageSquare, Globe } from 'lucide-react';
-import { api } from './api.js';
-import { merge3, hasConflictMarkers } from './merge3.js';
-import HistoryModal from './history-modal.jsx';
-import DiffMergeModal from './diff-merge-modal.jsx';
-import CommentsModal from './comments-modal.jsx';
+import { api } from '../lib/api.js';
+import { merge3, hasConflictMarkers } from '../lib/merge3.js';
+import HistoryModal from '../editor/history-modal.jsx';
+import DiffMergeModal from '../editor/diff-merge-modal.jsx';
+import CommentsModal from '../editor/comments-modal.jsx';
 import { useAuth } from './auth.jsx';
-import { useI18n } from './i18n.jsx';
-import Markdown, { IconGlyph } from './md.jsx';
+import { useI18n } from '../i18n.jsx';
+import Markdown, { IconGlyph } from '../ui/md.jsx';
 import { MarkdownEditor, useSectionComments, useSectionCommentPills, AuthorsRow } from './blog.jsx';
-import { useToast, useDialog, Button, Spinner, Modal, Input, Select, Field, EmptyState } from './ui.jsx';
+import { useToast, useDialog, Button, Spinner, Modal, Input, Select, Field, EmptyState } from '../ui/ui.jsx';
 
 // BCWEB documentation — a GitBook-style space rendered with the doc-block markdown
 // system. Public read; ADMIN/SUPERADMIN (the "special role") get an inline editor.

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import gsap from 'gsap';
-import { useIntro, SKIP_KEY } from './IntroContext.jsx';
-import { useI18n } from './i18n.jsx';
+import { useIntro, SKIP_KEY } from '../ui/IntroContext.jsx';
+import { useI18n } from '../i18n.jsx';
 
 // v4 — the intro loader and the background are now literally the same canvas:
 // the orb starts big and centered (the "loading" moment), then GSAP animates it

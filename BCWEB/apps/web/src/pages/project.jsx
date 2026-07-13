@@ -5,14 +5,14 @@ import {
   FileText, ListTodo, Boxes, ExternalLink, FolderGit2, ChevronRight, ChevronDown,
   CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper,
 } from 'lucide-react';
-import Markdown, { matchesLang, ShowcaseIcon } from './md.jsx';
-import { ProgressTracker } from './progress-tracker.jsx';
-import { api } from './api.js';
-import { useI18n } from './i18n.jsx';
-import RrwebPreview from './RrwebPreview.jsx';
-import { GithubIcon, KofiIcon, DiscordIcon, RedditIcon, AppLogo, APP_LOGO } from './brand.jsx';
+import Markdown, { matchesLang, ShowcaseIcon } from '../ui/md.jsx';
+import { ProgressTracker } from '../hero/progress-tracker.jsx';
+import { api } from '../lib/api.js';
+import { useI18n } from '../i18n.jsx';
+import RrwebPreview from '../hero/RrwebPreview.jsx';
+import { GithubIcon, KofiIcon, DiscordIcon, RedditIcon, AppLogo, APP_LOGO } from '../ui/brand.jsx';
 import { MessageSquare } from 'lucide-react';
-import { Button, Card, Badge, PageHeader, EmptyState, Spinner, Modal } from './ui.jsx';
+import { Button, Card, Badge, PageHeader, EmptyState, Spinner, Modal } from '../ui/ui.jsx';
 
 // Pick an icon that suits the release note from its filename.
 function noteIcon(name = '') {

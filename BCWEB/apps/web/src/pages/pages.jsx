@@ -11,17 +11,17 @@ import {
   Info, Orbit, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, ShoppingCart,
   Mic, KeyRound, MousePointerClick, PanelTop,
 } from 'lucide-react';
-import { api, uploadPayload, uploadImage } from './api.js';
+import { api, uploadPayload, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
-import { useI18n } from './i18n.jsx';
-import { useTheme } from './theme.jsx';
-import { getConsent, setConsent } from './analytics.js';
-import { SKIP_KEY, useIntro } from './IntroContext.jsx';
-import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from './prefs.js';
+import { useI18n } from '../i18n.jsx';
+import { useTheme } from '../ui/theme.jsx';
+import { getConsent, setConsent } from '../lib/analytics.js';
+import { SKIP_KEY, useIntro } from '../ui/IntroContext.jsx';
+import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from '../lib/prefs.js';
 import { MyRepos, AdminRepos, Billing, rawStatusLabel } from './repos.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
 import { AuthorsRow } from './blog.jsx';
-import Avatar, { VARIANTS as AV_VARIANTS, PALETTES as AV_PALETTES } from './Avatar.jsx';
+import Avatar, { VARIANTS as AV_VARIANTS, PALETTES as AV_PALETTES } from '../ui/Avatar.jsx';
 
 // A stable-but-varied Boring-avatar look for an anonymous analytics session (keyed by
 // the visitor hash) — so each session gets its OWN geometric avatar instead of the
@@ -33,11 +33,11 @@ function seededAvatar(seed) {
   return { variant: AV_VARIANTS[h % AV_VARIANTS.length], colors: AV_PAL_LIST[(h >> 5) % AV_PAL_LIST.length] };
 }
 import { createRoot } from 'react-dom/client';
-import { AppLogo, KofiIcon, GithubIcon, DiscordIcon, RedditIcon, GoogleIcon } from './brand.jsx';
-import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from './ui.jsx';
-import Markdown, { ShowcaseIcon } from './md.jsx';
-import IconPicker from './icon-picker.jsx';
-import ProjectConfigEditor from './project-config-editor.jsx';
+import { AppLogo, KofiIcon, GithubIcon, DiscordIcon, RedditIcon, GoogleIcon } from '../ui/brand.jsx';
+import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from '../ui/ui.jsx';
+import Markdown, { ShowcaseIcon } from '../ui/md.jsx';
+import IconPicker from '../editor/icon-picker.jsx';
+import ProjectConfigEditor from '../editor/project-config-editor.jsx';
 
 /* ── helpers ── */
 function useAsync(fn, deps = []) {
@@ -1496,7 +1496,7 @@ export function Auth() {
       }
       else if (mode === 'register') {
         setStep('Solving proof-of-work…');
-        const { solvePow } = await import('./pow.js');
+        const { solvePow } = await import('../lib/pow.js');
         const pow = await solvePow(() => api.get('/auth/pow'));
         setStep('Creating account…');
         justRegistered.current = true; // the auth-redirect effect routes new accounts to the 2FA setup
@@ -2288,7 +2288,7 @@ function SubmitModal({ open, onClose, onReopen, onDone }) {
   // run after the undo window elapses. Returns nothing; surfaces its own toasts.
   const runSubmit = async (snapForm, snapFile, meta) => {
     try {
-      const { solvePow } = await import('./pow.js');
+      const { solvePow } = await import('../lib/pow.js');
       const pow = await solvePow(() => api.get('/auth/pow')); // anti-spam proof-of-work
       let payloadKey; if (snapFile) payloadKey = await uploadPayload(snapForm.kind, snapFile);
       const res = await api.post('/catalog', { ...snapForm, tags: [], meta, payloadKey, payloadSize: snapFile?.size, pow });
@@ -7390,7 +7390,7 @@ function AdminEventsFeed() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><Activity size={16} className="text-[var(--primary-2)]" /> {t('ev.title', 'Events feed')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Activity size={16} className="text-[var(--primary-2)]" /> {t('evf.title', 'Events feed')}</h2>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
@@ -7398,7 +7398,7 @@ function AdminEventsFeed() {
           <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
         </div>
       </div>
-      <p className="text-sm text-[var(--muted)] mb-3">{t('ev.sub', 'The live stream of what visitors do — pageviews, clicks, form submits, field edits. Anonymous (daily-rotating identity, no PII).')}</p>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('evf.sub', 'The live stream of what visitors do — pageviews, clicks, form submits, field edits. Anonymous (daily-rotating identity, no PII).')}</p>
       <div className="flex flex-wrap gap-2 mb-3">
         <div className="relative flex-1 min-w-[220px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
           <Input className="!pl-9" placeholder={t('ev.pathph', 'Filter by page path…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
@@ -7426,7 +7426,7 @@ function AdminEventsFeed() {
             </tr>
           ); })}</tbody>
         </table>
-      </div> : <EmptyState icon={Activity} title={t('ev.none', 'No events in this window')} sub={t('ev.none.s', 'Adjust the range or filters.')} />}
+      </div> : <EmptyState icon={Activity} title={t('evf.none', 'No events in this window')} sub={t('evf.none.s', 'Adjust the range or filters.')} />}
     </div>
   );
 }
@@ -8496,7 +8496,7 @@ export function Contact() {
     if (!valid) return;
     setBusy(true);
     try {
-      const { solvePow } = await import('./pow.js');
+      const { solvePow } = await import('../lib/pow.js');
       const pow = await solvePow(() => api.get('/auth/pow')); // anti-spam proof-of-work
       await api.post('/contact', { name: msg.name.trim(), email: msg.email.trim(), body: msg.body.trim(), pow });
       setSent(true);

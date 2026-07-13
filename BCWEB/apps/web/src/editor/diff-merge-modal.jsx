@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Modal, Button } from './ui.jsx';
-import { merge3Hunks, assembleHunks, lineStat } from './merge3.js';
+import { Modal, Button } from '../ui/ui.jsx';
+import { merge3Hunks, assembleHunks, lineStat } from '../lib/merge3.js';
 import { GitMerge, Check, ChevronDown, ChevronRight, User as UserIcon, Users } from 'lucide-react';
 
 // GitHub-style visual conflict resolver. Given the common ancestor + both edited
