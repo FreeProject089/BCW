@@ -378,6 +378,8 @@ const DICT = {
     'nav.home': 'Accueil', 'nav.bmm': 'BMM', 'nav.bsm': 'BSM', 'nav.installer': 'BI', 'nav.blog': 'Blog',
     'nav.repos': 'Dépôts', 'nav.hosting': 'Hébergement', 'nav.projects': 'Projets', 'nav.dashboard': 'Tableau de bord', 'nav.admin': 'Admin',
     'nav.settings': 'Paramètres', 'nav.docs': 'Docs',
+    'nf.title': 'Perdu dans l\'espace', 'nf.sub': "Cette page n'existe pas — mais voici un jeu en attendant.", 'nf.gameover': 'Partie terminée', 'nf.newbest': 'Nouveau record perso !', 'nf.best': 'Ton record : {n}', 'nf.signin': 'Connecte-toi', 'nf.tosave': 'pour sauver ton score',
+    'nf.again': 'Rejouer', 'nf.play': 'Jouer', 'nf.how': 'Attrape les orbes orange · évite les rouges. Déplace-toi à la souris, au doigt, ou avec ← →.', 'nf.leaderboard': 'Classement', 'nf.anon': 'Anonyme', 'nf.noscores': 'Aucun score — sois le premier !', 'nf.home': "Retour à l'accueil",
     'faq.title': 'FAQ', 'faq.sub': 'Réponses aux questions les plus fréquentes.', 'faq.searchph': 'Rechercher dans la FAQ…', 'faq.manage': 'Gérer', 'faq.draft': 'brouillon', 'faq.empty': '*Pas encore de réponse.*',
     'faq.nomatch': 'Aucune question correspondante', 'faq.nomatch.s': 'Essaie une autre recherche.', 'faq.none': 'Aucune question pour le moment', 'faq.none.s': 'Reviens bientôt.', 'faq.none.admin': "Ajoute la première depuis Admin → FAQ.",
     'adm.tab.faq': 'FAQ',

@@ -22,6 +22,7 @@ import Avatar from './ui/Avatar.jsx';
 import { BlogList, BlogPostPage } from './pages/blog.jsx';
 import Docs from './pages/docs.jsx';
 import Faq from './pages/faq.jsx';
+import NotFound from './pages/notfound.jsx';
 import { ReposPage } from './pages/repos.jsx';
 import { RepoDashboard } from './pages/repo-dashboard.jsx';
 import { Home, Catalog, ItemDetail, Hosting, Auth, Dashboard, Admin, Legal, LegalIndex, Contact, Settings, Authorize, VerifyEmail, NOTIF, NOTIF_FALLBACK } from './pages/pages.jsx';
@@ -563,7 +564,7 @@ export default function App() {
               <Route path="/refunds" element={<Navigate to="/legal/refunds" replace />} />
               <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
               <Route path="/admin" element={<Protected role={['MOD', 'ADMIN']}><Admin /></Protected>} />
-              <Route path="*" element={<div className="text-[var(--muted)]">Not found.</div>} />
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </main>
           <Footer />

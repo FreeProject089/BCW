@@ -1297,6 +1297,21 @@ model ErrorEvent {
   @@index([message])
 }
 
+// 404-page mini-game high scores. One best score per user per game (leaderboard). `userId`
+// is a plain reference (no FK/cascade) so the leaderboard survives an account delete and the
+// User model stays untouched; display name/avatar are resolved at read time.
+model GameScore {
+  id        String   @id @default(cuid())
+  userId    String
+  game      String   @default("orbfall")
+  score     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, game])
+  @@index([game, score])
+}
+
 // FAQ — admin/editor-curated questions & answers, grouped by category. Answers use the
 // BetterCommunity doc-block markdown (rendered with the same md.jsx pipeline as blog/docs).
 model FaqItem {
