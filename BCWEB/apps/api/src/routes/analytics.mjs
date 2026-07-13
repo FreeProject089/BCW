@@ -166,8 +166,9 @@ export default async function analyticsRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid' });
     const p = await db();
-    const { device } = parseUA(req.headers['user-agent']);
-    await p.webVital.create({ data: { path: b.data.path, metric: b.data.metric, value: b.data.value, rating: b.data.rating || null, visitor: visitorHash(req), device } }).catch(() => {});
+    const { device, browser, os } = parseUA(req.headers['user-agent']);
+    const geo = await geoOf(req).catch(() => ({}));
+    await p.webVital.create({ data: { path: b.data.path, metric: b.data.metric, value: b.data.value, rating: b.data.rating || null, visitor: visitorHash(req), device, browser, os, country: geo?.country || null } }).catch(() => {});
     return reply.code(204).send();
   });
 
@@ -348,6 +349,33 @@ export default async function analyticsRoutes(app) {
       trend: trend.map((t) => ({ metric: t.metric, bucket: t.bucket, p75: num(t.p75) })),
       pages: byPage.map((r) => ({ path: r.path, samples: Number(r.samples), lcp: num(r.lcp), cls: num(r.cls), inp: num(r.inp), fcp: num(r.fcp), ttfb: num(r.ttfb) })),
     };
+  });
+
+  // Per-page Web Vitals breakdown — p75 of each metric grouped by device / browser / OS /
+  // country for ONE path, so a slow page can be diagnosed by segment. Dimension column is
+  // from a fixed whitelist; path/since are bound parameters ($1/$2) → no SQL injection.
+  app.get('/admin/analytics/vitals/page', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const path = String(req.query?.path || '');
+    if (!path) return reply.code(400).send({ error: 'path_required' });
+    const p = await db();
+    const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
+    const days = Math.min(Math.max(Number(req.query?.days) || 30, 1), 365);
+    const since = hours ? new Date(Date.now() - hours * 3600e3) : new Date(Date.now() - days * 864e5);
+    const num = (v) => (v == null ? null : Number(v));
+    const COLS = { device: 'device', browser: 'browser', os: 'os', country: 'country' };
+    const breakdown = (col) => p.$queryRawUnsafe(
+      `SELECT ${COLS[col]} AS key,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'LCP')  AS lcp,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'CLS')  AS cls,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'INP')  AS inp,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'FCP')  AS fcp,
+          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'TTFB') AS ttfb,
+          count(*)::int AS samples
+        FROM "WebVital" WHERE path = $1 AND "createdAt" >= $2 AND ${COLS[col]} IS NOT NULL
+        GROUP BY key ORDER BY samples DESC LIMIT 15`, path, since);
+    const [device, browser, os, country] = await Promise.all([breakdown('device'), breakdown('browser'), breakdown('os'), breakdown('country')]);
+    const map = (rows) => rows.map((r) => ({ key: r.key || '—', samples: Number(r.samples), lcp: num(r.lcp), cls: num(r.cls), inp: num(r.inp), fcp: num(r.fcp), ttfb: num(r.ttfb) }));
+    return { path, days, hours, device: map(device), browser: map(browser), os: map(os), country: map(country) };
   });
 
   // Recent visitor sessions (Rybbit-style live feed). Pageviews are grouped per visitor

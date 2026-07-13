@@ -1248,6 +1248,9 @@ model WebVital {
   rating    String?  // good | needs-improvement | poor (as reported by web-vitals)
   visitor   String?
   device    String?  // mobile | tablet | desktop
+  browser   String?  // Chrome | Firefox | Safari | Edge | … (for per-page breakdowns)
+  os        String?  // Windows | macOS | Android | iOS | …
+  country   String?  // ISO-3166 alpha-2 (from the CDN's country header, when present)
   createdAt DateTime @default(now())
 
   @@index([createdAt])

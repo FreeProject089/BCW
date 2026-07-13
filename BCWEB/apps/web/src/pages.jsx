@@ -6784,11 +6784,18 @@ const pageRating = (pg) => {
   return worst;
 };
 
-function WebVitals({ days = 7, hours }) {
+// Web Vitals own time-range presets (independent of the Site-analytics range).
+const WV_RANGES = [['24h', { hours: 24 }], ['7d', { days: 7 }], ['30d', { days: 30 }], ['90d', { days: 90 }]];
+function WebVitals() {
   const { t } = useI18n();
   const [pct, setPct] = useState('p75');
   const [sort, setSort] = useState('worst'); // worst-health first | most traffic | page name
-  const { data, loading } = useAsync(() => api.get(`/admin/analytics/vitals?${hours ? `hours=${hours}` : `days=${days}`}`), [days, hours]);
+  const [range, setRange] = useState('7d');
+  const [drill, setDrill] = useState(null); // a page path to break down by device/browser/os/country
+  const rq = Object.fromEntries(WV_RANGES)[range] || { days: 7 };
+  const qs = rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`;
+  const days = rq.days; const hours = rq.hours;
+  const { data, loading } = useAsync(() => api.get(`/admin/analytics/vitals?${qs}`), [range]);
   const metrics = data?.metrics || [];
   const pages = data?.pages || [];
   // Metric value as a tinted rating chip (good/needs-improvement/poor) — far easier to
@@ -6824,7 +6831,11 @@ function WebVitals({ days = 7, hours }) {
     <Card className="p-5 mb-4">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="text-sm font-semibold flex items-center gap-2"><Activity size={15} /> Web Vitals <span className="text-[11px] font-normal text-[var(--faint)]">{t('an.wv.sub', 'real-user performance')}</span></div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Own time range — 24h / 7d / 30d / 90d, independent of Site analytics. */}
+          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+            {WV_RANGES.map(([k]) => <button key={k} onClick={() => { setRange(k); setDrill(null); }} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
+          </div>
           <button onClick={exportCsv} disabled={!pages.length} className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] disabled:opacity-40 disabled:cursor-not-allowed transition"><Download size={13} /> {t('an.wv.export', 'Export CSV')}</button>
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {['p50', 'p75', 'p90', 'p99'].map((p) => <button key={p} onClick={() => setPct(p)} className={`px-2.5 py-1 text-xs uppercase ${pct === p ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{p}</button>)}
@@ -6871,7 +6882,7 @@ function WebVitals({ days = 7, hours }) {
             </tr></thead>
             <tbody>
               {sortedPages.map((pg) => { const r = pageRating(pg); const maxN = Math.max(...pages.map((x) => x.samples || 0), 1); return (
-                <tr key={pg.path} className="border-b border-[var(--line)]/60 hover:bg-[var(--surface-2)]/40 transition-colors">
+                <tr key={pg.path} onClick={() => setDrill(pg.path)} className="border-b border-[var(--line)]/60 hover:bg-[var(--surface-2)]/40 transition-colors cursor-pointer" title={t('an.wv.drillhint', 'Break down by device / browser / OS / country')}>
                   <td className="py-2 pr-3 relative">
                     <span className={`absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${r ? RATING_DOT[r] : 'bg-[var(--line-strong)]'}`} title={r || 'no data'} />
                     <span className="font-mono text-xs text-[var(--muted)] truncate max-w-[220px] inline-block pl-4 align-middle" title={pg.path}>{pg.path}</span>
@@ -6892,9 +6903,48 @@ function WebVitals({ days = 7, hours }) {
             </tbody>
           </table>
         </div>
-        <p className="text-[11px] text-[var(--faint)] mt-3">{t('an.wv.note', 'Per-page p75 (75th percentile) of each metric — the value 75% of real visits are faster than. Green ≤ “good”, amber ≤ “needs improvement”, red above. CLS is unitless; the rest are time.')}</p>
+        <p className="text-[11px] text-[var(--faint)] mt-3">{t('an.wv.note', 'Per-page p75 (75th percentile) of each metric — the value 75% of real visits are faster than. Green ≤ “good”, amber ≤ “needs improvement”, red above. CLS is unitless; the rest are time. Click a row to break it down by device / browser / OS / country.')}</p>
       </>}
+      {drill && <VitalsPageDrill path={drill} qs={qs} onClose={() => setDrill(null)} chip={chip} />}
     </Card>
+  );
+}
+
+// Per-page Web Vitals drill-down — p75 of each metric by device / browser / OS / country,
+// so a slow page can be diagnosed to a segment (e.g. LCP only bad on mobile / Safari).
+function VitalsPageDrill({ path, qs, onClose, chip }) {
+  const { t } = useI18n();
+  const { data, loading } = useAsync(() => api.get(`/admin/analytics/vitals/page?path=${encodeURIComponent(path)}&${qs}`), [path, qs]);
+  const groups = [
+    ['device', t('an.wv.byDevice', 'By device'), Monitor],
+    ['browser', t('an.wv.byBrowser', 'By browser'), Globe2],
+    ['os', t('an.wv.byOs', 'By OS'), Cpu],
+    ['country', t('an.wv.byCountry', 'By country'), MapPin],
+  ];
+  return (
+    <Modal open onClose={onClose} width="max-w-3xl" icon={Gauge}
+      title={<span className="font-mono text-sm break-all">{path}</span>}
+      footer={<Button variant="ghost" onClick={onClose}>{t('common.close', 'Close')}</Button>}>
+      {loading ? <div className="h-24 grid place-items-center"><Spinner /></div> : (
+        <div className="space-y-5">
+          {groups.map(([k, label, Icon]) => { const rows = data?.[k] || []; return (
+            <div key={k}>
+              <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold flex items-center gap-1.5 mb-1.5"><Icon size={12} /> {label}</div>
+              {rows.length ? <div className="overflow-x-auto"><table className="w-full text-sm min-w-[460px]">
+                <thead><tr className="text-[10px] uppercase text-[var(--faint)] text-left border-b border-[var(--line)]"><th className="py-1.5 font-semibold">{label.replace('By ', '')}</th><th className="py-1.5 text-right">LCP</th><th className="py-1.5 text-right">CLS</th><th className="py-1.5 text-right">INP</th><th className="py-1.5 text-right">FCP</th><th className="py-1.5 text-right">TTFB</th><th className="py-1.5 text-right pr-1">{t('an.wv.samplesCol', 'Samples')}</th></tr></thead>
+                <tbody>{rows.map((r) => (
+                  <tr key={r.key} className="border-b border-[var(--line)]/60">
+                    <td className="py-1.5 pr-2 text-[var(--muted)] truncate max-w-[120px]" title={r.key}>{k === 'country' && r.key !== '—' ? <span className="inline-flex items-center gap-1.5"><Flag cc={r.key} className="w-4 h-3" /> {r.key}</span> : r.key}</td>
+                    <td className="py-1.5 text-right">{chip('LCP', r.lcp)}</td><td className="py-1.5 text-right">{chip('CLS', r.cls)}</td><td className="py-1.5 text-right">{chip('INP', r.inp)}</td><td className="py-1.5 text-right">{chip('FCP', r.fcp)}</td><td className="py-1.5 text-right">{chip('TTFB', r.ttfb)}</td>
+                    <td className="py-1.5 text-right text-[var(--faint)] tabular-nums text-xs">{r.samples}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div> : <div className="text-xs text-[var(--faint)] py-2">{t('an.wv.noseg', 'No data for this segment yet.')}</div>}
+            </div>
+          ); })}
+        </div>
+      )}
+    </Modal>
   );
 }
 
