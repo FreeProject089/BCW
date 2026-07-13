@@ -106,7 +106,7 @@ export function mailShell(title, bodyHtml, cta) {
     <tr><td style="padding:0 4px 20px">
       <table role="presentation" cellpadding="0" cellspacing="0"><tr>
         <td>${brandLogo()}</td>
-        <td class="bc-brand" style="padding-left:11px;font-weight:800;font-size:18px;color:#1a1714;letter-spacing:-.01em"><span style="color:#f97316">Better</span>Community</td>
+        <td class="bc-brand" translate="no" style="padding-left:11px;font-weight:800;font-size:18px;color:#1a1714;letter-spacing:-.01em"><span style="color:#f97316">Better</span>Community</td>
       </tr></table>
     </td></tr>
     <tr><td class="bc-card" style="background:#ffffff;border:1px solid #eae4da;border-radius:20px;padding:34px;box-shadow:0 12px 40px -18px rgba(30,20,5,.18)">
