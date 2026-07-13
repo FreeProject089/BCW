@@ -2,9 +2,9 @@ import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
-import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache } from '../lib.mjs';
-import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '../totp.mjs';
-import { sendMail, mailShell, emailEnabled } from '../mail.mjs';
+import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache } from '../lib/lib.mjs';
+import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '../lib/totp.mjs';
+import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 

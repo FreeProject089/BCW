@@ -6,9 +6,9 @@
 //     publish — so a draft/typo can't blast every subscriber.
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole } from '../lib.mjs';
-import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../mail.mjs';
-import { BRAND_LOGO_DATA_URI } from '../brand-logo-data.mjs';
+import { db, requireRole } from '../lib/lib.mjs';
+import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
+import { BRAND_LOGO_DATA_URI } from '../lib/brand-logo-data.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 const tok = () => crypto.randomBytes(24).toString('hex');

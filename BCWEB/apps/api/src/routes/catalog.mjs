@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import AdmZip from 'adm-zip';
-import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim } from '../lib.mjs';
-import { presignGet, getObject } from '../storage.mjs';
-import { validatePlugin, fetchPluginBytes } from '../plugin.mjs';
+import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim } from '../lib/lib.mjs';
+import { presignGet, getObject } from '../lib/storage.mjs';
+import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
 import { powVerify } from './auth.mjs';
 
 const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];

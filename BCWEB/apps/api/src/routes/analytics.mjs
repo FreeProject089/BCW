@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
-import { db, requireRole } from '../lib.mjs';
+import { db, requireRole } from '../lib/lib.mjs';
 
 // Real client IP as seen by our trusted proxy (Caddy appends it last on X-Forwarded-For).
 function clientIp(req) {

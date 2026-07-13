@@ -2,8 +2,8 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import querystring from 'node:querystring';
 import jwt from 'jsonwebtoken';
-import { db, requireRole, optionalAuth } from '../lib.mjs';
-import { jwks, issuer, signRs256, verifyRs256 } from '../oidc.mjs';
+import { db, requireRole, optionalAuth } from '../lib/lib.mjs';
+import { jwks, issuer, signRs256, verifyRs256 } from '../lib/oidc.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');

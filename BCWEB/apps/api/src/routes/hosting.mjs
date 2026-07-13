@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { statfsSync } from 'node:fs';
-import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim } from '../lib.mjs';
+import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim } from '../lib/lib.mjs';
 import { validatePromo, redeemPromoAtomic } from './promo.mjs';
 import { getActiveCampaign } from './campaigns.mjs';
 

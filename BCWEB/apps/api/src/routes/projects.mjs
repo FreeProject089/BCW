@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage } from '../lib.mjs';
-import { safeFetch } from '../net.mjs';
+import { db, requireRole, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage } from '../lib/lib.mjs';
+import { safeFetch } from '../lib/net.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
 // legal, release-notes source) stored as an AdminSetting row `project.<key>`.

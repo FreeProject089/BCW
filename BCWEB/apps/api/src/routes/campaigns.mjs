@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole } from '../lib.mjs';
+import { db, requireRole } from '../lib/lib.mjs';
 
 // Strict hex color (#rgb / #rrggbb) — the badge color is rendered into a style
 // attribute on the client, so anything else is rejected to avoid CSS injection.

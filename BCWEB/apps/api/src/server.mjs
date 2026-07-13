@@ -5,10 +5,10 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
-import { db } from './lib.mjs';
-import { getRedis } from './redis.mjs';
-import { ensureBucket } from './storage.mjs';
-import { startSweeper } from './sweeper.mjs';
+import { db } from './lib/lib.mjs';
+import { getRedis } from './lib/redis.mjs';
+import { ensureBucket } from './lib/storage.mjs';
+import { startSweeper } from './lib/sweeper.mjs';
 import authRoutes from './routes/auth.mjs';
 import catalogRoutes from './routes/catalog.mjs';
 import miscRoutes from './routes/misc.mjs';
@@ -40,8 +40,8 @@ import serverPerfRoutes from './routes/server-perf.mjs';
 import kofiRoutes from './routes/kofi.mjs';
 import oauthRoutes from './routes/oauth.mjs';
 import ogRoutes from './routes/og.mjs';
-import { recordRequest } from './monitor.mjs';
-import { installAbuseGuards } from './abuse.mjs';
+import { recordRequest } from './lib/monitor.mjs';
+import { installAbuseGuards } from './lib/abuse.mjs';
 
 // Fail-safe: never boot in production with the insecure default JWT secret — that
 // would let anyone forge session tokens (incl. ADMIN) (CWE-798). Force a real one.

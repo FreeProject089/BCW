@@ -5,7 +5,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import BoringAvatarImport from 'boring-avatars';
-import { db } from '../lib.mjs';
+import { db } from '../lib/lib.mjs';
 
 // CJS/ESM interop: the component is nested under a second `.default`.
 const BoringAvatar = (BoringAvatarImport && BoringAvatarImport.default) || BoringAvatarImport;

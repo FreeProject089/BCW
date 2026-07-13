@@ -5,9 +5,9 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import pg from 'pg';
-import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual, readAnchors } from '../lib.mjs';
-import { verifyTotp } from '../totp.mjs';
-import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo } from '../gitbackup.mjs';
+import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual, readAnchors } from '../lib/lib.mjs';
+import { verifyTotp } from '../lib/totp.mjs';
+import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo } from '../lib/gitbackup.mjs';
 
 // A lightweight "type to confirm" server-side check — the frontend already
 // makes the admin confirm twice (a dialog, then typing this exact word), but

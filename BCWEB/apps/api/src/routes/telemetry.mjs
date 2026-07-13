@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
-import { db, requireRole, logAudit } from '../lib.mjs';
+import { db, requireRole, logAudit } from '../lib/lib.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const ADMIN_TIER = ['MOD', 'ADMIN', 'SUPERADMIN'];

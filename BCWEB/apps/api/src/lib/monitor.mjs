@@ -7,7 +7,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import tls from 'node:tls';
 import { Transform } from 'node:stream';
-import { realDiskStats } from './routes/hosting.mjs';
+import { realDiskStats } from '../routes/hosting.mjs';
 import { checkStorageHealth } from './storage.mjs';
 import { notify } from './lib.mjs';
 

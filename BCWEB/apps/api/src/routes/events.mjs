@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole } from '../lib.mjs';
+import { db, requireRole } from '../lib/lib.mjs';
 
 // The event that is live RIGHT NOW (active + within its window). One at a time; if
 // several somehow overlap, the most recently started wins. Exported for the effect

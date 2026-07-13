@@ -1,4 +1,4 @@
-import { db, notify } from '../lib.mjs';
+import { db, notify } from '../lib/lib.mjs';
 import { provisionHostedRepo } from './hosting.mjs';
 import { redeemPromoAtomic } from './promo.mjs';
 

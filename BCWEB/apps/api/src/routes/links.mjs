@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, notify } from '../lib.mjs';
+import { db, requireRole, notify } from '../lib/lib.mjs';
 
 // Human-friendly pairing code (no ambiguous chars): e.g. "K7P3-9QMX".
 function genCode() {

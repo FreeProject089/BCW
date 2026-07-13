@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, notify, safeEqual } from '../lib.mjs';
-import { cached, invalidate } from '../cache.mjs';
+import { db, requireRole, notify, safeEqual } from '../lib/lib.mjs';
+import { cached, invalidate } from '../lib/cache.mjs';
 
 // Ko-fi's webhook POSTs a single `application/x-www-form-urlencoded` field
 // named `data`, itself a JSON string — see https://ko-fi.com/manage/webhooks.

@@ -5,7 +5,7 @@
 import { db, notify } from './lib.mjs';
 import { deleteObject } from './storage.mjs';
 import { sampleAndAlert } from './monitor.mjs';
-import { runEventScheduler } from './routes/events.mjs';
+import { runEventScheduler } from '../routes/events.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
 
 const DAY_MS = 864e5;

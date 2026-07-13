@@ -1,7 +1,7 @@
 // One-shot seed: projects, an admin account, default hosting plans + admin settings.
 // Run inside the api container: `node src/seed.mjs` (idempotent).
 import argon2 from 'argon2';
-import { db } from './lib.mjs';
+import { db } from './lib/lib.mjs';
 
 const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || 'admin@bettercommunity.local';
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || 'change-me-now';

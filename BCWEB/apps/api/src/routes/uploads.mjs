@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { db, requireRole } from '../lib.mjs';
-import { presignPut, getObject } from '../storage.mjs';
+import { db, requireRole } from '../lib/lib.mjs';
+import { presignPut, getObject } from '../lib/storage.mjs';
 
 const GiB = 1024 ** 3;
 // Submission payloads (.bmmplugin / .bmmtheme / app bundles / presets) live in a

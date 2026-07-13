@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { db, issueSession, requireRole, safeEqual } from '../lib.mjs';
+import { db, issueSession, requireRole, safeEqual } from '../lib/lib.mjs';
 
 // GitHub/Discord "Continue with…" login + signup. No library — both providers'
 // authorization-code flow is a handful of fetches, and pulling in a whole OAuth

@@ -1,7 +1,7 @@
 import os from 'node:os';
 import { z } from 'zod';
-import { db, requireRole } from '../lib.mjs';
-import { checkSslExpiry, checkDependencies, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps } from '../monitor.mjs';
+import { db, requireRole } from '../lib/lib.mjs';
+import { checkSslExpiry, checkDependencies, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps } from '../lib/monitor.mjs';
 import { realDiskStats } from './hosting.mjs';
 
 const BOT_SECRET = () => process.env.BOT_SHARED_SECRET || process.env.LINK_LOOKUP_SECRET || 'dev-bot-secret';

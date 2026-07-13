@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate } from '../lib.mjs';
-import { cached, invalidate } from '../cache.mjs';
-import { safeFetch } from '../net.mjs';
+import { db, requireRole, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate } from '../lib/lib.mjs';
+import { cached, invalidate } from '../lib/cache.mjs';
+import { safeFetch } from '../lib/net.mjs';
 import { gh, ghCache, versionedRawUrl } from './projects.mjs';
 
 // Cached fetch for progress.json / GitHub release-notes trees / community

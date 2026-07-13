@@ -3,7 +3,7 @@
 // editing / reordering / deleting is gated to ADMIN (SUPERADMIN implicitly), the
 // "special role" the docs are editable with.
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, slugify, pruneRevisions } from '../lib.mjs';
+import { db, requireRole, optionalAuth, slugify, pruneRevisions } from '../lib/lib.mjs';
 
 const LIST_SELECT = { id: true, slug: true, title: true, category: true, icon: true, order: true, published: true, updatedAt: true };
 // Must match the heading-anchor slug produced by the renderer (md.jsx slugify).

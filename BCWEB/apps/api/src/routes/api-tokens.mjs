@@ -3,7 +3,7 @@
 // API. Token endpoints are rate-limited per IP (stricter than the global limit) to
 // blunt brute-force enumeration.
 import crypto from 'node:crypto';
-import { db, requireRole, tokenAuth } from '../lib.mjs';
+import { db, requireRole, tokenAuth } from '../lib/lib.mjs';
 
 const genToken = () => 'bmm_' + crypto.randomBytes(30).toString('base64url'); // ~40 chars
 const RL = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };

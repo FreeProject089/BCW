@@ -8,7 +8,7 @@
 //
 // Everything else on the page is a courtesy redirect to the real SPA URL, so if a
 // human ever lands here they bounce straight to the app.
-import { db } from '../lib.mjs';
+import { db } from '../lib/lib.mjs';
 
 const SITE = () => (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 const LOGO = () => `${SITE()}/logo.png`;

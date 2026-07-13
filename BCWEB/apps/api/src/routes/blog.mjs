@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, slugify, pruneRevisions } from '../lib.mjs';
-import { emailEnabled } from '../mail.mjs';
+import { db, requireRole, optionalAuth, slugify, pruneRevisions } from '../lib/lib.mjs';
+import { emailEnabled } from '../lib/mail.mjs';
 import { sendNewsletter } from './newsletter.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');

@@ -2,10 +2,10 @@ import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
 import archiver from 'archiver';
-import { db, repoLog, notify, accountEntrySchema } from '../lib.mjs';
+import { db, repoLog, notify, accountEntrySchema } from '../lib/lib.mjs';
 import { effUpload, DEFAULT_SETTINGS } from './repos.mjs';
 import { presignRepoFile, registerRepoFile, removeRepoFile, publishRepo, unpublishRepo, throttle } from './hosting-content.mjs';
-import { getObject } from '../storage.mjs';
+import { getObject } from '../lib/storage.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 

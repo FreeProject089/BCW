@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole } from '../lib.mjs';
+import { db, requireRole } from '../lib/lib.mjs';
 
 // Push a Notification to every user in one bulk insert — used both by the
 // announcement broadcast and the standalone "notify everyone" admin action.

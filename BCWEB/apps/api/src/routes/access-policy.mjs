@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, accountEntrySchema, getGlobalAccessPolicy, getUserAccessPolicy, logAudit } from '../lib.mjs';
+import { db, requireRole, accountEntrySchema, getGlobalAccessPolicy, getUserAccessPolicy, logAudit } from '../lib/lib.mjs';
 
 function clientIp(req) {
   const xff = req.headers['x-forwarded-for'];

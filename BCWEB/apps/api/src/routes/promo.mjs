@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, notify } from '../lib.mjs';
+import { db, requireRole, notify } from '../lib/lib.mjs';
 
 const GiB = 1024 ** 3;
 function genCode() {

@@ -1,15 +1,15 @@
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, slugify, logAudit, notify, clearAccountLockCache } from '../lib.mjs';
-import { sendMail, mailShell, emailEnabled, escapeHtml } from '../mail.mjs';
+import { db, requireRole, optionalAuth, slugify, logAudit, notify, clearAccountLockCache } from '../lib/lib.mjs';
+import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 // Staff seniority for moderation: an actor can only moderate a strictly lower rank.
 const MOD_RANK = { USER: 0, MOD: 1, ADMIN: 2, SUPERADMIN: 3 };
-import { prefixUsage } from '../storage.mjs';
+import { prefixUsage } from '../lib/storage.mjs';
 import { capacityStatus, realDiskStats, stripe } from './hosting.mjs';
 import { powVerify } from './auth.mjs';
-import { FILES_BACKUP_ROOT, DB_BACKUP_ROOT, repoSizeBytes } from '../gitbackup.mjs';
-import { userBcId, itemFingerprint, repoFingerprint, loadOwnerIdentities, looksLikeBcId, findUserIdByBcId } from '../repofingerprint.mjs';
+import { FILES_BACKUP_ROOT, DB_BACKUP_ROOT, repoSizeBytes } from '../lib/gitbackup.mjs';
+import { userBcId, itemFingerprint, repoFingerprint, loadOwnerIdentities, looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
 import { telemetryDb } from './server-control.mjs';
 
 // The real client IP as observed by our trusted proxy (Caddy appends it last).

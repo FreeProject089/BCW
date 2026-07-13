@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { randomInt } from 'node:crypto';
-import { db, requireRole, safeEqual } from '../lib.mjs';
+import { db, requireRole, safeEqual } from '../lib/lib.mjs';
 
 // Server-to-server auth for the Discord bot (shared secret, like the telemetry link
 // lookup). The bot sends `x-bot-secret`; anything else is rejected.
