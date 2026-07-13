@@ -1297,6 +1297,21 @@ model ErrorEvent {
   @@index([message])
 }
 
+// Admin-defined conversion goals, evaluated against the analytics streams. A goal matches
+// a pageview (path) or an interaction (kind + optional label), both filtered by an optional
+// path pattern. Completions + unique-visitor conversion rate are computed on demand.
+model AnalyticsGoal {
+  id        String   @id @default(cuid())
+  name      String
+  kind      String   @default("pageview") // pageview | click | submit | input | copy
+  path      String?  // path pattern (case-insensitive contains), optional
+  label     String?  // event label pattern (contains), optional — for click/submit/input
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 // Blog newsletter subscribers. Double opt-in (GDPR): a signup starts `pending` and only
 // becomes `active` once the confirm link is clicked. Every email carries a one-click,
 // no-login unsubscribe link (unsubToken). We store only the email + status + timestamps

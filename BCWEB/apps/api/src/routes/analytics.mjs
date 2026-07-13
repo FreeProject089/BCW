@@ -469,6 +469,71 @@ export default async function analyticsRoutes(app) {
     };
   });
 
+  // ── Conversion goals ────────────────────────────────────────────────────────
+  const goalSchema = z.object({
+    name: z.string().min(1).max(80),
+    kind: z.enum(['pageview', 'click', 'submit', 'input', 'copy']),
+    path: z.string().max(200).nullish(),
+    label: z.string().max(120).nullish(),
+    active: z.boolean().optional(),
+  });
+  // List goals with their completions + unique-visitor conversion rate over the window.
+  app.get('/admin/analytics/goals', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
+    const days = Math.min(Math.max(Number(req.query?.days) || 30, 1), 365);
+    const since = hours ? new Date(Date.now() - hours * 3600e3) : new Date(Date.now() - days * 864e5);
+    const goals = await p.analyticsGoal.findMany({ orderBy: { createdAt: 'asc' } });
+    // Total unique visitors in the window (the conversion denominator).
+    const totalVisitorsRow = await p.$queryRaw`SELECT count(DISTINCT visitor)::int AS n FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} AND visitor IS NOT NULL`;
+    const totalVisitors = Number(totalVisitorsRow?.[0]?.n || 0);
+    const withStats = await Promise.all(goals.map(async (g) => {
+      const pathCond = g.path ? { path: { contains: g.path, mode: 'insensitive' } } : {};
+      let completions = 0; let visitors = 0;
+      if (g.kind === 'pageview') {
+        const [c, v] = await Promise.all([
+          p.analyticsEvent.count({ where: { createdAt: { gte: since }, ...pathCond } }),
+          p.$queryRawUnsafe(`SELECT count(DISTINCT visitor)::int AS n FROM "AnalyticsEvent" WHERE "createdAt" >= $1 AND visitor IS NOT NULL ${g.path ? 'AND path ILIKE $2' : ''}`, ...(g.path ? [since, `%${g.path}%`] : [since])),
+        ]);
+        completions = c; visitors = Number(v?.[0]?.n || 0);
+      } else {
+        const labelCond = g.label ? { label: { contains: g.label, mode: 'insensitive' } } : {};
+        const [c, v] = await Promise.all([
+          p.interactionEvent.count({ where: { createdAt: { gte: since }, kind: g.kind, ...pathCond, ...labelCond } }),
+          p.$queryRawUnsafe(`SELECT count(DISTINCT visitor)::int AS n FROM "InteractionEvent" WHERE "createdAt" >= $1 AND kind = $2 AND visitor IS NOT NULL ${g.path ? 'AND path ILIKE $3' : ''} ${g.label ? `AND label ILIKE $${g.path ? 4 : 3}` : ''}`,
+            ...[since, g.kind, ...(g.path ? [`%${g.path}%`] : []), ...(g.label ? [`%${g.label}%`] : [])]),
+        ]);
+        completions = c; visitors = Number(v?.[0]?.n || 0);
+      }
+      return { ...g, completions, visitors, rate: totalVisitors ? Math.round((visitors / totalVisitors) * 1000) / 10 : 0 };
+    }));
+    return { goals: withStats, totalVisitors };
+  });
+  app.post('/admin/analytics/goals', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = goalSchema.safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const g = await p.analyticsGoal.create({ data: { name: b.data.name, kind: b.data.kind, path: b.data.path || null, label: b.data.label || null, active: b.data.active ?? true } });
+    return { ok: true, goal: g };
+  });
+  app.patch('/admin/analytics/goals/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = goalSchema.partial().safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const data = {};
+    for (const k of ['name', 'kind', 'active']) if (b.data[k] !== undefined) data[k] = b.data[k];
+    if (b.data.path !== undefined) data.path = b.data.path || null;
+    if (b.data.label !== undefined) data.label = b.data.label || null;
+    const g = await p.analyticsGoal.update({ where: { id: req.params.id }, data }).catch(() => null);
+    if (!g) return reply.code(404).send({ error: 'not_found' });
+    return { ok: true, goal: g };
+  });
+  app.delete('/admin/analytics/goals/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    await p.analyticsGoal.delete({ where: { id: req.params.id } }).catch(() => {});
+    return { ok: true };
+  });
+
   // Recent visitor sessions (Rybbit-style live feed). Pageviews are grouped per visitor
   // and split into sessions on a 30-min inactivity gap; each session carries its ordered
   // page timeline, entry/exit, duration, device/geo, and a `live` flag (active < 5 min

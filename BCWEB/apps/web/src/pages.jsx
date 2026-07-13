@@ -2426,6 +2426,7 @@ export function Admin() {
     isAdmin && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp },
     isAdmin && { id: 'eventsfeed', label: t('adm.tab.eventsfeed', 'Events feed'), icon: Activity },
     isAdmin && { id: 'errors', label: t('adm.tab.errors', 'Errors'), icon: AlertTriangle },
+    isAdmin && { id: 'goals', label: t('adm.tab.goals', 'Goals'), icon: Target },
 
     isAdmin && { heading: t('adm.h.settings', 'Settings') },
     isAdmin && { id: 'settings', label: t('adm.tab.settings', 'Settings'), icon: Sliders },
@@ -2496,6 +2497,7 @@ export function Admin() {
         {s === 'analytics' && <AdminAnalytics />}
         {s === 'eventsfeed' && <AdminEventsFeed />}
         {s === 'errors' && <AdminErrors />}
+        {s === 'goals' && <AdminGoals />}
         {s === 'projects' && <AdminProjects />}
         {s === 'showcase' && <AdminShowcase />}
         {s === 'reviews' && <AdminReviews />}
@@ -7278,6 +7280,78 @@ function SessionsPanel({ days, hours }) {
         : sessions.length ? <div className="space-y-2 max-h-[520px] overflow-auto pr-1">{sessions.map((s) => <SessionRow key={s.visitor + s.start} s={s} />)}</div>
         : <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.sess.none', 'No sessions yet — needs visitors who accepted analytics cookies.')}</div>)}
     </Card>
+  );
+}
+
+// Conversion goals: admin-defined targets (reach a page, click a button, submit a form…)
+// with live completions + unique-visitor conversion rate over a chosen window.
+const GOAL_KINDS = [['pageview', 'goal.k.pageview', 'Page view'], ['click', 'goal.k.click', 'Button click'], ['submit', 'goal.k.submit', 'Form submit'], ['input', 'goal.k.input', 'Field change'], ['copy', 'goal.k.copy', 'Copy']];
+function AdminGoals() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [range, setRange] = useState('30d');
+  const rq = Object.fromEntries(WV_RANGES)[range] || { days: 30 };
+  const qs = rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`;
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/goals?${qs}`), [qs]);
+  const goals = data?.goals || [];
+  const [f, setF] = useState({ name: '', kind: 'pageview', path: '', label: '' });
+  const [editId, setEditId] = useState(null); const [busy, setBusy] = useState(false);
+  const reset = () => { setF({ name: '', kind: 'pageview', path: '', label: '' }); setEditId(null); };
+  const save = async () => {
+    if (f.name.trim().length < 1) return toast.error(t('goal.namereq', 'Give the goal a name.'));
+    setBusy(true);
+    const payload = { name: f.name.trim(), kind: f.kind, path: f.path.trim() || null, label: f.kind === 'pageview' ? null : (f.label.trim() || null) };
+    try { if (editId) await api.patch(`/admin/analytics/goals/${editId}`, payload); else await api.post('/admin/analytics/goals', payload); toast.success(editId ? t('goal.saved', 'Goal saved.') : t('goal.added', 'Goal added.')); reset(); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  const edit = (g) => { setEditId(g.id); setF({ name: g.name, kind: g.kind, path: g.path || '', label: g.label || '' }); };
+  const del = async (g) => { if (!(await dialog.confirm({ title: t('goal.del', 'Delete goal?'), message: g.name, okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/admin/analytics/goals/${g.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const kindLabel = (k) => { const x = GOAL_KINDS.find((g) => g[0] === k); return x ? t(x[1], x[2]) : k; };
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="font-semibold flex items-center gap-2"><Target size={16} className="text-[var(--primary-2)]" /> {t('goal.title', 'Goals')}</h2>
+        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+          {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
+        </div>
+      </div>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('goal.sub', 'Define conversion goals and track how many visitors complete them. Completion = a matching event; the rate is unique goal visitors ÷ all visitors in the window.')}</p>
+
+      <Card className="p-4 mb-5">
+        <div className="text-sm font-semibold mb-3">{editId ? t('goal.editing', 'Edit goal') : t('goal.new', 'New goal')}</div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label={t('goal.name', 'Name')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={t('goal.nameph', 'Signup, Catalog install…')} /></Field>
+          <Field label={t('goal.kind', 'Trigger')}><Dropdown value={f.kind} onChange={(v) => setF({ ...f, kind: v })} options={GOAL_KINDS.map(([v, key, fb]) => ({ value: v, label: kindLabel(v) || fb }))} /></Field>
+          <Field label={t('goal.path', 'Page path contains (optional)')}><Input value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} placeholder="/auth, /catalog…" /></Field>
+          {f.kind !== 'pageview' && <Field label={t('goal.label', 'Button/field text contains (optional)')}><Input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="Sign up, Install…" /></Field>}
+        </div>
+        <div className="flex justify-end gap-2 mt-3">
+          {editId && <Button variant="ghost" onClick={reset}>{t('common.cancel', 'Cancel')}</Button>}
+          <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (editId ? t('goal.savebtn', 'Save') : <><Plus size={15} /> {t('goal.addbtn', 'Add goal')}</>)}</Button>
+        </div>
+      </Card>
+
+      {loading ? <Loading /> : goals.length ? <div className="space-y-2">
+        {goals.map((g) => (
+          <Card key={g.id} className="p-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex-1 min-w-[160px]">
+                <div className="font-medium flex items-center gap-2">{g.name} <Badge tone="">{kindLabel(g.kind)}</Badge></div>
+                <div className="text-xs text-[var(--faint)] mt-0.5">{g.path ? <span className="font-mono">{g.path}</span> : t('goal.anypage', 'any page')}{g.label ? <> · “{g.label}”</> : ''}</div>
+              </div>
+              <div className="text-center px-3"><div className="text-lg font-bold tabular-nums">{g.completions}</div><div className="text-[10px] text-[var(--faint)] uppercase">{t('goal.completions', 'completions')}</div></div>
+              <div className="text-center px-3"><div className="text-lg font-bold tabular-nums">{g.visitors}</div><div className="text-[10px] text-[var(--faint)] uppercase">{t('goal.visitors', 'visitors')}</div></div>
+              <div className="text-center px-3 min-w-[90px]"><div className="text-lg font-bold tabular-nums text-[var(--primary-2)]">{g.rate}%</div><div className="text-[10px] text-[var(--faint)] uppercase">{t('goal.rate', 'conv. rate')}</div></div>
+              <div className="flex gap-1">
+                <button onClick={() => edit(g)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-[var(--primary-2)] hover:bg-[var(--surface-2)]"><PenSquare size={15} /></button>
+                <button onClick={() => del(g)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-red-400 hover:bg-[var(--surface-2)]"><Trash2 size={15} /></button>
+              </div>
+            </div>
+            <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-3"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${Math.min(100, g.rate)}%` }} /></div>
+          </Card>
+        ))}
+      </div> : <EmptyState icon={Target} title={t('goal.none', 'No goals yet')} sub={t('goal.none.s', 'Add your first conversion goal above.')} />}
+      {data?.totalVisitors != null && <p className="text-[11px] text-[var(--faint)] mt-3">{t('goal.denom', 'Conversion rate is out of {n} unique visitors in this window.').replace('{n}', data.totalVisitors)}</p>}
+    </div>
   );
 }
 
