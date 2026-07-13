@@ -9,7 +9,7 @@ import {
   Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket,
   CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss,
   Info, Orbit, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, ShoppingCart,
-  Mic, KeyRound, MousePointerClick, PanelTop,
+  Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save,
 } from 'lucide-react';
 import { api, uploadPayload, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
