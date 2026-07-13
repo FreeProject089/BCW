@@ -388,7 +388,7 @@ const DICT = {
     'faqa.published': 'Publiée (visible sur /faq)', 'faqa.qreq': 'La question est requise.', 'faqa.saved': 'Enregistré.', 'faqa.added': 'Ajouté.', 'faqa.savebtn': 'Enregistrer', 'faqa.addbtn': 'Ajouter la question',
     'faqa.del': 'Supprimer la question ?', 'faqa.hide': 'Dépublier', 'faqa.show': 'Publier', 'faqa.none': 'Aucune question', 'faqa.none.s': 'Ajoute ta première ci-dessus.',
     'docs.title': 'Documentation', 'docs.search': 'Rechercher…', 'docs.filter': 'Filtrer les pages…', 'docs.newpage': 'Nouvelle page',
-    'docs.edit': 'Modifier', 'docs.updated': 'Mis à jour', 'docs.contributors': '{n} contributeurs', 'docs.empty': '*Cette page est vide.*', 'docs.onthispage': 'Sur cette page',
+    'docs.edit': 'Modifier', 'docs.updated': 'Mis à jour', 'docs.contributors': '{n} contributeurs', 'docs.cat.hint': 'Utilise « Haut / Sous » pour une sous-catégorie', 'docs.empty': '*Cette page est vide.*', 'docs.onthispage': 'Sur cette page',
     'docs.none.title': 'Aucune documentation pour l’instant', 'docs.none.sub.admin': 'Crée la première page pour commencer.', 'docs.none.sub': 'Reviens bientôt.',
     'docs.helpful': 'Cette page a-t-elle été utile ?', 'docs.helpful.thanks': 'Merci pour ton retour !',
     'docs.notfr': "Cette page n'est pas encore traduite en français — la version anglaise est affichée.",

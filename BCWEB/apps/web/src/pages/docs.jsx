@@ -80,6 +80,20 @@ export default function Docs() {
     return tree.map((c) => ({ ...c, pages: c.pages.filter((p) => p.title.toLowerCase().includes(n) || c.category.toLowerCase().includes(n)) }))
       .filter((c) => c.pages.length);
   }, [tree, q]);
+  // Nested sidebar: a category written "Top / Sub" (slash-separated) becomes a top group
+  // with a sub-group — one level of subcategories, no schema change. Order follows the tree.
+  const nested = useMemo(() => {
+    const tops = new Map();
+    for (const cat of filtered) {
+      const parts = cat.category.split('/').map((s) => s.trim()).filter(Boolean);
+      const top = parts[0] || 'General'; const sub = parts[1] || null;
+      if (!tops.has(top)) tops.set(top, { name: top, pages: [], subs: new Map(), count: 0 });
+      const node = tops.get(top); node.count += cat.pages.length;
+      if (sub) { if (!node.subs.has(sub)) node.subs.set(sub, []); node.subs.get(sub).push(...cat.pages); }
+      else node.pages.push(...cat.pages);
+    }
+    return [...tops.values()].map((n) => ({ ...n, subs: [...n.subs.entries()] }));
+  }, [filtered]);
 
   const body = page ? (lang === 'fr' && page.bodyFr ? page.bodyFr : page.body) : '';
   // Comment pins on headings → hover a section to open its comments.
@@ -113,19 +127,31 @@ export default function Docs() {
       <div className="relative mb-4">
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('docs.filter')} className="!py-2 !text-sm !rounded-2xl" />
       </div>
-      {filtered.map((cat) => { const isCollapsed = collapsed.has(cat.category) && !q.trim(); return (
-        <div key={cat.category} className="mb-3">
-          <button onClick={() => toggleCat(cat.category)} className="w-full flex items-center gap-1 px-1.5 mb-1 text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] hover:text-[var(--muted)]">
-            <ChevronRight size={12} className={`transition-transform ${isCollapsed ? '' : 'rotate-90'}`} /> {cat.category}
+      {nested.map((cat) => { const isCollapsed = collapsed.has(cat.name) && !q.trim();
+        const PageLink = (p) => (
+          <Link key={p.slug} to={`/docs/${p.slug}`} onClick={() => { if (window.innerWidth < 768) setSidebar(false); }}
+            className={`group relative flex items-center gap-2.5 pl-3 pr-2.5 py-1.5 rounded-lg text-sm transition ${activeSlug === p.slug ? 'bg-[var(--primary)]/10 text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
+            {activeSlug === p.slug && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-full bg-[var(--primary)]" />}
+            <IconGlyph name={p.icon || 'file'} size={14} className={activeSlug === p.slug ? 'text-[var(--primary)]' : 'text-[var(--faint)] group-hover:text-[var(--muted)]'} />
+            <span className="truncate flex-1">{p.title}</span>
+            {!p.published && <span className="text-[10px] text-orange-400 shrink-0">draft</span>}
+          </Link>
+        );
+        return (
+        <div key={cat.name} className="mb-3">
+          <button onClick={() => toggleCat(cat.name)} className="w-full flex items-center gap-1 px-1 mb-1 text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] hover:text-[var(--muted)]">
+            <ChevronRight size={12} className={`transition-transform shrink-0 ${isCollapsed ? '' : 'rotate-90'}`} /> <span className="flex-1 text-left truncate">{cat.name}</span>
+            <span className="text-[10px] font-semibold tabular-nums text-[var(--faint)] bg-[var(--surface-2)] rounded-full px-1.5 py-px">{cat.count}</span>
           </button>
-          {!isCollapsed && cat.pages.map((p) => (
-            <Link key={p.slug} to={`/docs/${p.slug}`} onClick={() => { if (window.innerWidth < 768) setSidebar(false); }}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition ${activeSlug === p.slug ? 'bg-[var(--primary)]/10 text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
-              <IconGlyph name={p.icon || 'file'} size={14} className={activeSlug === p.slug ? 'text-[var(--primary)]' : 'text-[var(--faint)]'} />
-              <span className="truncate flex-1">{p.title}</span>
-              {!p.published && <span className="text-[10px] text-orange-400 shrink-0">draft</span>}
-            </Link>
-          ))}
+          {!isCollapsed && <div className="space-y-0.5">
+            {cat.pages.map(PageLink)}
+            {cat.subs.map(([sub, pages]) => (
+              <div key={sub} className="mt-1.5">
+                <div className="px-3 mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--faint)]/80">{sub}</div>
+                <div className="ml-2 border-l border-[var(--line)] pl-1.5 space-y-0.5">{pages.map(PageLink)}</div>
+              </div>
+            ))}
+          </div>}
         </div>
       ); })}
       {canEdit && <Button size="sm" variant="ghost" className="w-full mt-1" onClick={() => setEditing({})}><Plus size={14} /> {t('docs.newpage')}</Button>}
@@ -169,6 +195,12 @@ export default function Docs() {
             // background — and it responds to Settings → Translucent surfaces
             // automatically ([data-surface-glass] .card).
             <article ref={articleRef} className="card p-5 sm:p-7">
+              {/* Breadcrumb: Docs › Category › Subcategory › page title. */}
+              <nav className="flex items-center gap-1.5 text-xs text-[var(--faint)] mb-3 flex-wrap">
+                <Link to="/docs" className="hover:text-[var(--primary-2)] transition">{t('docs.title', 'Docs')}</Link>
+                {(page.category || '').split('/').map((s) => s.trim()).filter(Boolean).map((c, i) => <span key={i} className="inline-flex items-center gap-1.5"><ChevronRight size={11} className="opacity-60" /> {c}</span>)}
+                <ChevronRight size={11} className="opacity-60" /> <span className="text-[var(--muted)] font-medium truncate max-w-[220px]">{page.title}</span>
+              </nav>
               <h1 className="text-2xl md:text-3xl font-extrabold mb-1">{page.title}</h1>
               <div className="flex items-center flex-wrap gap-x-3 gap-y-1.5 text-xs text-[var(--faint)] mb-6">
                 <button onClick={() => setReaderHistory(true)} title={t('docs.history.hint', 'View edit history')} className="inline-flex items-center gap-1 hover:text-[var(--primary-2)] transition">{t('docs.updated')} {new Date(page.updatedAt).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US')} <History size={11} className="opacity-60" /></button>
@@ -549,7 +581,7 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
       )}
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 mb-3">
         <Field label="Title"><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Page title" /></Field>
-        <Field label="Category"><Input list="doc-cats" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="General" />
+        <Field label="Category" hint={t('docs.cat.hint', 'Use "Top / Sub" for a subcategory')}><Input list="doc-cats" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="Guides / Setup" />
           <datalist id="doc-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist></Field>
         <Field label="Icon"><Input value={f.icon} onChange={(e) => setF({ ...f, icon: e.target.value })} placeholder="book" className="!w-24" /></Field>
         <Field label="Order"><Input type="number" value={f.order} onChange={(e) => setF({ ...f, order: e.target.value })} className="!w-20" /></Field>
