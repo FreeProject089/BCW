@@ -378,6 +378,47 @@ export default async function analyticsRoutes(app) {
     return { path, days, hours, device: map(device), browser: map(browser), os: map(os), country: map(country) };
   });
 
+  // Custom-events feed (à la Rybbit): the recent stream of pageviews + in-page
+  // interactions (click/copy/input/submit/modal/nav), newest first, filterable by path
+  // (contains) and kind. Interaction rows are enriched with the visitor's browser/OS/
+  // country from their latest pageview (those columns live on AnalyticsEvent).
+  app.get('/admin/analytics/events', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
+    const days = Math.min(Math.max(Number(req.query?.days) || 7, 1), 365);
+    const since = hours ? new Date(Date.now() - hours * 3600e3) : new Date(Date.now() - days * 864e5);
+    const q = String(req.query?.path || '').trim();
+    const kinds = req.query?.kinds ? String(req.query.kinds).split(',').filter(Boolean) : null;
+    const limit = Math.min(Math.max(Number(req.query?.limit) || 200, 1), 500);
+    const pathWhere = q ? { path: { contains: q, mode: 'insensitive' } } : {};
+    const wantPv = !kinds || kinds.includes('pageview');
+    const ixKinds = kinds ? kinds.filter((k) => k !== 'pageview') : null;
+    const wantIx = !kinds || (ixKinds && ixKinds.length);
+    const [pvs, ixs] = await Promise.all([
+      wantPv ? p.analyticsEvent.findMany({ where: { createdAt: { gte: since }, ...pathWhere }, orderBy: { createdAt: 'desc' }, take: limit, select: { createdAt: true, path: true, visitor: true, device: true, browser: true, os: true, country: true } }) : [],
+      wantIx ? p.interactionEvent.findMany({ where: { createdAt: { gte: since }, ...pathWhere, ...(ixKinds && ixKinds.length ? { kind: { in: ixKinds } } : {}) }, orderBy: { createdAt: 'desc' }, take: limit, select: { createdAt: true, path: true, visitor: true, kind: true, label: true, device: true } }) : [],
+    ]);
+    // Enrich interactions with browser/OS/country from each visitor's latest pageview.
+    const visitors = [...new Set(ixs.map((x) => x.visitor).filter(Boolean))];
+    const enrich = new Map();
+    if (visitors.length) {
+      const rows = await p.analyticsEvent.findMany({ where: { visitor: { in: visitors } }, orderBy: { createdAt: 'desc' }, distinct: ['visitor'], select: { visitor: true, browser: true, os: true, country: true } });
+      rows.forEach((r) => enrich.set(r.visitor, r));
+    }
+    const events = [
+      ...pvs.map((e) => ({ ts: e.createdAt, kind: 'pageview', path: e.path, visitor: e.visitor, device: e.device, browser: e.browser, os: e.os, country: e.country, label: null })),
+      ...ixs.map((e) => { const en = enrich.get(e.visitor) || {}; return { ts: e.createdAt, kind: e.kind, path: e.path, visitor: e.visitor, device: e.device, browser: en.browser || null, os: en.os || null, country: en.country || null, label: e.label }; }),
+    ].sort((a, b) => new Date(b.ts) - new Date(a.ts)).slice(0, limit);
+    // Per-kind counts over the window (for the filter chips), independent of the feed slice.
+    const [pvCount, ixCounts] = await Promise.all([
+      p.analyticsEvent.count({ where: { createdAt: { gte: since }, ...pathWhere } }),
+      p.interactionEvent.groupBy({ by: ['kind'], where: { createdAt: { gte: since }, ...pathWhere }, _count: { kind: true } }),
+    ]);
+    const counts = { pageview: pvCount };
+    ixCounts.forEach((c) => { counts[c.kind] = c._count.kind; });
+    return { events, counts };
+  });
+
   // Recent visitor sessions (Rybbit-style live feed). Pageviews are grouped per visitor
   // and split into sessions on a 30-min inactivity gap; each session carries its ordered
   // page timeline, entry/exit, duration, device/geo, and a `live` flag (active < 5 min

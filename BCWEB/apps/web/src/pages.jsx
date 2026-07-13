@@ -2424,6 +2424,7 @@ export function Admin() {
     isAdmin && { id: 'serveradv', label: t('adm.tab.serveradv', 'Advanced server'), icon: AlertTriangle },
     isAdmin && { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
     isAdmin && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp },
+    isAdmin && { id: 'eventsfeed', label: t('adm.tab.eventsfeed', 'Events feed'), icon: Activity },
 
     isAdmin && { heading: t('adm.h.settings', 'Settings') },
     isAdmin && { id: 'settings', label: t('adm.tab.settings', 'Settings'), icon: Sliders },
@@ -2492,6 +2493,7 @@ export function Admin() {
         {s === 'storage' && <AdminStorage />}
         {s === 'bot' && <AdminBot />}
         {s === 'analytics' && <AdminAnalytics />}
+        {s === 'eventsfeed' && <AdminEventsFeed />}
         {s === 'projects' && <AdminProjects />}
         {s === 'showcase' && <AdminShowcase />}
         {s === 'reviews' && <AdminReviews />}
@@ -7274,6 +7276,82 @@ function SessionsPanel({ days, hours }) {
         : sessions.length ? <div className="space-y-2 max-h-[520px] overflow-auto pr-1">{sessions.map((s) => <SessionRow key={s.visitor + s.start} s={s} />)}</div>
         : <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.sess.none', 'No sessions yet — needs visitors who accepted analytics cookies.')}</div>)}
     </Card>
+  );
+}
+
+// Custom-events feed (Rybbit-style): the live stream of pageviews + in-page interactions,
+// filterable by path (contains) and event kind. Reuses the sessions feed's anonymous
+// nickname/avatar + event metadata.
+const FEED_KINDS = [
+  ['pageview', 'ev.k.pageview', 'Page view', Eye],
+  ['click', 'ev.k.click', 'Button click', MousePointerClick],
+  ['input', 'ev.k.input', 'Input change', PenSquare],
+  ['submit', 'ev.k.submit', 'Form submit', Send],
+  ['copy', 'ev.k.copy', 'Copy', Copy],
+  ['nav', 'ev.k.nav', 'Navigation', ArrowRight],
+  ['modal_open', 'ev.k.modal', 'Modal open', PanelTop],
+];
+function feedData(e, t) {
+  if (e.kind === 'click') return e.label ? t('ev.d.click', 'Clicked button “{x}”').replace('{x}', e.label) : t('ev.d.clickg', 'Clicked');
+  if (e.kind === 'input') return e.label ? t('ev.d.input', 'Field “{x}” changed').replace('{x}', e.label) : t('ev.d.inputg', 'Field changed');
+  if (e.kind === 'submit') return e.label ? t('ev.d.submit', 'Submitted “{x}”').replace('{x}', e.label) : t('ev.d.submitg', 'Form submitted');
+  if (e.kind === 'copy') return t('ev.d.copy', 'Copied');
+  if (e.kind === 'nav') return e.label ? t('ev.d.nav', 'Went to {x}').replace('{x}', e.label) : '';
+  if (e.kind === 'modal_open') return e.label ? t('ev.d.modal', 'Opened “{x}”').replace('{x}', e.label) : t('ev.d.modalg', 'Opened a modal');
+  return e.label || '';
+}
+function AdminEventsFeed() {
+  const { t } = useI18n();
+  const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState('');
+  const [kinds, setKinds] = useState(() => new Set()); // empty = all
+  const [range, setRange] = useState('7d');
+  const rq = Object.fromEntries(WV_RANGES)[range] || { days: 7 };
+  const qs = `${rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`}${qApplied ? `&path=${encodeURIComponent(qApplied)}` : ''}${kinds.size ? `&kinds=${[...kinds].join(',')}` : ''}`;
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/events?${qs}`), [qs]);
+  const events = data?.events || []; const counts = data?.counts || {};
+  const toggle = (k) => setKinds((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const EVICON = { pageview: Eye, click: MousePointerClick, copy: Copy, input: PenSquare, submit: Send, nav: ArrowRight, modal_open: PanelTop, modal_close: X };
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="font-semibold flex items-center gap-2"><Activity size={16} className="text-[var(--primary-2)]" /> {t('ev.title', 'Events feed')}</h2>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+            {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
+          </div>
+          <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
+        </div>
+      </div>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('ev.sub', 'The live stream of what visitors do — pageviews, clicks, form submits, field edits. Anonymous (daily-rotating identity, no PII).')}</p>
+      <div className="flex flex-wrap gap-2 mb-3">
+        <div className="relative flex-1 min-w-[220px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <Input className="!pl-9" placeholder={t('ev.pathph', 'Filter by page path…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
+        <Button variant="primary" onClick={() => setQApplied(q.trim())}><Search size={15} /> {t('ev.filter', 'Filter')}</Button>
+      </div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {FEED_KINDS.map(([k, key, fb, Icon]) => { const on = kinds.has(k); return (
+          <button key={k} onClick={() => toggle(k)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            <Icon size={13} /> {t(key, fb)} {counts[k] != null && <span className="text-[10px] tabular-nums text-[var(--faint)]">{counts[k]}</span>}
+          </button>
+        ); })}
+      </div>
+      {loading ? <Loading /> : events.length ? <div className="overflow-x-auto rounded-xl border border-[var(--line)]">
+        <table className="w-full text-sm min-w-[720px]">
+          <thead><tr className="text-[10px] uppercase text-[var(--faint)] text-left border-b border-[var(--line)] bg-[var(--surface-2)]/50">
+            <th className="py-2 px-3 font-semibold">{t('ev.c.time', 'Time')}</th><th className="py-2 px-3 font-semibold">{t('ev.c.user', 'Visitor')}</th><th className="py-2 px-3 font-semibold">{t('ev.c.device', 'Device')}</th><th className="py-2 px-3 font-semibold">{t('ev.c.page', 'Page')}</th><th className="py-2 px-3 font-semibold">{t('ev.c.data', 'Data')}</th>
+          </tr></thead>
+          <tbody>{events.map((e, i) => { const Icon = EVICON[e.kind] || Activity; return (
+            <tr key={i} className="border-b border-[var(--line)]/50 hover:bg-[var(--surface-2)]/30">
+              <td className="py-2 px-3 whitespace-nowrap text-xs text-[var(--faint)]"><span className="inline-flex items-center gap-1.5"><Icon size={13} className="text-[var(--primary-2)]" /> {new Date(e.ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></td>
+              <td className="py-2 px-3 whitespace-nowrap"><span className="inline-flex items-center gap-2"><Avatar seed={e.visitor || 'anon'} variant="beam" size={22} /> {fakeNick(e.visitor)}</span></td>
+              <td className="py-2 px-3 whitespace-nowrap text-xs text-[var(--muted)]"><span className="inline-flex items-center gap-1.5">{e.country ? <Flag cc={e.country} className="w-4 h-3" /> : null}{e.browser || '—'}{e.os ? ` · ${e.os}` : ''}{e.device ? ` · ${e.device}` : ''}</span></td>
+              <td className="py-2 px-3 font-mono text-xs text-[var(--muted)] max-w-[220px] truncate" title={e.path}>{e.path}</td>
+              <td className="py-2 px-3 text-xs text-[var(--muted)] max-w-[260px] truncate" title={feedData(e, t)}>{feedData(e, t)}</td>
+            </tr>
+          ); })}</tbody>
+        </table>
+      </div> : <EmptyState icon={Activity} title={t('ev.none', 'No events in this window')} sub={t('ev.none.s', 'Adjust the range or filters.')} />}
+    </div>
   );
 }
 
