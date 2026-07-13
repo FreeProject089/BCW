@@ -363,24 +363,24 @@ export function Home() {
       <section>
         <SectionKicker n="03" label={t('home.k.start', 'Get started')} />
         <div className="reveal-on-scroll text-center mb-9"><h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.steps.title')}</h2><p className="text-[var(--muted)] mt-2.5">{t('home.steps.sub')}</p></div>
-        {/* Clean self-contained step cards — no roadmap rail. Icon chip + a big ghost
-            step-number, then Step N · title · description · CTA. */}
+        {/* Clean self-contained step cards — no roadmap rail, no "Step N" label. The icon
+            chip and a big ghost number share the top row (balanced, fully inside the
+            padding), then title · description · CTA. */}
         <div className="reveal-stagger grid md:grid-cols-3 gap-5">
           {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth', user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free')],
             [Upload, t('home.step2'), t('home.step2.d'), '/catalog', t('home.step2.cta', 'Browse the catalog')],
             [Rocket, t('home.step3'), t('home.step3.d'), '/hosting', t('home.step3.cta', 'See hosting plans')]].map(([I, title, d, to, cta], i) => (
             <Link key={title} to={to} className="group">
-              <Card hover className="relative p-7 h-full flex flex-col overflow-hidden group-hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--line))] transition-colors">
-                <span aria-hidden className="absolute -top-3 right-4 text-[76px] leading-none font-black text-[var(--line)] select-none pointer-events-none">{i + 1}</span>
-                <div className="relative flex flex-col h-full">
+              <Card hover className="p-7 h-full flex flex-col group-hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--line))] transition-colors">
+                <div className="flex items-center justify-between mb-6">
                   <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-lg shadow-orange-500/25 transition-transform duration-300 group-hover:scale-105">
                     <I size={22} className="text-white" />
                   </span>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--primary-2)]/70 mt-5">{t('home.step.n', 'Step {n}').replace('{n}', i + 1)}</div>
-                  <div className="font-bold mt-1 text-lg leading-snug">{title}</div>
-                  <div className="text-sm text-[var(--muted)] mt-2 leading-relaxed flex-1">{d}</div>
-                  <div className="text-sm text-[var(--primary-2)] mt-5 flex items-center gap-1.5 font-semibold">{cta} <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" /></div>
+                  <span aria-hidden className="text-[52px] leading-none font-black text-[var(--line-strong)] select-none pointer-events-none transition-colors group-hover:text-[color-mix(in_srgb,var(--primary)_32%,var(--line-strong))]">{i + 1}</span>
                 </div>
+                <div className="font-bold text-lg leading-snug">{title}</div>
+                <div className="text-sm text-[var(--muted)] mt-2 leading-relaxed flex-1">{d}</div>
+                <div className="text-sm text-[var(--primary-2)] mt-6 flex items-center gap-1.5 font-semibold">{cta} <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" /></div>
               </Card>
             </Link>
           ))}
