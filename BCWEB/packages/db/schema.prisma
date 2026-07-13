@@ -1297,6 +1297,22 @@ model ErrorEvent {
   @@index([message])
 }
 
+// FAQ — admin/editor-curated questions & answers, grouped by category. Answers use the
+// BetterCommunity doc-block markdown (rendered with the same md.jsx pipeline as blog/docs).
+model FaqItem {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String   @default("")  // markdown (doc-block system), EN base
+  answerFr  String?                 // optional French translation
+  category  String   @default("General")
+  order     Int      @default(0)
+  published Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([category])
+}
+
 // Admin-defined conversion goals, evaluated against the analytics streams. A goal matches
 // a pageview (path) or an interaction (kind + optional label), both filtered by an optional
 // path pattern. Completions + unique-visitor conversion rate are computed on demand.

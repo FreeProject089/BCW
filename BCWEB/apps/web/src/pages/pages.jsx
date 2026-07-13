@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload,
-  Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive,
+  Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle,
   Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2,
   Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight,
   Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket,
@@ -20,7 +20,7 @@ import { SKIP_KEY, useIntro } from '../ui/IntroContext.jsx';
 import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from '../lib/prefs.js';
 import { MyRepos, AdminRepos, Billing, rawStatusLabel } from './repos.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
-import { AuthorsRow } from './blog.jsx';
+import { AuthorsRow, MarkdownEditor } from './blog.jsx';
 import Avatar, { VARIANTS as AV_VARIANTS, PALETTES as AV_PALETTES } from '../ui/Avatar.jsx';
 
 // A stable-but-varied Boring-avatar look for an anonymous analytics session (keyed by
@@ -2405,6 +2405,7 @@ export function Admin() {
     isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: MessageSquare },
     isAdmin && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
     isAdmin && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
+    isAdmin && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
 
     { heading: t('adm.h.repos', 'Repos & hosting') },
     { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
@@ -2485,6 +2486,7 @@ export function Admin() {
         {s === 'serveradv' && <AdminServerAdvanced />}
         {s === 'announcements' && <AdminAnnouncements />}
         {s === 'newsletter' && <AdminNewsletter />}
+        {s === 'faq' && <AdminFaq />}
         {s === 'repos' && <AdminRepos />}
         {s === 'catalogs' && <><AdminCatalogCreator /><PluginVerifier /><ThemeVerifier /></>}
         {s === 'hosting' && <AdminFreeHost />}
@@ -4432,6 +4434,65 @@ function AdminNewsletter() {
       </div>
 
       <div className="flex justify-end"><Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /> {t('nl.refresh', 'Refresh')}</Button></div>
+    </div>
+  );
+}
+
+// Admin: FAQ manager — CRUD of Q&A items grouped by category, answers authored with the
+// BetterCommunity markdown editor (same block system as blog/docs). Public at /faq.
+function AdminFaq() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/faq'), []);
+  const items = data?.items || [];
+  const [f, setF] = useState({ question: '', answer: '', category: 'General', published: true });
+  const [editId, setEditId] = useState(null); const [busy, setBusy] = useState(false);
+  const categories = [...new Set(items.map((i) => i.category))];
+  const reset = () => { setF({ question: '', answer: '', category: 'General', published: true }); setEditId(null); };
+  const save = async () => {
+    if (f.question.trim().length < 2) return toast.error(t('faqa.qreq', 'The question is required.'));
+    setBusy(true);
+    const payload = { question: f.question.trim(), answer: f.answer, category: f.category.trim() || 'General', published: f.published };
+    try { if (editId) await api.patch(`/admin/faq/${editId}`, payload); else await api.post('/admin/faq', payload); toast.success(editId ? t('faqa.saved', 'Saved.') : t('faqa.added', 'Added.')); reset(); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  const edit = (it) => { setEditId(it.id); setF({ question: it.question, answer: it.answer || '', category: it.category || 'General', published: it.published !== false }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const del = async (it) => { if (!(await dialog.confirm({ title: t('faqa.del', 'Delete question?'), message: it.question, okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/admin/faq/${it.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const toggle = async (it) => { try { await api.patch(`/admin/faq/${it.id}`, { published: !it.published }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 className="font-semibold flex items-center gap-2"><HelpCircle size={16} className="text-[var(--primary-2)]" /> {t('faqa.title', 'FAQ')}</h2>
+        <Link to="/faq" className="btn btn-sm"><ArrowUpRight size={14} /> {t('faqa.view', 'View page')}</Link>
+      </div>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('faqa.sub', 'Curated questions & answers shown at /faq. Answers support the full BetterCommunity markdown (headings, callouts, code, links…).')}</p>
+
+      <Card className="p-4 mb-5 space-y-3">
+        <div className="text-sm font-semibold">{editId ? t('faqa.editing', 'Edit question') : t('faqa.new', 'New question')}</div>
+        <div className="grid sm:grid-cols-[1fr_200px] gap-3">
+          <Field label={t('faqa.q', 'Question')}><Input value={f.question} onChange={(e) => setF({ ...f, question: e.target.value })} placeholder={t('faqa.qph', 'How do I…?')} /></Field>
+          <Field label={t('faqa.cat', 'Category')}><Input value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="General" list="faq-cats" /><datalist id="faq-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist></Field>
+        </div>
+        <Field label={t('faqa.a', 'Answer (markdown)')}><MarkdownEditor value={f.answer} onChange={(v) => setF({ ...f, answer: v })} placeholder={t('faqa.aph', 'Write the answer — supports **markdown** and blocks.')} full /></Field>
+        <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked={f.published} onChange={(e) => setF({ ...f, published: e.target.checked })} /> {t('faqa.published', 'Published (visible on /faq)')}</label>
+        <div className="flex justify-end gap-2">
+          {editId && <Button variant="ghost" onClick={reset}>{t('common.cancel', 'Cancel')}</Button>}
+          <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (editId ? t('faqa.savebtn', 'Save') : <><Plus size={15} /> {t('faqa.addbtn', 'Add question')}</>)}</Button>
+        </div>
+      </Card>
+
+      {loading ? <Loading /> : items.length ? <div className="space-y-2">
+        {items.map((it) => (
+          <Card key={it.id} className="p-4 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate">{it.question}</div>
+              <div className="text-xs text-[var(--faint)] flex items-center gap-2 mt-0.5"><Badge>{it.category}</Badge>{!it.published && <Badge tone="amber">{t('faq.draft', 'draft')}</Badge>}</div>
+            </div>
+            <button onClick={() => toggle(it)} title={it.published ? t('faqa.hide', 'Unpublish') : t('faqa.show', 'Publish')} className="p-1.5 text-[var(--faint)] hover:text-[var(--primary-2)]">{it.published ? <Eye size={16} /> : <EyeOff size={16} />}</button>
+            <button onClick={() => edit(it)} className="p-1.5 text-[var(--faint)] hover:text-[var(--primary-2)]"><PenSquare size={16} /></button>
+            <button onClick={() => del(it)} className="p-1.5 text-[var(--faint)] hover:text-red-400"><Trash2 size={16} /></button>
+          </Card>
+        ))}
+      </div> : <EmptyState icon={HelpCircle} title={t('faqa.none', 'No questions yet')} sub={t('faqa.none.s', 'Add your first one above.')} />}
     </div>
   );
 }

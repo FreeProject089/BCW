@@ -21,6 +21,7 @@ import Profile from './pages/profile.jsx';
 import Avatar from './ui/Avatar.jsx';
 import { BlogList, BlogPostPage } from './pages/blog.jsx';
 import Docs from './pages/docs.jsx';
+import Faq from './pages/faq.jsx';
 import { ReposPage } from './pages/repos.jsx';
 import { RepoDashboard } from './pages/repo-dashboard.jsx';
 import { Home, Catalog, ItemDetail, Hosting, Auth, Dashboard, Admin, Legal, LegalIndex, Contact, Settings, Authorize, VerifyEmail, NOTIF, NOTIF_FALLBACK } from './pages/pages.jsx';
@@ -401,7 +402,7 @@ function Footer() {
           <FooterNewsletter />
         </div>
         <FooterCol title={t('foot.products')} links={[['BetterModsManager', '/p/bmm'], ['BetterSoundMaker', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting']]} />
-        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/legal/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('nav.repos'), '/repos'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
+        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/legal/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('faq.title', 'FAQ'), '/faq'], [t('nav.repos'), '/repos'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
         <FooterCol title={t('foot.legal')} links={[[t('legal.all', 'All'), '/legal'], [t('foot.privacy'), '/legal/privacy'], [t('foot.terms'), '/legal/terms'], [t('foot.cookies'), '/legal/cookies'], [t('foot.refunds', 'Payments & Refunds'), '/legal/refunds']]} />
       </div>
       <div className="border-t border-[var(--line)]"><div className="max-w-6xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 text-xs text-[var(--faint)] pb-24 md:pb-5">
@@ -443,7 +444,7 @@ function Protected({ children, role }) {
   return children;
 }
 
-const TITLES = { '/': 'Home', '/catalog': 'Catalog', '/blog': 'Blog', '/repos': 'Server Repos', '/hosting': 'Hosting', '/projects': 'Projects', '/contact': 'Contact', '/auth': 'Sign in', '/profile': 'Profile', '/dashboard': 'Dashboard', '/admin': 'Admin', '/settings': 'Settings', '/2fa': 'Authenticator', '/legal': 'Legal', '/legal/about': 'About', '/legal/privacy': 'Privacy', '/legal/terms': 'Terms', '/legal/cookies': 'Cookies', '/legal/refunds': 'Payments & Refunds' };
+const TITLES = { '/': 'Home', '/catalog': 'Catalog', '/blog': 'Blog', '/docs': 'Docs', '/faq': 'FAQ', '/repos': 'Server Repos', '/hosting': 'Hosting', '/projects': 'Projects', '/contact': 'Contact', '/auth': 'Sign in', '/profile': 'Profile', '/dashboard': 'Dashboard', '/admin': 'Admin', '/settings': 'Settings', '/2fa': 'Authenticator', '/legal': 'Legal', '/legal/about': 'About', '/legal/privacy': 'Privacy', '/legal/terms': 'Terms', '/legal/cookies': 'Cookies', '/legal/refunds': 'Payments & Refunds' };
 
 // Site-wide banner(s) for active admin announcements. Dismissal is per-announcement
 // (by id) and persisted in localStorage, so re-dismissing after a page reload isn't
@@ -534,6 +535,7 @@ export default function App() {
               <Route path="/blog/:slug" element={<BlogPostPage />} />
               <Route path="/docs" element={<Docs />} />
               <Route path="/docs/:slug" element={<Docs />} />
+              <Route path="/faq" element={<Faq />} />
               <Route path="/repos" element={<ReposPage />} />
               <Route path="/repo/:id" element={<RepoDashboard />} />
               <Route path="/hosting" element={<Hosting />} />
