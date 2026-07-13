@@ -6792,72 +6792,123 @@ const pageRating = (pg) => {
 
 // Web Vitals own time-range presets (independent of the Site-analytics range).
 const WV_RANGES = [['24h', { hours: 24 }], ['7d', { days: 7 }], ['30d', { days: 30 }], ['90d', { days: 90 }]];
+// Metric value as a tinted rating chip (good / needs-improvement / poor).
+function vitalChip(m, v) {
+  const r = vitalRating(m, v);
+  const tint = r === 'good' ? 'bg-emerald-500/12 text-emerald-400' : r === 'ni' ? 'bg-amber-500/12 text-amber-400' : r === 'poor' ? 'bg-red-500/12 text-red-400' : 'text-[var(--faint)]';
+  return <span className={`inline-block px-2 py-0.5 rounded-md text-xs tabular-nums ${tint}`}>{v == null ? '—' : VITAL_META[m].fmt(v)}</span>;
+}
+const WV_DIMS = [['pages', 'an.wv.d.pages', 'Pages', Gauge], ['countries', 'an.wv.d.countries', 'Countries', MapPin], ['devices', 'an.wv.d.devices', 'Devices', Monitor], ['browsers', 'an.wv.d.browsers', 'Browsers', Globe2], ['oses', 'an.wv.d.oses', 'OS', Cpu]];
+const WV_METRIC_COLS = ['lcp', 'cls', 'inp', 'fcp', 'ttfb'];
+
+// A sortable Web-Vitals breakdown table (Rybbit-style): click any column header to sort.
+function VitalsBreakdownTable({ rows, dim }) {
+  const { t } = useI18n();
+  const [sortCol, setSortCol] = useState('samples');
+  const [dir, setDir] = useState('desc');
+  const isCountry = dim === 'countries';
+  const click = (col) => { if (sortCol === col) setDir((d) => (d === 'asc' ? 'desc' : 'asc')); else { setSortCol(col); setDir(col === 'key' ? 'asc' : 'desc'); } };
+  const sorted = [...rows].sort((a, b) => {
+    let av, bv;
+    if (sortCol === 'key') { av = String(a.key ?? ''); bv = String(b.key ?? ''); return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av); }
+    av = a[sortCol]; bv = b[sortCol]; // nulls last regardless of dir
+    if (av == null && bv == null) return 0; if (av == null) return 1; if (bv == null) return -1;
+    return dir === 'asc' ? av - bv : bv - av;
+  });
+  const maxN = Math.max(...rows.map((x) => x.samples || 0), 1);
+  const Arrow = ({ col }) => sortCol === col ? <ChevronDown size={11} className={`inline transition-transform ${dir === 'asc' ? 'rotate-180' : ''}`} /> : <ChevronDown size={11} className="inline opacity-20" />;
+  const Th = ({ col, label, align = 'right' }) => <th onClick={() => click(col)} className={`py-2 px-2 font-semibold cursor-pointer select-none hover:text-[var(--text)] text-${align}`}>{label} <Arrow col={col} /></th>;
+  if (!rows.length) return <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.wv.noseg', 'No data for this segment yet.')}</div>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm min-w-[620px]">
+        <thead><tr className="text-[11px] uppercase text-[var(--faint)] text-left border-b border-[var(--line)]">
+          <Th col="key" label={t(WV_DIMS.find((d) => d[0] === dim)?.[1], dim)} align="left" />
+          <Th col="lcp" label="LCP" /><Th col="cls" label="CLS" /><Th col="inp" label="INP" /><Th col="fcp" label="FCP" /><Th col="ttfb" label="TTFB" />
+          <Th col="samples" label={t('an.wv.samplesCol', 'Samples')} />
+        </tr></thead>
+        <tbody>
+          {sorted.map((r) => { const rate = pageRating(r); const label = r.key ?? '—'; return (
+            <tr key={label} className="border-b border-[var(--line)]/60 hover:bg-[var(--surface-2)]/30">
+              <td className="py-2 px-2 relative">
+                <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${rate ? RATING_DOT[rate] : 'bg-[var(--line-strong)]'}`} />
+                <span className="inline-flex items-center gap-1.5 pl-3.5 align-middle text-xs text-[var(--muted)] truncate max-w-[240px]" title={label}>
+                  {isCountry && label !== '—' && <Flag cc={label} className="w-4 h-3 shrink-0" />}<span className={dim === 'pages' ? 'font-mono' : ''}>{label}</span>
+                </span>
+              </td>
+              <td className="py-2 px-2 text-right">{vitalChip('LCP', r.lcp)}</td>
+              <td className="py-2 px-2 text-right">{vitalChip('CLS', r.cls)}</td>
+              <td className="py-2 px-2 text-right">{vitalChip('INP', r.inp)}</td>
+              <td className="py-2 px-2 text-right">{vitalChip('FCP', r.fcp)}</td>
+              <td className="py-2 px-2 text-right">{vitalChip('TTFB', r.ttfb)}</td>
+              <td className="py-2 px-2 text-right">
+                <div className="flex items-center justify-end gap-2">
+                  <div className="h-1 w-10 rounded-full bg-[var(--surface-2)] overflow-hidden hidden md:block"><div className="h-full bg-[var(--primary)]/70" style={{ width: `${Math.round((r.samples || 0) / maxN * 100)}%` }} /></div>
+                  <span className="text-[var(--faint)] tabular-nums text-xs w-8 text-right">{r.samples}</span>
+                </div>
+              </td>
+            </tr>
+          ); })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function WebVitals() {
   const { t } = useI18n();
   const [pct, setPct] = useState('p75');
-  const [sort, setSort] = useState('worst'); // worst-health first | most traffic | page name
   const [range, setRange] = useState('7d');
-  const [drill, setDrill] = useState(null); // a page path to break down by device/browser/os/country
+  const [dim, setDim] = useState('pages');          // which breakdown tab
+  const [pathFilter, setPathFilter] = useState(''); // Rybbit-style path filter (applied)
+  const [filterInput, setFilterInput] = useState('');
   const rq = Object.fromEntries(WV_RANGES)[range] || { days: 7 };
-  const qs = rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`;
   const days = rq.days; const hours = rq.hours;
-  const { data, loading } = useAsync(() => api.get(`/admin/analytics/vitals?${qs}`), [range]);
+  const qs = `${rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`}${pathFilter ? `&path=${encodeURIComponent(pathFilter)}` : ''}`;
+  const { data, loading } = useAsync(() => api.get(`/admin/analytics/vitals?${qs}`), [qs]);
   const metrics = data?.metrics || [];
-  const pages = data?.pages || [];
-  // Metric value as a tinted rating chip (good/needs-improvement/poor) — far easier to
-  // scan than plain coloured text across a wide table.
-  const chip = (m, v) => {
-    const r = vitalRating(m, v);
-    const tint = r === 'good' ? 'bg-emerald-500/12 text-emerald-400' : r === 'ni' ? 'bg-amber-500/12 text-amber-400' : r === 'poor' ? 'bg-red-500/12 text-red-400' : 'text-[var(--faint)]';
-    return <span className={`inline-block px-2 py-0.5 rounded-md text-xs tabular-nums ${tint}`}>{v == null ? '—' : VITAL_META[m].fmt(v)}</span>;
-  };
-  const sortedPages = [...pages].sort((a, b) => {
-    if (sort === 'samples') return (b.samples || 0) - (a.samples || 0);
-    if (sort === 'page') return String(a.path).localeCompare(String(b.path));
-    // 'worst': poorest-health pages first, ties broken by traffic.
-    const d = (RATING_ORDER[pageRating(b)] || 0) - (RATING_ORDER[pageRating(a)] || 0);
-    return d !== 0 ? d : (b.samples || 0) - (a.samples || 0);
-  });
-  // Export the raw Web Vitals (overall percentiles + per-page p75) as CSV.
+  const rows = data?.[dim] || [];
   const exportCsv = () => {
-    const esc = csvCell;
-    const lines = [];
+    const esc = csvCell; const lines = [];
     lines.push(['scope', 'metric', 'p50', 'p75', 'p90', 'p99', 'samples', 'good_share_pct'].join(','));
     for (const m of metrics) lines.push(['overall', m.metric, m.p50, m.p75, m.p90, m.p99, m.n, m.goodShare].map(esc).join(','));
-    lines.push('');
-    lines.push(['page', 'LCP', 'CLS', 'INP', 'FCP', 'TTFB', 'samples'].join(','));
-    for (const pg of pages) lines.push([pg.path, pg.lcp, pg.cls, pg.inp, pg.fcp, pg.ttfb, pg.samples].map(esc).join(','));
+    for (const [k] of WV_DIMS) { lines.push(''); lines.push([k, 'LCP', 'CLS', 'INP', 'FCP', 'TTFB', 'samples'].join(','));
+      for (const r of (data?.[k] || [])) lines.push([r.key ?? r.path, r.lcp, r.cls, r.inp, r.fcp, r.ttfb, r.samples].map(esc).join(',')); }
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `web-vitals-${hours ? `${hours}h` : `${days}d`}-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click(); URL.revokeObjectURL(a.href);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `web-vitals-${hours ? `${hours}h` : `${days}d`}-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(a.href);
   };
   return (
     <Card className="p-5 mb-4">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="text-sm font-semibold flex items-center gap-2"><Activity size={15} /> Web Vitals <span className="text-[11px] font-normal text-[var(--faint)]">{t('an.wv.sub', 'real-user performance')}</span></div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Own time range — 24h / 7d / 30d / 90d, independent of Site analytics. */}
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
-            {WV_RANGES.map(([k]) => <button key={k} onClick={() => { setRange(k); setDrill(null); }} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
+            {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
           </div>
-          <button onClick={exportCsv} disabled={!pages.length} className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] disabled:opacity-40 disabled:cursor-not-allowed transition"><Download size={13} /> {t('an.wv.export', 'Export CSV')}</button>
+          <button onClick={exportCsv} disabled={!metrics.some((m) => m.n)} className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] disabled:opacity-40 disabled:cursor-not-allowed transition"><Download size={13} /> {t('an.wv.export', 'Export CSV')}</button>
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {['p50', 'p75', 'p90', 'p99'].map((p) => <button key={p} onClick={() => setPct(p)} className={`px-2.5 py-1 text-xs uppercase ${pct === p ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{p}</button>)}
           </div>
         </div>
+      </div>
+      {/* Path filter (à la Rybbit "Filtre"). Narrows every KPI + breakdown to a page. */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <Input className="!pl-8 !py-1.5 text-sm" placeholder={t('an.wv.filterph', 'Filter by page path (e.g. /catalog)…')} value={filterInput} onChange={(e) => setFilterInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setPathFilter(filterInput.trim())} /></div>
+        <Button size="sm" variant="ghost" onClick={() => setPathFilter(filterInput.trim())}><Search size={14} /> {t('ev.filter', 'Filter')}</Button>
+        {pathFilter && <button onClick={() => { setPathFilter(''); setFilterInput(''); }} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-[var(--primary)]/12 text-[var(--primary-2)] border border-[var(--primary)]/30"><span className="font-mono">{pathFilter}</span> <X size={12} /></button>}
       </div>
       {loading ? <div className="h-24 grid place-items-center"><Spinner /></div> : !metrics.some((m) => m.n) ? (
         <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.wv.none', 'No performance samples yet — collected from real visits (needs analytics consent).')}</div>
       ) : <>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
           {metrics.map((m) => { const v = m[pct]; const r = vitalRating(m.metric, v);
-            const trend = (data?.trend || []).filter((x) => x.metric === m.metric).map((x) => x.p75).filter((x) => x != null);
+            const tr = (data?.trend || []).filter((x) => x.metric === m.metric).map((x) => x.p75).filter((x) => x != null);
             const stroke = r === 'good' ? '#34d399' : r === 'ni' ? '#f59e0b' : r === 'poor' ? '#f87171' : 'var(--primary)';
             return (
             <div key={m.metric} className="rounded-xl border border-[var(--line)] p-3 relative overflow-hidden">
-              {trend.length > 1 && <Sparkline data={trend} stroke={stroke} className="absolute inset-x-0 bottom-0 h-7 w-full opacity-50 pointer-events-none" />}
+              {tr.length > 1 && <Sparkline data={tr} stroke={stroke} className="absolute inset-x-0 bottom-0 h-7 w-full opacity-50 pointer-events-none" />}
               <div className="relative">
                 <div className="text-[11px] text-[var(--muted)] flex items-center gap-1" title={VITAL_META[m.metric].label}>{m.metric}{m.goodShare != null && <span className="ml-auto text-[10px] text-[var(--faint)]">{m.goodShare}% {t('an.wv.good', 'good')}</span>}</div>
                 <div className={`text-xl font-bold mt-1 ${r ? vitalColor(r) : ''}`}>{v == null ? '—' : VITAL_META[m.metric].fmt(v)}</div>
@@ -6867,90 +6918,21 @@ function WebVitals() {
             </div>
           ); })}
         </div>
-        <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold flex items-center gap-1.5"><Gauge size={13} /> {t('an.wv.byPage', 'By page (p75)')}</div>
-          <div className="flex items-center gap-3">
-            {/* Rating legend */}
-            <div className="hidden sm:flex items-center gap-2.5 text-[10px] text-[var(--faint)]">
-              {[['good', t('an.wv.leg.good', 'Good')], ['ni', t('an.wv.leg.ni', 'Needs work')], ['poor', t('an.wv.leg.poor', 'Poor')]].map(([r, lbl]) =>
-                <span key={r} className="inline-flex items-center gap-1"><span className={`w-2 h-2 rounded-full ${RATING_DOT[r]}`} /> {lbl}</span>)}
-            </div>
-            <div className="flex rounded-lg border border-[var(--line)] overflow-hidden text-xs">
-              {[['worst', t('an.wv.sort.worst', 'Worst')], ['samples', t('an.wv.sort.traffic', 'Traffic')], ['page', t('an.wv.sort.page', 'Page')]].map(([k, lbl]) =>
-                <button key={k} onClick={() => setSort(k)} className={`px-2.5 py-1 ${sort === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}</button>)}
-            </div>
+        {/* Dimension tabs (Rybbit: Pages / Pays / Appareils / Navigateurs / OS). Each is a
+            sortable p75 table — click a column header to sort. */}
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-2 border-b border-[var(--line)]">
+          <div className="flex gap-1 overflow-x-auto no-scrollbar">
+            {WV_DIMS.map(([k, key, fb, Icon]) => <button key={k} onClick={() => setDim(k)} className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm border-b-2 -mb-px whitespace-nowrap ${dim === k ? 'border-[var(--primary)] text-[var(--text)] font-medium' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><Icon size={13} /> {t(key, fb)}</button>)}
+          </div>
+          <div className="hidden sm:flex items-center gap-2.5 text-[10px] text-[var(--faint)] pb-1.5">
+            {[['good', t('an.wv.leg.good', 'Good')], ['ni', t('an.wv.leg.ni', 'Needs work')], ['poor', t('an.wv.leg.poor', 'Poor')]].map(([r, lbl]) =>
+              <span key={r} className="inline-flex items-center gap-1"><span className={`w-2 h-2 rounded-full ${RATING_DOT[r]}`} /> {lbl}</span>)}
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[600px]">
-            <thead><tr className="text-[11px] uppercase text-[var(--faint)] text-left border-b border-[var(--line)]">
-              <th className="py-2 font-semibold pl-5">{t('an.wv.page', 'Page')}</th><th className="py-2 font-semibold text-right">LCP</th><th className="py-2 font-semibold text-right">CLS</th><th className="py-2 font-semibold text-right">INP</th><th className="py-2 font-semibold text-right">FCP</th><th className="py-2 font-semibold text-right">TTFB</th><th className="py-2 font-semibold text-right pr-1">{t('an.wv.samplesCol', 'Samples')}</th>
-            </tr></thead>
-            <tbody>
-              {sortedPages.map((pg) => { const r = pageRating(pg); const maxN = Math.max(...pages.map((x) => x.samples || 0), 1); return (
-                <tr key={pg.path} onClick={() => setDrill(pg.path)} className="border-b border-[var(--line)]/60 hover:bg-[var(--surface-2)]/40 transition-colors cursor-pointer" title={t('an.wv.drillhint', 'Break down by device / browser / OS / country')}>
-                  <td className="py-2 pr-3 relative">
-                    <span className={`absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${r ? RATING_DOT[r] : 'bg-[var(--line-strong)]'}`} title={r || 'no data'} />
-                    <span className="font-mono text-xs text-[var(--muted)] truncate max-w-[220px] inline-block pl-4 align-middle" title={pg.path}>{pg.path}</span>
-                  </td>
-                  <td className="py-2 text-right">{chip('LCP', pg.lcp)}</td>
-                  <td className="py-2 text-right">{chip('CLS', pg.cls)}</td>
-                  <td className="py-2 text-right">{chip('INP', pg.inp)}</td>
-                  <td className="py-2 text-right">{chip('FCP', pg.fcp)}</td>
-                  <td className="py-2 text-right">{chip('TTFB', pg.ttfb)}</td>
-                  <td className="py-2 pl-3 pr-1">
-                    <div className="flex items-center justify-end gap-2">
-                      <div className="h-1 w-10 rounded-full bg-[var(--surface-2)] overflow-hidden hidden md:block"><div className="h-full bg-[var(--primary)]/70" style={{ width: `${Math.round((pg.samples || 0) / maxN * 100)}%` }} /></div>
-                      <span className="text-[var(--faint)] tabular-nums text-xs w-8 text-right">{pg.samples}</span>
-                    </div>
-                  </td>
-                </tr>
-              ); })}
-            </tbody>
-          </table>
-        </div>
-        <p className="text-[11px] text-[var(--faint)] mt-3">{t('an.wv.note', 'Per-page p75 (75th percentile) of each metric — the value 75% of real visits are faster than. Green ≤ “good”, amber ≤ “needs improvement”, red above. CLS is unitless; the rest are time. Click a row to break it down by device / browser / OS / country.')}</p>
+        <div className="pt-1"><VitalsBreakdownTable rows={dim === 'pages' ? rows.map((r) => ({ ...r, key: r.path })) : rows} dim={dim} /></div>
+        <p className="text-[11px] text-[var(--faint)] mt-3">{t('an.wv.note2', 'p75 (75th percentile) of each metric — the value 75% of real visits are faster than. Green ≤ good, amber ≤ needs improvement, red above. Click a column header to sort; switch tabs for country / device / browser / OS.')}</p>
       </>}
-      {drill && <VitalsPageDrill path={drill} qs={qs} onClose={() => setDrill(null)} chip={chip} />}
     </Card>
-  );
-}
-
-// Per-page Web Vitals drill-down — p75 of each metric by device / browser / OS / country,
-// so a slow page can be diagnosed to a segment (e.g. LCP only bad on mobile / Safari).
-function VitalsPageDrill({ path, qs, onClose, chip }) {
-  const { t } = useI18n();
-  const { data, loading } = useAsync(() => api.get(`/admin/analytics/vitals/page?path=${encodeURIComponent(path)}&${qs}`), [path, qs]);
-  const groups = [
-    ['device', t('an.wv.byDevice', 'By device'), Monitor],
-    ['browser', t('an.wv.byBrowser', 'By browser'), Globe2],
-    ['os', t('an.wv.byOs', 'By OS'), Cpu],
-    ['country', t('an.wv.byCountry', 'By country'), MapPin],
-  ];
-  return (
-    <Modal open onClose={onClose} width="max-w-3xl" icon={Gauge}
-      title={<span className="font-mono text-sm break-all">{path}</span>}
-      footer={<Button variant="ghost" onClick={onClose}>{t('common.close', 'Close')}</Button>}>
-      {loading ? <div className="h-24 grid place-items-center"><Spinner /></div> : (
-        <div className="space-y-5">
-          {groups.map(([k, label, Icon]) => { const rows = data?.[k] || []; return (
-            <div key={k}>
-              <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold flex items-center gap-1.5 mb-1.5"><Icon size={12} /> {label}</div>
-              {rows.length ? <div className="overflow-x-auto"><table className="w-full text-sm min-w-[460px]">
-                <thead><tr className="text-[10px] uppercase text-[var(--faint)] text-left border-b border-[var(--line)]"><th className="py-1.5 font-semibold">{label.replace('By ', '')}</th><th className="py-1.5 text-right">LCP</th><th className="py-1.5 text-right">CLS</th><th className="py-1.5 text-right">INP</th><th className="py-1.5 text-right">FCP</th><th className="py-1.5 text-right">TTFB</th><th className="py-1.5 text-right pr-1">{t('an.wv.samplesCol', 'Samples')}</th></tr></thead>
-                <tbody>{rows.map((r) => (
-                  <tr key={r.key} className="border-b border-[var(--line)]/60">
-                    <td className="py-1.5 pr-2 text-[var(--muted)] truncate max-w-[120px]" title={r.key}>{k === 'country' && r.key !== '—' ? <span className="inline-flex items-center gap-1.5"><Flag cc={r.key} className="w-4 h-3" /> {r.key}</span> : r.key}</td>
-                    <td className="py-1.5 text-right">{chip('LCP', r.lcp)}</td><td className="py-1.5 text-right">{chip('CLS', r.cls)}</td><td className="py-1.5 text-right">{chip('INP', r.inp)}</td><td className="py-1.5 text-right">{chip('FCP', r.fcp)}</td><td className="py-1.5 text-right">{chip('TTFB', r.ttfb)}</td>
-                    <td className="py-1.5 text-right text-[var(--faint)] tabular-nums text-xs">{r.samples}</td>
-                  </tr>
-                ))}</tbody>
-              </table></div> : <div className="text-xs text-[var(--faint)] py-2">{t('an.wv.noseg', 'No data for this segment yet.')}</div>}
-            </div>
-          ); })}
-        </div>
-      )}
-    </Modal>
   );
 }
 

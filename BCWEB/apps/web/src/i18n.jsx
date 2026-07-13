@@ -1114,6 +1114,8 @@ const DICT = {
     'an.wv.good': 'bon', 'an.wv.goodle': 'bon ≤', 'an.wv.samples': 'échantillons', 'an.wv.page': 'Page', 'an.wv.samplesCol': 'Échantillons',
     'an.wv.byPage': 'Par page (p75)', 'an.wv.leg.good': 'Bon', 'an.wv.leg.ni': 'À améliorer', 'an.wv.leg.poor': 'Mauvais',
     'an.wv.drillhint': 'Analyser par appareil / navigateur / OS / pays', 'an.wv.byDevice': 'Par appareil', 'an.wv.byBrowser': 'Par navigateur', 'an.wv.byOs': 'Par OS', 'an.wv.byCountry': 'Par pays', 'an.wv.noseg': 'Pas encore de données pour ce segment.',
+    'an.wv.d.pages': 'Pages', 'an.wv.d.countries': 'Pays', 'an.wv.d.devices': 'Appareils', 'an.wv.d.browsers': 'Navigateurs', 'an.wv.d.oses': "Systèmes d'exploitation",
+    'an.wv.filterph': 'Filtrer par chemin de page (ex. /catalog)…', 'an.wv.note2': "p75 (75e centile) de chaque métrique — la valeur sous laquelle 75 % des vraies visites sont plus rapides. Vert ≤ bon, ambre ≤ à améliorer, rouge au-dessus. Clique sur un en-tête de colonne pour trier ; change d'onglet pour pays / appareil / navigateur / OS.",
     'adm.tab.eventsfeed': "Flux d'événements",
     'evf.title': "Flux d'événements", 'evf.sub': 'Le flux en direct de ce que font les visiteurs — pages vues, clics, envois de formulaire, saisies. Anonyme (identité qui tourne chaque jour, aucune donnée perso).',
     'ev.pathph': 'Filtrer par chemin de page…', 'ev.filter': 'Filtrer', 'evf.none': 'Aucun événement sur cette période', 'evf.none.s': 'Ajuste la période ou les filtres.',

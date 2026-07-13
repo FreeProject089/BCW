@@ -316,82 +316,56 @@ export default async function analyticsRoutes(app) {
     };
   });
 
-  // Real-user Web Vitals overview: overall percentiles per metric (p50/p75/p90/p99),
-  // an hourly p75 trend per metric, and a per-page table (p75 of each metric + samples).
-  // Percentiles are computed in Postgres (percentile_cont) over the selected window.
+  // Real-user Web Vitals overview (Rybbit-style): overall percentiles per metric, an hourly
+  // p75 trend, and p75 breakdowns of every metric BY page / country / device / browser / OS.
+  // An optional `?path=` filter (case-insensitive contains) narrows everything to a page.
+  // Percentiles computed in Postgres (percentile_cont); dimension column is whitelisted and
+  // since/path are bound params ($1/$2) → no SQL injection.
   app.get('/admin/analytics/vitals', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
     const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
     const gran = hours ? 'hour' : 'day';
     const days = Math.min(Math.max(Number(req.query?.days) || 30, 1), 365);
     const since = hours ? new Date(Date.now() - hours * 3600e3) : new Date(Date.now() - days * 864e5);
+    const q = String(req.query?.path || '').trim();
     const METRICS = ['LCP', 'CLS', 'INP', 'FCP', 'TTFB'];
-    const [overall, trend, byPage] = await Promise.all([
-      // One row per metric: the four percentiles + a sample count + a "good" share.
-      p.$queryRaw`SELECT metric,
-          percentile_cont(0.50) WITHIN GROUP (ORDER BY value) AS p50,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) AS p75,
-          percentile_cont(0.90) WITHIN GROUP (ORDER BY value) AS p90,
-          percentile_cont(0.99) WITHIN GROUP (ORDER BY value) AS p99,
-          count(*)::int AS n,
-          (count(*) FILTER (WHERE rating = 'good'))::int AS good
-        FROM "WebVital" WHERE "createdAt" >= ${since} GROUP BY metric`,
-      // p75 per metric per time bucket → sparkline/line per metric.
-      p.$queryRaw`SELECT metric, date_trunc(${gran}, "createdAt") AS bucket,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) AS p75
-        FROM "WebVital" WHERE "createdAt" >= ${since} GROUP BY metric, bucket ORDER BY bucket`,
-      // Per-page p75 for every metric, pivoted, ordered by sample volume.
-      p.$queryRaw`SELECT path,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'LCP')  AS lcp,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'CLS')  AS cls,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'INP')  AS inp,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'FCP')  AS fcp,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'TTFB') AS ttfb,
-          count(*)::int AS samples
-        FROM "WebVital" WHERE "createdAt" >= ${since} GROUP BY path ORDER BY samples DESC LIMIT 40`,
+    const num = (v) => (v == null ? null : Number(v));
+    const whereSql = q ? `"createdAt" >= $1 AND path ILIKE $2` : `"createdAt" >= $1`;
+    const params = q ? [since, `%${q}%`] : [since];
+    const P75 = (m) => `percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = '${m}')`;
+    const COLS = { path: 'path', country: 'country', device: 'device', browser: 'browser', os: 'os' };
+    const breakdown = (col) => p.$queryRawUnsafe(
+      `SELECT ${COLS[col]} AS key, ${P75('LCP')} AS lcp, ${P75('CLS')} AS cls, ${P75('INP')} AS inp,
+              ${P75('FCP')} AS fcp, ${P75('TTFB')} AS ttfb, count(*)::int AS samples
+         FROM "WebVital" WHERE ${whereSql} AND ${COLS[col]} IS NOT NULL
+         GROUP BY key ORDER BY samples DESC LIMIT 60`, ...params);
+    const [overall, trend, byPath, byCountry, byDevice, byBrowser, byOs] = await Promise.all([
+      p.$queryRawUnsafe(
+        `SELECT metric, percentile_cont(0.50) WITHIN GROUP (ORDER BY value) AS p50,
+                percentile_cont(0.75) WITHIN GROUP (ORDER BY value) AS p75,
+                percentile_cont(0.90) WITHIN GROUP (ORDER BY value) AS p90,
+                percentile_cont(0.99) WITHIN GROUP (ORDER BY value) AS p99,
+                count(*)::int AS n, (count(*) FILTER (WHERE rating = 'good'))::int AS good
+           FROM "WebVital" WHERE ${whereSql} GROUP BY metric`, ...params),
+      p.$queryRawUnsafe(
+        `SELECT metric, date_trunc('${gran}', "createdAt") AS bucket,
+                percentile_cont(0.75) WITHIN GROUP (ORDER BY value) AS p75
+           FROM "WebVital" WHERE ${whereSql} GROUP BY metric, bucket ORDER BY bucket`, ...params),
+      breakdown('path'), breakdown('country'), breakdown('device'), breakdown('browser'), breakdown('os'),
     ]);
     const om = new Map(overall.map((o) => [o.metric, o]));
-    const num = (v) => (v == null ? null : Number(v));
+    const map = (rows) => rows.map((r) => ({ key: r.key, samples: Number(r.samples), lcp: num(r.lcp), cls: num(r.cls), inp: num(r.inp), fcp: num(r.fcp), ttfb: num(r.ttfb) }));
     return {
-      days, hours, granularity: gran,
-      metrics: METRICS.map((m) => {
-        const o = om.get(m);
-        return {
-          metric: m, n: o ? Number(o.n) : 0,
-          p50: o ? num(o.p50) : null, p75: o ? num(o.p75) : null, p90: o ? num(o.p90) : null, p99: o ? num(o.p99) : null,
-          goodShare: o && Number(o.n) ? Math.round((Number(o.good) / Number(o.n)) * 100) : null,
-        };
-      }),
+      days, hours, granularity: gran, filter: q || null,
+      metrics: METRICS.map((m) => { const o = om.get(m); return {
+        metric: m, n: o ? Number(o.n) : 0,
+        p50: o ? num(o.p50) : null, p75: o ? num(o.p75) : null, p90: o ? num(o.p90) : null, p99: o ? num(o.p99) : null,
+        goodShare: o && Number(o.n) ? Math.round((Number(o.good) / Number(o.n)) * 100) : null,
+      }; }),
       trend: trend.map((t) => ({ metric: t.metric, bucket: t.bucket, p75: num(t.p75) })),
-      pages: byPage.map((r) => ({ path: r.path, samples: Number(r.samples), lcp: num(r.lcp), cls: num(r.cls), inp: num(r.inp), fcp: num(r.fcp), ttfb: num(r.ttfb) })),
+      pages: byPath.map((r) => ({ path: r.key, samples: Number(r.samples), lcp: num(r.lcp), cls: num(r.cls), inp: num(r.inp), fcp: num(r.fcp), ttfb: num(r.ttfb) })),
+      countries: map(byCountry), devices: map(byDevice), browsers: map(byBrowser), oses: map(byOs),
     };
-  });
-
-  // Per-page Web Vitals breakdown — p75 of each metric grouped by device / browser / OS /
-  // country for ONE path, so a slow page can be diagnosed by segment. Dimension column is
-  // from a fixed whitelist; path/since are bound parameters ($1/$2) → no SQL injection.
-  app.get('/admin/analytics/vitals/page', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const path = String(req.query?.path || '');
-    if (!path) return reply.code(400).send({ error: 'path_required' });
-    const p = await db();
-    const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
-    const days = Math.min(Math.max(Number(req.query?.days) || 30, 1), 365);
-    const since = hours ? new Date(Date.now() - hours * 3600e3) : new Date(Date.now() - days * 864e5);
-    const num = (v) => (v == null ? null : Number(v));
-    const COLS = { device: 'device', browser: 'browser', os: 'os', country: 'country' };
-    const breakdown = (col) => p.$queryRawUnsafe(
-      `SELECT ${COLS[col]} AS key,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'LCP')  AS lcp,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'CLS')  AS cls,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'INP')  AS inp,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'FCP')  AS fcp,
-          percentile_cont(0.75) WITHIN GROUP (ORDER BY value) FILTER (WHERE metric = 'TTFB') AS ttfb,
-          count(*)::int AS samples
-        FROM "WebVital" WHERE path = $1 AND "createdAt" >= $2 AND ${COLS[col]} IS NOT NULL
-        GROUP BY key ORDER BY samples DESC LIMIT 15`, path, since);
-    const [device, browser, os, country] = await Promise.all([breakdown('device'), breakdown('browser'), breakdown('os'), breakdown('country')]);
-    const map = (rows) => rows.map((r) => ({ key: r.key || '—', samples: Number(r.samples), lcp: num(r.lcp), cls: num(r.cls), inp: num(r.inp), fcp: num(r.fcp), ttfb: num(r.ttfb) }));
-    return { path, days, hours, device: map(device), browser: map(browser), os: map(os), country: map(country) };
   });
 
   // Custom-events feed (à la Rybbit): the recent stream of pageviews + in-page
