@@ -239,8 +239,12 @@ and sends are admin-triggered only (no auto-send on publish).
 | GET/POST/DELETE | `/admin/contact[/:id]` (+ `/:id/read`) | admin | Contact-message inbox. |
 | POST | `/contact` | pow | Public contact form. |
 | GET | `/accounts/search` · `/stats` | user/— | Account search + public stats. |
-| GET | `/admin/analytics` · `/admin/analytics/sessions` | admin | Analytics dashboard; sessions interleave pageviews with **in-page interactions** (clicks/edits/submits/modals) into each visitor's timeline. |
-| POST | `/analytics/pageview` · `/analytics/vital` · `/analytics/interactions` | — | First-party, consent-gated ingest (pageview, Web Vital, batched interaction events — labels only, never field values). |
+| GET | `/admin/analytics` · `/admin/analytics/sessions` · `/admin/analytics/geo` | admin | Analytics dashboard; sessions interleave pageviews with **in-page interactions** (clicks/edits/submits/modals) into each visitor's timeline; geo = country/region/city + globe map. |
+| GET | `/admin/analytics/vitals` · `/admin/analytics/vitals/page?path=` | admin | Web Vitals: overall percentiles + trend + per-page p75 (`?days=`/`?hours=` for 24h/7d/30d/90d); `/page` breaks ONE path down by device / browser / OS / country. |
+| GET | `/admin/analytics/events?path=&kinds=&days=` | admin | Custom-events feed: merged pageview + interaction stream (newest first) with per-kind counts, filterable by path (contains) and kind. |
+| GET | `/admin/analytics/errors?path=&days=` | admin | Client errors grouped by message: occurrences, distinct sessions, first/last seen, latest sample (path/stack/device/browser/OS/country). |
+| GET/POST/PATCH/DELETE | `/admin/analytics/goals[/:id]` | admin | Conversion goals — match a pageview (path) or interaction (kind + label); GET returns completions + unique-visitor conversion rate over `?days=`. |
+| POST | `/analytics/pageview` · `/analytics/vital` · `/analytics/interactions` · `/analytics/error` | — | First-party, consent-gated ingest (pageview, Web Vital w/ device/browser/OS/country, batched interaction events — labels only, never field values, and uncaught errors — bounded message/stack, rate-limited). |
 | GET | `/events/active` | — | The live event (drives the fireworks effect + announcement badge; national-day badge shows the country flag). |
 | GET/POST/PATCH/DELETE | `/admin/events[/:id]` | admin | Manage events (New Year / national holiday / custom): window, fireworks `fxDensity` (amount) / `fxSize` / `fxFlagDrops`, country flag, badge `linkUrl` (clickable → path or URL), promo %, event code. The admin UI has a live **Preview** (dispatches the effect on-demand); users can disable the effect per-device in Settings. |
 | GET | `/sitemap.xml` · `/robots.txt` | — | SEO files. |
