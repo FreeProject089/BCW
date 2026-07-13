@@ -7267,7 +7267,7 @@ function SessionsPanel({ days, hours }) {
 
 // Conversion goals: admin-defined targets (reach a page, click a button, submit a form…)
 // with live completions + unique-visitor conversion rate over a chosen window.
-const GOAL_KINDS = [['pageview', 'goal.k.pageview', 'Page view'], ['click', 'goal.k.click', 'Button click'], ['submit', 'goal.k.submit', 'Form submit'], ['input', 'goal.k.input', 'Field change'], ['copy', 'goal.k.copy', 'Copy']];
+const GOAL_KINDS = [['pageview', 'goal.k.pageview', 'Page view', Eye], ['click', 'goal.k.click', 'Button click', MousePointerClick], ['submit', 'goal.k.submit', 'Form submit', Send], ['input', 'goal.k.input', 'Field change', PenSquare], ['copy', 'goal.k.copy', 'Copy', Copy]];
 function AdminGoals() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [range, setRange] = useState('30d');
@@ -7278,10 +7278,17 @@ function AdminGoals() {
   const [f, setF] = useState({ name: '', kind: 'pageview', path: '', label: '' });
   const [editId, setEditId] = useState(null); const [busy, setBusy] = useState(false);
   const reset = () => { setF({ name: '', kind: 'pageview', path: '', label: '' }); setEditId(null); };
+  // A sensible default name from what the goal targets, so the admin rarely has to type one.
+  const autoName = () => {
+    if (f.kind === 'pageview') return f.path.trim() ? t('goal.auto.visit', 'Visit {x}').replace('{x}', f.path.trim()) : t('goal.auto.anyvisit', 'Any page visit');
+    const tgt = f.label.trim() || t('goal.auto.any', 'any');
+    return { click: t('goal.auto.click', 'Click “{x}”'), submit: t('goal.auto.submit', 'Submit “{x}”'), input: t('goal.auto.input', 'Edit “{x}”'), copy: t('goal.auto.copy', 'Copy “{x}”') }[f.kind]?.replace('{x}', tgt) || tgt;
+  };
   const save = async () => {
-    if (f.name.trim().length < 1) return toast.error(t('goal.namereq', 'Give the goal a name.'));
+    // Auto-name if the admin left it blank — one less field to think about.
+    const name = f.name.trim() || autoName();
     setBusy(true);
-    const payload = { name: f.name.trim(), kind: f.kind, path: f.path.trim() || null, label: f.kind === 'pageview' ? null : (f.label.trim() || null) };
+    const payload = { name, kind: f.kind, path: f.path.trim() || null, label: f.kind === 'pageview' ? null : (f.label.trim() || null) };
     try { if (editId) await api.patch(`/admin/analytics/goals/${editId}`, payload); else await api.post('/admin/analytics/goals', payload); toast.success(editId ? t('goal.saved', 'Goal saved.') : t('goal.added', 'Goal added.')); reset(); reload(); }
     catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
@@ -7300,12 +7307,22 @@ function AdminGoals() {
 
       <Card className="p-4 mb-5">
         <div className="text-sm font-semibold mb-3">{editId ? t('goal.editing', 'Edit goal') : t('goal.new', 'New goal')}</div>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <Field label={t('goal.name', 'Name')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={t('goal.nameph', 'Signup, Catalog install…')} /></Field>
-          <Field label={t('goal.kind', 'Trigger')}><Dropdown value={f.kind} onChange={(v) => setF({ ...f, kind: v })} options={GOAL_KINDS.map(([v, key, fb]) => ({ value: v, label: kindLabel(v) || fb }))} /></Field>
-          <Field label={t('goal.path', 'Page path contains (optional)')}><Input value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} placeholder="/auth, /catalog…" /></Field>
-          {f.kind !== 'pageview' && <Field label={t('goal.label', 'Button/field text contains (optional)')}><Input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="Sign up, Install…" /></Field>}
+        {/* Step 1 — pick what counts as a conversion (icon buttons, not a dropdown). */}
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('goal.step1', 'What counts as a conversion?')}</div>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {GOAL_KINDS.map(([v, key, fb, Icon]) => <button key={v} type="button" onClick={() => setF((s) => ({ ...s, kind: v }))} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${f.kind === v ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Icon size={14} /> {t(key, fb)}</button>)}
         </div>
+        {/* Step 2 — a single contextual target field (+ optional page for interactions). */}
+        <div className="grid sm:grid-cols-2 gap-3">
+          {f.kind === 'pageview'
+            ? <Field label={t('goal.t.page', 'Which page? (path contains)')}><Input value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} placeholder="/auth, /catalog…" /></Field>
+            : <>
+                <Field label={t('goal.t.text', 'Which button / field? (text contains)')}><Input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder={t('goal.t.textph', 'Sign up, Install… (blank = any)')} /></Field>
+                <Field label={t('goal.t.onpage', 'On page (optional)')}><Input value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} placeholder="/catalog…" /></Field>
+              </>}
+          <Field label={<span className="flex items-center gap-1.5">{t('goal.name', 'Goal name')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.name.auto', '(auto if blank)')}</span></span>}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={autoName()} /></Field>
+        </div>
+        <div className="text-xs text-[var(--muted)] mt-3 flex items-start gap-1.5"><Target size={13} className="text-[var(--primary-2)] mt-0.5 shrink-0" /> <span>{t('goal.preview', 'Counts a conversion when a visitor:')} <b>{autoName().toLowerCase()}</b>.</span></div>
         <div className="flex justify-end gap-2 mt-3">
           {editId && <Button variant="ghost" onClick={reset}>{t('common.cancel', 'Cancel')}</Button>}
           <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (editId ? t('goal.savebtn', 'Save') : <><Plus size={15} /> {t('goal.addbtn', 'Add goal')}</>)}</Button>
