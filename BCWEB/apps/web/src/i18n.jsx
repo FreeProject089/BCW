@@ -422,6 +422,7 @@ const DICT = {
     'arv.title': 'Avis (page d’accueil)', 'arv.on': 'Section affichée', 'arv.off': 'Section masquée',
     'arv.desc': 'Témoignages affichés sur la page d’accueil. Chacun a un texte anglais et un texte français (le site affiche celui de la langue du visiteur). Activez/désactivez toute la section — ou chaque avis.',
     'arv.new': 'Ajouter un avis', 'arv.editing': 'Modifier l’avis', 'arv.author': 'Auteur', 'arv.role': 'Rôle / sous-titre',
+    'arv.pfp': 'Photo', 'arv.pfp.upload': 'Téléverser', 'arv.pfp.clear': 'Retirer la photo', 'arv.pfp.uploading': 'Téléversement…', 'arv.pfp.uploadfail': 'Échec du téléversement.',
     'arv.bodyen': 'Texte (anglais)', 'arv.bodyfr': 'Texte (français)', 'arv.frph': 'Optionnel — bascule sur l’anglais.',
     'arv.rating': 'Note (1-5, optionnel)', 'arv.enabled': 'Activé', 'arv.addbtn': 'Ajouter l’avis', 'arv.savebtn': 'Enregistrer',
     'arv.added': 'Avis ajouté.', 'arv.updated': 'Avis mis à jour.', 'arv.req': 'L’auteur et le texte anglais sont requis.',

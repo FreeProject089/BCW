@@ -4086,24 +4086,25 @@ const ANN_BODY_MAX = 500; // banner bodies stay short/scannable; hard-capped ser
 function AdminReviews() {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/reviews'), []);
-  const [f, setF] = useState({ author: '', role: '', body: '', bodyFr: '', rating: '', enabled: true });
+  const [f, setF] = useState({ author: '', role: '', body: '', bodyFr: '', rating: '', enabled: true, avatar: null });
   const [editId, setEditId] = useState(null);
   const [busy, setBusy] = useState(false);
   const reviews = data?.reviews || [];
   const sectionOn = data?.enabled !== false;
-  const reset = () => { setF({ author: '', role: '', body: '', bodyFr: '', rating: '', enabled: true }); setEditId(null); };
+  const reset = () => { setF({ author: '', role: '', body: '', bodyFr: '', rating: '', enabled: true, avatar: null }); setEditId(null); };
   const toggleSection = async () => { try { await api.put('/admin/reviews/settings', { enabled: !sectionOn }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const pickAvatar = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { const file = i.files?.[0]; if (!file) return; try { toast.info(t('arv.pfp.uploading', 'Uploading…')); const url = await uploadImage(file); setF((s) => ({ ...s, avatar: { ...(s.avatar || {}), image: url } })); } catch { toast.error(t('arv.pfp.uploadfail', 'Upload failed.')); } }; i.click(); };
   const save = async () => {
     if (!f.author.trim() || !f.body.trim()) return toast.error(t('arv.req', 'Author and English text are required.'));
     setBusy(true);
-    const payload = { author: f.author.trim(), role: f.role.trim(), body: f.body.trim(), bodyFr: f.bodyFr.trim(), rating: f.rating ? Number(f.rating) : null, enabled: f.enabled };
+    const payload = { author: f.author.trim(), role: f.role.trim(), body: f.body.trim(), bodyFr: f.bodyFr.trim(), rating: f.rating ? Number(f.rating) : null, enabled: f.enabled, avatar: f.avatar || null };
     try {
       if (editId) await api.patch(`/admin/reviews/${editId}`, payload); else await api.post('/admin/reviews', payload);
       toast.success(editId ? t('arv.updated', 'Review updated.') : t('arv.added', 'Review added.'));
       reset(); reload();
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
-  const edit = (rv) => { setEditId(rv.id); setF({ author: rv.author, role: rv.role || '', body: rv.body, bodyFr: rv.bodyFr || '', rating: rv.rating ? String(rv.rating) : '', enabled: rv.enabled }); };
+  const edit = (rv) => { setEditId(rv.id); setF({ author: rv.author, role: rv.role || '', body: rv.body, bodyFr: rv.bodyFr || '', rating: rv.rating ? String(rv.rating) : '', enabled: rv.enabled, avatar: rv.avatar || null }); };
   const toggleEnabled = async (rv) => { try { await api.patch(`/admin/reviews/${rv.id}`, { enabled: !rv.enabled }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const del = async (rv) => { if (!(await dialog.confirm({ title: t('arv.del', 'Delete review?'), message: rv.author, okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/admin/reviews/${rv.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   return (
@@ -4116,9 +4117,20 @@ function AdminReviews() {
 
       <Card className="p-5 mb-5">
         <div className="text-sm font-semibold mb-3">{editId ? t('arv.editing', 'Edit review') : t('arv.new', 'Add a review')}</div>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <Field label={t('arv.author', 'Author')}><Input value={f.author} onChange={(e) => setF({ ...f, author: e.target.value })} placeholder="Jane D." /></Field>
-          <Field label={t('arv.role', 'Role / subtitle')}><Input value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} placeholder="BMM power user" /></Field>
+        <div className="flex items-start gap-4 mb-3">
+          {/* Reviewer profile picture — upload an image, or leave blank for a generated one. */}
+          <div className="shrink-0">
+            <div className="text-[11px] text-[var(--faint)] mb-1">{t('arv.pfp', 'Photo')}</div>
+            <Avatar variant={f.avatar?.variant || 'beam'} seed={f.avatar?.seed || f.author || 'review'} image={f.avatar?.image} colors={f.avatar?.colors} size={56} />
+            <div className="flex flex-col gap-1 mt-1.5">
+              <button type="button" onClick={pickAvatar} className="text-[11px] text-[var(--primary-2)] hover:underline flex items-center gap-1"><Upload size={11} /> {t('arv.pfp.upload', 'Upload')}</button>
+              {f.avatar?.image && <button type="button" onClick={() => setF((s) => ({ ...s, avatar: null }))} className="text-[11px] text-[var(--faint)] hover:text-red-400">{t('arv.pfp.clear', 'Remove photo')}</button>}
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3 flex-1 min-w-0">
+            <Field label={t('arv.author', 'Author')}><Input value={f.author} onChange={(e) => setF({ ...f, author: e.target.value })} placeholder="Jane D." /></Field>
+            <Field label={t('arv.role', 'Role / subtitle')}><Input value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} placeholder="BMM power user" /></Field>
+          </div>
         </div>
         <div className="grid sm:grid-cols-2 gap-3 mt-3">
           <Field label={t('arv.bodyen', 'Text (English)')}><Textarea rows={3} value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} /></Field>
