@@ -66,6 +66,15 @@ function useElementWidth(fallback = 760) {
 const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson };
 const statusTone = (s) => s === 'PUBLISHED' ? 'green' : (s === 'REJECTED' || s === 'SUSPENDED') ? 'red' : 'amber';
 const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> Loading…</div>;
+// CSV cell that is safe against spreadsheet formula injection (CWE-1236): a value that
+// starts with =, @, or a +/- that isn't a plain number is prefixed with ' so Excel/Sheets
+// treat it as text, then quoted if it contains CSV specials. Analytics paths, emails, IPs,
+// audit details etc. can be attacker-influenced, so every export routes through this.
+const csvCell = (s) => {
+  let v = String(s ?? '');
+  if (/^[=@\t\r]/.test(v) || (/^[+\-]/.test(v) && !Number.isFinite(Number(v)))) v = `'${v}`;
+  return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+};
 // Coarse "time left" for a scheduled deletion.
 function fmtRemaining(deleteAt) {
   const ms = new Date(deleteAt).getTime() - Date.now();
@@ -2986,7 +2995,7 @@ function AdminSecurity() {
 
   const exportCsv = (rowsArr, cols, name) => {
     if (!rowsArr.length) return;
-    const esc = (s) => /[",\n]/.test(String(s ?? '')) ? `"${String(s ?? '').replace(/"/g, '""')}"` : String(s ?? '');
+    const esc = csvCell;
     const csv = [cols.map((c) => esc(c[0])).join(','), ...rowsArr.map((r) => cols.map((c) => esc(c[1](r))).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -3696,7 +3705,7 @@ function DbViewer() {
   const cellText = (v) => v === null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
   const exportCsv = () => {
     if (!rows?.rows?.length) return;
-    const esc = (s) => /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    const esc = csvCell;
     const csv = [cols.map(esc).join(','), ...rows.rows.map((r) => cols.map((c) => esc(cellText(r[c]))).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -6798,7 +6807,7 @@ function WebVitals({ days = 7, hours }) {
   });
   // Export the raw Web Vitals (overall percentiles + per-page p75) as CSV.
   const exportCsv = () => {
-    const esc = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+    const esc = csvCell;
     const lines = [];
     lines.push(['scope', 'metric', 'p50', 'p75', 'p90', 'p99', 'samples', 'good_share_pct'].join(','));
     for (const m of metrics) lines.push(['overall', m.metric, m.p50, m.p75, m.p90, m.p99, m.n, m.goodShare].map(esc).join(','));

@@ -9,8 +9,10 @@ const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/
 // by BlogPost.newsletterSentAt). Uses the same branded template as a manual broadcast; the
 // author can override the subject / intro line, otherwise it's derived from the post. The
 // send runs in the background so it never delays the editor's save response.
-async function notifyNewsletterOfPost(p, post, opts) {
-  if (!opts?.notifyNewsletter || post.status !== 'PUBLISHED' || post.newsletterSentAt || !emailEnabled()) return;
+// `allowed` gates the mass-email capability to STAFF — a granted regular user can write in
+// a blog but must not be able to broadcast to every subscriber (CWE-269/770).
+async function notifyNewsletterOfPost(p, post, opts, allowed) {
+  if (!allowed || !opts?.notifyNewsletter || post.status !== 'PUBLISHED' || post.newsletterSentAt || !emailEnabled()) return;
   await p.blogPost.update({ where: { id: post.id }, data: { newsletterSentAt: new Date() } }).catch(() => {});
   const url = `${SITE_URL}/blog/${post.slug}`;
   const subject = (opts.newsletterSubject || '').trim() || `New on BetterCommunity: ${post.title}`;
@@ -306,7 +308,7 @@ export default async function blogRoutes(app) {
     if (limitErr) return reply.code(409).send(limitErr);
     const post = await p.blogPost.create({ data });
     await snapshotBlog(p, post, req.user.uid);
-    await notifyNewsletterOfPost(p, post, b.data);
+    await notifyNewsletterOfPost(p, post, b.data, STAFF.includes(req.user.role));
     return reply.code(201).send({ post });
   });
 
@@ -359,7 +361,7 @@ export default async function blogRoutes(app) {
     }
     const post = await p.blogPost.update({ where: { id: req.params.id }, data });
     if (touchesContent) await snapshotBlog(p, post, req.user.uid);
-    await notifyNewsletterOfPost(p, post, d);
+    await notifyNewsletterOfPost(p, post, d, STAFF.includes(req.user.role));
     return { post };
   });
 

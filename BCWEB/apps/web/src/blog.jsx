@@ -476,7 +476,10 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
 // `scope` values are encoded "project:<key>" or "showcase:<slug>" to disambiguate
 // the two blog "spaces" in one dropdown.
 function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflictReopen, reopenDraft }) {
-  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n(); const { user: me } = useAuth();
+  // Broadcasting to every subscriber is a staff-only capability (see notifyNewsletterOfPost
+  // on the server) — a granted regular writer doesn't get the announce toggle.
+  const canNewsletter = me && ['ADMIN', 'MOD', 'SUPERADMIN'].includes(me.role);
   const defaultScope = scopes?.projects?.[0] ? `project:${scopes.projects[0].key}` : scopes?.showcases?.[0] ? `showcase:${scopes.showcases[0].slug}` : 'project:community';
   const [f, setF] = useState({ scope: defaultScope, cover: '', coverInBody: true, publish: true, title: '', excerpt: '', body: '', titleFr: '', excerptFr: '', bodyFr: '', reactionsEnabled: false, reactionTypes: [], coAuthorEmails: [], showToc: false, tocTitle: '', commentsPublic: false, notifyNewsletter: !post, newsletterSubject: '', newsletterIntro: '' });
   const [nlSent, setNlSent] = useState(null); // post.newsletterSentAt — already announced?
@@ -742,8 +745,8 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
               <span className="text-[var(--faint)]">{f.commentsPublic ? 'Readers can read the comment thread (they still can’t post — comments are an editor tool).' : 'Comments stay private to editors (author, co-authors, staff).'}</span></span>
           </label>
           {/* Newsletter announcement — send subscribers an email about this post (once).
-              Uses the standard template; the subject/intro can be overridden. */}
-          <div className="mt-3 pt-3 border-t border-[var(--line)]">
+              Uses the standard template; the subject/intro can be overridden. Staff only. */}
+          {canNewsletter && <div className="mt-3 pt-3 border-t border-[var(--line)]">
             {nlSent ? (
               <div className="text-xs text-[var(--faint)] flex items-center gap-1.5"><Mail size={12} className="text-emerald-400" /> {t('be.nl.already', 'Newsletter already sent on {d}.').replace('{d}', new Date(nlSent).toLocaleDateString())}</div>
             ) : (<>
@@ -759,7 +762,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
                 </div>
               )}
             </>)}
-          </div>
+          </div>}
         </div>
       </div>
       {showHistory && post && <HistoryModal base={`/blog/${post.id}`} onClose={() => setShowHistory(false)}
