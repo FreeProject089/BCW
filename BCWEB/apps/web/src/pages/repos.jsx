@@ -446,12 +446,17 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
   const setColor = async (g, color) => { try { await api.patch(`/me/hosting/groups/${g.id}`, { color }); reload?.(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
   // Merge this pool INTO another (contents move, the two subscriptions keep billing
   // separately, and the target becomes one bigger pool).
-  const merge = async (sourceId, targetId) => {
+  // Deferred with an undo window (the subscriptions move with the pool). It only actually
+  // merges when the toast timer elapses — Undo cancels it, nothing changes.
+  const merge = (sourceId, targetId) => {
     const src = groups.find((g) => g.id === sourceId), tgt = groups.find((g) => g.id === targetId);
     if (!tgt) return;
-    if (!(await dialog.confirm({ title: t('pools.merge.t', 'Merge pools?'), message: t('pools.merge.m', 'Move everything from "{s}" into "{t}"? The two subscriptions keep billing separately, but you get one bigger pool. This can’t be undone.').replace('{s}', src?.name || '').replace('{t}', tgt.name), okLabel: t('pools.merge.ok', 'Merge'), danger: false }))) return;
-    try { await api.post('/me/hosting/groups/merge', { sourceId, targetId }); toast.success(t('pools.merged', 'Pools merged.')); reload?.(); }
-    catch (x) { toast.error(x.data?.error || t('repos.failed', 'Failed.')); }
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('pools.merging', 'Merging "{s}" into "{t}"…').replace('{s}', src?.name || '').replace('{t}', tgt.name),
+      onCommit: async () => { try { await api.post('/me/hosting/groups/merge', { sourceId, targetId }); reload?.(); } catch (x) { toast.error(x.data?.error || t('repos.failed', 'Failed.')); } },
+      onCancel: () => {},
+    });
   };
   return (
     <div className="mb-5 space-y-2.5">
