@@ -50,6 +50,24 @@ async function sweepItems(p, log) {
   return due.length;
 }
 
+// Purge the payload FILE of a rejected submission once its grace window elapses,
+// reclaiming temp-margin space (the file was squatting it since rejection). The
+// REJECTED item row itself stays — only the object bytes go, plus the payloadKey/Size
+// are cleared so it no longer counts anywhere. A resubmit within the grace clears
+// payloadPurgeAt (see /catalog/:id/update), so anything reaching here is truly stale.
+async function sweepRejectedPayloads(p, log) {
+  const due = await p.catalogItem.findMany({ where: { payloadPurgeAt: { lte: new Date() }, payloadKey: { not: null } }, take: 50 });
+  let purged = 0;
+  for (const item of due) {
+    try {
+      await deleteObject(item.payloadKey);
+      await p.catalogItem.update({ where: { id: item.id }, data: { payloadKey: null, payloadSize: 0, payloadPurgeAt: null } });
+      purged++;
+    } catch (e) { log.warn({ id: item.id, e: String(e?.message || e) }, 'sweeper: rejected-payload purge failed'); }
+  }
+  return purged;
+}
+
 async function sweepRepos(p, log) {
   const due = await p.serverRepo.findMany({ where: { deleteAt: { lte: new Date() } }, include: { files: true }, take: 20 });
   for (const repo of due) {
@@ -146,14 +164,15 @@ export function startSweeper(app) {
   const run = async () => {
     try {
       const p = await db();
-      const [items, repos, expired, warned, pruned, backedUp] = [
+      const [items, repos, rejPayloads, expired, warned, pruned, backedUp] = [
         await sweepItems(p, app.log), await sweepRepos(p, app.log),
+        await sweepRejectedPayloads(p, app.log),
         await sweepExpiredSubscriptions(p, app.log), await sweepExpiryWarnings(p, app.log),
         await sweepDiscordActivityCap(p, app.log), await sweepDailyFileBackup(p, app.log),
       ];
       await sampleAndAlert(p, app.log);
       await runEventScheduler(p).catch((e) => app.log.warn({ e: String(e) }, 'event scheduler failed'));
-      if (items || repos || expired || warned || pruned || backedUp) app.log.info(`[sweeper] hard-deleted ${items} item(s), ${repos} repo(s) · suspended ${expired} expired term(s) · warned ${warned} · pruned ${pruned} old Discord member row(s)${backedUp ? ' · took daily file backup snapshot' : ''}`);
+      if (items || repos || rejPayloads || expired || warned || pruned || backedUp) app.log.info(`[sweeper] hard-deleted ${items} item(s), ${repos} repo(s) · purged ${rejPayloads} rejected payload(s) · suspended ${expired} expired term(s) · warned ${warned} · pruned ${pruned} old Discord member row(s)${backedUp ? ' · took daily file backup snapshot' : ''}`);
     } catch (e) { app.log.warn({ e: String(e) }, 'sweeper run failed'); }
   };
   run(); // sweep once at boot

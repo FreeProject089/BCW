@@ -63,46 +63,46 @@ enum RepoStatus {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
+  id                String    @id @default(cuid())
+  email             String    @unique
   // Null for accounts created purely via OAuth (GitHub/Discord) that never set a
   // password — /auth/login rejects those with a clear "use <provider> to sign in"
   // error instead of crashing on argon2.verify(null, ...).
-  passwordHash  String?
-  displayName   String
-  role          Role     @default(USER)
+  passwordHash      String?
+  displayName       String
+  role              Role      @default(USER)
   // Fine-grained capability grants layered ON TOP of the role (e.g. a MOD/USER granted
   // "manage_repos"). ADMIN/SUPERADMIN implicitly have every capability; see CAPABILITIES
   // in lib/lib.mjs. Empty for most accounts.
-  permissions   String[] @default([])
-  emailVerified Boolean  @default(false)
-  bio           String   @default("")
-  avatar        Json?    // { variant, seed } for the Boring Avatar
-  termsAcceptedAt DateTime? // last time the user accepted the Terms + Payments policy at checkout
-  stripeCustomerId String? @unique
+  permissions       String[]  @default([])
+  emailVerified     Boolean   @default(false)
+  bio               String    @default("")
+  avatar            Json? // { variant, seed } for the Boring Avatar
+  termsAcceptedAt   DateTime? // last time the user accepted the Terms + Payments policy at checkout
+  stripeCustomerId  String?   @unique
   // Personal API token — the user copies it from their profile to drive the API on
   // their own behalf (tokenAuth in lib.mjs). Resettable/revocable by the owner.
-  apiToken      String?  @unique
+  apiToken          String?   @unique
   apiTokenCreatedAt DateTime?
-  createdAt     DateTime @default(now())
+  createdAt         DateTime  @default(now())
 
   // ── 2FA (TOTP) — see totp.mjs. Recovery codes are argon2 hashes, one-time use. ──
   totpSecret        String?
-  totpEnabled       Boolean  @default(false)
-  totpRecoveryCodes String[] @default([])
+  totpEnabled       Boolean   @default(false)
+  totpRecoveryCodes String[]  @default([])
   // Extra, SUPERADMIN-grantable permission (orthogonal to the role hierarchy)
   // required — together with a step-up 2FA challenge — to reach the server-control
   // tools (perf dashboard actions, Docker, terminal, power). See lib.mjs's
   // requireElevated() and server-control.mjs.
-  canControlServer  Boolean  @default(false)
+  canControlServer  Boolean   @default(false)
   // Admin-tier grant to view the BMM telemetry dashboard. Enforced at the Caddy
   // edge via forward_auth → GET /api/telemetry/authorize (telemetry.mjs), so the
   // separate telemetry app itself is never touched. SUPERADMIN is always allowed.
-  canViewTelemetry  Boolean  @default(false)
+  canViewTelemetry  Boolean   @default(false)
   // Bumped on logout — invalidates any outstanding telemetry SSO token / tele_session
   // cookie so a signed-out user immediately loses BMM-telemetry access (telemetry.mjs
   // bakes this epoch into the token + host cookie and rejects on mismatch).
-  telemetryEpoch    Int      @default(0)
+  telemetryEpoch    Int       @default(0)
   // Set once, the first time a Ko-fi donation webhook matches this account's
   // email — gates the one-time 25% hosting discount grant so repeat donations
   // (or webhook retries) don't mint duplicate codes.
@@ -115,33 +115,33 @@ model User {
   // Both carry a reason (shown to the user + emailed) and an optional lift date
   // (`moderationUntil` null = permanent). Expired locks read as active and are cleared
   // lazily at next login.
-  status            String    @default("active") // active | suspended | banned
-  moderationUntil   DateTime? // when a temp lock lifts; null = permanent
-  moderationReason  String?   // reason shown to the user + emailed
-  moderatedAt       DateTime?
-  moderatedById     String?
+  status           String    @default("active") // active | suspended | banned
+  moderationUntil  DateTime? // when a temp lock lifts; null = permanent
+  moderationReason String? // reason shown to the user + emailed
+  moderatedAt      DateTime?
+  moderatedById    String?
+
+  items              CatalogItem[]
+  submissions        Submission[]
+  notifications      Notification[]
+  serverRepos        ServerRepo[]
+  subscriptions      Subscription[]
+  posts              BlogPost[]
+  payments           Payment[]
+  hostingGroups      HostingGroup[]
+  creatorLinks       CreatorLink[]
+  discordLinks       DiscordLink[]
+  blogPermissions    BlogPermission[]
+  submissionComments SubmissionComment[]
+  contactMessages    ContactMessage[]
+  loginAttempts      LoginAttempt[]
+  auditLogEntries    AuditLogEntry[]
+  repoFavorites      RepoFavorite[]
+  oauthAccounts      OAuthAccount[]
+  blogComments       BlogComment[]
+  docComments        DocComment[]
 
   @@index([status])
-
-  items         CatalogItem[]
-  submissions   Submission[]
-  notifications Notification[]
-  serverRepos   ServerRepo[]
-  subscriptions Subscription[]
-  posts         BlogPost[]
-  payments      Payment[]
-  hostingGroups HostingGroup[]
-  creatorLinks  CreatorLink[]
-  discordLinks  DiscordLink[]
-  blogPermissions BlogPermission[]
-  submissionComments SubmissionComment[]
-  contactMessages ContactMessage[]
-  loginAttempts LoginAttempt[]
-  auditLogEntries AuditLogEntry[]
-  repoFavorites RepoFavorite[]
-  oauthAccounts OAuthAccount[]
-  blogComments  BlogComment[]
-  docComments   DocComment[]
 }
 
 // A GitHub/Discord identity linked to a website account — powers "Continue with
@@ -151,7 +151,7 @@ model OAuthAccount {
   id                String   @id @default(cuid())
   user              User     @relation(fields: [userId], references: [id])
   userId            String
-  provider          String   // 'github' | 'discord'
+  provider          String // 'github' | 'discord'
   providerAccountId String
   username          String?
   linkedAt          DateTime @default(now())
@@ -179,7 +179,7 @@ model DiscordLink {
 model DiscordActivity {
   discordId         String    @id
   username          String?
-  avatar            String?   // full CDN avatar URL
+  avatar            String? // full CDN avatar URL
   guildJoinedAt     DateTime?
   lastMessageAt     DateTime?
   lastVoiceJoinAt   DateTime?
@@ -220,7 +220,7 @@ model CreatorLink {
   user         User     @relation(fields: [userId], references: [id])
   userId       String
   creatorId    String   @unique
-  displayName  String?  // the creator's display name as reported by BMM
+  displayName  String? // the creator's display name as reported by BMM
   linkedAt     DateTime @default(now())
   unlinkableAt DateTime // linkedAt + 14 days (2-week lock)
 
@@ -234,9 +234,9 @@ model CreatorLink {
 // same creator id.
 model FreeTierClaim {
   id        String   @id @default(cuid())
-  kind      String   // "REPO" | "CATALOG"
-  creatorId String?  // set when the claim is tied to a creator id
-  userId    String   // the account that made the claim (informational)
+  kind      String // "REPO" | "CATALOG"
+  creatorId String? // set when the claim is tied to a creator id
+  userId    String // the account that made the claim (informational)
   createdAt DateTime @default(now())
 
   @@unique([kind, creatorId])
@@ -246,30 +246,34 @@ model FreeTierClaim {
 // A storage pool for "multi-repo" hosting: the user divides poolBytes across
 // several repos. Single-repo hosting doesn't use a group (each repo owns its quota).
 model HostingGroup {
-  id              String   @id @default(cuid())
-  owner           User     @relation(fields: [ownerId], references: [id])
+  id              String       @id @default(cuid())
+  owner           User         @relation(fields: [ownerId], references: [id])
   ownerId         String
   name            String
-  poolBytes       BigInt   @default(0)   // total storage the user can distribute
-  uploadLimitKbps Int      @default(8192) // sandbox upload cap applied to every repo
-  cpuShare        Float    @default(0.5)
-  createdAt       DateTime @default(now())
+  // Same provenance flag as ServerRepo.freePlan — a pool provisioned via the $0 Free
+  // plan. The Free-pool gauge counts a free pool by its poolBytes (not per-repo), so
+  // splitting the pool across repos can't inflate the count.
+  freePlan        Boolean      @default(false)
+  poolBytes       BigInt       @default(0) // total storage the user can distribute
+  uploadLimitKbps Int          @default(8192) // sandbox upload cap applied to every repo
+  cpuShare        Float        @default(0.5)
+  createdAt       DateTime     @default(now())
   repos           ServerRepo[]
 
   @@index([ownerId])
 }
 
 model Project {
-  id    String     @id @default(cuid())
-  key   ProjectKey @unique
-  name  String
+  id             String        @id @default(cuid())
+  key            ProjectKey    @unique
+  name           String
   // Per-blog toggle: do this project's posts also surface in the home page's
   // unified "Latest news"? They always show on /blog regardless of this flag.
-  showOnHomeNews Boolean @default(true)
+  showOnHomeNews Boolean       @default(true)
   // Opt-in "Blog" tab on the project's own page, showing only this project's posts.
-  showBlogTab Boolean @default(false)
-  posts BlogPost[]
-  items CatalogItem[]
+  showBlogTab    Boolean       @default(false)
+  posts          BlogPost[]
+  items          CatalogItem[]
 
   // Same visibility gate as ShowcaseProject (see there for the full comment) —
   // applies to every fixed project EXCEPT 'community', which is always public
@@ -285,52 +289,52 @@ model Project {
 }
 
 model BlogPost {
-  id          String     @id @default(cuid())
+  id                String           @id @default(cuid())
   // A post belongs to exactly one blog "space" — a fixed Project (bmm/bsm/community/
   // installer) OR an admin-created ShowcaseProject ("custom" page). Exactly one of
   // project/showcaseProject is set; enforced in blog.mjs (Prisma can't express an
   // either-or FK constraint directly).
-  project     Project?   @relation(fields: [projectId], references: [id])
-  projectId   String?
+  project           Project?         @relation(fields: [projectId], references: [id])
+  projectId         String?
   showcaseProject   ShowcaseProject? @relation(fields: [showcaseProjectId], references: [id])
   showcaseProjectId String?
-  author      User       @relation(fields: [authorId], references: [id])
-  authorId    String
-  title       String
-  slug        String     @unique
-  excerpt     String     @default("")
-  cover       String?    // cover image URL
-  coverInBody Boolean    @default(true) // also show the cover at the top of the article body
-  body        String     // markdown (supports images, embeds, links)
+  author            User             @relation(fields: [authorId], references: [id])
+  authorId          String
+  title             String
+  slug              String           @unique
+  excerpt           String           @default("")
+  cover             String? // cover image URL
+  coverInBody       Boolean          @default(true) // also show the cover at the top of the article body
+  body              String // markdown (supports images, embeds, links)
   // Optional French translation. When absent, readers see the base (EN) marked "not translated".
-  titleFr     String?
-  excerptFr   String?
-  bodyFr      String?
-  status      PostStatus @default(DRAFT)
-  publishedAt DateTime?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  titleFr           String?
+  excerptFr         String?
+  bodyFr            String?
+  status            PostStatus       @default(DRAFT)
+  publishedAt       DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   // Author-configured reactions: on/off + up to 3 reaction types (emoji). The
   // reactions themselves live in BlogReaction (one per user per post).
-  reactionsEnabled Boolean  @default(false)
-  reactionTypes    String[] @default([])
+  reactionsEnabled Boolean        @default(false)
+  reactionTypes    String[]       @default([])
   reactions        BlogReaction[]
   // Auto table-of-contents (a "sommaire") rendered from the post's headings.
-  showToc     Boolean  @default(false)
-  tocTitle    String?
+  showToc          Boolean        @default(false)
+  tocTitle         String?
   // Collaborative authoring: extra author user ids beyond `authorId`. Their avatars
   // render at the bottom of the post next to the main author's.
-  coAuthorIds      String[] @default([])
+  coAuthorIds      String[]       @default([])
   // Optimistic-concurrency counter — bumped on every content save. A PATCH carrying a
   // stale baseVersion means someone else saved in the meantime → the client 3-way
   // merges (see merge3.js) instead of clobbering.
-  version          Int      @default(1)
+  version          Int            @default(1)
   revisions        BlogRevision[]
   // Editor-collaboration comments (threaded). `commentsPublic` = readers can also SEE
   // them on the published article (they still can't post — comments are an editor tool).
   comments         BlogComment[]
-  commentsPublic   Boolean  @default(false)
+  commentsPublic   Boolean        @default(false)
   // Set the first time this post is announced to newsletter subscribers, so editing a
   // published post later never re-blasts everyone (see notifyNewsletterOfPost).
   newsletterSentAt DateTime?
@@ -348,8 +352,8 @@ model BlogComment {
   postId    String
   author    User     @relation(fields: [authorId], references: [id])
   authorId  String
-  parentId  String?  // null = top-level thread; else a reply to this comment id
-  anchor    String?  // freeform pin label (e.g. a heading or "line 42"); null = general
+  parentId  String? // null = top-level thread; else a reply to this comment id
+  anchor    String? // freeform pin label (e.g. a heading or "line 42"); null = general
   body      String
   resolved  Boolean  @default(false)
   // Everyone who has EDITED this comment (collaborative) — their pfps show on it.
@@ -367,11 +371,11 @@ model BlogRevision {
   id        String   @id @default(cuid())
   post      BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
   postId    String
-  version   Int      // the version number this snapshot represents
+  version   Int // the version number this snapshot represents
   title     String
   body      String
   bodyFr    String?
-  editorId  String?  // who authored this snapshot (may be deleted later)
+  editorId  String? // who authored this snapshot (may be deleted later)
   createdAt DateTime @default(now())
 
   @@index([postId, version])
@@ -382,28 +386,28 @@ model BlogRevision {
 // create/edit/reorder/delete pages (the "special role"); everyone can read published
 // ones. `order` sorts within a category; categories sort by their pages' min order.
 model DocPage {
-  id        String   @id @default(cuid())
-  slug      String   @unique
-  title     String
-  category  String   @default("General")
-  icon      String?  // lucide icon name (see md.jsx ICONS) shown in the sidebar
-  body      String   @default("")   // markdown w/ doc blocks (EN base)
-  bodyFr    String?                  // optional French translation
-  order     Int      @default(0)
-  published Boolean  @default(true)
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  title          String
+  category       String        @default("General")
+  icon           String? // lucide icon name (see md.jsx ICONS) shown in the sidebar
+  body           String        @default("") // markdown w/ doc blocks (EN base)
+  bodyFr         String? // optional French translation
+  order          Int           @default(0)
+  published      Boolean       @default(true)
   // "Was this helpful?" tallies (3-face rating, one vote per browser).
-  helpfulYes Int     @default(0)   // 🙂 good
-  helpfulOk  Int     @default(0)   // 😐 ok
-  helpfulNo  Int     @default(0)   // 🙁 bad
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
+  helpfulYes     Int           @default(0) // 🙂 good
+  helpfulOk      Int           @default(0) // 😐 ok
+  helpfulNo      Int           @default(0) // 🙁 bad
+  updatedAt      DateTime      @updatedAt
+  createdAt      DateTime      @default(now())
   // Optimistic-concurrency counter for git-style concurrent editing (see BlogPost.version).
-  version   Int      @default(1)
-  revisions DocRevision[]
+  version        Int           @default(1)
+  revisions      DocRevision[]
   // Threaded editor-collaboration comments (see BlogComment). `commentsPublic` lets
   // readers see them read-only on the published page.
   comments       DocComment[]
-  commentsPublic Boolean @default(false)
+  commentsPublic Boolean       @default(false)
 
   @@index([category])
 }
@@ -415,9 +419,9 @@ model DocPage {
 model CommentRevision {
   id        String   @id @default(cuid())
   commentId String
-  kind      String   // 'blog' | 'doc'
+  kind      String // 'blog' | 'doc'
   body      String
-  editorId  String?  // who wrote this version
+  editorId  String? // who wrote this version
   createdAt DateTime @default(now())
 
   @@index([commentId])
@@ -481,7 +485,7 @@ model BlogPermission {
   userId            String
   projectKey        ProjectKey?
   showcaseProjectId String?
-  grantedBy         String      // admin userId — audit trail only, no relation needed
+  grantedBy         String // admin userId — audit trail only, no relation needed
   createdAt         DateTime    @default(now())
 
   @@unique([userId, projectKey, showcaseProjectId])
@@ -489,40 +493,46 @@ model BlogPermission {
 }
 
 model CatalogItem {
-  id          String      @id @default(cuid())
-  project     Project     @relation(fields: [projectId], references: [id])
+  id          String       @id @default(cuid())
+  project     Project      @relation(fields: [projectId], references: [id])
   projectId   String
   kind        CatalogKind
-  owner       User        @relation(fields: [ownerId], references: [id])
+  owner       User         @relation(fields: [ownerId], references: [id])
   ownerId     String
   name        String
-  slug        String      @unique
+  slug        String       @unique
   // Unguessable key for the item's PRIVATE direct link (?k=…). Mirrors Server-Repos:
   // an item that isn't PUBLISHED stays reachable via its own link (owner-shared) but is
   // never in the public list/feed. Public listing requires admin validation (PUBLISHED).
-  shareKey    String?     @unique
-  description String      @default("")
-  tags        String[]    @default([])
-  version     String      @default("1.0.0")
-  status      ItemStatus  @default(PENDING)
-  payloadKey  String?     // object-storage key (the uploaded file/bundle)
-  payloadSize Int         @default(0)  // uploaded payload bytes (≤500MB cap fits Int) — counted against the temp submissions margin
-  meta        Json        @default("{}")  // preset JSON / plugin manifest / etc.
-  views       Int         @default(0)     // all-time views (1 per item .json fetch)
-  downloads   Int         @default(0)     // all-time downloads
-  deleteAt    DateTime?                   // scheduled hard-deletion (72h grace); cancellable until then
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  shareKey    String?      @unique
+  description String       @default("")
+  tags        String[]     @default([])
+  version     String       @default("1.0.0")
+  status      ItemStatus   @default(PENDING)
+  payloadKey  String? // object-storage key (the uploaded file/bundle)
+  payloadSize Int          @default(0) // uploaded payload bytes (≤500MB cap fits Int) — counted against the temp submissions margin
+  meta        Json         @default("{}") // preset JSON / plugin manifest / etc.
+  views       Int          @default(0) // all-time views (1 per item .json fetch)
+  downloads   Int          @default(0) // all-time downloads
+  deleteAt    DateTime? // scheduled hard-deletion (72h grace); cancellable until then
+  // When a rejected submission's payload file is purged to reclaim temp storage. Set on
+  // reject (now + hosting.rejectedRetentionDays), cleared if the owner resubmits within
+  // the grace (item flips back to PENDING). The sweeper deletes the object + clears
+  // payloadKey/Size when this elapses; the REJECTED row itself stays (owner still sees it).
+  payloadPurgeAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   submissions Submission[]
 
   @@index([deleteAt])
+  @@index([payloadPurgeAt])
 }
 
 // Time-stamped catalog events for windowed popularity (e.g. "popular this month").
 model CatalogEvent {
   id        String   @id @default(cuid())
   itemId    String
-  kind      String   // "view" | "download"
+  kind      String // "view" | "download"
   createdAt DateTime @default(now())
 
   @@index([kind, createdAt])
@@ -530,18 +540,18 @@ model CatalogEvent {
 }
 
 model Submission {
-  id         String         @id @default(cuid())
-  item       CatalogItem    @relation(fields: [itemId], references: [id])
+  id         String              @id @default(cuid())
+  item       CatalogItem         @relation(fields: [itemId], references: [id])
   itemId     String
-  owner      User           @relation(fields: [ownerId], references: [id])
+  owner      User                @relation(fields: [ownerId], references: [id])
   ownerId    String
-  type       SubmissionType @default(NEW)
-  status     ItemStatus     @default(PENDING)
+  type       SubmissionType      @default(NEW)
+  status     ItemStatus          @default(PENDING)
   reviewerId String?
-  reason     String?        // rejection reason -> sent to the user
-  tags       String[]       @default([]) // mod-only triage tags (e.g. "priority", "needs-rework") — never shown to the submitter
+  reason     String? // rejection reason -> sent to the user
+  tags       String[]            @default([]) // mod-only triage tags (e.g. "priority", "needs-rework") — never shown to the submitter
   comments   SubmissionComment[]
-  createdAt  DateTime       @default(now())
+  createdAt  DateTime            @default(now())
 }
 
 // Mod-only internal note on a submission (max 200 chars, enforced in catalog.mjs) —
@@ -559,13 +569,13 @@ model SubmissionComment {
 }
 
 model Notification {
-  id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id])
+  id        String    @id @default(cuid())
+  user      User      @relation(fields: [userId], references: [id])
   userId    String
   kind      String
   body      String
   readAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 }
 
 // Admin-curated testimonials/reviews shown on the landing page. The admin provides the
@@ -576,10 +586,10 @@ model Review {
   id        String   @id @default(cuid())
   author    String
   role      String   @default("") // subtitle: role / handle / "BMM user"
-  body      String   // English
+  body      String // English
   bodyFr    String   @default("") // French (falls back to `body` when empty)
-  rating    Int?     // optional 1..5 stars
-  avatar    Json?    // { variant, seed, colors } Boring-avatar, or { image }
+  rating    Int? // optional 1..5 stars
+  avatar    Json? // { variant, seed, colors } Boring-avatar, or { image }
   enabled   Boolean  @default(true)
   order     Int      @default(0)
   createdAt DateTime @default(now())
@@ -592,86 +602,90 @@ model Review {
 // every user (see announcements.mjs) — the banner is the persistent/dismissible
 // form, the notification is the "you have something new" ping in the bell menu.
 model Announcement {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   title      String
   body       String
-  tone       String   @default("info") // info | warning | success
-  active     Boolean  @default(true)
+  tone       String    @default("info") // info | warning | success
+  active     Boolean   @default(true)
   // Every active announcement always sends a Notification (bell). This controls
   // ONLY the dismissible top-of-site banner — off for a "quiet" announcement that
   // should just land in people's notifications without also plastering the site.
-  showBanner Boolean  @default(true)
+  showBanner Boolean   @default(true)
   // Where the banner navigates on click — an internal path (e.g. "/blog/my-post")
   // or a full external URL. Null/empty = banner isn't clickable, just the dismiss X.
   linkUrl    String?
   createdBy  String
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
   expiresAt  DateTime?
 
   @@index([active])
 }
 
 model HostingPlan {
-  id               String   @id @default(cuid())
-  name             String
-  storageGB        Int
-  uploadLimitKbps  Int
-  cpuShare         Float    @default(0.25)
+  id                String         @id @default(cuid())
+  name              String
+  storageGB         Int
+  uploadLimitKbps   Int
+  cpuShare          Float          @default(0.25)
   priceMonthlyCents Int
-  active           Boolean  @default(true)
-  subscriptions    Subscription[]
+  active            Boolean        @default(true)
+  subscriptions     Subscription[]
 }
 
 model ServerRepo {
-  id               String     @id @default(cuid())
-  owner            User       @relation(fields: [ownerId], references: [id])
-  ownerId          String
-  name             String
-  hosted           Boolean    @default(false)
-  status           RepoStatus @default(OFFLINE)
-  publicUrl        String?
-  region           String?
-  storageQuotaBytes BigInt    @default(0)
-  storageUsedBytes  BigInt    @default(0)
-  uploadLimitKbps  Int        @default(0)   // OUR limit (overrides the author's) when hosted
-  cpuShare         Float      @default(0.25)
-  seed             String?
+  id                String            @id @default(cuid())
+  owner             User              @relation(fields: [ownerId], references: [id])
+  ownerId           String
+  name              String
+  hosted            Boolean           @default(false)
+  // TRUE only when provisioned through the actual $0 Free plan (the FreeTierClaim
+  // checkout path). Admin-provisioned and promo-granted repos stay false — they must
+  // NOT count against the Free-plan pool cap (the "70/10 GB while empty" bug).
+  freePlan          Boolean           @default(false)
+  status            RepoStatus        @default(OFFLINE)
+  publicUrl         String?
+  region            String?
+  storageQuotaBytes BigInt            @default(0)
+  storageUsedBytes  BigInt            @default(0)
+  uploadLimitKbps   Int               @default(0) // OUR limit (overrides the author's) when hosted
+  cpuShare          Float             @default(0.25)
+  seed              String?
   // Public listing + content verification.
-  description      String     @default("")
-  tags             String[]   @default([])
-  links            Json?      // { discord, website, changelog } shown on the listing
-  repoUrl          String?    // source URL for a non-hosted, listed repo
-  sha              String?    // current content SHA (integrity of last verified content)
-  listed           Boolean    @default(false)  // owner wants it in the public list
-  verified         Boolean    @default(false)  // content checked by a mod/admin
-  pendingReview    Boolean    @default(false)  // a change is awaiting verification
+  description       String            @default("")
+  tags              String[]          @default([])
+  links             Json? // { discord, website, changelog } shown on the listing
+  repoUrl           String? // source URL for a non-hosted, listed repo
+  sha               String? // current content SHA (integrity of last verified content)
+  listed            Boolean           @default(false) // owner wants it in the public list
+  verified          Boolean           @default(false) // content checked by a mod/admin
+  pendingReview     Boolean           @default(false) // a change is awaiting verification
   // Admin-set classification for the public browser: "community" (default),
   // "official" (maintained by the BMM team — green badge) or "partner" (trusted
   // community members — blue badge). Official/partner float to the top of the list.
-  category         String     @default("community")
-  featuredUntil    DateTime?  // paid promotion expiry (listing boost)
+  category          String            @default("community")
+  featuredUntil     DateTime? // paid promotion expiry (listing boost)
   // Hosted-content publishing (for repos we host): admin validates → repo.json served.
-  hostPath         String?    @unique  // "<ownerSlug>/<repoSlug>" for the public URL
-  published        Boolean    @default(false)
-  repoJson         Json?      // parsed manifest of the uploaded repo.json
+  hostPath          String?           @unique // "<ownerSlug>/<repoSlug>" for the public URL
+  published         Boolean           @default(false)
+  repoJson          Json? // parsed manifest of the uploaded repo.json
   // Sandboxed, owner-managed settings: bans, whitelist, requested upload limit.
   // Requested values are always clamped to the hard sandbox caps on this row.
-  settings         Json?      // { access:{whitelistEnabled,ips,keys}, bans:{ips,keys}, requestedUploadKbps }
+  settings          Json? // { access:{whitelistEnabled,ips,keys}, bans:{ips,keys}, requestedUploadKbps }
   // Dedicated dashboard access control. The owner (or an ADMIN) always has access.
   // Others get in either by being a logged-in user whose email is in accessEmails,
   // or by entering dashPassword (login-less, mints a short-lived per-repo cookie).
-  accessEmails     String[]   @default([])  // authorized collaborator emails
-  dashPassword     String?    // argon2 hash of the dashboard password (null = disabled)
-  group            HostingGroup? @relation(fields: [groupId], references: [id])
-  groupId          String?
-  deleteAt         DateTime?  // scheduled hard-deletion (72h grace, e.g. after a failed payment)
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  subscription     Subscription?
-  files            RepoFile[]
-  auditLogs        RepoAuditLog[]
-  accessEvents     RepoAccessEvent[]
-  favorites        RepoFavorite[]
+  accessEmails      String[]          @default([]) // authorized collaborator emails
+  dashPassword      String? // argon2 hash of the dashboard password (null = disabled)
+  group             HostingGroup?     @relation(fields: [groupId], references: [id])
+  groupId           String?
+  deleteAt          DateTime? // scheduled hard-deletion (72h grace, e.g. after a failed payment)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  subscription      Subscription?
+  files             RepoFile[]
+  auditLogs         RepoAuditLog[]
+  accessEvents      RepoAccessEvent[]
+  favorites         RepoFavorite[]
 
   @@index([groupId])
   @@index([deleteAt])
@@ -697,11 +711,11 @@ model RepoFile {
   id           String     @id @default(cuid())
   repo         ServerRepo @relation(fields: [serverRepoId], references: [id], onDelete: Cascade)
   serverRepoId String
-  path         String     // logical path within the repo (e.g. "repo.json", "mods/x.zip")
-  key          String     // object-storage key
+  path         String // logical path within the repo (e.g. "repo.json", "mods/x.zip")
+  key          String // object-storage key
   size         BigInt     @default(0)
   contentType  String     @default("application/octet-stream")
-  sha256       String?    // content checksum (computed at upload) — shown in the manager
+  sha256       String? // content checksum (computed at upload) — shown in the manager
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -716,7 +730,7 @@ model RepoAuditLog {
   repo         ServerRepo @relation(fields: [serverRepoId], references: [id], onDelete: Cascade)
   serverRepoId String
   actor        String
-  action       String     // upload | delete | publish | unpublish | settings | access | ban | unban
+  action       String // upload | delete | publish | unpublish | settings | access | ban | unban
   detail       String     @default("")
   createdAt    DateTime   @default(now())
 
@@ -731,11 +745,11 @@ model RepoAccessEvent {
   repo         ServerRepo @relation(fields: [serverRepoId], references: [id], onDelete: Cascade)
   serverRepoId String
   ip           String
-  accessKey    String?    // the ?key= the client sent (sandbox access key), if any
-  userId       String?    // resolved via the X-Creator-ID header -> CreatorLink, if linked
-  discordId    String?    // resolved via that same account's DiscordLink, if linked
+  accessKey    String? // the ?key= the client sent (sandbox access key), if any
+  userId       String? // resolved via the X-Creator-ID header -> CreatorLink, if linked
+  discordId    String? // resolved via that same account's DiscordLink, if linked
   path         String
-  kind         String     // connect | download
+  kind         String // connect | download
   createdAt    DateTime   @default(now())
 
   @@index([serverRepoId, createdAt])
@@ -822,8 +836,8 @@ model ServerMetricSample {
   loadAvg1  Float
   uptimeSec Int
   latencyMs Int?
-  netRxKbps Int?     // avg download throughput over the tick (kbit/s)
-  netTxKbps Int?     // avg upload throughput over the tick (kbit/s)
+  netRxKbps Int? // avg download throughput over the tick (kbit/s)
+  netTxKbps Int? // avg upload throughput over the tick (kbit/s)
   createdAt DateTime @default(now())
 
   @@index([createdAt])
@@ -842,15 +856,15 @@ model ServerAlertLog {
 }
 
 model Subscription {
-  id               String     @id @default(cuid())
-  user             User       @relation(fields: [userId], references: [id])
+  id               String      @id @default(cuid())
+  user             User        @relation(fields: [userId], references: [id])
   userId           String
-  serverRepo       ServerRepo @relation(fields: [serverRepoId], references: [id])
-  serverRepoId     String     @unique
+  serverRepo       ServerRepo  @relation(fields: [serverRepoId], references: [id])
+  serverRepoId     String      @unique
   plan             HostingPlan @relation(fields: [planId], references: [id])
   planId           String
-  stripeSubId      String?    @unique
-  status           String     @default("active")
+  stripeSubId      String?     @unique
+  status           String      @default("active")
   currentPeriodEnd DateTime?
 }
 
@@ -860,26 +874,26 @@ model Subscription {
 // purpose (like Payment), to keep ServerRepo/User untouched — looked up by
 // serverRepoId / stripeSubId in the webhook.
 model FeatureSubscription {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   userId           String
   serverRepoId     String
-  stripeSubId      String   @unique
+  stripeSubId      String    @unique
   days             Int
-  status           String   @default("active")
+  status           String    @default("active")
   currentPeriodEnd DateTime?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
 
   @@index([serverRepoId])
 }
 
 // Password reset tokens (single-use, short-lived). The raw token is never stored.
 model PasswordReset {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  tokenHash String   @unique // sha256 of the emailed token
+  tokenHash String    @unique // sha256 of the emailed token
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId])
 }
@@ -887,12 +901,12 @@ model PasswordReset {
 // Email-confirmation token, emailed on sign-up (and re-sendable). Same shape as
 // PasswordReset — sha256 of the token, single-use, expiring.
 model EmailVerification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId])
 }
@@ -904,28 +918,28 @@ model EmailVerification {
 //  - 'free_hosting' : redeeming provisions a free hosted repo (storage/upload/duration)
 //  - 'free_boost'   : redeeming boosts one of the user's repos for boostDays
 model PromoCode {
-  id             String   @id @default(cuid())
-  code           String   @unique
-  kind           String
-  percentOff     Int?     // discount: 1..100
-  freeMonths     Int?     // discount: first N months free (100% off, repeating)
-  minMonths      Int?     // discount: only applies at checkout when the chosen prepaid term is >= this (e.g. Ko-fi's reward is 12mo+ only)
-  storageGB      Int?     // free_hosting
-  uploadMbps     Int?     // free_hosting
-  hostMonths     Int?     // free_hosting: grant duration (0/none = no auto-expiry)
-  boostDays      Int?     // free_boost
-  maxRedemptions Int?     // null = unlimited
-  redeemedCount  Int      @default(0)
-  perUserLimit   Int      @default(1)
-  notBefore      DateTime? // if set, the code is NOT valid before this (e.g. an event-only code)
-  expiresAt      DateTime?
-  active         Boolean  @default(true)
-  stackable      Boolean  @default(false) // may be combined with OTHER stackable codes in one cart
-  assignedUserIds String[] @default([]) // if non-empty, ONLY these users may redeem it (gift codes)
-  assignedTokens String[] @default([]) // typed identifiers that may redeem (no linked account required): "email:x" | "discord:x" | "creator:x" | "bcid:x"; matched to the redeeming user at redeem time
-  note           String   @default("")
-  createdAt      DateTime @default(now())
-  redemptions    PromoRedemption[]
+  id              String            @id @default(cuid())
+  code            String            @unique
+  kind            String
+  percentOff      Int? // discount: 1..100
+  freeMonths      Int? // discount: first N months free (100% off, repeating)
+  minMonths       Int? // discount: only applies at checkout when the chosen prepaid term is >= this (e.g. Ko-fi's reward is 12mo+ only)
+  storageGB       Int? // free_hosting
+  uploadMbps      Int? // free_hosting
+  hostMonths      Int? // free_hosting: grant duration (0/none = no auto-expiry)
+  boostDays       Int? // free_boost
+  maxRedemptions  Int? // null = unlimited
+  redeemedCount   Int               @default(0)
+  perUserLimit    Int               @default(1)
+  notBefore       DateTime? // if set, the code is NOT valid before this (e.g. an event-only code)
+  expiresAt       DateTime?
+  active          Boolean           @default(true)
+  stackable       Boolean           @default(false) // may be combined with OTHER stackable codes in one cart
+  assignedUserIds String[]          @default([]) // if non-empty, ONLY these users may redeem it (gift codes)
+  assignedTokens  String[]          @default([]) // typed identifiers that may redeem (no linked account required): "email:x" | "discord:x" | "creator:x" | "bcid:x"; matched to the redeeming user at redeem time
+  note            String            @default("")
+  createdAt       DateTime          @default(now())
+  redemptions     PromoRedemption[]
 }
 
 model PromoRedemption {
@@ -946,20 +960,20 @@ model PromoRedemption {
 // A campaign may also be owned by an Event (Phase 2) — eventId links them.
 model PromoCampaign {
   id             String   @id @default(cuid())
-  name           String                       // internal label, e.g. "Black Friday 2026"
-  kind           String   @default("custom")  // "custom" | "black_friday" | "new_year" | "flash"
-  percentOff     Int                          // 1..100, applied site-wide to purchases in-window
-  appliesTo      String   @default("all")     // "all" | "hosting" | "boost"
+  name           String // internal label, e.g. "Black Friday 2026"
+  kind           String   @default("custom") // "custom" | "black_friday" | "new_year" | "flash"
+  percentOff     Int // 1..100, applied site-wide to purchases in-window
+  appliesTo      String   @default("all") // "all" | "hosting" | "boost"
   startsAt       DateTime
   endsAt         DateTime
-  active         Boolean  @default(true)      // master switch (must ALSO be within [startsAt,endsAt])
-  badgeEnabled   Boolean  @default(true)      // show the site-wide announcement badge
-  badgeMessageEn String   @default("")        // custom announcement (EN); blank → sensible default
-  badgeMessageFr String   @default("")        // custom announcement (FR)
-  badgeColor     String   @default("")        // optional accent hex (validated); blank → brand color
-  badgeLink      String   @default("")        // optional click target: internal "/blog/x" or "https://…" (validated)
-  promoCodeId    String?                      // optional PromoCode created alongside the campaign
-  eventId        String?  @unique             // set when the campaign belongs to an Event (Phase 2)
+  active         Boolean  @default(true) // master switch (must ALSO be within [startsAt,endsAt])
+  badgeEnabled   Boolean  @default(true) // show the site-wide announcement badge
+  badgeMessageEn String   @default("") // custom announcement (EN); blank → sensible default
+  badgeMessageFr String   @default("") // custom announcement (FR)
+  badgeColor     String   @default("") // optional accent hex (validated); blank → brand color
+  badgeLink      String   @default("") // optional click target: internal "/blog/x" or "https://…" (validated)
+  promoCodeId    String? // optional PromoCode created alongside the campaign
+  eventId        String?  @unique // set when the campaign belongs to an Event (Phase 2)
   createdAt      DateTime @default(now())
 
   @@index([active, startsAt, endsAt])
@@ -971,30 +985,30 @@ model PromoCampaign {
 // (a PromoCampaign via campaignId) and an event-only code (eventCode, valid only for
 // its window). Notifications fire `notifyDaysBefore` days ahead and again at start.
 model Event {
-  id              String   @id @default(cuid())
-  name            String                        // internal label
-  kind            String   @default("custom")   // "custom" | "national_holiday" | "new_year"
-  countryCode     String   @default("")         // ISO-3166 alpha-2 (national_holiday → which flag)
-  startsAt        DateTime
-  endsAt          DateTime
-  active          Boolean  @default(true)        // master switch (must ALSO be within the window)
-  effect          String   @default("fireworks") // the effect kind (same everywhere = fireworks)
-  fxDensity       Int      @default(5)           // 1..10 — how many fireworks (rocket rate)
-  fxSize          Int      @default(5)           // 1..10 — particle size
-  fxFlagDrops     Int      @default(2)           // how many times the flag forms (random time/place)
-  badgeIcon       String   @default("sparkles")  // announcement icon (named lucide icon, NOT an emoji)
-  linkUrl         String?                        // where the announcement badge links (internal path or full URL)
-  titleEn         String   @default("")
-  titleFr         String   @default("")
-  messageEn       String   @default("")
-  messageFr       String   @default("")
-  notifyDaysBefore Int     @default(0)           // X days before → notify users currently on the site
-  preNotifiedAt   DateTime?                      // set once the pre-event notification fired (idempotent)
-  startNotifiedAt DateTime?                      // set once the at-activation notification fired
-  promoPercent    Int      @default(0)           // event discount % (0 = no promo); drives the linked campaign + code
-  campaignId      String?  @unique               // linked PromoCampaign (the event's discount + badge)
-  eventCode       String   @default("")          // event-only promo code (valid only during the window)
-  createdAt       DateTime @default(now())
+  id               String    @id @default(cuid())
+  name             String // internal label
+  kind             String    @default("custom") // "custom" | "national_holiday" | "new_year"
+  countryCode      String    @default("") // ISO-3166 alpha-2 (national_holiday → which flag)
+  startsAt         DateTime
+  endsAt           DateTime
+  active           Boolean   @default(true) // master switch (must ALSO be within the window)
+  effect           String    @default("fireworks") // the effect kind (same everywhere = fireworks)
+  fxDensity        Int       @default(5) // 1..10 — how many fireworks (rocket rate)
+  fxSize           Int       @default(5) // 1..10 — particle size
+  fxFlagDrops      Int       @default(2) // how many times the flag forms (random time/place)
+  badgeIcon        String    @default("sparkles") // announcement icon (named lucide icon, NOT an emoji)
+  linkUrl          String? // where the announcement badge links (internal path or full URL)
+  titleEn          String    @default("")
+  titleFr          String    @default("")
+  messageEn        String    @default("")
+  messageFr        String    @default("")
+  notifyDaysBefore Int       @default(0) // X days before → notify users currently on the site
+  preNotifiedAt    DateTime? // set once the pre-event notification fired (idempotent)
+  startNotifiedAt  DateTime? // set once the at-activation notification fired
+  promoPercent     Int       @default(0) // event discount % (0 = no promo); drives the linked campaign + code
+  campaignId       String?   @unique // linked PromoCampaign (the event's discount + badge)
+  eventCode        String    @default("") // event-only promo code (valid only during the window)
+  createdAt        DateTime  @default(now())
 
   @@index([active, startsAt, endsAt])
 }
@@ -1003,19 +1017,19 @@ model Event {
 // RSA signing key. The public half is served at /.well-known/jwks.json; the private
 // PEM is server-only and NEVER leaves the API. Generated once on first use.
 model OidcKey {
-  id         String   @id                  // kid
+  id         String   @id // kid
   alg        String   @default("RS256")
-  publicJwk  Json                          // JWK (public) for JWKS
-  privatePem String                        // PKCS8 PEM — secret, never exposed
+  publicJwk  Json // JWK (public) for JWKS
+  privatePem String // PKCS8 PEM — secret, never exposed
   active     Boolean  @default(true)
   createdAt  DateTime @default(now())
 }
 
 model OAuthClient {
-  id           String   @id @default(cuid())  // client_id
+  id           String   @id @default(cuid()) // client_id
   name         String
-  secretHash   String   @default("")          // sha256(client_secret); empty for public clients
-  confidential Boolean  @default(true)         // false = public client (PKCE required, no secret)
+  secretHash   String   @default("") // sha256(client_secret); empty for public clients
+  confidential Boolean  @default(true) // false = public client (PKCE required, no secret)
   redirectUris String[] @default([])
   scopes       String[] @default(["openid", "profile", "email"])
   active       Boolean  @default(true)
@@ -1023,13 +1037,13 @@ model OAuthClient {
 }
 
 model OAuthCode {
-  code          String    @id                 // authorization code (random, single-use)
+  code          String    @id // authorization code (random, single-use)
   clientId      String
   userId        String
   redirectUri   String
   scope         String
   nonce         String    @default("")
-  codeChallenge String    @default("")         // PKCE S256 challenge
+  codeChallenge String    @default("") // PKCE S256 challenge
   expiresAt     DateTime
   usedAt        DateTime?
   createdAt     DateTime  @default(now())
@@ -1048,7 +1062,7 @@ model OAuthConsent {
 }
 
 model OAuthRefreshToken {
-  token     String    @id                     // sha256 of the refresh token
+  token     String    @id // sha256 of the refresh token
   clientId  String
   userId    String
   scope     String
@@ -1063,20 +1077,20 @@ model OAuthRefreshToken {
 // with an "Enter" button, collects entrant Discord ids, and at `endsAt` draws random
 // winners, announces them, and (if `giftConfig` is set) DMs each winner a promo code.
 model Giveaway {
-  id           String   @id @default(cuid())
-  prize        String
-  channelId    String
-  messageId    String?  // the Discord message carrying the Enter button (set once posted)
-  endsAt       DateTime
-  winnersCount Int      @default(1)
-  status       String   @default("active") // active | ended
-  entries      String[] @default([]) // entrant Discord ids
-  winnerIds    String[] @default([]) // drawn winner Discord ids
-  giftConfig   Json?    // optional promo gift for each winner ({ kind, percentOff, … })
-  requirements Json?    // optional entry gate: { linked?: bool (Discord⇄BCWEB account), creator?: bool (linked BMM creator id) }
+  id            String   @id @default(cuid())
+  prize         String
+  channelId     String
+  messageId     String? // the Discord message carrying the Enter button (set once posted)
+  endsAt        DateTime
+  winnersCount  Int      @default(1)
+  status        String   @default("active") // active | ended
+  entries       String[] @default([]) // entrant Discord ids
+  winnerIds     String[] @default([]) // drawn winner Discord ids
+  giftConfig    Json? // optional promo gift for each winner ({ kind, percentOff, … })
+  requirements  Json? // optional entry gate: { linked?: bool (Discord⇄BCWEB account), creator?: bool (linked BMM creator id) }
   winnerMessage String? // customizable winner DM template; bot substitutes {user}/{prize}/{code}
-  createdBy    String?
-  createdAt    DateTime @default(now())
+  createdBy     String?
+  createdAt     DateTime @default(now())
 
   @@index([status])
 }
@@ -1088,7 +1102,7 @@ model Giveaway {
 model PendingCart {
   id        String   @id @default(cuid())
   userId    String
-  payload   Json     // { items: [...], promoCodes: [...] }
+  payload   Json // { items: [...], promoCodes: [...] }
   createdAt DateTime @default(now())
 
   @@index([userId])
@@ -1103,14 +1117,14 @@ model AdminSetting {
 // real running total + tip count, not just the one-time discount-grant flag on
 // User. messageId dedupes Ko-fi's at-least-once webhook retries.
 model KofiDonation {
-  id           String   @id @default(cuid())
-  messageId    String   @unique
-  fromName     String
-  email        String?
-  amount       Float
-  currency     String
-  isSubscription Boolean @default(false)
-  createdAt    DateTime @default(now())
+  id             String   @id @default(cuid())
+  messageId      String   @unique
+  fromName       String
+  email          String?
+  amount         Float
+  currency       String
+  isSubscription Boolean  @default(false)
+  createdAt      DateTime @default(now())
 
   @@index([createdAt])
 }
@@ -1119,24 +1133,24 @@ model KofiDonation {
 // and a flexible config (tabs, links, overview media, progress source, release-notes
 // source, community, legal cards) rendered by a BMM/BSM-style project page.
 model ShowcaseProject {
-  id        String   @id @default(cuid())
-  slug      String   @unique
-  name      String
-  short     String   // 3-4 char label shown in the nav/cards
+  id             String     @id @default(cuid())
+  slug           String     @unique
+  name           String
+  short          String // 3-4 char label shown in the nav/cards
   // Logo/icon URL for this project — shown as the tag icon and used as the blog
   // thumbnail fallback for posts in this project's blog when they have no cover.
-  icon      String?
-  config    Json     @default("{}")
-  published Boolean  @default(true)
-  order     Int      @default(0)
+  icon           String?
+  config         Json       @default("{}")
+  published      Boolean    @default(true)
+  order          Int        @default(0)
   // Per-blog toggle: do this custom page's posts also surface in the home page's
   // unified "Latest news"? They always show on /blog regardless of this flag.
-  showOnHomeNews Boolean @default(true)
+  showOnHomeNews Boolean    @default(true)
   // Opt-in "Blog" tab on this page, showing only this page's own posts.
-  showBlogTab Boolean @default(false)
-  posts     BlogPost[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  showBlogTab    Boolean    @default(false)
+  posts          BlogPost[]
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   // Who can view this page: public (anyone), private (nobody but admins), unlisted
   // (viewable with the direct link, just hidden from /projects and the topbar),
@@ -1152,19 +1166,19 @@ model ShowcaseProject {
   // the teaser (logo + markdown + countdown) regardless of `visibility`. Once the
   // countdown passes, the teaser stops and normal `visibility` rules take over —
   // there's nothing to sweep/cron, it's computed at read time (see showcase.mjs).
-  announceEnabled  Boolean   @default(false)
-  announceTitle    String    @default("")
-  announceLogo     String?
-  announceMarkdown String    @default("")
-  announceRevealAt DateTime?
+  announceEnabled     Boolean   @default(false)
+  announceTitle       String    @default("")
+  announceLogo        String?
+  announceMarkdown    String    @default("")
+  announceRevealAt    DateTime?
   // When true, the countdown does NOT take over the page — instead the real page
   // renders normally with an extra "Countdown" FIRST tab. When false (default) the
   // countdown is the only thing shown until it ends.
-  announceShowPage  Boolean  @default(false)
+  announceShowPage    Boolean   @default(false)
   // Optional call-to-action on the countdown (teaser or first-tab): a button that
   // can point anywhere — an external URL, or an in-site /blog/… or /docs/… article.
-  announceButtonLabel String @default("")
-  announceButtonUrl   String @default("")
+  announceButtonLabel String    @default("")
+  announceButtonUrl   String    @default("")
 
   // ── Scheduled content update: stage a future edit, swapped in automatically at
   // scheduledAt (old info fully replaced by "next") — computed + lazily persisted
@@ -1209,7 +1223,7 @@ model Payment {
   description     String
   amountCents     Int
   currency        String      @default("usd")
-  days            Int?        // promotion duration, when applicable
+  days            Int? // promotion duration, when applicable
   stripeSessionId String?
   status          String      @default("paid")
   createdAt       DateTime    @default(now())
@@ -1224,15 +1238,15 @@ model AnalyticsEvent {
   id        String   @id @default(cuid())
   path      String
   ref       String?
-  visitor   String?  // daily anonymous hash
-  device    String?  // mobile | tablet | desktop
-  browser   String?  // Chrome | Firefox | Safari | Edge | …
-  os        String?  // Windows | macOS | Ubuntu | Fedora | Kali | ChromeOS | Android | iOS | …
-  country   String?  // ISO-3166 alpha-2 (from the CDN's country header, when present)
-  region    String?  // subdivision (state/province) name, when geo resolves it
-  city      String?  // city name, when geo resolves it
-  lat       Float?   // approximate latitude from the IP (geoip `ll`), for the globe map
-  lng       Float?   // approximate longitude
+  visitor   String? // daily anonymous hash
+  device    String? // mobile | tablet | desktop
+  browser   String? // Chrome | Firefox | Safari | Edge | …
+  os        String? // Windows | macOS | Ubuntu | Fedora | Kali | ChromeOS | Android | iOS | …
+  country   String? // ISO-3166 alpha-2 (from the CDN's country header, when present)
+  region    String? // subdivision (state/province) name, when geo resolves it
+  city      String? // city name, when geo resolves it
+  lat       Float? // approximate latitude from the IP (geoip `ll`), for the globe map
+  lng       Float? // approximate longitude
   createdAt DateTime @default(now())
 
   @@index([createdAt])
@@ -1247,14 +1261,14 @@ model AnalyticsEvent {
 model WebVital {
   id        String   @id @default(cuid())
   path      String
-  metric    String   // LCP | CLS | INP | FCP | TTFB
+  metric    String // LCP | CLS | INP | FCP | TTFB
   value     Float
-  rating    String?  // good | needs-improvement | poor (as reported by web-vitals)
+  rating    String? // good | needs-improvement | poor (as reported by web-vitals)
   visitor   String?
-  device    String?  // mobile | tablet | desktop
-  browser   String?  // Chrome | Firefox | Safari | Edge | … (for per-page breakdowns)
-  os        String?  // Windows | macOS | Android | iOS | …
-  country   String?  // ISO-3166 alpha-2 (from the CDN's country header, when present)
+  device    String? // mobile | tablet | desktop
+  browser   String? // Chrome | Firefox | Safari | Edge | … (for per-page breakdowns)
+  os        String? // Windows | macOS | Android | iOS | …
+  country   String? // ISO-3166 alpha-2 (from the CDN's country header, when present)
   createdAt DateTime @default(now())
 
   @@index([createdAt])
@@ -1271,11 +1285,11 @@ model WebVital {
 // modal title), never a field VALUE.
 model InteractionEvent {
   id        String   @id @default(cuid())
-  visitor   String?  // daily anonymous hash (matches AnalyticsEvent.visitor)
-  path      String   // page path where it happened
-  kind      String   // click | copy | input | submit | modal_open | modal_close | nav
-  label     String?  // button text / field name / modal title (never a value)
-  device    String?  // mobile | tablet | desktop
+  visitor   String? // daily anonymous hash (matches AnalyticsEvent.visitor)
+  path      String // page path where it happened
+  kind      String // click | copy | input | submit | modal_open | modal_close | nav
+  label     String? // button text / field name / modal title (never a value)
+  device    String? // mobile | tablet | desktop
   createdAt DateTime @default(now())
 
   @@index([visitor, createdAt])
@@ -1287,10 +1301,10 @@ model InteractionEvent {
 // message in the admin error view (occurrences + distinct sessions + latest sample).
 model ErrorEvent {
   id        String   @id @default(cuid())
-  message   String                 // error message (bounded, client-clipped)
-  stack     String?                // stack trace (bounded)
-  path      String                 // page path where it fired
-  visitor   String?                // daily anonymous hash
+  message   String // error message (bounded, client-clipped)
+  stack     String? // stack trace (bounded)
+  path      String // page path where it fired
+  visitor   String? // daily anonymous hash
   device    String?
   browser   String?
   os        String?
@@ -1321,8 +1335,8 @@ model GameScore {
 model FaqItem {
   id        String   @id @default(cuid())
   question  String
-  answer    String   @default("")  // markdown (doc-block system), EN base
-  answerFr  String?                 // optional French translation
+  answer    String   @default("") // markdown (doc-block system), EN base
+  answerFr  String? // optional French translation
   category  String   @default("General")
   order     Int      @default(0)
   published Boolean  @default(true)
@@ -1339,8 +1353,8 @@ model AnalyticsGoal {
   id        String   @id @default(cuid())
   name      String
   kind      String   @default("pageview") // pageview | click | submit | input | copy
-  path      String?  // path pattern (case-insensitive contains), optional
-  label     String?  // event label pattern (contains), optional — for click/submit/input
+  path      String? // path pattern (case-insensitive contains), optional
+  label     String? // event label pattern (contains), optional — for click/submit/input
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
@@ -1355,9 +1369,9 @@ model NewsletterSubscriber {
   id             String    @id @default(cuid())
   email          String    @unique
   status         String    @default("pending") // pending | active | unsubscribed
-  locale         String    @default("en")      // preferred email language (en | fr)
-  confirmToken   String?   @unique              // consumed when the confirm link is clicked
-  unsubToken     String    @unique              // stable; embedded in every email
+  locale         String    @default("en") // preferred email language (en | fr)
+  confirmToken   String?   @unique // consumed when the confirm link is clicked
+  unsubToken     String    @unique // stable; embedded in every email
   createdAt      DateTime  @default(now())
   confirmedAt    DateTime?
   unsubscribedAt DateTime?

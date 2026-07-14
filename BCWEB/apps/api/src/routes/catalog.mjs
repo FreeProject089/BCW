@@ -2,7 +2,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import AdmZip from 'adm-zip';
 import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim } from '../lib/lib.mjs';
-import { presignGet, getObject } from '../lib/storage.mjs';
+import { presignGet, getObject, deleteObject } from '../lib/storage.mjs';
 import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
 import { powVerify } from './auth.mjs';
 
@@ -457,7 +457,9 @@ export default async function catalogRoutes(app) {
       hostCents = catalogHostCents(patch.payloadSize || 0, s);
     }
     const { payloadKey: newPayloadKey, payloadSize: newPayloadSize, ...rest } = patch;
-    const data = { ...rest, status: 'PENDING' };
+    // Resubmitting within the rejection grace cancels the scheduled payload purge — the
+    // item is back in the queue, its file must survive.
+    const data = { ...rest, status: 'PENDING', payloadPurgeAt: null };
     if (newPayloadKey) {
       if (hostCents > 0) data.meta = { ...(rest.meta ?? item.meta), _pendingPayloadKey: newPayloadKey, _pendingPayloadSize: newPayloadSize || 0 };
       else { data.payloadKey = newPayloadKey; data.payloadSize = newPayloadSize || 0; }
@@ -646,12 +648,62 @@ export default async function catalogRoutes(app) {
     const p = await db();
     const sub = await p.submission.findUnique({ where: { id: req.params.id }, include: { item: true } });
     if (!sub) return reply.code(404).send({ error: 'not_found' });
+    // Schedule the payload file for purge after the grace window so a rejected upload
+    // stops squatting the temp margin — but the owner can still fix & resubmit within
+    // the grace (resubmit clears this; see /catalog/:id/update). Only our-hosted files
+    // (payloadKey set) need purging; self-hosted URL submissions have nothing to reclaim.
+    const s = await settings(p);
+    const graceDays = Number(s['hosting.rejectedRetentionDays'] ?? 7);
+    const purgeAt = sub.item.payloadKey ? new Date(Date.now() + Math.max(0, graceDays) * 864e5) : null;
     await p.$transaction([
       p.submission.update({ where: { id: sub.id }, data: { status: 'REJECTED', reviewerId: req.user.uid, reason: reason.data.reason } }),
-      p.catalogItem.update({ where: { id: sub.itemId }, data: { status: 'REJECTED' } }),
+      p.catalogItem.update({ where: { id: sub.itemId }, data: { status: 'REJECTED', payloadPurgeAt: purgeAt } }),
     ]);
     await notify(p, sub.ownerId, 'submission_rejected', `"${sub.item.name}" was rejected: ${reason.data.reason}`);
     return { ok: true };
+  });
+
+  // ── Admin: temp-storage management (submission payloads occupying the temp margin) ──
+  // Lists PENDING payloads (awaiting review) + REJECTED payloads in their purge grace,
+  // so an admin can see and manually reclaim space instead of waiting for the sweeper.
+  app.get('/admin/catalog/temp-storage', { preHandler: requireRole('MOD', 'ADMIN') }, async () => {
+    const p = await db();
+    const rows = await p.catalogItem.findMany({
+      where: { payloadKey: { not: null }, status: { in: ['PENDING', 'REJECTED'] } },
+      select: { id: true, name: true, kind: true, status: true, payloadSize: true, payloadPurgeAt: true, updatedAt: true, owner: { select: { displayName: true, email: true } } },
+      orderBy: { payloadSize: 'desc' }, take: 200,
+    });
+    const items = rows.map((r) => ({ id: r.id, name: r.name, kind: r.kind, status: r.status, sizeMB: (r.payloadSize || 0) / 1e6, purgeAt: r.payloadPurgeAt, updatedAt: r.updatedAt, owner: r.owner?.displayName, email: r.owner?.email }));
+    return {
+      items,
+      pendingMB: items.filter((i) => i.status === 'PENDING').reduce((a, i) => a + i.sizeMB, 0),
+      rejectedMB: items.filter((i) => i.status === 'REJECTED').reduce((a, i) => a + i.sizeMB, 0),
+    };
+  });
+
+  // Manually purge one payload file now (any PENDING/REJECTED item). The row stays;
+  // only the object bytes + payloadKey/Size are cleared. Irreversible — used to reclaim
+  // space immediately. A PENDING item purged this way keeps queueing (owner re-uploads).
+  app.post('/admin/catalog/:id/purge-payload', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const item = await p.catalogItem.findUnique({ where: { id: req.params.id } });
+    if (!item || !item.payloadKey) return reply.code(404).send({ error: 'not_found' });
+    try { await deleteObject(item.payloadKey); } catch { /* already gone — clear the row anyway */ }
+    await p.catalogItem.update({ where: { id: item.id }, data: { payloadKey: null, payloadSize: 0, payloadPurgeAt: null } });
+    return { ok: true };
+  });
+
+  // Purge ALL rejected payloads still in grace, now — bulk reclaim.
+  app.post('/admin/catalog/purge-rejected', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const due = await p.catalogItem.findMany({ where: { payloadKey: { not: null }, status: 'REJECTED' }, select: { id: true, payloadKey: true }, take: 500 });
+    let purged = 0;
+    for (const it of due) {
+      try { await deleteObject(it.payloadKey); } catch { /* already gone */ }
+      await p.catalogItem.update({ where: { id: it.id }, data: { payloadKey: null, payloadSize: 0, payloadPurgeAt: null } });
+      purged++;
+    }
+    return { ok: true, purged };
   });
 
   // Suspend: harsher than reject — the item is taken out of public AND the owner CANNOT

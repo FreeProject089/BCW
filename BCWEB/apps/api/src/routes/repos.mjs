@@ -462,6 +462,7 @@ export default async function repoRoutes(app) {
     const repo = await p.serverRepo.create({ data: {
       ownerId: group.ownerId, name: b.data.name, hosted: true, status: 'PROVISIONING',
       storageQuotaBytes: wantBytes, uploadLimitKbps: group.uploadLimitKbps, cpuShare: group.cpuShare, groupId: group.id,
+      freePlan: group.freePlan, // inherit the pool's provenance — the gauge counts the pool, not this repo
     } });
     return reply.code(201).send({ repo: ser(repo) });
   });

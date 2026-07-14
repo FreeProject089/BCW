@@ -177,6 +177,29 @@ await app.register(stripeWebhook); // encapsulated: raw-body for Stripe signatur
 // Make sure the object-storage bucket exists (non-fatal if storage isn't up yet).
 ensureBucket().catch((e) => app.log.warn({ e: String(e) }, 'ensureBucket failed (will retry on demand)'));
 
+// One-time backfill of the freePlan provenance flag (marker-guarded, best effort):
+// hosted repos with no HOSTING payment whose owner holds a REPO FreeTierClaim were
+// provisioned through the real Free plan → flag them (and their pool). Everything
+// else (admin-provisioned, promo grants) stays freePlan=false — see capacityStatus().
+(async () => {
+  const p = await db();
+  if (await p.adminSetting.findUnique({ where: { key: 'migr.freePlanBackfill' } })) return;
+  const claims = await p.freeTierClaim.findMany({ where: { kind: 'REPO' }, select: { userId: true } });
+  const claimants = [...new Set(claims.map((c) => c.userId))];
+  let flagged = 0;
+  if (claimants.length) {
+    const paid = await p.payment.findMany({ where: { kind: 'HOSTING', serverRepoId: { not: null } }, select: { serverRepoId: true } });
+    const paidIds = new Set(paid.map((x) => x.serverRepoId));
+    const repos = await p.serverRepo.findMany({ where: { hosted: true, ownerId: { in: claimants } }, select: { id: true, groupId: true } });
+    const candidates = repos.filter((r) => !paidIds.has(r.id));
+    const groupIds = [...new Set(candidates.map((r) => r.groupId).filter(Boolean))];
+    if (candidates.length) ({ count: flagged } = await p.serverRepo.updateMany({ where: { id: { in: candidates.map((r) => r.id) } }, data: { freePlan: true } }));
+    if (groupIds.length) await p.hostingGroup.updateMany({ where: { id: { in: groupIds } }, data: { freePlan: true } });
+  }
+  await p.adminSetting.create({ data: { key: 'migr.freePlanBackfill', value: { at: new Date().toISOString(), flagged } } });
+  app.log.info(`[migr] freePlan backfill: flagged ${flagged} repo(s)`);
+})().catch((e) => app.log.warn({ e: String(e) }, 'freePlan backfill failed (will retry next boot)'));
+
 // Periodic sweep: hard-delete items/repos whose 72h grace window has elapsed.
 startSweeper(app);
 

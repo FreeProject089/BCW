@@ -66,7 +66,7 @@ export async function capacityStatus(p) {
   const s = await settings(p);
   const totalGB = Number(s['hosting.totalCapacityGB'] ?? 0);
   const reservedGB = Number(s['hosting.reservedFreeGB'] ?? 0);
-  const [hostedAgg, publishedAgg, tempAgg] = await Promise.all([
+  const [hostedAgg, publishedAgg, tempAgg, rejectedAgg] = await Promise.all([
     p.serverRepo.aggregate({ where: { hosted: true }, _sum: { storageQuotaBytes: true } }),
     // Approved submissions — their payload now counts as permanent site content.
     p.catalogItem.aggregate({ where: { payloadKey: { not: null }, status: 'PUBLISHED' }, _sum: { payloadSize: true } }),
@@ -74,29 +74,34 @@ export async function capacityStatus(p) {
     // items must not keep blocking new uploads forever (the original bug: this used
     // to sum every payloadKey regardless of status, so approved work never "left").
     p.catalogItem.aggregate({ where: { payloadKey: { not: null }, status: 'PENDING' }, _sum: { payloadSize: true } }),
+    // Rejected payloads still in their purge grace — they occupy real bytes too, so
+    // surface them (they leave the margin once the sweeper purges them).
+    p.catalogItem.aggregate({ where: { payloadKey: { not: null }, status: 'REJECTED', payloadPurgeAt: { not: null } }, _sum: { payloadSize: true } }),
   ]);
   const hostingAllocatedGB = Number(hostedAgg._sum.storageQuotaBytes || 0n) / GiB;
   const submissionsPublishedGB = Number(publishedAgg._sum.payloadSize || 0) / GiB;
   const allocatedGB = hostingAllocatedGB + submissionsPublishedGB;
   const usableGB = Math.max(0, totalGB - reservedGB);
   const tempMarginGB = Number(s['hosting.tempMarginGB'] ?? 20);
-  const tempUsedGB = Number(tempAgg._sum.payloadSize || 0) / GiB;
+  const tempPendingGB = Number(tempAgg._sum.payloadSize || 0) / GiB;
+  const tempRejectedGB = Number(rejectedAgg._sum.payloadSize || 0) / GiB;
+  const tempUsedGB = tempPendingGB + tempRejectedGB;
   const disk = realDiskStats();
 
-  // Free-tier pool: total storage currently held by repos that were provisioned
-  // for $0 (no HOSTING Payment on file — includes promo-granted and admin-free
-  // repos too, not just the seeded Free plan). Tracked separately from the paid
-  // pool above: a paid repo NEVER counts against this, and this cap (when on)
-  // is what makes the Free plan itself go "sold out" independent of Total capacity.
+  // Free-tier pool: storage provisioned through the actual $0 Free plan ONLY —
+  // tracked by the explicit freePlan provenance flag set at checkout. Admin-provisioned
+  // and promo-granted repos do NOT count (the old heuristic "no HOSTING Payment on
+  // file" wrongly counted them — a 70 GB admin repo filled a 10 GB pool on its own).
+  // Free multi pools count by poolBytes (splitting a pool across repos can't inflate
+  // the number); solo free repos count by their own quota.
   const freeTierCapEnabled = !!s['hosting.freeTierCapEnabled'];
   let freeTierUsedGB = 0;
   if (freeTierCapEnabled) {
-    const [hostedRepos, paidRepoPayments] = await Promise.all([
-      p.serverRepo.findMany({ where: { hosted: true }, select: { id: true, storageQuotaBytes: true } }),
-      p.payment.findMany({ where: { kind: 'HOSTING', serverRepoId: { not: null } }, select: { serverRepoId: true } }),
+    const [freeGroups, freeSoloRepos] = await Promise.all([
+      p.hostingGroup.aggregate({ where: { freePlan: true }, _sum: { poolBytes: true } }),
+      p.serverRepo.aggregate({ where: { hosted: true, freePlan: true, groupId: null }, _sum: { storageQuotaBytes: true } }),
     ]);
-    const paidRepoIds = new Set(paidRepoPayments.map((x) => x.serverRepoId));
-    freeTierUsedGB = hostedRepos.filter((r) => !paidRepoIds.has(r.id)).reduce((a, r) => a + Number(r.storageQuotaBytes) / GiB, 0);
+    freeTierUsedGB = (Number(freeGroups._sum.poolBytes || 0n) + Number(freeSoloRepos._sum.storageQuotaBytes || 0n)) / GiB;
   }
   const freeTierCapGB = Number(s['hosting.freeTierCapGB'] ?? 50);
 
@@ -106,7 +111,7 @@ export async function capacityStatus(p) {
 
   return {
     totalGB, reservedGB, usableGB, allocatedGB, hostingAllocatedGB, submissionsPublishedGB,
-    freeGB: Math.max(0, usableGB - allocatedGB), tempMarginGB, tempUsedGB,
+    freeGB: Math.max(0, usableGB - allocatedGB), tempMarginGB, tempUsedGB, tempPendingGB, tempRejectedGB,
     diskTotalGB: disk.totalBytes != null ? disk.totalBytes / GiB : null,
     diskFreeGB: disk.freeBytes != null ? disk.freeBytes / GiB : null,
     enabled: s['features.hostingEnabled'] !== false,
@@ -135,12 +140,12 @@ export function priceCents(s, storageGB, uploadMbps, cpuShare) {
 // Shared by the checkout webhook AND the free-tier (no-Stripe) path below, so a
 // $0 "custom" plan and a paid one are provisioned identically instead of two
 // diverging code paths that could drift out of sync.
-export async function provisionHostedRepo(p, { userId, plan, repoName, hostMode, months, stripeSubId = null }) {
+export async function provisionHostedRepo(p, { userId, plan, repoName, hostMode, months, stripeSubId = null, freePlan = false }) {
   let groupId = null;
   if (hostMode === 'multi') {
     const group = await p.hostingGroup.create({ data: {
       ownerId: userId, name: repoName || 'pool', poolBytes: BigInt(plan.storageGB) * BigInt(GiB),
-      uploadLimitKbps: plan.uploadLimitKbps, cpuShare: plan.cpuShare,
+      uploadLimitKbps: plan.uploadLimitKbps, cpuShare: plan.cpuShare, freePlan,
     } });
     groupId = group.id;
   }
@@ -148,7 +153,7 @@ export async function provisionHostedRepo(p, { userId, plan, repoName, hostMode,
   const repo = await p.serverRepo.create({ data: {
     ownerId: userId, name: hostMode === 'multi' ? `${repoName || 'repo'}-1` : (repoName || 'repo'), hosted: true, status: 'PROVISIONING',
     storageQuotaBytes: BigInt(firstGB) * BigInt(GiB),
-    uploadLimitKbps: plan.uploadLimitKbps, cpuShare: plan.cpuShare, groupId,
+    uploadLimitKbps: plan.uploadLimitKbps, cpuShare: plan.cpuShare, groupId, freePlan,
   } });
   await p.subscription.create({ data: {
     userId, serverRepoId: repo.id, planId: plan.id, stripeSubId, status: 'active',
@@ -182,6 +187,21 @@ export default async function hostingRoutes(app) {
   });
 
   app.get('/hosting/capacity', async () => ({ capacity: await capacityStatus(await db()) }));
+
+  // Admin: what exactly occupies the Free-plan pool — every freePlan allocation
+  // (pools by poolBytes, solo repos by quota) with its owner. Feeds the clickable
+  // breakdown under the Free-plan gauge so the number is never a black box again.
+  app.get('/admin/hosting/free-pool', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const [groups, soloRepos] = await Promise.all([
+      p.hostingGroup.findMany({ where: { freePlan: true }, include: { owner: { select: { displayName: true, email: true } }, repos: { select: { name: true } } } }),
+      p.serverRepo.findMany({ where: { hosted: true, freePlan: true, groupId: null }, include: { owner: { select: { displayName: true, email: true } } } }),
+    ]);
+    return { entries: [
+      ...groups.map((g) => ({ id: g.id, type: 'pool', name: g.name, gb: Number(g.poolBytes) / GiB, owner: g.owner.displayName, email: g.owner.email, repoCount: g.repos.length, createdAt: g.createdAt })),
+      ...soloRepos.map((r) => ({ id: r.id, type: 'repo', name: r.name, gb: Number(r.storageQuotaBytes) / GiB, owner: r.owner.displayName, email: r.owner.email, createdAt: r.createdAt })),
+    ].sort((a, b) => b.gb - a.gb) };
+  });
 
   // Live price preview for arbitrary specs: base + capacity-adjusted monthly, per-term
   // totals with discounts, and the current CPU/upload caps.
@@ -261,7 +281,7 @@ export default async function hostingRoutes(app) {
     if (total <= 0 && !b.data.promoCode) {
       if (cap.freeTierCapEnabled && cap.freeTierUsedGB + plan.storageGB > cap.freeTierCapGB) return reply.code(409).send({ error: 'free_tier_full', freeTierFreeGB: cap.freeTierFreeGB });
       if (await hasFreeTierClaim(p, 'REPO', req.user.uid)) return reply.code(409).send({ error: 'free_tier_already_used' });
-      const repo = await provisionHostedRepo(p, { userId: req.user.uid, plan, repoName: b.data.repoName, hostMode: b.data.mode, months });
+      const repo = await provisionHostedRepo(p, { userId: req.user.uid, plan, repoName: b.data.repoName, hostMode: b.data.mode, months, freePlan: true });
       await recordFreeTierClaim(p, 'REPO', req.user.uid);
       await notify(p, req.user.uid, 'hosting_started', `Your hosted repo "${repo.name}" is provisioning — free tier, no charge.`);
       return { ok: true, free: true, repoId: repo.id };

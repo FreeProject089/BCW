@@ -8134,6 +8134,7 @@ const SETTINGS_GROUPS = [
     ['hosting.totalCapacityGB', 'Total capacity (GB)', 'The overall ceiling for everything hosting draws against — checked against the real disk on save.', 'number'],
     ['hosting.reservedFreeGB', 'Reserved free margin (GB)', 'Always kept free below Total capacity, as a safety buffer.', 'number'],
     ['hosting.tempMarginGB', 'Temp margin for submissions (GB)', 'Separate pool for catalog submissions awaiting moderation — full = new uploads refused until reviewed.', 'number'],
+    ['hosting.rejectedRetentionDays', 'Rejected-payload grace (days)', 'How long a rejected submission keeps its uploaded file before the sweeper purges it to reclaim temp space. The author can still fix & resubmit within this window. Default 7.', 'number'],
     ['hosting.freeTierCapEnabled', 'Cap the free hosting-plan pool', 'When on, the Free hosting plan goes "sold out" once free repos together reach the cap below — paid plans never count against this.', 'bool'],
     ['hosting.freeTierCapGB', 'Free hosting-plan pool cap (GB)', 'Total storage the Free plan can ever occupy across every user, once the toggle above is on.', 'number'],
     ['catalog.freeTierCapEnabled', 'Cap the free catalog-upload pool', 'When on, free catalog file hosting goes "sold out" once free uploads together reach the cap below — paid uploads never count against this.', 'bool'],
@@ -8383,6 +8384,97 @@ function AdminNav() {
   );
 }
 
+// Admin: what actually fills the Free-plan pool — every $0-provisioned pool/repo with
+// its owner. Makes the gauge auditable instead of a black box (root of the "70/10 GB
+// while empty" confusion: admin/promo repos used to be miscounted as free-plan usage).
+function FreePoolBreakdown({ open, onClose }) {
+  const { t } = useI18n();
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    if (!open) return;
+    setData(null);
+    api.get('/admin/hosting/free-pool').then((r) => setData(r.entries || [])).catch(() => setData([]));
+  }, [open]);
+  const total = (data || []).reduce((a, e) => a + (e.gb || 0), 0);
+  return (
+    <Modal open={open} onClose={onClose} title={t('fpb.title', 'Free-plan pool breakdown')} icon={Gift} width="max-w-lg">
+      {data == null ? <Loading /> : data.length === 0 ? (
+        <EmptyState icon={Gift} title={t('fpb.empty.t', 'Pool is empty')} sub={t('fpb.empty.s', 'No repo or pool was provisioned through the $0 Free plan. Admin-provisioned and promo repos never count here.')} />
+      ) : (
+        <div className="space-y-1.5">
+          <div className="text-xs text-[var(--muted)] mb-2">{t('fpb.desc', 'Everything provisioned through the actual $0 Free plan. Admin-provisioned and promo-granted repos are excluded by design.')}</div>
+          {data.map((e) => (
+            <Card key={e.id} className="p-3 flex items-center gap-3">
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-emerald-500/10 border border-[var(--line)] shrink-0">{e.type === 'pool' ? <Layers size={14} className="text-emerald-400" /> : <Server size={14} className="text-emerald-400" />}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{e.name} {e.type === 'pool' && <span className="text-[11px] text-[var(--faint)]">· {t('fpb.repos', '{n} repo(s)').replace('{n}', e.repoCount)}</span>}</div>
+                <div className="text-xs text-[var(--faint)] truncate">{e.owner} · {e.email}</div>
+              </div>
+              <span className="tabular-nums text-sm font-semibold shrink-0">{(e.gb || 0).toFixed(1)} GB</span>
+            </Card>
+          ))}
+          <div className="flex items-center justify-between pt-2 mt-1 border-t border-[var(--line)] text-sm"><span className="text-[var(--muted)]">{t('fpb.total', 'Total counted')}</span><span className="tabular-nums font-semibold">{total.toFixed(1)} GB</span></div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// Admin: manage the submission temp margin — see the PENDING payloads awaiting review
+// and the REJECTED ones squatting space in their purge grace, and reclaim either now.
+function TempStorageManager({ open, onClose, onChange }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const dialog = useDialog();
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const load = () => { setData(null); api.get('/admin/catalog/temp-storage').then(setData).catch(() => setData({ items: [] })); };
+  useEffect(() => { if (open) load(); }, [open]);
+  const purgeOne = async (it) => {
+    if (!(await dialog.confirm({ title: t('ts.purge1.t', 'Purge this file?'), message: t('ts.purge1.b', 'Deletes the uploaded file for "{name}" to reclaim space. The submission row stays; this cannot be undone.').replace('{name}', it.name), okLabel: t('ts.purge', 'Purge'), danger: true }))) return;
+    setBusy(it.id);
+    try { await api.post(`/admin/catalog/${it.id}/purge-payload`); toast.success(t('ts.purged', 'File purged.')); load(); onChange?.(); }
+    catch { toast.error(t('acc.failed', 'Failed.')); } finally { setBusy(null); }
+  };
+  const purgeAllRejected = async () => {
+    if (!(await dialog.confirm({ title: t('ts.purgeall.t', 'Purge all rejected files?'), message: t('ts.purgeall.b', 'Deletes every rejected submission file still in its grace window. Cannot be undone.'), okLabel: t('ts.purge', 'Purge'), danger: true }))) return;
+    setBusy('__all__');
+    try { const r = await api.post('/admin/catalog/purge-rejected'); toast.success(t('ts.purgedn', 'Purged {n} file(s).').replace('{n}', r.purged)); load(); onChange?.(); }
+    catch { toast.error(t('acc.failed', 'Failed.')); } finally { setBusy(null); }
+  };
+  const items = data?.items || [];
+  const rejected = items.filter((i) => i.status === 'REJECTED');
+  const fmtAge = (d) => { const days = Math.floor((Date.now() - new Date(d)) / 864e5); return days <= 0 ? t('ts.today', 'today') : t('ts.daysago', '{n}d ago').replace('{n}', days); };
+  return (
+    <Modal open={open} onClose={onClose} title={t('ts.title', 'Temp storage — submission payloads')} icon={Upload} width="max-w-2xl"
+      footer={rejected.length > 0 ? <Button variant="ghost" className="!text-red-400" disabled={busy === '__all__'} onClick={purgeAllRejected}>{busy === '__all__' ? <Spinner /> : <><Trash2 size={14} /> {t('ts.purgeallbtn', 'Purge all rejected ({n})').replace('{n}', rejected.length)}</>}</Button> : null}>
+      {data == null ? <Loading /> : items.length === 0 ? (
+        <EmptyState icon={CheckCircle2} title={t('ts.empty.t', 'Nothing held')} sub={t('ts.empty.s', 'No submission payloads are occupying the temp margin right now.')} />
+      ) : (
+        <>
+          <div className="flex gap-3 mb-3 text-xs">
+            <span className="flex items-center gap-1.5 text-[var(--muted)]"><span className="w-2.5 h-2.5 rounded-sm bg-amber-400" /> {t('ts.pending', 'Pending')} <b className="text-[var(--text)] tabular-nums">{(data.pendingMB || 0).toFixed(1)} MB</b></span>
+            <span className="flex items-center gap-1.5 text-[var(--muted)]"><span className="w-2.5 h-2.5 rounded-sm bg-red-400/70" /> {t('ts.rejected', 'Rejected (in grace)')} <b className="text-[var(--text)] tabular-nums">{(data.rejectedMB || 0).toFixed(1)} MB</b></span>
+          </div>
+          <div className="space-y-1.5 max-h-[52vh] overflow-y-auto">
+            {items.map((it) => (
+              <Card key={it.id} className="p-2.5 flex items-center gap-3">
+                <Badge tone={it.status === 'REJECTED' ? 'red' : 'amber'}>{it.status === 'REJECTED' ? t('ts.rej', 'rejected') : t('ts.pend', 'pending')}</Badge>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{it.name} <span className="text-[11px] text-[var(--faint)]">· {it.kind}</span></div>
+                  <div className="text-xs text-[var(--faint)] truncate">{it.owner} · {it.status === 'REJECTED' && it.purgeAt ? t('ts.autopurge', 'auto-purge {when}').replace('{when}', fmtAge(it.updatedAt)) : fmtAge(it.updatedAt)}</div>
+                </div>
+                <span className="tabular-nums text-xs font-semibold shrink-0">{(it.sizeMB || 0).toFixed(1)} MB</span>
+                <Button size="sm" variant="ghost" className="!text-red-400" disabled={busy === it.id} onClick={() => purgeOne(it)}>{busy === it.id ? <Spinner /> : <Trash2 size={13} />}</Button>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 function AdminSettings() {
   const toast = useToast();
   const { t } = useI18n();
@@ -8391,6 +8483,8 @@ function AdminSettings() {
   const [draft, setDraft] = useState({});
   const [busy, setBusy] = useState(null);
   const [unit, setUnit] = useState({}); // settingKey -> 'MB' | 'GB' (display unit only)
+  const [freePoolOpen, setFreePoolOpen] = useState(false);
+  const [tempOpen, setTempOpen] = useState(false);
   useEffect(() => { if (data?.settings) setDraft(data.settings); }, [data]);
   const coerce = (v, kind) => kind === 'bool' ? !!v : (v !== '' && !isNaN(Number(v)) ? Number(v) : v);
   const save = async (key, kind) => {
@@ -8463,8 +8557,10 @@ function AdminSettings() {
             {c.diskFreeGB != null && <div className="text-[11px] text-[var(--faint)] mt-1.5">{t('hs.realdisk', 'Real disk:')} <b className="text-[var(--text)]">{t('hs.gbfree', '{n} GB free').replace('{n}', c.diskFreeGB.toFixed(0))}</b> / {t('hs.gbtotal', '{n} GB total').replace('{n}', c.diskTotalGB?.toFixed(0))}.</div>}
             {c.freeTierCapEnabled && c.freeTierCapGB > 0 && (
               <div className="mt-3 pt-3 border-t border-[var(--line)]">
-                <div className="flex items-center justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1.5"><Gift size={12} className="text-emerald-400" /> {t('hs.freepool', 'Free-plan pool (separate)')}</span><span className="tabular-nums font-medium">{(c.freeTierUsedGB || 0).toFixed(1)} / {c.freeTierCapGB} GB</span></div>
-                <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, ((c.freeTierUsedGB || 0) / c.freeTierCapGB) * 100)}%` }} /></div>
+                <button type="button" onClick={() => setFreePoolOpen(true)} className="w-full text-left group" title={t('hs.freepool.view', 'See what fills this pool')}>
+                  <div className="flex items-center justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1.5 group-hover:text-[var(--text)]"><Gift size={12} className="text-emerald-400" /> {t('hs.freepool', 'Free-plan pool (separate)')} <ArrowUpRight size={11} className="opacity-40 group-hover:opacity-100" /></span><span className="tabular-nums font-medium">{(c.freeTierUsedGB || 0).toFixed(1)} / {c.freeTierCapGB} GB</span></div>
+                  <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, ((c.freeTierUsedGB || 0) / c.freeTierCapGB) * 100)}%` }} /></div>
+                </button>
               </div>
             )}
             {/* BMM telemetry storage — used vs. the admin-set allocation (separate DB). */}
@@ -8485,6 +8581,7 @@ function AdminSettings() {
         );
       })()}
       <TelemetryConfigCard />
+      <FreePoolBreakdown open={freePoolOpen} onClose={() => setFreePoolOpen(false)} />
       {/* Temp submissions margin — live usage. Uploads (.bmmplugin / .bmmtheme / app
           payloads) are refused once this is full, until moderation clears space. */}
       {c && (
@@ -8493,10 +8590,18 @@ function AdminSettings() {
             <span className="flex items-center gap-2 text-[var(--muted)]"><Upload size={14} className="text-[var(--primary-2)]" /> {t('hs.tempstore', 'Temp storage (submissions)')}</span>
             <span className="font-semibold tabular-nums">{(c.tempUsedGB ?? 0).toFixed(2)} / {c.tempMarginGB ?? 0} GB</span>
           </div>
-          <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${tempPct > 90 ? 'bg-red-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} style={{ width: `${tempPct}%` }} /></div>
-          <div className="text-[11px] text-[var(--faint)] mt-1.5">{t('hs.tempnote', 'Submitted files (.bmmplugin, .bmmtheme, app payloads) live here until moderation. When full, new submission uploads are refused.')}</div>
+          <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden flex">
+            <div className={`h-full ${tempPct > 90 ? 'bg-red-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} style={{ width: `${(c.tempMarginGB ? Math.min(100, ((c.tempPendingGB || 0) / c.tempMarginGB) * 100) : 0)}%` }} title={t('hs.temppending', 'Pending review')} />
+            <div className="h-full bg-red-400/60" style={{ width: `${(c.tempMarginGB ? Math.min(100, ((c.tempRejectedGB || 0) / c.tempMarginGB) * 100) : 0)}%` }} title={t('hs.temprejected', 'Rejected (in grace)')} />
+          </div>
+          <div className="flex items-center justify-between gap-2 mt-1.5 flex-wrap">
+            <div className="text-[11px] text-[var(--faint)]">{t('hs.tempnote', 'Submitted files (.bmmplugin, .bmmtheme, app payloads) live here until moderation. When full, new submission uploads are refused.')}
+              {(c.tempRejectedGB || 0) > 0.001 && <span className="text-red-400"> · {t('hs.temprej', '{n} GB held by rejected files in grace').replace('{n}', (c.tempRejectedGB || 0).toFixed(2))}</span>}</div>
+            <Button size="sm" variant="ghost" onClick={() => setTempOpen(true)}><Files size={13} /> {t('hs.tempmanage', 'Manage')}</Button>
+          </div>
         </Card>
       )}
+      <TempStorageManager open={tempOpen} onClose={() => setTempOpen(false)} onChange={() => cap.reload?.()} />
       <div className="space-y-5">
         {SETTINGS_GROUPS.map((g) => (
           <div key={g.title} className="card rounded-2xl overflow-hidden">
