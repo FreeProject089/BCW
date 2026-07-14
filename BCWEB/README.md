@@ -1,7 +1,10 @@
 # BCWEB — BetterCommunity Web
 
 The web platform uniting **BMM**, **BSM** and future Better* projects: per-project
-blogs & catalogs, user accounts, an admin back-office, and paid Server-Repo hosting.
+blogs, an official catalog + **community-hosted catalogs** (public or private, gated by
+IP / creator id / BC id / email / Discord), a full-page **submit wizard**, user accounts,
+an admin back-office, and **storage-pool hosting** — buy space and fill it freely with
+repos and/or catalogs (billing anchors to the pool).
 
 📚 **All guides live in [`guides/`](./guides/)** — deployment (EN/FR), local setup,
 domain & HTTPS, app features, technical analysis, architecture, API reference.

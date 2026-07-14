@@ -19,18 +19,45 @@
 - **Unique BC id** — chaque compte a un id de support stable `BC-XXXX-XXXX`.
 
 ## Parcourir & catalogue
-- **Catalogue** d'apps / plugins / thèmes / presets, filtre par projet / type / recherche.
-- **Pages d'item** avec détails, versions, téléchargements (plusieurs options de
-  téléchargement en dropdown), et un lien `catalog.json` copiable (flux consommable par BMM).
-- **Soumettre** un item ou proposer une mise à jour → file de modération ; les presets et
-  paquets de plugins sont validés (intégrité + checksums).
-- **Privé par défaut** (comme les Server-Repos) : un item n'apparaît dans le catalogue
+- **Catalogue** d'apps / plugins / thèmes / presets — barre de filtres nette : switcher de
+  projet (Tous / BMM / BSM), tri, recherche, pills de type à icônes. Une bande **Catalogues
+  communautaires** sous la grille officielle liste les catalogues hébergés par les membres
+  (bien séparés visuellement des items officiels de confiance).
+- **Pages d'item** avec détails, versions, téléchargements (plusieurs options en dropdown),
+  et un lien `catalog.json` copiable (flux consommable par BMM).
+- **Wizard de soumission** (`/submit`) — flux pleine page à deux chemins :
+  1. **Proposer au catalogue officiel** (gratuit, modéré) : dépose un `.bmmplug`, un `.json`
+     de thème/preset, ou un `catalog.json` entier → **analyse automatique** qui préremplit
+     le formulaire ; un fichier catalogue bascule en **mode masse** (une proposition par
+     entrée). Un panneau « Avancé » garde l'éditeur JSON brut. Envois jusqu'à 100 Mo ; les
+     fichiers plus gros passent par la page contact. PoW + toast d'annulation + modération
+     conservés.
+  2. **Héberger ton propre catalogue** : **raw** (dépose ton `catalog.json`, téléchargements
+     self-hosted — gratuit) ou **managed** (items + fichiers chez nous, puisés dans un pool).
+- **Catalogues communautaires** — tu héberges ton propre catalogue d'apps/plugins/thèmes.
+  Public ou **privé** (sur invitation) : un catalogue privé n'est jamais listé et son flux +
+  téléchargements sont protégés par une liste d'accès — **IP, creator id, BC id, e-mail ou
+  Discord** (même modèle que les Server-Repos), plus des **bans** sur 3 couches (site +
+  owner + catalogue). Chaque catalogue a une page `/c/:slug` avec des deep-links **« Ajouter
+  à BMM »** par type + une URL de flux copiable. Les admins les modèrent (suspendre /
+  délister) dans l'onglet *Catalogues communautaires*.
+- **Item privé par défaut** (comme les Server-Repos) : un item n'apparaît dans le catalogue
   public + le flux `catalog.json` qu'une fois validé par un admin. Avant ça il reste
   **privé** mais accessible via son **lien de partage** (`?k=…`) ; ce lien marche aussi
   une fois public. **Suspendre** (admin) est plus fort qu'un rejet : l'owner ne peut plus
   resoumettre (rejet → il corrige et resoumet ; suspension → contacter le support).
 
-## Hébergement Server-Repo
+## Hébergement (pools de stockage)
+- **Achète de l'espace, utilise-le librement** — un achat provisionne un **pool de
+  stockage** (pas un repo fixe). Remplis-le comme tu veux : un repo, plusieurs repos, des
+  catalogues, ou un mélange — repos et catalogues partagent les mêmes octets du pool, et
+  libérer l'un rend la place à l'autre. Un pool fraîchement acheté et vide apparaît dans
+  *Mes Repos* comme une carte actionnable (« Ajouter un dépôt » / « Ajouter un catalogue »).
+  Plans (5/10/25/50 Go + custom) et un free-tier à 0 $.
+- **La facturation est rattachée au pool** — la souscription (terme prépayé ou auto-renew)
+  est sur le pool ; un achat peut donc contenir des repos, des catalogues, ou rien encore.
+  À l'expiration, tout le pool (ses repos **et** catalogues) est suspendu avec la grâce de
+  suppression habituelle de 72h ; le renouvellement (auto ou manuel) restaure tout.
 - **Héberger un repo** (payant ou free-tier), **auto-publication** par l'owner, URL auto.
 - **Niveaux de confiance** — badges Communauté / Partenaire / Officiel (officiel + partenaire
   remontent en tête de la liste publique) ; filtrables sur /repos et dans la liste admin.
@@ -76,7 +103,14 @@
   en notification ; le compte est déconnecté sous ~15s et bloqué à la reconnexion jusqu'à
   la levée (permanent → contacter le support). Staff/soi-même protégés.
 - **Rôles & accès** (SUPERADMIN) — réassigner les rôles ; politique whitelist/ban
-  globale ; accorder la permission server-control.
+  globale ; accorder la permission server-control. Des **capacités granulaires** permettent
+  d'accorder à un MOD/USER une seule zone admin (`manage_users` / `manage_repos` /
+  `manage_analytics` / `manage_newsletter` / `manage_faq` / `manage_catalogs`) — le
+  dashboard n'affiche alors que ses sections et l'API vérifie chaque action ; les grants
+  prennent effet sans reconnexion et une permission manquante s'affiche en toast explicite.
+- **Catalogues communautaires** (cap `manage_catalogs`) — modérer les catalogues hébergés
+  par les membres : recherche, **suspendre** (masqué à tous), **délister** (retiré du
+  navigateur public, l'URL marche encore), et l'inverse.
 - **Repos & hosting** — server repos (expiration, statut de paiement, annulation),
   hébergement gratuit, codes promo (discount / hébergement gratuit / boost gratuit),
   stockage (tous les consommateurs).
