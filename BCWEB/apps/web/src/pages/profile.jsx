@@ -10,7 +10,7 @@ import { DiscordIcon, KofiIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint, Youtube, Twitch, Gamepad2, Github } from 'lucide-react';
+import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint, Youtube, Twitch, Gamepad2, Github, X } from 'lucide-react';
 import { stagePending, addLocalAccount, attachBackupCodesBySecret } from '../lib/twofa-lib.js';
 import { TotpQuickFill } from './twofa-fill.jsx';
 

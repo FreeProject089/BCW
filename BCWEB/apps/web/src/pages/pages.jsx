@@ -10,7 +10,7 @@ import {
   CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss,
   Info, Orbit, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, ShoppingCart,
   Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2,
-  Home as HomeIcon, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw,
+  Home as HomeIcon, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar,
 } from 'lucide-react';
 import { api, uploadPayload, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
