@@ -612,7 +612,9 @@ export default async function repoRoutes(app) {
     if (!g) return reply.code(404).send({ error: 'not_found' });
     if (g.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role)) return reply.code(403).send({ error: 'owner_only' });
     const subs = await p.subscription.findMany({ where: { hostingGroupId: g.id, status: 'active' }, include: { plan: true } });
-    const paid = subs.filter((s) => s.plan && s.plan.priceMonthlyCents > 0);
+    // Only recurring paid subs (a live Stripe subscription) can actually be consolidated —
+    // quote on the same set the execute path uses so the numbers match reality.
+    const paid = subs.filter((s) => s.plan && s.plan.priceMonthlyCents > 0 && s.stripeSubId);
     if (paid.length < 2) return { eligible: false, subCount: subs.length };
     const s = await settings(p);
     const currentMonthlyCents = paid.reduce((a, x) => a + x.plan.priceMonthlyCents, 0);
@@ -624,12 +626,57 @@ export default async function repoRoutes(app) {
     const base = priceCents(s, sumGB, sumUploadMbps, sumCpu);
     const discount = Math.min(Math.max(Number(s['pricing.consolidationDiscount'] ?? 0), 0), 0.9);
     const consolidatedMonthlyCents = Math.round(base * (1 - discount));
+    const savingCents = Math.max(0, currentMonthlyCents - consolidatedMonthlyCents);
     return {
       eligible: true, subCount: paid.length, sumGB,
-      currentMonthlyCents, consolidatedMonthlyCents,
-      savingCents: Math.max(0, currentMonthlyCents - consolidatedMonthlyCents),
+      currentMonthlyCents, consolidatedMonthlyCents, savingCents,
       discountPct: Math.round(discount * 100),
+      // The execute path also requires a real saving and a chargeable amount.
+      canExecute: consolidatedMonthlyCents < currentMonthlyCents && consolidatedMonthlyCents >= 50,
     };
+  });
+
+  // Execute the consolidation: replace a pool's several RECURRING paid subs with one bigger
+  // recurring plan via Stripe Checkout. Only recurring subs (live stripeSubId) are eligible —
+  // this never forfeits a prepaid one-time term. The quote is recomputed server-side (never
+  // trust the client), and we refuse if it wouldn't actually save money. On payment the
+  // webhook (pool_consolidate) attaches the new sub and cancels the old ones with proration.
+  app.post('/me/hosting/groups/:id/consolidate', { preHandler: requireRole() }, async (req, reply) => {
+    if (!stripe) return reply.code(503).send({ error: 'stripe_not_configured' });
+    const p = await db();
+    const g = await p.hostingGroup.findUnique({ where: { id: req.params.id }, select: { id: true, ownerId: true, name: true, poolBytes: true } });
+    if (!g) return reply.code(404).send({ error: 'not_found' });
+    if (g.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role)) return reply.code(403).send({ error: 'owner_only' });
+    const subs = await p.subscription.findMany({ where: { hostingGroupId: g.id, status: 'active' }, include: { plan: true } });
+    const recurring = subs.filter((x) => x.plan && x.plan.priceMonthlyCents > 0 && x.stripeSubId);
+    if (recurring.length < 2) return reply.code(400).send({ error: 'not_consolidatable' });
+    const s = await settings(p);
+    const currentMonthlyCents = recurring.reduce((a, x) => a + x.plan.priceMonthlyCents, 0);
+    const sumGB = recurring.reduce((a, x) => a + x.plan.storageGB, 0);
+    const sumUploadMbps = recurring.reduce((a, x) => a + x.plan.uploadLimitKbps, 0) / 1024;
+    const sumCpu = recurring.reduce((a, x) => a + x.plan.cpuShare, 0);
+    const base = priceCents(s, sumGB, sumUploadMbps, sumCpu);
+    const discount = Math.min(Math.max(Number(s['pricing.consolidationDiscount'] ?? 0), 0), 0.9);
+    const consolidatedMonthlyCents = Math.round(base * (1 - discount));
+    // Guard against a consolidation that would RAISE the bill (losing per-sub free floors),
+    // and against a sub-minimum Stripe recurring charge.
+    if (consolidatedMonthlyCents >= currentMonthlyCents) return reply.code(409).send({ error: 'no_saving' });
+    if (consolidatedMonthlyCents < 50) return reply.code(409).send({ error: 'amount_too_low' });
+    // Mint a hidden consolidated plan (inactive: not sold on the plans page).
+    const plan = await p.hostingPlan.create({ data: { name: `Consolidated ${sumGB}GB pool`, storageGB: sumGB, uploadLimitKbps: Math.round(sumUploadMbps * 1024), cpuShare: sumCpu, priceMonthlyCents: consolidatedMonthlyCents, active: false } });
+    const customer = await ensureCustomer(p, req.user.uid);
+    const siteUrl = (process.env.SITE_URL || 'http://localhost').replace(/\/+$/, '');
+    const md = { type: 'pool_consolidate', groupId: g.id, userId: g.ownerId, planId: plan.id,
+      cancelSubIds: recurring.map((r) => r.id).join(','), cancelStripeSubIds: recurring.map((r) => r.stripeSubId).join(',') };
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription', customer,
+      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: consolidatedMonthlyCents, recurring: { interval: 'month' }, product_data: { name: `Consolidated hosting — ${sumGB}GB pool "${g.name}"` } } }],
+      subscription_data: { metadata: md },
+      metadata: md,
+      success_url: `${siteUrl}/dashboard?hosting=consolidated`,
+      cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
+    });
+    return { url: session.url };
   });
 
   // Free switch: single hosted repo → multi (mints a pool sized to its quota), and back.

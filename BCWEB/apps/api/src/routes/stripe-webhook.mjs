@@ -231,6 +231,34 @@ export default async function stripeWebhook(app) {
         return { received: true };
       }
 
+      // Pool consolidation: several recurring subs in one pool were replaced by ONE bigger
+      // plan (checkout just paid the first cycle). Attach the new consolidated sub to the
+      // pool carrying the WHOLE pool's storage, retire the old subs in our DB, and cancel
+      // the old recurring Stripe subs with proration (Stripe credits their unused time).
+      if (meta.type === 'pool_consolidate' && meta.groupId && meta.userId && meta.planId) {
+        // Idempotency: Stripe retries webhooks. If we already anchored this consolidated
+        // Stripe sub, do nothing (a second create would double the pool's byte count).
+        const already = s.subscription ? await p.subscription.findUnique({ where: { stripeSubId: s.subscription } }) : null;
+        if (already) return { received: true };
+        const group = await p.hostingGroup.findUnique({ where: { id: meta.groupId } });
+        const plan = await p.hostingPlan.findUnique({ where: { id: meta.planId } });
+        if (group && plan) {
+          const currentPeriodEnd = new Date(Date.now() + 30 * 864e5);
+          await p.subscription.create({ data: { userId: meta.userId, hostingGroupId: group.id, planId: plan.id, status: 'active', poolContribBytes: group.poolBytes, currentPeriodEnd, stripeSubId: s.subscription || null } });
+          const oldIds = (meta.cancelSubIds || '').split(',').filter(Boolean);
+          if (oldIds.length) await p.subscription.updateMany({ where: { id: { in: oldIds } }, data: { status: 'cancelled' } });
+          for (const sid of (meta.cancelStripeSubIds || '').split(',').filter(Boolean)) {
+            // prorate: Stripe issues a credit for the unused portion of each cancelled sub.
+            if (sid && sid !== s.subscription) await stripe.subscriptions.cancel(sid, { prorate: true }).catch(() => {});
+          }
+          // Sum of ACTIVE subs' contrib = the new consolidated sub alone = poolBytes (unchanged).
+          await recomputePoolBytes(p, group.id);
+          await p.payment.create({ data: { userId: meta.userId, hostingGroupId: group.id, kind: 'HOSTING', description: `Consolidated pool "${group.name}" onto a single plan`, amountCents: s.amount_total ?? 0, currency: s.currency || 'usd', stripeSessionId: s.id } }).catch(() => {});
+          await notify(p, meta.userId, 'hosting_started', `Pool "${group.name}" is now billed as a single consolidated plan.`);
+        }
+        return { received: true };
+      }
+
       const { userId, planId, repoName } = meta;
       const plan = await p.hostingPlan.findUnique({ where: { id: planId } });
       if (plan && userId) {

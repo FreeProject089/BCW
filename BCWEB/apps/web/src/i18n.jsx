@@ -781,6 +781,7 @@ const DICT = {
     'pools.consol.cta': '{n} abonnements distincts — voir les économies de consolidation', 'pools.consol.err': 'Impossible de charger l’estimation.',
     'pools.consol.now': 'Actuellement', 'pools.consol.subs': 'abos', 'pools.consol.one': 'Un plan de {gb} Go', 'pools.consol.save': 'économise {v}/mois',
     'pools.consol.how': 'Pour consolider : achète un seul plan pour tout le pool depuis Hébergement, puis annule les petits abonnements.', 'pools.consol.noteligible': 'Les abonnements de ce pool ne peuvent pas être consolidés pour une économie pour l’instant.',
+    'pools.consol.do': 'Consolider en un seul plan', 'pools.consol.nosave': 'Aucune économie disponible pour l’instant.',
     'pp.copied': '{n} copié.', 'pp.clickcopy': 'clique pour copier',
     'pools.merge.m': 'Déplacer tout le contenu de « {s} » dans « {t} » ? Les deux abonnements restent facturés séparément, mais tu obtiens une seule grosse pool. Irréversible.',
     'fh.title2': 'Hébergement gratuit (pool de stockage)', 'fh.sub2': 'Provisionne un pool de stockage directement — sans paiement — que le propriétaire remplit de dépôts et de catalogues. Laisse l’e-mail vide pour l’héberger sous ton propre compte.',

@@ -466,6 +466,22 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
   // Valid merge targets = a selected pool (fold the rest into it) or, if the target is
   // unselected, any pool; sources = everything selected that isn't the target.
   const doMultiMerge = () => { if (!mergeInto) return; merge([...sel], mergeInto); };
+  // Lazy consolidation-savings quote for a merged pool (several separate paid subs). Purely
+  // informational — shows what one plan sized to the whole pool would cost vs. the sum of
+  // the current subs. No billing change happens here.
+  const [quotes, setQuotes] = useState({}); // { [poolId]: 'loading' | quoteObj | 'err' }
+  const loadQuote = async (g) => {
+    setQuotes((q) => ({ ...q, [g.id]: 'loading' }));
+    try { const r = await api.get(`/me/hosting/groups/${g.id}/consolidation`); setQuotes((q) => ({ ...q, [g.id]: r })); }
+    catch { setQuotes((q) => ({ ...q, [g.id]: 'err' })); }
+  };
+  const money = (c) => `${(c / 100).toFixed(2)}€`;
+  // Execute consolidation → Stripe Checkout for the single bigger plan (webhook cancels the
+  // old subs on payment). Redirects to the hosted checkout page.
+  const consolidate = async (g) => {
+    try { const r = await api.post(`/me/hosting/groups/${g.id}/consolidate`, {}); if (r.url) location.href = r.url; }
+    catch (x) { toast.error(x.data?.error === 'no_saving' ? t('pools.consol.nosave', 'No saving available right now.') : t('repos.failed', 'Failed.')); }
+  };
   return (
     <div className="mb-5 space-y-2.5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -522,6 +538,25 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
                 ))}
               </div>
             ) : <div className="mt-2 text-[11px] text-[var(--faint)]">{t('pools.empty', 'Empty — add a repo or catalog to start using this space.')}</div>}
+            {/* Merged pool carrying several separate paid subs → offer a consolidation quote. */}
+            {g.subCount >= 2 && (() => {
+              const q = quotes[g.id];
+              return <div className="mt-2.5 pt-2.5 border-t border-[var(--line)] text-[11px]">
+                {!q && <button onClick={() => loadQuote(g)} className="inline-flex items-center gap-1 text-[var(--primary-2)] hover:underline"><GitMerge size={12} /> {t('pools.consol.cta', '{n} separate subscriptions — see consolidation savings').replace('{n}', String(g.subCount))}</button>}
+                {q === 'loading' && <span className="text-[var(--faint)]">{t('common.loading', 'Loading…')}</span>}
+                {q === 'err' && <span className="text-[var(--faint)]">{t('pools.consol.err', 'Could not load the quote.')}</span>}
+                {q && typeof q === 'object' && (q.eligible
+                  ? <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[var(--muted)]">
+                      <span>{t('pools.consol.now', 'Now')}: <b className="text-[var(--text)]">{money(q.currentMonthlyCents)}/mo</b> ({q.subCount} {t('pools.consol.subs', 'subs')})</span>
+                      <span>→ {t('pools.consol.one', 'One {gb}GB plan').replace('{gb}', String(q.sumGB))}: <b className="text-[var(--text)]">{money(q.consolidatedMonthlyCents)}/mo</b>{q.discountPct > 0 && <span className="text-emerald-500"> (−{q.discountPct}%)</span>}</span>
+                      {q.savingCents > 0 && <span className="text-emerald-500 font-medium">{t('pools.consol.save', 'save {v}/mo').replace('{v}', money(q.savingCents))}</span>}
+                      {q.canExecute
+                        ? <div className="w-full mt-1"><Button size="sm" variant="primary" onClick={() => consolidate(g)}><GitMerge size={13} /> {t('pools.consol.do', 'Consolidate to one plan')}</Button></div>
+                        : <span className="text-[var(--faint)] w-full">{t('pools.consol.how', 'To consolidate: buy one plan for the whole pool from Hosting, then cancel the smaller subscriptions.')}</span>}
+                    </div>
+                  : <span className="text-[var(--faint)]">{t('pools.consol.noteligible', 'This pool’s subscriptions can’t be consolidated for a saving right now.')}</span>)}
+              </div>;
+            })()}
           </div>
         );
       })}
