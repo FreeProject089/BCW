@@ -148,6 +148,7 @@ model User {
   contactMessages    ContactMessage[]
   reportsMade        Report[]           @relation("ReportReporter")
   reportMessages     ReportMessage[]
+  socialConnections  SocialConnection[]
   loginAttempts      LoginAttempt[]
   auditLogEntries    AuditLogEntry[]
   repoFavorites      RepoFavorite[]
@@ -1324,6 +1325,23 @@ model ReportMessage {
   createdAt DateTime @default(now())
 
   @@index([reportId])
+}
+
+// A social account a user has linked to SHOW on their public profile (YouTube, Twitch,
+// GitHub, Steam). Separate from OAuthAccount/DiscordLink (which are for signing in). Each
+// provider is only offered if its credentials are configured server-side (.env).
+model SocialConnection {
+  id         String   @id @default(cuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  provider   String // youtube | twitch | github | steam
+  handle     String // display name / username
+  url        String // public profile URL
+  externalId String? // provider account id
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, provider])
+  @@index([userId])
 }
 
 model ContactMessage {

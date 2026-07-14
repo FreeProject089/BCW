@@ -279,7 +279,7 @@ export default async function authRoutes(app) {
       bio: z.string().max(280).optional(),
       avatar: z.object({ variant: z.string().max(20), seed: z.string().max(60), colors: z.array(z.string().max(9)).max(6).optional(), image: z.string().max(500).nullable().optional() }).nullable().optional(),
       profilePublic: z.boolean().optional(),
-      showConnections: z.array(z.enum(['github', 'discord', 'bmm', 'website'])).max(4).optional(),
+      showConnections: z.array(z.enum(['github', 'discord', 'bmm', 'website', 'youtube', 'twitch', 'steam'])).max(7).optional(),
       website: z.string().url().max(200).nullable().optional().or(z.literal('')),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });

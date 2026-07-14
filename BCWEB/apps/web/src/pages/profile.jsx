@@ -10,7 +10,7 @@ import { DiscordIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint } from 'lucide-react';
+import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint, Youtube, Twitch, Gamepad2, Github } from 'lucide-react';
 import { stagePending, addLocalAccount, attachBackupCodesBySecret } from '../lib/twofa-lib.js';
 import { TotpQuickFill } from './twofa-fill.jsx';
 
@@ -178,7 +178,7 @@ export default function Profile() {
             <div>
               <div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-1.5">{t('prof.showconn', 'Connections to show')}</div>
               <div className="flex flex-wrap gap-3">
-                {[['github', 'GitHub'], ['discord', 'Discord'], ['bmm', 'BMM (creator id)'], ['website', t('prof.website2', 'Website')]].map(([k, label]) => (
+                {[['github', 'GitHub'], ['youtube', 'YouTube'], ['twitch', 'Twitch'], ['steam', 'Steam'], ['discord', 'Discord'], ['bmm', 'BMM (creator id)'], ['website', t('prof.website2', 'Website')]].map(([k, label]) => (
                   <label key={k} className="flex items-center gap-1.5 text-sm cursor-pointer">
                     <input type="checkbox" checked={form.showConnections.includes(k)} onChange={(e) => setForm({ ...form, showConnections: e.target.checked ? [...form.showConnections, k] : form.showConnections.filter((x) => x !== k) })} /> {label}
                   </label>
@@ -227,6 +227,7 @@ export default function Profile() {
           <SectionLabel icon={Link2}>{t('prof.sec.connections', 'Connections')}</SectionLabel>
           <CreatorLinks />
           <DiscordLinks />
+          <SocialConnections />
           </div>
 
           <div className="space-y-4">
@@ -579,6 +580,53 @@ function DiscordLinks() {
       {msg === 'taken' && <div className="text-sm text-red-400 mt-2">{t('disl.taken', 'That Discord account is already linked.')}</div>}
       {msg === 'bad' && <div className="text-sm text-red-400 mt-2">{t('cl.bad', 'Invalid or expired code.')}</div>}
       {msg === 'error' && <div className="text-sm text-red-400 mt-2">{t('cl.error', 'Something went wrong.')}</div>}
+    </Card>
+  );
+}
+
+// Link YouTube / Twitch / GitHub / Steam accounts to show on the public profile. Only the
+// providers configured server-side (.env) are offered — the whole card hides if none are.
+const SOCIAL_META = [
+  ['youtube', Youtube, 'YouTube', '#ff0000'],
+  ['twitch', Twitch, 'Twitch', '#9146ff'],
+  ['github', Github, 'GitHub', 'var(--text)'],
+  ['steam', Gamepad2, 'Steam', '#66c0f4'],
+];
+function SocialConnections() {
+  const { t } = useI18n(); const toast = useToast();
+  const [providers, setProviders] = useState(null);
+  const [conns, setConns] = useState([]);
+  const load = () => Promise.all([api.get('/auth/connect/providers'), api.get('/me/connections')])
+    .then(([p, c]) => { setProviders(p); setConns(c.connections || []); }).catch(() => setProviders({}));
+  useEffect(() => { load(); }, []);
+  // Toast the connect result on return, then strip the query params.
+  useEffect(() => {
+    const q = new URLSearchParams(location.search);
+    if (q.get('connected')) { toast.success(t('sc.linked', 'Account linked.')); history.replaceState({}, '', location.pathname); }
+    else if (q.get('connect_error')) { toast.error(t('sc.failed', 'Could not link that account.')); history.replaceState({}, '', location.pathname); }
+  }, []); // eslint-disable-line
+  if (!providers) return null;
+  const configured = SOCIAL_META.filter(([k]) => providers[k]);
+  if (configured.length === 0) return null; // nothing configured → hide the card entirely
+  const linked = Object.fromEntries(conns.map((c) => [c.provider, c]));
+  const disconnect = async (k) => { try { await api.del(`/me/connections/${k}`); load(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  return (
+    <Card className="p-5">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--primary-2)]" /> {t('sc.title', 'Social accounts')}</div>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('sc.desc', 'Link accounts to show on your public profile. Choose which to display in the “Public profile” section above.')}</p>
+      <div className="space-y-2">
+        {configured.map(([k, Ico, label, color]) => { const c = linked[k]; return (
+          <div key={k} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
+            <Ico size={16} style={{ color }} className="shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="font-medium">{label}</div>
+              {c && <a href={c.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--faint)] hover:text-[var(--primary)] truncate block">{c.handle}</a>}
+            </div>
+            {c ? <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => disconnect(k)}><Trash2 size={13} /> {t('sc.disconnect', 'Disconnect')}</Button>
+              : <Button size="sm" variant="default" onClick={() => { window.location.href = `/api/auth/connect/${k}/start`; }}>{t('sc.connect', 'Connect')}</Button>}
+          </div>
+        ); })}
+      </div>
     </Card>
   );
 }

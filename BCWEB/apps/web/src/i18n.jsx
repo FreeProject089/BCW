@@ -1129,6 +1129,8 @@ const DICT = {
     'prof.viewpublic': 'Voir', 'prof.findpeople': 'Trouver des membres', 'prof.makepublic': 'Rendre mon profil public',
     'prof.showconn': 'Connexions à afficher', 'prof.showconn.d': 'Seules celles que tu as réellement liées apparaîtront. Rien n’est affiché par défaut.',
     'prof.saveprivacy': 'Enregistrer la confidentialité', 'prof.badges': 'Tes badges',
+    'sc.title': 'Comptes sociaux', 'sc.desc': 'Lie des comptes à afficher sur ton profil public. Choisis lesquels afficher dans la section « Profil public » ci-dessus.',
+    'sc.connect': 'Connecter', 'sc.disconnect': 'Déconnecter', 'sc.linked': 'Compte lié.', 'sc.failed': 'Impossible de lier ce compte.',
     'prof.bcidcopied': 'BC id copié.', 'prof.bcidcopy': 'Ton identifiant BetterCommunity unique — clique pour copier',
     'ccp.hostedby': 'Hébergé par', 'ccp.copybcid': 'Copier le BC id de l’hôte',
     'repos.bcidcopied': 'BC id de l’hôte copié.', 'repos.copybcid': 'Copier le BC id de l’hôte',

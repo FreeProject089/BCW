@@ -36,6 +36,7 @@ export default async function socialRoutes(app) {
         oauthAccounts: { select: { provider: true, username: true } },
         discordLinks: { select: { username: true } },
         creatorLinks: { select: { creatorId: true, displayName: true } },
+        socialConnections: { select: { provider: true, handle: true, url: true } },
       },
     });
     if (!u || u.status === 'banned') return reply.code(404).send({ error: 'not_found' });
@@ -53,11 +54,16 @@ export default async function socialRoutes(app) {
     // Only the connections the owner chose to surface (never emails).
     const show = new Set(u.showConnections || []);
     const gh = u.oauthAccounts.find((a) => a.provider === 'github');
+    const social = Object.fromEntries((u.socialConnections || []).map((c) => [c.provider, c]));
     const connections = {};
-    if (show.has('github') && gh?.username) connections.github = gh.username;
+    // github can come from a dedicated social connection or the login OAuth account.
+    if (show.has('github') && (social.github || gh?.username)) connections.github = social.github ? { handle: social.github.handle, url: social.github.url } : { handle: gh.username, url: `https://github.com/${gh.username}` };
     if (show.has('discord') && (u.discordLinks[0]?.username)) connections.discord = u.discordLinks[0].username;
     if (show.has('bmm') && u.creatorLinks[0]) connections.bmm = u.creatorLinks[0].displayName || u.creatorLinks[0].creatorId;
     if (show.has('website') && u.website) connections.website = u.website;
+    for (const prov of ['youtube', 'twitch', 'steam']) {
+      if (show.has(prov) && social[prov]) connections[prov] = { handle: social[prov].handle, url: social[prov].url };
+    }
 
     return {
       profile: {

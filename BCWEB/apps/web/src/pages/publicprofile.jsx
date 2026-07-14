@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Github, MessageSquare, Globe, Fingerprint, FolderGit2, Boxes, Download, Star, Share2, Calendar, Lock, Search, UserX } from 'lucide-react';
+import { Github, MessageSquare, Globe, Fingerprint, FolderGit2, Boxes, Download, Star, Share2, Calendar, Lock, Search, UserX, Youtube, Twitch, Gamepad2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, EmptyState, Spinner, Input, useToast } from '../ui/ui.jsx';
@@ -43,11 +43,17 @@ export default function PublicProfile() {
   const joined = new Date(u.joinedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long' });
   const share = () => { navigator.clipboard?.writeText(`${location.origin}/u/${u.id}`); toast.success(t('pp.shared', 'Profile link copied.')); };
 
+  // Object connections ({handle,url}) vs plain-string ones (discord/bmm/website).
+  const c = u.connections || {};
+  const obj = (x) => (x && typeof x === 'object' ? x : null);
   const connRows = [
-    ['github', Github, u.connections.github, (v) => `https://github.com/${v}`],
-    ['discord', MessageSquare, u.connections.discord, null],
-    ['bmm', Fingerprint, u.connections.bmm, null],
-    ['website', Globe, u.connections.website, (v) => v],
+    ['github', Github, obj(c.github)?.handle, obj(c.github)?.url || (typeof c.github === 'string' ? `https://github.com/${c.github}` : null)],
+    ['youtube', Youtube, obj(c.youtube)?.handle, obj(c.youtube)?.url],
+    ['twitch', Twitch, obj(c.twitch)?.handle, obj(c.twitch)?.url],
+    ['steam', Gamepad2, obj(c.steam)?.handle, obj(c.steam)?.url],
+    ['discord', MessageSquare, c.discord, null],
+    ['bmm', Fingerprint, c.bmm, null],
+    ['website', Globe, c.website, c.website],
   ].filter(([, , v]) => v);
 
   return (
