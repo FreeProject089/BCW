@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* While the full-page intro animation plays (<html data-intro>), keep toasts hidden so
+   nothing pops over the choreography. They reappear the moment the intro hands off. */
+:root[data-intro] .toast-host { opacity: 0; pointer-events: none; transition: none; }
+
 /* ─────────────────────────  Brand + themes  ─────────────────────────
    DA BetterCommunity: white / black + orange (the logo "C").
    Light = default (white + orange). Dark = black + orange (toggle).        */

@@ -214,7 +214,7 @@ export function ToastProvider({ children }) {
     <ToastCtx.Provider value={api}>
       {children}
       {createPortal(
-        <div className="fixed bottom-5 right-5 z-[60] flex flex-col gap-2 w-80 max-w-[calc(100vw-2.5rem)]">
+        <div className="toast-host fixed bottom-5 right-5 z-[60] flex flex-col gap-2 w-80 max-w-[calc(100vw-2.5rem)]">
           {items.map((t) => { const I = Ico[t.tone] || Info;
             const tone = t.tone === 'success' ? 'var(--success)' : t.tone === 'error' ? 'var(--error)' : 'var(--info)';
             return (

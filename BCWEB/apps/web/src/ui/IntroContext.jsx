@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState } from 'react';
+import { createContext, useContext, useRef, useState, useEffect } from 'react';
 
 // Shared "is the intro still playing" flag — Hero3D drives the actual GSAP/Three.js
 // choreography and reads/writes this; App.jsx just uses `active` to keep the real
@@ -27,6 +27,14 @@ export function IntroProvider({ children }) {
   const [active, setActiveState] = useState(() => !shouldSkipIntro());
   const finishedRef = useRef(false);
   const finish = () => { if (finishedRef.current) return; finishedRef.current = true; setActiveState(false); };
+  // Mirror the intro state onto <html data-intro> so cross-cutting UI mounted OUTSIDE this
+  // provider (the toast host lives above IntroProvider) can hide itself via CSS while the
+  // intro plays — a toast must never pop over the intro choreography.
+  useEffect(() => {
+    const el = document.documentElement;
+    if (active) el.setAttribute('data-intro', '1'); else el.removeAttribute('data-intro');
+    return () => el.removeAttribute('data-intro');
+  }, [active]);
   return <Ctx.Provider value={{ active, finish }}>{children}</Ctx.Provider>;
 }
 
