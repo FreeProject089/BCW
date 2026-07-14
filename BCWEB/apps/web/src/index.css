@@ -7,24 +7,27 @@
    Light = default (white + orange). Dark = black + orange (toggle).        */
 :root, [data-theme="light"] {
   color-scheme: light;
-  --bg: #faf8f5;
+  /* A warm off-white page (a touch deeper than before) so white cards visibly lift off it
+     instead of blending in — the old #faf8f5 vs #fff gap was barely perceptible. */
+  --bg: #f4efe8;
   --bg-solid: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f5f3ef;
-  --surface-3: #ece7df;   /* +1 elevation step (hover / popovers / raised rows) */
+  --surface-2: #f3eee6;
+  --surface-3: #e8e1d5;   /* +1 elevation step (hover / popovers / raised rows) */
   /* Opaque separator ring for OVERLAPPING avatars — must match the card/page colour so
      the gap reads clean. Using translucent --surface or flat --bg-solid showed a
      mismatched frame over the translucent cards + page glows ("le cadre buggé"). */
   --avatar-ring: #ffffff;
-  --line: rgba(24, 20, 14, 0.10);
-  --line-strong: rgba(24, 20, 14, 0.17);
-  --text: #1a1714;
-  --muted: #5d5750;
-  --faint: #918a80;
-  /* Light depth = SUBTLE shadows: low opacity, generous blur, no dark border. */
-  --shadow-sm: 0 1px 2px rgba(30, 20, 5, 0.05);
-  --shadow: 0 4px 24px -10px rgba(30, 20, 5, 0.12);
-  --shadow-lg: 0 14px 44px -14px rgba(30, 20, 5, 0.16);
+  --line: rgba(24, 20, 14, 0.12);
+  --line-strong: rgba(24, 20, 14, 0.22);
+  --text: #17140f;
+  --muted: #57514a;
+  --faint: #837c72;       /* darkened for legibility on white (was too light for WCAG AA) */
+  /* Light depth = SUBTLE shadows: low opacity, generous blur, no dark border. Nudged up a
+     hair so cards read as raised, not painted-on. */
+  --shadow-sm: 0 1px 2px rgba(30, 20, 5, 0.06);
+  --shadow: 0 6px 26px -12px rgba(30, 20, 5, 0.16);
+  --shadow-lg: 0 18px 48px -16px rgba(30, 20, 5, 0.20);
   --glow-a: rgba(249, 115, 22, 0.14);
   --glow-b: rgba(245, 158, 11, 0.12);
 }
