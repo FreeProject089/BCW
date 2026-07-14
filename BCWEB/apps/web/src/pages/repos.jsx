@@ -4,7 +4,7 @@ import {
   Server, GitBranch, Star, Plus, Pencil, Trash2, UploadCloud, Eye, EyeOff, CheckCircle2,
   XCircle, Clock, ShieldCheck, ExternalLink, Tag, Users, HardDrive, Settings2, Receipt, Printer, Rocket,
   Files, FileText, FileJson, FolderUp, CreditCard, Search, X, Wifi, WifiOff, Zap, Lock, Download, Copy, RefreshCw, AlertTriangle, LayoutDashboard, MoreHorizontal, Ticket,
-  Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake, Boxes,
+  Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake, Boxes, GitMerge,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ReportButton } from '../ui/report.jsx';
@@ -444,23 +444,44 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
   // Each pool gets a distinct accent: the owner's chosen colour, or a palette default by index.
   const colorOf = (g, i) => g.color || POOL_COLORS[i % POOL_COLORS.length];
   const setColor = async (g, color) => { try { await api.patch(`/me/hosting/groups/${g.id}`, { color }); reload?.(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
-  // Merge this pool INTO another (contents move, the two subscriptions keep billing
-  // separately, and the target becomes one bigger pool).
-  // Deferred with an undo window (the subscriptions move with the pool). It only actually
-  // merges when the toast timer elapses — Undo cancels it, nothing changes.
-  const merge = (sourceId, targetId) => {
-    const src = groups.find((g) => g.id === sourceId), tgt = groups.find((g) => g.id === targetId);
-    if (!tgt) return;
+  // Multi-select merge: tick several pools, pick which one they all fold into. The
+  // subscriptions move with their pool, and the target becomes one bigger pool.
+  const [sel, setSel] = useState(() => new Set());
+  const [mergeInto, setMergeInto] = useState('');
+  const toggleSel = (id) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  // Deferred with an undo window — only actually merges when the toast timer elapses;
+  // Undo cancels it and nothing changes. Accepts one or many source pools.
+  const merge = (sourceIds, targetId) => {
+    const ids = sourceIds.filter((id) => id !== targetId);
+    const tgt = groups.find((g) => g.id === targetId);
+    if (!tgt || ids.length === 0) return;
+    const names = ids.map((id) => groups.find((g) => g.id === id)?.name).filter(Boolean).map((n) => `"${n}"`).join(', ');
     toast.action({
       tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
-      msg: t('pools.merging', 'Merging "{s}" into "{t}"…').replace('{s}', src?.name || '').replace('{t}', tgt.name),
-      onCommit: async () => { try { await api.post('/me/hosting/groups/merge', { sourceId, targetId }); reload?.(); } catch (x) { toast.error(x.data?.error || t('repos.failed', 'Failed.')); } },
+      msg: t('pools.merging', 'Merging {s} into "{t}"…').replace('{s}', names).replace('{t}', tgt.name),
+      onCommit: async () => { try { await api.post('/me/hosting/groups/merge', { sourceIds: ids, targetId }); setSel(new Set()); setMergeInto(''); reload?.(); } catch (x) { toast.error(x.data?.error || t('repos.failed', 'Failed.')); } },
       onCancel: () => {},
     });
   };
+  // Valid merge targets = a selected pool (fold the rest into it) or, if the target is
+  // unselected, any pool; sources = everything selected that isn't the target.
+  const doMultiMerge = () => { if (!mergeInto) return; merge([...sel], mergeInto); };
   return (
     <div className="mb-5 space-y-2.5">
-      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><HardDrive size={13} className="text-[var(--primary-2)]" /> {t('pools.title', 'Storage pools')}</div>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><HardDrive size={13} className="text-[var(--primary-2)]" /> {t('pools.title', 'Storage pools')}</div>
+        {groups.length > 1 && sel.size >= 1 && (
+          <div className="flex items-center gap-1.5 flex-wrap text-xs">
+            <span className="text-[var(--faint)]">{t('pools.selcount', '{n} selected').replace('{n}', String(sel.size))}</span>
+            <select value={mergeInto} onChange={(e) => setMergeInto(e.target.value)} className="input !w-auto !py-1 !text-xs" title={t('pools.mergeinto', 'Merge into another pool')}>
+              <option value="">{t('pools.mergeinto', 'Merge into…')}</option>
+              {groups.filter((o) => !sel.has(o.id) || sel.size >= 2).map((o) => <option key={o.id} value={o.id}>{o.name}{sel.has(o.id) ? ` (${t('pools.keep', 'keep this one')})` : ''}</option>)}
+            </select>
+            <Button size="sm" variant="primary" disabled={!mergeInto || [...sel].filter((id) => id !== mergeInto).length === 0} onClick={doMultiMerge}><GitMerge size={13} /> {t('pools.mergebtn', 'Merge')}</Button>
+            <Button size="sm" variant="ghost" onClick={() => { setSel(new Set()); setMergeInto(''); }}>{t('common.clear', 'Clear')}</Button>
+          </div>
+        )}
+      </div>
       {groups.map((g, i) => {
         const free = Math.max(0, g.poolBytes - g.usedBytes);
         const repoPct = pct(g.repoBytes, g.poolBytes), catPct = pct(g.catalogBytes, g.poolBytes);
@@ -478,10 +499,9 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
               </div>
               <Button size="sm" variant="primary" onClick={() => onAddRepo(g)}><Plus size={13} /> {t('repos.addrepo', 'Add repo')}</Button>
               <a href={`/submit?pool=${g.id}`}><Button size="sm" variant="default"><Boxes size={13} /> {t('repos.addcatalog', 'Add catalog')}</Button></a>
-              {groups.length > 1 && <select value="" onChange={(e) => e.target.value && merge(g.id, e.target.value)} className="input !w-auto !py-1 !text-xs" title={t('pools.mergeinto', 'Merge into another pool')}>
-                <option value="">{t('pools.mergeinto', 'Merge into…')}</option>
-                {groups.filter((o) => o.id !== g.id).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-              </select>}
+              {groups.length > 1 && <label className="flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer select-none px-2 py-1 rounded-lg border border-[var(--line)] hover:border-[var(--primary-2)]" title={t('pools.selectmerge', 'Select to merge')}>
+                <input type="checkbox" checked={sel.has(g.id)} onChange={() => toggleSel(g.id)} /> <GitMerge size={12} /> {t('pools.select', 'Merge')}
+              </label>}
             </div>
             {/* Used bar: repos (orange) + catalogs (blue) + free (track). */}
             <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden flex">

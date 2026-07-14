@@ -506,27 +506,40 @@ export default async function repoRoutes(app) {
   // the source pool is deleted. The target's poolBytes becomes the sum of all active subs
   // (recomputePoolBytes) — one big pool, the discount of a larger plan applies on renewal.
   app.post('/me/hosting/groups/merge', { preHandler: requireRole() }, async (req, reply) => {
-    const b = z.object({ sourceId: z.string(), targetId: z.string() }).safeParse(req.body);
-    if (!b.success || b.data.sourceId === b.data.targetId) return reply.code(400).send({ error: 'invalid_input' });
+    // Accept one source (legacy `sourceId`) OR several (`sourceIds`) → merged into targetId.
+    const b = z.object({
+      sourceId: z.string().optional(),
+      sourceIds: z.array(z.string()).max(50).optional(),
+      targetId: z.string(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    // Normalise: unique source ids, none equal to the target.
+    const srcIds = [...new Set([...(b.data.sourceIds || []), ...(b.data.sourceId ? [b.data.sourceId] : [])])].filter((id) => id !== b.data.targetId);
+    if (srcIds.length === 0) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const [src, tgt] = await Promise.all([
-      p.hostingGroup.findUnique({ where: { id: b.data.sourceId } }),
+    const [sources, tgt] = await Promise.all([
+      p.hostingGroup.findMany({ where: { id: { in: srcIds } } }),
       p.hostingGroup.findUnique({ where: { id: b.data.targetId } }),
     ]);
-    if (!src || !tgt) return reply.code(404).send({ error: 'not_found' });
+    if (!tgt || sources.length !== srcIds.length) return reply.code(404).send({ error: 'not_found' });
     const staff = ['ADMIN', 'SUPERADMIN'].includes(req.user.role);
-    if ((src.ownerId !== req.user.uid || tgt.ownerId !== req.user.uid) && !staff) return reply.code(403).send({ error: 'owner_only' });
-    if (src.ownerId !== tgt.ownerId) return reply.code(400).send({ error: 'different_owners' });
-    // Move contents + re-anchor subs, then delete the (now empty) source and recompute.
+    // Every pool (target + all sources) must be owned by the caller (or caller is staff),
+    // and all must share one owner — pooled storage/subs can't cross accounts.
+    const allOwners = new Set([tgt.ownerId, ...sources.map((s) => s.ownerId)]);
+    if (!staff && [...allOwners].some((o) => o !== req.user.uid)) return reply.code(403).send({ error: 'owner_only' });
+    if (allOwners.size > 1) return reply.code(400).send({ error: 'different_owners' });
+    // Move contents + force-re-anchor every subscription, then delete the drained sources.
     await p.$transaction([
-      p.serverRepo.updateMany({ where: { groupId: src.id }, data: { groupId: tgt.id } }),
-      p.communityCatalog.updateMany({ where: { groupId: src.id }, data: { groupId: tgt.id } }),
-      p.subscription.updateMany({ where: { hostingGroupId: src.id }, data: { hostingGroupId: tgt.id } }),
+      p.serverRepo.updateMany({ where: { groupId: { in: srcIds } }, data: { groupId: tgt.id } }),
+      p.communityCatalog.updateMany({ where: { groupId: { in: srcIds } }, data: { groupId: tgt.id } }),
+      p.subscription.updateMany({ where: { hostingGroupId: { in: srcIds } }, data: { hostingGroupId: tgt.id } }),
+      p.hostingGroup.deleteMany({ where: { id: { in: srcIds } } }),
     ]);
-    await p.hostingGroup.delete({ where: { id: src.id } }).catch(() => {});
     await recomputePoolBytes(p, tgt.id);
-    await notify(p, tgt.ownerId, 'hosting_started', `Merged pool "${src.name}" into "${tgt.name}" — you now have one larger pool (${(Number(tgt.poolBytes + src.poolBytes) / GiB).toFixed(1)} GB).`).catch(() => {});
-    return { ok: true, groupId: tgt.id };
+    const totalGB = Number(sources.reduce((a, s) => a + s.poolBytes, tgt.poolBytes)) / GiB;
+    const names = sources.map((s) => `"${s.name}"`).join(', ');
+    await notify(p, tgt.ownerId, 'hosting_started', `Merged ${sources.length} pool${sources.length > 1 ? 's' : ''} (${names}) into "${tgt.name}" — you now have one larger pool (${totalGB.toFixed(1)} GB).`).catch(() => {});
+    return { ok: true, groupId: tgt.id, merged: sources.length };
   });
 
   // Free switch: single hosted repo → multi (mints a pool sized to its quota), and back.
