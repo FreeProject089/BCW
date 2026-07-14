@@ -102,6 +102,28 @@ export default async function communityCatalogRoutes(app) {
     return { catalogs: rows.map((c) => ({ ...ser(c), owner: c.owner?.displayName })) };
   });
 
+  // ── Public: a community catalog's metadata (for its /c/:slug page) ──
+  app.get('/c/:slug', { preHandler: optionalAuth() }, async (req, reply) => {
+    const p = await db();
+    const c = await p.communityCatalog.findUnique({ where: { slug: req.params.slug }, include: { owner: { select: { displayName: true } }, items: { select: { kind: true } }, _count: { select: { items: true } } } });
+    if (!isServable(c)) return reply.code(404).send({ error: 'not_found' });
+    const [globalPolicy, ownerPolicy, identity] = await Promise.all([
+      getGlobalAccessPolicy(p), getUserAccessPolicy(p, c.ownerId), resolveClientIdentity(p, req),
+    ]);
+    const denied = catalogGate(c, identity, globalPolicy, ownerPolicy, req.query?.k);
+    if (denied) return reply.code(denied.code).send({ error: denied.error });
+    // Which kinds this catalog actually serves (config union with what items carry).
+    const raw = c.rawJson || {};
+    const present = new Set(c.mode === 'raw'
+      ? [...(raw.plugins?.length ? ['PLUGIN'] : []), ...(raw.themes?.length ? ['THEME'] : []), ...(raw.apps?.length ? ['APP'] : [])]
+      : c.items.map((i) => i.kind));
+    for (const k of c.kinds || []) present.add(k.toUpperCase());
+    return { catalog: {
+      ...ser(c), owner: c.owner?.displayName, kindsPresent: [...present],
+      private: c.visibility === 'private', keySuffix: c.visibility === 'private' && req.query?.k ? `?k=${encodeURIComponent(String(req.query.k))}` : '',
+    } };
+  });
+
   // ── Public: the gated BMM-native feed for a community catalog ──
   // ?kind=app|plugin|theme (default = the catalog's first kind, else app).
   app.get('/c/:slug/catalog.json', { preHandler: optionalAuth() }, async (req, reply) => {

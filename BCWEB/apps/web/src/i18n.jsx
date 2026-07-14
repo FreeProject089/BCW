@@ -1337,6 +1337,15 @@ const DICT = {
     'cc.admin.search': 'Rechercher par nom ou e-mail du propriétaire…', 'cc.acted': 'Fait.', 'cc.unlisted': 'non listé', 'cc.items': 'items',
     'cc.suspend': 'Suspendre', 'cc.unsuspend': 'Réactiver', 'cc.unlist': 'Délister', 'cc.relist': 'Relister',
     'cc.admin.none.t': 'Aucun catalogue communautaire', 'cc.admin.none.s': 'Quand des utilisateurs hébergent leurs propres catalogues, ils apparaissent ici pour modération.',
+    // Catalog public : section communautaire + page /c/:slug
+    'cc.pub.title': 'Catalogues communautaires', 'cc.pub.desc': 'Catalogues hébergés par des membres de la communauté — ajoutés directement dans BMM comme source. Non vérifiés ; ajoute-les à ta discrétion.',
+    'ccp.title': 'Catalogue communautaire', 'ccp.by': 'par {name}', 'ccp.private': 'privé', 'ccp.copied': 'Copié.',
+    'ccp.private.t': 'Catalogue privé', 'ccp.private.s': 'Ce catalogue est privé — il te faut une invitation (ou un lien de partage) de son propriétaire.',
+    'ccp.banned.t': 'Accès bloqué', 'ccp.banned.s': 'Tu n’es pas autorisé à voir ce catalogue.',
+    'ccp.gone.t': 'Catalogue introuvable', 'ccp.gone.s': 'Il a peut-être été retiré ou suspendu.',
+    'ccp.empty.t': 'Rien à ajouter pour l’instant', 'ccp.empty.s': 'Ce catalogue n’a pas encore de contenu importable dans BMM.',
+    'ccp.addto': 'Ajouter à BetterModsManager', 'ccp.addbmm': 'Ajouter à BMM', 'ccp.copyurl': 'Copier l’URL du feed', 'ccp.view': 'Voir le feed', 'ccp.browse': 'Parcourir tous les catalogues',
+    'ccp.kind.plugin': 'Plugins', 'ccp.kind.theme': 'Thèmes', 'ccp.kind.app': 'Apps', 'ccp.kind.preset': 'Presets',
 
     // ── Admin : navigation configurable du menu ──
     'nav.title': 'Navigation du menu', 'nav.desc': 'Conçois le menu public : une liste ordonnée de liens et de groupes déroulants, chacun avec une icône et un nom dans les deux langues. Tant que c’est désactivé (ou vide), le site utilise sa navigation par défaut.',

@@ -23,6 +23,7 @@ import { BlogList, BlogPostPage } from './pages/blog.jsx';
 import Docs from './pages/docs.jsx';
 import Faq from './pages/faq.jsx';
 import { Submit } from './pages/submit.jsx';
+import CommunityCatalogPage from './pages/catalogpage.jsx';
 import NotFound from './pages/notfound.jsx';
 import { ReposPage } from './pages/repos.jsx';
 import { RepoDashboard } from './pages/repo-dashboard.jsx';
@@ -652,6 +653,7 @@ export default function App() {
               <Route path="/" element={<Home />} />
               <Route path="/catalog" element={<Catalog />} />
               <Route path="/submit" element={<Submit />} />
+              <Route path="/c/:slug" element={<CommunityCatalogPage />} />
               <Route path="/item/:slug" element={<ItemDetail />} />
               <Route path="/blog" element={<BlogList />} />
               <Route path="/blog/:slug" element={<BlogPostPage />} />

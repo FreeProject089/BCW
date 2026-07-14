@@ -610,6 +610,35 @@ export function Catalog() {
             </div>); })}
         </div>
       ) : <EmptyState icon={Inbox} title={t('cat.empty.t', 'Nothing here yet')} sub={t('cat.empty.s', 'Be the first to publish to this catalog.')} />)}
+      <CommunityCatalogsStrip />
+    </div>
+  );
+}
+
+// A strip of community-hosted catalogs under the official grid — separate from the
+// trusted official items (different trust level), each linking to its /c/:slug page.
+function CommunityCatalogsStrip() {
+  const { t } = useI18n();
+  const { data } = useAsync(() => api.get('/c'), []);
+  const cats = data?.catalogs || [];
+  if (!cats.length) return null;
+  return (
+    <div className="mt-8">
+      <div className="flex items-center gap-2 mb-3">
+        <h2 className="font-semibold flex items-center gap-2"><Boxes size={16} className="text-[var(--primary-2)]" /> {t('cc.pub.title', 'Community catalogs')}</h2>
+        <Badge tone="">{cats.length}</Badge>
+      </div>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('cc.pub.desc', 'Catalogs hosted by community members — added directly in BMM as a source. Unverified; add at your own discretion.')}</p>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {cats.map((c) => (
+          <Link key={c.id} to={`/c/${c.slug}`}><Card hover className="p-4 h-full">
+            <div className="flex items-center justify-between"><div className="grid place-items-center w-9 h-9 rounded-lg bg-emerald-500/10 border border-[var(--line)]"><Boxes size={17} className="text-emerald-400" /></div><Badge tone="">{c.itemCount} {t('cc.items', 'items')}</Badge></div>
+            <div className="font-semibold mt-3">{c.name}</div>
+            <div className="text-sm text-[var(--muted)] mt-1 line-clamp-2">{c.description || t('cat.nodesc', 'No description.')}</div>
+            <div className="text-xs text-[var(--faint)] mt-3 flex items-center gap-3"><span className="flex items-center gap-1"><Users size={12} /> {c.owner}</span><span className="flex items-center gap-1"><Download size={12} /> {c.downloads ?? 0}</span></div>
+          </Card></Link>
+        ))}
+      </div>
     </div>
   );
 }
