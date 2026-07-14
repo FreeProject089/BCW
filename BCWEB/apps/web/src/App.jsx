@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
@@ -88,14 +89,28 @@ const sheet = ({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-x
 // closes on outside-click / Esc / route change. Keyboard-focusable + aria-expanded.
 function NavDropdown({ item, t, lang }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const [pos, setPos] = useState(null);   // { left, top } fixed coords for the portaled panel
+  const ref = useRef(null);               // the trigger wrapper
+  const menuRef = useRef(null);           // the portaled panel
   const closeT = useRef(null);
   const loc = useLocation();
   const children = item.children || [];
   const active = children.some((c) => loc.pathname === c.to || loc.pathname.startsWith(c.to + '/'));
   useEffect(() => { setOpen(false); }, [loc.pathname]);
+  // The panel is rendered in a portal (see below) so it can escape the nav's
+  // overflow-x-auto clip; anchor it under the trigger and keep it there on scroll/resize.
+  const place = () => { const r = ref.current?.getBoundingClientRect(); if (r) setPos({ left: r.left, top: r.bottom + 6 }); };
+  useLayoutEffect(() => { if (open) place(); }, [open]);
   useEffect(() => {
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    if (!open) return;
+    const onScroll = () => place();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => { window.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', onScroll); };
+  }, [open]);
+  useEffect(() => {
+    // Outside-click closes — but the panel lives outside `ref` (portal), so exclude it too.
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target) && menuRef.current && !menuRef.current.contains(e.target)) setOpen(false); };
     const onEsc = (e) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onEsc);
@@ -108,8 +123,10 @@ function NavDropdown({ item, t, lang }) {
       <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="true" aria-expanded={open} className={pill({ isActive: active }) + ' shrink-0'}>
         <NavIcon item={item} size={16} /><span className="nav-lbl">{navLabel(item, t, lang)}</span><ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1.5 z-50 min-w-[248px] p-1.5 rounded-2xl border border-[var(--line)] topbar anim-fade" style={{ boxShadow: '0 14px 44px -12px rgba(0,0,0,0.42)' }}>
+      {open && pos && createPortal(
+        <div ref={menuRef} onMouseEnter={enter} onMouseLeave={leave}
+          className="fixed z-[70] min-w-[248px] p-1.5 rounded-2xl border border-[var(--line)] topbar anim-fade"
+          style={{ left: pos.left, top: pos.top, boxShadow: '0 14px 44px -12px rgba(0,0,0,0.42)' }}>
           {children.map((c, i) => (
             <NavLink key={c.to + i} to={c.to} onClick={() => setOpen(false)} className={({ isActive }) => `flex items-start gap-2.5 p-2 rounded-xl transition ${isActive ? 'bg-[var(--surface-2)]' : 'hover:bg-[var(--surface-2)]'}`}>
               <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><NavIcon item={c} size={15} /></span>
@@ -119,7 +136,8 @@ function NavDropdown({ item, t, lang }) {
               </span>
             </NavLink>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

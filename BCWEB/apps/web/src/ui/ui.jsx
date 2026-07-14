@@ -23,8 +23,8 @@ export function Button({ variant = 'default', size, className = '', loading = fa
   // `loading` → aria-busy shows the CSS spinner and blocks the click (also disables).
   return <button className={`btn ${v} ${size === 'sm' ? 'btn-sm' : ''} ${className}`} aria-busy={loading || undefined} disabled={disabled || loading} {...p}>{children}</button>;
 }
-export const Card = ({ hover, className = '', children, ...p }) =>
-  <div className={`card ${hover ? 'card-hover' : ''} ${className}`} {...p}>{children}</div>;
+export const Card = forwardRef(({ hover, className = '', children, ...p }, ref) =>
+  <div ref={ref} className={`card ${hover ? 'card-hover' : ''} ${className}`} {...p}>{children}</div>);
 export const Badge = ({ tone = '', className = '', children }) =>
   <span className={`badge ${tone ? `badge-${tone}` : ''} ${className}`}>{children}</span>;
 export const Input = forwardRef((p, ref) => <input ref={ref} {...p} className={`input ${p.className || ''}`} />);

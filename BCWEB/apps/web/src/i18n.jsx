@@ -1487,6 +1487,7 @@ const DICT = {
     'nav.pickicon': 'Choisir une icône de menu',
     'nav.pv.title': 'Aperçu en direct', 'nav.pv.desktop': 'Bureau', 'nav.pv.mobile': 'Mobile',
     'nav.pv.tap': 'Touche le menu pour prévisualiser', 'nav.pv.empty': 'Aucun élément valide pour l’instant.',
+    'nav.pv.edit': 'Cliquer pour modifier · le chevron ouvre le menu déroulant', 'nav.pv.editlink': 'Cliquer pour modifier cet élément', 'nav.pv.edithint': 'Cliquez sur un élément de l’aperçu pour accéder à ses réglages ci-dessous.',
     'nav.import': 'Importer un preset', 'nav.export': 'Exporter le preset', 'nav.reset': 'Réinitialiser par défaut',
     'nav.imported': 'Preset importé — vérifie puis enregistre.', 'nav.importbad': 'Preset de topbar JSON invalide.',
 

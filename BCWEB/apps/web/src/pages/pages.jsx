@@ -8284,11 +8284,13 @@ const pvLabel = (it, lang) => (lang === 'fr' && it.labelFr ? it.labelFr : (it.la
 // Live preview of the public topbar built from the editor's items — faithful to the real
 // component's styling (App.jsx). Desktop = the pill bar with a hover/click dropdown; mobile
 // = the hamburger sheet (tap a group to expand, tap the phone to reveal the sheet).
-function NavPreview({ items, lang, device }) {
+function NavPreview({ items, lang, device, onEdit }) {
   const { t } = useI18n();
   const [openIdx, setOpenIdx] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const valid = items.filter((it) => it.type === 'group' ? (it.label.trim() && it.children.some((c) => c.label.trim() && c.to.trim().startsWith('/'))) : (it.label.trim() && it.to.trim().startsWith('/')));
+  // Keep each valid item's ORIGINAL index so clicking it in the preview can jump to the
+  // matching editor card (onEdit). Filter mirrors the server's accept rules.
+  const valid = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.type === 'group' ? (it.label.trim() && it.children.some((c) => c.label.trim() && c.to.trim().startsWith('/'))) : (it.label.trim() && it.to.trim().startsWith('/')));
   const pillCls = (active) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition ${active ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
 
   if (device === 'mobile') {
@@ -8300,28 +8302,36 @@ function NavPreview({ items, lang, device }) {
           <button onClick={() => setSheetOpen((v) => !v)} className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)]" title={t('nav.pv.tap', 'Tap to preview the menu')}>{sheetOpen ? <X size={16} /> : <Navigation size={16} />}</button>
         </div>
         {sheetOpen && <div className="mt-2 rounded-2xl border border-[var(--line)] p-2 topbar bg-[var(--bg-solid)] space-y-0.5">
-          {valid.length === 0 ? <div className="text-xs text-[var(--faint)] p-2">{t('nav.pv.empty', 'No valid items yet.')}</div> : valid.map((it, i) => it.type === 'group' ? (
-            <div key={i}>
+          {valid.length === 0 ? <div className="text-xs text-[var(--faint)] p-2">{t('nav.pv.empty', 'No valid items yet.')}</div> : valid.map(({ it, idx }) => it.type === 'group' ? (
+            <div key={idx}>
               <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={it.icon} size={16} /><span className="flex-1">{pvLabel(it, lang)}</span><ChevronDown size={15} /></div>
               <div className="pl-3 ml-3 border-l border-[var(--line)] space-y-0.5">
                 {it.children.filter((c) => c.label.trim() && c.to.trim().startsWith('/')).map((c, j) => <div key={j} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={c.icon} size={15} /> {pvLabel(c, lang)}</div>)}
               </div>
             </div>
-          ) : <div key={i} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={it.icon} size={16} /> {pvLabel(it, lang)}</div>)}
+          ) : <div key={idx} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={it.icon} size={16} /> {pvLabel(it, lang)}</div>)}
         </div>}
         {!sheetOpen && <div className="text-[11px] text-[var(--faint)] text-center mt-2 flex items-center justify-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.tap', 'Tap the menu to preview')}</div>}
       </div>
     );
   }
+  // Clicking an item jumps to (and flashes) its editor card — "edit from the live
+  // preview" on desktop. The chevron still toggles a group's dropdown independently.
+  const jump = (idx) => onEdit && onEdit(idx);
   return (
-    <div className="rounded-2xl border border-[var(--line)] px-3 h-14 flex items-center gap-1 topbar bg-[var(--bg-solid)] overflow-x-auto">
+    // overflow-visible (not overflow-x-auto): an auto overflow-x also clips overflow-y,
+    // which used to hide the group dropdown that hangs below the bar. Wrap instead.
+    <div className="rounded-2xl border border-[var(--line)] px-3 py-2 min-h-14 flex items-center gap-1 flex-wrap topbar bg-[var(--bg-solid)]">
       <img src="/logo.png" alt="" className="w-8 h-8 rounded-lg shrink-0" />
       <span className="font-bold text-sm mr-2 shrink-0">BetterCommunity</span>
-      <div className="flex items-center gap-1 bg-[var(--surface-2)] rounded-full p-0.5">
-        {valid.length === 0 ? <span className="text-xs text-[var(--faint)] px-3 py-1.5">{t('nav.pv.empty', 'No valid items yet.')}</span> : valid.map((it, i) => it.type === 'group' ? (
-          <div key={i} className="relative">
-            <button onClick={() => setOpenIdx(openIdx === i ? null : i)} className={pillCls(openIdx === i)}><NavPvIcon name={it.icon} /><span>{pvLabel(it, lang)}</span><ChevronDown size={13} className={`transition-transform ${openIdx === i ? 'rotate-180' : ''}`} /></button>
-            {openIdx === i && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[240px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
+      <div className="flex items-center gap-1 flex-wrap bg-[var(--surface-2)] rounded-full p-0.5">
+        {valid.length === 0 ? <span className="text-xs text-[var(--faint)] px-3 py-1.5">{t('nav.pv.empty', 'No valid items yet.')}</span> : valid.map(({ it, idx }) => it.type === 'group' ? (
+          <div key={idx} className="relative">
+            <button title={onEdit ? t('nav.pv.edit', 'Click to edit · chevron opens the dropdown') : undefined} onClick={() => jump(idx)} className={pillCls(openIdx === idx)}>
+              <NavPvIcon name={it.icon} /><span>{pvLabel(it, lang)}</span>
+              <span role="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); setOpenIdx(openIdx === idx ? null : idx); }} className="-mr-1 p-0.5 rounded hover:bg-[var(--surface-3,var(--line))]"><ChevronDown size={13} className={`transition-transform ${openIdx === idx ? 'rotate-180' : ''}`} /></span>
+            </button>
+            {openIdx === idx && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[240px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
               {it.children.filter((c) => c.label.trim() && c.to.trim().startsWith('/')).map((c, j) => (
                 <div key={j} className="flex items-start gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]">
                   <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><NavPvIcon name={c.icon} /></span>
@@ -8330,7 +8340,7 @@ function NavPreview({ items, lang, device }) {
               ))}
             </div>}
           </div>
-        ) : <span key={i} className={pillCls(false)}><NavPvIcon name={it.icon} /> {pvLabel(it, lang)}</span>)}
+        ) : <button key={idx} title={onEdit ? t('nav.pv.editlink', 'Click to edit this item') : undefined} onClick={() => jump(idx)} className={pillCls(false)}><NavPvIcon name={it.icon} /> {pvLabel(it, lang)}</button>)}
       </div>
     </div>
   );
@@ -8350,6 +8360,16 @@ function AdminNav() {
   const [device, setDevice] = useState('desktop'); // preview device
   const [iconPick, setIconPick] = useState(null); // { onChange } while the icon picker is open
   const fileRef = useRef(null);
+  const itemRefs = useRef([]);            // editor-card DOM nodes, indexed by item position
+  const [flashIdx, setFlashIdx] = useState(null); // card to ring after a preview jump
+  // "Edit from the live preview": scroll the matching editor card into view and flash it.
+  const editItem = (idx) => {
+    const el = itemRefs.current[idx];
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setFlashIdx(idx);
+    setTimeout(() => setFlashIdx((v) => (v === idx ? null : v)), 1400);
+  };
   useEffect(() => {
     const n = loaded.data?.nav;
     if (!n) return;
@@ -8441,7 +8461,8 @@ function AdminNav() {
             <button onClick={() => setDevice('mobile')} className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${device === 'mobile' ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}><Smartphone size={13} /> {t('nav.pv.mobile', 'Mobile')}</button>
           </div>
         </div>
-        <div className="rounded-xl bg-[var(--bg)] p-4"><NavPreview items={items} lang={lang} device={device} /></div>
+        <div className="rounded-xl bg-[var(--bg)] p-4"><NavPreview items={items} lang={lang} device={device} onEdit={device === 'desktop' ? editItem : undefined} /></div>
+        {device === 'desktop' && items.length > 0 && <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.edithint', 'Click any item in the preview to jump to its settings below.')}</div>}
       </Card>
 
       {/* Preset tools: import / export a JSON preset, or reset to the built-in default. */}
@@ -8456,7 +8477,7 @@ function AdminNav() {
         <EmptyState icon={Navigation} title={t('nav.none.t', 'No items yet')} sub={t('nav.none.s', 'Add a link or a dropdown group, or start from the built-in navigation.')} />
       ) : <div className="space-y-3">
         {items.map((it, i) => (
-          <Card key={i} className="p-4 space-y-3">
+          <Card key={i} ref={(el) => { itemRefs.current[i] = el; }} className={`p-4 space-y-3 transition-shadow ${flashIdx === i ? 'ring-2 ring-[var(--primary)] shadow-lg' : ''}`}>
             <div className="flex items-center gap-2 flex-wrap">
               <Badge tone={it.type === 'group' ? 'primary' : ''}>{it.type === 'group' ? <><Layers size={11} /> {t('nav.group', 'Dropdown')}</> : <><Link2 size={11} /> {t('nav.link', 'Link')}</>}</Badge>
               <div className="flex-1" />
