@@ -5588,7 +5588,7 @@ function AdminAnalytics() {
 
       {/* Sub-tab bar — horizontal-scrolls on narrow screens so it never overflows. */}
       <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
-        {[['overview', t('an.tab.overview', 'Overview'), TrendingUp], ['sessions', t('an.tab.sessions', 'Sessions'), Activity], ['geo', t('an.tab.geo', 'Geography'), Globe2], ['tech', t('an.tab.tech', 'Tech'), Monitor]].map(([id, label, I]) => (
+        {[['overview', t('an.tab.overview', 'Overview'), TrendingUp], ['sessions', t('an.tab.sessions', 'Sessions'), Activity], ['geo', t('an.tab.geo', 'Geography'), Globe2], ['tech', t('an.tab.tech', 'Tech'), Monitor], ['data', t('an.tab.data', 'Data'), Archive]].map(([id, label, I]) => (
           <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={14} /> {label}</button>
         ))}
       </div>
@@ -5651,9 +5651,68 @@ function AdminAnalytics() {
         </div>
       )}
 
+      {tab === 'data' && <RetentionCard />}
 
       <p className="text-[11px] text-[var(--faint)] mt-4">{t('an.geonote', 'Geo is resolved from the visitor IP (CDN country header, else an offline GeoIP lookup; local/private IPs get a sample location in dev). The privacy-friendly daily-rotating visitor hash can\'t track people across days.')}</p>
     </div>
+  );
+}
+
+// Data-retention windows for the append-only analytics tables (mirrors the API
+// sweeper in lib/retention.mjs). Shows each table's current pressure (row count +
+// oldest-row age) next to its editable window; 0 keeps that table forever.
+function RetentionCard() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/analytics/retention'), []);
+  const [form, setForm] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data?.config) setForm(data.config); }, [data]);
+  if (loading || !form) return <Loading />;
+  const ageDays = (iso) => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 864e5)) : null);
+  const rows = [
+    ['pageviewDays', t('an.ret.pageviews', 'Pageviews'), data.tables.pageview],
+    ['interactionDays', t('an.ret.interactions', 'Interactions'), data.tables.interaction],
+    ['vitalDays', t('an.ret.vitals', 'Web Vitals'), data.tables.vital],
+    ['loginDays', t('an.ret.logins', 'Login attempts'), data.tables.login],
+  ];
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: Math.max(0, Math.min(3650, Math.floor(Number(v) || 0))) }));
+  const save = async () => {
+    setBusy(true);
+    try { await api.put('/admin/analytics/retention', form); toast.success(t('an.ret.saved', 'Retention windows saved.')); reload(); }
+    catch { toast.error(t('an.ret.saveerr', 'Could not save the retention windows.')); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Card className="p-5 max-w-2xl">
+      <div className="flex items-center gap-2 mb-1"><Archive size={16} className="text-[var(--primary-2)]" /><h3 className="font-semibold">{t('an.ret.title', 'Data retention')}</h3></div>
+      <p className="text-xs text-[var(--muted)] mb-4">{t('an.ret.desc', 'Automatically delete analytics rows older than each window. 0 = keep forever. Purged in batches by the background sweeper.')}</p>
+      <div className="space-y-3">
+        {rows.map(([key, label, stat]) => {
+          const age = ageDays(stat?.oldest);
+          return (
+            <div key={key} className="flex items-center gap-3 flex-wrap">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium">{label}</div>
+                <div className="text-[11px] text-[var(--faint)]">
+                  {(stat?.count ?? 0).toLocaleString()} {t('an.ret.rows', 'rows')}
+                  {age != null ? ` · ${t('an.ret.oldest', 'oldest')} ${age}${t('an.ret.d', 'd')}` : ''}
+                  {form[key] === 0 ? ` · ${t('an.ret.keepforever', 'kept forever')}` : ''}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Input type="number" min={0} max={3650} value={form[key]} onChange={(e) => set(key, e.target.value)} className="w-20 text-right" />
+                <span className="text-xs text-[var(--faint)]">{t('an.ret.days', 'days')}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-3 mt-4">
+        <Button variant="primary" onClick={save} disabled={busy}>{busy ? <Spinner /> : <><Save size={15} /> {t('an.ret.save', 'Save')}</>}</Button>
+        <button onClick={() => setForm(data.defaults)} className="text-xs text-[var(--muted)] hover:text-[var(--text)]">{t('an.ret.reset', 'Reset to defaults')}</button>
+      </div>
+    </Card>
   );
 }
 
