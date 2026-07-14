@@ -16,6 +16,7 @@ a separate 🇬🇧 EN and 🇫🇷 FR file, or is bilingual within a single fil
 | Guide | 🇬🇧 EN | 🇫🇷 FR |
 |---|---|---|
 | ⭐ **Production quickstart** (fresh VPS → live in ~15 min) | [QUICKSTART_EN.md](QUICKSTART_EN.md) | [QUICKSTART_FR.md](QUICKSTART_FR.md) |
+| 🔄 **Auto-updates** (how BMM/BSM update + hosting release feeds on BCWEB) | [AUTO_UPDATE_EN.md](AUTO_UPDATE_EN.md) | [AUTO_UPDATE_FR.md](AUTO_UPDATE_FR.md) |
 | **Deploy to production** (full guide: Docker, HTTPS, Stripe, backups, scaling) | [DEPLOY_EN.md](DEPLOY_EN.md) | [DEPLOY_FR.md](DEPLOY_FR.md) |
 | **Enable the optional add-ons** (CDN, PgBouncer, replicas, R2, separate DB, off-site backup) | [ADDONS_EN.md](ADDONS_EN.md) | [ADDONS_FR.md](ADDONS_FR.md) |
 | **Backup & restore** (Postgres + MinIO + audit anchor, cron, off-site, restore steps) | [BACKUP_EN.md](BACKUP_EN.md) | [BACKUP_FR.md](BACKUP_FR.md) |

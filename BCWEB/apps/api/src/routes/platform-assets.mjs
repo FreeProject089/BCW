@@ -80,6 +80,57 @@ export default async function platformAssetRoutes(app) {
     return { ok: true };
   });
 
+  // ── Auto-update feed ─────────────────────────────────────────────────────────
+  // BMM/BSM check for updates against a GitHub-releases-compatible endpoint (the app's
+  // `autoupdate_api` link). These routes mirror that shape from the hosted installer +
+  // optional update-manifest, so an app can point `autoupdate_api` at BCWEB instead of
+  // GitHub. Maps app slug → asset keys.
+  const UPDATE_APPS = { bmm: { inst: 'bmm-installer', manifest: 'bmm-update-manifest', page: 'bmm' },
+                        bsm: { inst: 'bsm-installer', manifest: 'bsm-update-manifest', page: 'bsm' },
+                        bi:  { inst: 'bi-installer',  manifest: 'bi-update-manifest',  page: 'installer' } };
+
+  const releaseShape = (cfg, installer, manifest, notes, origin) => {
+    const version = installer.version || '0.0.0';
+    const assets = [{ name: installer.filename || `${cfg.inst}`, browser_download_url: `${origin}/api/assets/${installer.key}`, size: Number(installer.size) }];
+    if (manifest) assets.push({ name: 'update-manifest.json', browser_download_url: `${origin}/api/assets/${manifest.key}` });
+    return {
+      tag_name: `v${version}`, name: `v${version}`,
+      prerelease: !!(installer.channel && installer.channel !== 'stable'), draft: false,
+      html_url: `${origin}/p/${cfg.page}`, body: notes || '',
+      published_at: installer.updatedAt, assets,
+    };
+  };
+
+  const buildRelease = async (appSlug, origin) => {
+    const cfg = UPDATE_APPS[String(appSlug).toLowerCase()];
+    if (!cfg) return { code: 404, error: 'unknown_app' };
+    const p = await db();
+    const installer = await p.platformAsset.findUnique({ where: { key: cfg.inst } });
+    if (!installer || installer.kind !== 'file' || !installer.storageKey) return { code: 404, error: 'no_release' };
+    const manifest = await p.platformAsset.findUnique({ where: { key: cfg.manifest } }).catch(() => null);
+    // Optional release-notes JSON asset (<app>-release-notes → { body }).
+    const notesAsset = await p.platformAsset.findUnique({ where: { key: `${appSlug}-release-notes` } }).catch(() => null);
+    const notes = notesAsset?.json?.body || '';
+    return { release: releaseShape(cfg, installer, manifest && manifest.storageKey ? manifest : null, notes, origin) };
+  };
+
+  const originOf = () => (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
+
+  // Latest release (GitHub /releases/latest shape).
+  app.get('/updates/:app/latest', async (req, reply) => {
+    const r = await buildRelease(req.params.app, originOf());
+    reply.header('Cache-Control', 'public, max-age=60').header('Access-Control-Allow-Origin', '*');
+    if (r.error) return reply.code(r.code).send({ error: r.error });
+    return r.release;
+  });
+  // Release list (GitHub /releases shape — newest first; we host one).
+  app.get('/updates/:app/releases', async (req, reply) => {
+    const r = await buildRelease(req.params.app, originOf());
+    reply.header('Cache-Control', 'public, max-age=60').header('Access-Control-Allow-Origin', '*');
+    if (r.error) return r.code === 404 && r.error === 'no_release' ? [] : reply.code(r.code).send({ error: r.error });
+    return [r.release];
+  });
+
   // Public: serve an asset at a stable URL. JSON returns inline (CORS-open so BMM/BSM can
   // fetch it cross-origin); files stream from storage, forced to download. This is the
   // "BCWEB-first" source the apps point at (GitHub, then a bundled local copy, are fallbacks).
