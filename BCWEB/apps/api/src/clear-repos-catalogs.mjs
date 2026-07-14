@@ -18,7 +18,23 @@ import { deleteObject } from './lib/storage.mjs';
 
 const DRY = !process.argv.includes('--yes');
 const NUKE = process.argv.includes('--nuke');
+
+// Friendly failures for the two classic host-side mistakes (this script is meant to run
+// INSIDE the api container, where the env + a fresh Prisma client are guaranteed):
+//   docker compose -f infra/compose/docker-compose.yml exec api node src/clear-repos-catalogs.mjs --nuke --yes
+if (!process.env.DATABASE_URL) {
+  console.error('[clear] DATABASE_URL is not set. Run this inside the api container:\n' +
+    '  docker compose -f infra/compose/docker-compose.yml exec api node src/clear-repos-catalogs.mjs [--nuke] [--yes]\n' +
+    'or set DATABASE_URL yourself (see infra/compose/.env) before running on the host.');
+  process.exit(1);
+}
 const p = await db();
+if (!p.communityCatalogItem) {
+  console.error('[clear] The generated Prisma client here is STALE (missing newer models).\n' +
+    'Run inside the api container (see above), or refresh the host client first:\n' +
+    '  cd apps/api && npx prisma generate --schema ../../packages/db/schema.prisma');
+  process.exit(1);
+}
 const rm = async (key) => { if (key) { try { await deleteObject(key); } catch {} } };
 
 // Content tables cleared in BOTH modes. TRUNCATE … CASCADE pulls in their dependent
@@ -31,17 +47,21 @@ const CONTENT = [
   'KofiDonation', 'ContactMessage', 'AnalyticsEvent', 'WebVital', 'InteractionEvent',
   'ErrorEvent', 'GameScore', 'AnalyticsGoal', 'NewsletterSubscriber', 'ServerMetricSample',
   'ServerAlertLog', 'LoginAttempt', 'AuditLogEntry', 'FreeTierClaim', 'RepoFavorite',
-  'BlogPermission', 'OAuthCode', 'OAuthConsent', 'OAuthRefreshToken',
+  'BlogPermission', 'OAuthCode', 'OAuthConsent', 'OAuthRefreshToken', 'Report',
 ];
 // NUKE also wipes accounts + config.
 const NUKE_EXTRA = [
   'User', 'OAuthAccount', 'DiscordLink', 'DiscordActivity', 'DiscordLinkCode', 'LinkCode',
   'CreatorLink', 'Project', 'HostingPlan', 'GlobalAccessPolicy', 'UserAccessPolicy',
   'AdminSetting', 'ShowcaseProject', 'PromoCode', 'PromoCampaign', 'Event', 'FaqItem',
-  'OidcKey', 'OAuthClient', 'EmailVerification', 'PasswordReset',
+  'OidcKey', 'OAuthClient', 'EmailVerification', 'PasswordReset', 'PlatformAsset', 'ProjectVersion',
 ];
 
-const tables = NUKE ? [...CONTENT, ...NUKE_EXTRA] : CONTENT;
+// Only truncate tables that actually exist in this database — so the script keeps working
+// against a DB that predates newer models (they'd just have nothing to wipe anyway).
+const wanted = NUKE ? [...CONTENT, ...NUKE_EXTRA] : CONTENT;
+const existing = new Set((await p.$queryRawUnsafe(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)).map((r) => r.tablename));
+const tables = wanted.filter((t) => existing.has(t));
 
 // Counts for the summary / dry-run.
 const [repos, cats, items, offItems] = await Promise.all([

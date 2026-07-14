@@ -25,6 +25,7 @@ a separate 🇬🇧 EN and 🇫🇷 FR file, or is bilingual within a single fil
 | **Domain & HTTPS** (Caddy + Let's Encrypt) | [DOMAIN_SETUP.md](DOMAIN_SETUP.md) *(bilingual)* | ↩︎ same file |
 | **App features** | [App_Features_EN.md](App_Features_EN.md) | [App_Features_FR.md](App_Features_FR.md) |
 | **Technical analysis** (dev deep-dive) | [Technical_Analysis_EN.md](Technical_Analysis_EN.md) | [Technical_Analysis_FR.md](Technical_Analysis_FR.md) |
+| 🔍 **Technical audit** (strengths, weaknesses, risks, action plan — Jul 2026) | [TECH_AUDIT_EN.md](TECH_AUDIT_EN.md) | [TECH_AUDIT_FR.md](TECH_AUDIT_FR.md) |
 | **Step-by-step setup** (admin, 2FA, roles, integrations) | [SETUP_GUIDE.md](SETUP_GUIDE.md) | *résumé FR en tête* |
 | **Architecture** (design & roadmap) | [ARCHITECTURE.md](ARCHITECTURE.md) | *résumé FR en tête* |
 | **API reference** (endpoint catalog) | [API_Reference_EN.md](API_Reference_EN.md) | *résumé FR en tête* |
