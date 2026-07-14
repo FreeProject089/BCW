@@ -769,6 +769,10 @@ const DICT = {
     'up.failedfiles': '{n} fichier(s) échoué(s) — voir la liste', 'up.listcopied': 'Liste des fichiers échoués copiée.', 'up.copylist': 'Copier la liste',
 
     'hosting.title': 'Héberger un Server-Repo', 'hosting.sub': 'On l’exécute, tu le gères. Paie selon la taille dont tu as besoin.',
+    'hosting.title2': 'Stockage d’hébergement', 'hosting.sub2': 'Achète un pool de stockage et remplis-le de dépôts et de catalogues — on l’exécute, tu le gères.',
+    'hosting.storage': 'Espace de stockage', 'hosting.storage.d': 'Tu achètes un pool de stockage. Une fois à toi, remplis-le comme tu veux — un dépôt, plusieurs dépôts, des catalogues, ou un mélange — et ajuste la répartition quand tu veux.',
+    'hosting.pool': 'Pool de stockage',
+    'fh.title2': 'Hébergement gratuit (pool de stockage)', 'fh.sub2': 'Provisionne un pool de stockage directement — sans paiement — que le propriétaire remplit de dépôts et de catalogues. Laisse l’e-mail vide pour l’héberger sous ton propre compte.',
     'hosting.single': 'Dépôt unique', 'hosting.single.d': 'Un seul dépôt avec tout le quota.',
     'hosting.multi': 'Dépôts multiples', 'hosting.multi.d': 'Répartis le stockage sur plusieurs dépôts, gérés par toi.',
     'hosting.layout': 'Disposition des dépôts',

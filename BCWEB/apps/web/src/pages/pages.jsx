@@ -921,7 +921,9 @@ export function Hosting() {
   const plans = useAsync(() => api.get('/hosting/plans'), []);
   const cap = useAsync(() => api.get('/hosting/capacity'), []);
   const [customOpen, setCustomOpen] = useState(false);
-  const [mode, setMode] = useState('single'); // single = one repo; multi = a shared storage pool
+  // Every purchase is now a storage POOL you fill freely with repos and/or catalogs —
+  // the single-repo layout toggle was removed. `mode` stays 'multi' throughout.
+  const [mode] = useState('multi');
   const [months, setMonths] = useState(12); // prepaid term (1yr recommended)
   const [promo, setPromo] = useState(null); // validated promo code for the simple plan-card checkout
   const [autoRenew, setAutoRenew] = useState(true); // recurring subscription vs one-time prepaid
@@ -979,7 +981,7 @@ export function Hosting() {
   const soldOut = !!c && (c.enabled === false || c.freeGB <= 0.01);
   return (
     <div>
-      <PageHeader icon={Rocket} title={t('hosting.title', 'Host a Server-Repo')} subtitle={t('hosting.sub', 'We run it, you manage it. Pay for the size you need.')} />
+      <PageHeader icon={Rocket} title={t('hosting.title2', 'Hosting storage')} subtitle={t('hosting.sub2', 'Buy a pool of storage and fill it with repos and catalogs — we run it, you manage it.')} />
 
       {soldOut && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/8 p-4 mb-6 flex items-start gap-3">
@@ -997,15 +999,8 @@ export function Hosting() {
       <Card className="p-4 sm:p-5 mb-6 relative z-30">
         <div className="flex flex-col sm:flex-row sm:items-start gap-5">
           <div className="sm:flex-1 min-w-0">
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.layout', 'Repo layout')}</div>
-            <div className="inline-flex rounded-xl border border-[var(--line)] p-1 gap-1">
-              {[['single', HardDrive, t('hosting.single', 'Single repo')], ['multi', Layers, t('hosting.multi', 'Multiple repos')]].map(([m, I, title]) => (
-                <button key={m} type="button" onClick={() => setMode(m)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition ${mode === m ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
-                  <I size={14} /> {title}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-[var(--muted)] mt-2">{mode === 'multi' ? t('hosting.multi.d', 'Split the storage across several repos, managed by you.') : t('hosting.single.d', 'One repository with the whole quota.')}</p>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Layers size={13} /> {t('hosting.storage', 'Storage space')}</div>
+            <p className="text-sm text-[var(--muted)]">{t('hosting.storage.d', 'You buy a pool of storage. Once it\'s yours, fill it however you like — one repo, several repos, catalogs, or a mix — and resize the split anytime.')}</p>
           </div>
           <div className="sm:flex-1 min-w-0">
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.term', 'Billing term')}</div>
@@ -1233,7 +1228,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
               {it.kind === 'boost' ? <Rocket size={14} className="text-amber-400 shrink-0" /> : <HardDrive size={14} className="text-[var(--primary-2)] shrink-0" />}
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{it.kind === 'boost' ? t('cart.boostof', 'Boost "{n}"').replace('{n}', it.repoName || '') : (it.label || it.repoName)}</div>
-                <div className="text-[11px] text-[var(--faint)]">{it.kind === 'boost' ? `${it.days} ${t('cart.days', 'days')} · ${it.autoRenew ? t('cart.recurring', 'recurring') : t('cart.onetime', 'one-time')}` : `${it.mode === 'multi' ? t('hosting.multi', 'Multiple repos') : t('hosting.single', 'Single repo')} · ${it.months} ${t('hosting.mo', 'mo')}`}</div>
+                <div className="text-[11px] text-[var(--faint)]">{it.kind === 'boost' ? `${it.days} ${t('cart.days', 'days')} · ${it.autoRenew ? t('cart.recurring', 'recurring') : t('cart.onetime', 'one-time')}` : `${t('hosting.pool', 'Storage pool')} · ${it.months} ${t('hosting.mo', 'mo')}`}</div>
               </div>
               <button onClick={() => removeItem(it.uid)} className="text-[var(--faint)] hover:text-red-400 shrink-0"><X size={14} /></button>
             </div>
@@ -4706,7 +4701,7 @@ function PluginContentModal({ item, onClose }) {
 function AdminFreeHost() {
   const toast = useToast(); const { t } = useI18n();
   const plans = useAsync(() => api.get('/hosting/plans'), []);
-  const [f, setF] = useState({ name: '', ownerEmail: '', planId: '', storageGB: 10, uploadMbps: 8, listed: false, mode: 'single' });
+  const [f, setF] = useState({ name: '', ownerEmail: '', planId: '', storageGB: 10, uploadMbps: 8, listed: false, mode: 'multi' });
   const [custom, setCustom] = useState(false);
   const [busy, setBusy] = useState(false);
   const submit = async () => {
@@ -4719,21 +4714,16 @@ function AdminFreeHost() {
       else if (f.planId) body.planId = f.planId;
       await api.post('/admin/repos/host', body);
       toast.success((f.mode === 'multi' ? t('fh.provmulti', 'Multi-repo pool "{name}" provisioned.') : t('fh.provsingle', 'Hosted repo "{name}" provisioned. See it under Server repos.')).replace('{name}', f.name));
-      setF({ name: '', ownerEmail: '', planId: '', storageGB: 10, uploadMbps: 8, listed: false, mode: 'single' });
+      setF({ name: '', ownerEmail: '', planId: '', storageGB: 10, uploadMbps: 8, listed: false, mode: 'multi' });
     } catch (x) { toast.error(x.data?.error === 'user_not_found' ? t('fh.usernotfound', 'No user with that email.') : x.data?.error || t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Rocket size={16} className="text-[var(--primary-2)]" /> {t('fh.title', 'Host a Server-Repo (free)')}</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">{t('fh.sub', 'Provisions a hosted, sandboxed repo directly — no payment. Leave the email blank to host it under your own account.')}</p>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Rocket size={16} className="text-[var(--primary-2)]" /> {t('fh.title2', 'Free hosting (storage pool)')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('fh.sub2', 'Provisions a storage pool directly — no payment — that the owner fills with repos and catalogs. Leave the email blank to host it under your own account.')}</p>
       <Card className="p-5 space-y-3">
-        <div className="flex items-center gap-2 text-sm">
-          {[['single', t('fh.single', 'Single repo')], ['multi', t('fh.multi', 'Multi-repo pool')]].map(([m, l]) => (
-            <button key={m} onClick={() => setF({ ...f, mode: m })} className={`px-3 py-1.5 rounded-lg border ${f.mode === m ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>{l}</button>
-          ))}
-        </div>
         <div className="grid sm:grid-cols-2 gap-3">
-          <Field label={f.mode === 'multi' ? t('fh.poolname', 'Pool name') : t('fh.reponame', 'Repo name')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="official-server-repo" /></Field>
+          <Field label={t('fh.poolname', 'Pool name')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="official-server-repo" /></Field>
           <Field label={t('fh.owneremail', 'Owner email (optional)')}><Input value={f.ownerEmail} onChange={(e) => setF({ ...f, ownerEmail: e.target.value })} placeholder="you@…" /></Field>
         </div>
         <div className="flex items-center gap-2 text-sm">
