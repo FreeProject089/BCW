@@ -34,6 +34,9 @@ const LIMITS = {
   THEME:  { maxBytes: 100 * 1024 * 1024, types: ['application/json', 'application/zip', 'text/css', 'application/octet-stream'] },
   PRESET: { maxBytes: 2 * 1024 * 1024, types: ['application/json'] },
   BLOG:   { maxBytes: 10 * 1024 * 1024, types: IMG, prefix: 'blog' },
+  // Report / support-thread image attachments. Public (served from blog/ proxy), any
+  // logged-in user. The byte cap is admin-configurable (reports.imageMaxMB), applied below.
+  REPORT: { maxBytes: 10 * 1024 * 1024, types: IMG, prefix: 'blog' },
   // Project/showcase page media (visual editor): images, short videos, and rrweb
   // replay JSON. ADMIN-only (enforced below) since it serves arbitrary bytes from
   // our domain and is only used by the project config editor.
@@ -41,7 +44,7 @@ const LIMITS = {
 };
 
 const schema = z.object({
-  kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET', 'BLOG', 'MEDIA']),
+  kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET', 'BLOG', 'MEDIA', 'REPORT']),
   filename: z.string().min(1).max(160),
   contentType: z.string().min(1).max(120),
   size: z.number().int().positive(),
@@ -56,7 +59,14 @@ export default async function uploadRoutes(app) {
     const { kind, filename, contentType, size } = parsed.data;
     const lim = LIMITS[kind];
     if (lim.adminOnly && !['ADMIN', 'SUPERADMIN'].includes(req.user.role)) return reply.code(403).send({ error: 'forbidden' });
-    if (size > lim.maxBytes) return reply.code(413).send({ error: 'too_large', maxBytes: lim.maxBytes });
+    // Report attachments use an admin-configurable per-image cap (reports.imageMaxMB).
+    let maxBytes = lim.maxBytes;
+    if (kind === 'REPORT') {
+      const row = await (await db()).adminSetting.findUnique({ where: { key: 'reports.imageMaxMB' } }).catch(() => null);
+      const mb = Number(row?.value?.mb ?? row?.value ?? 10);
+      if (mb > 0) maxBytes = Math.min(mb, 50) * 1024 * 1024;
+    }
+    if (size > maxBytes) return reply.code(413).send({ error: 'too_large', maxBytes });
     if (!lim.types.includes(contentType)) return reply.code(415).send({ error: 'unsupported_type', allowed: lim.types });
     // Submission payloads draw from the dedicated temp margin — refuse when full.
     // (BLOG images + MEDIA page assets are served publicly, not from that margin.)

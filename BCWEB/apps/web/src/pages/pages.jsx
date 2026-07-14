@@ -3888,6 +3888,7 @@ const ADMIN_CAPS = [
   { id: 'manage_newsletter', icon: Mail, label: 'Manage newsletter', labelFr: 'Gérer la newsletter', desc: 'Compose and send newsletters.', descFr: 'Rédiger et envoyer des newsletters.' },
   { id: 'manage_faq', icon: HelpCircle, label: 'Manage FAQ', labelFr: 'Gérer la FAQ', desc: 'Create and edit FAQ entries.', descFr: 'Créer et modifier les entrées de la FAQ.' },
   { id: 'manage_catalogs', icon: Boxes, label: 'Manage catalogs', labelFr: 'Gérer les catalogues', desc: 'Moderate community catalogs (suspend / unlist).', descFr: 'Modérer les catalogues communautaires (suspendre / délister).' },
+  { id: 'manage_reports', icon: MessageSquare, label: 'Handle reports', labelFr: 'Gérer les signalements', desc: 'View and reply to user reports & support threads.', descFr: 'Voir et répondre aux signalements et fils de support.' },
 ];
 
 function AdminAccess({ isSuperAdmin }) {

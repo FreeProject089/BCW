@@ -146,6 +146,8 @@ model User {
   blogPermissions    BlogPermission[]
   submissionComments SubmissionComment[]
   contactMessages    ContactMessage[]
+  reportsMade        Report[]           @relation("ReportReporter")
+  reportMessages     ReportMessage[]
   loginAttempts      LoginAttempt[]
   auditLogEntries    AuditLogEntry[]
   repoFavorites      RepoFavorite[]
@@ -1281,6 +1283,49 @@ model ShowcaseProject {
 
 // Contact-form submissions. Shown in the Admin dashboard and (if a webhook is
 // configured) forwarded to Discord. No account required to send.
+// A user report against another user / repo / catalog / catalog item, OR a general
+// support thread. Works like a GitHub PR conversation: the reporter opens it with a
+// message, staff and the reporter exchange messages (optionally with image attachments),
+// and it moves open → archived (auto after inactivity, or manual) → deleted (after a
+// further delay). A reporter may have at most one OPEN report per target at a time.
+model Report {
+  id             String          @id @default(cuid())
+  targetType     String // "user" | "repo" | "catalog" | "item" | "general"
+  targetId       String          @default("") // the reported entity's id ("" for general)
+  targetLabel    String          @default("") // denormalized name for the admin list
+  reporter       User            @relation("ReportReporter", fields: [reporterId], references: [id])
+  reporterId     String
+  reason         String          @default("") // short category chosen by the reporter
+  status         String          @default("open") // open | archived | closed
+  staffUnread    Boolean         @default(true) // a new reporter message staff hasn't seen
+  userUnread     Boolean         @default(false) // a new staff message the reporter hasn't seen
+  lastActivityAt DateTime        @default(now())
+  archivedAt     DateTime? // when it was archived (starts the delete countdown)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  messages       ReportMessage[]
+
+  @@index([reporterId])
+  @@index([status])
+  @@index([targetType, targetId])
+  @@index([lastActivityAt])
+  @@index([archivedAt])
+}
+
+model ReportMessage {
+  id        String   @id @default(cuid())
+  report    Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  reportId  String
+  author    User?    @relation(fields: [authorId], references: [id])
+  authorId  String? // null = system note
+  staff     Boolean  @default(false) // authored by a staff member (admin/mod)
+  body      String   @default("")
+  images    String[] @default([]) // uploaded attachment URLs (via the media presign)
+  createdAt DateTime @default(now())
+
+  @@index([reportId])
+}
+
 model ContactMessage {
   id        String    @id @default(cuid())
   name      String

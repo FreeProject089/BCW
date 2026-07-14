@@ -6,6 +6,7 @@ import { db, notify } from './lib.mjs';
 import { deleteObject } from './storage.mjs';
 import { sampleAndAlert } from './monitor.mjs';
 import { runEventScheduler } from '../routes/events.mjs';
+import { sweepReports } from '../routes/reports.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
 
 const DAY_MS = 864e5;
@@ -205,6 +206,7 @@ export function startSweeper(app) {
         await sweepExpiredSubscriptions(p, app.log), await sweepExpiryWarnings(p, app.log),
         await sweepDiscordActivityCap(p, app.log), await sweepDailyFileBackup(p, app.log),
       ];
+      await sweepReports(p).catch((e) => app.log.warn({ e: String(e) }, 'report sweep failed'));
       await sampleAndAlert(p, app.log);
       await runEventScheduler(p).catch((e) => app.log.warn({ e: String(e) }, 'event scheduler failed'));
       if (items || repos || cats || rejPayloads || expired || warned || pruned || backedUp) app.log.info(`[sweeper] hard-deleted ${items} item(s), ${repos} repo(s), ${cats} catalog(s) · purged ${rejPayloads} rejected payload(s) · suspended ${expired} expired term(s) · warned ${warned} · pruned ${pruned} old Discord member row(s)${backedUp ? ' · took daily file backup snapshot' : ''}`);

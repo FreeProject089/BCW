@@ -198,7 +198,7 @@ export function clearAccountLockCache(uid) { if (uid) _modCache.delete(uid); els
 // Fine-grained admin capabilities that can be granted to a user on top of their role.
 // Each maps to an admin surface enforced by requireCap(...) on the server AND gates the
 // matching admin tab client-side. Extend this list as more areas are capability-gated.
-export const CAPABILITIES = ['manage_users', 'manage_repos', 'manage_analytics', 'manage_newsletter', 'manage_faq', 'manage_catalogs'];
+export const CAPABILITIES = ['manage_users', 'manage_repos', 'manage_analytics', 'manage_newsletter', 'manage_faq', 'manage_catalogs', 'manage_reports'];
 // Default capabilities a MOD holds without explicit grants.
 const MOD_DEFAULT_CAPS = ['manage_users'];
 
