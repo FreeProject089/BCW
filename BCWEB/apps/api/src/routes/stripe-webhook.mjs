@@ -1,5 +1,5 @@
 import { db, notify } from '../lib/lib.mjs';
-import { provisionHostedRepo } from './hosting.mjs';
+import { provisionHostingPool } from './hosting.mjs';
 import { redeemPromoAtomic } from './promo.mjs';
 
 // Encapsulated plugin: a raw-body JSON parser scoped here only, so Stripe's
@@ -41,16 +41,16 @@ export default async function stripeWebhook(app) {
               if (l.kind === 'hosting') {
                 const plan = l.planId ? await p.hostingPlan.findUnique({ where: { id: l.planId } }) : null;
                 if (!plan) continue;
-                const repo = await provisionHostedRepo(p, { userId: cart.userId, plan, repoName: l.repoName, hostMode: l.mode, months: l.months });
-                await p.payment.create({ data: { userId: cart.userId, serverRepoId: repo.id, kind: 'HOSTING', description: `${plan.name} hosting — ${l.months} month${l.months > 1 ? 's' : ''}`, amountCents: l.finalCents ?? 0, currency: 'usd', stripeSessionId: s.id } });
+                const group = await provisionHostingPool(p, { userId: cart.userId, plan, poolName: l.repoName, months: l.months });
+                await p.payment.create({ data: { userId: cart.userId, hostingGroupId: group.id, kind: 'HOSTING', description: `${plan.name} storage pool — ${l.months} month${l.months > 1 ? 's' : ''}`, amountCents: l.finalCents ?? 0, currency: 'usd', stripeSessionId: s.id } });
                 // Auto-renew: start a subscription that first bills at the prepaid
                 // term end (trial_end), billed every `months` at the full term price.
                 if (l.autoRenew && savedPm) {
                   try {
                     const trialEnd = Math.floor((Date.now() + l.months * 30 * 864e5) / 1000);
                     const price = await stripe.prices.create({ currency: 'usd', unit_amount: Math.max(50, l.baseCents || plan.priceMonthlyCents * l.months), recurring: { interval: 'month', interval_count: l.months }, product_data: { name: `${plan.name} hosting (auto-renew)` } });
-                    const sub = await stripe.subscriptions.create({ customer: s.customer, items: [{ price: price.id }], default_payment_method: savedPm, trial_end: trialEnd, proration_behavior: 'none', metadata: { kind: 'hosting', repoId: repo.id, userId: cart.userId } });
-                    await p.subscription.updateMany({ where: { serverRepoId: repo.id }, data: { stripeSubId: sub.id } });
+                    const sub = await stripe.subscriptions.create({ customer: s.customer, items: [{ price: price.id }], default_payment_method: savedPm, trial_end: trialEnd, proration_behavior: 'none', metadata: { kind: 'hosting', groupId: group.id, userId: cart.userId } });
+                    await p.subscription.updateMany({ where: { hostingGroupId: group.id }, data: { stripeSubId: sub.id } });
                   } catch (e) { req.log?.warn?.({ err: e?.message }, 'cart auto-renew sub create failed'); }
                 }
                 provisioned++;
@@ -208,13 +208,14 @@ export default async function stripeWebhook(app) {
         return { received: true };
       }
 
-      const { userId, planId, repoName, hostMode } = meta;
+      const { userId, planId, repoName } = meta;
       const plan = await p.hostingPlan.findUnique({ where: { id: planId } });
       if (plan && userId) {
         const months = Number(meta.months || 1);
-        // Provision the (first) repo — status PROVISIONING; the provisioner brings it ONLINE.
-        const repo = await provisionHostedRepo(p, { userId, plan, repoName, hostMode, months, stripeSubId: s.subscription || null });
-        await notify(p, userId, 'hosting_started', `Your hosted repo "${repo.name}" is provisioning — prepaid for ${months} month${months > 1 ? 's' : ''}.`);
+        // Provision an empty storage POOL — the owner fills it with repos / catalogs.
+        const group = await provisionHostingPool(p, { userId, plan, poolName: repoName, months, stripeSubId: s.subscription || null });
+        await p.payment.create({ data: { userId, hostingGroupId: group.id, kind: 'HOSTING', description: `${plan.name} storage pool — ${months} month${months > 1 ? 's' : ''}`, amountCents: 0, currency: 'usd', stripeSessionId: s.id } }).catch(() => {});
+        await notify(p, userId, 'hosting_started', `Your storage pool "${group.name}" is ready — prepaid for ${months} month${months > 1 ? 's' : ''}. Add repos or catalogs to it.`);
       }
     } else if (event.type === 'invoice.paid') {
       // Recurring HOSTING renewal. The FIRST invoice (billing_reason
@@ -245,16 +246,26 @@ export default async function stripeWebhook(app) {
           // Trust Stripe's own period for the new end date.
           const periodEnd = inv.lines?.data?.[0]?.period?.end ? new Date(inv.lines.data[0].period.end * 1000)
             : (inv.period_end ? new Date(inv.period_end * 1000) : new Date(Date.now() + 30 * 864e5));
-          await p.subscription.update({ where: { id: sub.id }, data: { status: 'active', currentPeriodEnd: periodEnd } });
-          const repo = await p.serverRepo.findUnique({ where: { id: sub.serverRepoId }, select: { name: true, ownerId: true, status: true } });
-          // Restore a repo that a prior failed renewal had suspended.
-          if (repo) await p.serverRepo.update({ where: { id: sub.serverRepoId }, data: { deleteAt: null, ...(repo.status === 'SUSPENDED' ? { status: 'ONLINE' } : {}) } });
+          await p.subscription.update({ where: { id: sub.id }, data: { status: 'active', currentPeriodEnd: periodEnd, warnedAt: null } });
+          let label = 'your hosting';
+          if (sub.hostingGroupId) {
+            // Pool sub: un-suspend every repo in the pool AND un-hide its catalogs that a
+            // prior failed renewal had locked.
+            const group = await p.hostingGroup.findUnique({ where: { id: sub.hostingGroupId }, select: { name: true, ownerId: true } });
+            label = group ? `pool "${group.name}"` : label;
+            await p.serverRepo.updateMany({ where: { groupId: sub.hostingGroupId, status: 'SUSPENDED' }, data: { status: 'ONLINE' } });
+            await p.serverRepo.updateMany({ where: { groupId: sub.hostingGroupId }, data: { deleteAt: null } });
+            await p.communityCatalog.updateMany({ where: { groupId: sub.hostingGroupId, status: 'HIDDEN' }, data: { status: 'ACTIVE', deleteAt: null } });
+            if (group) await notify(p, group.ownerId, 'hosting_started', `Your pool "${group.name}" auto-renewed successfully — thanks for staying with us!`);
+          } else if (sub.serverRepoId) {
+            const repo = await p.serverRepo.findUnique({ where: { id: sub.serverRepoId }, select: { name: true, ownerId: true, status: true } });
+            if (repo) { label = `"${repo.name}"`; await p.serverRepo.update({ where: { id: sub.serverRepoId }, data: { deleteAt: null, ...(repo.status === 'SUSPENDED' ? { status: 'ONLINE' } : {}) } }); if (repo.ownerId) await notify(p, repo.ownerId, 'hosting_started', `"${repo.name}" auto-renewed successfully — thanks for staying with us!`); }
+          }
           await p.payment.create({ data: {
-            userId: sub.userId, serverRepoId: sub.serverRepoId, kind: 'HOSTING',
-            description: `"${repo?.name || 'repo'}" auto-renewal`,
+            userId: sub.userId, serverRepoId: sub.serverRepoId, hostingGroupId: sub.hostingGroupId, kind: 'HOSTING',
+            description: `${label} auto-renewal`,
             amountCents: inv.amount_paid ?? 0, currency: inv.currency || 'usd', stripeSessionId: inv.id,
           } });
-          if (repo) await notify(p, repo.ownerId, 'hosting_started', `"${repo.name}" auto-renewed successfully — thanks for staying with us!`);
         }
       }
     } else if (event.type === 'invoice.payment_failed') {
@@ -294,7 +305,14 @@ export default async function stripeWebhook(app) {
       const sub = await p.subscription.findUnique({ where: { stripeSubId: subId } });
       if (sub) {
         await p.subscription.update({ where: { id: sub.id }, data: { status: 'canceled' } });
-        await p.serverRepo.update({ where: { id: sub.serverRepoId }, data: { status: 'SUSPENDED' } });
+        // Suspend the anchor: a pool sub suspends every repo AND hides every catalog in
+        // the pool; a legacy repo sub suspends just that repo.
+        if (sub.hostingGroupId) {
+          await p.serverRepo.updateMany({ where: { groupId: sub.hostingGroupId }, data: { status: 'SUSPENDED' } });
+          await p.communityCatalog.updateMany({ where: { groupId: sub.hostingGroupId, status: 'ACTIVE' }, data: { status: 'HIDDEN', listed: false } });
+        } else if (sub.serverRepoId) {
+          await p.serverRepo.update({ where: { id: sub.serverRepoId }, data: { status: 'SUSPENDED' } }).catch(() => {});
+        }
       } else {
         // Not a repo subscription — check for a recurring catalog-file-hosting
         // subscription (payment failed after retries, or the user cancelled it in

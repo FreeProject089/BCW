@@ -435,6 +435,10 @@ function MyAccessPolicyCard() {
 export function MyRepos() {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useFetch(() => api.get('/me/repos'), []);
+  // Storage pools — so a freshly-bought EMPTY pool (no repos yet) is still visible and
+  // fillable. A pool with repos shows through its repos; an empty one shows here.
+  const poolsF = useFetch(() => api.get('/me/hosting/groups'), []);
+  const emptyPools = (poolsF.data?.groups || []).filter((g) => (g.repoCount || 0) === 0 && (g.catalogCount || 0) === 0);
   const [editing, setEditing] = useState(null);
   const [featuring, setFeaturing] = useState(null);
   const [managing, setManaging] = useState(null);
@@ -526,6 +530,21 @@ export function MyRepos() {
         <h2 className="font-semibold flex items-center gap-2"><Server size={16} /> {t('repos.mine', 'My Server Repos')}</h2>
         <Button size="sm" variant="primary" onClick={() => setEditing({})}><Plus size={15} /> {t('repos.add', 'Add repo')}</Button>
       </div>
+      {emptyPools.length > 0 && (
+        <div className="mb-4 space-y-2">
+          {emptyPools.map((g) => (
+            <div key={g.id} className="rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/[0.05] p-3.5 flex items-center gap-3 flex-wrap">
+              <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--primary)]/10 shrink-0"><HardDrive size={16} className="text-[var(--primary-2)]" /></span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm">{t('repos.emptypool.t', 'Storage pool "{n}" is empty').replace('{n}', g.name)}</div>
+                <div className="text-xs text-[var(--muted)]">{t('repos.emptypool.s', '{n} GB free — add a repo or a catalog to start using it.').replace('{n}', ((g.poolBytes - g.usedBytes) / 1e9).toFixed(1))}</div>
+              </div>
+              <Button size="sm" variant="primary" onClick={() => setPoolAdd(g)}><Plus size={13} /> {t('repos.addrepo', 'Add repo')}</Button>
+              <a href="/submit"><Button size="sm" variant="default"><Boxes size={13} /> {t('repos.addcatalog', 'Add catalog')}</Button></a>
+            </div>
+          ))}
+        </div>
+      )}
       {repos.length > 3 && (
         <div className="flex flex-wrap gap-2 mb-3">
           <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />

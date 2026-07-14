@@ -463,7 +463,9 @@ export default async function repoRoutes(app) {
     const group = await p.hostingGroup.findUnique({ where: { id: req.params.id }, include: { repos: true } });
     if (!group) return reply.code(404).send({ error: 'not_found' });
     if (group.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role)) return reply.code(403).send({ error: 'forbidden' });
-    const used = group.repos.reduce((a, r) => a + r.storageQuotaBytes, 0n);
+    // Storage is fungible: repos AND catalogs both draw from poolBytes.
+    const catAgg = await p.communityCatalog.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } });
+    const used = group.repos.reduce((a, r) => a + r.storageQuotaBytes, 0n) + (catAgg._sum.storageQuotaBytes || 0n);
     const wantBytes = BigInt(Math.round(b.data.storageGB * GiB));
     if (used + wantBytes > group.poolBytes) return reply.code(409).send({ error: 'pool_exceeded', freeGB: Number(group.poolBytes - used) / GiB });
     const repo = await p.serverRepo.create({ data: {
@@ -665,16 +667,13 @@ export default async function repoRoutes(app) {
     storageGB = storageGB || 10; uploadKbps = uploadKbps ?? 8192; cpuShare = cpuShare ?? 0.5;
 
     if (b.data.mode === 'multi') {
+      // Empty storage pool — the owner fills it with repos and/or catalogs. No forced
+      // first repo (that was the old "half the pool goes to repo-1" behaviour).
       const group = await p.hostingGroup.create({ data: {
         ownerId, name: b.data.name, poolBytes: BigInt(storageGB) * BigInt(GiB), uploadLimitKbps: uploadKbps, cpuShare,
       } });
-      const firstGB = Math.max(1, Math.ceil(storageGB / 2));
-      const repo = await p.serverRepo.create({ data: {
-        ownerId, name: `${b.data.name}-1`, hosted: true, status: 'PROVISIONING',
-        storageQuotaBytes: BigInt(firstGB) * BigInt(GiB), uploadLimitKbps: uploadKbps, cpuShare, groupId: group.id, listed: !!b.data.listed,
-      }, include: { group: true } });
-      await notify(p, ownerId, 'hosting_started', `A multi-repo pool "${b.data.name}" (${storageGB}GB) was provisioned for you (free host).`);
-      return reply.code(201).send({ group: serGroup(group), repo: ser(repo) });
+      await notify(p, ownerId, 'hosting_started', `A storage pool "${b.data.name}" (${storageGB}GB) was provisioned for you (free host). Add repos or catalogs to it.`);
+      return reply.code(201).send({ group: serGroup(group) });
     }
 
     const repo = await p.serverRepo.create({ data: {

@@ -137,29 +137,20 @@ export function priceCents(s, storageGB, uploadMbps, cpuShare) {
     + Number(s['pricing.perCpuShareCents'] ?? 0) * cpuShare);
 }
 
-// Shared by the checkout webhook AND the free-tier (no-Stripe) path below, so a
-// $0 "custom" plan and a paid one are provisioned identically instead of two
-// diverging code paths that could drift out of sync.
-export async function provisionHostedRepo(p, { userId, plan, repoName, hostMode, months, stripeSubId = null, freePlan = false }) {
-  let groupId = null;
-  if (hostMode === 'multi') {
-    const group = await p.hostingGroup.create({ data: {
-      ownerId: userId, name: repoName || 'pool', poolBytes: BigInt(plan.storageGB) * BigInt(GiB),
-      uploadLimitKbps: plan.uploadLimitKbps, cpuShare: plan.cpuShare, freePlan,
-    } });
-    groupId = group.id;
-  }
-  const firstGB = hostMode === 'multi' ? Math.max(1, Math.ceil(plan.storageGB / 2)) : plan.storageGB;
-  const repo = await p.serverRepo.create({ data: {
-    ownerId: userId, name: hostMode === 'multi' ? `${repoName || 'repo'}-1` : (repoName || 'repo'), hosted: true, status: 'PROVISIONING',
-    storageQuotaBytes: BigInt(firstGB) * BigInt(GiB),
-    uploadLimitKbps: plan.uploadLimitKbps, cpuShare: plan.cpuShare, groupId, freePlan,
+// Shared by the checkout webhook AND the free-tier (no-Stripe) path below, so a $0
+// "custom" plan and a paid one are provisioned identically. A purchase now buys an
+// empty STORAGE POOL — the subscription anchors to the pool, and the owner fills it with
+// repos and/or catalogs afterward (no forced first repo). Returns the created pool.
+export async function provisionHostingPool(p, { userId, plan, poolName, months, stripeSubId = null, freePlan = false }) {
+  const group = await p.hostingGroup.create({ data: {
+    ownerId: userId, name: poolName || 'pool', poolBytes: BigInt(plan.storageGB) * BigInt(GiB),
+    uploadLimitKbps: plan.uploadLimitKbps, cpuShare: plan.cpuShare, freePlan,
   } });
   await p.subscription.create({ data: {
-    userId, serverRepoId: repo.id, planId: plan.id, stripeSubId, status: 'active',
+    userId, hostingGroupId: group.id, planId: plan.id, stripeSubId, status: 'active',
     currentPeriodEnd: new Date(Date.now() + months * 30 * 864e5),
   } });
-  return repo;
+  return group;
 }
 
 // Prepaid term options: more months → bigger discount (1yr recommended).
@@ -281,10 +272,10 @@ export default async function hostingRoutes(app) {
     if (total <= 0 && !b.data.promoCode) {
       if (cap.freeTierCapEnabled && cap.freeTierUsedGB + plan.storageGB > cap.freeTierCapGB) return reply.code(409).send({ error: 'free_tier_full', freeTierFreeGB: cap.freeTierFreeGB });
       if (await hasFreeTierClaim(p, 'REPO', req.user.uid)) return reply.code(409).send({ error: 'free_tier_already_used' });
-      const repo = await provisionHostedRepo(p, { userId: req.user.uid, plan, repoName: b.data.repoName, hostMode: b.data.mode, months, freePlan: true });
+      const group = await provisionHostingPool(p, { userId: req.user.uid, plan, poolName: b.data.repoName, months, freePlan: true });
       await recordFreeTierClaim(p, 'REPO', req.user.uid);
-      await notify(p, req.user.uid, 'hosting_started', `Your hosted repo "${repo.name}" is provisioning — free tier, no charge.`);
-      return { ok: true, free: true, repoId: repo.id };
+      await notify(p, req.user.uid, 'hosting_started', `Your storage pool "${group.name}" is ready — free tier, no charge. Add repos or catalogs to it.`);
+      return { ok: true, free: true, groupId: group.id };
     }
 
     const sk = await stripe();

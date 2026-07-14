@@ -261,6 +261,7 @@ model HostingGroup {
   createdAt       DateTime           @default(now())
   repos           ServerRepo[]
   catalogs        CommunityCatalog[]
+  subscription    Subscription? // the pool's hosting subscription (billing anchor)
 
   @@index([ownerId])
 }
@@ -925,13 +926,20 @@ model Subscription {
   id               String      @id @default(cuid())
   user             User        @relation(fields: [userId], references: [id])
   userId           String
-  serverRepo       ServerRepo  @relation(fields: [serverRepoId], references: [id])
-  serverRepoId     String      @unique
+  // A hosting subscription anchors to EITHER a single repo (legacy single-repo hosting)
+  // OR a whole storage pool (the current model: you buy a pool and fill it with repos
+  // and/or catalogs). Exactly one is set. Pool subs let a purchase exist with no repo at
+  // all (e.g. a catalog-only pool).
+  serverRepo       ServerRepo?   @relation(fields: [serverRepoId], references: [id])
+  serverRepoId     String?       @unique
+  hostingGroup     HostingGroup? @relation(fields: [hostingGroupId], references: [id])
+  hostingGroupId   String?       @unique
   plan             HostingPlan @relation(fields: [planId], references: [id])
   planId           String
   stripeSubId      String?     @unique
   status           String      @default("active")
   currentPeriodEnd DateTime?
+  warnedAt         DateTime? // set when the 72h-before-expiry warning was sent (once per term)
 }
 
 // Recurring "featured" boost — a Stripe subscription that re-extends a repo's
@@ -1284,7 +1292,8 @@ model Payment {
   id              String      @id @default(cuid())
   user            User        @relation(fields: [userId], references: [id])
   userId          String
-  serverRepoId    String?
+  serverRepoId    String? // legacy single-repo hosting payment
+  hostingGroupId  String? // storage-pool hosting payment (the current model)
   kind            PaymentKind
   description     String
   amountCents     Int

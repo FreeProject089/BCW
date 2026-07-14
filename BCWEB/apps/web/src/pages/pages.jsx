@@ -978,7 +978,7 @@ export function Hosting() {
       const res = await api.post('/hosting/checkout', { promoCode: promo?.code, autoRenew, ...body, repoName, mode, months });
       // A $0 plan (the free tier, or a discount that zeroes it out) is provisioned
       // directly — there's no Stripe session/url to redirect to.
-      if (res?.free) { toast.success(t('hosting.freeplan.provisioned', 'Your repo "{name}" is provisioning — free tier, no charge.').replace('{name}', repoName)); return nav('/dashboard'); }
+      if (res?.free) { toast.success(t('hosting.freeplan.pool2', 'Your storage pool "{name}" is ready — free tier. Add repos or catalogs to it.').replace('{name}', repoName)); return nav('/dashboard'); }
       window.location = res.url;
     } catch (x) {
       if (x.data?.error === 'creator_link_required') { toast.error(t('hosting.err.link', 'Link a BMM creator id first (Profile → Creator IDs) to host a repo.')); return nav('/profile'); }

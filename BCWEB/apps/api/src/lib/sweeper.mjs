@@ -101,24 +101,42 @@ async function sweepRepos(p, log) {
 // term) and opens the same 72h delete-grace window used everywhere else.
 async function sweepExpiredSubscriptions(p, log) {
   const now = new Date();
+  const deleteAt = new Date(now.getTime() + 3 * DAY_MS);
   const expired = await p.subscription.findMany({
-    where: { status: 'active', currentPeriodEnd: { lte: now }, serverRepo: { deleteAt: null, status: { not: 'SUSPENDED' } } },
-    include: { serverRepo: { include: { group: { include: { repos: true } } } } },
+    where: { status: 'active', currentPeriodEnd: { lte: now } },
+    include: { serverRepo: { include: { group: { include: { repos: true } } } }, hostingGroup: { include: { repos: true } } },
     take: 50,
   });
+  let handled = 0;
   for (const sub of expired) {
     try {
-      const repo = sub.serverRepo;
-      const deleteAt = new Date(now.getTime() + 3 * DAY_MS);
-      const siblings = repo.groupId && repo.group ? repo.group.repos : [repo];
-      for (const r of siblings) {
-        if (r.status !== 'SUSPENDED') await p.serverRepo.update({ where: { id: r.id }, data: { status: 'SUSPENDED', deleteAt } });
+      if (sub.hostingGroupId && sub.hostingGroup) {
+        // Pool subscription: suspend every repo AND hide every catalog in the pool, on the
+        // same 72h delete-grace window (the sweeper purges them after that unless renewed).
+        for (const r of sub.hostingGroup.repos) {
+          if (r.status !== 'SUSPENDED') await p.serverRepo.update({ where: { id: r.id }, data: { status: 'SUSPENDED', deleteAt } });
+        }
+        await p.communityCatalog.updateMany({ where: { groupId: sub.hostingGroupId, status: 'ACTIVE' }, data: { status: 'HIDDEN', listed: false, deleteAt } });
+        await p.subscription.update({ where: { id: sub.id }, data: { status: 'expired' } });
+        await notify(p, sub.hostingGroup.ownerId, 'hosting_stopped', `Your storage pool "${sub.hostingGroup.name}" term has ended — its repos and catalogs are suspended and will be deleted in 72h unless you renew.`);
+        handled++;
+      } else if (sub.serverRepoId && sub.serverRepo) {
+        const repo = sub.serverRepo;
+        if (repo.deleteAt || repo.status === 'SUSPENDED') { await p.subscription.update({ where: { id: sub.id }, data: { status: 'expired' } }); continue; }
+        const siblings = repo.groupId && repo.group ? repo.group.repos : [repo];
+        for (const r of siblings) {
+          if (r.status !== 'SUSPENDED') await p.serverRepo.update({ where: { id: r.id }, data: { status: 'SUSPENDED', deleteAt } });
+        }
+        await p.subscription.update({ where: { id: sub.id }, data: { status: 'expired' } });
+        await notify(p, repo.ownerId, 'hosting_stopped', `Your hosting term for "${repo.name}"${repo.groupId ? ' (and its pool)' : ''} has ended — it's suspended and will be deleted in 72h unless you renew.`);
+        handled++;
+      } else {
+        // Orphan sub (neither anchor) — just mark expired so it stops being scanned.
+        await p.subscription.update({ where: { id: sub.id }, data: { status: 'expired' } });
       }
-      await p.subscription.update({ where: { id: sub.id }, data: { status: 'expired' } });
-      await notify(p, repo.ownerId, 'hosting_stopped', `Your hosting term for "${repo.name}"${repo.groupId ? ' (and its pool)' : ''} has ended — it's suspended and will be deleted in 72h unless you renew.`);
     } catch (e) { log.warn({ id: sub.id, e: String(e?.message || e) }, 'sweeper: subscription expiry failed'); }
   }
-  return expired.length;
+  return handled;
 }
 
 // Keeps the Discord bot's per-user activity table (join date, last message, last
@@ -155,18 +173,22 @@ async function sweepDiscordActivityCap(p, log) {
 async function sweepExpiryWarnings(p, log) {
   const now = new Date();
   const soon = new Date(now.getTime() + 3 * DAY_MS);
+  // One warning per term, tracked on the subscription (works for both a repo sub and a
+  // pool sub). warnedAt is cleared on renewal so the next term warns again.
   const soonExpiring = await p.subscription.findMany({
-    where: { status: 'active', currentPeriodEnd: { gt: now, lte: soon }, serverRepo: { deleteAt: null } },
-    include: { serverRepo: true },
+    where: { status: 'active', currentPeriodEnd: { gt: now, lte: soon }, warnedAt: null },
+    include: { serverRepo: true, hostingGroup: true },
     take: 100,
   });
   let warned = 0;
   for (const sub of soonExpiring) {
-    const repo = sub.serverRepo;
-    if (repo.settings?._expiryWarnedAt) continue;
     try {
-      await p.serverRepo.update({ where: { id: repo.id }, data: { settings: { ...(repo.settings || {}), _expiryWarnedAt: now.toISOString() } } });
-      await notify(p, repo.ownerId, 'hosting_expiring', `"${repo.name}" hosting expires in 72 hours — renew to keep it online, or it will be suspended and later deleted.`);
+      await p.subscription.update({ where: { id: sub.id }, data: { warnedAt: now } });
+      if (sub.hostingGroup) {
+        await notify(p, sub.hostingGroup.ownerId, 'hosting_expiring', `Your storage pool "${sub.hostingGroup.name}" expires in 72 hours — renew to keep its repos and catalogs online.`);
+      } else if (sub.serverRepo) {
+        await notify(p, sub.serverRepo.ownerId, 'hosting_expiring', `"${sub.serverRepo.name}" hosting expires in 72 hours — renew to keep it online, or it will be suspended and later deleted.`);
+      }
       warned++;
     } catch (e) { log.warn({ id: sub.id, e: String(e?.message || e) }, 'sweeper: expiry warning failed'); }
   }
