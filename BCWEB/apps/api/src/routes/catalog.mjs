@@ -100,9 +100,13 @@ async function revalidatePlugin(p, item) {
     await p.catalogItem.update({ where: { id: item.id }, data: { meta: { ...meta, sha256: res.sha256, validation } } });
     return { ...res, validation };
   } catch (e) {
-    const validation = { valid: false, reason: String(e?.message || e), checkedAt: new Date().toISOString() };
+    // A fetch-side failure (no download source yet, an SSRF-blocked/unreachable host, a
+    // dead link) is NOT a package-integrity failure — don't badge the item "invalid" or
+    // hide it from the catalog. Record it as UNVERIFIED (no `valid` flag) so moderators
+    // still see the reason but a healthy-but-unhosted item isn't wrongly flagged red.
+    const validation = { unverified: true, reason: String(e?.message || e), checkedAt: new Date().toISOString() };
     await p.catalogItem.update({ where: { id: item.id }, data: { meta: { ...meta, validation } } }).catch(() => {});
-    return { valid: false, ...validation };
+    return { valid: undefined, ...validation };
   }
 }
 
