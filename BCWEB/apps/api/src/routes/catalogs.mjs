@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import {
-  db, requireRole, optionalAuth, slugify, notify,
+  db, requireRole, requireCap, optionalAuth, slugify, notify,
   resolveClientIdentity, accessListMatches, policyBans, policyWhitelist,
   getGlobalAccessPolicy, getUserAccessPolicy,
 } from '../lib/lib.mjs';
@@ -281,6 +281,34 @@ export default async function communityCatalogRoutes(app) {
     const item = await p.communityCatalogItem.findUnique({ where: { id: req.params.iid } });
     if (!item || item.catalogId !== c.id) return reply.code(404).send({ error: 'not_found' });
     await p.communityCatalogItem.delete({ where: { id: item.id } });
+    return { ok: true };
+  });
+
+  // ── Admin/mod: moderate community catalogs (cap: manage_catalogs) ──
+  app.get('/admin/catalogs', { preHandler: requireCap('manage_catalogs', 'MOD') }, async (req) => {
+    const p = await db();
+    const q = String(req.query?.q || '').trim();
+    const where = q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { slug: { contains: q, mode: 'insensitive' } }] } : {};
+    const rows = await p.communityCatalog.findMany({
+      where, orderBy: { createdAt: 'desc' }, take: 100,
+      include: { owner: { select: { displayName: true, email: true } }, _count: { select: { items: true } } },
+    });
+    return { catalogs: rows.map((c) => ({ ...ser(c), owner: c.owner?.displayName, email: c.owner?.email })) };
+  });
+
+  // Suspend (hidden from everyone, owner notified), unsuspend, or just unlist/relist.
+  app.post('/admin/catalogs/:id/:action', { preHandler: requireCap('manage_catalogs') }, async (req, reply) => {
+    const action = req.params.action;
+    if (!['suspend', 'unsuspend', 'unlist', 'relist'].includes(action)) return reply.code(400).send({ error: 'bad_action' });
+    const p = await db();
+    const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
+    if (!c) return reply.code(404).send({ error: 'not_found' });
+    const data = action === 'suspend' ? { status: 'SUSPENDED', listed: false }
+      : action === 'unsuspend' ? { status: 'ACTIVE' }
+      : action === 'unlist' ? { listed: false }
+      : { listed: c.visibility === 'public' }; // relist (only if public)
+    await p.communityCatalog.update({ where: { id: c.id }, data });
+    if (action === 'suspend') await notify(p, c.ownerId, 'catalog_suspended', `Your catalog "${c.name}" was suspended by a moderator.`);
     return { ok: true };
   });
 }

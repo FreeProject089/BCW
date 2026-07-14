@@ -1331,7 +1331,12 @@ const DICT = {
     'adm.tab.repos': 'Dépôts serveur', 'adm.tab.hosting': 'Hébergement gratuit', 'adm.tab.promo': 'Codes promo', 'adm.tab.storage': 'Stockage',
     'adm.tab.catalogs': 'Catalogues', 'adm.tab.projects': 'Projets', 'adm.tab.showcase': 'Autres projets', 'adm.tab.announcements': 'Annonces',
     'adm.tab.serverperf': 'Perf serveur', 'adm.tab.serveradv': 'Serveur avancé', 'adm.tab.bot': 'Bot Discord', 'adm.tab.analytics': 'Analytique',
-    'adm.tab.settings': 'Réglages', 'adm.tab.navui': 'Navigation du menu',
+    'adm.tab.settings': 'Réglages', 'adm.tab.navui': 'Navigation du menu', 'adm.tab.commcatalogs': 'Catalogues communautaires',
+    // Admin : catalogues communautaires
+    'cc.admin.title': 'Catalogues communautaires', 'cc.admin.desc': 'Catalogues hébergés par les utilisateurs. Suspendre le cache à tout le monde ; délister le retire seulement du navigateur public (son URL fonctionne toujours).',
+    'cc.admin.search': 'Rechercher par nom ou e-mail du propriétaire…', 'cc.acted': 'Fait.', 'cc.unlisted': 'non listé', 'cc.items': 'items',
+    'cc.suspend': 'Suspendre', 'cc.unsuspend': 'Réactiver', 'cc.unlist': 'Délister', 'cc.relist': 'Relister',
+    'cc.admin.none.t': 'Aucun catalogue communautaire', 'cc.admin.none.s': 'Quand des utilisateurs hébergent leurs propres catalogues, ils apparaissent ici pour modération.',
 
     // ── Admin : navigation configurable du menu ──
     'nav.title': 'Navigation du menu', 'nav.desc': 'Conçois le menu public : une liste ordonnée de liens et de groupes déroulants, chacun avec une icône et un nom dans les deux langues. Tant que c’est désactivé (ou vide), le site utilise sa navigation par défaut.',
@@ -1461,10 +1466,11 @@ const DICT = {
     'acc.perm.manage_analytics': 'Voir les analyses', 'acc.permd.manage_analytics': 'Analyses, flux d’événements, erreurs et objectifs.',
     'acc.perm.manage_newsletter': 'Gérer la newsletter', 'acc.permd.manage_newsletter': 'Rédiger et envoyer des newsletters.',
     'acc.perm.manage_faq': 'Gérer la FAQ', 'acc.permd.manage_faq': 'Créer et modifier les entrées de la FAQ.',
+    'acc.perm.manage_catalogs': 'Gérer les catalogues', 'acc.permd.manage_catalogs': 'Modérer les catalogues communautaires (suspendre / délister).',
     // Toast « permission refusée » (global)
     'perm.denied': 'Tu n’as pas la permission pour ça — « {cap} » est requise.',
     'perm.cap.manage_users': 'Gérer les utilisateurs', 'perm.cap.manage_repos': 'Gérer les dépôts serveur',
-    'perm.cap.manage_analytics': 'Voir les analyses', 'perm.cap.manage_newsletter': 'Gérer la newsletter', 'perm.cap.manage_faq': 'Gérer la FAQ',
+    'perm.cap.manage_analytics': 'Voir les analyses', 'perm.cap.manage_newsletter': 'Gérer la newsletter', 'perm.cap.manage_faq': 'Gérer la FAQ', 'perm.cap.manage_catalogs': 'Gérer les catalogues',
 
     // ── Admin : annonces ──
     'ann.new': 'Nouvelle annonce', 'ann.new.sub': 'S’affiche en bannière fermable sur chaque page et notifie immédiatement tous les utilisateurs.',

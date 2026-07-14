@@ -2411,6 +2411,7 @@ export function Admin() {
     isAdmin && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
     can('manage_newsletter') && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
     can('manage_faq') && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
+    can('manage_catalogs') && { id: 'commcatalogs', label: t('adm.tab.commcatalogs', 'Community catalogs'), icon: Boxes },
 
     { heading: t('adm.h.repos', 'Repos & hosting') },
     can('manage_repos') && { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
@@ -2498,6 +2499,7 @@ export function Admin() {
         {s === 'faq' && <AdminFaq />}
         {s === 'repos' && <AdminRepos />}
         {s === 'catalogs' && <><AdminCatalogCreator /><PluginVerifier /><ThemeVerifier /></>}
+        {s === 'commcatalogs' && <AdminCatalogs />}
         {s === 'hosting' && <AdminFreeHost />}
         {s === 'promotions' && <><AdminCampaigns /><div className="mt-8"><AdminPromo /></div></>}
         {s === 'kofi' && <AdminKofi />}
@@ -3970,6 +3972,7 @@ const ADMIN_CAPS = [
   { id: 'manage_analytics', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, events feed, errors and goals.', descFr: "Analyses, flux d'événements, erreurs et objectifs." },
   { id: 'manage_newsletter', icon: Mail, label: 'Manage newsletter', labelFr: 'Gérer la newsletter', desc: 'Compose and send newsletters.', descFr: 'Rédiger et envoyer des newsletters.' },
   { id: 'manage_faq', icon: HelpCircle, label: 'Manage FAQ', labelFr: 'Gérer la FAQ', desc: 'Create and edit FAQ entries.', descFr: 'Créer et modifier les entrées de la FAQ.' },
+  { id: 'manage_catalogs', icon: Boxes, label: 'Manage catalogs', labelFr: 'Gérer les catalogues', desc: 'Moderate community catalogs (suspend / unlist).', descFr: 'Modérer les catalogues communautaires (suspendre / délister).' },
 ];
 
 function AdminAccess({ isSuperAdmin }) {
@@ -8380,6 +8383,46 @@ function AdminNav() {
         <div className="flex-1" />
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> {t('nav.save', 'Save navigation')}</>}</Button>
       </div>
+    </div>
+  );
+}
+
+// Admin: moderate community-hosted catalogs — suspend (hide from all), unlist (out of
+// the public browser but still reachable by URL), or reverse either. Cap: manage_catalogs.
+function AdminCatalogs() {
+  const { t } = useI18n(); const toast = useToast();
+  const [q, setQ] = useState('');
+  const { data, loading, reload } = useAsync(() => api.get('/admin/catalogs'), []);
+  const act = async (c, action) => {
+    try { await api.post(`/admin/catalogs/${c.id}/${action}`); toast.success(t('cc.acted', 'Done.')); reload(); }
+    catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); }
+  };
+  const rows = (data?.catalogs || []).filter((c) => !q || c.name.toLowerCase().includes(q.toLowerCase()) || (c.email || '').toLowerCase().includes(q.toLowerCase()));
+  const tone = (s) => s === 'SUSPENDED' ? 'red' : s === 'HIDDEN' ? 'amber' : 'green';
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Boxes size={16} className="text-[var(--primary-2)]" /> {t('cc.admin.title', 'Community catalogs')}</h2>
+        <p className="text-sm text-[var(--muted)]">{t('cc.admin.desc', 'Owner-hosted catalogs. Suspend hides one from everyone; unlist just removes it from the public browser (its URL still works).')}</p>
+      </div>
+      <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-9" placeholder={t('cc.admin.search', 'Search name or owner email…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      {loading ? <Loading /> : rows.length ? <div className="space-y-1.5">
+        {rows.map((c) => (
+          <Card key={c.id} className="p-3 flex items-center gap-3 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate flex items-center gap-2">{c.name} <Badge tone={tone(c.status)}>{c.status}</Badge>{!c.listed && c.status === 'ACTIVE' && <Badge tone="">{t('cc.unlisted', 'unlisted')}</Badge>}<Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
+              <div className="text-xs text-[var(--faint)] truncate">{c.owner} · {c.email} · {c.itemCount} {t('cc.items', 'items')} · <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline">/c/{c.slug}</a></div>
+            </div>
+            {c.status === 'SUSPENDED'
+              ? <Button size="sm" variant="primary" onClick={() => act(c, 'unsuspend')}>{t('cc.unsuspend', 'Unsuspend')}</Button>
+              : <>
+                  {c.listed ? <Button size="sm" variant="ghost" onClick={() => act(c, 'unlist')}>{t('cc.unlist', 'Unlist')}</Button>
+                    : c.visibility === 'public' && <Button size="sm" variant="ghost" onClick={() => act(c, 'relist')}>{t('cc.relist', 'Relist')}</Button>}
+                  <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => act(c, 'suspend')}>{t('cc.suspend', 'Suspend')}</Button>
+                </>}
+          </Card>
+        ))}
+      </div> : <EmptyState icon={Boxes} title={t('cc.admin.none.t', 'No community catalogs')} sub={t('cc.admin.none.s', 'When users host their own catalogs, they show up here for moderation.')} />}
     </div>
   );
 }
