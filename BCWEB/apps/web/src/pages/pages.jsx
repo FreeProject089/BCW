@@ -5124,6 +5124,17 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
   const [comments, setComments] = useState(sub.comments || []);
   const [commentInput, setCommentInput] = useState('');
   const [busy, setBusy] = useState(false);
+  // Examine the submitted payload in detail (zip entries + inline text) before approving.
+  const [insp, setInsp] = useState(null); // { loading } | { data } | { error }
+  const [openEntry, setOpenEntry] = useState(null);
+  const examine = async () => {
+    if (insp?.data) { setInsp(null); return; }
+    setInsp({ loading: true }); setOpenEntry(null);
+    try { const r = await api.get(`/admin/catalog/${it.id}/inspect`); setInsp({ data: r }); }
+    catch (x) { setInsp({ error: x.data?.error || 'read_failed' }); }
+  };
+  const dlEntry = (path) => window.open(`/api/admin/catalog/${it.id}/entry?path=${encodeURIComponent(path)}`, '_blank');
+  const dlWhole = async () => { try { const r = await api.get(`/admin/catalog/${it.id}/file`); if (r.url) window.open(r.url, '_blank'); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const rows = [
     [t('sr.kind', 'Kind'), it.kind], [t('sr.version', 'Version'), it.version && `v${it.version}`], [t('sr.project', 'Project'), it.project?.key?.toUpperCase()],
     [t('sr.author', 'Author'), `${it.owner?.displayName || '—'}${it.owner?.email ? ` · ${it.owner.email}` : ''}`], [t('sr.slug', 'Slug'), it.slug], [t('sr.subtype', 'Submission type'), sub.type],
@@ -5184,7 +5195,34 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
         <div className="text-[10px] text-[var(--faint)] mt-1 text-right">{commentInput.length}/200</div>
       </div>
 
-      {dl && <div className="mb-4 flex items-center gap-2 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] px-3 py-2"><Download size={14} className="text-[var(--primary-2)] shrink-0" /><a href={dl} target="_blank" rel="noreferrer" className="text-xs text-[var(--primary-2)] break-all flex-1 hover:underline">{dl}</a></div>}
+      {/* Examine the payload content in detail (zip entries + inline text) + download it. */}
+      <div className="mb-4 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] p-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="text-xs font-semibold text-[var(--faint)] uppercase flex items-center gap-1.5"><Eye size={11} /> {t('sr.examine.t', 'Content review')}</div>
+          <div className="flex-1" />
+          <Button size="sm" variant="ghost" onClick={examine}><FileText size={13} /> {insp?.data ? t('sr.examine.hide', 'Hide') : t('sr.examine', 'Examine content')}</Button>
+          <Button size="sm" variant="ghost" onClick={dlWhole}><Download size={13} /> {t('sr.download', 'Download')}</Button>
+        </div>
+        {insp && <div className="mt-2 pt-2 border-t border-[var(--line)] text-xs">
+          {insp.loading ? <Loading /> : insp.error ? <p className="text-red-400">{insp.error}</p> : insp.data ? (
+            insp.data.type === 'zip' ? <div className="space-y-1">
+              {insp.data.entries.map((e) => (
+                <div key={e.name}>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setOpenEntry(openEntry === e.name ? null : (e.text != null ? e.name : null))} className={`flex-1 min-w-0 truncate text-left font-mono ${e.text != null ? 'hover:text-[var(--primary)]' : 'cursor-default'}`}>{e.text != null && <ChevronDown size={11} className={`inline mr-1 transition-transform ${openEntry === e.name ? '' : '-rotate-90'}`} />}{e.name}</button>
+                    <span className="text-[var(--faint)] tabular-nums">{fmtBytes(e.size)}</span>
+                    <button onClick={() => dlEntry(e.name)} className="text-[var(--faint)] hover:text-[var(--primary)]"><Download size={11} /></button>
+                  </div>
+                  {openEntry === e.name && e.text != null && <pre className="mt-1 mb-2 p-2 rounded bg-[var(--bg)] border border-[var(--line)] overflow-auto max-h-72 whitespace-pre-wrap break-words text-[11px] leading-relaxed">{e.text}</pre>}
+                </div>
+              ))}
+            </div> : (insp.data.text != null
+              ? <pre className="p-2 rounded bg-[var(--bg)] border border-[var(--line)] overflow-auto max-h-72 whitespace-pre-wrap break-words text-[11px] leading-relaxed">{insp.data.text}</pre>
+              : <p className="text-[var(--faint)]">{t('sr.binary', 'Binary file — download to inspect.')} ({fmtBytes(insp.data.size)})</p>)
+          ) : null}
+        </div>}
+        {dl && <div className="mt-2 flex items-center gap-2 text-[11px]"><Download size={12} className="text-[var(--primary-2)] shrink-0" /><a href={dl} target="_blank" rel="noreferrer" className="text-[var(--primary-2)] break-all hover:underline">{dl}</a></div>}
+      </div>
       {meta.validation && <div className="mb-4"><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5 flex items-center gap-2">{t('sr.pluginval', 'Plugin validation')} {meta.validation.valid ? <Badge tone="green"><CheckCircle2 size={10} /> {t('sr.valid', 'valid')}</Badge> : <Badge tone="red"><XCircle size={10} /> {t('sr.invalid', 'invalid')}</Badge>}</div><pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-40 overflow-auto">{JSON.stringify(meta.validation, null, 2)}</pre></div>}
       {Object.keys(meta).length > 0 && <div><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5">{t('sr.fullmeta', 'Full metadata (review before approving)')}</div><pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-56 overflow-auto">{JSON.stringify(meta, null, 2)}</pre></div>}
     </Modal>

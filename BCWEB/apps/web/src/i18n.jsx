@@ -663,6 +663,7 @@ const DICT = {
     // ── Modération : revue de soumission ──
     'sr.kind': 'Type', 'sr.version': 'Version', 'sr.project': 'Projet', 'sr.author': 'Auteur', 'sr.slug': 'Slug', 'sr.subtype': 'Type de soumission',
     'sr.title': 'Revue — {n}', 'sr.reject': 'Rejeter', 'sr.approve': 'Approuver', 'sr.modtags': 'Tags de modération internes',
+    'sr.examine.t': 'Revue du contenu', 'sr.examine': 'Examiner le contenu', 'sr.examine.hide': 'Masquer', 'sr.download': 'Télécharger', 'sr.binary': 'Fichier binaire — télécharge-le pour l’inspecter.',
     'sr.modtagsnote': '(jamais montrés à l’auteur)', 'sr.tagph': 'ex. priorité, à-retravailler…', 'sr.none': 'Aucun',
     'sr.modcomments': 'Commentaires de modération', 'sr.modcommentsnote': '(interne, 200 caractères max)',
     'sr.nocomments': 'Aucun commentaire.', 'sr.commentph': 'Laisse une note pour les autres modérateurs…',

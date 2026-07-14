@@ -7,6 +7,9 @@ import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
 import { powVerify } from './auth.mjs';
 
 const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
+// Zip entries whose text is safe to preview inline during moderation review.
+const INSPECT_TEXT_EXT = /\.(json|txt|md|css|js|mjs|cjs|ts|lua|cfg|ini|yml|yaml|xml|toml|csv|log|sh)$/i;
+const INSPECT_TEXT_MAX = 256 * 1024;
 
 // Re-validation (checksum/package verification, see revalidatePlugin below) can
 // mark a PUBLISHED item as failed (e.g. a self-hosted download URL now serves a
@@ -472,6 +475,51 @@ export default async function catalogRoutes(app) {
       const url = item.payloadKey ? await presignGet(item.payloadKey) : meta.download_url;
       return { valid: res.valid, reason: res.reason, sha256: res.sha256, size: buf.length, files: res.files, manifest: res.manifest, downloadUrl: url };
     } catch (e) { return reply.code(502).send({ error: 'fetch_failed', detail: String(e?.message || e) }); }
+  });
+
+  // Admin: examine ANY submitted item's payload (plugin/theme/app) without downloading —
+  // lists the zip entries with an inline text preview of readable files, or the whole text
+  // for a plain json/text payload. Mirrors the community-catalog Examine. Never executed.
+  app.get('/admin/catalog/:id/inspect', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const item = await p.catalogItem.findUnique({ where: { id: req.params.id } });
+    if (!item) return reply.code(404).send({ error: 'not_found' });
+    const meta = item.meta || {};
+    if (!item.payloadKey && !meta.download_url) return reply.code(404).send({ error: 'no_payload' });
+    try {
+      const buf = await fetchPluginBytes({ url: meta.download_url, key: item.payloadKey, getObject });
+      let zip = null; try { zip = new AdmZip(buf); } catch { /* not a zip */ }
+      if (zip && zip.getEntries().length) {
+        const entries = zip.getEntries().filter((e) => !e.isDirectory).map((e) => {
+          const isText = INSPECT_TEXT_EXT.test(e.entryName) && e.header.size <= INSPECT_TEXT_MAX;
+          let text = null; if (isText) { try { text = e.getData().toString('utf-8'); } catch { text = null; } }
+          return { name: e.entryName, size: e.header.size, text };
+        });
+        return { type: 'zip', size: buf.length, entries };
+      }
+      const nm = item.payloadKey || meta.download_url || item.name;
+      const isText = INSPECT_TEXT_EXT.test(nm) || buf.length <= INSPECT_TEXT_MAX;
+      return { type: 'file', size: buf.length, name: String(nm).split('/').pop(), text: isText ? buf.slice(0, INSPECT_TEXT_MAX).toString('utf-8') : null };
+    } catch (e) { return reply.code(502).send({ error: 'read_failed', detail: String(e?.message || e) }); }
+  });
+
+  // Admin: download a single entry from ANY zip payload (not just plugins) — ?path=… .
+  app.get('/admin/catalog/:id/entry', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const item = await p.catalogItem.findUnique({ where: { id: req.params.id } });
+    if (!item) return reply.code(404).send({ error: 'not_found' });
+    const path = String(req.query?.path || ''); if (!path) return reply.code(400).send({ error: 'no_path' });
+    const meta = item.meta || {};
+    try {
+      const buf = await fetchPluginBytes({ url: meta.download_url, key: item.payloadKey, getObject });
+      const entry = new AdmZip(buf).getEntry(path);
+      if (!entry || entry.isDirectory) return reply.code(404).send({ error: 'file_not_found' });
+      const name = (path.split('/').pop() || 'file').replace(/[^\w.\-]/g, '_');
+      reply.header('Content-Type', 'application/octet-stream');
+      reply.header('Content-Disposition', `attachment; filename="${name}"`);
+      reply.header('Cache-Control', 'no-store');
+      return reply.send(entry.getData());
+    } catch (e) { return reply.code(502).send({ error: 'read_failed', detail: String(e?.message || e) }); }
   });
 
   // Admin: download a single extracted file from a plugin's .bmmplug (review each file
