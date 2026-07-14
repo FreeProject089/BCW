@@ -19,7 +19,7 @@ import { useTheme } from '../ui/theme.jsx';
 import { getConsent, setConsent } from '../lib/analytics.js';
 import { SKIP_KEY, useIntro } from '../ui/IntroContext.jsx';
 import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from '../lib/prefs.js';
-import { MyRepos, AdminRepos, Billing, rawStatusLabel } from './repos.jsx';
+import { MyRepos, AdminRepos, AdminPools, Billing, rawStatusLabel } from './repos.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
 import { AuthorsRow, MarkdownEditor } from './blog.jsx';
 import Avatar, { VARIANTS as AV_VARIANTS, PALETTES as AV_PALETTES } from '../ui/Avatar.jsx';
@@ -2335,6 +2335,7 @@ export function Admin() {
 
     { heading: t('adm.h.repos', 'Repos & hosting') },
     can('manage_repos') && { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
+    can('manage_repos') && { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
     isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
 
     { heading: t('adm.h.growth', 'Growth & monetization') },
@@ -2419,6 +2420,7 @@ export function Admin() {
         {s === 'newsletter' && <AdminNewsletter />}
         {s === 'faq' && <AdminFaq />}
         {s === 'repos' && <AdminRepos />}
+        {s === 'pools' && <AdminPools />}
         {s === 'catalogs' && <><AdminCatalogCreator /><PluginVerifier /><ThemeVerifier /></>}
         {s === 'commcatalogs' && <AdminCatalogs />}
         {s === 'reports' && <AdminReports />}

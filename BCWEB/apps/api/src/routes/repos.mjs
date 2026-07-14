@@ -559,6 +559,49 @@ export default async function repoRoutes(app) {
     return { ok: true };
   });
 
+  // Admin: every user's storage pools (for the admin pool manager). Merge/rename/recolour
+  // reuse the owner endpoints above (they already accept staff); split is admin-only below.
+  app.get('/admin/hosting/groups', { preHandler: requireCap('manage_repos') }, async () => {
+    const p = await db();
+    const groups = await p.hostingGroup.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        owner: { select: { id: true, displayName: true, email: true } },
+        repos: { select: { id: true, name: true, status: true, storageQuotaBytes: true } },
+        catalogs: { select: { id: true, name: true, slug: true, storageQuotaBytes: true } },
+        _count: { select: { subscriptions: { where: { status: 'active' } } } },
+      },
+    });
+    return { groups: groups.map((g) => ({
+      id: g.id, name: g.name, color: g.color || '', ownerId: g.ownerId,
+      ownerName: g.owner?.displayName || g.owner?.email || '—', ownerBcId: userBcId(g.ownerId),
+      poolBytes: Number(g.poolBytes), freePlan: g.freePlan, subCount: g._count.subscriptions,
+      repos: g.repos.map((r) => ({ id: r.id, name: r.name, status: r.status, quotaBytes: Number(r.storageQuotaBytes) })),
+      catalogs: g.catalogs.map((c) => ({ id: c.id, name: c.name, slug: c.slug, quotaBytes: Number(c.storageQuotaBytes) })),
+    })) };
+  });
+
+  // Admin: split (unmerge) a merged pool. The first active sub stays on the pool; every
+  // EXTRA active sub is moved to its own new pool sized to its contribution. Repos/catalogs
+  // stay on the original pool (they can't be auto-reassigned) — the admin re-distributes
+  // them afterward if needed.
+  app.post('/admin/hosting/groups/:id/split', { preHandler: requireCap('manage_repos') }, async (req, reply) => {
+    const p = await db();
+    const g = await p.hostingGroup.findUnique({ where: { id: req.params.id } });
+    if (!g) return reply.code(404).send({ error: 'not_found' });
+    const subs = await p.subscription.findMany({ where: { hostingGroupId: g.id, status: 'active' }, orderBy: { currentPeriodEnd: 'desc' } });
+    if (subs.length < 2) return reply.code(400).send({ error: 'nothing_to_split' });
+    const [, ...extra] = subs;
+    for (const s of extra) {
+      const np = await p.hostingGroup.create({ data: { ownerId: g.ownerId, name: `${g.name} (split)`, poolBytes: s.poolContribBytes, uploadLimitKbps: g.uploadLimitKbps, cpuShare: g.cpuShare, freePlan: g.freePlan } });
+      await p.subscription.update({ where: { id: s.id }, data: { hostingGroupId: np.id } });
+      await recomputePoolBytes(p, np.id);
+    }
+    await recomputePoolBytes(p, g.id);
+    await notify(p, g.ownerId, 'hosting_started', `An admin split pool "${g.name}" back into ${extra.length + 1} separate pools.`).catch(() => {});
+    return { ok: true, created: extra.length };
+  });
+
   // Merge one pool into another: the source's repos + catalogs move to the target, the
   // source's subscription(s) re-anchor to the target (each keeps billing separately), and
   // the source pool is deleted. The target's poolBytes becomes the sum of all active subs

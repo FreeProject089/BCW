@@ -1733,6 +1733,86 @@ function AdminRepoTraffic() {
   );
 }
 
+// Admin storage-pool manager: every user's pools, grouped by owner, with merge (per owner,
+// reusing the owner endpoint which accepts staff), rename/recolour, and split (unmerge).
+export function AdminPools() {
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
+  const { data, loading, reload } = useFetch(() => api.get('/admin/hosting/groups'), []);
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState({}); // { [ownerId]: Set(poolId) } — merge selection is per-owner
+  const groups = data?.groups || [];
+  const filtered = groups.filter((g) => !q || `${g.name} ${g.ownerName} ${g.ownerBcId}`.toLowerCase().includes(q.toLowerCase()));
+  // Group by owner so merges (which require one owner) are scoped correctly.
+  const byOwner = {};
+  for (const g of filtered) { (byOwner[g.ownerId] ||= { ownerId: g.ownerId, ownerName: g.ownerName, ownerBcId: g.ownerBcId, pools: [] }).pools.push(g); }
+  const owners = Object.values(byOwner);
+
+  const toggle = (ownerId, poolId) => setSel((s) => { const n = { ...s }; const set = new Set(n[ownerId] || []); set.has(poolId) ? set.delete(poolId) : set.add(poolId); n[ownerId] = set; return n; });
+  const setColor = async (g, color) => { try { await api.patch(`/me/hosting/groups/${g.id}`, { color }); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
+  const rename = async (g) => {
+    const name = await dialog.prompt({ title: t('apools.rename', 'Rename pool'), defaultValue: g.name, label: t('pools.name', 'Pool name') });
+    if (!name) return;
+    try { await api.patch(`/me/hosting/groups/${g.id}`, { name }); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); }
+  };
+  const mergeOwner = async (o, into) => {
+    const ids = [...(sel[o.ownerId] || [])].filter((id) => id !== into);
+    if (!into || !ids.length) return;
+    if (!await dialog.confirm({ title: t('apools.merge.t', 'Merge pools?'), body: t('apools.merge.b', 'Merge {n} pool(s) into the target. Subscriptions move with them.').replace('{n}', String(ids.length)), okText: t('pools.mergebtn', 'Merge') })) return;
+    try { await api.post('/me/hosting/groups/merge', { sourceIds: ids, targetId: into }); setSel((s) => ({ ...s, [o.ownerId]: new Set() })); reload(); }
+    catch (x) { toast.error(x.data?.error || t('repos.failed', 'Failed.')); }
+  };
+  const split = async (g) => {
+    if (!await dialog.confirm({ title: t('apools.split.t', 'Split this pool?'), body: t('apools.split.b', 'Each extra subscription becomes its own pool. Repos/catalogs stay on the original pool — reassign them afterward if needed.'), okText: t('apools.split.ok', 'Split') })) return;
+    try { const r = await api.post(`/admin/hosting/groups/${g.id}/split`, {}); toast.success(t('apools.split.done', 'Split into {n} new pool(s).').replace('{n}', String(r.created))); reload(); }
+    catch (x) { toast.error(x.data?.error === 'nothing_to_split' ? t('apools.split.none', 'This pool has only one subscription — nothing to split.') : t('repos.failed', 'Failed.')); }
+  };
+
+  if (loading) return <Loading />;
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--primary-2)]" /> {t('apools.title', 'Storage pools (all users)')} <span className="text-xs text-[var(--faint)] font-normal">{groups.length}</span></h2>
+        <div className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-8 !py-1 !text-sm" placeholder={t('apools.search', 'Search owner / pool…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      </div>
+      {owners.length === 0 ? <EmptyState icon={HardDrive} title={t('apools.none', 'No pools')} sub={t('apools.none.s', 'No storage pools match.')} /> : <div className="space-y-4">
+        {owners.map((o) => { const selected = sel[o.ownerId] || new Set(); return (
+          <Card key={o.ownerId} className="p-4">
+            <div className="flex items-center gap-2 mb-2.5 text-sm flex-wrap">
+              <Users size={14} className="text-[var(--primary-2)]" />
+              <Link to={`/u/${o.ownerId}`} className="font-medium hover:text-[var(--primary)]">{o.ownerName}</Link>
+              <button onClick={() => { navigator.clipboard?.writeText(o.ownerBcId); toast.success(t('common.copied', 'Copied.')); }} className="text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)] inline-flex items-center gap-1"><Fingerprint size={11} /> {o.ownerBcId}</button>
+              <span className="text-[var(--faint)]">· {o.pools.length} {t('apools.pools', 'pools')}</span>
+              {selected.size >= 1 && o.pools.length > 1 && <span className="ml-auto flex items-center gap-1.5">
+                <select className="input !w-auto !py-1 !text-xs" defaultValue="" onChange={(e) => e.target.value && mergeOwner(o, e.target.value)}>
+                  <option value="">{t('pools.mergeinto', 'Merge into…')}</option>
+                  {o.pools.map((pp) => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
+                </select>
+              </span>}
+            </div>
+            <div className="space-y-1.5">
+              {o.pools.map((g) => { const accent = g.color || '#f97316'; return (
+                <div key={g.id} className="flex items-center gap-2 flex-wrap rounded-lg border border-[var(--line)] p-2.5" style={{ borderLeft: `3px solid ${accent}` }}>
+                  {o.pools.length > 1 && <input type="checkbox" checked={selected.has(g.id)} onChange={() => toggle(o.ownerId, g.id)} title={t('pools.selectmerge', 'Select to merge')} />}
+                  <label className="grid place-items-center w-7 h-7 rounded-lg shrink-0 cursor-pointer relative" style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)` }}>
+                    <HardDrive size={13} style={{ color: accent }} />
+                    <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : '#f97316'} onChange={(e) => setColor(g, e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
+                  </label>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium truncate flex items-center gap-1.5">{g.name} {g.freePlan && <Badge tone="">{t('pools.free', 'free')}</Badge>} {g.subCount >= 2 && <Badge tone="primary">{g.subCount} {t('apools.subs', 'subs')}</Badge>}</div>
+                    <div className="text-[11px] text-[var(--faint)]">{gb(g.poolBytes)} GB · {g.repos.length} {t('pools.repos', 'repos')} · {g.catalogs.length} {t('pools.catalogs', 'catalogs')}</div>
+                  </div>
+                  <button onClick={() => rename(g)} className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]" title={t('apools.rename', 'Rename')}><Pencil size={13} /></button>
+                  {g.subCount >= 2 && <Button size="sm" variant="ghost" onClick={() => split(g)}><GitBranch size={13} /> {t('apools.split', 'Split')}</Button>}
+                </div>
+              ); })}
+            </div>
+          </Card>
+        ); })}
+      </div>}
+    </div>
+  );
+}
+
 export function AdminRepos() {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useFetch(() => api.get('/admin/repos'), []);
