@@ -454,9 +454,12 @@ export default async function analyticsRoutes(app) {
   });
 
   // ── Conversion goals ────────────────────────────────────────────────────────
+  // Interaction goals count InteractionEvents; dimension goals count pageviews matching a
+  // visitor attribute (referrer / geo / tech). Both share the same visitor-based rate.
+  const DIMENSION_KINDS = { referrer: 'ref', country: 'country', region: 'region', city: 'city', device: 'device', os: 'os', browser: 'browser' };
   const goalSchema = z.object({
     name: z.string().min(1).max(80),
-    kind: z.enum(['pageview', 'click', 'submit', 'input', 'copy']),
+    kind: z.enum(['pageview', 'click', 'submit', 'input', 'copy', 'referrer', 'country', 'region', 'city', 'device', 'os', 'browser']),
     path: z.string().max(200).nullish(),
     label: z.string().max(120).nullish(),
     target: z.number().int().min(0).max(100000000).nullish(),
@@ -481,6 +484,19 @@ export default async function analyticsRoutes(app) {
           p.$queryRawUnsafe(`SELECT count(DISTINCT visitor)::int AS n FROM "AnalyticsEvent" WHERE "createdAt" >= $1 AND visitor IS NOT NULL ${g.path ? 'AND path ILIKE $2' : ''}`, ...(g.path ? [since, `%${g.path}%`] : [since])),
         ]);
         completions = c; visitors = Number(v?.[0]?.n || 0);
+      } else if (DIMENSION_KINDS[g.kind]) {
+        // A pageview-dimension goal: match visitors by referrer / geo / tech attribute.
+        const field = DIMENSION_KINDS[g.kind];
+        const val = (g.label || '').trim();
+        // country/device match exactly (short controlled vocab); the rest are contains.
+        const exact = g.kind === 'country' || g.kind === 'device';
+        const dimCond = val ? { [field]: exact ? { equals: val, mode: 'insensitive' } : { contains: val, mode: 'insensitive' } } : { [field]: { not: null } };
+        const where = { createdAt: { gte: since }, ...pathCond, ...dimCond };
+        const [c, vrows] = await Promise.all([
+          p.analyticsEvent.count({ where }),
+          p.analyticsEvent.findMany({ where, select: { visitor: true }, distinct: ['visitor'] }),
+        ]);
+        completions = c; visitors = vrows.filter((x) => x.visitor).length;
       } else {
         const labelCond = g.label ? { label: { contains: g.label, mode: 'insensitive' } } : {};
         const [c, v] = await Promise.all([

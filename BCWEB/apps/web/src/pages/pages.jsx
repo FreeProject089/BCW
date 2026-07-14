@@ -7307,7 +7307,15 @@ function SessionsPanel({ days, hours }) {
 
 // Conversion goals: admin-defined targets (reach a page, click a button, submit a form…)
 // with live completions + unique-visitor conversion rate over a chosen window.
-const GOAL_KINDS = [['pageview', 'goal.k.pageview', 'Page view', Eye], ['click', 'goal.k.click', 'Button click', MousePointerClick], ['submit', 'goal.k.submit', 'Form submit', Send], ['input', 'goal.k.input', 'Field change', PenSquare], ['copy', 'goal.k.copy', 'Copy', Copy]];
+const GOAL_KINDS = [
+  ['pageview', 'goal.k.pageview', 'Page view', Eye], ['click', 'goal.k.click', 'Button click', MousePointerClick],
+  ['submit', 'goal.k.submit', 'Form submit', Send], ['input', 'goal.k.input', 'Field change', PenSquare], ['copy', 'goal.k.copy', 'Copy', Copy],
+  ['referrer', 'goal.k.referrer', 'From referrer', ArrowUpRight], ['country', 'goal.k.country', 'From country', Globe2],
+  ['region', 'goal.k.region', 'From region', MapPin], ['city', 'goal.k.city', 'From city', Building2],
+  ['device', 'goal.k.device', 'Device', Smartphone], ['os', 'goal.k.os', 'OS', Cpu], ['browser', 'goal.k.browser', 'Browser', Globe],
+];
+// Kinds that match a pageview attribute (referrer / geo / tech) rather than an interaction.
+const GOAL_DIM = { referrer: ['goal.t.ref', 'Referrer contains', 'google, reddit, t.co…'], country: ['goal.t.country', 'Country code (2 letters)', 'US, FR, DE…'], region: ['goal.t.region', 'Region contains', 'California, Île-de-France…'], city: ['goal.t.city', 'City contains', 'Paris, Berlin…'], device: ['goal.t.device', 'Device', 'desktop / mobile / tablet'], os: ['goal.t.os', 'OS contains', 'Windows, macOS, Android…'], browser: ['goal.t.browser', 'Browser contains', 'Chrome, Firefox, Safari…'] };
 function AdminGoals() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [range, setRange] = useState('30d');
@@ -7322,6 +7330,7 @@ function AdminGoals() {
   const autoName = () => {
     if (f.kind === 'pageview') return f.path.trim() ? t('goal.auto.visit', 'Visit {x}').replace('{x}', f.path.trim()) : t('goal.auto.anyvisit', 'Any page visit');
     const tgt = f.label.trim() || t('goal.auto.any', 'any');
+    if (GOAL_DIM[f.kind]) { const lbl = GOAL_KINDS.find((k) => k[0] === f.kind); return `${t(lbl[1], lbl[2])}: ${tgt}`; }
     return { click: t('goal.auto.click', 'Click “{x}”'), submit: t('goal.auto.submit', 'Submit “{x}”'), input: t('goal.auto.input', 'Edit “{x}”'), copy: t('goal.auto.copy', 'Copy “{x}”') }[f.kind]?.replace('{x}', tgt) || tgt;
   };
   const save = async () => {
@@ -7356,10 +7365,12 @@ function AdminGoals() {
         <div className="grid sm:grid-cols-2 gap-3">
           {f.kind === 'pageview'
             ? <Field label={t('goal.t.page', 'Which page? (path contains)')}><Input value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} placeholder="/auth, /catalog…" /></Field>
-            : <>
-                <Field label={t('goal.t.text', 'Which button / field? (text contains)')}><Input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder={t('goal.t.textph', 'Sign up, Install… (blank = any)')} /></Field>
-                <Field label={t('goal.t.onpage', 'On page (optional)')}><Input value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} placeholder="/catalog…" /></Field>
-              </>}
+            : GOAL_DIM[f.kind]
+              ? <Field label={t(GOAL_DIM[f.kind][0], GOAL_DIM[f.kind][1])}><Input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder={`${GOAL_DIM[f.kind][2]} ${t('goal.t.blankany', '(blank = any)')}`} /></Field>
+              : <>
+                  <Field label={t('goal.t.text', 'Which button / field? (text contains)')}><Input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder={t('goal.t.textph', 'Sign up, Install… (blank = any)')} /></Field>
+                  <Field label={t('goal.t.onpage', 'On page (optional)')}><Input value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} placeholder="/catalog…" /></Field>
+                </>}
           <Field label={<span className="flex items-center gap-1.5">{t('goal.name', 'Goal name')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.name.auto', '(auto if blank)')}</span></span>}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={autoName()} /></Field>
           <Field label={<span className="flex items-center gap-1.5">{t('goal.target', 'Target')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.target.hint', '(optional — e.g. 1000 completions)')}</span></span>}><Input type="number" min="0" value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} placeholder="1000" /></Field>
         </div>
@@ -7470,7 +7481,7 @@ function AdminEventsFeed() {
             </tr>
           ); })}</tbody>
         </table>
-      </div> : <EmptyState icon={Activity} title={t('evf.none', 'No events in this window')} sub={t('evf.none.s', 'Adjust the range or filters.')} />}
+      </div> : <EmptyState icon={Activity} title={t('evf.none', 'No events in this window')} sub={t('evf.none.s2', 'Adjust the range/filters. Note: pageviews & interactions are only recorded for visitors who accepted analytics cookies (consent “all”) — so an empty feed usually means little consented traffic, not a fault.')} />}
     </div>
   );
 }
