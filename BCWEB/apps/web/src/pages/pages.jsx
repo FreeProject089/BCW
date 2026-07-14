@@ -2010,6 +2010,7 @@ export function Dashboard() {
   const tabs = [
     { id: 'overview', label: t('dash.overview', 'Overview'), icon: LayoutDashboard },
     { id: 'items', label: t('dash.myitems', 'My items'), icon: Package, badge: list.length || undefined },
+    { id: 'catalogs', label: t('dash.mycatalogs', 'My catalogs'), icon: Boxes },
     { id: 'repos', label: t('dash.myrepos', 'My repos'), icon: Server, badge: rlist.length || undefined },
     { id: 'billing', label: t('dash.billing', 'Billing'), icon: Receipt },
   ];
@@ -2095,6 +2096,7 @@ export function Dashboard() {
               <Link to="/submit"><Button variant="primary"><Upload size={15} /> {t('sub.title', 'Submit content')}</Button></Link></EmptyState>)}
           </div>}
 
+          {s === 'catalogs' && <OwnerCatalogs />}
           {s === 'repos' && <MyRepos />}
           {s === 'billing' && <Billing />}
         </>)}
@@ -8412,6 +8414,87 @@ function AdminNav() {
         <div className="flex-1" />
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> {t('nav.save', 'Save navigation')}</>}</Button>
       </div>
+    </div>
+  );
+}
+
+// Owner: manage my community catalogs — visibility, public listing, share link, delete,
+// and (for managed catalogs) the items. The feed URL + /c page are one click away.
+function OwnerCatalogs() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { data, loading, reload } = useAsync(() => api.get('/me/catalogs'), []);
+  const [openId, setOpenId] = useState(null);
+  const cats = data?.catalogs || [];
+  const patch = async (c, body) => { try { await api.patch(`/me/catalogs/${c.id}`, body); reload(); } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } };
+  const rotate = async (c) => { try { const r = await api.post(`/me/catalogs/${c.id}/rotate-key`); navigator.clipboard?.writeText(`${location.origin}/c/${c.slug}?k=${r.shareKey}`); toast.success(t('oc.keyrotated', 'New share link copied.')); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  const del = async (c) => { if (!(await dialog.confirm({ title: t('oc.del.t', 'Delete catalog?'), message: t('oc.del.m', '"{n}" will be hidden now and permanently removed in 72h.').replace('{n}', c.name), okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/me/catalogs/${c.id}`); toast.success(t('oc.deleted', 'Catalog scheduled for deletion.')); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  const copyFeed = (c) => { navigator.clipboard?.writeText(`${location.origin}/api/c/${c.slug}/catalog.json`); toast.success(t('ccp.copied', 'Copied.')); };
+  const tone = (s) => s === 'SUSPENDED' ? 'red' : s === 'HIDDEN' ? 'amber' : 'green';
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div><h2 className="font-semibold flex items-center gap-2"><Boxes size={16} className="text-[var(--primary-2)]" /> {t('oc.title', 'My catalogs')}</h2>
+          <p className="text-sm text-[var(--muted)]">{t('oc.desc', 'Catalogs you host. Share the /c link or add them in BMM. Managed catalogs draw from a storage pool.')}</p></div>
+        <Link to="/submit"><Button size="sm" variant="primary"><Plus size={14} /> {t('oc.new', 'New catalog')}</Button></Link>
+      </div>
+      {loading ? <Loading /> : cats.length ? <div className="space-y-2">
+        {cats.map((c) => (
+          <Card key={c.id} className="p-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate flex items-center gap-2">{c.name} <Badge tone={tone(c.status)}>{c.status}</Badge><Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
+                <div className="text-xs text-[var(--faint)] truncate">{c.itemCount} {t('cc.items', 'items')} · <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline">/c/{c.slug}</a></div>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => copyFeed(c)}><Copy size={13} /> {t('oc.feed', 'Feed URL')}</Button>
+              {c.mode === 'managed' && <Button size="sm" variant="ghost" onClick={() => setOpenId(openId === c.id ? null : c.id)}><Package size={13} /> {t('oc.items', 'Items')}</Button>}
+              <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(c)}><Trash2 size={13} /></Button>
+            </div>
+            <div className="flex items-center gap-3 mt-3 pt-3 border-t border-[var(--line)] flex-wrap text-sm">
+              <label className="flex items-center gap-1.5 text-[var(--muted)]">{t('oc.visibility', 'Visibility')}
+                <Select className="!w-auto" value={c.visibility} onChange={(e) => patch(c, { visibility: e.target.value })}><option value="public">{t('sub2.public', 'Public')}</option><option value="private">{t('sub2.private', 'Private')}</option></Select></label>
+              {c.visibility === 'public' && <label className="flex items-center gap-1.5 text-[var(--muted)] cursor-pointer"><input type="checkbox" checked={c.listed} onChange={(e) => patch(c, { listed: e.target.checked })} /> {t('oc.listed', 'Listed publicly')}</label>}
+              {c.visibility === 'private' && <Button size="sm" variant="ghost" onClick={() => rotate(c)}><RefreshCw size={12} /> {t('oc.sharelink', 'Copy share link')}</Button>}
+            </div>
+            {openId === c.id && <OwnerCatalogItems catalog={c} onChange={reload} />}
+          </Card>
+        ))}
+      </div> : <EmptyState icon={Boxes} title={t('oc.none.t', 'No catalogs yet')} sub={t('oc.none.s', 'Host your own catalog of plugins, themes or apps.')} />}
+    </div>
+  );
+}
+
+// Managed-catalog item manager (add URL-based items + remove). Payload uploads come with
+// the storage-pool billing pass; here items point at a download URL in their meta.
+function OwnerCatalogItems({ catalog, onChange }) {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get(`/me/catalogs/${catalog.id}`), [catalog.id]);
+  const [f, setF] = useState({ kind: 'PLUGIN', name: '', url: '' });
+  const items = data?.catalog?.items || [];
+  const add = async () => {
+    if (f.name.trim().length < 1) return toast.error(t('oc.it.name', 'Name required.'));
+    try { await api.post(`/me/catalogs/${catalog.id}/items`, { kind: f.kind, name: f.name.trim(), meta: f.url ? { download_url: f.url.trim() } : {} }); setF({ ...f, name: '', url: '' }); reload(); onChange?.(); }
+    catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); }
+  };
+  const rm = async (it) => { try { await api.del(`/me/catalogs/${catalog.id}/items/${it.id}`); reload(); onChange?.(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  return (
+    <div className="mt-3 pt-3 border-t border-[var(--line)]">
+      {loading ? <Loading /> : <>
+        {items.length > 0 && <div className="space-y-1 mb-2">
+          {items.map((it) => (
+            <div key={it.id} className="flex items-center gap-2 text-sm py-1">
+              <Badge tone="">{it.kind}</Badge><span className="flex-1 min-w-0 truncate">{it.name}</span>
+              <button onClick={() => rm(it)} className="text-[var(--faint)] hover:text-red-400"><X size={13} /></button>
+            </div>
+          ))}
+        </div>}
+        <div className="flex flex-wrap items-end gap-2">
+          <Select className="!w-auto" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="PLUGIN">Plugin</option><option value="THEME">Theme</option><option value="APP">App</option></Select>
+          <Input className="flex-1 min-w-[120px]" placeholder={t('sub.name', 'Name')} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+          <Input className="flex-1 min-w-[160px]" placeholder="https://…/download" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />
+          <Button size="sm" variant="default" onClick={add}><Plus size={13} /> {t('oc.additem', 'Add')}</Button>
+        </div>
+      </>}
     </div>
   );
 }
