@@ -44,6 +44,10 @@ jobs:
         run: |
           npm ci
           npx prisma validate --schema ../../packages/db/schema.prisma
+      # Billing-math unit tests (pure pricing fns — no DB). node:test, no deps.
+      - name: billing math tests
+        working-directory: BCWEB/apps/api
+        run: npm test
 
   secret-scan:
     name: Secret scan
