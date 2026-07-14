@@ -508,7 +508,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
         const repoPct = pct(g.repoBytes, g.poolBytes), catPct = pct(g.catalogBytes, g.poolBytes);
         const accent = colorOf(g, i);
         return (
-          <div key={g.id} className="rounded-xl border border-[var(--line)] p-3.5" style={{ borderLeft: `3px solid ${accent}` }}>
+          <div key={g.id} className="card p-3.5" style={{ borderLeft: `3px solid ${accent}` }}>
             <div className="flex items-center gap-2 flex-wrap mb-2">
               <label className="grid place-items-center w-8 h-8 rounded-lg shrink-0 cursor-pointer relative" style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)` }} title={t('pools.color', 'Pool colour')}>
                 <HardDrive size={15} style={{ color: accent }} />
