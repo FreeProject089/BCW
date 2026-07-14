@@ -1270,6 +1270,7 @@ const DICT = {
     'goal.k.device': 'Appareil', 'goal.k.os': 'OS', 'goal.k.browser': 'Navigateur',
     'goal.t.ref': 'Le référent contient', 'goal.t.country': 'Code pays (2 lettres)', 'goal.t.region': 'La région contient', 'goal.t.city': 'La ville contient',
     'goal.t.device': 'Appareil', 'goal.t.os': "L'OS contient", 'goal.t.browser': 'Le navigateur contient', 'goal.t.blankany': '(vide = tous)',
+    'evf.live': 'Direct',
     'evf.none.s2': 'Ajuste la période/les filtres. Note : les pages vues et interactions ne sont enregistrées que pour les visiteurs ayant accepté les cookies d’analyse (consentement « tout ») — un flux vide signifie donc souvent peu de trafic consenti, pas une panne.',
     'er.copied': 'Copié.', 'er.copiedlog': 'Log d’erreur copié.', 'er.copylog': 'Copier le log', 'er.affected': 'Comptes affectés',
     'er.bcidscopied': 'BC ids copiés.', 'er.copyall': 'tout copier', 'er.stackcopied': 'Stack copiée.', 'er.export': 'Exporter .json',

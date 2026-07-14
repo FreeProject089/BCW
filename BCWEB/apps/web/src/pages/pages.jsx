@@ -7479,6 +7479,9 @@ function AdminEventsFeed() {
   const qs = `${rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`}${qApplied ? `&path=${encodeURIComponent(qApplied)}` : ''}${kinds.size ? `&kinds=${[...kinds].join(',')}` : ''}`;
   const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/events?${qs}`), [qs]);
   const events = data?.events || []; const counts = data?.counts || {};
+  // Live mode: quietly re-poll the feed every 4s so new events stream in as they happen.
+  const [live, setLive] = useState(false);
+  useEffect(() => { if (!live) return; const id = setInterval(() => reload(), 4000); return () => clearInterval(id); }, [live, qs]); // eslint-disable-line
   const toggle = (k) => setKinds((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const EVICON = { pageview: Eye, click: MousePointerClick, copy: Copy, input: PenSquare, submit: Send, nav: ArrowRight, modal_open: PanelTop, modal_close: X };
   return (
@@ -7489,6 +7492,9 @@ function AdminEventsFeed() {
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
           </div>
+          <button onClick={() => setLive((v) => !v)} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border transition ${live ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-500' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            <span className={`w-2 h-2 rounded-full ${live ? 'bg-emerald-500 animate-pulse' : 'bg-[var(--faint)]'}`} /> {t('evf.live', 'Live')}
+          </button>
           <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
         </div>
       </div>
