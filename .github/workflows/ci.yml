@@ -51,11 +51,15 @@ jobs:
         working-directory: .
         run: find BCWEB/apps/api/src -name '*.mjs' -print0 | xargs -0 -n1 node --check
       - run: npm ci
-      # Generate the client + validate the schema, then push it to the throwaway DB.
       - run: npx prisma generate --schema ../../packages/db/schema.prisma
       - run: npx prisma validate --schema ../../packages/db/schema.prisma
-      - run: npx prisma db push --schema ../../packages/db/schema.prisma --skip-generate --accept-data-loss
-      # Full suite: pure pricing math + pool-billing invariants against the service DB.
+      # Apply the checked-in migrations (the real production boot path) to the throwaway DB…
+      - run: npx prisma migrate deploy --schema ../../packages/db/schema.prisma
+      # …then assert those migrations reproduce the schema EXACTLY — a schema edit without a
+      # matching migration (which migrate deploy would silently skip in prod) fails here.
+      - name: migrations reproduce the schema (drift check)
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel ../../packages/db/schema.prisma --exit-code
+      # Full suite: pure pricing math + pool-billing invariants + webhook lifecycle.
       - name: tests
         run: npm test
 

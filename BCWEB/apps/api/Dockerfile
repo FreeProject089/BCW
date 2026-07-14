@@ -18,11 +18,14 @@ COPY apps/api/src ./src
 RUN npx prisma generate
 
 EXPOSE 3000
-# No committed migrations yet → `db push` syncs the schema straight to Postgres
-# (creates all tables). Swap to `migrate deploy` once migrations are committed.
-# `exec` so node REPLACES the shell as PID 1 and receives SIGTERM directly —
-# without it the shell holds PID 1 and swallows the signal, so the API's graceful
-# shutdown never runs and every stop/redeploy hard-kills in-flight requests.
-# (For Kubernetes, move the `db push` to an initContainer/Job so N replicas don't
+# Schema management at boot = checked-in migrations via `migrate deploy` (NOT `db push`,
+# which can silently drop data on a rename/narrowing). boot-migrate.mjs makes deploy safe
+# on every DB state — fresh (applies the baseline), a DB previously synced with db push
+# (baselines it so deploy is a no-op, never recreating tables), and already-migrated
+# (applies pending migrations). See src/boot-migrate.mjs. `exec` so node REPLACES the
+# shell as PID 1 and receives SIGTERM directly — otherwise the shell holds PID 1 and
+# swallows the signal, so the API's graceful shutdown never runs and every stop/redeploy
+# hard-kills in-flight requests.
+# (For Kubernetes, move the migrate step to an initContainer/Job so N replicas don't
 #  race the schema sync — see infra/k8s/README.md.)
-CMD sh -c "npx prisma db push --skip-generate --accept-data-loss; exec node src/server.mjs"
+CMD sh -c "node src/boot-migrate.mjs && exec node src/server.mjs"
