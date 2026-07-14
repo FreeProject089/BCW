@@ -2960,13 +2960,13 @@ function AdminSecurity() {
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-        <div className="flex gap-2">
-          <button onClick={() => setTab('logins')} className={`px-3 py-1.5 rounded-lg border text-sm ${tab === 'logins' ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>{t('sec.tab.logins', 'Login attempts')}</button>
-          <button onClick={() => setTab('audit')} className={`px-3 py-1.5 rounded-lg border text-sm ${tab === 'audit' ? 'border-[var(--primary)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)]'}`}>{t('sec.tab.audit', 'Admin audit trail')}</button>
+        <div className="seg-rail p-0.5 gap-0.5">
+          <button onClick={() => setTab('logins')} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${tab === 'logins' ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('sec.tab.logins', 'Login attempts')}</button>
+          <button onClick={() => setTab('audit')} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${tab === 'audit' ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('sec.tab.audit', 'Admin audit trail')}</button>
         </div>
-        <div className="flex gap-1">
+        <div className="seg-rail p-0.5 gap-0.5">
           {SECURITY_RANGES.map(([h, label]) => (
-            <button key={h} onClick={() => setHours(h)} className={`px-2.5 py-1 rounded-lg border text-xs ${hours === h ? 'border-[var(--primary)] text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--faint)] hover:text-[var(--text)]'}`}>{label}</button>
+            <button key={h} onClick={() => setHours(h)} className={`px-2.5 py-1 rounded-[10px] text-xs transition ${hours === h ? 'bg-[var(--bg-solid)] text-[var(--primary-2)] shadow-sm font-medium' : 'text-[var(--faint)] hover:text-[var(--text)]'}`}>{label}</button>
           ))}
         </div>
       </div>
@@ -4859,26 +4859,36 @@ function AdminProjects() {
   };
   return (
     <div className="mt-10">
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('ap.title', 'Projects config')}</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">{t('ap.sub', 'Configure downloads, links, contributors & messages, the progress tracker, legal docs, and the GitHub release-notes source — per project.')}</p>
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        {keys.map((k) => { const Pm = PROJ_META[k]; return (
-          <button key={k} onClick={() => setActive(k)}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm transition ${active === k ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <AppLogo pkey={k} size={16} fallback={Pm.icon} /> {Pm.name}
-          </button>); })}
-        {/* Other projects (showcase) — added automatically, same editor. */}
-        {showcase.length > 0 && <span className="w-px h-6 bg-[var(--line)] mx-1" />}
-        {showcase.map((s) => (
-          <button key={s.id} onClick={() => setActive(`sc:${s.id}`)}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm transition ${active === `sc:${s.id}` ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <ShowcaseIcon icon={s.icon} size={14} fallback={<Sparkles size={14} />} /> {s.name}
-          </button>
-        ))}
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={flushCache} title="Repo changes (progress.json, release notes, links) can sit in a 5-min cache — this applies them now.">
+      {/* Header row keeps the "Refresh caches" action OUT of the wrapping chooser below —
+          with many showcase projects an ml-auto button in a flex-wrap row orphaned itself. */}
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+        <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('ap.title', 'Projects config')}</h2>
+        <Button size="sm" variant="ghost" onClick={flushCache} title="Repo changes (progress.json, release notes, links) can sit in a 5-min cache — this applies them now.">
           <RefreshCw size={13} /> {t('ap.refreshcaches', 'Refresh site caches')}
         </Button>
       </div>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('ap.sub', 'Configure downloads, links, contributors & messages, the progress tracker, legal docs, and the GitHub release-notes source — per project.')}</p>
+      {/* Project chooser — a self-contained rail that wraps cleanly (and gives the chips a
+          subtle surface so they aren't see-through under Translucent surfaces). The built-in
+          projects and the showcase ones share one grid; a labelled divider separates them
+          without the fragile inline ml-auto / orphaned w-px of the old flex row. */}
+      {(() => {
+        const chip = (on) => `flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm transition press-sm ${on ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'border-[var(--line)] bg-[var(--surface-2)]/40 text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`;
+        return (
+          <div className="seg-rail !flex-wrap gap-2 p-2 rounded-2xl mb-4">
+            {keys.map((k) => { const Pm = PROJ_META[k]; return (
+              <button key={k} onClick={() => setActive(k)} className={chip(active === k)}>
+                <AppLogo pkey={k} size={16} fallback={Pm.icon} /> {Pm.name}
+              </button>); })}
+            {showcase.length > 0 && <span className="self-center text-[10px] uppercase tracking-wider text-[var(--faint)] px-1.5">{t('ap.showcase', 'Other')}</span>}
+            {showcase.map((s) => (
+              <button key={s.id} onClick={() => setActive(`sc:${s.id}`)} className={chip(active === `sc:${s.id}`)}>
+                <ShowcaseIcon icon={s.icon} size={14} fallback={<Sparkles size={14} />} /> <span className="truncate max-w-[160px]">{s.name}</span>
+              </button>
+            ))}
+          </div>
+        );
+      })()}
       {/* Progress tracker source: pull the project's progress.json from a URL. */}
       <Card className="p-4 mb-4">
         <div className="flex items-center gap-2 mb-2"><TrendingUp size={15} className="text-[var(--primary-2)]" /><span className="font-medium text-sm">{t('ap.progsrc', 'Progress tracker source')}</span></div>

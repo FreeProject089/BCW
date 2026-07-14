@@ -262,6 +262,26 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   [data-theme="dark"][data-surface-glass] .input {
     background: color-mix(in srgb, #1c1913 calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
   }
+  /* Custom dropdowns (the Dropdown component's trigger + portaled menu) and segmented
+     toggle rails frost like the rest of the surface family instead of staying solid —
+     otherwise filters/tabs looked opaque while everything around them went translucent.
+     `.dd-menu` uses !important to beat the inline background: var(--bg-solid) it carries. */
+  [data-surface-glass] .dd-trigger,
+  [data-surface-glass] .seg-rail {
+    background: color-mix(in srgb, var(--bg-solid) calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
+    backdrop-filter: blur(12px) saturate(1.3);
+  }
+  [data-surface-glass] .dd-menu {
+    background: color-mix(in srgb, var(--bg-solid) calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
+    backdrop-filter: blur(18px) saturate(1.4);
+  }
+  [data-theme="dark"][data-surface-glass] .dd-trigger,
+  [data-theme="dark"][data-surface-glass] .seg-rail {
+    background: color-mix(in srgb, #1c1913 calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
+  }
+  [data-theme="dark"][data-surface-glass] .dd-menu {
+    background: color-mix(in srgb, #17130e calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
+  }
   /* Sticky in-page toolbars (search/filter headers that scroll-pin). Solid by
      default (they must hide the content scrolling under them), frosted on opt-in.
      Replaces inline `bg-[var(--bg-solid)]/NN backdrop-blur*` so the setting wins. */
@@ -275,6 +295,9 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
      fit — driving the Dashboard/Admin labels at the same time so they never split. */
   .seg-nav .nav-lbl { margin-left: 6px; }
   .seg-nav.is-compact .nav-lbl { display: none; margin-left: 0; }
+  /* Segmented-control rail: a subtle surface that holds a row of toggle/tab/chip buttons.
+     Solid by default, frosts under Translucent surfaces (see [data-surface-glass] .seg-rail). */
+  .seg-rail { display: inline-flex; align-items: center; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; }
   .nav-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 9px; font-size: 14px; color: var(--muted); transition: all .15s ease; }
   .nav-link:hover { color: var(--text); background: var(--surface-2); }
   .nav-link-active { color: var(--primary); background: var(--surface-2); }

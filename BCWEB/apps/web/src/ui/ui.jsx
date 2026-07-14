@@ -45,13 +45,13 @@ export function Dropdown({ value, options, onChange, className = '', size, place
   return (
     <>
       <button ref={btnRef} type="button" onClick={() => (open ? setOpen(false) : openMenu())} aria-expanded={open}
-        className={`press-sm inline-flex items-center justify-between gap-2 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] font-medium hover:border-[var(--ring)] transition-colors ${pad} ${className}`}>
+        className={`dd-trigger press-sm inline-flex items-center justify-between gap-2 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] font-medium hover:border-[var(--ring)] transition-colors ${pad} ${className}`}>
         <span className="truncate flex items-center gap-1.5">{cur?.icon}{cur ? cur.label : <span className="text-[var(--faint)]">{placeholder || '—'}</span>}</span>
         <ChevronDown size={14} className={`text-[var(--muted)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && pos && createPortal(<>
         <div className="fixed inset-0 z-[70]" onClick={() => setOpen(false)} />
-        <div className="fixed z-[71] rounded-xl border border-[var(--line-strong)] p-1 shadow-lg anim-pop max-h-[60vh] overflow-auto scroll-thin" style={{ top: pos.top, left: pos.left, minWidth: pos.minWidth, background: 'var(--bg-solid)' }}>
+        <div className="dd-menu fixed z-[71] rounded-xl border border-[var(--line-strong)] p-1 shadow-lg anim-pop max-h-[60vh] overflow-auto scroll-thin" style={{ top: pos.top, left: pos.left, minWidth: pos.minWidth, background: 'var(--bg-solid)' }}>
           {options.map((o) => (
             <button key={String(o.value)} type="button" onClick={() => { setOpen(false); if (String(o.value) !== String(value)) onChange(o.value); }}
               className={`press-sm w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-left transition-colors ${String(o.value) === String(value) ? 'bg-[var(--surface-2)] font-medium text-[var(--text)]' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'}`}>

@@ -518,7 +518,7 @@ const DICT = {
 
     // ── Admin : config des projets ──
     'ap.title': 'Configuration des projets', 'ap.sub': 'Configure les téléchargements, liens, contributeurs & messages, le suivi d’avancement, les docs légales et la source des notes de version GitHub — par projet.',
-    'ap.refreshcaches': 'Rafraîchir les caches du site', 'ap.cacheflushed': 'Caches du site rafraîchis ({n} entrées) — les changements du repo sont visibles.',
+    'ap.refreshcaches': 'Rafraîchir les caches du site', 'ap.cacheflushed': 'Caches du site rafraîchis ({n} entrées) — les changements du repo sont visibles.', 'ap.showcase': 'Autres',
     'ap.srcsaved': 'Source d’avancement enregistrée.', 'ap.fetched': 'progress.json récupéré ({n} éléments).', 'ap.fetchfail': 'Échec de la récupération.',
     'ap.saved': '{name} enregistré.', 'ap.vissaved': 'Visibilité enregistrée.',
     'ap.homenews.on': '{name} apparaîtra dans les « Dernières actus » de l’accueil.', 'ap.homenews.off': '{name} n’apparaît plus dans les « Dernières actus » de l’accueil.',
