@@ -11,6 +11,7 @@ import { ensureBucket } from './lib/storage.mjs';
 import { startSweeper } from './lib/sweeper.mjs';
 import authRoutes from './routes/auth.mjs';
 import catalogRoutes from './routes/catalog.mjs';
+import communityCatalogRoutes from './routes/catalogs.mjs';
 import miscRoutes from './routes/misc.mjs';
 import newsletterRoutes from './routes/newsletter.mjs';
 import uploadRoutes from './routes/uploads.mjs';
@@ -142,6 +143,7 @@ app.addHook('onResponse', (req, reply, done) => {
 
 await app.register(authRoutes);
 await app.register(catalogRoutes);
+await app.register(communityCatalogRoutes);
 await app.register(miscRoutes);
 await app.register(newsletterRoutes);
 await app.register(uploadRoutes);

@@ -68,6 +68,19 @@ async function sweepRejectedPayloads(p, log) {
   return purged;
 }
 
+// Hard-delete community catalogs whose 72h grace elapsed: their managed items' payload
+// bytes go, then the rows (CommunityCatalogItem cascades on catalog delete).
+async function sweepCommunityCatalogs(p, log) {
+  const due = await p.communityCatalog.findMany({ where: { deleteAt: { lte: new Date() } }, include: { items: { select: { payloadKey: true } } }, take: 20 });
+  for (const cat of due) {
+    try {
+      for (const it of cat.items) { if (it.payloadKey) await deleteObject(it.payloadKey); }
+      await p.communityCatalog.delete({ where: { id: cat.id } });
+    } catch (e) { log.warn({ id: cat.id, e: String(e?.message || e) }, 'sweeper: community catalog delete failed'); }
+  }
+  return due.length;
+}
+
 async function sweepRepos(p, log) {
   const due = await p.serverRepo.findMany({ where: { deleteAt: { lte: new Date() } }, include: { files: true }, take: 20 });
   for (const repo of due) {
@@ -164,15 +177,15 @@ export function startSweeper(app) {
   const run = async () => {
     try {
       const p = await db();
-      const [items, repos, rejPayloads, expired, warned, pruned, backedUp] = [
+      const [items, repos, cats, rejPayloads, expired, warned, pruned, backedUp] = [
         await sweepItems(p, app.log), await sweepRepos(p, app.log),
-        await sweepRejectedPayloads(p, app.log),
+        await sweepCommunityCatalogs(p, app.log), await sweepRejectedPayloads(p, app.log),
         await sweepExpiredSubscriptions(p, app.log), await sweepExpiryWarnings(p, app.log),
         await sweepDiscordActivityCap(p, app.log), await sweepDailyFileBackup(p, app.log),
       ];
       await sampleAndAlert(p, app.log);
       await runEventScheduler(p).catch((e) => app.log.warn({ e: String(e) }, 'event scheduler failed'));
-      if (items || repos || rejPayloads || expired || warned || pruned || backedUp) app.log.info(`[sweeper] hard-deleted ${items} item(s), ${repos} repo(s) · purged ${rejPayloads} rejected payload(s) · suspended ${expired} expired term(s) · warned ${warned} · pruned ${pruned} old Discord member row(s)${backedUp ? ' · took daily file backup snapshot' : ''}`);
+      if (items || repos || cats || rejPayloads || expired || warned || pruned || backedUp) app.log.info(`[sweeper] hard-deleted ${items} item(s), ${repos} repo(s), ${cats} catalog(s) · purged ${rejPayloads} rejected payload(s) · suspended ${expired} expired term(s) · warned ${warned} · pruned ${pruned} old Discord member row(s)${backedUp ? ' · took daily file backup snapshot' : ''}`);
     } catch (e) { app.log.warn({ e: String(e) }, 'sweeper run failed'); }
   };
   run(); // sweep once at boot

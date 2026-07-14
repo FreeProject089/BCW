@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import AdmZip from 'adm-zip';
-import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy } from '../lib/lib.mjs';
 import { presignGet, getObject, deleteObject } from '../lib/storage.mjs';
 import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
 import { powVerify } from './auth.mjs';
@@ -47,6 +47,23 @@ async function stripe() {
   return _stripe;
 }
 async function settings(p) { return Object.fromEntries((await p.adminSetting.findMany()).map((r) => [r.key, r.value])); }
+
+// Even the OFFICIAL catalog obeys the site-wide GlobalAccessPolicy: a globally-banned
+// client can't fetch the feed or download, and a site-wide whitelist-only mode gates it
+// too (mirrors repos). Returns true when the response was blocked (send a 403), so callers
+// do `if (await officialGate(p, req, reply)) return;`. Public feeds also lose their shared
+// cache while a restriction is active (a CDN must not serve the file around this gate).
+async function officialGate(p, req, reply) {
+  const policy = await getGlobalAccessPolicy(p);
+  const restricted = policy.whitelistOnly
+    || (policy.bannedIps?.length || policy.bannedKeys?.length || policy.bannedAccounts?.length);
+  if (!restricted) return false;
+  const identity = await resolveClientIdentity(p, req);
+  if (policyBans(policy, identity)) { reply.header('Cache-Control', 'private, no-store'); reply.code(403).send({ error: 'banned' }); return true; }
+  if (policy.whitelistOnly && !policyWhitelist(policy, identity)) { reply.header('Cache-Control', 'private, no-store'); reply.code(403).send({ error: 'not_whitelisted' }); return true; }
+  reply.header('Cache-Control', 'private, no-store');
+  return false;
+}
 // The first `catalogFreeMB` of ANY submission (any kind — app/plugin/theme/preset)
 // are free; only the bytes ABOVE that threshold are billed. Previously every byte
 // was billed (Math.ceil rounded even a 1 KB file up to a full paid MB) — there was
@@ -167,6 +184,7 @@ export default async function catalogRoutes(app) {
   // ── Download: short-lived pre-signed GET for a published payload ──
   app.get('/catalog/:slug/download', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
+    if (await officialGate(p, req, reply)) return;
     const item = await p.catalogItem.findUnique({ where: { slug: req.params.slug } });
     if (!mayViewItem(item, req)) return reply.code(404).send({ error: 'not_found' });
     if (!item.payloadKey) return reply.code(404).send({ error: 'no_payload' });
@@ -179,6 +197,7 @@ export default async function catalogRoutes(app) {
     const b = z.object({ slugs: z.array(z.string().max(120)).min(1).max(50) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    if (await officialGate(p, req, reply)) return;
     const items = await p.catalogItem.findMany({ where: { slug: { in: b.data.slugs }, status: 'PUBLISHED', payloadKey: { not: null }, ...NOT_INVALID } });
     const out = [];
     for (const item of items) { await countDownload(p, item); out.push({ slug: item.slug, name: item.name, url: await presignGet(item.payloadKey) }); }
@@ -189,6 +208,7 @@ export default async function catalogRoutes(app) {
   // catalog.json feed can hand BMM a permanent URL instead of an expiring presigned one.
   app.get('/catalog/:slug/dl', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
+    if (await officialGate(p, req, reply)) return;
     const item = await p.catalogItem.findUnique({ where: { slug: req.params.slug } });
     if (!mayViewItem(item, req) || !item.payloadKey) return reply.code(404).send({ error: 'not_found' });
     if (isPublicHit(item)) await countDownload(p, item);
@@ -199,6 +219,7 @@ export default async function catalogRoutes(app) {
   // theme can be imported INDIVIDUALLY as a source in BMM (no global bundle needed).
   app.get('/catalog/:slug/catalog.json', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
+    if (await officialGate(p, req, reply)) return;
     const origin = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
     const it = await p.catalogItem.findUnique({ where: { slug: req.params.slug }, include: { owner: { select: { displayName: true } } } });
     // Owner/share-link may import an unlisted item into BMM via its own link; the public
@@ -228,6 +249,7 @@ export default async function catalogRoutes(app) {
   // BMM catalog format so a BMM user can add it as a source (or the official catalog).
   app.get('/catalog.json', async (req, reply) => {
     const p = await db();
+    if (await officialGate(p, req, reply)) return;
     const origin = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
     const projectKey = String(req.query?.project || 'bmm').toLowerCase();
     const reqKind = String(req.query?.kind || 'app').toUpperCase();

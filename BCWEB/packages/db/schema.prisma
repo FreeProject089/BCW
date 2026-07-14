@@ -122,6 +122,7 @@ model User {
   moderatedById    String?
 
   items              CatalogItem[]
+  communityCatalogs  CommunityCatalog[]
   submissions        Submission[]
   notifications      Notification[]
   serverRepos        ServerRepo[]
@@ -246,19 +247,20 @@ model FreeTierClaim {
 // A storage pool for "multi-repo" hosting: the user divides poolBytes across
 // several repos. Single-repo hosting doesn't use a group (each repo owns its quota).
 model HostingGroup {
-  id              String       @id @default(cuid())
-  owner           User         @relation(fields: [ownerId], references: [id])
+  id              String             @id @default(cuid())
+  owner           User               @relation(fields: [ownerId], references: [id])
   ownerId         String
   name            String
   // Same provenance flag as ServerRepo.freePlan — a pool provisioned via the $0 Free
   // plan. The Free-pool gauge counts a free pool by its poolBytes (not per-repo), so
   // splitting the pool across repos can't inflate the count.
-  freePlan        Boolean      @default(false)
-  poolBytes       BigInt       @default(0) // total storage the user can distribute
-  uploadLimitKbps Int          @default(8192) // sandbox upload cap applied to every repo
-  cpuShare        Float        @default(0.5)
-  createdAt       DateTime     @default(now())
+  freePlan        Boolean            @default(false)
+  poolBytes       BigInt             @default(0) // total storage the user can distribute
+  uploadLimitKbps Int                @default(8192) // sandbox upload cap applied to every repo
+  cpuShare        Float              @default(0.5)
+  createdAt       DateTime           @default(now())
   repos           ServerRepo[]
+  catalogs        CommunityCatalog[]
 
   @@index([ownerId])
 }
@@ -493,36 +495,36 @@ model BlogPermission {
 }
 
 model CatalogItem {
-  id          String       @id @default(cuid())
-  project     Project      @relation(fields: [projectId], references: [id])
-  projectId   String
-  kind        CatalogKind
-  owner       User         @relation(fields: [ownerId], references: [id])
-  ownerId     String
-  name        String
-  slug        String       @unique
+  id             String       @id @default(cuid())
+  project        Project      @relation(fields: [projectId], references: [id])
+  projectId      String
+  kind           CatalogKind
+  owner          User         @relation(fields: [ownerId], references: [id])
+  ownerId        String
+  name           String
+  slug           String       @unique
   // Unguessable key for the item's PRIVATE direct link (?k=…). Mirrors Server-Repos:
   // an item that isn't PUBLISHED stays reachable via its own link (owner-shared) but is
   // never in the public list/feed. Public listing requires admin validation (PUBLISHED).
-  shareKey    String?      @unique
-  description String       @default("")
-  tags        String[]     @default([])
-  version     String       @default("1.0.0")
-  status      ItemStatus   @default(PENDING)
-  payloadKey  String? // object-storage key (the uploaded file/bundle)
-  payloadSize Int          @default(0) // uploaded payload bytes (≤500MB cap fits Int) — counted against the temp submissions margin
-  meta        Json         @default("{}") // preset JSON / plugin manifest / etc.
-  views       Int          @default(0) // all-time views (1 per item .json fetch)
-  downloads   Int          @default(0) // all-time downloads
-  deleteAt    DateTime? // scheduled hard-deletion (72h grace); cancellable until then
+  shareKey       String?      @unique
+  description    String       @default("")
+  tags           String[]     @default([])
+  version        String       @default("1.0.0")
+  status         ItemStatus   @default(PENDING)
+  payloadKey     String? // object-storage key (the uploaded file/bundle)
+  payloadSize    Int          @default(0) // uploaded payload bytes (≤500MB cap fits Int) — counted against the temp submissions margin
+  meta           Json         @default("{}") // preset JSON / plugin manifest / etc.
+  views          Int          @default(0) // all-time views (1 per item .json fetch)
+  downloads      Int          @default(0) // all-time downloads
+  deleteAt       DateTime? // scheduled hard-deletion (72h grace); cancellable until then
   // When a rejected submission's payload file is purged to reclaim temp storage. Set on
   // reject (now + hosting.rejectedRetentionDays), cleared if the owner resubmits within
   // the grace (item flips back to PENDING). The sweeper deletes the object + clears
   // payloadKey/Size when this elapses; the REJECTED row itself stays (owner still sees it).
   payloadPurgeAt DateTime?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  submissions Submission[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  submissions    Submission[]
 
   @@index([deleteAt])
   @@index([payloadPurgeAt])
@@ -537,6 +539,70 @@ model CatalogEvent {
 
   @@index([kind, createdAt])
   @@index([itemId])
+}
+
+// A community-hosted catalog — its OWN catalog (unlike the implicit official catalog
+// of CatalogItem rows). Two modes: "raw" (owner uploads a BMM-native catalog.json,
+// downloads stay self-hosted → ~free) or "managed" (items + payloads on our storage,
+// counted against a HostingGroup pool). Storage is fungible with repos via `group`.
+// visibility "private" gates the feed + downloads to an access list; bans (in `access`)
+// apply even when public. status SUSPENDED (admin) / HIDDEN (unpaid) hide it from all.
+model CommunityCatalog {
+  id                String                 @id @default(cuid())
+  owner             User                   @relation(fields: [ownerId], references: [id])
+  ownerId           String
+  name              String
+  slug              String                 @unique
+  description       String                 @default("")
+  kinds             String[]               @default([]) // app/plugin/theme/preset sub-feeds exposed
+  mode              String                 @default("managed") // "managed" | "raw"
+  rawJson           Json? // mode raw: the uploaded BMM-native feed (validated on save)
+  status            String                 @default("ACTIVE") // ACTIVE | SUSPENDED (admin) | HIDDEN (unpaid)
+  visibility        String                 @default("public") // "public" | "private"
+  // Private access + bans (applies to public catalogs too): { ips, emails,
+  // accounts:[{type,id}], bans:{ ips, emails, accounts } }. Mirrors the repo sandbox
+  // shape; matched against the server-resolved identity (see resolveIdentity).
+  access            Json?
+  shareKey          String?                @unique // owner's private direct link (?k=…)
+  listed            Boolean                @default(true) // in the public browser (never true if private)
+  featuredUntil     DateTime? // paid promotion
+  freePlan          Boolean                @default(false) // provisioned via the $0 free catalog plan
+  group             HostingGroup?          @relation(fields: [groupId], references: [id])
+  groupId           String?
+  storageQuotaBytes BigInt                 @default(0) // dedicated alloc when not in a pool
+  storageUsedBytes  BigInt                 @default(0)
+  views             Int                    @default(0)
+  downloads         Int                    @default(0)
+  deleteAt          DateTime? // 72h grace, e.g. after a failed payment
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  items             CommunityCatalogItem[]
+
+  @@index([ownerId])
+  @@index([status, listed])
+  @@index([deleteAt])
+}
+
+// One item in a "managed" community catalog (payloads on our storage). Raw catalogs
+// don't use this — their entries live inline in CommunityCatalog.rawJson.
+model CommunityCatalogItem {
+  id          String           @id @default(cuid())
+  catalog     CommunityCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  catalogId   String
+  kind        CatalogKind
+  name        String
+  slug        String // unique within its catalog
+  version     String           @default("1.0.0")
+  description String           @default("")
+  tags        String[]         @default([])
+  payloadKey  String? // object-storage key
+  payloadSize Int              @default(0)
+  meta        Json             @default("{}")
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([catalogId, slug])
+  @@index([catalogId])
 }
 
 model Submission {

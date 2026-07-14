@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
+import { userBcId } from './repofingerprint.mjs';
 
 // Constant-time string comparison for shared secrets / tokens / signatures
 // (SECURITY_AUDIT: avoid the timing side-channel of `a === b`). Length-safe:
@@ -405,6 +406,55 @@ export async function getUserAccessPolicy(p, userId) {
 // client identity (from CreatorLink -> userId, and that user's DiscordLink -> discordId).
 export function matchAccountList(list, userId, discordId) {
   return (list || []).some((a) => (a.type === 'bcweb' && userId && a.id === userId) || (a.type === 'discord' && discordId && a.id === discordId));
+}
+
+// The connecting client's IP (honours the last X-Forwarded-For hop, set by our edge).
+export function clientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (xff) { const parts = String(xff).split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1]; }
+  return req.ip;
+}
+// Resolve the FULL client identity from the X-Creator-ID header BMM sends on repo AND
+// catalog requests. The header is trusted only as far as CreatorLink allows — userId,
+// that account's Discord, email and BC id are all derived server-side, so a banned
+// client can't slip a whitelist/ban match by lying about any of them. Shared by the
+// repo sandbox gate and the community-catalog gate.
+export async function resolveClientIdentity(p, req) {
+  const ip = clientIp(req);
+  const raw = req.headers['x-creator-id'];
+  const creatorId = raw ? String(raw).slice(0, 120) : null;
+  let userId = null, discordId = null, email = null;
+  if (creatorId) {
+    const link = await p.creatorLink.findUnique({
+      where: { creatorId },
+      include: { user: { select: { email: true, discordLinks: { select: { discordId: true }, take: 1 } } } },
+    });
+    if (link) { userId = link.userId; email = link.user?.email || null; discordId = link.user?.discordLinks?.[0]?.discordId || null; }
+  }
+  return { ip, creatorId, userId, discordId, email, bcId: userId ? userBcId(userId) : null };
+}
+
+// Does a resolved identity match an access list { ips, keys, accounts }? keys are BMM
+// creator ids (matched against X-Creator-ID); accounts are { type:'bcweb'|'discord'|
+// 'creator', id }; ips are raw addresses. Email / BC id / username entries are resolved
+// to a bcweb account (userId) at save time, so runtime matching stays id-based.
+export function accessListMatches(list, identity) {
+  if (!list) return false;
+  const { ip, creatorId, userId, discordId } = identity;
+  if (ip && (list.ips || []).includes(ip)) return true;
+  if (creatorId && (list.keys || []).includes(creatorId)) return true;
+  return (list.accounts || []).some((a) =>
+    (a.type === 'bcweb' && userId && a.id === userId)
+    || (a.type === 'discord' && discordId && a.id === discordId)
+    || (a.type === 'creator' && creatorId && a.id === creatorId));
+}
+// Adapt a GlobalAccessPolicy/UserAccessPolicy (banned*/whitelist* fields) to the
+// {ips,keys,accounts} shape accessListMatches expects.
+export function policyBans(policy, identity) {
+  return accessListMatches({ ips: policy?.bannedIps, keys: policy?.bannedKeys, accounts: policy?.bannedAccounts }, identity);
+}
+export function policyWhitelist(policy, identity) {
+  return accessListMatches({ ips: policy?.whitelistIps, keys: policy?.whitelistKeys, accounts: policy?.whitelistAccounts }, identity);
 }
 
 // ── Project/showcase page visibility (task: Project Announcement pages) ──
