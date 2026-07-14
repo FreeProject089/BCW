@@ -2,7 +2,7 @@
 
 > A from-scratch explanation of **BetterCommunity Web**: how the whole thing is
 > wired, how to host it, what every file does, and how each subsystem works. Read
-> [ARCHITECTURE.md](./ARCHITECTURE.md) for the *why* behind the stack; this doc is
+> [ARCHITECTURE.md](./ARCHITECTURE_EN.md) for the *why* behind the stack; this doc is
 > the *how* at the code level. Companion: **App_Features_EN.md** (product tour).
 >
 > This file is intentionally **not committed** — it's a living engineering reference.
@@ -80,7 +80,7 @@ curl http://localhost/api/health       # { ok:true, db:true }
 ```
 
 The full operator walkthrough (admin account, 2FA, roles, OAuth, Discord bot, Stripe,
-production checklist) is in **[SETUP_GUIDE.md](./SETUP_GUIDE.md)**. Rebuild/redeploy a
+production checklist) is in **[SETUP_GUIDE.md](./SETUP_GUIDE_EN.md)**. Rebuild/redeploy a
 single service after a code change:
 
 ```bash

@@ -273,7 +273,7 @@ VPS is simpler and cheaper.
   or — only if you become a large multi-tenant platform — **managed** Kubernetes, never a
   hand-rolled control plane. You are a long way from needing either. (Kubernetes is *not*
   the tool for the user-project container hosting described in
-  [USER_PROJECT_HOSTING.md](USER_PROJECT_HOSTING.md) — see that doc.)
+  [USER_PROJECT_HOSTING.md](USER_PROJECT_HOSTING_EN.md) — see that doc.)
 
 ## Object storage — MinIO now, R2 later
 

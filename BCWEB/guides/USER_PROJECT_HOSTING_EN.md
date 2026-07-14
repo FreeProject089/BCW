@@ -1,11 +1,6 @@
 # Hosting users' Docker projects — architecture & plan (FUTURE, not built yet)
 
-> 🇫🇷 **Résumé FR.** Design (non implémenté) pour héberger les **projets Docker des
-> utilisateurs** (mini-PaaS). Conclusion : **pas Kubernetes** — on étend le `provisioner`
-> existant (`spinUpRepoContainer()`) pour piloter le **Docker Engine (dockerode)** sur un gros
-> VPS, avec limites dures + **isolation du code non-fiable via gVisor/Firecracker**, routage
-> Caddy dynamique ; passage à **Nomad** (pas K8s) seulement en multi-nœuds. Détail ci-dessous
-> en EN.
+*🇫🇷 [Version française](USER_PROJECT_HOSTING_FR.md).*
 
 > Status: **design only.** Nothing here is implemented. This captures the intended
 > path so that when we host users' own containerized projects (a mini-PaaS on top of

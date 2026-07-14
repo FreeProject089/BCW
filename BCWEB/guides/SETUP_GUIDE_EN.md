@@ -1,15 +1,11 @@
 # BCWEB — Step-by-step setup guide
 
-> 🇫🇷 **Résumé FR.** Parcours pas-à-pas pour monter une instance BCWEB neuve : premier boot,
-> compte **admin**, **2FA**, **rôles**, et les intégrations optionnelles (**bot Discord**,
-> **Stripe**). Pour la mise en ligne rapide, préfère le [QUICKSTART_FR.md](QUICKSTART_FR.md) ;
-> pour les détails de déploiement, [DEPLOY_FR.md](DEPLOY_FR.md). (Corps détaillé ci-dessous en
-> EN — traduction FR intégrale sur demande.)
+*🇫🇷 [Version française](SETUP_GUIDE_FR.md).*
 
 A practical, in-order walkthrough for standing up a fresh BCWEB instance: first boot,
 the admin account, 2FA, roles, and the optional integrations (Discord bot, Stripe).
 For the architecture/feature overview see [README.md](./README.md) and
-[ARCHITECTURE.md](./ARCHITECTURE.md) — this doc is just "what do I click/type, in
+[ARCHITECTURE.md](./ARCHITECTURE_EN.md) — this doc is just "what do I click/type, in
 what order."
 
 ## 1. Prerequisites
@@ -215,7 +211,7 @@ panel). Beyond first boot you **don't** edit that `.env` for day-to-day limits:
 
 ## 11. Production checklist
 
-- Follow **[DOMAIN_SETUP.md](./DOMAIN_SETUP.md)** to move off `localhost` onto your
+- Follow **[DOMAIN_SETUP.md](./DOMAIN_SETUP_EN.md)** to move off `localhost` onto your
   own domain with automatic HTTPS (Caddy + Let's Encrypt), including the optional
   `telemetry.<domain>` sub-domain.
 - See the **Production checklist** in [README.md](./README.md) for the full list

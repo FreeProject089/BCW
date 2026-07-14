@@ -1,11 +1,6 @@
 # BCWEB — API Reference
 
-> 🇫🇷 **Résumé FR.** Catalogue complet des **endpoints** de l'API BCWEB, regroupés par
-> domaine : auth & comptes, OAuth, catalogue & modération, blog, projets/vitrine, Server-Repos,
-> hébergement & Stripe, notifications, politique d'accès, Ko-fi, bot Discord, liens & codes
-> promo, admin, perf serveur, et gestion serveur avancée (+ 2FA renforcée). Les chemins et
-> paramètres restent en anglais (ce sont des identifiants de code). Traduction FR des
-> descriptions sur demande.
+*🇫🇷 [Version française](API_Reference_FR.md).*
 
 Complete list of the BetterCommunity Web HTTP API. All routes are served under the
 **`/api`** prefix at the site base URL (dev: `http://localhost:5176/api/...`). Generated

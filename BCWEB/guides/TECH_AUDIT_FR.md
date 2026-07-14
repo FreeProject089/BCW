@@ -107,6 +107,19 @@ SQL brutes se dégraderont ; il faut des purges de rétention ou du partitionnem
 La parité FR/EN tient à la discipline, pas à l'outillage — une clé manquante retombe en
 anglais en silence. Un lint de parité des clés rendrait ça structurel.
 
+### 3.7b 🟡 Vulnérabilités de dépendances (transitives, faible atteignabilité)
+`npm audit` (juil. 2026) : **web = 0**, **bot = 0**, **api = 5 high + 2 modérées, toutes
+transitives**, **0 critique**. Les deux racines :
+- **`fast-uri@2.4.0`** (via Fastify 4) — avis path-traversal / host-confusion. Patché seulement
+  en montant **Fastify 4 → 5** (une migration cassante délibérée, pas `audit fix --force`).
+  L'atteignabilité est faible (Fastify fait sa propre normalisation de chemin), mais à planifier.
+- **`ip-address`** (via `geoip-lite`) — XSS dans les méthodes HTML de `Address6`. **Non
+  atteignable** : `geoip-lite` ne fait que parser des adresses, n'appelle jamais ces méthodes
+  HTML. Corrigé par `geoip-lite` 1→2.
+
+Action : suivre les upgrades **Fastify 4→5** et **geoip-lite 1→2** comme des tâches testées à
+part ; ne pas les `--force` à l'aveugle (les deux sont cassants et risqueraient le build de l'API).
+
 ### 3.8 🟡 Divers
 - Pièges DX côté hôte : les scripts exigent l'env/le client généré du conteneur (désormais
   gardés par des messages clairs, mais le patron demeure).
