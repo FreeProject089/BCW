@@ -178,7 +178,12 @@ export default function Profile() {
             <div>
               <div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-1.5">{t('prof.showconn', 'Connections to show')}</div>
               <div className="flex flex-wrap gap-3">
-                {[['github', 'GitHub'], ['discord', 'Discord'], ['bmm', 'BMM (creator id)'], ['website', t('prof.website2', 'Website')]].map(([k, label]) => (
+                {[['github', 'GitHub'], ['discord', 'Discord'], ['bmm', 'BMM (creator id)'], ['website', t('prof.website2', 'Website')]]
+                  .filter(([k]) => k === 'website' ? !!user.website
+                    : k === 'github' ? (user.oauthAccounts?.some((a) => a.provider === 'github') || user.socialConnections?.some((c) => c.provider === 'github'))
+                    : k === 'discord' ? (user._count?.discordLinks > 0)
+                    : k === 'bmm' ? (user._count?.creatorLinks > 0) : true)
+                  .map(([k, label]) => (
                   <label key={k} className="flex items-center gap-1.5 text-sm cursor-pointer">
                     <input type="checkbox" checked={form.showConnections.includes(k)} onChange={(e) => setForm({ ...form, showConnections: e.target.checked ? [...form.showConnections, k] : form.showConnections.filter((x) => x !== k) })} /> {label}
                   </label>

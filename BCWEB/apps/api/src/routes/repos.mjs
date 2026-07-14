@@ -228,7 +228,7 @@ export default async function repoRoutes(app) {
       const repoBytes = g.repos.reduce((a, r) => a + r.storageQuotaBytes, 0n);
       const catBytes = g.catalogs.reduce((a, c) => a + c.storageQuotaBytes, 0n);
       return {
-        id: g.id, name: g.name, poolBytes: Number(g.poolBytes), uploadLimitKbps: g.uploadLimitKbps, cpuShare: g.cpuShare, freePlan: g.freePlan,
+        id: g.id, name: g.name, color: g.color || '', poolBytes: Number(g.poolBytes), uploadLimitKbps: g.uploadLimitKbps, cpuShare: g.cpuShare, freePlan: g.freePlan,
         usedBytes: Number(repoBytes + catBytes), repoBytes: Number(repoBytes), catalogBytes: Number(catBytes),
         repoCount: g.repos.length, catalogCount: g.catalogs.length,
         repos: g.repos.map((r) => ({ id: r.id, name: r.name, quotaBytes: Number(r.storageQuotaBytes), usedBytes: Number(r.storageUsedBytes), status: r.status, hosted: r.hosted })),
@@ -487,6 +487,18 @@ export default async function repoRoutes(app) {
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     });
     return { url: session.url };
+  });
+
+  // Rename / recolour a storage pool (owner or staff).
+  app.patch('/me/hosting/groups/:id', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ name: z.string().trim().min(1).max(60).optional(), color: z.string().max(9).regex(/^(#[0-9a-fA-F]{3,8})?$/).optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const g = await p.hostingGroup.findUnique({ where: { id: req.params.id } });
+    if (!g) return reply.code(404).send({ error: 'not_found' });
+    if (g.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role)) return reply.code(403).send({ error: 'owner_only' });
+    await p.hostingGroup.update({ where: { id: g.id }, data: b.data });
+    return { ok: true };
   });
 
   // Merge one pool into another: the source's repos + catalogs move to the target, the

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Github, MessageSquare, Globe, Fingerprint, FolderGit2, Boxes, Download, Star, Share2, Calendar, Lock, Search, UserX, Youtube, Twitch, Gamepad2 } from 'lucide-react';
 import { KofiIcon } from '../ui/brand.jsx';
+import { IconGlyph } from '../ui/md.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, EmptyState, Spinner, Input, useToast } from '../ui/ui.jsx';
@@ -47,16 +48,19 @@ export default function PublicProfile() {
   // Object connections ({handle,url}) vs plain-string ones (discord/bmm/website).
   const c = u.connections || {};
   const obj = (x) => (x && typeof x === 'object' ? x : null);
-  const connRows = [
-    ['github', Github, obj(c.github)?.handle, obj(c.github)?.url || (typeof c.github === 'string' ? `https://github.com/${c.github}` : null)],
-    ['youtube', Youtube, obj(c.youtube)?.handle, obj(c.youtube)?.url],
-    ['twitch', Twitch, obj(c.twitch)?.handle, obj(c.twitch)?.url],
-    ['steam', Gamepad2, obj(c.steam)?.handle, obj(c.steam)?.url],
-    ['kofi', KofiIcon, obj(c.kofi)?.handle, obj(c.kofi)?.url],
-    ['discord', MessageSquare, c.discord, null],
-    ['bmm', Fingerprint, c.bmm, null],
-    ['website', Globe, c.website, c.website],
-  ].filter(([, , v]) => v);
+  // Compact brand chips: a Simple Icons / lucide logo you can click. Ones with a public URL
+  // open it; ones without (Discord, BMM creator id) copy the handle. Handle shown on hover.
+  const conns = [
+    { key: 'github', icon: 'simple:github', label: 'GitHub', handle: obj(c.github)?.handle || (typeof c.github === 'string' ? c.github : null), url: obj(c.github)?.url || (typeof c.github === 'string' ? `https://github.com/${c.github}` : null) },
+    { key: 'youtube', icon: 'simple:youtube', label: 'YouTube', handle: obj(c.youtube)?.handle, url: obj(c.youtube)?.url },
+    { key: 'twitch', icon: 'simple:twitch', label: 'Twitch', handle: obj(c.twitch)?.handle, url: obj(c.twitch)?.url },
+    { key: 'steam', icon: 'simple:steam', label: 'Steam', handle: obj(c.steam)?.handle, url: obj(c.steam)?.url },
+    { key: 'kofi', icon: 'simple:kofi', label: 'Ko-fi', handle: obj(c.kofi)?.handle, url: obj(c.kofi)?.url },
+    { key: 'discord', icon: 'simple:discord', label: 'Discord', handle: c.discord, url: null },
+    { key: 'bmm', icon: 'fingerprint', label: 'BMM creator id', handle: c.bmm, url: null },
+    { key: 'website', icon: 'globe', label: 'Website', handle: c.website, url: c.website },
+  ].filter((x) => x.handle);
+  const copyHandle = (x) => { navigator.clipboard?.writeText(x.handle); toast.success(t('pp.copied', 'Copied {n}.').replace('{n}', x.label)); };
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-4">
@@ -78,10 +82,13 @@ export default function PublicProfile() {
             <ReportButton targetType="user" targetId={u.id} targetLabel={u.displayName} />
           </div>
         </div>
-        {connRows.length > 0 && <div className="flex items-center gap-3 flex-wrap mt-4 pt-4 border-t border-[var(--line)]">
-          {connRows.map(([k, Ico, v, href]) => href
-            ? <a key={k} href={href(v)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-sm text-[var(--muted)] hover:text-[var(--primary)]"><Ico size={14} /> {v}</a>
-            : <span key={k} className="flex items-center gap-1.5 text-sm text-[var(--muted)]"><Ico size={14} /> {v}</span>)}
+        {conns.length > 0 && <div className="flex items-center gap-2 flex-wrap mt-4 pt-4 border-t border-[var(--line)]">
+          {conns.map((x) => {
+            const chip = 'grid place-items-center w-9 h-9 rounded-xl border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)] transition';
+            return x.url
+              ? <a key={x.key} href={x.url} target="_blank" rel="noreferrer" className={chip} title={`${x.label}: ${x.handle}`}><IconGlyph name={x.icon} size={17} /></a>
+              : <button key={x.key} onClick={() => copyHandle(x)} className={chip} title={`${x.label}: ${x.handle} — ${t('pp.clickcopy', 'click to copy')}`}><IconGlyph name={x.icon} size={17} /></button>;
+          })}
         </div>}
       </Card>
 

@@ -438,8 +438,12 @@ function MyAccessPolicyCard() {
 // Storage pools overview — each pool with a used/free bar (repos vs catalogs), what's on
 // it, and one-click add of a repo or catalog. Carving a 1 GB pool into e.g. 4×250 MB repos
 // is just adding repos with a quota — the free-space readout makes that obvious.
+const POOL_COLORS = ['#f97316', '#38bdf8', '#a78bfa', '#34d399', '#f472b6', '#fbbf24', '#60a5fa', '#f87171'];
 function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
   const pct = (n, tot) => tot > 0 ? Math.min(100, Math.round((n / tot) * 100)) : 0;
+  // Each pool gets a distinct accent: the owner's chosen colour, or a palette default by index.
+  const colorOf = (g, i) => g.color || POOL_COLORS[i % POOL_COLORS.length];
+  const setColor = async (g, color) => { try { await api.patch(`/me/hosting/groups/${g.id}`, { color }); reload?.(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
   // Merge this pool INTO another (contents move, the two subscriptions keep billing
   // separately, and the target becomes one bigger pool).
   const merge = async (sourceId, targetId) => {
@@ -452,13 +456,17 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
   return (
     <div className="mb-5 space-y-2.5">
       <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><HardDrive size={13} className="text-[var(--primary-2)]" /> {t('pools.title', 'Storage pools')}</div>
-      {groups.map((g) => {
+      {groups.map((g, i) => {
         const free = Math.max(0, g.poolBytes - g.usedBytes);
         const repoPct = pct(g.repoBytes, g.poolBytes), catPct = pct(g.catalogBytes, g.poolBytes);
+        const accent = colorOf(g, i);
         return (
-          <div key={g.id} className="rounded-xl border border-[var(--line)] p-3.5">
+          <div key={g.id} className="rounded-xl border border-[var(--line)] p-3.5" style={{ borderLeft: `3px solid ${accent}` }}>
             <div className="flex items-center gap-2 flex-wrap mb-2">
-              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 shrink-0"><HardDrive size={15} className="text-[var(--primary-2)]" /></span>
+              <label className="grid place-items-center w-8 h-8 rounded-lg shrink-0 cursor-pointer relative" style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)` }} title={t('pools.color', 'Pool colour')}>
+                <HardDrive size={15} style={{ color: accent }} />
+                <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : '#f97316'} onChange={(e) => setColor(g, e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
+              </label>
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm truncate flex items-center gap-2">{g.name} {g.freePlan && <Badge tone="">{t('pools.free', 'free')}</Badge>}</div>
                 <div className="text-[11px] text-[var(--faint)]">{gb(g.usedBytes)} / {gb(g.poolBytes)} GB {t('pools.used', 'used')} · {gb(free)} GB {t('pools.freespace', 'free')}</div>
@@ -472,7 +480,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
             </div>
             {/* Used bar: repos (orange) + catalogs (blue) + free (track). */}
             <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden flex">
-              <div className="h-full bg-[var(--primary)]" style={{ width: `${repoPct}%` }} title={`${t('pools.repos', 'Repos')}: ${gb(g.repoBytes)} GB`} />
+              <div className="h-full" style={{ width: `${repoPct}%`, background: accent }} title={`${t('pools.repos', 'Repos')}: ${gb(g.repoBytes)} GB`} />
               <div className="h-full bg-sky-500" style={{ width: `${catPct}%` }} title={`${t('pools.catalogs', 'Catalogs')}: ${gb(g.catalogBytes)} GB`} />
             </div>
             {(g.repos?.length > 0 || g.catalogs?.length > 0) ? (
@@ -631,13 +639,6 @@ export function MyRepos() {
                   <span className="flex-1 text-[var(--warning)]">{t('repos.inreview.notice', 'In review — a moderator is verifying it before it appears in the public list. It keeps serving normally; any new change restarts the review.')}</span>
                 </div>
               )}
-              {r.status === 'PROVISIONING' && !repoLocked(r) && !r.deleteAt && (
-                <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--info-border)] bg-[var(--info-bg)] px-3 py-2 text-xs">
-                  <RefreshCw size={14} className="text-[var(--info)] shrink-0 mt-0.5 animate-spin" />
-                  <span className="flex-1 text-[var(--info)]">{t('repos.provisioning.notice', 'Provisioning — open the dashboard, upload your files (including repo.json) and publish to bring it online.')}</span>
-                  <Link to={`/repo/${r.id}`}><Button size="sm" variant="primary"><LayoutDashboard size={12} /> {t('repos.opendash', 'Dashboard')}</Button></Link>
-                </div>
-              )}
               <div className="flex items-start gap-3">
                 <GitBranch size={18} className="text-[var(--primary-2)] mt-0.5" />
                 <div className="flex-1 min-w-0">
@@ -648,6 +649,14 @@ export function MyRepos() {
                     <div className="mt-1.5 flex items-start gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-bg)] px-2.5 py-1.5 text-xs">
                       <Ban size={13} className="text-[var(--error)] shrink-0 mt-0.5" />
                       <span className="flex-1 text-[var(--error)]">{t('repos.suspended.notice', 'This repo is suspended — it stays offline, can’t be listed, edited or deleted. Contact support to resolve it.')}</span>
+                    </div>
+                  )}
+                  {/* Provisioning notice — under the title too, like suspended. */}
+                  {r.status === 'PROVISIONING' && !repoLocked(r) && !r.deleteAt && (
+                    <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-[var(--info-border)] bg-[var(--info-bg)] px-2.5 py-1.5 text-xs">
+                      <RefreshCw size={13} className="text-[var(--info)] shrink-0 animate-spin" />
+                      <span className="flex-1 text-[var(--info)]">{t('repos.provisioning.notice', 'Provisioning — open the dashboard, upload your files (including repo.json) and publish to bring it online.')}</span>
+                      <Link to={`/repo/${r.id}`}><Button size="sm" variant="primary"><LayoutDashboard size={12} /> {t('repos.opendash', 'Dashboard')}</Button></Link>
                     </div>
                   )}
                   <div className="mt-2 flex items-center gap-1.5 flex-wrap">

@@ -263,7 +263,7 @@ export default async function authRoutes(app) {
     return { ok: true };
   });
 
-  const profileSelect = { id: true, email: true, displayName: true, role: true, permissions: true, emailVerified: true, bio: true, avatar: true, createdAt: true, totpEnabled: true, profilePublic: true, showConnections: true, website: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } } } };
+  const profileSelect = { id: true, email: true, displayName: true, role: true, permissions: true, emailVerified: true, bio: true, avatar: true, createdAt: true, totpEnabled: true, profilePublic: true, showConnections: true, website: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } } }, oauthAccounts: { select: { provider: true } }, socialConnections: { select: { provider: true } }, _count: { select: { discordLinks: true, creatorLinks: true } } };
 
   // Soft-authed "who am I": logged-out visitors get 200 { user: null } instead of a
   // noisy 401 in the console. The app boots this on every load.

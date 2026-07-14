@@ -275,6 +275,7 @@ model HostingGroup {
   // splitting the pool across repos can't inflate the count.
   freePlan        Boolean            @default(false)
   poolBytes       BigInt             @default(0) // total storage the user can distribute
+  color           String             @default("") // owner-chosen accent colour for the dashboard card
   uploadLimitKbps Int                @default(8192) // sandbox upload cap applied to every repo
   cpuShare        Float              @default(0.5)
   createdAt       DateTime           @default(now())
