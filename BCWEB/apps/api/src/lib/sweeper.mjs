@@ -7,6 +7,7 @@ import { deleteObject } from './storage.mjs';
 import { sampleAndAlert } from './monitor.mjs';
 import { runEventScheduler } from '../routes/events.mjs';
 import { sweepReports } from '../routes/reports.mjs';
+import { recomputePoolBytes } from '../routes/hosting.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
 
 const DAY_MS = 864e5;
@@ -112,14 +113,13 @@ async function sweepExpiredSubscriptions(p, log) {
   for (const sub of expired) {
     try {
       if (sub.hostingGroupId && sub.hostingGroup) {
-        // Pool subscription: suspend every repo AND hide every catalog in the pool, on the
-        // same 72h delete-grace window (the sweeper purges them after that unless renewed).
-        for (const r of sub.hostingGroup.repos) {
-          if (r.status !== 'SUSPENDED') await p.serverRepo.update({ where: { id: r.id }, data: { status: 'SUSPENDED', deleteAt } });
-        }
-        await p.communityCatalog.updateMany({ where: { groupId: sub.hostingGroupId, status: 'ACTIVE' }, data: { status: 'HIDDEN', listed: false, deleteAt } });
+        // Pool subscription: mark it expired, then recompute the pool's storage from its
+        // REMAINING active subs. A single-sub pool drops to 0 → recompute suspends repos +
+        // hides catalogs (72h grace), exactly as before. A merged pool with other active
+        // subs just shrinks by this sub's contribution and keeps its content online.
         await p.subscription.update({ where: { id: sub.id }, data: { status: 'expired' } });
-        await notify(p, sub.hostingGroup.ownerId, 'hosting_stopped', `Your storage pool "${sub.hostingGroup.name}" term has ended — its repos and catalogs are suspended and will be deleted in 72h unless you renew.`);
+        await recomputePoolBytes(p, sub.hostingGroupId);
+        await notify(p, sub.hostingGroup.ownerId, 'hosting_stopped', `A subscription on your storage pool "${sub.hostingGroup.name}" has ended — the pool shrank by its share; anything over the remaining space is suspended (72h grace) unless you renew.`);
         handled++;
       } else if (sub.serverRepoId && sub.serverRepo) {
         const repo = sub.serverRepo;

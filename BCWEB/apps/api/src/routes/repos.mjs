@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema } from '../lib/lib.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } from '../lib/repofingerprint.mjs';
-import { capacityStatus, capacityFactors, priceCents, termTotalCents, TERM_MONTHS, stripe, settings, ensureCustomer } from './hosting.mjs';
+import { capacityStatus, capacityFactors, priceCents, termTotalCents, TERM_MONTHS, stripe, settings, ensureCustomer, recomputePoolBytes } from './hosting.mjs';
 
 const SHA = /^[a-f0-9]{40}$|^[a-f0-9]{64}$/i;
 const GiB = 1024 ** 3;
@@ -457,10 +457,13 @@ export default async function repoRoutes(app) {
       await p.serverRepo.updateMany({ where: { groupId: group.id, status: 'SUSPENDED' }, data: { status: 'ONLINE' } });
       await p.serverRepo.updateMany({ where: { groupId: group.id }, data: { deleteAt: null } });
       await p.communityCatalog.updateMany({ where: { groupId: group.id, status: 'HIDDEN' }, data: { status: 'ACTIVE', deleteAt: null } });
-      const existing = await p.subscription.findUnique({ where: { hostingGroupId: group.id } });
-      if (existing) { await p.subscription.update({ where: { hostingGroupId: group.id }, data: { status: 'active', currentPeriodEnd, warnedAt: null } }); return; }
-      const plan = await p.hostingPlan.create({ data: { name: `Custom ${storageGB}GB pool (renewal)`, storageGB, uploadLimitKbps: group.uploadLimitKbps, cpuShare: group.cpuShare, priceMonthlyCents: monthly, active: false } });
-      await p.subscription.create({ data: { userId: group.ownerId, hostingGroupId: group.id, planId: plan.id, status: 'active', currentPeriodEnd } });
+      const existing = await p.subscription.findFirst({ where: { hostingGroupId: group.id } });
+      if (existing) { await p.subscription.update({ where: { id: existing.id }, data: { status: 'active', currentPeriodEnd, warnedAt: null } }); }
+      else {
+        const plan = await p.hostingPlan.create({ data: { name: `Custom ${storageGB}GB pool (renewal)`, storageGB, uploadLimitKbps: group.uploadLimitKbps, cpuShare: group.cpuShare, priceMonthlyCents: monthly, active: false } });
+        await p.subscription.create({ data: { userId: group.ownerId, hostingGroupId: group.id, planId: plan.id, status: 'active', poolContribBytes: group.poolBytes, currentPeriodEnd } });
+      }
+      await recomputePoolBytes(p, group.id);
     };
 
     if (total <= 0) {
@@ -484,6 +487,34 @@ export default async function repoRoutes(app) {
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     });
     return { url: session.url };
+  });
+
+  // Merge one pool into another: the source's repos + catalogs move to the target, the
+  // source's subscription(s) re-anchor to the target (each keeps billing separately), and
+  // the source pool is deleted. The target's poolBytes becomes the sum of all active subs
+  // (recomputePoolBytes) — one big pool, the discount of a larger plan applies on renewal.
+  app.post('/me/hosting/groups/merge', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ sourceId: z.string(), targetId: z.string() }).safeParse(req.body);
+    if (!b.success || b.data.sourceId === b.data.targetId) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const [src, tgt] = await Promise.all([
+      p.hostingGroup.findUnique({ where: { id: b.data.sourceId } }),
+      p.hostingGroup.findUnique({ where: { id: b.data.targetId } }),
+    ]);
+    if (!src || !tgt) return reply.code(404).send({ error: 'not_found' });
+    const staff = ['ADMIN', 'SUPERADMIN'].includes(req.user.role);
+    if ((src.ownerId !== req.user.uid || tgt.ownerId !== req.user.uid) && !staff) return reply.code(403).send({ error: 'owner_only' });
+    if (src.ownerId !== tgt.ownerId) return reply.code(400).send({ error: 'different_owners' });
+    // Move contents + re-anchor subs, then delete the (now empty) source and recompute.
+    await p.$transaction([
+      p.serverRepo.updateMany({ where: { groupId: src.id }, data: { groupId: tgt.id } }),
+      p.communityCatalog.updateMany({ where: { groupId: src.id }, data: { groupId: tgt.id } }),
+      p.subscription.updateMany({ where: { hostingGroupId: src.id }, data: { hostingGroupId: tgt.id } }),
+    ]);
+    await p.hostingGroup.delete({ where: { id: src.id } }).catch(() => {});
+    await recomputePoolBytes(p, tgt.id);
+    await notify(p, tgt.ownerId, 'hosting_started', `Merged pool "${src.name}" into "${tgt.name}" — you now have one larger pool (${(Number(tgt.poolBytes + src.poolBytes) / GiB).toFixed(1)} GB).`).catch(() => {});
+    return { ok: true, groupId: tgt.id };
   });
 
   // Free switch: single hosted repo → multi (mints a pool sized to its quota), and back.

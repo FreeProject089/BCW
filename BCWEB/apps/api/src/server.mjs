@@ -208,6 +208,15 @@ ensureBucket().catch((e) => app.log.warn({ e: String(e) }, 'ensureBucket failed 
   app.log.info(`[migr] freePlan backfill: flagged ${flagged} repo(s)`);
 })().catch((e) => app.log.warn({ e: String(e) }, 'freePlan backfill failed (will retry next boot)'));
 
+// Backfill Subscription.poolContribBytes = its pool's poolBytes for pre-existing pool subs
+// (the new column defaults to 0; without this, recomputePoolBytes would zero those pools and
+// wrongly suspend their content). Idempotent — only touches 0-contrib pool subs.
+(async () => {
+  const p = await db();
+  const n = await p.$executeRawUnsafe(`UPDATE "Subscription" s SET "poolContribBytes" = g."poolBytes" FROM "HostingGroup" g WHERE s."hostingGroupId" = g."id" AND s."poolContribBytes" = 0 AND g."poolBytes" > 0`);
+  if (n) app.log.info(`[migr] poolContribBytes backfill: set ${n} pool sub(s)`);
+})().catch((e) => app.log.warn({ e: String(e) }, 'poolContribBytes backfill failed (will retry next boot)'));
+
 // Periodic sweep: hard-delete items/repos whose 72h grace window has elapsed.
 startSweeper(app);
 

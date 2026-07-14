@@ -142,15 +142,41 @@ export function priceCents(s, storageGB, uploadMbps, cpuShare) {
 // empty STORAGE POOL — the subscription anchors to the pool, and the owner fills it with
 // repos and/or catalogs afterward (no forced first repo). Returns the created pool.
 export async function provisionHostingPool(p, { userId, plan, poolName, months, stripeSubId = null, freePlan = false }) {
+  const bytes = BigInt(plan.storageGB) * BigInt(GiB);
   const group = await p.hostingGroup.create({ data: {
-    ownerId: userId, name: poolName || 'pool', poolBytes: BigInt(plan.storageGB) * BigInt(GiB),
+    ownerId: userId, name: poolName || 'pool', poolBytes: bytes,
     uploadLimitKbps: plan.uploadLimitKbps, cpuShare: plan.cpuShare, freePlan,
   } });
   await p.subscription.create({ data: {
     userId, hostingGroupId: group.id, planId: plan.id, stripeSubId, status: 'active',
+    poolContribBytes: bytes, // this sub's storage contribution to the pool
     currentPeriodEnd: new Date(Date.now() + months * 30 * 864e5),
   } });
   return group;
+}
+
+// A pool's effective storage = the sum of its ACTIVE subs' contributions. Recompute it and
+// reconcile content: if it drops to 0 (all subs lapsed) suspend repos + hide catalogs (72h
+// grace, like a single-sub lapse); if it comes back > 0, restore them. For a single-sub
+// pool this is identical to the old behaviour — only merged (multi-sub) pools shrink instead
+// of being fully suspended when ONE of several subs lapses.
+export async function recomputePoolBytes(p, groupId) {
+  const subs = await p.subscription.findMany({ where: { hostingGroupId: groupId }, select: { status: true, poolContribBytes: true } });
+  const active = subs.filter((s) => s.status === 'active');
+  const bytes = active.reduce((a, s) => a + s.poolContribBytes, 0n);
+  const group = await p.hostingGroup.findUnique({ where: { id: groupId }, select: { poolBytes: true } });
+  if (!group) return;
+  const was = group.poolBytes;
+  if (bytes === was) return;
+  await p.hostingGroup.update({ where: { id: groupId }, data: { poolBytes: bytes } });
+  if (bytes === 0n && was > 0n) {
+    const deleteAt = new Date(Date.now() + 72 * 3600e3);
+    await p.serverRepo.updateMany({ where: { groupId, status: { not: 'SUSPENDED' } }, data: { status: 'SUSPENDED', deleteAt } });
+    await p.communityCatalog.updateMany({ where: { groupId, status: 'ACTIVE' }, data: { status: 'HIDDEN', listed: false, deleteAt } });
+  } else if (bytes > 0n && was === 0n) {
+    await p.serverRepo.updateMany({ where: { groupId, status: 'SUSPENDED' }, data: { status: 'ONLINE', deleteAt: null } });
+    await p.communityCatalog.updateMany({ where: { groupId, status: 'HIDDEN' }, data: { status: 'ACTIVE', deleteAt: null } });
+  }
 }
 
 // Prepaid term options: more months → bigger discount (1yr recommended).

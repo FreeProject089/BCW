@@ -280,7 +280,7 @@ model HostingGroup {
   createdAt       DateTime           @default(now())
   repos           ServerRepo[]
   catalogs        CommunityCatalog[]
-  subscription    Subscription? // the pool's hosting subscription (billing anchor)
+  subscriptions   Subscription[] // the pool's hosting subscriptions (>1 once pools are merged)
 
   @@index([ownerId])
 }
@@ -952,14 +952,20 @@ model Subscription {
   // all (e.g. a catalog-only pool).
   serverRepo       ServerRepo?   @relation(fields: [serverRepoId], references: [id])
   serverRepoId     String?       @unique
+  // A pool can hold MULTIPLE subscriptions once pools are merged (each keeps billing
+  // separately); poolContribBytes is the storage THIS sub adds to the pool. A pool's
+  // effective poolBytes = sum of its ACTIVE subs' poolContribBytes.
   hostingGroup     HostingGroup? @relation(fields: [hostingGroupId], references: [id])
-  hostingGroupId   String?       @unique
+  hostingGroupId   String?
+  poolContribBytes BigInt        @default(0)
   plan             HostingPlan @relation(fields: [planId], references: [id])
   planId           String
   stripeSubId      String?     @unique
   status           String      @default("active")
   currentPeriodEnd DateTime?
   warnedAt         DateTime? // set when the 72h-before-expiry warning was sent (once per term)
+
+  @@index([hostingGroupId])
 }
 
 // Recurring "featured" boost — a Stripe subscription that re-extends a repo's

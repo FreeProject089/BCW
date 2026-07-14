@@ -1,5 +1,5 @@
 import { db, notify } from '../lib/lib.mjs';
-import { provisionHostingPool } from './hosting.mjs';
+import { provisionHostingPool, recomputePoolBytes } from './hosting.mjs';
 import { redeemPromoAtomic } from './promo.mjs';
 
 // Encapsulated plugin: a raw-body JSON parser scoped here only, so Stripe's
@@ -217,13 +217,14 @@ export default async function stripeWebhook(app) {
           await p.serverRepo.updateMany({ where: { groupId: group.id, status: 'SUSPENDED' }, data: { status: 'ONLINE' } });
           await p.serverRepo.updateMany({ where: { groupId: group.id }, data: { deleteAt: null } });
           await p.communityCatalog.updateMany({ where: { groupId: group.id, status: 'HIDDEN' }, data: { status: 'ACTIVE', deleteAt: null } });
-          const existing = await p.subscription.findUnique({ where: { hostingGroupId: group.id } });
+          const existing = await p.subscription.findFirst({ where: { hostingGroupId: group.id } });
           if (existing) {
-            await p.subscription.update({ where: { hostingGroupId: group.id }, data: { status: 'active', currentPeriodEnd, warnedAt: null, ...(s.subscription ? { stripeSubId: s.subscription } : {}) } });
+            await p.subscription.update({ where: { id: existing.id }, data: { status: 'active', currentPeriodEnd, warnedAt: null, ...(s.subscription ? { stripeSubId: s.subscription } : {}) } });
           } else {
             const plan = await p.hostingPlan.create({ data: { name: `Custom ${Number(group.poolBytes) / (1024 ** 3)}GB pool (renewal)`, storageGB: Number(group.poolBytes) / (1024 ** 3), uploadLimitKbps: group.uploadLimitKbps, cpuShare: group.cpuShare, priceMonthlyCents: 0, active: false } });
-            await p.subscription.create({ data: { userId: meta.userId, hostingGroupId: group.id, planId: plan.id, status: 'active', currentPeriodEnd, stripeSubId: s.subscription || null } });
+            await p.subscription.create({ data: { userId: meta.userId, hostingGroupId: group.id, planId: plan.id, status: 'active', poolContribBytes: group.poolBytes, currentPeriodEnd, stripeSubId: s.subscription || null } });
           }
+          await recomputePoolBytes(p, group.id);
           await p.payment.create({ data: { userId: meta.userId, hostingGroupId: group.id, kind: 'HOSTING', description: `Pool "${group.name}" renewal — ${months} month${months > 1 ? 's' : ''}`, amountCents: s.amount_total ?? 0, currency: s.currency || 'usd', stripeSessionId: s.id } });
           await notify(p, meta.userId, 'hosting_started', `Pool "${group.name}" renewed for ${months} month${months > 1 ? 's' : ''}.`);
         }
@@ -278,6 +279,7 @@ export default async function stripeWebhook(app) {
             await p.serverRepo.updateMany({ where: { groupId: sub.hostingGroupId, status: 'SUSPENDED' }, data: { status: 'ONLINE' } });
             await p.serverRepo.updateMany({ where: { groupId: sub.hostingGroupId }, data: { deleteAt: null } });
             await p.communityCatalog.updateMany({ where: { groupId: sub.hostingGroupId, status: 'HIDDEN' }, data: { status: 'ACTIVE', deleteAt: null } });
+            await recomputePoolBytes(p, sub.hostingGroupId); // re-add this sub's storage contribution
             if (group) await notify(p, group.ownerId, 'hosting_started', `Your pool "${group.name}" auto-renewed successfully — thanks for staying with us!`);
           } else if (sub.serverRepoId) {
             const repo = await p.serverRepo.findUnique({ where: { id: sub.serverRepoId }, select: { name: true, ownerId: true, status: true } });
@@ -327,11 +329,11 @@ export default async function stripeWebhook(app) {
       const sub = await p.subscription.findUnique({ where: { stripeSubId: subId } });
       if (sub) {
         await p.subscription.update({ where: { id: sub.id }, data: { status: 'canceled' } });
-        // Suspend the anchor: a pool sub suspends every repo AND hides every catalog in
-        // the pool; a legacy repo sub suspends just that repo.
+        // A pool sub: recompute the pool from remaining ACTIVE subs — a single-sub pool
+        // drops to 0 and its content is suspended/hidden; a merged pool just shrinks.
+        // A legacy repo sub suspends just that repo.
         if (sub.hostingGroupId) {
-          await p.serverRepo.updateMany({ where: { groupId: sub.hostingGroupId }, data: { status: 'SUSPENDED' } });
-          await p.communityCatalog.updateMany({ where: { groupId: sub.hostingGroupId, status: 'ACTIVE' }, data: { status: 'HIDDEN', listed: false } });
+          await recomputePoolBytes(p, sub.hostingGroupId);
         } else if (sub.serverRepoId) {
           await p.serverRepo.update({ where: { id: sub.serverRepoId }, data: { status: 'SUSPENDED' } }).catch(() => {});
         }

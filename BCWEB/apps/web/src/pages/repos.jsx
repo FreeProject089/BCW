@@ -438,8 +438,17 @@ function MyAccessPolicyCard() {
 // Storage pools overview — each pool with a used/free bar (repos vs catalogs), what's on
 // it, and one-click add of a repo or catalog. Carving a 1 GB pool into e.g. 4×250 MB repos
 // is just adding repos with a quota — the free-space readout makes that obvious.
-function PoolsPanel({ groups, onAddRepo, t }) {
+function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
   const pct = (n, tot) => tot > 0 ? Math.min(100, Math.round((n / tot) * 100)) : 0;
+  // Merge this pool INTO another (contents move, the two subscriptions keep billing
+  // separately, and the target becomes one bigger pool).
+  const merge = async (sourceId, targetId) => {
+    const src = groups.find((g) => g.id === sourceId), tgt = groups.find((g) => g.id === targetId);
+    if (!tgt) return;
+    if (!(await dialog.confirm({ title: t('pools.merge.t', 'Merge pools?'), message: t('pools.merge.m', 'Move everything from "{s}" into "{t}"? The two subscriptions keep billing separately, but you get one bigger pool. This can’t be undone.').replace('{s}', src?.name || '').replace('{t}', tgt.name), okLabel: t('pools.merge.ok', 'Merge'), danger: false }))) return;
+    try { await api.post('/me/hosting/groups/merge', { sourceId, targetId }); toast.success(t('pools.merged', 'Pools merged.')); reload?.(); }
+    catch (x) { toast.error(x.data?.error || t('repos.failed', 'Failed.')); }
+  };
   return (
     <div className="mb-5 space-y-2.5">
       <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><HardDrive size={13} className="text-[var(--primary-2)]" /> {t('pools.title', 'Storage pools')}</div>
@@ -456,6 +465,10 @@ function PoolsPanel({ groups, onAddRepo, t }) {
               </div>
               <Button size="sm" variant="primary" onClick={() => onAddRepo(g)}><Plus size={13} /> {t('repos.addrepo', 'Add repo')}</Button>
               <a href={`/submit?pool=${g.id}`}><Button size="sm" variant="default"><Boxes size={13} /> {t('repos.addcatalog', 'Add catalog')}</Button></a>
+              {groups.length > 1 && <select value="" onChange={(e) => e.target.value && merge(g.id, e.target.value)} className="input !w-auto !py-1 !text-xs" title={t('pools.mergeinto', 'Merge into another pool')}>
+                <option value="">{t('pools.mergeinto', 'Merge into…')}</option>
+                {groups.filter((o) => o.id !== g.id).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>}
             </div>
             {/* Used bar: repos (orange) + catalogs (blue) + free (track). */}
             <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden flex">
@@ -581,7 +594,7 @@ export function MyRepos() {
         <Button size="sm" variant="primary" onClick={() => setEditing({})}><Plus size={15} /> {t('repos.add', 'Add repo')}</Button>
       </div>
       {(poolsF.data?.groups || []).length > 0 && (
-        <PoolsPanel groups={poolsF.data.groups} onAddRepo={setPoolAdd} t={t} />
+        <PoolsPanel groups={poolsF.data.groups} onAddRepo={setPoolAdd} t={t} reload={() => { poolsF.reload?.(); reload(); }} toast={toast} dialog={dialog} />
       )}
       {repos.length > 3 && (
         <div className="flex flex-wrap gap-2 mb-3">
