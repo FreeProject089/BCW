@@ -10,6 +10,7 @@ import {
   CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss,
   Info, Orbit, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, ShoppingCart,
   Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2,
+  Home as HomeIcon, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw,
 } from 'lucide-react';
 import { api, uploadPayload, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
@@ -8193,9 +8194,70 @@ const blankChild = () => ({ label: '', labelFr: '', to: '/', desc: '', descFr: '
 // Immutably move element `i` of `arr` by `dir` (±1); returns the same array if out of range.
 const moveIn = (arr, i, dir) => { const j = i + dir; if (j < 0 || j >= arr.length) return arr; const c = arr.slice(); [c[i], c[j]] = [c[j], c[i]]; return c; };
 
+// Mirrors App.jsx's NAV_ICONS so the preview renders the exact icons the live topbar will.
+const NAV_PV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell };
+const NavPvIcon = ({ name, size = 15 }) => { const I = NAV_PV_ICONS[name] || Boxes; return <I size={size} />; };
+const pvLabel = (it, lang) => (lang === 'fr' && it.labelFr ? it.labelFr : (it.label || '')) || (lang === 'fr' ? 'Sans titre' : 'Untitled');
+
+// Live preview of the public topbar built from the editor's items — faithful to the real
+// component's styling (App.jsx). Desktop = the pill bar with a hover/click dropdown; mobile
+// = the hamburger sheet (tap a group to expand, tap the phone to reveal the sheet).
+function NavPreview({ items, lang, device }) {
+  const { t } = useI18n();
+  const [openIdx, setOpenIdx] = useState(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const valid = items.filter((it) => it.type === 'group' ? (it.label.trim() && it.children.some((c) => c.label.trim() && c.to.trim().startsWith('/'))) : (it.label.trim() && it.to.trim().startsWith('/')));
+  const pillCls = (active) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition ${active ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
+
+  if (device === 'mobile') {
+    return (
+      <div className="mx-auto w-[320px] rounded-[2rem] border-4 border-[var(--line-strong)] bg-[var(--bg)] p-2.5 shadow-lg">
+        <div className="rounded-2xl border border-[var(--line)] px-2 h-12 flex items-center gap-2 topbar bg-[var(--bg-solid)]">
+          <img src="/logo.png" alt="" className="w-7 h-7 rounded-lg" />
+          <span className="font-bold text-sm flex-1">BetterCommunity</span>
+          <button onClick={() => setSheetOpen((v) => !v)} className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)]" title={t('nav.pv.tap', 'Tap to preview the menu')}>{sheetOpen ? <X size={16} /> : <Navigation size={16} />}</button>
+        </div>
+        {sheetOpen && <div className="mt-2 rounded-2xl border border-[var(--line)] p-2 topbar bg-[var(--bg-solid)] space-y-0.5">
+          {valid.length === 0 ? <div className="text-xs text-[var(--faint)] p-2">{t('nav.pv.empty', 'No valid items yet.')}</div> : valid.map((it, i) => it.type === 'group' ? (
+            <div key={i}>
+              <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={it.icon} size={16} /><span className="flex-1">{pvLabel(it, lang)}</span><ChevronDown size={15} /></div>
+              <div className="pl-3 ml-3 border-l border-[var(--line)] space-y-0.5">
+                {it.children.filter((c) => c.label.trim() && c.to.trim().startsWith('/')).map((c, j) => <div key={j} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={c.icon} size={15} /> {pvLabel(c, lang)}</div>)}
+              </div>
+            </div>
+          ) : <div key={i} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={it.icon} size={16} /> {pvLabel(it, lang)}</div>)}
+        </div>}
+        {!sheetOpen && <div className="text-[11px] text-[var(--faint)] text-center mt-2 flex items-center justify-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.tap', 'Tap the menu to preview')}</div>}
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-2xl border border-[var(--line)] px-3 h-14 flex items-center gap-1 topbar bg-[var(--bg-solid)] overflow-x-auto">
+      <img src="/logo.png" alt="" className="w-8 h-8 rounded-lg shrink-0" />
+      <span className="font-bold text-sm mr-2 shrink-0">BetterCommunity</span>
+      <div className="flex items-center gap-1 bg-[var(--surface-2)] rounded-full p-0.5">
+        {valid.length === 0 ? <span className="text-xs text-[var(--faint)] px-3 py-1.5">{t('nav.pv.empty', 'No valid items yet.')}</span> : valid.map((it, i) => it.type === 'group' ? (
+          <div key={i} className="relative">
+            <button onClick={() => setOpenIdx(openIdx === i ? null : i)} className={pillCls(openIdx === i)}><NavPvIcon name={it.icon} /><span>{pvLabel(it, lang)}</span><ChevronDown size={13} className={`transition-transform ${openIdx === i ? 'rotate-180' : ''}`} /></button>
+            {openIdx === i && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[240px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
+              {it.children.filter((c) => c.label.trim() && c.to.trim().startsWith('/')).map((c, j) => (
+                <div key={j} className="flex items-start gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]">
+                  <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><NavPvIcon name={c.icon} /></span>
+                  <span className="min-w-0"><span className="block text-sm font-medium truncate">{pvLabel(c, lang)}</span>{(lang === 'fr' ? c.descFr : c.desc) && <span className="block text-xs text-[var(--faint)] truncate">{lang === 'fr' ? c.descFr : c.desc}</span>}</span>
+                </div>
+              ))}
+            </div>}
+          </div>
+        ) : <span key={i} className={pillCls(false)}><NavPvIcon name={it.icon} /> {pvLabel(it, lang)}</span>)}
+      </div>
+    </div>
+  );
+}
+
 // Admin: build the public topbar — an ordered list of links and hover-dropdown groups,
 // each with an icon + FR/EN label. Saved as one JSON blob (AdminSetting 'nav.config');
-// while disabled or empty the site falls back to its built-in navigation.
+// while disabled or empty the site falls back to its built-in navigation. A live preview
+// (desktop + mobile) shows exactly what visitors will get; presets import/export as JSON.
 function AdminNav() {
   const toast = useToast();
   const { t, lang } = useI18n();
@@ -8203,6 +8265,8 @@ function AdminNav() {
   const [enabled, setEnabled] = useState(false);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [device, setDevice] = useState('desktop'); // preview device
+  const fileRef = useRef(null);
   useEffect(() => {
     const n = loaded.data?.nav;
     if (!n) return;
@@ -8241,6 +8305,25 @@ function AdminNav() {
     finally { setBusy(false); }
   };
 
+  // Presets: export the current (cleaned) config as a JSON file; import one back; reset to
+  // the built-in default. Import accepts either { enabled, items } or a bare items array.
+  const exportPreset = () => {
+    const blob = new Blob([JSON.stringify(buildClean(), null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `topbar-preset-${Date.now()}.json`; a.click(); URL.revokeObjectURL(a.href);
+  };
+  const importPreset = async (e) => {
+    const file = e.target.files?.[0]; e.target.value = ''; if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const arr = Array.isArray(parsed) ? parsed : parsed.items;
+      if (!Array.isArray(arr)) throw new Error('bad');
+      setItems(arr.map((it) => ({ type: it.type === 'group' ? 'group' : 'link', label: it.label || '', labelFr: it.labelFr || '', to: it.to || '', icon: it.icon || 'Boxes', children: (it.children || []).map((c) => ({ label: c.label || '', labelFr: c.labelFr || '', to: c.to || '/', desc: c.desc || '', descFr: c.descFr || '', icon: c.icon || 'Boxes' })) })));
+      if (typeof parsed.enabled === 'boolean') setEnabled(parsed.enabled);
+      toast.success(t('nav.imported', 'Preset imported — review and save.'));
+    } catch { toast.error(t('nav.importbad', 'Not a valid topbar preset JSON.')); }
+  };
+  const resetDefault = () => setItems(DEFAULT_NAV_SEED.map((x) => ({ ...x, children: (x.children || []).map((c) => ({ ...c })) })));
+
   const IconSelect = ({ value, onChange }) => (
     <Select className="!w-auto" value={value} onChange={(e) => onChange(e.target.value)} title={t('nav.icon', 'Icon')}>
       {NAV_ICON_CHOICES.map((n) => <option key={n} value={n}>{n}</option>)}
@@ -8263,6 +8346,26 @@ function AdminNav() {
         </div>
         <button type="button" onClick={() => setEnabled((v) => !v)} aria-pressed={enabled} className={`w-11 h-6 rounded-full relative shrink-0 transition ${enabled ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${enabled ? 'left-[22px]' : 'left-0.5'}`} /></button>
       </Card>
+
+      {/* Live preview of the real topbar built from the items below. */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Eye size={13} className="text-[var(--primary-2)]" /> {t('nav.pv.title', 'Live preview')} <span className="normal-case font-normal text-[var(--faint)]">({lang.toUpperCase()})</span></div>
+          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+            <button onClick={() => setDevice('desktop')} className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${device === 'desktop' ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}><MonitorIcon size={13} /> {t('nav.pv.desktop', 'Desktop')}</button>
+            <button onClick={() => setDevice('mobile')} className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${device === 'mobile' ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}><Smartphone size={13} /> {t('nav.pv.mobile', 'Mobile')}</button>
+          </div>
+        </div>
+        <div className="rounded-xl bg-[var(--bg)] p-4"><NavPreview items={items} lang={lang} device={device} /></div>
+      </Card>
+
+      {/* Preset tools: import / export a JSON preset, or reset to the built-in default. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={importPreset} />
+        <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()}><UploadIcon size={14} /> {t('nav.import', 'Import preset')}</Button>
+        <Button size="sm" variant="ghost" onClick={exportPreset}><Download size={14} /> {t('nav.export', 'Export preset')}</Button>
+        <Button size="sm" variant="ghost" onClick={resetDefault}><RotateCcw size={14} /> {t('nav.reset', 'Reset to default')}</Button>
+      </div>
 
       {items.length === 0 ? (
         <EmptyState icon={Navigation} title={t('nav.none.t', 'No items yet')} sub={t('nav.none.s', 'Add a link or a dropdown group, or start from the built-in navigation.')} />
