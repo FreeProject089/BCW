@@ -313,6 +313,10 @@ export default async function catalogRoutes(app) {
     }
     const project = await p.project.findUnique({ where: { key: d.projectKey } });
     if (!project) return reply.code(400).send({ error: 'unknown_project' });
+    // Defence in depth: a payloadKey must belong to the caller (presign hands back
+    // `uploads/<uid>/…`), never an arbitrary object key — otherwise /dl could serve
+    // another user's object. Staff (mod/admin) upload via their own presign too.
+    if (d.payloadKey && !d.payloadKey.startsWith(`uploads/${req.user.uid}/`)) return reply.code(400).send({ error: 'invalid_payload_key' });
 
     // Our-hosted file → storage is billed by size (unless the per-MB knob is 0, or the
     // submitter is an admin/mod). If a price applies, require a Stripe checkout first;
@@ -509,6 +513,8 @@ export default async function catalogRoutes(app) {
       description: z.string().max(4000).optional(), version: z.string().max(24).optional(), tags: z.array(z.string()).optional(),
       payloadKey: z.string().optional(), payloadSize: z.number().int().positive().optional(), meta: z.record(z.any()).optional(),
     }).parse(req.body || {});
+    // A replacement payloadKey must be one the caller uploaded (`uploads/<uid>/…`).
+    if (patch.payloadKey && !patch.payloadKey.startsWith(`uploads/${req.user.uid}/`)) return reply.code(400).send({ error: 'invalid_payload_key' });
     // Presets must still satisfy the preset schema after an edit.
     if (item.kind === 'PRESET' && patch.meta) {
       const ok = presetSchema.safeParse(patch.meta);

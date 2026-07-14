@@ -289,6 +289,10 @@ export default async function communityCatalogRoutes(app) {
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
     if (!c || c.ownerId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
     if (c.mode !== 'managed') return reply.code(400).send({ error: 'not_managed' });
+    // Defence in depth: a payloadKey must be one the caller themselves uploaded (presign
+    // returns `uploads/<uid>/…`), never an arbitrary object key pointing at someone else's
+    // upload — otherwise the gated /dl route could presign+serve another user's object.
+    if (b.data.payloadKey && !b.data.payloadKey.startsWith(`uploads/${req.user.uid}/`)) return reply.code(400).send({ error: 'invalid_payload_key' });
     // A payload draws from the catalog's reserved quota (which itself came from the pool).
     const addBytes = b.data.payloadKey ? BigInt(b.data.payloadSize || 0) : 0n;
     if (addBytes > 0n && c.storageUsedBytes + addBytes > c.storageQuotaBytes) {
@@ -317,6 +321,7 @@ export default async function communityCatalogRoutes(app) {
     if (!c || c.ownerId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
     const item = await p.communityCatalogItem.findUnique({ where: { id: req.params.iid } });
     if (!item || item.catalogId !== c.id) return reply.code(404).send({ error: 'not_found' });
+    if (b.data.payloadKey && !b.data.payloadKey.startsWith(`uploads/${req.user.uid}/`)) return reply.code(400).send({ error: 'invalid_payload_key' });
     // If the payload size changed (a re-upload), re-check + adjust the catalog's usage.
     if (b.data.payloadSize != null && b.data.payloadSize !== item.payloadSize) {
       const delta = BigInt(b.data.payloadSize) - BigInt(item.payloadSize || 0);
