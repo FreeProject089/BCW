@@ -280,7 +280,7 @@ export default async function repoRoutes(app) {
   // A user's multi-repo storage pools, with usage.
   app.get('/me/hosting/groups', { preHandler: requireRole() }, async (req) => {
     const p = await db();
-    const groups = await p.hostingGroup.findMany({ where: { ownerId: req.user.uid }, include: { repos: true, catalogs: { select: { id: true, name: true, slug: true, storageQuotaBytes: true, storageUsedBytes: true } } }, orderBy: { createdAt: 'desc' } });
+    const groups = await p.hostingGroup.findMany({ where: { ownerId: req.user.uid }, include: { repos: true, catalogs: { select: { id: true, name: true, slug: true, storageQuotaBytes: true, storageUsedBytes: true } }, _count: { select: { subscriptions: { where: { status: 'active' } } } } }, orderBy: { createdAt: 'desc' } });
     return { groups: groups.map((g) => {
       // Storage is fungible: both repos and catalogs reserve from the same poolBytes.
       const repoBytes = g.repos.reduce((a, r) => a + r.storageQuotaBytes, 0n);
@@ -288,7 +288,7 @@ export default async function repoRoutes(app) {
       return {
         id: g.id, name: g.name, color: g.color || '', poolBytes: Number(g.poolBytes), uploadLimitKbps: g.uploadLimitKbps, cpuShare: g.cpuShare, freePlan: g.freePlan,
         usedBytes: Number(repoBytes + catBytes), repoBytes: Number(repoBytes), catalogBytes: Number(catBytes),
-        repoCount: g.repos.length, catalogCount: g.catalogs.length,
+        repoCount: g.repos.length, catalogCount: g.catalogs.length, subCount: g._count.subscriptions,
         repos: g.repos.map((r) => ({ id: r.id, name: r.name, quotaBytes: Number(r.storageQuotaBytes), usedBytes: Number(r.storageUsedBytes), status: r.status, hosted: r.hosted })),
         catalogs: g.catalogs.map((c) => ({ id: c.id, name: c.name, slug: c.slug, quotaBytes: Number(c.storageQuotaBytes), usedBytes: Number(c.storageUsedBytes) })),
       };
@@ -598,6 +598,38 @@ export default async function repoRoutes(app) {
     const names = sources.map((s) => `"${s.name}"`).join(', ');
     await notify(p, tgt.ownerId, 'hosting_started', `Merged ${sources.length} pool${sources.length > 1 ? 's' : ''} (${names}) into "${tgt.name}" — you now have one larger pool (${totalGB.toFixed(1)} GB).`).catch(() => {});
     return { ok: true, groupId: tgt.id, merged: sources.length };
+  });
+
+  // READ-ONLY consolidation quote for a merged pool that carries several separate paid
+  // subscriptions. Shows what a SINGLE plan sized to the whole pool would cost vs. the
+  // sum of the current subs, with the admin-tunable pricing.consolidationDiscount applied.
+  // This performs NO billing change — the owner still consolidates manually through the
+  // normal checkout (buy the bigger plan, cancel the small ones). It only surfaces the
+  // saving so "one bigger pool = cheaper" is visible after a merge.
+  app.get('/me/hosting/groups/:id/consolidation', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const g = await p.hostingGroup.findUnique({ where: { id: req.params.id }, select: { id: true, ownerId: true } });
+    if (!g) return reply.code(404).send({ error: 'not_found' });
+    if (g.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role)) return reply.code(403).send({ error: 'owner_only' });
+    const subs = await p.subscription.findMany({ where: { hostingGroupId: g.id, status: 'active' }, include: { plan: true } });
+    const paid = subs.filter((s) => s.plan && s.plan.priceMonthlyCents > 0);
+    if (paid.length < 2) return { eligible: false, subCount: subs.length };
+    const s = await settings(p);
+    const currentMonthlyCents = paid.reduce((a, x) => a + x.plan.priceMonthlyCents, 0);
+    const sumGB = paid.reduce((a, x) => a + x.plan.storageGB, 0);
+    const sumUploadMbps = paid.reduce((a, x) => a + x.plan.uploadLimitKbps, 0) / 1024;
+    const sumCpu = paid.reduce((a, x) => a + x.plan.cpuShare, 0);
+    // Consolidated base applies the free-GB floor ONCE (not once per sub) — that plus the
+    // admin discount is where the saving comes from.
+    const base = priceCents(s, sumGB, sumUploadMbps, sumCpu);
+    const discount = Math.min(Math.max(Number(s['pricing.consolidationDiscount'] ?? 0), 0), 0.9);
+    const consolidatedMonthlyCents = Math.round(base * (1 - discount));
+    return {
+      eligible: true, subCount: paid.length, sumGB,
+      currentMonthlyCents, consolidatedMonthlyCents,
+      savingCents: Math.max(0, currentMonthlyCents - consolidatedMonthlyCents),
+      discountPct: Math.round(discount * 100),
+    };
   });
 
   // Free switch: single hosted repo → multi (mints a pool sized to its quota), and back.

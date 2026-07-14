@@ -8201,6 +8201,7 @@ const SETTINGS_GROUPS = [
     ['pricing.featurePerDayCents', 'Feature (boost) price / day (¢)', 'Cost to keep a repo featured on the public listing.', 'number'],
     ['pricing.catalogHostPerMBCents', 'Catalog file hosting (¢ / MB / month)', 'Charged to non-staff submitters for our-hosted payloads above the free floor below.', 'number'],
     ['pricing.catalogFreeMB', 'Free catalog upload floor', 'Every submission\'s (app/plugin/theme/preset) first N are free — only the excess is billed.', 'gbmb', 'MB'],
+    ['pricing.consolidationDiscount', 'Pool consolidation discount (fraction)', 'When an owner consolidates a merged pool\'s several subscriptions into one bigger plan, this fraction (0–0.9, e.g. 0.15 = 15% off) is taken off the single-plan price. Shown as the "consolidation savings" quote on their pools.', 'number'],
   ] },
   { title: 'Feature flags', gk: 'features', icon: Sliders, keys: [
     ['features.hostingEnabled', 'Hosting enabled', 'Turns the whole Server-Repo hosting feature off site-wide when unchecked.', 'bool'],
