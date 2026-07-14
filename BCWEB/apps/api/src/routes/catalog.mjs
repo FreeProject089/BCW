@@ -357,7 +357,7 @@ export default async function catalogRoutes(app) {
   // Every entry is a URL-based (self-hosted) proposal — no payload upload, so no hosting
   // billing / temp-margin concerns; they just enter the queue as PENDING. Same anti-spam
   // as single submit: PoW + rate limit + the PENDING cap (checked against the whole batch).
-  app.post('/catalog/bulk', { preHandler: requireRole(), config: { rateLimit: { max: 3, timeWindow: '1 hour' } } }, async (req, reply) => {
+  app.post('/catalog/bulk', { preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (req, reply) => {
     if (!powVerify(req.body?.pow)) return reply.code(400).send({ error: 'pow_required' });
     const b = z.object({
       projectKey: z.enum(['bmm', 'bsm', 'community']),

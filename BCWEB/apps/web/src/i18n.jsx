@@ -1029,6 +1029,8 @@ const DICT = {
     'sub2.pool': 'Pool de stockage', 'sub2.pool.hint': 'Un catalogue managed puise dans un pool de stockage — le même espace que tes repos.', 'sub2.pool.none': 'Tu n’as pas encore de pool de stockage.', 'sub2.pool.buy': 'Obtiens-en un sur la page Hébergement', 'sub2.pool.choose': 'Choisis un pool…', 'sub2.pool.need': 'Choisis un pool de stockage (ou achètes-en un sur la page Hébergement).', 'sub2.pool.notyours': 'Ce pool n’est pas le tien.',
     'sub2.create': 'Créer le catalogue', 'sub2.created': 'Catalogue créé.',
     'sub2.pool.toobig': 'Ce pool n’a que {n} Go de libre.', 'sub2.reserve': 'Réserver', 'sub2.gboffree': 'Go sur {n} Go libres',
+    'sub2.toobig': 'Les fichiers de plus de 100 Mo doivent être arrangés via la page contact.',
+    'sub2.toobig.b': 'Ce fichier dépasse 100 Mo — les envois directs sont plafonnés là. Pour héberger un fichier plus gros, contacte-nous via la page contact et on s’arrange.', 'sub2.contact': 'Nous contacter',
     'sub.project': 'Projet', 'sub.type': 'Type', 'sub.name': 'Nom', 'sub.version': 'Version', 'sub.desc': 'Description',
     'sub.filehint': 'Envoyé directement au stockage — le lien de téléchargement est configuré automatiquement.',
     'sub.quote': 'Héberger ce fichier de {size} MB chez nous est facturé à la taille : {price}. Tu seras redirigé vers le paiement ; il passe ensuite en modération. Tu préfères l’auto-hébergement ? Colle plutôt une URL ci-dessus.',
@@ -1100,7 +1102,7 @@ const DICT = {
     // Dashboard : mes catalogues (owner)
     'oc.title': 'Mes catalogues', 'oc.desc': 'Les catalogues que tu héberges. Partage le lien /c ou ajoute-les dans BMM. Les catalogues managed puisent dans un pool de stockage.',
     'oc.new': 'Nouveau catalogue', 'oc.keyrotated': 'Nouveau lien de partage copié.',
-    'oc.del.t': 'Supprimer le catalogue ?', 'oc.del.m': '« {n} » sera masqué maintenant et supprimé définitivement dans 72h.', 'oc.deleted': 'Catalogue programmé pour suppression.',
+    'oc.del.t': 'Supprimer le catalogue ?', 'oc.del.m2': 'Supprimer « {n} » maintenant ? Ses items et les fichiers hébergés sont retirés et l’espace du pool est libéré. Irréversible.', 'oc.deleted2': 'Catalogue supprimé.',
     'oc.feed': 'URL du feed', 'oc.items': 'Items', 'oc.visibility': 'Visibilité', 'oc.listed': 'Listé publiquement', 'oc.sharelink': 'Copier le lien de partage',
     'oc.none.t': 'Aucun catalogue', 'oc.none.s': 'Héberge ton propre catalogue de plugins, thèmes ou apps.',
     'oc.it.name': 'Nom requis.', 'oc.additem': 'Ajouter',

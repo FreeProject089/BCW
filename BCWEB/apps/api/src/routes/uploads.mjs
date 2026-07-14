@@ -22,13 +22,16 @@ export async function tempMarginStatus(p) {
 const IMG = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'];
 // Per-kind upload caps + allowed content types (defence in depth; MinIO also enforced).
 const LIMITS = {
+  // Direct uploads are capped at 100MB across the submittable kinds; anything larger is
+  // arranged via the contact page (the /submit UI directs there). Apps (installers) may
+  // legitimately be bigger, so they keep the higher ceiling.
   APP:    { maxBytes: 500 * 1024 * 1024, types: ['application/zip', 'application/octet-stream', 'application/x-msdownload'] },
-  PLUGIN: { maxBytes: 50 * 1024 * 1024, types: ['application/zip', 'application/octet-stream', 'application/wasm'] },
+  PLUGIN: { maxBytes: 100 * 1024 * 1024, types: ['application/zip', 'application/octet-stream', 'application/wasm'] },
   // .bmmtheme is a custom extension unknown to browser MIME tables, so
   // <input type=file> reports an empty file.type → uploadPayload() falls back
   // to 'application/octet-stream'. Without it here every real .bmmtheme
   // submission 415'd (this was the "submit content doesn't work" bug).
-  THEME:  { maxBytes: 5 * 1024 * 1024, types: ['application/json', 'application/zip', 'text/css', 'application/octet-stream'] },
+  THEME:  { maxBytes: 100 * 1024 * 1024, types: ['application/json', 'application/zip', 'text/css', 'application/octet-stream'] },
   PRESET: { maxBytes: 2 * 1024 * 1024, types: ['application/json'] },
   BLOG:   { maxBytes: 10 * 1024 * 1024, types: IMG, prefix: 'blog' },
   // Project/showcase page media (visual editor): images, short videos, and rrweb

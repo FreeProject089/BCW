@@ -5,7 +5,7 @@ import {
   resolveClientIdentity, accessListMatches, policyBans, policyWhitelist,
   getGlobalAccessPolicy, getUserAccessPolicy,
 } from '../lib/lib.mjs';
-import { presignGet } from '../lib/storage.mjs';
+import { presignGet, deleteObject } from '../lib/storage.mjs';
 
 const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
 const SITE_URL = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
@@ -263,10 +263,12 @@ export default async function communityCatalogRoutes(app) {
 
   app.delete('/me/catalogs/:id', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
-    const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
+    const c = await p.communityCatalog.findUnique({ where: { id: req.params.id }, include: { items: { select: { payloadKey: true } } } });
     if (!c || (c.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role))) return reply.code(404).send({ error: 'not_found' });
-    // 72h delete grace, same as repos (the sweeper purges payloads + the row).
-    await p.communityCatalog.update({ where: { id: c.id }, data: { status: 'HIDDEN', listed: false, deleteAt: new Date(Date.now() + 3 * 864e5) } });
+    // Delete now (no grace) — a catalog holds no paid subscription of its own; its pool
+    // space frees immediately. Best-effort payload purge, then the row (items cascade).
+    for (const it of c.items) { if (it.payloadKey) await deleteObject(it.payloadKey).catch(() => {}); }
+    await p.communityCatalog.delete({ where: { id: c.id } });
     return { ok: true };
   });
 

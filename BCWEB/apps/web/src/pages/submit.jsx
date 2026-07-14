@@ -9,6 +9,7 @@ import { api, uploadPayload } from '../lib/api.js';
 
 const KINDS = { bmm: ['APP', 'PLUGIN', 'THEME'], bsm: ['PRESET'] };
 const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset' };
+const MAX_UPLOAD = 100 * 1024 * 1024; // 100MB — larger files go through the contact page
 
 // Minimal JSON textarea (mirrors the dashboard's editor) — used for the "advanced" panel.
 function JsonBox({ value, onChange }) {
@@ -92,6 +93,7 @@ function OfficialSubmit({ onBack }) {
 
   const submitOne = async () => {
     if (form.name.trim().length < 2) return toast.error(t('sub.namereq', 'Name is required.'));
+    if (file && file.size > MAX_UPLOAD) return toast.error(t('sub2.toobig', 'Files over 100MB must be arranged via the contact page.'));
     let metaObj = {}; try { metaObj = JSON.parse(meta || '{}'); } catch { return toast.error(t('sub.metajson', 'Meta must be valid JSON.')); }
     setBusy(true);
     try {
@@ -105,6 +107,7 @@ function OfficialSubmit({ onBack }) {
     } catch (x) {
       const e = x.data?.error;
       toast.error(e === 'too_many_pending' ? t('sub.toomanypending', 'You already have submissions awaiting review — wait for moderation.')
+        : e === 'too_large' ? t('sub2.toobig', 'Files over 100MB must be arranged via the contact page.')
         : e === 'free_tier_full' ? t('sub.freetierfull', 'Free hosting for catalog files is full right now — self-host and paste a URL instead.')
         : e === 'free_tier_already_used' ? t('sub.freeused', "You've used your one free hosted upload — self-host and paste a URL, or pay for hosting.")
         : e || x.message || t('repos.failed', 'Failed.'));
@@ -146,6 +149,11 @@ function OfficialSubmit({ onBack }) {
           <Field label={t('sub2.file', 'File')} hint={t('sub2.filehint', 'Drop a .bmmplug, theme/preset .json, or a whole catalog.json for bulk import. Uploaded files are auto-parsed.')}>
             <Input type="file" onChange={(e) => onFile(e.target.files?.[0] || null)} /></Field>
           {file && <div className="text-xs text-[var(--faint)] flex items-center gap-1.5"><Package size={12} /> {file.name} ({(file.size / 1e6).toFixed(1)} MB)</div>}
+          {file && file.size > MAX_UPLOAD && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-2.5 text-xs text-amber-400">
+              {t('sub2.toobig.b', 'This file is over 100MB — direct uploads are capped there. To host a larger file, reach out via the contact page and we’ll arrange it.')} <Link to="/contact" className="underline font-medium">{t('sub2.contact', 'Contact us')}</Link>
+            </div>
+          )}
           <div>
             <button type="button" onClick={() => setAdvanced((v) => !v)} className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><ChevronDown size={13} className={advanced ? 'rotate-180' : ''} /> {t('sub2.advanced', 'Advanced — edit metadata JSON')}</button>
             {advanced && <div className="mt-2"><div className="flex justify-end mb-1"><button type="button" onClick={() => setMeta(JSON.stringify(kind === 'APP' ? { category: 'other', price: 'free', download_url: '' } : kind === 'PLUGIN' ? { game: '', download_url: '' } : { name: form.name }, null, 2))} className="text-xs flex items-center gap-1 text-[var(--primary-2)]"><Wand2 size={12} /> {t('sub.gentmpl', 'Generate template')}</button></div><JsonBox value={meta} onChange={setMeta} /></div>}

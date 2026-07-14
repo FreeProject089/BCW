@@ -2073,7 +2073,7 @@ export function Dashboard() {
                         but the owner can always share its own direct link (like a repo). */}
                     {(() => {
                       const isPub = it.status === 'PUBLISHED';
-                      const link = isPub ? `${location.origin}/catalog/${it.slug}` : (it.shareKey ? `${location.origin}/catalog/${it.slug}?k=${it.shareKey}` : null);
+                      const link = isPub ? `${location.origin}/item/${it.slug}` : (it.shareKey ? `${location.origin}/item/${it.slug}?k=${it.shareKey}` : null);
                       if (!link || it.deleteAt) return null;
                       return (
                         <button onClick={() => { copyText(link); toast.success(isPub ? t('dash.pubcopied', 'Public link copied.') : t('dash.privcopied', 'Private share link copied.')); }}
@@ -8298,7 +8298,7 @@ function OwnerCatalogs() {
   const cats = data?.catalogs || [];
   const patch = async (c, body) => { try { await api.patch(`/me/catalogs/${c.id}`, body); reload(); } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } };
   const rotate = async (c) => { try { const r = await api.post(`/me/catalogs/${c.id}/rotate-key`); navigator.clipboard?.writeText(`${location.origin}/c/${c.slug}?k=${r.shareKey}`); toast.success(t('oc.keyrotated', 'New share link copied.')); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
-  const del = async (c) => { if (!(await dialog.confirm({ title: t('oc.del.t', 'Delete catalog?'), message: t('oc.del.m', '"{n}" will be hidden now and permanently removed in 72h.').replace('{n}', c.name), okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/me/catalogs/${c.id}`); toast.success(t('oc.deleted', 'Catalog scheduled for deletion.')); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  const del = async (c) => { if (!(await dialog.confirm({ title: t('oc.del.t', 'Delete catalog?'), message: t('oc.del.m2', 'Delete "{n}" now? Its items and any hosted files are removed and its pool space is freed. This cannot be undone.').replace('{n}', c.name), okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/me/catalogs/${c.id}`); toast.success(t('oc.deleted2', 'Catalog deleted.')); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
   const copyFeed = (c) => { navigator.clipboard?.writeText(`${location.origin}/api/c/${c.slug}/catalog.json`); toast.success(t('ccp.copied', 'Copied.')); };
   const tone = (s) => s === 'SUSPENDED' ? 'red' : s === 'HIDDEN' ? 'amber' : 'green';
 
