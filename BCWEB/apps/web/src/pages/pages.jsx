@@ -8311,7 +8311,7 @@ const pvLabel = (it, lang) => (lang === 'fr' && it.labelFr ? it.labelFr : (it.la
 // Live preview of the public topbar built from the editor's items — faithful to the real
 // component's styling (App.jsx). Desktop = the pill bar with a hover/click dropdown; mobile
 // = the hamburger sheet (tap a group to expand, tap the phone to reveal the sheet).
-function NavPreview({ items, lang, device, onEdit }) {
+function NavPreview({ items, lang, device, onEdit, utility = {} }) {
   const { t } = useI18n();
   const [openIdx, setOpenIdx] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -8319,14 +8319,23 @@ function NavPreview({ items, lang, device, onEdit }) {
   // matching editor card (onEdit). Filter mirrors the server's accept rules.
   const valid = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.type === 'group' ? (it.label.trim() && it.children.some((c) => c.label.trim() && c.to.trim().startsWith('/'))) : (it.label.trim() && it.to.trim().startsWith('/')));
   const pillCls = (active) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition ${active ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
+  // Which built-in utility buttons are shown, in configured order (mirrors App.jsx).
+  const uOn = (k) => utility[k]?.visible !== false;
+  const ordU = (list) => [...list].filter(uOn).sort((a, b) => (utility[a]?.order ?? list.indexOf(a)) - (utility[b]?.order ?? list.indexOf(b)));
+  const clusterA = ordU(UTIL_A_KEYS), clusterB = ordU(UTIL_B_KEYS);
 
   if (device === 'mobile') {
+    // Faithful to the real phone topbar: logo + name + the always-visible cluster-A
+    // icons + avatar + hamburger; the sheet lists the nav items then the account items.
+    const sheetAccount = ['projects', 'settings', ...UTIL_B_KEYS].filter((k) => uOn(k) && k !== 'login');
     return (
       <div className="mx-auto w-[320px] rounded-[2rem] border-4 border-[var(--line-strong)] bg-[var(--bg)] p-2.5 shadow-lg">
-        <div className="rounded-2xl border border-[var(--line)] px-2 h-12 flex items-center gap-2 topbar bg-[var(--bg-solid)]">
-          <img src="/logo.png" alt="" className="w-7 h-7 rounded-lg" />
-          <span className="font-bold text-sm flex-1">BetterCommunity</span>
-          <button onClick={() => setSheetOpen((v) => !v)} className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)]" title={t('nav.pv.tap', 'Tap to preview the menu')}>{sheetOpen ? <X size={16} /> : <Navigation size={16} />}</button>
+        <div className="rounded-2xl border border-[var(--line)] px-2 h-12 flex items-center gap-1 topbar bg-[var(--bg-solid)]">
+          <img src="/logo.png" alt="" className="w-7 h-7 rounded-lg shrink-0" />
+          <span className="font-bold text-[13px] flex-1 min-w-0 truncate">BetterCommunity</span>
+          {clusterA.map((k) => <span key={k} className="text-[var(--muted)] p-0.5 shrink-0" title={t('nav.util.' + k, UTIL_LABEL[k])}><NavPvIcon name={UTIL_ICON[k]} size={15} /></span>)}
+          {uOn('profile') && <span className="w-6 h-6 rounded-full bg-[var(--surface-2)] border border-[var(--line)] shrink-0" title={t('nav.util.profile', 'Profile')} />}
+          <button onClick={() => setSheetOpen((v) => !v)} className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] shrink-0" title={t('nav.pv.tap', 'Tap to preview the menu')}>{sheetOpen ? <X size={15} /> : <Navigation size={15} />}</button>
         </div>
         {sheetOpen && <div className="mt-2 rounded-2xl border border-[var(--line)] p-2 topbar bg-[var(--bg-solid)] space-y-0.5">
           {valid.length === 0 ? <div className="text-xs text-[var(--faint)] p-2">{t('nav.pv.empty', 'No valid items yet.')}</div> : valid.map(({ it, idx }) => it.type === 'group' ? (
@@ -8337,6 +8346,8 @@ function NavPreview({ items, lang, device, onEdit }) {
               </div>
             </div>
           ) : <div key={idx} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={it.icon} size={16} /> {pvLabel(it, lang)}</div>)}
+          {sheetAccount.length > 0 && <div className="h-px bg-[var(--line)] my-1.5" />}
+          {sheetAccount.map((k) => <div key={k} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={UTIL_ICON[k]} size={15} /> {t('nav.util.' + k, UTIL_LABEL[k])}</div>)}
         </div>}
         {!sheetOpen && <div className="text-[11px] text-[var(--faint)] text-center mt-2 flex items-center justify-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.tap', 'Tap the menu to preview')}</div>}
       </div>
@@ -8368,6 +8379,14 @@ function NavPreview({ items, lang, device, onEdit }) {
             </div>}
           </div>
         ) : <button key={idx} title={onEdit ? t('nav.pv.editlink', 'Click to edit this item') : undefined} onClick={() => jump(idx)} className={pillCls(false)}><NavPvIcon name={it.icon} /> {pvLabel(it, lang)}</button>)}
+      </div>
+      {/* Right-side utility cluster — mirrors the real topbar's configurable buttons. */}
+      <div className="ml-auto flex items-center gap-0.5 shrink-0 text-[var(--muted)]">
+        {clusterA.map((k) => <span key={k} className="p-1.5" title={t('nav.util.' + k, UTIL_LABEL[k])}><NavPvIcon name={UTIL_ICON[k]} size={16} /></span>)}
+        {clusterB.length > 0 && <span className="w-px h-5 bg-[var(--line)] mx-1" />}
+        {clusterB.map((k) => k === 'profile'
+          ? <span key={k} className="w-6 h-6 rounded-full bg-[var(--surface-2)] border border-[var(--line)]" title={t('nav.util.profile', 'Profile')} />
+          : <span key={k} className="p-1.5" title={t('nav.util.' + k, UTIL_LABEL[k])}><NavPvIcon name={UTIL_ICON[k]} size={16} /></span>)}
       </div>
     </div>
   );
@@ -8503,7 +8522,7 @@ function AdminNav() {
             <button onClick={() => setDevice('mobile')} className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${device === 'mobile' ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}><Smartphone size={13} /> {t('nav.pv.mobile', 'Mobile')}</button>
           </div>
         </div>
-        <div className="rounded-xl bg-[var(--bg)] p-4"><NavPreview items={items} lang={lang} device={device} onEdit={device === 'desktop' ? editItem : undefined} /></div>
+        <div className="rounded-xl bg-[var(--bg)] p-4"><NavPreview items={items} lang={lang} device={device} utility={utility} onEdit={device === 'desktop' ? editItem : undefined} /></div>
         {device === 'desktop' && items.length > 0 && <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.edithint', 'Click any item in the preview to jump to its settings below.')}</div>}
       </Card>
 
