@@ -435,13 +435,60 @@ function MyAccessPolicyCard() {
   );
 }
 
+// Storage pools overview — each pool with a used/free bar (repos vs catalogs), what's on
+// it, and one-click add of a repo or catalog. Carving a 1 GB pool into e.g. 4×250 MB repos
+// is just adding repos with a quota — the free-space readout makes that obvious.
+function PoolsPanel({ groups, onAddRepo, t }) {
+  const pct = (n, tot) => tot > 0 ? Math.min(100, Math.round((n / tot) * 100)) : 0;
+  return (
+    <div className="mb-5 space-y-2.5">
+      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><HardDrive size={13} className="text-[var(--primary-2)]" /> {t('pools.title', 'Storage pools')}</div>
+      {groups.map((g) => {
+        const free = Math.max(0, g.poolBytes - g.usedBytes);
+        const repoPct = pct(g.repoBytes, g.poolBytes), catPct = pct(g.catalogBytes, g.poolBytes);
+        return (
+          <div key={g.id} className="rounded-xl border border-[var(--line)] p-3.5">
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 shrink-0"><HardDrive size={15} className="text-[var(--primary-2)]" /></span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm truncate flex items-center gap-2">{g.name} {g.freePlan && <Badge tone="">{t('pools.free', 'free')}</Badge>}</div>
+                <div className="text-[11px] text-[var(--faint)]">{gb(g.usedBytes)} / {gb(g.poolBytes)} GB {t('pools.used', 'used')} · {gb(free)} GB {t('pools.freespace', 'free')}</div>
+              </div>
+              <Button size="sm" variant="primary" onClick={() => onAddRepo(g)}><Plus size={13} /> {t('repos.addrepo', 'Add repo')}</Button>
+              <a href={`/submit?pool=${g.id}`}><Button size="sm" variant="default"><Boxes size={13} /> {t('repos.addcatalog', 'Add catalog')}</Button></a>
+            </div>
+            {/* Used bar: repos (orange) + catalogs (blue) + free (track). */}
+            <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden flex">
+              <div className="h-full bg-[var(--primary)]" style={{ width: `${repoPct}%` }} title={`${t('pools.repos', 'Repos')}: ${gb(g.repoBytes)} GB`} />
+              <div className="h-full bg-sky-500" style={{ width: `${catPct}%` }} title={`${t('pools.catalogs', 'Catalogs')}: ${gb(g.catalogBytes)} GB`} />
+            </div>
+            {(g.repos?.length > 0 || g.catalogs?.length > 0) ? (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {g.repos?.map((r) => (
+                  <Link key={r.id} to={`/repo/${r.id}`} className="inline-flex items-center gap-1.5 text-[11px] rounded-lg px-2 py-1 border border-[var(--line)] bg-[var(--surface-2)] hover:border-[var(--primary-2)]">
+                    <Server size={11} className="text-[var(--primary-2)]" /> <span className="truncate max-w-[140px]">{r.name}</span> <span className="text-[var(--faint)]">{gb(r.quotaBytes)}G</span>
+                  </Link>
+                ))}
+                {g.catalogs?.map((c) => (
+                  <a key={c.id} href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[11px] rounded-lg px-2 py-1 border border-[var(--line)] bg-[var(--surface-2)] hover:border-sky-500">
+                    <Boxes size={11} className="text-sky-500" /> <span className="truncate max-w-[140px]">{c.name}</span> <span className="text-[var(--faint)]">{gb(c.quotaBytes)}G</span>
+                  </a>
+                ))}
+              </div>
+            ) : <div className="mt-2 text-[11px] text-[var(--faint)]">{t('pools.empty', 'Empty — add a repo or catalog to start using this space.')}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function MyRepos() {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useFetch(() => api.get('/me/repos'), []);
   // Storage pools — so a freshly-bought EMPTY pool (no repos yet) is still visible and
   // fillable. A pool with repos shows through its repos; an empty one shows here.
   const poolsF = useFetch(() => api.get('/me/hosting/groups'), []);
-  const emptyPools = (poolsF.data?.groups || []).filter((g) => (g.repoCount || 0) === 0 && (g.catalogCount || 0) === 0);
   const [editing, setEditing] = useState(null);
   const [featuring, setFeaturing] = useState(null);
   const [managing, setManaging] = useState(null);
@@ -533,20 +580,8 @@ export function MyRepos() {
         <h2 className="font-semibold flex items-center gap-2"><Server size={16} /> {t('repos.mine', 'My Server Repos')}</h2>
         <Button size="sm" variant="primary" onClick={() => setEditing({})}><Plus size={15} /> {t('repos.add', 'Add repo')}</Button>
       </div>
-      {emptyPools.length > 0 && (
-        <div className="mb-4 space-y-2">
-          {emptyPools.map((g) => (
-            <div key={g.id} className="rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/[0.05] p-3.5 flex items-center gap-3 flex-wrap">
-              <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--primary)]/10 shrink-0"><HardDrive size={16} className="text-[var(--primary-2)]" /></span>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm">{t('repos.emptypool.t', 'Storage pool "{n}" is empty').replace('{n}', g.name)}</div>
-                <div className="text-xs text-[var(--muted)]">{t('repos.emptypool.s', '{n} GB free — add a repo or a catalog to start using it.').replace('{n}', ((g.poolBytes - g.usedBytes) / 1e9).toFixed(1))}</div>
-              </div>
-              <Button size="sm" variant="primary" onClick={() => setPoolAdd(g)}><Plus size={13} /> {t('repos.addrepo', 'Add repo')}</Button>
-              <a href="/submit"><Button size="sm" variant="default"><Boxes size={13} /> {t('repos.addcatalog', 'Add catalog')}</Button></a>
-            </div>
-          ))}
-        </div>
+      {(poolsF.data?.groups || []).length > 0 && (
+        <PoolsPanel groups={poolsF.data.groups} onAddRepo={setPoolAdd} t={t} />
       )}
       {repos.length > 3 && (
         <div className="flex flex-wrap gap-2 mb-3">

@@ -177,7 +177,14 @@ function HostCatalog({ onBack }) {
   const [busy, setBusy] = useState(false);
   const pool = (pools || []).find((g) => g.id === groupId);
   const poolFreeGB = pool ? (pool.poolBytes - pool.usedBytes) / 1e9 : 0;
-  useEffect(() => { api.get('/me/hosting/groups').then((r) => setPools(r.groups || [])).catch(() => setPools([])); }, []);
+  useEffect(() => {
+    api.get('/me/hosting/groups').then((r) => {
+      setPools(r.groups || []);
+      // Preselect a pool passed as ?pool=<id> (from a dashboard "Add catalog" on a pool).
+      const pre = new URLSearchParams(location.search).get('pool');
+      if (pre && (r.groups || []).some((g) => g.id === pre)) setGroupId(pre);
+    }).catch(() => setPools([]));
+  }, []);
 
   const onRaw = async (f) => {
     setRawFile(f); setRawJson(null);

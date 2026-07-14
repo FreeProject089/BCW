@@ -228,9 +228,10 @@ export default async function repoRoutes(app) {
       const repoBytes = g.repos.reduce((a, r) => a + r.storageQuotaBytes, 0n);
       const catBytes = g.catalogs.reduce((a, c) => a + c.storageQuotaBytes, 0n);
       return {
-        id: g.id, name: g.name, poolBytes: Number(g.poolBytes), uploadLimitKbps: g.uploadLimitKbps, cpuShare: g.cpuShare,
+        id: g.id, name: g.name, poolBytes: Number(g.poolBytes), uploadLimitKbps: g.uploadLimitKbps, cpuShare: g.cpuShare, freePlan: g.freePlan,
         usedBytes: Number(repoBytes + catBytes), repoBytes: Number(repoBytes), catalogBytes: Number(catBytes),
         repoCount: g.repos.length, catalogCount: g.catalogs.length,
+        repos: g.repos.map((r) => ({ id: r.id, name: r.name, quotaBytes: Number(r.storageQuotaBytes), usedBytes: Number(r.storageUsedBytes), status: r.status, hosted: r.hosted })),
         catalogs: g.catalogs.map((c) => ({ id: c.id, name: c.name, slug: c.slug, quotaBytes: Number(c.storageQuotaBytes), usedBytes: Number(c.storageUsedBytes) })),
       };
     }) };

@@ -773,6 +773,8 @@ const DICT = {
     'hosting.storage': 'Espace de stockage', 'hosting.storage.d': 'Tu achètes un pool de stockage. Une fois à toi, remplis-le comme tu veux — un dépôt, plusieurs dépôts, des catalogues, ou un mélange — et ajuste la répartition quand tu veux.',
     'hosting.pool': 'Pool de stockage', 'hosting.freeplan.pool2': 'Ton pool de stockage « {name} » est prêt — offre gratuite. Ajoutes-y des dépôts ou des catalogues.',
     'repos.emptypool.t': 'Le pool de stockage « {n} » est vide', 'repos.emptypool.s': '{n} Go libres — ajoute un dépôt ou un catalogue pour commencer.', 'repos.addrepo': 'Ajouter un dépôt', 'repos.addcatalog': 'Ajouter un catalogue',
+    'pools.title': 'Pools de stockage', 'pools.free': 'gratuit', 'pools.used': 'utilisés', 'pools.freespace': 'libres',
+    'pools.repos': 'Dépôts', 'pools.catalogs': 'Catalogues', 'pools.empty': 'Vide — ajoute un dépôt ou un catalogue pour utiliser cet espace.',
     'fh.title2': 'Hébergement gratuit (pool de stockage)', 'fh.sub2': 'Provisionne un pool de stockage directement — sans paiement — que le propriétaire remplit de dépôts et de catalogues. Laisse l’e-mail vide pour l’héberger sous ton propre compte.',
     'hosting.single': 'Dépôt unique', 'hosting.single.d': 'Un seul dépôt avec tout le quota.',
     'hosting.multi': 'Dépôts multiples', 'hosting.multi.d': 'Répartis le stockage sur plusieurs dépôts, gérés par toi.',
