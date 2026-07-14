@@ -15,7 +15,7 @@ import { TotpQuickFill } from './twofa-fill.jsx';
 import { MarkdownEditor } from './blog.jsx';
 import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
-import { useAsync, Loading, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, SideDash, Catalog, Dashboard, Home, Installer } from './pages.jsx';
+import { useAsync, Loading, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, SideDash } from './pages.jsx';
 
 /* ─────────────────────────  Admin  ───────────────────────── */
 export function Admin() {
