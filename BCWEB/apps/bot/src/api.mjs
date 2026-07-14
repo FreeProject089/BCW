@@ -44,6 +44,9 @@ export const api = {
   paymentInvoice: (id) => call('GET', `/bot/payments/${id}/invoice`).catch(() => null),
   dmPending: () => call('GET', '/bot/dm/pending').then((r) => r.items || []).catch((e) => { console.warn('[bot] dmPending failed:', e.message); return []; }),
   dmSent: (ids) => call('POST', '/bot/dm/sent', { ids }).catch(() => {}),
+  // Link buffer: Discord ids freshly (re)linked on the website that need a prompt role refresh.
+  linksPending: () => call('GET', '/bot/links/pending').then((r) => r.discordIds || []).catch(() => []),
+  linksSynced: (discordIds) => call('POST', '/bot/links/synced', { discordIds }).catch(() => {}),
   // Giveaways: fetch active ones, mark posted, record an entry, record the draw.
   giveawaysActive: () => call('GET', '/bot/giveaways/active').then((r) => r.giveaways || []).catch(() => []),
   giveawayCreate: (data) => call('POST', '/bot/giveaways/create', data),

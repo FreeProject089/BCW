@@ -30,7 +30,7 @@ const PROVIDERS = {
           email = (emails.find((e) => e.primary && e.verified) || emails.find((e) => e.verified))?.email || null;
         }
       }
-      return { id: String(u.id), username: u.login, displayName: u.name || u.login, email };
+      return { id: String(u.id), username: u.login, displayName: u.name || u.login, email, avatar: u.avatar_url || null };
     },
   },
   discord: {
@@ -43,7 +43,11 @@ const PROVIDERS = {
       const res = await fetch('https://discord.com/api/users/@me', { headers: { Authorization: `Bearer ${accessToken}` } });
       if (!res.ok) throw new Error('profile_fetch_failed');
       const u = await res.json();
-      return { id: u.id, username: u.username, displayName: u.global_name || u.username, email: u.verified ? u.email : null };
+      // Discord avatars: CDN URL from the hash, or a default embed avatar otherwise.
+      const avatar = u.avatar
+        ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.${u.avatar.startsWith('a_') ? 'gif' : 'png'}?size=256`
+        : `https://cdn.discordapp.com/embed/avatars/${(Number(BigInt(u.id) >> 22n) % 6)}.png`;
+      return { id: u.id, username: u.username, displayName: u.global_name || u.username, email: u.verified ? u.email : null, avatar };
     },
   },
   google: {
@@ -57,7 +61,7 @@ const PROVIDERS = {
       if (!res.ok) throw new Error('profile_fetch_failed');
       const u = await res.json();
       // Google verifies the address before returning verified_email; only trust it then.
-      return { id: String(u.id), username: (u.email || '').split('@')[0], displayName: u.name || u.email, email: u.verified_email ? u.email : null };
+      return { id: String(u.id), username: (u.email || '').split('@')[0], displayName: u.name || u.email, email: u.verified_email ? u.email : null, avatar: u.picture || null };
     },
   },
 };
@@ -144,10 +148,28 @@ export default async function oauthRoutes(app) {
         // (account linking), or create a brand-new password-less account.
         user = await p.user.findUnique({ where: { email: profile.email } });
         if (!user) {
-          user = await p.user.create({ data: { email: profile.email, displayName: profile.displayName || slugName(profile.username), emailVerified: true } });
+          // New account — adopt the provider's picture as the BCWEB avatar straight away.
+          user = await p.user.create({ data: { email: profile.email, displayName: profile.displayName || slugName(profile.username), emailVerified: true, avatar: profile.avatar ? { image: profile.avatar } : undefined } });
+        } else if (profile.avatar && !user.avatar?.image) {
+          // Linking to an existing account that has no custom photo — use the provider's.
+          user = await p.user.update({ where: { id: user.id }, data: { avatar: { ...(user.avatar || {}), image: profile.avatar } } });
         }
         await p.oAuthAccount.create({ data: { userId: user.id, provider: name, providerAccountId: profile.id, username: profile.username } });
       }
+
+      // Signing in with Discord links the account to the bot directly (no manual code):
+      // upsert a DiscordLink for this account and flag it so the bot buffer picks it up
+      // and refreshes the member's roles. Skip if that Discord id is already linked
+      // elsewhere (a Discord identity maps to at most one BCWEB account).
+      if (name === 'discord') {
+        const owner = await p.discordLink.findUnique({ where: { discordId: profile.id } });
+        if (!owner) {
+          await p.discordLink.create({ data: { userId: user.id, discordId: profile.id, username: profile.username, pendingSync: true } }).catch(() => {});
+        } else if (owner.userId === user.id) {
+          await p.discordLink.update({ where: { discordId: profile.id }, data: { username: profile.username, pendingSync: true } }).catch(() => {});
+        }
+      }
+
       issueSession(reply, user);
       return reply.redirect(`${SITE_URL}/dashboard?oauth=success`);
     } catch (e) {

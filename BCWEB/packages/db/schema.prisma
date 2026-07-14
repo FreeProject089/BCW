@@ -175,14 +175,18 @@ model OAuthAccount {
 // A Discord account linked to a website account. One Discord id ↔ one account.
 // Enables gated channel access (BMM + Discord + BCWEB) and telemetry enrichment.
 model DiscordLink {
-  id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String
-  discordId String   @unique
-  username  String?
-  linkedAt  DateTime @default(now())
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  discordId   String   @unique
+  username    String?
+  linkedAt    DateTime @default(now())
+  // Set when a link is created/refreshed (e.g. via Discord OAuth sign-in) so the bot's
+  // buffer poll (/bot/links/pending) can pick it up and refresh the member's roles.
+  pendingSync Boolean  @default(false)
 
   @@index([userId])
+  @@index([pendingSync])
 }
 
 // Discord activity reported by the bot, keyed by Discord id — surfaced in the BMM

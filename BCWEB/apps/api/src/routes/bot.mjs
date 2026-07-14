@@ -479,6 +479,24 @@ export default async function botRoutes(app) {
     return { ok: true };
   });
 
+  // Link buffer: freshly created/refreshed DiscordLinks (e.g. from a Discord OAuth sign-in)
+  // are flagged pendingSync so the bot can refresh that member's gated roles promptly
+  // instead of waiting for the 5-min full sync. The bot polls this, then clears the flag.
+  app.get('/bot/links/pending', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const rows = await p.discordLink.findMany({ where: { pendingSync: true }, select: { discordId: true }, take: 50 });
+    return { discordIds: rows.map((r) => r.discordId) };
+  });
+  app.post('/bot/links/synced', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ discordIds: z.array(z.string().max(40)).max(50) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    await p.discordLink.updateMany({ where: { discordId: { in: b.data.discordIds } }, data: { pendingSync: false } });
+    return { ok: true };
+  });
+
   // ── Giveaways ──
   const giftShape = z.object({
     kind: z.enum(['discount', 'free_hosting', 'free_boost']),

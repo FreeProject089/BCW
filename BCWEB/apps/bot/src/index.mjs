@@ -19,6 +19,7 @@ import { pollKofi } from './features/kofi.mjs';
 import { pollPayments } from './features/payments.mjs';
 import { pollDMs } from './features/dm.mjs';
 import { pollGiveaways } from './features/giveaways.mjs';
+import { pollLinks } from './features/links.mjs';
 import { temp, modStats } from './store.mjs';
 
 let client = null;
@@ -79,6 +80,9 @@ function buildClient() {
     // Giveaways: post new ones + draw due ones (30s).
     pollGiveaways(c).catch(() => {});
     timers.push(setInterval(() => pollGiveaways(c).catch(() => {}), 30_000));
+    // Link buffer: refresh roles for accounts freshly linked via website Discord sign-in (30s).
+    pollLinks(c).catch(() => {});
+    timers.push(setInterval(() => pollLinks(c).catch(() => {}), 30_000));
   });
   c.on(Events.InteractionCreate, guard(handleInteraction));
   c.on(Events.VoiceStateUpdate, guard((o, n) => onVoiceStateUpdate(c, o, n)));
