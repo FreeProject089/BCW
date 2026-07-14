@@ -1958,7 +1958,6 @@ export function Dashboard() {
   const { user } = useAuth(); const toast = useToast(); const nav = useNavigate(); const { t } = useI18n();
   const items = useAsync(() => api.get('/me/items'), []);
   const repos = useAsync(() => api.get('/me/repos'), []);
-  const [open, setOpen] = useState(false);
   const [gsDismissed, setGsDismissed] = useState(() => { try { return localStorage.getItem(GS_DISMISS_KEY) === '1'; } catch { return false; } });
   const [editing, setEditing] = useState(null); // the item opened in the view/edit modal
   const cancelDelete = async (it) => { try { await api.post(`/catalog/${it.id}/delete/cancel`); toast.success(t('dash.delcancelled', 'Deletion cancelled.')); items.reload(); } catch { toast.error(t('dash.cancelfail', 'Failed to cancel.')); } };
@@ -2047,7 +2046,7 @@ export function Dashboard() {
           {s === 'items' && <div>
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold flex items-center gap-2"><Package size={16} /> {t('dash.myitems', 'My items')}</h2>
-              <Button size="sm" onClick={() => setOpen(true)}><Upload size={14} /> {t('dash.new', 'New')}</Button>
+              <Link to="/submit"><Button size="sm"><Upload size={14} /> {t('dash.new', 'New')}</Button></Link>
             </div>
             {list.length > 3 && (
               <div className="flex flex-wrap gap-2 mb-3">
@@ -2102,7 +2101,6 @@ export function Dashboard() {
         </>)}
       </SideDash>
 
-      <SubmitModal open={open} onClose={() => setOpen(false)} onReopen={() => setOpen(true)} onDone={() => { items.reload(); toast.success(t('dash.submitted', 'Submitted — pending moderation.')); }} />
       <ItemEditModal open={!!editing} item={editing} onClose={() => setEditing(null)} onDone={() => items.reload()} />
     </>
   );
@@ -2268,133 +2266,6 @@ const KIND_COPY = {
   THEME: { name: 'Midnight Orange', desc: 'A dark, warm UI theme.', file: 'Theme file (.bmmtheme)', tmpl: { author: '', url: 'https://…' } },
   PRESET: { name: 'Afterburner Boom', desc: 'A punchy engine sound preset.', file: 'Preset .json file', tmpl: { name: '', version: '1.0.0', assetPaths: [] } },
 };
-
-function SubmitModal({ open, onClose, onReopen, onDone }) {
-  const toast = useToast(); const { t } = useI18n();
-  const [form, setForm] = useState(SUBMIT_INIT);
-  const [file, setFile] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [quote, setQuote] = useState(null); // { monthlyCents, free } for an our-hosted file
-  const [cap, setCap] = useState(null); // hosting capacity — used to pre-empt temp_storage_full
-  // When the submit toast is cancelled (or the deferred submit fails) we reopen this modal
-  // with the author's exact form + file instead of resetting it — see submit().
-  const restoreRef = useRef(null);
-  useEffect(() => { if (open) {
-    if (restoreRef.current) { setForm(restoreRef.current.form); setFile(restoreRef.current.file); restoreRef.current = null; }
-    else { setForm(SUBMIT_INIT); setFile(null); setQuote(null); }
-    api.get('/hosting/capacity').then((r) => setCap(r.capacity)).catch(() => setCap(null));
-  } }, [open]);
-  // Submission payloads draw from the dedicated temp margin (separate from hosted-
-  // repo capacity) — pre-empt the server's temp_storage_full error with a clear banner.
-  const noSubmitSpace = !!cap && (cap.tempMarginGB - cap.tempUsedGB) <= 0.01;
-  // Our-hosted files of ANY kind (app/plugin/theme/preset) are billed by size once
-  // past the free tier — fetch a live quote so the price is never a surprise.
-  useEffect(() => {
-    if (file && !form.url) {
-      api.get(`/catalog/hosting-quote?bytes=${file.size}`).then(setQuote).catch(() => setQuote(null));
-    } else setQuote(null);
-  }, [file, form.url]);
-
-  const kinds = PROJECT_KINDS[form.projectKey] || ['APP'];
-  const copy = KIND_COPY[form.kind] || KIND_COPY.APP;
-  const setProject = (projectKey) => setForm((s) => ({ ...s, projectKey, kind: (PROJECT_KINDS[projectKey] || ['APP'])[0] }));
-  const deeplink = form.projectKey === 'bmm' ? `bmm://catalog/${form.kind.toLowerCase()}/install?name=${encodeURIComponent(form.name || 'name')}` : '';
-
-  const onFile = async (f) => {
-    setFile(f);
-    if (f && form.kind === 'PRESET' && /json$/i.test(f.name)) {
-      try { const j = JSON.parse(await f.text()); setForm((s) => ({ ...s, meta: JSON.stringify(j, null, 2), name: j.name || s.name, version: j.version || s.version })); }
-      catch { toast.error(t('sub.presetjson', 'Preset is not valid JSON.')); }
-    }
-  };
-  // Generator: fill the metadata with a ready-to-edit template for this type.
-  const generate = () => {
-    const base = { ...copy.tmpl };
-    if (form.kind === 'PRESET') base.name = form.name || base.name;
-    if (deeplink) base.deeplink = deeplink;
-    setForm((s) => ({ ...s, meta: JSON.stringify(base, null, 2) }));
-    toast.success(t('sub.tmplgen', 'Template generated — edit the values.'));
-  };
-  // The actual submission work (PoW + optional upload + create), factored out so it can
-  // run after the undo window elapses. Returns nothing; surfaces its own toasts.
-  const runSubmit = async (snapForm, snapFile, meta) => {
-    try {
-      const { solvePow } = await import('../lib/pow.js');
-      const pow = await solvePow(() => api.get('/auth/pow')); // anti-spam proof-of-work
-      let payloadKey; if (snapFile) payloadKey = await uploadPayload(snapForm.kind, snapFile);
-      const res = await api.post('/catalog', { ...snapForm, tags: [], meta, payloadKey, payloadSize: snapFile?.size, pow });
-      // Our-hosted files may require a hosting payment first → redirect to Stripe.
-      if (res?.checkoutUrl) { window.location.href = res.checkoutUrl; return; }
-      // Plugins are SHA-verified on submit; warn the user if the checksum failed.
-      if (res?.validation && res.validation.valid === false) toast.error(t('sub.checksum.fail', 'Submitted, but the plugin failed checksum verification ({reason}). A moderator will review it.').replace('{reason}', res.validation.reason));
-      else if (res?.validation?.valid) toast.success(t('sub.checksum.ok', 'Checksum verified — sent to moderators.'));
-      onDone();
-    } catch (x) {
-      const e = x.data?.error;
-      toast.error(e === 'stripe_not_configured' ? t('sub.hostunavail', 'Hosting payment is unavailable right now.')
-        : e === 'temp_storage_full' ? t('sub.tempfull', 'Submission storage is full right now — try again once moderation clears space.')
-        : e === 'too_many_pending' ? t('sub.toomanypending', 'You already have {n} submissions awaiting review — wait for moderation before submitting more.').replace('{n}', String(x.data?.max ?? 5))
-        : e === 'free_tier_full' ? t('sub.freetierfull', 'Free hosting for catalog files is full right now — try again later, or self-host and paste a URL instead.')
-        : e === 'free_tier_already_used' ? t('sub.freeused', "You've already used your one free hosted upload (per account and per linked creator id) — self-host and paste a URL instead, or pay for hosting.")
-        : e || x.message || t('repos.failed', 'Failed.'));
-      // Failed → bring the author back to the filled-in form so nothing is lost.
-      restoreRef.current = { form: snapForm, file: snapFile }; onReopen?.();
-    }
-  };
-  const submit = async () => {
-    if (form.name.length < 2) return toast.error(t('sub.namereq', 'Name is required.'));
-    if (file && noSubmitSpace) return toast.error(t('sub.tempfull', 'Submission storage is full right now — try again once moderation clears space.'));
-    let meta = {}; try { meta = JSON.parse(form.meta || '{}'); } catch { return toast.error(t('sub.metajson', 'Meta must be valid JSON.')); }
-    // Optimistic submit with an undo window: close the modal now and run the actual
-    // upload+create only when the toast elapses. Cancel (× / Undo) reopens the modal with
-    // the exact form + file and nothing is uploaded or submitted.
-    const snapForm = form; const snapFile = file;
-    if (onReopen) {
-      onClose();
-      toast.action({
-        tone: 'success', duration: 6000, cancelLabel: t('be.undo', 'Undo'),
-        msg: t('sub.sent', 'Submitted for review.'),
-        onCommit: () => runSubmit(snapForm, snapFile, meta),
-        onCancel: () => { restoreRef.current = { form: snapForm, file: snapFile }; onReopen(); },
-      });
-      return;
-    }
-    setBusy(true);
-    try { await runSubmit(snapForm, snapFile, meta); } finally { setBusy(false); }
-  };
-  return (
-    <Modal open={open} onClose={onClose} title={t('sub.title', 'Submit content')} icon={Upload} width="max-w-lg"
-      footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" disabled={busy || (!!file && noSubmitSpace)} onClick={submit}>{busy ? <Spinner /> : t('sub.forreview', 'Submit for review')}</Button></>}>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label={t('sub.project', 'Project')}><Select value={form.projectKey} onChange={(e) => setProject(e.target.value)}><option value="bmm">BMM</option><option value="bsm">BSM</option></Select></Field>
-        <Field label={t('sub.type', 'Type')}><Select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>{kinds.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</Select></Field>
-        <Field label={t('sub.name', 'Name')}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={copy.name} /></Field>
-        <Field label={t('sub.version', 'Version')}><Input value={form.version} onChange={(e) => setForm({ ...form, version: e.target.value })} /></Field>
-      </div>
-      <div className="mt-3"><Field label={t('sub.desc', 'Description')}><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={copy.desc} /></Field></div>
-      <div className="mt-3"><Field label={copy.file} hint={t('sub.filehint', 'Uploaded directly to storage — the download link is auto-configured.')}>
-        <Input type="file" accept={form.kind === 'PRESET' ? '.json,application/json' : undefined} onChange={(e) => onFile(e.target.files?.[0] || null)} /></Field></div>
-      {file && noSubmitSpace && (
-        <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/8 p-2.5 text-xs text-red-400 flex items-start gap-2">
-          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-          <span>{t('sub.nospace', 'Submission storage is full right now — every upload is held for moderation and there is no room left. Try again later, or self-host and paste a URL above instead.')}</span>
-        </div>
-      )}
-      {quote && !quote.free && quote.monthlyCents > 0 && (
-        <div className="mt-2 rounded-lg border border-[var(--line)] bg-orange-500/[0.06] p-2.5 text-xs text-[var(--muted)] flex items-start gap-2">
-          <Receipt size={13} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
-          <span>{t('sub.quote', 'Hosting this {size} MB file with us is billed by size: {price}. You will be sent to checkout; it then enters moderation. Prefer to self-host? Paste a URL above instead.').replace('{size}', (file.size / 1e6).toFixed(1)).replace('{price}', `$${(quote.monthlyCents / 100).toFixed(2)}/mo`)}</span>
-        </div>
-      )}
-      {form.projectKey === 'bmm' && <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 text-xs flex items-center gap-2"><Link2 size={13} className="text-[var(--primary-2)] shrink-0" /><code className="truncate text-[var(--muted)]">{deeplink}</code></div>}
-      <div className="mt-3">
-        <div className="flex items-center justify-between mb-1.5"><label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('sub.metadata', 'Metadata (JSON)')}</label>
-          <button type="button" onClick={generate} className="btn btn-sm"><Wand2 size={13} /> {t('sub.gentmpl', 'Generate template')}</button></div>
-        <JsonEditor value={form.meta} onChange={(meta) => setForm({ ...form, meta })} />
-      </div>
-    </Modal>
-  );
-}
 
 /* ─────────────────────────  Admin  ───────────────────────── */
 export function Admin() {
