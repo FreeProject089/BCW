@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { db, issueSession, requireRole, safeEqual } from '../lib/lib.mjs';
+import { verifyConnectState, exchangeConnect, OAUTH as CONNECT_OAUTH } from './connections.mjs';
 
 // GitHub/Discord "Continue with…" login + signup. No library — both providers'
 // authorization-code flow is a handful of fetches, and pulling in a whole OAuth
@@ -122,6 +123,15 @@ export default async function oauthRoutes(app) {
     const clientId = provider.clientId(); const clientSecret = provider.clientSecret();
     if (!clientId || !clientSecret) return fail('not_configured');
     const { code, state } = req.query;
+    // A social CONNECTION reuses this registered login callback (github→github, youtube→
+    // google) to avoid needing a second redirect URI. If the state is a connect-state whose
+    // provider reuses THIS callback, link the account instead of logging in.
+    const connect = verifyConnectState(state);
+    if (connect && CONNECT_OAUTH[connect.connect]?.reuseLogin === name) {
+      if (!code) return reply.redirect(`${SITE_URL}/profile?connect_error=no_code`);
+      try { await exchangeConnect(await db(), { name: connect.connect, code, uid: connect.uid }); return reply.redirect(`${SITE_URL}/profile?connected=${connect.connect}`); }
+      catch (e) { req.log.error(e); return reply.redirect(`${SITE_URL}/profile?connect_error=${encodeURIComponent(e?.message || 'unexpected')}`); }
+    }
     if (!verifyState(state, name)) return fail('bad_state');
     if (!code) return fail('no_code');
     try {
