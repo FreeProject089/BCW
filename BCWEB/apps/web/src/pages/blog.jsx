@@ -382,6 +382,15 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
   const videoEmbed = async () => { const url = await dialog.prompt({ title: 'Video', label: 'Video file URL (mp4/webm)', placeholder: 'https://…' }); if (!url) return; insert(`\n<video controls src="${url}" style="width:100%;border-radius:12px"></video>\n`); };
   const tool = (Icon, fn, title) => <button type="button" title={title} onClick={fn} className="btn btn-sm"><Icon size={14} /></button>;
   const [blocksOpen, setBlocksOpen] = useState(false);
+  const blocksBtnRef = useRef(null); const [blocksPos, setBlocksPos] = useState({ top: 0, left: 0 });
+  // Open the Blocks menu as a FIXED overlay anchored under the button — the editor wrapper
+  // is overflow-hidden (for its rounded corners), which was clipping an absolute dropdown.
+  const openBlocks = () => {
+    if (blocksOpen) { setBlocksOpen(false); return; }
+    const r = blocksBtnRef.current?.getBoundingClientRect();
+    if (r) setBlocksPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 224) });
+    setBlocksOpen(true);
+  };
   const [iconPick, setIconPick] = useState(false);
   const [badgePick, setBadgePick] = useState(false);
   const [kbdPick, setKbdPick] = useState(false);
@@ -444,10 +453,10 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
             <span className="w-px h-5 bg-[var(--line)] mx-1 self-center" />
             <button type="button" onClick={() => setBadgePick(true)} className="btn btn-sm" title="Insert a badge (classic, preset or custom)"><TagIcon size={14} /> Badges</button>
             <div className="relative">
-              <button type="button" onClick={() => setBlocksOpen((v) => !v)} className="btn btn-sm" title="Insert a content block (callout, tabs, cards…)"><BlocksIcon size={14} /> Blocks <ChevronDown size={12} /></button>
+              <button ref={blocksBtnRef} type="button" onClick={openBlocks} className="btn btn-sm" title="Insert a content block (callout, tabs, cards…)"><BlocksIcon size={14} /> Blocks <ChevronDown size={12} /></button>
               {blocksOpen && <>
-                <div className="fixed inset-0 z-40" onClick={() => setBlocksOpen(false)} />
-                <div className="absolute z-50 mt-1 w-52 rounded-xl border border-[var(--line-strong)] shadow-xl py-1 max-h-72 overflow-auto" style={{ background: 'var(--bg-solid)' }}>
+                <div className="fixed inset-0 z-[60]" onClick={() => setBlocksOpen(false)} />
+                <div className="fixed z-[61] w-52 rounded-xl border border-[var(--line-strong)] shadow-xl py-1 max-h-72 overflow-auto" style={{ background: 'var(--bg-solid)', top: blocksPos.top, left: blocksPos.left }}>
                   {BLOCKS.map((bl) => <button key={bl.label} type="button" onClick={() => bl.onPick ? bl.onPick() : insertBlock(bl.snip)} className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-[var(--surface-2)]"><bl.icon size={14} className="text-[var(--muted)]" /> {bl.label}</button>)}
                 </div>
               </>}

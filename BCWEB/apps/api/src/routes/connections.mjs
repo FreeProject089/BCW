@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { z } from 'zod';
 import { db, requireRole } from '../lib/lib.mjs';
 
 // Social CONNECTIONS (shown on the public profile), distinct from OAuth login. Each
@@ -96,6 +97,7 @@ function providerStatus() {
     twitch: !!(env('TWITCH_CLIENT_ID') && env('TWITCH_CLIENT_SECRET')),
     youtube: !!(env('GOOGLE_CLIENT_ID') && env('GOOGLE_CLIENT_SECRET')),
     steam: !!env('STEAM_API_KEY'),
+    kofi: true, // manual link — no OAuth credentials needed
   };
 }
 
@@ -117,6 +119,20 @@ export default async function connectionRoutes(app) {
   app.delete('/me/connections/:provider', { preHandler: requireRole() }, async (req) => {
     const p = await db();
     await p.socialConnection.deleteMany({ where: { userId: req.user.uid, provider: req.params.provider } });
+    return { ok: true };
+  });
+
+  // Ko-fi is a manual link (no OAuth) — the user just enters their Ko-fi handle.
+  app.put('/me/connections/kofi', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ handle: z.string().trim().min(1).max(60).regex(/^[a-zA-Z0-9_.-]+$/) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_handle' });
+    const p = await db();
+    const handle = b.data.handle.replace(/^@/, '');
+    await p.socialConnection.upsert({
+      where: { userId_provider: { userId: req.user.uid, provider: 'kofi' } },
+      create: { userId: req.user.uid, provider: 'kofi', handle, url: `https://ko-fi.com/${handle}` },
+      update: { handle, url: `https://ko-fi.com/${handle}` },
+    });
     return { ok: true };
   });
 

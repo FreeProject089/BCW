@@ -6,7 +6,7 @@ import { api, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useToast, Button, Card, Badge, Input, Textarea, Field, PageHeader, Spinner } from '../ui/ui.jsx';
-import { DiscordIcon } from '../ui/brand.jsx';
+import { DiscordIcon, KofiIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
 import { Link, useNavigate } from 'react-router-dom';
@@ -178,7 +178,7 @@ export default function Profile() {
             <div>
               <div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-1.5">{t('prof.showconn', 'Connections to show')}</div>
               <div className="flex flex-wrap gap-3">
-                {[['github', 'GitHub'], ['youtube', 'YouTube'], ['twitch', 'Twitch'], ['steam', 'Steam'], ['discord', 'Discord'], ['bmm', 'BMM (creator id)'], ['website', t('prof.website2', 'Website')]].map(([k, label]) => (
+                {[['github', 'GitHub'], ['discord', 'Discord'], ['bmm', 'BMM (creator id)'], ['website', t('prof.website2', 'Website')]].map(([k, label]) => (
                   <label key={k} className="flex items-center gap-1.5 text-sm cursor-pointer">
                     <input type="checkbox" checked={form.showConnections.includes(k)} onChange={(e) => setForm({ ...form, showConnections: e.target.checked ? [...form.showConnections, k] : form.showConnections.filter((x) => x !== k) })} /> {label}
                   </label>
@@ -584,46 +584,67 @@ function DiscordLinks() {
   );
 }
 
-// Link YouTube / Twitch / GitHub / Steam accounts to show on the public profile. Only the
-// providers configured server-side (.env) are offered — the whole card hides if none are.
-const SOCIAL_META = [
-  ['youtube', Youtube, 'YouTube', '#ff0000'],
-  ['twitch', Twitch, 'Twitch', '#9146ff'],
-  ['github', Github, 'GitHub', 'var(--text)'],
-  ['steam', Gamepad2, 'Steam', '#66c0f4'],
+// Link YouTube / Twitch / Steam / Ko-fi accounts to show on the public profile — Discord-
+// style cards with an inline "show on my profile" toggle. Only providers configured
+// server-side (.env) are offered; the whole card hides if none are. GitHub/Discord come
+// from sign-in and are toggled in the Public-profile privacy card above.
+const CONN_META = [
+  ['youtube', Youtube, 'YouTube', '#ff0000', 'oauth'],
+  ['twitch', Twitch, 'Twitch', '#9146ff', 'oauth'],
+  ['steam', Gamepad2, 'Steam', '#66c0f4', 'oauth'],
+  ['kofi', KofiIcon, 'Ko-fi', '#ff5e5b', 'manual'],
 ];
 function SocialConnections() {
-  const { t } = useI18n(); const toast = useToast();
+  const { t } = useI18n(); const toast = useToast(); const { user, refresh } = useAuth();
   const [providers, setProviders] = useState(null);
   const [conns, setConns] = useState([]);
+  const [kofi, setKofi] = useState('');
   const load = () => Promise.all([api.get('/auth/connect/providers'), api.get('/me/connections')])
     .then(([p, c]) => { setProviders(p); setConns(c.connections || []); }).catch(() => setProviders({}));
   useEffect(() => { load(); }, []);
-  // Toast the connect result on return, then strip the query params.
   useEffect(() => {
     const q = new URLSearchParams(location.search);
-    if (q.get('connected')) { toast.success(t('sc.linked', 'Account linked.')); history.replaceState({}, '', location.pathname); }
+    if (q.get('connected')) { toast.success(t('sc.linked', 'Account linked.')); history.replaceState({}, '', location.pathname); load(); }
     else if (q.get('connect_error')) { toast.error(t('sc.failed', 'Could not link that account.')); history.replaceState({}, '', location.pathname); }
   }, []); // eslint-disable-line
   if (!providers) return null;
-  const configured = SOCIAL_META.filter(([k]) => providers[k]);
-  if (configured.length === 0) return null; // nothing configured → hide the card entirely
+  const configured = CONN_META.filter(([k]) => providers[k]);
+  if (configured.length === 0) return null;
   const linked = Object.fromEntries(conns.map((c) => [c.provider, c]));
+  const show = new Set(user?.showConnections || []);
   const disconnect = async (k) => { try { await api.del(`/me/connections/${k}`); load(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  const saveKofi = async () => { if (!kofi.trim()) return; try { await api.put('/me/connections/kofi', { handle: kofi.trim().replace(/^@/, '') }); setKofi(''); load(); } catch { toast.error(t('sc.kofibad', 'Invalid Ko-fi handle.')); } };
+  const toggleShow = async (k, on) => {
+    const next = on ? [...show, k] : [...show].filter((x) => x !== k);
+    try { await api.patch('/me', { showConnections: next }); await refresh(); } catch { toast.error(t('acc.failed', 'Failed.')); }
+  };
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--primary-2)]" /> {t('sc.title', 'Social accounts')}</div>
-      <p className="text-xs text-[var(--muted)] mb-3">{t('sc.desc', 'Link accounts to show on your public profile. Choose which to display in the “Public profile” section above.')}</p>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('sc.desc2', 'Link accounts and toggle which appear on your public profile.')}</p>
       <div className="space-y-2">
-        {configured.map(([k, Ico, label, color]) => { const c = linked[k]; return (
-          <div key={k} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
-            <Ico size={16} style={{ color }} className="shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="font-medium">{label}</div>
-              {c && <a href={c.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--faint)] hover:text-[var(--primary)] truncate block">{c.handle}</a>}
+        {configured.map(([k, Ico, label, color, kind]) => { const c = linked[k]; return (
+          <div key={k} className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5">
+            <div className="flex items-center gap-2.5">
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--bg-solid)] shrink-0"><Ico size={17} style={{ color }} /></span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm">{label}</div>
+                {c ? <a href={c.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--faint)] hover:text-[var(--primary)] truncate block">{c.handle}</a>
+                  : <div className="text-[11px] text-[var(--faint)]">{t('sc.notlinked', 'Not linked')}</div>}
+              </div>
+              {c ? <button onClick={() => disconnect(k)} className="text-[var(--faint)] hover:text-red-400 p-1" title={t('sc.disconnect', 'Disconnect')}><X size={16} /></button>
+                : kind === 'oauth' ? <Button size="sm" variant="default" onClick={() => { window.location.href = `/api/auth/connect/${k}/start`; }}>{t('sc.connect', 'Connect')}</Button> : null}
             </div>
-            {c ? <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => disconnect(k)}><Trash2 size={13} /> {t('sc.disconnect', 'Disconnect')}</Button>
-              : <Button size="sm" variant="default" onClick={() => { window.location.href = `/api/auth/connect/${k}/start`; }}>{t('sc.connect', 'Connect')}</Button>}
+            {/* Manual Ko-fi entry when not yet linked. */}
+            {!c && kind === 'manual' && <div className="flex gap-2 mt-2">
+              <Input value={kofi} onChange={(e) => setKofi(e.target.value)} placeholder={t('sc.kofiph', 'Your Ko-fi handle (e.g. bettercommunity)')} onKeyDown={(e) => e.key === 'Enter' && saveKofi()} />
+              <Button size="sm" variant="default" onClick={saveKofi}>{t('sc.save', 'Save')}</Button>
+            </div>}
+            {/* Inline "show on my profile" toggle, Discord-style. */}
+            {c && <label className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-[var(--line)] text-sm cursor-pointer">
+              <span className="text-[var(--muted)]">{t('sc.showprofile', 'Show on my profile')}</span>
+              <button type="button" onClick={() => toggleShow(k, !show.has(k))} aria-pressed={show.has(k)} className={`w-10 h-5.5 rounded-full relative shrink-0 transition ${show.has(k) ? 'bg-[var(--primary)]' : 'bg-[var(--line-strong)]'}`} style={{ height: 22, width: 40 }}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${show.has(k) ? 'left-[20px]' : 'left-0.5'}`} /></button>
+            </label>}
           </div>
         ); })}
       </div>

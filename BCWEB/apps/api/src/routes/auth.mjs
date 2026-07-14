@@ -279,7 +279,7 @@ export default async function authRoutes(app) {
       bio: z.string().max(280).optional(),
       avatar: z.object({ variant: z.string().max(20), seed: z.string().max(60), colors: z.array(z.string().max(9)).max(6).optional(), image: z.string().max(500).nullable().optional() }).nullable().optional(),
       profilePublic: z.boolean().optional(),
-      showConnections: z.array(z.enum(['github', 'discord', 'bmm', 'website', 'youtube', 'twitch', 'steam'])).max(7).optional(),
+      showConnections: z.array(z.enum(['github', 'discord', 'bmm', 'website', 'youtube', 'twitch', 'steam', 'kofi'])).max(8).optional(),
       // Only http(s) — zod .url() otherwise accepts javascript:/data: URIs, which would
       // become an XSS sink when the website is rendered as an <a href> on the public profile.
       website: z.union([z.literal(''), z.string().max(200).url().refine((v) => /^https?:\/\//i.test(v), 'http_or_https_only')]).nullable().optional(),

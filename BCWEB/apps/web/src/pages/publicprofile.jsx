@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Github, MessageSquare, Globe, Fingerprint, FolderGit2, Boxes, Download, Star, Share2, Calendar, Lock, Search, UserX, Youtube, Twitch, Gamepad2 } from 'lucide-react';
+import { KofiIcon } from '../ui/brand.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, EmptyState, Spinner, Input, useToast } from '../ui/ui.jsx';
@@ -51,6 +52,7 @@ export default function PublicProfile() {
     ['youtube', Youtube, obj(c.youtube)?.handle, obj(c.youtube)?.url],
     ['twitch', Twitch, obj(c.twitch)?.handle, obj(c.twitch)?.url],
     ['steam', Gamepad2, obj(c.steam)?.handle, obj(c.steam)?.url],
+    ['kofi', KofiIcon, obj(c.kofi)?.handle, obj(c.kofi)?.url],
     ['discord', MessageSquare, c.discord, null],
     ['bmm', Fingerprint, c.bmm, null],
     ['website', Globe, c.website, c.website],
@@ -133,9 +135,9 @@ export function UserSearch() {
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-4">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2"><Search size={20} className="text-[var(--primary-2)]" /> {t('us.title', 'Find people')}</h1>
-        <p className="text-sm text-[var(--muted)] mt-1">{t('us.sub', 'Search BetterCommunity members by name and open their public profile.')}</p>
+        <p className="text-sm text-[var(--muted)] mt-1">{t('us.sub2', 'Search members by name — or paste a BC id, repo id or catalog id to find its owner.')}</p>
       </div>
-      <div className="relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-10" placeholder={t('us.ph', 'Search a username…')} value={q} onChange={(e) => setQ(e.target.value)} autoFocus /></div>
+      <div className="relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-10" placeholder={t('us.ph2', 'Name, BC-XXXX-XXXX, repo id or catalog id…')} value={q} onChange={(e) => setQ(e.target.value)} autoFocus /></div>
       {q.trim().length < 2 ? <p className="text-sm text-[var(--faint)] text-center py-8">{t('us.type', 'Type at least 2 characters.')}</p>
         : loading ? <Loading /> : users.length ? <div className="space-y-1.5">
           {users.map((u) => { const av = avatarOf({ avatar: u.avatar, id: u.id }); return (

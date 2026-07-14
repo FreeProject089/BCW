@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { db, requireRole, optionalAuth, slugify } from '../lib/lib.mjs';
+import { looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
 
 // Profile badges + public profiles + profile search. A badge is admin-created and shown
 // Twitch-chat-style next to a user's name; a profile is a privacy-controlled /u/<id> page.
@@ -61,7 +62,7 @@ export default async function socialRoutes(app) {
     if (show.has('discord') && (u.discordLinks[0]?.username)) connections.discord = u.discordLinks[0].username;
     if (show.has('bmm') && u.creatorLinks[0]) connections.bmm = u.creatorLinks[0].displayName || u.creatorLinks[0].creatorId;
     if (show.has('website') && u.website) connections.website = u.website;
-    for (const prov of ['youtube', 'twitch', 'steam']) {
+    for (const prov of ['youtube', 'twitch', 'steam', 'kofi']) {
       if (show.has(prov) && social[prov]) connections[prov] = { handle: social[prov].handle, url: social[prov].url };
     }
 
@@ -84,15 +85,26 @@ export default async function socialRoutes(app) {
     const q = String(req.query?.q || '').trim();
     if (q.length < 2) return { users: [] };
     const isStaff = STAFF.includes(req.user?.role);
+    const userSelect = { id: true, displayName: true, role: true, avatar: true, profilePublic: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } }, take: 4 } };
+    // Direct lookups: a BC id, a repo id, or a catalog slug/id all resolve to the owner.
+    const owners = new Set();
+    if (looksLikeBcId(q)) { const uid = await findUserIdByBcId(p, q); if (uid) owners.add(uid); }
+    const [repo, cat] = await Promise.all([
+      p.serverRepo.findUnique({ where: { id: q }, select: { ownerId: true } }).catch(() => null),
+      p.communityCatalog.findFirst({ where: { OR: [{ id: q }, { slug: q }] }, select: { ownerId: true } }).catch(() => null),
+    ]);
+    if (repo) owners.add(repo.ownerId);
+    if (cat) owners.add(cat.ownerId);
+    // Name search + any resolved owners, deduped.
     const rows = await p.user.findMany({
       where: {
-        displayName: { contains: q, mode: 'insensitive' }, status: { not: 'banned' },
+        OR: [{ displayName: { contains: q, mode: 'insensitive' } }, ...(owners.size ? [{ id: { in: [...owners] } }] : [])],
+        status: { not: 'banned' },
         ...(isStaff ? {} : { profilePublic: true }),
       },
-      select: { id: true, displayName: true, role: true, avatar: true, profilePublic: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } }, take: 4 } },
-      take: 20, orderBy: { createdAt: 'asc' },
+      select: userSelect, take: 20, orderBy: { createdAt: 'asc' },
     });
-    return { users: rows.map((u) => ({ id: u.id, displayName: u.displayName, role: u.role, avatar: u.avatar, private: !u.profilePublic, badges: u.badges.map(pubBadge) })) };
+    return { users: rows.map((u) => ({ id: u.id, displayName: u.displayName, role: u.role, avatar: u.avatar, private: !u.profilePublic, badges: u.badges.map(pubBadge), matchedById: owners.has(u.id) })) };
   });
 
   // Public: the badge tied to a trigger (e.g. the footer 5x-click easter egg) + its message,
