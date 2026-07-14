@@ -1028,6 +1028,7 @@ const DICT = {
     'sub2.raw.file': 'Ton catalog.json', 'sub2.raw.hint': 'Le feed BMM-natif que tu as exporté depuis BMM (plugins/thèmes/apps).', 'sub2.raw.ok': 'Feed du catalogue lu.', 'sub2.raw.bad': 'catalog.json BMM invalide (il faut plugins/thèmes/apps).', 'sub2.raw.need': 'Envoie d’abord ton catalog.json.', 'sub2.raw.entries': '{n} entrées',
     'sub2.pool': 'Pool de stockage', 'sub2.pool.hint': 'Un catalogue managed puise dans un pool de stockage — le même espace que tes repos.', 'sub2.pool.none': 'Tu n’as pas encore de pool de stockage.', 'sub2.pool.buy': 'Obtiens-en un sur la page Hébergement', 'sub2.pool.choose': 'Choisis un pool…', 'sub2.pool.need': 'Choisis un pool de stockage (ou achètes-en un sur la page Hébergement).', 'sub2.pool.notyours': 'Ce pool n’est pas le tien.',
     'sub2.create': 'Créer le catalogue', 'sub2.created': 'Catalogue créé.',
+    'sub2.pool.toobig': 'Ce pool n’a que {n} Go de libre.', 'sub2.reserve': 'Réserver', 'sub2.gboffree': 'Go sur {n} Go libres',
     'sub.project': 'Projet', 'sub.type': 'Type', 'sub.name': 'Nom', 'sub.version': 'Version', 'sub.desc': 'Description',
     'sub.filehint': 'Envoyé directement au stockage — le lien de téléchargement est configuré automatiquement.',
     'sub.quote': 'Héberger ce fichier de {size} MB chez nous est facturé à la taille : {price}. Tu seras redirigé vers le paiement ; il passe ensuite en modération. Tu préfères l’auto-hébergement ? Colle plutôt une URL ci-dessus.',

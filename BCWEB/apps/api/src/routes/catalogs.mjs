@@ -9,6 +9,18 @@ import { presignGet } from '../lib/storage.mjs';
 
 const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
 const SITE_URL = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
+const GiB = 1024 ** 3;
+
+// Free bytes left in a storage pool: its poolBytes minus what repos AND catalogs in it
+// have already reserved. Storage is fungible — a repo and a catalog draw from the same
+// poolBytes, so both must be subtracted.
+async function poolFreeBytes(p, group) {
+  const [repoAgg, catAgg] = await Promise.all([
+    p.serverRepo.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
+    p.communityCatalog.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
+  ]);
+  return group.poolBytes - (repoAgg._sum.storageQuotaBytes || 0n) - (catAgg._sum.storageQuotaBytes || 0n);
+}
 
 // A community catalog is served ONLY when it's ACTIVE (not admin-suspended / unpaid).
 // SUSPENDED and HIDDEN return 404 to everyone, owner included on the public routes.
@@ -185,17 +197,22 @@ export default async function communityCatalogRoutes(app) {
       kinds: z.array(z.enum(['app', 'plugin', 'theme', 'preset'])).max(4).optional().default([]),
       visibility: z.enum(['public', 'private']).default('public'),
       groupId: z.string().optional(),
+      storageGB: z.number().min(0.5).max(2000).optional().default(1),
       rawJson: rawFeedSchema.optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     if (b.data.mode === 'raw' && !b.data.rawJson) return reply.code(400).send({ error: 'raw_needs_json' });
-    // A managed catalog must land in a pool the owner controls (fungible with repos).
-    let groupId = null;
+    // A managed catalog reserves a slice of a pool the owner controls (fungible with
+    // repos — the same poolBytes). The slice is checked against the pool's free space.
+    let groupId = null, quotaBytes = 0n;
     if (b.data.mode === 'managed') {
       if (!b.data.groupId) return reply.code(400).send({ error: 'managed_needs_pool' });
       const group = await p.hostingGroup.findUnique({ where: { id: b.data.groupId } });
       if (!group || group.ownerId !== req.user.uid) return reply.code(403).send({ error: 'not_your_pool' });
+      quotaBytes = BigInt(Math.round(b.data.storageGB * GiB));
+      const free = await poolFreeBytes(p, group);
+      if (quotaBytes > free) return reply.code(409).send({ error: 'pool_exceeded', freeGB: Number(free) / GiB });
       groupId = group.id;
     }
     const base = slugify(b.data.name).slice(0, 60) || 'catalog';
@@ -203,7 +220,7 @@ export default async function communityCatalogRoutes(app) {
     const c = await p.communityCatalog.create({ data: {
       ownerId: req.user.uid, name: b.data.name, slug, description: b.data.description,
       mode: b.data.mode, kinds: b.data.kinds, visibility: b.data.visibility,
-      listed: b.data.visibility === 'public', groupId,
+      listed: b.data.visibility === 'public', groupId, storageQuotaBytes: quotaBytes,
       freePlan: b.data.mode === 'raw',
       shareKey: crypto.randomBytes(12).toString('base64url'),
       rawJson: b.data.mode === 'raw' ? b.data.rawJson : undefined,
@@ -270,9 +287,15 @@ export default async function communityCatalogRoutes(app) {
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
     if (!c || c.ownerId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
     if (c.mode !== 'managed') return reply.code(400).send({ error: 'not_managed' });
+    // A payload draws from the catalog's reserved quota (which itself came from the pool).
+    const addBytes = b.data.payloadKey ? BigInt(b.data.payloadSize || 0) : 0n;
+    if (addBytes > 0n && c.storageUsedBytes + addBytes > c.storageQuotaBytes) {
+      return reply.code(409).send({ error: 'catalog_full', freeMB: Number(c.storageQuotaBytes - c.storageUsedBytes) / (1024 * 1024) });
+    }
     const base = slugify(b.data.name).slice(0, 60) || 'item';
     let slug = base; for (let i = 2; await p.communityCatalogItem.findFirst({ where: { catalogId: c.id, slug } }); i++) slug = `${base}-${i}`;
     const item = await p.communityCatalogItem.create({ data: { catalogId: c.id, kind: b.data.kind, name: b.data.name, slug, version: b.data.version, description: b.data.description, tags: b.data.tags, payloadKey: b.data.payloadKey, payloadSize: b.data.payloadSize, meta: b.data.meta } });
+    if (addBytes > 0n) await p.communityCatalog.update({ where: { id: c.id }, data: { storageUsedBytes: { increment: addBytes } } });
     return reply.code(201).send({ item });
   });
 
@@ -292,6 +315,12 @@ export default async function communityCatalogRoutes(app) {
     if (!c || c.ownerId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
     const item = await p.communityCatalogItem.findUnique({ where: { id: req.params.iid } });
     if (!item || item.catalogId !== c.id) return reply.code(404).send({ error: 'not_found' });
+    // If the payload size changed (a re-upload), re-check + adjust the catalog's usage.
+    if (b.data.payloadSize != null && b.data.payloadSize !== item.payloadSize) {
+      const delta = BigInt(b.data.payloadSize) - BigInt(item.payloadSize || 0);
+      if (delta > 0n && c.storageUsedBytes + delta > c.storageQuotaBytes) return reply.code(409).send({ error: 'catalog_full', freeMB: Number(c.storageQuotaBytes - c.storageUsedBytes) / (1024 * 1024) });
+      await p.communityCatalog.update({ where: { id: c.id }, data: { storageUsedBytes: { increment: delta } } });
+    }
     await p.communityCatalogItem.update({ where: { id: item.id }, data: b.data });
     return { ok: true };
   });
@@ -303,6 +332,10 @@ export default async function communityCatalogRoutes(app) {
     const item = await p.communityCatalogItem.findUnique({ where: { id: req.params.iid } });
     if (!item || item.catalogId !== c.id) return reply.code(404).send({ error: 'not_found' });
     await p.communityCatalogItem.delete({ where: { id: item.id } });
+    // Return the item's bytes to the catalog's (and thus the pool's) free space.
+    if (item.payloadKey && item.payloadSize > 0) {
+      await p.communityCatalog.update({ where: { id: c.id }, data: { storageUsedBytes: { decrement: BigInt(item.payloadSize) } } }).catch(() => {});
+    }
     return { ok: true };
   });
 

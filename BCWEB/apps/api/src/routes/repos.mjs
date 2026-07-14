@@ -222,11 +222,18 @@ export default async function repoRoutes(app) {
   // A user's multi-repo storage pools, with usage.
   app.get('/me/hosting/groups', { preHandler: requireRole() }, async (req) => {
     const p = await db();
-    const groups = await p.hostingGroup.findMany({ where: { ownerId: req.user.uid }, include: { repos: true }, orderBy: { createdAt: 'desc' } });
-    return { groups: groups.map((g) => ({
-      id: g.id, name: g.name, poolBytes: Number(g.poolBytes), uploadLimitKbps: g.uploadLimitKbps, cpuShare: g.cpuShare,
-      usedBytes: Number(g.repos.reduce((a, r) => a + r.storageQuotaBytes, 0n)), repoCount: g.repos.length,
-    })) };
+    const groups = await p.hostingGroup.findMany({ where: { ownerId: req.user.uid }, include: { repos: true, catalogs: { select: { id: true, name: true, slug: true, storageQuotaBytes: true, storageUsedBytes: true } } }, orderBy: { createdAt: 'desc' } });
+    return { groups: groups.map((g) => {
+      // Storage is fungible: both repos and catalogs reserve from the same poolBytes.
+      const repoBytes = g.repos.reduce((a, r) => a + r.storageQuotaBytes, 0n);
+      const catBytes = g.catalogs.reduce((a, c) => a + c.storageQuotaBytes, 0n);
+      return {
+        id: g.id, name: g.name, poolBytes: Number(g.poolBytes), uploadLimitKbps: g.uploadLimitKbps, cpuShare: g.cpuShare,
+        usedBytes: Number(repoBytes + catBytes), repoBytes: Number(repoBytes), catalogBytes: Number(catBytes),
+        repoCount: g.repos.length, catalogCount: g.catalogs.length,
+        catalogs: g.catalogs.map((c) => ({ id: c.id, name: c.name, slug: c.slug, quotaBytes: Number(c.storageQuotaBytes), usedBytes: Number(c.storageUsedBytes) })),
+      };
+    }) };
   });
 
   // ── Sandboxed repo management (owner) ──

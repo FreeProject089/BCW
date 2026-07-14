@@ -165,7 +165,10 @@ function HostCatalog({ onBack }) {
   const [rawJson, setRawJson] = useState(null);
   const [pools, setPools] = useState(null);
   const [groupId, setGroupId] = useState('');
+  const [storageGB, setStorageGB] = useState(1);
   const [busy, setBusy] = useState(false);
+  const pool = (pools || []).find((g) => g.id === groupId);
+  const poolFreeGB = pool ? (pool.poolBytes - pool.usedBytes) / 1e9 : 0;
   useEffect(() => { api.get('/me/hosting/groups').then((r) => setPools(r.groups || [])).catch(() => setPools([])); }, []);
 
   const onRaw = async (f) => {
@@ -181,7 +184,11 @@ function HostCatalog({ onBack }) {
     try {
       const body = { name: form.name.trim(), description: form.description.trim(), mode: form.mode, visibility: form.visibility };
       if (form.mode === 'raw') { if (!rawJson) { setBusy(false); return toast.error(t('sub2.raw.need', 'Upload your catalog.json first.')); } body.rawJson = rawJson; }
-      else { if (!groupId) { setBusy(false); return toast.error(t('sub2.pool.need', 'Pick a storage pool (or buy one on the Hosting page).')); } body.groupId = groupId; }
+      else {
+        if (!groupId) { setBusy(false); return toast.error(t('sub2.pool.need', 'Pick a storage pool (or buy one on the Hosting page).')); }
+        if (storageGB > poolFreeGB + 1e-6) { setBusy(false); return toast.error(t('sub2.pool.toobig', 'That pool only has {n} GB free.').replace('{n}', poolFreeGB.toFixed(1))); }
+        body.groupId = groupId; body.storageGB = storageGB;
+      }
       const r = await api.post('/me/catalogs', body);
       toast.success(t('sub2.created', 'Catalog created.'));
       navigate('/dashboard');
@@ -189,6 +196,7 @@ function HostCatalog({ onBack }) {
       const e = x.data?.error;
       toast.error(e === 'managed_needs_pool' ? t('sub2.pool.need', 'Pick a storage pool first.')
         : e === 'not_your_pool' ? t('sub2.pool.notyours', "That pool isn't yours.")
+        : e === 'pool_exceeded' ? t('sub2.pool.toobig', 'That pool only has {n} GB free.').replace('{n}', (x.data?.freeGB ?? 0).toFixed(1))
         : e || t('repos.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
@@ -225,10 +233,17 @@ function HostCatalog({ onBack }) {
             {pools == null ? <Spinner /> : pools.length === 0 ? (
               <div className="text-sm text-[var(--muted)]">{t('sub2.pool.none', 'You have no storage pool yet.')} <Link to="/hosting" className="text-[var(--primary-2)] underline">{t('sub2.pool.buy', 'Get one on the Hosting page')}</Link>.</div>
             ) : (
-              <Select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-                <option value="">{t('sub2.pool.choose', 'Choose a pool…')}</option>
-                {pools.map((g) => <option key={g.id} value={g.id}>{g.name} — {((g.poolBytes - g.usedBytes) / 1e9).toFixed(1)} GB free</option>)}
-              </Select>
+              <>
+                <Select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                  <option value="">{t('sub2.pool.choose', 'Choose a pool…')}</option>
+                  {pools.map((g) => <option key={g.id} value={g.id}>{g.name} — {((g.poolBytes - g.usedBytes) / 1e9).toFixed(1)} GB free</option>)}
+                </Select>
+                {groupId && <div className="mt-2 flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-[var(--muted)]">{t('sub2.reserve', 'Reserve')}</span>
+                  <Input type="number" min="0.5" step="0.5" value={storageGB} onChange={(e) => setStorageGB(Math.max(0.5, Number(e.target.value) || 0.5))} className="!w-24" />
+                  <span className="text-sm text-[var(--muted)]">{t('sub2.gboffree', 'GB of {n} GB free').replace('{n}', poolFreeGB.toFixed(1))}</span>
+                </div>}
+              </>
             )}
           </Field>
         )}
