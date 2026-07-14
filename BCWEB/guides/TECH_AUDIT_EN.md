@@ -125,7 +125,7 @@ don't blind-`--force` them (both are breaking and would risk the API build).
 | P | Action | Why |
 |---|---|---|
 | **P1** | Minimal CI: build web, `node --check` API, `prisma validate`, secret scanning | Catches broken builds + leaked secrets at commit time |
-| **P1** | Tests for billing: **the pure pricing math is now covered** (`apps/api/test/pricing.test.mjs`, `node:test`, in CI — `priceCents` / `termTotalCents` / `capacityFactors` + term-discount & scarcity invariants + the consolidation free-floor math). **Still to do:** webhook fixtures (checkout/renew/consolidate/lapse) + `recomputePoolBytes` invariants (need a throwaway test DB) | Highest-blast-radius code |
+| **P1** | Tests for billing: **DONE** — pricing math (`pricing.test.mjs`: `priceCents`/`termTotalCents`/`capacityFactors` + discount & scarcity invariants + consolidation free-floor) **and** the pool-billing invariant (`pool-billing.test.mjs`: `recomputePoolBytes` sum-of-active-subs, lapse→suspend+hide+72h grace, renewal→restore, partial-lapse-keeps-content, idempotent no-op) — both in CI against a throwaway Postgres service (22 tests). **Still to do:** end-to-end Stripe webhook fixtures (checkout/renew/consolidate) | Highest-blast-radius code |
 | **P1** | Switch `db push` → `prisma migrate` | Removes silent-data-loss risk on schema changes |
 | **P2** | Split `pages.jsx` / `repos.jsx` into feature modules. **ESLint `no-undef` DONE** (apps/web `eslint.config.js`, wired into CI — catches the bare-identifier render crashes) | Maintainability + prevents the recurring import crashes |
 | **P2** | Analytics retention sweeps (cap by age/rows) | Keeps the DB healthy long-term |

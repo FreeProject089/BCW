@@ -133,7 +133,7 @@ part ; ne pas les `--force` à l'aveugle (les deux sont cassants et risqueraient
 | P | Action | Pourquoi |
 |---|---|---|
 | **P1** | CI minimale : build web, `node --check` API, `prisma validate`, scan de secrets | Attrape builds cassés + secrets au commit |
-| **P1** | Tests de facturation : **la math de prix pure est maintenant couverte** (`apps/api/test/pricing.test.mjs`, `node:test`, dans la CI — `priceCents` / `termTotalCents` / `capacityFactors` + invariants remise-terme & rareté + la math du seuil-gratuit de consolidation). **Reste :** fixtures webhook (checkout/renew/consolidate/lapse) + invariants de `recomputePoolBytes` (nécessitent une BD de test jetable) | Le code au plus gros rayon d'explosion |
+| **P1** | Tests de facturation : **FAIT** — math de prix (`pricing.test.mjs`) **et** l'invariant de pool (`pool-billing.test.mjs` : `recomputePoolBytes` somme-des-abos-actifs, défaut→suspend+masque+grâce 72h, renouvellement→restaure, défaut-partiel-garde-le-contenu, no-op idempotent) — les deux dans la CI contre un Postgres jetable (22 tests). **Reste :** fixtures webhook Stripe de bout en bout (checkout/renew/consolidate) | Le code au plus gros rayon d'explosion |
 | **P1** | Passer `db push` → `prisma migrate` | Supprime le risque de perte de données silencieuse |
 | **P2** | Découper `pages.jsx` / `repos.jsx` en modules. **ESLint `no-undef` FAIT** (apps/web `eslint.config.js`, câblé dans la CI — attrape les crashes de rendu par identifiant nu) | Maintenabilité + prévient les crashes d'import récurrents |
 | **P2** | Purges de rétention analytics (par âge/nb de lignes) | Garde la DB saine à long terme |

@@ -26,27 +26,37 @@ jobs:
       - run: npx vite build --logLevel error
 
   api-check:
-    name: API syntax + Prisma schema
+    name: API syntax + Prisma + billing tests
     runs-on: ubuntu-latest
+    # Throwaway Postgres so the pool-billing integration tests (recomputePoolBytes
+    # invariants) run for real; the pure pricing tests need no DB either way.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_PASSWORD: test, POSTGRES_DB: bcwebtest }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:test@localhost:5432/bcwebtest
+      DIRECT_DATABASE_URL: postgresql://postgres:test@localhost:5432/bcwebtest
+    defaults: { run: { working-directory: BCWEB/apps/api } }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       # node --check every API module — catches syntax errors (build never runs the API).
       - name: node --check all API modules
+        working-directory: .
         run: find BCWEB/apps/api/src -name '*.mjs' -print0 | xargs -0 -n1 node --check
-      # Prisma schema must be valid (dummy URL — validate never connects).
-      - name: prisma validate
-        working-directory: BCWEB/apps/api
-        env:
-          DATABASE_URL: postgresql://x:x@localhost:5432/x
-          DIRECT_DATABASE_URL: postgresql://x:x@localhost:5432/x
-        run: |
-          npm ci
-          npx prisma validate --schema ../../packages/db/schema.prisma
-      # Billing-math unit tests (pure pricing fns — no DB). node:test, no deps.
-      - name: billing math tests
-        working-directory: BCWEB/apps/api
+      - run: npm ci
+      # Generate the client + validate the schema, then push it to the throwaway DB.
+      - run: npx prisma generate --schema ../../packages/db/schema.prisma
+      - run: npx prisma validate --schema ../../packages/db/schema.prisma
+      - run: npx prisma db push --schema ../../packages/db/schema.prisma --skip-generate --accept-data-loss
+      # Full suite: pure pricing math + pool-billing invariants against the service DB.
+      - name: tests
         run: npm test
 
   secret-scan:
