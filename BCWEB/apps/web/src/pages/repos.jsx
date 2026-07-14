@@ -1737,18 +1737,21 @@ export function AdminRepos() {
               <div className="flex items-start gap-3">
                 <GitBranch size={18} className="text-[var(--primary-2)] mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium">{r.name} <span className="text-xs text-[var(--faint)] font-normal">· {r.owner?.displayName}</span></div>
+                  <div className="font-medium flex items-center gap-2 flex-wrap">{r.name}
+                    {/* WHO: owner → profile + copyable BC id (the thing an admin actually needs). */}
+                    {r.ownerId ? <a href={`/u/${r.ownerId}`} className="text-xs text-[var(--faint)] font-normal hover:text-[var(--primary)]">· {r.owner?.displayName}</a> : <span className="text-xs text-[var(--faint)] font-normal">· {r.owner?.displayName}</span>}
+                    {r.ownerBcId && <button onClick={() => { navigator.clipboard?.writeText(r.ownerBcId); toast.success(t('repos.bcidcopied', 'Host BC id copied.')); }} className="text-[10px] font-mono text-[var(--faint)] hover:text-[var(--primary)] inline-flex items-center gap-0.5"><Fingerprint size={10} /> {r.ownerBcId} <Copy size={8} /></button>}
+                  </div>
                   <div className="mt-2"><StatusBadges r={r} /></div>
-                  {r.hosted && (
+                  {r.hosted && (r.subscription?.currentPeriodEnd || r.subscription?.status === 'canceled' || r.subscription?.status === 'expired') && (
                     <div className="text-xs text-[var(--muted)] mt-1.5 flex items-center gap-2 flex-wrap">
-                      {r.subscription?.currentPeriodEnd ? (
+                      {r.subscription?.currentPeriodEnd && (
                         <span className={`flex items-center gap-1 ${new Date(r.subscription.currentPeriodEnd) <= new Date() ? 'text-red-400' : ''}`}>
                           <Clock size={11} /> {new Date(r.subscription.currentPeriodEnd) <= new Date() ? 'Expired' : 'Expires'} {new Date(r.subscription.currentPeriodEnd).toLocaleDateString()}
                         </span>
-                      ) : <span className="text-[var(--faint)]">No term on file</span>}
+                      )}
                       {r.subscription?.status === 'canceled' && <Badge tone="red">subscription cancelled</Badge>}
                       {r.subscription?.status === 'expired' && <Badge tone="red">term expired</Badge>}
-                      <span className="flex items-center gap-1 text-[var(--faint)]"><CreditCard size={11} /> {r.owner?.stripeCustomerId ? 'Stripe customer on file' : 'No Stripe customer'}</span>
                     </div>
                   )}
                 </div>

@@ -796,7 +796,7 @@ export default async function repoRoutes(app) {
         subscription: { select: { currentPeriodEnd: true, status: true } },
       },
     });
-    return { repos: repos.map(ser) };
+    return { repos: repos.map((r) => ({ ...ser(r), ownerId: r.ownerId, ownerBcId: userBcId(r.ownerId) })) };
   });
 
   // Admin: resolve a Repo ID fingerprint (BCR-XXXX-XXXX) back to the owning repo
