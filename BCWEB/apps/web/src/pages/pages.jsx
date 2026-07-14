@@ -7499,11 +7499,19 @@ function AdminEventsFeed() {
         </div>
       </div>
       <p className="text-sm text-[var(--muted)] mb-3">{t('evf.sub', 'The live stream of what visitors do — pageviews, clicks, form submits, field edits. Anonymous (daily-rotating identity, no PII).')}</p>
-      <div className="flex flex-wrap gap-2 mb-3">
+      <div className="flex flex-wrap gap-2 mb-2">
         <div className="relative flex-1 min-w-[220px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!pl-9" placeholder={t('ev.pathph', 'Filter by page path…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
+          <Input className="!pl-9" list="evf-paths" placeholder={t('ev.pathph2', 'Filter by page (pick or type a path)…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} />
+          <datalist id="evf-paths">{[...new Set(events.map((e) => e.path).filter(Boolean))].slice(0, 40).map((p2) => <option key={p2} value={p2} />)}</datalist></div>
+        {qApplied && <Button variant="ghost" onClick={() => { setQ(''); setQApplied(''); }}><X size={15} /></Button>}
         <Button variant="primary" onClick={() => setQApplied(q.trim())}><Search size={15} /> {t('ev.filter', 'Filter')}</Button>
       </div>
+      {/* Quick-pick the busiest pages so you never have to guess a path. */}
+      {events.length > 0 && <div className="flex flex-wrap gap-1.5 mb-3">
+        {Object.entries(events.reduce((m, e) => { if (e.path) m[e.path] = (m[e.path] || 0) + 1; return m; }, {})).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([p2, n]) => (
+          <button key={p2} onClick={() => { setQ(p2); setQApplied(p2); }} className={`text-xs font-mono px-2 py-1 rounded-lg border transition ${qApplied === p2 ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{p2} <span className="text-[var(--faint)]">{n}</span></button>
+        ))}
+      </div>}
       <div className="flex flex-wrap gap-2 mb-4">
         {FEED_KINDS.map(([k, key, fb, Icon]) => { const on = kinds.has(k); return (
           <button key={k} onClick={() => toggle(k)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
@@ -8631,6 +8639,21 @@ function AdminCatalogs() {
     try { await api.post(`/admin/catalogs/${c.id}/${action}`); toast.success(t('cc.acted', 'Done.')); reload(); }
     catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); }
   };
+  // A single status control (like repos): Online (active+listed) / Offline (unlisted) /
+  // Suspended. Chains the underlying actions as needed.
+  const setStatus = async (c, next) => {
+    const cur = c.status === 'SUSPENDED' ? 'suspended' : c.listed ? 'online' : 'offline';
+    if (cur === next) return;
+    try {
+      if (next === 'suspended') await api.post(`/admin/catalogs/${c.id}/suspend`);
+      else {
+        if (c.status === 'SUSPENDED') await api.post(`/admin/catalogs/${c.id}/unsuspend`);
+        if (next === 'online' && c.visibility === 'public') await api.post(`/admin/catalogs/${c.id}/relist`);
+        if (next === 'offline') await api.post(`/admin/catalogs/${c.id}/unlist`);
+      }
+      toast.success(t('cc.acted', 'Done.')); reload();
+    } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); }
+  };
   const del = async (c) => {
     if (!(await dialog.confirm({ title: t('cc.del.t', 'Delete catalog?'), message: t('cc.del.m', 'Permanently delete "{n}"? Its items and hosted files are purged and pool space is freed. This cannot be undone.').replace('{n}', c.name), okLabel: t('common.delete', 'Delete'), danger: true }))) return;
     act(c, 'delete');
@@ -8649,31 +8672,29 @@ function AdminCatalogs() {
       </div>
       <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-9" placeholder={t('cc.admin.search2', 'Search name, owner, email or creator id…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {loading ? <Loading /> : rows.length ? <div className="space-y-1.5">
-        {rows.map((c) => (
+        {rows.map((c) => { const cur = c.status === 'SUSPENDED' ? 'suspended' : c.listed ? 'online' : 'offline'; const cr = (c.creators || [])[0]; return (
           <Card key={c.id} className="p-3 flex items-center gap-3 flex-wrap">
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate flex items-center gap-2 flex-wrap">{c.name} <Badge tone={tone(c.status)}>{c.status}</Badge>{!c.listed && c.status === 'ACTIVE' && <Badge tone="">{t('cc.unlisted', 'unlisted')}</Badge>}<Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
-              <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap">
-                <span className="flex items-center gap-1"><Users size={11} /> {c.owner || t('cc.noname', '—')} {c.ownerRole && c.ownerRole !== 'USER' && <Badge tone={roleTone(c.ownerRole)}>{c.ownerRole}</Badge>}</span>
-                <span className="flex items-center gap-1"><Mail size={11} /> {c.email}</span>
-                {(c.creators || []).length > 0
-                  ? c.creators.map((cr) => <span key={cr.id} className="flex items-center gap-1" title={t('cc.creatorid', 'Linked BMM creator id')}><Fingerprint size={11} /> {cr.name ? `${cr.name} · ` : ''}{cr.id}</span>)
-                  : <span className="flex items-center gap-1 text-amber-500" title={t('cc.nolink', 'No linked BMM account')}><AlertTriangle size={11} /> {t('cc.nolink', 'no BMM link')}</span>}
+              {/* Line 1: name + a couple of defining tags (status lives in the dropdown). */}
+              <div className="font-medium truncate flex items-center gap-2">{c.name} <Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
+              {/* Line 2: WHO — owner (→ profile) + one BMM creator id (copy) + a compact count. */}
+              <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2.5 flex-wrap mt-0.5">
+                <a href={`/u/${c.ownerId}`} className="flex items-center gap-1 hover:text-[var(--primary)]" title={c.email}><Users size={11} /> {c.owner || t('cc.noname', '—')}{c.ownerRole && c.ownerRole !== 'USER' && <Badge tone={roleTone(c.ownerRole)}>{c.ownerRole}</Badge>}</a>
+                {cr ? <button onClick={() => { navigator.clipboard?.writeText(cr.id); toast.success(t('ccp.copied', 'Copied.')); }} className="font-mono inline-flex items-center gap-1 hover:text-[var(--primary)]" title={t('cc.creatorid', 'Linked BMM creator id')}><Fingerprint size={11} /> {cr.id.slice(0, 12)}… <Copy size={9} /></button>
+                  : <span className="inline-flex items-center gap-1 text-amber-500" title={t('cc.nolink', 'No linked BMM account')}><AlertTriangle size={11} /> {t('cc.nolink', 'no BMM link')}</span>}
                 <span>{c.itemCount} {t('cc.items', 'items')} · <Download size={11} className="inline" /> {c.downloads ?? 0}</span>
                 <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline">/c/{c.slug}</a>
               </div>
             </div>
+            <Select className="!w-auto !py-1 !text-xs" value={cur} onChange={(e) => setStatus(c, e.target.value)} title={t('cc.status', 'Status')}>
+              <option value="online">🟢 {t('cc.online', 'Online')}</option>
+              <option value="offline">⚪ {t('cc.offline', 'Offline')}</option>
+              <option value="suspended">🔴 {t('cc.suspend', 'Suspended')}</option>
+            </Select>
             {c.mode === 'managed' && <Button size="sm" variant="ghost" onClick={() => setExamine(c)}><Eye size={13} /> {t('cc.examine', 'Examine')}</Button>}
-            {c.status === 'SUSPENDED'
-              ? <Button size="sm" variant="primary" onClick={() => act(c, 'unsuspend')}><Monitor size={13} /> {t('cc.online', 'Online')}</Button>
-              : <>
-                  {c.listed ? <Button size="sm" variant="ghost" onClick={() => act(c, 'unlist')}>{t('cc.unlist', 'Unlist')}</Button>
-                    : c.visibility === 'public' && <Button size="sm" variant="ghost" onClick={() => act(c, 'relist')}>{t('cc.relist', 'Relist')}</Button>}
-                  <Button size="sm" variant="ghost" onClick={() => act(c, 'suspend')}><MonitorOff size={13} /> {t('cc.offline', 'Offline')}</Button>
-                </>}
             <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(c)}><Trash2 size={13} /></Button>
           </Card>
-        ))}
+        ); })}
       </div> : <EmptyState icon={Layers} title={t('cc.admin.none.t', 'No community catalogs')} sub={t('cc.admin.none.s', 'When users host their own catalogs, they show up here for moderation.')} />}
       {examine && <AdminCatalogExamine catalog={examine} onClose={() => setExamine(null)} />}
     </div>
