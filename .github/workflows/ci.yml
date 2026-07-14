@@ -1,0 +1,61 @@
+name: BCWEB CI
+
+# Minimal safety net (see BCWEB/guides/TECH_AUDIT_EN.md §4, P1): catch a broken build,
+# a broken API module, an invalid Prisma schema, or a leaked secret at push/PR time —
+# the classes of bug that have actually bitten this project. No infra needed; all checks
+# run against the source with dummy env.
+
+on:
+  push:
+    paths: ['BCWEB/**']
+  pull_request:
+    paths: ['BCWEB/**']
+
+jobs:
+  web-build:
+    name: Web build (vite)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: BCWEB/apps/web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm ci
+      - run: npx vite build --logLevel error
+
+  api-check:
+    name: API syntax + Prisma schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      # node --check every API module — catches syntax errors (build never runs the API).
+      - name: node --check all API modules
+        run: find BCWEB/apps/api/src -name '*.mjs' -print0 | xargs -0 -n1 node --check
+      # Prisma schema must be valid (dummy URL — validate never connects).
+      - name: prisma validate
+        working-directory: BCWEB/apps/api
+        env:
+          DATABASE_URL: postgresql://x:x@localhost:5432/x
+          DIRECT_DATABASE_URL: postgresql://x:x@localhost:5432/x
+        run: |
+          npm ci
+          npx prisma validate --schema ../../packages/db/schema.prisma
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Fail if a real-looking secret is committed (Stripe live/webhook, Discord bot token,
+      # generic private keys). *.example files are allowed to carry placeholders.
+      - name: grep for committed secrets
+        run: |
+          set -e
+          pattern='sk_live_[0-9A-Za-z]{20,}|whsec_[0-9a-f]{32,}|rk_live_[0-9A-Za-z]{20,}|-----BEGIN (RSA |EC )?PRIVATE KEY-----|[MN][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27,}'
+          if git grep -nIE "$pattern" -- ':!*.example' ':!*/guides/*' ':!*.md' ; then
+            echo '::error::A real-looking secret appears to be committed (see matches above). Move it to an env var / .env (gitignored).'
+            exit 1
+          fi
+          echo 'No committed secrets detected.'
