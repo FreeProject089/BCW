@@ -4,6 +4,7 @@ import argon2 from 'argon2';
 import crypto from 'node:crypto';
 import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache } from '../lib/lib.mjs';
 import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '../lib/totp.mjs';
+import { userBcId } from '../lib/repofingerprint.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
@@ -268,7 +269,7 @@ export default async function authRoutes(app) {
     if (!req.user?.uid) return { user: null };
     const p = await db();
     const user = await p.user.findUnique({ where: { id: req.user.uid }, select: profileSelect });
-    return { user };
+    return { user: user ? { ...user, bcId: userBcId(user.id) } : null };
   });
 
   // Update profile (display name, bio, avatar).

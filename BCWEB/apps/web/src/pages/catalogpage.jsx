@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { Boxes, Download, Link2, Copy, ArrowUpRight, Package, Music2, Palette, ShieldAlert } from 'lucide-react';
+import { Boxes, Download, Link2, Copy, ArrowUpRight, Package, Music2, Palette, ShieldAlert, Fingerprint, Users } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, Spinner, EmptyState } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
@@ -45,7 +45,13 @@ export default function CommunityCatalogPage() {
     <div className="max-w-2xl mx-auto">
       <PageHeader icon={Boxes} title={cat.name}
         subtitle={<>{t('ccp.by', 'by {name}').replace('{name}', cat.owner || '—')} · {cat.itemCount} {t('cc.items', 'items')}{cat.private && <> · <span className="text-amber-400">{t('ccp.private', 'private')}</span></>}</>} />
-      {cat.description && <p className="text-sm text-[var(--muted)] mb-4">{cat.description}</p>}
+      {cat.description && <p className="text-sm text-[var(--muted)] mb-3">{cat.description}</p>}
+      {/* Who hosts this catalog — link to their profile + copy their BC id. */}
+      {cat.owner && <div className="flex items-center gap-2 flex-wrap mb-4 text-sm">
+        <span className="text-[var(--faint)]">{t('ccp.hostedby', 'Hosted by')}</span>
+        {cat.ownerId ? <Link to={`/u/${cat.ownerId}`} className="font-medium hover:text-[var(--primary)] flex items-center gap-1"><Users size={13} /> {cat.owner}</Link> : <span className="font-medium flex items-center gap-1"><Users size={13} /> {cat.owner}</span>}
+        {cat.ownerBcId && <button onClick={() => copy(cat.ownerBcId)} title={t('ccp.copybcid', 'Copy the host’s BC id')} className="inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)]"><Fingerprint size={11} /> {cat.ownerBcId} <Copy size={10} /></button>}
+      </div>}
 
       {kinds.length === 0 ? (
         <EmptyState icon={Boxes} title={t('ccp.empty.t', 'Nothing to add yet')} sub={t('ccp.empty.s', 'This catalog has no BMM-importable content yet.')} />

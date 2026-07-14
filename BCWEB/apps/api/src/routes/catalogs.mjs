@@ -7,6 +7,7 @@ import {
   getGlobalAccessPolicy, getUserAccessPolicy,
 } from '../lib/lib.mjs';
 import { presignGet, deleteObject, getObject } from '../lib/storage.mjs';
+import { userBcId } from '../lib/repofingerprint.mjs';
 
 // Read an object-storage stream fully into a Buffer (bounded by the payload's stored size).
 async function readObject(key) {
@@ -143,7 +144,7 @@ export default async function communityCatalogRoutes(app) {
       : c.items.map((i) => i.kind));
     for (const k of c.kinds || []) present.add(k.toUpperCase());
     return { catalog: {
-      ...ser(c), owner: c.owner?.displayName, kindsPresent: [...present],
+      ...ser(c), owner: c.owner?.displayName, ownerId: c.ownerId, ownerBcId: userBcId(c.ownerId), kindsPresent: [...present],
       private: c.visibility === 'private', keySuffix: c.visibility === 'private' && req.query?.k ? `?k=${encodeURIComponent(String(req.query.k))}` : '',
     } };
   });

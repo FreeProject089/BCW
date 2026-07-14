@@ -10,7 +10,7 @@ import { DiscordIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone } from 'lucide-react';
+import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint } from 'lucide-react';
 import { stagePending, addLocalAccount, attachBackupCodesBySecret } from '../lib/twofa-lib.js';
 import { TotpQuickFill } from './twofa-fill.jsx';
 
@@ -93,7 +93,10 @@ export default function Profile() {
         <Card className="p-6 text-center self-start min-w-0 md:sticky md:top-20">
           <Avatar variant={avatar.variant} seed={avatar.seed || user.id} colors={avatar.colors} image={avatar.image} size={120} className="mx-auto" />
           <div className="font-semibold mt-3">{form.displayName || user.displayName}</div>
-          <Badge tone={user.role === 'SUPERADMIN' ? 'red' : user.role === 'ADMIN' ? 'amber' : 'primary'} className="mt-1">{user.role}</Badge>
+          {user.bcId && <button onClick={() => { navigator.clipboard?.writeText(user.bcId); toast.success(t('prof.bcidcopied', 'BC id copied.')); }}
+            className="mt-1 inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)] transition" title={t('prof.bcidcopy', 'Your unique BetterCommunity id — click to copy')}>
+            <Fingerprint size={11} /> {user.bcId} <Copy size={10} /></button>}
+          <div><Badge tone={user.role === 'SUPERADMIN' ? 'red' : user.role === 'ADMIN' ? 'amber' : 'primary'} className="mt-1">{user.role}</Badge></div>
 
           {/* custom photo */}
           <div className="grid grid-cols-2 gap-1.5 mt-4">

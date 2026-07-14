@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema } from '../lib/lib.mjs';
 import { safeFetch } from '../lib/net.mjs';
-import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities } from '../lib/repofingerprint.mjs';
+import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } from '../lib/repofingerprint.mjs';
 import { capacityStatus, capacityFactors, priceCents, termTotalCents, TERM_MONTHS, stripe, settings, ensureCustomer } from './hosting.mjs';
 
 const SHA = /^[a-f0-9]{40}$|^[a-f0-9]{64}$/i;
@@ -144,7 +144,7 @@ export default async function repoRoutes(app) {
       repos: [...official, ...partner, ...featured, ...rest].map((r) => {
         const { _count, ownerId, ...rest2 } = r;
         const idn = identities.get(ownerId) || {};
-        return { ...ser(rest2), fingerprint: repoFingerprint({ repoId: r.id, ownerId, ...idn }), featured: isFeat(r), favoriteCount: _count.favorites, favorited: myFavorites ? myFavorites.has(r.id) : false };
+        return { ...ser(rest2), ownerId, ownerBcId: userBcId(ownerId), fingerprint: repoFingerprint({ repoId: r.id, ownerId, ...idn }), featured: isFeat(r), favoriteCount: _count.favorites, favorited: myFavorites ? myFavorites.has(r.id) : false };
       }),
     };
   });

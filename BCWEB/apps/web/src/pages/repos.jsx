@@ -184,8 +184,9 @@ export function ReposPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="text-xs text-[var(--faint)] mt-1 flex items-center gap-3">
-                      <span className="flex items-center gap-1"><Users size={12} /> {r.owner?.displayName}</span>
+                    <div className="text-xs text-[var(--faint)] mt-1 flex items-center gap-3 flex-wrap">
+                      {r.ownerId ? <Link to={`/u/${r.ownerId}`} className="flex items-center gap-1 hover:text-[var(--primary)]"><Users size={12} /> {r.owner?.displayName}</Link> : <span className="flex items-center gap-1"><Users size={12} /> {r.owner?.displayName}</span>}
+                      {r.ownerBcId && <button onClick={() => { navigator.clipboard?.writeText(r.ownerBcId); toast.success(t('repos.bcidcopied', 'Host BC id copied.')); }} title={t('repos.copybcid', 'Copy the host’s BC id')} className="inline-flex items-center gap-1 font-mono hover:text-[var(--primary)]"><Fingerprint size={11} /> {r.ownerBcId} <Copy size={9} className="opacity-60" /></button>}
                       {r.hosted && <span className={`flex items-center gap-1 ${online ? 'text-emerald-400' : 'text-[var(--faint)]'}`}>{online ? <Wifi size={12} /> : <WifiOff size={12} />} {online ? t('repos.online', 'Online') : t('repos.offline', 'Offline')}</span>}
                     </div>
                     {r.description && <p className="text-sm text-[var(--muted)] mt-2 line-clamp-2">{r.description}</p>}
