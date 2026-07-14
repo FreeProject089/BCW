@@ -385,10 +385,12 @@ Here's a snapshot of what's new on the platform.
 
 | Area | What changed |
 |---|---|
-| Catalogs | One-click install into BMM via \`bmm://\` deeplinks |
-| Hosting | Pay-as-you-grow Server-Repos with a free tier |
+| Catalogs | Community catalogs — public or private, one-click install via \`bmm://\`, and \`?k=\` share links for unlisted ones |
+| Hosting | Buy a **storage pool** and fill it with repos *and* catalogs; merge/split pools, consolidate billing, colour + collapse them |
+| Repos | Every repo has a public page at \`/r/<id>\`; unlisted repos share via a private link |
+| Topbar | Admins can show/hide + reorder every topbar button and design the nav |
 | Discord | Multi-server bot: per-server config + blog news routing |
-| Accounts | Link your Discord and BMM creator id from your profile |
+| Accounts | Link Discord, BMM creator id, GitHub, Ko-fi and more from your profile |
 
 :::note[Privacy-first]
 Analytics are anonymous and first-party — no third-party trackers, and only with your consent.
@@ -404,10 +406,12 @@ Voici un aperçu des nouveautés sur la plateforme.
 
 | Domaine | Ce qui a changé |
 |---|---|
-| Catalogues | Installation en un clic dans BMM via des liens \`bmm://\` |
-| Hébergement | Server-Repos à la demande avec un palier gratuit |
+| Catalogues | Catalogues communautaires — publics ou privés, install en un clic via \`bmm://\`, et liens \`?k=\` pour les non listés |
+| Hébergement | Achète un **pool de stockage** et remplis-le de dépôts *et* catalogues ; fusionne/défusionne, consolide la facturation, couleur + repli |
+| Dépôts | Chaque dépôt a une page publique \`/r/<id>\` ; les non listés se partagent via un lien privé |
+| Topbar | Les admins peuvent afficher/masquer + réordonner chaque bouton et concevoir la nav |
 | Discord | Bot multi-serveur : config par serveur + routage des news blog |
-| Comptes | Lie ton Discord et ton creator id BMM depuis ton profil |
+| Comptes | Lie Discord, creator id BMM, GitHub, Ko-fi et plus depuis ton profil |
 
 :::note[Vie privée d'abord]
 Les statistiques sont anonymes et internes — aucun traqueur tiers, et uniquement avec ton consentement.
@@ -428,8 +432,8 @@ Héberge un dépôt et ne paie que ce que tu utilises.
 
 We're building in the open. A few things on the horizon:
 
-- **BetterInstaller** — a fast, modern installer for the whole suite
-- **Richer creator dashboards** — deeper stats on your uploads and repos
+- **BetterInstaller** — now here: a fast, modern installer for the whole suite
+- **Richer creator dashboards** — deeper stats on your uploads, repos and storage pools
 - **More community tooling** — around presets, themes and plugins
 
 :::tip[Have an idea?]
@@ -444,8 +448,8 @@ Tell us what you'd like to see next.
 
 On construit à ciel ouvert. Quelques éléments à l'horizon :
 
-- **BetterInstaller** — un installeur moderne et rapide pour toute la suite
-- **Tableaux de bord créateurs enrichis** — des stats plus poussées sur tes envois et dépôts
+- **BetterInstaller** — désormais là : un installeur moderne et rapide pour toute la suite
+- **Tableaux de bord créateurs enrichis** — des stats plus poussées sur tes envois, dépôts et pools
 - **Plus d'outils communautaires** — autour des presets, thèmes et plugins
 
 :::tip[Une idée ?]
@@ -454,6 +458,49 @@ La page **Contact** et notre **Discord** sont les moyens les plus rapides de nou
 
 :::card{title="Rejoindre le Discord" href=/contact icon=message-circle}
 Dis-nous ce que tu aimerais voir ensuite.
+:::`,
+    },
+    {
+      slug: 'hosting-storage-pools', daysAgo: 1,
+      title: 'Hosting, made simple: storage pools & sharing',
+      excerpt: 'Buy space once, fill it with repos and catalogs, and share even unlisted content with a private link.',
+      titleFr: 'L’hébergement simplifié : pools de stockage & partage',
+      excerptFr: 'Achète de l’espace une fois, remplis-le de dépôts et catalogues, et partage même le contenu non listé via un lien privé.',
+      body:
+`:badge[Hosting]{color="#0ea5e9"} :badge[Guide]{color="#16a34a"}
+
+Hosting on BetterCommunity is built around one idea: **you buy a storage pool, then use it however you like.**
+
+## Storage pools
+A purchase gives you an **empty pool** with a byte quota. Fill it with **repos, catalogs, or both** — they share the same space. You can **colour** and **collapse** pools, **merge** several into one (subscriptions move with them, with a 6-second undo), and even **consolidate** several plans into one bigger one to save.
+
+## Share what isn't listed
+Every repo has a public page at \`/r/<id>\`. Content that isn't in the browse list can still be shared with a private **\`?k=\` link** — perfect for betas.
+
+:::tip[Read the full guide]
+The **"Good little host"** guide walks through pools, billing, sharing and the do's & don'ts.
+:::
+
+:::card{title="Open hosting" href=/hosting icon=server}
+Start with the free tier — no card required.
+:::`,
+      bodyFr:
+`:badge[Hébergement]{color="#0ea5e9"} :badge[Guide]{color="#16a34a"}
+
+L’hébergement sur BetterCommunity repose sur une idée : **tu achètes un pool de stockage, puis tu l’utilises comme tu veux.**
+
+## Les pools de stockage
+Un achat te donne un **pool vide** avec un quota. Remplis-le de **dépôts, catalogues, ou les deux** — ils partagent le même espace. Tu peux **colorer** et **replier** les pools, **fusionner** plusieurs pools en un (les abonnements suivent, avec un undo de 6 s), et même **consolider** plusieurs plans en un seul plus grand pour économiser.
+
+## Partager le non listé
+Chaque dépôt a une page publique \`/r/<id>\`. Le contenu absent de la liste peut quand même se partager via un **lien privé \`?k=\`** — parfait pour les bêtas.
+
+:::tip[Lis le guide complet]
+Le guide **« Le bon petit hébergeur »** couvre les pools, la facturation, le partage et les bonnes pratiques.
+:::
+
+:::card{title="Ouvrir l’hébergement" href=/hosting icon=server}
+Commence avec le palier gratuit — aucune carte requise.
 :::`,
     },
   ];
