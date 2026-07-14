@@ -762,23 +762,6 @@ export function ItemDetail() {
   );
 }
 
-export function Repos() {
-  const { data, loading } = useAsync(() => api.get('/repos'), []);
-  const gb = (n) => (n / 1024 / 1024 / 1024).toFixed(1);
-  return (
-    <div>
-      <PageHeader icon={Server} title="Server Repos" subtitle="Public repos we host for the community." />
-      {loading ? <Loading /> : (data?.repos?.length ? <div className="grid md:grid-cols-2 gap-4">
-        {data.repos.map((r) => { const pct = r.storageQuotaBytes ? Math.min(100, (r.storageUsedBytes / r.storageQuotaBytes) * 100) : 0; return (
-          <Card key={r.id} className="p-5"><div className="flex items-center justify-between"><div className="font-semibold flex items-center gap-2"><GitBranch size={15} className="text-[var(--primary-2)]" /> {r.name}</div><Badge tone="green">{r.status}</Badge></div>
-            <div className="text-xs text-[var(--faint)] mt-1">by {r.owner?.displayName}</div>
-            <div className="mt-3 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${pct}%` }} /></div>
-            <div className="text-xs text-[var(--muted)] mt-1.5">{gb(r.storageUsedBytes)} / {gb(r.storageQuotaBytes)} GB</div></Card>); })}
-      </div> : <EmptyState icon={Server} title="No hosted repos online" />)}
-    </div>
-  );
-}
-
 /* ─────────────────────────  Hosting  ───────────────────────── */
 // Custom, themeable dropdown for the prepaid billing term (replaces the segmented
 // cards). Shows the picked term + its discount, and flags the best-value option.
