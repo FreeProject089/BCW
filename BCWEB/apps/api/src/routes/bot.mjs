@@ -75,19 +75,31 @@ async function loadCanvas() {
   try { _canvas = await import('@napi-rs/canvas'); } catch { _canvas = null; }
   return _canvas;
 }
-async function renderWelcomePng({ username = 'NewMember', members = 1024, server = 'BetterCommunity', avatarUrl = null }) {
+// Selectable banner backgrounds: a base colour + an accent-glow colour (the dots + glow).
+const BANNER_BG = {
+  dark: { base: '#0e0c09', accent: '245,158,11' },
+  midnight: { base: '#0a0f1e', accent: '56,189,248' },
+  plum: { base: '#140a1e', accent: '167,139,250' },
+  forest: { base: '#08160f', accent: '52,211,153' },
+  rose: { base: '#1a0a12', accent: '244,114,182' },
+  slate: { base: '#0f1115', accent: '148,163,184' },
+};
+export const BANNER_BG_KEYS = Object.keys(BANNER_BG);
+
+async function renderWelcomePng({ username = 'NewMember', members = 1024, server = 'BetterCommunity', avatarUrl = null, bg = 'dark' }) {
   const C = await loadCanvas();
   if (!C) return null;
   const { createCanvas, loadImage } = C;
   const W = 1200, H = 400;
   const cv = createCanvas(W, H);
   const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#0e0c09'; ctx.fillRect(0, 0, W, H);
+  const theme = BANNER_BG[bg] || BANNER_BG.dark;
+  ctx.fillStyle = theme.base; ctx.fillRect(0, 0, W, H);
   const gx = W / 2;
   const g = ctx.createRadialGradient(gx, H, 60, gx, H, W);
-  g.addColorStop(0, 'rgba(245,158,11,0.22)'); g.addColorStop(1, 'rgba(245,158,11,0)');
+  g.addColorStop(0, `rgba(${theme.accent},0.22)`); g.addColorStop(1, `rgba(${theme.accent},0)`);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  for (let i = 0; i < 36; i++) { const s = 2 + Math.random() * 4; ctx.fillStyle = `rgba(245,158,11,${0.15 + Math.random() * 0.35})`; ctx.fillRect(Math.random() * W, Math.random() * H, s, s); }
+  for (let i = 0; i < 36; i++) { const s = 2 + Math.random() * 4; ctx.fillStyle = `rgba(${theme.accent},${0.15 + Math.random() * 0.35})`; ctx.fillRect(Math.random() * W, Math.random() * H, s, s); }
   const r = 92, cx = 190, cy = H / 2;
   let avatar = null;
   if (avatarUrl) { try { avatar = await loadImage(avatarUrl); } catch { /* optional */ } }
@@ -190,6 +202,7 @@ export default async function botRoutes(app) {
       server: String(q.server || 'BetterCommunity').slice(0, 40),
       // Allow-list the Discord CDN only — never fetch an arbitrary URL server-side (SSRF).
       avatarUrl: (typeof q.avatar === 'string' && /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\//.test(q.avatar)) ? q.avatar : null,
+      bg: BANNER_BG_KEYS.includes(String(q.bg)) ? String(q.bg) : 'dark',
     });
     if (!png) return reply.code(503).send({ error: 'canvas_unavailable' });
     reply.header('Content-Type', 'image/png').header('Cache-Control', 'no-store');

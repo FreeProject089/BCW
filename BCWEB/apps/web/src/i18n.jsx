@@ -1714,6 +1714,7 @@ const DICT = {
     'db.pay.testnote': 'Publie un embed d’exemple dans les salons ci-dessus pour vérifier que le bot peut y poster — sans vrai paiement. Enregistre d’abord tes ids de salon. Note : seuls les NOUVEAUX paiements sont annoncés après activation du module (les existants sont ignorés).',
     'db.f.welcomech': 'ID du salon de bienvenue', 'db.f.joinmsg': 'Message d’arrivée', 'db.f.leavemsg': 'Message de départ', 'db.f.enabled': 'Activé',
     'db.preview': 'Aperçu · vraie bannière', 'db.refresh': 'Rafraîchir',
+    'db.f.bg': 'Fond de la bannière', 'db.preview2': 'Aperçu · tel qu’affiché dans Discord', 'db.today': "Aujourd’hui",
     'db.jtc.addlobby': 'Lobby', 'db.jtc.nolobbies': 'Aucun lobby — ajoutes-en un. Rejoindre ce salon vocal crée un salon temporaire dans sa catégorie.', 'db.jtc.lobbyn': 'Lobby {n}', 'db.jtc.lobbych': 'ID du salon vocal lobby', 'db.jtc.catid': 'ID de catégorie (auto si vide)', 'db.jtc.tempcat': 'Nom catégorie temp',
     'db.gating.desc': 'Chaque règle accorde UN rôle Discord aux membres qui remplissent ses conditions. Re-vérifié toutes les ~5 min (ajout ET retrait) ; les membres peuvent lancer /refreshroles pour synchroniser immédiatement après avoir lié leur compte sur le site.',
     'db.scope.global': 'Défauts globaux', 'db.scope.everyserver': 'tous les serveurs', 'db.scope.server': 'serveur', 'db.scope.members': '{n} membres',

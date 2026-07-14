@@ -6415,17 +6415,33 @@ function AdminBot() {
             <Field label={t('db.f.welcomech', 'Welcome channel id')}><Input value={sg('welcome.channelId')} onChange={(e) => sset('welcome.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} /></Field>
             <Field label={t('db.f.joinmsg', 'Join message')} hint="{user} {username} {servername} {joinnumber} {joindate}"><Input value={sg('welcome.joinMessage')} onChange={(e) => sset('welcome.joinMessage', e.target.value)} /></Field>
             <Field label={t('db.f.leavemsg', 'Leave message')}><Input value={sg('welcome.leaveMessage')} onChange={(e) => sset('welcome.leaveMessage', e.target.value)} /></Field>
-            <div className="rounded-lg border border-[var(--line)] overflow-hidden" style={{ background: '#0e0c09' }}>
+            {/* Background style for the banner. */}
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('db.f.bg', 'Banner background')}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {[['dark', '#0e0c09'], ['midnight', '#0a0f1e'], ['plum', '#140a1e'], ['forest', '#08160f'], ['rose', '#1a0a12'], ['slate', '#0f1115']].map(([k, col]) => (
+                  <button key={k} onClick={() => { sset('welcome.gifBg', k); setPreviewNonce((n) => n + 1); }} title={k}
+                    className={`w-8 h-8 rounded-lg border-2 transition ${(sg('welcome.gifBg') || 'dark') === k ? 'border-[var(--primary)] scale-105' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`} style={{ background: col }} />
+                ))}
+              </div>
+            </div>
+            {/* Discord-style preview — a chat message from the bot; the FRAME follows the app
+                theme (was hard-dark), the banner PNG itself keeps its chosen background. */}
+            <div className="rounded-lg border border-[var(--line)] overflow-hidden bg-[var(--surface-2)]">
               <div className="flex items-center justify-between px-3 pt-2">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('db.preview', 'Preview · real banner')}</div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('db.preview2', 'Preview · as it appears in Discord')}</div>
                 <button onClick={() => setPreviewNonce((n) => n + 1)} className="text-[10px] text-[var(--primary-2)] hover:underline flex items-center gap-1"><RefreshCw size={10} /> {t('db.refresh', 'Refresh')}</button>
               </div>
-              <div className="p-2">
-                <img alt="Welcome banner preview" className="w-full rounded-md block"
-                  src={`/api/admin/bot/welcome-preview.png?server=${encodeURIComponent(scopeName)}&members=${status?.users || 1024}&username=NewMember&_=${previewNonce}`}
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              <div className="p-3 flex items-start gap-2.5">
+                <img src="/logo.png" alt="" className="w-9 h-9 rounded-full shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 text-sm"><span className="font-semibold text-[var(--text)]">{scopeName || 'BetterCommunity'}</span><span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[var(--primary)] text-white uppercase">Bot</span><span className="text-[10px] text-[var(--faint)]">{t('db.today', 'Today')}</span></div>
+                  <div className="text-sm text-[var(--muted)] mt-0.5">{previewMsg(sg('welcome.joinMessage')) || '—'}</div>
+                  <img alt="Welcome banner preview" className="mt-1.5 w-full max-w-md rounded-lg block border border-[var(--line)]"
+                    src={`/api/admin/bot/welcome-preview.png?server=${encodeURIComponent(scopeName)}&members=${status?.users || 1024}&username=NewMember&bg=${sg('welcome.gifBg') || 'dark'}&_=${previewNonce}`}
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                </div>
               </div>
-              <div className="px-3 py-2 text-xs text-gray-300 border-t border-white/5">{previewMsg(sg('welcome.joinMessage')) || '—'}</div>
             </div>
           </ModuleCard>
 

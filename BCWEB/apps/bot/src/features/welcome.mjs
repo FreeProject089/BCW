@@ -38,20 +38,32 @@ function applyVars(tpl, member, joinnumber) {
 
 const W = 1200, H = 400;
 
+// Selectable banner backgrounds — must mirror BANNER_BG in apps/api/src/routes/bot.mjs
+// so the admin preview and the real sent banner match. base = fill, accent = glow/dots.
+const BANNER_BG = {
+  dark: { base: '#0e0c09', accent: '245,158,11' },
+  midnight: { base: '#0a0f1e', accent: '56,189,248' },
+  plum: { base: '#140a1e', accent: '167,139,250' },
+  forest: { base: '#08160f', accent: '52,211,153' },
+  rose: { base: '#1a0a12', accent: '244,114,182' },
+  slate: { base: '#0f1115', accent: '148,163,184' },
+};
+
 // Draw the static parts (bcweb dark bg, avatar, text). `phase` (0..1) animates the
 // orange glow + drifting particles so the banner can be encoded as a GIF. `title`
 // switches the headline: "Welcome" for joins, "Goodbye" for leaves.
-function drawBanner(ctx, avatar, member, particles, phase, title = 'Welcome') {
-  ctx.fillStyle = '#0e0c09'; ctx.fillRect(0, 0, W, H); // bcweb dark bg
-  // shifting orange glow
+function drawBanner(ctx, avatar, member, particles, phase, title = 'Welcome', bg = 'dark') {
+  const theme = BANNER_BG[bg] || BANNER_BG.dark;
+  ctx.fillStyle = theme.base; ctx.fillRect(0, 0, W, H);
+  // shifting accent glow
   const gx = W / 2 + Math.cos(phase * Math.PI * 2) * 120;
   const g = ctx.createRadialGradient(gx, H, 60, gx, H, W);
-  g.addColorStop(0, 'rgba(245,158,11,0.22)'); g.addColorStop(1, 'rgba(245,158,11,0)');
+  g.addColorStop(0, `rgba(${theme.accent},0.22)`); g.addColorStop(1, `rgba(${theme.accent},0)`);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   // drifting particles
   for (const p of particles) {
     const y = (p.y + phase * p.spd * H) % H;
-    ctx.fillStyle = `rgba(245,158,11,${p.a})`;
+    ctx.fillStyle = `rgba(${theme.accent},${p.a})`;
     ctx.fillRect(p.x, y, p.s, p.s);
   }
   if (avatar) {
@@ -69,7 +81,7 @@ function drawBanner(ctx, avatar, member, particles, phase, title = 'Welcome') {
 
 // Build a ~1.5s animated GIF banner (falls back to a static PNG if the GIF encoder
 // isn't available, and to nothing if canvas itself is missing). Exported for tests.
-export async function banner(member, title = 'Welcome') {
+export async function banner(member, title = 'Welcome', bg = 'dark') {
   const C = await loadCanvas();
   if (!C) { console.warn('[bot] banner skipped: @napi-rs/canvas unavailable'); return null; }
   const { createCanvas, loadImage } = C;
@@ -87,7 +99,7 @@ export async function banner(member, title = 'Welcome') {
       const enc = GIFEncoder();
       const FRAMES = 12;
       for (let f = 0; f < FRAMES; f++) {
-        drawBanner(ctx, avatar, member, particles, f / FRAMES, title);
+        drawBanner(ctx, avatar, member, particles, f / FRAMES, title, bg);
         const { data } = ctx.getImageData(0, 0, W, H);
         const palette = quantize(data, 256);
         const index = applyPalette(data, palette);
@@ -98,7 +110,7 @@ export async function banner(member, title = 'Welcome') {
     } catch (e) { console.warn('[bot] gif encode failed, falling back to png:', e.message); }
   }
   // Fallback: single static frame.
-  drawBanner(ctx, avatar, member, particles, 0, title);
+  drawBanner(ctx, avatar, member, particles, 0, title, bg);
   return new AttachmentBuilder(await cv.encode('png'), { name: `${name}.png` });
 }
 
@@ -117,7 +129,7 @@ export async function onMemberAdd(member) {
   const ch = member.guild.channels.cache.get(w.channelId);
   if (!ch?.send) return;
   // Banner failures are LOGGED (not swallowed) so a missing image is diagnosable.
-  const img = await banner(member, 'Welcome').catch((e) => { console.warn('[bot] welcome banner failed:', e.message); return null; });
+  const img = await banner(member, 'Welcome', w.gifBg).catch((e) => { console.warn('[bot] welcome banner failed:', e.message); return null; });
   await ch.send({ embeds: [welcomeEmbed(applyVars(w.joinMessage, member), img, 0xf59e0b)], files: img ? [img] : [] })
     .catch((e) => console.warn('[bot] welcome send failed:', e.message));
 }
@@ -128,7 +140,7 @@ export async function onMemberRemove(member) {
   const ch = member.guild.channels.cache.get(w.channelId);
   if (!ch?.send) return;
   // The bye message gets its own banner too (same style, "Goodbye" headline).
-  const img = await banner(member, 'Goodbye').catch((e) => { console.warn('[bot] bye banner failed:', e.message); return null; });
+  const img = await banner(member, 'Goodbye', w.gifBg).catch((e) => { console.warn('[bot] bye banner failed:', e.message); return null; });
   await ch.send({ embeds: [welcomeEmbed(applyVars(w.leaveMessage, member), img, 0x6b7280)], files: img ? [img] : [] })
     .catch((e) => console.warn('[bot] bye send failed:', e.message));
 }
