@@ -8297,13 +8297,26 @@ function AdminNav() {
 // Owner: manage my community catalogs — visibility, public listing, share link, delete,
 // and (for managed catalogs) the items. The feed URL + /c page are one click away.
 function OwnerCatalogs() {
-  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/me/catalogs'), []);
   const [openId, setOpenId] = useState(null);
-  const cats = data?.catalogs || [];
+  const [hidden, setHidden] = useState(() => new Set()); // optimistically-removed during the undo window
+  const cats = (data?.catalogs || []).filter((c) => !hidden.has(c.id));
   const patch = async (c, body) => { try { await api.patch(`/me/catalogs/${c.id}`, body); reload(); } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } };
   const rotate = async (c) => { try { const r = await api.post(`/me/catalogs/${c.id}/rotate-key`); navigator.clipboard?.writeText(`${location.origin}/c/${c.slug}?k=${r.shareKey}`); toast.success(t('oc.keyrotated', 'New share link copied.')); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
-  const del = async (c) => { if (!(await dialog.confirm({ title: t('oc.del.t', 'Delete catalog?'), message: t('oc.del.m2', 'Delete "{n}" now? Its items and any hosted files are removed and its pool space is freed. This cannot be undone.').replace('{n}', c.name), okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/me/catalogs/${c.id}`); toast.success(t('oc.deleted2', 'Catalog deleted.')); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  // Optimistic delete with an undo window: hide the card now and count down; the catalog
+  // is only removed when the timer elapses (Undo restores it, nothing is deleted).
+  const del = (c) => {
+    setHidden((s) => new Set(s).add(c.id));
+    if (openId === c.id) setOpenId(null);
+    const unhide = () => setHidden((s) => { const n = new Set(s); n.delete(c.id); return n; });
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('oc.deleted2', 'Catalog deleted.'),
+      onCommit: async () => { try { await api.del(`/me/catalogs/${c.id}`); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); unhide(); } },
+      onCancel: unhide,
+    });
+  };
   const copyFeed = (c) => { navigator.clipboard?.writeText(`${location.origin}/api/c/${c.slug}/catalog.json`); toast.success(t('ccp.copied', 'Copied.')); };
   const tone = (s) => s === 'SUSPENDED' ? 'red' : s === 'HIDDEN' ? 'amber' : 'green';
 
@@ -8354,8 +8367,9 @@ function OwnerCatalogItems({ catalog, onChange }) {
   const [f, setF] = useState({ kind: 'PLUGIN', name: '', url: '' });
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [hidden, setHidden] = useState(() => new Set());
   const fileRef = useRef(null);
-  const items = data?.catalog?.items || [];
+  const items = (data?.catalog?.items || []).filter((it) => !hidden.has(it.id));
   const add = async () => {
     if (f.name.trim().length < 1) return toast.error(t('oc.it.name', 'Name required.'));
     setBusy(true);
@@ -8374,7 +8388,16 @@ function OwnerCatalogItems({ catalog, onChange }) {
       toast.error(e === 'too_large' ? t('sub2.toobig', 'Files over 100MB must be arranged via the contact page.') : e === 'pool_exceeded' ? t('oc.it.poolfull', 'Not enough pool space left.') : e || t('acc.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
-  const rm = async (it) => { try { await api.del(`/me/catalogs/${catalog.id}/items/${it.id}`); reload(); onChange?.(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  const rm = (it) => {
+    setHidden((s) => new Set(s).add(it.id));
+    const unhide = () => setHidden((s) => { const n = new Set(s); n.delete(it.id); return n; });
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('oc.it.removed', 'Item removed.'),
+      onCommit: async () => { try { await api.del(`/me/catalogs/${catalog.id}/items/${it.id}`); reload(); onChange?.(); } catch { toast.error(t('acc.failed', 'Failed.')); unhide(); } },
+      onCancel: unhide,
+    });
+  };
   return (
     <div className="mt-3 pt-3 border-t border-[var(--line)]">
       {loading ? <Loading /> : <>

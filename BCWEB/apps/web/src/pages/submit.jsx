@@ -186,28 +186,35 @@ function HostCatalog({ onBack }) {
     catch { toast.error(t('sub2.raw.bad', 'Not a valid BMM catalog.json (needs plugins/themes/apps).')); }
   };
 
-  const create = async () => {
+  const create = () => {
     if (form.name.trim().length < 2) return toast.error(t('sub2.catname', 'A catalog name is required.'));
+    const body = { name: form.name.trim(), description: form.description.trim(), mode: form.mode, visibility: form.visibility };
+    if (form.mode === 'raw') { if (!rawJson) return toast.error(t('sub2.raw.need', 'Upload your catalog.json first.')); body.rawJson = rawJson; }
+    else {
+      if (!groupId) return toast.error(t('sub2.pool.need', 'Pick a storage pool (or buy one on the Hosting page).'));
+      if (storageGB > poolFreeGB + 1e-6) return toast.error(t('sub2.pool.toobig', 'That pool only has {n} GB free.').replace('{n}', poolFreeGB.toFixed(1)));
+      body.groupId = groupId; body.storageGB = storageGB;
+    }
+    // Optimistic create with an undo window: disable the form and count down; the catalog
+    // is only created when the timer elapses (Undo cancels it and restores the form intact).
     setBusy(true);
-    try {
-      const body = { name: form.name.trim(), description: form.description.trim(), mode: form.mode, visibility: form.visibility };
-      if (form.mode === 'raw') { if (!rawJson) { setBusy(false); return toast.error(t('sub2.raw.need', 'Upload your catalog.json first.')); } body.rawJson = rawJson; }
-      else {
-        if (!groupId) { setBusy(false); return toast.error(t('sub2.pool.need', 'Pick a storage pool (or buy one on the Hosting page).')); }
-        if (storageGB > poolFreeGB + 1e-6) { setBusy(false); return toast.error(t('sub2.pool.toobig', 'That pool only has {n} GB free.').replace('{n}', poolFreeGB.toFixed(1))); }
-        body.groupId = groupId; body.storageGB = storageGB;
-      }
-      const r = await api.post('/me/catalogs', body);
-      toast.success(t('sub2.created', 'Catalog created.'));
-      navigate('/dashboard');
-    } catch (x) {
-      const e = x.data?.error;
-      toast.error(e === 'managed_needs_pool' ? t('sub2.pool.need', 'Pick a storage pool first.')
-        : e === 'not_your_pool' ? t('sub2.pool.notyours', "That pool isn't yours.")
-        : e === 'pool_exceeded' ? t('sub2.pool.toobig', 'That pool only has {n} GB free.').replace('{n}', (x.data?.freeGB ?? 0).toFixed(1))
-        : e === 'creator_link_required' ? t('sub2.needlink', 'Link your BMM account first (Dashboard → Connections) — hosting a catalog needs a creator id.')
-        : e || t('repos.failed', 'Failed.'));
-    } finally { setBusy(false); }
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('sub2.created', 'Catalog created.'),
+      onCommit: async () => {
+        try { await api.post('/me/catalogs', body); navigate('/dashboard'); }
+        catch (x) {
+          setBusy(false);
+          const e = x.data?.error;
+          toast.error(e === 'managed_needs_pool' ? t('sub2.pool.need', 'Pick a storage pool first.')
+            : e === 'not_your_pool' ? t('sub2.pool.notyours', "That pool isn't yours.")
+            : e === 'pool_exceeded' ? t('sub2.pool.toobig', 'That pool only has {n} GB free.').replace('{n}', (x.data?.freeGB ?? 0).toFixed(1))
+            : e === 'creator_link_required' ? t('sub2.needlink', 'Link your BMM account first (Dashboard → Connections) — hosting a catalog needs a creator id.')
+            : e || t('repos.failed', 'Failed.'));
+        }
+      },
+      onCancel: () => setBusy(false),
+    });
   };
 
   return (
