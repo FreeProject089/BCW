@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema } from '../lib/lib.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } from '../lib/repofingerprint.mjs';
@@ -159,6 +159,64 @@ export default async function repoRoutes(app) {
     else await p.repoFavorite.create({ data: { userId: req.user.uid, serverRepoId: repo.id } });
     const favoriteCount = await p.repoFavorite.count({ where: { serverRepoId: repo.id } });
     return { favorited: !existing, favoriteCount };
+  });
+
+  // Constant-time share-key compare (both are base64url, so ASCII) — avoids leaking the
+  // key a character at a time via response timing (mirrors the catalog/secret compares).
+  const shareKeyOk = (given, real) => {
+    if (!real || !given) return false;
+    const a = Buffer.from(String(given)); const b = Buffer.from(real);
+    return a.length === b.length && timingSafeEqual(a, b);
+  };
+
+  // Public single-repo page (/r/:id). Visible when the repo is publicly listed+verified,
+  // OR the caller presents the matching unlisted-share key (?k=). Metadata only — the
+  // actual content is still served through the normal repo.json / hosting paths, so this
+  // endpoint never exposes anything a listed repo wouldn't already show.
+  app.get('/r/:id', { preHandler: optionalAuth() }, async (req, reply) => {
+    const p = await db();
+    const r = await p.serverRepo.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, ownerId: true, name: true, description: true, tags: true, links: true, publicUrl: true, repoUrl: true,
+                status: true, hosted: true, hostPath: true, published: true, sha: true, listed: true, verified: true, pendingReview: true,
+                category: true, shareKey: true, createdAt: true, owner: { select: { displayName: true } }, _count: { select: { favorites: true } } },
+    });
+    if (!r) return reply.code(404).send({ error: 'not_found' });
+    const publicListed = r.listed && r.verified && !r.pendingReview;
+    const viaKey = shareKeyOk(req.query?.k, r.shareKey);
+    const isOwner = req.user?.uid === r.ownerId || ['ADMIN', 'SUPERADMIN'].includes(req.user?.role);
+    if (!publicListed && !viaKey && !isOwner) return reply.code(404).send({ error: 'not_found' });
+    const origin = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
+    const repoJson = (r.hosted && r.hostPath && r.published) ? `${origin}/hosting/${r.hostPath}/repo.json` : (r.repoUrl || r.publicUrl || null);
+    const idn = (await loadOwnerIdentities(p, [r.ownerId])).get(r.ownerId) || {};
+    return {
+      repo: {
+        id: r.id, name: r.name, description: r.description || '', tags: r.tags || [], links: r.links || null,
+        hosted: !!r.hosted, status: r.status, category: r.category, verified: r.verified, listed: publicListed,
+        author: r.owner?.displayName || null, ownerBcId: userBcId(r.ownerId),
+        fingerprint: repoFingerprint({ repoId: r.id, ownerId: r.ownerId, ...idn }),
+        favoriteCount: r._count.favorites, repoJson, createdAt: r.createdAt,
+        // Present only to the owner/staff so they can manage the link; never to visitors.
+        ...(isOwner ? { shared: !!r.shareKey } : {}),
+      },
+    };
+  });
+
+  // Owner/staff: enable (mint or return) a share link, rotate it, or disable it.
+  app.post('/me/repos/:id/share', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ action: z.enum(['enable', 'rotate', 'disable']) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
+    if (b.data.action === 'disable') {
+      await p.serverRepo.update({ where: { id: repo.id }, data: { shareKey: '' } });
+      return { ok: true, shared: false, shareKey: '' };
+    }
+    // enable is idempotent (keeps an existing key); rotate always mints a fresh one.
+    const shareKey = (b.data.action === 'enable' && repo.shareKey) ? repo.shareKey : randomBytes(12).toString('base64url');
+    await p.serverRepo.update({ where: { id: repo.id }, data: { shareKey } });
+    return { ok: true, shared: true, shareKey };
   });
 
   // Public aggregate feed: a single repo.json-style index of every listed+verified

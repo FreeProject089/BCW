@@ -892,6 +892,7 @@ const DICT = {
     'repos.sort.newest': 'Plus récents', 'repos.sort.oldest': 'Plus anciens', 'repos.sort.name': 'Nom (A–Z)', 'repos.sort.storage': 'Stockage utilisé',
     'repos.cap': 'max', 'repos.pool': 'Pool',
     'repos.push': 'Pousser', 'repos.check': 'Vérifier', 'repos.copylink': 'Copier le lien', 'repos.unlist': 'Retirer', 'repos.listpublicly': 'Lister publiquement',
+    'repos.sharelink': 'Copier le lien de partage public', 'repos.share.ok': 'Lien de partage copié.',
     'repos.manage': 'Gérer', 'repos.files': 'Fichiers', 'repos.freeswitch': 'Changement gratuit', 'repos.tosingle': 'En unique', 'repos.tomulti': 'En multi',
     'repos.addtopool': 'Ajouter au pool', 'repos.extendboost': 'Prolonger le boost', 'repos.boost': 'Booster', 'repos.edit': 'Modifier',
     'repos.mine.empty.t': 'Aucun dépôt pour le moment', 'repos.mine.empty.s': 'Ajoute un dépôt pour le lister publiquement, ou héberge-en un depuis la page Hébergement.',
@@ -1473,6 +1474,14 @@ const DICT = {
     'ccp.empty.t': 'Rien à ajouter pour l’instant', 'ccp.empty.s': 'Ce catalogue n’a pas encore de contenu importable dans BMM.',
     'ccp.addto': 'Ajouter à BetterModsManager', 'ccp.addbmm': 'Ajouter à BMM', 'ccp.copyurl': 'Copier l’URL du feed', 'ccp.view': 'Voir le feed', 'ccp.browse': 'Parcourir tous les catalogues',
     'ccp.kind.plugin': 'Plugins', 'ccp.kind.theme': 'Thèmes', 'ccp.kind.app': 'Apps', 'ccp.kind.preset': 'Presets',
+
+    // ── Page publique d'un dépôt serveur (/r/:id) ──
+    'rp.title': 'Dépôt serveur', 'rp.by': 'par {name}', 'rp.copied': 'Copié.', 'rp.verified': 'vérifié', 'rp.unlisted': 'lien de partage',
+    'rp.gone.t': 'Dépôt introuvable', 'rp.gone.s': 'Il a peut-être été retiré, délisté, ou le lien de partage est invalide.',
+    'rp.ownedby': 'Propriété de', 'rp.copybcid': 'Copier l’identifiant BC du propriétaire',
+    'rp.addto': 'Ouvrir dans BetterModsManager', 'rp.openbmm': 'Ouvrir dans BMM', 'rp.copyurl': 'Copier l’URL repo.json', 'rp.view': 'Voir le manifeste',
+    'rp.nofeed.t': 'Pas encore de manifeste', 'rp.nofeed.s': 'Ce dépôt n’a pas encore de repo.json publié à importer dans BMM.',
+    'rp.website': 'Site web', 'rp.changelog': 'Journal des modifs', 'rp.browse': 'Parcourir tous les dépôts',
 
     // ── Admin : navigation configurable du menu ──
     'nav.title': 'Navigation du menu', 'nav.desc': 'Conçois le menu public : une liste ordonnée de liens et de groupes déroulants, chacun avec une icône et un nom dans les deux langues. Tant que c’est désactivé (ou vide), le site utilise sa navigation par défaut.',

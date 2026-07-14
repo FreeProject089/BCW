@@ -747,6 +747,9 @@ model ServerRepo {
   listed            Boolean           @default(false) // owner wants it in the public list
   verified          Boolean           @default(false) // content checked by a mod/admin
   pendingReview     Boolean           @default(false) // a change is awaiting verification
+  // Unlisted-share link: when set, anyone with /r/<id>?k=<shareKey> can see the repo's
+  // public page even though it isn't in the browse list (mirrors CommunityCatalog.shareKey).
+  shareKey          String            @default("")
   // Admin-set classification for the public browser: "community" (default),
   // "official" (maintained by the BMM team — green badge) or "partner" (trusted
   // community members — blue badge). Official/partner float to the top of the list.

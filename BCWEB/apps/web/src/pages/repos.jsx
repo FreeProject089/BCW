@@ -4,7 +4,7 @@ import {
   Server, GitBranch, Star, Plus, Pencil, Trash2, UploadCloud, Eye, EyeOff, CheckCircle2,
   XCircle, Clock, ShieldCheck, ExternalLink, Tag, Users, HardDrive, Settings2, Receipt, Printer, Rocket,
   Files, FileText, FileJson, FolderUp, CreditCard, Search, X, Wifi, WifiOff, Zap, Lock, Download, Copy, RefreshCw, AlertTriangle, LayoutDashboard, MoreHorizontal, Ticket,
-  Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake, Boxes, GitMerge,
+  Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake, Boxes, GitMerge, Link2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ReportButton } from '../ui/report.jsx';
@@ -613,6 +613,17 @@ export function MyRepos() {
     catch { toast.error(t('repos.failed', 'Failed.')); }
   };
   const check = async (r) => { try { const res = await api.post(`/repos/${r.id}/check`); toast[res.status === 'ONLINE' ? 'success' : 'error'](res.status === 'ONLINE' ? (res.verified ? t('repos.check.onver', 'Online & verified.') : t('repos.check.onunver', 'Online but unverified.')) : t('repos.check.off', 'Offline ({reason}).').replace('{reason}', res.reason || t('repos.unreachable', 'unreachable'))); reload(); } catch { toast.error(t('repos.check.failed', 'Check failed.')); } };
+  // Mint (or reuse) an unlisted-share link and copy it. Lets an owner share a repo that
+  // isn't in the public browse list — the recipient opens /r/<id>?k=<key> (the API gates it).
+  const shareRepo = async (r) => {
+    try {
+      const res = await api.post(`/me/repos/${r.id}/share`, { action: 'enable' });
+      const link = `${location.origin}/r/${r.id}${res.shareKey ? `?k=${res.shareKey}` : ''}`;
+      await navigator.clipboard?.writeText(link);
+      toast.success(t('repos.share.ok', 'Share link copied.'));
+      reload();
+    } catch { toast.error(t('repos.failed', 'Failed.')); }
+  };
   // Free switch between single repo and a multi (pool) layout.
   const switchMode = async (r) => {
     const toMulti = !r.groupId;
@@ -716,6 +727,7 @@ export function MyRepos() {
                 <Button size="sm" disabled={locked} onClick={() => setFeaturing(r)}><Rocket size={14} /> {isFeatured(r) ? t('repos.extendboost', 'Extend boost') : t('repos.boost', 'Boost')}</Button>
                 <RepoMenu>
                   {repoJsonUrl(r) && <MenuItem icon={Copy} onClick={() => { navigator.clipboard?.writeText(repoJsonUrl(r)); toast.success(t('repos.copy.ok', 'repo.json link copied.')); }}>{t('repos.copylink', 'Copy repo.json link')}</MenuItem>}
+                  <MenuItem icon={Link2} onClick={() => shareRepo(r)}>{t('repos.sharelink', 'Copy public share link')}</MenuItem>
                   {r.hosted && !locked && <MenuItem icon={Files} onClick={() => setManaging(r)}>{t('repos.quickfiles', 'Quick files')}</MenuItem>}
                   {r.hosted && !locked && <MenuItem icon={HardDrive} onClick={() => { setSandboxTab('limits'); setSandbox(r); }}>{t('repos.upgradeplan', 'Upgrade storage / plan')}</MenuItem>}
                   {r.hosted && !locked && <MenuItem icon={ShieldCheck} onClick={() => { setSandboxTab('access'); setSandbox(r); }}>{t('repos.sandbox', 'Sandbox settings')}</MenuItem>}
