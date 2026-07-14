@@ -15,12 +15,44 @@ const badgeInput = z.object({
   color: z.string().max(32).default('#f59e0b'),
   grant: z.enum(['manual', 'easter_egg', 'auto']).default('manual'),
   trigger: z.string().max(40).nullable().optional(),
+  rule: z.object({
+    type: z.enum(['signup_nth', 'signup_before', 'kofi_donation']),
+    every: z.number().int().min(1).max(1000000).optional(),
+    date: z.string().max(40).optional(),
+  }).nullable().optional(),
   earnMessage: z.string().max(600).optional().default(''),
   priority: z.number().int().min(0).max(999).optional().default(0),
   active: z.boolean().optional().default(true),
 });
 
 const pubBadge = (ub) => ({ id: ub.badge.id, slug: ub.badge.slug, name: ub.badge.name, description: ub.badge.description, iconType: ub.badge.iconType, icon: ub.badge.icon, color: ub.badge.color });
+
+// Auto-grant badges when a lifecycle event fires. `event`: "signup" | "kofi". Best-effort,
+// never throws to the caller. Idempotent (createMany skipDuplicates on the unique pair).
+export async function grantAutoBadges(p, { event, user }) {
+  try {
+    const badges = await p.badge.findMany({ where: { grant: 'auto', active: true } });
+    if (!badges.length) return;
+    const toGrant = [];
+    for (const b of badges) {
+      const r = b.rule || {};
+      if (event === 'signup') {
+        if (r.type === 'signup_nth' && r.every > 0) {
+          // The user's signup ordinal = how many accounts existed up to and including theirs.
+          const ordinal = await p.user.count({ where: { createdAt: { lte: user.createdAt } } });
+          if (ordinal % r.every === 0) toGrant.push(b.id);
+        } else if (r.type === 'signup_before' && r.date) {
+          if (new Date(user.createdAt) < new Date(r.date)) toGrant.push(b.id);
+        }
+      } else if (event === 'kofi' && r.type === 'kofi_donation') {
+        toGrant.push(b.id);
+      }
+    }
+    if (toGrant.length) {
+      await p.userBadge.createMany({ data: toGrant.map((badgeId) => ({ userId: user.id, badgeId, grantedBy: 'system' })), skipDuplicates: true });
+    }
+  } catch { /* auto-grant is best-effort */ }
+}
 
 export default async function socialRoutes(app) {
   // ── Public: a user's shareable profile. No PII — pseudo, avatar, badges, join date,
@@ -150,7 +182,7 @@ export default async function socialRoutes(app) {
       const clash = await p.badge.findFirst({ where: { trigger: b.data.trigger, grant: 'easter_egg' } });
       if (clash) return reply.code(409).send({ error: 'trigger_taken' });
     }
-    const badge = await p.badge.create({ data: { ...b.data, slug, trigger: b.data.grant === 'manual' ? null : (b.data.trigger || null) } });
+    const badge = await p.badge.create({ data: { ...b.data, slug, trigger: b.data.grant === 'easter_egg' ? (b.data.trigger || null) : null, rule: b.data.grant === 'auto' ? (b.data.rule || null) : null } });
     return reply.code(201).send({ badge });
   });
 
@@ -159,7 +191,8 @@ export default async function socialRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const data = { ...b.data }; delete data.slug; // slug is immutable
-    if (data.grant === 'manual') data.trigger = null;
+    if (data.grant && data.grant !== 'easter_egg') data.trigger = null;
+    if (data.grant && data.grant !== 'auto') data.rule = null;
     const badge = await p.badge.update({ where: { id: req.params.id }, data });
     return { badge };
   });

@@ -1,16 +1,20 @@
-import * as Lucide from 'lucide-react';
+import { IconGlyph } from './md.jsx';
+
+// lucide export name → CDN kebab-case (BadgeCheck → badge-check), so seed/PascalCase names
+// and the picker's kebab names both resolve through IconGlyph.
+const kebab = (s) => String(s || '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/\s+/g, '-').toLowerCase();
 
 // Render a single profile badge (Twitch-chat style). iconType:
-//  • "lucide" → a named lucide-react icon (icon = the export name, e.g. "BadgeCheck")
-//  • "image" / "brand" → an image URL or data URI (svg/png), e.g. an uploaded logo
-// The colour tints a lucide icon; images render as-is.
+//  • "lucide" → a lucide icon (name, any case) rendered colour-inheriting
+//  • "brand"  → a Simple Icons brand (slug), rendered in the brand colour
+//  • "image"  → an image URL or data URI (svg/png)
 export function BadgeIcon({ badge, size = 15 }) {
   if (!badge) return null;
-  if (badge.iconType === 'image' || badge.iconType === 'brand') {
+  if (badge.iconType === 'image' || /^(https?:|data:)/i.test(badge.icon || '')) {
     return <img src={badge.icon} alt="" width={size} height={size} className="inline-block object-contain align-[-2px]" style={{ width: size, height: size }} />;
   }
-  const Ico = Lucide[badge.icon] || Lucide.BadgeCheck;
-  return <Ico size={size} style={{ color: badge.color || 'var(--primary)' }} className="inline-block align-[-2px]" />;
+  if (badge.iconType === 'brand') return <IconGlyph name={`simple:${badge.icon}`} size={size} className="inline-block align-[-2px]" />;
+  return <span style={{ color: badge.color || 'var(--primary)' }} className="inline-flex align-[-2px]"><IconGlyph name={kebab(badge.icon)} size={size} /></span>;
 }
 
 // A row of badge chips shown next to a username. Each has a tooltip (name — description).

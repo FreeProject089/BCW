@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { db, issueSession, requireRole, safeEqual } from '../lib/lib.mjs';
 import { verifyConnectState, exchangeConnect, OAUTH as CONNECT_OAUTH } from './connections.mjs';
+import { grantAutoBadges } from './social.mjs';
 
 // GitHub/Discord "Continue with…" login + signup. No library — both providers'
 // authorization-code flow is a handful of fetches, and pulling in a whole OAuth
@@ -160,6 +161,7 @@ export default async function oauthRoutes(app) {
         if (!user) {
           // New account — adopt the provider's picture as the BCWEB avatar straight away.
           user = await p.user.create({ data: { email: profile.email, displayName: profile.displayName || slugName(profile.username), emailVerified: true, avatar: profile.avatar ? { image: profile.avatar } : undefined } });
+          grantAutoBadges(p, { event: 'signup', user }).catch(() => {});
         } else if (profile.avatar && !user.avatar?.image) {
           // Linking to an existing account that has no custom photo — use the provider's.
           user = await p.user.update({ where: { id: user.id }, data: { avatar: { ...(user.avatar || {}), image: profile.avatar } } });

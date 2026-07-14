@@ -2,6 +2,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireRole, notify, safeEqual } from '../lib/lib.mjs';
 import { cached, invalidate } from '../lib/cache.mjs';
+import { grantAutoBadges } from './social.mjs';
 
 // Ko-fi's webhook POSTs a single `application/x-www-form-urlencoded` field
 // named `data`, itself a JSON string — see https://ko-fi.com/manage/webhooks.
@@ -21,6 +22,7 @@ const KOFI_MIN_MONTHS = 12;
 async function grantKofiDiscount(p, email) {
   const user = await p.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });
   if (!user) return { error: 'no_matching_account' };
+  grantAutoBadges(p, { event: 'kofi', user }).catch(() => {}); // any Ko-fi-donation badge (before the once-only discount gate)
   if (user.kofiDonorAt) return { error: 'already_granted' };
   let code = genCode();
   for (let i = 0; i < 5 && (await p.promoCode.findUnique({ where: { code } })); i++) code = genCode();

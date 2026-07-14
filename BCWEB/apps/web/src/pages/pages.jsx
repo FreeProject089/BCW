@@ -8733,7 +8733,10 @@ function AdminBadges() {
   const { data, loading, reload } = useAsync(() => api.get('/admin/badges'), []);
   const [edit, setEdit] = useState(null); // badge being edited, or BADGE_BLANK for new
   const [holdersOf, setHoldersOf] = useState(null);
+  const [iconPick, setIconPick] = useState(false);
   const badges = data?.badges || [];
+  // The shared icon picker returns a lucide kebab name, or "simple:<slug>" for a brand.
+  const onPickIcon = (v) => setEdit((e) => v.startsWith('simple:') ? { ...e, iconType: 'brand', icon: v.slice(7) } : { ...e, iconType: 'lucide', icon: v });
   const save = async () => {
     if (!edit.name.trim()) return toast.error(t('ab.namereq', 'Name required.'));
     const body = { ...edit, trigger: edit.grant === 'manual' ? null : (edit.trigger || null) };
@@ -8778,25 +8781,40 @@ function AdminBadges() {
           </div>
           <Field label={t('ab.description', 'Description (tooltip)')}><Input value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} placeholder={t('ab.desc.ph', 'Certified by the BetterCommunity team')} /></Field>
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label={t('ab.icontype', 'Icon type')}><Select value={edit.iconType} onChange={(e) => setEdit({ ...edit, iconType: e.target.value })}><option value="lucide">Lucide icon</option><option value="brand">Brand / image URL</option><option value="image">Image / SVG / PNG (URL or data)</option></Select></Field>
-            <Field label={edit.iconType === 'lucide' ? t('ab.iconname', 'Lucide icon name') : t('ab.iconurl', 'Image URL / data URI')}><Input value={edit.icon} onChange={(e) => setEdit({ ...edit, icon: e.target.value })} placeholder={edit.iconType === 'lucide' ? 'BadgeCheck' : 'https://…/icon.svg'} /></Field>
+            <Field label={t('ab.icontype', 'Icon type')}><Select value={edit.iconType} onChange={(e) => setEdit({ ...edit, iconType: e.target.value })}><option value="lucide">{t('ab.it.lucide', 'Lucide icon')}</option><option value="brand">{t('ab.it.brand', 'Brand (Simple Icons)')}</option><option value="image">{t('ab.it.image', 'Image (URL or data URI)')}</option></Select></Field>
+            <Field label={edit.iconType === 'image' ? t('ab.iconurl', 'Image URL / data URI') : t('ab.iconname2', 'Icon')}>
+              {edit.iconType === 'image'
+                ? <Input value={edit.icon} onChange={(e) => setEdit({ ...edit, icon: e.target.value })} placeholder="https://…/icon.svg" />
+                : <Button variant="default" className="!w-full !justify-start" onClick={() => setIconPick(true)}><Sparkles size={14} /> {t('ab.pickicon', 'Pick an icon')} <span className="text-[var(--faint)] font-mono ml-1 truncate">{edit.icon}</span></Button>}
+            </Field>
           </div>
-          {edit.iconType === 'lucide' && <p className="text-[11px] text-[var(--faint)] -mt-1">{t('ab.lucidehint', 'Any lucide-react icon name (PascalCase), e.g. BadgeCheck, Code, Shield, Youtube, Twitch, Crown, Star.')}</p>}
+          {edit.iconType !== 'image' && <p className="text-[11px] text-[var(--faint)] -mt-1">{t('ab.pickhint', 'Search every Lucide icon + every Simple Icons brand (YouTube, Twitch, Steam, GitHub…).')}</p>}
           <div className="grid sm:grid-cols-3 gap-3">
             <Field label={t('ab.color', 'Colour')}><Input type="color" value={edit.color} onChange={(e) => setEdit({ ...edit, color: e.target.value })} className="!p-1 h-9" /></Field>
             <Field label={t('ab.priority', 'Priority')}><Input type="number" min="0" value={edit.priority} onChange={(e) => setEdit({ ...edit, priority: Math.max(0, Number(e.target.value) || 0) })} /></Field>
-            <Field label={t('ab.grantmode', 'How earned')}><Select value={edit.grant} onChange={(e) => setEdit({ ...edit, grant: e.target.value })}><option value="manual">{t('ab.manual', 'Manual (staff grant)')}</option><option value="easter_egg">{t('ab.easter', 'Easter egg (self-claim)')}</option></Select></Field>
+            <Field label={t('ab.grantmode', 'How earned')}><Select value={edit.grant} onChange={(e) => setEdit({ ...edit, grant: e.target.value })}><option value="manual">{t('ab.manual', 'Manual (staff grant)')}</option><option value="easter_egg">{t('ab.easter', 'Easter egg (self-claim)')}</option><option value="auto">{t('ab.auto', 'Automatic (rule)')}</option></Select></Field>
           </div>
           {edit.grant === 'easter_egg' && <>
             <Field label={t('ab.trigger', 'Trigger key')}><Input value={edit.trigger} onChange={(e) => setEdit({ ...edit, trigger: e.target.value })} placeholder="footer5x" /></Field>
             <p className="text-[11px] text-[var(--faint)] -mt-1">{t('ab.triggerhint', 'Use "footer5x" for the footer "Built for the Better* community" 5-click secret.')}</p>
             <Field label={t('ab.earnmsg', 'Reveal message')}><Textarea value={edit.earnMessage} onChange={(e) => setEdit({ ...edit, earnMessage: e.target.value })} placeholder={t('ab.earnmsg.ph', 'Shown in the reveal modal when a user finds it.')} /></Field>
           </>}
+          {edit.grant === 'auto' && (() => { const rule = edit.rule || { type: 'signup_nth', every: 100 }; const setRule = (r) => setEdit({ ...edit, rule: r }); return <>
+            <Field label={t('ab.rule', 'Auto-grant rule')}><Select value={rule.type} onChange={(e) => setRule({ type: e.target.value, every: rule.every || 100, date: rule.date || '' })}>
+              <option value="signup_nth">{t('ab.rule.nth', 'Every Nth signup (100th, 200th…)')}</option>
+              <option value="signup_before">{t('ab.rule.before', 'Signed up before a date')}</option>
+              <option value="kofi_donation">{t('ab.rule.kofi', 'Made a Ko-fi donation')}</option>
+            </Select></Field>
+            {rule.type === 'signup_nth' && <Field label={t('ab.rule.every', 'Grant every N signups')}><Input type="number" min="1" value={rule.every ?? 100} onChange={(e) => setRule({ ...rule, every: Math.max(1, Number(e.target.value) || 1) })} placeholder="100" /></Field>}
+            {rule.type === 'signup_before' && <Field label={t('ab.rule.date', 'Before date (YYYY-MM-DD)')}><Input type="date" value={rule.date || ''} onChange={(e) => setRule({ ...rule, date: e.target.value })} /></Field>}
+            <p className="text-[11px] text-[var(--faint)] -mt-1">{t('ab.rulehint', 'Granted automatically when the event fires — e.g. a badge for the 100th, 200th… member, early adopters, or Ko-fi supporters.')}</p>
+          </>; })()}
           <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={edit.active} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} /> {t('ab.active', 'Active')}</label>
         </div>
       </Modal>}
 
       {holdersOf && <AdminBadgeHolders badge={holdersOf} onClose={() => { setHoldersOf(null); reload(); }} />}
+      {iconPick && <IconPicker title={t('ab.pickicon', 'Pick an icon')} onPick={onPickIcon} onClose={() => setIconPick(false)} />}
     </div>
   );
 }

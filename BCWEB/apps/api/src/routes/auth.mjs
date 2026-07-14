@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache } from '../lib/lib.mjs';
 import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '../lib/totp.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
+import { grantAutoBadges } from './social.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
@@ -83,6 +84,7 @@ export default async function authRoutes(app) {
     if (await p.user.findUnique({ where: { email } })) return reply.code(409).send({ error: 'email_taken' });
     const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
     const user = await p.user.create({ data: { email, passwordHash, displayName: displayName || email.split('@')[0] } });
+    grantAutoBadges(p, { event: 'signup', user }).catch(() => {}); // e.g. the 100th-signup badge
     sendVerificationEmail(p, user).catch(() => {}); // fire-and-forget confirmation email
     return issueSession(reply, user);
   });

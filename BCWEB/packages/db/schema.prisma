@@ -1588,7 +1588,12 @@ model Badge {
   color       String      @default("#f59e0b")
   // How it's earned: staff grant, the footer easter-egg, or an automatic rule.
   grant       String      @default("manual") // "manual" | "easter_egg" | "auto"
-  trigger     String? // for easter_egg/auto: the trigger key (e.g. "footer5x")
+  trigger     String? // for easter_egg: the trigger key (e.g. "footer5x")
+  // For grant="auto": the rule that auto-grants it, e.g.
+  //   { type:"signup_nth", every:100 }  → every 100th signup (100th, 200th, …)
+  //   { type:"signup_before", date:"2026-08-01" } → everyone who signed up before a date
+  //   { type:"kofi_donation" } → anyone whose Ko-fi donation is matched to their account
+  rule        Json?
   earnMessage String      @default("") // shown when earned (e.g. the footer 5x-click modal body)
   priority    Int         @default(0) // display order next to the name (higher = first)
   active      Boolean     @default(true)

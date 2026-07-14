@@ -1161,6 +1161,12 @@ const DICT = {
     'ab.earnmsg': 'Message de révélation', 'ab.earnmsg.ph': 'Affiché dans la modal de révélation quand un utilisateur le trouve.',
     'ab.active': 'Actif', 'ab.holders.t': 'Attribuer : {n}', 'ab.grantto': 'Attribuer à (id utilisateur ou e-mail)',
     'ab.granted': 'Attribué à {n}.', 'ab.nouser': 'Aucun utilisateur avec cet id/e-mail.', 'ab.noholders': 'Personne n’a encore ce badge.',
+    'ab.it.lucide': 'Icône Lucide', 'ab.it.brand': 'Marque (Simple Icons)', 'ab.it.image': 'Image (URL ou data URI)',
+    'ab.iconname2': 'Icône', 'ab.pickicon': 'Choisir une icône', 'ab.pickhint': 'Cherche parmi toutes les icônes Lucide + toutes les marques Simple Icons (YouTube, Twitch, Steam, GitHub…).',
+    'ab.auto': 'Automatique (règle)', 'ab.rule': 'Règle d’attribution auto',
+    'ab.rule.nth': 'Chaque Nième inscription (100e, 200e…)', 'ab.rule.before': 'Inscrit avant une date', 'ab.rule.kofi': 'A fait une donation Ko-fi',
+    'ab.rule.every': 'Attribuer toutes les N inscriptions', 'ab.rule.date': 'Avant la date (AAAA-MM-JJ)',
+    'ab.rulehint': 'Attribué automatiquement quand l’événement se produit — ex. un badge pour le 100e, 200e… membre, les early adopters, ou les soutiens Ko-fi.',
     // Système de report / contact
     'dash.reports': 'Signalements & contact', 'adm.tab.reports': 'Signalements',
     'rp.report': 'Signaler', 'rp.title': 'Signaler', 'rp.title.n': 'Signaler « {n} »', 'rp.reason': 'Raison',
