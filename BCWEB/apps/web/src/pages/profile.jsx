@@ -618,7 +618,13 @@ function SocialConnections() {
   const linked = Object.fromEntries(conns.map((c) => [c.provider, c]));
   const show = new Set(user?.showConnections || []);
   const disconnect = async (k) => { try { await api.del(`/me/connections/${k}`); load(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
-  const saveKofi = async () => { if (!kofi.trim()) return; try { await api.put('/me/connections/kofi', { handle: kofi.trim().replace(/^@/, '') }); setKofi(''); load(); } catch { toast.error(t('sc.kofibad', 'Invalid Ko-fi handle.')); } };
+  // Accept a bare handle, "@handle", or a full ko-fi.com/<handle> URL → the handle.
+  const kofiHandle = kofi.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?ko-fi\.com\//i, '').replace(/\/.*$/, '');
+  const saveKofi = async () => {
+    if (!kofiHandle) return;
+    try { await api.put('/me/connections/kofi', { handle: kofiHandle }); setKofi(''); load(); }
+    catch { toast.error(t('sc.kofibad', 'Invalid Ko-fi handle.')); }
+  };
   const toggleShow = async (k, on) => {
     const next = on ? [...show, k] : [...show].filter((x) => x !== k);
     try { await api.patch('/me', { showConnections: next }); await refresh(); } catch { toast.error(t('acc.failed', 'Failed.')); }
@@ -640,10 +646,17 @@ function SocialConnections() {
               {c ? <button onClick={() => disconnect(k)} className="text-[var(--faint)] hover:text-red-400 p-1" title={t('sc.disconnect', 'Disconnect')}><X size={16} /></button>
                 : kind === 'oauth' ? <Button size="sm" variant="default" onClick={() => { window.location.href = `/api/auth/connect/${k}/start`; }}>{t('sc.connect', 'Connect')}</Button> : null}
             </div>
-            {/* Manual Ko-fi entry when not yet linked. */}
-            {!c && kind === 'manual' && <div className="flex gap-2 mt-2">
-              <Input value={kofi} onChange={(e) => setKofi(e.target.value)} placeholder={t('sc.kofiph', 'Your Ko-fi handle (e.g. bettercommunity)')} onKeyDown={(e) => e.key === 'Enter' && saveKofi()} />
-              <Button size="sm" variant="default" onClick={saveKofi}>{t('sc.save', 'Save')}</Button>
+            {/* Manual Ko-fi entry when not yet linked — a prefixed input (paste a handle or a
+                full ko-fi.com link) with a live preview of the resulting URL. */}
+            {!c && kind === 'manual' && <div className="mt-2">
+              <div className="flex items-stretch gap-2">
+                <div className="flex items-center flex-1 rounded-lg border border-[var(--line)] bg-[var(--bg-solid)] overflow-hidden focus-within:border-[var(--primary)]">
+                  <span className="px-2.5 py-2 text-xs text-[var(--faint)] bg-[var(--surface-2)] border-r border-[var(--line)] shrink-0 select-none">ko-fi.com/</span>
+                  <input value={kofi} onChange={(e) => setKofi(e.target.value)} placeholder={t('sc.kofiph2', 'yourname')} onKeyDown={(e) => e.key === 'Enter' && saveKofi()} className="flex-1 min-w-0 bg-transparent border-0 outline-none px-2.5 py-2 text-sm" />
+                </div>
+                <Button size="sm" variant="primary" disabled={!kofiHandle} onClick={saveKofi}>{t('sc.save', 'Save')}</Button>
+              </div>
+              {kofiHandle && <div className="text-[11px] text-[var(--faint)] mt-1">→ <span className="font-mono text-[var(--muted)]">ko-fi.com/{kofiHandle}</span></div>}
             </div>}
             {/* Inline "show on my profile" toggle, Discord-style. */}
             {c && <label className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-[var(--line)] text-sm cursor-pointer">

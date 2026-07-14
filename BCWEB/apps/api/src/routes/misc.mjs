@@ -737,14 +737,14 @@ export default async function miscRoutes(app) {
     to: z.string().trim().min(1).max(200).refine((v) => v.startsWith('/'), 'must be an internal path'),
     desc: z.string().trim().max(120).optional().default(''),
     descFr: z.string().trim().max(120).optional().default(''),
-    icon: z.string().trim().max(30).optional().default(''),
+    icon: z.string().trim().max(60).optional().default(''),
   });
   const navItem = z.object({
     type: z.enum(['link', 'group']),
     label: z.string().trim().min(1).max(40),
     labelFr: z.string().trim().max(40).optional().default(''),
     to: z.string().trim().max(200).optional().default(''),
-    icon: z.string().trim().max(30).optional().default(''),
+    icon: z.string().trim().max(60).optional().default(''),
     children: z.array(navChild).max(12).optional().default([]),
   }).refine((it) => it.type === 'group' || (it.to && it.to.startsWith('/')), { message: 'a link needs an internal "to"' })
     .refine((it) => it.type === 'link' || it.children.length > 0, { message: 'a group needs at least one link' });

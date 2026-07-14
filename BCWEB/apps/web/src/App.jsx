@@ -54,7 +54,7 @@ export const NAV_ICON_NAMES = Object.keys(NAV_ICONS);
 // picker output ("boxes", "simple:youtube") both resolve through IconGlyph.
 const navIconName = (icon) => {
   const s = String(icon || 'boxes');
-  if (s.startsWith('simple:')) return s;
+  if (s.startsWith('simple:') || s.startsWith('app:')) return s;
   return s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/\s+/g, '-').toLowerCase();
 };
 

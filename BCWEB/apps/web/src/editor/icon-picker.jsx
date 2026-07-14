@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
-import { ICON_NAMES, IconGlyph } from '../ui/md.jsx';
+import { ICON_NAMES, IconGlyph, APP_ICON_KEYS } from '../ui/md.jsx';
+
+const PROJECT_LABEL = { bmm: 'BetterModsManager', bsm: 'BetterSoundMaker', bi: 'BetterInstaller', bc: 'BetterCommunity' };
 
 // Icon picker searching the FULL catalogues: every lucide icon (name list from the
 // lucide-static CDN, previews rendered as colour-inheriting CSS-mask images) and
@@ -67,6 +69,18 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
           <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${lucide.length + simple.length} icons…`} className="flex-1 bg-transparent border-0 outline-none text-sm text-[var(--text)]" />
         </div>
         <div className="p-3 overflow-auto">
+          {/* Our own project logos — usable in the topbar, blog, docs, faq. */}
+          {(() => { const pj = APP_ICON_KEYS.filter((k) => !nq || k.includes(nq) || PROJECT_LABEL[k]?.toLowerCase().includes(nq)); return pj.length > 0 && <>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">Better* projects</div>
+            <div className="grid grid-cols-7 sm:grid-cols-9 gap-1.5 mb-4">
+              {pj.map((k) => (
+                <button key={k} type="button" title={PROJECT_LABEL[k] || k} onClick={() => { onPick(`app:${k}`); onClose(); }}
+                  className="aspect-square grid place-items-center rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)]">
+                  <IconGlyph name={`app:${k}`} size={18} />
+                </button>
+              ))}
+            </div>
+          </>; })()}
           <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">Lucide {nq && `· ${lucideHits.length}${lucideHits.length === MAX_SHOWN ? '+' : ''}`}</div>
           <div className="grid grid-cols-7 sm:grid-cols-9 gap-1.5">
             {lucideHits.map((name) => (

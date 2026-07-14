@@ -8242,12 +8242,13 @@ function TelemetryConfigCard() {
 const NAV_ICON_CHOICES = ['Boxes', 'Music2', 'Newspaper', 'Server', 'Rocket', 'Shield', 'Download', 'Sparkles', 'Mail', 'Home', 'BookOpen', 'LayoutGrid', 'Info', 'Bell'];
 // A ready-to-edit starting point mirroring the built-in topbar, so an admin isn't
 // staring at a blank editor. Uses plain labels + icon names (both languages).
+// Mirrors the site's real built-in NAV (App.jsx) so "Reset to default" restores exactly
+// what visitors see out of the box — the flat BMM / BSM / BI / Blog / Docs / Repos /
+// Hosting bar with the app logos, not a made-up grouped layout.
 const DEFAULT_NAV_SEED = [
-  { type: 'group', label: 'Apps', labelFr: 'Applications', icon: 'Boxes', children: [
-    { label: 'BetterModsManager', labelFr: 'BetterModsManager', to: '/p/bmm', desc: 'Mod manager', descFr: 'Gestionnaire de mods', icon: 'Boxes' },
-    { label: 'BetterSaveManager', labelFr: 'BetterSaveManager', to: '/p/bsm', desc: 'Save & preset manager', descFr: 'Gestion sauvegardes & presets', icon: 'Music2' },
-    { label: 'BetterInstaller', labelFr: 'BetterInstaller', to: '/p/installer', desc: 'One-click installer', descFr: 'Installateur en un clic', icon: 'Download' },
-  ] },
+  { type: 'link', label: 'BetterModsManager', labelFr: 'BetterModsManager', to: '/p/bmm', icon: 'app:bmm', children: [] },
+  { type: 'link', label: 'BetterSoundMaker', labelFr: 'BetterSoundMaker', to: '/p/bsm', icon: 'app:bsm', children: [] },
+  { type: 'link', label: 'BetterInstaller', labelFr: 'BetterInstaller', to: '/p/installer', icon: 'app:bi', children: [] },
   { type: 'link', label: 'Blog', labelFr: 'Blog', to: '/blog', icon: 'Newspaper', children: [] },
   { type: 'link', label: 'Docs', labelFr: 'Docs', to: '/docs', icon: 'BookOpen', children: [] },
   { type: 'link', label: 'Server repos', labelFr: 'Dépôts serveur', to: '/repos', icon: 'Server', children: [] },
@@ -8260,7 +8261,7 @@ const moveIn = (arr, i, dir) => { const j = i + dir; if (j < 0 || j >= arr.lengt
 
 // Renders the preview icon the exact way the live topbar does (any Lucide icon or Simple
 // Icons brand, via IconGlyph). PascalCase/old names are kebab-ized first.
-const navPvName = (icon) => { const s = String(icon || 'boxes'); return s.startsWith('simple:') ? s : s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/\s+/g, '-').toLowerCase(); };
+const navPvName = (icon) => { const s = String(icon || 'boxes'); return (s.startsWith('simple:') || s.startsWith('app:')) ? s : s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/\s+/g, '-').toLowerCase(); };
 const NavPvIcon = ({ name, size = 15 }) => <IconGlyph name={navPvName(name)} size={size} />;
 const pvLabel = (it, lang) => (lang === 'fr' && it.labelFr ? it.labelFr : (it.label || '')) || (lang === 'fr' ? 'Sans titre' : 'Untitled');
 

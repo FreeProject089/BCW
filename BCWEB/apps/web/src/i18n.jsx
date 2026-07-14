@@ -1138,7 +1138,7 @@ const DICT = {
     'sc.title': 'Comptes sociaux', 'sc.desc': 'Lie des comptes à afficher sur ton profil public. Choisis lesquels afficher dans la section « Profil public » ci-dessus.',
     'sc.connect': 'Connecter', 'sc.disconnect': 'Déconnecter', 'sc.linked': 'Compte lié.', 'sc.failed': 'Impossible de lier ce compte.',
     'sc.desc2': 'Lie des comptes et choisis lesquels apparaissent sur ton profil public.', 'sc.notlinked': 'Non lié',
-    'sc.kofiph': 'Ton identifiant Ko-fi (ex. bettercommunity)', 'sc.kofibad': 'Identifiant Ko-fi invalide.', 'sc.save': 'Enregistrer', 'sc.showprofile': 'Afficher sur mon profil',
+    'sc.kofiph': 'Ton identifiant Ko-fi (ex. bettercommunity)', 'sc.kofiph2': 'tonpseudo', 'sc.kofibad': 'Identifiant Ko-fi invalide.', 'sc.save': 'Enregistrer', 'sc.showprofile': 'Afficher sur mon profil',
     'us.sub2': 'Cherche des membres par nom — ou colle un BC id, un id de repo ou de catalogue pour trouver son propriétaire.',
     'us.ph2': 'Nom, BC-XXXX-XXXX, id de repo ou de catalogue…',
     'prof.bcidcopied': 'BC id copié.', 'prof.bcidcopy': 'Ton identifiant BetterCommunity unique — clique pour copier',

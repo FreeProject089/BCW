@@ -284,8 +284,15 @@ export function ShowcaseIcon({ icon, size = 16, className = '', rounded = 4, fal
   return <IconGlyph name={icon} size={size} className={className} />;
 }
 
+// Our own project logos, usable anywhere IconGlyph is (topbar, blog, docs, faq) via
+// the "app:<key>" name — e.g. app:bmm → /icons/bmm.png, app:bc → the BC logo.
+const APP_ICONS = { bmm: '/icons/bmm.png', bsm: '/icons/bsm.png', bi: '/icons/bi.png', installer: '/icons/bi.png', bc: '/logo.png' };
+export const APP_ICON_KEYS = Object.keys(APP_ICONS).filter((k) => k !== 'installer');
+
 // Standalone icon glyph by name (used by the icon picker + reaction-style UIs).
 export function IconGlyph({ name, size = 18, className = '' }) {
+  const app = String(name || '').match(/^app:(.+)$/);
+  if (app && APP_ICONS[app[1]]) return <img src={APP_ICONS[app[1]]} width={size + 2} height={size + 2} alt="" className={`rounded-[4px] object-contain ${className}`} style={{ display: 'inline-block' }} />;
   const slug = simpleSlug(name);
   if (slug) return <img src={`https://cdn.simpleicons.org/${slug}`} width={size} height={size} alt="" className={className} style={{ display: 'inline-block' }} />;
   const n = String(name || '').toLowerCase();
