@@ -99,11 +99,13 @@ Pas d'historique de migrations. Une modification de schéma qui renomme/rétréc
 peut silencieusement détruire des données en production. Passer à `prisma migrate` (avec
 migrations commitées) est la voie sûre.
 
-### 3.6 🟡 Croissance de tables non bornée
-`AnalyticsEvent`, `InteractionEvent`, `WebVital`, `LoginAttempt` grossissent sans fin
-(certaines tables ont des plafonds ; la rétention analytics est partielle). Les agrégations
-SQL brutes se dégraderont ; il faut des purges de rétention ou du partitionnement avant que
-ça devienne gros.
+### 3.6 🟡 Croissance de tables non bornée — largement traité
+`AnalyticsEvent`, `InteractionEvent`, `WebVital`, `LoginAttempt` grossissaient sans fin. Une
+purge de rétention (`sweepAnalyticsRetention`, config dans `lib/retention.mjs`) supprime
+désormais les lignes au-delà d'une fenêtre d'âge par table (défauts 365/120/120/180 jours ;
+0 = garder pour toujours ; réglable par l'admin via `GET/PUT /admin/analytics/retention`),
+par lots de 5k lignes/table/passe. Les très grosses tables voudront peut-être du
+partitionnement, mais la croissance est maintenant bornée par défaut.
 
 ### 3.7 🟡 i18n par convention seulement
 La parité FR/EN tient à la discipline, pas à l'outillage — une clé manquante retombe en
@@ -138,7 +140,7 @@ part ; ne pas les `--force` à l'aveugle (les deux sont cassants et risqueraient
 | **P1** | Tests de facturation : **FAIT** — math de prix (`pricing.test.mjs`) **et** l'invariant de pool (`pool-billing.test.mjs` : `recomputePoolBytes` somme-des-abos-actifs, défaut→suspend+masque+grâce 72h, renouvellement→restaure, défaut-partiel-garde-le-contenu, no-op idempotent) plus **des tests webhook de bout en bout** (`webhook.test.mjs` : un événement réellement signé à travers le vrai handler — mauvaise-signature→400, `customer.subscription.deleted`→défaut-suspend, `checkout.session.completed{pool_renew}`→restaure) — le tout dans la CI contre un Postgres jetable (**25 tests**). Le risque de facturation §1 est maintenant couvert de bout en bout pour le cycle de vie piloté par la BD | Le code au plus gros rayon d'explosion |
 | **P1** | Passer `db push` → `prisma migrate` **FAIT** — une baseline `0_init` + `src/boot-migrate.mjs` (adopte sans risque les BD fraîches / db-push / déjà migrées, vérifié zéro perte de données) ; le Dockerfile boote via `migrate deploy` ; la CI applique les migrations + un contrôle de dérive (un schéma sans migration échoue) | Supprime le risque de perte de données silencieuse |
 | **P2** | Découper `pages.jsx` en modules **FAIT** — le monolithe de ~10k lignes est devenu un module de helpers partagés de 210 lignes ; chaque route est passée dans son propre fichier (`home`, `catalog`, `signin`, `hosting`, `dashboard`, `account-pages`, `legal`, `contact`, et tout le back-office admin de ~7,3k lignes → `admin.jsx`). Deux pages mortes retirées. Chaque extraction gardée par **ESLint `no-undef`** (apps/web `eslint.config.js`, câblé dans la CI — il a attrapé chaque import manquant que `vite build` acceptait en silence) + un smoke-test de démarrage navigateur. `repos.jsx` (~2k) est le gros fichier restant à découper | Maintenabilité + prévient les crashes d'import récurrents |
-| **P2** | Purges de rétention analytics (par âge/nb de lignes) | Garde la DB saine à long terme |
+| **P2** | Purges de rétention analytics (par âge/nb de lignes) **FAIT** — `sweepAnalyticsRetention` purge AnalyticsEvent/InteractionEvent/WebVital/LoginAttempt au-delà de fenêtres par table (défauts 365/120/120/180j, 0 = garder toujours), par lots de 5k/table/passe, réglable par l'admin via `/admin/analytics/retention` ; 5 tests (résolveur pur + purge/garde en DB), suite complète 30/30 verte | Garde la DB saine à long terme |
 | **P2** | Redis pub/sub pour le SSE + rate limits partagés (quand les réplicas deviendront réels) | Débloque la montée en charge horizontale |
 | **P3** | Lint de parité i18n ; passe accessibilité ; monitoring d'erreurs ; OG/prérendu des pages publiques | Finition & portée |
 
