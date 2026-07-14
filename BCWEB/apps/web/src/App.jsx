@@ -32,8 +32,9 @@ import RepoPublicPage from './pages/repopublic.jsx';
 import NotFound from './pages/notfound.jsx';
 import { ReposPage } from './pages/repos.jsx';
 import { RepoDashboard } from './pages/repo-dashboard.jsx';
-import { Home, Catalog, ItemDetail, Hosting, Auth, Dashboard, Admin, Contact, Settings, Authorize, VerifyEmail, NOTIF, NOTIF_FALLBACK } from './pages/pages.jsx';
+import { Home, Catalog, ItemDetail, Hosting, Auth, Dashboard, Admin, Settings, Authorize, VerifyEmail, NOTIF, NOTIF_FALLBACK } from './pages/pages.jsx';
 import { Legal, LegalIndex } from './pages/legal.jsx';
+import { Contact } from './pages/contact.jsx';
 import { TwoFactor } from './pages/twofa.jsx';
 
 const KOFI = 'https://ko-fi.com/bettercommunity';
