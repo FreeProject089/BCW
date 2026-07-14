@@ -1217,6 +1217,31 @@ model AdminSetting {
   value Json
 }
 
+// Platform-hosted assets served at stable public URLs (/api/assets/<key>): app download
+// files (BMM/BSM/BI installers), auto-update manifests, and JSON configs (links.json,
+// contributors.json). A `file` asset lives in object storage (storageKey); a `json` asset
+// stores its content inline so admins can edit it in the dashboard. `key` is the stable
+// public slug. `channel`/`version` let one logical download (e.g. bmm-installer) advertise
+// a version + release channel to the auto-updater.
+model PlatformAsset {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  kind        String   @default("file") // "file" | "json"
+  label       String   @default("")
+  // file assets
+  filename    String?
+  contentType String?
+  size        BigInt   @default(0)
+  storageKey  String?
+  version     String?
+  channel     String   @default("stable")
+  // json assets
+  json        Json?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 // One row per Ko-fi webhook event — lets the public funding-goal widget show a
 // real running total + tip count, not just the one-time discount-grant flag on
 // User. messageId dedupes Ko-fi's at-least-once webhook retries.

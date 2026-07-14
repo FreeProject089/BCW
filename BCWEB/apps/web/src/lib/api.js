@@ -40,6 +40,16 @@ export async function uploadPayload(kind, file) {
   return key;
 }
 
+// Admin: upload a platform asset file (installer, manifest…) to a stable-key slot.
+// Presign → direct PUT to storage → returns the meta to confirm with PUT /admin/assets/file/:key.
+export async function uploadAsset(assetKey, file) {
+  const contentType = file.type || 'application/octet-stream';
+  const { url, storageKey } = await api.post('/admin/assets/presign', { key: assetKey, filename: file.name, contentType });
+  const put = await fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+  if (!put.ok) throw Object.assign(new Error('upload_failed'), { status: put.status });
+  return { storageKey, filename: file.name, contentType, size: file.size };
+}
+
 // PUT bytes to a pre-signed URL via XHR so the upload can report byte progress and
 // be cancelled (fetch() can't do granular upload progress and only aborts awkwardly).
 // opts: { signal, onProgress(loaded,total) }. Rejects with { aborted:true } on cancel.

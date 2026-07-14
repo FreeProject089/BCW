@@ -12,7 +12,7 @@ import {
   Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2,
   Home as HomeIcon, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar,
 } from 'lucide-react';
-import { api, uploadPayload, uploadImage } from '../lib/api.js';
+import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
@@ -2324,6 +2324,7 @@ export function Admin() {
     { heading: t('adm.h.content', 'Content') },
     isAdmin && { id: 'catalogs', label: t('adm.tab.catalogs', 'Catalogs'), icon: Boxes },
     isAdmin && { id: 'projects', label: t('adm.tab.projects', 'Projects'), icon: Settings2 },
+    isAdmin && { id: 'assets', label: t('adm.tab.assets', 'Downloads & assets'), icon: Download },
     isAdmin && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
     isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: MessageSquare },
     isAdmin && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
@@ -2436,6 +2437,7 @@ export function Admin() {
         {s === 'errors' && <AdminErrors />}
         {s === 'goals' && <AdminGoals />}
         {s === 'projects' && <AdminProjects />}
+        {s === 'assets' && <AdminAssets />}
         {s === 'showcase' && <AdminShowcase />}
         {s === 'reviews' && <AdminReviews />}
         {s === 'navui' && <AdminNav />}
@@ -4777,6 +4779,123 @@ function AdminFreeHost() {
 }
 
 const PROJ_META = { community: { icon: Package, name: 'Community' }, bmm: { icon: Boxes, name: 'BMM' }, bsm: { icon: Music2, name: 'BSM' }, installer: { icon: Download, name: 'Installer' } };
+// Admin: host platform assets — app installers (BMM/BSM/BI), auto-update manifests, and the
+// JSON configs (links.json / contributors.json) served at stable /api/assets/<key> URLs the
+// apps point at (BCWEB-first, GitHub + local as fallbacks).
+const ASSET_SLOTS = [
+  { key: 'bmm-installer', kind: 'file', label: 'BMM installer' },
+  { key: 'bsm-installer', kind: 'file', label: 'BSM installer' },
+  { key: 'bi-installer', kind: 'file', label: 'BetterInstaller' },
+  { key: 'bmm-update-manifest', kind: 'json', label: 'BMM update manifest' },
+  { key: 'links.json', kind: 'json', label: 'links.json' },
+  { key: 'contributors.json', kind: 'json', label: 'contributors.json' },
+];
+function AdminAssets() {
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/assets'), []);
+  const assets = data?.assets || [];
+  const [newKey, setNewKey] = useState(''); const [newKind, setNewKind] = useState('file');
+  const [editJson, setEditJson] = useState({}); // { [key]: draftString }
+  const [busy, setBusy] = useState('');
+  const fileRefs = useRef({});
+  const has = (k) => assets.some((a) => a.key === k);
+  const publicUrl = (k) => `${location.origin}/api/assets/${k}`;
+
+  const saveJson = async (key, label) => {
+    let parsed; try { parsed = JSON.parse(editJson[key] ?? '{}'); } catch { return toast.error(t('assets.badjson', 'Invalid JSON.')); }
+    setBusy(key);
+    try { await api.put(`/admin/assets/json/${encodeURIComponent(key)}`, { label, json: parsed }); toast.success(t('assets.saved', 'Saved.')); setEditJson((s) => { const n = { ...s }; delete n[key]; return n; }); reload(); }
+    catch (x) { toast.error(x.data?.error || t('common.failed', 'Failed.')); } finally { setBusy(''); }
+  };
+  const pickFile = async (key, label, file) => {
+    if (!file) return;
+    setBusy(key);
+    try {
+      const meta = await uploadAsset(key, file);
+      await api.put(`/admin/assets/file/${encodeURIComponent(key)}`, { ...meta, label });
+      toast.success(t('assets.uploaded', 'Uploaded “{n}”.').replace('{n}', file.name)); reload();
+    } catch (x) { toast.error(x.data?.error || t('assets.uploadfail', 'Upload failed.')); } finally { setBusy(''); }
+  };
+  const del = async (a) => {
+    if (!await dialog.confirm({ title: t('assets.del.t', 'Delete asset?'), body: t('assets.del.b', 'Remove “{k}” and its stored file. Apps pointing at it will fall back.').replace('{k}', a.key), okText: t('common.delete', 'Delete'), danger: true })) return;
+    try { await api.del(`/admin/assets/${encodeURIComponent(a.key)}`); toast.success(t('common.deleted', 'Deleted.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+  const createNew = async () => {
+    const key = newKey.trim();
+    if (!/^[a-zA-Z0-9._-]{1,64}$/.test(key)) return toast.error(t('assets.badkey', 'Key: letters, numbers, . _ - only.'));
+    if (has(key)) return toast.error(t('assets.exists', 'That key already exists.'));
+    if (newKind === 'json') { setEditJson((s) => ({ ...s, [key]: '{\n  \n}' })); await api.put(`/admin/assets/json/${encodeURIComponent(key)}`, { json: {} }).then(reload).catch(() => {}); }
+    else fileRefs.current[key]?.click();
+    setNewKey('');
+  };
+
+  if (loading) return <Loading />;
+  return (
+    <div>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Download size={16} className="text-[var(--primary-2)]" /> {t('assets.title', 'Downloads & assets')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('assets.sub', 'Host app installers, auto-update manifests and the JSON configs (links.json, contributors.json) at stable /api/assets/<key> URLs. The apps read BCWEB first, then GitHub, then their bundled copy.')}</p>
+
+      {/* Quick-create the standard slots that don't exist yet. */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {ASSET_SLOTS.filter((sl) => !has(sl.key)).map((sl) => (
+          <button key={sl.key} onClick={() => { setNewKey(sl.key); setNewKind(sl.kind); }} className="text-xs px-2.5 py-1 rounded-lg border border-dashed border-[var(--line)] text-[var(--muted)] hover:border-[var(--primary-2)] hover:text-[var(--text)]">
+            <Plus size={11} className="inline mr-1" />{sl.label}
+          </button>
+        ))}
+      </div>
+
+      {/* New asset. */}
+      <Card className="p-3 mb-4 flex flex-wrap items-end gap-2">
+        <Field label={t('assets.key', 'Key (public slug)')}><Input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="bmm-installer" className="!w-56" /></Field>
+        <Field label={t('assets.kind', 'Type')}><Select value={newKind} onChange={(e) => setNewKind(e.target.value)} className="!w-auto"><option value="file">{t('assets.file', 'File')}</option><option value="json">{t('assets.json', 'JSON')}</option></Select></Field>
+        <Button variant="primary" onClick={createNew}><Plus size={14} /> {t('assets.create', 'Create / upload')}</Button>
+        {ASSET_SLOTS.map((sl) => <input key={sl.key} ref={(el) => (fileRefs.current[sl.key] = el)} type="file" className="hidden" onChange={(e) => { pickFile(sl.key, sl.label, e.target.files?.[0]); e.target.value = ''; }} />)}
+      </Card>
+
+      {assets.length === 0 ? <EmptyState icon={Download} title={t('assets.none', 'No assets yet')} sub={t('assets.none.s', 'Create one above or pick a standard slot.')} /> : (
+        <div className="space-y-2.5">
+          {assets.map((a) => (
+            <Card key={a.key} className="p-3.5">
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                {a.kind === 'json' ? <FileJson size={15} className="text-sky-400" /> : <Package size={15} className="text-[var(--primary-2)]" />}
+                <span className="font-mono text-sm font-medium">{a.key}</span>
+                {a.label && <span className="text-xs text-[var(--faint)]">{a.label}</span>}
+                <Badge tone="">{a.kind}</Badge>
+                {a.version && <Badge tone="primary">v{a.version}</Badge>}
+                <div className="flex-1" />
+                <button onClick={() => { navigator.clipboard?.writeText(publicUrl(a.key)); toast.success(t('common.copied', 'Copied.')); }} className="text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-1" title={publicUrl(a.key)}><Copy size={11} /> {t('assets.copyurl', 'Copy URL')}</button>
+                <button onClick={() => del(a)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10"><Trash2 size={13} /></button>
+              </div>
+              {a.kind === 'file' ? (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-[var(--muted)]">{a.filename || '—'} {a.size > 0 && <span className="text-[var(--faint)]">· {(a.size / 1048576).toFixed(1)} MB</span>}</span>
+                  <a href={publicUrl(a.key)} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost"><Download size={13} /> {t('assets.download', 'Download')}</Button></a>
+                  <input ref={(el) => (fileRefs.current[a.key] = el)} type="file" className="hidden" onChange={(e) => { pickFile(a.key, a.label, e.target.files?.[0]); e.target.value = ''; }} />
+                  <Button size="sm" variant="default" disabled={busy === a.key} onClick={() => fileRefs.current[a.key]?.click()}><UploadIcon size={13} /> {busy === a.key ? t('assets.uploading', 'Uploading…') : t('assets.replace', 'Replace file')}</Button>
+                </div>
+              ) : (
+                <div>
+                  {editJson[a.key] != null ? (
+                    <div className="space-y-2">
+                      <Textarea value={editJson[a.key]} onChange={(e) => setEditJson((s) => ({ ...s, [a.key]: e.target.value }))} className="!font-mono !text-xs" rows={10} />
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="primary" disabled={busy === a.key} onClick={() => saveJson(a.key, a.label)}><Save size={13} /> {t('common.save', 'Save')}</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditJson((s) => { const n = { ...s }; delete n[a.key]; return n; })}>{t('common.cancel', 'Cancel')}</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button size="sm" variant="default" onClick={() => setEditJson((s) => ({ ...s, [a.key]: JSON.stringify(a.json ?? {}, null, 2) }))}><FileText size={13} /> {t('assets.editjson', 'Edit JSON')}</Button>
+                  )}
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminProjects() {
   const toast = useToast(); const { t } = useI18n();
   const { data, reload } = useAsync(() => api.get('/projects'), []);
