@@ -52,6 +52,15 @@
   pool, so a purchase can hold repos, catalogs, or nothing yet. On lapse the whole pool
   (its repos **and** catalogs) is suspended with the usual 72h delete grace; renewing (auto
   or manual) restores everything.
+- **Pool management** — pools are **collapsible** and each takes its own **colour** in the
+  dashboard. **Merge** several pools into one (multi-select → merge, with a 6s undo toast;
+  repos, catalogs **and** subscriptions move together); admins can **split** a merged pool
+  back apart. A merged pool that carries several paid recurring subs shows a **consolidation
+  savings quote** and can consolidate them into one bigger plan via Stripe (admin-tunable
+  discount; only recurring subs, so a prepaid term is never forfeited).
+- **Share an unlisted repo** — every repo has a public page at `/r/<id>` with an "Open in
+  BMM" deeplink; an *unlisted* repo can still be shared via an owner-minted link
+  `/r/<id>?k=<key>` (mirrors private catalogs' `?k=` share links).
 - **Host a repo** (paid or free-tier), owner **self-publish**, auto URL.
 - **Trust tiers** — Community / Partner / Official badges (official + partner float to the
   top of the public list); filterable on the public /repos page and searchable/filterable

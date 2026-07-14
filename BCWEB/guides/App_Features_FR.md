@@ -58,6 +58,16 @@
   est sur le pool ; un achat peut donc contenir des repos, des catalogues, ou rien encore.
   À l'expiration, tout le pool (ses repos **et** catalogues) est suspendu avec la grâce de
   suppression habituelle de 72h ; le renouvellement (auto ou manuel) restaure tout.
+- **Gestion des pools** — les pools sont **repliables** et chacun prend sa propre **couleur**
+  dans le dashboard. **Fusionne** plusieurs pools en un (multi-sélection → fusionner, avec un
+  undo de 6 s ; repos, catalogues **et** abonnements suivent ensemble) ; les admins peuvent
+  **défusionner** un pool. Un pool fusionné portant plusieurs abos récurrents payants affiche
+  un **devis d'économies de consolidation** et peut les consolider en un seul plan plus grand
+  via Stripe (remise réglable par l'admin ; seuls les abos récurrents, donc un terme prépayé
+  n'est jamais perdu).
+- **Partager un repo non listé** — chaque repo a une page publique `/r/<id>` avec un deeplink
+  « Ouvrir dans BMM » ; un repo *non listé* peut quand même être partagé via un lien généré
+  par l'owner `/r/<id>?k=<clé>` (comme les liens `?k=` des catalogues privés).
 - **Héberger un repo** (payant ou free-tier), **auto-publication** par l'owner, URL auto.
 - **Niveaux de confiance** — badges Communauté / Partenaire / Officiel (officiel + partenaire
   remontent en tête de la liste publique) ; filtrables sur /repos et dans la liste admin.
