@@ -32,9 +32,14 @@ async function canAccessReport(p, report, user) {
   return !!part;
 }
 
+// Attachments must be our own uploaded media (the REPORT presign returns a /api/media/…
+// path). Restricting to that both matches the real upload flow AND prevents an arbitrary
+// external/javascript: URL — the thumbnails are wrapped in <a href> client-side, so any
+// other value would be a stored-XSS / SSRF-to-browser sink for whoever opens the thread.
+const imageUrl = z.string().max(400).regex(/^\/api\/media\/[\w./-]+$/);
 const msgInput = z.object({
   body: z.string().trim().max(4000).optional().default(''),
-  images: z.array(z.string().url().max(400)).max(12).optional().default([]),
+  images: z.array(imageUrl).max(12).optional().default([]),
 });
 
 async function mailReport(p, to, subject, line, reportId) {
@@ -68,7 +73,7 @@ export default async function reportRoutes(app) {
       targetLabel: z.string().max(160).optional().default(''),
       reason: z.string().max(120).optional().default(''),
       body: z.string().trim().min(1).max(4000),
-      images: z.array(z.string().url().max(400)).max(12).optional().default([]),
+      images: z.array(imageUrl).max(12).optional().default([]),
       pow: z.any().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
