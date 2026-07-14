@@ -3,6 +3,16 @@
 All BetterCommunity Web documentation, in one place. Each guide is either split into
 a separate 🇬🇧 EN and 🇫🇷 FR file, or is bilingual within a single file (noted below).
 
+### 👥 Using BetterCommunity (for members, moderators & hosts)
+
+| Guide | 🇬🇧 EN | 🇫🇷 FR |
+|---|---|---|
+| 🧑 **The good little user** (every feature, for everyday members) | [USER_GUIDE_EN.md](USER_GUIDE_EN.md) | [USER_GUIDE_FR.md](USER_GUIDE_FR.md) |
+| 🛡️ **The good little moderator** (tools, roles, judgement) | [MODERATOR_GUIDE_EN.md](MODERATOR_GUIDE_EN.md) | [MODERATOR_GUIDE_FR.md](MODERATOR_GUIDE_FR.md) |
+| 🚀 **The good little host** (repos, catalogs, pools, billing) | [HOST_GUIDE_EN.md](HOST_GUIDE_EN.md) | [HOST_GUIDE_FR.md](HOST_GUIDE_FR.md) |
+
+### 🛠️ Running / deploying the platform
+
 | Guide | 🇬🇧 EN | 🇫🇷 FR |
 |---|---|---|
 | ⭐ **Production quickstart** (fresh VPS → live in ~15 min) | [QUICKSTART_EN.md](QUICKSTART_EN.md) | [QUICKSTART_FR.md](QUICKSTART_FR.md) |
