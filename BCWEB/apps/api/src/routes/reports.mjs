@@ -1,7 +1,11 @@
 import { z } from 'zod';
+import crypto from 'node:crypto';
 import { db, requireRole, requireCap, notify } from '../lib/lib.mjs';
-import { userBcId } from '../lib/repofingerprint.mjs';
+import { userBcId, findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
+import { powVerify } from './auth.mjs';
+
+const STAFF_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
 
 // Report / support-thread subsystem. A user opens a report against another user / repo /
 // catalog / catalog item (or a general support thread), then the reporter and staff
@@ -13,10 +17,19 @@ const TARGET_TYPES = ['user', 'repo', 'catalog', 'item', 'general'];
 const SITE_URL = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 
 // Admin-configurable knobs (AdminSetting `reports.config`), with sane defaults.
-const DEFAULT_CFG = { imageMaxMB: 10, maxImagesPerMsg: 6, archiveDays: 7, deleteDays: 30, archiveEnabled: true, deleteEnabled: true };
+const DEFAULT_CFG = { imageMaxMB: 10, maxImagesPerMsg: 6, archiveDays: 7, deleteDays: 30, archiveEnabled: true, deleteEnabled: true, maxOpenPerUser: 8, maxPerDay: 10 };
 async function reportConfig(p) {
   const row = await p.adminSetting.findUnique({ where: { key: 'reports.config' } }).catch(() => null);
   return { ...DEFAULT_CFG, ...(row?.value || {}) };
+}
+
+// Can this user read/post in a report? The reporter, a participant, or staff (role/cap).
+async function canAccessReport(p, report, user) {
+  if (!report || !user) return false;
+  if (report.reporterId === user.uid) return true;
+  if (STAFF_ROLES.includes(user.role) || user.perms?.includes?.('manage_reports')) return true;
+  const part = await p.reportParticipant.findUnique({ where: { reportId_userId: { reportId: report.id, userId: user.uid } } });
+  return !!part;
 }
 
 const msgInput = z.object({
@@ -46,6 +59,8 @@ export default async function reportRoutes(app) {
   });
 
   // Open a report (logged-in). Logged-out users are directed to /contact by the client.
+  // Antispam: a proof-of-work token (like /contact), a per-user cap on OPEN reports, and a
+  // rolling 24h new-report cap — on top of the burst rate limit.
   app.post('/reports', { preHandler: requireRole(), config: { rateLimit: { max: 12, timeWindow: '1 hour' } } }, async (req, reply) => {
     const b = z.object({
       targetType: z.enum(TARGET_TYPES),
@@ -54,13 +69,25 @@ export default async function reportRoutes(app) {
       reason: z.string().max(120).optional().default(''),
       body: z.string().trim().min(1).max(4000),
       images: z.array(z.string().url().max(400)).max(12).optional().default([]),
+      pow: z.any().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (!powVerify(req.body?.pow)) return reply.code(400).send({ error: 'pow_required' });
     const p = await db();
     const cfg = await reportConfig(p);
     if (b.data.images.length > cfg.maxImagesPerMsg) return reply.code(400).send({ error: 'too_many_images', max: cfg.maxImagesPerMsg });
     // You can't report yourself, and only one OPEN report per target at a time.
     if (b.data.targetType === 'user' && b.data.targetId === req.user.uid) return reply.code(400).send({ error: 'cannot_report_self' });
+    // Antispam caps.
+    if (cfg.maxOpenPerUser > 0) {
+      const open = await p.report.count({ where: { reporterId: req.user.uid, status: 'open' } });
+      if (open >= cfg.maxOpenPerUser) return reply.code(429).send({ error: 'too_many_open', max: cfg.maxOpenPerUser });
+    }
+    if (cfg.maxPerDay > 0) {
+      const since = new Date(Date.now() - 864e5);
+      const today = await p.report.count({ where: { reporterId: req.user.uid, createdAt: { gte: since } } });
+      if (today >= cfg.maxPerDay) return reply.code(429).send({ error: 'daily_limit', max: cfg.maxPerDay });
+    }
     const dup = await p.report.findFirst({ where: { reporterId: req.user.uid, targetType: b.data.targetType, targetId: b.data.targetId, status: 'open' } });
     if (dup) return reply.code(409).send({ error: 'already_open', reportId: dup.id });
     const report = await p.report.create({ data: {
@@ -78,19 +105,20 @@ export default async function reportRoutes(app) {
     return reply.code(201).send({ report: reportPublic(report) });
   });
 
-  // ── Reporter's own reports (their "Contact & reports" dashboard section) ──
+  // ── Reporter's own reports + threads they were added to ("Reports & contact") ──
   app.get('/me/reports', { preHandler: requireRole() }, async (req) => {
     const p = await db();
-    const rows = await p.report.findMany({ where: { reporterId: req.user.uid }, orderBy: { lastActivityAt: 'desc' }, take: 100, include: { _count: { select: { messages: true } } } });
-    return { reports: rows.map(reportPublic) };
+    const partIds = (await p.reportParticipant.findMany({ where: { userId: req.user.uid }, select: { reportId: true } })).map((x) => x.reportId);
+    const rows = await p.report.findMany({ where: { OR: [{ reporterId: req.user.uid }, { id: { in: partIds } }] }, orderBy: { lastActivityAt: 'desc' }, take: 100, include: { _count: { select: { messages: true } } } });
+    return { reports: rows.map((r) => ({ ...reportPublic(r), participant: r.reporterId !== req.user.uid })) };
   });
 
   app.get('/me/reports/:id', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
-    const r = await p.report.findUnique({ where: { id: req.params.id }, include: { messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true } } } }, _count: { select: { messages: true } } } });
-    if (!r || r.reporterId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
-    if (r.userUnread) await p.report.update({ where: { id: r.id }, data: { userUnread: false } });
-    return { report: { ...reportPublic(r), messages: r.messages.map(msgPublic) } };
+    const r = await p.report.findUnique({ where: { id: req.params.id }, include: { messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true } } } }, participants: { include: { user: { select: { displayName: true } } } }, _count: { select: { messages: true } } } });
+    if (!(await canAccessReport(p, r, req.user))) return reply.code(404).send({ error: 'not_found' });
+    if (r.reporterId === req.user.uid && r.userUnread) await p.report.update({ where: { id: r.id }, data: { userUnread: false } });
+    return { report: { ...reportPublic(r), participants: r.participants.map((x) => ({ userId: x.userId, name: x.user?.displayName, role: x.role })), messages: r.messages.map(msgPublic) } };
   });
 
   app.post('/me/reports/:id/messages', { preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (req, reply) => {
@@ -100,11 +128,13 @@ export default async function reportRoutes(app) {
     const cfg = await reportConfig(p);
     if (b.data.images.length > cfg.maxImagesPerMsg) return reply.code(400).send({ error: 'too_many_images', max: cfg.maxImagesPerMsg });
     const r = await p.report.findUnique({ where: { id: req.params.id } });
-    if (!r || r.reporterId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
+    if (!(await canAccessReport(p, r, req.user))) return reply.code(404).send({ error: 'not_found' });
     if (r.status === 'closed') return reply.code(409).send({ error: 'closed' });
-    const m = await p.reportMessage.create({ data: { reportId: r.id, authorId: req.user.uid, body: b.data.body, images: b.data.images } });
-    // A reporter message reopens an archived thread and flags staff.
-    await p.report.update({ where: { id: r.id }, data: { status: 'open', archivedAt: null, staffUnread: true, lastActivityAt: new Date() } });
+    // A staff participant posting counts as a staff message; the reporter/invited user is a normal one.
+    const asStaff = STAFF_ROLES.includes(req.user.role) || req.user.perms?.includes?.('manage_reports');
+    const m = await p.reportMessage.create({ data: { reportId: r.id, authorId: req.user.uid, staff: asStaff, body: b.data.body, images: b.data.images } });
+    // A message reopens an archived thread; flag the "other side" as unread.
+    await p.report.update({ where: { id: r.id }, data: { status: 'open', archivedAt: null, staffUnread: !asStaff ? true : r.staffUnread, userUnread: asStaff ? true : r.userUnread, lastActivityAt: new Date() } });
     return { message: msgPublic({ ...m, author: null }) };
   });
 
@@ -126,10 +156,106 @@ export default async function reportRoutes(app) {
 
   app.get('/admin/reports/:id', { preHandler: requireCap('manage_reports', 'MOD') }, async (req, reply) => {
     const p = await db();
-    const r = await p.report.findUnique({ where: { id: req.params.id }, include: { reporter: { select: { id: true, displayName: true, email: true } }, messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true } } } } } });
+    const r = await p.report.findUnique({ where: { id: req.params.id }, include: { reporter: { select: { id: true, displayName: true, email: true } }, messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true } } } }, participants: { include: { user: { select: { id: true, displayName: true, email: true } } } }, invites: { orderBy: { createdAt: 'desc' } } } });
     if (!r) return reply.code(404).send({ error: 'not_found' });
     if (r.staffUnread) await p.report.update({ where: { id: r.id }, data: { staffUnread: false } });
-    return { report: { ...reportPublic(r), reporter: r.reporter?.displayName, reporterEmail: r.reporter?.email, reporterBcId: r.reporter ? userBcId(r.reporter.id) : null, messages: r.messages.map(msgPublic) } };
+    return { report: {
+      ...reportPublic(r), reporter: r.reporter?.displayName, reporterEmail: r.reporter?.email, reporterBcId: r.reporter ? userBcId(r.reporter.id) : null,
+      messages: r.messages.map(msgPublic),
+      participants: r.participants.map((x) => ({ userId: x.userId, name: x.user?.displayName, email: x.user?.email, bcId: userBcId(x.userId), role: x.role })),
+      invites: r.invites.map((iv) => ({ id: iv.id, token: iv.token, url: `${SITE_URL}/reports/join/${iv.token}`, maxUses: iv.maxUses, uses: iv.uses, targetType: iv.targetType, targetValue: iv.targetValue, expiresAt: iv.expiresAt })),
+    } };
+  });
+
+  // Add a participant to a thread by account id / email / BC id (role: staff | invited).
+  app.post('/admin/reports/:id/participants', { preHandler: requireCap('manage_reports') }, async (req, reply) => {
+    const b = z.object({ who: z.string().min(1).max(200), role: z.enum(['staff', 'invited']).default('invited') }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const r = await p.report.findUnique({ where: { id: req.params.id } });
+    if (!r) return reply.code(404).send({ error: 'not_found' });
+    const who = b.data.who.trim();
+    let user = null;
+    if (who.includes('@')) user = await p.user.findFirst({ where: { email: who } });
+    else if (looksLikeBcId(who)) { const uid = await findUserIdByBcId(p, who); if (uid) user = await p.user.findUnique({ where: { id: uid } }); }
+    if (!user) user = await p.user.findUnique({ where: { id: who } }).catch(() => null);
+    if (!user) return reply.code(404).send({ error: 'no_such_user' });
+    if (user.id === r.reporterId) return reply.code(400).send({ error: 'already_reporter' });
+    await p.reportParticipant.upsert({
+      where: { reportId_userId: { reportId: r.id, userId: user.id } },
+      create: { reportId: r.id, userId: user.id, role: b.data.role, addedById: req.user.uid },
+      update: { role: b.data.role },
+    });
+    notify(p, user.id, 'report_added', 'You were added to a report conversation.').catch(() => {});
+    mailReport(p, user.email, 'You were added to a conversation', 'A moderator added you to a report conversation.', r.id);
+    return { ok: true, userId: user.id, name: user.displayName };
+  });
+
+  app.delete('/admin/reports/:id/participants/:userId', { preHandler: requireCap('manage_reports') }, async (req) => {
+    const p = await db();
+    await p.reportParticipant.deleteMany({ where: { reportId: req.params.id, userId: req.params.userId } });
+    return { ok: true };
+  });
+
+  // Create an invite link (optionally capped by uses / locked to an account, email or creator id).
+  app.post('/admin/reports/:id/invites', { preHandler: requireCap('manage_reports') }, async (req, reply) => {
+    const b = z.object({
+      maxUses: z.number().int().min(0).max(1000).optional().default(1),
+      targetType: z.enum(['any', 'user', 'email', 'creator']).optional().default('any'),
+      targetValue: z.string().max(200).optional().default(''),
+      expiresInDays: z.number().int().min(1).max(365).nullish(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (b.data.targetType !== 'any' && !b.data.targetValue.trim()) return reply.code(400).send({ error: 'target_value_required' });
+    const p = await db();
+    const r = await p.report.findUnique({ where: { id: req.params.id } });
+    if (!r) return reply.code(404).send({ error: 'not_found' });
+    const token = crypto.randomBytes(18).toString('base64url');
+    const inv = await p.reportInvite.create({ data: {
+      reportId: r.id, token, maxUses: b.data.maxUses, targetType: b.data.targetType, targetValue: b.data.targetValue.trim(),
+      expiresAt: b.data.expiresInDays ? new Date(Date.now() + b.data.expiresInDays * 864e5) : null, createdById: req.user.uid,
+    } });
+    return reply.code(201).send({ invite: { id: inv.id, token, url: `${SITE_URL}/reports/join/${token}` } });
+  });
+
+  app.delete('/admin/reports/:id/invites/:inviteId', { preHandler: requireCap('manage_reports') }, async (req) => {
+    const p = await db();
+    await p.reportInvite.deleteMany({ where: { id: req.params.inviteId, reportId: req.params.id } });
+    return { ok: true };
+  });
+
+  // Preview + consume an invite link (logged-in). Validates target constraint, uses, expiry.
+  app.get('/reports/join/:token', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const inv = await p.reportInvite.findUnique({ where: { token: req.params.token }, include: { report: { select: { id: true, targetLabel: true, targetType: true, reporterId: true } } } });
+    if (!inv || !inv.report) return reply.code(404).send({ error: 'invalid_invite' });
+    if (inv.expiresAt && inv.expiresAt < new Date()) return reply.code(410).send({ error: 'invite_expired' });
+    if (inv.maxUses > 0 && inv.uses >= inv.maxUses) return reply.code(410).send({ error: 'invite_used_up' });
+    return { report: { id: inv.report.id, label: inv.report.targetLabel, type: inv.report.targetType }, targetType: inv.targetType };
+  });
+
+  app.post('/reports/join/:token', { preHandler: requireRole(), config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const p = await db();
+    const inv = await p.reportInvite.findUnique({ where: { token: req.params.token }, include: { report: true } });
+    if (!inv || !inv.report) return reply.code(404).send({ error: 'invalid_invite' });
+    if (inv.expiresAt && inv.expiresAt < new Date()) return reply.code(410).send({ error: 'invite_expired' });
+    if (inv.maxUses > 0 && inv.uses >= inv.maxUses) return reply.code(410).send({ error: 'invite_used_up' });
+    // Already the reporter or a participant → just let them in (don't consume a use).
+    if (inv.report.reporterId === req.user.uid) return { ok: true, reportId: inv.report.id };
+    const existing = await p.reportParticipant.findUnique({ where: { reportId_userId: { reportId: inv.reportId, userId: req.user.uid } } });
+    if (existing) return { ok: true, reportId: inv.report.id };
+    // Enforce the invite's target constraint against the joining account.
+    if (inv.targetType !== 'any') {
+      const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { id: true, email: true } });
+      let okTarget = false;
+      if (inv.targetType === 'user') okTarget = inv.targetValue === me.id;
+      else if (inv.targetType === 'email') okTarget = inv.targetValue.toLowerCase() === (me.email || '').toLowerCase();
+      else if (inv.targetType === 'creator') okTarget = !!(await p.creatorLink.findFirst({ where: { userId: me.id, creatorId: inv.targetValue } }));
+      if (!okTarget) return reply.code(403).send({ error: 'invite_not_for_you' });
+    }
+    await p.reportParticipant.create({ data: { reportId: inv.reportId, userId: req.user.uid, role: 'invited' } });
+    await p.reportInvite.update({ where: { id: inv.id }, data: { uses: { increment: 1 } } });
+    return { ok: true, reportId: inv.report.id };
   });
 
   app.post('/admin/reports/:id/messages', { preHandler: requireCap('manage_reports', 'MOD') }, async (req, reply) => {
@@ -176,6 +302,8 @@ export default async function reportRoutes(app) {
       deleteDays: z.number().int().min(1).max(3650).optional(),
       archiveEnabled: z.boolean().optional(),
       deleteEnabled: z.boolean().optional(),
+      maxOpenPerUser: z.number().int().min(0).max(1000).optional(),
+      maxPerDay: z.number().int().min(0).max(1000).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();

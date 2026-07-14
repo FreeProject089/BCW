@@ -146,9 +146,10 @@ model User {
   blogPermissions    BlogPermission[]
   submissionComments SubmissionComment[]
   contactMessages    ContactMessage[]
-  reportsMade        Report[]           @relation("ReportReporter")
-  reportMessages     ReportMessage[]
-  socialConnections  SocialConnection[]
+  reportsMade         Report[]            @relation("ReportReporter")
+  reportMessages      ReportMessage[]
+  reportParticipations ReportParticipant[]
+  socialConnections   SocialConnection[]
   loginAttempts      LoginAttempt[]
   auditLogEntries    AuditLogEntry[]
   repoFavorites      RepoFavorite[]
@@ -1305,12 +1306,49 @@ model Report {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   messages       ReportMessage[]
+  participants   ReportParticipant[]
+  invites        ReportInvite[]
 
   @@index([reporterId])
   @@index([status])
   @@index([targetType, targetId])
   @@index([lastActivityAt])
   @@index([archivedAt])
+}
+
+// Extra people added to a report thread beyond the reporter: other staff, or invited
+// users. A participant can read + post in the thread (like the reporter).
+model ReportParticipant {
+  id        String   @id @default(cuid())
+  report    Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  reportId  String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  role      String   @default("invited") // "staff" | "invited"
+  addedById String? // who added them (staff id), or null for a self-join via invite
+  createdAt DateTime @default(now())
+
+  @@unique([reportId, userId])
+  @@index([reportId])
+  @@index([userId])
+}
+
+// A shareable invite link to join a report thread. Optionally capped by number of uses and
+// constrained to a specific account / email / BMM creator id.
+model ReportInvite {
+  id          String    @id @default(cuid())
+  report      Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  reportId    String
+  token       String    @unique
+  maxUses     Int       @default(1) // 0 = unlimited
+  uses        Int       @default(0)
+  targetType  String    @default("any") // any | user | email | creator
+  targetValue String    @default("") // the account id / email / creator id it's locked to
+  expiresAt   DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  @@index([reportId])
 }
 
 model ReportMessage {

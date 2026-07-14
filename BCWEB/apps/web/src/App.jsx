@@ -20,6 +20,7 @@ import { IntroProvider, useIntro } from './ui/IntroContext.jsx';
 import ProjectPage, { OtherProjects, ShowcaseProjectPage } from './pages/project.jsx';
 import Profile from './pages/profile.jsx';
 import PublicProfile, { UserSearch } from './pages/publicprofile.jsx';
+import { ReportJoin } from './ui/report.jsx';
 import Avatar from './ui/Avatar.jsx';
 import { BlogList, BlogPostPage } from './pages/blog.jsx';
 import Docs from './pages/docs.jsx';
@@ -718,6 +719,7 @@ export default function App() {
               <Route path="/profile" element={<Protected><Profile /></Protected>} />
               <Route path="/users" element={<UserSearch />} />
               <Route path="/u/:id" element={<PublicProfile />} />
+              <Route path="/reports/join/:token" element={<ReportJoin />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/authorize" element={<Authorize />} />
               <Route path="/verify-email" element={<VerifyEmail />} />

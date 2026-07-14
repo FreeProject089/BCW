@@ -8820,6 +8820,7 @@ function ReportThreadModal({ id, admin, onClose }) {
   const base = admin ? `/admin/reports/${id}` : `/me/reports/${id}`;
   const { data, loading, reload } = useAsync(() => api.get(base), [id]);
   const [sending, setSending] = useState(false);
+  const [people, setPeople] = useState(false);
   const r = data?.report;
   const send = async ({ body, images }) => {
     setSending(true);
@@ -8842,13 +8843,81 @@ function ReportThreadModal({ id, admin, onClose }) {
           {r.status !== 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus('open')}><RefreshCw size={13} /> {t('ar.reopen', 'Reopen')}</Button>}
           {r.status !== 'archived' && <Button size="sm" variant="ghost" onClick={() => setStatus('archived')}><Archive size={13} /> {t('ar.archive', 'Archive')}</Button>}
           {r.status !== 'closed' && <Button size="sm" variant="ghost" onClick={() => setStatus('closed')}><CheckCircle2 size={13} /> {t('ar.close', 'Close')}</Button>}
+          <Button size="sm" variant="ghost" onClick={() => setPeople((v) => !v)}><Users size={13} /> {t('ar.people', 'People')}{r.participants?.length ? ` (${r.participants.length})` : ''}</Button>
           <Button size="sm" variant="ghost" className="!text-red-400" onClick={del}><Trash2 size={13} /> {t('common.delete', 'Delete')}</Button>
         </div>}
+        {admin && people && <ReportPeoplePanel report={r} onChange={reload} />}
         <div className="max-h-[45vh] overflow-y-auto pr-1"><ReportThread messages={r.messages} /></div>
         {r.status === 'closed' && !admin ? <p className="text-sm text-[var(--faint)] text-center py-2">{t('mr.closednote', 'This report is closed. Open a new one if you still need help.')}</p>
           : <ReportComposer onSend={send} sending={sending} placeholder={admin ? t('ar.reply', 'Reply as staff…') : t('rp.msgph', 'Write a message…')} />}
       </div>}
     </Modal>
+  );
+}
+
+// Admin: manage who's in a report thread — add participants (by id/email/BC id, as staff or
+// invited) and mint invite links (usage cap + optional lock to an account / email / creator id).
+function ReportPeoplePanel({ report, onChange }) {
+  const { t } = useI18n(); const toast = useToast();
+  const [who, setWho] = useState(''); const [role, setRole] = useState('invited');
+  const [inv, setInv] = useState({ maxUses: 1, targetType: 'any', targetValue: '', expiresInDays: '' });
+  const add = async () => {
+    if (!who.trim()) return;
+    try { const rr = await api.post(`/admin/reports/${report.id}/participants`, { who: who.trim(), role }); toast.success(t('rpp.added', 'Added {n}.').replace('{n}', rr.name || who)); setWho(''); onChange(); }
+    catch (x) { toast.error(x.data?.error === 'no_such_user' ? t('rpp.nouser', 'No user with that id/email/BC id.') : x.data?.error === 'already_reporter' ? t('rpp.isreporter', 'That’s the reporter.') : t('acc.failed', 'Failed.')); }
+  };
+  const rmPart = async (p2) => { try { await api.del(`/admin/reports/${report.id}/participants/${p2.userId}`); onChange(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  const mkInvite = async () => {
+    try {
+      const body = { maxUses: Number(inv.maxUses) || 0, targetType: inv.targetType, targetValue: inv.targetValue.trim() };
+      if (inv.expiresInDays) body.expiresInDays = Number(inv.expiresInDays);
+      const rr = await api.post(`/admin/reports/${report.id}/invites`, body);
+      navigator.clipboard?.writeText(rr.invite.url); toast.success(t('rpp.invcopied', 'Invite link copied.')); onChange();
+    } catch (x) { toast.error(x.data?.error === 'target_value_required' ? t('rpp.needtarget', 'Fill the target (account/email/creator id).') : t('acc.failed', 'Failed.')); }
+  };
+  const rmInvite = async (iv) => { try { await api.del(`/admin/reports/${report.id}/invites/${iv.id}`); onChange(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  return (
+    <div className="rounded-xl border border-[var(--line)] p-3 space-y-3 bg-[var(--surface-2)]/40">
+      {/* Participants */}
+      <div>
+        <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1.5">{t('rpp.participants', 'Participants')}</div>
+        {report.participants?.length > 0 && <div className="space-y-1 mb-2">
+          {report.participants.map((p2) => (
+            <div key={p2.userId} className="flex items-center gap-2 text-sm">
+              <Badge tone={p2.role === 'staff' ? 'amber' : ''}>{p2.role}</Badge>
+              <span className="flex-1 min-w-0 truncate">{p2.name} <span className="text-[var(--faint)] text-xs">· {p2.email}</span></span>
+              <button onClick={() => rmPart(p2)} className="text-[var(--faint)] hover:text-red-400"><X size={13} /></button>
+            </div>
+          ))}
+        </div>}
+        <div className="flex flex-wrap items-end gap-2">
+          <Input className="flex-1 min-w-[160px]" placeholder={t('rpp.who', 'User id, email or BC id')} value={who} onChange={(e) => setWho(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+          <Select className="!w-auto" value={role} onChange={(e) => setRole(e.target.value)}><option value="invited">{t('rpp.invited', 'Invited user')}</option><option value="staff">{t('rpp.staff', 'Staff')}</option></Select>
+          <Button size="sm" variant="default" onClick={add}><Plus size={13} /> {t('rpp.add', 'Add')}</Button>
+        </div>
+      </div>
+      {/* Invite links */}
+      <div className="pt-2 border-t border-[var(--line)]">
+        <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1.5">{t('rpp.invites', 'Invite links')}</div>
+        {report.invites?.length > 0 && <div className="space-y-1 mb-2">
+          {report.invites.map((iv) => (
+            <div key={iv.id} className="flex items-center gap-2 text-xs">
+              <span className="flex-1 min-w-0 truncate font-mono">{iv.url}</span>
+              <span className="text-[var(--faint)] shrink-0">{iv.maxUses === 0 ? '∞' : `${iv.uses}/${iv.maxUses}`}{iv.targetType !== 'any' ? ` · ${iv.targetType}` : ''}</span>
+              <button onClick={() => { navigator.clipboard?.writeText(iv.url); toast.success(t('ccp.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--primary)]"><Copy size={12} /></button>
+              <button onClick={() => rmInvite(iv)} className="text-[var(--faint)] hover:text-red-400"><X size={12} /></button>
+            </div>
+          ))}
+        </div>}
+        <div className="grid sm:grid-cols-2 gap-2">
+          <label className="text-xs text-[var(--muted)]">{t('rpp.maxuses', 'Max uses (0 = unlimited)')}<Input type="number" min="0" value={inv.maxUses} onChange={(e) => setInv({ ...inv, maxUses: e.target.value })} /></label>
+          <label className="text-xs text-[var(--muted)]">{t('rpp.expires', 'Expires in days (blank = never)')}<Input type="number" min="1" value={inv.expiresInDays} onChange={(e) => setInv({ ...inv, expiresInDays: e.target.value })} /></label>
+          <label className="text-xs text-[var(--muted)]">{t('rpp.lockto', 'Lock to')}<Select value={inv.targetType} onChange={(e) => setInv({ ...inv, targetType: e.target.value })}><option value="any">{t('rpp.anyone', 'Anyone with the link')}</option><option value="user">{t('rpp.anuser', 'A specific account (id)')}</option><option value="email">{t('rpp.anemail', 'An email')}</option><option value="creator">{t('rpp.acreator', 'A BMM creator id')}</option></Select></label>
+          {inv.targetType !== 'any' && <label className="text-xs text-[var(--muted)]">{t('rpp.target', 'Target value')}<Input value={inv.targetValue} onChange={(e) => setInv({ ...inv, targetValue: e.target.value })} placeholder={inv.targetType === 'email' ? 'user@example.com' : inv.targetType === 'user' ? 'account id' : 'creator id'} /></label>}
+        </div>
+        <div className="mt-2"><Button size="sm" variant="default" onClick={mkInvite}><Link2 size={13} /> {t('rpp.mkinvite', 'Create invite link')}</Button></div>
+      </div>
+    </div>
   );
 }
 
@@ -8893,7 +8962,7 @@ function AdminReportsConfig({ onClose }) {
   const { data, loading } = useAsync(() => api.get('/admin/reports/config'), []);
   const [f, setF] = useState(null);
   useEffect(() => { if (data?.config) setF(data.config); }, [data]);
-  const save = async () => { try { await api.put('/admin/reports/config', { imageMaxMB: Number(f.imageMaxMB), maxImagesPerMsg: Number(f.maxImagesPerMsg), archiveDays: Number(f.archiveDays), deleteDays: Number(f.deleteDays), archiveEnabled: !!f.archiveEnabled, deleteEnabled: !!f.deleteEnabled }); toast.success(t('arc.saved', 'Settings saved.')); onClose(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  const save = async () => { try { await api.put('/admin/reports/config', { imageMaxMB: Number(f.imageMaxMB), maxImagesPerMsg: Number(f.maxImagesPerMsg), archiveDays: Number(f.archiveDays), deleteDays: Number(f.deleteDays), archiveEnabled: !!f.archiveEnabled, deleteEnabled: !!f.deleteEnabled, maxOpenPerUser: Number(f.maxOpenPerUser), maxPerDay: Number(f.maxPerDay) }); toast.success(t('arc.saved', 'Settings saved.')); onClose(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
   return (
     <Modal open onClose={onClose} title={t('arc.title', 'Report settings')} icon={Settings2} width="max-w-md"
       footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={save} disabled={!f}>{t('common.save', 'Save')}</Button></>}>
@@ -8903,6 +8972,8 @@ function AdminReportsConfig({ onClose }) {
           <Field label={t('arc.imgcount', 'Images per message')}><Input type="number" min="1" max="20" value={f.maxImagesPerMsg} onChange={(e) => setF({ ...f, maxImagesPerMsg: e.target.value })} /></Field>
           <Field label={t('arc.archdays', 'Auto-archive after (days idle)')}><Input type="number" min="1" value={f.archiveDays} onChange={(e) => setF({ ...f, archiveDays: e.target.value })} /></Field>
           <Field label={t('arc.deldays', 'Delete after (days archived)')}><Input type="number" min="1" value={f.deleteDays} onChange={(e) => setF({ ...f, deleteDays: e.target.value })} /></Field>
+          <Field label={t('arc.maxopen', 'Max open reports / user (0 = off)')}><Input type="number" min="0" value={f.maxOpenPerUser} onChange={(e) => setF({ ...f, maxOpenPerUser: e.target.value })} /></Field>
+          <Field label={t('arc.maxday', 'Max new reports / user / day (0 = off)')}><Input type="number" min="0" value={f.maxPerDay} onChange={(e) => setF({ ...f, maxPerDay: e.target.value })} /></Field>
         </div>
         <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={f.archiveEnabled} onChange={(e) => setF({ ...f, archiveEnabled: e.target.checked })} /> {t('arc.archen', 'Auto-archive idle reports')}</label>
         <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={f.deleteEnabled} onChange={(e) => setF({ ...f, deleteEnabled: e.target.checked })} /> {t('arc.delen', 'Auto-delete old archived reports')}</label>

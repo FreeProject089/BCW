@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Flag, Send, ImagePlus, X, Loader2, Shield } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate, useParams, Link } from 'react-router-dom';
+import { Flag, Send, ImagePlus, X, Loader2, Shield, MessageSquare, Lock } from 'lucide-react';
 import { api, uploadReportImage } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from '../pages/auth.jsx';
-import { Button, Modal, Textarea, Select, useToast } from './ui.jsx';
+import { Button, Modal, Textarea, Select, useToast, Card, Spinner } from './ui.jsx';
 
 const REASONS = [
   ['spam', 'rp.reason.spam', 'Spam or advertising'],
@@ -99,6 +99,52 @@ export function ReportButton({ targetType, targetId, targetLabel, size = 'sm', v
   );
 }
 
+// Landing page for a report-thread invite link (/reports/join/:token). Previews the invite
+// then joins the caller (must be logged in + match any target constraint), then opens the thread.
+export function ReportJoin() {
+  const { token } = useParams();
+  const { t } = useI18n(); const { user } = useAuth(); const navigate = useNavigate();
+  const [state, setState] = useState({ loading: true });
+  const [joining, setJoining] = useState(false);
+  useEffect(() => {
+    if (!user) return; // wait for auth
+    api.get(`/reports/join/${token}`).then((r) => setState({ preview: r })).catch((x) => setState({ error: x.data?.error || 'invalid_invite' }));
+  }, [token, user]);
+  const join = async () => {
+    setJoining(true);
+    try { const r = await api.post(`/reports/join/${token}`); navigate(`/dashboard?s=reports&r=${r.reportId}`); }
+    catch (x) { setState({ error: x.data?.error || 'invalid_invite' }); setJoining(false); }
+  };
+  const ERR = {
+    invalid_invite: t('rj.invalid', 'This invite link is invalid.'),
+    invite_expired: t('rj.expired', 'This invite link has expired.'),
+    invite_used_up: t('rj.used', 'This invite link has been used up.'),
+    invite_not_for_you: t('rj.notyou', 'This invite is locked to a different account.'),
+  };
+  return (
+    <div className="max-w-md mx-auto px-4 py-16">
+      <Card className="p-6 text-center">
+        {!user ? <>
+          <Lock size={28} className="mx-auto text-[var(--primary-2)] mb-3" />
+          <h1 className="text-lg font-semibold">{t('rj.signin.t', 'Sign in to join')}</h1>
+          <p className="text-sm text-[var(--muted)] mt-1 mb-4">{t('rj.signin.s', 'You need an account to join this conversation.')}</p>
+          <Link to={`/auth?next=${encodeURIComponent(location.pathname)}`}><Button variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
+        </> : state.loading ? <div className="flex items-center justify-center gap-2 text-[var(--muted)] py-6"><Spinner /> {t('common.loading', 'Loading…')}</div>
+          : state.error ? <>
+            <X size={28} className="mx-auto text-red-400 mb-3" />
+            <h1 className="text-lg font-semibold">{t('rj.cant', 'Can’t join')}</h1>
+            <p className="text-sm text-[var(--muted)] mt-1">{ERR[state.error] || ERR.invalid_invite}</p>
+          </> : <>
+            <MessageSquare size={28} className="mx-auto text-[var(--primary-2)] mb-3" />
+            <h1 className="text-lg font-semibold">{t('rj.title', 'Join this conversation')}</h1>
+            <p className="text-sm text-[var(--muted)] mt-1 mb-4">{state.preview?.report?.label ? t('rj.about', 'About “{n}”.').replace('{n}', state.preview.report.label) : t('rj.support', 'A support conversation.')}</p>
+            <Button variant="primary" onClick={join} disabled={joining}>{joining ? <Spinner /> : t('rj.join', 'Join conversation')}</Button>
+          </>}
+      </Card>
+    </div>
+  );
+}
+
 export function ReportModal({ targetType, targetId, targetLabel, onClose }) {
   const { t } = useI18n(); const toast = useToast();
   const [reason, setReason] = useState('spam');
@@ -107,13 +153,18 @@ export function ReportModal({ targetType, targetId, targetLabel, onClose }) {
     if (!body) { toast.error(t('rp.needbody', 'Describe the problem first.')); return false; }
     setBusy(true);
     try {
-      await api.post('/reports', { targetType, targetId, targetLabel, reason, body, images });
+      const { solvePow } = await import('../lib/pow.js');
+      const pow = await solvePow(() => api.get('/auth/pow')); // antispam proof-of-work
+      await api.post('/reports', { targetType, targetId, targetLabel, reason, body, images, pow });
       toast.success(t('rp.sent', 'Report sent — we’ll follow up in your dashboard.'));
       onClose(); return true;
     } catch (x) {
-      if (x.data?.error === 'already_open') { toast.error(t('rp.dup', 'You already have an open report on this. Continue it in your dashboard.')); onClose(); }
-      else if (x.data?.error === 'cannot_report_self') toast.error(t('rp.self', "You can't report yourself."));
-      else toast.error(x.data?.error || t('acc.failed', 'Failed.'));
+      const e = x.data?.error;
+      if (e === 'already_open') { toast.error(t('rp.dup', 'You already have an open report on this. Continue it in your dashboard.')); onClose(); }
+      else if (e === 'cannot_report_self') toast.error(t('rp.self', "You can't report yourself."));
+      else if (e === 'too_many_open') toast.error(t('rp.toomanyopen', 'You have too many open reports — close some first.'));
+      else if (e === 'daily_limit') toast.error(t('rp.daily', 'Daily report limit reached — try again tomorrow.'));
+      else toast.error(e || t('acc.failed', 'Failed.'));
       return false;
     } finally { setBusy(false); }
   };
