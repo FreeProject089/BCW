@@ -3,7 +3,8 @@ import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from
 import { Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
-import { Button, useToast } from './ui/ui.jsx';
+import { Button, useToast, Modal } from './ui/ui.jsx';
+import { Badges, BadgeIcon } from './ui/Badges.jsx';
 import { ThemeToggle } from './ui/theme.jsx';
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
 import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon } from './ui/brand.jsx';
@@ -18,6 +19,7 @@ import EventEffect from './hero/event-effect.jsx';
 import { IntroProvider, useIntro } from './ui/IntroContext.jsx';
 import ProjectPage, { OtherProjects, ShowcaseProjectPage } from './pages/project.jsx';
 import Profile from './pages/profile.jsx';
+import PublicProfile, { UserSearch } from './pages/publicprofile.jsx';
 import Avatar from './ui/Avatar.jsx';
 import { BlogList, BlogPostPage } from './pages/blog.jsx';
 import Docs from './pages/docs.jsx';
@@ -479,6 +481,53 @@ function FooterNewsletter() {
   );
 }
 
+// The "Built for the Better* community" tagline is a secret: click it 5× to reveal a
+// modal with an admin-customisable message, which grants a hidden footer badge (if a
+// badge with grant=easter_egg + trigger="footer5x" exists and you're signed in).
+function FooterEgg() {
+  const { t } = useI18n(); const toast = useToast();
+  const { user } = useAuth();
+  const [clicks, setClicks] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [badge, setBadge] = useState(null); // { name, icon, iconType, color, message }
+  const [claimed, setClaimed] = useState(false);
+  const timer = useRef(null);
+  const onClick = async () => {
+    const n = clicks + 1; setClicks(n);
+    clearTimeout(timer.current); timer.current = setTimeout(() => setClicks(0), 1200); // must be quick taps
+    if (n >= 5) {
+      setClicks(0);
+      try { const r = await api.get('/badges/trigger/footer5x'); setBadge(r.badge); setOpen(true); }
+      catch { /* no easter-egg badge configured — stay silent */ }
+    }
+  };
+  const claim = async () => {
+    try { const r = await api.post('/me/badges/claim', { trigger: 'footer5x' }); setClaimed(true); toast.success(r.alreadyHad ? t('egg.already', 'You already have this badge.') : t('egg.granted', 'Badge unlocked! 🎉')); }
+    catch { toast.error(t('egg.failed', 'Could not claim right now.')); }
+  };
+  return (
+    <>
+      <button onClick={onClick} className="flex items-center gap-1.5 hover:text-[var(--muted)] transition select-none" title="✨">
+        <Sparkles size={12} className="text-[var(--primary-2)]" /> Built for the Better* community
+      </button>
+      {open && badge && <Modal open onClose={() => setOpen(false)} title={badge.name || t('egg.title', 'You found a secret!')}
+        icon={undefined} width="max-w-sm">
+        <div className="text-center py-2">
+          <div className="w-16 h-16 rounded-2xl grid place-items-center mx-auto mb-3" style={{ background: `color-mix(in srgb, ${badge.color || 'var(--primary)'} 16%, transparent)` }}>
+            <BadgeIcon badge={badge} size={34} />
+          </div>
+          <p className="text-sm text-[var(--muted)] whitespace-pre-wrap break-words">{badge.message || t('egg.default', 'Thanks for being curious. Here\'s a little something.')}</p>
+          <div className="mt-4">
+            {!user ? <p className="text-xs text-[var(--faint)]">{t('egg.signin', 'Sign in to keep this badge on your profile.')}</p>
+              : claimed ? <p className="text-sm font-medium text-[var(--primary-2)] flex items-center justify-center gap-1.5"><CheckCircle2 size={15} /> {t('egg.done', 'Added to your profile.')}</p>
+              : <Button variant="primary" onClick={claim}>{t('egg.claim', 'Claim badge')}</Button>}
+          </div>
+        </div>
+      </Modal>}
+    </>
+  );
+}
+
 function Footer() {
   const { t } = useI18n();
   return (
@@ -501,14 +550,14 @@ function Footer() {
           <FooterNewsletter />
         </div>
         <FooterCol title={t('foot.products')} links={[['BetterModsManager', '/p/bmm'], ['BetterSoundMaker', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting']]} />
-        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/legal/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('faq.title', 'FAQ'), '/faq'], [t('nav.repos'), '/repos'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
+        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/legal/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('faq.title', 'FAQ'), '/faq'], [t('nav.repos'), '/repos'], [t('foot.members', 'Members'), '/users'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
         <FooterCol title={t('foot.legal')} links={[[t('legal.all', 'All'), '/legal'], [t('foot.privacy'), '/legal/privacy'], [t('foot.terms'), '/legal/terms'], [t('foot.cookies'), '/legal/cookies'], [t('foot.refunds', 'Payments & Refunds'), '/legal/refunds']]} />
       </div>
       <div className="border-t border-[var(--line)]"><div className="max-w-6xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 text-xs text-[var(--faint)] pb-24 md:pb-5">
         <span>© {new Date().getFullYear()} BetterCommunity. {t('foot.rights')}</span>
         <div className="flex items-center gap-4 flex-wrap">
           <LangSelect />
-          <span className="flex items-center gap-1.5"><Sparkles size={12} className="text-[var(--primary-2)]" /> Built for the Better* community</span>
+          <FooterEgg />
         </div>
       </div></div>
     </footer>
@@ -667,6 +716,8 @@ export default function App() {
               <Route path="/projects" element={<OtherProjects />} />
               <Route path="/project/:slug" element={<ShowcaseProjectPage />} />
               <Route path="/profile" element={<Protected><Profile /></Protected>} />
+              <Route path="/users" element={<UserSearch />} />
+              <Route path="/u/:id" element={<PublicProfile />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/authorize" element={<Authorize />} />
               <Route path="/verify-email" element={<VerifyEmail />} />

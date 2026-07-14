@@ -121,6 +121,17 @@ model User {
   moderatedAt      DateTime?
   moderatedById    String?
 
+  // ── Public profile ──────────────────────────────────────────────────────────
+  // A shareable /u/<id> page shows only the pseudo, avatar, badges, join date, role,
+  // and PUBLIC repos/catalogs — no email or other PII. The owner controls visibility.
+  profilePublic    Boolean   @default(true) // false = only the owner + staff (mod+) can view
+  // Which linked connections to surface on the profile, e.g. ["github","discord","website"].
+  // Empty = show none. The owner opts each in explicitly.
+  showConnections  String[]  @default([])
+  website          String? // optional public link the user chooses to show
+
+  badges             UserBadge[]
+
   items              CatalogItem[]
   communityCatalogs  CommunityCatalog[]
   submissions        Submission[]
@@ -1453,4 +1464,41 @@ model NewsletterSubscriber {
   unsubscribedAt DateTime?
 
   @@index([status])
+}
+
+// A profile badge shown Twitch-chat-style next to a user's name (verified, developer,
+// moderator, YouTuber, Twitch, certified, …). Admin-created & configurable.
+model Badge {
+  id          String      @id @default(cuid())
+  slug        String      @unique
+  name        String
+  description String      @default("")
+  // Visual: a lucide icon name, a simple-icons brand slug, or an uploaded image.
+  iconType    String      @default("lucide") // "lucide" | "brand" | "image"
+  icon        String      @default("BadgeCheck") // lucide/brand name, or an image URL / data URI
+  color       String      @default("#f59e0b")
+  // How it's earned: staff grant, the footer easter-egg, or an automatic rule.
+  grant       String      @default("manual") // "manual" | "easter_egg" | "auto"
+  trigger     String? // for easter_egg/auto: the trigger key (e.g. "footer5x")
+  earnMessage String      @default("") // shown when earned (e.g. the footer 5x-click modal body)
+  priority    Int         @default(0) // display order next to the name (higher = first)
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  holders     UserBadge[]
+
+  @@index([trigger])
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  badgeId   String
+  grantedAt DateTime @default(now())
+  grantedBy String? // staff user id, or "system" for auto/easter-egg grants
+
+  @@unique([userId, badgeId])
+  @@index([userId])
 }

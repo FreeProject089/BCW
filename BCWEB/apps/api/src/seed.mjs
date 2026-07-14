@@ -41,6 +41,20 @@ for (const plan of plans) {
   if (!found) await p.hostingPlan.create({ data: plan });
 }
 
+// Default profile badges (admins can edit/add more under Admin → Badges). Includes the
+// footer "Built for the Better* community" 5-click easter-egg badge so the secret works
+// out of the box. Idempotent by slug.
+const badges = [
+  { slug: 'verified', name: 'Verified', description: 'Certified by the BetterCommunity team.', iconType: 'lucide', icon: 'BadgeCheck', color: '#38bdf8', grant: 'manual', priority: 100 },
+  { slug: 'staff', name: 'Staff', description: 'BetterCommunity team member.', iconType: 'lucide', icon: 'Shield', color: '#f97316', grant: 'manual', priority: 90 },
+  { slug: 'developer', name: 'Developer', description: 'Builds tools & plugins for the community.', iconType: 'lucide', icon: 'Code', color: '#a78bfa', grant: 'manual', priority: 60 },
+  { slug: 'content-creator', name: 'Content Creator', description: 'YouTuber / streamer.', iconType: 'lucide', icon: 'Youtube', color: '#ef4444', grant: 'manual', priority: 50 },
+  { slug: 'curious', name: 'Curious', description: 'Found the footer secret.', iconType: 'lucide', icon: 'Sparkles', color: '#f59e0b', grant: 'easter_egg', trigger: 'footer5x', earnMessage: 'You clicked five times — nice. Here\'s a little badge for the curious. Thanks for being part of the Better* community. ✨', priority: 10 },
+];
+for (const b of badges) {
+  await p.badge.upsert({ where: { slug: b.slug }, create: b, update: {} }); // don't clobber admin edits
+}
+
 // Admin settings: total hosting capacity + reserved free margin + pricing knobs.
 const settings = {
   'hosting.totalCapacityGB': 500,        // total storage we offer

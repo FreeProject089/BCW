@@ -22,6 +22,7 @@ import { MyRepos, AdminRepos, Billing, rawStatusLabel } from './repos.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
 import { AuthorsRow, MarkdownEditor } from './blog.jsx';
 import Avatar, { VARIANTS as AV_VARIANTS, PALETTES as AV_PALETTES } from '../ui/Avatar.jsx';
+import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 
 // A stable-but-varied Boring-avatar look for an anonymous analytics session (keyed by
 // the visitor hash) — so each session gets its OWN geometric avatar instead of the
@@ -2321,6 +2322,7 @@ export function Admin() {
     isAdmin && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
     isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: MessageSquare },
     isAdmin && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
+    isAdmin && { id: 'badges', label: t('adm.tab.badges', 'Badges'), icon: BadgeCheck },
     can('manage_newsletter') && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
     can('manage_faq') && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
     can('manage_catalogs') && { id: 'commcatalogs', label: t('adm.tab.commcatalogs', 'Community catalogs'), icon: Layers },
@@ -2407,6 +2409,7 @@ export function Admin() {
         {s === 'serverperf' && <AdminServerPerf />}
         {s === 'serveradv' && <AdminServerAdvanced />}
         {s === 'announcements' && <AdminAnnouncements />}
+        {s === 'badges' && <AdminBadges />}
         {s === 'newsletter' && <AdminNewsletter />}
         {s === 'faq' && <AdminFaq />}
         {s === 'repos' && <AdminRepos />}
@@ -8539,6 +8542,114 @@ function AdminCatalogExamine({ catalog, onClose }) {
           </div>
         ))}
       </div> : <EmptyState icon={Package} title={t('cc.ex.none.t', 'No items')} sub={t('cc.ex.none.s', 'This catalog has no hosted items yet.')} />}
+    </Modal>
+  );
+}
+
+// Admin: create & manage profile badges (verified, developer, moderator, YouTuber, Twitch,
+// certified, …). Badges can be a lucide icon, a brand/image URL or a data URI; manual ones
+// are granted to users by id/email, easter-egg ones are self-claimed via a trigger.
+const BADGE_BLANK = { name: '', description: '', iconType: 'lucide', icon: 'BadgeCheck', color: '#f59e0b', grant: 'manual', trigger: '', earnMessage: '', priority: 0, active: true };
+function AdminBadges() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/badges'), []);
+  const [edit, setEdit] = useState(null); // badge being edited, or BADGE_BLANK for new
+  const [holdersOf, setHoldersOf] = useState(null);
+  const badges = data?.badges || [];
+  const save = async () => {
+    if (!edit.name.trim()) return toast.error(t('ab.namereq', 'Name required.'));
+    const body = { ...edit, trigger: edit.grant === 'manual' ? null : (edit.trigger || null) };
+    try {
+      if (edit.id) await api.patch(`/admin/badges/${edit.id}`, body);
+      else await api.post('/admin/badges', body);
+      toast.success(t('ab.saved', 'Badge saved.')); setEdit(null); reload();
+    } catch (x) { toast.error(x.data?.error === 'trigger_taken' ? t('ab.triggertaken', 'Another badge already uses that trigger.') : x.data?.error || t('acc.failed', 'Failed.')); }
+  };
+  const del = async (b) => {
+    if (!(await dialog.confirm({ title: t('ab.del.t', 'Delete badge?'), message: t('ab.del.m', 'Delete "{n}"? It is removed from everyone who has it.').replace('{n}', b.name), okLabel: t('common.delete', 'Delete'), danger: true }))) return;
+    try { await api.del(`/admin/badges/${b.id}`); toast.success(t('ab.deleted', 'Badge deleted.')); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); }
+  };
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div><h2 className="font-semibold flex items-center gap-2"><BadgeCheck size={16} className="text-[var(--primary-2)]" /> {t('ab.title', 'Badges')}</h2>
+          <p className="text-sm text-[var(--muted)]">{t('ab.desc', 'Profile badges shown next to a member’s name. Grant manual badges to users, or set up an easter-egg badge users can unlock.')}</p></div>
+        <Button size="sm" variant="primary" onClick={() => setEdit({ ...BADGE_BLANK })}><Plus size={14} /> {t('ab.new', 'New badge')}</Button>
+      </div>
+      {loading ? <Loading /> : badges.length ? <div className="space-y-1.5">
+        {badges.map((b) => (
+          <Card key={b.id} className="p-3 flex items-center gap-3 flex-wrap">
+            <span className="grid place-items-center w-9 h-9 rounded-lg shrink-0" style={{ background: `color-mix(in srgb, ${b.color} 16%, transparent)` }}><BadgeIcon badge={b} size={18} /></span>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate flex items-center gap-2">{b.name} {!b.active && <Badge tone="">{t('ab.inactive', 'inactive')}</Badge>}<Badge tone={b.grant === 'easter_egg' ? 'amber' : b.grant === 'auto' ? 'info' : ''}>{b.grant}{b.trigger ? `:${b.trigger}` : ''}</Badge></div>
+              <div className="text-xs text-[var(--faint)] truncate">{b.description || '—'} · {b.holders} {t('ab.holders', 'holders')}</div>
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => setHoldersOf(b)}><Users size={13} /> {t('ab.grant', 'Grant')}</Button>
+            <Button size="sm" variant="ghost" onClick={() => setEdit({ ...BADGE_BLANK, ...b, trigger: b.trigger || '' })}><PenSquare size={13} /></Button>
+            <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(b)}><Trash2 size={13} /></Button>
+          </Card>
+        ))}
+      </div> : <EmptyState icon={BadgeCheck} title={t('ab.none.t', 'No badges yet')} sub={t('ab.none.s', 'Create your first badge — verified, developer, content creator…')} />}
+
+      {edit && <Modal open onClose={() => setEdit(null)} title={edit.id ? t('ab.edit', 'Edit badge') : t('ab.new', 'New badge')} icon={BadgeCheck} width="max-w-lg"
+        footer={<><Button variant="ghost" onClick={() => setEdit(null)}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={save}>{t('common.save', 'Save')}</Button></>}>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="grid place-items-center w-12 h-12 rounded-xl shrink-0" style={{ background: `color-mix(in srgb, ${edit.color} 16%, transparent)` }}><BadgeIcon badge={edit} size={24} /></span>
+            <Field label={t('ab.name', 'Name')} className="flex-1"><Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="Verified" /></Field>
+          </div>
+          <Field label={t('ab.description', 'Description (tooltip)')}><Input value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} placeholder={t('ab.desc.ph', 'Certified by the BetterCommunity team')} /></Field>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label={t('ab.icontype', 'Icon type')}><Select value={edit.iconType} onChange={(e) => setEdit({ ...edit, iconType: e.target.value })}><option value="lucide">Lucide icon</option><option value="brand">Brand / image URL</option><option value="image">Image / SVG / PNG (URL or data)</option></Select></Field>
+            <Field label={edit.iconType === 'lucide' ? t('ab.iconname', 'Lucide icon name') : t('ab.iconurl', 'Image URL / data URI')}><Input value={edit.icon} onChange={(e) => setEdit({ ...edit, icon: e.target.value })} placeholder={edit.iconType === 'lucide' ? 'BadgeCheck' : 'https://…/icon.svg'} /></Field>
+          </div>
+          {edit.iconType === 'lucide' && <p className="text-[11px] text-[var(--faint)] -mt-1">{t('ab.lucidehint', 'Any lucide-react icon name (PascalCase), e.g. BadgeCheck, Code, Shield, Youtube, Twitch, Crown, Star.')}</p>}
+          <div className="grid sm:grid-cols-3 gap-3">
+            <Field label={t('ab.color', 'Colour')}><Input type="color" value={edit.color} onChange={(e) => setEdit({ ...edit, color: e.target.value })} className="!p-1 h-9" /></Field>
+            <Field label={t('ab.priority', 'Priority')}><Input type="number" min="0" value={edit.priority} onChange={(e) => setEdit({ ...edit, priority: Math.max(0, Number(e.target.value) || 0) })} /></Field>
+            <Field label={t('ab.grantmode', 'How earned')}><Select value={edit.grant} onChange={(e) => setEdit({ ...edit, grant: e.target.value })}><option value="manual">{t('ab.manual', 'Manual (staff grant)')}</option><option value="easter_egg">{t('ab.easter', 'Easter egg (self-claim)')}</option></Select></Field>
+          </div>
+          {edit.grant === 'easter_egg' && <>
+            <Field label={t('ab.trigger', 'Trigger key')}><Input value={edit.trigger} onChange={(e) => setEdit({ ...edit, trigger: e.target.value })} placeholder="footer5x" /></Field>
+            <p className="text-[11px] text-[var(--faint)] -mt-1">{t('ab.triggerhint', 'Use "footer5x" for the footer "Built for the Better* community" 5-click secret.')}</p>
+            <Field label={t('ab.earnmsg', 'Reveal message')}><Textarea value={edit.earnMessage} onChange={(e) => setEdit({ ...edit, earnMessage: e.target.value })} placeholder={t('ab.earnmsg.ph', 'Shown in the reveal modal when a user finds it.')} /></Field>
+          </>}
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={edit.active} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} /> {t('ab.active', 'Active')}</label>
+        </div>
+      </Modal>}
+
+      {holdersOf && <AdminBadgeHolders badge={holdersOf} onClose={() => { setHoldersOf(null); reload(); }} />}
+    </div>
+  );
+}
+
+// Admin: grant/revoke a badge + see who holds it.
+function AdminBadgeHolders({ badge, onClose }) {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/badges/${badge.id}/holders`), [badge.id]);
+  const [who, setWho] = useState('');
+  const holders = data?.holders || [];
+  const grant = async () => {
+    if (!who.trim()) return;
+    const body = who.includes('@') ? { email: who.trim() } : { userId: who.trim() };
+    try { const r = await api.post(`/admin/badges/${badge.id}/grant`, body); toast.success(t('ab.granted', 'Granted to {n}.').replace('{n}', r.displayName || who)); setWho(''); reload(); }
+    catch (x) { toast.error(x.data?.error === 'no_such_user' ? t('ab.nouser', 'No user with that id/email.') : x.data?.error || t('acc.failed', 'Failed.')); }
+  };
+  const revoke = async (h) => { try { await api.del(`/admin/badges/${badge.id}/holders/${h.userId}`); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  return (
+    <Modal open onClose={onClose} title={t('ab.holders.t', 'Grant: {n}').replace('{n}', badge.name)} icon={Users} width="max-w-lg">
+      <div className="flex items-end gap-2 mb-3">
+        <Field label={t('ab.grantto', 'Grant to (user id or email)')} className="flex-1"><Input value={who} onChange={(e) => setWho(e.target.value)} placeholder="user@example.com" onKeyDown={(e) => e.key === 'Enter' && grant()} /></Field>
+        <Button variant="primary" onClick={grant}><Plus size={14} /> {t('ab.grant', 'Grant')}</Button>
+      </div>
+      {loading ? <Loading /> : holders.length ? <div className="space-y-1 max-h-80 overflow-auto">
+        {holders.map((h) => (
+          <div key={h.userId} className="flex items-center gap-2 text-sm py-1.5 px-2 rounded-lg hover:bg-[var(--surface-2)]">
+            <span className="flex-1 min-w-0 truncate">{h.displayName} <span className="text-[var(--faint)]">· {h.email}</span></span>
+            <button onClick={() => revoke(h)} className="text-[var(--faint)] hover:text-red-400"><X size={14} /></button>
+          </div>
+        ))}
+      </div> : <p className="text-sm text-[var(--faint)] text-center py-6">{t('ab.noholders', 'No one has this badge yet.')}</p>}
     </Modal>
   );
 }

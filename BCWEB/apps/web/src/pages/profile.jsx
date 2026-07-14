@@ -8,6 +8,7 @@ import { useI18n } from '../i18n.jsx';
 import { useToast, Button, Card, Badge, Input, Textarea, Field, PageHeader, Spinner } from '../ui/ui.jsx';
 import { DiscordIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
+import { Badges } from '../ui/Badges.jsx';
 import { Link, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone } from 'lucide-react';
 import { stagePending, addLocalAccount, attachBackupCodesBySecret } from '../lib/twofa-lib.js';
@@ -22,7 +23,7 @@ function SectionLabel({ icon: Ico, children }) {
 export default function Profile() {
   const { user, refresh } = useAuth();
   const { t } = useI18n(); const toast = useToast();
-  const [form, setForm] = useState({ displayName: '', bio: '' });
+  const [form, setForm] = useState({ displayName: '', bio: '', profilePublic: true, showConnections: [], website: '' });
   const [avatar, setAvatar] = useState({ variant: 'beam', seed: '', colors: PALETTES.orange, image: null });
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -32,7 +33,7 @@ export default function Profile() {
 
   useEffect(() => {
     if (!user) return;
-    setForm({ displayName: user.displayName || '', bio: user.bio || '' });
+    setForm({ displayName: user.displayName || '', bio: user.bio || '', profilePublic: user.profilePublic !== false, showConnections: user.showConnections || [], website: user.website || '' });
     setAvatar(avatarOf(user));
   }, [user]);
   if (!user) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
@@ -152,10 +153,50 @@ export default function Profile() {
           <Card className="p-5 space-y-3">
             <Field label={t('prof.dispname', 'Display name')}><Input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} /></Field>
             <Field label={t('prof.bio', 'Bio')}><Textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder={t('prof.bio.ph', 'A little about you…')} /></Field>
+            <Field label={t('prof.website', 'Website (optional)')}><Input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} placeholder="https://…" /></Field>
             <div className="flex items-center gap-3"><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('prof.saveprofile', 'Save profile')}</Button>
               {msg === 'saved' && <span className="text-sm text-emerald-400 flex items-center gap-1"><Check size={14} /> {t('prof.saved', 'Saved')}</span>}
               {msg === 'error' && <span className="text-sm text-red-400">{t('prof.failed', 'Failed')}</span>}</div>
           </Card>
+
+          {/* Privacy + visibility of the shareable /u/<id> profile. */}
+          <Card className="p-5 space-y-3 mt-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-sm font-semibold flex items-center gap-2"><Eye size={15} className="text-[var(--primary-2)]" /> {t('prof.visibility', 'Profile visibility')}</div>
+                <p className="text-xs text-[var(--muted)] mt-0.5">{t('prof.visibility.d', 'A public profile is a shareable page showing your name, badges, join date and public repos/catalogs — never your email. Private = only you and the team can view it.')}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Link to={`/u/${user.id}`}><Button size="sm" variant="ghost"><ArrowRight size={14} /> {t('prof.viewpublic', 'View')}</Button></Link>
+                <Link to="/users"><Button size="sm" variant="ghost">{t('prof.findpeople', 'Find people')}</Button></Link>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={form.profilePublic} onChange={(e) => setForm({ ...form, profilePublic: e.target.checked })} /> {t('prof.makepublic', 'Make my profile public')}</label>
+            <div>
+              <div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-1.5">{t('prof.showconn', 'Connections to show')}</div>
+              <div className="flex flex-wrap gap-3">
+                {[['github', 'GitHub'], ['discord', 'Discord'], ['bmm', 'BMM (creator id)'], ['website', t('prof.website2', 'Website')]].map(([k, label]) => (
+                  <label key={k} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="checkbox" checked={form.showConnections.includes(k)} onChange={(e) => setForm({ ...form, showConnections: e.target.checked ? [...form.showConnections, k] : form.showConnections.filter((x) => x !== k) })} /> {label}
+                  </label>
+                ))}
+              </div>
+              <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('prof.showconn.d', 'Only the ones you actually linked will appear. Nothing is shown by default.')}</p>
+            </div>
+            <div className="flex items-center gap-3"><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('prof.saveprivacy', 'Save privacy')}</Button></div>
+          </Card>
+
+          {/* Badges earned — shown next to your name across the site. */}
+          {user.badges?.length > 0 && <Card className="p-5 mt-4">
+            <div className="text-sm font-semibold mb-3 flex items-center gap-2"><BadgeCheck size={15} className="text-[var(--primary-2)]" /> {t('prof.badges', 'Your badges')}</div>
+            <div className="flex flex-wrap gap-2">
+              {user.badges.map((ub) => (
+                <span key={ub.badge.id} className="inline-flex items-center gap-1.5 text-sm rounded-lg px-2.5 py-1.5 border border-[var(--line)]" style={{ background: `color-mix(in srgb, ${ub.badge.color} 10%, transparent)` }} title={ub.badge.description}>
+                  <Badges badges={[{ id: ub.badge.id, iconType: ub.badge.iconType, icon: ub.badge.icon, color: ub.badge.color, name: ub.badge.name }]} size={15} /> {ub.badge.name}
+                </span>
+              ))}
+            </div>
+          </Card>}
           </div>
 
           <div className="space-y-4">

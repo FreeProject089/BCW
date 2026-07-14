@@ -260,7 +260,7 @@ export default async function authRoutes(app) {
     return { ok: true };
   });
 
-  const profileSelect = { id: true, email: true, displayName: true, role: true, permissions: true, emailVerified: true, bio: true, avatar: true, createdAt: true, totpEnabled: true };
+  const profileSelect = { id: true, email: true, displayName: true, role: true, permissions: true, emailVerified: true, bio: true, avatar: true, createdAt: true, totpEnabled: true, profilePublic: true, showConnections: true, website: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } } } };
 
   // Soft-authed "who am I": logged-out visitors get 200 { user: null } instead of a
   // noisy 401 in the console. The app boots this on every load.
@@ -277,6 +277,9 @@ export default async function authRoutes(app) {
       displayName: z.string().min(2).max(40).optional(),
       bio: z.string().max(280).optional(),
       avatar: z.object({ variant: z.string().max(20), seed: z.string().max(60), colors: z.array(z.string().max(9)).max(6).optional(), image: z.string().max(500).nullable().optional() }).nullable().optional(),
+      profilePublic: z.boolean().optional(),
+      showConnections: z.array(z.enum(['github', 'discord', 'bmm', 'website'])).max(4).optional(),
+      website: z.string().url().max(200).nullable().optional().or(z.literal('')),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
