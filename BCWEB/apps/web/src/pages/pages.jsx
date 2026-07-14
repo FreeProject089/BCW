@@ -8280,12 +8280,15 @@ const NAV_ICON_CHOICES = ['Boxes', 'Music2', 'Newspaper', 'Server', 'Rocket', 'S
 // A ready-to-edit starting point mirroring the built-in topbar, so an admin isn't
 // staring at a blank editor. Uses plain labels + icon names (both languages).
 // Mirrors the site's real built-in NAV (App.jsx) so "Reset to default" restores exactly
-// what visitors see out of the box — the flat BMM / BSM / BI / Blog / Docs / Repos /
-// Hosting bar with the app logos, not a made-up grouped layout.
+// what visitors see out of the box — the clean default: an "Apps" dropdown grouping the
+// three apps (with their logos), then Blog / Docs / Server repos / Hosting as flat links.
+// Mirrors DEFAULT_ITEMS in App.jsx.
 const DEFAULT_NAV_SEED = [
-  { type: 'link', label: 'BetterModsManager', labelFr: 'BetterModsManager', to: '/p/bmm', icon: 'app:bmm', children: [] },
-  { type: 'link', label: 'BetterSoundMaker', labelFr: 'BetterSoundMaker', to: '/p/bsm', icon: 'app:bsm', children: [] },
-  { type: 'link', label: 'BetterInstaller', labelFr: 'BetterInstaller', to: '/p/installer', icon: 'app:bi', children: [] },
+  { type: 'group', label: 'Apps', labelFr: 'Applications', to: '', icon: 'Boxes', children: [
+    { label: 'BetterModsManager', labelFr: 'BetterModsManager', to: '/p/bmm', desc: '', descFr: '', icon: 'app:bmm' },
+    { label: 'BetterSoundMaker', labelFr: 'BetterSoundMaker', to: '/p/bsm', desc: '', descFr: '', icon: 'app:bsm' },
+    { label: 'BetterInstaller', labelFr: 'BetterInstaller', to: '/p/installer', desc: '', descFr: '', icon: 'app:bi' },
+  ] },
   { type: 'link', label: 'Blog', labelFr: 'Blog', to: '/blog', icon: 'Newspaper', children: [] },
   { type: 'link', label: 'Docs', labelFr: 'Docs', to: '/docs', icon: 'BookOpen', children: [] },
   { type: 'link', label: 'Server repos', labelFr: 'Dépôts serveur', to: '/repos', icon: 'Server', children: [] },

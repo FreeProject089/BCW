@@ -6,7 +6,7 @@ import { Languages } from 'lucide-react';
 const DICT = {
   en: {
     'promo.badge.default': 'Limited-time offer', 'promo.badge.dismiss': 'Dismiss', 'promo.badge.d': 'd', 'promo.badge.h': 'h', 'promo.badge.m': 'm',
-    'nav.home': 'Home', 'nav.bmm': 'BMM', 'nav.bsm': 'BSM', 'nav.installer': 'BI', 'nav.blog': 'Blog',
+    'nav.home': 'Home', 'nav.apps': 'Apps', 'nav.bmm': 'BMM', 'nav.bsm': 'BSM', 'nav.installer': 'BI', 'nav.blog': 'Blog',
     'nav.repos': 'Repos', 'nav.hosting': 'Hosting', 'nav.projects': 'Projects', 'nav.dashboard': 'Dashboard', 'nav.admin': 'Admin',
     'nav.settings': 'Settings', 'nav.docs': 'Docs',
     'docs.title': 'Documentation', 'docs.search': 'Search…', 'docs.filter': 'Filter pages…', 'docs.newpage': 'New page',
@@ -378,7 +378,7 @@ const DICT = {
     'promo.badge.default': 'Offre à durée limitée', 'promo.badge.dismiss': 'Fermer', 'promo.badge.d': 'j', 'promo.badge.h': 'h', 'promo.badge.m': 'min',
     'intro.brand': 'BetterCommunity', 'intro.dontshow': 'Ne plus afficher', 'intro.skip': "Passer l'intro",
     'admin.2fa.title': 'Authentification à deux facteurs requise', 'admin.2fa.sub': "Le tableau de bord admin nécessite la 2FA sur ton compte, même pour les admins. Active-la dans ton profil pour continuer.", 'admin.2fa.cta': 'Aller au profil',
-    'nav.home': 'Accueil', 'nav.bmm': 'BMM', 'nav.bsm': 'BSM', 'nav.installer': 'BI', 'nav.blog': 'Blog',
+    'nav.home': 'Accueil', 'nav.apps': 'Applications', 'nav.bmm': 'BMM', 'nav.bsm': 'BSM', 'nav.installer': 'BI', 'nav.blog': 'Blog',
     'nav.repos': 'Dépôts', 'nav.hosting': 'Hébergement', 'nav.projects': 'Projets', 'nav.dashboard': 'Tableau de bord', 'nav.admin': 'Admin',
     'nav.settings': 'Paramètres', 'nav.docs': 'Docs',
     'nf.title': 'Perdu dans l\'espace', 'nf.sub': "Cette page n'existe pas — mais voici un jeu en attendant.", 'nf.gameover': 'Partie terminée', 'nf.newbest': 'Nouveau record perso !', 'nf.best': 'Ton record : {n}', 'nf.signin': 'Connecte-toi', 'nf.tosave': 'pour sauver ton score',

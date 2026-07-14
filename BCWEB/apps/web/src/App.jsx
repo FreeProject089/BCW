@@ -36,14 +36,19 @@ import { Home, Catalog, ItemDetail, Hosting, Auth, Dashboard, Admin, Legal, Lega
 import { TwoFactor } from './pages/twofa.jsx';
 
 const KOFI = 'https://ko-fi.com/bettercommunity';
-const NAV = [
-  { to: '/p/bmm', k: 'nav.bmm', icon: Boxes, img: '/icons/bmm.png' },
-  { to: '/p/bsm', k: 'nav.bsm', icon: Music2, img: '/icons/bsm.png' },
-  { to: '/p/installer', k: 'nav.installer', icon: Download, img: '/icons/bi.png' },
-  { to: '/blog', k: 'nav.blog', icon: Newspaper },
-  { to: '/docs', k: 'nav.docs', icon: BookOpen },
-  { to: '/repos', k: 'nav.repos', icon: Server },
-  { to: '/hosting', k: 'nav.hosting', icon: Rocket },
+// Clean default topbar shown out of the box (no admin config): the three apps live under
+// one "Apps" dropdown, then Blog / Docs / Repos / Hosting as flat links. Mirrors
+// DEFAULT_NAV_SEED in pages.jsx so the editor's "Reset to default" restores exactly this.
+const DEFAULT_ITEMS = [
+  { type: 'group', k: 'nav.apps', icon: Boxes, children: [
+    { to: '/p/bmm', k: 'nav.bmm', icon: Boxes, img: '/icons/bmm.png' },
+    { to: '/p/bsm', k: 'nav.bsm', icon: Music2, img: '/icons/bsm.png' },
+    { to: '/p/installer', k: 'nav.installer', icon: Download, img: '/icons/bi.png' },
+  ] },
+  { type: 'link', to: '/blog', k: 'nav.blog', icon: Newspaper },
+  { type: 'link', to: '/docs', k: 'nav.docs', icon: BookOpen },
+  { type: 'link', to: '/repos', k: 'nav.repos', icon: Server },
+  { type: 'link', to: '/hosting', k: 'nav.hosting', icon: Rocket },
 ];
 
 // Icons an admin can pick for a configured nav item — a curated, safe whitelist
@@ -299,7 +304,7 @@ function Nav() {
   // group with no visible children (or a hidden link) disappears entirely.
   const rawItems = (navCfg?.items?.length)
     ? navCfg.items
-    : NAV.map((n) => ({ type: 'link', to: n.to, k: n.k, icon: n.icon, img: n.img }));
+    : DEFAULT_ITEMS;
   const effItems = rawItems
     .map((it) => it.type === 'group' ? { ...it, children: (it.children || []).filter((c) => gateTo(c.to)) } : it)
     .filter((it) => it.type === 'group' ? it.children.length > 0 : gateTo(it.to));
