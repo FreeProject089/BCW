@@ -132,8 +132,8 @@ function SideDash({ title, subtitle, icon, tabs, headerActions, children }) {
   const renderTab = (tb, big) => (
     <button key={tb.id} onClick={() => set(tb.id)}
       className={`flex items-center gap-2.5 px-3 ${big ? 'py-2.5' : 'py-2'} rounded-xl text-sm text-left w-full whitespace-nowrap transition-colors press ${active === tb.id ? 'bg-[var(--surface-2)] text-[var(--text)] border border-[var(--line)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border border-transparent'}`}>
-      <tb.icon size={16} className={active === tb.id ? 'text-[var(--primary-2)]' : ''} /> {tb.label}
-      {tb.badge ? <Badge tone="primary" className="ml-auto">{tb.badge}</Badge> : null}
+      <tb.icon size={16} className={`shrink-0 ${active === tb.id ? 'text-[var(--primary-2)]' : ''}`} /> <span className="min-w-0 truncate">{tb.label}</span>
+      {tb.badge ? <Badge tone="primary" className="ml-auto shrink-0">{tb.badge}</Badge> : null}
     </button>
   );
   return (
