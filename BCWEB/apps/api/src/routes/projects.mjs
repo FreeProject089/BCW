@@ -183,7 +183,48 @@ export default async function projectRoutes(app) {
     const p = await db();
     const k = settingKey(req.params.key);
     await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: b.data.config }, update: { value: b.data.config } });
+    await snapshotVersion(p, req.params.key, b.data.config);
     return { ok: true };
+  });
+
+  // Record/refresh a project-page snapshot for its current version (powers the version
+  // history modal). No-op when the config has no version string. Exported-in-spirit: the
+  // showcase route calls the same shape with target `sc:<id>`.
+  async function snapshotVersion(p, target, config) {
+    const version = typeof config?.version === 'string' ? config.version.trim().slice(0, 40) : '';
+    if (!version) return;
+    await p.projectVersion.upsert({
+      where: { target_version: { target, version } },
+      create: { target, version, config },
+      update: { config },
+    }).catch(() => {});
+  }
+
+  // Public: list a project's versions (newest first). Includes the current live version even
+  // if it hasn't been re-saved since the feature shipped, so the list is never empty.
+  app.get('/projects/:key/versions', { preHandler: optionalAuth() }, async (req, reply) => {
+    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    const p = await db();
+    if (!(await assertVisible(p, req, reply))) return;
+    const rows = await p.projectVersion.findMany({ where: { target: req.params.key }, orderBy: { createdAt: 'desc' }, select: { version: true, createdAt: true } });
+    const cfg = await getConfig(p, req.params.key);
+    const cur = typeof cfg?.version === 'string' ? cfg.version.trim() : '';
+    const versions = rows.map((r) => ({ version: r.version, createdAt: r.createdAt, current: r.version === cur }));
+    if (cur && !versions.some((v) => v.version === cur)) versions.unshift({ version: cur, createdAt: null, current: true });
+    return { versions };
+  });
+
+  // Public: the page config as it was at a given version (falls back to the live config
+  // when the requested version IS the current one and no snapshot exists yet).
+  app.get('/projects/:key/versions/:version', { preHandler: optionalAuth() }, async (req, reply) => {
+    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    const p = await db();
+    if (!(await assertVisible(p, req, reply))) return;
+    const row = await p.projectVersion.findUnique({ where: { target_version: { target: req.params.key, version: req.params.version } } });
+    if (row) return { version: row.version, createdAt: row.createdAt, config: row.config };
+    const cfg = await getConfig(p, req.params.key);
+    if (cfg && String(cfg.version || '').trim() === req.params.version) return { version: req.params.version, createdAt: null, config: cfg };
+    return reply.code(404).send({ error: 'not_found' });
   });
 
   // Shared visibility guard for the sub-resource routes below — 'community' is

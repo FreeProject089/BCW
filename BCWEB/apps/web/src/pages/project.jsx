@@ -134,6 +134,61 @@ function DownloadMenu({ downloads = [], children }) {
   );
 }
 
+// Version-history modal — click a project's version badge to browse past versions and
+// open the page's info + downloads as they were at that version. `endpoint` is the
+// project's API base ('/projects/bmm' or '/project/<slug>'); works for every project.
+function VersionHistoryModal({ endpoint, currentVersion, onClose }) {
+  const { t, lang } = useI18n();
+  const [versions, setVersions] = useState(null);
+  const [sel, setSel] = useState(null);       // { version, createdAt, config }
+  const [loadingSel, setLoadingSel] = useState(false);
+  useEffect(() => {
+    let on = true;
+    api.get(`${endpoint}/versions`).then((r) => { if (on) setVersions(r.versions || []); }).catch(() => on && setVersions([]));
+    return () => { on = false; };
+  }, [endpoint]);
+  const open = async (v) => {
+    setLoadingSel(true);
+    try { const r = await api.get(`${endpoint}/versions/${encodeURIComponent(v)}`); setSel(r); }
+    catch { setSel(null); } finally { setLoadingSel(false); }
+  };
+  const cfg = sel?.config || {};
+  const notes = lang === 'fr' && cfg.taglineFr ? cfg.taglineFr : cfg.tagline;
+  return (
+    <Modal open onClose={onClose} title={t('ver.title', 'Version history')} icon={Clock} width="max-w-2xl">
+      <div className="grid sm:grid-cols-[190px_1fr] gap-4 min-h-[280px]">
+        {/* Version list */}
+        <div className="sm:border-r sm:border-[var(--line)] sm:pr-3 max-h-[60vh] overflow-auto scroll-thin">
+          {versions == null ? <div className="p-4 text-center"><Spinner /></div>
+            : versions.length === 0 ? <div className="text-sm text-[var(--faint)] p-2">{t('ver.none', 'No version history yet.')}</div>
+            : <div className="space-y-1">
+                {versions.map((v) => (
+                  <button key={v.version} onClick={() => open(v.version)}
+                    className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition press-sm ${sel?.version === v.version ? 'border-[var(--primary)] bg-[var(--surface-2)]' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>
+                    <div className="flex items-center gap-2"><span className="font-medium">v{v.version}</span>{v.current && <Badge tone="primary">{t('ver.current', 'current')}</Badge>}</div>
+                    {v.createdAt && <div className="text-[11px] text-[var(--faint)]">{new Date(v.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</div>}
+                  </button>
+                ))}
+              </div>}
+        </div>
+        {/* Selected version detail */}
+        <div>
+          {loadingSel ? <div className="p-6 text-center"><Spinner /></div>
+            : !sel ? <div className="text-sm text-[var(--faint)] grid place-items-center h-full py-8"><span className="flex items-center gap-2"><Clock size={15} /> {t('ver.pick', 'Pick a version to see it as it was.')}</span></div>
+            : <div className="space-y-3">
+                <div className="flex items-center gap-2 flex-wrap"><h3 className="font-bold text-lg">{cfg.name || ''} <span className="text-[var(--primary-2)]">v{sel.version}</span></h3>{versions?.find((x) => x.version === sel.version)?.current && <Badge tone="primary">{t('ver.current', 'current')}</Badge>}</div>
+                {notes && <p className="text-sm text-[var(--muted)]">{notes}</p>}
+                {Array.isArray(cfg.downloads) && cfg.downloads.some((d) => d.url)
+                  ? <div className="flex items-center gap-2 flex-wrap pt-1"><DownloadMenu downloads={cfg.downloads} /></div>
+                  : <div className="text-sm text-[var(--faint)]">{t('ver.nodl', 'No downloads recorded for this version.')}</div>}
+                {(cfg.releaseNotes?.owner || cfg.releaseNotes) && <div className="text-xs text-[var(--faint)] pt-1">{t('ver.notes.hint', 'Release notes for this version are on the project’s Releases tab.')}</div>}
+              </div>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function useCountdown(target) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
@@ -201,6 +256,7 @@ export default function ProjectPage() {
   const { t } = useI18n();
   const [sp, setSp] = useSearchParams();
   const tab = sp.get('tab') || 'overview';
+  const [showVersions, setShowVersions] = useState(false);
   const { data, loading, err } = useFetch(() => api.get(`/projects/${key}`), [key]);
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
   if (err?.status === 403) return <EmptyState icon={ShieldCheck} title="Not available" sub="You don't have access to this page." />;
@@ -223,7 +279,7 @@ export default function ProjectPage() {
           ? <img src={APP_LOGO[key]} alt="" className="w-16 h-16 rounded-2xl object-contain shrink-0 bg-[var(--surface-2)] border border-[var(--line)] p-1.5" />
           : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shrink-0"><span className="text-2xl font-extrabold text-white">{c.name?.[0] || 'B'}</span></div>}
         <div className="flex-1">
-          <div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{c.name}</h1>{c.version && <Badge tone="primary">v{c.version}</Badge>}</div>
+          <div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{c.name}</h1>{c.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{c.version}</Badge></button>}</div>
           <p className="text-[var(--muted)] mt-1">{c.tagline}</p>
         </div>
         <div className="flex flex-wrap items-start gap-2">
@@ -231,6 +287,8 @@ export default function ProjectPage() {
           {hasCatalog && <Link to={`/catalog?project=${key}`}><Button><Boxes size={16} /> {t('proj.browse')}</Button></Link>}
         </div>
       </div>
+
+      {showVersions && <VersionHistoryModal endpoint={`/projects/${key}`} currentVersion={c.version} onClose={() => setShowVersions(false)} />}
 
       {/* links row */}
       <LinksRow links={c.links} />
@@ -597,6 +655,7 @@ export function ShowcaseProjectPage() {
   const { slug } = useParams();
   const { t, lang } = useI18n();
   const [sp, setSp] = useSearchParams();
+  const [showVersions, setShowVersions] = useState(false);
   const { data, loading, err, refetch } = useFetch(() => api.get(`/showcase/${slug}`), [slug]);
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
   if (err?.status === 403) return <EmptyState icon={ShieldCheck} title="Not available" sub="You don't have access to this page." />;
@@ -627,11 +686,13 @@ export function ShowcaseProjectPage() {
         {proj.icon
           ? <div className="grid place-items-center w-16 h-16 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-2 text-[var(--primary-2)]"><ShowcaseIcon icon={proj.icon} size={44} rounded={10} /></div>
           : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shrink-0"><span className="text-xl font-extrabold text-white">{proj.short}</span></div>}
-        <div className="flex-1"><h1 className="text-3xl font-extrabold">{proj.name}</h1>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
+        <div className="flex-1"><div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{proj.name}</h1>{cfg.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{cfg.version}</Badge></button>}</div>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
         <div className="flex flex-wrap items-start gap-2">
           <DownloadMenu downloads={cfg.downloads} />
         </div>
       </div>
+
+      {showVersions && <VersionHistoryModal endpoint={`/project/${slug}`} currentVersion={cfg.version} onClose={() => setShowVersions(false)} />}
 
       <LinksRow links={cfg.links} />
 

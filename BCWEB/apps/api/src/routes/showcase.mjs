@@ -183,8 +183,40 @@ export default async function showcaseRoutes(app) {
     if (data.announceRevealAt !== undefined) data.announceRevealAt = data.announceRevealAt ? new Date(data.announceRevealAt) : null;
     const row = await p.showcaseProject.update({ where: { id: req.params.id }, data }).catch(() => null);
     if (!row) return reply.code(404).send({ error: 'not_found' });
+    // Snapshot this version for the version-history modal (target = sc:<id>).
+    const version = typeof row.config?.version === 'string' ? row.config.version.trim().slice(0, 40) : '';
+    if (version) {
+      await p.projectVersion.upsert({
+        where: { target_version: { target: `sc:${row.id}`, version } },
+        create: { target: `sc:${row.id}`, version, config: row.config },
+        update: { config: row.config },
+      }).catch(() => {});
+    }
     invalidate('showcase.list');
     return { ok: true };
+  });
+
+  // Public: version history for a showcase project (by slug). Mirrors /projects/:key/versions.
+  app.get('/project/:slug/versions', async (req, reply) => {
+    const p = await db();
+    const row = await p.showcaseProject.findUnique({ where: { slug: req.params.slug }, select: { id: true, published: true, config: true } });
+    if (!row || !row.published) return reply.code(404).send({ error: 'not_found' });
+    const target = `sc:${row.id}`;
+    const rows = await p.projectVersion.findMany({ where: { target }, orderBy: { createdAt: 'desc' }, select: { version: true, createdAt: true } });
+    const cur = typeof row.config?.version === 'string' ? row.config.version.trim() : '';
+    const versions = rows.map((r) => ({ version: r.version, createdAt: r.createdAt, current: r.version === cur }));
+    if (cur && !versions.some((v) => v.version === cur)) versions.unshift({ version: cur, createdAt: null, current: true });
+    return { versions };
+  });
+
+  app.get('/project/:slug/versions/:version', async (req, reply) => {
+    const p = await db();
+    const row = await p.showcaseProject.findUnique({ where: { slug: req.params.slug }, select: { id: true, published: true, config: true } });
+    if (!row || !row.published) return reply.code(404).send({ error: 'not_found' });
+    const snap = await p.projectVersion.findUnique({ where: { target_version: { target: `sc:${row.id}`, version: req.params.version } } });
+    if (snap) return { version: snap.version, createdAt: snap.createdAt, config: snap.config };
+    if (String(row.config?.version || '').trim() === req.params.version) return { version: req.params.version, createdAt: null, config: row.config };
+    return reply.code(404).send({ error: 'not_found' });
   });
 
   // Stage a future content swap — { name?, short?, config? } replaces the live

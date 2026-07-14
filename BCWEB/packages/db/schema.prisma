@@ -1217,6 +1217,23 @@ model AdminSetting {
   value Json
 }
 
+// A snapshot of a project page's config at a given version — powers the version-history
+// modal (open a project page "as it was" in a past version, with that version's info +
+// downloads). `target` is the built-in project key ("bmm") or a showcase ("sc:<id>"). A
+// snapshot is (re)written whenever an admin saves that project's config while its version
+// field is set, so each distinct version keeps its final config.
+model ProjectVersion {
+  id        String   @id @default(cuid())
+  target    String
+  version   String
+  config    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([target, version])
+  @@index([target])
+}
+
 // Platform-hosted assets served at stable public URLs (/api/assets/<key>): app download
 // files (BMM/BSM/BI installers), auto-update manifests, and JSON configs (links.json,
 // contributors.json). A `file` asset lives in object storage (storageKey); a `json` asset
