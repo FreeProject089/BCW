@@ -3,6 +3,7 @@
 // Their files are kept until that moment, then this job hard-deletes the rows and
 // their object-storage bytes. Runs periodically from the API process.
 import { db, notify } from './lib.mjs';
+import { resolveRetention } from './retention.mjs';
 import { deleteObject } from './storage.mjs';
 import { sampleAndAlert } from './monitor.mjs';
 import { runEventScheduler } from '../routes/events.mjs';
@@ -196,20 +197,53 @@ async function sweepExpiryWarnings(p, log) {
   return warned;
 }
 
+// ── Analytics retention ──────────────────────────────────────────────────────
+// The high-volume, append-only analytics tables (AnalyticsEvent, InteractionEvent,
+// WebVital, LoginAttempt) grow without bound — every pageview, click, web-vital
+// sample and sign-in attempt is a row, and none is ever deleted. Left alone the
+// raw-SQL aggregations that power the admin dashboards degrade and the DB bloats.
+// This purges rows older than a per-table retention window (config in retention.mjs).
+// Cap rows removed per table per sweep, so the very first purge of a large backlog
+// is spread over several 10-minute ticks instead of one giant table-locking DELETE.
+const RETENTION_BATCH = 5000;
+
+async function purgeOlderThan(model, days, log, name) {
+  if (!Number.isFinite(days) || days <= 0) return 0; // 0 = keep forever
+  const cutoff = new Date(Date.now() - days * DAY_MS);
+  try {
+    // Bounded batch: take up to N oldest rows past the cutoff by id, delete just those.
+    const victims = await model.findMany({ where: { createdAt: { lt: cutoff } }, orderBy: { createdAt: 'asc' }, take: RETENTION_BATCH, select: { id: true } });
+    if (!victims.length) return 0;
+    const { count } = await model.deleteMany({ where: { id: { in: victims.map((x) => x.id) } } });
+    return count;
+  } catch (e) { log?.warn?.({ table: name, e: String(e?.message || e) }, 'sweeper: analytics retention purge failed'); return 0; }
+}
+
+export async function sweepAnalyticsRetention(p, log) {
+  const row = await p.adminSetting.findUnique({ where: { key: 'analytics.retention' } }).catch(() => null);
+  const cfg = resolveRetention(row?.value);
+  const purged = await purgeOlderThan(p.analyticsEvent, cfg.pageviewDays, log, 'AnalyticsEvent')
+    + await purgeOlderThan(p.interactionEvent, cfg.interactionDays, log, 'InteractionEvent')
+    + await purgeOlderThan(p.webVital, cfg.vitalDays, log, 'WebVital')
+    + await purgeOlderThan(p.loginAttempt, cfg.loginDays, log, 'LoginAttempt');
+  return purged;
+}
+
 export function startSweeper(app) {
   const run = async () => {
     try {
       const p = await db();
-      const [items, repos, cats, rejPayloads, expired, warned, pruned, backedUp] = [
+      const [items, repos, cats, rejPayloads, expired, warned, pruned, backedUp, analytics] = [
         await sweepItems(p, app.log), await sweepRepos(p, app.log),
         await sweepCommunityCatalogs(p, app.log), await sweepRejectedPayloads(p, app.log),
         await sweepExpiredSubscriptions(p, app.log), await sweepExpiryWarnings(p, app.log),
         await sweepDiscordActivityCap(p, app.log), await sweepDailyFileBackup(p, app.log),
+        await sweepAnalyticsRetention(p, app.log),
       ];
       await sweepReports(p).catch((e) => app.log.warn({ e: String(e) }, 'report sweep failed'));
       await sampleAndAlert(p, app.log);
       await runEventScheduler(p).catch((e) => app.log.warn({ e: String(e) }, 'event scheduler failed'));
-      if (items || repos || cats || rejPayloads || expired || warned || pruned || backedUp) app.log.info(`[sweeper] hard-deleted ${items} item(s), ${repos} repo(s), ${cats} catalog(s) · purged ${rejPayloads} rejected payload(s) · suspended ${expired} expired term(s) · warned ${warned} · pruned ${pruned} old Discord member row(s)${backedUp ? ' · took daily file backup snapshot' : ''}`);
+      if (items || repos || cats || rejPayloads || expired || warned || pruned || backedUp || analytics) app.log.info(`[sweeper] hard-deleted ${items} item(s), ${repos} repo(s), ${cats} catalog(s) · purged ${rejPayloads} rejected payload(s) · suspended ${expired} expired term(s) · warned ${warned} · pruned ${pruned} old Discord member row(s) · aged out ${analytics} analytics row(s)${backedUp ? ' · took daily file backup snapshot' : ''}`);
     } catch (e) { app.log.warn({ e: String(e) }, 'sweeper run failed'); }
   };
   run(); // sweep once at boot

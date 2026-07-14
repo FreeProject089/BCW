@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { db, requireRole, requireCap, optionalUid } from '../lib/lib.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
+import { RETENTION_DEFAULTS, resolveRetention } from '../lib/retention.mjs';
 
 // In-process push bus for the admin live events feed: ingestion emits normalized events,
 // the SSE endpoint (/admin/analytics/events/stream) relays them to connected admins in
@@ -673,5 +674,40 @@ export default async function analyticsRoutes(app) {
       regions: curR.map((r) => ({ cc: r.cc, region: r.region, count: Number(r.c), prev: prevRMap[`${r.cc}|${r.region}`] || 0, lat: num(r.lat), lng: num(r.lng) }))
         .sort((a, b) => b.count - a.count),
     };
+  });
+
+  // Retention config for the append-only analytics tables. The sweeper purges rows
+  // older than each window (0 = keep forever). Returns the effective config, the
+  // defaults, and — so the admin can see the pressure — the current row count and
+  // oldest-row age per table.
+  app.get('/admin/analytics/retention', { preHandler: requireCap('manage_analytics') }, async () => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'analytics.retention' } });
+    const stat = async (model) => {
+      const [count, oldest] = await Promise.all([
+        model.count(),
+        model.findFirst({ orderBy: { createdAt: 'asc' }, select: { createdAt: true } }),
+      ]);
+      return { count, oldest: oldest?.createdAt || null };
+    };
+    const [pageview, interaction, vital, login] = await Promise.all([
+      stat(p.analyticsEvent), stat(p.interactionEvent), stat(p.webVital), stat(p.loginAttempt),
+    ]);
+    return { config: resolveRetention(row?.value), defaults: RETENTION_DEFAULTS, tables: { pageview, interaction, vital, login } };
+  });
+
+  const retentionSchema = z.object({
+    pageviewDays: z.number().int().min(0).max(3650),
+    interactionDays: z.number().int().min(0).max(3650),
+    vitalDays: z.number().int().min(0).max(3650),
+    loginDays: z.number().int().min(0).max(3650),
+  }).partial();
+  app.put('/admin/analytics/retention', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
+    const b = retentionSchema.safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const cfg = resolveRetention(b.data); // normalize + fill defaults so the stored value is complete
+    await p.adminSetting.upsert({ where: { key: 'analytics.retention' }, create: { key: 'analytics.retention', value: cfg }, update: { value: cfg } });
+    return { ok: true, config: cfg };
   });
 }
