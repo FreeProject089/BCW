@@ -1973,7 +1973,7 @@ export function Dashboard() {
   ];
   // Quick actions — no "Write a post" here (that lives in the Blog for staff).
   const actions = [
-    { icon: Upload, label: t('sub.title', 'Submit content'), onClick: () => setOpen(true) },
+    { icon: Upload, label: t('sub.title', 'Submit content'), to: '/submit' },
     { icon: Rocket, label: t('dash.hostrepo', 'Host a repo'), to: '/hosting' },
     { icon: Package, label: t('dash.browse', 'Browse catalog'), to: '/catalog?project=bmm' },
     { icon: LayoutDashboard, label: t('dash.editprofile', 'Edit profile'), to: '/profile' },
@@ -1988,7 +1988,7 @@ export function Dashboard() {
     <>
       {payReturn && !introActive && <PaymentResultModal result={payReturn} onClose={() => setPayReturn(null)} />}
       <SideDash icon={LayoutDashboard} title={t('dash.hi', 'Hi, {name}').replace('{name}', user?.displayName || 'there')} subtitle={t('dash.sub', 'Manage your content, repos and billing.')} tabs={tabs}
-        headerActions={<Button variant="primary" onClick={() => setOpen(true)}><Upload size={16} /> {t('sub.title', 'Submit content')}</Button>}>
+        headerActions={<Link to="/submit"><Button variant="primary"><Upload size={16} /> {t('sub.title', 'Submit content')}</Button></Link>}>
         {(s) => (<>
           {s === 'overview' && <>
             {/* Goal-gradient onboarding: the checklist owns first-run guidance (incl. 2FA);
@@ -1996,7 +1996,7 @@ export function Dashboard() {
             {(() => {
               const complete = !!user?.totpEnabled && list.length > 0 && rlist.length > 0;
               return (!gsDismissed && !complete)
-                ? <GettingStarted user={user} items={list} repos={rlist} onSubmit={() => setOpen(true)} onDismiss={() => { setGsDismissed(true); try { localStorage.setItem(GS_DISMISS_KEY, '1'); } catch {} }} />
+                ? <GettingStarted user={user} items={list} repos={rlist} onSubmit={() => nav('/submit')} onDismiss={() => { setGsDismissed(true); try { localStorage.setItem(GS_DISMISS_KEY, '1'); } catch {} }} />
                 : <TwoFactorNudge />;
             })()}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
@@ -2063,7 +2063,7 @@ export function Dashboard() {
                 </Card>); })}
             </div> : <div className="text-sm text-[var(--muted)] py-8 text-center">{t('dash.nomatch', 'No items match your filters.')}</div>)
               : <EmptyState icon={Inbox} title={t('dash.noitems', 'No items yet')} sub={t('dash.noitems.s', 'Submit your first app, plugin, theme or preset.')}>
-              <Button variant="primary" onClick={() => setOpen(true)}><Upload size={15} /> {t('sub.title', 'Submit content')}</Button></EmptyState>)}
+              <Link to="/submit"><Button variant="primary"><Upload size={15} /> {t('sub.title', 'Submit content')}</Button></Link></EmptyState>)}
           </div>}
 
           {s === 'repos' && <MyRepos />}

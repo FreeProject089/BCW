@@ -353,6 +353,50 @@ export default async function catalogRoutes(app) {
     return reply.code(201).send({ item, validation });
   });
 
+  // ── Bulk membership: propose MANY items at once (from a BMM catalog.json import) ──
+  // Every entry is a URL-based (self-hosted) proposal — no payload upload, so no hosting
+  // billing / temp-margin concerns; they just enter the queue as PENDING. Same anti-spam
+  // as single submit: PoW + rate limit + the PENDING cap (checked against the whole batch).
+  app.post('/catalog/bulk', { preHandler: requireRole(), config: { rateLimit: { max: 3, timeWindow: '1 hour' } } }, async (req, reply) => {
+    if (!powVerify(req.body?.pow)) return reply.code(400).send({ error: 'pow_required' });
+    const b = z.object({
+      projectKey: z.enum(['bmm', 'bsm', 'community']),
+      entries: z.array(z.object({
+        kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET']),
+        name: z.string().trim().min(2).max(80),
+        version: z.string().max(24).optional().default('1.0.0'),
+        description: z.string().max(4000).optional().default(''),
+        tags: z.array(z.string().max(24)).max(12).optional().default([]),
+        meta: z.record(z.any()).optional().default({}),
+      })).min(1).max(50),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
+    const p = await db();
+    // The batch must fit under the PENDING cap in one go (staff exempt).
+    if (req.user.role === 'USER') {
+      const pending = await p.submission.count({ where: { ownerId: req.user.uid, status: 'PENDING' } });
+      if (pending + b.data.entries.length > 5) return reply.code(429).send({ error: 'too_many_pending', max: 5, pending });
+    }
+    const project = await p.project.findUnique({ where: { key: b.data.projectKey } });
+    if (!project) return reply.code(400).send({ error: 'unknown_project' });
+    // Each entry must carry a download URL in its meta (self-hosted) — bulk import never
+    // uploads files. Presets keep their JSON in meta; they can pass without a URL.
+    const created = [];
+    for (const e of b.data.entries) {
+      if (e.kind !== 'PRESET' && !(e.meta?.download_url || e.meta?.downloadUrl || e.meta?.url)) continue;
+      if (e.kind === 'PRESET' && !presetSchema.safeParse(e.meta).success) continue;
+      const slug = `${b.data.projectKey}-${slugify(e.name)}-${Math.random().toString(36).slice(2, 6)}`;
+      const item = await p.catalogItem.create({ data: {
+        projectId: project.id, kind: e.kind, ownerId: req.user.uid, name: e.name, slug, shareKey: mkShareKey(),
+        description: e.description, tags: e.tags, version: e.version, meta: e.meta, status: 'PENDING',
+      } });
+      await p.submission.create({ data: { itemId: item.id, ownerId: req.user.uid, type: 'NEW', status: 'PENDING' } });
+      created.push({ id: item.id, name: item.name, slug: item.slug });
+    }
+    if (!created.length) return reply.code(400).send({ error: 'no_valid_entries' });
+    return reply.code(201).send({ created: created.length, items: created, skipped: b.data.entries.length - created.length });
+  });
+
   // ── Admin: create an OFFICIAL catalog item (published instantly, no moderation) ──
   app.post('/admin/catalog', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const parsed = submitSchema.safeParse(req.body);
