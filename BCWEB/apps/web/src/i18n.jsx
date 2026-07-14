@@ -77,6 +77,9 @@ const DICT = {
     'cookie.title': 'Cookies',
     'cookie.body': 'We use an essential cookie to keep you signed in. With your consent we also collect privacy-friendly, first-party page analytics — no third parties, no ad tracking.',
     'cookie.policy': 'Cookie Policy', 'cookie.all': 'Accept all', 'cookie.essential': 'Essential only',
+    'cookie.reject': 'Reject non-essential', 'cookie.customise': 'Customise', 'cookie.back': 'Back', 'cookie.save': 'Save choices', 'cookie.always': 'always on',
+    'cookie.cat.essential': 'Essential', 'cookie.cat.essential.d': 'Sign-in session and security. The site can’t work without these.',
+    'cookie.cat.analytics': 'Analytics', 'cookie.cat.analytics.d': 'Anonymous, first-party usage stats (no ads, no cross-site tracking).',
 
     'auth.welcome': 'Welcome back', 'auth.create': 'Create your account',
     'auth.subin': 'Sign in to manage your content.', 'auth.subup': 'Join to publish and host.',
@@ -479,6 +482,9 @@ const DICT = {
     'cookie.title': 'Cookies',
     'cookie.body': 'Nous utilisons un cookie essentiel pour te garder connecté. Avec ton accord, nous collectons aussi des statistiques de pages respectueuses de la vie privée, en interne — aucun tiers, aucun pistage publicitaire.',
     'cookie.policy': 'Politique de cookies', 'cookie.all': 'Tout accepter', 'cookie.essential': 'Essentiels uniquement',
+    'cookie.reject': 'Refuser le non-essentiel', 'cookie.customise': 'Personnaliser', 'cookie.back': 'Retour', 'cookie.save': 'Enregistrer mes choix', 'cookie.always': 'toujours actif',
+    'cookie.cat.essential': 'Essentiels', 'cookie.cat.essential.d': 'Session de connexion et sécurité. Le site ne peut pas fonctionner sans.',
+    'cookie.cat.analytics': 'Statistiques', 'cookie.cat.analytics.d': 'Statistiques d’usage anonymes et internes (aucune pub, aucun pistage inter-sites).',
 
     'auth.welcome': 'Content de te revoir', 'auth.create': 'Crée ton compte',
     'auth.subin': 'Connecte-toi pour gérer ton contenu.', 'auth.subup': 'Rejoins pour publier et héberger.',
