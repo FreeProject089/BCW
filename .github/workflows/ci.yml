@@ -21,6 +21,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       - run: npm ci
+      # no-undef catches bare JSX identifiers used-but-not-imported (the render crashes).
+      - run: npm run lint
       - run: npx vite build --logLevel error
 
   api-check:

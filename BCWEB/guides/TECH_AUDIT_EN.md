@@ -127,7 +127,7 @@ don't blind-`--force` them (both are breaking and would risk the API build).
 | **P1** | Minimal CI: build web, `node --check` API, `prisma validate`, secret scanning | Catches broken builds + leaked secrets at commit time |
 | **P1** | Tests for billing: webhook fixtures (checkout/renew/consolidate/lapse), `recomputePoolBytes` invariants, authz middlewares | Highest-blast-radius code, currently untested |
 | **P1** | Switch `db push` → `prisma migrate` | Removes silent-data-loss risk on schema changes |
-| **P2** | Split `pages.jsx` / `repos.jsx` into feature modules; ESLint (no-undef would have caught the crash bugs) | Maintainability + prevents the recurring import crashes |
+| **P2** | Split `pages.jsx` / `repos.jsx` into feature modules. **ESLint `no-undef` DONE** (apps/web `eslint.config.js`, wired into CI — catches the bare-identifier render crashes) | Maintainability + prevents the recurring import crashes |
 | **P2** | Analytics retention sweeps (cap by age/rows) | Keeps the DB healthy long-term |
 | **P2** | Redis pub/sub for SSE + shared rate limits (when replicas become real) | Unblocks horizontal scaling |
 | **P3** | i18n key-parity lint; accessibility pass; error monitoring; OG/prerender for public pages | Polish & reach |
