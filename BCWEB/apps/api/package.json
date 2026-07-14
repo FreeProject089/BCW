@@ -8,6 +8,7 @@
     "start": "node src/server.mjs",
     "seed": "node src/seed.mjs",
     "clear-content": "node src/clear-repos-catalogs.mjs",
+    "nuke": "node src/clear-repos-catalogs.mjs --nuke",
     "migrate": "prisma migrate deploy --schema ../../packages/db/schema.prisma"
   },
   "dependencies": {
