@@ -7308,9 +7308,9 @@ function AdminGoals() {
   const qs = rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`;
   const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/goals?${qs}`), [qs]);
   const goals = data?.goals || [];
-  const [f, setF] = useState({ name: '', kind: 'pageview', path: '', label: '' });
+  const [f, setF] = useState({ name: '', kind: 'pageview', path: '', label: '', target: '' });
   const [editId, setEditId] = useState(null); const [busy, setBusy] = useState(false);
-  const reset = () => { setF({ name: '', kind: 'pageview', path: '', label: '' }); setEditId(null); };
+  const reset = () => { setF({ name: '', kind: 'pageview', path: '', label: '', target: '' }); setEditId(null); };
   // A sensible default name from what the goal targets, so the admin rarely has to type one.
   const autoName = () => {
     if (f.kind === 'pageview') return f.path.trim() ? t('goal.auto.visit', 'Visit {x}').replace('{x}', f.path.trim()) : t('goal.auto.anyvisit', 'Any page visit');
@@ -7321,11 +7321,11 @@ function AdminGoals() {
     // Auto-name if the admin left it blank — one less field to think about.
     const name = f.name.trim() || autoName();
     setBusy(true);
-    const payload = { name, kind: f.kind, path: f.path.trim() || null, label: f.kind === 'pageview' ? null : (f.label.trim() || null) };
+    const payload = { name, kind: f.kind, path: f.path.trim() || null, label: f.kind === 'pageview' ? null : (f.label.trim() || null), target: f.target === '' ? null : Math.max(0, Number(f.target) || 0) };
     try { if (editId) await api.patch(`/admin/analytics/goals/${editId}`, payload); else await api.post('/admin/analytics/goals', payload); toast.success(editId ? t('goal.saved', 'Goal saved.') : t('goal.added', 'Goal added.')); reset(); reload(); }
     catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
-  const edit = (g) => { setEditId(g.id); setF({ name: g.name, kind: g.kind, path: g.path || '', label: g.label || '' }); };
+  const edit = (g) => { setEditId(g.id); setF({ name: g.name, kind: g.kind, path: g.path || '', label: g.label || '', target: g.target ?? '' }); };
   const del = async (g) => { if (!(await dialog.confirm({ title: t('goal.del', 'Delete goal?'), message: g.name, okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/admin/analytics/goals/${g.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const kindLabel = (k) => { const x = GOAL_KINDS.find((g) => g[0] === k); return x ? t(x[1], x[2]) : k; };
   return (
@@ -7354,6 +7354,7 @@ function AdminGoals() {
                 <Field label={t('goal.t.onpage', 'On page (optional)')}><Input value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} placeholder="/catalog…" /></Field>
               </>}
           <Field label={<span className="flex items-center gap-1.5">{t('goal.name', 'Goal name')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.name.auto', '(auto if blank)')}</span></span>}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={autoName()} /></Field>
+          <Field label={<span className="flex items-center gap-1.5">{t('goal.target', 'Target')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.target.hint', '(optional — e.g. 1000 completions)')}</span></span>}><Input type="number" min="0" value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} placeholder="1000" /></Field>
         </div>
         <div className="text-xs text-[var(--muted)] mt-3 flex items-start gap-1.5"><Target size={13} className="text-[var(--primary-2)] mt-0.5 shrink-0" /> <span>{t('goal.preview', 'Counts a conversion when a visitor:')} <b>{autoName().toLowerCase()}</b>.</span></div>
         <div className="flex justify-end gap-2 mt-3">
@@ -7379,6 +7380,10 @@ function AdminGoals() {
               </div>
             </div>
             <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-3"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${Math.min(100, g.rate)}%` }} /></div>
+            {g.target != null && <div className="mt-2">
+              <div className="flex items-center justify-between text-[11px] text-[var(--faint)] mb-1"><span className="flex items-center gap-1"><Target size={11} /> {t('goal.targetprog', 'Target progress')}</span><span className="tabular-nums font-medium text-[var(--muted)]">{g.completions} / {g.target} ({g.progress ?? 0}%)</span></div>
+              <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-sky-500 to-emerald-500" style={{ width: `${g.progress ?? 0}%` }} /></div>
+            </div>}
           </Card>
         ))}
       </div> : <EmptyState icon={Target} title={t('goal.none', 'No goals yet')} sub={t('goal.none.s', 'Add your first conversion goal above.')} />}
@@ -7466,13 +7471,18 @@ function AdminEventsFeed() {
 // Client-error dashboard: uncaught errors + rejections grouped by message, with
 // occurrences, distinct sessions, first/last seen, and an expandable stack trace.
 function AdminErrors() {
-  const { t } = useI18n();
+  const { t } = useI18n(); const toast = useToast();
   const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState('');
   const [range, setRange] = useState('7d'); const [open, setOpen] = useState(null);
   const rq = Object.fromEntries(WV_RANGES)[range] || { days: 7 };
   const qs = `${rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`}${qApplied ? `&path=${encodeURIComponent(qApplied)}` : ''}`;
   const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/errors?${qs}`), [qs]);
   const errors = data?.errors || [];
+  const copy = (txt, msg) => { navigator.clipboard?.writeText(txt); toast.success(msg || t('er.copied', 'Copied.')); };
+  const exportJson = () => {
+    const blob = new Blob([JSON.stringify(errors, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `errors-${range}-${Date.now()}.json`; a.click(); URL.revokeObjectURL(a.href);
+  };
   return (
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -7481,6 +7491,7 @@ function AdminErrors() {
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
           </div>
+          {errors.length > 0 && <Button size="sm" variant="ghost" onClick={exportJson}><Download size={13} /> {t('er.export', 'Export .json')}</Button>}
           <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
         </div>
       </div>
@@ -7510,10 +7521,19 @@ function AdminErrors() {
                 <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
               </div>
             </button>
-            {isOpen && <div className="px-4 pb-4 border-t border-[var(--line)] pt-3 space-y-2">
-              <div className="text-xs text-[var(--muted)]"><b>{t('er.page', 'Page')}:</b> <span className="font-mono">{e.path}</span> · <b>{t('er.firstseen', 'First seen')}:</b> {new Date(e.firstSeen).toLocaleString()}</div>
+            {isOpen && <div className="px-4 pb-4 border-t border-[var(--line)] pt-3 space-y-3">
+              <div className="text-xs text-[var(--muted)] flex items-center gap-2 flex-wrap">
+                <span><b>{t('er.page', 'Page')}:</b> <span className="font-mono">{e.path}</span></span>
+                <span><b>{t('er.firstseen', 'First seen')}:</b> {new Date(e.firstSeen).toLocaleString()}</span>
+                <button onClick={() => copy(`${e.message}\n${e.path}\n\n${e.stack || ''}`, t('er.copiedlog', 'Error log copied.'))} className="inline-flex items-center gap-1 text-[var(--faint)] hover:text-[var(--primary)]"><Copy size={12} /> {t('er.copylog', 'Copy log')}</button>
+              </div>
+              {/* Which signed-in accounts hit this error (BC ids) — click one to copy, or copy all. */}
+              {e.bcIds?.length > 0 && <div>
+                <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1 flex items-center gap-1.5"><Fingerprint size={12} /> {t('er.affected', 'Affected accounts')} ({e.bcIds.length}) <button onClick={() => copy(e.bcIds.join('\n'), t('er.bcidscopied', 'BC ids copied.'))} className="normal-case font-normal text-[var(--faint)] hover:text-[var(--primary)] inline-flex items-center gap-1"><Copy size={11} /> {t('er.copyall', 'copy all')}</button></div>
+                <div className="flex flex-wrap gap-1.5">{e.bcIds.map((b) => <button key={b} onClick={() => copy(b)} className="text-[11px] font-mono px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--muted)] hover:text-[var(--primary)] hover:border-[var(--primary)]">{b}</button>)}</div>
+              </div>}
               {e.stack ? <div>
-                <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1 flex items-center gap-1.5"><FileText size={12} /> {t('er.stack', 'Stack trace')}</div>
+                <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1 flex items-center gap-1.5"><FileText size={12} /> {t('er.stack', 'Stack trace')} <button onClick={() => copy(e.stack, t('er.stackcopied', 'Stack copied.'))} className="normal-case font-normal text-[var(--faint)] hover:text-[var(--primary)] inline-flex items-center gap-1"><Copy size={11} /> {t('common.copy', 'copy')}</button></div>
                 <pre className="text-[11px] font-mono bg-[var(--surface-2)] rounded-lg p-3 overflow-x-auto whitespace-pre text-[var(--muted)] max-h-72">{e.stack}</pre>
               </div> : <div className="text-xs text-[var(--faint)]">{t('er.nostack', 'No stack trace captured.')}</div>}
             </div>}

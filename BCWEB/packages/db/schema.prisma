@@ -1396,6 +1396,7 @@ model ErrorEvent {
   stack     String? // stack trace (bounded)
   path      String // page path where it fired
   visitor   String? // daily anonymous hash
+  userId    String? // the signed-in account that hit it, if any (admin-only; resolved to a BC id)
   device    String?
   browser   String?
   os        String?
@@ -1446,6 +1447,9 @@ model AnalyticsGoal {
   kind      String   @default("pageview") // pageview | click | submit | input | copy
   path      String? // path pattern (case-insensitive contains), optional
   label     String? // event label pattern (contains), optional — for click/submit/input
+  // Optional numeric target (e.g. "reach 1000 pageviews / 200 signups this window"). When
+  // set, the goal shows progress toward it in addition to the conversion rate.
+  target    Int?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 

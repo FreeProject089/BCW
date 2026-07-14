@@ -320,6 +320,12 @@ export function optionalAuth() {
   };
 }
 
+// Cheap best-effort "who is this" for no-auth ingest endpoints (analytics): returns the
+// signed-in account id from the session cookie, or null. No DB hit, no lock check.
+export function optionalUid(req) {
+  try { return jwt.verify(req.cookies?.bcw_session, JWT_SECRET)?.uid || null; } catch { return null; }
+}
+
 // A repo.json is only "valid" if it matches BMM's CURRENT ServerRepo manifest format
 // (models/repo.rs): required name, version, game_name, created_at + a profiles array.
 // Old-format manifests (e.g. missing game_name/profiles) are NOT valid — so they stay

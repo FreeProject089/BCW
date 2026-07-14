@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
-import { db, requireRole, requireCap } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalUid } from '../lib/lib.mjs';
+import { userBcId } from '../lib/repofingerprint.mjs';
 
 // Real client IP as seen by our trusted proxy (Caddy appends it last on X-Forwarded-For).
 function clientIp(req) {
@@ -208,7 +209,7 @@ export default async function analyticsRoutes(app) {
     const p = await db();
     const { device, browser, os } = parseUA(req.headers['user-agent']);
     const geo = await geoOf(req).catch(() => ({}));
-    await p.errorEvent.create({ data: { path: b.data.path, message: b.data.message, stack: b.data.stack || null, visitor: visitorHash(req), device, browser, os, country: geo?.country || null } }).catch(() => {});
+    await p.errorEvent.create({ data: { path: b.data.path, message: b.data.message, stack: b.data.stack || null, visitor: visitorHash(req), userId: optionalUid(req), device, browser, os, country: geo?.country || null } }).catch(() => {});
     return reply.code(204).send();
   });
 
@@ -428,9 +429,17 @@ export default async function analyticsRoutes(app) {
     // Latest sample per message (path/stack/device/browser/os/country) for the detail view.
     const msgs = groups.map((g) => g.message);
     const samples = new Map();
+    const bcIdsByMsg = new Map();
     if (msgs.length) {
       const rows = await p.errorEvent.findMany({ where: { ...where, message: { in: msgs } }, orderBy: { createdAt: 'desc' }, distinct: ['message'], select: { message: true, path: true, stack: true, device: true, browser: true, os: true, country: true, createdAt: true } });
       rows.forEach((r) => samples.set(r.message, r));
+      // Which signed-in accounts hit each error → their BC ids (admin-only). Anonymous
+      // (logged-out) hits contribute no id. Bounded to a handful of ids per message.
+      const idRows = await p.errorEvent.findMany({ where: { ...where, message: { in: msgs }, userId: { not: null } }, select: { message: true, userId: true }, distinct: ['message', 'userId'], take: 2000 });
+      for (const r of idRows) {
+        const arr = bcIdsByMsg.get(r.message) || []; if (arr.length < 50) arr.push(userBcId(r.userId));
+        bcIdsByMsg.set(r.message, arr);
+      }
     }
     const total = await p.errorEvent.count({ where });
     return {
@@ -439,6 +448,7 @@ export default async function analyticsRoutes(app) {
         message: g.message, occurrences: Number(g.occurrences), sessions: Number(g.sessions),
         firstSeen: g.firstSeen, lastSeen: g.lastSeen,
         path: s.path || null, stack: s.stack || null, device: s.device || null, browser: s.browser || null, os: s.os || null, country: s.country || null,
+        bcIds: bcIdsByMsg.get(g.message) || [],
       }; }),
     };
   });
@@ -449,6 +459,7 @@ export default async function analyticsRoutes(app) {
     kind: z.enum(['pageview', 'click', 'submit', 'input', 'copy']),
     path: z.string().max(200).nullish(),
     label: z.string().max(120).nullish(),
+    target: z.number().int().min(0).max(100000000).nullish(),
     active: z.boolean().optional(),
   });
   // List goals with their completions + unique-visitor conversion rate over the window.
@@ -479,7 +490,9 @@ export default async function analyticsRoutes(app) {
         ]);
         completions = c; visitors = Number(v?.[0]?.n || 0);
       }
-      return { ...g, completions, visitors, rate: totalVisitors ? Math.round((visitors / totalVisitors) * 1000) / 10 : 0 };
+      // Progress toward an optional numeric target (based on raw completions).
+      const progress = g.target ? Math.min(100, Math.round((completions / g.target) * 100)) : null;
+      return { ...g, completions, visitors, rate: totalVisitors ? Math.round((visitors / totalVisitors) * 1000) / 10 : 0, progress };
     }));
     return { goals: withStats, totalVisitors };
   });
@@ -487,7 +500,7 @@ export default async function analyticsRoutes(app) {
     const b = goalSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const g = await p.analyticsGoal.create({ data: { name: b.data.name, kind: b.data.kind, path: b.data.path || null, label: b.data.label || null, active: b.data.active ?? true } });
+    const g = await p.analyticsGoal.create({ data: { name: b.data.name, kind: b.data.kind, path: b.data.path || null, label: b.data.label || null, target: b.data.target ?? null, active: b.data.active ?? true } });
     return { ok: true, goal: g };
   });
   app.patch('/admin/analytics/goals/:id', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
@@ -498,6 +511,7 @@ export default async function analyticsRoutes(app) {
     for (const k of ['name', 'kind', 'active']) if (b.data[k] !== undefined) data[k] = b.data[k];
     if (b.data.path !== undefined) data.path = b.data.path || null;
     if (b.data.label !== undefined) data.label = b.data.label || null;
+    if (b.data.target !== undefined) data.target = b.data.target ?? null;
     const g = await p.analyticsGoal.update({ where: { id: req.params.id }, data }).catch(() => null);
     if (!g) return reply.code(404).send({ error: 'not_found' });
     return { ok: true, goal: g };
