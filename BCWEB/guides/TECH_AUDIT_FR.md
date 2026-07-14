@@ -80,11 +80,13 @@ Discord vivant dans l'historique de `.env.example` ; un secret webhook collé en
 chat.) Une pipeline minimale (build + checks + scan de secrets) attraperait les deux classes.
 
 ### 3.3 🟠 Fichiers monolithiques
-`apps/web/src/pages/pages.jsx` fait ~10k lignes (des dizaines de composants admin),
-`repos.jsx` et `i18n.jsx` sont énormes. Conséquences : éditeurs lents, conflits pénibles,
-onboarding difficile, et les crashes « import manquant » récurrents de ce mois-ci (X,
-Calendar) — un identifiant JSX nu passe le build et explose au rendu. L'extraction en
-modules par feature est en retard.
+`apps/web/src/pages/pages.jsx` **faisait** ~10k lignes (des dizaines de composants admin) — il
+a depuis été découpé en modules par route et n'est plus qu'un module de helpers partagés de
+210 lignes (voir P2). `repos.jsx` (~2k) et `i18n.jsx` restent gros. Les conséquences qui ont
+motivé le découpage : éditeurs lents, conflits pénibles, onboarding difficile, et les crashes
+« import manquant » récurrents (X, Calendar) — un identifiant JSX nu passe le build et explose
+au rendu. Cette dernière classe est désormais attrapée structurellement par le garde ESLint
+`no-undef` dans la CI.
 
 ### 3.4 🟠 Hypothèses mono-processus
 Le feed SSE (`feedBus`), divers caches mémoire et l'état de rate-limit sont in-process. Les
@@ -135,7 +137,7 @@ part ; ne pas les `--force` à l'aveugle (les deux sont cassants et risqueraient
 | **P1** | CI minimale : build web, `node --check` API, `prisma validate`, scan de secrets | Attrape builds cassés + secrets au commit |
 | **P1** | Tests de facturation : **FAIT** — math de prix (`pricing.test.mjs`) **et** l'invariant de pool (`pool-billing.test.mjs` : `recomputePoolBytes` somme-des-abos-actifs, défaut→suspend+masque+grâce 72h, renouvellement→restaure, défaut-partiel-garde-le-contenu, no-op idempotent) plus **des tests webhook de bout en bout** (`webhook.test.mjs` : un événement réellement signé à travers le vrai handler — mauvaise-signature→400, `customer.subscription.deleted`→défaut-suspend, `checkout.session.completed{pool_renew}`→restaure) — le tout dans la CI contre un Postgres jetable (**25 tests**). Le risque de facturation §1 est maintenant couvert de bout en bout pour le cycle de vie piloté par la BD | Le code au plus gros rayon d'explosion |
 | **P1** | Passer `db push` → `prisma migrate` **FAIT** — une baseline `0_init` + `src/boot-migrate.mjs` (adopte sans risque les BD fraîches / db-push / déjà migrées, vérifié zéro perte de données) ; le Dockerfile boote via `migrate deploy` ; la CI applique les migrations + un contrôle de dérive (un schéma sans migration échoue) | Supprime le risque de perte de données silencieuse |
-| **P2** | Découper `pages.jsx` / `repos.jsx` en modules. **ESLint `no-undef` FAIT** (apps/web `eslint.config.js`, câblé dans la CI — attrape les crashes de rendu par identifiant nu) | Maintenabilité + prévient les crashes d'import récurrents |
+| **P2** | Découper `pages.jsx` en modules **FAIT** — le monolithe de ~10k lignes est devenu un module de helpers partagés de 210 lignes ; chaque route est passée dans son propre fichier (`home`, `catalog`, `signin`, `hosting`, `dashboard`, `account-pages`, `legal`, `contact`, et tout le back-office admin de ~7,3k lignes → `admin.jsx`). Deux pages mortes retirées. Chaque extraction gardée par **ESLint `no-undef`** (apps/web `eslint.config.js`, câblé dans la CI — il a attrapé chaque import manquant que `vite build` acceptait en silence) + un smoke-test de démarrage navigateur. `repos.jsx` (~2k) est le gros fichier restant à découper | Maintenabilité + prévient les crashes d'import récurrents |
 | **P2** | Purges de rétention analytics (par âge/nb de lignes) | Garde la DB saine à long terme |
 | **P2** | Redis pub/sub pour le SSE + rate limits partagés (quand les réplicas deviendront réels) | Débloque la montée en charge horizontale |
 | **P3** | Lint de parité i18n ; passe accessibilité ; monitoring d'erreurs ; OG/prérendu des pages publiques | Finition & portée |
