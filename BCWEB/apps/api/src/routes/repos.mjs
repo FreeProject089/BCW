@@ -430,6 +430,61 @@ export default async function repoRoutes(app) {
     return { url: session.url };
   });
 
+  // Renew a whole storage POOL (the current model) — extends the pool subscription's
+  // term. Free tier applies immediately; a paid term goes through Stripe (webhook
+  // pool_renew). Also the "resume" path: restores every repo + catalog in the pool.
+  app.post('/me/hosting/groups/:id/renew', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1), autoRenew: z.boolean().optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const group = await p.hostingGroup.findUnique({ where: { id: req.params.id } });
+    if (!group) return reply.code(404).send({ error: 'not_found' });
+    if (group.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role)) return reply.code(403).send({ error: 'owner_only' });
+
+    const storageGB = Number(group.poolBytes) / GiB;
+    const uploadMbps = (group.uploadLimitKbps || 0) / 1024;
+    const s = await settings(p);
+    const cf = capacityFactors(await capacityStatus(p));
+    const months = b.data.months;
+    const monthly = priceCents(s, storageGB, uploadMbps, group.cpuShare || 0);
+    const total = termTotalCents(monthly, months, cf.priceMult);
+    const siteUrl = process.env.SITE_URL || 'http://localhost';
+
+    const applyRenewal = async () => {
+      const currentPeriodEnd = new Date(Date.now() + months * 30 * 864e5);
+      // Restore everything the pool owns that a lapse had suspended/hidden.
+      await p.serverRepo.updateMany({ where: { groupId: group.id, status: 'SUSPENDED' }, data: { status: 'ONLINE' } });
+      await p.serverRepo.updateMany({ where: { groupId: group.id }, data: { deleteAt: null } });
+      await p.communityCatalog.updateMany({ where: { groupId: group.id, status: 'HIDDEN' }, data: { status: 'ACTIVE', deleteAt: null } });
+      const existing = await p.subscription.findUnique({ where: { hostingGroupId: group.id } });
+      if (existing) { await p.subscription.update({ where: { hostingGroupId: group.id }, data: { status: 'active', currentPeriodEnd, warnedAt: null } }); return; }
+      const plan = await p.hostingPlan.create({ data: { name: `Custom ${storageGB}GB pool (renewal)`, storageGB, uploadLimitKbps: group.uploadLimitKbps, cpuShare: group.cpuShare, priceMonthlyCents: monthly, active: false } });
+      await p.subscription.create({ data: { userId: group.ownerId, hostingGroupId: group.id, planId: plan.id, status: 'active', currentPeriodEnd } });
+    };
+
+    if (total <= 0) {
+      await applyRenewal();
+      await notify(p, group.ownerId, 'hosting_started', `Pool "${group.name}" renewed for ${months} month${months > 1 ? 's' : ''} — free tier, no charge.`);
+      return { ok: true, free: true, groupId: group.id };
+    }
+    const sk = await stripe();
+    if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
+    const customer = await ensureCustomer(p, sk, req.user.uid);
+    const md = { type: 'pool_renew', kind: 'hosting', userId: req.user.uid, groupId: group.id, months: String(months) };
+    const session = await sk.checkout.sessions.create(b.data.autoRenew ? {
+      mode: 'subscription', customer,
+      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: total, recurring: { interval: 'month', interval_count: months }, product_data: { name: `Pool "${group.name}" — auto-renews every ${months} month${months > 1 ? 's' : ''}` } } }],
+      subscription_data: { metadata: md }, metadata: md,
+      success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
+    } : {
+      mode: 'payment', customer,
+      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: total, product_data: { name: `Pool "${group.name}" renewal — ${months} month${months > 1 ? 's' : ''}` } } }],
+      invoice_creation: { enabled: true }, metadata: md,
+      success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
+    });
+    return { url: session.url };
+  });
+
   // Free switch: single hosted repo → multi (mints a pool sized to its quota), and back.
   app.post('/me/repos/:id/to-multi', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();

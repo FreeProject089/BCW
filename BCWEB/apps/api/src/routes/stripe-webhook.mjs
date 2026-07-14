@@ -208,6 +208,28 @@ export default async function stripeWebhook(app) {
         return { received: true };
       }
 
+      // Paid POOL renewal — extends the pool subscription + restores its repos/catalogs.
+      if (meta.type === 'pool_renew' && meta.groupId && meta.userId) {
+        const group = await p.hostingGroup.findUnique({ where: { id: meta.groupId } });
+        if (group) {
+          const months = Number(meta.months || 1);
+          const currentPeriodEnd = new Date(Date.now() + months * 30 * 864e5);
+          await p.serverRepo.updateMany({ where: { groupId: group.id, status: 'SUSPENDED' }, data: { status: 'ONLINE' } });
+          await p.serverRepo.updateMany({ where: { groupId: group.id }, data: { deleteAt: null } });
+          await p.communityCatalog.updateMany({ where: { groupId: group.id, status: 'HIDDEN' }, data: { status: 'ACTIVE', deleteAt: null } });
+          const existing = await p.subscription.findUnique({ where: { hostingGroupId: group.id } });
+          if (existing) {
+            await p.subscription.update({ where: { hostingGroupId: group.id }, data: { status: 'active', currentPeriodEnd, warnedAt: null, ...(s.subscription ? { stripeSubId: s.subscription } : {}) } });
+          } else {
+            const plan = await p.hostingPlan.create({ data: { name: `Custom ${Number(group.poolBytes) / (1024 ** 3)}GB pool (renewal)`, storageGB: Number(group.poolBytes) / (1024 ** 3), uploadLimitKbps: group.uploadLimitKbps, cpuShare: group.cpuShare, priceMonthlyCents: 0, active: false } });
+            await p.subscription.create({ data: { userId: meta.userId, hostingGroupId: group.id, planId: plan.id, status: 'active', currentPeriodEnd, stripeSubId: s.subscription || null } });
+          }
+          await p.payment.create({ data: { userId: meta.userId, hostingGroupId: group.id, kind: 'HOSTING', description: `Pool "${group.name}" renewal — ${months} month${months > 1 ? 's' : ''}`, amountCents: s.amount_total ?? 0, currency: s.currency || 'usd', stripeSessionId: s.id } });
+          await notify(p, meta.userId, 'hosting_started', `Pool "${group.name}" renewed for ${months} month${months > 1 ? 's' : ''}.`);
+        }
+        return { received: true };
+      }
+
       const { userId, planId, repoName } = meta;
       const plan = await p.hostingPlan.findUnique({ where: { id: planId } });
       if (plan && userId) {
