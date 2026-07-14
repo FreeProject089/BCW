@@ -572,14 +572,29 @@ export function Catalog() {
   return (
     <div>
       <PageHeader icon={Package} title={`${t('cat.title', 'Catalog')}${project ? ` · ${project.toUpperCase()}` : ''}`} subtitle={t('cat.sub', 'Community apps, plugins, themes and presets.')} />
-      <div className="flex flex-wrap gap-2 mb-4 items-center">
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!pl-9" placeholder={t('cat.search', 'Search mods, plugins, themes & presets…')} defaultValue={q} onKeyDown={(e) => e.key === 'Enter' && set('q', e.target.value)} />
+      {/* Filter bar: project switcher · search · kind pills · sort — grouped into one
+          tidy card instead of a loose flex row. */}
+      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-5 space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          {[['', t('cat.allprojects', 'All')], ['bmm', 'BMM'], ['bsm', 'BSM']].map(([pk, l]) => (
+            <button key={pk} onClick={() => { set('project', pk); if (kind) set('kind', ''); }} className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${project === pk ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
+          ))}
+          <div className="flex-1" />
+          <Select className="!w-auto" value={sort} onChange={(e) => set('sort', e.target.value)}>{SORTS.map(([v, l]) => <option key={v} value={v}>{t(`cat.sort.${v}`, l)}</option>)}</Select>
         </div>
-        {/* Kinds are project-scoped: presets are a BSM thing; BMM has apps/plugins/themes. */}
-        {(project === 'bsm' ? ['', 'PRESET'] : project === 'bmm' ? ['', 'APP', 'PLUGIN', 'THEME'] : ['', 'APP', 'PLUGIN', 'THEME', 'PRESET']).map((k) => <Button key={k} size="sm" variant={kind === k ? 'primary' : 'default'} onClick={() => set('kind', k)}>{k || t('cat.all', 'All')}</Button>)}
-        <Select className="!w-auto ml-auto" value={sort} onChange={(e) => set('sort', e.target.value)}>{SORTS.map(([v, l]) => <option key={v} value={v}>{t(`cat.sort.${v}`, l)}</option>)}</Select>
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="relative flex-1 min-w-[220px] max-w-sm">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+            <Input className="!pl-9" placeholder={t('cat.search', 'Search mods, plugins, themes & presets…')} defaultValue={q} onKeyDown={(e) => e.key === 'Enter' && set('q', e.target.value)} />
+          </div>
+          {/* Kinds are project-scoped: presets are a BSM thing; BMM has apps/plugins/themes. */}
+          <div className="flex gap-1.5 flex-wrap">
+            {(project === 'bsm' ? ['', 'PRESET'] : project === 'bmm' ? ['', 'APP', 'PLUGIN', 'THEME'] : ['', 'APP', 'PLUGIN', 'THEME', 'PRESET']).map((k) => {
+              const I = k ? (KIND_ICON[k] || Package) : Package;
+              return <button key={k} onClick={() => set('kind', k)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${kind === k ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary-2)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}><I size={14} /> {k ? (KIND_LABEL[k] || k) : t('cat.all', 'All')}</button>;
+            })}
+          </div>
+        </div>
       </div>
       {multi && sel.size > 0 && (
         <div className="flex items-center gap-3 mb-4 p-3 rounded-xl border border-[var(--primary)] bg-orange-500/5">

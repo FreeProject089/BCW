@@ -1041,7 +1041,7 @@ const DICT = {
     'sub.metadata': 'Métadonnées (JSON)', 'sub.gentmpl': 'Générer un modèle',
 
     'cat.downloading': 'Téléchargement de {n} preset(s)…', 'cat.dlfail': 'Échec du téléchargement.',
-    'cat.title': 'Catalogue', 'cat.sub': 'Apps, plugins, thèmes et presets de la communauté.', 'cat.search': 'Rechercher mods, plugins, thèmes & presets…', 'cat.all': 'Tous',
+    'cat.title': 'Catalogue', 'cat.sub': 'Apps, plugins, thèmes et presets de la communauté.', 'cat.search': 'Rechercher mods, plugins, thèmes & presets…', 'cat.all': 'Tous', 'cat.allprojects': 'Tous',
     'cat.sort.recent': 'Plus récents', 'cat.sort.popular': 'Plus populaires', 'cat.sort.month': 'Populaires ce mois', 'cat.sort.views': 'Plus vus',
     'cat.selected': '{n} sélectionné(s)', 'cat.dlsel': 'Télécharger la sélection', 'cat.clear': 'Effacer', 'cat.nodesc': 'Aucune description.',
     'cat.empty.t': 'Rien ici pour le moment', 'cat.empty.s': 'Sois le premier à publier dans ce catalogue.',
