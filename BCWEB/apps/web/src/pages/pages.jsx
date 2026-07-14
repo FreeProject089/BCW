@@ -9,7 +9,7 @@ import {
   Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket,
   CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss,
   Info, Orbit, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, ShoppingCart,
-  Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save,
+  Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2,
 } from 'lucide-react';
 import { api, uploadPayload, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
@@ -2323,7 +2323,7 @@ export function Admin() {
     isAdmin && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
     can('manage_newsletter') && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
     can('manage_faq') && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
-    can('manage_catalogs') && { id: 'commcatalogs', label: t('adm.tab.commcatalogs', 'Community catalogs'), icon: Boxes },
+    can('manage_catalogs') && { id: 'commcatalogs', label: t('adm.tab.commcatalogs', 'Community catalogs'), icon: Layers },
 
     { heading: t('adm.h.repos', 'Repos & hosting') },
     can('manage_repos') && { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
@@ -8320,7 +8320,12 @@ function OwnerCatalogs() {
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate flex items-center gap-2">{c.name} <Badge tone={tone(c.status)}>{c.status}</Badge><Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
-                <div className="text-xs text-[var(--faint)] truncate">{c.itemCount} {t('cc.items', 'items')} · <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline">/c/{c.slug}</a></div>
+                <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap">
+                  <span>{c.itemCount} {t('cc.items', 'items')}</span>
+                  <span className="flex items-center gap-1"><Download size={11} /> {c.downloads ?? 0}</span>
+                  <span className="flex items-center gap-1"><Eye size={11} /> {c.views ?? 0}</span>
+                  <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline">/c/{c.slug}</a>
+                </div>
               </div>
               <Button size="sm" variant="ghost" onClick={() => copyFeed(c)}><Copy size={13} /> {t('oc.feed', 'Feed URL')}</Button>
               {c.mode === 'managed' && <Button size="sm" variant="ghost" onClick={() => setOpenId(openId === c.id ? null : c.id)}><Package size={13} /> {t('oc.items', 'Items')}</Button>}
@@ -8340,17 +8345,34 @@ function OwnerCatalogs() {
   );
 }
 
-// Managed-catalog item manager (add URL-based items + remove). Payload uploads come with
-// the storage-pool billing pass; here items point at a download URL in their meta.
+// Managed-catalog item manager. Each item either points at an external download URL, or
+// hosts a file uploaded straight into the catalog's storage pool (the size limit is just
+// the pool's free space — enforced server-side on create).
 function OwnerCatalogItems({ catalog, onChange }) {
   const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get(`/me/catalogs/${catalog.id}`), [catalog.id]);
   const [f, setF] = useState({ kind: 'PLUGIN', name: '', url: '' });
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
   const items = data?.catalog?.items || [];
   const add = async () => {
     if (f.name.trim().length < 1) return toast.error(t('oc.it.name', 'Name required.'));
-    try { await api.post(`/me/catalogs/${catalog.id}/items`, { kind: f.kind, name: f.name.trim(), meta: f.url ? { download_url: f.url.trim() } : {} }); setF({ ...f, name: '', url: '' }); reload(); onChange?.(); }
-    catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); }
+    setBusy(true);
+    try {
+      let payloadKey, payloadSize;
+      if (file) { payloadKey = await uploadPayload(f.kind, file); payloadSize = file.size; }
+      await api.post(`/me/catalogs/${catalog.id}/items`, {
+        kind: f.kind, name: f.name.trim(),
+        payloadKey, payloadSize,
+        meta: (!file && f.url) ? { download_url: f.url.trim() } : {},
+      });
+      setF({ ...f, name: '', url: '' }); setFile(null); if (fileRef.current) fileRef.current.value = '';
+      reload(); onChange?.();
+    } catch (x) {
+      const e = x.data?.error;
+      toast.error(e === 'too_large' ? t('sub2.toobig', 'Files over 100MB must be arranged via the contact page.') : e === 'pool_exceeded' ? t('oc.it.poolfull', 'Not enough pool space left.') : e || t('acc.failed', 'Failed.'));
+    } finally { setBusy(false); }
   };
   const rm = async (it) => { try { await api.del(`/me/catalogs/${catalog.id}/items/${it.id}`); reload(); onChange?.(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
   return (
@@ -8360,6 +8382,8 @@ function OwnerCatalogItems({ catalog, onChange }) {
           {items.map((it) => (
             <div key={it.id} className="flex items-center gap-2 text-sm py-1">
               <Badge tone="">{it.kind}</Badge><span className="flex-1 min-w-0 truncate">{it.name}</span>
+              {it.payloadKey && <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><HardDrive size={11} /> {fmtBytes(it.payloadSize)}</span>}
+              <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><Download size={11} /> {it.downloads ?? 0}</span>
               <button onClick={() => rm(it)} className="text-[var(--faint)] hover:text-red-400"><X size={13} /></button>
             </div>
           ))}
@@ -8367,51 +8391,132 @@ function OwnerCatalogItems({ catalog, onChange }) {
         <div className="flex flex-wrap items-end gap-2">
           <Select className="!w-auto" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="PLUGIN">Plugin</option><option value="THEME">Theme</option><option value="APP">App</option></Select>
           <Input className="flex-1 min-w-[120px]" placeholder={t('sub.name', 'Name')} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-          <Input className="flex-1 min-w-[160px]" placeholder="https://…/download" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />
-          <Button size="sm" variant="default" onClick={add}><Plus size={13} /> {t('oc.additem', 'Add')}</Button>
+          {!file && <Input className="flex-1 min-w-[160px]" placeholder="https://…/download" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />}
+          {file && <span className="text-xs text-[var(--muted)] flex items-center gap-1 min-w-0"><Upload size={12} /> <span className="truncate max-w-[160px]">{file.name}</span> ({fmtBytes(file.size)}) <button onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="hover:text-red-400"><X size={12} /></button></span>}
+          <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()} title={t('oc.it.upload', 'Upload a file to your pool instead of linking a URL')}><Upload size={13} /> {t('oc.it.uploadbtn', 'Upload')}</Button>
+          <Button size="sm" variant="default" onClick={add} disabled={busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {t('oc.additem', 'Add')}</Button>
         </div>
+        <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('oc.it.hint', 'Link a download URL, or upload a file — uploads use your pool space (up to what is free).')}</p>
       </>}
     </div>
   );
 }
 
-// Admin: moderate community-hosted catalogs — suspend (hide from all), unlist (out of
-// the public browser but still reachable by URL), or reverse either. Cap: manage_catalogs.
+// Admin: moderate community-hosted catalogs — suspend (offline for all), unlist (out of
+// the public browser but reachable by URL), delete (purge), or examine an item's hosted
+// files. Cap: manage_catalogs.
 function AdminCatalogs() {
-  const { t } = useI18n(); const toast = useToast();
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [q, setQ] = useState('');
+  const [examine, setExamine] = useState(null); // catalog being examined
   const { data, loading, reload } = useAsync(() => api.get('/admin/catalogs'), []);
   const act = async (c, action) => {
     try { await api.post(`/admin/catalogs/${c.id}/${action}`); toast.success(t('cc.acted', 'Done.')); reload(); }
     catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); }
   };
-  const rows = (data?.catalogs || []).filter((c) => !q || c.name.toLowerCase().includes(q.toLowerCase()) || (c.email || '').toLowerCase().includes(q.toLowerCase()));
+  const del = async (c) => {
+    if (!(await dialog.confirm({ title: t('cc.del.t', 'Delete catalog?'), message: t('cc.del.m', 'Permanently delete "{n}"? Its items and hosted files are purged and pool space is freed. This cannot be undone.').replace('{n}', c.name), okLabel: t('common.delete', 'Delete'), danger: true }))) return;
+    act(c, 'delete');
+  };
+  const rows = (data?.catalogs || []).filter((c) => {
+    const s = q.toLowerCase();
+    return !q || c.name.toLowerCase().includes(s) || (c.email || '').toLowerCase().includes(s) || (c.owner || '').toLowerCase().includes(s) || (c.creators || []).some((cr) => (cr.id || '').toLowerCase().includes(s) || (cr.name || '').toLowerCase().includes(s));
+  });
   const tone = (s) => s === 'SUSPENDED' ? 'red' : s === 'HIDDEN' ? 'amber' : 'green';
+  const roleTone = (r) => r === 'SUPERADMIN' || r === 'ADMIN' ? 'red' : r === 'MOD' ? 'amber' : '';
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Boxes size={16} className="text-[var(--primary-2)]" /> {t('cc.admin.title', 'Community catalogs')}</h2>
-        <p className="text-sm text-[var(--muted)]">{t('cc.admin.desc', 'Owner-hosted catalogs. Suspend hides one from everyone; unlist just removes it from the public browser (its URL still works).')}</p>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Layers size={16} className="text-[var(--primary-2)]" /> {t('cc.admin.title', 'Community catalogs')}</h2>
+        <p className="text-sm text-[var(--muted)]">{t('cc.admin.desc2', 'Owner-hosted catalogs. Suspend takes one offline for everyone; unlist just removes it from the public browser (its URL still works); delete purges it. Examine reads the hosted files without running anything.')}</p>
       </div>
-      <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-9" placeholder={t('cc.admin.search', 'Search name or owner email…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-9" placeholder={t('cc.admin.search2', 'Search name, owner, email or creator id…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {loading ? <Loading /> : rows.length ? <div className="space-y-1.5">
         {rows.map((c) => (
           <Card key={c.id} className="p-3 flex items-center gap-3 flex-wrap">
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate flex items-center gap-2">{c.name} <Badge tone={tone(c.status)}>{c.status}</Badge>{!c.listed && c.status === 'ACTIVE' && <Badge tone="">{t('cc.unlisted', 'unlisted')}</Badge>}<Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
-              <div className="text-xs text-[var(--faint)] truncate">{c.owner} · {c.email} · {c.itemCount} {t('cc.items', 'items')} · <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline">/c/{c.slug}</a></div>
+              <div className="font-medium truncate flex items-center gap-2 flex-wrap">{c.name} <Badge tone={tone(c.status)}>{c.status}</Badge>{!c.listed && c.status === 'ACTIVE' && <Badge tone="">{t('cc.unlisted', 'unlisted')}</Badge>}<Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
+              <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap">
+                <span className="flex items-center gap-1"><Users size={11} /> {c.owner || t('cc.noname', '—')} {c.ownerRole && c.ownerRole !== 'USER' && <Badge tone={roleTone(c.ownerRole)}>{c.ownerRole}</Badge>}</span>
+                <span className="flex items-center gap-1"><Mail size={11} /> {c.email}</span>
+                {(c.creators || []).length > 0
+                  ? c.creators.map((cr) => <span key={cr.id} className="flex items-center gap-1" title={t('cc.creatorid', 'Linked BMM creator id')}><Fingerprint size={11} /> {cr.name ? `${cr.name} · ` : ''}{cr.id}</span>)
+                  : <span className="flex items-center gap-1 text-amber-500" title={t('cc.nolink', 'No linked BMM account')}><AlertTriangle size={11} /> {t('cc.nolink', 'no BMM link')}</span>}
+                <span>{c.itemCount} {t('cc.items', 'items')} · <Download size={11} className="inline" /> {c.downloads ?? 0}</span>
+                <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline">/c/{c.slug}</a>
+              </div>
             </div>
+            {c.mode === 'managed' && <Button size="sm" variant="ghost" onClick={() => setExamine(c)}><Eye size={13} /> {t('cc.examine', 'Examine')}</Button>}
             {c.status === 'SUSPENDED'
-              ? <Button size="sm" variant="primary" onClick={() => act(c, 'unsuspend')}>{t('cc.unsuspend', 'Unsuspend')}</Button>
+              ? <Button size="sm" variant="primary" onClick={() => act(c, 'unsuspend')}><Monitor size={13} /> {t('cc.online', 'Online')}</Button>
               : <>
                   {c.listed ? <Button size="sm" variant="ghost" onClick={() => act(c, 'unlist')}>{t('cc.unlist', 'Unlist')}</Button>
                     : c.visibility === 'public' && <Button size="sm" variant="ghost" onClick={() => act(c, 'relist')}>{t('cc.relist', 'Relist')}</Button>}
-                  <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => act(c, 'suspend')}>{t('cc.suspend', 'Suspend')}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => act(c, 'suspend')}><MonitorOff size={13} /> {t('cc.offline', 'Offline')}</Button>
                 </>}
+            <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(c)}><Trash2 size={13} /></Button>
           </Card>
         ))}
-      </div> : <EmptyState icon={Boxes} title={t('cc.admin.none.t', 'No community catalogs')} sub={t('cc.admin.none.s', 'When users host their own catalogs, they show up here for moderation.')} />}
+      </div> : <EmptyState icon={Layers} title={t('cc.admin.none.t', 'No community catalogs')} sub={t('cc.admin.none.s', 'When users host their own catalogs, they show up here for moderation.')} />}
+      {examine && <AdminCatalogExamine catalog={examine} onClose={() => setExamine(null)} />}
     </div>
+  );
+}
+
+// Admin: examine a managed catalog's hosted items — list items, and for each, inspect the
+// payload (zip entries + inline text preview for readable files) or download it. Nothing
+// is ever executed; downloads are served as attachments.
+function AdminCatalogExamine({ catalog, onClose }) {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading } = useAsync(() => api.get(`/admin/catalogs/${catalog.id}/items`), [catalog.id]);
+  const [openItem, setOpenItem] = useState(null);
+  const [inspect, setInspect] = useState(null); // { loading, data, error }
+  const [openEntry, setOpenEntry] = useState(null);
+  const items = data?.items || [];
+  const doInspect = async (it) => {
+    if (openItem === it.id) { setOpenItem(null); setInspect(null); return; }
+    setOpenItem(it.id); setOpenEntry(null); setInspect({ loading: true });
+    try { const r = await api.get(`/admin/catalogs/${catalog.id}/items/${it.id}/inspect`); setInspect({ data: r }); }
+    catch (x) { setInspect({ error: x.data?.error || 'read_failed' }); }
+  };
+  const dl = (it, path) => { const u = `/api/admin/catalogs/${catalog.id}/items/${it.id}/download${path ? `?path=${encodeURIComponent(path)}` : ''}`; window.open(u, '_blank'); };
+  return (
+    <Modal open onClose={onClose} title={t('cc.examine.t', 'Examine: {n}').replace('{n}', catalog.name)} icon={Eye} width="max-w-3xl">
+      {loading ? <Loading /> : items.length ? <div className="space-y-1.5">
+        {items.map((it) => (
+          <div key={it.id} className="border border-[var(--line)] rounded-lg p-2.5">
+            <div className="flex items-center gap-2 flex-wrap text-sm">
+              <Badge tone="">{it.kind}</Badge>
+              <span className="flex-1 min-w-0 truncate font-medium">{it.name}</span>
+              <span className="text-[11px] text-[var(--faint)]">v{it.version}</span>
+              {it.payloadKey ? <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><HardDrive size={11} /> {fmtBytes(it.payloadSize)}</span> : it.downloadUrl && <a href={it.downloadUrl} target="_blank" rel="noreferrer" className="text-[11px] underline text-[var(--muted)] truncate max-w-[180px]">{t('cc.ex.exturl', 'external URL')}</a>}
+              {it.payloadKey && <><Button size="sm" variant="ghost" onClick={() => doInspect(it)}><FileText size={12} /> {t('cc.ex.inspect', 'Inspect')}</Button><Button size="sm" variant="ghost" onClick={() => dl(it)}><Download size={12} /></Button></>}
+            </div>
+            {openItem === it.id && <div className="mt-2 pt-2 border-t border-[var(--line)] text-xs">
+              {inspect?.loading ? <Loading /> : inspect?.error ? <p className="text-red-400">{inspect.error}</p> : inspect?.data ? (
+                inspect.data.type === 'zip' ? <div className="space-y-1">
+                  {inspect.data.entries.map((e) => (
+                    <div key={e.name}>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setOpenEntry(openEntry === e.name ? null : (e.text != null ? e.name : null))} className={`flex-1 min-w-0 truncate text-left ${e.text != null ? 'hover:text-[var(--primary)]' : 'cursor-default'}`}>{e.text != null && <ChevronDown size={11} className={`inline mr-1 transition-transform ${openEntry === e.name ? '' : '-rotate-90'}`} />}{e.name}</button>
+                        <span className="text-[var(--faint)] tabular-nums">{fmtBytes(e.size)}</span>
+                        <button onClick={() => dl(it, e.name)} className="text-[var(--faint)] hover:text-[var(--primary)]"><Download size={11} /></button>
+                      </div>
+                      {openEntry === e.name && e.text != null && <pre className="mt-1 mb-2 p-2 rounded bg-[var(--bg)] border border-[var(--line)] overflow-auto max-h-72 whitespace-pre-wrap break-words text-[11px] leading-relaxed">{e.text}</pre>}
+                    </div>
+                  ))}
+                </div> : (
+                  inspect.data.text != null
+                    ? <pre className="p-2 rounded bg-[var(--bg)] border border-[var(--line)] overflow-auto max-h-72 whitespace-pre-wrap break-words text-[11px] leading-relaxed">{inspect.data.text}</pre>
+                    : <p className="text-[var(--faint)]">{t('cc.ex.binary', 'Binary file — download to inspect.')} ({fmtBytes(inspect.data.size)})</p>
+                )
+              ) : null}
+            </div>}
+          </div>
+        ))}
+      </div> : <EmptyState icon={Package} title={t('cc.ex.none.t', 'No items')} sub={t('cc.ex.none.s', 'This catalog has no hosted items yet.')} />}
+    </Modal>
   );
 }
 

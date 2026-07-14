@@ -1,11 +1,23 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
+import AdmZip from 'adm-zip';
 import {
   db, requireRole, requireCap, optionalAuth, slugify, notify,
   resolveClientIdentity, accessListMatches, policyBans, policyWhitelist,
   getGlobalAccessPolicy, getUserAccessPolicy,
 } from '../lib/lib.mjs';
-import { presignGet, deleteObject } from '../lib/storage.mjs';
+import { presignGet, deleteObject, getObject } from '../lib/storage.mjs';
+
+// Read an object-storage stream fully into a Buffer (bounded by the payload's stored size).
+async function readObject(key) {
+  const { body } = await getObject(key);
+  const chunks = [];
+  for await (const c of body) chunks.push(c);
+  return Buffer.concat(chunks);
+}
+// Entries in a .bmmplug/.bmmtheme (ZIP) whose text is safe to preview inline for review.
+const TEXT_EXT = /\.(json|txt|md|css|js|mjs|cjs|ts|lua|cfg|ini|yml|yaml|xml|toml|csv|log|sh)$/i;
+const TEXT_PREVIEW_MAX = 256 * 1024; // don't inline more than 256 KB of a single entry
 
 const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
 const SITE_URL = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
@@ -170,6 +182,7 @@ export default async function communityCatalogRoutes(app) {
     const it = c.items[0];
     if (!it?.payloadKey) return reply.code(404).send({ error: 'no_payload' });
     p.communityCatalog.update({ where: { id: c.id }, data: { downloads: { increment: 1 } } }).catch(() => {});
+    p.communityCatalogItem.update({ where: { id: it.id }, data: { downloads: { increment: 1 } } }).catch(() => {});
     return reply.redirect(await presignGet(it.payloadKey));
   });
 
@@ -202,6 +215,12 @@ export default async function communityCatalogRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    // Hosting a catalog requires a linked BMM identity (creator id) — it's what gates
+    // private access and identifies the author beyond an email. Staff are exempt.
+    if (!['ADMIN', 'SUPERADMIN'].includes(req.user.role)) {
+      const linked = await p.creatorLink.count({ where: { userId: req.user.uid } });
+      if (!linked) return reply.code(403).send({ error: 'creator_link_required' });
+    }
     if (b.data.mode === 'raw' && !b.data.rawJson) return reply.code(400).send({ error: 'raw_needs_json' });
     // A managed catalog reserves a slice of a pool the owner controls (fungible with
     // repos — the same poolBytes). The slice is checked against the pool's free space.
@@ -353,18 +372,34 @@ export default async function communityCatalogRoutes(app) {
     const where = q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { slug: { contains: q, mode: 'insensitive' } }] } : {};
     const rows = await p.communityCatalog.findMany({
       where, orderBy: { createdAt: 'desc' }, take: 100,
-      include: { owner: { select: { displayName: true, email: true } }, _count: { select: { items: true } } },
+      include: {
+        owner: { select: { id: true, displayName: true, email: true, role: true, creatorLinks: { select: { creatorId: true, displayName: true } } } },
+        _count: { select: { items: true } },
+      },
     });
-    return { catalogs: rows.map((c) => ({ ...ser(c), owner: c.owner?.displayName, email: c.owner?.email })) };
+    return { catalogs: rows.map((c) => ({
+      ...ser(c),
+      views: c.views, downloads: c.downloads,
+      owner: c.owner?.displayName, email: c.owner?.email, ownerId: c.owner?.id, ownerRole: c.owner?.role,
+      // Who really posted it: the linked BMM creator id(s), not just an email.
+      creators: (c.owner?.creatorLinks || []).map((l) => ({ id: l.creatorId, name: l.displayName })),
+    })) };
   });
 
-  // Suspend (hidden from everyone, owner notified), unsuspend, or just unlist/relist.
+  // Suspend (offline for everyone, owner notified), unsuspend (back online), unlist/relist,
+  // or hard-delete (payloads purged, pool space freed — irreversible).
   app.post('/admin/catalogs/:id/:action', { preHandler: requireCap('manage_catalogs') }, async (req, reply) => {
     const action = req.params.action;
-    if (!['suspend', 'unsuspend', 'unlist', 'relist'].includes(action)) return reply.code(400).send({ error: 'bad_action' });
+    if (!['suspend', 'unsuspend', 'unlist', 'relist', 'delete'].includes(action)) return reply.code(400).send({ error: 'bad_action' });
     const p = await db();
-    const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
+    const c = await p.communityCatalog.findUnique({ where: { id: req.params.id }, include: action === 'delete' ? { items: { select: { payloadKey: true } } } : undefined });
     if (!c) return reply.code(404).send({ error: 'not_found' });
+    if (action === 'delete') {
+      for (const it of c.items) if (it.payloadKey) await deleteObject(it.payloadKey).catch(() => {});
+      await p.communityCatalog.delete({ where: { id: c.id } });
+      await notify(p, c.ownerId, 'catalog_deleted', `Your catalog "${c.name}" was removed by a moderator.`).catch(() => {});
+      return { ok: true, deleted: true };
+    }
     const data = action === 'suspend' ? { status: 'SUSPENDED', listed: false }
       : action === 'unsuspend' ? { status: 'ACTIVE' }
       : action === 'unlist' ? { listed: false }
@@ -372,5 +407,64 @@ export default async function communityCatalogRoutes(app) {
     await p.communityCatalog.update({ where: { id: c.id }, data });
     if (action === 'suspend') await notify(p, c.ownerId, 'catalog_suspended', `Your catalog "${c.name}" was suspended by a moderator.`);
     return { ok: true };
+  });
+
+  // Admin review: list a catalog's items with payload info (which are examinable/downloadable).
+  app.get('/admin/catalogs/:id/items', { preHandler: requireCap('manage_catalogs', 'MOD') }, async (req, reply) => {
+    const p = await db();
+    const c = await p.communityCatalog.findUnique({ where: { id: req.params.id }, include: { items: { orderBy: { createdAt: 'desc' } } } });
+    if (!c) return reply.code(404).send({ error: 'not_found' });
+    return { name: c.name, mode: c.mode, items: c.items.map((it) => ({
+      id: it.id, kind: it.kind, name: it.name, slug: it.slug, version: it.version,
+      payloadKey: it.payloadKey, payloadSize: it.payloadSize, downloads: it.downloads,
+      downloadUrl: it.payloadKey ? null : (it.meta?.download_url || null),
+    })) };
+  });
+
+  // Admin review: examine a hosted item's payload WITHOUT downloading. Lists the zip
+  // entries (for a .bmmplug/.bmmtheme) with an inline text preview of readable files, or
+  // returns the whole text for a plain json/css/text payload. Files are never executed.
+  app.get('/admin/catalogs/:id/items/:itemId/inspect', { preHandler: requireCap('manage_catalogs', 'MOD') }, async (req, reply) => {
+    const p = await db();
+    const it = await p.communityCatalogItem.findFirst({ where: { id: req.params.itemId, catalogId: req.params.id } });
+    if (!it) return reply.code(404).send({ error: 'not_found' });
+    if (!it.payloadKey) return reply.code(404).send({ error: 'no_payload', downloadUrl: it.meta?.download_url || null });
+    try {
+      const buf = await readObject(it.payloadKey);
+      let zip = null;
+      try { zip = new AdmZip(buf); } catch { /* not a zip → treat as a single file below */ }
+      if (zip && zip.getEntries().length) {
+        const entries = zip.getEntries().filter((e) => !e.isDirectory).map((e) => {
+          const isText = TEXT_EXT.test(e.entryName) && e.header.size <= TEXT_PREVIEW_MAX;
+          let text = null;
+          if (isText) { try { text = e.getData().toString('utf-8'); } catch { text = null; } }
+          return { name: e.entryName, size: e.header.size, text };
+        });
+        return { type: 'zip', size: buf.length, entries };
+      }
+      const isText = TEXT_EXT.test(it.payloadKey) || buf.length <= TEXT_PREVIEW_MAX;
+      return { type: 'file', size: buf.length, name: it.payloadKey.split('/').pop(), text: isText ? buf.slice(0, TEXT_PREVIEW_MAX).toString('utf-8') : null };
+    } catch (e) { return reply.code(502).send({ error: 'read_failed', detail: String(e?.message || e) }); }
+  });
+
+  // Admin review: download the whole payload, or a single entry from within a zip payload
+  // (?path=…). Never executed — served as an attachment.
+  app.get('/admin/catalogs/:id/items/:itemId/download', { preHandler: requireCap('manage_catalogs', 'MOD') }, async (req, reply) => {
+    const p = await db();
+    const it = await p.communityCatalogItem.findFirst({ where: { id: req.params.itemId, catalogId: req.params.id } });
+    if (!it?.payloadKey) return reply.code(404).send({ error: 'no_payload' });
+    const path = String(req.query?.path || '');
+    if (!path) return reply.redirect(await presignGet(it.payloadKey)); // whole file
+    try {
+      const buf = await readObject(it.payloadKey);
+      const zip = new AdmZip(buf);
+      const entry = zip.getEntry(path);
+      if (!entry || entry.isDirectory) return reply.code(404).send({ error: 'file_not_found' });
+      const name = (path.split('/').pop() || 'file').replace(/[^\w.\-]/g, '_');
+      reply.header('Content-Type', 'application/octet-stream');
+      reply.header('Content-Disposition', `attachment; filename="${name}"`);
+      reply.header('Cache-Control', 'no-store');
+      return reply.send(entry.getData());
+    } catch (e) { return reply.code(502).send({ error: 'read_failed', detail: String(e?.message || e) }); }
   });
 }

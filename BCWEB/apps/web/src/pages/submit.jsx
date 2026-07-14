@@ -205,6 +205,7 @@ function HostCatalog({ onBack }) {
       toast.error(e === 'managed_needs_pool' ? t('sub2.pool.need', 'Pick a storage pool first.')
         : e === 'not_your_pool' ? t('sub2.pool.notyours', "That pool isn't yours.")
         : e === 'pool_exceeded' ? t('sub2.pool.toobig', 'That pool only has {n} GB free.').replace('{n}', (x.data?.freeGB ?? 0).toFixed(1))
+        : e === 'creator_link_required' ? t('sub2.needlink', 'Link your BMM account first (Dashboard → Connections) — hosting a catalog needs a creator id.')
         : e || t('repos.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
