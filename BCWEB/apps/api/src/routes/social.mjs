@@ -97,10 +97,12 @@ export default async function socialRoutes(app) {
 
   // Public: the badge tied to a trigger (e.g. the footer 5x-click easter egg) + its message,
   // so the client can render the reveal modal and know what claiming grants.
-  app.get('/badges/trigger/:trigger', async (req, reply) => {
+  app.get('/badges/trigger/:trigger', async (req) => {
     const p = await db();
     const b = await p.badge.findFirst({ where: { trigger: req.params.trigger, grant: 'easter_egg', active: true } });
-    if (!b) return reply.code(404).send({ error: 'not_found' });
+    // 200 with badge:null (not 404) — a missing easter-egg badge is a normal state, not an
+    // error, so the footer/click probe doesn't spam the console with a 404.
+    if (!b) return { badge: null };
     return { badge: { id: b.id, slug: b.slug, name: b.name, description: b.description, iconType: b.iconType, icon: b.icon, color: b.color, message: b.earnMessage } };
   });
 

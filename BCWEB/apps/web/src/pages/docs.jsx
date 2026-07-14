@@ -596,7 +596,7 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
       <MarkdownEditor full minHeight={300}
         value={fr ? f.bodyFr : f.body}
         onChange={(v) => setF((s) => (fr ? { ...s, bodyFr: v } : { ...s, body: v }))}
-        placeholder={fr ? 'Traduction française (optionnelle)…' : 'Write with GitBook-style blocks — use the Blocks button.'} />
+        placeholder={fr ? 'Traduction française (optionnelle)…' : 'Write with content blocks — use the Blocks button.'} />
       {showHistory && page && <HistoryModal base={`/docs/${page.id}`} onClose={() => setShowHistory(false)}
         onRestore={(rev) => { setF((s) => ({ ...s, title: rev.title || s.title, body: rev.body || '', bodyFr: rev.bodyFr ?? s.bodyFr })); setTab('en'); }} />}
       {showComments && page && <CommentsModal base={`/docs/${page.id}`} body={f.body} onClose={() => setShowComments(false)} />}

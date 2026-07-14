@@ -24,7 +24,7 @@ import { TotpQuickFill } from './twofa-fill.jsx';
 import { AuthorsRow, MarkdownEditor } from './blog.jsx';
 import Avatar, { VARIANTS as AV_VARIANTS, PALETTES as AV_PALETTES } from '../ui/Avatar.jsx';
 import { Badges, BadgeIcon } from '../ui/Badges.jsx';
-import { ReportThread, ReportComposer } from '../ui/report.jsx';
+import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 
 // A stable-but-varied Boring-avatar look for an anonymous analytics session (keyed by
 // the visitor hash) — so each session gets its OWN geometric avatar instead of the
@@ -8802,12 +8802,16 @@ function MyReports() {
   const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/me/reports'), []);
   const [openId, setOpenId] = useState(null);
+  const [newOpen, setNewOpen] = useState(false);
   const reports = data?.reports || [];
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('mr.title', 'Reports & contact')}</h2>
-        <p className="text-sm text-[var(--muted)]">{t('mr.sub', 'Reports you filed and support conversations. Replies from the team show up here.')}</p>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('mr.title', 'Reports & contact')}</h2>
+          <p className="text-sm text-[var(--muted)]">{t('mr.sub', 'Reports you filed and support conversations. Replies from the team show up here.')}</p>
+        </div>
+        <Button size="sm" variant="primary" onClick={() => setNewOpen(true)}><Plus size={14} /> {t('mr.new2', 'New report / contact')}</Button>
       </div>
       {loading ? <Loading /> : reports.length ? <div className="space-y-1.5">
         {reports.map((r) => { const Ico = REPORT_TARGET_ICON[r.targetType] || MessageSquare; return (
@@ -8819,20 +8823,24 @@ function MyReports() {
             </div>
           </Card></button>
         ); })}
-      </div> : <EmptyState icon={MessageSquare} title={t('mr.none.t', 'No reports yet')} sub={t('mr.none.s', 'Use the Report button on a profile, repo or catalog — or the Contact page.')} />}
+      </div> : <EmptyState icon={MessageSquare} title={t('mr.none.t', 'No reports yet')} sub={t('mr.none.s', 'Use the Report button on a profile, repo or catalog — or start one here.')}><Button variant="primary" onClick={() => setNewOpen(true)}><Plus size={15} /> {t('mr.new2', 'New report / contact')}</Button></EmptyState>}
       {openId && <ReportThreadModal id={openId} admin={false} onClose={() => { setOpenId(null); reload(); }} />}
+      {newOpen && <ReportModal targetType="general" targetId="" targetLabel="" onClose={() => { setNewOpen(false); reload(); }} />}
     </div>
   );
 }
 
 // Shared thread modal — user (admin=false) or staff (admin=true) view of one report.
 function ReportThreadModal({ id, admin, onClose }) {
-  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { user } = useAuth();
   const base = admin ? `/admin/reports/${id}` : `/me/reports/${id}`;
   const { data, loading, reload } = useAsync(() => api.get(base), [id]);
   const [sending, setSending] = useState(false);
   const [people, setPeople] = useState(false);
   const r = data?.report;
+  // A staff member can't moderate a report they opened — they reply to it as the reporter
+  // from their own dashboard instead (avoids the "answering myself as staff" confusion).
+  const own = admin && r && r.reporterId === user?.id;
   const send = async ({ body, images }) => {
     setSending(true);
     try { await api.post(`${base}/messages`, { body, images }); reload(); return true; }
@@ -8848,18 +8856,23 @@ function ReportThreadModal({ id, admin, onClose }) {
         <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--muted)]">
           <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>
           <span>{t('mr.on', 'on {t}').replace('{t}', r.targetType)}{r.reason ? ` · ${r.reason}` : ''}</span>
+          {/* Full report subject: the reported entity's id (repo id / catalog slug / user id) + when. */}
+          {admin && r.targetId && <button onClick={() => { navigator.clipboard?.writeText(r.targetId); toast.success(t('ccp.copied', 'Copied.')); }} className="font-mono hover:text-[var(--primary)] inline-flex items-center gap-1" title={t('ar.targetid', 'Reported {t} id — click to copy').replace('{t}', r.targetType)}><Fingerprint size={11} /> {r.targetId} <Copy size={9} /></button>}
+          {admin && <span className="flex items-center gap-1"><Calendar size={11} /> {new Date(r.createdAt).toLocaleString()}</span>}
           {admin && r.reporter && <span className="flex items-center gap-1"><Users size={12} /> {r.reporter} · {r.reporterEmail} {r.reporterBcId && <button onClick={() => { navigator.clipboard?.writeText(r.reporterBcId); toast.success(t('prof.bcidcopied', 'BC id copied.')); }} className="font-mono hover:text-[var(--primary)] inline-flex items-center gap-1"><Fingerprint size={11} /> {r.reporterBcId} <Copy size={9} /></button>}</span>}
         </div>
-        {admin && <div className="flex flex-wrap gap-2">
+        {own && <div className="text-xs rounded-lg px-3 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center gap-2"><AlertTriangle size={14} /> {t('ar.ownreport', 'You opened this report — reply to it from your dashboard (Reports & contact), not as staff here.')}</div>}
+        {admin && !own && <div className="flex flex-wrap gap-2">
           {r.status !== 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus('open')}><RefreshCw size={13} /> {t('ar.reopen', 'Reopen')}</Button>}
           {r.status !== 'archived' && <Button size="sm" variant="ghost" onClick={() => setStatus('archived')}><Archive size={13} /> {t('ar.archive', 'Archive')}</Button>}
           {r.status !== 'closed' && <Button size="sm" variant="ghost" onClick={() => setStatus('closed')}><CheckCircle2 size={13} /> {t('ar.close', 'Close')}</Button>}
           <Button size="sm" variant="ghost" onClick={() => setPeople((v) => !v)}><Users size={13} /> {t('ar.people', 'People')}{r.participants?.length ? ` (${r.participants.length})` : ''}</Button>
           <Button size="sm" variant="ghost" className="!text-red-400" onClick={del}><Trash2 size={13} /> {t('common.delete', 'Delete')}</Button>
         </div>}
-        {admin && people && <ReportPeoplePanel report={r} onChange={reload} />}
+        {admin && !own && people && <ReportPeoplePanel report={r} onChange={reload} />}
         <div className="max-h-[45vh] overflow-y-auto pr-1"><ReportThread messages={r.messages} /></div>
-        {r.status === 'closed' && !admin ? <p className="text-sm text-[var(--faint)] text-center py-2">{t('mr.closednote', 'This report is closed. Open a new one if you still need help.')}</p>
+        {own ? null
+          : r.status === 'closed' && !admin ? <p className="text-sm text-[var(--faint)] text-center py-2">{t('mr.closednote', 'This report is closed. Open a new one if you still need help.')}</p>
           : <ReportComposer onSend={send} sending={sending} placeholder={admin ? t('ar.reply', 'Reply as staff…') : t('rp.msgph', 'Write a message…')} />}
       </div>}
     </Modal>
@@ -8934,7 +8947,7 @@ function ReportPeoplePanel({ report, onChange }) {
 
 // Admin: the report / support queue. Filter by status; open a thread to reply + moderate.
 function AdminReports() {
-  const { t } = useI18n();
+  const { t } = useI18n(); const { user } = useAuth();
   const [status, setStatus] = useState('open');
   const [openId, setOpenId] = useState(null);
   const [cfgOpen, setCfgOpen] = useState(false);
@@ -8956,7 +8969,7 @@ function AdminReports() {
           <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-left"><Card className="p-3 flex items-center gap-3 card-hover">
             <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--primary-2)]" /></span>
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate flex items-center gap-2">{r.targetLabel || t('mr.general', 'Support request')} {r.staffUnread && <Badge tone="red">{t('ar.unread', 'new')}</Badge>}<Badge tone="">{r.reason || r.targetType}</Badge></div>
+              <div className="font-medium truncate flex items-center gap-2">{r.targetLabel || t('mr.general', 'Support request')} {r.staffUnread && <Badge tone="red">{t('ar.unread', 'new')}</Badge>}{r.reporterId === user?.id && <Badge tone="amber">{t('ar.yours', 'your report')}</Badge>}<Badge tone="">{r.reason || r.targetType}</Badge></div>
               <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap"><span className="flex items-center gap-1"><Users size={11} /> {r.reporter}</span>{r.reporterBcId && <span className="font-mono flex items-center gap-1"><Fingerprint size={10} /> {r.reporterBcId}</span>}<span>· {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</span></div>
             </div>
           </Card></button>

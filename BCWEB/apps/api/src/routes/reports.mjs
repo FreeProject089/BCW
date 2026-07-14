@@ -135,8 +135,9 @@ export default async function reportRoutes(app) {
     const r = await p.report.findUnique({ where: { id: req.params.id } });
     if (!(await canAccessReport(p, r, req.user))) return reply.code(404).send({ error: 'not_found' });
     if (r.status === 'closed') return reply.code(409).send({ error: 'closed' });
-    // A staff participant posting counts as a staff message; the reporter/invited user is a normal one.
-    const asStaff = STAFF_ROLES.includes(req.user.role) || req.user.perms?.includes?.('manage_reports');
+    // A staff participant posting counts as a staff message — BUT the reporter always posts
+    // as the "user" side, even if they hold a staff role (they opened the thread as a user).
+    const asStaff = (STAFF_ROLES.includes(req.user.role) || req.user.perms?.includes?.('manage_reports')) && r.reporterId !== req.user.uid;
     const m = await p.reportMessage.create({ data: { reportId: r.id, authorId: req.user.uid, staff: asStaff, body: b.data.body, images: b.data.images } });
     // A message reopens an archived thread; flag the "other side" as unread.
     await p.report.update({ where: { id: r.id }, data: { status: 'open', archivedAt: null, staffUnread: !asStaff ? true : r.staffUnread, userUnread: asStaff ? true : r.userUnread, lastActivityAt: new Date() } });
@@ -154,7 +155,7 @@ export default async function reportRoutes(app) {
     });
     const counts = await p.report.groupBy({ by: ['status'], _count: { status: true } });
     return {
-      reports: rows.map((r) => ({ ...reportPublic(r), reporter: r.reporter?.displayName, reporterEmail: r.reporter?.email, reporterBcId: r.reporter ? userBcId(r.reporter.id) : null })),
+      reports: rows.map((r) => ({ ...reportPublic(r), reporterId: r.reporterId, reporter: r.reporter?.displayName, reporterEmail: r.reporter?.email, reporterBcId: r.reporter ? userBcId(r.reporter.id) : null })),
       counts: Object.fromEntries(counts.map((c) => [c.status, c._count.status])),
     };
   });
@@ -165,7 +166,7 @@ export default async function reportRoutes(app) {
     if (!r) return reply.code(404).send({ error: 'not_found' });
     if (r.staffUnread) await p.report.update({ where: { id: r.id }, data: { staffUnread: false } });
     return { report: {
-      ...reportPublic(r), reporter: r.reporter?.displayName, reporterEmail: r.reporter?.email, reporterBcId: r.reporter ? userBcId(r.reporter.id) : null,
+      ...reportPublic(r), reporterId: r.reporterId, reporter: r.reporter?.displayName, reporterEmail: r.reporter?.email, reporterBcId: r.reporter ? userBcId(r.reporter.id) : null,
       messages: r.messages.map(msgPublic),
       participants: r.participants.map((x) => ({ userId: x.userId, name: x.user?.displayName, email: x.user?.email, bcId: userBcId(x.userId), role: x.role })),
       invites: r.invites.map((iv) => ({ id: iv.id, token: iv.token, url: `${SITE_URL}/reports/join/${iv.token}`, maxUses: iv.maxUses, uses: iv.uses, targetType: iv.targetType, targetValue: iv.targetValue, expiresAt: iv.expiresAt })),
@@ -179,6 +180,7 @@ export default async function reportRoutes(app) {
     const p = await db();
     const r = await p.report.findUnique({ where: { id: req.params.id } });
     if (!r) return reply.code(404).send({ error: 'not_found' });
+    if (r.reporterId === req.user.uid) return reply.code(403).send({ error: 'own_report' });
     const who = b.data.who.trim();
     let user = null;
     if (who.includes('@')) user = await p.user.findFirst({ where: { email: who } });
@@ -215,6 +217,7 @@ export default async function reportRoutes(app) {
     const p = await db();
     const r = await p.report.findUnique({ where: { id: req.params.id } });
     if (!r) return reply.code(404).send({ error: 'not_found' });
+    if (r.reporterId === req.user.uid) return reply.code(403).send({ error: 'own_report' });
     const token = crypto.randomBytes(18).toString('base64url');
     const inv = await p.reportInvite.create({ data: {
       reportId: r.id, token, maxUses: b.data.maxUses, targetType: b.data.targetType, targetValue: b.data.targetValue.trim(),
@@ -269,6 +272,8 @@ export default async function reportRoutes(app) {
     const p = await db();
     const r = await p.report.findUnique({ where: { id: req.params.id }, include: { reporter: { select: { email: true } } } });
     if (!r) return reply.code(404).send({ error: 'not_found' });
+    // You can't moderate a report you opened — reply to it from your own dashboard instead.
+    if (r.reporterId === req.user.uid) return reply.code(403).send({ error: 'own_report' });
     const m = await p.reportMessage.create({ data: { reportId: r.id, authorId: req.user.uid, staff: true, body: b.data.body, images: b.data.images } });
     // A staff reply reopens an archived thread and flags the reporter (notif + email).
     await p.report.update({ where: { id: r.id }, data: { status: r.status === 'closed' ? 'closed' : 'open', archivedAt: r.status === 'closed' ? r.archivedAt : null, userUnread: true, lastActivityAt: new Date() } });
@@ -283,6 +288,7 @@ export default async function reportRoutes(app) {
     const p = await db();
     const r = await p.report.findUnique({ where: { id: req.params.id }, include: { reporter: { select: { email: true } } } });
     if (!r) return reply.code(404).send({ error: 'not_found' });
+    if (r.reporterId === req.user.uid) return reply.code(403).send({ error: 'own_report' });
     const data = { status: b.data.status, lastActivityAt: new Date() };
     if (b.data.status === 'archived') data.archivedAt = new Date();
     if (b.data.status === 'open') data.archivedAt = null;

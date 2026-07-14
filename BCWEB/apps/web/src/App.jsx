@@ -498,7 +498,7 @@ function FooterEgg() {
     clearTimeout(timer.current); timer.current = setTimeout(() => setClicks(0), 1200); // must be quick taps
     if (n >= 5) {
       setClicks(0);
-      try { const r = await api.get('/badges/trigger/footer5x'); setBadge(r.badge); setOpen(true); }
+      try { const r = await api.get('/badges/trigger/footer5x'); if (r.badge) { setBadge(r.badge); setOpen(true); } }
       catch { /* no easter-egg badge configured — stay silent */ }
     }
   };

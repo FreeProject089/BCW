@@ -444,7 +444,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
             <span className="w-px h-5 bg-[var(--line)] mx-1 self-center" />
             <button type="button" onClick={() => setBadgePick(true)} className="btn btn-sm" title="Insert a badge (classic, preset or custom)"><TagIcon size={14} /> Badges</button>
             <div className="relative">
-              <button type="button" onClick={() => setBlocksOpen((v) => !v)} className="btn btn-sm" title="Insert a GitBook-style block"><BlocksIcon size={14} /> Blocks <ChevronDown size={12} /></button>
+              <button type="button" onClick={() => setBlocksOpen((v) => !v)} className="btn btn-sm" title="Insert a content block (callout, tabs, cards…)"><BlocksIcon size={14} /> Blocks <ChevronDown size={12} /></button>
               {blocksOpen && <>
                 <div className="fixed inset-0 z-40" onClick={() => setBlocksOpen(false)} />
                 <div className="absolute z-50 mt-1 w-52 rounded-xl border border-[var(--line-strong)] shadow-xl py-1 max-h-72 overflow-auto" style={{ background: 'var(--bg-solid)' }}>
