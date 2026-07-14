@@ -748,7 +748,11 @@ export default async function miscRoutes(app) {
     children: z.array(navChild).max(12).optional().default([]),
   }).refine((it) => it.type === 'group' || (it.to && it.to.startsWith('/')), { message: 'a link needs an internal "to"' })
     .refine((it) => it.type === 'link' || it.children.length > 0, { message: 'a group needs at least one link' });
-  const navSchema = z.object({ enabled: z.boolean(), items: z.array(navItem).max(16) });
+  // Built-in topbar utility elements the admin can show/hide + reorder (App.jsx UTIL_KEYS).
+  const UTIL_KEYS = ['notifications', 'projects', 'lang', 'theme', 'settings', 'dashboard', 'admin', 'profile', 'logout', 'login'];
+  const utilEntry = z.object({ visible: z.boolean().optional(), order: z.number().int().min(0).max(50).optional() });
+  const utilitySchema = z.record(z.enum(UTIL_KEYS), utilEntry).optional().default({});
+  const navSchema = z.object({ enabled: z.boolean(), items: z.array(navItem).max(16), utility: utilitySchema });
 
   // Admin editor reads the RAW config (even when disabled) so it can be edited.
   app.get('/admin/nav', { preHandler: requireRole('ADMIN') }, async () => {
@@ -771,6 +775,10 @@ export default async function miscRoutes(app) {
     const row = await p.adminSetting.findUnique({ where: { key: 'nav.config' } });
     const cfg = row?.value;
     const usable = cfg && cfg.enabled && Array.isArray(cfg.items) && cfg.items.length > 0;
-    return { nav: usable ? { items: cfg.items } : null };
+    // Utility (topbar button show/hide/order) applies independently of custom nav items —
+    // an admin may want to hide the login button without configuring the whole nav.
+    const utility = cfg?.utility && Object.keys(cfg.utility).length ? cfg.utility : null;
+    if (!usable && !utility) return { nav: null };
+    return { nav: { ...(usable ? { items: cfg.items } : {}), ...(utility ? { utility } : {}) } };
   });
 }

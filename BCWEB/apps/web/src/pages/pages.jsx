@@ -8293,6 +8293,12 @@ const DEFAULT_NAV_SEED = [
 ];
 const blankItem = (type) => ({ type, label: '', labelFr: '', to: type === 'link' ? '/' : '', icon: 'Boxes', children: [] });
 const blankChild = () => ({ label: '', labelFr: '', to: '/', desc: '', descFr: '', icon: 'Boxes' });
+// Built-in topbar utility buttons the admin can show/hide + reorder (mirrors App.jsx
+// UTIL_A / UTIL_B). Split by responsive cluster so reordering stays within a cluster.
+const UTIL_A_KEYS = ['notifications', 'projects', 'lang', 'theme', 'settings'];
+const UTIL_B_KEYS = ['dashboard', 'admin', 'profile', 'logout', 'login'];
+const UTIL_LABEL = { notifications: 'Notifications', projects: 'Projects', lang: 'Language', theme: 'Theme', settings: 'Settings', dashboard: 'Dashboard', admin: 'Admin', profile: 'Profile', logout: 'Log out', login: 'Sign in' };
+const UTIL_ICON = { notifications: 'Bell', projects: 'Boxes', lang: 'Languages', theme: 'SunMoon', settings: 'Settings', dashboard: 'LayoutDashboard', admin: 'Shield', profile: 'User', logout: 'LogOut', login: 'LogIn' };
 // Immutably move element `i` of `arr` by `dir` (±1); returns the same array if out of range.
 const moveIn = (arr, i, dir) => { const j = i + dir; if (j < 0 || j >= arr.length) return arr; const c = arr.slice(); [c[i], c[j]] = [c[j], c[i]]; return c; };
 
@@ -8377,6 +8383,7 @@ function AdminNav() {
   const loaded = useAsync(() => api.get('/admin/nav'), []);
   const [enabled, setEnabled] = useState(false);
   const [items, setItems] = useState([]);
+  const [utility, setUtility] = useState({}); // { <key>: { visible, order } } for built-in topbar buttons
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState('desktop'); // preview device
   const [iconPick, setIconPick] = useState(null); // { onChange } while the icon picker is open
@@ -8396,6 +8403,7 @@ function AdminNav() {
     if (!n) return;
     setEnabled(!!n.enabled);
     setItems((n.items || []).map((it) => ({ type: it.type === 'group' ? 'group' : 'link', label: it.label || '', labelFr: it.labelFr || '', to: it.to || '', icon: it.icon || 'Boxes', children: (it.children || []).map((c) => ({ label: c.label || '', labelFr: c.labelFr || '', to: c.to || '/', desc: c.desc || '', descFr: c.descFr || '', icon: c.icon || 'Boxes' })) })));
+    setUtility(n.utility && typeof n.utility === 'object' ? n.utility : {});
   }, [loaded.data]);
 
   const patchItem = (i, patch) => setItems((s) => s.map((it, k) => k === i ? { ...it, ...patch } : it));
@@ -8406,6 +8414,18 @@ function AdminNav() {
   const moveChild = (i, j, dir) => setItems((s) => s.map((it, k) => k === i ? { ...it, children: moveIn(it.children, j, dir) } : it));
   const removeChild = (i, j) => setItems((s) => s.map((it, k) => k === i ? { ...it, children: it.children.filter((_, m) => m !== j) } : it));
   const addChild = (i) => setItems((s) => s.map((it, k) => k === i ? { ...it, children: [...it.children, blankChild()] } : it));
+
+  // ── Built-in topbar utility buttons: show/hide + reorder within a cluster ──
+  const uVis = (k) => utility[k]?.visible !== false;
+  const setUVis = (k, v) => setUtility((u) => ({ ...u, [k]: { ...u[k], visible: v } }));
+  const orderedU = (list) => [...list].sort((a, b) => (utility[a]?.order ?? list.indexOf(a)) - (utility[b]?.order ?? list.indexOf(b)));
+  const moveUtil = (list, k, dir) => {
+    const ord = orderedU(list); const i = ord.indexOf(k); const j = i + dir;
+    if (j < 0 || j >= ord.length) return;
+    [ord[i], ord[j]] = [ord[j], ord[i]];
+    setUtility((u) => { const n = { ...u }; ord.forEach((key, idx) => { n[key] = { ...n[key], order: idx }; }); return n; });
+  };
+  const resetUtil = () => setUtility({});
 
   // Trim + drop incomplete rows the same way the server would reject them, so what an
   // admin previews as valid is exactly what gets saved.
@@ -8419,7 +8439,7 @@ function AdminNav() {
         out.push({ type: 'link', label: it.label.trim(), labelFr: (it.labelFr || '').trim(), to: it.to.trim(), icon: it.icon || '', children: [] });
       }
     }
-    return { enabled, items: out };
+    return { enabled, items: out, utility };
   };
 
   const save = async () => {
@@ -8443,6 +8463,7 @@ function AdminNav() {
       if (!Array.isArray(arr)) throw new Error('bad');
       setItems(arr.map((it) => ({ type: it.type === 'group' ? 'group' : 'link', label: it.label || '', labelFr: it.labelFr || '', to: it.to || '', icon: it.icon || 'Boxes', children: (it.children || []).map((c) => ({ label: c.label || '', labelFr: c.labelFr || '', to: c.to || '/', desc: c.desc || '', descFr: c.descFr || '', icon: c.icon || 'Boxes' })) })));
       if (typeof parsed.enabled === 'boolean') setEnabled(parsed.enabled);
+      if (parsed.utility && typeof parsed.utility === 'object' && !Array.isArray(parsed.utility)) setUtility(parsed.utility);
       toast.success(t('nav.imported', 'Preset imported — review and save.'));
     } catch { toast.error(t('nav.importbad', 'Not a valid topbar preset JSON.')); }
   };
@@ -8493,6 +8514,31 @@ function AdminNav() {
         <Button size="sm" variant="ghost" onClick={exportPreset}><Download size={14} /> {t('nav.export', 'Export preset')}</Button>
         <Button size="sm" variant="ghost" onClick={resetDefault}><RotateCcw size={14} /> {t('nav.reset', 'Reset to default')}</Button>
       </div>
+
+      {/* Built-in topbar buttons: show/hide + reorder (within each responsive cluster). */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+          <h3 className="font-semibold text-sm flex items-center gap-2"><LayoutGrid size={15} className="text-[var(--primary-2)]" /> {t('nav.util.title', 'Topbar buttons')}</h3>
+          <Button size="sm" variant="ghost" onClick={resetUtil}><RotateCcw size={13} /> {t('nav.util.reset', 'Reset')}</Button>
+        </div>
+        <p className="text-xs text-[var(--muted)] mb-3">{t('nav.util.desc', 'Show/hide and reorder the built-in buttons. Each still respects its own rule (e.g. Admin only shows for staff, Sign in only when logged out). Order changes stay within a group.')}</p>
+        {[['a', t('nav.util.always', 'Always visible'), UTIL_A_KEYS], ['b', t('nav.util.account', 'Account (desktop)'), UTIL_B_KEYS]].map(([grp, label, keys]) => (
+          <div key={grp} className="mb-3 last:mb-0">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{label}</div>
+            <div className="space-y-1">
+              {orderedU(keys).map((k, idx, arr) => (
+                <div key={k} className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-2.5 py-1.5 bg-[var(--surface-2)]/40">
+                  <NavPvIcon name={UTIL_ICON[k]} size={15} />
+                  <span className="flex-1 text-sm">{t('nav.util.' + k, UTIL_LABEL[k])}</span>
+                  <button className="p-1 rounded text-[var(--muted)] disabled:opacity-30 hover:text-[var(--text)]" disabled={idx === 0} onClick={() => moveUtil(keys, k, -1)} title={t('nav.up', 'Move up')}><ChevronDown size={13} className="rotate-180" /></button>
+                  <button className="p-1 rounded text-[var(--muted)] disabled:opacity-30 hover:text-[var(--text)]" disabled={idx === arr.length - 1} onClick={() => moveUtil(keys, k, 1)} title={t('nav.down', 'Move down')}><ChevronDown size={13} /></button>
+                  <button type="button" onClick={() => setUVis(k, !uVis(k))} aria-pressed={uVis(k)} title={uVis(k) ? t('nav.util.hide', 'Hide') : t('nav.util.show', 'Show')} className={`w-9 h-5 rounded-full relative shrink-0 transition ${uVis(k) ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${uVis(k) ? 'left-[18px]' : 'left-0.5'}`} /></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </Card>
 
       {items.length === 0 ? (
         <EmptyState icon={Navigation} title={t('nav.none.t', 'No items yet')} sub={t('nav.none.s', 'Add a link or a dropdown group, or start from the built-in navigation.')} />

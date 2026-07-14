@@ -1509,6 +1509,9 @@ const DICT = {
     'nav.pv.tap': 'Touche le menu pour prévisualiser', 'nav.pv.empty': 'Aucun élément valide pour l’instant.',
     'nav.pv.edit': 'Cliquer pour modifier · le chevron ouvre le menu déroulant', 'nav.pv.editlink': 'Cliquer pour modifier cet élément', 'nav.pv.edithint': 'Cliquez sur un élément de l’aperçu pour accéder à ses réglages ci-dessous.',
     'nav.import': 'Importer un preset', 'nav.export': 'Exporter le preset', 'nav.reset': 'Réinitialiser par défaut',
+    'nav.util.title': 'Boutons de la barre', 'nav.util.reset': 'Réinitialiser', 'nav.util.desc': 'Afficher/masquer et réordonner les boutons intégrés. Chacun respecte sa propre règle (ex. Admin ne s’affiche que pour le staff, Connexion seulement si déconnecté). L’ordre reste dans son groupe.',
+    'nav.util.always': 'Toujours visibles', 'nav.util.account': 'Compte (bureau)', 'nav.util.hide': 'Masquer', 'nav.util.show': 'Afficher',
+    'nav.util.notifications': 'Notifications', 'nav.util.projects': 'Projets', 'nav.util.lang': 'Langue', 'nav.util.theme': 'Thème', 'nav.util.settings': 'Réglages', 'nav.util.dashboard': 'Tableau de bord', 'nav.util.admin': 'Admin', 'nav.util.profile': 'Profil', 'nav.util.logout': 'Déconnexion', 'nav.util.login': 'Connexion',
     'nav.imported': 'Preset importé — vérifie puis enregistre.', 'nav.importbad': 'Preset de topbar JSON invalide.',
 
     // ── Admin : file de modération ──

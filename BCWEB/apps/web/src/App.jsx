@@ -50,6 +50,12 @@ const NAV = [
 // (only these render; an unknown name falls back to Boxes). Keys are the values
 // stored in the nav config; keep them stable.
 const NAV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell };
+
+// Built-in topbar utility elements, split by their responsive cluster (see Topbar).
+// Admins reorder/hide WITHIN a cluster; the keys are the config identifiers — keep stable.
+const UTIL_A = ['notifications', 'projects', 'lang', 'theme', 'settings']; // always visible
+const UTIL_B = ['dashboard', 'admin', 'profile', 'logout', 'login'];       // lg+ account cluster
+export const UTIL_KEYS = [...UTIL_A, ...UTIL_B];
 export const NAV_ICON_NAMES = Object.keys(NAV_ICONS);
 
 // lucide export/PascalCase name → CDN kebab-case (BookOpen → book-open) so old configs and
@@ -339,6 +345,33 @@ function Nav() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [lang, effItems.length, pinnedShowcase.length, !!user, (user && (user.role === 'ADMIN' || user.role === 'MOD' || user.role === 'SUPERADMIN'))]);
+  // ── Configurable topbar utility elements ──────────────────────────────────────
+  // Admins can show/hide and reorder the built-in buttons (per nav.config.utility),
+  // WITHIN their responsive cluster so the layout can't break: cluster A is always
+  // visible (notifications · projects · lang · theme · settings), cluster B is the
+  // lg+ account cluster (dashboard · admin · profile · logout / login). Each element
+  // still has a hard precondition (auth, admin) that the config can only further hide.
+  const uCfg = navCfg?.utility || {};
+  const uVisible = (k) => uCfg[k]?.visible !== false; // default: shown
+  const orderIn = (list) => [...list].sort((a, b) => (uCfg[a]?.order ?? list.indexOf(a)) - (uCfg[b]?.order ?? list.indexOf(b)));
+  const clusterA = orderIn(UTIL_A);
+  const clusterB = orderIn(UTIL_B);
+  const utilNode = (k) => {
+    switch (k) {
+      case 'notifications': return user ? <NavNotifications key="u-notif" /> : null;
+      case 'projects': return <NavLink key="u-proj" to="/projects" className={({ isActive }) => `hidden sm:inline-flex nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}><Boxes size={16} /></NavLink>;
+      case 'lang': return <LangToggle key="u-lang" />;
+      case 'theme': return <ThemeToggle key="u-theme" />;
+      case 'settings': return <NavLink key="u-set" to="/settings" className={({ isActive }) => `nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.settings', 'Settings')} aria-label="Settings"><SettingsIcon size={16} /></NavLink>;
+      case 'dashboard': return user ? <NavLink key="u-dash" to="/dashboard" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.dashboard')} aria-label={t('nav.dashboard')}><LayoutDashboard size={15} /></NavLink> : null;
+      case 'admin': return user && canAdmin(user) ? <NavLink key="u-adm" to="/admin" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.admin')} aria-label={t('nav.admin')}><Shield size={15} /></NavLink> : null;
+      case 'profile': return user ? <Link key="u-prof" to="/profile" className="rounded-full p-0.5 hover:ring-2 hover:ring-[var(--line-strong)] transition" title={user.displayName}><Avatar user={user} size={28} /></Link> : null;
+      case 'logout': return user ? <Button key="u-out" variant="ghost" size="sm" onClick={logout} title={t('nav.signout')}><LogOut size={15} /></Button> : null;
+      case 'login': return !user ? <Link key="u-login" to="/auth"><Button variant="primary" size="sm" className="whitespace-nowrap rounded-full">{t('nav.signin')}</Button></Link> : null;
+      default: return null;
+    }
+  };
+  const renderUtil = (k) => (uVisible(k) ? utilNode(k) : null);
   return (
     <header className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       <div className="max-w-7xl mx-auto rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
@@ -371,25 +404,13 @@ function Nav() {
         {/* Below lg the segmented nav is hidden, so this spacer takes the slack and
             pushes the whole right cluster to the right edge (was left-glued). */}
         <div className="flex-1 min-w-[8px] lg:flex-none lg:w-2 shrink-0" />
-        {/* Right cluster — always shows notifications · lang · theme · settings
-            (+ Projects from sm up), right-aligned at every breakpoint. */}
+        {/* Right cluster A — always visible, admin-configurable order/visibility. */}
         <div className="flex items-center gap-0.5 shrink-0">
-          {user && <NavNotifications />}
-          <NavLink to="/projects" className={({ isActive }) => `hidden sm:inline-flex nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}><Boxes size={16} /></NavLink>
-          <span className="w-px h-5 bg-[var(--line)] mx-1 hidden sm:block" />
-          <LangToggle />
-          <ThemeToggle />
-          <NavLink to="/settings" className={({ isActive }) => `nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.settings', 'Settings')} aria-label="Settings"><SettingsIcon size={16} /></NavLink>
+          {clusterA.map(renderUtil)}
         </div>
+        {/* Right cluster B — lg+ account cluster, admin-configurable order/visibility. */}
         <div className="hidden lg:flex items-center gap-1 shrink-0 pl-1 ml-1 border-l border-[var(--line)]">
-          {user ? (
-            <>
-              <NavLink to="/dashboard" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.dashboard')} aria-label={t('nav.dashboard')}><LayoutDashboard size={15} /></NavLink>
-              {canAdmin(user) && <NavLink to="/admin" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.admin')} aria-label={t('nav.admin')}><Shield size={15} /></NavLink>}
-              <Link to="/profile" className="rounded-full p-0.5 hover:ring-2 hover:ring-[var(--line-strong)] transition" title={user.displayName}><Avatar user={user} size={28} /></Link>
-              <Button variant="ghost" size="sm" onClick={logout} title={t('nav.signout')}><LogOut size={15} /></Button>
-            </>
-          ) : <Link to="/auth"><Button variant="primary" size="sm" className="whitespace-nowrap rounded-full">{t("nav.signin")}</Button></Link>}
+          {clusterB.map(renderUtil)}
         </div>
         {/* below lg: profile/sign-in shortcut + menu (the hamburger sheet already
             has nav links + dashboard/admin/profile/logout, so nothing is lost). */}
@@ -408,17 +429,17 @@ function Nav() {
               ? <NavSheetGroup key={'g' + i} item={it} t={t} lang={lang} onNavigate={() => setOpen(false)} />
               : <NavLink key={it.to} to={it.to} className={sheet} onClick={() => setOpen(false)}><NavIcon item={it} size={16} />{navLabel(it, t, lang)}</NavLink>)}
             {pinnedShowcase.map((p) => <NavLink key={p.slug} to={`/project/${p.slug}`} className={sheet} onClick={() => setOpen(false)}><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} />{p.isAnnouncing ? p.announceTitle || p.name : p.name}</NavLink>)}
-            <NavLink to="/projects" className={sheet} onClick={() => setOpen(false)}><Boxes size={16} /> {t('nav.projects')}</NavLink>
+            {uVisible('projects') && <NavLink to="/projects" className={sheet} onClick={() => setOpen(false)}><Boxes size={16} /> {t('nav.projects')}</NavLink>}
             <NavLink to="/contact" className={sheet} onClick={() => setOpen(false)}><Mail size={16} /> Contact</NavLink>
-            <NavLink to="/settings" className={sheet} onClick={() => setOpen(false)}><SettingsIcon size={16} /> {t('nav.settings', 'Settings')}</NavLink>
+            {uVisible('settings') && <NavLink to="/settings" className={sheet} onClick={() => setOpen(false)}><SettingsIcon size={16} /> {t('nav.settings', 'Settings')}</NavLink>}
           </div>
           <div className="h-px bg-[var(--line)] my-2" />
           <div className="grid grid-cols-2 gap-1">
             {user ? (<>
-              <NavLink to="/dashboard" className={sheet} onClick={() => setOpen(false)}><LayoutDashboard size={16} />{t("nav.dashboard")}</NavLink>
-              {canAdmin(user) && <NavLink to="/admin" className={sheet} onClick={() => setOpen(false)}><Shield size={16} />{t("nav.admin")}</NavLink>}
-              <NavLink to="/profile" className={sheet} onClick={() => setOpen(false)}><Avatar user={user} size={18} /> Profile</NavLink>
-              <button className={sheet({ isActive: false }) + ' text-left'} onClick={() => { logout(); setOpen(false); }}><LogOut size={16} />{t("nav.signout")}</button>
+              {uVisible('dashboard') && <NavLink to="/dashboard" className={sheet} onClick={() => setOpen(false)}><LayoutDashboard size={16} />{t("nav.dashboard")}</NavLink>}
+              {uVisible('admin') && canAdmin(user) && <NavLink to="/admin" className={sheet} onClick={() => setOpen(false)}><Shield size={16} />{t("nav.admin")}</NavLink>}
+              {uVisible('profile') && <NavLink to="/profile" className={sheet} onClick={() => setOpen(false)}><Avatar user={user} size={18} /> Profile</NavLink>}
+              {uVisible('logout') && <button className={sheet({ isActive: false }) + ' text-left'} onClick={() => { logout(); setOpen(false); }}><LogOut size={16} />{t("nav.signout")}</button>}
             </>) : <Link to="/auth" className="col-span-2" onClick={() => setOpen(false)}><Button variant="primary" className="w-full">{t("nav.signin")}</Button></Link>}
           </div>
         </div>
