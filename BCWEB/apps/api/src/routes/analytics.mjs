@@ -1,7 +1,17 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { db, requireRole, requireCap, optionalUid } from '../lib/lib.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
+
+// In-process push bus for the admin live events feed: ingestion emits normalized events,
+// the SSE endpoint (/admin/analytics/events/stream) relays them to connected admins in
+// real time (no client polling). NOTE: in-process only — with multiple API replicas each
+// admin sees events from the replica they're connected to. Single-container compose (the
+// current deploy) sees everything; a replicated setup would swap this for Redis pub/sub.
+const feedBus = new EventEmitter();
+feedBus.setMaxListeners(0); // many admins may stream at once; don't warn
+const emitFeed = (ev) => { try { feedBus.emit('ev', ev); } catch { /* never let telemetry break ingestion */ } };
 
 // Real client IP as seen by our trusted proxy (Caddy appends it last on X-Forwarded-For).
 function clientIp(req) {
@@ -151,7 +161,9 @@ export default async function analyticsRoutes(app) {
     const p = await db();
     const { device, browser, os } = parseUA(req.headers['user-agent']);
     const { country, region, city, lat, lng } = await geoOf(req);
-    await p.analyticsEvent.create({ data: { path: b.data.path, ref: b.data.ref || null, visitor: visitorHash(req), device, browser, os, country, region, city, lat, lng } }).catch(() => {});
+    const visitor = visitorHash(req);
+    await p.analyticsEvent.create({ data: { path: b.data.path, ref: b.data.ref || null, visitor, device, browser, os, country, region, city, lat, lng } }).catch(() => {});
+    emitFeed({ ts: new Date().toISOString(), kind: 'pageview', path: b.data.path, visitor, device, browser, os, country, label: null });
     return reply.code(204).send();
   });
 
@@ -194,6 +206,8 @@ export default async function analyticsRoutes(app) {
     await p.interactionEvent.createMany({
       data: b.data.items.map((it) => ({ path: it.path, kind: it.kind, label: it.label || null, visitor, device })),
     }).catch(() => {});
+    const now = new Date().toISOString();
+    for (const it of b.data.items) emitFeed({ ts: now, kind: it.kind, path: it.path, visitor, device, browser: null, os: null, country: null, label: it.label || null });
     return reply.code(204).send();
   });
 
@@ -408,6 +422,35 @@ export default async function analyticsRoutes(app) {
     const counts = { pageview: pvCount };
     ixCounts.forEach((c) => { counts[c.kind] = c._count.kind; });
     return { events, counts };
+  });
+
+  // Live events stream (Server-Sent Events): pushes each new pageview/interaction to the
+  // admin feed the instant it's ingested — no client polling. Optional ?path= (substring,
+  // case-insensitive) and ?kinds=a,b filters are applied server-side so a filtered feed
+  // only receives what it wants. Cookie-authenticated via requireCap (EventSource sends the
+  // same-origin session cookie). Heartbeats keep the connection alive through proxies.
+  app.get('/admin/analytics/events/stream', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
+    const pathQ = String(req.query?.path || '').trim().toLowerCase();
+    const kinds = req.query?.kinds ? new Set(String(req.query.kinds).split(',').filter(Boolean)) : null;
+    reply.hijack(); // take ownership of the socket before writing the SSE head
+    const raw = reply.raw;
+    raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no', // don't let a reverse proxy buffer the stream
+    });
+    raw.write('retry: 5000\n\n'); // tell EventSource to reconnect after 5s if dropped
+    const onEv = (ev) => {
+      if (kinds && !kinds.has(ev.kind)) return;
+      if (pathQ && !String(ev.path || '').toLowerCase().includes(pathQ)) return;
+      try { raw.write(`data: ${JSON.stringify(ev)}\n\n`); } catch { /* client gone */ }
+    };
+    feedBus.on('ev', onEv);
+    const hb = setInterval(() => { try { raw.write(': ping\n\n'); } catch { /* client gone */ } }, 25000);
+    const cleanup = () => { clearInterval(hb); feedBus.removeListener('ev', onEv); };
+    req.raw.on('close', cleanup);
+    req.raw.on('error', cleanup);
   });
 
   // Client errors, grouped by message: occurrences, distinct sessions (visitors), first/

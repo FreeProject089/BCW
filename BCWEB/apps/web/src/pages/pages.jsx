@@ -7494,10 +7494,28 @@ function AdminEventsFeed() {
   const rq = Object.fromEntries(WV_RANGES)[range] || { days: 7 };
   const qs = `${rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`}${qApplied ? `&path=${encodeURIComponent(qApplied)}` : ''}${kinds.size ? `&kinds=${[...kinds].join(',')}` : ''}`;
   const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/events?${qs}`), [qs]);
-  const events = data?.events || []; const counts = data?.counts || {};
-  // Live mode: quietly re-poll the feed every 4s so new events stream in as they happen.
+  const fetched = data?.events || []; const counts = data?.counts || {};
+  // Live mode: a real-time Server-Sent-Events stream. New events are PUSHED the instant
+  // they're ingested (no polling) and prepended to the feed. The stream honours the same
+  // path/kind filters server-side. On disconnect EventSource auto-reconnects (retry: 5s).
   const [live, setLive] = useState(false);
-  useEffect(() => { if (!live) return; const id = setInterval(() => reload(), 4000); return () => clearInterval(id); }, [live, qs]); // eslint-disable-line
+  const [streamed, setStreamed] = useState([]);
+  const streamQs = `${qApplied ? `path=${encodeURIComponent(qApplied)}` : ''}${kinds.size ? `${qApplied ? '&' : ''}kinds=${[...kinds].join(',')}` : ''}`;
+  useEffect(() => {
+    setStreamed([]); // filters (or live off) → drop the old stream buffer and re-subscribe
+    if (!live || typeof EventSource === 'undefined') return undefined;
+    const es = new EventSource(`/api/admin/analytics/events/stream${streamQs ? `?${streamQs}` : ''}`);
+    es.onmessage = (m) => { try { const ev = JSON.parse(m.data); setStreamed((s) => [ev, ...s].slice(0, 300)); } catch { /* ignore malformed frame */ } };
+    return () => es.close();
+  }, [live, streamQs]);
+  // Merge the pushed events on top of the initial fetch, de-duplicating the small overlap
+  // window (an event can appear in both the first fetch and the stream).
+  const events = useMemo(() => {
+    const key = (e) => `${e.ts}|${e.kind}|${e.path}|${e.visitor}|${e.label || ''}`;
+    const seen = new Set(); const out = [];
+    for (const e of [...streamed, ...fetched]) { const k = key(e); if (seen.has(k)) continue; seen.add(k); out.push(e); }
+    return out.sort((a, b) => new Date(b.ts) - new Date(a.ts));
+  }, [streamed, fetched]);
   const toggle = (k) => setKinds((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const EVICON = { pageview: Eye, click: MousePointerClick, copy: Copy, input: PenSquare, submit: Send, nav: ArrowRight, modal_open: PanelTop, modal_close: X };
   return (
