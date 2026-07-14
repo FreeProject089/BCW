@@ -6,6 +6,7 @@ import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, EmptyState, Spinner, Input, useToast } from '../ui/ui.jsx';
 import Avatar, { avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
+import { ReportButton } from '../ui/report.jsx';
 
 const roleTone = (r) => r === 'SUPERADMIN' || r === 'ADMIN' ? 'red' : r === 'MOD' ? 'amber' : '';
 const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> Loading…</div>;
@@ -64,7 +65,10 @@ export default function PublicProfile() {
             {u.bio && <p className="text-sm text-[var(--muted)] mt-1.5 whitespace-pre-wrap break-words">{u.bio}</p>}
             <div className="text-xs text-[var(--faint)] mt-2 flex items-center gap-1"><Calendar size={12} /> {t('pp.joined', 'Joined')} {joined}</div>
           </div>
-          <Button size="sm" variant="ghost" onClick={share}><Share2 size={14} /> {t('pp.share', 'Share')}</Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={share}><Share2 size={14} /> {t('pp.share', 'Share')}</Button>
+            <ReportButton targetType="user" targetId={u.id} targetLabel={u.displayName} />
+          </div>
         </div>
         {connRows.length > 0 && <div className="flex items-center gap-3 flex-wrap mt-4 pt-4 border-t border-[var(--line)]">
           {connRows.map(([k, Ico, v, href]) => href

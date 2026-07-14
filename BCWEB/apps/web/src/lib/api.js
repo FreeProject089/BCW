@@ -107,6 +107,16 @@ export async function uploadImage(file) {
 }
 export const uploadBlogImage = uploadImage; // back-compat alias
 
+// Upload a report/support-thread image attachment (per-image cap is admin-configurable
+// server-side); returns a stable public media URL. Throws {status:413} when too large.
+export async function uploadReportImage(file) {
+  const contentType = file.type || 'image/png';
+  const { url, mediaUrl } = await api.post('/uploads/presign', { kind: 'REPORT', filename: file.name, contentType, size: file.size });
+  const put = await fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+  if (!put.ok) throw Object.assign(new Error('upload_failed'), { status: put.status });
+  return mediaUrl;
+}
+
 // Upload a project/showcase page asset (image, short video, or rrweb replay JSON)
 // — ADMIN-only, returns a stable public media URL. Used by the visual project editor.
 export async function uploadMedia(file) {

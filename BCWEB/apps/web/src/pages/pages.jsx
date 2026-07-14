@@ -23,6 +23,7 @@ import { TotpQuickFill } from './twofa-fill.jsx';
 import { AuthorsRow, MarkdownEditor } from './blog.jsx';
 import Avatar, { VARIANTS as AV_VARIANTS, PALETTES as AV_PALETTES } from '../ui/Avatar.jsx';
 import { Badges, BadgeIcon } from '../ui/Badges.jsx';
+import { ReportThread, ReportComposer } from '../ui/report.jsx';
 
 // A stable-but-varied Boring-avatar look for an anonymous analytics session (keyed by
 // the visitor hash) — so each session gets its OWN geometric avatar instead of the
@@ -2023,6 +2024,7 @@ export function Dashboard() {
     { id: 'catalogs', label: t('dash.mycatalogs', 'My catalogs'), icon: Boxes },
     { id: 'repos', label: t('dash.myrepos', 'My repos'), icon: Server, badge: rlist.length || undefined },
     { id: 'billing', label: t('dash.billing', 'Billing'), icon: Receipt },
+    { id: 'reports', label: t('dash.reports', 'Reports & contact'), icon: MessageSquare },
   ];
   return (
     <>
@@ -2109,6 +2111,7 @@ export function Dashboard() {
           {s === 'catalogs' && <OwnerCatalogs />}
           {s === 'repos' && <MyRepos />}
           {s === 'billing' && <Billing />}
+          {s === 'reports' && <MyReports />}
         </>)}
       </SideDash>
 
@@ -2326,6 +2329,7 @@ export function Admin() {
     can('manage_newsletter') && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
     can('manage_faq') && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
     can('manage_catalogs') && { id: 'commcatalogs', label: t('adm.tab.commcatalogs', 'Community catalogs'), icon: Layers },
+    can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: Inbox },
 
     { heading: t('adm.h.repos', 'Repos & hosting') },
     can('manage_repos') && { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
@@ -2415,6 +2419,7 @@ export function Admin() {
         {s === 'repos' && <AdminRepos />}
         {s === 'catalogs' && <><AdminCatalogCreator /><PluginVerifier /><ThemeVerifier /></>}
         {s === 'commcatalogs' && <AdminCatalogs />}
+        {s === 'reports' && <AdminReports />}
         {s === 'hosting' && <AdminFreeHost />}
         {s === 'promotions' && <><AdminCampaigns /><div className="mt-8"><AdminPromo /></div></>}
         {s === 'kofi' && <AdminKofi />}
@@ -8675,6 +8680,134 @@ function AdminBadgeHolders({ badge, onClose }) {
   );
 }
 
+const REPORT_STATUS_TONE = { open: 'green', archived: 'amber', closed: '' };
+const REPORT_TARGET_ICON = { user: Users, repo: Server, catalog: Boxes, item: Package, general: MessageSquare };
+
+// User dashboard: the reports / support threads this user opened, GitHub-PR style.
+function MyReports() {
+  const { t } = useI18n();
+  const { data, loading, reload } = useAsync(() => api.get('/me/reports'), []);
+  const [openId, setOpenId] = useState(null);
+  const reports = data?.reports || [];
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('mr.title', 'Reports & contact')}</h2>
+        <p className="text-sm text-[var(--muted)]">{t('mr.sub', 'Reports you filed and support conversations. Replies from the team show up here.')}</p>
+      </div>
+      {loading ? <Loading /> : reports.length ? <div className="space-y-1.5">
+        {reports.map((r) => { const Ico = REPORT_TARGET_ICON[r.targetType] || MessageSquare; return (
+          <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-left"><Card className="p-3 flex items-center gap-3 card-hover">
+            <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--primary-2)]" /></span>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate flex items-center gap-2">{r.targetLabel || t('mr.general', 'Support request')} <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>{r.userUnread && <Badge tone="red">{t('mr.new', 'new reply')}</Badge>}</div>
+              <div className="text-xs text-[var(--faint)]">{t('mr.on', 'on {t}').replace('{t}', r.targetType)} · {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</div>
+            </div>
+          </Card></button>
+        ); })}
+      </div> : <EmptyState icon={MessageSquare} title={t('mr.none.t', 'No reports yet')} sub={t('mr.none.s', 'Use the Report button on a profile, repo or catalog — or the Contact page.')} />}
+      {openId && <ReportThreadModal id={openId} admin={false} onClose={() => { setOpenId(null); reload(); }} />}
+    </div>
+  );
+}
+
+// Shared thread modal — user (admin=false) or staff (admin=true) view of one report.
+function ReportThreadModal({ id, admin, onClose }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const base = admin ? `/admin/reports/${id}` : `/me/reports/${id}`;
+  const { data, loading, reload } = useAsync(() => api.get(base), [id]);
+  const [sending, setSending] = useState(false);
+  const r = data?.report;
+  const send = async ({ body, images }) => {
+    setSending(true);
+    try { await api.post(`${base}/messages`, { body, images }); reload(); return true; }
+    catch (x) { toast.error(x.data?.error === 'closed' ? t('mr.closed', 'This report is closed.') : t('acc.failed', 'Failed.')); return false; }
+    finally { setSending(false); }
+  };
+  const setStatus = async (status) => { try { await api.post(`/admin/reports/${id}/status`, { status }); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  const del = async () => { if (!(await dialog.confirm({ title: t('ar.del.t', 'Delete report?'), message: t('ar.del.m', 'Permanently delete this report and its messages?'), okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/admin/reports/${id}`); toast.success(t('ar.deleted', 'Deleted.')); onClose(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  return (
+    <Modal open onClose={onClose} icon={admin ? Inbox : MessageSquare} width="max-w-2xl"
+      title={loading ? t('common.loading', 'Loading…') : (r?.targetLabel || t('mr.general', 'Support request'))}>
+      {loading || !r ? <Loading /> : <div className="space-y-4">
+        <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--muted)]">
+          <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>
+          <span>{t('mr.on', 'on {t}').replace('{t}', r.targetType)}{r.reason ? ` · ${r.reason}` : ''}</span>
+          {admin && r.reporter && <span className="flex items-center gap-1"><Users size={12} /> {r.reporter} · {r.reporterEmail} {r.reporterBcId && <button onClick={() => { navigator.clipboard?.writeText(r.reporterBcId); toast.success(t('prof.bcidcopied', 'BC id copied.')); }} className="font-mono hover:text-[var(--primary)] inline-flex items-center gap-1"><Fingerprint size={11} /> {r.reporterBcId} <Copy size={9} /></button>}</span>}
+        </div>
+        {admin && <div className="flex flex-wrap gap-2">
+          {r.status !== 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus('open')}><RefreshCw size={13} /> {t('ar.reopen', 'Reopen')}</Button>}
+          {r.status !== 'archived' && <Button size="sm" variant="ghost" onClick={() => setStatus('archived')}><Archive size={13} /> {t('ar.archive', 'Archive')}</Button>}
+          {r.status !== 'closed' && <Button size="sm" variant="ghost" onClick={() => setStatus('closed')}><CheckCircle2 size={13} /> {t('ar.close', 'Close')}</Button>}
+          <Button size="sm" variant="ghost" className="!text-red-400" onClick={del}><Trash2 size={13} /> {t('common.delete', 'Delete')}</Button>
+        </div>}
+        <div className="max-h-[45vh] overflow-y-auto pr-1"><ReportThread messages={r.messages} /></div>
+        {r.status === 'closed' && !admin ? <p className="text-sm text-[var(--faint)] text-center py-2">{t('mr.closednote', 'This report is closed. Open a new one if you still need help.')}</p>
+          : <ReportComposer onSend={send} sending={sending} placeholder={admin ? t('ar.reply', 'Reply as staff…') : t('rp.msgph', 'Write a message…')} />}
+      </div>}
+    </Modal>
+  );
+}
+
+// Admin: the report / support queue. Filter by status; open a thread to reply + moderate.
+function AdminReports() {
+  const { t } = useI18n();
+  const [status, setStatus] = useState('open');
+  const [openId, setOpenId] = useState(null);
+  const [cfgOpen, setCfgOpen] = useState(false);
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/reports?status=${status}`), [status]);
+  const reports = data?.reports || []; const counts = data?.counts || {};
+  const STATUSES = [['open', t('ar.s.open', 'Open')], ['archived', t('ar.s.archived', 'Archived')], ['closed', t('ar.s.closed', 'Closed')]];
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div><h2 className="font-semibold flex items-center gap-2"><Inbox size={16} className="text-[var(--primary-2)]" /> {t('ar.title', 'Reports')}</h2>
+          <p className="text-sm text-[var(--muted)]">{t('ar.sub', 'User reports and support threads. Reply, archive, close or delete.')}</p></div>
+        <Button size="sm" variant="ghost" onClick={() => setCfgOpen(true)}><Settings2 size={14} /> {t('ar.settings', 'Settings')}</Button>
+      </div>
+      <div className="flex rounded-lg border border-[var(--line)] overflow-hidden w-fit">
+        {STATUSES.map(([k, lbl]) => <button key={k} onClick={() => setStatus(k)} className={`px-3 py-1.5 text-sm ${status === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}{counts[k] ? <span className="ml-1.5 text-[10px] tabular-nums text-[var(--faint)]">{counts[k]}</span> : null}</button>)}
+      </div>
+      {loading ? <Loading /> : reports.length ? <div className="space-y-1.5">
+        {reports.map((r) => { const Ico = REPORT_TARGET_ICON[r.targetType] || MessageSquare; return (
+          <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-left"><Card className="p-3 flex items-center gap-3 card-hover">
+            <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--primary-2)]" /></span>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate flex items-center gap-2">{r.targetLabel || t('mr.general', 'Support request')} {r.staffUnread && <Badge tone="red">{t('ar.unread', 'new')}</Badge>}<Badge tone="">{r.reason || r.targetType}</Badge></div>
+              <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap"><span className="flex items-center gap-1"><Users size={11} /> {r.reporter}</span>{r.reporterBcId && <span className="font-mono flex items-center gap-1"><Fingerprint size={10} /> {r.reporterBcId}</span>}<span>· {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</span></div>
+            </div>
+          </Card></button>
+        ); })}
+      </div> : <EmptyState icon={Inbox} title={t('ar.none.t', 'Nothing here')} sub={t('ar.none.s', 'No reports with this status.')} />}
+      {openId && <ReportThreadModal id={openId} admin onClose={() => { setOpenId(null); reload(); }} />}
+      {cfgOpen && <AdminReportsConfig onClose={() => setCfgOpen(false)} />}
+    </div>
+  );
+}
+
+function AdminReportsConfig({ onClose }) {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading } = useAsync(() => api.get('/admin/reports/config'), []);
+  const [f, setF] = useState(null);
+  useEffect(() => { if (data?.config) setF(data.config); }, [data]);
+  const save = async () => { try { await api.put('/admin/reports/config', { imageMaxMB: Number(f.imageMaxMB), maxImagesPerMsg: Number(f.maxImagesPerMsg), archiveDays: Number(f.archiveDays), deleteDays: Number(f.deleteDays), archiveEnabled: !!f.archiveEnabled, deleteEnabled: !!f.deleteEnabled }); toast.success(t('arc.saved', 'Settings saved.')); onClose(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  return (
+    <Modal open onClose={onClose} title={t('arc.title', 'Report settings')} icon={Settings2} width="max-w-md"
+      footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={save} disabled={!f}>{t('common.save', 'Save')}</Button></>}>
+      {loading || !f ? <Loading /> : <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t('arc.imgmb', 'Max image size (MB)')}><Input type="number" min="1" max="50" value={f.imageMaxMB} onChange={(e) => setF({ ...f, imageMaxMB: e.target.value })} /></Field>
+          <Field label={t('arc.imgcount', 'Images per message')}><Input type="number" min="1" max="20" value={f.maxImagesPerMsg} onChange={(e) => setF({ ...f, maxImagesPerMsg: e.target.value })} /></Field>
+          <Field label={t('arc.archdays', 'Auto-archive after (days idle)')}><Input type="number" min="1" value={f.archiveDays} onChange={(e) => setF({ ...f, archiveDays: e.target.value })} /></Field>
+          <Field label={t('arc.deldays', 'Delete after (days archived)')}><Input type="number" min="1" value={f.deleteDays} onChange={(e) => setF({ ...f, deleteDays: e.target.value })} /></Field>
+        </div>
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={f.archiveEnabled} onChange={(e) => setF({ ...f, archiveEnabled: e.target.checked })} /> {t('arc.archen', 'Auto-archive idle reports')}</label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={f.deleteEnabled} onChange={(e) => setF({ ...f, deleteEnabled: e.target.checked })} /> {t('arc.delen', 'Auto-delete old archived reports')}</label>
+      </div>}
+    </Modal>
+  );
+}
+
 // Admin: what actually fills the Free-plan pool — every $0-provisioned pool/repo with
 // its owner. Makes the gauge auditable instead of a black box (root of the "70/10 GB
 // while empty" confusion: admin/promo repos used to be miscounted as free-plan usage).
@@ -9147,6 +9280,16 @@ export function Contact() {
       const tmpl = fr
         ? "Bonjour, je souhaite un plan d'hébergement sur mesure (entreprise).\nMes besoins :\n- Stockage :\n- Bande passante / upload :\n- Ressources dédiées / SLA :\n- Autre :"
         : 'Hi, I\'d like a custom (enterprise) hosting plan.\nMy needs:\n- Storage:\n- Bandwidth / upload:\n- Dedicated resources / SLA:\n- Other:';
+      setMsg((m) => ({ ...m, body: m.body || tmpl }));
+    }
+    // Report template for logged-out users sent here by a Report button (?report=type&id=&label=).
+    const rType = params.get('report');
+    if (rType) {
+      const label = params.get('label') || ''; const rid = params.get('id') || '';
+      const ref = `${rType}${label ? ` "${label}"` : ''}${rid ? ` (${rid})` : ''}`;
+      const tmpl = fr
+        ? `Signalement — ${ref}\n\nRaison :\n\nDétails :\n\n(Astuce : connecte-toi pour suivre ton signalement et échanger avec l'équipe dans ton tableau de bord.)`
+        : `Report — ${ref}\n\nReason:\n\nDetails:\n\n(Tip: sign in to track your report and chat with the team from your dashboard.)`;
       setMsg((m) => ({ ...m, body: m.body || tmpl }));
     }
   }, [params, fr]);

@@ -7,6 +7,7 @@ import {
   Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake, Boxes,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { ReportButton } from '../ui/report.jsx';
 import { api, uploadRepoFile } from '../lib/api.js';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal } from '../ui/ui.jsx';
 import { useUploads } from './uploads.jsx';
@@ -205,6 +206,7 @@ export function ReposPage() {
                       {r.links?.discord && <a href={r.links.discord} target="_blank" rel="noreferrer"><Button size="sm">Discord</Button></a>}
                       {r.links?.website && <a href={r.links.website} target="_blank" rel="noreferrer"><Button size="sm">{t('repos.website', 'Website')}</Button></a>}
                       {r.links?.changelog && <a href={r.links.changelog} target="_blank" rel="noreferrer"><Button size="sm">{t('repos.changelog', 'Changelog')}</Button></a>}
+                      <ReportButton targetType="repo" targetId={r.id} targetLabel={r.name} />
                     </div>
                   </Card>
                 );

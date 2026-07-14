@@ -5,6 +5,7 @@ import { PageHeader, Card, Button, Badge, Spinner, EmptyState } from '../ui/ui.j
 import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
+import { ReportButton } from '../ui/report.jsx';
 
 const KIND_ICON = { PLUGIN: Package, THEME: Palette, APP: Boxes, PRESET: Music2 };
 const KIND_FEED = { PLUGIN: 'plugin', THEME: 'theme', APP: 'app', PRESET: 'app' };
@@ -51,6 +52,7 @@ export default function CommunityCatalogPage() {
         <span className="text-[var(--faint)]">{t('ccp.hostedby', 'Hosted by')}</span>
         {cat.ownerId ? <Link to={`/u/${cat.ownerId}`} className="font-medium hover:text-[var(--primary)] flex items-center gap-1"><Users size={13} /> {cat.owner}</Link> : <span className="font-medium flex items-center gap-1"><Users size={13} /> {cat.owner}</span>}
         {cat.ownerBcId && <button onClick={() => copy(cat.ownerBcId)} title={t('ccp.copybcid', 'Copy the host’s BC id')} className="inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)]"><Fingerprint size={11} /> {cat.ownerBcId} <Copy size={10} /></button>}
+        <ReportButton targetType="catalog" targetId={cat.slug} targetLabel={cat.name} />
       </div>}
 
       {kinds.length === 0 ? (
