@@ -482,11 +482,16 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
     try { const r = await api.post(`/me/hosting/groups/${g.id}/consolidate`, {}); if (r.url) location.href = r.url; }
     catch (x) { toast.error(x.data?.error === 'no_saving' ? t('pools.consol.nosave', 'No saving available right now.') : t('repos.failed', 'Failed.')); }
   };
+  // Collapsible (persisted) so the pools list can be hidden when the dashboard is busy.
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('bcw.pools.collapsed') === '1'; } catch { return false; } });
+  const toggleCollapsed = () => setCollapsed((v) => { const n = !v; try { localStorage.setItem('bcw.pools.collapsed', n ? '1' : '0'); } catch { /* ignore */ } return n; });
   return (
     <div className="mb-5 space-y-2.5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><HardDrive size={13} className="text-[var(--primary-2)]" /> {t('pools.title', 'Storage pools')}</div>
-        {groups.length > 1 && sel.size >= 1 && (
+        <button onClick={toggleCollapsed} className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] hover:text-[var(--text)] flex items-center gap-1.5 transition-colors" title={collapsed ? t('pools.expand', 'Show pools') : t('pools.collapse', 'Hide pools')}>
+          <ChevronDown size={13} className={`transition-transform ${collapsed ? '-rotate-90' : ''}`} /> <HardDrive size={13} className="text-[var(--primary-2)]" /> {t('pools.title', 'Storage pools')} <span className="text-[var(--faint)] normal-case font-normal">({groups.length})</span>
+        </button>
+        {!collapsed && groups.length > 1 && sel.size >= 1 && (
           <div className="flex items-center gap-1.5 flex-wrap text-xs">
             <span className="text-[var(--faint)]">{t('pools.selcount', '{n} selected').replace('{n}', String(sel.size))}</span>
             <select value={mergeInto} onChange={(e) => setMergeInto(e.target.value)} className="input !w-auto !py-1 !text-xs" title={t('pools.mergeinto', 'Merge into another pool')}>
@@ -498,7 +503,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
           </div>
         )}
       </div>
-      {groups.map((g, i) => {
+      {!collapsed && groups.map((g, i) => {
         const free = Math.max(0, g.poolBytes - g.usedBytes);
         const repoPct = pct(g.repoBytes, g.poolBytes), catPct = pct(g.catalogBytes, g.poolBytes);
         const accent = colorOf(g, i);
