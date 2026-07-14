@@ -8,7 +8,7 @@ import { Badges, BadgeIcon } from './ui/Badges.jsx';
 import { ThemeToggle } from './ui/theme.jsx';
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
 import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon } from './ui/brand.jsx';
-import { ShowcaseIcon } from './ui/md.jsx';
+import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
 import { trackPageview, initVitals, initInteractions, initErrors } from './lib/analytics.js';
 import { loadGtmIfConsented } from './lib/gtm.js';
 import { getOrbTransitionPref } from './lib/prefs.js';
@@ -50,13 +50,22 @@ const NAV = [
 const NAV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell };
 export const NAV_ICON_NAMES = Object.keys(NAV_ICONS);
 
-// Real app icon when /icons/<app>.png exists, otherwise a lucide component. `item.icon`
-// may be a component (hardcoded NAV) or a string name (admin-configured nav → mapped).
+// lucide export/PascalCase name → CDN kebab-case (BookOpen → book-open) so old configs and
+// picker output ("boxes", "simple:youtube") both resolve through IconGlyph.
+const navIconName = (icon) => {
+  const s = String(icon || 'boxes');
+  if (s.startsWith('simple:')) return s;
+  return s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/\s+/g, '-').toLowerCase();
+};
+
+// Real app icon when /icons/<app>.png exists, otherwise any Lucide icon or Simple Icons
+// brand (via IconGlyph). `item.icon` may be a lucide component (hardcoded NAV) or a string
+// name / "simple:<slug>" (admin-configured nav).
 function NavIcon({ item, size = 15 }) {
   const [ok, setOk] = useState(!!item.img);
   if (item.img && ok) return <img src={item.img} alt="" width={size + 3} height={size + 3} className="rounded-[4px] object-contain" onError={() => setOk(false)} />;
-  const I = typeof item.icon === 'string' ? (NAV_ICONS[item.icon] || Boxes) : (item.icon || Boxes);
-  return <I size={size} />;
+  if (typeof item.icon !== 'string') { const I = item.icon || Boxes; return <I size={size} />; }
+  return <IconGlyph name={navIconName(item.icon)} size={size} />;
 }
 
 // A nav item's visible text. Hardcoded items carry a translation key `k`; admin-configured

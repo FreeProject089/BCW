@@ -40,6 +40,7 @@ import { AppLogo, KofiIcon, GithubIcon, DiscordIcon, RedditIcon, GoogleIcon } fr
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import Markdown, { ShowcaseIcon } from '../ui/md.jsx';
 import IconPicker from '../editor/icon-picker.jsx';
+import { IconGlyph } from '../ui/md.jsx';
 import ProjectConfigEditor from '../editor/project-config-editor.jsx';
 
 /* ── helpers ── */
@@ -8243,9 +8244,10 @@ const blankChild = () => ({ label: '', labelFr: '', to: '/', desc: '', descFr: '
 // Immutably move element `i` of `arr` by `dir` (±1); returns the same array if out of range.
 const moveIn = (arr, i, dir) => { const j = i + dir; if (j < 0 || j >= arr.length) return arr; const c = arr.slice(); [c[i], c[j]] = [c[j], c[i]]; return c; };
 
-// Mirrors App.jsx's NAV_ICONS so the preview renders the exact icons the live topbar will.
-const NAV_PV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell };
-const NavPvIcon = ({ name, size = 15 }) => { const I = NAV_PV_ICONS[name] || Boxes; return <I size={size} />; };
+// Renders the preview icon the exact way the live topbar does (any Lucide icon or Simple
+// Icons brand, via IconGlyph). PascalCase/old names are kebab-ized first.
+const navPvName = (icon) => { const s = String(icon || 'boxes'); return s.startsWith('simple:') ? s : s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/\s+/g, '-').toLowerCase(); };
+const NavPvIcon = ({ name, size = 15 }) => <IconGlyph name={navPvName(name)} size={size} />;
 const pvLabel = (it, lang) => (lang === 'fr' && it.labelFr ? it.labelFr : (it.label || '')) || (lang === 'fr' ? 'Sans titre' : 'Untitled');
 
 // Live preview of the public topbar built from the editor's items — faithful to the real
@@ -8315,6 +8317,7 @@ function AdminNav() {
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState('desktop'); // preview device
+  const [iconPick, setIconPick] = useState(null); // { onChange } while the icon picker is open
   const fileRef = useRef(null);
   useEffect(() => {
     const n = loaded.data?.nav;
@@ -8373,10 +8376,12 @@ function AdminNav() {
   };
   const resetDefault = () => setItems(DEFAULT_NAV_SEED.map((x) => ({ ...x, children: (x.children || []).map((c) => ({ ...c })) })));
 
+  // Icon = a button opening the shared picker (every Lucide icon + every Simple Icons brand).
   const IconSelect = ({ value, onChange }) => (
-    <Select className="!w-auto" value={value} onChange={(e) => onChange(e.target.value)} title={t('nav.icon', 'Icon')}>
-      {NAV_ICON_CHOICES.map((n) => <option key={n} value={n}>{n}</option>)}
-    </Select>
+    <button type="button" onClick={() => setIconPick({ onChange })} title={t('nav.icon', 'Icon')}
+      className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-[var(--line)] hover:border-[var(--primary-2)] text-sm">
+      <NavPvIcon name={value} size={15} /> <span className="text-[var(--faint)] font-mono truncate max-w-[80px]">{value || 'icon'}</span>
+    </button>
   );
   const validCount = buildClean().items.length;
 
@@ -8471,6 +8476,7 @@ function AdminNav() {
         <div className="flex-1" />
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> {t('nav.save', 'Save navigation')}</>}</Button>
       </div>
+      {iconPick && <IconPicker title={t('nav.pickicon', 'Pick a nav icon')} onPick={(v) => iconPick.onChange(v)} onClose={() => setIconPick(null)} />}
     </div>
   );
 }

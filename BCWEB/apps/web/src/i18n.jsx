@@ -1480,6 +1480,7 @@ const DICT = {
     'nav.sub.en': 'Sous-texte (EN, optionnel)', 'nav.sub.fr': 'Sous-texte (FR, optionnel)',
     'nav.addchild': 'Ajouter un lien au déroulant', 'nav.addlink': 'Ajouter un lien', 'nav.addgroup': 'Ajouter un déroulant', 'nav.seed': 'Partir de la navigation par défaut',
     'nav.save': 'Enregistrer la navigation', 'nav.saved': 'Navigation enregistrée.',
+    'nav.pickicon': 'Choisir une icône de menu',
     'nav.pv.title': 'Aperçu en direct', 'nav.pv.desktop': 'Bureau', 'nav.pv.mobile': 'Mobile',
     'nav.pv.tap': 'Touche le menu pour prévisualiser', 'nav.pv.empty': 'Aucun élément valide pour l’instant.',
     'nav.import': 'Importer un preset', 'nav.export': 'Exporter le preset', 'nav.reset': 'Réinitialiser par défaut',
