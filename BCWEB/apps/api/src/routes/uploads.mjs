@@ -4,6 +4,35 @@ import { db, requireRole } from '../lib/lib.mjs';
 import { presignPut, getObject } from '../lib/storage.mjs';
 
 const GiB = 1024 ** 3;
+
+// On-demand thumbnail resize for the /media proxy (list cards request a small ?w=).
+// Only downscales raster images; each (key,width) is resized ONCE and kept in a tiny LRU,
+// and the response is immutable so a CDN/browser caches it. NOTE: decoding on the JS main
+// thread is the exact CPU work the Rust workers plan (guides/RUST_WORKERS_PLAN) earmarks —
+// this is the pragmatic JS version, swappable for a native resize later.
+const THUMB_WIDTHS = [64, 128, 256, 384, 512, 768]; // snap to a fixed set so the cache stays small
+const thumbWidth = (w) => { const n = Number(w); return THUMB_WIDTHS.includes(n) ? n : null; };
+const RESIZABLE = /^image\/(png|jpe?g|webp)$/i;
+const thumbCache = new Map(); // `${key}|${w}` -> Buffer (webp)
+const THUMB_CACHE_MAX = 64;
+async function streamToBuffer(s) {
+  if (Buffer.isBuffer(s)) return s;
+  const chunks = []; for await (const c of s) chunks.push(c); return Buffer.concat(chunks);
+}
+async function resizeToWebp(cacheKey, buf, width) {
+  const hit = thumbCache.get(cacheKey);
+  if (hit) return hit;
+  const { loadImage, createCanvas } = await import('@napi-rs/canvas');
+  const img = await loadImage(buf);
+  if (!img.width || img.width <= width) return null; // never upscale — serve the original
+  const h = Math.max(1, Math.round(img.height * (width / img.width)));
+  const canvas = createCanvas(width, h);
+  canvas.getContext('2d').drawImage(img, 0, 0, width, h);
+  const out = await canvas.encode('webp', 82);
+  thumbCache.set(cacheKey, out);
+  if (thumbCache.size > THUMB_CACHE_MAX) thumbCache.delete(thumbCache.keys().next().value);
+  return out;
+}
 // Submission payloads (.bmmplugin / .bmmtheme / app bundles / presets) live in a
 // DEDICATED temp margin, separate from the hosted-repo capacity. When it's full,
 // uploads are refused until moderation clears space (approve→paid hosting / reject).
@@ -99,14 +128,23 @@ export default async function uploadRoutes(app) {
       // origin. Attachment is ignored for <img>/<video> subresource loads, so
       // legitimate embeds still display. (The per-response CSP is belt-and-braces;
       // Caddy's edge CSP may override it, hence the disposition guard.)
-      const inlineSafe = /^(image\/(png|jpe?g|webp|gif|avif)|video\/)/i.test(contentType);
-      reply.header('Content-Type', contentType)
-        // Each key carries a randomUUID(), so a URL's bytes never change (replacing an
-        // image mints a new URL). That makes it safe to cache immutably for a year — the
-        // browser/CDN never re-validates, which offloads the media proxy on repeat views.
-        .header('Cache-Control', 'public, max-age=31536000, immutable')
+      // Each key carries a randomUUID(), so a URL's bytes never change (replacing an
+      // image mints a new URL). That makes it safe to cache immutably for a year — the
+      // browser/CDN never re-validates, which offloads the media proxy on repeat views.
+      reply.header('Cache-Control', 'public, max-age=31536000, immutable')
         .header('X-Content-Type-Options', 'nosniff')
         .header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; sandbox");
+      // Thumbnail path: a list card asks for a small ?w=<width>. Downscale raster images
+      // to webp (never upscale); the result is inline-safe (a raster we produced ourselves).
+      const width = thumbWidth(req.query?.w);
+      if (width && RESIZABLE.test(contentType)) {
+        const buf = await streamToBuffer(body);
+        const thumb = await resizeToWebp(`${key}|${width}`, buf, width).catch(() => null);
+        if (thumb) return reply.header('Content-Type', 'image/webp').send(thumb);
+        return reply.header('Content-Type', contentType).send(buf); // already small / decode failed → original
+      }
+      const inlineSafe = /^(image\/(png|jpe?g|webp|gif|avif)|video\/)/i.test(contentType);
+      reply.header('Content-Type', contentType);
       if (!inlineSafe) reply.header('Content-Disposition', 'attachment');
       return reply.send(body);
     } catch { return reply.code(404).send({ error: 'not_found' }); }
