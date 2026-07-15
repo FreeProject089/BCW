@@ -107,10 +107,15 @@ through the `/media/*` proxy; each key carries a `randomUUID()`, so a URL's byte
 change — **now served `immutable, max-age=1yr`** (was 1 day), so the browser/CDN never
 re-validates.
 
-**Remaining**: list cards still load full-size originals — a resize step (the project
-already ships `@napi-rs/canvas`) to emit width-appropriate thumbnails would cut bytes on
-grid pages. Longer term, serving `/media` straight from object storage / a CDN (presigned
-or edge-cached) would take the byte-proxying off the Node API entirely.
+**Resize endpoint added** — `/media/*?w=<width>` (snapped to 64…768) downscales raster
+images to webp via `@napi-rs/canvas`, each variant resized once into a small LRU and
+served immutable (an 800px source → 256px is ~78 % smaller). Decoding on the JS main
+thread is a Rust-worker candidate (see the [Rust workers plan](RUST_WORKERS_PLAN_EN.md) §P3).
+
+**Remaining**: front-end list cards must actually request `?w=` for their thumbnails to
+realise the win — ideally via one shared cover/`<img>` component that appends it for
+`/media` URLs. Longer term, serving `/media` straight from object storage / a CDN would
+take the byte-proxying off the Node API entirely.
 
 ---
 

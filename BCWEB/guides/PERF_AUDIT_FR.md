@@ -113,11 +113,15 @@ uploadées passent par le proxy `/media/*` ; chaque clé porte un `randomUUID()`
 d'une URL ne changent jamais — **servies maintenant en `immutable, max-age=1an`** (contre 1 jour),
 donc le navigateur/CDN ne revalide jamais.
 
-**Reste** : les cartes de liste chargent encore les originaux pleine taille — une étape de
-redimensionnement (le projet embarque déjà `@napi-rs/canvas`) pour émettre des vignettes à la bonne
-largeur allègerait les pages en grille. À plus long terme, servir `/media` directement depuis le
-stockage objet / un CDN (présigné ou caché à l'edge) sortirait complètement le proxy d'octets de
-l'API Node.
+**Endpoint de resize ajouté** — `/media/*?w=<largeur>` (parmi 64…768) réduit les images raster en
+webp via `@napi-rs/canvas`, chaque variante redimensionnée une fois dans un petit LRU et servie
+immutable (une source 800px → 256px pèse ~78 % de moins). Le décodage sur le main thread JS est un
+candidat worker Rust (voir le [plan workers Rust](RUST_WORKERS_PLAN_FR.md) §P3).
+
+**Reste** : les cartes de liste front-end doivent réellement demander `?w=` pour concrétiser le
+gain — idéalement via un composant cover/`<img>` partagé qui l'ajoute pour les URLs `/media`. À
+plus long terme, servir `/media` directement depuis le stockage objet / un CDN sortirait
+complètement le proxy d'octets de l'API Node.
 
 ---
 
