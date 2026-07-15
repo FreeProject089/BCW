@@ -720,7 +720,7 @@ export function MyRepos() {
               <div className="mt-3">
                 <ActionBar
                   actions={[
-                    { key: 'dash', label: t('repos.opendash', 'Dashboard'), icon: LayoutDashboard, variant: 'primary', onClick: () => navigate(`/repo/${r.id}`) },
+                    { key: 'dash', label: t('repos.opendash', 'Dashboard'), icon: LayoutDashboard, variant: 'primary', href: `/repo/${r.id}`, onClick: () => navigate(`/repo/${r.id}`) },
                     { key: 'list', label: r.listed ? t('repos.unlist', 'Unlist') : t('repos.listpublicly', 'List publicly'), icon: r.listed ? EyeOff : Eye, disabled: locked, onClick: () => toggleList(r) },
                     { key: 'boost', label: isFeatured(r) ? t('repos.extendboost', 'Extend boost') : t('repos.boost', 'Boost'), icon: Rocket, disabled: locked, onClick: () => setFeaturing(r) },
                   ]}

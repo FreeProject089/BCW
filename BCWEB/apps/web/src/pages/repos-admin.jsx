@@ -306,7 +306,7 @@ export function AdminRepos() {
                 <ActionBar actions={[
                   // Admin repo dashboard: the SAME dashboard as the owner's, but staff aren't
                   // frozen by suspension and every action is logged with "(admin)".
-                  { key: 'manage', label: t('arp.dashboard', 'Manage (admin)'), icon: LayoutDashboard, variant: 'primary', onClick: () => navigate(`/repo/${r.id}`) },
+                  { key: 'manage', label: t('arp.dashboard', 'Manage (admin)'), icon: LayoutDashboard, variant: 'primary', href: `/repo/${r.id}`, onClick: () => navigate(`/repo/${r.id}`) },
                   { key: 'verify', label: 'Verify', icon: ShieldCheck, variant: 'primary', hidden: !r.pendingReview, onClick: () => verify(r) },
                   { key: 'boost', label: r.featuredUntil && new Date(r.featuredUntil) > new Date() ? t('arp.boosted', 'Boosted') : t('arp.boost', 'Boost'), icon: Rocket, onClick: () => boostPick(r) },
                   { key: 'sha', label: t('arp.revalidate', 'Revalidate SHA'), icon: ShieldCheck, onClick: () => revalidate(r) },

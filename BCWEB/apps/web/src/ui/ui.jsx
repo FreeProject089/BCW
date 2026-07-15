@@ -115,12 +115,24 @@ export function ActionBar({ actions, extra = [], className = '', size = 'sm' }) 
         ))}
       </div>
 
-      {shown.map((a) => (
-        <Button key={a.key} size={size} variant={a.variant || 'default'} onClick={a.onClick} disabled={a.disabled}
-          className={`shrink-0 ${a.danger ? '!text-red-400' : ''}`}>
-          {a.icon && <a.icon size={14} />} {a.label}
-        </Button>
-      ))}
+      {shown.map((a) => {
+        const btn = (
+          <Button key={a.key} size={size} variant={a.variant || 'default'} onClick={a.href ? undefined : a.onClick} disabled={a.disabled}
+            className={`shrink-0 ${a.danger ? '!text-red-400' : ''}`}>
+            {a.icon && <a.icon size={14} />} {a.label}
+          </Button>
+        );
+        // An action that navigates carries a real href, so middle-click / ctrl-click /
+        // "open in new tab" work like any link. A plain left click is intercepted and
+        // handed to `onClick` for SPA routing (a bare <a> would full-reload). Kept as an
+        // <a> rather than react-router's <Link> so this kit stays router-agnostic.
+        return a.href && !a.disabled ? (
+          <a key={a.key} href={a.href} className="shrink-0 inline-flex"
+            onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; e.preventDefault(); a.onClick?.(); }}>
+            {btn}
+          </a>
+        ) : btn;
+      })}
 
       {rest.length > 0 && (
         <>
@@ -138,12 +150,22 @@ export function ActionBar({ actions, extra = [], className = '', size = 'sm' }) 
               <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
               <div role="menu" className="fixed z-[61] rounded-xl border border-[var(--line-strong)] bg-[var(--surface-1)] shadow-xl p-1"
                 style={{ top: pos.top, right: pos.right, minWidth: pos.minWidth }}>
-                {rest.map((a) => (
-                  <button key={a.key} role="menuitem" disabled={a.disabled} onClick={() => { setOpen(false); a.onClick?.(); }}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 enabled:hover:bg-[var(--surface-2)] disabled:opacity-40 disabled:cursor-not-allowed ${a.danger ? 'text-red-400' : 'text-[var(--text)]'}`}>
-                    {a.icon && <a.icon size={14} />} {a.label}
-                  </button>
-                ))}
+                {rest.map((a) => {
+                  const cls = `w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 enabled:hover:bg-[var(--surface-2)] disabled:opacity-40 disabled:cursor-not-allowed ${a.danger ? 'text-red-400' : 'text-[var(--text)]'}`;
+                  const body = <>{a.icon && <a.icon size={14} />} {a.label}</>;
+                  // A navigating action stays a link once it folds in here too — otherwise
+                  // the affordance would vanish at exactly the narrow widths that fold it.
+                  return a.href && !a.disabled ? (
+                    <a key={a.key} role="menuitem" href={a.href} className={`${cls} hover:bg-[var(--surface-2)]`}
+                      onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; e.preventDefault(); setOpen(false); a.onClick?.(); }}>
+                      {body}
+                    </a>
+                  ) : (
+                    <button key={a.key} role="menuitem" disabled={a.disabled} onClick={() => { setOpen(false); a.onClick?.(); }} className={cls}>
+                      {body}
+                    </button>
+                  );
+                })}
               </div>
             </>, document.body)}
         </>
