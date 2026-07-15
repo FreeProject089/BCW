@@ -23,6 +23,9 @@ jobs:
       - run: npm ci
       # no-undef catches bare JSX identifiers used-but-not-imported (the render crashes).
       - run: npm run lint
+      # i18n integrity: fails on duplicate dict keys (silent-override bugs) and, in
+      # --strict, on any t() key used in code with no DICT.fr entry (silent EN fallback).
+      - run: npm run i18n:check
       - run: npx vite build --logLevel error
 
   api-check:

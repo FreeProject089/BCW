@@ -6573,7 +6573,7 @@ function OwnerCatalogs() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div><h2 className="font-semibold flex items-center gap-2"><Boxes size={16} className="text-[var(--primary-2)]" /> {t('oc.title', 'My catalogs')}</h2>
+        <div><h2 className="font-semibold flex items-center gap-2"><Boxes size={16} className="text-[var(--primary-2)]" /> {t('mycat.title', 'My catalogs')}</h2>
           <p className="text-sm text-[var(--muted)]">{t('oc.desc', 'Catalogs you host. Share the /c link or add them in BMM. Managed catalogs draw from a storage pool.')}</p></div>
         <Link to="/submit"><Button size="sm" variant="primary"><Plus size={14} /> {t('oc.new', 'New catalog')}</Button></Link>
       </div>
@@ -6603,7 +6603,7 @@ function OwnerCatalogs() {
             {openId === c.id && <OwnerCatalogItems catalog={c} onChange={reload} />}
           </Card>
         ))}
-      </div> : <EmptyState icon={Boxes} title={t('oc.none.t', 'No catalogs yet')} sub={t('oc.none.s', 'Host your own catalog of plugins, themes or apps.')} />}
+      </div> : <EmptyState icon={Boxes} title={t('mycat.none.t', 'No catalogs yet')} sub={t('mycat.none.s', 'Host your own catalog of plugins, themes or apps.')} />}
     </div>
   );
 }

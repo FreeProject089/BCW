@@ -260,7 +260,7 @@ export function Hosting() {
       <Card className="p-4 sm:p-5 mb-6 relative z-30">
         <div className="flex flex-col sm:flex-row sm:items-start gap-5">
           <div className="sm:flex-1 min-w-0">
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Layers size={13} /> {t('hosting.storage', 'Storage space')}</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Layers size={13} /> {t('hosting.storagespace', 'Storage space')}</div>
             <p className="text-sm text-[var(--muted)]">{t('hosting.storage.d', 'You buy a pool of storage. Once it\'s yours, fill it however you like — one repo, several repos, catalogs, or a mix — and resize the split anytime.')}</p>
           </div>
           <div className="sm:flex-1 min-w-0">

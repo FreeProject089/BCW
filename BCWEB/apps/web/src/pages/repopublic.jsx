@@ -30,7 +30,7 @@ export default function RepoPublicPage() {
   if (repo === undefined) return <div className="max-w-2xl mx-auto p-8 text-center"><Spinner /></div>;
   if (repo === null) return (
     <div className="max-w-2xl mx-auto">
-      <PageHeader icon={Server} title={t('rp.title', 'Server repo')} />
+      <PageHeader icon={Server} title={t('rpub.title', 'Server repo')} />
       <EmptyState icon={ShieldAlert}
         title={t('rp.gone.t', 'Repo not found')}
         sub={t('rp.gone.s', 'It may have been removed, unlisted, or the share link is invalid.')} />
