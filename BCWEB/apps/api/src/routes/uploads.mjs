@@ -101,7 +101,10 @@ export default async function uploadRoutes(app) {
       // Caddy's edge CSP may override it, hence the disposition guard.)
       const inlineSafe = /^(image\/(png|jpe?g|webp|gif|avif)|video\/)/i.test(contentType);
       reply.header('Content-Type', contentType)
-        .header('Cache-Control', 'public, max-age=86400')
+        // Each key carries a randomUUID(), so a URL's bytes never change (replacing an
+        // image mints a new URL). That makes it safe to cache immutably for a year — the
+        // browser/CDN never re-validates, which offloads the media proxy on repeat views.
+        .header('Cache-Control', 'public, max-age=31536000, immutable')
         .header('X-Content-Type-Options', 'nosniff')
         .header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; sandbox");
       if (!inlineSafe) reply.header('Content-Disposition', 'attachment');
