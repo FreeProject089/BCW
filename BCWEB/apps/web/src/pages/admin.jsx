@@ -4,6 +4,10 @@ import {
   Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from '../ui/ui.jsx';
+import { AppLogo } from '../ui/brand.jsx';
+import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
+import IconPicker from '../editor/icon-picker.jsx';
+import ProjectConfigEditor from '../editor/project-config-editor.jsx';
 import { createRoot } from 'react-dom/client';
 import { KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
@@ -6546,7 +6550,10 @@ function AdminNav() {
 
 // Owner: manage my community catalogs — visibility, public listing, share link, delete,
 // and (for managed catalogs) the items. The feed URL + /c page are one click away.
-function OwnerCatalogs() {
+// Rendered by the MEMBER dashboard (pages/dashboard.jsx), never by this page — it lives
+// here only because the old pages monolith was split this way. Exported so the dashboard
+// imports it instead of referencing a bare identifier, which crashed the tab at render.
+export function OwnerCatalogs() {
   const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/me/catalogs'), []);
   const [openId, setOpenId] = useState(null);
@@ -6936,7 +6943,10 @@ const REPORT_STATUS_TONE = { open: 'green', archived: 'amber', closed: '' };
 const REPORT_TARGET_ICON = { user: Users, repo: Server, catalog: Boxes, item: Package, general: MessageSquare };
 
 // User dashboard: the reports / support threads this user opened, GitHub-PR style.
-function MyReports() {
+// Rendered by the MEMBER dashboard (pages/dashboard.jsx), never by this page — it lives
+// here only because the old pages monolith was split this way. Exported so the dashboard
+// imports it instead of referencing a bare identifier, which crashed the tab at render.
+export function MyReports() {
   const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/me/reports'), []);
   const [openId, setOpenId] = useState(null);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save,
@@ -9,6 +9,20 @@ import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useIntro } from '../ui/IntroContext.jsx';
 import { MyRepos, Billing } from './repos.jsx';
+
+// These two tabs live in admin.jsx (an artefact of splitting the old pages monolith —
+// nothing in admin.jsx renders them; this page is their only consumer). Referencing them
+// without importing anything is what made both tabs throw `X is not defined` at render.
+//
+// They're imported LAZILY on purpose: a static import makes the dashboard chunk pull the
+// whole admin chunk (~134 KB gzip, 13x this page's own size) onto every member's dashboard,
+// admin or not. This way only someone who actually opens Catalogs/Reports fetches it. The
+// route already sits inside a <Suspense> boundary in App.jsx.
+// Proper fix, when someone has the appetite: move these sections out of admin.jsx — it needs
+// `useAsync`/`Loading` relocated out of pages.jsx first, since pages.jsx already imports
+// ui/report.jsx and moving them naively creates an import cycle.
+const OwnerCatalogs = lazy(() => import('./admin.jsx').then((m) => ({ default: m.OwnerCatalogs })));
+const MyReports = lazy(() => import('./admin.jsx').then((m) => ({ default: m.MyReports })));
 import { KofiIcon } from '../ui/brand.jsx';
 import { useAsync, Loading, statusTone, KIND_ICON, fmtRemaining, JsonEditor, SideDash } from './pages.jsx';
 

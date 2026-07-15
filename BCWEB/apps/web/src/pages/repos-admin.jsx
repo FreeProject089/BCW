@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useToast, useDialog, Button, Card, Badge, Input, Select, Field, EmptyState, Spinner, Modal } from '../ui/ui.jsx';
+import { Loading } from './pages.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useFetch, gb, DotDropdown, RepoStatusSelect, RepoCategorySelect, StatusBadges, HostFilesModal } from './repos.jsx';
