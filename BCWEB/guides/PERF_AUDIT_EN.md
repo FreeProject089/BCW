@@ -82,15 +82,17 @@ The admin dashboards run raw-SQL `GROUP BY` / `count(DISTINCT …)` over `Analyt
 for the selected window. Retention now bounds the table (see tech audit §3.6), but a wide
 window over a busy site is still a heavy scan on every dashboard load.
 
-**Plan**: pre-aggregate into a daily rollup table (a nightly sweeper job) and read the
-rollups for day-granularity views, falling back to raw only for the hourly zoom; add
-covering indexes for the remaining raw queries.
+**Done (time-series)** — an `AnalyticsDaily` rollup (day → views + distinct visitors),
+populated by the sweeper (trailing-3-days refresh each tick + a once/day full recompute
+that also backfills on first run). `/admin/analytics` now reads it for the day-granularity
+series (a `<=~365`-row PK read) instead of two full-window `GROUP BY` scans; the hourly zoom
+stays raw. Rows persist beyond raw retention, so they double as long-term history. Covered
+by `rollup.test.mjs`.
 
-*Note:* the dashboard runs ~17 aggregations in parallel over the window (series, top pages,
-device/browser/os/geo breakdowns…), so a rollup of only the time-series speeds up 1 of 17
-while the rest still scan — a worthwhile rollup has to cover most dimensions, which is a
-sizeable schema + producer. Given retention now bounds the table, this is genuinely lower
-priority than it first looked; do it if/when a wide window on a busy site actually drags.
+**Remaining**: the other ~15 dashboard aggregations (top pages, device/browser/os/geo
+breakdowns) still scan the window — those would each need their own rollup dimension, a
+much larger schema + producer. Lower priority now that retention bounds the table and the
+heaviest repeated query (the series) is off the scan path.
 
 ### 6. 🟡 No SSR / prerender for first paint & indexing
 It's a client-rendered SPA: the browser downloads JS, boots React, then fetches data —
@@ -130,7 +132,7 @@ byte-proxying off the Node API entirely.
 | **P2** | Finish frontend splitting (extract `NOTIF`, lazy hero `three`) | main chunk 1.38 → 1.23 MB (−47 % total); bundle budget still ▢ | ✅ done |
 | **P2** | Index the public list endpoints (repos, community catalogs) | remove the seq-scans; admin tables still ▢ | ✅ done |
 | **P2** | Redis pub/sub + rate-limit store + sweeper locks (behind `REDIS_URL`) | unblocks horizontal scaling | ✅ done |
-| **P3** | Analytics daily rollups | fast dashboards at any window | ▢ |
+| **P3** | Analytics daily rollups (time-series) | day-series is a PK read, not a full scan | ✅ done |
 | **P3** | Prerender/SSR for public routes | first-paint + search indexing | ▢ |
 | **P3** | Image cache headers (done: immutable /media) / responsive variants (▢) | lighter list pages | ◑ partial |
 

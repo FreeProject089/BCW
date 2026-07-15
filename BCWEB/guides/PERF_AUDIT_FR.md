@@ -86,16 +86,17 @@ Les tableaux de bord admin lancent du SQL brut `GROUP BY` / `count(DISTINCT …)
 `AnalyticsEvent` pour la fenêtre choisie. La rétention borne maintenant la table (audit §3.6),
 mais une fenêtre large sur un site actif reste un scan lourd à chaque chargement de dashboard.
 
-**Plan** : pré-agréger dans une table de rollup quotidien (un job sweeper nocturne) et lire les
-rollups pour les vues à granularité jour, en retombant sur le brut seulement pour le zoom
-horaire ; ajouter des index couvrants pour les requêtes brutes restantes.
+**Fait (série temporelle)** — un rollup `AnalyticsDaily` (jour → vues + visiteurs distincts),
+peuplé par le sweeper (rafraîchissement des 3 derniers jours à chaque tick + un recompute complet
+une fois/jour qui backfille aussi au premier run). `/admin/analytics` le lit maintenant pour la
+série à granularité jour (une lecture PK de `<=~365` lignes) au lieu de deux `GROUP BY`
+plein-fenêtre ; le zoom horaire reste brut. Les lignes persistent au-delà de la rétention brute,
+donc elles servent aussi d'historique long. Couvert par `rollup.test.mjs`.
 
-*Note :* le dashboard lance ~17 agrégations en parallèle sur la fenêtre (série, top pages,
-répartitions device/browser/os/géo…), donc un rollup de la seule série temporelle n'accélère
-que 1 sur 17 pendant que le reste scanne — un rollup utile doit couvrir la plupart des
-dimensions, ce qui est un schéma + producteur conséquent. La rétention bornant maintenant la
-table, c'est réellement moins prioritaire qu'il n'y paraissait ; à faire si/quand une fenêtre
-large sur un site actif traîne vraiment.
+**Reste** : les ~15 autres agrégations du dashboard (top pages, répartitions device/browser/os/géo)
+scannent encore la fenêtre — chacune nécessiterait sa propre dimension de rollup, un schéma +
+producteur bien plus gros. Moins prioritaire maintenant que la rétention borne la table et que la
+requête répétée la plus lourde (la série) est hors du chemin de scan.
 
 ### 6. 🟡 Pas de SSR / prérendu pour le premier rendu & l'indexation
 C'est une SPA rendue côté client : le navigateur télécharge le JS, boote React, puis va chercher
@@ -136,7 +137,7 @@ sortirait complètement le proxy d'octets de l'API Node.
 | **P2** | Finir le découpage frontend (extraire `NOTIF`, lazy hero `three`) | chunk principal 1,38 → 1,23 Mo (−47 % total) ; budget bundle encore ▢ | ✅ fait |
 | **P2** | Indexer les endpoints de liste publics (dépôts, catalogues communautaires) | supprimer les scans séquentiels ; tables admin encore ▢ | ✅ fait |
 | **P2** | Redis pub/sub + store rate-limit + verrous sweeper (derrière `REDIS_URL`) | débloque la montée en charge horizontale | ✅ fait |
-| **P3** | Rollups quotidiens analytics | dashboards rapides à toute fenêtre | ▢ |
+| **P3** | Rollups quotidiens analytics (série temporelle) | la série jour est une lecture PK, pas un scan | ✅ fait |
 | **P3** | Prérendu/SSR pour les routes publiques | premier rendu + indexation moteur | ▢ |
 | **P3** | En-têtes de cache images (fait : /media immutable) / variantes responsives (▢) | pages de liste plus légères | ◑ partiel |
 
