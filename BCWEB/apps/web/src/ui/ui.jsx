@@ -2,7 +2,7 @@
 // use the Dialog + Toast providers below. Icons come from lucide-react.
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useId, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown, Undo2 } from 'lucide-react';
+import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown, Undo2, Star } from 'lucide-react';
 
 // Robust clipboard copy — navigator.clipboard is unavailable on non-HTTPS origins and
 // inside some embedded webviews, so fall back to a hidden <textarea> + execCommand.
@@ -27,6 +27,33 @@ export const Card = forwardRef(({ hover, className = '', children, ...p }, ref) 
   <div ref={ref} className={`card ${hover ? 'card-hover' : ''} ${className}`} {...p}>{children}</div>);
 export const Badge = ({ tone = '', className = '', children }) =>
   <span className={`badge ${tone ? `badge-${tone}` : ''} ${className}`}>{children}</span>;
+
+// Star toggle for a repo or a community catalog. One component for both because the two
+// endpoints answer identically ({ favorited, favoriteCount }) — `post` is the caller's toggle
+// so this stays unaware of which entity it's starring.
+// Updates optimistically and rolls back if the call fails: a star is a trivial, high-frequency
+// action, so waiting on a round-trip to redraw feels broken.
+export function StarButton({ favorited, count, post, onDone, signedIn, size = 'sm', className = '' }) {
+  const [state, setState] = useState({ on: !!favorited, n: count || 0 });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setState({ on: !!favorited, n: count || 0 }); }, [favorited, count]);
+  const toggle = async () => {
+    if (busy) return;
+    const prev = state;
+    setState({ on: !prev.on, n: prev.n + (prev.on ? -1 : 1) });
+    setBusy(true);
+    try { const r = await post(); const next = { on: !!r.favorited, n: r.favoriteCount ?? 0 }; setState(next); onDone?.(next); }
+    catch { setState(prev); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Button size={size} variant={state.on ? 'primary' : 'ghost'} onClick={toggle} disabled={!signedIn || busy}
+      title={!signedIn ? 'Sign in to star' : state.on ? 'Starred — click to remove' : 'Star this'}
+      className={className} aria-pressed={state.on}>
+      <Star size={14} className={state.on ? 'fill-current' : ''} /> {state.n}
+    </Button>
+  );
+}
 export const Input = forwardRef((p, ref) => <input ref={ref} {...p} className={`input ${p.className || ''}`} />);
 export const Textarea = forwardRef((p, ref) => <textarea ref={ref} {...p} className={`input ${p.className || ''}`} />);
 export const Select = ({ className = '', children, ...p }) => <select className={`input ${className}`} {...p}>{children}</select>;

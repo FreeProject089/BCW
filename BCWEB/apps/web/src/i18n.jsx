@@ -1186,6 +1186,15 @@ const DICT = {
     'ab.rulehint': 'Attribué automatiquement quand l’événement se produit — ex. un badge pour le 100e, 200e… membre, les early adopters, ou les soutiens Ko-fi.',
     // Système de report / contact
     'dash.reports': 'Signalements & contact', 'adm.tab.reports': 'Signalements',
+    // Starred repos & catalogs (star.*) + its dashboard tab
+    'dash.starred': 'Favoris',
+    'star.title': 'Favoris',
+    'star.sub': 'Les dépôts et catalogues que tu as mis en favori. Retire l’étoile depuis la page de l’élément.',
+    'star.repos': 'Dépôts serveur', 'star.catalogs': 'Catalogues communautaires',
+    'star.open': 'Ouvrir',
+    'star.none.t': 'Aucun favori pour l’instant',
+    'star.none.s': 'Mets une étoile sur un dépôt ou un catalogue depuis sa page, et il apparaîtra ici.',
+    'star.browserepos': 'Parcourir les dépôts', 'star.browsecats': 'Parcourir les catalogues',
     // Repo public page — contents listing + direct download (rc.*)
     'rc.title': 'Contenu', 'rc.sub': 'Télécharge un fichier directement — pas besoin de BMM.',
     'rc.count': '{n} fichiers · {size}', 'rc.root': 'Racine', 'rc.dl': 'Télécharger',

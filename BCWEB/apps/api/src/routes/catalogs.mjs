@@ -143,10 +143,56 @@ export default async function communityCatalogRoutes(app) {
       ? [...(raw.plugins?.length ? ['PLUGIN'] : []), ...(raw.themes?.length ? ['THEME'] : []), ...(raw.apps?.length ? ['APP'] : [])]
       : c.items.map((i) => i.kind));
     for (const k of c.kinds || []) present.add(k.toUpperCase());
+    // Star state for the signed-in viewer + the public count (mirrors GET /r/:id).
+    const [favoriteCount, mine] = await Promise.all([
+      p.catalogFavorite.count({ where: { catalogId: c.id } }),
+      req.user?.uid ? p.catalogFavorite.findUnique({ where: { userId_catalogId: { userId: req.user.uid, catalogId: c.id } }, select: { id: true } }) : null,
+    ]);
     return { catalog: {
       ...ser(c), owner: c.owner?.displayName, ownerId: c.ownerId, ownerBcId: userBcId(c.ownerId), kindsPresent: [...present],
+      favoriteCount, favorited: !!mine,
       private: c.visibility === 'private', keySuffix: c.visibility === 'private' && req.query?.k ? `?k=${encodeURIComponent(String(req.query.k))}` : '',
     } };
+  });
+
+  // Star/unstar a community catalog. Toggle, mirroring POST /repos/:id/favorite exactly —
+  // purely social, never an access grant, so it deliberately does NOT run the catalog gate:
+  // starring is about remembering something, and the gate still decides what you can SEE.
+  app.post('/c/:slug/favorite', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const c = await p.communityCatalog.findUnique({ where: { slug: req.params.slug }, select: { id: true } });
+    if (!c) return reply.code(404).send({ error: 'not_found' });
+    const existing = await p.catalogFavorite.findUnique({ where: { userId_catalogId: { userId: req.user.uid, catalogId: c.id } } });
+    if (existing) await p.catalogFavorite.delete({ where: { id: existing.id } });
+    else await p.catalogFavorite.create({ data: { userId: req.user.uid, catalogId: c.id } });
+    const favoriteCount = await p.catalogFavorite.count({ where: { catalogId: c.id } });
+    return { favorited: !existing, favoriteCount };
+  });
+
+  // Everything this member starred, repos and catalogs together — the "where did I put that"
+  // list. Each side is filtered to what's still publicly reachable (a repo that got unlisted,
+  // or a catalog suspended/made private, shouldn't resurface here through an old star), except
+  // for the owner's own, which they can always see.
+  app.get('/me/favorites', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const uid = req.user.uid;
+    const [repoFavs, catFavs] = await Promise.all([
+      p.repoFavorite.findMany({
+        where: { userId: uid }, orderBy: { createdAt: 'desc' },
+        include: { repo: { select: { id: true, name: true, description: true, category: true, hosted: true, status: true, listed: true, verified: true, pendingReview: true, ownerId: true, owner: { select: { displayName: true } } } } },
+      }),
+      p.catalogFavorite.findMany({
+        where: { userId: uid }, orderBy: { createdAt: 'desc' },
+        include: { catalog: { select: { id: true, slug: true, name: true, description: true, mode: true, status: true, listed: true, visibility: true, ownerId: true, owner: { select: { displayName: true } }, _count: { select: { items: true } } } } },
+      }),
+    ]);
+    const repos = repoFavs.map((f) => f.repo).filter(Boolean)
+      .filter((r) => (r.listed && r.verified && !r.pendingReview) || r.ownerId === uid)
+      .map((r) => ({ id: r.id, name: r.name, description: r.description || '', category: r.category, hosted: r.hosted, status: r.status, author: r.owner?.displayName || null, url: `/r/${r.id}` }));
+    const catalogs = catFavs.map((f) => f.catalog).filter(Boolean)
+      .filter((c) => (c.status !== 'SUSPENDED' && c.listed && c.visibility === 'public') || c.ownerId === uid)
+      .map((c) => ({ id: c.id, slug: c.slug, name: c.name, description: c.description || '', mode: c.mode, itemCount: c._count.items, author: c.owner?.displayName || null, url: `/c/${c.slug}` }));
+    return { repos, catalogs, total: repos.length + catalogs.length };
   });
 
   // ── Public: the gated BMM-native feed for a community catalog ──

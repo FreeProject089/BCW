@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { Boxes, Download, Link2, Copy, ArrowUpRight, Package, Music2, Palette, ShieldAlert, Fingerprint, Users } from 'lucide-react';
-import { PageHeader, Card, Button, Badge, Spinner, EmptyState } from '../ui/ui.jsx';
+import { PageHeader, Card, Button, Badge, Spinner, EmptyState, StarButton } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { ReportButton } from '../ui/report.jsx';
+import { useAuth } from './auth.jsx';
 
 const KIND_ICON = { PLUGIN: Package, THEME: Palette, APP: Boxes, PRESET: Music2 };
 const KIND_FEED = { PLUGIN: 'plugin', THEME: 'theme', APP: 'app', PRESET: 'app' };
@@ -16,7 +17,7 @@ export default function CommunityCatalogPage() {
   const { slug } = useParams();
   const [params] = useSearchParams();
   const k = params.get('k') || '';
-  const { t } = useI18n(); const toast = useToast();
+  const { t } = useI18n(); const toast = useToast(); const { user } = useAuth();
   const [cat, setCat] = useState(undefined); // undefined = loading, null = not found/denied
   const [err, setErr] = useState(null);
 
@@ -52,6 +53,8 @@ export default function CommunityCatalogPage() {
         <span className="text-[var(--faint)]">{t('ccp.hostedby', 'Hosted by')}</span>
         {cat.ownerId ? <Link to={`/u/${cat.ownerId}`} className="font-medium hover:text-[var(--primary)] flex items-center gap-1"><Users size={13} /> {cat.owner}</Link> : <span className="font-medium flex items-center gap-1"><Users size={13} /> {cat.owner}</span>}
         {cat.ownerBcId && <button onClick={() => copy(cat.ownerBcId)} title={t('ccp.copybcid', 'Copy the host’s BC id')} className="inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)]"><Fingerprint size={11} /> {cat.ownerBcId} <Copy size={10} /></button>}
+        <StarButton favorited={cat.favorited} count={cat.favoriteCount} signedIn={!!user}
+          post={() => api.post(`/c/${encodeURIComponent(cat.slug)}/favorite`)} />
         <ReportButton targetType="catalog" targetId={cat.slug} targetLabel={cat.name} />
       </div>}
 

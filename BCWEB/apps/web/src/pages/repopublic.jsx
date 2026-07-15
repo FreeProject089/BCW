@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { Server, GitBranch, Link2, Copy, ArrowUpRight, ShieldAlert, Fingerprint, Users, Star, CheckCircle2, Tag, Download, Lock, FolderOpen, FileText, LogIn } from 'lucide-react';
-import { PageHeader, Card, Button, Badge, Spinner, EmptyState } from '../ui/ui.jsx';
+import { PageHeader, Card, Button, Badge, Spinner, EmptyState, StarButton } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
+import { useAuth } from './auth.jsx';
 import { ReportButton } from '../ui/report.jsx';
 
 const humanSize = (b) => {
@@ -101,7 +102,7 @@ export default function RepoPublicPage() {
   const { id } = useParams();
   const [params] = useSearchParams();
   const k = params.get('k') || '';
-  const { t } = useI18n(); const toast = useToast();
+  const { t } = useI18n(); const toast = useToast(); const { user } = useAuth();
   const [repo, setRepo] = useState(undefined); // undefined = loading, null = not found/denied
   const [err, setErr] = useState(null);
 
@@ -142,7 +143,10 @@ export default function RepoPublicPage() {
         <span className="text-[var(--faint)]">{t('rp.ownedby', 'Owned by')}</span>
         <span className="font-medium flex items-center gap-1"><Users size={13} /> {repo.author || '—'}</span>
         {repo.ownerBcId && <button onClick={() => copy(repo.ownerBcId)} title={t('rp.copybcid', 'Copy the owner’s BC id')} className="inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)]"><Fingerprint size={11} /> {repo.ownerBcId} <Copy size={10} /></button>}
-        {typeof repo.favoriteCount === 'number' && <span className="inline-flex items-center gap-1 text-[var(--faint)]"><Star size={12} /> {repo.favoriteCount}</span>}
+        {/* The count used to be display-only here; starring was only possible from the /repos
+            list, which is the wrong place to decide you want to keep something. */}
+        <StarButton favorited={repo.favorited} count={repo.favoriteCount} signedIn={!!user}
+          post={() => api.post(`/repos/${encodeURIComponent(repo.id)}/favorite`)} />
         <ReportButton targetType="repo" targetId={repo.id} targetLabel={repo.name} />
       </div>
 

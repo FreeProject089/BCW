@@ -153,6 +153,7 @@ model User {
   loginAttempts      LoginAttempt[]
   auditLogEntries    AuditLogEntry[]
   repoFavorites      RepoFavorite[]
+  catalogFavorites   CatalogFavorite[]
   oauthAccounts      OAuthAccount[]
   blogComments       BlogComment[]
   docComments        DocComment[]
@@ -609,6 +610,7 @@ model CommunityCatalog {
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
   items             CommunityCatalogItem[]
+  favorites         CatalogFavorite[]
 
   @@index([ownerId])
   @@index([status, listed])
@@ -808,6 +810,21 @@ model RepoFavorite {
 
   @@unique([userId, serverRepoId])
   @@index([serverRepoId])
+}
+
+// The same, for a community catalog. Mirrors RepoFavorite exactly (same shape, same
+// semantics: purely social, never an access grant) so the two can be listed together on the
+// member's Favourites tab without special-casing either.
+model CatalogFavorite {
+  id        String           @id @default(cuid())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  catalog   CommunityCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  catalogId String
+  createdAt DateTime         @default(now())
+
+  @@unique([userId, catalogId])
+  @@index([catalogId])
 }
 
 // A file uploaded to a hosted Server-Repo (counted against the storage quota).

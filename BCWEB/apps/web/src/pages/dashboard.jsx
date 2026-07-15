@@ -1,7 +1,7 @@
 import { useEffect, useState, lazy } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save,
+  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { api, uploadPayload } from '../lib/api.js';
@@ -354,6 +354,7 @@ export function Dashboard() {
     { id: 'items', label: t('dash.myitems', 'My items'), icon: Package, badge: list.length || undefined },
     { id: 'catalogs', label: t('dash.mycatalogs', 'My catalogs'), icon: Boxes },
     { id: 'repos', label: t('dash.myrepos', 'My repos'), icon: Server, badge: rlist.length || undefined },
+    { id: 'starred', label: t('dash.starred', 'Starred'), icon: Star },
     { id: 'billing', label: t('dash.billing', 'Billing'), icon: Receipt },
     { id: 'reports', label: t('dash.reports', 'Reports & contact'), icon: MessageSquare },
   ];
@@ -441,6 +442,7 @@ export function Dashboard() {
 
           {s === 'catalogs' && <OwnerCatalogs />}
           {s === 'repos' && <MyRepos />}
+          {s === 'starred' && <Starred />}
           {s === 'billing' && <Billing />}
           {s === 'reports' && <MyReports />}
         </>)}
@@ -611,3 +613,58 @@ const KIND_COPY = {
   THEME: { name: 'Midnight Orange', desc: 'A dark, warm UI theme.', file: 'Theme file (.bmmtheme)', tmpl: { author: '', url: 'https://…' } },
   PRESET: { name: 'Afterburner Boom', desc: 'A punchy engine sound preset.', file: 'Preset .json file', tmpl: { name: '', version: '1.0.0', assetPaths: [] } },
 };
+
+// Everything this member starred, repos and catalogs in one place — the point of a star is
+// finding the thing again later, which the star buttons on /r/:id and /c/:slug couldn't
+// deliver on their own. The API returns the two lists already filtered to what's still
+// reachable, so an unlisted repo or a suspended catalog doesn't resurface through an old star.
+function Starred() {
+  const { t } = useI18n();
+  const { data, loading } = useAsync(() => api.get('/me/favorites'), []);
+  const repos = data?.repos || [];
+  const catalogs = data?.catalogs || [];
+
+  if (loading) return <Loading />;
+  if (!repos.length && !catalogs.length) return (
+    <EmptyState icon={Star} title={t('star.none.t', 'Nothing starred yet')}
+      sub={t('star.none.s', 'Star a repo or a catalog from its page and it shows up here.')}>
+      <div className="flex gap-2">
+        <Link to="/repos"><Button size="sm" variant="primary"><Server size={14} /> {t('star.browserepos', 'Browse repos')}</Button></Link>
+        <Link to="/catalog"><Button size="sm"><Boxes size={14} /> {t('star.browsecats', 'Browse catalogs')}</Button></Link>
+      </div>
+    </EmptyState>
+  );
+
+  const Section = ({ icon: Icon, title, rows, kind }) => rows.length ? (
+    <div className="mb-5 last:mb-0">
+      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5">
+        <Icon size={12} /> {title} <span className="text-[var(--faint)]">({rows.length})</span>
+      </div>
+      <div className="space-y-1.5">
+        {rows.map((r) => (
+          <Card key={r.id} className="p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+            <div className="flex-1 min-w-0">
+              <Link to={r.url} className="font-medium hover:text-[var(--primary)] truncate block">{r.name}</Link>
+              <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap mt-0.5">
+                {r.author && <span className="inline-flex items-center gap-1"><Users size={11} /> {r.author}</span>}
+                {kind === 'catalog' && <span>{r.itemCount} {t('cc.items', 'items')}</span>}
+                {kind === 'repo' && r.hosted && <Badge tone="primary">{t('repos.hosted', 'Hosted')}</Badge>}
+                {r.description && <span className="truncate">· {r.description}</span>}
+              </div>
+            </div>
+            <Link to={r.url} className="shrink-0"><Button size="sm" variant="ghost"><ArrowRight size={14} /> {t('star.open', 'Open')}</Button></Link>
+          </Card>
+        ))}
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <div>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Star size={16} className="text-[var(--primary-2)]" /> {t('star.title', 'Starred')}</h2>
+      <p className="text-xs text-[var(--muted)] mb-4">{t('star.sub', 'Repos and catalogs you starred. Unstar from the item’s own page.')}</p>
+      <Section icon={Server} title={t('star.repos', 'Server repos')} rows={repos} kind="repo" />
+      <Section icon={Boxes} title={t('star.catalogs', 'Community catalogs')} rows={catalogs} kind="catalog" />
+    </div>
+  );
+}

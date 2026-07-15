@@ -194,13 +194,18 @@ export default async function repoRoutes(app) {
     // null is the honest answer and the page already renders "No manifest yet" for it.
     const repoJson = (r.hosted && r.hostPath && r.published) ? `${origin}/hosting/${r.hostPath}/repo.json` : (r.repoUrl || null);
     const idn = (await loadOwnerIdentities(p, [r.ownerId])).get(r.ownerId) || {};
+    // Star state for the signed-in viewer (the count was already here) — the page needs both
+    // to render the button in the right state instead of only "how many others starred it".
+    const mine = req.user?.uid
+      ? await p.repoFavorite.findUnique({ where: { userId_serverRepoId: { userId: req.user.uid, serverRepoId: r.id } }, select: { id: true } })
+      : null;
     return {
       repo: {
         id: r.id, name: r.name, description: r.description || '', tags: r.tags || [], links: r.links || null,
         hosted: !!r.hosted, status: r.status, category: r.category, verified: r.verified, listed: publicListed,
         author: r.owner?.displayName || null, ownerBcId: userBcId(r.ownerId),
         fingerprint: repoFingerprint({ repoId: r.id, ownerId: r.ownerId, ...idn }),
-        favoriteCount: r._count.favorites, repoJson, createdAt: r.createdAt,
+        favoriteCount: r._count.favorites, favorited: !!mine, repoJson, createdAt: r.createdAt,
         // Present only to the owner/staff so they can manage the link; never to visitors.
         ...(isOwner ? { shared: !!r.shareKey } : {}),
       },
