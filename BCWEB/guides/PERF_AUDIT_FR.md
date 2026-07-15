@@ -114,10 +114,11 @@ uploadées passent par le proxy `/media/*` ; chaque clé porte un `randomUUID()`
 d'une URL ne changent jamais — **servies maintenant en `immutable, max-age=1an`** (contre 1 jour),
 donc le navigateur/CDN ne revalide jamais.
 
-**Endpoint de resize ajouté** — `/media/*?w=<largeur>` (parmi 64…768) réduit les images raster en
-webp via `@napi-rs/canvas`, chaque variante redimensionnée une fois dans un petit LRU et servie
-immutable (une source 800px → 256px pèse ~78 % de moins). Le décodage sur le main thread JS est un
-candidat worker Rust (voir le [plan workers Rust](RUST_WORKERS_PLAN_FR.md) §P3).
+**Endpoint de resize ajouté** — `/media/*?w=<largeur>` (parmi 64…768) réduit les images raster,
+chaque variante redimensionnée une fois dans un petit LRU et servie immutable (une source 800px →
+256px pèse ~78 % de moins). Le resize tourne sur le **worker Rust natif** (hors event loop —
+`image_resize_jpeg`, JPEG) avec un fallback webp `@napi-rs/canvas` (voir le
+[plan workers Rust](RUST_WORKERS_PLAN_FR.md) §P3).
 
 **Adoption front-end démarrée** — un helper `lib/img.js` `thumb(url,w)` ajoute `?w=` uniquement
 aux URLs `/media` (externes/data intactes) ; câblé dans les grilles de covers les plus chargées

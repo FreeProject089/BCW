@@ -77,10 +77,10 @@ a plain Rust crate that both the napi wrapper and Tauri depend on.
 | Phase | Move | Why first / risk |
 |---|---|---|
 | **P1 ✅ done** | **ZIP off the event loop** — the `native/` crate exposes async `zipReadAll`/`zipEntries` (+ `blake3Hex`); `lib/native.mjs` wraps them with an adm-zip fallback, and `validatePlugin` now parses through it (sha256 stays in JS). Built + verified on Windows AND in Docker (rust:1-alpine → node:20-alpine musl, `hasNative=true` in the container); `native.test.mjs` proves byte-parity with adm-zip. Wired into `apps/api/Dockerfile` as a two-stage build — runs in production. | Biggest event-loop win: a big upload no longer blocks the instance. Behaviour-preserving (byte-parity test). |
-| **P1** | **`fs scan` + `blake3` for backups** — `repoSizeBytes` / `snapshotTree` walk + hash in Rust. | Internal-only (no public contract), pure CPU/IO, easy to verify sizes/hashes match. |
-| **P2** | **zstd for internal artifacts** (backup snapshots, temp payloads) + **manifest builder**. | Smaller footprint, needs a format decision but no external contract. |
-| **P2** | **BLAKE3 for internal integrity** (dedup keys, cache keys) — keep SHA-256 on the public feed. | Careful not to touch the client-facing `sha256`. |
-| **P3** | **Image resize** (the perf audit's thumbnail item) — a Rust `image`/`libvips` resize instead of `@napi-rs/canvas` on the main thread. | Ties the thumbnail work into the same worker; do after the pipeline exists. |
+| **P1 ✅ done** | **`fs scan`** — `dir_scan(root)` in Rust; wired into `gitbackup.mjs` `repoSizeBytes` (tree walk off the loop). Also `zip_entry` (single extract) + `zip_create` (write) — so the repo export and every zip parse/extract in `catalog.mjs`/`catalogs.mjs`/`hosting-content.mjs` go through the worker; adm-zip now survives only as the JS fallback. | Internal-only, pure CPU/IO, byte-parity tested. |
+| **P2 ✅ done** | **zstd** — `zstd_compress`/`zstd_decompress` (C zstd, verified to build for musl), exposed + round-trip tested. No current call site (backups are git-based; no internal blob to compress yet), so it ships as ready infra for future artifacts/manifests, per the format-decision note above. | No external contract. |
+| **P2 ✅ done** | **BLAKE3** — `blake3_hex` (async, `pure` feature) exposed + tested for internal integrity (dedup / cache / manifest keys). SHA-256 is untouched on the public `catalog.json` contract. | Client-facing `sha256` untouched. |
+| **P3 ✅ done** | **Image resize** — `image_resize_jpeg` (Rust `image` crate, worker thread) wired into the `/media?w=` thumbnail endpoint via `imageThumb` (native JPEG, `@napi-rs/canvas` webp fallback). | Off the main thread. |
 
 ## Risks & guardrails
 
@@ -103,9 +103,14 @@ a plain Rust crate that both the napi wrapper and Tauri depend on.
 - A shared Rust core with the BMM Tauri app — one implementation of scan/hash/zip/manifest
   for both the desktop client and the server.
 
-## Verdict
+## Verdict — implemented
 
-Start with **P1: ZIP + backup fs-scan/hash off the event loop** behind async napi-rs, with
-a JS fallback and a both-paths-agree test. It's the highest-value, lowest-contract-risk
-slice, reuses the project's existing native-addon pattern, and lays the crate that the
-later phases (zstd, manifest, image resize) and the BMM app can all build on.
+All phases are built, tested, and running in production. The `native/` crate exposes
+`zipEntries`/`zipReadAll`/`zipEntry`/`zipCreate`, `dirScan`, `zstdCompress`/`zstdDecompress`,
+`imageResizeJpeg`, and `blake3Hex` — all async (worker thread). `lib/native.mjs` wraps each
+with a JS fallback, so a checkout without the addon still runs; `native.test.mjs` proves
+parity for every one. It builds for Windows and Alpine musl, is wired into the API Dockerfile
+(two-stage), and `hasNative=true` in the container. adm-zip now survives only as the wrapper's
+fallback. `zstd`/`blake3` are ready infra (no internal call site yet). The obvious next steps,
+when needed: a native zip *streaming* writer for very large exports, and sharing the crate's
+core with the BMM Tauri app.

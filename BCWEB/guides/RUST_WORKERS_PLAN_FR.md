@@ -79,10 +79,10 @@ un crate Rust pur dont dépendent le wrapper napi et Tauri.
 | Phase | Déplacer | Pourquoi d'abord / risque |
 |---|---|---|
 | **P1 ✅ fait** | **ZIP hors event loop** — le crate `native/` expose des `zipReadAll`/`zipEntries` async (+ `blake3Hex`) ; `lib/native.mjs` les enveloppe avec un fallback adm-zip, et `validatePlugin` parse à travers (le sha256 reste en JS). Compilé + vérifié sous Windows ET dans Docker (rust:1-alpine → node:20-alpine musl, `hasNative=true` dans le conteneur) ; `native.test.mjs` prouve la parité octet-à-octet avec adm-zip. Câblé dans `apps/api/Dockerfile` en build deux-étapes — tourne en production. | Le plus gros gain event-loop : un gros upload ne bloque plus l'instance. Comportement préservé (test de parité octets). |
-| **P1** | **`scan fs` + `blake3` pour les backups** — walk + hash de `repoSizeBytes` / `snapshotTree` en Rust. | Interne uniquement (pas de contrat public), pur CPU/IO, tailles/hashes faciles à vérifier. |
-| **P2** | **zstd pour les artefacts internes** (snapshots de backup, payloads temp) + **builder de manifest**. | Empreinte plus petite, décision de format à prendre mais pas de contrat externe. |
-| **P2** | **BLAKE3 pour l'intégrité interne** (clés de dédup, clés de cache) — garder SHA-256 sur le feed public. | Attention à ne pas toucher au `sha256` côté client. |
-| **P3** | **Redimensionnement d'images** (l'item vignettes de l'audit perf) — un resize Rust `image`/`libvips` au lieu de `@napi-rs/canvas` sur le main thread. | Rattache le travail vignettes au même worker ; à faire une fois le pipeline en place. |
+| **P1 ✅ fait** | **`scan fs`** — `dir_scan(root)` en Rust ; câblé dans `gitbackup.mjs` `repoSizeBytes` (walk hors event loop). Plus `zip_entry` (extract unitaire) + `zip_create` (write) — donc l'export dépôt et chaque parse/extract zip de `catalog.mjs`/`catalogs.mjs`/`hosting-content.mjs` passent par le worker ; adm-zip ne survit plus que comme fallback JS. | Interne, pur CPU/IO, parité octets testée. |
+| **P2 ✅ fait** | **zstd** — `zstd_compress`/`zstd_decompress` (zstd C, build musl vérifié), exposés + round-trip testés. Pas de call site actuel (backups en git ; pas de blob interne à compresser encore), donc livré comme infra prête pour de futurs artefacts, selon la note « décision de format » ci-dessus. | Pas de contrat externe. |
+| **P2 ✅ fait** | **BLAKE3** — `blake3_hex` (async, feature `pure`) exposé + testé pour l'intégrité interne (clés dédup/cache/manifest). Le SHA-256 reste intact sur le contrat public `catalog.json`. | `sha256` côté client intact. |
+| **P3 ✅ fait** | **Redimensionnement d'images** — `image_resize_jpeg` (crate Rust `image`, thread worker) câblé dans l'endpoint vignettes `/media?w=` via `imageThumb` (JPEG natif, fallback webp `@napi-rs/canvas`). | Hors du main thread. |
 
 ## Risques & garde-fous
 
@@ -106,10 +106,14 @@ un crate Rust pur dont dépendent le wrapper napi et Tauri.
 - Un cœur Rust partagé avec l'app Tauri BMM — une seule implémentation de scan/hash/zip/manifest
   pour le client desktop ET le serveur.
 
-## Verdict
+## Verdict — implémenté
 
-Commencer par **P1 : ZIP + scan/hash fs des backups hors event loop** derrière napi-rs async,
-avec un fallback JS et un test « les deux chemins concordent ». C'est la tranche au meilleur
-rapport valeur/risque-de-contrat, réutilise le patron d'addon natif déjà présent, et pose le
-crate sur lequel les phases suivantes (zstd, manifest, resize d'images) et l'app BMM pourront
-toutes s'appuyer.
+Toutes les phases sont compilées, testées et en production. Le crate `native/` expose
+`zipEntries`/`zipReadAll`/`zipEntry`/`zipCreate`, `dirScan`, `zstdCompress`/`zstdDecompress`,
+`imageResizeJpeg` et `blake3Hex` — tous async (thread worker). `lib/native.mjs` enveloppe chacun
+avec un fallback JS, donc un checkout sans l'addon tourne quand même ; `native.test.mjs` prouve
+la parité pour chacun. Il compile sous Windows et Alpine musl, est câblé dans le Dockerfile de
+l'API (deux étapes), et `hasNative=true` dans le conteneur. adm-zip ne survit plus que comme
+fallback du wrapper. `zstd`/`blake3` sont de l'infra prête (pas encore de call site interne). Les
+prochaines étapes évidentes, au besoin : un writer zip *streaming* natif pour les très gros
+exports, et le partage du cœur du crate avec l'app BMM Tauri.

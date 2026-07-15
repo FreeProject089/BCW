@@ -110,9 +110,10 @@ change — **now served `immutable, max-age=1yr`** (was 1 day), so the browser/C
 re-validates.
 
 **Resize endpoint added** — `/media/*?w=<width>` (snapped to 64…768) downscales raster
-images to webp via `@napi-rs/canvas`, each variant resized once into a small LRU and
-served immutable (an 800px source → 256px is ~78 % smaller). Decoding on the JS main
-thread is a Rust-worker candidate (see the [Rust workers plan](RUST_WORKERS_PLAN_EN.md) §P3).
+images, each variant resized once into a small LRU and served immutable (an 800px source →
+256px is ~78 % smaller). The resize runs on the **native Rust worker** (off the event loop —
+`image_resize_jpeg`, JPEG) with an `@napi-rs/canvas` webp fallback (see the
+[Rust workers plan](RUST_WORKERS_PLAN_EN.md) §P3).
 
 **Front-end adoption started** — a `lib/img.js` `thumb(url,w)` helper appends `?w=` only to
 `/media` URLs (external/data URLs untouched); wired into the busiest cover grids (blog +

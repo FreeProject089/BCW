@@ -11,9 +11,18 @@ that plan (ZIP off the event loop + BLAKE3), built and verified.
 
 | JS | What |
 |---|---|
-| `zipEntries(buf) → Promise<[{name,size}]>` | list a zip's entries |
-| `zipReadAll(buf) → Promise<[{name,data:Buffer}]>` | list + inflate non-dir entries (replaces `new AdmZip(buf)` + `getData()`) |
-| `blake3Hex(buf) → Promise<string>` | BLAKE3 hex — **internal integrity only**, never the public `sha256` contract |
+| `zipEntries(buf) → [{name,size}]` | list a zip's entries |
+| `zipReadAll(buf) → [{name,data:Buffer}]` | list + inflate non-dir entries (replaces `new AdmZip(buf)` + `getData()`) |
+| `zipEntry(buf, name) → Buffer\|null` | extract ONE entry (replaces `getEntry(name).getData()`) |
+| `zipCreate([{name,data}]) → Buffer` | build a deflate zip (replaces `new AdmZip()` + `addFile` + `toBuffer`) |
+| `dirScan(root) → [{path,size}]` | recursive file listing (relative, forward-slashed) |
+| `zstdCompress(buf,level)` / `zstdDecompress(buf) → Buffer` | zstd for **internal artifacts** only |
+| `imageResizeJpeg(buf,width,q) → Buffer\|null` | downscale a raster → JPEG (null = don't upscale) |
+| `blake3Hex(buf) → string` | BLAKE3 hex — **internal integrity only**, never the public `sha256` contract |
+
+All are async (Promise) — they run on a worker thread. `lib/native.mjs` wraps them
+(`zipEntries`/`zipReadAll`/`zipEntry`/`zipCreate`/`dirScan`/`imageThumb`/`zstd*`/`blake3Hex`)
+with a JS fallback so a build without the addon still works.
 
 ## It's optional — there's always a JS fallback
 
