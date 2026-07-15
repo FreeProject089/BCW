@@ -10,6 +10,7 @@ COPY native/package.json native/package-lock.json ./
 RUN npm install --no-audit --no-fund
 COPY native/Cargo.toml native/Cargo.lock native/build.rs ./
 COPY native/src ./src
+COPY native/core ./core
 RUN npx napi build --platform --release
 
 # ── Stage 2: the API runtime ──

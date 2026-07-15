@@ -87,6 +87,10 @@ jobs:
       - name: cargo clippy -D warnings
         working-directory: BCWEB/native
         run: cargo clippy --release -- -D warnings
+      # Rust unit tests for the pure core (zip r/w, extract, blake3, zstd, scan, resize).
+      - name: cargo test (bcweb-core)
+        working-directory: BCWEB/native/core
+        run: cargo test
       # Build the Rust addon (BLAKE3 / off-event-loop zip / zstd / image resize). A compile
       # regression fails here rather than silently shipping the JS fallback everywhere.
       - name: build addon

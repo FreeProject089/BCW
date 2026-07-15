@@ -1,0 +1,11 @@
+[package]
+name = "bcweb-core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure-Rust core (zip / BLAKE3 / zstd / fs-scan / image resize) shared by the napi addon and, potentially, the BMM Tauri app. No napi/Node dependency."
+
+[dependencies]
+blake3 = { version = "1", features = ["pure"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+zstd = "0.13"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }

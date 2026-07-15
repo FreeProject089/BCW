@@ -11,6 +11,10 @@ export interface ZipFile {
   name: string
   data: Buffer
 }
+export interface ScanEntry {
+  path: string
+  size: number
+}
 /** List a zip's entries (name + uncompressed size) on a worker thread. */
 export declare function zipEntries(data: Buffer): Promise<unknown>
 /**
@@ -18,36 +22,17 @@ export declare function zipEntries(data: Buffer): Promise<unknown>
  * adm-zip `new AdmZip(buf)` + per-entry `getData()` parse that blocked the event loop.
  */
 export declare function zipReadAll(data: Buffer): Promise<unknown>
-/**
- * Extract ONE zip entry's bytes by name, on a worker thread (null if missing / a dir).
- * Replaces `new AdmZip(buf).getEntry(name).getData()` for single-file extraction.
- */
+/** Extract ONE zip entry's bytes by name, on a worker thread (null if missing / a dir). */
 export declare function zipEntry(data: Buffer, name: string): Promise<unknown>
-/**
- * Build a zip (deflate) from `[{name, data}]` on a worker thread. Replaces adm-zip's
- * synchronous `new AdmZip()` + `addFile()` + `toBuffer()` for exports.
- */
+/** Build a zip (deflate) from `[{name, data}]` on a worker thread. */
 export declare function zipCreate(files: Array<ZipFile>): Promise<unknown>
-export interface ScanEntry {
-  path: string
-  size: number
-}
-/**
- * Recursively list a directory's files as `[{path, size}]` (relative, forward-slashed) on
- * a worker thread. For size accounting / backup manifests without blocking the loop.
- */
+/** Recursively list a directory's files as `[{path, size}]` on a worker thread. */
 export declare function dirScan(root: string): Promise<unknown>
-/**
- * zstd-compress a buffer on a worker thread (INTERNAL artifacts only — the public download
- * format is unchanged). `level` ~ 3 is a good default.
- */
+/** zstd-compress a buffer on a worker thread (INTERNAL artifacts only). */
 export declare function zstdCompress(data: Buffer, level: number): Promise<unknown>
 /** zstd-decompress a buffer on a worker thread. */
 export declare function zstdDecompress(data: Buffer): Promise<unknown>
-/**
- * Downscale a raster image to `width` (never upscale → null) and encode JPEG, on a worker
- * thread. Replaces the @napi-rs/canvas resize that ran on the main thread.
- */
+/** Downscale a raster image to `width` (never upscale → null) and encode JPEG, on a worker thread. */
 export declare function imageResizeJpeg(data: Buffer, width: number, quality: number): Promise<unknown>
 /**
  * BLAKE3 hash (hex) of a buffer on a worker thread — INTERNAL integrity only (dedup keys,
