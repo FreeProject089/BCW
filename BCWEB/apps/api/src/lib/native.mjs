@@ -5,9 +5,9 @@
 // Build the addon with: (cd native && npm install && npm run build). See guides/RUST_WORKERS_PLAN.
 import AdmZip from 'adm-zip';
 import { createRequire } from 'node:module';
-import { readdirSync } from 'node:fs';
+import { readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 
 const require = createRequire(import.meta.url);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -60,4 +60,50 @@ export async function zipEntry(buf, name) {
 // keys — dedup / manifests / cache keys — never the public sha256 contract).
 export async function blake3Hex(buf) {
   return native && native.blake3Hex ? native.blake3Hex(buf) : null;
+}
+
+// Build a zip (deflate) from [{ name, data }] on a worker thread; fallback adm-zip.
+export async function zipCreate(files) {
+  if (native && native.zipCreate) return native.zipCreate(files);
+  const zip = new AdmZip();
+  for (const f of files) zip.addFile(f.name, Buffer.from(f.data));
+  return zip.toBuffer();
+}
+
+// Recursively list a directory's files as [{ path, size }] (relative, forward-slashed) on a
+// worker thread; fallback a JS readdir walk. Used for size accounting off the event loop.
+export async function dirScan(root) {
+  if (native && native.dirScan) return native.dirScan(root);
+  const out = []; const stack = [root];
+  while (stack.length) {
+    const dir = stack.pop();
+    let ents; try { ents = readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const e of ents) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) stack.push(p);
+      else if (e.isFile()) { let size = 0; try { size = statSync(p).size; } catch { /* skip */ } out.push({ path: relative(root, p).replace(/\\/g, '/'), size }); }
+    }
+  }
+  return out;
+}
+
+// zstd compress/decompress on a worker thread — native-only (Node 20 has no zstd). Returns
+// null when the addon isn't built. For INTERNAL artifacts only; callers must handle null.
+export async function zstdCompress(buf, level = 3) { return native && native.zstdCompress ? native.zstdCompress(buf, level) : null; }
+export async function zstdDecompress(buf) { return native && native.zstdDecompress ? native.zstdDecompress(buf) : null; }
+
+// Downscale a raster image to `width` and return { buffer, type } (or null to keep the
+// original — never upscales). Native → JPEG on a worker thread; fallback @napi-rs/canvas → webp.
+export async function imageThumb(buf, width) {
+  if (native && native.imageResizeJpeg) {
+    const out = await native.imageResizeJpeg(buf, width, 82);
+    return out ? { buffer: Buffer.from(out), type: 'image/jpeg' } : null;
+  }
+  const { loadImage, createCanvas } = await import('@napi-rs/canvas');
+  const img = await loadImage(buf);
+  if (!img.width || img.width <= width) return null;
+  const h = Math.max(1, Math.round(img.height * (width / img.width)));
+  const canvas = createCanvas(width, h);
+  canvas.getContext('2d').drawImage(img, 0, 0, width, h);
+  return { buffer: await canvas.encode('webp', 82), type: 'image/webp' };
 }

@@ -6,7 +6,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import AdmZip from 'adm-zip';
-import { zipReadAll, zipEntry, blake3Hex, hasNative } from '../src/lib/native.mjs';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { zipReadAll, zipEntry, zipCreate, dirScan, zstdCompress, zstdDecompress, imageThumb, blake3Hex, hasNative } from '../src/lib/native.mjs';
 import { validatePlugin } from '../src/lib/plugin.mjs';
 
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
@@ -56,6 +59,40 @@ test('validatePlugin accepts a well-formed package and rejects a tampered file',
   // A wrong outer sha (package-level) is rejected up front.
   const mism = await validatePlugin(buf, 'deadbeef');
   assert.equal(mism.reason, 'package_checksum_mismatch');
+});
+
+test('zipCreate builds a readable zip (roundtrips through adm-zip)', async () => {
+  const buf = Buffer.from(await zipCreate([{ name: 'a.txt', data: Buffer.from('hi') }, { name: 'd/b.bin', data: Buffer.from([1, 2, 3]) }]));
+  const z = new AdmZip(buf);
+  assert.deepEqual(z.getEntries().map((e) => e.entryName).sort(), ['a.txt', 'd/b.bin']);
+  assert.equal(z.getEntry('a.txt').getData().toString(), 'hi');
+});
+
+test('dirScan lists files (relative, forward-slashed) with sizes', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'scan-'));
+  writeFileSync(join(dir, 'x.txt'), 'hello'); // 5
+  mkdirSync(join(dir, 'sub')); writeFileSync(join(dir, 'sub', 'y.bin'), Buffer.from([1, 2, 3])); // 3
+  const files = (await dirScan(dir)).sort((a, b) => a.path.localeCompare(b.path));
+  assert.deepEqual(files.map((f) => f.path), ['sub/y.bin', 'x.txt']);
+  assert.equal(files.reduce((a, f) => a + f.size, 0), 8);
+});
+
+test('zstd round-trips when the addon is built (null otherwise)', async () => {
+  const orig = Buffer.from('z'.repeat(500));
+  const c = await zstdCompress(orig, 3);
+  if (hasNative) {
+    assert.ok(c.length < orig.length, 'compresses');
+    assert.ok(Buffer.from(await zstdDecompress(Buffer.from(c))).equals(orig), 'decompresses back');
+  } else assert.equal(c, null);
+});
+
+test('imageThumb downscales a raster and never upscales', async () => {
+  const { createCanvas } = await import('@napi-rs/canvas');
+  const cv = createCanvas(600, 400); cv.getContext('2d').fillRect(0, 0, 600, 400);
+  const png = cv.toBuffer('image/png');
+  const t = await imageThumb(png, 256);
+  assert.ok(t && t.buffer.length > 0 && /^image\/(jpeg|webp)$/.test(t.type), 'produces a thumbnail');
+  assert.equal(await imageThumb(png, 1024), null, 'width >= source → null (no upscale)');
 });
 
 test('blake3Hex: 64-hex + deterministic when the addon is built, null otherwise', async () => {

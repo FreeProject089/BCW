@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Transform } from 'node:stream';
 import { createHash } from 'node:crypto';
-import AdmZip from 'adm-zip';
+import { zipCreate } from '../lib/native.mjs';
 import { db, requireRole, slugify, notify, repoLog, isValidRepoManifest, getGlobalAccessPolicy, getUserAccessPolicy, matchAccountList } from '../lib/lib.mjs';
 import { presignPut, presignGet, getObject } from '../lib/storage.mjs';
 import { repoMeter } from '../lib/monitor.mjs';
@@ -340,12 +340,12 @@ export default async function hostingContentRoutes(app) {
     if (!repo.files.length) return reply.code(404).send({ error: 'empty' });
     const total = repo.files.reduce((a, f) => a + Number(f.size), 0);
     if (total > 500 * 1024 * 1024) return reply.code(413).send({ error: 'too_large', detail: 'Repo exceeds 500 MB — download files individually.' });
-    const zip = new AdmZip();
+    const files = [];
     for (const f of repo.files) {
-      try { const { body } = await getObject(f.key); zip.addFile(f.path, await streamBuffer(body)); } catch { /* skip unreadable file */ }
+      try { const { body } = await getObject(f.key); files.push({ name: f.path, data: await streamBuffer(body) }); } catch { /* skip unreadable file */ }
     }
     reply.header('Content-Type', 'application/zip').header('Content-Disposition', `attachment; filename="${slugify(repo.name) || 'repo'}.zip"`);
-    return reply.send(zip.toBuffer());
+    return reply.send(Buffer.from(await zipCreate(files))); // built off the event loop (native), fallback adm-zip
   });
 
   // ── Admin review ──

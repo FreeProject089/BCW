@@ -10,6 +10,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { dirScan } from './native.mjs';
 
 const execFileP = promisify(execFile);
 
@@ -117,21 +118,12 @@ export async function fileAtCommit(repoRoot, hash, relPath) {
   return stdout;
 }
 
-// Recursive on-disk size of the backup repo (incl. .git — that's real disk
-// usage too), for the Storage tab's ledger.
+// Recursive on-disk size of the backup repo (incl. .git — that's real disk usage too), for
+// the Storage tab's ledger. The tree walk runs on a worker thread via the native dirScan
+// (falls back to a JS readdir walk), so a big repo doesn't block the event loop.
 export async function repoSizeBytes(repoRoot) {
-  async function walk(dir) {
-    let total = 0;
-    let entries;
-    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return 0; }
-    for (const e of entries) {
-      const full = path.join(dir, e.name);
-      if (e.isDirectory()) total += await walk(full);
-      else { const st = await fs.stat(full).catch(() => null); if (st) total += st.size; }
-    }
-    return total;
-  }
-  return walk(repoRoot);
+  const files = await dirScan(repoRoot);
+  return files.reduce((a, f) => a + (f.size || 0), 0);
 }
 
 // Best-effort space reclaim — compacts loose objects into packfiles. Never

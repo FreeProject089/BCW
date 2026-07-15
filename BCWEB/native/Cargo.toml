@@ -11,6 +11,8 @@ napi = { version = "2", default-features = false, features = ["napi4"] }
 napi-derive = "2"
 blake3 = { version = "1", features = ["pure"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+zstd = "0.13"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 
 [build-dependencies]
 napi-build = "2"
