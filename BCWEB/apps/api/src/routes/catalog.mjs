@@ -4,6 +4,7 @@ import AdmZip from 'adm-zip';
 import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy } from '../lib/lib.mjs';
 import { presignGet, getObject, deleteObject } from '../lib/storage.mjs';
 import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
+import { cached } from '../lib/cache.mjs';
 import { powVerify } from './auth.mjs';
 
 const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
@@ -256,35 +257,41 @@ export default async function catalogRoutes(app) {
   // BMM catalog format so a BMM user can add it as a source (or the official catalog).
   app.get('/catalog.json', async (req, reply) => {
     const p = await db();
-    if (await officialGate(p, req, reply)) return;
-    const origin = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
+    if (await officialGate(p, req, reply)) return; // access control runs per-request (may 403)
     const projectKey = String(req.query?.project || 'bmm').toLowerCase();
     const reqKind = String(req.query?.kind || 'app').toUpperCase();
     const kind = KINDS.includes(reqKind) ? reqKind : 'APP';
-    const project = await p.project.findUnique({ where: { key: projectKey } }).catch(() => null);
-    const where = { status: 'PUBLISHED', kind, ...NOT_INVALID };
-    if (project) where.projectId = project.id;
-    const items = await p.catalogItem.findMany({ where, orderBy: { downloads: 'desc' }, include: { owner: { select: { displayName: true } } } });
-    const dlUrl = (it) => it.meta?.download_url || it.meta?.downloadUrl || (it.payloadKey ? `${origin}/api/catalog/${it.slug}/dl` : null);
     reply.header('Cache-Control', 'public, max-age=300');
-    const title = `BetterCommunity ${projectKey.toUpperCase()} ${kind.toLowerCase()} catalog`;
-    if (kind === 'PLUGIN') {
-      return { version: '1.0', name: title, plugins: items.map((it) => ({
-        id: it.slug, name: it.name, version: it.version, author: it.owner?.displayName || '', description: it.description || '',
-        game: it.meta?.game || '', official: false, download_url: dlUrl(it) || '', tags: it.tags || [], icon_url: it.meta?.icon_url || it.meta?.thumb || null,
-      })).filter((x) => x.download_url) };
-    }
-    if (kind === 'THEME') {
-      return { version: '1.0', name: title, themes: items.map((it) => ({
-        id: it.slug, name: it.name, description: it.description || '', author: it.owner?.displayName || '', version: it.version, url: dlUrl(it), tags: it.tags || [],
-      })).filter((x) => x.url) };
-    }
-    return { version: '1.0', name: title, description: `Community app catalog from BetterCommunity (${projectKey.toUpperCase()}).`, apps: items.map((it) => ({
-      id: it.slug, title: it.name, description: it.description || '', md_link: it.meta?.md_link || null,
-      category: it.meta?.category || 'other', price: it.meta?.price || 'free', tags: it.tags || [], version: it.version, requirements: it.meta?.requirements || null,
-      images: it.meta?.images || (it.meta?.thumb ? { thumb: it.meta.thumb } : undefined),
-      download: { url: dlUrl(it) || '', file_type: it.meta?.file_type || 'exe', size: it.meta?.size || it.payloadSize || undefined, sha256: it.meta?.sha256 || undefined },
-    })).filter((x) => x.download.url) };
+    // The feed body is the same public content for every allowed caller, and it's polled by
+    // every desktop client — so the DB query + render is memoised behind a 60s two-tier
+    // cache (with request-coalescing, so a cold cache can't stampede Postgres). Bounded at
+    // the top 500 by downloads so the query + payload can't grow without limit.
+    return cached(`catalog.json:${projectKey}:${kind}`, 60_000, async () => {
+      const origin = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
+      const project = await p.project.findUnique({ where: { key: projectKey } }).catch(() => null);
+      const where = { status: 'PUBLISHED', kind, ...NOT_INVALID };
+      if (project) where.projectId = project.id;
+      const items = await p.catalogItem.findMany({ where, orderBy: { downloads: 'desc' }, take: 500, include: { owner: { select: { displayName: true } } } });
+      const dlUrl = (it) => it.meta?.download_url || it.meta?.downloadUrl || (it.payloadKey ? `${origin}/api/catalog/${it.slug}/dl` : null);
+      const title = `BetterCommunity ${projectKey.toUpperCase()} ${kind.toLowerCase()} catalog`;
+      if (kind === 'PLUGIN') {
+        return { version: '1.0', name: title, plugins: items.map((it) => ({
+          id: it.slug, name: it.name, version: it.version, author: it.owner?.displayName || '', description: it.description || '',
+          game: it.meta?.game || '', official: false, download_url: dlUrl(it) || '', tags: it.tags || [], icon_url: it.meta?.icon_url || it.meta?.thumb || null,
+        })).filter((x) => x.download_url) };
+      }
+      if (kind === 'THEME') {
+        return { version: '1.0', name: title, themes: items.map((it) => ({
+          id: it.slug, name: it.name, description: it.description || '', author: it.owner?.displayName || '', version: it.version, url: dlUrl(it), tags: it.tags || [],
+        })).filter((x) => x.url) };
+      }
+      return { version: '1.0', name: title, description: `Community app catalog from BetterCommunity (${projectKey.toUpperCase()}).`, apps: items.map((it) => ({
+        id: it.slug, title: it.name, description: it.description || '', md_link: it.meta?.md_link || null,
+        category: it.meta?.category || 'other', price: it.meta?.price || 'free', tags: it.tags || [], version: it.version, requirements: it.meta?.requirements || null,
+        images: it.meta?.images || (it.meta?.thumb ? { thumb: it.meta.thumb } : undefined),
+        download: { url: dlUrl(it) || '', file_type: it.meta?.file_type || 'exe', size: it.meta?.size || it.payloadSize || undefined, sha256: it.meta?.sha256 || undefined },
+      })).filter((x) => x.download.url) };
+    });
   });
 
   // Live hosting price quote for an our-hosted catalog file of a given size.
