@@ -50,15 +50,16 @@ dégrade quand le catalogue grossit.
 dépôts (`ServerRepo` par `listed`/`status`), le browse des catalogues communautaires, et les
 tables admin.
 
-### 3. 🟠 Le feed `/catalog.json` est non borné
-Le feed natif BMM fait `findMany` **sans `take:`** plus une jointure owner, donc son coût de
-requête et sa charge utile croissent avec tout le catalogue publié — et il est interrogé par
-chaque client desktop. Il est mis en cache HTTP (`Cache-Control: max-age=300`, donc Caddy/un
-CDN absorbent l'essentiel), mais chaque cache-miss lance quand même une requête non bornée et
-renvoie un corps non borné.
+### 3. 🟠 Le feed `/catalog.json` était non borné — **corrigé**
+Le feed natif BMM faisait `findMany` **sans `take:`** plus une jointure owner, donc son coût de
+requête et sa charge utile croissaient avec tout le catalogue publié — et il est interrogé par
+chaque client desktop, donc un cache HTTP froid laissait tous les clients frapper Postgres en
+même temps.
 
-**Plan** : le plafonner (p. ex. `take: 500` des plus téléchargés) ou paginer, et/ou le servir
-depuis un cache serveur à TTL court pour qu'un cache froid ne fasse pas de stampede sur la BD.
+**Fait** — plafonné à `take: 500` (top par téléchargements) et enveloppé dans le cache deux-tiers
+existant (TTL 60s : L1 par-process + L2 Redis + coalescence des requêtes), donc les cache-miss
+concurrents partagent un seul appel producteur. Le contrôle d'accès tourne toujours par-requête
+avant le cache. Couvert par `test/cache.test.mjs`.
 
 ### 4. 🟠 L'état mono-processus bloque la montée en charge horizontale
 Le feed SSE (`feedBus`), plusieurs caches mémoire et les compteurs de rate-limit sont
@@ -104,7 +105,7 @@ d'images) plutôt que les originaux pleine taille sur les cartes de liste.
 |---|---|---|---|
 | **P1** | Découpage par route de la SPA | −41 % de JS initial pour chaque visiteur | ✅ fait |
 | **P1** | Index des chemins chauds `CatalogItem` | browse + feed restent rapides quand le catalogue grossit | ✅ fait |
-| **P1** | Plafonner / cacher le feed `/catalog.json` | borne l'endpoint le plus interrogé | ▢ |
+| **P1** | Plafonner / cacher le feed `/catalog.json` | borne l'endpoint le plus interrogé | ✅ fait |
 | **P2** | Finir le découpage frontend (extraire `NOTIF`, lazy hero `three`, budget bundle) | réduire encore le chunk principal de 1,38 Mo | ▢ |
 | **P2** | Indexer les autres endpoints de liste (dépôts, catalogues communautaires, admin) | supprimer les scans séquentiels restants | ▢ |
 | **P2** | Redis pub/sub + store rate-limit + verrous sweeper (derrière `REDIS_URL`) | débloque la montée en charge horizontale | ▢ |

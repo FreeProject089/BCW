@@ -46,14 +46,15 @@ degrades as the catalog grows.
 **Remaining**: audit the other list endpoints the same way — the public repo list
 (`ServerRepo` by `listed`/`status`), the community-catalog browse, and the admin tables.
 
-### 3. 🟠 The `/catalog.json` feed is unbounded
-The BMM-native feed does `findMany` with **no `take:`** plus an owner join, so its query
-cost and payload grow with the whole published catalog — and it's polled by every desktop
-client. It is HTTP-cached (`Cache-Control: max-age=300`, so Caddy/a CDN absorb most hits),
-but each cache miss still runs an unbounded query and ships an unbounded body.
+### 3. 🟠 The `/catalog.json` feed was unbounded — **fixed**
+The BMM-native feed did `findMany` with **no `take:`** plus an owner join, so its query
+cost and payload grew with the whole published catalog — and it's polled by every desktop
+client, so a cold HTTP cache let every client hit Postgres at once.
 
-**Plan**: cap it (e.g. `take: 500` of the top-by-downloads) or paginate, and/or serve it
-from a short-TTL server cache so a cold cache can't stampede the DB.
+**Done** — capped at `take: 500` (top by downloads) and wrapped in the existing two-tier
+cache (60s TTL: L1 per-process + L2 Redis + request-coalescing), so concurrent cold-cache
+misses share one producer call. Access control still runs per-request before the cache.
+Covered by `test/cache.test.mjs`.
 
 ### 4. 🟠 Single-process state blocks horizontal scaling
 The SSE feed (`feedBus`), several in-memory caches, and the rate-limit counters are
@@ -98,7 +99,7 @@ full-size originals on list cards.
 |---|---|---|---|
 | **P1** | Route-split the SPA | −41 % initial JS for every visitor | ✅ done |
 | **P1** | `CatalogItem` hot-path indexes | browse + feed stay fast as the catalog grows | ✅ done |
-| **P1** | Cap / cache the `/catalog.json` feed | bounds the most-polled endpoint | ▢ |
+| **P1** | Cap / cache the `/catalog.json` feed | bounds the most-polled endpoint | ✅ done |
 | **P2** | Finish frontend splitting (extract `NOTIF`, lazy hero `three`, bundle budget) | shrink the 1.38 MB main chunk further | ▢ |
 | **P2** | Index the other list endpoints (repos, community catalogs, admin) | remove the remaining seq-scans | ▢ |
 | **P2** | Redis pub/sub + rate-limit store + sweeper locks (behind `REDIS_URL`) | unblocks horizontal scaling | ▢ |
