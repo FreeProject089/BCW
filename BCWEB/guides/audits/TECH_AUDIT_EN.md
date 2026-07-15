@@ -1,8 +1,13 @@
 # BCWEB — Technical Audit (July 2026)
 
+> **Historical record — not instructions.** This is a dated snapshot (Jul 2026) of what was
+> wrong and what was done about it. **Every item below is completed.** It is kept for the
+> reasoning, not as a to-do list — do not follow it as a setup guide. Current docs:
+> [guides/README.md](../README.md).
+
 *A frank, complete assessment of the BetterCommunity Web platform: architecture, strengths,
 weaknesses, risks, and a prioritized action plan. Complements the feature-by-feature
-[Technical_Analysis_EN.md](Technical_Analysis_EN.md). 🇫🇷 [Version FR](TECH_AUDIT_FR.md).*
+[Technical_Analysis_EN.md](../reference/Technical_Analysis_EN.md). 🇫🇷 [Version FR](TECH_AUDIT_FR.md).*
 
 ---
 

@@ -282,7 +282,7 @@ agrandir verticalement le VPS unique est plus simple et moins cher.
   ou — seulement si tu deviens une grosse plateforme multi-locataires — du Kubernetes
   **managé**, jamais un control plane fait main. Tu es très loin d'en avoir besoin.
   (Kubernetes n'est *pas* l'outil pour l'hébergement des conteneurs de projets utilisateurs
-  décrit dans [USER_PROJECT_HOSTING.md](USER_PROJECT_HOSTING_FR.md) — voir ce doc.)
+  décrit dans [USER_PROJECT_HOSTING.md](../reference/USER_PROJECT_HOSTING_FR.md) — voir ce doc.)
 
 ## Stockage objet — MinIO maintenant, R2 plus tard
 

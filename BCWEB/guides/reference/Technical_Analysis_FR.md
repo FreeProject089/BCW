@@ -2,7 +2,7 @@
 
 > Une explication de zéro de **BetterCommunity Web** : comment tout est câblé,
 > comment l'héberger, ce que fait chaque fichier, et comment fonctionne chaque
-> sous-système. Voir [ARCHITECTURE.md](./ARCHITECTURE_FR.md) pour le *pourquoi* de la
+> sous-système. Voir [ARCHITECTURE.md](ARCHITECTURE_FR.md) pour le *pourquoi* de la
 > stack ; ce document est le *comment* au niveau du code. Compagnon :
 > **App_Features_FR.md** (tour des fonctionnalités).
 >
@@ -82,7 +82,7 @@ curl http://localhost/api/health       # { ok:true, db:true }
 ```
 
 Le guide opérateur complet (compte admin, 2FA, rôles, OAuth, bot Discord, Stripe,
-checklist production) est dans **[SETUP_GUIDE.md](./SETUP_GUIDE_FR.md)**. Rebuild/redéploie
+checklist production) est dans **[SETUP_GUIDE.md](../run/SETUP_GUIDE_FR.md)**. Rebuild/redéploie
 un service après un changement de code :
 
 ```bash

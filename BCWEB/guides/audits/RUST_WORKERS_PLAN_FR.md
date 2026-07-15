@@ -1,5 +1,10 @@
 # BCWEB — Plan workers Rust (déport du CPU lourd)
 
+> **Archive — pas des instructions.** Instantané daté (juil. 2026) de ce qui n'allait pas et
+> de ce qui a été fait. **Tous les points ci-dessous sont terminés.** Conservé pour le
+> raisonnement, pas comme une liste de tâches — ne pas suivre comme un guide d'installation.
+> Docs à jour : [guides/README.md](../README.md).
+
 *Un plan pour déplacer le travail CPU-bound qui bloque l'event loop de l'API Node vers un
 module natif Rust. Ancré dans les vrais call sites de `apps/api`. 🇬🇧 [English version](RUST_WORKERS_PLAN_EN.md).
 Complète l'[audit de performance](PERF_AUDIT_FR.md).*

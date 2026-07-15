@@ -1,5 +1,10 @@
 # BCWEB — Rust workers plan (offloading CPU-heavy work)
 
+> **Historical record — not instructions.** This is a dated snapshot (Jul 2026) of what was
+> wrong and what was done about it. **Every item below is completed.** It is kept for the
+> reasoning, not as a to-do list — do not follow it as a setup guide. Current docs:
+> [guides/README.md](../README.md).
+
 *A plan for moving the CPU-bound, event-loop-blocking work in the Node API into a Rust
 native module. Grounded in the actual call sites in `apps/api`. 🇫🇷 [Version française](RUST_WORKERS_PLAN_FR.md).
 Complements the [performance audit](PERF_AUDIT_EN.md).*

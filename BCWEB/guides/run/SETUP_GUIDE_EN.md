@@ -4,8 +4,8 @@
 
 A practical, in-order walkthrough for standing up a fresh BCWEB instance: first boot,
 the admin account, 2FA, roles, and the optional integrations (Discord bot, Stripe).
-For the architecture/feature overview see [README.md](./README.md) and
-[ARCHITECTURE.md](./ARCHITECTURE_EN.md) — this doc is just "what do I click/type, in
+For the architecture/feature overview see [README.md](../README.md) and
+[ARCHITECTURE.md](../reference/ARCHITECTURE_EN.md) — this doc is just "what do I click/type, in
 what order."
 
 ## 1. Prerequisites
@@ -211,10 +211,10 @@ panel). Beyond first boot you **don't** edit that `.env` for day-to-day limits:
 
 ## 11. Production checklist
 
-- Follow **[DOMAIN_SETUP.md](./DOMAIN_SETUP_EN.md)** to move off `localhost` onto your
+- Follow **[DOMAIN_SETUP.md](DOMAIN_SETUP_EN.md)** to move off `localhost` onto your
   own domain with automatic HTTPS (Caddy + Let's Encrypt), including the optional
   `telemetry.<domain>` sub-domain.
-- See the **Production checklist** in [README.md](./README.md) for the full list
+- See the **Production checklist** in [README.md](../README.md) for the full list
   (backups, Stripe **live** keys + a live-mode webhook, secrets rotation, etc.).
 - Make sure every SUPERADMIN and ADMIN account has 2FA enabled (step 5) before
   go-live, and that `JWT_SECRET` / `BOT_SHARED_SECRET` / `TELEMETRY_ADMIN_KEY` are all

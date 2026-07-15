@@ -108,7 +108,50 @@ réplicas d'API, chaque nœud ne voit qu'une fraction de cette concurrence.
 5. Stockage objet (fichiers hébergés) : servir les téléchargements via le CDN / un edge
    compatible S3 plutôt que directement depuis MinIO dès que le volume est réel.
 
-## Dimensionnement serveur (estimations — stack = api + web + postgres + redis + minio + caddy + bot + télémétrie)
+## Run mesuré — 2026-07-15 (vraie stack, rate limiter relâché, catalogue seedé)
+
+Le premier run avec les trois conditions réunies : la vraie API contre un vrai Postgres 16 +
+Redis 7, `RATE_LIMIT_MAX` relevé pour mesurer la capacité des routes et non le délestage 429,
+et `npm run seed:demo` chargé pour que `/catalog.json` rende un vrai payload de 113 apps (avant
+le correctif NOT_INVALID il renvoyait une liste vide, ce qui rendait tous les chiffres `feed`
+précédents sans valeur). Machine de dev 24 cœurs, loopback, 10s par niveau.
+
+| Scénario | Coude (débit propre) | p99 | p99.9 |
+|---|--:|--:|--:|
+| `cached` (`/health`, `/kofi/stats`) | **9,8k** req/s @ busy (200) | 40 ms | 56 ms |
+| `mixed` (mélange réaliste — l'ancre de dimensionnement) | **4,4k** req/s @ heavy (1k) | 528 ms | 530 ms |
+| `feed` (`/catalog.json`, 113 apps) | **3,0k** req/s @ normal (50) | 27 ms | 43 ms |
+| `db-read` (`/projects`, `/showcase`, `/catalog`) | **2,2k** req/s @ busy (200) | 171 ms | 203 ms |
+
+**L'ordre des goulots est l'inverse de l'intuition.** `db-read` (2,2k) est le chemin le plus
+lent, pas le gros `feed` (3,0k) — parce que le feed est derrière un cache 60s : sous charge il
+sort du L1 et ne touche Postgres qu'environ une fois par minute, alors que `/projects` et
+`/catalog` ne sont pas cachés et frappent la base à chaque requête. Zéro timeout à tous les
+niveaux ; les erreurs qui apparaissent à `extreme` (5k conn.) sont largement de l'épuisement de
+sockets côté client Windows, pas le serveur qui lâche.
+
+## Dimensionnement serveur
+
+**Calé sur la mesure `mixed` ci-dessus** (4,4k req/s servies sur 24 cœurs ≈ 184 req/s/cœur), à
+~6 requêtes/min par utilisateur actif ≈ 1 835 utilisateurs actifs/cœur. Relance `node run.mjs`
+sur ta machine et ouvre `report.html` pour la table calculée sur *ton* matériel.
+
+| Palier | Utilisateurs | vCPU | RAM | Disque | Notes |
+|---|---|---|---|---|---|
+| **Démarrage** | 500–1 000 simultanés, gros volume de téléchargements | **4** | **8 Go** | 80 Go SSD + quota d'hébergement | La première boîte réaliste. Le CPU n'est pas la contrainte — les téléchargements le sont (voir plus bas). |
+| **Confortable** | quelques milliers | 4–8 | 8–16 Go | 160 Go SSD + quota | Ajouter un CDN pour le statique + les downloads de dépôts ; PgBouncer dès que tu passes en répliques d'API. |
+| **Scale-out** | 10k+ simultanés | 8+ (réparti) | 16 Go+ | managé | CDN + 2–4 répliques d'API derrière Caddy + Postgres managé (réplique de lecture) + S3/R2 pour les fichiers. |
+
+**Pour une charge dominée par les téléchargements de dépôts, dimensionner au CPU est le mauvais
+axe.** Un download de dépôt ne consomme presque pas de CPU — l'API pré-signe ou relaie des
+octets depuis MinIO. Ce qui sature vraiment, dans l'ordre : (1) la **bande passante** (un modpack
+de 200 Mo × 500 utilisateurs = 100 Go d'egress — vérifie le transfert inclus de ton VPS **avant**
+son nombre de cœurs), (2) les **I/O disque + l'espace** pour MinIO, (3) les **connexions
+Postgres** si tu ajoutes des répliques sans PgBouncer. Le CPU de l'API vient en dernier. Mets les
+downloads derrière un CDN / R2 et l'origine sort complètement du chemin — voir
+[ADDONS](../guides/run/ADDONS_FR.md).
+
+### Anciennes estimations (avant mesure, conservées pour référence)
 
 | Palier | Utilisateurs | vCPU | RAM | Disque | Notes |
 |---|---|---|---|---|---|

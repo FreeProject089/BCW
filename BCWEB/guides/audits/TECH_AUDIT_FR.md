@@ -1,8 +1,13 @@
 # BCWEB — Audit technique (juillet 2026)
 
+> **Archive — pas des instructions.** Instantané daté (juil. 2026) de ce qui n'allait pas et
+> de ce qui a été fait. **Tous les points ci-dessous sont terminés.** Conservé pour le
+> raisonnement, pas comme une liste de tâches — ne pas suivre comme un guide d'installation.
+> Docs à jour : [guides/README.md](../README.md).
+
 *Une évaluation franche et complète de la plateforme BetterCommunity Web : architecture,
 points forts, points faibles, risques, et un plan d'action priorisé. Complète l'analyse
-fonctionnelle [Technical_Analysis_FR.md](Technical_Analysis_FR.md). 🇬🇧 [English version](TECH_AUDIT_EN.md).*
+fonctionnelle [Technical_Analysis_FR.md](../reference/Technical_Analysis_FR.md). 🇬🇧 [English version](TECH_AUDIT_EN.md).*
 
 ---
 

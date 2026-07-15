@@ -1,5 +1,10 @@
 # BCWEB — Performance audit & bottleneck plan (July 2026)
 
+> **Historical record — not instructions.** This is a dated snapshot (Jul 2026) of what was
+> wrong and what was done about it. **Every item below is completed.** It is kept for the
+> reasoning, not as a to-do list — do not follow it as a setup guide. Current docs:
+> [guides/README.md](../README.md).
+
 *A focused look at where BCWEB spends time and bytes, what was fixed in this pass, and a
 prioritised plan for the rest. Complements the [technical audit](TECH_AUDIT_EN.md).
 🇫🇷 [Version française](PERF_AUDIT_FR.md).*

@@ -8,8 +8,8 @@ repos and/or catalogs (billing anchors to the pool).
 
 📚 **All guides live in [`guides/`](./guides/)** — deployment (EN/FR), local setup,
 domain & HTTPS, app features, technical analysis, architecture, API reference.
-Full design + feature spec + roadmap → **[guides/ARCHITECTURE.md](./guides/ARCHITECTURE.md)**.
-Deploying to production → **[guides/DEPLOY_EN.md](./guides/DEPLOY_EN.md)** · **[FR](./guides/DEPLOY_FR.md)**.
+Full design + feature spec + roadmap → **[guides/ARCHITECTURE.md](./guides/reference/ARCHITECTURE_EN.md)**.
+Deploying to production → **[guides/DEPLOY_EN.md](./guides/run/DEPLOY_EN.md)** · **[FR](./guides/run/DEPLOY_FR.md)**.
 
 ## Run it (Docker)
 
@@ -38,8 +38,8 @@ infra/        docker-compose + Caddy reverse proxy (edge anti-bot/CSP)
 ```
 
 > A full, from-scratch developer walkthrough (every file, every subsystem, how to
-> host) lives in **[guides/Technical_Analysis_EN.md](./guides/Technical_Analysis_EN.md) / [_FR](./guides/Technical_Analysis_FR.md)**;
-> a feature-by-feature tour in **[guides/App_Features_EN.md](./guides/App_Features_EN.md) / [_FR](./guides/App_Features_FR.md)**.
+> host) lives in **[guides/Technical_Analysis_EN.md](./guides/reference/Technical_Analysis_EN.md) / [_FR](./guides/reference/Technical_Analysis_FR.md)**;
+> a feature-by-feature tour in **[guides/App_Features_EN.md](./guides/reference/App_Features_EN.md) / [_FR](./guides/reference/App_Features_FR.md)**.
 
 ## API (implemented so far)
 
@@ -115,7 +115,7 @@ Before pointing a real domain at this:
    pre-signed PUT/GET.
 5. **Backups** — run `infra/backup/backup.sh` on a cron (consistent `pg_dump` + MinIO +
    audit-anchor archives, retention, optional off-site via rclone). Full run/restore steps:
-   [guides/BACKUP_EN.md](./guides/BACKUP_EN.md) · [FR](./guides/BACKUP_FR.md). *(Don't tar the
+   [guides/BACKUP_EN.md](./guides/run/BACKUP_EN.md) · [FR](./guides/run/BACKUP_FR.md). *(Don't tar the
    `db-data` volume under a live server — `pg_dump` is the safe path.)*
 6. **Bring it up** — `docker compose up -d`, then seed once:
    `docker compose exec api npm run seed` and change the seeded admin password.
@@ -133,7 +133,7 @@ Before pointing a real domain at this:
   OS/browser/device, sessions), **Web Vitals** (24h/7d/30d/90d, sortable tables + tabs by
   page/country/device/browser/OS + path filter), **Events feed** (pageviews + clicks/
   submits/edits), **Errors** (grouped JS errors + stack traces), **Goals** (conversion
-  goals + rate). See [guides/API_Reference_EN.md](./guides/API_Reference_EN.md) §15.
+  goals + rate). See [guides/API_Reference_EN.md](./guides/reference/API_Reference_EN.md) §15.
 - **Abuse/security**: Caddy + Fastify anti-bot/anti-DDoS, proof-of-work on
   signup/contact, constant-time secret compares (`safeEqual`), SSRF-guarded outbound
   fetch. Full CWE audit + remediations: [`SECURITY_AUDIT.md`](./SECURITY_AUDIT.md)

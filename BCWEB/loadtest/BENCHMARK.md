@@ -141,7 +141,48 @@ from "how does it behave under a flood".
 5. Object storage (hosted files): serve downloads via the CDN / an S3-compatible edge
    rather than straight from MinIO once download volume is real.
 
-## Server sizing (estimates, this stack = api + web + postgres + redis + minio + caddy + bot + telemetry)
+## Measured run — 2026-07-15 (real stack, rate limiter raised, seeded catalog)
+
+The first run with all three conditions right at once: the real API against a real Postgres 16
++ Redis 7, `RATE_LIMIT_MAX` raised so the numbers are route capacity rather than 429-shedding,
+and `npm run seed:demo` loaded so `/catalog.json` renders a real 113-app payload (before the
+NOT_INVALID fix it returned an empty list, which made every earlier `feed` number meaningless).
+24-core dev box, loopback, 10s per level.
+
+| Scenario | Knee (clean throughput) | p99 | p99.9 |
+|---|--:|--:|--:|
+| `cached` (`/health`, `/kofi/stats`) | **9.8k** req/s @ busy (200) | 40 ms | 56 ms |
+| `mixed` (realistic blend — the sizing anchor) | **4.4k** req/s @ heavy (1k) | 528 ms | 530 ms |
+| `feed` (`/catalog.json`, 113 apps) | **3.0k** req/s @ normal (50) | 27 ms | 43 ms |
+| `db-read` (`/projects`, `/showcase`, `/catalog`) | **2.2k** req/s @ busy (200) | 171 ms | 203 ms |
+
+**The bottleneck order is the opposite of what you'd guess.** `db-read` (2.2k) is the slowest
+path, not the big `feed` (3.0k) — because the feed is behind a 60s cache, so under load it is
+served from L1 and touches Postgres roughly once a minute, while `/projects` and `/catalog`
+are uncached and hit the database on every request. Zero timeouts at every level; the errors
+that appear at `extreme` (5k conns) are largely client-side socket exhaustion on Windows
+loopback, not the server failing.
+
+## Server sizing
+
+**Anchored to the `mixed` measurement above** (4.4k served req/s on 24 cores ≈ 184 req/s/core),
+at ~6 requests/min per active user ≈ 1,835 active users/core. Rerun `node run.mjs` on your own
+box and read `report.html` for the table computed against *your* hardware.
+
+| Tier | Users | vCPU | RAM | Disk | Notes |
+|---|---|---|---|---|---|
+| **Starter** | 500–1,000 concurrent, download-heavy | **4** | **8 GB** | 80 GB SSD + hosting quota | The realistic first box. CPU is not the constraint — the downloads are (see below). |
+| **Comfortable** | few thousand | 4–8 | 8–16 GB | 160 GB SSD + quota | Add a CDN for static + repo downloads; PgBouncer once you run API replicas. |
+| **Scale-out** | 10k+ concurrent | 8+ (spread) | 16 GB+ | managed | CDN + 2–4 API replicas behind Caddy + managed Postgres (read replica) + S3/R2 for files. |
+
+**For a download-heavy repo workload, sizing by CPU is the wrong axis.** A repo download is
+almost no CPU — the API presigns or proxies bytes from MinIO. What actually runs out is, in
+order: (1) **bandwidth** (a 200 MB modpack × 500 users = 100 GB of egress — check your VPS's
+included transfer *before* its core count), (2) **disk I/O + space** for MinIO, (3) **Postgres
+connections** if you add replicas without PgBouncer. API CPU is last. Put repo downloads behind
+a CDN / R2 and the origin stops being in the path at all — see [ADDONS](../guides/run/ADDONS_EN.md).
+
+### Older estimates (pre-measurement, kept for reference)
 
 | Tier | Users | vCPU | RAM | Disk | Notes |
 |---|---|---|---|---|---|

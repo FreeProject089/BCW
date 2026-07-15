@@ -4,8 +4,8 @@
 
 Un parcours pratique et dans l'ordre pour monter une instance BCWEB neuve : premier boot,
 compte admin, 2FA, rôles, et les intégrations optionnelles (bot Discord, Stripe). Pour l'aperçu
-architecture/fonctionnalités voir [README.md](./README.md) et
-[ARCHITECTURE_FR.md](./ARCHITECTURE_FR.md) — ce doc, c'est juste « sur quoi je clique/tape, dans
+architecture/fonctionnalités voir [README.md](../README.md) et
+[ARCHITECTURE_FR.md](../reference/ARCHITECTURE_FR.md) — ce doc, c'est juste « sur quoi je clique/tape, dans
 quel ordre ».
 
 ## 1. Prérequis
@@ -206,10 +206,10 @@ admin). Au-delà du premier boot, tu **n'édites pas** ce `.env` pour les limite
 
 ## 11. Checklist de production
 
-- Suis **[DOMAIN_SETUP_FR.md](./DOMAIN_SETUP_FR.md)** pour quitter `localhost` vers ton propre
+- Suis **[DOMAIN_SETUP_FR.md](DOMAIN_SETUP_FR.md)** pour quitter `localhost` vers ton propre
   domaine avec HTTPS automatique (Caddy + Let's Encrypt), y compris le sous-domaine optionnel
   `telemetry.<domaine>`.
-- Vois la **checklist de production** dans [README.md](./README.md) pour la liste complète
+- Vois la **checklist de production** dans [README.md](../README.md) pour la liste complète
   (backups, clés Stripe **live** + un webhook en mode live, rotation des secrets, etc.).
 - Assure-toi que chaque compte SUPERADMIN et ADMIN a la 2FA activée (étape 5) avant la mise en
   ligne, et que `JWT_SECRET` / `BOT_SHARED_SECRET` / `TELEMETRY_ADMIN_KEY` sont tous de vraies

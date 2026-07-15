@@ -9,7 +9,7 @@ updates from **BetterCommunity (BCWEB)** instead of (or alongside) GitHub. 🇫�
 
 BMM checks an **`autoupdate_api`** endpoint that returns data in the **GitHub Releases API
 shape**. The URL comes from `links.json` (`autoupdate_api`), so it's editable without
-recompiling — see [ARCHITECTURE.md](ARCHITECTURE_EN.md) and the links loader.
+recompiling — see [ARCHITECTURE.md](../reference/ARCHITECTURE_EN.md) and the links loader.
 
 On check (`check_for_update` in `src-tauri/src/commands/autoupdate.rs`):
 1. Fetch the latest release (`{api}/latest`, or the list when pre-releases are enabled).
