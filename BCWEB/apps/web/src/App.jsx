@@ -18,30 +18,43 @@ import Hero3D from './hero/Hero3D.jsx';
 import PromoBadge from './ui/promo-badge.jsx';
 import EventEffect from './hero/event-effect.jsx';
 import { IntroProvider, useIntro } from './ui/IntroContext.jsx';
-import ProjectPage, { OtherProjects, ShowcaseProjectPage } from './pages/project.jsx';
-import Profile from './pages/profile.jsx';
-import PublicProfile, { UserSearch } from './pages/publicprofile.jsx';
+import { lazy, Suspense } from 'react';
 import { ReportJoin } from './ui/report.jsx';
 import Avatar from './ui/Avatar.jsx';
-import { BlogList, BlogPostPage } from './pages/blog.jsx';
-import Docs from './pages/docs.jsx';
-import Faq from './pages/faq.jsx';
-import { Submit } from './pages/submit.jsx';
-import CommunityCatalogPage from './pages/catalogpage.jsx';
-import RepoPublicPage from './pages/repopublic.jsx';
+// Eager: the initial landing routes + nav-critical modules (the notification map is
+// rendered by the always-present nav bell, which keeps dashboard.jsx in the main chunk).
 import NotFound from './pages/notfound.jsx';
-import { ReposPage } from './pages/repos.jsx';
-import { RepoDashboard } from './pages/repo-dashboard.jsx';
 import { Home } from './pages/home.jsx';
 import { Catalog, ItemDetail } from './pages/catalog.jsx';
 import { Dashboard, NOTIF, NOTIF_FALLBACK } from './pages/dashboard.jsx';
-import { Admin } from './pages/admin.jsx';
-import { Hosting } from './pages/hosting.jsx';
 import { Auth } from './pages/signin.jsx';
-import { Legal, LegalIndex } from './pages/legal.jsx';
-import { Contact } from './pages/contact.jsx';
-import { Settings, Authorize, VerifyEmail } from './pages/account-pages.jsx';
-import { TwoFactor } from './pages/twofa.jsx';
+// Lazy: route-split so the initial bundle no longer ships the whole admin back-office,
+// repo tools, editors, etc. — each loads on demand behind the Suspense boundary below.
+const named = (imp, key) => lazy(() => imp().then((m) => ({ default: m[key] })));
+const Admin = named(() => import('./pages/admin.jsx'), 'Admin');
+const ReposPage = named(() => import('./pages/repos.jsx'), 'ReposPage');
+const RepoDashboard = named(() => import('./pages/repo-dashboard.jsx'), 'RepoDashboard');
+const ProjectPage = lazy(() => import('./pages/project.jsx'));
+const OtherProjects = named(() => import('./pages/project.jsx'), 'OtherProjects');
+const ShowcaseProjectPage = named(() => import('./pages/project.jsx'), 'ShowcaseProjectPage');
+const Profile = lazy(() => import('./pages/profile.jsx'));
+const PublicProfile = lazy(() => import('./pages/publicprofile.jsx'));
+const UserSearch = named(() => import('./pages/publicprofile.jsx'), 'UserSearch');
+const BlogList = named(() => import('./pages/blog.jsx'), 'BlogList');
+const BlogPostPage = named(() => import('./pages/blog.jsx'), 'BlogPostPage');
+const Docs = lazy(() => import('./pages/docs.jsx'));
+const Faq = lazy(() => import('./pages/faq.jsx'));
+const Submit = named(() => import('./pages/submit.jsx'), 'Submit');
+const CommunityCatalogPage = lazy(() => import('./pages/catalogpage.jsx'));
+const RepoPublicPage = lazy(() => import('./pages/repopublic.jsx'));
+const Hosting = named(() => import('./pages/hosting.jsx'), 'Hosting');
+const Legal = named(() => import('./pages/legal.jsx'), 'Legal');
+const LegalIndex = named(() => import('./pages/legal.jsx'), 'LegalIndex');
+const Contact = named(() => import('./pages/contact.jsx'), 'Contact');
+const Settings = named(() => import('./pages/account-pages.jsx'), 'Settings');
+const Authorize = named(() => import('./pages/account-pages.jsx'), 'Authorize');
+const VerifyEmail = named(() => import('./pages/account-pages.jsx'), 'VerifyEmail');
+const TwoFactor = named(() => import('./pages/twofa.jsx'), 'TwoFactor');
 
 const KOFI = 'https://ko-fi.com/bettercommunity';
 // Clean default topbar shown out of the box (no admin config): the three apps live under
@@ -764,6 +777,7 @@ export default function App() {
               mobile dashboard nav sheet) stacked ABOVE the footer, which follows in the
               DOM and would otherwise paint over an open dropdown on short pages. */}
           <main id="main-content" tabIndex={-1} className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-10 anim-fade">
+            <Suspense fallback={<div className="flex justify-center py-20 text-[var(--muted)]"><span className="anim-fade">…</span></div>}>
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/catalog" element={<Catalog />} />
@@ -808,6 +822,7 @@ export default function App() {
               <Route path="/admin" element={<Protected role={['MOD', 'ADMIN']}><Admin /></Protected>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </Suspense>
           </main>
           <Footer />
           <MobileTabBar />
