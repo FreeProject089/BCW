@@ -107,9 +107,13 @@ désormais les lignes au-delà d'une fenêtre d'âge par table (défauts 365/120
 par lots de 5k lignes/table/passe. Les très grosses tables voudront peut-être du
 partitionnement, mais la croissance est maintenant bornée par défaut.
 
-### 3.7 🟡 i18n par convention seulement
-La parité FR/EN tient à la discipline, pas à l'outillage — une clé manquante retombe en
-anglais en silence. Un lint de parité des clés rendrait ça structurel.
+### 3.7 🟡 i18n par convention seulement — désormais outillé
+La parité FR/EN tenait à la discipline, pas à l'outillage — une clé manquante retombait en anglais
+en silence, et une clé de dico dupliquée en écrasait une autre en silence (ce qui laissait deux
+features entrer en collision sur la même clé). **FAIT** — `scripts/i18n-check.mjs` (CI
+`npm run i18n:check --strict`) échoue sur les clés dupliquées et sur toute clé `t()` sans entrée
+`DICT.fr`. Il a attrapé 8 bugs de clés dupliquées (dont l'en-tête « Clients OAuth » qui affichait
+« Mes catalogues ») et 26 retombées en anglais, tous corrigés.
 
 ### 3.7b 🟡 Vulnérabilités de dépendances (transitives, faible atteignabilité)
 `npm audit` (api) : **0 critique** ; les racines :
@@ -148,7 +152,7 @@ testée à part — ne pas le `--force` à l'aveugle (cassant, risquerait le bui
 | **P2** | Découper `pages.jsx` en modules **FAIT** — le monolithe de ~10k lignes est devenu un module de helpers partagés de 210 lignes ; chaque route est passée dans son propre fichier (`home`, `catalog`, `signin`, `hosting`, `dashboard`, `account-pages`, `legal`, `contact`, et tout le back-office admin de ~7,3k lignes → `admin.jsx`). Deux pages mortes retirées. Chaque extraction gardée par **ESLint `no-undef`** (apps/web `eslint.config.js`, câblé dans la CI — il a attrapé chaque import manquant que `vite build` acceptait en silence) + un smoke-test de démarrage navigateur. `repos.jsx` (~2k) est le gros fichier restant à découper | Maintenabilité + prévient les crashes d'import récurrents |
 | **P2** | Purges de rétention analytics (par âge/nb de lignes) **FAIT** — `sweepAnalyticsRetention` purge AnalyticsEvent/InteractionEvent/WebVital/LoginAttempt au-delà de fenêtres par table (défauts 365/120/120/180j, 0 = garder toujours), par lots de 5k/table/passe, réglable par l'admin via `/admin/analytics/retention` ; 5 tests (résolveur pur + purge/garde en DB), suite complète 30/30 verte | Garde la DB saine à long terme |
 | **P2** | Redis pub/sub pour le SSE + rate limits partagés (quand les réplicas deviendront réels) | Débloque la montée en charge horizontale |
-| **P3** | Lint de parité i18n ; passe accessibilité ; monitoring d'erreurs ; OG/prérendu des pages publiques | Finition & portée |
+| **P3** | Lint de parité i18n **FAIT** (`scripts/i18n-check.mjs`, câblé CI, `--strict` ; 8 bugs de clés dupliquées + 26 retombées EN corrigés). Reste : passe accessibilité ; monitoring d'erreurs ; OG/prérendu des pages publiques | Finition & portée |
 
 ## 5. Verdict
 

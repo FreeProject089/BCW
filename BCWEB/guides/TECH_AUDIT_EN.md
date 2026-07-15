@@ -101,9 +101,12 @@ past a per-table age window (defaults 365/120/120/180 days; 0 = keep forever; ad
 via `GET/PUT /admin/analytics/retention`), batched at 5k rows/table/sweep. Very large tables
 may still want partitioning, but growth is now bounded by default.
 
-### 3.7 🟡 Convention-only i18n
-FR/EN parity is discipline, not tooling — a missing key silently falls back to English.
-A key-parity lint would make it structural.
+### 3.7 🟡 Convention-only i18n — now tooled
+FR/EN parity used to be discipline, not tooling — a missing key silently fell back to English,
+and a duplicate dict key silently overrode an earlier one (which had let two features collide on
+the same key). **DONE** — `scripts/i18n-check.mjs` (CI `npm run i18n:check --strict`) now fails on
+duplicate keys and on any `t()` key with no `DICT.fr` entry. It caught 8 duplicate-key bugs (incl.
+the OAuth-clients heading rendering "Mes catalogues") and 26 English-fallback gaps, all fixed.
 
 ### 3.7b 🟡 Dependency vulnerabilities (transitive, low reachability)
 `npm audit` (api): **0 critical**; the roots:
@@ -141,7 +144,7 @@ tested task — don't blind-`--force` it (breaking, would risk the API build).
 | **P2** | Split `pages.jsx` into feature modules **DONE** — the ~10k-line monolith is now a 210-line shared-helper module; every route moved to its own file (`home`, `catalog`, `signin`, `hosting`, `dashboard`, `account-pages`, `legal`, `contact`, and the whole ~7.3k-line admin back-office → `admin.jsx`). Two dead pages dropped. Each extraction guarded by **ESLint `no-undef`** (apps/web `eslint.config.js`, wired into CI — it caught every missing import that `vite build` accepted silently) + a browser boot smoke-test. `repos.jsx` (~2k) is the remaining large file to split next | Maintainability + prevents the recurring import crashes |
 | **P2** | Analytics retention sweeps (cap by age/rows) **DONE** — `sweepAnalyticsRetention` purges AnalyticsEvent/InteractionEvent/WebVital/LoginAttempt past per-table windows (defaults 365/120/120/180d, 0 = keep forever), batched 5k/table/sweep, admin-tunable via `/admin/analytics/retention`; 5 tests (pure resolver + DB purge/keep), full suite 30/30 green | Keeps the DB healthy long-term |
 | **P2** | Redis pub/sub for SSE + shared rate limits (when replicas become real) | Unblocks horizontal scaling |
-| **P3** | i18n key-parity lint; accessibility pass; error monitoring; OG/prerender for public pages | Polish & reach |
+| **P3** | i18n key-parity lint **DONE** (`scripts/i18n-check.mjs`, CI-wired, `--strict`; fixed 8 duplicate-key bugs + 26 EN-fallback gaps). Remaining: accessibility pass; error monitoring; OG/prerender for public pages | Polish & reach |
 
 ## 5. Verdict
 
