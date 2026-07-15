@@ -69,6 +69,31 @@ jobs:
       - name: tests
         run: npm test
 
+  native:
+    name: Native addon (Rust) build + native-path tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - uses: dtolnay/rust-toolchain@stable
+      # Build the Rust addon (BLAKE3 / off-event-loop zip / zstd / image resize). A compile
+      # regression fails here rather than silently shipping the JS fallback everywhere.
+      - name: build addon
+        working-directory: BCWEB/native
+        run: npm install --no-audit --no-fund && npx napi build --platform --release
+      - name: api deps
+        working-directory: BCWEB/apps/api
+        run: npm ci
+      # The addon must actually LOAD (else the native path is untested). The other jobs run
+      # the suite WITHOUT the addon, so they cover the JS fallback; this covers the native path.
+      - name: addon loads (hasNative)
+        working-directory: BCWEB/apps/api
+        run: node --input-type=module -e "import { hasNative } from './src/lib/native.mjs'; if (!hasNative) { console.error('native addon did not load'); process.exit(1); } console.log('hasNative OK');"
+      - name: native-path tests (parity native vs JS)
+        working-directory: BCWEB/apps/api
+        run: node --test test/native.test.mjs
+
   secret-scan:
     name: Secret scan
     runs-on: ubuntu-latest
