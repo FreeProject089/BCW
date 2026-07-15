@@ -27,15 +27,14 @@ les routes hors atterrissage se chargent à la demande. Chunk principal **2,34 M
 (−41 %)** ; le bundle admin est son propre chunk de **504 Ko** récupéré seulement quand un
 admin ouvre `/admin` ; 32 chunks à la demande.
 
-**Reste** (voir plan) :
-- Le chunk principal fait encore ~1,38 Mo. `dashboard.jsx` reste eager car la cloche de nav
-  importe sa carte `NOTIF` — extraire `NOTIF`/`NOTIF_FALLBACK` dans un petit module
-  permettrait de découper aussi le dashboard.
-- Les gros chunks vendeurs sont déjà séparés (`maplibre-gl` 1 Mo, `three` 464 Ko, `rrweb`
-  260 Ko, `jszip` 96 Ko) — vérifier que chacun n'est chargé **que** sur la route qui en a
-  besoin (carte → analytics, three → hero, rrweb → replay) et lazy-loader l'orbe du hero pour
-  que `three` ne bloque jamais le premier rendu.
-- Ajouter un budget/visualiseur de taille de bundle pour rendre les régressions visibles.
+**Fait (deuxième passe)** — extraction de la carte `NOTIF` dans un petit `ui/notif.js` pour que
+la cloche de nav n'épingle plus `dashboard.jsx` au chunk principal (le dashboard se découpe
+maintenant), et lazy-load de l'orbe Hero3D pour que `three` (~460 Ko) charge après le premier
+rendu. Chunk principal **1,38 Mo → 1,23 Mo** (soit **−47 %** vs les 2,34 Mo d'origine).
+
+**Reste** : les chunks carte (`maplibre-gl` 1 Mo) / `rrweb` / `jszip` sont déjà séparés —
+vérifier que chacun ne charge que sur sa route ; et ajouter un budget/visualiseur de bundle pour
+rendre les régressions visibles.
 
 ### 2. 🟠 BD : index des chemins chauds sur `CatalogItem` — **corrigé**
 Le browse public `/catalog` (filtre par `status`, tri par `downloads`/`views`/`updatedAt`) et
@@ -44,11 +43,13 @@ et triaient sur des colonnes **non indexées** — un scan séquentiel + tri en 
 dégrade quand le catalogue grossit.
 
 **Fait** — ajout des index composites `(status,updatedAt)`, `(status,downloads)`,
-`(status,views)` et `(projectId,kind,status)` (migration `catalog_hot_path_indexes`).
+`(status,views)` et `(projectId,kind,status)` sur `CatalogItem` (migration
+`catalog_hot_path_indexes`) ; et un index couvrant `(listed,verified,pendingReview,createdAt)`
+sur `ServerRepo` pour la liste publique `/repos` (migration `repos_list_index`). Le browse des
+catalogues communautaires avait déjà `(status,listed)`.
 
-**Reste** : auditer les autres endpoints de liste de la même façon — la liste publique des
-dépôts (`ServerRepo` par `listed`/`status`), le browse des catalogues communautaires, et les
-tables admin.
+**Reste** : les grosses tables admin (analytics, journal d'audit) — priorité moindre car
+admin-only, hors des chemins chauds visiteur.
 
 ### 3. 🟠 Le feed `/catalog.json` était non borné — **corrigé**
 Le feed natif BMM faisait `findMany` **sans `take:`** plus une jointure owner, donc son coût de
@@ -110,8 +111,8 @@ d'images) plutôt que les originaux pleine taille sur les cartes de liste.
 | **P1** | Découpage par route de la SPA | −41 % de JS initial pour chaque visiteur | ✅ fait |
 | **P1** | Index des chemins chauds `CatalogItem` | browse + feed restent rapides quand le catalogue grossit | ✅ fait |
 | **P1** | Plafonner / cacher le feed `/catalog.json` | borne l'endpoint le plus interrogé | ✅ fait |
-| **P2** | Finir le découpage frontend (extraire `NOTIF`, lazy hero `three`, budget bundle) | réduire encore le chunk principal de 1,38 Mo | ▢ |
-| **P2** | Indexer les autres endpoints de liste (dépôts, catalogues communautaires, admin) | supprimer les scans séquentiels restants | ▢ |
+| **P2** | Finir le découpage frontend (extraire `NOTIF`, lazy hero `three`) | chunk principal 1,38 → 1,23 Mo (−47 % total) ; budget bundle encore ▢ | ✅ fait |
+| **P2** | Indexer les endpoints de liste publics (dépôts, catalogues communautaires) | supprimer les scans séquentiels ; tables admin encore ▢ | ✅ fait |
 | **P2** | Redis pub/sub + store rate-limit + verrous sweeper (derrière `REDIS_URL`) | débloque la montée en charge horizontale | ✅ fait |
 | **P3** | Rollups quotidiens analytics | dashboards rapides à toute fenêtre | ▢ |
 | **P3** | Prérendu/SSR pour les routes publiques | premier rendu + indexation moteur | ▢ |

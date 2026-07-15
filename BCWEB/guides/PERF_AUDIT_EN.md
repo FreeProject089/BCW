@@ -24,15 +24,14 @@ the ~7.3k-line admin back-office, repo tools and editors that a normal visitor n
 routes now load on demand. Main chunk **2.34 MB → 1.38 MB (−41 %)**; the admin bundle is
 its own **504 KB** chunk fetched only when an admin opens `/admin`; 32 on-demand chunks.
 
-**Remaining** (see plan):
-- The main chunk is still ~1.38 MB. `dashboard.jsx` stays eager because the nav bell
-  imports its `NOTIF` map — extracting `NOTIF`/`NOTIF_FALLBACK` into a tiny module would
-  let the dashboard split out too.
-- Heavy vendor chunks are already split (`maplibre-gl` 1 MB, `three` 464 KB, `rrweb`
-  260 KB, `jszip` 96 KB) — confirm each is loaded **only** on the route that needs it
-  (map → analytics, three → hero, rrweb → session replay) and lazy-load the hero orb so
-  `three` never blocks first paint.
-- Add a bundle-size budget/visualiser so regressions are visible.
+**Done (second cut)** — extracted the `NOTIF` map into a tiny `ui/notif.js` so the nav
+bell no longer pins `dashboard.jsx` to the main chunk (dashboard now route-splits), and
+lazy-loaded the Hero3D orb so `three` (~460 KB) loads after first paint. Main chunk
+**1.38 MB → 1.23 MB** (now **−47 %** vs the original 2.34 MB).
+
+**Remaining**: the map (`maplibre-gl` 1 MB) / `rrweb` / `jszip` chunks are already split —
+confirm each loads only on its route; and add a bundle-size budget/visualiser so
+regressions are visible.
 
 ### 2. 🟠 DB: hot-path indexes on `CatalogItem` — **fixed**
 The public `/catalog` browse (filter by `status`, sort by `downloads`/`views`/`updatedAt`)
@@ -41,10 +40,13 @@ filtered and sorted on **unindexed** columns — a sequential scan + in-memory s
 degrades as the catalog grows.
 
 **Done** — added `(status,updatedAt)`, `(status,downloads)`, `(status,views)` and
-`(projectId,kind,status)` composite indexes (migration `catalog_hot_path_indexes`).
+`(projectId,kind,status)` composite indexes on `CatalogItem` (migration
+`catalog_hot_path_indexes`); and a `(listed,verified,pendingReview,createdAt)` covering
+index on `ServerRepo` for the public `/repos` list (migration `repos_list_index`). The
+community-catalog browse already had `(status,listed)`.
 
-**Remaining**: audit the other list endpoints the same way — the public repo list
-(`ServerRepo` by `listed`/`status`), the community-catalog browse, and the admin tables.
+**Remaining**: the heavy admin tables (analytics, audit log) — lower priority since
+they're admin-only, not on visitor hot paths.
 
 ### 3. 🟠 The `/catalog.json` feed was unbounded — **fixed**
 The BMM-native feed did `findMany` with **no `take:`** plus an owner join, so its query
@@ -104,8 +106,8 @@ full-size originals on list cards.
 | **P1** | Route-split the SPA | −41 % initial JS for every visitor | ✅ done |
 | **P1** | `CatalogItem` hot-path indexes | browse + feed stay fast as the catalog grows | ✅ done |
 | **P1** | Cap / cache the `/catalog.json` feed | bounds the most-polled endpoint | ✅ done |
-| **P2** | Finish frontend splitting (extract `NOTIF`, lazy hero `three`, bundle budget) | shrink the 1.38 MB main chunk further | ▢ |
-| **P2** | Index the other list endpoints (repos, community catalogs, admin) | remove the remaining seq-scans | ▢ |
+| **P2** | Finish frontend splitting (extract `NOTIF`, lazy hero `three`) | main chunk 1.38 → 1.23 MB (−47 % total); bundle budget still ▢ | ✅ done |
+| **P2** | Index the public list endpoints (repos, community catalogs) | remove the seq-scans; admin tables still ▢ | ✅ done |
 | **P2** | Redis pub/sub + rate-limit store + sweeper locks (behind `REDIS_URL`) | unblocks horizontal scaling | ✅ done |
 | **P3** | Analytics daily rollups | fast dashboards at any window | ▢ |
 | **P3** | Prerender/SSR for public routes | first-paint + search indexing | ▢ |
