@@ -118,10 +118,11 @@ webp via `@napi-rs/canvas`, chaque variante redimensionnée une fois dans un pet
 immutable (une source 800px → 256px pèse ~78 % de moins). Le décodage sur le main thread JS est un
 candidat worker Rust (voir le [plan workers Rust](RUST_WORKERS_PLAN_FR.md) §P3).
 
-**Reste** : les cartes de liste front-end doivent réellement demander `?w=` pour concrétiser le
-gain — idéalement via un composant cover/`<img>` partagé qui l'ajoute pour les URLs `/media`. À
-plus long terme, servir `/media` directement depuis le stockage objet / un CDN sortirait
-complètement le proxy d'octets de l'API Node.
+**Adoption front-end démarrée** — un helper `lib/img.js` `thumb(url,w)` ajoute `?w=` uniquement
+aux URLs `/media` (externes/data intactes) ; câblé dans les grilles de covers les plus chargées
+(cartes blog + projet/showcase). Les autres rendus de covers (items catalogue, etc.) adoptent le
+même helper. À plus long terme, servir `/media` directement depuis le stockage objet / un CDN
+sortirait complètement le proxy d'octets de l'API Node.
 
 ---
 

@@ -112,10 +112,11 @@ images to webp via `@napi-rs/canvas`, each variant resized once into a small LRU
 served immutable (an 800px source → 256px is ~78 % smaller). Decoding on the JS main
 thread is a Rust-worker candidate (see the [Rust workers plan](RUST_WORKERS_PLAN_EN.md) §P3).
 
-**Remaining**: front-end list cards must actually request `?w=` for their thumbnails to
-realise the win — ideally via one shared cover/`<img>` component that appends it for
-`/media` URLs. Longer term, serving `/media` straight from object storage / a CDN would
-take the byte-proxying off the Node API entirely.
+**Front-end adoption started** — a `lib/img.js` `thumb(url,w)` helper appends `?w=` only to
+`/media` URLs (external/data URLs untouched); wired into the busiest cover grids (blog +
+project/showcase cards). Remaining cover renders (catalog items, etc.) adopt the same
+helper. Longer term, serving `/media` straight from object storage / a CDN would take the
+byte-proxying off the Node API entirely.
 
 ---
 
