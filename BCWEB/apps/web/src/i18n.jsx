@@ -1257,7 +1257,7 @@ const DICT = {
     'an.ret.pageviews': 'Pages vues', 'an.ret.interactions': 'Interactions', 'an.ret.vitals': 'Web Vitals', 'an.ret.logins': 'Tentatives de connexion',
     'an.ret.rows': 'lignes', 'an.ret.oldest': 'plus ancienne', 'an.ret.d': 'j', 'an.ret.keepforever': 'conservé indéfiniment', 'an.ret.days': 'jours',
     'an.ret.save': 'Enregistrer', 'an.ret.saved': 'Fenêtres de rétention enregistrées.', 'an.ret.saveerr': 'Impossible d\'enregistrer les fenêtres de rétention.', 'an.ret.reset': 'Réinitialiser les défauts',
-    'common.back': 'Retour', 'common.edit': 'Modifier',
+    'common.back': 'Retour', 'common.edit': 'Modifier', 'a11y.skip': 'Aller au contenu',
     'cm.collapse': 'Réduire', 'cm.collapseall': 'Tout réduire', 'cm.expand': 'Développer', 'cm.expandall': 'Tout développer', 'cm.threads': 'fils',
     'ev.f.density.h': 'Combien à la fois. Plus bas = plus calme / moins intrusif.', 'ev.f.link': 'Lien du badge (chemin ou URL, optionnel)', 'ev.f.link.h': 'Où le badge d’annonce envoie l’utilisateur. p. ex. /hosting ou https://…', 'ev.f.size': 'Taille des feux d’artifice (1–10)', 'ev.preview': 'Prévisualiser l’effet', 'ev.preview.h': 'Joue les feux d’artifice maintenant avec la densité / chutes de drapeaux actuelles (ignore reduce-motion) pour les régler.',
     'pools.name': 'Nom du pool',

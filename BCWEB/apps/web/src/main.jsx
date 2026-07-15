@@ -6,6 +6,7 @@ import { ThemeProvider } from './ui/theme.jsx';
 import { I18nProvider } from './i18n.jsx';
 import { DialogProvider, ToastProvider } from './ui/ui.jsx';
 import { UploadProvider } from './pages/uploads.jsx';
+import { ErrorBoundary } from './ui/ErrorBoundary.jsx';
 import App from './App.jsx';
 import { applyGlassPrefs } from './lib/prefs.js';
 import './index.css';
@@ -22,7 +23,9 @@ createRoot(document.getElementById('root')).render(
             <DialogProvider>
               <AuthProvider>
                 <UploadProvider>
-                  <App />
+                  <ErrorBoundary>
+                    <App />
+                  </ErrorBoundary>
                 </UploadProvider>
               </AuthProvider>
             </DialogProvider>

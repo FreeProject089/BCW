@@ -752,6 +752,9 @@ export default function App() {
   return (
     <IntroProvider>
       <div className="min-h-screen flex flex-col">
+        {/* Keyboard skip link: first focusable element, off-screen until focused, so
+            keyboard/screen-reader users can jump straight past the nav to the content. */}
+        <a href="#main-content" className="skip-link">{t('a11y.skip', 'Skip to content')}</a>
         <Hero3D />
         <AppReveal>
           <PromoBadge />
@@ -760,7 +763,7 @@ export default function App() {
           {/* relative z-10: keep the page content (and any in-page overlays like the
               mobile dashboard nav sheet) stacked ABOVE the footer, which follows in the
               DOM and would otherwise paint over an open dropdown on short pages. */}
-          <main className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-10 anim-fade">
+          <main id="main-content" tabIndex={-1} className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-10 anim-fade">
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/catalog" element={<Catalog />} />

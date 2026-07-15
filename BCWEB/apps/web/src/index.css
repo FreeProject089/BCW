@@ -233,6 +233,12 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
      specificity 0 so components can still override. */
   :where(button, [role="button"], summary, [tabindex]):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 6px; }
 
+  /* Skip-to-content link: off-screen until focused, then pinned top-left over the nav. */
+  .skip-link { position: fixed; top: 8px; left: 8px; z-index: 200; transform: translateY(-160%);
+    background: var(--primary); color: #fff; padding: 10px 16px; border-radius: 10px; font-weight: 600;
+    font-size: 14px; box-shadow: 0 8px 24px -8px rgba(0,0,0,0.5); transition: transform .15s ease; }
+  .skip-link:focus { transform: translateY(0); outline: 2px solid #fff; outline-offset: 2px; }
+
   .topbar { background: color-mix(in srgb, var(--bg-solid) 82%, transparent); backdrop-filter: blur(14px); }
   /* Dark theme: the glassy 82% + blur reads fine on white, but over the dark
      bg (with the bright orb moving underneath) menu text became genuinely hard
