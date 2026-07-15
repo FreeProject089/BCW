@@ -114,6 +114,8 @@ Toutes les phases sont compilées, testées et en production. Le crate `native/`
 avec un fallback JS, donc un checkout sans l'addon tourne quand même ; `native.test.mjs` prouve
 la parité pour chacun. Il compile sous Windows et Alpine musl, est câblé dans le Dockerfile de
 l'API (deux étapes), et `hasNative=true` dans le conteneur. adm-zip ne survit plus que comme
-fallback du wrapper. `zstd`/`blake3` sont de l'infra prête (pas encore de call site interne). Les
-prochaines étapes évidentes, au besoin : un writer zip *streaming* natif pour les très gros
-exports, et le partage du cœur du crate avec l'app BMM Tauri.
+fallback du wrapper. `zstd`/`blake3` sont de l'infra prête (pas encore de call site interne). La
+logique pure vit maintenant dans un crate séparé `native/core` (`bcweb-core`, sans dépendance
+napi) qui se teste sous `cargo test` (lancé en CI) et est prêt à être partagé avec l'app BMM
+Tauri. La prochaine étape évidente, au besoin : un writer zip *streaming* natif pour les très
+gros exports.

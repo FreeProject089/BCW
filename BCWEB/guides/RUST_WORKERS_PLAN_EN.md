@@ -111,6 +111,7 @@ All phases are built, tested, and running in production. The `native/` crate exp
 with a JS fallback, so a checkout without the addon still runs; `native.test.mjs` proves
 parity for every one. It builds for Windows and Alpine musl, is wired into the API Dockerfile
 (two-stage), and `hasNative=true` in the container. adm-zip now survives only as the wrapper's
-fallback. `zstd`/`blake3` are ready infra (no internal call site yet). The obvious next steps,
-when needed: a native zip *streaming* writer for very large exports, and sharing the crate's
-core with the BMM Tauri app.
+fallback. `zstd`/`blake3` are ready infra (no internal call site yet). The pure logic now
+lives in a separate `native/core` crate (`bcweb-core`, no napi dependency) that unit-tests
+under `cargo test` (run in CI) and is ready to be shared with the BMM Tauri app. The obvious
+next step, when needed: a native zip *streaming* writer for very large exports.
