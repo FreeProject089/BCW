@@ -84,11 +84,12 @@ editors, painful conflicts, hard onboarding, and the recurring "missing import" 
 (X, Calendar) — bare JSX identifiers pass the build and explode at render. That last class is
 now caught structurally by the ESLint `no-undef` gate in CI.
 
-### 3.4 🟠 Single-process assumptions
-The SSE events feed (`feedBus`), various in-memory caches, and rate-limit state are
-in-process. Sweepers/schedulers assume one instance (no distributed locks). Fine for the
-current single-container deploy — but scaling to replicas requires a Redis pub/sub pass
-(documented in code, not implemented).
+### 3.4 ✅ Single-process assumptions — resolved
+The SSE events feed, caches, rate-limit state and sweepers were all in-process. They are
+now Redis-backed behind `REDIS_URL` (with an in-process fallback so the single-container
+deploy is unchanged): the rate-limiter and cache L2 use Redis; the SSE feed publishes to a
+Redis channel that every replica re-subscribes to (self-echo skipped by a per-process id);
+and the sweeper takes a `SET NX PX` single-runner lock. See the performance audit §4.
 
 ### 3.5 🟠 Schema management: `prisma db push` at boot with `--accept-data-loss`
 No migration history. A schema edit that renames/narrows a column can silently drop data in
@@ -153,7 +154,7 @@ hard CI gate is deliberately avoided, since it would fail unrelated PRs whenever
 | **P1** | Switch `db push` → `prisma migrate` **DONE** — a `0_init` baseline + `src/boot-migrate.mjs` (adopts fresh / db-push / migrated DBs safely, verified for zero data loss); Dockerfile boots via `migrate deploy`; CI applies migrations + a drift check (schema-without-migration fails) | Removes silent-data-loss risk on schema changes |
 | **P2** | Split `pages.jsx` into feature modules **DONE** — the ~10k-line monolith is now a 210-line shared-helper module; every route moved to its own file (`home`, `catalog`, `signin`, `hosting`, `dashboard`, `account-pages`, `legal`, `contact`, and the whole ~7.3k-line admin back-office → `admin.jsx`). Two dead pages dropped. Each extraction guarded by **ESLint `no-undef`** (apps/web `eslint.config.js`, wired into CI — it caught every missing import that `vite build` accepted silently) + a browser boot smoke-test. `repos.jsx` (~2k) is the remaining large file to split next | Maintainability + prevents the recurring import crashes |
 | **P2** | Analytics retention sweeps (cap by age/rows) **DONE** — `sweepAnalyticsRetention` purges AnalyticsEvent/InteractionEvent/WebVital/LoginAttempt past per-table windows (defaults 365/120/120/180d, 0 = keep forever), batched 5k/table/sweep, admin-tunable via `/admin/analytics/retention`; 5 tests (pure resolver + DB purge/keep), full suite 30/30 green | Keeps the DB healthy long-term |
-| **P2** | Redis pub/sub for SSE + shared rate limits (when replicas become real) | Unblocks horizontal scaling |
+| **P2** | Redis pub/sub for SSE + shared rate limits + sweeper lock **DONE** (behind `REDIS_URL`, in-process fallback) | Unblocks horizontal scaling |
 | **P3** | i18n key-parity lint **DONE** (`scripts/i18n-check.mjs`, CI-wired, `--strict`; fixed 8 duplicate-key bugs + 26 EN-fallback gaps). OG unfurl coverage for all public/shareable pages **DONE** (gated + tested). Shared-primitive a11y pass (Modal/Dropdown dialog+listbox semantics, focus management) **DONE**. Remaining: full-page a11y audit (contrast, screen-reader); error monitoring; full SSR for search indexing | Polish & reach |
 
 ## 5. Verdict

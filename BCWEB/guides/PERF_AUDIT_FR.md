@@ -61,17 +61,21 @@ existant (TTL 60s : L1 par-process + L2 Redis + coalescence des requêtes), donc
 concurrents partagent un seul appel producteur. Le contrôle d'accès tourne toujours par-requête
 avant le cache. Couvert par `test/cache.test.mjs`.
 
-### 4. 🟠 L'état mono-processus bloque la montée en charge horizontale
-Le feed SSE (`feedBus`), plusieurs caches mémoire et les compteurs de rate-limit sont
-in-process ; les sweepers supposent une seule instance (pas de verrou distribué). Correct pour
-le déploiement mono-conteneur actuel, mais une 2ᵉ réplica ferait double-tirer les planificateurs
-et scinderait le feed admin en direct. C'est le même item que §3.4 / P2 de l'audit technique.
+### 4. 🟠 L'état mono-processus bloquait la montée en charge — **fait**
+Le feed SSE, les caches, les compteurs de rate-limit et les sweepers étaient tous in-process.
+Les quatre sont désormais adossés à Redis derrière `REDIS_URL`, avec un fallback in-process pour
+que le déploiement mono-conteneur ne soit pas affecté :
+- **Rate-limit** → store Redis partagé (option `redis` de `@fastify/rate-limit`). *(déjà en place)*
+- **Lectures publiques chaudes** → cache deux-tiers (`lib/cache.mjs`) : L1 par-process + L2 Redis +
+  coalescence des requêtes. *(déjà en place ; utilisé aussi par `/catalog.json` maintenant)*
+- **Feed admin en direct (SSE)** → chaque événement ingéré est publié sur un canal Redis ; chaque
+  instance fait tourner un abonné qui ré-émet les événements des autres réplicas sur son bus local
+  (tagué avec un id par-process pour ignorer son propre écho). **Fait cette passe.**
+- **Sweeper** → un verrou `SET NX PX` élit un seul runner par tick entre réplicas (expire tout
+  seul ; une erreur Redis échoue en sécurité). **Fait cette passe.**
 
-**Plan (Redis pub/sub)** : (a) déplacer la diffusion SSE vers Redis pub/sub (on a déjà
-`ioredis`) ; (b) déplacer le rate-limit + les caches chauds vers Redis (`@fastify/rate-limit`
-supporte un store Redis) ; (c) garder les sweepers avec un verrou Redis (`SET NX PX`) pour
-qu'une seule instance les exécute. Le livrer derrière `REDIS_URL` avec un fallback in-process,
-pour que les déploiements mono-conteneur ne soient pas affectés.
+Vérifié contre un vrai Postgres + Redis : abonné `NUMSUB=1`, l'ingestion publie sur le canal du
+feed, et le chemin de fallback reste 39/39 vert sans Redis.
 
 ### 5. 🟡 Les agrégations analytics sont des scans plein-fenêtre
 Les tableaux de bord admin lancent du SQL brut `GROUP BY` / `count(DISTINCT …)` sur
@@ -108,7 +112,7 @@ d'images) plutôt que les originaux pleine taille sur les cartes de liste.
 | **P1** | Plafonner / cacher le feed `/catalog.json` | borne l'endpoint le plus interrogé | ✅ fait |
 | **P2** | Finir le découpage frontend (extraire `NOTIF`, lazy hero `three`, budget bundle) | réduire encore le chunk principal de 1,38 Mo | ▢ |
 | **P2** | Indexer les autres endpoints de liste (dépôts, catalogues communautaires, admin) | supprimer les scans séquentiels restants | ▢ |
-| **P2** | Redis pub/sub + store rate-limit + verrous sweeper (derrière `REDIS_URL`) | débloque la montée en charge horizontale | ▢ |
+| **P2** | Redis pub/sub + store rate-limit + verrous sweeper (derrière `REDIS_URL`) | débloque la montée en charge horizontale | ✅ fait |
 | **P3** | Rollups quotidiens analytics | dashboards rapides à toute fenêtre | ▢ |
 | **P3** | Prérendu/SSR pour les routes publiques | premier rendu + indexation moteur | ▢ |
 | **P3** | En-têtes de cache images / variantes responsives | pages de liste plus légères | ▢ |

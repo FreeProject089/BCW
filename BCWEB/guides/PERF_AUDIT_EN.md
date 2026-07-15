@@ -56,17 +56,21 @@ cache (60s TTL: L1 per-process + L2 Redis + request-coalescing), so concurrent c
 misses share one producer call. Access control still runs per-request before the cache.
 Covered by `test/cache.test.mjs`.
 
-### 4. 🟠 Single-process state blocks horizontal scaling
-The SSE feed (`feedBus`), several in-memory caches, and the rate-limit counters are
-in-process; the sweepers assume a single instance (no distributed lock). Correct for
-today's single-container deploy, but a second replica would double-fire schedulers and
-split the live admin feed. This is the same item as the tech audit's §3.4 / P2.
+### 4. 🟠 Single-process state blocked horizontal scaling — **done**
+The SSE feed, caches, rate-limit counters and sweepers were all in-process. All four are
+now Redis-backed behind `REDIS_URL`, with an in-process fallback so the single-container
+deploy is unaffected:
+- **Rate-limit** → shared Redis store (`@fastify/rate-limit`'s `redis` option). *(already in place)*
+- **Hot public reads** → two-tier cache (`lib/cache.mjs`): L1 per-process + L2 Redis + request
+  coalescing. *(already in place; now also used by `/catalog.json`)*
+- **SSE admin live feed** → each ingested event is published to a Redis channel; every
+  instance runs a subscriber that re-emits other replicas' events onto its local bus
+  (tagged with a per-process id to skip self-echo). **Done this pass.**
+- **Sweeper** → a `SET NX PX` lock elects a single runner per tick across replicas (expires
+  on its own; a Redis error fails safe). **Done this pass.**
 
-**Plan (Redis pub/sub)**: (a) move the SSE fan-out to Redis pub/sub (already have
-`ioredis`); (b) move rate-limit + the hot caches to Redis (`@fastify/rate-limit` supports
-a Redis store); (c) guard the sweepers with a Redis lock (`SET NX PX`) so only one instance
-runs them. Ship it behind `REDIS_URL` with an in-process fallback, so single-container
-deploys are unaffected.
+Verified against real Postgres + Redis: subscriber `NUMSUB=1`, ingestion publishes to the
+feed channel, and the fallback path stays 39/39 green with no Redis.
 
 ### 5. 🟡 Analytics aggregations are full-window scans
 The admin dashboards run raw-SQL `GROUP BY` / `count(DISTINCT …)` over `AnalyticsEvent`
@@ -102,7 +106,7 @@ full-size originals on list cards.
 | **P1** | Cap / cache the `/catalog.json` feed | bounds the most-polled endpoint | ✅ done |
 | **P2** | Finish frontend splitting (extract `NOTIF`, lazy hero `three`, bundle budget) | shrink the 1.38 MB main chunk further | ▢ |
 | **P2** | Index the other list endpoints (repos, community catalogs, admin) | remove the remaining seq-scans | ▢ |
-| **P2** | Redis pub/sub + rate-limit store + sweeper locks (behind `REDIS_URL`) | unblocks horizontal scaling | ▢ |
+| **P2** | Redis pub/sub + rate-limit store + sweeper locks (behind `REDIS_URL`) | unblocks horizontal scaling | ✅ done |
 | **P3** | Analytics daily rollups | fast dashboards at any window | ▢ |
 | **P3** | Prerender/SSR for public routes | first-paint + search indexing | ▢ |
 | **P3** | Image cache headers / responsive variants | lighter list pages | ▢ |

@@ -88,11 +88,13 @@ motivé le découpage : éditeurs lents, conflits pénibles, onboarding difficil
 au rendu. Cette dernière classe est désormais attrapée structurellement par le garde ESLint
 `no-undef` dans la CI.
 
-### 3.4 🟠 Hypothèses mono-processus
-Le feed SSE (`feedBus`), divers caches mémoire et l'état de rate-limit sont in-process. Les
-sweepers/planificateurs supposent une seule instance (pas de verrous distribués). Correct
-pour le déploiement mono-conteneur actuel — mais passer en réplicas exige un chantier Redis
-pub/sub (documenté dans le code, pas implémenté).
+### 3.4 ✅ Hypothèses mono-processus — résolu
+Le feed SSE, les caches, l'état de rate-limit et les sweepers étaient tous in-process. Ils sont
+désormais adossés à Redis derrière `REDIS_URL` (avec un fallback in-process pour que le
+déploiement mono-conteneur soit inchangé) : le rate-limiter et le L2 du cache utilisent Redis ;
+le feed SSE publie sur un canal Redis auquel chaque réplica se ré-abonne (auto-écho ignoré par
+un id par-process) ; et le sweeper prend un verrou single-runner `SET NX PX`. Voir l'audit de
+performance §4.
 
 ### 3.5 🟠 Gestion de schéma : `prisma db push` au boot avec `--accept-data-loss`
 Pas d'historique de migrations. Une modification de schéma qui renomme/rétrécit une colonne
@@ -164,7 +166,7 @@ rapport dès qu'un avis est publié.
 | **P1** | Passer `db push` → `prisma migrate` **FAIT** — une baseline `0_init` + `src/boot-migrate.mjs` (adopte sans risque les BD fraîches / db-push / déjà migrées, vérifié zéro perte de données) ; le Dockerfile boote via `migrate deploy` ; la CI applique les migrations + un contrôle de dérive (un schéma sans migration échoue) | Supprime le risque de perte de données silencieuse |
 | **P2** | Découper `pages.jsx` en modules **FAIT** — le monolithe de ~10k lignes est devenu un module de helpers partagés de 210 lignes ; chaque route est passée dans son propre fichier (`home`, `catalog`, `signin`, `hosting`, `dashboard`, `account-pages`, `legal`, `contact`, et tout le back-office admin de ~7,3k lignes → `admin.jsx`). Deux pages mortes retirées. Chaque extraction gardée par **ESLint `no-undef`** (apps/web `eslint.config.js`, câblé dans la CI — il a attrapé chaque import manquant que `vite build` acceptait en silence) + un smoke-test de démarrage navigateur. `repos.jsx` (~2k) est le gros fichier restant à découper | Maintenabilité + prévient les crashes d'import récurrents |
 | **P2** | Purges de rétention analytics (par âge/nb de lignes) **FAIT** — `sweepAnalyticsRetention` purge AnalyticsEvent/InteractionEvent/WebVital/LoginAttempt au-delà de fenêtres par table (défauts 365/120/120/180j, 0 = garder toujours), par lots de 5k/table/passe, réglable par l'admin via `/admin/analytics/retention` ; 5 tests (résolveur pur + purge/garde en DB), suite complète 30/30 verte | Garde la DB saine à long terme |
-| **P2** | Redis pub/sub pour le SSE + rate limits partagés (quand les réplicas deviendront réels) | Débloque la montée en charge horizontale |
+| **P2** | Redis pub/sub pour le SSE + rate limits partagés + verrou sweeper **FAIT** (derrière `REDIS_URL`, fallback in-process) | Débloque la montée en charge horizontale |
 | **P3** | Lint de parité i18n **FAIT** (`scripts/i18n-check.mjs`, câblé CI, `--strict` ; 8 bugs de clés dupliquées + 26 retombées EN corrigés). Couverture unfurl OG de toutes les pages publiques/partageables **FAIT** (gatée + testée). Passe a11y des primitives partagées (sémantique dialog/listbox du Modal/Dropdown, gestion du focus) **FAIT**. Reste : audit a11y page-par-page (contraste, lecteur d'écran) ; monitoring d'erreurs ; SSR complet pour l'indexation | Finition & portée |
 
 ## 5. Verdict
