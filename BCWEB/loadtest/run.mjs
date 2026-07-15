@@ -17,6 +17,7 @@ import os from 'node:os';
 import { writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { toMarkdown, findKnee } from './report.mjs';
+import { toHtml } from './report-html.mjs';
 
 const BASE = (process.env.BASE || 'http://localhost:3000').replace(/\/+$/, '');
 const u = new URL(BASE);
@@ -125,16 +126,24 @@ for (const scn of SCENARIOS) {
 }
 
 // Write the reports.
-const md = toMarkdown(meta, scenarioOut);
 const json = { meta, scenarios: scenarioOut };
-writeFileSync(new URL('./report.md', import.meta.url), md);
+writeFileSync(new URL('./report.md', import.meta.url), toMarkdown(meta, scenarioOut));
 writeFileSync(new URL('./report.json', import.meta.url), JSON.stringify(json, null, 2));
+// report.html is the one to actually LOOK at: self-contained (no CDN/build), open it straight
+// from the filesystem. The <head> is added here so the file stands alone in a browser.
+writeFileSync(new URL('./report.html', import.meta.url),
+  `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BCWEB stress report — ${meta.at}</title><style>html,body{margin:0;padding:0}</style></head><body>
+${toHtml(meta, scenarioOut)}
+</body></html>`);
 // Keep the legacy filename working for anything that read it.
 writeFileSync(new URL('./last-run.json', import.meta.url), JSON.stringify(json, null, 2));
 
 const overall = scenarioOut.map((s) => s.knee).filter(Boolean).sort((a, b) => b.ok2xx_s - a.ok2xx_s)[0];
 console.log('────────────────────────────────────────────────────────');
 console.log(`Peak clean throughput: ${overall ? `${fmt(overall.ok2xx_s)} served req/s (${overall.scenario} @ ${overall.level})` : 'none clean — lower the levels or check reachability'}`);
-console.log(`Reports written:  ${new URL('./report.md', import.meta.url).pathname}`);
-console.log(`                  ${new URL('./report.json', import.meta.url).pathname}`);
-console.log('Open report.md for the full tables, bottleneck diagnosis and min-spec table.\n');
+const here = decodeURIComponent(new URL('.', import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, '$1');
+console.log(`\nReports written to ${here}`);
+console.log('  report.html  ← open this one (charts + tables + diagnosis, self-contained)');
+console.log('  report.md    same thing as text');
+console.log('  report.json  machine-readable — diff it between runs; the knee moving up is the win\n');
