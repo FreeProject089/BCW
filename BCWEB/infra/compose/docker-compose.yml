@@ -122,6 +122,9 @@ services:
       # locks it in the dashboard (same pattern as DISCORD_TOKEN). Blank = admin-managed.
       KOFI_WEBHOOK_TOKEN: ${KOFI_WEBHOOK_TOKEN:-}
       LINK_LOOKUP_SECRET: ${LINK_LOOKUP_SECRET:-dev-link-secret}
+      # HMAC key for the tamper-evident audit chain. Unset → the code falls back to JWT_SECRET.
+      # Changing it after entries exist invalidates verification of the earlier ones.
+      AUDIT_SECRET: ${AUDIT_SECRET:-}
       # BMM telemetry SSO handoff (signs with LINK_LOOKUP_SECRET, which the telemetry
       # service verifies as BC_LINK_SECRET) + read-only DB access for the DB viewer.
       # The URL the SSO "open telemetry" button sends the admin to — must be the SAME
@@ -134,6 +137,20 @@ services:
       TELEMETRY_INTERNAL_URL: ${TELEMETRY_INTERNAL_URL:-http://telemetry:8900}
       TELEMETRY_ADMIN_KEY: ${TELEMETRY_ADMIN_KEY:-change-me-admin}
       DISCORD_CONTACT_WEBHOOK: ${DISCORD_CONTACT_WEBHOOK:-}
+      # Operator knobs. Compose must forward these or setting them in .env does NOTHING in
+      # Docker — the container simply never sees them and the code falls back to its default.
+      # Per-IP request budget. The 600/min default is generous for a human (~10 req/s) and is
+      # what keeps the DB safe under abuse — keep it in production. Raise it only to benchmark
+      # raw route capacity (loadtest/), where the limiter otherwise sheds the flood as 429s.
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-}
+      # Cap (MB) on the admin "download the whole repo as one zip" review endpoint. The export
+      # streams, so this bounds transfer size, not memory. Default 250.
+      REPO_EXPORT_MAX_MB: ${REPO_EXPORT_MAX_MB:-}
+      # V8 old-space cap. The image already sets a 384 MB default (V8 sizes its heap from the
+      # HOST's RAM and ignores the cgroup limit, so an unbounded heap gets OOM-killed instead
+      # of collecting). Override here in tandem with the container's memory limit.
+      NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=384}
       # Transactional email (account confirmation + password reset). Off unless EMAIL_ENABLED=true.
       EMAIL_ENABLED: ${EMAIL_ENABLED:-}
       SMTP_HOST: ${SMTP_HOST:-}
