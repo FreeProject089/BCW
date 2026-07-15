@@ -205,6 +205,10 @@ model DiscordActivity {
   lastVoiceJoinAt   DateTime?
   lastVoiceCreateAt DateTime?
   updatedAt         DateTime  @updatedAt
+
+  // The storage-cap sweeper evicts oldest-updated rows first (`orderBy updatedAt asc take N`);
+  // without this it full-sorts the table on every prune — worst exactly when it's at its cap.
+  @@index([updatedAt])
 }
 
 // Short-lived pairing code the bot issues (via /link) so a website account can claim
