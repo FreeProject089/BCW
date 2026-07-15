@@ -49,9 +49,16 @@ pub struct ZipEntriesTask(Vec<u8>);
 impl Task for ZipEntriesTask {
     type Output = Vec<(String, u64, Vec<u8>)>;
     type JsValue = Vec<ZipEntry>;
-    fn compute(&mut self) -> Result<Self::Output> { read_zip(&self.0, false) }
+    fn compute(&mut self) -> Result<Self::Output> {
+        read_zip(&self.0, false)
+    }
     fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> {
-        Ok(o.into_iter().map(|(name, size, _)| ZipEntry { name, size: size as f64 }).collect())
+        Ok(o.into_iter()
+            .map(|(name, size, _)| ZipEntry {
+                name,
+                size: size as f64,
+            })
+            .collect())
     }
 }
 
@@ -65,9 +72,16 @@ pub struct ZipReadAllTask(Vec<u8>);
 impl Task for ZipReadAllTask {
     type Output = Vec<(String, u64, Vec<u8>)>;
     type JsValue = Vec<ZipFile>;
-    fn compute(&mut self) -> Result<Self::Output> { read_zip(&self.0, true) }
+    fn compute(&mut self) -> Result<Self::Output> {
+        read_zip(&self.0, true)
+    }
     fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> {
-        Ok(o.into_iter().map(|(name, _, data)| ZipFile { name, data: data.into() }).collect())
+        Ok(o.into_iter()
+            .map(|(name, _, data)| ZipFile {
+                name,
+                data: data.into(),
+            })
+            .collect())
     }
 }
 
@@ -103,15 +117,22 @@ pub struct ZipEntryTask {
 impl Task for ZipEntryTask {
     type Output = Option<Vec<u8>>;
     type JsValue = Option<Buffer>;
-    fn compute(&mut self) -> Result<Self::Output> { read_one(&self.data, &self.name) }
-    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> { Ok(o.map(|b| b.into())) }
+    fn compute(&mut self) -> Result<Self::Output> {
+        read_one(&self.data, &self.name)
+    }
+    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> {
+        Ok(o.map(|b| b.into()))
+    }
 }
 
 /// Extract ONE zip entry's bytes by name, on a worker thread (null if missing / a dir).
 /// Replaces `new AdmZip(buf).getEntry(name).getData()` for single-file extraction.
 #[napi]
 pub fn zip_entry(data: Buffer, name: String) -> AsyncTask<ZipEntryTask> {
-    AsyncTask::new(ZipEntryTask { data: data.to_vec(), name })
+    AsyncTask::new(ZipEntryTask {
+        data: data.to_vec(),
+        name,
+    })
 }
 
 // ── ZIP create (write) ───────────────────────────────────────────────────────
@@ -138,15 +159,24 @@ pub struct ZipCreateTask(Vec<(String, Vec<u8>)>);
 impl Task for ZipCreateTask {
     type Output = Vec<u8>;
     type JsValue = Buffer;
-    fn compute(&mut self) -> Result<Self::Output> { create_zip(std::mem::take(&mut self.0)) }
-    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> { Ok(o.into()) }
+    fn compute(&mut self) -> Result<Self::Output> {
+        create_zip(std::mem::take(&mut self.0))
+    }
+    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> {
+        Ok(o.into())
+    }
 }
 
 /// Build a zip (deflate) from `[{name, data}]` on a worker thread. Replaces adm-zip's
 /// synchronous `new AdmZip()` + `addFile()` + `toBuffer()` for exports.
 #[napi]
 pub fn zip_create(files: Vec<ZipFile>) -> AsyncTask<ZipCreateTask> {
-    AsyncTask::new(ZipCreateTask(files.into_iter().map(|f| (f.name, f.data.to_vec())).collect()))
+    AsyncTask::new(ZipCreateTask(
+        files
+            .into_iter()
+            .map(|f| (f.name, f.data.to_vec()))
+            .collect(),
+    ))
 }
 
 // ── Filesystem scan ──────────────────────────────────────────────────────────
@@ -175,8 +205,15 @@ fn scan_dir(root: &str) -> Vec<ScanEntry> {
                 stack.push(p);
             } else if ft.is_file() {
                 let size = e.metadata().map(|m| m.len()).unwrap_or(0);
-                let rel = p.strip_prefix(base).unwrap_or(&p).to_string_lossy().replace('\\', "/");
-                out.push(ScanEntry { path: rel, size: size as f64 });
+                let rel = p
+                    .strip_prefix(base)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                out.push(ScanEntry {
+                    path: rel,
+                    size: size as f64,
+                });
             }
         }
     }
@@ -187,8 +224,12 @@ pub struct DirScanTask(String);
 impl Task for DirScanTask {
     type Output = Vec<ScanEntry>;
     type JsValue = Vec<ScanEntry>;
-    fn compute(&mut self) -> Result<Self::Output> { Ok(scan_dir(&self.0)) }
-    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> { Ok(o) }
+    fn compute(&mut self) -> Result<Self::Output> {
+        Ok(scan_dir(&self.0))
+    }
+    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> {
+        Ok(o)
+    }
 }
 
 /// Recursively list a directory's files as `[{path, size}]` (relative, forward-slashed) on
@@ -206,7 +247,9 @@ impl Task for ZstdCompressTask {
     fn compute(&mut self) -> Result<Self::Output> {
         zstd::encode_all(&self.0[..], self.1).map_err(|e| Error::from_reason(format!("zstd: {e}")))
     }
-    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> { Ok(o.into()) }
+    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> {
+        Ok(o.into())
+    }
 }
 
 /// zstd-compress a buffer on a worker thread (INTERNAL artifacts only — the public download
@@ -223,7 +266,9 @@ impl Task for ZstdDecompressTask {
     fn compute(&mut self) -> Result<Self::Output> {
         zstd::decode_all(&self.0[..]).map_err(|e| Error::from_reason(format!("zstd: {e}")))
     }
-    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> { Ok(o.into()) }
+    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> {
+        Ok(o.into())
+    }
 }
 
 /// zstd-decompress a buffer on a worker thread.
@@ -234,7 +279,8 @@ pub fn zstd_decompress(data: Buffer) -> AsyncTask<ZstdDecompressTask> {
 
 // ── Image resize ─────────────────────────────────────────────────────────────
 fn resize_jpeg(data: &[u8], width: u32, quality: u8) -> Result<Option<Vec<u8>>> {
-    let img = image::load_from_memory(data).map_err(|e| Error::from_reason(format!("decode: {e}")))?;
+    let img =
+        image::load_from_memory(data).map_err(|e| Error::from_reason(format!("decode: {e}")))?;
     let (w, h) = (img.width(), img.height());
     if w == 0 || width >= w {
         return Ok(None); // never upscale — caller serves the original
@@ -257,23 +303,35 @@ pub struct ImageResizeTask {
 impl Task for ImageResizeTask {
     type Output = Option<Vec<u8>>;
     type JsValue = Option<Buffer>;
-    fn compute(&mut self) -> Result<Self::Output> { resize_jpeg(&self.data, self.width, self.quality) }
-    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> { Ok(o.map(|b| b.into())) }
+    fn compute(&mut self) -> Result<Self::Output> {
+        resize_jpeg(&self.data, self.width, self.quality)
+    }
+    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> {
+        Ok(o.map(|b| b.into()))
+    }
 }
 
 /// Downscale a raster image to `width` (never upscale → null) and encode JPEG, on a worker
 /// thread. Replaces the @napi-rs/canvas resize that ran on the main thread.
 #[napi]
 pub fn image_resize_jpeg(data: Buffer, width: u32, quality: u8) -> AsyncTask<ImageResizeTask> {
-    AsyncTask::new(ImageResizeTask { data: data.to_vec(), width, quality })
+    AsyncTask::new(ImageResizeTask {
+        data: data.to_vec(),
+        width,
+        quality,
+    })
 }
 
 pub struct Blake3Task(Vec<u8>);
 impl Task for Blake3Task {
     type Output = String;
     type JsValue = String;
-    fn compute(&mut self) -> Result<Self::Output> { Ok(blake3::hash(&self.0).to_hex().to_string()) }
-    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> { Ok(o) }
+    fn compute(&mut self) -> Result<Self::Output> {
+        Ok(blake3::hash(&self.0).to_hex().to_string())
+    }
+    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> {
+        Ok(o)
+    }
 }
 
 /// BLAKE3 hash (hex) of a buffer on a worker thread — INTERNAL integrity only (dedup keys,

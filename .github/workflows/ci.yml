@@ -77,6 +77,16 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       - uses: dtolnay/rust-toolchain@stable
+        with: { components: 'clippy, rustfmt' }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: 'BCWEB/native' }
+      # Rust quality gates (mirror the JS lints): formatting + clippy with warnings denied.
+      - name: cargo fmt --check
+        working-directory: BCWEB/native
+        run: cargo fmt --check
+      - name: cargo clippy -D warnings
+        working-directory: BCWEB/native
+        run: cargo clippy --release -- -D warnings
       # Build the Rust addon (BLAKE3 / off-event-loop zip / zstd / image resize). A compile
       # regression fails here rather than silently shipping the JS fallback everywhere.
       - name: build addon
