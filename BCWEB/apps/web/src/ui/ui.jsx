@@ -1,6 +1,6 @@
 // Reusable UI kit — keep page code declarative. No browser prompt()/confirm()/alert():
 // use the Dialog + Toast providers below. Icons come from lucide-react.
-import { createContext, useContext, useEffect, useState, useCallback, useRef, forwardRef } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, useId, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown, Undo2 } from 'lucide-react';
 
@@ -37,23 +37,40 @@ export const Select = ({ className = '', children, ...p }) => <select className=
 export function Dropdown({ value, options, onChange, className = '', size, placeholder }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef(null);
+  const menuRef = useRef(null);
   const [pos, setPos] = useState(null);
   const cur = options.find((o) => String(o.value) === String(value));
   const openMenu = () => { const r = btnRef.current?.getBoundingClientRect(); if (r) setPos({ top: r.bottom + 6, left: r.left, minWidth: Math.max(r.width, 160) }); setOpen(true); };
-  useEffect(() => { if (!open) return; const onKey = (e) => e.key === 'Escape' && setOpen(false); window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey); }, [open]);
+  useEffect(() => { if (!open) return; const onKey = (e) => { if (e.key === 'Escape') { setOpen(false); btnRef.current?.focus?.(); } }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey); }, [open]);
+  // On open, move focus onto the selected option (else the first) so the list is keyboard-usable.
+  useEffect(() => {
+    if (!open || !menuRef.current) return;
+    const opts = menuRef.current.querySelectorAll('[role="option"]');
+    (opts[Math.max(0, options.findIndex((o) => String(o.value) === String(value)))] || opts[0])?.focus?.();
+  }, [open]);
+  // Roving focus between options with the arrow keys (Enter/Space activate the option buttons natively).
+  const onMenuKey = (e) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    const opts = [...menuRef.current.querySelectorAll('[role="option"]')];
+    const i = opts.indexOf(document.activeElement);
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? opts.length - 1 : e.key === 'ArrowDown' ? (i + 1) % opts.length : (i - 1 + opts.length) % opts.length;
+    opts[next]?.focus();
+  };
   const pad = size === 'sm' ? 'px-2.5 py-1.5 text-xs' : 'px-3 py-2 text-sm';
   return (
     <>
-      <button ref={btnRef} type="button" onClick={() => (open ? setOpen(false) : openMenu())} aria-expanded={open}
+      <button ref={btnRef} type="button" onClick={() => (open ? setOpen(false) : openMenu())}
+        aria-haspopup="listbox" aria-expanded={open} onKeyDown={(e) => { if (!open && (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openMenu(); } }}
         className={`dd-trigger press-sm inline-flex items-center justify-between gap-2 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] font-medium hover:border-[var(--ring)] transition-colors ${pad} ${className}`}>
         <span className="truncate flex items-center gap-1.5">{cur?.icon}{cur ? cur.label : <span className="text-[var(--faint)]">{placeholder || '—'}</span>}</span>
         <ChevronDown size={14} className={`text-[var(--muted)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && pos && createPortal(<>
         <div className="fixed inset-0 z-[70]" onClick={() => setOpen(false)} />
-        <div className="dd-menu fixed z-[71] rounded-xl border border-[var(--line-strong)] p-1 shadow-lg anim-pop max-h-[60vh] overflow-auto scroll-thin" style={{ top: pos.top, left: pos.left, minWidth: pos.minWidth, background: 'var(--bg-solid)' }}>
+        <div ref={menuRef} role="listbox" onKeyDown={onMenuKey} className="dd-menu fixed z-[71] rounded-xl border border-[var(--line-strong)] p-1 shadow-lg anim-pop max-h-[60vh] overflow-auto scroll-thin" style={{ top: pos.top, left: pos.left, minWidth: pos.minWidth, background: 'var(--bg-solid)' }}>
           {options.map((o) => (
-            <button key={String(o.value)} type="button" onClick={() => { setOpen(false); if (String(o.value) !== String(value)) onChange(o.value); }}
+            <button key={String(o.value)} type="button" role="option" aria-selected={String(o.value) === String(value)} onClick={() => { setOpen(false); btnRef.current?.focus?.(); if (String(o.value) !== String(value)) onChange(o.value); }}
               className={`press-sm w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-left transition-colors ${String(o.value) === String(value) ? 'bg-[var(--surface-2)] font-medium text-[var(--text)]' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'}`}>
               {o.icon}<span className="flex-1 truncate">{o.label}</span>
               {String(o.value) === String(value) && <Check size={14} className="text-[var(--primary-2)]" />}
@@ -93,20 +110,43 @@ export function EmptyState({ icon: Icon, title, sub, children }) {
 
 /* ── Modal ── */
 export function Modal({ open, onClose, title, icon: Icon, children, footer, width = 'max-w-md' }) {
+  const cardRef = useRef(null);
+  const restoreRef = useRef(null);
+  const titleId = useId();
   useEffect(() => {
     if (!open) return;
-    const h = (e) => e.key === 'Escape' && onClose?.();
-    window.addEventListener('keydown', h);
+    // Remember what had focus so we can restore it when the dialog closes (keyboard users
+    // shouldn't be dumped back at the top of the page).
+    restoreRef.current = document.activeElement;
+    const onKey = (e) => {
+      if (e.key === 'Escape') { onClose?.(); return; }
+      if (e.key !== 'Tab') return;
+      // Focus trap: keep Tab / Shift+Tab cycling inside the dialog.
+      const f = cardRef.current?.querySelectorAll('a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])');
+      if (!f || !f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
-    return () => { window.removeEventListener('keydown', h); document.body.style.overflow = ''; };
+    // Move focus into the dialog (the first field, else the dialog itself).
+    const first = cardRef.current?.querySelector('a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])');
+    (first || cardRef.current)?.focus?.();
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+      restoreRef.current?.focus?.();
+    };
   }, [open, onClose]);
   if (!open) return null;
   return createPortal(
     <div className="fixed inset-0 z-50 grid place-items-center p-4 anim-fade" style={{ background: 'rgba(4,5,8,0.62)', backdropFilter: 'blur(4px)' }} onMouseDown={onClose}>
-      <div className={`card modal-card anim-pop w-full ${width} p-0 overflow-hidden max-h-[92vh] flex flex-col`} onMouseDown={(e) => e.stopPropagation()} style={{ boxShadow: '0 24px 70px -20px rgba(0,0,0,0.7)' }}>
+      <div ref={cardRef} role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} aria-label={title ? undefined : 'Dialog'} tabIndex={-1}
+        className={`card modal-card anim-pop w-full ${width} p-0 overflow-hidden max-h-[92vh] flex flex-col`} onMouseDown={(e) => e.stopPropagation()} style={{ boxShadow: '0 24px 70px -20px rgba(0,0,0,0.7)', outline: 'none' }}>
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--line)] shrink-0">
           {Icon && <Icon size={18} className="text-[var(--primary-2)]" />}
-          <div className="font-semibold flex-1 min-w-0 truncate">{title}</div>
+          <div id={titleId} className="font-semibold flex-1 min-w-0 truncate">{title}</div>
           <button className="btn-ghost btn btn-sm !px-1.5" onClick={onClose} aria-label="Close"><X size={16} /></button>
         </div>
         <div className="px-5 py-4 overflow-auto">{children}</div>
