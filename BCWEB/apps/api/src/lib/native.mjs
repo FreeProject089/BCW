@@ -4,16 +4,27 @@
 // breaks, it just runs on the main thread. Mirrors how Redis degrades to in-process.
 // Build the addon with: (cd native && npm install && npm run build). See guides/RUST_WORKERS_PLAN.
 import AdmZip from 'adm-zip';
+import { createRequire } from 'node:module';
+import { readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const require = createRequire(import.meta.url);
+const here = dirname(fileURLToPath(import.meta.url));
 
 let native = null;
 // Look for the built addon in a few layout-independent spots: the repo's native/ during
-// local dev, or a native/ copied next to the app root in a container image.
-for (const rel of ['../../../../native/index.js', '../../native/index.js', '../../../native/index.js']) {
+// local dev, or a native/ next to the app root in a container image. Prefer napi's
+// index.js loader; if that can't resolve the platform binary (its musl/glibc probe has
+// edge cases), fall back to require-ing the .node file directly — which always works when
+// it's present. A bad/absent addon just leaves `native` null → the JS fallbacks below run.
+for (const rel of ['../../../../native', '../../native', '../../../native']) {
+  const dir = join(here, rel);
   try {
-    const mod = await import(new URL(rel, import.meta.url));
-    const m = mod.default ?? mod;
-    if (m && m.zipReadAll) { native = m; break; }
-  } catch { /* try the next candidate */ }
+    try { const m = require(join(dir, 'index.js')); if (m && m.zipReadAll) { native = m; break; } } catch { /* try direct */ }
+    const nodeFile = readdirSync(dir).find((f) => f.endsWith('.node'));
+    if (nodeFile) { const m = require(join(dir, nodeFile)); if (m && m.zipReadAll) { native = m; break; } }
+  } catch { /* try the next candidate dir */ }
 }
 
 export const hasNative = !!(native && native.zipEntries);

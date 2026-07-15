@@ -1,4 +1,18 @@
 # Build context = BCWEB root (see docker-compose: context ../.., dockerfile apps/api/Dockerfile).
+
+# ── Stage 1: build the native (Rust) addon for musl — BLAKE3 + off-event-loop zip parsing
+# (see native/ and guides/RUST_WORKERS_PLAN). Verified to compile in rust:1-alpine. The app
+# falls back to adm-zip if the addon is absent, so this stage is a pure accelerator. ──
+FROM rust:1-alpine AS native
+RUN apk add --no-cache musl-dev nodejs npm
+WORKDIR /native
+COPY native/package.json native/package-lock.json ./
+RUN npm install --no-audit --no-fund
+COPY native/Cargo.toml native/Cargo.lock native/build.rs ./
+COPY native/src ./src
+RUN npx napi build --platform --release
+
+# ── Stage 2: the API runtime ──
 FROM node:20-alpine
 WORKDIR /app
 
@@ -16,6 +30,10 @@ RUN npm install
 COPY packages/db ./prisma
 COPY apps/api/src ./src
 RUN npx prisma generate
+
+# Native addon next to the app root (lib/native.mjs looks in ../../native from src/lib).
+# Optional: if this were ever missing the app just uses the JS fallback.
+COPY --from=native /native/index.js /native/index.d.ts /native/*.node ./native/
 
 EXPOSE 3000
 # Schema management at boot = checked-in migrations via `migrate deploy` (NOT `db push`,
