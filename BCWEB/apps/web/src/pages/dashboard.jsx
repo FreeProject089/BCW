@@ -15,35 +15,10 @@ import { useAsync, Loading, statusTone, KIND_ICON, fmtRemaining, JsonEditor, Sid
 /* ─────────────────────────  Dashboard  ───────────────────────── */
 const SUBMIT_INIT = { projectKey: 'bmm', kind: 'PLUGIN', name: '', description: '', version: '1.0.0', meta: '{}' };
 
-// icon + accent + human "type" label per notification kind. Exported so the
-// nav bell menu (App.jsx) and the dashboard panel render them identically.
-// `tint` is the soft background of the icon chip; `label` is the small type badge.
-export const NOTIF = {
-  submission_approved: { icon: CheckCircle2, tone: 'text-emerald-400', tint: 'bg-emerald-500/12', label: 'Approved' },
-  submission_rejected: { icon: XCircle, tone: 'text-red-400', tint: 'bg-red-500/12', label: 'Rejected' },
-  repo_verified: { icon: ShieldCheck, tone: 'text-emerald-400', tint: 'bg-emerald-500/12', label: 'Verified' },
-  repo_published: { icon: CheckCircle2, tone: 'text-emerald-400', tint: 'bg-emerald-500/12', label: 'Published' },
-  repo_rejected: { icon: XCircle, tone: 'text-red-400', tint: 'bg-red-500/12', label: 'Rejected' },
-  repo_access_granted: { icon: ShieldCheck, tone: 'text-emerald-400', tint: 'bg-emerald-500/12', label: 'Access' },
-  repo_renew: { icon: RefreshCw, tone: 'text-[var(--primary-2)]', tint: 'bg-orange-500/12', label: 'Renewal' },
-  repo_upgrade: { icon: TrendingUp, tone: 'text-[var(--primary-2)]', tint: 'bg-orange-500/12', label: 'Upgrade' },
-  hosting_started: { icon: Rocket, tone: 'text-[var(--primary-2)]', tint: 'bg-orange-500/12', label: 'Hosting' },
-  hosting_online: { icon: Server, tone: 'text-emerald-400', tint: 'bg-emerald-500/12', label: 'Online' },
-  hosting_stopped: { icon: XCircle, tone: 'text-red-400', tint: 'bg-red-500/12', label: 'Stopped' },
-  hosting_expiring: { icon: Clock, tone: 'text-amber-400', tint: 'bg-amber-500/12', label: 'Expiring' },
-  announcement: { icon: BellIcon, tone: 'text-[var(--primary-2)]', tint: 'bg-orange-500/12', label: 'Announcement' },
-  admin_broadcast: { icon: Send, tone: 'text-[var(--primary-2)]', tint: 'bg-orange-500/12', label: 'Broadcast' },
-  feature_active: { icon: Star, tone: 'text-amber-400', tint: 'bg-amber-500/12', label: 'Featured' },
-  server_alert: { icon: AlertTriangle, tone: 'text-red-400', tint: 'bg-red-500/12', label: 'Alert' },
-  creator_linked: { icon: BadgeCheck, tone: 'text-emerald-400', tint: 'bg-emerald-500/12', label: 'Linked' },
-  discord_linked: { icon: BadgeCheck, tone: 'text-[#5865F2]', tint: 'bg-indigo-500/12', label: 'Discord' },
-  kofi_reward: { icon: KofiIcon, tone: 'text-orange-400', tint: 'bg-orange-500/12', label: 'Ko-fi' },
-  promo_redeemed: { icon: Ticket, tone: 'text-[var(--primary-2)]', tint: 'bg-orange-500/12', label: 'Promo' },
-  discount: { icon: Ticket, tone: 'text-[var(--primary-2)]', tint: 'bg-orange-500/12', label: 'Discount' },
-  free_hosting: { icon: Gift, tone: 'text-emerald-400', tint: 'bg-emerald-500/12', label: 'Gift' },
-  free_boost: { icon: Gift, tone: 'text-amber-400', tint: 'bg-amber-500/12', label: 'Boost' },
-};
-export const NOTIF_FALLBACK = { icon: Bell, tone: 'text-[var(--primary-2)]', tint: 'bg-orange-500/12', label: 'Update' };
+// The notification icon/label map lives in ../ui/notif.js so the nav bell can import it
+// without dragging this whole page into the initial bundle. Re-exported for existing callers.
+import { NOTIF, NOTIF_FALLBACK } from '../ui/notif.js';
+export { NOTIF, NOTIF_FALLBACK };
 function NotificationsPanel() {
   const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/me/notifications'), []);

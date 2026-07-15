@@ -14,7 +14,6 @@ import { trackPageview, initVitals, initInteractions, initErrors } from './lib/a
 import { loadGtmIfConsented } from './lib/gtm.js';
 import { getOrbTransitionPref } from './lib/prefs.js';
 import CookieConsent from './ui/CookieConsent.jsx';
-import Hero3D from './hero/Hero3D.jsx';
 import PromoBadge from './ui/promo-badge.jsx';
 import EventEffect from './hero/event-effect.jsx';
 import { IntroProvider, useIntro } from './ui/IntroContext.jsx';
@@ -24,14 +23,18 @@ import Avatar from './ui/Avatar.jsx';
 // Eager: the initial landing routes + nav-critical modules (the notification map is
 // rendered by the always-present nav bell, which keeps dashboard.jsx in the main chunk).
 import NotFound from './pages/notfound.jsx';
+import { NOTIF, NOTIF_FALLBACK } from './ui/notif.js'; // tiny data module — kept eager for the nav bell
 import { Home } from './pages/home.jsx';
 import { Catalog, ItemDetail } from './pages/catalog.jsx';
-import { Dashboard, NOTIF, NOTIF_FALLBACK } from './pages/dashboard.jsx';
 import { Auth } from './pages/signin.jsx';
 // Lazy: route-split so the initial bundle no longer ships the whole admin back-office,
 // repo tools, editors, etc. — each loads on demand behind the Suspense boundary below.
 const named = (imp, key) => lazy(() => imp().then((m) => ({ default: m[key] })));
+// The hero orb pulls in three.js (~460 KB) — lazy-load it so it never blocks first paint
+// (it's a decorative backdrop; a null fallback means it just fades in once loaded).
+const Hero3D = lazy(() => import('./hero/Hero3D.jsx'));
 const Admin = named(() => import('./pages/admin.jsx'), 'Admin');
+const Dashboard = named(() => import('./pages/dashboard.jsx'), 'Dashboard');
 const ReposPage = named(() => import('./pages/repos.jsx'), 'ReposPage');
 const RepoDashboard = named(() => import('./pages/repo-dashboard.jsx'), 'RepoDashboard');
 const ProjectPage = lazy(() => import('./pages/project.jsx'));
@@ -768,7 +771,7 @@ export default function App() {
         {/* Keyboard skip link: first focusable element, off-screen until focused, so
             keyboard/screen-reader users can jump straight past the nav to the content. */}
         <a href="#main-content" className="skip-link">{t('a11y.skip', 'Skip to content')}</a>
-        <Hero3D />
+        <Suspense fallback={null}><Hero3D /></Suspense>
         <AppReveal>
           <PromoBadge />
           <EventEffect />
