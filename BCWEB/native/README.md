@@ -4,7 +4,7 @@ Native (Rust) helpers for the CPU-heavy work that otherwise blocks the Node even
 Each function runs on a **worker thread** (napi-rs `AsyncTask`) and returns a Promise, so
 the main thread is never blocked — unlike the synchronous `adm-zip` parse it replaces.
 
-Grounded in the [Rust workers plan](../guides/RUST_WORKERS_PLAN_EN.md). This is **P1** of
+Grounded in the [Rust workers plan](../guides/audits/RUST_WORKERS_PLAN_EN.md). This is **P1** of
 that plan (ZIP off the event loop + BLAKE3), built and verified.
 
 ## Exports (via napi, camelCased in JS)
