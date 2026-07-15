@@ -29,6 +29,7 @@ All BetterCommunity Web documentation, in one place. Every guide has a separate
 | **Technical analysis** (dev deep-dive) | [Technical_Analysis_EN.md](Technical_Analysis_EN.md) | [Technical_Analysis_FR.md](Technical_Analysis_FR.md) |
 | 🔍 **Technical audit** (strengths, weaknesses, risks, action plan — Jul 2026) | [TECH_AUDIT_EN.md](TECH_AUDIT_EN.md) | [TECH_AUDIT_FR.md](TECH_AUDIT_FR.md) |
 | ⚡ **Performance audit** (bottlenecks + prioritised fix plan — Jul 2026) | [PERF_AUDIT_EN.md](PERF_AUDIT_EN.md) | [PERF_AUDIT_FR.md](PERF_AUDIT_FR.md) |
+| 🦀 **Rust workers plan** (offloading CPU-heavy hash/zip/scan — Jul 2026) | [RUST_WORKERS_PLAN_EN.md](RUST_WORKERS_PLAN_EN.md) | [RUST_WORKERS_PLAN_FR.md](RUST_WORKERS_PLAN_FR.md) |
 | **API reference** (endpoint catalog) | [API_Reference_EN.md](API_Reference_EN.md) | [API_Reference_FR.md](API_Reference_FR.md) |
 | **Other Projects / showcase feature** | [OTHER_PROJECTS_GUIDE_EN.md](OTHER_PROJECTS_GUIDE_EN.md) | [OTHER_PROJECTS_GUIDE_FR.md](OTHER_PROJECTS_GUIDE_FR.md) |
 | **Hosting users' Docker projects** (future design) | [USER_PROJECT_HOSTING_EN.md](USER_PROJECT_HOSTING_EN.md) | [USER_PROJECT_HOSTING_FR.md](USER_PROJECT_HOSTING_FR.md) |
