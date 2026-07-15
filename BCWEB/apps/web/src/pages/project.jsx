@@ -8,6 +8,7 @@ import {
 import Markdown, { matchesLang, ShowcaseIcon } from '../ui/md.jsx';
 import { ProgressTracker } from '../hero/progress-tracker.jsx';
 import { api } from '../lib/api.js';
+import { thumb } from '../lib/img.js';
 import { useI18n } from '../i18n.jsx';
 import RrwebPreview from '../hero/RrwebPreview.jsx';
 import { GithubIcon, KofiIcon, DiscordIcon, RedditIcon, AppLogo, APP_LOGO } from '../ui/brand.jsx';
@@ -68,7 +69,7 @@ function MediaFrame({ media, pkey }) {
   return (
     <div className="mb-8" style={{ perspective: 1200 }} onMouseMove={move} onMouseLeave={rest}>
       <div ref={ref} className="mx-auto max-w-3xl rounded-2xl overflow-hidden border border-[var(--line-strong)] transition-transform duration-100 ease-out will-change-transform" style={{ background: '#0a0b0f', boxShadow: '0 34px 80px -32px rgba(0,0,0,0.55)' }}>
-        {media.video ? <video src={media.video} controls className="w-full block" /> : <img src={media.image} alt="" className="w-full block" />}
+        {media.video ? <video src={media.video} controls className="w-full block" /> : <img src={thumb(media.image, 768)} alt="" className="w-full block" />}
       </div>
     </div>
   );
@@ -731,7 +732,7 @@ function ProjectBlogTab({ project, page }) {
       {posts.map((p) => { const v = pick(p); return (
         <Link key={p.id} to={`/blog/${p.slug}`}>
           <Card hover className="overflow-hidden h-full flex flex-col">
-            {p.cover ? <img src={p.cover} alt="" className="w-full h-40 object-cover" /> : <div className="w-full h-40 bg-gradient-to-br from-orange-500/25 to-amber-500/10 grid place-items-center"><Newspaper size={32} className="text-[var(--primary-2)] opacity-80" /></div>}
+            {p.cover ? <img src={thumb(p.cover, 512)} alt="" className="w-full h-40 object-cover" /> : <div className="w-full h-40 bg-gradient-to-br from-orange-500/25 to-amber-500/10 grid place-items-center"><Newspaper size={32} className="text-[var(--primary-2)] opacity-80" /></div>}
             <div className="p-4 flex-1 flex flex-col">
               <div className="text-xs text-[var(--faint)]">{fmt(p.publishedAt)}</div>
               <div className="font-bold mt-1 leading-snug">{v.title}</div>

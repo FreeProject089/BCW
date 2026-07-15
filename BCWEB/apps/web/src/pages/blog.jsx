@@ -7,6 +7,7 @@ import {
   Table, Quote, Minus, AlignLeft, AlignRight, Mail,
 } from 'lucide-react';
 import { api, uploadBlogImage } from '../lib/api.js';
+import { thumb } from '../lib/img.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import Markdown from '../ui/md.jsx';
@@ -114,7 +115,7 @@ export function BlogList() {
             {posts.map((p) => { const v = pickLang(p, lang); return (
               <div key={p.id} className="group relative">
                 <Link to={`/blog/${p.slug}`}><Card hover className="overflow-hidden h-full flex flex-col">
-                  {p.cover ? <img src={p.cover} alt="" className="w-full h-44 object-cover" />
+                  {p.cover ? <img src={thumb(p.cover, 512)} alt="" className="w-full h-44 object-cover" />
                     : <div className="w-full h-44 bg-gradient-to-br from-orange-500/25 to-amber-500/10 grid place-items-center">{p.showcaseProject?.icon ? <img src={p.showcaseProject.icon} alt="" className="w-14 h-14 rounded-xl object-contain opacity-90" /> : p.showcaseProject ? <Sparkles size={40} className="text-[var(--primary-2)] opacity-90" /> : <img src={(TYPE_TAG[p.project?.key] || TYPE_TAG.community).img} alt="" className="w-12 h-12 rounded-xl object-contain opacity-90" />}</div>}
                   <div className="p-5 flex-1 flex flex-col">
                     <div className="text-xs text-[var(--faint)] flex items-center gap-2">{fmtDate(p.publishedAt)}{!v.translated && <span className="inline-flex items-center gap-1 text-[var(--faint)]"><Languages size={11} /> {t('blog.untranslated', 'not translated')}</span>}</div>
@@ -250,7 +251,7 @@ export function BlogPostPage() {
         <div className="text-sm text-[var(--faint)] mt-3 flex items-center gap-3"><span className="flex items-center gap-1"><UserIcon size={13} /> {p.author?.displayName}{authors.length > 1 && ` +${authors.length - 1}`}</span>
           <button onClick={() => setShowHistory(true)} title={t('blog.history.hint', 'View edit history')} className="flex items-center gap-1 hover:text-[var(--primary-2)] transition"><CalendarDays size={13} /> {fmtDate(p.publishedAt)} <History size={11} className="opacity-60" /></button></div>
         {!v.translated && <div className="mt-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--primary-2)]" /> Cet article n'est pas encore traduit en français — version anglaise affichée.</div>}
-        {p.cover && p.coverInBody !== false && <img src={p.cover} alt="" className="w-full rounded-2xl mt-6 border border-[var(--line)]" />}
+        {p.cover && p.coverInBody !== false && <img src={thumb(p.cover, 768)} alt="" className="w-full rounded-2xl mt-6 border border-[var(--line)]" />}
         <Markdown className="mt-7">{p.showToc && !/(^|\n)::toc\b/.test(v.body || '') ? `::toc[${p.tocTitle || 'On this page'}]\n\n${v.body}` : v.body}</Markdown>
 
         {/* reactions */}
