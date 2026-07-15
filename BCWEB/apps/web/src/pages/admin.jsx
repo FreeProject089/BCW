@@ -14,7 +14,7 @@ import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
 import Avatar from '../ui/Avatar.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
-import { rawStatusLabel } from './repos.jsx';
+import { rawStatusLabel, DotDropdown } from './repos.jsx';
 import { AdminRepos, AdminPools } from './repos-admin.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
 import { MarkdownEditor } from './blog.jsx';
@@ -2565,7 +2565,12 @@ function AdminAssets() {
       {/* Quick-create the standard slots that don't exist yet. */}
       <div className="flex flex-wrap gap-2 mb-4">
         {ASSET_SLOTS.filter((sl) => !has(sl.key)).map((sl) => (
-          <button key={sl.key} onClick={() => { setNewKey(sl.key); setNewKind(sl.kind); }} className="text-xs px-2.5 py-1 rounded-lg border border-dashed border-[var(--line)] text-[var(--muted)] hover:border-[var(--primary-2)] hover:text-[var(--text)]">
+          // bg-[var(--surface-2)]: these had a dashed border and NO background, so with
+          // "Translucent surfaces" on they sat straight on the animated page backdrop and the
+          // label became unreadable. A themed surface token is the fix — it follows the glass
+          // setting like every other surface instead of ignoring it (never hardcode a
+          // translucent/solid background here; that's what broke .input once).
+          <button key={sl.key} onClick={() => { setNewKey(sl.key); setNewKind(sl.kind); }} className="text-xs px-2.5 py-1 rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface-2)] text-[var(--muted)] hover:border-[var(--primary-2)] hover:text-[var(--text)]">
             <Plus size={11} className="inline mr-1" />{sl.label}
           </button>
         ))}
@@ -6736,11 +6741,17 @@ function AdminCatalogs() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0 border-t border-[var(--border)] pt-2 sm:border-0 sm:pt-0">
-              <Select className="!w-auto !py-1 !text-xs flex-1 sm:flex-none" value={cur} onChange={(e) => setStatus(c, e.target.value)} title={t('cc.status', 'Status')}>
-                <option value="online">🟢 {t('cc.online', 'Online')}</option>
-                <option value="offline">⚪ {t('cc.offline', 'Offline')}</option>
-                <option value="suspended">🔴 {t('cc.suspend', 'Suspended')}</option>
-              </Select>
+              {/* DotDropdown, not a native <select> with 🟢/⚪/🔴 in the labels: an <option> can
+                  only hold text, which is why the emoji were there at all. They render in the
+                  OS font, ignore the theme, and don't match the colour tokens the repo cards
+                  use for the very same states. This is the same control those cards already
+                  use, so a status reads identically across the admin. */}
+              <DotDropdown value={cur} className="flex-1 sm:flex-none" onChange={(v) => setStatus(c, v)}
+                options={[
+                  { value: 'online', label: t('cc.online', 'Online'), color: 'var(--success)' },
+                  { value: 'offline', label: t('cc.offline', 'Offline'), color: 'var(--faint)' },
+                  { value: 'suspended', label: t('cc.suspend', 'Suspended'), color: 'var(--error)' },
+                ]} />
               {c.mode === 'managed' && <Button size="sm" variant="ghost" onClick={() => setExamine(c)}><Eye size={13} /> {t('cc.examine', 'Examine')}</Button>}
               <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(c)}><Trash2 size={13} /></Button>
             </div>

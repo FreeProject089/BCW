@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import {
   Server, GitBranch, Pencil, XCircle, Clock, ShieldCheck, Users, HardDrive, Rocket, Files, Search, X, Wifi, Zap, Copy, RefreshCw, LayoutDashboard, ChevronDown, Fingerprint, Sliders, Check,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { useToast, useDialog, Button, Card, Badge, Input, Select, Field, EmptyState, Spinner, Modal } from '../ui/ui.jsx';
+import { Link, useNavigate } from 'react-router-dom';
+import { useToast, useDialog, Button, Card, Badge, Input, Select, Field, EmptyState, Spinner, Modal, ActionBar } from '../ui/ui.jsx';
 import { Loading } from './pages.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -193,7 +193,7 @@ export function AdminPools() {
 }
 
 export function AdminRepos() {
-  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n(); const navigate = useNavigate();
   const { data, loading, reload } = useFetch(() => api.get('/admin/repos'), []);
   const [review, setReview] = useState(null);
   const [q, setQ] = useState(''); const [catF, setCatF] = useState('all'); const [statF, setStatF] = useState('all');
@@ -297,22 +297,23 @@ export function AdminRepos() {
                   <RepoStatusSelect value={r.status} onChange={(s) => setStatus(r, s)} />
                 </div>
               </div>
-              {/* Phones: an even 2-up grid. Free-wrapping these six left a ragged 4-row block
-                  with orphan buttons; a grid gives 3 tidy rows and equal hit targets. Inline
-                  wrap from sm up, where they all fit on one line anyway. */}
-              <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 mt-3 [&>*]:w-full sm:[&>*]:w-auto [&_button]:w-full sm:[&_button]:w-auto">
-                {/* Admin repo dashboard: opens the SAME dashboard as the owner, but staff
-                    are not frozen by suspension and every action is logged with "(admin)". */}
-                <Link to={`/repo/${r.id}`}><Button size="sm" variant="primary"><LayoutDashboard size={14} /> {t('arp.dashboard', 'Manage (admin)')}</Button></Link>
-                {r.pendingReview && <Button size="sm" variant="primary" onClick={() => verify(r)}><ShieldCheck size={14} /> Verify</Button>}
-                <Button size="sm" onClick={() => boostPick(r)}>
-                  <Rocket size={14} className={r.featuredUntil && new Date(r.featuredUntil) > new Date() ? 'text-[var(--primary-2)]' : ''} />
-                  {r.featuredUntil && new Date(r.featuredUntil) > new Date() ? t('arp.boosted', 'Boosted') : t('arp.boost', 'Boost')}
-                </Button>
-                <Button size="sm" onClick={() => revalidate(r)}><ShieldCheck size={14} /> Revalidate SHA</Button>
-                {r.hosted && <Button size="sm" onClick={() => setReview(r)}><Files size={14} /> Review &amp; download</Button>}
-                <Button size="sm" onClick={() => reject(r)}><XCircle size={14} /> Reject / unlist</Button>
-                <Button size="sm" onClick={() => setLimitsRepo(r)}><Sliders size={14} /> Limits</Button>
+              {/* One line, always: ActionBar renders what fits and folds the rest behind a
+                  "More" menu. Six actions free-wrapped into a 3-4 row block that dwarfed the
+                  repo it belonged to; a fixed grid only moved the problem (a phone still got
+                  three rows). It measures, so a narrow card folds more and a wide one folds
+                  nothing. Manage stays first, so the primary action is never the one hidden. */}
+              <div className="mt-3">
+                <ActionBar actions={[
+                  // Admin repo dashboard: the SAME dashboard as the owner's, but staff aren't
+                  // frozen by suspension and every action is logged with "(admin)".
+                  { key: 'manage', label: t('arp.dashboard', 'Manage (admin)'), icon: LayoutDashboard, variant: 'primary', onClick: () => navigate(`/repo/${r.id}`) },
+                  { key: 'verify', label: 'Verify', icon: ShieldCheck, variant: 'primary', hidden: !r.pendingReview, onClick: () => verify(r) },
+                  { key: 'boost', label: r.featuredUntil && new Date(r.featuredUntil) > new Date() ? t('arp.boosted', 'Boosted') : t('arp.boost', 'Boost'), icon: Rocket, onClick: () => boostPick(r) },
+                  { key: 'sha', label: t('arp.revalidate', 'Revalidate SHA'), icon: ShieldCheck, onClick: () => revalidate(r) },
+                  { key: 'review', label: t('arp.review', 'Review & download'), icon: Files, hidden: !r.hosted, onClick: () => setReview(r) },
+                  { key: 'reject', label: t('arp.reject', 'Reject / unlist'), icon: XCircle, danger: true, onClick: () => reject(r) },
+                  { key: 'limits', label: t('arp.limits', 'Limits'), icon: Sliders, onClick: () => setLimitsRepo(r) },
+                ]} />
               </div>
             </Card>
           ))}

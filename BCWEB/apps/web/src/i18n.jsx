@@ -1186,6 +1186,8 @@ const DICT = {
     'ab.rulehint': 'Attribué automatiquement quand l’événement se produit — ex. un badge pour le 100e, 200e… membre, les early adopters, ou les soutiens Ko-fi.',
     // Système de report / contact
     'dash.reports': 'Signalements & contact', 'adm.tab.reports': 'Signalements',
+    // Admin repo card actions (arp.*) — these were hardcoded English before the ActionBar
+    'arp.revalidate': 'Revalider le SHA', 'arp.review': 'Examiner & télécharger', 'arp.limits': 'Limites',
     // Starred repos & catalogs (star.*) + its dashboard tab
     'dash.starred': 'Favoris',
     'star.title': 'Favoris',

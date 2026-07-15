@@ -2,7 +2,7 @@
 // use the Dialog + Toast providers below. Icons come from lucide-react.
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useId, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown, Undo2, Star } from 'lucide-react';
+import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown, Undo2, Star, MoreHorizontal } from 'lucide-react';
 
 // Robust clipboard copy — navigator.clipboard is unavailable on non-HTTPS origins and
 // inside some embedded webviews, so fall back to a hidden <textarea> + execCommand.
@@ -27,6 +27,100 @@ export const Card = forwardRef(({ hover, className = '', children, ...p }, ref) 
   <div ref={ref} className={`card ${hover ? 'card-hover' : ''} ${className}`} {...p}>{children}</div>);
 export const Badge = ({ tone = '', className = '', children }) =>
   <span className={`badge ${tone ? `badge-${tone}` : ''} ${className}`}>{children}</span>;
+
+// A row of actions that keeps itself on ONE line: it renders what fits and folds the rest
+// into a "More" menu. Cards here carry 5-6 actions, which free-wrapping turned into a 3-4 row
+// block that dwarfed the content it belonged to.
+//
+// It MEASURES rather than guessing at a breakpoint, because "does it fit" depends on the
+// action count and their labels, not just the viewport: the same card can fit six actions on a
+// wide desktop and two in a narrow sidebar at the same window size. Widths are read once from
+// a hidden copy of the full row (they don't change), then a ResizeObserver recomputes the
+// split as the container resizes.
+//
+// `actions`: [{ key, label, icon: Icon, onClick, variant?, danger?, hidden? }]
+export function ActionBar({ actions, className = '', size = 'sm' }) {
+  const list = actions.filter((a) => a && !a.hidden);
+  const wrapRef = useRef(null);
+  const measureRef = useRef(null);
+  const [fit, setFit] = useState(list.length); // how many render inline
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const moreRef = useRef(null);
+
+  useEffect(() => {
+    const wrap = wrapRef.current, measure = measureRef.current;
+    if (!wrap || !measure) return;
+    const GAP = 8, MORE = 44; // gap-2, and the width the "More" button needs
+    const compute = () => {
+      const widths = [...measure.children].map((c) => c.getBoundingClientRect().width);
+      const avail = wrap.getBoundingClientRect().width;
+      if (!avail || !widths.length) return;
+      // Everything fits → no menu at all (don't spend a slot on "More" for nothing).
+      const total = widths.reduce((a, w) => a + w, 0) + GAP * (widths.length - 1);
+      if (total <= avail) { setFit(widths.length); return; }
+      let used = MORE, n = 0;
+      for (const w of widths) { const next = used + w + GAP; if (next > avail) break; used = next; n++; }
+      setFit(Math.max(1, n)); // always keep at least the primary action visible
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [list.length, list.map((a) => a.label).join('|')]);
+
+  const shown = list.slice(0, fit);
+  const rest = list.slice(fit);
+  const openMenu = () => {
+    const r = moreRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 6, right: window.innerWidth - r.right, minWidth: Math.max(r.width, 180) });
+    setOpen(true);
+  };
+
+  return (
+    <div ref={wrapRef} className={`flex items-center gap-2 min-w-0 ${className}`}>
+      {/* Hidden full-width copy: the source of truth for each action's natural width. */}
+      <div ref={measureRef} aria-hidden className="absolute -z-10 opacity-0 pointer-events-none flex gap-2 whitespace-nowrap" style={{ left: -9999, top: -9999 }}>
+        {list.map((a) => (
+          <Button key={a.key} size={size} variant={a.variant || 'default'}>{a.icon && <a.icon size={14} />} {a.label}</Button>
+        ))}
+      </div>
+
+      {shown.map((a) => (
+        <Button key={a.key} size={size} variant={a.variant || 'default'} onClick={a.onClick}
+          className={`shrink-0 ${a.danger ? '!text-red-400' : ''}`}>
+          {a.icon && <a.icon size={14} />} {a.label}
+        </Button>
+      ))}
+
+      {rest.length > 0 && (
+        <>
+          {/* span, not ref={Button}: Button isn't a forwardRef, so a ref on it is silently
+              dropped and the menu would anchor to nothing. */}
+          <span ref={moreRef} className="shrink-0 inline-flex">
+            <Button size={size} variant="ghost" aria-expanded={open}
+              onClick={() => (open ? setOpen(false) : openMenu())} title={`${rest.length} more`}>
+              <MoreHorizontal size={15} />
+            </Button>
+          </span>
+          {open && pos && createPortal(
+            <>
+              <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+              <div role="menu" className="fixed z-[61] rounded-xl border border-[var(--line-strong)] bg-[var(--surface-1)] shadow-xl p-1"
+                style={{ top: pos.top, right: pos.right, minWidth: pos.minWidth }}>
+                {rest.map((a) => (
+                  <button key={a.key} role="menuitem" onClick={() => { setOpen(false); a.onClick?.(); }}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 hover:bg-[var(--surface-2)] ${a.danger ? 'text-red-400' : 'text-[var(--text)]'}`}>
+                    {a.icon && <a.icon size={14} />} {a.label}
+                  </button>
+                ))}
+              </div>
+            </>, document.body)}
+        </>
+      )}
+    </div>
+  );
+}
 
 // Star toggle for a repo or a community catalog. One component for both because the two
 // endpoints answer identically ({ favorited, favoriteCount }) — `post` is the caller's toggle
