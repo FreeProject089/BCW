@@ -35,14 +35,14 @@ const INSPECT_TEXT_MAX = 256 * 1024;
 // `not: false` and `JsonNull` do NOT fix it (same NULL semantics) — DbNull is what matches an
 // absent path. Imported lazily like db(), so a missing client doesn't break module load.
 let _dbNull;
-async function notInvalid() {
+export async function notInvalid() {
   if (_dbNull === undefined) ({ Prisma: { DbNull: _dbNull } } = await import('@prisma/client'));
   return { OR: [
     { NOT: { meta: { path: ['validation', 'valid'], equals: false } } },
     { meta: { path: ['validation', 'valid'], equals: _dbNull } },
   ] };
 }
-const isInvalid = (item) => item?.meta?.validation?.valid === false;
+export const isInvalid = (item) => item?.meta?.validation?.valid === false;
 const mkShareKey = () => crypto.randomBytes(16).toString('base64url');
 
 // Access model — mirrors Server-Repos. PUBLISHED = public (listed + feed + link). A
