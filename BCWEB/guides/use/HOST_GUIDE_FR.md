@@ -78,6 +78,25 @@ clé de partage en public si le contenu doit rester non listé — la clé est l
 - La **Politique d'accès globale** s'applique *au-dessus* de tes réglages — tu ne peux pas
   élargir l'accès au-delà de ce que la plateforme autorise.
 
+### Tes règles valent aussi pour les téléchargements web
+
+La page de ton dépôt liste son contenu et permet de télécharger un fichier directement depuis
+le navigateur, sans BMM. C'est **la même porte**, pas une seconde : le contrôle
+whitelist/bans identique s'exécute que la requête vienne de BMM ou d'un navigateur, et ton
+plafond d'upload comme tes compteurs s'appliquent dans les deux cas.
+
+Ce qui change selon le visiteur :
+
+- **Dépôt ouvert** → tout le monde peut parcourir et télécharger, connecté ou non.
+- **Une restriction active** → un visiteur déconnecté est invité à se connecter ; on compare
+  ensuite son compte BCWEB *et son Discord lié* à tes listes. Ton **contenu reste masqué** à
+  quiconque n'est pas autorisé — un dépôt whitelisté ne divulgue pas sa liste de fichiers.
+- **Banni** → refusé, comme partout ailleurs.
+
+Un membre que tu as autorisé par id Discord peut donc télécharger depuis le site, à condition
+d'avoir lié ce Discord à son compte BCWEB. Rien à configurer : si le dépôt est ouvert il l'est
+sur le web, s'il est restreint il l'est sur le web.
+
 ## 7. Recommandé vs non recommandé
 
 **Recommandé**

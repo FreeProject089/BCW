@@ -77,7 +77,8 @@ conteneur ne la verra pas même si elle est dans `.env`.
 cd infra/compose
 cp .env.example .env          # définir POSTGRES_PASSWORD, JWT_SECRET (openssl rand -hex 32), clés S3
 docker compose up -d          # monte toute la stack
-docker compose exec api npm run seed   # projets, plans d'hébergement, un SUPERADMIN
+docker compose exec api npm run seed        # projets, plans d'hébergement, un SUPERADMIN
+docker compose exec api npm run seed:demo   # DEV UNIQUEMENT : un catalogue de démo réaliste
 curl http://localhost/api/health       # { ok:true, db:true }
 ```
 

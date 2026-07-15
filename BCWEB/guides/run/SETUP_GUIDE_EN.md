@@ -53,6 +53,24 @@ Check it's healthy:
 curl http://localhost/api/health   # { "ok": true, "db": true, ... }
 ```
 
+### Optional: demo content (dev only)
+
+`npm run seed` builds the platform but creates **no catalog content**, so a fresh install has
+an empty catalog — nothing to click through, and nothing for the load harness to render. To
+fill it with realistic-looking content:
+
+```bash
+docker compose exec api npm run seed:demo      # ~400 items; DEMO_N=1000 for more
+```
+
+Everything it creates is slugged `demo-*`, so re-running replaces exactly its own rows and
+never touches real content. It refuses to run with `NODE_ENV=production` (override:
+`DEMO_ALLOW_PROD=yes`).
+
+There is **no demo-only cleanup command**: `npm run clear-content` wipes *all* user-generated
+content (repos, catalogs, blog, reviews, …), not just the demo rows — it's a test-environment
+reset, and it's a dry-run unless you pass `-- --yes`.
+
 ## 4. First login — change the seeded password immediately
 
 1. Go to `http://localhost` → **Sign in** → use the seeded admin credentials above.

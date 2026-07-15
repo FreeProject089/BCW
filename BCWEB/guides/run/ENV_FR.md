@@ -19,6 +19,9 @@
 | Variable | Rôle |
 |---|---|
 | `JWT_SECRET` | signe les sessions/cookies. **Chaîne aléatoire longue** (`openssl rand -hex 32`). En prod l'API refuse de démarrer avec la valeur d'exemple. |
+| `LINK_LOOKUP_SECRET` | signe le lookup de liaison BMM↔BCWEB et le handoff SSO télémétrie (le service télémétrie vérifie la même valeur sous le nom `BC_LINK_SECRET`). Il a un fallback — mais c'est `dev-link-secret`, commité dans ce repo : mets-en un vrai. `openssl rand -hex 32`. |
+| `BOT_SHARED_SECRET` | l'identifiant du bot Discord auprès de l'API. Non défini, compose donne **à la fois** à l'api et au bot la valeur de `LINK_LOOKUP_SECRET` : ils sont donc d'accord — ne le pose que pour donner au bot son propre secret. Exception : le bot lancé **hors** compose ne lit que celle-ci. |
+| `AUDIT_SECRET` | clé HMAC de la chaîne d'audit inviolable. Non défini → retombe sur `JWT_SECRET` (ça va). ⚠️ **La changer alors que des entrées existent invalide la vérification de toutes les précédentes** — pose-la une fois, avant la mise en ligne. |
 
 ## 3. Domaine & HTTPS (obligatoire en prod)
 | Variable | Rôle |
@@ -95,11 +98,23 @@ Callback à déclarer chez chaque fournisseur : `<SITE_URL>/api/auth/oauth/<prov
 | Variable | Rôle |
 |---|---|
 | `VITE_GTM_ID` | ID Google Tag Manager (analytics front, optionnel). Injecté au build. |
+| `NODE_OPTIONS` | flags V8 pour l'API. L'image pose déjà `--max-old-space-size=384` : V8 dimensionne son heap sur la RAM de **l'hôte** et ne lit *pas* la limite cgroup — dans un conteneur limité en mémoire, un heap non borné dépasse la limite et se fait OOM-kill au lieu de collecter. À monter en même temps que la limite mémoire du conteneur. |
+| `KOFI_WEBHOOK_TOKEN` | token de vérification du webhook Ko-fi. Posé ici, il **prime** sur le token défini en admin et le verrouille dans le dashboard (même logique que `DISCORD_TOKEN`). Vide = géré depuis l'UI admin. |
+| `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | **connexion de profil** Twitch (pas le login). Enregistre `<SITE_URL>/api/auth/connect/twitch/callback`. |
+| `STEAM_API_KEY` | connexion de profil Steam (OpenID — pas de secret). [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey). |
+| `MINIO_API_CORS_ALLOW_ORIGIN` | origine CORS pour laquelle MinIO répond aux uploads pré-signés du navigateur. Défaut `*` — correct avec la stack fournie ; à restreindre à ton `SITE_URL` si tu exposes MinIO publiquement. |
 
-*(Variables internes avec des défauts sûrs, rarement à toucher : `LINK_LOOKUP_SECRET`,
-`BOT_SHARED_SECRET`, `TELEMETRY_INTERNAL_URL`, `TELEMETRY_DATABASE_URL`,
-`DISCORD_CONTACT_WEBHOOK`. Le **SSO OpenID Connect** ne nécessite aucune variable — la clé
-est auto-générée et l'issuer = `SITE_URL`.)*
+> **Une variable ne marche que si compose la transmet.** L'API lit `process.env`, mais dans
+> Docker elle ne voit que ce que `infra/compose/docker-compose.yml` passe au service `api`.
+> Ajouter une variable au `.env` que compose ne transmet pas ne fait **rien** — le code
+> retombe silencieusement sur son défaut. Si tu en ajoutes une, ajoute-la aux deux endroits
+> (ça nous est arrivé : `RATE_LIMIT_MAX`, `REPO_EXPORT_MAX_MB` et `AUDIT_SECRET` étaient
+> documentées ici alors que compose les laissait tomber). Vérifie avec `docker compose config`
+> — il affiche ce que chaque service recevra réellement.
+
+*(Variables internes avec des défauts sûrs, rarement à toucher : `TELEMETRY_INTERNAL_URL`,
+`TELEMETRY_DATABASE_URL`, `DISCORD_CONTACT_WEBHOOK`. Le **SSO OpenID Connect** ne nécessite
+aucune variable — la clé est auto-générée et l'issuer = `SITE_URL`.)*
 
 ---
 

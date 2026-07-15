@@ -147,7 +147,8 @@ and sends are admin-triggered only (no auto-send on publish).
 ## 8. Hosted repo content & files (`hosting-content.mjs`)
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/hosting/:owner/:repo/repo.json` · `/files/*` | — | Public served repo content (sandboxed, download-only). |
+| GET | `/hosting/:owner/:repo/repo.json` · `/files/*` | — | Public served repo content (sandboxed, download-only). This is what BMM pulls **and** what the repo page's download buttons link to — one gate, one set of caps/counters. A browser's session counts as identity here (same whitelist/ban entries as BMM's `X-Creator-ID`). |
+| GET | `/r/:id/contents` | — | The repo's file list for its web page, plus an `access` verdict (`canDownload`, `restricted`, `reason`). Same visibility rule as `GET /r/:id` (listed+verified, share link `?k=`, or owner/staff). Open repo → full list for anyone. Any restriction + signed out → `reason: 'login_required'` and the **list is withheld**, not just the button (a private repo must not leak its filenames). Banned → 403. Restricted responses are `no-store`. |
 | GET/POST/DELETE | `/repos/:id/files[/:fid]` · `/files/presign` | user | Manage a repo's files. |
 | POST | `/repos/:id/publish` · `/unpublish` | user | Publish state. |
 | GET/POST | `/admin/repos/:id/files` (+ `/download`, `/download-all`, `/publish`, `/unpublish`) | admin | Admin file access. |

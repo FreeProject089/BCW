@@ -40,6 +40,24 @@ BetterModsManager (BMM) app:
 - **Server repos** (`/repos`, individual pages at `/r/<id>`) — hosted or URL-based mod
   sources. Each has an **"Open in BMM"** deeplink and a `repo.json` link.
 
+### Downloading from a repo without BMM
+
+A hosted repo's page lists its **contents** (mods, profiles, …) and every file downloads in
+one click, straight from the browser — you don't need BMM installed to grab a single file.
+(BMM is still the better route for actually *using* a repo: it syncs and updates it for you.)
+
+Whether you can download depends only on how the owner configured the repo:
+
+| The repo is… | What you get |
+|---|---|
+| **Open** (no restrictions) | the contents and every download, signed in or not |
+| **Restricted** (whitelist, or bans in play) | **sign in first** — we then match your BCWEB account (and its linked Discord) against the owner's list. The contents stay hidden until you're allowed, so a private repo's file list isn't public. |
+| You're **banned** from it | nothing — the page reports no access |
+
+If a restricted repo still refuses you after signing in, your account simply isn't on the
+owner's list: ask them for access. Linking your Discord (§2) helps — owners often
+allow-list Discord accounts rather than BCWEB ids.
+
 **Trust tiers** you'll see on the listing: **Official** (green, BMM team), **Partner**
 (blue, trusted members), and **Community** (unverified — add at your discretion).
 

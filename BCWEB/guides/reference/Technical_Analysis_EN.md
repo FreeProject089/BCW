@@ -75,7 +75,8 @@ it even if it's in `.env`.
 cd infra/compose
 cp .env.example .env          # set POSTGRES_PASSWORD, JWT_SECRET (openssl rand -hex 32), S3 keys
 docker compose up -d          # brings up the whole stack
-docker compose exec api npm run seed   # projects, hosting plans, one SUPERADMIN
+docker compose exec api npm run seed        # projects, hosting plans, one SUPERADMIN
+docker compose exec api npm run seed:demo   # DEV ONLY: a realistic demo catalog to look at
 curl http://localhost/api/health       # { ok:true, db:true }
 ```
 

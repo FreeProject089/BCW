@@ -20,6 +20,9 @@
 | Variable | Purpose |
 |---|---|
 | `JWT_SECRET` | signs sessions/cookies. **Long random string** (`openssl rand -hex 32`). In production the API refuses to boot with the example value. |
+| `LINK_LOOKUP_SECRET` | signs the BMM↔BCWEB link lookup and the telemetry SSO handoff (the telemetry service verifies the same value as `BC_LINK_SECRET`). Has a fallback — but it's `dev-link-secret`, committed in this repo, so set it. `openssl rand -hex 32`. |
+| `BOT_SHARED_SECRET` | the Discord bot's API credential. Unset, compose gives **both** the api and the bot `LINK_LOOKUP_SECRET`'s value, so they agree — only set this to give the bot its own secret. Running the bot **outside** compose is the exception: its code reads only this one. |
+| `AUDIT_SECRET` | HMAC key for the tamper-evident staff audit chain. Unset → falls back to `JWT_SECRET` (fine). ⚠️ **Changing it once entries exist invalidates verification of every earlier entry** — set it once, before going live. |
 
 ## 3. Domain & HTTPS (required in production)
 | Variable | Purpose |
@@ -96,11 +99,22 @@ Callback to register at each provider: `<SITE_URL>/api/auth/oauth/<provider>/cal
 | Variable | Purpose |
 |---|---|
 | `VITE_GTM_ID` | Google Tag Manager ID (front-end analytics, optional). Injected at build time. |
+| `NODE_OPTIONS` | V8 flags for the API. The image already sets `--max-old-space-size=384`: V8 sizes its heap from the **host's** RAM and does *not* read the cgroup limit, so in a memory-limited container an unbounded heap grows past the limit and gets OOM-killed instead of collecting. Raise it in tandem with the container's memory limit. |
+| `KOFI_WEBHOOK_TOKEN` | Ko-fi webhook verification token. Set here, it **wins over** the admin-set token and locks it in the dashboard (same pattern as `DISCORD_TOKEN`). Blank = manage it from the admin UI. |
+| `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | Twitch **profile connection** (not login). Register `<SITE_URL>/api/auth/connect/twitch/callback`. |
+| `STEAM_API_KEY` | Steam profile connection (OpenID — no secret). [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey). |
+| `MINIO_API_CORS_ALLOW_ORIGIN` | CORS origin MinIO answers pre-signed browser uploads for. Default `*` — fine behind the bundled setup; narrow it to your `SITE_URL` if you expose MinIO publicly. |
 
-*(Internal variables with safe defaults, rarely touched: `LINK_LOOKUP_SECRET`,
-`BOT_SHARED_SECRET`, `TELEMETRY_INTERNAL_URL`, `TELEMETRY_DATABASE_URL`,
-`DISCORD_CONTACT_WEBHOOK`. The **OpenID Connect SSO** needs no variable — the key is
-auto-generated and the issuer = `SITE_URL`.)*
+> **A variable only works if compose forwards it.** The API reads `process.env`, but in Docker
+> it only sees what `infra/compose/docker-compose.yml` passes to the `api` service. Adding a
+> variable to `.env` that compose doesn't forward does nothing — the code silently uses its
+> default. If you add a new one, add it in both places (this bit us: `RATE_LIMIT_MAX`,
+> `REPO_EXPORT_MAX_MB` and `AUDIT_SECRET` were documented here while compose dropped them).
+> Check with `docker compose config` — it prints what each service will actually receive.
+
+*(Internal variables with safe defaults, rarely touched: `TELEMETRY_INTERNAL_URL`,
+`TELEMETRY_DATABASE_URL`, `DISCORD_CONTACT_WEBHOOK`. The **OpenID Connect SSO** needs no
+variable — the key is auto-generated and the issuer = `SITE_URL`.)*
 
 ---
 

@@ -41,6 +41,25 @@ l'app BetterModsManager (BMM) :
 - **Dépôts serveur** (`/repos`, pages `/r/<id>`) — sources de mods hébergées ou par URL.
   Chacun a un deeplink **« Ouvrir dans BMM »** et un lien `repo.json`.
 
+### Télécharger depuis un dépôt sans BMM
+
+La page d'un dépôt hébergé liste son **contenu** (mods, profils, …) et chaque fichier se
+télécharge en un clic, directement depuis le navigateur — pas besoin d'installer BMM pour
+récupérer un seul fichier. (BMM reste la meilleure voie pour *utiliser* un dépôt : il le
+synchronise et le met à jour pour toi.)
+
+Ce qui décide si tu peux télécharger, c'est uniquement la config du propriétaire :
+
+| Le dépôt est… | Ce que tu obtiens |
+|---|---|
+| **Ouvert** (aucune restriction) | le contenu et tous les téléchargements, connecté ou non |
+| **Restreint** (whitelist, ou bans actifs) | **connecte-toi d'abord** — on compare alors ton compte BCWEB (et son Discord lié) à la liste du propriétaire. Le contenu reste masqué tant que tu n'es pas autorisé : la liste des fichiers d'un dépôt privé n'est pas publique. |
+| Tu en es **banni** | rien — la page indique l'absence d'accès |
+
+Si un dépôt restreint te refuse encore une fois connecté, c'est que ton compte n'est
+simplement pas sur la liste : demande l'accès au propriétaire. Lier ton Discord (§2) aide —
+les propriétaires autorisent souvent des comptes Discord plutôt que des ids BCWEB.
+
 **Niveaux de confiance** : **Officiel** (vert, équipe BMM), **Partenaire** (bleu, membres de
 confiance), **Communauté** (non vérifié — ajoute à ta discrétion).
 

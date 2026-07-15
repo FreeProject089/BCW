@@ -153,7 +153,8 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 ## 8. Contenu & fichiers de repo hébergé (`hosting-content.mjs`)
 | Méthode | Chemin | Auth | But |
 |---|---|---|---|
-| GET | `/hosting/:owner/:repo/repo.json` · `/files/*` | — | Contenu de repo servi publiquement (sandboxé, download-only). |
+| GET | `/hosting/:owner/:repo/repo.json` · `/files/*` | — | Contenu de repo servi publiquement (sandboxé, download-only). C'est ce que BMM récupère **et** ce que visent les boutons de download de la page du dépôt — une seule porte, les mêmes plafonds/compteurs. La session d'un navigateur y compte comme identité (mêmes entrées whitelist/bans que le `X-Creator-ID` de BMM). |
+| GET | `/r/:id/contents` | — | La liste des fichiers du dépôt pour sa page web, plus un verdict `access` (`canDownload`, `restricted`, `reason`). Même règle de visibilité que `GET /r/:id` (listé+vérifié, lien de partage `?k=`, ou propriétaire/staff). Dépôt ouvert → liste complète pour tout le monde. Restriction + déconnecté → `reason: 'login_required'` et la **liste est retenue**, pas seulement le bouton (un dépôt privé ne doit pas divulguer ses noms de fichiers). Banni → 403. Les réponses restreintes sont `no-store`. |
 | GET/POST/DELETE | `/repos/:id/files[/:fid]` · `/files/presign` | user | Gérer les fichiers d'un repo. |
 | POST | `/repos/:id/publish` · `/unpublish` | user | État de publication. |
 | GET/POST | `/admin/repos/:id/files` (+ `/download`, `/download-all`, `/publish`, `/unpublish`) | admin | Accès fichiers admin. |

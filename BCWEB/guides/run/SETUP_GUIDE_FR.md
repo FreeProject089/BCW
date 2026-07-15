@@ -47,6 +47,25 @@ Le seed est idempotent (rejouable sans risque) et crée :
   en **SUPERADMIN** spécifiquement pour qu'il y ait toujours au moins un compte capable
   d'accorder/réassigner les rôles ensuite.
 
+### Optionnel : contenu de démo (dev uniquement)
+
+`npm run seed` monte la plateforme mais ne crée **aucun contenu de catalogue** : une install
+fraîche a donc un catalogue vide — rien à parcourir, et rien à rendre pour le harnais de
+charge. Pour le remplir avec du contenu réaliste :
+
+```bash
+docker compose exec api npm run seed:demo      # ~400 items ; DEMO_N=1000 pour plus
+```
+
+Tout ce qu'il crée est slugué `demo-*` : le relancer remplace exactement ses propres lignes et
+ne touche jamais au vrai contenu. Il refuse de tourner avec `NODE_ENV=production` (contournement :
+`DEMO_ALLOW_PROD=yes`).
+
+Il n'existe **aucune commande de nettoyage propre à la démo** : `npm run clear-content` efface
+*tout* le contenu généré par les utilisateurs (dépôts, catalogues, blog, avis…), pas seulement
+les lignes de démo — c'est une remise à zéro d'environnement de test, et c'est un dry-run tant
+que tu ne passes pas `-- --yes`.
+
 Vérifie qu'il est sain :
 ```bash
 curl http://localhost/api/health   # { "ok": true, "db": true, ... }

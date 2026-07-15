@@ -72,6 +72,25 @@ the content is meant to stay unlisted — the key is the gate.
 - The site-wide **Global Access Policy** is enforced *on top of* your settings — you can't
   widen access beyond what the platform allows.
 
+### Your rules apply to web downloads too
+
+Your repo's page lists its contents and lets people download a file straight from the
+browser, without BMM. This is **the same gate**, not a second one — the identical
+whitelist/ban check runs whether the request comes from BMM or a browser, and your upload
+cap and counters apply either way.
+
+What changes per visitor:
+
+- **Open repo** → anyone can browse and download, signed in or not.
+- **Any restriction active** → a signed-out visitor is asked to sign in; we then match their
+  BCWEB account *and its linked Discord* against your lists. Your **contents stay hidden**
+  from anyone not allowed — a whitelisted repo doesn't leak its file list.
+- **Banned** → refused, as everywhere else.
+
+So a member you allow-listed by Discord id can download from the site as long as they've
+linked that Discord to their BCWEB account. Nothing to configure: if the repo is open it's
+open on the web, and if it's restricted it's restricted on the web.
+
 ## 7. Recommended vs. not recommended
 
 **Recommended**
