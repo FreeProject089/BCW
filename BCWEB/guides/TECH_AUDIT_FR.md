@@ -112,16 +112,22 @@ La parité FR/EN tient à la discipline, pas à l'outillage — une clé manquan
 anglais en silence. Un lint de parité des clés rendrait ça structurel.
 
 ### 3.7b 🟡 Vulnérabilités de dépendances (transitives, faible atteignabilité)
-`npm audit` (juil. 2026) : **web = 0**, **bot = 0**, **api = 5 high + 2 modérées, toutes
-transitives**, **0 critique**. Les deux racines :
-- **`fast-uri@2.4.0`** (via Fastify 4) — avis path-traversal / host-confusion. Patché seulement
-  en montant **Fastify 4 → 5** (une migration cassante délibérée, pas `audit fix --force`).
-  L'atteignabilité est faible (Fastify fait sa propre normalisation de chemin), mais à planifier.
-- **`ip-address`** (via `geoip-lite`) — XSS dans les méthodes HTML de `Address6`. **Non
-  atteignable** : `geoip-lite` ne fait que parser des adresses, n'appelle jamais ces méthodes
-  HTML. Corrigé par `geoip-lite` 1→2.
+`npm audit` (api) : **0 critique** ; les racines :
+- **`ip-address`** (via `geoip-lite`) — XSS dans les méthodes HTML de `Address6`. **FAIT** —
+  montée **geoip-lite 1.4.10 → 2.0.3** (qui tire `ip-address@10`) ; l'avis n'apparaît plus. De
+  toute façon jamais atteignable (`geoip-lite` ne fait que parser des adresses). 2.0.3 embarque ses
+  données dans le tarball sans postinstall, donc `npm ci` n'a besoin d'aucun téléchargement ni clé
+  MaxMind ; la forme de `lookup()` est inchangée, aucun changement de code.
+- **`fast-uri`** (via Fastify 4) — avis path-traversal / host-confusion. Patché seulement en montant
+  **Fastify 4 → 5** (une migration cassante délibérée, pas `audit fix --force`). Atteignabilité
+  faible (Fastify fait sa propre normalisation de chemin), mais à planifier.
+- **`nodemailer` ≤ 9.0.0** (dép directe, `^6.9.14`) — un lot d'avis publiés depuis le premier audit
+  (injection de commande SMTP via CRLF, DoS de l'addressparser, lecture de fichier & SSRF via
+  jsonTransport/raw, validation TLS OAuth2). L'atteignabilité est à revoir (BCWEB construit ses
+  messages côté serveur ; les chemins raw/jsonTransport ne sont pas manifestement exposés), puis
+  monter en **`nodemailer@9`**.
 
-Action : suivre les upgrades **Fastify 4→5** et **geoip-lite 1→2** comme des tâches testées à
+Action : suivre les upgrades **Fastify 4→5** et **nodemailer 6→9** comme des tâches testées à
 part ; ne pas les `--force` à l'aveugle (les deux sont cassants et risqueraient le build de l'API).
 
 ### 3.8 🟡 Divers

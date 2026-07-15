@@ -106,15 +106,21 @@ FR/EN parity is discipline, not tooling — a missing key silently falls back to
 A key-parity lint would make it structural.
 
 ### 3.7b 🟡 Dependency vulnerabilities (transitive, low reachability)
-`npm audit` (Jul 2026): **web = 0**, **bot = 0**, **api = 5 high + 2 moderate, all transitive**,
-**0 critical**. The two roots:
-- **`fast-uri@2.4.0`** (via Fastify 4) — path-traversal / host-confusion advisories. Patched
-  only by upgrading **Fastify 4 → 5** (a deliberate breaking migration, not `audit fix --force`).
+`npm audit` (api): **0 critical**; the roots:
+- **`ip-address`** (via `geoip-lite`) — XSS in `Address6` HTML-emitting methods. **DONE** —
+  bumped **geoip-lite 1.4.10 → 2.0.3** (pulls `ip-address@10`); the advisory no longer appears.
+  It was never reachable anyway (`geoip-lite` only parses addresses). 2.0.3 bundles its data in
+  the tarball with no postinstall, so `npm ci` needs no download or MaxMind key; `lookup()` shape
+  is unchanged, no code change needed.
+- **`fast-uri`** (via Fastify 4) — path-traversal / host-confusion advisories. Patched only by
+  upgrading **Fastify 4 → 5** (a deliberate breaking migration, not `audit fix --force`).
   Reachability is low (Fastify does its own path normalisation), but it should be scheduled.
-- **`ip-address`** (via `geoip-lite`) — XSS in `Address6` HTML-emitting methods. **Not reachable**:
-  `geoip-lite` only parses addresses, never calls those HTML methods. Fixed by `geoip-lite` 1→2.
+- **`nodemailer` ≤ 9.0.0** (direct dep, `^6.9.14`) — a batch of advisories published since the
+  first audit (SMTP command injection via CRLF, addressparser DoS, jsonTransport/raw file-read &
+  SSRF, OAuth2 TLS validation). Reachability needs review (BCWEB builds its own messages server-
+  side; the raw/jsonTransport file-read paths aren't obviously exposed), then upgrade to `nodemailer@9`.
 
-Action: track the **Fastify 4→5** and **geoip-lite 1→2** upgrades as their own tested tasks;
+Action: track the **Fastify 4→5** and **nodemailer 6→9** upgrades as their own tested tasks;
 don't blind-`--force` them (both are breaking and would risk the API build).
 
 ### 3.8 🟡 Miscellaneous
