@@ -35,6 +35,8 @@
 | `S3_ENDPOINT` | endpoint S3 (défaut MinIO interne `http://minio:9000`). |
 | `S3_REGION` | région (`us-east-1` en local, `auto` pour Cloudflare R2). |
 | `S3_PUBLIC_ENDPOINT` | l'URL **publique** du stockage (les navigateurs y accèdent via des URLs pré-signées). |
+| `REPO_EXPORT_MAX_MB` | plafond (Mo) sur l'endpoint admin « télécharger tout le dépôt en un zip ». L'export est *streamé*, donc ça borne la taille de transfert, pas la mémoire. Défaut `250` ; au-delà, l'admin récupère les fichiers un par un. |
+| `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW` | budget de requêtes par IP. Défauts `600` / `1 minute` — généreux pour un humain (~10 req/s) et c'est ce qui protège la DB en cas d'abus, donc **garde le défaut en production**. À monter uniquement pour benchmarker la capacité brute d'une route (`loadtest/`) : depuis une seule IP, le limiter déleste sinon tout le flood et chaque chiffre n'est qu'un 429. |
 
 *(Pour migrer vers Cloudflare R2 : ne change que ces 5 variables — voir [ADDONS_FR.md](ADDONS_FR.md) §4.)*
 

@@ -1,12 +1,19 @@
 import { z } from 'zod';
 import { Transform } from 'node:stream';
 import { createHash } from 'node:crypto';
-import { zipCreate } from '../lib/native.mjs';
+import archiver from 'archiver';
 import { db, requireRole, slugify, notify, repoLog, isValidRepoManifest, getGlobalAccessPolicy, getUserAccessPolicy, matchAccountList } from '../lib/lib.mjs';
 import { presignPut, presignGet, getObject } from '../lib/storage.mjs';
 import { repoMeter } from '../lib/monitor.mjs';
 
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
+
+// Cap on the admin "download whole repo as one zip" review endpoint. The export streams
+// (archiver) so it's not a memory limit — it just bounds how large a single archived
+// download can get (transfer + how many S3 reads are opened at once). Tunable via env for
+// an operator who wants to allow bigger review bundles; default 250 MB, past which an
+// admin should fetch files individually.
+const REPO_EXPORT_MAX_BYTES = Math.max(1, Number(process.env.REPO_EXPORT_MAX_MB) || 250) * 1024 * 1024;
 
 // Uploading a folder legitimately fires many presign+register calls in a burst, so
 // the file endpoints get their own generous bucket instead of sharing the global one
@@ -331,21 +338,26 @@ export default async function hostingContentRoutes(app) {
     return { url: await presignGet(file.key), path: file.path, size: Number(file.size) };
   });
 
-  // Admin: download the WHOLE repo's content as a single zip (for review). Built in
-  // memory (adm-zip), so guarded by a total-size cap to avoid OOM on huge repos.
+  // Admin: download the WHOLE repo's content as a single zip (for review). Streamed
+  // (archiver), so memory stays bounded; a total-size cap still bounds the transfer.
   app.get('/admin/repos/:id/files/download-all', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { id: req.params.id }, include: { files: true } });
     if (!repo) return reply.code(404).send({ error: 'not_found' });
     if (!repo.files.length) return reply.code(404).send({ error: 'empty' });
     const total = repo.files.reduce((a, f) => a + Number(f.size), 0);
-    if (total > 500 * 1024 * 1024) return reply.code(413).send({ error: 'too_large', detail: 'Repo exceeds 500 MB — download files individually.' });
-    const files = [];
-    for (const f of repo.files) {
-      try { const { body } = await getObject(f.key); files.push({ name: f.path, data: await streamBuffer(body) }); } catch { /* skip unreadable file */ }
-    }
+    if (total > REPO_EXPORT_MAX_BYTES) return reply.code(413).send({ error: 'too_large', detail: `Repo exceeds ${Math.round(REPO_EXPORT_MAX_BYTES / (1024 * 1024))} MB — download files individually.` });
     reply.header('Content-Type', 'application/zip').header('Content-Disposition', `attachment; filename="${slugify(repo.name) || 'repo'}.zip"`);
-    return reply.send(Buffer.from(await zipCreate(files))); // built off the event loop (native), fallback adm-zip
+    // Stream the archive: append each file's S3 READ STREAM (not its buffered bytes) so peak
+    // memory stays bounded to the in-flight chunks instead of the whole repo (up to 500 MB,
+    // which could OOM the single-container VPS). archiver compresses + emits incrementally.
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', () => { try { reply.raw.destroy(); } catch { /* already closed */ } });
+    for (const f of repo.files) {
+      try { const { body } = await getObject(f.key); archive.append(body, { name: f.path }); } catch { /* skip unreadable file */ }
+    }
+    archive.finalize();
+    return reply.send(archive);
   });
 
   // ── Admin review ──
@@ -419,15 +431,6 @@ export default async function hostingContentRoutes(app) {
       return reply.send(body.pipe(throttle(getKbps)).pipe(repoMeter(repo.id)));
     } catch { return reply.code(404).send({ error: 'not_found' }); }
   });
-}
-
-// Read a Node stream (S3 body) to a Buffer (binary-safe, for zipping).
-async function streamBuffer(stream) {
-  if (Buffer.isBuffer(stream)) return stream;
-  if (typeof stream.arrayBuffer === 'function') return Buffer.from(await stream.arrayBuffer());
-  const chunks = [];
-  for await (const c of stream) chunks.push(typeof c === 'string' ? Buffer.from(c) : c);
-  return Buffer.concat(chunks);
 }
 
 // Read a Node stream (S3 body) to a string.

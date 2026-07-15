@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireRole, notify, safeEqual } from '../lib/lib.mjs';
-import { cached, invalidate } from '../lib/cache.mjs';
+import { invalidate, replyCachedJson } from '../lib/cache.mjs';
 import { grantAutoBadges } from './social.mjs';
 
 // Ko-fi's webhook POSTs a single `application/x-www-form-urlencoded` field
@@ -88,7 +88,7 @@ export default async function kofiRoutes(app) {
     // request-coalescing) so a burst of visitors is one DB read, not thousands.
     // Cache-Control lets a CDN/browser hold it briefly too.
     reply.header('Cache-Control', 'public, max-age=15');
-    return cached('kofi.stats', 15_000, async () => {
+    return replyCachedJson(req, reply, 'kofi.stats', 15_000, async () => {
       const p = await db();
       const [agg, goalRow] = await Promise.all([
         p.kofiDonation.aggregate({ _sum: { amount: true }, _count: { _all: true } }),

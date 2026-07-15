@@ -4,10 +4,15 @@ import { zipReadAll, zipEntry } from '../lib/native.mjs';
 import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy } from '../lib/lib.mjs';
 import { presignGet, getObject, deleteObject } from '../lib/storage.mjs';
 import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
-import { cached } from '../lib/cache.mjs';
+import { replyCachedJson } from '../lib/cache.mjs';
 import { powVerify } from './auth.mjs';
 
 const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
+// The ProjectKey enum. Validated like KINDS: an unknown ?project= must never reach the feed's
+// cache key — each distinct key pins a whole feed payload in the L1 map — nor silently widen
+// the query to every project (an unknown key made findUnique throw, the catch swallow it, and
+// the projectId filter drop off, so `?project=junk` returned EVERY project's items).
+const PROJECT_KEYS = ['community', 'bmm', 'bsm', 'installer'];
 // Zip entries whose text is safe to preview inline during moderation review.
 const INSPECT_TEXT_EXT = /\.(json|txt|md|css|js|mjs|cjs|ts|lua|cfg|ini|yml|yaml|xml|toml|csv|log|sh)$/i;
 const INSPECT_TEXT_MAX = 256 * 1024;
@@ -19,7 +24,24 @@ const INSPECT_TEXT_MAX = 256 * 1024;
 // download to the public. `meta.validation` is only ever set for kinds that get
 // re-checked (currently PLUGIN); items with no validation recorded are treated
 // as valid (nothing to invalidate them).
-const NOT_INVALID = { NOT: { meta: { path: ['validation', 'valid'], equals: false } } };
+//
+// The `equals: DbNull` branch is load-bearing, not belt-and-braces. `NOT { path = false }`
+// alone reads as "not invalid" but SQL three-valued logic makes it "explicitly not false":
+// when the path is ABSENT the comparison is NULL, NOT NULL is NULL, and the row is dropped.
+// That silently hid every item with no `validation` recorded — i.e. every APP/THEME/PRESET
+// (only PLUGIN is ever re-checked) and every plugin whose validation is `{unverified:true}`
+// (a dead download link, which revalidatePlugin deliberately does NOT treat as invalid).
+// Measured on a 390-item fixture: the old filter returned 300, this returns the intended 370.
+// `not: false` and `JsonNull` do NOT fix it (same NULL semantics) — DbNull is what matches an
+// absent path. Imported lazily like db(), so a missing client doesn't break module load.
+let _dbNull;
+async function notInvalid() {
+  if (_dbNull === undefined) ({ Prisma: { DbNull: _dbNull } } = await import('@prisma/client'));
+  return { OR: [
+    { NOT: { meta: { path: ['validation', 'valid'], equals: false } } },
+    { meta: { path: ['validation', 'valid'], equals: _dbNull } },
+  ] };
+}
 const isInvalid = (item) => item?.meta?.validation?.valid === false;
 const mkShareKey = () => crypto.randomBytes(16).toString('base64url');
 
@@ -146,7 +168,7 @@ export default async function catalogRoutes(app) {
   app.get('/catalog', async (req) => {
     const p = await db();
     const { project, kind, q, sort = 'recent', take = '60', skip = '0' } = req.query || {};
-    const where = { status: 'PUBLISHED', ...NOT_INVALID };
+    const where = { status: 'PUBLISHED', ...(await notInvalid()) };
     if (project) where.project = { key: project };
     if (kind && KINDS.includes(kind)) where.kind = kind;
     if (q) where.OR = [{ name: { contains: String(q), mode: 'insensitive' } }, { description: { contains: String(q), mode: 'insensitive' } }];
@@ -206,7 +228,7 @@ export default async function catalogRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     if (await officialGate(p, req, reply)) return;
-    const items = await p.catalogItem.findMany({ where: { slug: { in: b.data.slugs }, status: 'PUBLISHED', payloadKey: { not: null }, ...NOT_INVALID } });
+    const items = await p.catalogItem.findMany({ where: { slug: { in: b.data.slugs }, status: 'PUBLISHED', payloadKey: { not: null }, ...(await notInvalid()) } });
     const out = [];
     for (const item of items) { await countDownload(p, item); out.push({ slug: item.slug, name: item.name, url: await presignGet(item.payloadKey) }); }
     return { files: out };
@@ -258,7 +280,8 @@ export default async function catalogRoutes(app) {
   app.get('/catalog.json', async (req, reply) => {
     const p = await db();
     if (await officialGate(p, req, reply)) return; // access control runs per-request (may 403)
-    const projectKey = String(req.query?.project || 'bmm').toLowerCase();
+    const reqProject = String(req.query?.project || 'bmm').toLowerCase();
+    const projectKey = PROJECT_KEYS.includes(reqProject) ? reqProject : 'bmm';
     const reqKind = String(req.query?.kind || 'app').toUpperCase();
     const kind = KINDS.includes(reqKind) ? reqKind : 'APP';
     reply.header('Cache-Control', 'public, max-age=300');
@@ -266,10 +289,10 @@ export default async function catalogRoutes(app) {
     // every desktop client — so the DB query + render is memoised behind a 60s two-tier
     // cache (with request-coalescing, so a cold cache can't stampede Postgres). Bounded at
     // the top 500 by downloads so the query + payload can't grow without limit.
-    return cached(`catalog.json:${projectKey}:${kind}`, 60_000, async () => {
+    return replyCachedJson(req, reply, `catalog.json:${projectKey}:${kind}`, 60_000, async () => {
       const origin = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
       const project = await p.project.findUnique({ where: { key: projectKey } }).catch(() => null);
-      const where = { status: 'PUBLISHED', kind, ...NOT_INVALID };
+      const where = { status: 'PUBLISHED', kind, ...(await notInvalid()) };
       if (project) where.projectId = project.id;
       const items = await p.catalogItem.findMany({ where, orderBy: { downloads: 'desc' }, take: 500, include: { owner: { select: { displayName: true } } } });
       const dlUrl = (it) => it.meta?.download_url || it.meta?.downloadUrl || (it.payloadKey ? `${origin}/api/catalog/${it.slug}/dl` : null);

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { db, requireRole, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate } from '../lib/lib.mjs';
-import { cached, invalidate } from '../lib/cache.mjs';
+import { invalidate, replyCachedJson } from '../lib/cache.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { gh, ghCache, versionedRawUrl } from './projects.mjs';
 
@@ -43,7 +43,7 @@ export default async function showcaseRoutes(app) {
     // Same for every visitor (public listing only) → 10s micro-cache + Cache-Control.
     // A scheduled reveal is at most ~10s late, which is fine for a public grid.
     reply.header('Cache-Control', 'public, max-age=10');
-    return cached('showcase.list', 10_000, async () => {
+    return replyCachedJson(req, reply, 'showcase.list', 10_000, async () => {
       const p = await db();
       const rows0 = await p.showcaseProject.findMany({ where: { published: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
       const rows = await Promise.all(rows0.map((r) => applyScheduledUpdate(p, p.showcaseProject, r)));

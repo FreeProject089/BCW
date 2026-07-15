@@ -6,13 +6,45 @@ Stack testée : Caddy → nginx (SPA) / API Fastify → Postgres, le tout dans D
 Desktop sur la machine de dev, charge générée avec autocannon depuis la même machine
 (loopback). Ce sont donc des chiffres **pessimistes d'une seule boîte en loopback**.
 
-Relancer : `cd loadtest && npm install && node run.mjs` (la stack doit tourner). Le
-runner est configurable et écrit `last-run.json` :
+## Le harnais (réécrit le 2026-07-15)
+
+`run.mjs` est désormais une échelle de stress multi-**scénarios** à **niveaux** nommés
+(du calme à l'extrême) qui capture toute la queue de latence et écrit un rapport pensé pour
+être lu **par un humain ou une IA**. Relancer (`cd loadtest && npm install && node run.mjs`,
+stack up) :
+
 ```
-BASE=http://localhost:3000 node run.mjs          # frappe le conteneur API directement
-BASE=http://localhost      node run.mjs          # via Caddy (ajoute /api automatiquement)
-LEVELS=100,1000,5000 DURATION=10 node run.mjs     # échelle personnalisée
+BASE=http://localhost:3000 node run.mjs     # direct sur le conteneur API
+BASE=http://localhost      node run.mjs     # via Caddy (ajoute /api automatiquement)
+QUICK=1 node run.mjs                         # 2 niveaux bas, 5s chacun (smoke)
+DURATION=15 LEVELS=chill,normal,busy node run.mjs
+CONNS=10,100,1000 node run.mjs               # échelle numérique personnalisée
+SCENARIOS=cached,feed node run.mjs           # sous-ensemble de mixes d'endpoints
+RPM_PER_USER=6 node run.mjs                  # ajuste le modèle utilisateur du min-spec
 ```
+
+- **Niveaux** (concurrence, calme → extrême) : `chill` (10) · `normal` (50) · `busy` (200) ·
+  `heavy` (1 000) · `extreme` (5 000). `QUICK=1` lance les deux plus bas ; override via `CONNS=`.
+- **Scénarios** (mixes d'endpoints = différentes formes/coûts de données) :
+  - `cached` — lectures caches/liveness bon marché (`/health`, `/kofi/stats`) : chemin cache + event loop.
+  - `db-read` — requêtes listes DB (`/projects`, `/showcase`, `/catalog`).
+  - `feed` — le rendu public le plus lourd, le feed `catalog.json` (top 500).
+  - `mixed` — un mélange réaliste pondéré lecture (c'est là-dessus qu'est calé le min-spec).
+- **Par niveau on enregistre** le débit (req/s + 2xx/s réellement *servies*), la queue de
+  latence **p50 / p90 / p99 / p99.9**, `non-2xx` / erreurs / timeouts, et une **sonde ping
+  `/health` live** émise *pendant* le flood — si son p99 explose, l'event loop Node est
+  affamé CPU (le signal de goulot le plus utile).
+- **Il écrit** (tout git-ignoré, régénéré à chaque run) :
+  - `report.md` — rapport humain+IA : tables par scénario, un **coude** de saturation, un
+    **diagnostic de goulot** en clair, une table **spécifications-serveur-minimum** extrapolée
+    (utilisateurs → vCPU/RAM), et une note Core Web Vitals.
+  - `report.json` — les mêmes données, lisibles machine (à differ entre runs ; le coude qui
+    monte = la condition de victoire).
+
+Les entrées historiques ci-dessous précèdent ce harnais mais le tableau tient : sur une seule
+boîte loopback, les signaux honnêtes sont les req/s servies, la queue p99/p99.9, et où
+apparaissent les premières erreurs/timeouts — les niveaux hauts sont surtout le rate limiter
+qui déleste *par design*.
 
 Le runner a **deux phases** :
 - **Phase 1 — latence réelle** : quelques requêtes à 1 connexion, qui restent sous la

@@ -47,4 +47,11 @@ EXPOSE 3000
 # hard-kills in-flight requests.
 # (For Kubernetes, move the migrate step to an initContainer/Job so N replicas don't
 #  race the schema sync — see infra/k8s/README.md.)
+#
+# NODE_OPTIONS caps the V8 old-space heap. Without it V8 sizes the heap from the HOST's
+# total RAM (it doesn't read the cgroup limit), so in a memory-limited container it happily
+# grows past the limit and gets OOM-killed instead of collecting. 384 MB leaves headroom
+# under a 512 MB container for the Prisma query engine + native addon, which live OUTSIDE
+# the JS heap. Raise it in tandem with the container's mem_limit.
+ENV NODE_OPTIONS="--max-old-space-size=384"
 CMD sh -c "node src/boot-migrate.mjs && exec node src/server.mjs"

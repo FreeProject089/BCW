@@ -78,8 +78,8 @@ a plain Rust crate that both the napi wrapper and Tauri depend on.
 |---|---|---|
 | **P1 ✅ done** | **ZIP off the event loop** — the `native/` crate exposes async `zipReadAll`/`zipEntries` (+ `blake3Hex`); `lib/native.mjs` wraps them with an adm-zip fallback, and `validatePlugin` now parses through it (sha256 stays in JS). Built + verified on Windows AND in Docker (rust:1-alpine → node:20-alpine musl, `hasNative=true` in the container); `native.test.mjs` proves byte-parity with adm-zip. Wired into `apps/api/Dockerfile` as a two-stage build — runs in production. | Biggest event-loop win: a big upload no longer blocks the instance. Behaviour-preserving (byte-parity test). |
 | **P1 ✅ done** | **`fs scan`** — `dir_scan(root)` in Rust; wired into `gitbackup.mjs` `repoSizeBytes` (tree walk off the loop). Also `zip_entry` (single extract) + `zip_create` (write) — so the repo export and every zip parse/extract in `catalog.mjs`/`catalogs.mjs`/`hosting-content.mjs` go through the worker; adm-zip now survives only as the JS fallback. | Internal-only, pure CPU/IO, byte-parity tested. |
-| **P2 ✅ done** | **zstd** — `zstd_compress`/`zstd_decompress` (C zstd, verified to build for musl), exposed + round-trip tested. No current call site (backups are git-based; no internal blob to compress yet), so it ships as ready infra for future artifacts/manifests, per the format-decision note above. | No external contract. |
-| **P2 ✅ done** | **BLAKE3** — `blake3_hex` (async, `pure` feature) exposed + tested for internal integrity (dedup / cache / manifest keys). SHA-256 is untouched on the public `catalog.json` contract. | Client-facing `sha256` untouched. |
+| **P2 ✅ done** | **zstd** — `zstd_compress`/`zstd_decompress` (C zstd, verified to build for musl), exposed + round-trip tested. **Wired**: the Redis L2 cache (`lib/cache.mjs`) compresses cached JSON above ~0.5 KB before storing (a representative catalog payload went 34 KB → ~0.7 KB in test), transparently decompressed on read, with a raw-JSON fallback when the addon is absent. Purely internal (BCWEB produces + consumes it) — the public download bytes are untouched. | No external contract. |
+| **P2 ✅ done** | **BLAKE3** — `blake3_hex` (async, `pure` feature) exposed + tested. **Wired**: `lib/cache.mjs` attaches a blake3 content ETag to hot cached JSON, and the `replyCachedJson` helper answers `If-None-Match` with a `304` on `/showcase`, `/kofi/stats`, `/catalog.json` — repeat visitors revalidate instead of re-downloading (bytes + p99 win, feeds the CWV goal). SHA-256 is untouched on the public `catalog.json` contract. | Client-facing `sha256` untouched. |
 | **P3 ✅ done** | **Image resize** — `image_resize_jpeg` (Rust `image` crate, worker thread) wired into the `/media?w=` thumbnail endpoint via `imageThumb` (native JPEG, `@napi-rs/canvas` webp fallback). | Off the main thread. |
 
 ## Risks & guardrails
@@ -111,7 +111,13 @@ All phases are built, tested, and running in production. The `native/` crate exp
 with a JS fallback, so a checkout without the addon still runs; `native.test.mjs` proves
 parity for every one. It builds for Windows and Alpine musl, is wired into the API Dockerfile
 (two-stage), and `hasNative=true` in the container. adm-zip now survives only as the wrapper's
-fallback. `zstd`/`blake3` are ready infra (no internal call site yet). The pure logic now
+fallback. `zstd`/`blake3` are **wired into the Redis L2 cache** — zstd compresses cached JSON,
+blake3 provides content ETags for `304` revalidation on the hot public feeds. The pure logic now
 lives in a separate `native/core` crate (`bcweb-core`, no napi dependency) that unit-tests
-under `cargo test` (run in CI) and is ready to be shared with the BMM Tauri app. The obvious
-next step, when needed: a native zip *streaming* writer for very large exports.
+under `cargo test` (run in CI) and is ready to be shared with the BMM Tauri app.
+
+The admin repo export (`/admin/repos/:id/files/download-all`) now **streams** the zip via
+`archiver` (an existing dep): it appends each file's S3 read stream and lets archiver emit
+incrementally, so peak memory stays bounded to the in-flight chunks instead of materialising
+the whole (up to 500 MB) repo — no native streaming writer needed, since Node already streams
+here. The native `zipCreate` stays for the small in-memory repackage paths.

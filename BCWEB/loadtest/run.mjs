@@ -1,77 +1,140 @@
-// BCWEB stress ladder: hammers representative read endpoints at escalating
-// concurrency and prints a compact table + a saved JSON report. Loopback + one
-// client box means the REAL upper levels (100k/1M sockets) aren't physically
-// reachable here — we find the local saturation point and report honestly.
+// BCWEB stress ladder — hammers several representative endpoint MIXES ("scenarios") at an
+// escalating, NAMED concurrency ladder (chill → extreme), captures the full latency tail
+// (p50 → p99.9) plus a live event-loop responsiveness probe, and writes a human+AI-readable
+// Markdown report (+ machine-readable JSON) with a saturation knee, a bottleneck diagnosis,
+// and an extrapolated minimum server spec. See report.mjs for the analysis/rendering.
 //
 // Usage:
-//   BASE=http://localhost:3000 node run.mjs            # API container directly
-//   BASE=http://localhost      node run.mjs            # through Caddy (adds /api)
-//   LEVELS=100,1000,5000 DURATION=8 node run.mjs
+//   BASE=http://localhost:3000 node run.mjs        # straight at the API container
+//   BASE=http://localhost      node run.mjs        # through Caddy (adds /api)
+//   QUICK=1 node run.mjs                            # 2 low levels, 5s each (smoke)
+//   DURATION=15 LEVELS=chill,normal,busy node run.mjs
+//   CONNS=10,100,1000 node run.mjs                  # custom numeric ladder
+//   SCENARIOS=cached,feed node run.mjs              # subset of mixes
+//   RPM_PER_USER=6 node run.mjs                     # tune the min-spec user model
 import autocannon from 'autocannon';
+import os from 'node:os';
 import { writeFileSync } from 'node:fs';
+import { performance } from 'node:perf_hooks';
+import { toMarkdown, findKnee } from './report.mjs';
 
 const BASE = (process.env.BASE || 'http://localhost:3000').replace(/\/+$/, '');
-// Through Caddy the API is under /api; hitting the api container directly it isn't.
-const API = /localhost:3000$/.test(BASE) ? BASE : `${BASE}/api`;
-const DURATION = Number(process.env.DURATION) || 10;
-const LEVELS = (process.env.LEVELS || '100,1000,5000,10000').split(',').map(Number);
+const u = new URL(BASE);
+const ORIGIN = `${u.protocol}//${u.host}`;
+// Through Caddy the API lives under /api; hitting the api process directly it doesn't. Any
+// explicit non-web port (e.g. :3000, :3010) means we're talking straight to the API; a bare
+// host or :80/:443 means we're going through the edge (add /api). Override with API_PREFIX.
+const direct = /:\d+$/.test(u.host) && !/:(80|443)$/.test(u.host);
+const PREFIX = process.env.API_PREFIX != null ? process.env.API_PREFIX : (direct ? '' : '/api');
+const p = (ep) => `${PREFIX}${ep}`;
 
-const TARGETS = [
-  ['health (liveness)', `${API}/health`],
-  ['GET /projects (DB + visibility)', `${API}/projects`],
-  ['GET /showcase (DB list)', `${API}/showcase`],
-  ['GET /kofi/stats (DB aggregate)', `${API}/kofi/stats`],
+const QUICK = process.env.QUICK === '1';
+const DURATION = Number(process.env.DURATION) || (QUICK ? 5 : 10);
+const RPM_PER_USER = Number(process.env.RPM_PER_USER) || 6;
+
+// Named concurrency ladder — "chill" is a calm day, "extreme" pushes the box to its knees.
+let LEVELS = [
+  { name: 'chill', conns: 10 },
+  { name: 'normal', conns: 50 },
+  { name: 'busy', conns: 200 },
+  { name: 'heavy', conns: 1000 },
+  { name: 'extreme', conns: 5000 },
 ];
+if (QUICK) LEVELS = LEVELS.slice(0, 2);
+if (process.env.CONNS) LEVELS = process.env.CONNS.split(',').map((c, i) => ({ name: ['chill', 'normal', 'busy', 'heavy', 'extreme', 'insane'][i] || `L${i}`, conns: Number(c) }));
+if (process.env.LEVELS) { const want = process.env.LEVELS.split(',').map((s) => s.trim()); LEVELS = LEVELS.filter((l) => want.includes(l.name)); }
+
+// Scenarios = endpoint MIXES exercising different data shapes/costs. autocannon cycles the
+// requests round-robin per connection, so repeating an entry weights it.
+const ALL_SCENARIOS = [
+  { name: 'cached', desc: 'Cheap cached / liveness reads (L1+L2 cache + event loop): /health, /kofi/stats.', endpoints: ['/health', '/kofi/stats'] },
+  { name: 'db-read', desc: 'DB-backed list queries (Postgres + visibility filtering): /projects, /showcase, /catalog.', endpoints: ['/projects', '/showcase', '/catalog'] },
+  { name: 'feed', desc: 'Heaviest public render — the top-500 catalog feed (DB query + payload build): /catalog.json.', endpoints: ['/catalog.json?project=bmm&kind=app'] },
+  { name: 'mixed', desc: 'Realistic blend, weighted to reads: 3× /health, 1× /projects, 1× /showcase, 1× /catalog.json.', endpoints: ['/health', '/health', '/health', '/projects', '/showcase', '/catalog.json?project=bmm&kind=app'] },
+];
+let SCENARIOS = ALL_SCENARIOS;
+if (process.env.SCENARIOS) { const want = process.env.SCENARIOS.split(',').map((s) => s.trim()); SCENARIOS = ALL_SCENARIOS.filter((s) => want.includes(s.name)); }
 
 const fmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
 const pad = (s, n) => String(s).padEnd(n);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ── Phase 1: real per-endpoint latency (a handful of requests at conns=1, which
-// stays under the per-IP rate limiter's fresh window → genuine 2xx responses). This
-// is what a real user actually experiences; the stress ladder below measures how the
-// server behaves under a flood (mostly the rate limiter shedding load).
-console.log(`\nBCWEB load test → ${API}\n`);
-console.log('■ Phase 1 — real latency (light, under the rate limit)');
-console.log(`  ${pad('endpoint', 34)}${pad('reqs', 6)}${pad('2xx', 6)}${pad('p50', 8)}${pad('p99', 8)}avg`);
-const probes = [];
-for (const [label, url] of TARGETS) {
-  const r = await autocannon({ url, connections: 1, amount: 12, timeout: 20 });
-  const ok = (r.requests.total || 0) - (r.non2xx || 0);
-  probes.push({ label, url, reqs: r.requests.total, ok2xx: ok, p50: r.latency.p50, p99: r.latency.p99, avg: r.latency.average });
-  console.log(`  ${pad(label, 34)}${pad(r.requests.total, 6)}${pad(ok, 6)}${pad(`${r.latency.p50}ms`, 8)}${pad(`${r.latency.p99}ms`, 8)}${r.latency.average}ms`);
-  await sleep(300);
+// While a level runs, poke a bare /health every ~400ms and record how long it takes. A
+// healthy server answers in a few ms even mid-flood; if these spike or time out, the event
+// loop is starving (CPU-bound handler) — the single most useful bottleneck signal for Node.
+async function withPingProbe(fn) {
+  const samples = [];
+  let stop = false;
+  const url = ORIGIN + p('/health');
+  const loop = (async () => {
+    while (!stop) {
+      const t = performance.now();
+      try { await fetch(url, { signal: AbortSignal.timeout(2000) }); samples.push(performance.now() - t); }
+      catch { samples.push(2000); } // treat a timeout/abort as the 2s ceiling
+      await sleep(400);
+    }
+  })();
+  const result = await fn();
+  stop = true;
+  await loop;
+  samples.sort((a, b) => a - b);
+  const at = (q) => (samples.length ? samples[Math.min(samples.length - 1, Math.floor(q * samples.length))] : null);
+  return { result, ping: samples.length ? { p50: at(0.5), p99: at(0.99), max: samples[samples.length - 1], n: samples.length } : null };
 }
 
-console.log(`\n■ Phase 2 — stress ladder (levels: ${LEVELS.join(', ')}, ${DURATION}s each)\n`);
-const results = [];
-for (const [label, url] of TARGETS) {
-  console.log(`■ ${label}`);
-  console.log(`  ${pad('conns', 8)}${pad('req/s', 10)}${pad('2xx/s', 10)}${pad('p50', 8)}${pad('p99', 8)}${pad('non2xx', 8)}${pad('err', 6)}timeout`);
-  for (const conns of LEVELS) {
-    const r = await autocannon({ url, connections: conns, duration: DURATION, pipelining: 1, timeout: 20 });
-    const total = r.requests.total || 1;
-    const okRps = Math.round(r.requests.average * Math.max(0, (total - r.non2xx) / total));
-    const row = { label, url, conns, rps: r.requests.average, okRps, p50: r.latency.p50, p99: r.latency.p99, p97_5: r.latency.p97_5, errors: r.errors, timeouts: r.timeouts, non2xx: r.non2xx, total };
+function rowFrom(scn, level, r, ping) {
+  const total = r.requests.total || 1;
+  const ok = r['2xx'] != null ? r['2xx'] : Math.max(0, total - r.non2xx);
+  const ok2xx_s = Math.round(r.requests.average * (ok / total));
+  return {
+    scenario: scn.name, level: level.name, conns: level.conns,
+    rps: Math.round(r.requests.average), ok2xx_s,
+    p50: r.latency.p50, p90: r.latency.p90, p99: r.latency.p99, p99_9: r.latency.p99_9, p99_99: r.latency.p99_99,
+    non2xx: r.non2xx, errors: r.errors, timeouts: r.timeouts,
+    bytesPerSec: Math.round(r.throughput.average || 0),
+    ping,
+  };
+}
+
+console.log(`\nBCWEB stress test → ${ORIGIN}${PREFIX}`);
+console.log(`  levels: ${LEVELS.map((l) => `${l.name}(${fmt(l.conns)})`).join(' ')}  ·  ${DURATION}s each  ·  scenarios: ${SCENARIOS.map((s) => s.name).join(', ')}\n`);
+
+const meta = {
+  at: new Date().toISOString(), origin: ORIGIN, prefix: PREFIX,
+  node: process.version, cores: os.cpus().length, memGB: Math.round(os.totalmem() / 1e9),
+  durationSec: DURATION, levels: LEVELS, rpmPerUser: RPM_PER_USER,
+};
+
+const scenarioOut = [];
+for (const scn of SCENARIOS) {
+  console.log(`■ ${scn.name} — ${scn.desc}`);
+  console.log(`  ${pad('level', 9)}${pad('conns', 8)}${pad('req/s', 9)}${pad('2xx/s', 9)}${pad('p50', 8)}${pad('p99', 8)}${pad('p99.9', 9)}${pad('non2xx', 8)}${pad('err', 5)}${pad('t/o', 5)}pingp99`);
+  const requests = scn.endpoints.map((ep) => ({ method: 'GET', path: p(ep) }));
+  const results = [];
+  for (const level of LEVELS) {
+    const { result: r, ping } = await withPingProbe(() =>
+      autocannon({ url: ORIGIN, requests, connections: level.conns, duration: DURATION, pipelining: 1, timeout: 20 }));
+    const row = rowFrom(scn, level, r, ping);
     results.push(row);
-    console.log(`  ${pad(fmt(conns), 8)}${pad(fmt(r.requests.average), 10)}${pad(fmt(okRps), 10)}${pad(`${r.latency.p50}ms`, 8)}${pad(`${r.latency.p99}ms`, 8)}${pad(fmt(r.non2xx), 8)}${pad(r.errors, 6)}${r.timeouts}`);
+    console.log(`  ${pad(level.name, 9)}${pad(fmt(level.conns), 8)}${pad(fmt(row.rps), 9)}${pad(fmt(row.ok2xx_s), 9)}${pad(`${row.p50}ms`, 8)}${pad(`${row.p99}ms`, 8)}${pad(`${row.p99_9}ms`, 9)}${pad(fmt(row.non2xx), 8)}${pad(row.errors, 5)}${pad(row.timeouts, 5)}${ping ? `${Math.round(ping.p99)}ms` : '—'}`);
+    await sleep(500); // let the rate-limiter window + sockets settle between levels
   }
-  console.log('');
+  const knee = findKnee(results);
+  console.log(`  → knee: ${knee ? `${fmt(knee.ok2xx_s)} req/s @ ${knee.level} (p99 ${knee.p99}ms, p99.9 ${knee.p99_9}ms)` : 'none clean'}\n`);
+  scenarioOut.push({ ...scn, results, knee });
 }
-console.log('Note: on loopback, a single client easily out-runs the server; most requests\n' +
-  'then come back non-2xx (the anti-abuse rate limiter + backpressure shedding load\n' +
-  'BY DESIGN). 0 errors + 0 timeouts + low p99 means the server stays healthy under\n' +
-  'the flood instead of falling over. "2xx/s" is the real served throughput; to\n' +
-  'measure a single route raw, lower the levels or relax the limiter for that path.\n');
 
-const out = { base: API, at: new Date().toISOString(), durationSec: DURATION, levels: LEVELS, probes, results };
-const file = new URL('./last-run.json', import.meta.url);
-writeFileSync(file, JSON.stringify(out, null, 2));
-console.log(`Report written to ${file.pathname}`);
-// Headline: best sustained req/s per endpoint (highest rps with 0 errors/timeouts).
-console.log('\nHeadline (best clean req/s per endpoint):');
-for (const [label] of TARGETS) {
-  const clean = results.filter((r) => r.label === label && r.errors === 0 && r.timeouts === 0);
-  const best = clean.sort((a, b) => b.rps - a.rps)[0];
-  if (best) console.log(`  ${pad(label, 36)} ${fmt(best.rps)} req/s @ ${fmt(best.conns)} conns (p99 ${best.p99}ms)`);
-}
+// Write the reports.
+const md = toMarkdown(meta, scenarioOut);
+const json = { meta, scenarios: scenarioOut };
+writeFileSync(new URL('./report.md', import.meta.url), md);
+writeFileSync(new URL('./report.json', import.meta.url), JSON.stringify(json, null, 2));
+// Keep the legacy filename working for anything that read it.
+writeFileSync(new URL('./last-run.json', import.meta.url), JSON.stringify(json, null, 2));
+
+const overall = scenarioOut.map((s) => s.knee).filter(Boolean).sort((a, b) => b.ok2xx_s - a.ok2xx_s)[0];
+console.log('────────────────────────────────────────────────────────');
+console.log(`Peak clean throughput: ${overall ? `${fmt(overall.ok2xx_s)} served req/s (${overall.scenario} @ ${overall.level})` : 'none clean — lower the levels or check reachability'}`);
+console.log(`Reports written:  ${new URL('./report.md', import.meta.url).pathname}`);
+console.log(`                  ${new URL('./report.json', import.meta.url).pathname}`);
+console.log('Open report.md for the full tables, bottleneck diagnosis and min-spec table.\n');

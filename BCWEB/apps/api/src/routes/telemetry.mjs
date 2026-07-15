@@ -2,6 +2,7 @@ import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import { db, requireRole, logAudit } from '../lib/lib.mjs';
+import { boundedSet } from '../lib/boundedmap.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const ADMIN_TIER = ['MOD', 'ADMIN', 'SUPERADMIN'];
@@ -33,6 +34,9 @@ function validTelemetryToken(token) {
 // literally instant — an acceptable trade for not hammering Postgres on every asset.
 const _epochCache = new Map(); // uid -> { ep, at }
 const EPOCH_TTL_MS = 8000;
+// Keyed by uid → capped so it can't hold an entry per user forever (the TTL only makes an
+// entry stale, never frees it). See lib/boundedmap.mjs.
+const EPOCH_CACHE_MAX = 5000;
 async function currentEpoch(uid) {
   if (!uid) return null;
   const hit = _epochCache.get(uid);
@@ -40,7 +44,7 @@ async function currentEpoch(uid) {
   const p = await db();
   const u = await p.user.findUnique({ where: { id: uid }, select: { telemetryEpoch: true } }).catch(() => null);
   if (!u) return null;
-  _epochCache.set(uid, { ep: u.telemetryEpoch || 0, at: Date.now() });
+  boundedSet(_epochCache, uid, { ep: u.telemetryEpoch || 0, at: Date.now() }, EPOCH_CACHE_MAX, EPOCH_TTL_MS);
   return u.telemetryEpoch || 0;
 }
 // forward_auth rewrites the path to /telemetry/authorize but preserves the ORIGINAL

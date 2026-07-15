@@ -88,7 +88,13 @@ const clientKey = (req) => {
 // otherwise N replicas would let an IP do N×600/min. Falls back to in-process.
 const rlRedis = getRedis();
 await app.register(rateLimit, {
-  max: 600, timeWindow: '1 minute', keyGenerator: clientKey, ban: 4,
+  // 600/min per IP is generous for a human (~10 req/s) and is what keeps the DB safe under
+  // abuse — keep it in production. Env-tunable so an operator can adjust it, and so a load
+  // test can raise it to measure a route's RAW capacity (from one IP the limiter otherwise
+  // sheds the flood and every number is just 429s). See guides/ENV + loadtest/BENCHMARK.
+  max: Number(process.env.RATE_LIMIT_MAX) || 600,
+  timeWindow: process.env.RATE_LIMIT_WINDOW || '1 minute',
+  keyGenerator: clientKey, ban: 4,
   ...(rlRedis ? { redis: rlRedis } : {}),
   // The plugin THROWS whatever this returns — so it must carry a statusCode, else
   // Fastify's default handler turns it into a 500 (was logging every rate-limit as

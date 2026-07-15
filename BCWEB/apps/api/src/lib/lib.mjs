@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { userBcId } from './repofingerprint.mjs';
+import { boundedSet } from './boundedmap.mjs';
 
 // Constant-time string comparison for shared secrets / tokens / signatures
 // (SECURITY_AUDIT: avoid the timing side-channel of `a === b`). Length-safe:
@@ -192,6 +193,11 @@ const ADMIN_TIER_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
 // add a DB hit to every guarded request (a ban then takes effect within MOD_TTL).
 // Returns the active lock ({ status, until, reason }) or null (active / expired lock).
 const MOD_TTL = 15_000;
+// Both per-uid caches below are keyed by user id, so without a cap they'd keep one entry per
+// user who ever hit the API, for the process's life (the TTL only makes an entry stale, it
+// never frees it). 5k live users' worth of role/lock state is plenty to cache hot; the rest
+// evict and simply re-read from the DB. See boundedmap.mjs.
+const UID_CACHE_MAX = 5000;
 const _modCache = new Map(); // uid -> { at, state }
 export function clearAccountLockCache(uid) { if (uid) _modCache.delete(uid); else _modCache.clear(); }
 
@@ -214,7 +220,7 @@ export async function currentUser(uid) {
   let role = null, perms = [];
   try { const p = await db(); const u = await p.user.findUnique({ where: { id: uid }, select: { role: true, permissions: true } }); if (u) { role = u.role; perms = u.permissions || []; } } catch { /* keep nulls */ }
   const rec = { at: Date.now(), role, perms };
-  _userCache.set(uid, rec);
+  boundedSet(_userCache, uid, rec, UID_CACHE_MAX, MOD_TTL);
   return rec;
 }
 // Does `req.user` (with a live role + perms) hold a capability? ADMIN/SUPERADMIN → all;
@@ -238,7 +244,7 @@ export async function accountLock(uid) {
       if (!until || until.getTime() > Date.now()) state = { status: u.status, until, reason: u.moderationReason || null };
     }
   } catch { state = null; }
-  _modCache.set(uid, { at: Date.now(), state });
+  boundedSet(_modCache, uid, { at: Date.now(), state }, UID_CACHE_MAX, MOD_TTL);
   return state;
 }
 // 403 body a locked account gets — the client turns this into the "you're suspended/

@@ -1,16 +1,46 @@
-# BCWEB Load Benchmark — 2026-07-03
+# BCWEB Load Benchmark
 
 > 🇫🇷 Version française : [BENCHMARK_FR.md](BENCHMARK_FR.md)
 
-Full stack under test: Caddy → nginx (SPA) / Fastify API → Postgres, all in Docker Desktop on the dev machine, load generated with autocannon from the same machine (loopback). 10s per level, connection ladder 100 → 1,000 → 5,000 → 10,000.
+Full stack under test: Caddy → nginx (SPA) / Fastify API → Postgres, all in Docker Desktop on the dev machine, load generated with autocannon from the same machine (loopback).
 
-Rerun anytime: `cd loadtest && npm install && node run.mjs` (stack must be up). The
-runner is now configurable and writes `last-run.json`:
+## The harness (rewritten 2026-07-15)
+
+`run.mjs` is now a multi-**scenario**, named-**level** stress ladder that captures the full
+latency tail and writes a report meant to be read by **a human or an AI**. Rerun anytime
+(`cd loadtest && npm install && node run.mjs`, stack up):
+
 ```
-BASE=http://localhost:3000 node run.mjs          # hit the API container directly
-BASE=http://localhost      node run.mjs          # through Caddy (auto-adds /api)
-LEVELS=50,200,1000 DURATION=8 node run.mjs        # custom ladder
+BASE=http://localhost:3000 node run.mjs     # straight at the API container
+BASE=http://localhost      node run.mjs     # through Caddy (auto-adds /api)
+QUICK=1 node run.mjs                         # 2 low levels, 5s each (smoke)
+DURATION=15 LEVELS=chill,normal,busy node run.mjs
+CONNS=10,100,1000 node run.mjs               # custom numeric ladder
+SCENARIOS=cached,feed node run.mjs           # subset of endpoint mixes
+RPM_PER_USER=6 node run.mjs                  # tune the min-spec user model
 ```
+
+- **Levels** (concurrency, chill → extreme): `chill` (10) · `normal` (50) · `busy` (200) ·
+  `heavy` (1,000) · `extreme` (5,000). `QUICK=1` runs the two lowest; override with `CONNS=`.
+- **Scenarios** (endpoint mixes = different data shapes/costs):
+  - `cached` — cheap cached/liveness reads (`/health`, `/kofi/stats`): the cache + event-loop path.
+  - `db-read` — DB list queries (`/projects`, `/showcase`, `/catalog`).
+  - `feed` — the heaviest public render, the top-500 `catalog.json` feed.
+  - `mixed` — a realistic read-weighted blend (this is what the min-spec is anchored to).
+- **Per level it records** throughput (req/s + real *served* 2xx/s), the latency tail
+  **p50 / p90 / p99 / p99.9**, `non-2xx` / errors / timeouts, and a **live `/health` ping
+  probe** issued *during* the flood — if that ping's p99 explodes, the Node event loop is
+  CPU-starved (the single most useful bottleneck signal).
+- **It writes** (all git-ignored, regenerate per run):
+  - `report.md` — human+AI report: per-scenario tables, a saturation **knee**, a
+    plain-language **bottleneck diagnosis**, an extrapolated **minimum-server-spec** table
+    (users → vCPU/RAM), and a Core Web Vitals note.
+  - `report.json` — the same data, machine-readable (diff it between runs; the knee moving
+    up is the win condition).
+
+The historical entries below predate this harness but the picture holds: on one loopback
+box the honest signals are served req/s, the p99/p99.9 tail, and where errors/timeouts first
+appear — the upper levels are mostly the rate limiter shedding load *by design*.
 
 ### Re-run 2026-07-10 (API container directly, :3000)
 Confirms the same picture: the API absorbs **~10–11k req/s at p99 < 20 ms with 0
