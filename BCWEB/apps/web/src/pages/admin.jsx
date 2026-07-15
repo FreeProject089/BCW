@@ -6728,8 +6728,12 @@ function AdminCatalogs() {
       </div>
       <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-9" placeholder={t('cc.admin.search2', 'Search name, owner, email or creator id…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {loading ? <Loading /> : rows.length ? <div className="space-y-1.5">
-        {rows.map((c) => { const cur = c.status === 'SUSPENDED' ? 'suspended' : c.listed ? 'online' : 'offline'; const cr = (c.creators || [])[0]; return (
-          <Card key={c.id} className="p-3 flex items-center gap-3 flex-wrap">
+        {rows.map((c) => { const cur = c.status === 'SUSPENDED' ? 'suspended' : c.listed ? 'online' : 'offline'; const cr = (c.creators || [])[0];
+        // Stack on phones: the status select + Examine + delete sat beside the text, so on a
+        // narrow card the name/owner/creator-id line had almost no room and the controls
+        // collided with it. Below sm they get their own full-width row under the details.
+        return (
+          <Card key={c.id} className="p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <div className="flex-1 min-w-0">
               {/* Line 1: name + a couple of defining tags (status lives in the dropdown). */}
               <div className="font-medium truncate flex items-center gap-2">{c.name} <Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
@@ -6742,13 +6746,15 @@ function AdminCatalogs() {
                 <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline">/c/{c.slug}</a>
               </div>
             </div>
-            <Select className="!w-auto !py-1 !text-xs" value={cur} onChange={(e) => setStatus(c, e.target.value)} title={t('cc.status', 'Status')}>
-              <option value="online">🟢 {t('cc.online', 'Online')}</option>
-              <option value="offline">⚪ {t('cc.offline', 'Offline')}</option>
-              <option value="suspended">🔴 {t('cc.suspend', 'Suspended')}</option>
-            </Select>
-            {c.mode === 'managed' && <Button size="sm" variant="ghost" onClick={() => setExamine(c)}><Eye size={13} /> {t('cc.examine', 'Examine')}</Button>}
-            <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(c)}><Trash2 size={13} /></Button>
+            <div className="flex items-center gap-2 shrink-0 border-t border-[var(--border)] pt-2 sm:border-0 sm:pt-0">
+              <Select className="!w-auto !py-1 !text-xs flex-1 sm:flex-none" value={cur} onChange={(e) => setStatus(c, e.target.value)} title={t('cc.status', 'Status')}>
+                <option value="online">🟢 {t('cc.online', 'Online')}</option>
+                <option value="offline">⚪ {t('cc.offline', 'Offline')}</option>
+                <option value="suspended">🔴 {t('cc.suspend', 'Suspended')}</option>
+              </Select>
+              {c.mode === 'managed' && <Button size="sm" variant="ghost" onClick={() => setExamine(c)}><Eye size={13} /> {t('cc.examine', 'Examine')}</Button>}
+              <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(c)}><Trash2 size={13} /></Button>
+            </div>
           </Card>
         ); })}
       </div> : <EmptyState icon={Layers} title={t('cc.admin.none.t', 'No community catalogs')} sub={t('cc.admin.none.s', 'When users host their own catalogs, they show up here for moderation.')} />}

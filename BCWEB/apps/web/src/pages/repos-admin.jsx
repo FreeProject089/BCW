@@ -265,8 +265,12 @@ export function AdminRepos() {
         : <div className="space-y-2">
           {repos.map((r) => (
             <Card key={r.id} className={`p-4 ${r.pendingReview ? 'border-[var(--ring)]' : ''}`}>
-              <div className="flex items-start gap-3">
-                <GitBranch size={18} className="text-[var(--primary-2)] mt-0.5" />
+              {/* Stack on phones: the two selects are ~230px of shrink-0, so side-by-side they
+                  squeezed the name column down to a sliver and every status badge wrapped onto
+                  its own line — a 4-badge repo became a 4-line column. */}
+              <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                <GitBranch size={18} className="text-[var(--primary-2)] mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="font-medium flex items-center gap-2 flex-wrap">{r.name}
                     {/* WHO: owner → profile + copyable BC id (the thing an admin actually needs). */}
@@ -286,12 +290,17 @@ export function AdminRepos() {
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
+                </div>
+                {/* Full-width on phones (they're the card's primary actions), inline from sm up. */}
+                <div className="flex items-center gap-1.5 shrink-0 [&>*]:flex-1 sm:[&>*]:flex-none">
                   <RepoCategorySelect value={r.category} onChange={(c) => setCategory(r, c)} />
                   <RepoStatusSelect value={r.status} onChange={(s) => setStatus(r, s)} />
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2 mt-3">
+              {/* Phones: an even 2-up grid. Free-wrapping these six left a ragged 4-row block
+                  with orphan buttons; a grid gives 3 tidy rows and equal hit targets. Inline
+                  wrap from sm up, where they all fit on one line anyway. */}
+              <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 mt-3 [&>*]:w-full sm:[&>*]:w-auto [&_button]:w-full sm:[&_button]:w-auto">
                 {/* Admin repo dashboard: opens the SAME dashboard as the owner, but staff
                     are not frozen by suspension and every action is logged with "(admin)". */}
                 <Link to={`/repo/${r.id}`}><Button size="sm" variant="primary"><LayoutDashboard size={14} /> {t('arp.dashboard', 'Manage (admin)')}</Button></Link>
