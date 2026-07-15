@@ -690,7 +690,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
         {f.cover && <Button type="button" size="sm" onClick={() => setF((s) => ({ ...s, cover: '' }))}><X size={14} /> Remove</Button>}
         <span className="text-xs text-[var(--faint)] ml-auto">Cover &amp; blog are shared across languages</span>
       </div>
-      {f.cover && <div className="rounded-xl overflow-hidden border border-[var(--line)] mt-3"><img src={f.cover} alt="" className="w-full h-40 object-cover" /></div>}
+      {f.cover && <div className="rounded-xl overflow-hidden border border-[var(--line)] mt-3"><img src={thumb(f.cover, 512)} alt="" className="w-full h-40 object-cover" /></div>}
       {f.cover && <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer text-[var(--muted)]"><input type="checkbox" checked={f.coverInBody !== false} onChange={(e) => setF((s) => ({ ...s, coverInBody: e.target.checked }))} /> Also show the cover at the top of the article</label>}
 
       {/* excerpt — rich editor (like content) */}

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
+import { thumb } from '../lib/img.js';
 import Avatar from '../ui/Avatar.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -291,7 +292,7 @@ export function Home() {
               <Link to={`/blog/${featured.slug}`} className="group">
                 <Card hover className="overflow-hidden h-full flex flex-col" style={{ background: 'var(--bg-solid)' }}>
                   <div className="relative overflow-hidden">
-                    {featured.cover ? <img src={featured.cover} alt="" className="w-full h-56 object-cover transition-transform duration-300 group-hover:scale-105" />
+                    {featured.cover ? <img src={thumb(featured.cover, 768)} alt="" className="w-full h-56 object-cover transition-transform duration-300 group-hover:scale-105" />
                       : <div className="w-full h-56 bg-gradient-to-br from-orange-500/25 to-amber-500/10 grid place-items-center"><Newspaper size={34} className="text-[var(--primary-2)]" /></div>}
                     <span className="absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-[var(--bg-solid)]/85 backdrop-blur text-[var(--primary-2)] border border-[var(--line)]">Latest</span>
                   </div>
@@ -312,7 +313,7 @@ export function Home() {
                 {rest.map((p) => (
                   <Link key={p.id} to={`/blog/${p.slug}`} className="group">
                     <Card hover className="p-4 flex gap-4 h-full" style={{ background: 'var(--bg-solid)' }}>
-                      {p.cover ? <img src={p.cover} alt="" className="w-24 h-24 rounded-lg object-cover shrink-0" />
+                      {p.cover ? <img src={thumb(p.cover, 256)} alt="" className="w-24 h-24 rounded-lg object-cover shrink-0" />
                         : <div className="w-24 h-24 rounded-lg bg-gradient-to-br from-orange-500/20 to-amber-500/10 grid place-items-center shrink-0"><Newspaper size={20} className="text-[var(--primary-2)]" /></div>}
                       <div className="min-w-0 flex flex-col flex-1">
                         <Badge tone="primary" className="self-start">{p.project?.name}</Badge>
