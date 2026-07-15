@@ -39,25 +39,15 @@ Verified on `x86_64-pc-windows-msvc`: `cargo check` + `napi build` succeed; `zip
 matches `adm-zip` byte-for-byte and `validatePlugin` still verifies packages (see
 `apps/api/test/native.test.mjs`, part of the API suite).
 
-## Deploying it (production) — TODO, needs Alpine verification
+## Production — wired + verified
 
-The runtime image is `node:20-alpine` (musl), so prod needs the addon built for
-`x86_64-unknown-linux-musl`. Add a build stage to `apps/api/Dockerfile` and copy the
-artifacts next to the app root (the wrapper looks in `../../native` and `../../../native`
-relative to `src/lib/`, i.e. `/app/native` or `/app/../native`):
+`apps/api/Dockerfile` is a two-stage build: a `rust:1-alpine` `native` stage runs
+`napi build`, and the runtime `COPY --from=native` drops the musl `.node` + loaders at
+`/app/native` (the wrapper looks in `../../native` relative to `src/lib/`). Verified
+end-to-end: the addon compiles for `x86_64-unknown-linux-musl` and loads in the
+`node:20-alpine` runtime — a container reports `hasNative=true` and runs BLAKE3/zip on a
+worker thread. If the addon were ever absent, the app still runs on the JS fallback (no
+regression).
 
-```dockerfile
-# ── native addon (built for musl) ──
-FROM rust:1-alpine AS native
-RUN apk add --no-cache musl-dev nodejs npm
-WORKDIR /native
-COPY native/ ./
-RUN npm install && npx napi build --platform --release
-
-# … in the runtime stage, after COPY apps/api/src ./src :
-# COPY --from=native /native/index.js /native/index.d.ts /native/*.node ./native/
-```
-
-This isn't wired into the live Dockerfile yet because the musl build hasn't been verified
-in this environment, and a failing build stage would break deploys. Until it is, prod runs
-the JS fallback (no regression). Verify the stage in a real Alpine build, then enable it.
+Note: napi's generated `index.js` musl probe can mis-resolve, so `lib/native.mjs` tries
+`index.js` first and then falls back to `require`-ing the `.node` directly.
