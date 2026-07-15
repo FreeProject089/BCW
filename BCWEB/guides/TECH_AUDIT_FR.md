@@ -115,24 +115,30 @@ features entrer en collision sur la même clé). **FAIT** — `scripts/i18n-chec
 `DICT.fr`. Il a attrapé 8 bugs de clés dupliquées (dont l'en-tête « Clients OAuth » qui affichait
 « Mes catalogues ») et 26 retombées en anglais, tous corrigés.
 
-### 3.7b 🟡 Vulnérabilités de dépendances (transitives, faible atteignabilité)
-`npm audit` (api) : **0 critique** ; les racines :
+### 3.7b ✅ Vulnérabilités de dépendances — résolues
+`npm audit` pour `apps/api` rapporte maintenant **0 vulnérabilité** (web = 0, bot = 0 tout du long).
+Les trois racines, toutes éliminées cette passe :
 - **`ip-address`** (via `geoip-lite`) — XSS dans les méthodes HTML de `Address6`. **FAIT** —
   montée **geoip-lite 1.4.10 → 2.0.3** (qui tire `ip-address@10`) ; l'avis n'apparaît plus. De
   toute façon jamais atteignable (`geoip-lite` ne fait que parser des adresses). 2.0.3 embarque ses
   données dans le tarball sans postinstall, donc `npm ci` n'a besoin d'aucun téléchargement ni clé
   MaxMind ; la forme de `lookup()` est inchangée, aucun changement de code.
-- **`fast-uri`** (via Fastify 4) — avis path-traversal / host-confusion. Patché seulement en montant
-  **Fastify 4 → 5** (une migration cassante délibérée, pas `audit fix --force`). Atteignabilité
-  faible (Fastify fait sa propre normalisation de chemin), mais à planifier.
+- **`fast-uri`** (via Fastify 4) — avis path-traversal / host-confusion. **FAIT** — montée
+  **Fastify 4.29 → 5.10** + les trois plugins `@fastify` (cookie/cors/rate-limit) vers leurs majors
+  v5. Faible empreinte donc sans risque (pas de `reply.res`/`request.req`/`routerPath`/
+  `getResponseTime` ; les API touchées — `setErrorHandler`, `addContentTypeParser` raw-body — sont
+  inchangées en v5), aucun changement de code. Vérifié : suite 30/30 verte sur v5, le serveur boote
+  avec tous les plugins + 40 routes et `/ready`+`/live` à 200.
 - **`nodemailer`** (dép directe) — un lot d'avis publiés depuis le premier audit (injection de
   commande SMTP via CRLF, DoS de l'addressparser, lecture de fichier & SSRF via jsonTransport/raw,
   validation TLS OAuth2). **FAIT** — montée **6.9.14 → 9.0.3** ; les avis n'apparaissent plus. Notre
   usage est le cœur stable (`createTransport` host/port/secure/auth + `sendMail`), inchangé de 6 à 9,
   donc aucun changement de code ; les correctifs sont du durcissement interne.
 
-Action : il ne reste que l'upgrade **Fastify 4→5** (qui tire `fast-uri`) ; à suivre comme tâche
-testée à part — ne pas le `--force` à l'aveugle (cassant, risquerait le build de l'API).
+Les trois sont faits ; l'arbre de dépendances de l'API est propre. Lancer `npm audit`
+périodiquement pour que les avis fraîchement publiés (comme le lot nodemailer apparu en cours
+d'audit) remontent tôt — un gate CI dur est volontairement évité, car il ferait échouer des PR sans
+rapport dès qu'un avis est publié.
 
 ### 3.8 🟡 Divers
 - Pièges DX côté hôte : les scripts exigent l'env/le client généré du conteneur (désormais

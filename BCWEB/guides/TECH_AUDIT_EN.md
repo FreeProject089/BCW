@@ -108,24 +108,29 @@ the same key). **DONE** — `scripts/i18n-check.mjs` (CI `npm run i18n:check --s
 duplicate keys and on any `t()` key with no `DICT.fr` entry. It caught 8 duplicate-key bugs (incl.
 the OAuth-clients heading rendering "Mes catalogues") and 26 English-fallback gaps, all fixed.
 
-### 3.7b 🟡 Dependency vulnerabilities (transitive, low reachability)
-`npm audit` (api): **0 critical**; the roots:
+### 3.7b ✅ Dependency vulnerabilities — resolved
+`npm audit` for `apps/api` now reports **0 vulnerabilities** (web = 0, bot = 0 throughout).
+The three roots, all cleared this pass:
 - **`ip-address`** (via `geoip-lite`) — XSS in `Address6` HTML-emitting methods. **DONE** —
   bumped **geoip-lite 1.4.10 → 2.0.3** (pulls `ip-address@10`); the advisory no longer appears.
   It was never reachable anyway (`geoip-lite` only parses addresses). 2.0.3 bundles its data in
   the tarball with no postinstall, so `npm ci` needs no download or MaxMind key; `lookup()` shape
   is unchanged, no code change needed.
-- **`fast-uri`** (via Fastify 4) — path-traversal / host-confusion advisories. Patched only by
-  upgrading **Fastify 4 → 5** (a deliberate breaking migration, not `audit fix --force`).
-  Reachability is low (Fastify does its own path normalisation), but it should be scheduled.
+- **`fast-uri`** (via Fastify 4) — path-traversal / host-confusion advisories. **DONE** — upgraded
+  **Fastify 4.29 → 5.10** + the three `@fastify` plugins (cookie/cors/rate-limit) to their v5
+  majors. Small footprint made it safe (no `reply.res`/`request.req`/`routerPath`/`getResponseTime`;
+  the touched APIs — `setErrorHandler`, `addContentTypeParser` raw-body — are unchanged in v5), so
+  no code change. Verified: suite 30/30 green on v5, server boots with all plugins + 40 routes and
+  `/ready`+`/live` 200.
 - **`nodemailer`** (direct dep) — a batch of advisories published since the first audit (SMTP
   command injection via CRLF, addressparser DoS, jsonTransport/raw file-read & SSRF, OAuth2 TLS
   validation). **DONE** — bumped **6.9.14 → 9.0.3**; the advisories no longer appear. Our usage is
   the stable core (`createTransport` host/port/secure/auth + `sendMail`), unchanged across 6→9,
   so no code change; the fixes are internal hardening.
 
-Action: only the **Fastify 4→5** upgrade remains (drags in `fast-uri`); track it as its own
-tested task — don't blind-`--force` it (breaking, would risk the API build).
+All three are done; the API dependency tree is clean. Keep running `npm audit` periodically so
+newly-published advisories (like the nodemailer batch that appeared mid-audit) surface early — a
+hard CI gate is deliberately avoided, since it would fail unrelated PRs whenever an advisory drops.
 
 ### 3.8 🟡 Miscellaneous
 - Host-side DX footguns: scripts require the container env/generated client (now guarded with
