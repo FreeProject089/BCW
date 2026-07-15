@@ -310,8 +310,14 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { zipEntries, zipReadAll, blake3Hex } = nativeBinding
+const { zipEntries, zipReadAll, zipEntry, zipCreate, dirScan, zstdCompress, zstdDecompress, imageResizeJpeg, blake3Hex } = nativeBinding
 
 module.exports.zipEntries = zipEntries
 module.exports.zipReadAll = zipReadAll
+module.exports.zipEntry = zipEntry
+module.exports.zipCreate = zipCreate
+module.exports.dirScan = dirScan
+module.exports.zstdCompress = zstdCompress
+module.exports.zstdDecompress = zstdDecompress
+module.exports.imageResizeJpeg = imageResizeJpeg
 module.exports.blake3Hex = blake3Hex
