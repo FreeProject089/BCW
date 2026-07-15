@@ -27,6 +27,9 @@ jobs:
       # --strict, on any t() key used in code with no DICT.fr entry (silent EN fallback).
       - run: npm run i18n:check
       - run: npx vite build --logLevel error
+      # Fail if the entry chunk (what every visitor downloads) regresses past its budget —
+      # e.g. a route accidentally eager-imported instead of React.lazy'd.
+      - run: npm run budget
 
   api-check:
     name: API syntax + Prisma + billing tests
