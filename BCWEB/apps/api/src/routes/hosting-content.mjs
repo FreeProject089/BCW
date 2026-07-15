@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { Transform } from 'node:stream';
 import { createHash } from 'node:crypto';
 import archiver from 'archiver';
-import { db, requireRole, optionalAuth, slugify, notify, repoLog, isValidRepoManifest, getGlobalAccessPolicy, getUserAccessPolicy, matchAccountList } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, slugify, notify, repoLog, isValidRepoManifest, getGlobalAccessPolicy, getUserAccessPolicy, matchAccountList, safeEqual } from '../lib/lib.mjs';
 import { presignPut, presignGet, getObject } from '../lib/storage.mjs';
 import { repoMeter } from '../lib/monitor.mjs';
 
@@ -425,7 +425,11 @@ export default async function hostingContentRoutes(app) {
 
     // Visibility mirrors GET /r/:id exactly: listed+verified, or the share link, or owner/staff.
     const publicListed = repo.listed && repo.verified && !repo.pendingReview;
-    const viaKey = !!(req.query?.k && repo.shareKey && String(req.query.k) === repo.shareKey);
+    // Constant-time, like the shareKeyOk() guarding GET /r/:id. A plain `===` short-circuits on
+    // the first wrong byte, so this endpoint would have handed an attacker a timing oracle to
+    // recover a repo's share key one byte at a time — and defeated the protection on the other
+    // route, since both gate the SAME secret.
+    const viaKey = !!(req.query?.k && repo.shareKey && safeEqual(req.query.k, repo.shareKey));
     const isOwner = req.user?.uid === repo.ownerId || ['ADMIN', 'SUPERADMIN'].includes(req.user?.role);
     if (!publicListed && !viaKey && !isOwner) return reply.code(404).send({ error: 'not_found' });
 
