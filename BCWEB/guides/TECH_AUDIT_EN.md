@@ -115,13 +115,14 @@ A key-parity lint would make it structural.
 - **`fast-uri`** (via Fastify 4) — path-traversal / host-confusion advisories. Patched only by
   upgrading **Fastify 4 → 5** (a deliberate breaking migration, not `audit fix --force`).
   Reachability is low (Fastify does its own path normalisation), but it should be scheduled.
-- **`nodemailer` ≤ 9.0.0** (direct dep, `^6.9.14`) — a batch of advisories published since the
-  first audit (SMTP command injection via CRLF, addressparser DoS, jsonTransport/raw file-read &
-  SSRF, OAuth2 TLS validation). Reachability needs review (BCWEB builds its own messages server-
-  side; the raw/jsonTransport file-read paths aren't obviously exposed), then upgrade to `nodemailer@9`.
+- **`nodemailer`** (direct dep) — a batch of advisories published since the first audit (SMTP
+  command injection via CRLF, addressparser DoS, jsonTransport/raw file-read & SSRF, OAuth2 TLS
+  validation). **DONE** — bumped **6.9.14 → 9.0.3**; the advisories no longer appear. Our usage is
+  the stable core (`createTransport` host/port/secure/auth + `sendMail`), unchanged across 6→9,
+  so no code change; the fixes are internal hardening.
 
-Action: track the **Fastify 4→5** and **nodemailer 6→9** upgrades as their own tested tasks;
-don't blind-`--force` them (both are breaking and would risk the API build).
+Action: only the **Fastify 4→5** upgrade remains (drags in `fast-uri`); track it as its own
+tested task — don't blind-`--force` it (breaking, would risk the API build).
 
 ### 3.8 🟡 Miscellaneous
 - Host-side DX footguns: scripts require the container env/generated client (now guarded with

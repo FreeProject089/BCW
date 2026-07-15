@@ -121,14 +121,14 @@ anglais en silence. Un lint de parité des clés rendrait ça structurel.
 - **`fast-uri`** (via Fastify 4) — avis path-traversal / host-confusion. Patché seulement en montant
   **Fastify 4 → 5** (une migration cassante délibérée, pas `audit fix --force`). Atteignabilité
   faible (Fastify fait sa propre normalisation de chemin), mais à planifier.
-- **`nodemailer` ≤ 9.0.0** (dép directe, `^6.9.14`) — un lot d'avis publiés depuis le premier audit
-  (injection de commande SMTP via CRLF, DoS de l'addressparser, lecture de fichier & SSRF via
-  jsonTransport/raw, validation TLS OAuth2). L'atteignabilité est à revoir (BCWEB construit ses
-  messages côté serveur ; les chemins raw/jsonTransport ne sont pas manifestement exposés), puis
-  monter en **`nodemailer@9`**.
+- **`nodemailer`** (dép directe) — un lot d'avis publiés depuis le premier audit (injection de
+  commande SMTP via CRLF, DoS de l'addressparser, lecture de fichier & SSRF via jsonTransport/raw,
+  validation TLS OAuth2). **FAIT** — montée **6.9.14 → 9.0.3** ; les avis n'apparaissent plus. Notre
+  usage est le cœur stable (`createTransport` host/port/secure/auth + `sendMail`), inchangé de 6 à 9,
+  donc aucun changement de code ; les correctifs sont du durcissement interne.
 
-Action : suivre les upgrades **Fastify 4→5** et **nodemailer 6→9** comme des tâches testées à
-part ; ne pas les `--force` à l'aveugle (les deux sont cassants et risqueraient le build de l'API).
+Action : il ne reste que l'upgrade **Fastify 4→5** (qui tire `fast-uri`) ; à suivre comme tâche
+testée à part — ne pas le `--force` à l'aveugle (cassant, risquerait le build de l'API).
 
 ### 3.8 🟡 Divers
 - Pièges DX côté hôte : les scripts exigent l'env/le client généré du conteneur (désormais
