@@ -76,7 +76,7 @@ a plain Rust crate that both the napi wrapper and Tauri depend on.
 
 | Phase | Move | Why first / risk |
 |---|---|---|
-| **P1** | **ZIP off the event loop** — wrap `adm-zip`'s validate/extract/repackage behind an async Rust `zip` API (fallback: adm-zip). | Biggest event-loop win: today a big upload blocks the instance. Behaviour-preserving, easy to A/B against adm-zip on the same inputs. |
+| **P1 ✅ done** | **ZIP off the event loop** — the `native/` crate exposes async `zipReadAll`/`zipEntries` (+ `blake3Hex`); `lib/native.mjs` wraps them with an adm-zip fallback, and `validatePlugin` now parses through it (sha256 stays in JS). Built + verified on Windows; `native.test.mjs` proves byte-parity with adm-zip. Prod (musl) enablement is a documented Docker stage, un-wired until verified. | Biggest event-loop win: a big upload no longer blocks the instance. Behaviour-preserving (byte-parity test). |
 | **P1** | **`fs scan` + `blake3` for backups** — `repoSizeBytes` / `snapshotTree` walk + hash in Rust. | Internal-only (no public contract), pure CPU/IO, easy to verify sizes/hashes match. |
 | **P2** | **zstd for internal artifacts** (backup snapshots, temp payloads) + **manifest builder**. | Smaller footprint, needs a format decision but no external contract. |
 | **P2** | **BLAKE3 for internal integrity** (dedup keys, cache keys) — keep SHA-256 on the public feed. | Careful not to touch the client-facing `sha256`. |
