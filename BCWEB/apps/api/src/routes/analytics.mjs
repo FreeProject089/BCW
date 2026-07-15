@@ -270,6 +270,12 @@ export default async function analyticsRoutes(app) {
     const windowMs = Date.now() - since.getTime();
     const prevSince = new Date(since.getTime() - windowMs);
     const uniq = async (where) => (await p.analyticsEvent.findMany({ where, select: { visitor: true }, distinct: ['visitor'] })).filter((x) => x.visitor).length;
+    // Day-granularity series comes from the AnalyticsDaily rollup (a small PK range read)
+    // instead of two full-window GROUP BY scans of AnalyticsEvent. The hourly zoom stays raw.
+    const sinceDay = new Date(since); sinceDay.setUTCHours(0, 0, 0, 0);
+    const dayRollup = gran === 'day'
+      ? await p.analyticsDaily.findMany({ where: { day: { gte: sinceDay } }, orderBy: { day: 'asc' } })
+      : null;
     const [total, windowed, uniqueVisitors, totalVisitors, live, top, refs, devices, browsers, oses, countries, series, visitorSeries, bounce, flows, regions, cities] = await Promise.all([
       p.analyticsEvent.count(),
       p.analyticsEvent.count({ where: { createdAt: { gte: since } } }),
@@ -282,8 +288,10 @@ export default async function analyticsRoutes(app) {
       p.analyticsEvent.groupBy({ by: ['browser'], _count: { browser: true }, where: { createdAt: { gte: since }, browser: { not: null } }, orderBy: { _count: { browser: 'desc' } } }),
       p.analyticsEvent.groupBy({ by: ['os'], _count: { os: true }, where: { createdAt: { gte: since }, os: { not: null } }, orderBy: { _count: { os: 'desc' } } }),
       p.analyticsEvent.groupBy({ by: ['country'], _count: { country: true }, where: { createdAt: { gte: since }, country: { not: null } }, orderBy: { _count: { country: 'desc' } }, take: 30 }),
-      p.$queryRaw`SELECT date_trunc(${gran}, "createdAt") AS day, count(*)::int AS count FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} GROUP BY 1 ORDER BY 1`,
-      p.$queryRaw`SELECT date_trunc(${gran}, "createdAt") AS day, count(DISTINCT "visitor")::int AS count FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} GROUP BY 1 ORDER BY 1`,
+      gran === 'day' ? dayRollup.map((r) => ({ day: r.day, count: r.views }))
+        : p.$queryRaw`SELECT date_trunc(${gran}, "createdAt") AS day, count(*)::int AS count FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} GROUP BY 1 ORDER BY 1`,
+      gran === 'day' ? dayRollup.map((r) => ({ day: r.day, count: r.visitors }))
+        : p.$queryRaw`SELECT date_trunc(${gran}, "createdAt") AS day, count(DISTINCT "visitor")::int AS count FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} GROUP BY 1 ORDER BY 1`,
       // Bounce: visitors who viewed exactly one page.
       p.$queryRaw`SELECT count(*) FILTER (WHERE n = 1)::int AS bounces, count(*)::int AS total FROM (SELECT "visitor", count(*) AS n FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} AND "visitor" IS NOT NULL GROUP BY "visitor") t`,
       // Top page→page transitions (journey / flow), computed per-visitor over time.

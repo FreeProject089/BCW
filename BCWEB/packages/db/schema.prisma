@@ -1513,6 +1513,17 @@ model AnalyticsEvent {
   @@index([country])
 }
 
+// Daily pre-aggregation of AnalyticsEvent so the dashboard's day-granularity series is a
+// small primary-key range read instead of two full-window GROUP BY scans. Populated by the
+// sweeper (rollupAnalyticsDaily). Rows persist beyond raw-event retention, so they also
+// double as long-term history. `day` is the UTC date. (The hourly zoom still reads raw.)
+model AnalyticsDaily {
+  day       DateTime @id @db.Date
+  views     Int      @default(0)
+  visitors  Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
 // Real-user Web Vitals (Core Web Vitals + FCP/TTFB), one row per metric sample, tied to
 // the page path it was measured on. Percentiles (p50/p75/p90/p99) are computed per path
 // in the admin panel. Values are milliseconds except CLS (unitless float).

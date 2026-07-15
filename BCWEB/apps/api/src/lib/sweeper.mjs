@@ -244,6 +244,38 @@ export async function sweepAnalyticsRetention(p, log) {
   return purged;
 }
 
+// ── Analytics daily rollup ───────────────────────────────────────────────────
+// Pre-aggregates AnalyticsEvent into AnalyticsDaily (day → views + unique visitors) so the
+// dashboard's day-granularity series is a tiny PK read instead of two full-window GROUP BYs.
+// Every tick keeps the last few days fresh (today is partial, late events arrive); once a day
+// it does a full recompute over the retention horizon — which also BACKFILLS on first run
+// (no timestamp yet) so existing history is rolled up. Uses the same date_trunc('day') the
+// read uses, so the rollup and any raw fallback always agree.
+export async function rollupAnalyticsDaily(p, log) {
+  try {
+    // cheap: refresh the trailing window every tick (self-heals recent days too)
+    await p.$executeRaw`
+      INSERT INTO "AnalyticsDaily" (day, views, visitors, "updatedAt")
+      SELECT date_trunc('day', "createdAt")::date, count(*)::int, count(DISTINCT "visitor")::int, now()
+      FROM "AnalyticsEvent" WHERE "createdAt" >= now() - interval '3 days'
+      GROUP BY 1
+      ON CONFLICT (day) DO UPDATE SET views = EXCLUDED.views, visitors = EXCLUDED.visitors, "updatedAt" = now()`;
+    // heavy: full recompute at most once per day (and immediately on first run → backfill)
+    const row = await p.adminSetting.findUnique({ where: { key: 'analytics.rollupAt' } }).catch(() => null);
+    const lastAt = row?.value?.at ? new Date(row.value.at).getTime() : 0;
+    if (Date.now() - lastAt >= DAY_MS) {
+      await p.$executeRaw`
+        INSERT INTO "AnalyticsDaily" (day, views, visitors, "updatedAt")
+        SELECT date_trunc('day', "createdAt")::date, count(*)::int, count(DISTINCT "visitor")::int, now()
+        FROM "AnalyticsEvent" WHERE "createdAt" >= now() - interval '400 days'
+        GROUP BY 1
+        ON CONFLICT (day) DO UPDATE SET views = EXCLUDED.views, visitors = EXCLUDED.visitors, "updatedAt" = now()`;
+      const at = new Date().toISOString();
+      await p.adminSetting.upsert({ where: { key: 'analytics.rollupAt' }, create: { key: 'analytics.rollupAt', value: { at } }, update: { value: { at } } });
+    }
+  } catch (e) { log?.warn?.({ e: String(e?.message || e) }, 'sweeper: analytics rollup failed'); }
+}
+
 export function startSweeper(app) {
   const run = async () => {
     try {
@@ -257,6 +289,7 @@ export function startSweeper(app) {
         await sweepDiscordActivityCap(p, app.log), await sweepDailyFileBackup(p, app.log),
         await sweepAnalyticsRetention(p, app.log),
       ];
+      await rollupAnalyticsDaily(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics rollup failed'));
       await sweepReports(p).catch((e) => app.log.warn({ e: String(e) }, 'report sweep failed'));
       await sampleAndAlert(p, app.log);
       await runEventScheduler(p).catch((e) => app.log.warn({ e: String(e) }, 'event scheduler failed'));
