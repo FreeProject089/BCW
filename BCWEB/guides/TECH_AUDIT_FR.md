@@ -144,7 +144,10 @@ rapport dès qu'un avis est publié.
 - Pièges DX côté hôte : les scripts exigent l'env/le client généré du conteneur (désormais
   gardés par des messages clairs, mais le patron demeure).
 - Accessibilité partielle (des attributs aria par endroits ; pas d'audit systématique).
-- SEO limité par la SPA (quelques routes OG/meta ; pas de SSR/prérendu).
+- SEO : l'unfurl OG pour crawlers couvre maintenant toutes les pages partageables (accueil,
+  catalogue, items, catalogues communautaires, dépôts publics, profils publics, blog, showcase,
+  statiques), chacune derrière le propre gate de visibilité de l'app + testée. Un SSR/prérendu
+  complet pour l'indexation moteur reste un chantier plus gros.
 - Bus factor ≈ 1 ; les cas limites de facturation vivent dans les commentaires du code et
   dans une seule tête.
 
@@ -158,7 +161,7 @@ rapport dès qu'un avis est publié.
 | **P2** | Découper `pages.jsx` en modules **FAIT** — le monolithe de ~10k lignes est devenu un module de helpers partagés de 210 lignes ; chaque route est passée dans son propre fichier (`home`, `catalog`, `signin`, `hosting`, `dashboard`, `account-pages`, `legal`, `contact`, et tout le back-office admin de ~7,3k lignes → `admin.jsx`). Deux pages mortes retirées. Chaque extraction gardée par **ESLint `no-undef`** (apps/web `eslint.config.js`, câblé dans la CI — il a attrapé chaque import manquant que `vite build` acceptait en silence) + un smoke-test de démarrage navigateur. `repos.jsx` (~2k) est le gros fichier restant à découper | Maintenabilité + prévient les crashes d'import récurrents |
 | **P2** | Purges de rétention analytics (par âge/nb de lignes) **FAIT** — `sweepAnalyticsRetention` purge AnalyticsEvent/InteractionEvent/WebVital/LoginAttempt au-delà de fenêtres par table (défauts 365/120/120/180j, 0 = garder toujours), par lots de 5k/table/passe, réglable par l'admin via `/admin/analytics/retention` ; 5 tests (résolveur pur + purge/garde en DB), suite complète 30/30 verte | Garde la DB saine à long terme |
 | **P2** | Redis pub/sub pour le SSE + rate limits partagés (quand les réplicas deviendront réels) | Débloque la montée en charge horizontale |
-| **P3** | Lint de parité i18n **FAIT** (`scripts/i18n-check.mjs`, câblé CI, `--strict` ; 8 bugs de clés dupliquées + 26 retombées EN corrigés). Reste : passe accessibilité ; monitoring d'erreurs ; OG/prérendu des pages publiques | Finition & portée |
+| **P3** | Lint de parité i18n **FAIT** (`scripts/i18n-check.mjs`, câblé CI, `--strict` ; 8 bugs de clés dupliquées + 26 retombées EN corrigés). Couverture unfurl OG de toutes les pages publiques/partageables **FAIT** (gatée + testée). Reste : passe accessibilité ; monitoring d'erreurs ; SSR complet pour l'indexation | Finition & portée |
 
 ## 5. Verdict
 

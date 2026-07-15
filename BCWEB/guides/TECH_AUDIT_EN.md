@@ -136,7 +136,9 @@ hard CI gate is deliberately avoided, since it would fail unrelated PRs whenever
 - Host-side DX footguns: scripts require the container env/generated client (now guarded with
   friendly errors, but the general pattern remains).
 - Accessibility is partial (aria attributes exist in places; no systematic audit).
-- SEO limited by the SPA (some OG/meta routes exist; no SSR/prerender).
+- SEO: crawler link-unfurl OG now covers every shareable page (home, catalog, items, community
+  catalogs, public repos, public profiles, blog, showcase, static), each behind the app's own
+  visibility gate + tested. Full SSR/prerender for search-engine indexing is still a larger effort.
 - Bus factor ≈ 1; the deep billing edge cases live in code comments and one person's head.
 
 ## 4. Prioritized action plan
@@ -149,7 +151,7 @@ hard CI gate is deliberately avoided, since it would fail unrelated PRs whenever
 | **P2** | Split `pages.jsx` into feature modules **DONE** — the ~10k-line monolith is now a 210-line shared-helper module; every route moved to its own file (`home`, `catalog`, `signin`, `hosting`, `dashboard`, `account-pages`, `legal`, `contact`, and the whole ~7.3k-line admin back-office → `admin.jsx`). Two dead pages dropped. Each extraction guarded by **ESLint `no-undef`** (apps/web `eslint.config.js`, wired into CI — it caught every missing import that `vite build` accepted silently) + a browser boot smoke-test. `repos.jsx` (~2k) is the remaining large file to split next | Maintainability + prevents the recurring import crashes |
 | **P2** | Analytics retention sweeps (cap by age/rows) **DONE** — `sweepAnalyticsRetention` purges AnalyticsEvent/InteractionEvent/WebVital/LoginAttempt past per-table windows (defaults 365/120/120/180d, 0 = keep forever), batched 5k/table/sweep, admin-tunable via `/admin/analytics/retention`; 5 tests (pure resolver + DB purge/keep), full suite 30/30 green | Keeps the DB healthy long-term |
 | **P2** | Redis pub/sub for SSE + shared rate limits (when replicas become real) | Unblocks horizontal scaling |
-| **P3** | i18n key-parity lint **DONE** (`scripts/i18n-check.mjs`, CI-wired, `--strict`; fixed 8 duplicate-key bugs + 26 EN-fallback gaps). Remaining: accessibility pass; error monitoring; OG/prerender for public pages | Polish & reach |
+| **P3** | i18n key-parity lint **DONE** (`scripts/i18n-check.mjs`, CI-wired, `--strict`; fixed 8 duplicate-key bugs + 26 EN-fallback gaps). OG unfurl coverage for all public/shareable pages **DONE** (gated + tested). Remaining: accessibility pass; error monitoring; full SSR for search indexing | Polish & reach |
 
 ## 5. Verdict
 
