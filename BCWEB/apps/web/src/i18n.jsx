@@ -1186,6 +1186,14 @@ const DICT = {
     'ab.rulehint': 'Attribué automatiquement quand l’événement se produit — ex. un badge pour le 100e, 200e… membre, les early adopters, ou les soutiens Ko-fi.',
     // Système de report / contact
     'dash.reports': 'Signalements & contact', 'adm.tab.reports': 'Signalements',
+    // Repo public page — contents listing + direct download (rc.*)
+    'rc.title': 'Contenu', 'rc.sub': 'Télécharge un fichier directement — pas besoin de BMM.',
+    'rc.count': '{n} fichiers · {size}', 'rc.root': 'Racine', 'rc.dl': 'Télécharger',
+    'rc.locked.t': 'Téléchargements restreints',
+    'rc.locked.login': 'Ce dépôt n’autorise que les personnes approuvées par son propriétaire. Connecte-toi et on vérifiera ton compte sur sa liste.',
+    'rc.locked.no': 'Ton compte n’est pas sur la liste d’autorisation de ce dépôt. Demande l’accès au propriétaire.',
+    'rc.signin': 'Se connecter pour télécharger',
+    'rc.youok': 'Ce dépôt est restreint — ton compte est autorisé.',
     'rp.report': 'Signaler', 'rp.title': 'Signaler', 'rp.title.n': 'Signaler « {n} »', 'rp.reason': 'Raison',
     'rp.reason.spam': 'Spam ou publicité', 'rp.reason.abuse': 'Abus ou harcèlement', 'rp.reason.malware': 'Malware / contenu dangereux',
     'rp.reason.stolen': 'Contenu volé / reposté', 'rp.reason.broken': 'Cassé ou trompeur', 'rp.reason.other': 'Autre chose',

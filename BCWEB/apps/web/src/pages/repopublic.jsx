@@ -1,11 +1,97 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { Server, GitBranch, Link2, Copy, ArrowUpRight, ShieldAlert, Fingerprint, Users, Star, CheckCircle2, Tag } from 'lucide-react';
+import { Server, GitBranch, Link2, Copy, ArrowUpRight, ShieldAlert, Fingerprint, Users, Star, CheckCircle2, Tag, Download, Lock, FolderOpen, FileText, LogIn } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, Spinner, EmptyState } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { ReportButton } from '../ui/report.jsx';
+
+const humanSize = (b) => {
+  if (!b) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB']; const i = Math.min(u.length - 1, Math.floor(Math.log(b) / Math.log(1024)));
+  return `${(b / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`;
+};
+
+// What's inside the repo, downloadable straight from the browser — so you can grab one mod
+// without installing BMM first. The API decides who may download (same gate the download
+// itself runs) and hands back `access`; this only renders the verdict it's given.
+function RepoContents({ id, k }) {
+  const { t } = useI18n();
+  const [data, setData] = useState(undefined); // undefined = loading, null = failed
+  useEffect(() => {
+    api.get(`/r/${encodeURIComponent(id)}/contents${k ? `?k=${encodeURIComponent(k)}` : ''}`)
+      .then(setData).catch((x) => setData(x.data?.error === 'banned' ? { banned: true } : null));
+  }, [id, k]);
+
+  if (data === undefined) return <Card className="p-4 mt-4"><Spinner /></Card>;
+  if (data === null) return null;                       // nothing to say — stay quiet
+  if (data.banned) return null;                          // the page already reads as denied
+  if (data.access?.reason === 'not_hosted') return null; // externally-hosted repo: no files of ours
+
+  const { files = [], total, access } = data;
+
+  if (!access?.canDownload) {
+    const needLogin = access?.reason === 'login_required';
+    return (
+      <Card className="p-4 mt-4">
+        <div className="flex items-center gap-2 mb-1.5 font-medium"><Lock size={16} className="text-amber-400" /> {t('rc.locked.t', 'Downloads are restricted')}</div>
+        <p className="text-sm text-[var(--muted)] mb-3">
+          {needLogin
+            ? t('rc.locked.login', 'This repo only allows people its owner approved. Sign in and we’ll check your account against their list.')
+            : t('rc.locked.no', 'Your account isn’t on this repo’s allow-list. Ask the owner for access.')}
+        </p>
+        {/* /auth, not /login — that route doesn't exist (this shipped as a dead link once). */}
+        {needLogin && <Link to="/auth"><Button size="sm" variant="primary"><LogIn size={14} /> {t('rc.signin', 'Sign in to download')}</Button></Link>}
+      </Card>
+    );
+  }
+
+  if (!files.length) return null;
+
+  // Group by top-level folder (mods/, profiles/, …) — that's how a repo is actually laid out.
+  const groups = {};
+  for (const f of files) {
+    const g = f.path.includes('/') ? f.path.split('/')[0] : '/';
+    (groups[g] ||= []).push(f);
+  }
+  const label = (g) => (g === '/' ? t('rc.root', 'Root') : g);
+
+  return (
+    <Card className="p-4 mt-4">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="flex items-center gap-2 font-medium"><FolderOpen size={16} className="text-[var(--primary-2)]" /> {t('rc.title', 'Contents')}</div>
+        <span className="text-xs text-[var(--faint)]">
+          {t('rc.count', '{n} files · {size}')
+            .replace('{n}', String(total?.count ?? files.length))
+            .replace('{size}', humanSize(total?.bytes || 0))}
+        </span>
+      </div>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('rc.sub', 'Download a file directly — no BMM needed.')}</p>
+
+      {Object.entries(groups).map(([g, list]) => (
+        <div key={g} className="mb-3 last:mb-0">
+          <div className="text-[11px] uppercase tracking-wide text-[var(--faint)] mb-1">{label(g)}</div>
+          <ul className="divide-y divide-[var(--border)]">
+            {list.map((f) => (
+              <li key={f.path} className="flex items-center gap-2 py-1.5">
+                <FileText size={13} className="text-[var(--faint)] flex-none" />
+                <span className="text-sm truncate min-w-0 flex-1" title={f.path}>{f.path.includes('/') ? f.path.slice(g.length + 1) : f.path}</span>
+                <span className="text-xs text-[var(--faint)] tabular-nums flex-none">{humanSize(f.size)}</span>
+                {/* A plain link: the browser sends the session cookie, so the gate sees the
+                    same identity the listing was computed with. */}
+                <a href={f.url} download className="flex-none" title={t('rc.dl', 'Download')}>
+                  <Button size="sm" variant="ghost"><Download size={13} /></Button>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      {access.restricted && <p className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><Lock size={10} /> {t('rc.youok', 'This repo is restricted — your account is allowed.')}</p>}
+    </Card>
+  );
+}
 
 // Public single Server-Repo page (/r/:id). Shows the repo's metadata + an "Open in BMM"
 // deeplink (bmm://repo/connect?url=…) and a copyable repo.json URL. Works for publicly
@@ -72,6 +158,8 @@ export default function RepoPublicPage() {
       ) : (
         <EmptyState icon={Server} title={t('rp.nofeed.t', 'No manifest yet')} sub={t('rp.nofeed.s', 'This repo has no published repo.json to import into BMM yet.')} />
       )}
+
+      <RepoContents id={id} k={k} />
 
       {repo.links && (repo.links.website || repo.links.discord || repo.links.changelog) && <div className="mt-4 flex flex-wrap gap-2">
         {repo.links.website && <a href={repo.links.website} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost"><Link2 size={13} /> {t('rp.website', 'Website')}</Button></a>}

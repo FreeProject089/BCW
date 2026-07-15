@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { Transform } from 'node:stream';
 import { createHash } from 'node:crypto';
 import archiver from 'archiver';
-import { db, requireRole, slugify, notify, repoLog, isValidRepoManifest, getGlobalAccessPolicy, getUserAccessPolicy, matchAccountList } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, slugify, notify, repoLog, isValidRepoManifest, getGlobalAccessPolicy, getUserAccessPolicy, matchAccountList } from '../lib/lib.mjs';
 import { presignPut, presignGet, getObject } from '../lib/storage.mjs';
 import { repoMeter } from '../lib/monitor.mjs';
 
@@ -50,12 +50,26 @@ function logAccess(p, repoId, req, path, kind, identity) {
 // involved — it's the same creator id already used for the free-tier/telemetry link,
 // looked up here against CreatorLink -> (optionally) DiscordLink.
 async function resolveIdentity(p, req) {
-  const creatorId = req.headers['x-creator-id'];
-  if (!creatorId) return { creatorId: null, userId: null, discordId: null };
-  const cid = String(creatorId).slice(0, 120);
-  const link = await p.creatorLink.findUnique({ where: { creatorId: cid }, include: { user: { select: { discordLinks: { select: { discordId: true }, take: 1 } } } } });
-  if (!link) return { creatorId: cid, userId: null, discordId: null };
-  return { creatorId: cid, userId: link.userId, discordId: link.user.discordLinks[0]?.discordId || null };
+  const creatorId = req.headers['x-creator-id'] ? String(req.headers['x-creator-id']).slice(0, 120) : null;
+  // BMM identifies itself with X-Creator-ID; a BROWSER has no such header — it has a session.
+  // Resolve that too, so the very same whitelist/ban entries that gate a BMM download also
+  // gate a download straight from the repo's web page. Without this a signed-in, whitelisted
+  // member is indistinguishable from an anonymous visitor and gets refused. Routes must run
+  // optionalAuth() for req.user to be populated (an unauthenticated call just stays anonymous).
+  const sessionUid = req.user?.uid || null;
+  if (!creatorId && !sessionUid) return { creatorId: null, userId: null, discordId: null };
+
+  let userId = sessionUid, discordId = null;
+  if (creatorId) {
+    const link = await p.creatorLink.findUnique({ where: { creatorId }, include: { user: { select: { discordLinks: { select: { discordId: true }, take: 1 } } } } });
+    // A linked creator id names the account; fall back to the session when it isn't linked.
+    if (link) { userId = link.userId; discordId = link.user.discordLinks[0]?.discordId || null; }
+  }
+  if (userId && !discordId) {
+    const dl = await p.discordLink.findFirst({ where: { userId }, select: { discordId: true } }).catch(() => null);
+    discordId = dl?.discordId || null;
+  }
+  return { creatorId, userId, discordId };
 }
 // Effective bandwidth cap (kbps): the owner's requested value clamped to the hard cap.
 function effKbps(repo) {
@@ -75,7 +89,11 @@ function effKbps(repo) {
 // sandbox `?key=` query param, which only this repo's own settings.access/bans
 // still use. BMM always sends its creator id automatically, so this is far more
 // practically useful at the policy level than the manually-configured sandbox key.
-function sandboxGate(repo, req, reply, policies, identity) {
+// The verdict, with no side effects — the repo's web page has to ASK "could this visitor
+// download?" to render the right button, which it can't do through a function whose only
+// output is a 403. sandboxGate() below is this plus the response, so the page and the
+// download can never disagree about who's allowed.
+export function sandboxVerdict(repo, req, policies, identity) {
   const s = repo.settings || {};
   const ip = clientIp(req);
   const key = req.query?.key;
@@ -83,15 +101,23 @@ function sandboxGate(repo, req, reply, policies, identity) {
   const bans = s.bans || { ips: [], keys: [], accounts: [] };
   const banned = policies.some((pol) => (pol.bannedIps || []).includes(ip) || (creatorId && (pol.bannedKeys || []).includes(creatorId)) || matchAccountList(pol.bannedAccounts, userId, discordId))
     || (bans.ips || []).includes(ip) || (key && (bans.keys || []).includes(key)) || matchAccountList(bans.accounts, userId, discordId);
-  if (banned) { reply.code(403).send({ error: 'banned' }); return false; }
+  if (banned) return { ok: false, reason: 'banned' };
   const acc = s.access || {};
   const whitelistActive = policies.some((pol) => pol.whitelistOnly) || acc.whitelistEnabled;
   if (whitelistActive) {
     const ok = (acc.ips || []).includes(ip) || (key && (acc.keys || []).includes(key)) || matchAccountList(acc.accounts, userId, discordId)
       || policies.some((pol) => (pol.whitelistIps || []).includes(ip) || (creatorId && (pol.whitelistKeys || []).includes(creatorId)) || matchAccountList(pol.whitelistAccounts, userId, discordId));
-    if (!ok) { reply.code(403).send({ error: 'not_whitelisted', accountLinked: !!userId }); return false; }
+    if (!ok) return { ok: false, reason: 'not_whitelisted', accountLinked: !!userId };
   }
-  return true;
+  return { ok: true };
+}
+
+function sandboxGate(repo, req, reply, policies, identity) {
+  const v = sandboxVerdict(repo, req, policies, identity);
+  if (v.ok) return true;
+  if (v.reason === 'banned') reply.code(403).send({ error: 'banned' });
+  else reply.code(403).send({ error: 'not_whitelisted', accountLinked: v.accountLinked });
+  return false;
 }
 // Is any PER-REQUESTER restriction active on this repo (whitelist mode, or ban
 // entries on the repo settings / global / owner policies)? If yes, responses must
@@ -380,7 +406,72 @@ export default async function hostingContentRoutes(app) {
 
   // ── Public serving (validated content only; bytes only, never executed) ──
   // Enforces the repo's sandbox at request time: bans, whitelist, bandwidth cap.
-  app.get('/hosting/:owner/:repo/repo.json', async (req, reply) => {
+  // Public: what's INSIDE a repo, for its web page — so a visitor can see the mods/profiles
+  // and pull one straight from the browser instead of having to install BMM first.
+  //
+  // Access is decided by the SAME sandboxVerdict the actual download runs, so the page can
+  // never offer a button that then 403s. An open repo (no whitelist, no bans anywhere) is
+  // downloadable by anyone, signed in or not — that's the common case and it stays one click.
+  // The moment ANY restriction applies, identity is required: a signed-out visitor gets
+  // `login_required` (sign in, and their account/Discord is matched against the lists), and
+  // the contents are withheld rather than leaked — repo.json is gated the same way.
+  app.get('/r/:id/contents', { preHandler: optionalAuth() }, async (req, reply) => {
+    const p = await db();
+    const repo = await p.serverRepo.findUnique({
+      where: { id: req.params.id },
+      include: { files: { orderBy: { path: 'asc' } } },
+    });
+    if (!repo) return reply.code(404).send({ error: 'not_found' });
+
+    // Visibility mirrors GET /r/:id exactly: listed+verified, or the share link, or owner/staff.
+    const publicListed = repo.listed && repo.verified && !repo.pendingReview;
+    const viaKey = !!(req.query?.k && repo.shareKey && String(req.query.k) === repo.shareKey);
+    const isOwner = req.user?.uid === repo.ownerId || ['ADMIN', 'SUPERADMIN'].includes(req.user?.role);
+    if (!publicListed && !viaKey && !isOwner) return reply.code(404).send({ error: 'not_found' });
+
+    const signedIn = !!req.user?.uid;
+    const origin = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
+    // Only OUR hosted, published repos have files we can serve; an externally-hosted repo
+    // just points elsewhere, so there's nothing here to list or download.
+    if (!repo.hosted || !repo.published || !repo.hostPath) {
+      return { files: [], total: { count: 0, bytes: 0 }, access: { restricted: false, canDownload: false, reason: 'not_hosted', signedIn } };
+    }
+
+    const [globalPolicy, ownerPolicy, identity] = await Promise.all([
+      getGlobalAccessPolicy(p), getUserAccessPolicy(p, repo.ownerId), resolveIdentity(p, req),
+    ]);
+    const restricted = repoRestricted(repo, [globalPolicy, ownerPolicy]);
+    const verdict = sandboxVerdict(repo, req, [globalPolicy, ownerPolicy], identity);
+    // The owner and staff always see their own contents, whatever the lists say.
+    const allowed = verdict.ok || isOwner;
+
+    if (!allowed) {
+      if (verdict.reason === 'banned') return reply.code(403).send({ error: 'banned' });
+      // Not whitelisted. Signing in is only a plausible fix when they haven't yet.
+      return reply.header('Cache-Control', 'private, no-store').send({
+        files: [], total: { count: 0, bytes: 0 },
+        access: { restricted: true, canDownload: false, reason: signedIn ? 'not_whitelisted' : 'login_required', signedIn },
+      });
+    }
+
+    const files = repo.files.map((f) => ({
+      path: f.path,
+      size: Number(f.size),
+      contentType: f.contentType,
+      sha256: f.sha256 || null,
+      // Same URL BMM pulls: one gate, one code path, one set of bandwidth caps + counters.
+      url: `${origin}/hosting/${repo.hostPath}/files/${f.path.split('/').map(encodeURIComponent).join('/')}`,
+    }));
+    // A restricted repo's listing is per-requester — never let a shared cache serve it on.
+    reply.header('Cache-Control', restricted ? 'private, no-store' : 'public, max-age=60');
+    return {
+      files,
+      total: { count: files.length, bytes: files.reduce((a, f) => a + f.size, 0) },
+      access: { restricted, canDownload: true, reason: null, signedIn },
+    };
+  });
+
+  app.get('/hosting/:owner/:repo/repo.json', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { hostPath: `${req.params.owner}/${req.params.repo}` } });
     if (!repo || !repo.published || !repo.repoJson) return reply.code(404).send({ error: 'not_found' });
@@ -392,7 +483,9 @@ export default async function hostingContentRoutes(app) {
     return reply.header('Content-Type', 'application/json').header('Cache-Control', cc).send(repo.repoJson);
   });
 
-  app.get('/hosting/:owner/:repo/files/*', async (req, reply) => {
+  // optionalAuth so a browser's session counts as identity here too (see resolveIdentity):
+  // BMM sends no cookie and stays anonymous, so its behaviour is unchanged.
+  app.get('/hosting/:owner/:repo/files/*', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { hostPath: `${req.params.owner}/${req.params.repo}` }, include: { files: true } });
     if (!repo || !repo.published) return reply.code(404).send({ error: 'not_found' });
