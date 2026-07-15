@@ -549,6 +549,13 @@ model CatalogItem {
 
   @@index([deleteAt])
   @@index([payloadPurgeAt])
+  // Hot-path indexes for the public browse (/catalog: filter by status, sort by the
+  // chosen column) and the BMM-native feed (/catalog.json: status+project+kind, sort
+  // by downloads). Without these, both do a seq-scan + in-memory sort as the catalog grows.
+  @@index([status, updatedAt])
+  @@index([status, downloads])
+  @@index([status, views])
+  @@index([projectId, kind, status])
 }
 
 // Time-stamped catalog events for windowed popularity (e.g. "popular this month").
