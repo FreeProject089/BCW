@@ -32,9 +32,12 @@ la cloche de nav n'épingle plus `dashboard.jsx` au chunk principal (le dashboar
 maintenant), et lazy-load de l'orbe Hero3D pour que `three` (~460 Ko) charge après le premier
 rendu. Chunk principal **1,38 Mo → 1,23 Mo** (soit **−47 %** vs les 2,34 Mo d'origine).
 
+**Garde ajoutée** — `scripts/bundle-budget.mjs` (CI `npm run budget`) échoue si le chunk d'entrée
+gzippé dépasse 430 Ko (actuellement ~372 Ko), pour qu'une régression du type import eager d'une
+route lourde ne puisse plus repasser en douce.
+
 **Reste** : les chunks carte (`maplibre-gl` 1 Mo) / `rrweb` / `jszip` sont déjà séparés —
-vérifier que chacun ne charge que sur sa route ; et ajouter un budget/visualiseur de bundle pour
-rendre les régressions visibles.
+vérifier que chacun ne charge que sur sa route.
 
 ### 2. 🟠 BD : index des chemins chauds sur `CatalogItem` — **corrigé**
 Le browse public `/catalog` (filtre par `status`, tri par `downloads`/`views`/`updatedAt`) et
@@ -86,6 +89,13 @@ mais une fenêtre large sur un site actif reste un scan lourd à chaque chargeme
 **Plan** : pré-agréger dans une table de rollup quotidien (un job sweeper nocturne) et lire les
 rollups pour les vues à granularité jour, en retombant sur le brut seulement pour le zoom
 horaire ; ajouter des index couvrants pour les requêtes brutes restantes.
+
+*Note :* le dashboard lance ~17 agrégations en parallèle sur la fenêtre (série, top pages,
+répartitions device/browser/os/géo…), donc un rollup de la seule série temporelle n'accélère
+que 1 sur 17 pendant que le reste scanne — un rollup utile doit couvrir la plupart des
+dimensions, ce qui est un schéma + producteur conséquent. La rétention bornant maintenant la
+table, c'est réellement moins prioritaire qu'il n'y paraissait ; à faire si/quand une fenêtre
+large sur un site actif traîne vraiment.
 
 ### 6. 🟡 Pas de SSR / prérendu pour le premier rendu & l'indexation
 C'est une SPA rendue côté client : le navigateur télécharge le JS, boote React, puis va chercher

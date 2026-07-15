@@ -29,9 +29,12 @@ bell no longer pins `dashboard.jsx` to the main chunk (dashboard now route-split
 lazy-loaded the Hero3D orb so `three` (~460 KB) loads after first paint. Main chunk
 **1.38 MB → 1.23 MB** (now **−47 %** vs the original 2.34 MB).
 
+**Guard added** — `scripts/bundle-budget.mjs` (CI `npm run budget`) fails if the gzipped
+entry chunk exceeds 430 KB (currently ~372 KB), so a regression like eager-importing a
+heavy route can't slip back in.
+
 **Remaining**: the map (`maplibre-gl` 1 MB) / `rrweb` / `jszip` chunks are already split —
-confirm each loads only on its route; and add a bundle-size budget/visualiser so
-regressions are visible.
+confirm each loads only on its route.
 
 ### 2. 🟠 DB: hot-path indexes on `CatalogItem` — **fixed**
 The public `/catalog` browse (filter by `status`, sort by `downloads`/`views`/`updatedAt`)
@@ -82,6 +85,12 @@ window over a busy site is still a heavy scan on every dashboard load.
 **Plan**: pre-aggregate into a daily rollup table (a nightly sweeper job) and read the
 rollups for day-granularity views, falling back to raw only for the hourly zoom; add
 covering indexes for the remaining raw queries.
+
+*Note:* the dashboard runs ~17 aggregations in parallel over the window (series, top pages,
+device/browser/os/geo breakdowns…), so a rollup of only the time-series speeds up 1 of 17
+while the rest still scan — a worthwhile rollup has to cover most dimensions, which is a
+sizeable schema + producer. Given retention now bounds the table, this is genuinely lower
+priority than it first looked; do it if/when a wide window on a busy site actually drags.
 
 ### 6. 🟡 No SSR / prerender for first paint & indexing
 It's a client-rendered SPA: the browser downloads JS, boots React, then fetches data —
