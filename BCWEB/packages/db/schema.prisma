@@ -787,6 +787,9 @@ model ServerRepo {
 
   @@index([groupId])
   @@index([deleteAt])
+  // Public list (/repos): the exact filter + sort of the community repo browser, so it
+  // doesn't seq-scan every repo to find the listed + verified ones.
+  @@index([listed, verified, pendingReview, createdAt])
 }
 
 // A user starring a Server-Repo on the public list — purely social (visibility
