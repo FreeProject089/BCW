@@ -107,10 +107,17 @@ poignée de routes statiques à forte valeur au build ; (b) un cache edge du she
 les crawlers ; (c) SSR complet (Vite SSR / un meta-framework) seulement si le SEO devient une
 priorité.
 
-### 7. 🟡 Images & médias
-Les avatars sont générés (Boring-avatars, peu coûteux). Vérifier que les covers/icônes uploadées
-sont servies avec des en-têtes de cache longs + des variantes à la bonne largeur (ou via un CDN
-d'images) plutôt que les originaux pleine taille sur les cartes de liste.
+### 7. 🟡 Images & médias — en partie fait
+Les avatars sont générés (Boring-avatars, peu coûteux) et cachés un jour. Les covers/icônes
+uploadées passent par le proxy `/media/*` ; chaque clé porte un `randomUUID()`, donc les octets
+d'une URL ne changent jamais — **servies maintenant en `immutable, max-age=1an`** (contre 1 jour),
+donc le navigateur/CDN ne revalide jamais.
+
+**Reste** : les cartes de liste chargent encore les originaux pleine taille — une étape de
+redimensionnement (le projet embarque déjà `@napi-rs/canvas`) pour émettre des vignettes à la bonne
+largeur allègerait les pages en grille. À plus long terme, servir `/media` directement depuis le
+stockage objet / un CDN (présigné ou caché à l'edge) sortirait complètement le proxy d'octets de
+l'API Node.
 
 ---
 
@@ -126,7 +133,7 @@ d'images) plutôt que les originaux pleine taille sur les cartes de liste.
 | **P2** | Redis pub/sub + store rate-limit + verrous sweeper (derrière `REDIS_URL`) | débloque la montée en charge horizontale | ✅ fait |
 | **P3** | Rollups quotidiens analytics | dashboards rapides à toute fenêtre | ▢ |
 | **P3** | Prérendu/SSR pour les routes publiques | premier rendu + indexation moteur | ▢ |
-| **P3** | En-têtes de cache images / variantes responsives | pages de liste plus légères | ▢ |
+| **P3** | En-têtes de cache images (fait : /media immutable) / variantes responsives (▢) | pages de liste plus légères | ◑ partiel |
 
 ## Verdict
 

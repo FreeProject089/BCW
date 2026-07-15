@@ -101,10 +101,16 @@ already covered (tech audit §3.8), which handles social sharing but not indexin
 high-value static routes at build time; (b) an edge cache of the OG-style shell for
 crawlers; (c) full SSR (Vite SSR / a meta-framework) only if SEO becomes a priority.
 
-### 7. 🟡 Images & media
-Avatars are generated (Boring-avatars, cheap). Confirm uploaded covers/icons are served
-with long cache headers + width-appropriate variants (or through an image CDN) rather than
-full-size originals on list cards.
+### 7. 🟡 Images & media — partly done
+Avatars are generated (Boring-avatars, cheap) and cached a day. Uploaded covers/icons go
+through the `/media/*` proxy; each key carries a `randomUUID()`, so a URL's bytes never
+change — **now served `immutable, max-age=1yr`** (was 1 day), so the browser/CDN never
+re-validates.
+
+**Remaining**: list cards still load full-size originals — a resize step (the project
+already ships `@napi-rs/canvas`) to emit width-appropriate thumbnails would cut bytes on
+grid pages. Longer term, serving `/media` straight from object storage / a CDN (presigned
+or edge-cached) would take the byte-proxying off the Node API entirely.
 
 ---
 
@@ -120,7 +126,7 @@ full-size originals on list cards.
 | **P2** | Redis pub/sub + rate-limit store + sweeper locks (behind `REDIS_URL`) | unblocks horizontal scaling | ✅ done |
 | **P3** | Analytics daily rollups | fast dashboards at any window | ▢ |
 | **P3** | Prerender/SSR for public routes | first-paint + search indexing | ▢ |
-| **P3** | Image cache headers / responsive variants | lighter list pages | ▢ |
+| **P3** | Image cache headers (done: immutable /media) / responsive variants (▢) | lighter list pages | ◑ partial |
 
 ## Verdict
 
