@@ -2725,6 +2725,11 @@ function AdminProjects() {
           without the fragile inline ml-auto / orphaned w-px of the old flex row. */}
       {(() => {
         const chip = (on) => `flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm transition press-sm ${on ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'border-[var(--line)] bg-[var(--surface-2)]/40 text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`;
+        // Past a handful, one chip per showcase project turns the rail into a wall of
+        // buttons (they keep coming — anyone can add one). Swap to a picker: the built-in
+        // four stay chips, since that set is fixed and worth having one click away.
+        const asMenu = showcase.length > 6;
+        const scIcon = (s) => <ShowcaseIcon icon={s.icon} size={14} fallback={<Sparkles size={14} />} />;
         return (
           <div className="seg-rail !flex-wrap gap-2 p-2 rounded-2xl mb-4">
             {keys.map((k) => { const Pm = PROJ_META[k]; return (
@@ -2732,9 +2737,13 @@ function AdminProjects() {
                 <AppLogo pkey={k} size={16} fallback={Pm.icon} /> {Pm.name}
               </button>); })}
             {showcase.length > 0 && <span className="self-center text-[10px] uppercase tracking-wider text-[var(--faint)] px-1.5">{t('ap.showcase', 'Other')}</span>}
-            {showcase.map((s) => (
+            {asMenu ? (
+              <Dropdown className="self-center min-w-[13rem]" value={isShowcase ? active : ''}
+                placeholder={t('ap.pickother', 'Pick a project…')} onChange={setActive}
+                options={showcase.map((s) => ({ value: `sc:${s.id}`, label: s.name, icon: scIcon(s) }))} />
+            ) : showcase.map((s) => (
               <button key={s.id} onClick={() => setActive(`sc:${s.id}`)} className={chip(active === `sc:${s.id}`)}>
-                <ShowcaseIcon icon={s.icon} size={14} fallback={<Sparkles size={14} />} /> <span className="truncate max-w-[160px]">{s.name}</span>
+                {scIcon(s)} <span className="truncate max-w-[160px]">{s.name}</span>
               </button>
             ))}
           </div>

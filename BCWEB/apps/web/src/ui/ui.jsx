@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useId, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown, Undo2, Star, MoreHorizontal } from 'lucide-react';
+import { useI18n } from '../i18n.jsx';
 
 // Robust clipboard copy — navigator.clipboard is unavailable on non-HTTPS origins and
 // inside some embedded webviews, so fall back to a hidden <textarea> + execCommand.
@@ -39,8 +40,12 @@ export const Badge = ({ tone = '', className = '', children }) =>
 // split as the container resizes.
 //
 // `actions`: [{ key, label, icon: Icon, onClick, variant?, danger?, hidden? }]
-export function ActionBar({ actions, className = '', size = 'sm' }) {
+export function ActionBar({ actions, extra = [], className = '', size = 'sm' }) {
   const list = actions.filter((a) => a && !a.hidden);
+  // `extra` = secondary actions that belong in the menu at ANY width (the long tail a
+  // kebab used to hold). They share the overflow menu, so a card never grows a second one.
+  const tail = extra.filter((a) => a && !a.hidden);
+  const { t } = useI18n();
   const wrapRef = useRef(null);
   const measureRef = useRef(null);
   const [fit, setFit] = useState(list.length); // how many render inline
@@ -52,12 +57,13 @@ export function ActionBar({ actions, className = '', size = 'sm' }) {
     const wrap = wrapRef.current, measure = measureRef.current;
     if (!wrap || !measure) return;
     const GAP = 8, MORE = 44; // gap-2, and the width the "More" button needs
+    const hasTail = tail.length > 0; // then the menu button is there no matter what
     const compute = () => {
       const widths = [...measure.children].map((c) => c.getBoundingClientRect().width);
       const avail = wrap.getBoundingClientRect().width;
       if (!avail || !widths.length) return;
       // Everything fits → no menu at all (don't spend a slot on "More" for nothing).
-      const total = widths.reduce((a, w) => a + w, 0) + GAP * (widths.length - 1);
+      const total = widths.reduce((a, w) => a + w, 0) + GAP * (widths.length - 1) + (hasTail ? MORE + GAP : 0);
       if (total <= avail) { setFit(widths.length); return; }
       let used = MORE, n = 0;
       for (const w of widths) { const next = used + w + GAP; if (next > avail) break; used = next; n++; }
@@ -67,15 +73,38 @@ export function ActionBar({ actions, className = '', size = 'sm' }) {
     const ro = new ResizeObserver(compute);
     ro.observe(wrap);
     return () => ro.disconnect();
-  }, [list.length, list.map((a) => a.label).join('|')]);
+  }, [list.length, tail.length, list.map((a) => a.label).join('|')]);
 
   const shown = list.slice(0, fit);
-  const rest = list.slice(fit);
-  const openMenu = () => {
+  const rest = [...list.slice(fit), ...tail];
+  const place = () => {
     const r = moreRef.current?.getBoundingClientRect();
-    if (r) setPos({ top: r.bottom + 6, right: window.innerWidth - r.right, minWidth: Math.max(r.width, 180) });
-    setOpen(true);
+    if (r) setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right), minWidth: Math.max(r.width, 180) });
+    return r;
   };
+  const openMenu = () => { place(); setOpen(true); };
+  // The menu is fixed-positioned, so it would hang in place while the card scrolls away.
+  // Keep it glued to its button, and close it once the button leaves the viewport.
+  // Capture phase so scrolling an inner container counts too.
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = moreRef.current?.getBoundingClientRect();
+      if (!r) return;
+      if (r.bottom < 0 || r.top > window.innerHeight) { setOpen(false); return; }
+      place();
+    };
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update); };
+  }, [open]);
+  // Escape closes it, like every other menu in the app.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
 
   return (
     <div ref={wrapRef} className={`flex items-center gap-2 min-w-0 ${className}`}>
@@ -87,7 +116,7 @@ export function ActionBar({ actions, className = '', size = 'sm' }) {
       </div>
 
       {shown.map((a) => (
-        <Button key={a.key} size={size} variant={a.variant || 'default'} onClick={a.onClick}
+        <Button key={a.key} size={size} variant={a.variant || 'default'} onClick={a.onClick} disabled={a.disabled}
           className={`shrink-0 ${a.danger ? '!text-red-400' : ''}`}>
           {a.icon && <a.icon size={14} />} {a.label}
         </Button>
@@ -98,8 +127,9 @@ export function ActionBar({ actions, className = '', size = 'sm' }) {
           {/* span, not ref={Button}: Button isn't a forwardRef, so a ref on it is silently
               dropped and the menu would anchor to nothing. */}
           <span ref={moreRef} className="shrink-0 inline-flex">
-            <Button size={size} variant="ghost" aria-expanded={open}
-              onClick={() => (open ? setOpen(false) : openMenu())} title={`${rest.length} more`}>
+            <Button size={size} variant="ghost" aria-expanded={open} aria-haspopup="menu"
+              onClick={() => (open ? setOpen(false) : openMenu())}
+              title={t('ab.more', '{n} more actions').replace('{n}', rest.length)}>
               <MoreHorizontal size={15} />
             </Button>
           </span>
@@ -109,8 +139,8 @@ export function ActionBar({ actions, className = '', size = 'sm' }) {
               <div role="menu" className="fixed z-[61] rounded-xl border border-[var(--line-strong)] bg-[var(--surface-1)] shadow-xl p-1"
                 style={{ top: pos.top, right: pos.right, minWidth: pos.minWidth }}>
                 {rest.map((a) => (
-                  <button key={a.key} role="menuitem" onClick={() => { setOpen(false); a.onClick?.(); }}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 hover:bg-[var(--surface-2)] ${a.danger ? 'text-red-400' : 'text-[var(--text)]'}`}>
+                  <button key={a.key} role="menuitem" disabled={a.disabled} onClick={() => { setOpen(false); a.onClick?.(); }}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 enabled:hover:bg-[var(--surface-2)] disabled:opacity-40 disabled:cursor-not-allowed ${a.danger ? 'text-red-400' : 'text-[var(--text)]'}`}>
                     {a.icon && <a.icon size={14} />} {a.label}
                   </button>
                 ))}

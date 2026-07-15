@@ -517,7 +517,7 @@ const DICT = {
 
     // ── Admin : config des projets ──
     'ap.title': 'Configuration des projets', 'ap.sub': 'Configure les téléchargements, liens, contributeurs & messages, le suivi d’avancement, les docs légales et la source des notes de version GitHub — par projet.',
-    'ap.refreshcaches': 'Rafraîchir les caches du site', 'ap.cacheflushed': 'Caches du site rafraîchis ({n} entrées) — les changements du repo sont visibles.', 'ap.showcase': 'Autres',
+    'ap.refreshcaches': 'Rafraîchir les caches du site', 'ap.cacheflushed': 'Caches du site rafraîchis ({n} entrées) — les changements du repo sont visibles.', 'ap.showcase': 'Autres', 'ap.pickother': 'Choisir un projet…',
     'ver.title': 'Historique des versions', 'ver.open': 'Historique des versions', 'ver.none': 'Aucun historique de version pour l’instant.', 'ver.current': 'actuelle',
     'ver.pick': 'Choisis une version pour la voir telle qu’elle était.', 'ver.nodl': 'Aucun téléchargement enregistré pour cette version.', 'ver.notes.hint': 'Les notes de version sont dans l’onglet Releases du projet.',
     'ap.srcsaved': 'Source d’avancement enregistrée.', 'ap.fetched': 'progress.json récupéré ({n} éléments).', 'ap.fetchfail': 'Échec de la récupération.',
@@ -1188,6 +1188,7 @@ const DICT = {
     'dash.reports': 'Signalements & contact', 'adm.tab.reports': 'Signalements',
     // Admin repo card actions (arp.*) — these were hardcoded English before the ActionBar
     'arp.revalidate': 'Revalider le SHA', 'arp.review': 'Examiner & télécharger', 'arp.limits': 'Limites',
+    'ab.more': '{n} actions de plus',
     // Starred repos & catalogs (star.*) + its dashboard tab
     'dash.starred': 'Favoris',
     'star.title': 'Favoris',

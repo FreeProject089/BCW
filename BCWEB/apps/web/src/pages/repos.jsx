@@ -6,10 +6,10 @@ import {
   Files, FileText, FileJson, FolderUp, CreditCard, Search, X, Wifi, WifiOff, Zap, Lock, Download, Copy, RefreshCw, AlertTriangle, LayoutDashboard, MoreHorizontal, Ticket,
   Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake, Boxes, GitMerge, Link2,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ReportButton } from '../ui/report.jsx';
 import { api, uploadRepoFile } from '../lib/api.js';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, ActionBar } from '../ui/ui.jsx';
 import { useUploads } from './uploads.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -23,52 +23,6 @@ export function useFetch(fn, deps) {
 export const gb = (n) => (Number(n) / 1024 ** 3).toFixed(1);
 // Adaptive size so small files don't all read "0.0 MB".
 const fmtSize = (n) => { n = Number(n) || 0; if (n < 1024) return `${n} B`; if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`; if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`; return `${(n / 1024 ** 3).toFixed(2)} GB`; };
-
-// Compact overflow menu for a repo card's secondary actions (keeps the row tidy).
-// The dropdown is PORTALED to <body> and fixed-positioned so it escapes the card's
-// stacking context (cards use backdrop-filter → the menu would otherwise render
-// behind sibling cards).
-function RepoMenu({ children }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState(null);
-  const btnRef = useRef(null);
-  const place = () => { if (btnRef.current) { const r = btnRef.current.getBoundingClientRect(); setPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) }); } };
-  const toggle = () => { if (!open) place(); setOpen((v) => !v); };
-  // Keep the fixed-positioned menu glued to the button while scrolling/resizing
-  // (a plain fixed menu would stay put as the button scrolls away). Close it once
-  // the button leaves the viewport. Capture-phase catches inner scroll containers.
-  useEffect(() => {
-    if (!open) return;
-    const update = () => {
-      const el = btnRef.current; if (!el) return;
-      const r = el.getBoundingClientRect();
-      if (r.bottom < 0 || r.top > window.innerHeight) { setOpen(false); return; }
-      setPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) });
-    };
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update); };
-  }, [open]);
-  return (
-    <span ref={btnRef} className="inline-flex">
-      <Button size="sm" onClick={toggle} title="More actions"><MoreHorizontal size={16} /></Button>
-      {open && pos && createPortal(
-        <>
-          <div className="fixed inset-0 z-[90]" onClick={() => setOpen(false)} />
-          <div className="fixed z-[100] w-56 rounded-xl border border-[var(--line-strong)] py-1 overflow-hidden anim-fade" style={{ top: pos.top, right: pos.right, background: 'var(--bg-solid)', boxShadow: '0 18px 50px -12px rgba(0,0,0,0.5)' }} onClick={() => setOpen(false)}>
-            {children}
-          </div>
-        </>, document.body)}
-    </span>
-  );
-}
-function MenuItem({ icon: I, onClick, danger, children }) {
-  return (
-    <button onClick={onClick} className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-[var(--surface-2)] ${danger ? 'text-red-400' : 'text-[var(--text)]'}`}>
-      {I && <I size={14} className={danger ? '' : 'text-[var(--faint)]'} />} {children}
-    </button>
-  );
-}
 
 // Public repo.json URL: hosted repos serve at /hosting/<hostPath>/repo.json; a listed
 // non-hosted repo exposes its external repo.json (repoUrl).
@@ -570,7 +524,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
 }
 
 export function MyRepos() {
-  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n(); const navigate = useNavigate();
   const { data, loading, reload } = useFetch(() => api.get('/me/repos'), []);
   // Storage pools — so a freshly-bought EMPTY pool (no repos yet) is still visible and
   // fillable. A pool with repos shows through its repos; an empty one shows here.
@@ -757,27 +711,33 @@ export function MyRepos() {
               </div>
               {/* Clean primary row — everything else lives in the ⋯ menu. The dashboard is
                   the full management surface (files, publishing, sandbox, access). */}
+              {/* A suspended repo is read-only for its owner: only the dashboard (to view
+                  state) stays open — every mutating action is disabled here AND on the
+                  server. The three primaries fold into the same menu as the long tail when
+                  the card is too narrow (phones), so there's never a second row or a second
+                  kebab. */}
               {(() => { const locked = repoLocked(r); return (
-              <div className="flex flex-wrap items-center gap-2 mt-3">
-                {/* A suspended repo is read-only for its owner: only the dashboard (to view
-                    state) stays open — every mutating action is disabled here AND on the
-                    server. */}
-                <Link to={`/repo/${r.id}`}><Button size="sm" variant="primary"><LayoutDashboard size={14} /> {t('repos.opendash', 'Dashboard')}</Button></Link>
-                <Button size="sm" disabled={locked} onClick={() => toggleList(r)}>{r.listed ? <><EyeOff size={14} /> {t('repos.unlist', 'Unlist')}</> : <><Eye size={14} /> {t('repos.listpublicly', 'List publicly')}</>}</Button>
-                <Button size="sm" disabled={locked} onClick={() => setFeaturing(r)}><Rocket size={14} /> {isFeatured(r) ? t('repos.extendboost', 'Extend boost') : t('repos.boost', 'Boost')}</Button>
-                <RepoMenu>
-                  {repoJsonUrl(r) && <MenuItem icon={Copy} onClick={() => { navigator.clipboard?.writeText(repoJsonUrl(r)); toast.success(t('repos.copy.ok', 'repo.json link copied.')); }}>{t('repos.copylink', 'Copy repo.json link')}</MenuItem>}
-                  <MenuItem icon={Link2} onClick={() => shareRepo(r)}>{t('repos.sharelink', 'Copy public share link')}</MenuItem>
-                  {r.hosted && !locked && <MenuItem icon={Files} onClick={() => setManaging(r)}>{t('repos.quickfiles', 'Quick files')}</MenuItem>}
-                  {r.hosted && !locked && <MenuItem icon={HardDrive} onClick={() => { setSandboxTab('limits'); setSandbox(r); }}>{t('repos.upgradeplan', 'Upgrade storage / plan')}</MenuItem>}
-                  {r.hosted && !locked && <MenuItem icon={ShieldCheck} onClick={() => { setSandboxTab('access'); setSandbox(r); }}>{t('repos.sandbox', 'Sandbox settings')}</MenuItem>}
-                  {!r.hosted && !locked && <MenuItem icon={UploadCloud} onClick={() => push(r)}>{t('repos.push', 'Push')}</MenuItem>}
-                  {!r.hosted && !locked && <MenuItem icon={CheckCircle2} onClick={() => check(r)}>{t('repos.check', 'Check')}</MenuItem>}
-                  {r.hosted && !locked && <MenuItem icon={HardDrive} onClick={() => switchMode(r)}>{r.groupId ? t('repos.tosingle', 'Switch to single') : t('repos.tomulti', 'Switch to multi')}</MenuItem>}
-                  {r.hosted && r.group && !locked && <MenuItem icon={Plus} onClick={() => setPoolAdd(r.group)}>{t('repos.addtopool', 'Add repo to pool')}</MenuItem>}
-                  {!locked && <MenuItem icon={Pencil} onClick={() => setEditing(r)}>{t('repos.editdetails', 'Edit details')}</MenuItem>}
-                  {!locked && <MenuItem icon={Trash2} danger onClick={() => del(r)}>{t('repos.delete', 'Delete repo')}</MenuItem>}
-                </RepoMenu>
+              <div className="mt-3">
+                <ActionBar
+                  actions={[
+                    { key: 'dash', label: t('repos.opendash', 'Dashboard'), icon: LayoutDashboard, variant: 'primary', onClick: () => navigate(`/repo/${r.id}`) },
+                    { key: 'list', label: r.listed ? t('repos.unlist', 'Unlist') : t('repos.listpublicly', 'List publicly'), icon: r.listed ? EyeOff : Eye, disabled: locked, onClick: () => toggleList(r) },
+                    { key: 'boost', label: isFeatured(r) ? t('repos.extendboost', 'Extend boost') : t('repos.boost', 'Boost'), icon: Rocket, disabled: locked, onClick: () => setFeaturing(r) },
+                  ]}
+                  extra={[
+                    repoJsonUrl(r) && { key: 'copy', label: t('repos.copylink', 'Copy repo.json link'), icon: Copy, onClick: () => { navigator.clipboard?.writeText(repoJsonUrl(r)); toast.success(t('repos.copy.ok', 'repo.json link copied.')); } },
+                    { key: 'share', label: t('repos.sharelink', 'Copy public share link'), icon: Link2, onClick: () => shareRepo(r) },
+                    r.hosted && !locked && { key: 'files', label: t('repos.quickfiles', 'Quick files'), icon: Files, onClick: () => setManaging(r) },
+                    r.hosted && !locked && { key: 'plan', label: t('repos.upgradeplan', 'Upgrade storage / plan'), icon: HardDrive, onClick: () => { setSandboxTab('limits'); setSandbox(r); } },
+                    r.hosted && !locked && { key: 'sandbox', label: t('repos.sandbox', 'Sandbox settings'), icon: ShieldCheck, onClick: () => { setSandboxTab('access'); setSandbox(r); } },
+                    !r.hosted && !locked && { key: 'push', label: t('repos.push', 'Push'), icon: UploadCloud, onClick: () => push(r) },
+                    !r.hosted && !locked && { key: 'check', label: t('repos.check', 'Check'), icon: CheckCircle2, onClick: () => check(r) },
+                    r.hosted && !locked && { key: 'mode', label: r.groupId ? t('repos.tosingle', 'Switch to single') : t('repos.tomulti', 'Switch to multi'), icon: HardDrive, onClick: () => switchMode(r) },
+                    r.hosted && r.group && !locked && { key: 'addpool', label: t('repos.addtopool', 'Add repo to pool'), icon: Plus, onClick: () => setPoolAdd(r.group) },
+                    !locked && { key: 'edit', label: t('repos.editdetails', 'Edit details'), icon: Pencil, onClick: () => setEditing(r) },
+                    !locked && { key: 'del', label: t('repos.delete', 'Delete repo'), icon: Trash2, danger: true, onClick: () => del(r) },
+                  ].filter(Boolean)}
+                />
               </div>
               ); })()}
             </Card>
