@@ -1,0 +1,122 @@
+# BCWEB — Audit de performance & plan des bottlenecks (juillet 2026)
+
+*Un regard ciblé sur où BCWEB dépense du temps et des octets, ce qui a été corrigé dans
+cette passe, et un plan priorisé pour le reste. Complète l'[audit technique](TECH_AUDIT_FR.md).
+🇬🇧 [English version](PERF_AUDIT_EN.md).*
+
+## Méthode
+
+- **Frontend** : `vite build` de production, mesure de la taille des chunks émis.
+- **Backend** : lecture des chemins de requête chauds (browse catalogue, feed BMM
+  `/catalog.json`, agrégations analytics), recoupement de leurs `where`/`orderBy` avec la
+  couverture d'index Prisma (`@@index`), et scan des `findMany` non bornés et des boucles
+  de requête par élément.
+- **Montée en charge** : repérage de l'état in-process qui épingle l'app à une seule instance.
+
+---
+
+## Constats & état
+
+### 1. 🔴 Frontend : un bundle JS géant — **corrigé (première passe)**
+Chaque visiteur téléchargeait toute l'app en un seul chunk `index` de **2,34 Mo**, y compris
+le back-office admin de ~7,3k lignes, les outils dépôts et les éditeurs qu'un visiteur normal
+n'ouvre jamais.
+
+**Fait** — découpage par route de la SPA (`React.lazy` + une frontière `Suspense`) : toutes
+les routes hors atterrissage se chargent à la demande. Chunk principal **2,34 Mo → 1,38 Mo
+(−41 %)** ; le bundle admin est son propre chunk de **504 Ko** récupéré seulement quand un
+admin ouvre `/admin` ; 32 chunks à la demande.
+
+**Reste** (voir plan) :
+- Le chunk principal fait encore ~1,38 Mo. `dashboard.jsx` reste eager car la cloche de nav
+  importe sa carte `NOTIF` — extraire `NOTIF`/`NOTIF_FALLBACK` dans un petit module
+  permettrait de découper aussi le dashboard.
+- Les gros chunks vendeurs sont déjà séparés (`maplibre-gl` 1 Mo, `three` 464 Ko, `rrweb`
+  260 Ko, `jszip` 96 Ko) — vérifier que chacun n'est chargé **que** sur la route qui en a
+  besoin (carte → analytics, three → hero, rrweb → replay) et lazy-loader l'orbe du hero pour
+  que `three` ne bloque jamais le premier rendu.
+- Ajouter un budget/visualiseur de taille de bundle pour rendre les régressions visibles.
+
+### 2. 🟠 BD : index des chemins chauds sur `CatalogItem` — **corrigé**
+Le browse public `/catalog` (filtre par `status`, tri par `downloads`/`views`/`updatedAt`) et
+le feed BMM `/catalog.json` (filtre `status`+`projectId`+`kind`, tri par `downloads`) filtraient
+et triaient sur des colonnes **non indexées** — un scan séquentiel + tri en mémoire qui se
+dégrade quand le catalogue grossit.
+
+**Fait** — ajout des index composites `(status,updatedAt)`, `(status,downloads)`,
+`(status,views)` et `(projectId,kind,status)` (migration `catalog_hot_path_indexes`).
+
+**Reste** : auditer les autres endpoints de liste de la même façon — la liste publique des
+dépôts (`ServerRepo` par `listed`/`status`), le browse des catalogues communautaires, et les
+tables admin.
+
+### 3. 🟠 Le feed `/catalog.json` est non borné
+Le feed natif BMM fait `findMany` **sans `take:`** plus une jointure owner, donc son coût de
+requête et sa charge utile croissent avec tout le catalogue publié — et il est interrogé par
+chaque client desktop. Il est mis en cache HTTP (`Cache-Control: max-age=300`, donc Caddy/un
+CDN absorbent l'essentiel), mais chaque cache-miss lance quand même une requête non bornée et
+renvoie un corps non borné.
+
+**Plan** : le plafonner (p. ex. `take: 500` des plus téléchargés) ou paginer, et/ou le servir
+depuis un cache serveur à TTL court pour qu'un cache froid ne fasse pas de stampede sur la BD.
+
+### 4. 🟠 L'état mono-processus bloque la montée en charge horizontale
+Le feed SSE (`feedBus`), plusieurs caches mémoire et les compteurs de rate-limit sont
+in-process ; les sweepers supposent une seule instance (pas de verrou distribué). Correct pour
+le déploiement mono-conteneur actuel, mais une 2ᵉ réplica ferait double-tirer les planificateurs
+et scinderait le feed admin en direct. C'est le même item que §3.4 / P2 de l'audit technique.
+
+**Plan (Redis pub/sub)** : (a) déplacer la diffusion SSE vers Redis pub/sub (on a déjà
+`ioredis`) ; (b) déplacer le rate-limit + les caches chauds vers Redis (`@fastify/rate-limit`
+supporte un store Redis) ; (c) garder les sweepers avec un verrou Redis (`SET NX PX`) pour
+qu'une seule instance les exécute. Le livrer derrière `REDIS_URL` avec un fallback in-process,
+pour que les déploiements mono-conteneur ne soient pas affectés.
+
+### 5. 🟡 Les agrégations analytics sont des scans plein-fenêtre
+Les tableaux de bord admin lancent du SQL brut `GROUP BY` / `count(DISTINCT …)` sur
+`AnalyticsEvent` pour la fenêtre choisie. La rétention borne maintenant la table (audit §3.6),
+mais une fenêtre large sur un site actif reste un scan lourd à chaque chargement de dashboard.
+
+**Plan** : pré-agréger dans une table de rollup quotidien (un job sweeper nocturne) et lire les
+rollups pour les vues à granularité jour, en retombant sur le brut seulement pour le zoom
+horaire ; ajouter des index couvrants pour les requêtes brutes restantes.
+
+### 6. 🟡 Pas de SSR / prérendu pour le premier rendu & l'indexation
+C'est une SPA rendue côté client : le navigateur télécharge le JS, boote React, puis va chercher
+les données — donc le first-contentful-paint et l'indexation moteur traînent. L'unfurl OG pour
+crawlers est déjà couvert (audit §3.8), ce qui gère le partage social mais pas l'indexation/TTFB.
+
+**Plan** : c'est le plus gros chantier. Options, du moins cher au plus cher — (a) prérendre une
+poignée de routes statiques à forte valeur au build ; (b) un cache edge du shell type-OG pour
+les crawlers ; (c) SSR complet (Vite SSR / un meta-framework) seulement si le SEO devient une
+priorité.
+
+### 7. 🟡 Images & médias
+Les avatars sont générés (Boring-avatars, peu coûteux). Vérifier que les covers/icônes uploadées
+sont servies avec des en-têtes de cache longs + des variantes à la bonne largeur (ou via un CDN
+d'images) plutôt que les originaux pleine taille sur les cartes de liste.
+
+---
+
+## Plan priorisé
+
+| P | Action | Gain | État |
+|---|---|---|---|
+| **P1** | Découpage par route de la SPA | −41 % de JS initial pour chaque visiteur | ✅ fait |
+| **P1** | Index des chemins chauds `CatalogItem` | browse + feed restent rapides quand le catalogue grossit | ✅ fait |
+| **P1** | Plafonner / cacher le feed `/catalog.json` | borne l'endpoint le plus interrogé | ▢ |
+| **P2** | Finir le découpage frontend (extraire `NOTIF`, lazy hero `three`, budget bundle) | réduire encore le chunk principal de 1,38 Mo | ▢ |
+| **P2** | Indexer les autres endpoints de liste (dépôts, catalogues communautaires, admin) | supprimer les scans séquentiels restants | ▢ |
+| **P2** | Redis pub/sub + store rate-limit + verrous sweeper (derrière `REDIS_URL`) | débloque la montée en charge horizontale | ▢ |
+| **P3** | Rollups quotidiens analytics | dashboards rapides à toute fenêtre | ▢ |
+| **P3** | Prérendu/SSR pour les routes publiques | premier rendu + indexation moteur | ▢ |
+| **P3** | En-têtes de cache images / variantes responsives | pages de liste plus légères | ▢ |
+
+## Verdict
+
+Les deux gains au meilleur rapport gain/risque sont livrés et vérifiés : **−41 % de JS initial**
+pour chaque visiteur et **des lectures catalogue indexées**. Le reste est une échelle claire :
+borner le seul endpoint chaud non borné, finir le découpage frontend, puis le travail Redis qui
+débloque le fait de tourner sur plus d'une instance. Rien ici n'est un incendie ; ce sont les
+choses qui mordraient à mesure que le trafic et le catalogue grandissent, traitées par ordre de
+gain.
