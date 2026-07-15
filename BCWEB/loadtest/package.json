@@ -6,5 +6,11 @@
     "test": "node run.mjs",
     "smoke": "QUICK=1 node run.mjs"
   },
-  "dependencies": { "autocannon": "^7.15.0" }
+  "devDependencies": {
+    "autocannon": "^8.0.0"
+  },
+  "//overrides": "autocannon -> hyperid -> uuid pulls uuid <11.1.1 (GHSA-w5hq-g745-h8pq, bounds check in v3/v5/v6 when `buf` is passed). hyperid hasn't bumped it, and `npm audit fix --force` would DOWNGRADE autocannon to 2.0.1. This override patches the transitive dep instead. Dev-only tooling either way — this harness is never deployed.",
+  "overrides": {
+    "uuid": "^11.1.1"
+  }
 }
