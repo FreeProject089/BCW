@@ -26,3 +26,24 @@ export function getRedis() {
   }
   return client;
 }
+
+// A SECOND connection dedicated to SUBSCRIBE mode. A Redis connection in subscribe mode
+// can't run normal commands, so pub/sub needs its own connection separate from getRedis()
+// (which the cache + rate-limiter use for regular commands). Null when Redis is unset.
+let subscriber = null;
+let subTried = false;
+export function getRedisSubscriber() {
+  if (subTried) return subscriber;
+  subTried = true;
+  const main = getRedis();
+  if (!main) return (subscriber = null);
+  try {
+    subscriber = main.duplicate();
+    subscriber.on('error', (e) => { if (!subscriber._loggedErr) { subscriber._loggedErr = true; console.warn('[redis] subscriber error:', e.message); } });
+    subscriber.on('ready', () => { subscriber._loggedErr = false; });
+  } catch (e) {
+    console.warn('[redis] subscriber init failed:', e.message);
+    subscriber = null;
+  }
+  return subscriber;
+}

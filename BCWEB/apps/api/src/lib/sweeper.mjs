@@ -4,6 +4,21 @@
 // their object-storage bytes. Runs periodically from the API process.
 import { db, notify } from './lib.mjs';
 import { resolveRetention } from './retention.mjs';
+import { getRedis } from './redis.mjs';
+
+// With more than one API replica, only ONE should run the sweeper per tick — otherwise
+// they'd double-suspend expired subs, double-send expiry warnings, and race the file
+// backup. A Redis lock with a TTL just under the interval elects a single runner; it
+// expires on its own, so a crashed holder never wedges the job. No Redis (single
+// container) → always run.
+async function acquireSweepLock(ttlMs) {
+  const r = getRedis();
+  if (!r) return true;
+  try {
+    const ok = await r.set('bcw:sweeper:lock', `${process.pid}-${Date.now()}`, 'PX', ttlMs, 'NX');
+    return ok === 'OK';
+  } catch { return true; } // Redis hiccup must never stop the sweeper on a single-instance deploy
+}
 import { deleteObject } from './storage.mjs';
 import { sampleAndAlert } from './monitor.mjs';
 import { runEventScheduler } from '../routes/events.mjs';
@@ -232,6 +247,8 @@ export async function sweepAnalyticsRetention(p, log) {
 export function startSweeper(app) {
   const run = async () => {
     try {
+      // Single-runner election across replicas (TTL just under the 10-min interval).
+      if (!(await acquireSweepLock(9.5 * 60 * 1000))) return;
       const p = await db();
       const [items, repos, cats, rejPayloads, expired, warned, pruned, backedUp, analytics] = [
         await sweepItems(p, app.log), await sweepRepos(p, app.log),

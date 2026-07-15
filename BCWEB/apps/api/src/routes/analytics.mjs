@@ -4,15 +4,41 @@ import { EventEmitter } from 'node:events';
 import { db, requireRole, requireCap, optionalUid } from '../lib/lib.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
 import { RETENTION_DEFAULTS, resolveRetention } from '../lib/retention.mjs';
+import { getRedis, getRedisSubscriber } from '../lib/redis.mjs';
 
-// In-process push bus for the admin live events feed: ingestion emits normalized events,
-// the SSE endpoint (/admin/analytics/events/stream) relays them to connected admins in
-// real time (no client polling). NOTE: in-process only — with multiple API replicas each
-// admin sees events from the replica they're connected to. Single-container compose (the
-// current deploy) sees everything; a replicated setup would swap this for Redis pub/sub.
+// Push bus for the admin live events feed: ingestion emits normalized events, the SSE
+// endpoint (/admin/analytics/events/stream) relays them to connected admins in real time.
+// A local EventEmitter fans out to THIS instance's streams; with Redis configured the
+// event is also published so OTHER replicas re-emit it to their own streams — so an admin
+// sees every event regardless of which replica ingested it or which one they're streaming
+// from. No Redis (single container) → the local bus alone already sees everything.
 const feedBus = new EventEmitter();
 feedBus.setMaxListeners(0); // many admins may stream at once; don't warn
-const emitFeed = (ev) => { try { feedBus.emit('ev', ev); } catch { /* never let telemetry break ingestion */ } };
+const FEED_CHANNEL = 'bcw:feed';
+const INSTANCE_ID = createHash('sha1').update(`${process.pid}-${Math.random()}`).digest('hex').slice(0, 12);
+const emitFeed = (ev) => {
+  try { feedBus.emit('ev', ev); } catch { /* never let telemetry break ingestion */ }
+  const r = getRedis();
+  if (r) { try { r.publish(FEED_CHANNEL, JSON.stringify({ from: INSTANCE_ID, ev })); } catch { /* Redis down → local-only, still fine */ } }
+};
+// Subscribe once per process: re-emit events from OTHER replicas onto the local bus.
+// Skips our own messages (we already emitted them locally) so there's no double-fire or loop.
+let feedSubInit = false;
+function initFeedSubscriber() {
+  if (feedSubInit) return; feedSubInit = true;
+  const sub = getRedisSubscriber();
+  if (!sub) return;
+  // The connection disables the offline queue, so subscribing before it's ready is
+  // rejected — (re)subscribe on every 'ready' (initial connect AND reconnects), and now
+  // if it's already up. Re-subscribing to the same channel is idempotent.
+  const doSub = () => sub.subscribe(FEED_CHANNEL).catch(() => {});
+  if (sub.status === 'ready') doSub();
+  sub.on('ready', doSub);
+  sub.on('message', (ch, msg) => {
+    if (ch !== FEED_CHANNEL) return;
+    try { const { from, ev } = JSON.parse(msg); if (from !== INSTANCE_ID) feedBus.emit('ev', ev); } catch { /* ignore malformed */ }
+  });
+}
 
 // Real client IP as seen by our trusted proxy (Caddy appends it last on X-Forwarded-For).
 function clientIp(req) {
@@ -156,6 +182,7 @@ function parseUA(ua = '') {
 // Privacy-friendly first-party analytics: page path + referrer + a daily anonymous
 // visitor hash + coarse device/browser. No cookies, no third party. Consent-gated client-side.
 export default async function analyticsRoutes(app) {
+  initFeedSubscriber(); // start relaying other replicas' live events onto this instance's bus
   app.post('/analytics/pageview', { config: { rateLimit: { max: 240, timeWindow: '1 minute' } } }, async (req, reply) => {
     const b = z.object({ path: z.string().max(300), ref: z.string().max(300).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid' });
