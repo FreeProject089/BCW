@@ -1,0 +1,11 @@
+{
+  "name": "bcweb-native",
+  "version": "0.1.0",
+  "description": "Native (Rust) helpers for CPU-heavy work off the Node event loop — BLAKE3 + zip parsing.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": { "name": "bcweb-native", "triples": {} },
+  "files": ["index.js", "index.d.ts", "*.node"],
+  "scripts": { "build": "napi build --platform --release", "build:debug": "napi build --platform" },
+  "devDependencies": { "@napi-rs/cli": "^2.18.4" }
+}

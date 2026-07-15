@@ -99,7 +99,7 @@ async function revalidatePlugin(p, item) {
   const meta = item.meta || {};
   try {
     const buf = await fetchPluginBytes({ url: meta.download_url, key: item.payloadKey, getObject });
-    const res = validatePlugin(buf, meta.sha256);
+    const res = await validatePlugin(buf, meta.sha256);
     const validation = { valid: res.valid, reason: res.reason, sha256: res.sha256, files: res.files, checkedAt: res.checkedAt, manifestId: res.manifest?.id };
     await p.catalogItem.update({ where: { id: item.id }, data: { meta: { ...meta, sha256: res.sha256, validation } } });
     return { ...res, validation };
@@ -478,7 +478,7 @@ export default async function catalogRoutes(app) {
     const meta = item.meta || {};
     try {
       const buf = await fetchPluginBytes({ url: meta.download_url, key: item.payloadKey, getObject });
-      const res = validatePlugin(buf, meta.sha256);
+      const res = await validatePlugin(buf, meta.sha256);
       const url = item.payloadKey ? await presignGet(item.payloadKey) : meta.download_url;
       return { valid: res.valid, reason: res.reason, sha256: res.sha256, size: buf.length, files: res.files, manifest: res.manifest, downloadUrl: url };
     } catch (e) { return reply.code(502).send({ error: 'fetch_failed', detail: String(e?.message || e) }); }

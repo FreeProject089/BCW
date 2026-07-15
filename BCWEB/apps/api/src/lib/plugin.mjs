@@ -1,6 +1,6 @@
-import AdmZip from 'adm-zip';
 import { createHash } from 'node:crypto';
 import { safeFetch } from './net.mjs';
+import { zipReadAll } from './native.mjs';
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 
@@ -9,32 +9,35 @@ const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 //  • the internal checksums.json anchors EACH file.
 // Tampering any file changes the zip bytes (outer sha) and/or a per-file sha, so a
 // tampered package cannot be valid while its inner checksums stay valid.
-export function validatePlugin(buf, expectedSha) {
+export async function validatePlugin(buf, expectedSha) {
   const outer = sha256(buf);
   if (expectedSha && String(expectedSha).toLowerCase() !== outer) {
     return { valid: false, sha256: outer, reason: 'package_checksum_mismatch', files: [], checkedAt: new Date().toISOString() };
   }
-  let zip;
-  try { zip = new AdmZip(buf); } catch { return { valid: false, sha256: outer, reason: 'not_a_zip', files: [], checkedAt: new Date().toISOString() }; }
-  const entries = zip.getEntries().filter((e) => !e.isDirectory);
-  const manifestEntry = entries.find((e) => e.entryName === 'plugin.json');
-  if (!manifestEntry) return { valid: false, sha256: outer, reason: 'missing_plugin_json', files: entries.map((e) => e.entryName), checkedAt: new Date().toISOString() };
+  // Parse + inflate the zip OFF the event loop (native Rust worker; falls back to adm-zip).
+  // The sha256 integrity checks stay in JS — that's the client-facing contract.
+  let entries;
+  try { entries = await zipReadAll(buf); } catch { return { valid: false, sha256: outer, reason: 'not_a_zip', files: [], checkedAt: new Date().toISOString() }; }
+  const names = () => entries.map((e) => e.name);
+  const manifestEntry = entries.find((e) => e.name === 'plugin.json');
+  if (!manifestEntry) return { valid: false, sha256: outer, reason: 'missing_plugin_json', files: names(), checkedAt: new Date().toISOString() };
   let manifest = null;
-  try { manifest = JSON.parse(manifestEntry.getData().toString('utf-8')); } catch { return { valid: false, sha256: outer, reason: 'invalid_plugin_json', files: [], checkedAt: new Date().toISOString() }; }
-  const cksEntry = entries.find((e) => e.entryName === 'checksums.json');
-  if (!cksEntry) return { valid: false, sha256: outer, reason: 'missing_checksums', manifest, files: entries.map((e) => e.entryName), checkedAt: new Date().toISOString() };
+  try { manifest = JSON.parse(Buffer.from(manifestEntry.data).toString('utf-8')); } catch { return { valid: false, sha256: outer, reason: 'invalid_plugin_json', files: [], checkedAt: new Date().toISOString() }; }
+  const cksEntry = entries.find((e) => e.name === 'checksums.json');
+  if (!cksEntry) return { valid: false, sha256: outer, reason: 'missing_checksums', manifest, files: names(), checkedAt: new Date().toISOString() };
   let cks = {};
-  try { cks = JSON.parse(cksEntry.getData().toString('utf-8')); } catch { return { valid: false, sha256: outer, reason: 'invalid_checksums', manifest, files: [], checkedAt: new Date().toISOString() }; }
+  try { cks = JSON.parse(Buffer.from(cksEntry.data).toString('utf-8')); } catch { return { valid: false, sha256: outer, reason: 'invalid_checksums', manifest, files: [], checkedAt: new Date().toISOString() }; }
   const map = cks.files || cks; // supports { files: {path:sha} } or a flat map
 
   const files = []; const invalid = [];
   for (const e of entries) {
-    if (e.entryName === 'checksums.json') continue;
-    const got = sha256(e.getData());
-    const want = map[e.entryName] ? String(map[e.entryName]).toLowerCase() : null;
+    if (e.name === 'checksums.json') continue;
+    const data = Buffer.from(e.data);
+    const got = sha256(data);
+    const want = map[e.name] ? String(map[e.name]).toLowerCase() : null;
     const ok = !!want && want === got;
-    files.push({ path: e.entryName, size: e.header.size, sha256: got, expected: want, ok });
-    if (!ok) invalid.push(e.entryName);
+    files.push({ path: e.name, size: data.length, sha256: got, expected: want, ok });
+    if (!ok) invalid.push(e.name);
   }
   const valid = invalid.length === 0 && files.every((f) => f.expected);
   return {
