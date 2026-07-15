@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import AdmZip from 'adm-zip';
+import { zipReadAll, zipEntry } from '../lib/native.mjs';
 import {
   db, requireRole, requireCap, optionalAuth, slugify, notify,
   resolveClientIdentity, accessListMatches, policyBans, policyWhitelist,
@@ -432,14 +432,14 @@ export default async function communityCatalogRoutes(app) {
     if (!it.payloadKey) return reply.code(404).send({ error: 'no_payload', downloadUrl: it.meta?.download_url || null });
     try {
       const buf = await readObject(it.payloadKey);
-      let zip = null;
-      try { zip = new AdmZip(buf); } catch { /* not a zip → treat as a single file below */ }
-      if (zip && zip.getEntries().length) {
-        const entries = zip.getEntries().filter((e) => !e.isDirectory).map((e) => {
-          const isText = TEXT_EXT.test(e.entryName) && e.header.size <= TEXT_PREVIEW_MAX;
+      const zipFiles = await zipReadAll(buf).catch(() => null); // off-thread parse; null if not a zip
+      if (zipFiles && zipFiles.length) {
+        const entries = zipFiles.map((e) => {
+          const data = Buffer.from(e.data);
+          const isText = TEXT_EXT.test(e.name) && data.length <= TEXT_PREVIEW_MAX;
           let text = null;
-          if (isText) { try { text = e.getData().toString('utf-8'); } catch { text = null; } }
-          return { name: e.entryName, size: e.header.size, text };
+          if (isText) { try { text = data.toString('utf-8'); } catch { text = null; } }
+          return { name: e.name, size: data.length, text };
         });
         return { type: 'zip', size: buf.length, entries };
       }
@@ -458,14 +458,13 @@ export default async function communityCatalogRoutes(app) {
     if (!path) return reply.redirect(await presignGet(it.payloadKey)); // whole file
     try {
       const buf = await readObject(it.payloadKey);
-      const zip = new AdmZip(buf);
-      const entry = zip.getEntry(path);
-      if (!entry || entry.isDirectory) return reply.code(404).send({ error: 'file_not_found' });
+      const data = await zipEntry(buf, path); // off-thread single-entry extract
+      if (!data) return reply.code(404).send({ error: 'file_not_found' });
       const name = (path.split('/').pop() || 'file').replace(/[^\w.\-]/g, '_');
       reply.header('Content-Type', 'application/octet-stream');
       reply.header('Content-Disposition', `attachment; filename="${name}"`);
       reply.header('Cache-Control', 'no-store');
-      return reply.send(entry.getData());
+      return reply.send(Buffer.from(data));
     } catch (e) { return reply.code(502).send({ error: 'read_failed', detail: String(e?.message || e) }); }
   });
 }
