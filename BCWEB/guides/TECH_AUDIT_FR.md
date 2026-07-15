@@ -143,7 +143,11 @@ rapport dès qu'un avis est publié.
 ### 3.8 🟡 Divers
 - Pièges DX côté hôte : les scripts exigent l'env/le client généré du conteneur (désormais
   gardés par des messages clairs, mais le patron demeure).
-- Accessibilité partielle (des attributs aria par endroits ; pas d'audit systématique).
+- Accessibilité : les primitives partagées sont maintenant solides — contours `:focus-visible`
+  partout, boutons-icônes étiquetés, et le Modal partagé (role=dialog + aria-modal + étiquetage +
+  piège/restauration du focus) et le Dropdown (rôles listbox/option + navigation aux flèches) ont été
+  durcis, ce qui se propage partout où ils servent. Un audit systématique complet (chaque page,
+  contraste, lecteur d'écran) reste à faire.
 - SEO : l'unfurl OG pour crawlers couvre maintenant toutes les pages partageables (accueil,
   catalogue, items, catalogues communautaires, dépôts publics, profils publics, blog, showcase,
   statiques), chacune derrière le propre gate de visibilité de l'app + testée. Un SSR/prérendu
@@ -161,7 +165,7 @@ rapport dès qu'un avis est publié.
 | **P2** | Découper `pages.jsx` en modules **FAIT** — le monolithe de ~10k lignes est devenu un module de helpers partagés de 210 lignes ; chaque route est passée dans son propre fichier (`home`, `catalog`, `signin`, `hosting`, `dashboard`, `account-pages`, `legal`, `contact`, et tout le back-office admin de ~7,3k lignes → `admin.jsx`). Deux pages mortes retirées. Chaque extraction gardée par **ESLint `no-undef`** (apps/web `eslint.config.js`, câblé dans la CI — il a attrapé chaque import manquant que `vite build` acceptait en silence) + un smoke-test de démarrage navigateur. `repos.jsx` (~2k) est le gros fichier restant à découper | Maintenabilité + prévient les crashes d'import récurrents |
 | **P2** | Purges de rétention analytics (par âge/nb de lignes) **FAIT** — `sweepAnalyticsRetention` purge AnalyticsEvent/InteractionEvent/WebVital/LoginAttempt au-delà de fenêtres par table (défauts 365/120/120/180j, 0 = garder toujours), par lots de 5k/table/passe, réglable par l'admin via `/admin/analytics/retention` ; 5 tests (résolveur pur + purge/garde en DB), suite complète 30/30 verte | Garde la DB saine à long terme |
 | **P2** | Redis pub/sub pour le SSE + rate limits partagés (quand les réplicas deviendront réels) | Débloque la montée en charge horizontale |
-| **P3** | Lint de parité i18n **FAIT** (`scripts/i18n-check.mjs`, câblé CI, `--strict` ; 8 bugs de clés dupliquées + 26 retombées EN corrigés). Couverture unfurl OG de toutes les pages publiques/partageables **FAIT** (gatée + testée). Reste : passe accessibilité ; monitoring d'erreurs ; SSR complet pour l'indexation | Finition & portée |
+| **P3** | Lint de parité i18n **FAIT** (`scripts/i18n-check.mjs`, câblé CI, `--strict` ; 8 bugs de clés dupliquées + 26 retombées EN corrigés). Couverture unfurl OG de toutes les pages publiques/partageables **FAIT** (gatée + testée). Passe a11y des primitives partagées (sémantique dialog/listbox du Modal/Dropdown, gestion du focus) **FAIT**. Reste : audit a11y page-par-page (contraste, lecteur d'écran) ; monitoring d'erreurs ; SSR complet pour l'indexation | Finition & portée |
 
 ## 5. Verdict
 
