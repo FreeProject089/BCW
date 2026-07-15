@@ -88,6 +88,42 @@ export async function metaForPath(path) {
     const proj = CORE_PROJECTS[m[1].toLowerCase()];
     if (proj) return { title: `${proj.name} — BetterCommunity`, description: proj.desc, image: `${site}/icons/${m[1].toLowerCase()}.png`, url, type: 'website' };
   }
+  // /c/<slug> — a PUBLIC community catalog (listed + ACTIVE only; private/hidden ones
+  // fall through to the generic site card so a shared /c link never leaks their name).
+  else if ((m = clean.match(/^\/c\/([^/]+)\/?$/))) {
+    const p = await db();
+    const c = await p.communityCatalog.findUnique({
+      where: { slug: decodeURIComponent(m[1]) },
+      select: { name: true, description: true, status: true, listed: true },
+    }).catch(() => null);
+    if (c && c.listed && c.status === 'ACTIVE') {
+      return { title: `${c.name} — BetterCommunity`, description: c.description || 'A community catalog on BetterCommunity.', image: LOGO(), url, type: 'website' };
+    }
+  }
+  // /r/<id> — a PUBLICLY LISTED Server-Repo only. Unlisted repos (reachable solely via
+  // their owner's ?k= share link) are NOT unfurled — a crawler has no share key.
+  else if ((m = clean.match(/^\/r\/([^/]+)\/?$/))) {
+    const p = await db();
+    const r = await p.serverRepo.findUnique({
+      where: { id: decodeURIComponent(m[1]) },
+      select: { name: true, description: true, listed: true },
+    }).catch(() => null);
+    if (r && r.listed) {
+      return { title: `${r.name} — Server Repo — BetterCommunity`, description: r.description || 'A community Server-Repo hosted on BetterCommunity.', image: LOGO(), url, type: 'website' };
+    }
+  }
+  // /u/<id> — a PUBLIC profile only. profilePublic=false must never leak a display name
+  // or bio to an unauthenticated crawler, so it falls through to the generic site card.
+  else if ((m = clean.match(/^\/u\/([^/]+)\/?$/))) {
+    const p = await db();
+    const u = await p.user.findUnique({
+      where: { id: decodeURIComponent(m[1]) },
+      select: { displayName: true, bio: true, profilePublic: true },
+    }).catch(() => null);
+    if (u && u.profilePublic) {
+      return { title: `${u.displayName} — BetterCommunity`, description: u.bio || `${u.displayName} on BetterCommunity.`, image: LOGO(), url, type: 'profile' };
+    }
+  }
   // Known static pages get a tailored title but the shared site image.
   else {
     const STATIC = {
@@ -97,6 +133,9 @@ export async function metaForPath(path) {
       '/repos': { title: 'Server Repos — BetterCommunity', description: 'Verified community Server-Repos for BMM — featured first.' },
       '/hosting': { title: 'Hosting — BetterCommunity', description: 'Let us host your Server-Repo, billed by the size you actually use.' },
       '/projects': { title: 'Other projects — BetterCommunity', description: 'More from the Better* ecosystem.' },
+      '/faq': { title: 'FAQ — BetterCommunity', description: 'Answers about catalogs, hosting, accounts and the Better* projects.' },
+      '/contact': { title: 'Contact — BetterCommunity', description: 'Questions, bug reports, partnerships — reach the team.' },
+      '/docs': { title: 'Docs — BetterCommunity', description: 'Guides and documentation for the Better* projects and BCWEB.' },
     };
     const s = STATIC[clean.replace(/\/$/, '') || '/'];
     if (s) return { ...fallback, ...s, url };
