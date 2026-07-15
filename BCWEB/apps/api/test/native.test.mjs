@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import AdmZip from 'adm-zip';
-import { zipReadAll, blake3Hex, hasNative } from '../src/lib/native.mjs';
+import { zipReadAll, zipEntry, blake3Hex, hasNative } from '../src/lib/native.mjs';
 import { validatePlugin } from '../src/lib/plugin.mjs';
 
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
@@ -21,6 +21,16 @@ test('zipReadAll matches adm-zip on names + bytes (native path or fallback)', as
   const want = z.getEntries().filter((e) => !e.isDirectory).map((e) => ({ name: e.entryName, data: e.getData() })).sort((a, b) => a.name.localeCompare(b.name));
   assert.deepEqual(got.map((f) => f.name), want.map((f) => f.name), 'same entry names, no directory rows');
   for (let i = 0; i < got.length; i++) assert.ok(Buffer.from(got[i].data).equals(want[i].data), `bytes for ${got[i].name}`);
+});
+
+test('zipEntry extracts one entry (bytes match adm-zip; null for missing / a dir)', async () => {
+  const z = new AdmZip();
+  z.addFile('plugin.json', Buffer.from('{"id":"x"}'));
+  z.addFile('bin/data', Buffer.from([9, 8, 7, 6]));
+  const buf = z.toBuffer();
+  const got = await zipEntry(buf, 'bin/data');
+  assert.ok(Buffer.from(got).equals(z.getEntry('bin/data').getData()), 'bytes match');
+  assert.equal(await zipEntry(buf, 'does/not/exist'), null, 'missing → null');
 });
 
 test('validatePlugin accepts a well-formed package and rejects a tampered file', async () => {

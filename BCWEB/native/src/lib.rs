@@ -78,6 +78,42 @@ pub fn zip_read_all(data: Buffer) -> AsyncTask<ZipReadAllTask> {
     AsyncTask::new(ZipReadAllTask(data.to_vec()))
 }
 
+fn read_one(data: &[u8], name: &str) -> Result<Option<Vec<u8>>> {
+    use std::io::Read;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(data))
+        .map_err(|e| Error::from_reason(format!("not_a_zip: {e}")))?;
+    let mut f = match archive.by_name(name) {
+        Ok(f) => f,
+        Err(zip::result::ZipError::FileNotFound) => return Ok(None),
+        Err(e) => return Err(Error::from_reason(format!("bad_entry: {e}"))),
+    };
+    if f.is_dir() {
+        return Ok(None);
+    }
+    let mut b = Vec::with_capacity(f.size() as usize);
+    f.read_to_end(&mut b)
+        .map_err(|e| Error::from_reason(format!("read_error: {e}")))?;
+    Ok(Some(b))
+}
+
+pub struct ZipEntryTask {
+    data: Vec<u8>,
+    name: String,
+}
+impl Task for ZipEntryTask {
+    type Output = Option<Vec<u8>>;
+    type JsValue = Option<Buffer>;
+    fn compute(&mut self) -> Result<Self::Output> { read_one(&self.data, &self.name) }
+    fn resolve(&mut self, _: Env, o: Self::Output) -> Result<Self::JsValue> { Ok(o.map(|b| b.into())) }
+}
+
+/// Extract ONE zip entry's bytes by name, on a worker thread (null if missing / a dir).
+/// Replaces `new AdmZip(buf).getEntry(name).getData()` for single-file extraction.
+#[napi]
+pub fn zip_entry(data: Buffer, name: String) -> AsyncTask<ZipEntryTask> {
+    AsyncTask::new(ZipEntryTask { data: data.to_vec(), name })
+}
+
 pub struct Blake3Task(Vec<u8>);
 impl Task for Blake3Task {
     type Output = String;

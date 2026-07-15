@@ -47,6 +47,14 @@ export async function zipReadAll(buf) {
   return zip.getEntries().filter((e) => !e.isDirectory).map((e) => ({ name: e.entryName, data: e.getData() }));
 }
 
+// Extract ONE zip entry's bytes by name (null if missing or a directory). Native reads it
+// on a worker thread; the fallback is adm-zip. Replaces `new AdmZip(buf).getEntry(name).getData()`.
+export async function zipEntry(buf, name) {
+  if (native && native.zipEntry) return native.zipEntry(buf, name);
+  const e = new AdmZip(buf).getEntry(name);
+  return (!e || e.isDirectory) ? null : e.getData();
+}
+
 // BLAKE3 hex hash on a worker thread — native-only (Node has no BLAKE3). Returns null when
 // the addon isn't built, so callers must handle that (it's for future INTERNAL integrity
 // keys — dedup / manifests / cache keys — never the public sha256 contract).

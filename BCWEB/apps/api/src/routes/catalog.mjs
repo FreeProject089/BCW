@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import AdmZip from 'adm-zip';
+import { zipReadAll, zipEntry } from '../lib/native.mjs';
 import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy } from '../lib/lib.mjs';
 import { presignGet, getObject, deleteObject } from '../lib/storage.mjs';
 import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
@@ -495,12 +495,13 @@ export default async function catalogRoutes(app) {
     if (!item.payloadKey && !meta.download_url) return reply.code(404).send({ error: 'no_payload' });
     try {
       const buf = await fetchPluginBytes({ url: meta.download_url, key: item.payloadKey, getObject });
-      let zip = null; try { zip = new AdmZip(buf); } catch { /* not a zip */ }
-      if (zip && zip.getEntries().length) {
-        const entries = zip.getEntries().filter((e) => !e.isDirectory).map((e) => {
-          const isText = INSPECT_TEXT_EXT.test(e.entryName) && e.header.size <= INSPECT_TEXT_MAX;
-          let text = null; if (isText) { try { text = e.getData().toString('utf-8'); } catch { text = null; } }
-          return { name: e.entryName, size: e.header.size, text };
+      const zipFiles = await zipReadAll(buf).catch(() => null); // off-thread parse; null if not a zip
+      if (zipFiles && zipFiles.length) {
+        const entries = zipFiles.map((e) => {
+          const data = Buffer.from(e.data);
+          const isText = INSPECT_TEXT_EXT.test(e.name) && data.length <= INSPECT_TEXT_MAX;
+          let text = null; if (isText) { try { text = data.toString('utf-8'); } catch { text = null; } }
+          return { name: e.name, size: data.length, text };
         });
         return { type: 'zip', size: buf.length, entries };
       }
@@ -519,13 +520,13 @@ export default async function catalogRoutes(app) {
     const meta = item.meta || {};
     try {
       const buf = await fetchPluginBytes({ url: meta.download_url, key: item.payloadKey, getObject });
-      const entry = new AdmZip(buf).getEntry(path);
-      if (!entry || entry.isDirectory) return reply.code(404).send({ error: 'file_not_found' });
+      const data = await zipEntry(buf, path); // off-thread single-entry extract
+      if (!data) return reply.code(404).send({ error: 'file_not_found' });
       const name = (path.split('/').pop() || 'file').replace(/[^\w.\-]/g, '_');
       reply.header('Content-Type', 'application/octet-stream');
       reply.header('Content-Disposition', `attachment; filename="${name}"`);
       reply.header('Cache-Control', 'no-store');
-      return reply.send(entry.getData());
+      return reply.send(Buffer.from(data));
     } catch (e) { return reply.code(502).send({ error: 'read_failed', detail: String(e?.message || e) }); }
   });
 
@@ -540,14 +541,13 @@ export default async function catalogRoutes(app) {
     const meta = item.meta || {};
     try {
       const buf = await fetchPluginBytes({ url: meta.download_url, key: item.payloadKey, getObject });
-      const zip = new AdmZip(buf);
-      const entry = zip.getEntry(path);
-      if (!entry || entry.isDirectory) return reply.code(404).send({ error: 'file_not_found' });
+      const data = await zipEntry(buf, path); // off-thread single-entry extract
+      if (!data) return reply.code(404).send({ error: 'file_not_found' });
       const name = (path.split('/').pop() || 'file').replace(/[^\w.\-]/g, '_');
       reply.header('Content-Type', 'application/octet-stream');
       reply.header('Content-Disposition', `attachment; filename="${name}"`);
       reply.header('Cache-Control', 'no-store');
-      return reply.send(entry.getData());
+      return reply.send(Buffer.from(data));
     } catch (e) { return reply.code(502).send({ error: 'fetch_failed', detail: String(e?.message || e) }); }
   });
 
