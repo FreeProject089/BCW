@@ -267,7 +267,6 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | GET/POST | `/server/db/backups` · `/db/backups/:hash/restore` | server-control | Backups BD façon git. |
 | GET/POST/PUT/DELETE | `/server/files*` (read/write/rename/mkdir/download/backups) | server-control | Gestionnaire de fichiers + backups. |
 | GET/POST/PUT | `/server/backups/usage` · `/gc` · `/limit` | server-control | Ménage des backups. |
-| POST | `/server/restart` | server-control | Redémarrer la stack. |
 | POST | `/admin/telemetry/token` | admin | Émettre un token SSO pour ouvrir le dashboard télémétrie BMM (HMAC, borné par époque). |
 | GET/PUT | `/admin/telemetry/config` | admin | Lire/mettre à jour la config live du service télémétrie BMM (limite de stockage, rétention, délai d'effacement) — proxyfié vers le service. |
 | GET | `/server/telemetry-db/tables` · `/table/:name` | server-control | Viewer en lecture seule sur le Postgres télémétrie BMM séparé. |

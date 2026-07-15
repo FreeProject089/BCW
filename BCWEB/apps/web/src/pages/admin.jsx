@@ -1529,18 +1529,12 @@ function AdminServerAdvanced() {
   const elevateStatus = useAsync(() => api.get('/server/elevate/status').catch(() => ({ elevated: false })), []);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [restarting, setRestarting] = useState(false);
 
   const elevate = async () => {
     setBusy(true);
     try { await api.post('/server/elevate', { code: code.trim() }); toast.success(t('asa.elevated', 'Elevated for 15 minutes.')); setCode(''); elevateStatus.reload(); }
     catch (x) { toast.error(x.data?.error === 'invalid_code' ? t('asa.invalidcode', 'Invalid code.') : x.data?.error === '2fa_not_enabled' ? t('asa.no2fa', 'Enable 2FA in your profile first.') : x.data?.error === 'forbidden' ? t('asa.noaccess', "You don't have server-control access.") : t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
-  };
-  const restart = async () => {
-    if (!(await dialog.confirm({ title: t('asa.restarttitle', 'Restart the API server'), message: t('asa.restartconfirm', 'This restarts the api container. Everyone will briefly lose connection (usually a few seconds). Continue?'), okLabel: t('asa.restart', 'Restart'), danger: true }))) return;
-    setRestarting(true);
-    try { await api.post('/server/restart'); toast.success(t('asa.restarting', 'Restarting — back in a few seconds.')); } catch { toast.error(t('common.failed', 'Failed.')); setRestarting(false); }
   };
 
   if (me2fa.loading || elevateStatus.loading) return <Loading />;
@@ -1566,11 +1560,6 @@ function AdminServerAdvanced() {
           <FileManager />
           <DbViewer />
           <BackupManager />
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-2 text-sm"><RefreshCw size={14} className="text-red-400" /><span className="font-semibold">{t('asa.restartserver', 'Restart server')}</span></div>
-            <p className="text-xs text-[var(--muted)] mb-3">{t('asa.restartserversub', "Restarts the api container (Docker's own `restart: unless-stopped` policy brings it right back — no Docker-socket access needed for this).")}</p>
-            <Button className="!text-red-400" disabled={restarting} onClick={restart}>{restarting ? <Spinner /> : t('asa.restartnow', 'Restart now')}</Button>
-          </Card>
         </div>
       )}
     </div>

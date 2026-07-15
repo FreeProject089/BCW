@@ -187,7 +187,12 @@ export default async function repoRoutes(app) {
     const isOwner = req.user?.uid === r.ownerId || ['ADMIN', 'SUPERADMIN'].includes(req.user?.role);
     if (!publicListed && !viaKey && !isOwner) return reply.code(404).send({ error: 'not_found' });
     const origin = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
-    const repoJson = (r.hosted && r.hostPath && r.published) ? `${origin}/hosting/${r.hostPath}/repo.json` : (r.repoUrl || r.publicUrl || null);
+    // NOT `|| r.publicUrl`: that field is the provisioner scaffold's placeholder
+    // (`REPO_PUBLIC_BASE/<id>`, default `http://localhost/repos/<id>`) — a path that isn't a
+    // route and a port nothing serves. Offering it as "View manifest" handed users a dead link
+    // (NS_ERROR_NET_EMPTY_RESPONSE). A hosted-but-unpublished repo has no manifest yet, so
+    // null is the honest answer and the page already renders "No manifest yet" for it.
+    const repoJson = (r.hosted && r.hostPath && r.published) ? `${origin}/hosting/${r.hostPath}/repo.json` : (r.repoUrl || null);
     const idn = (await loadOwnerIdentities(p, [r.ownerId])).get(r.ownerId) || {};
     return {
       repo: {
@@ -233,7 +238,10 @@ export default async function repoRoutes(app) {
       orderBy: [{ featuredUntil: 'desc' }, { createdAt: 'desc' }],
       select: { name: true, description: true, tags: true, links: true, publicUrl: true, repoUrl: true, hosted: true, hostPath: true, published: true, featuredUntil: true, sha: true, owner: { select: { displayName: true } } },
     });
-    const repoJsonUrl = (r) => (r.hosted && r.hostPath && r.published) ? `${origin}/hosting/${r.hostPath}/repo.json` : (r.repoUrl || r.publicUrl || null);
+    // Same reason as GET /r/:id: publicUrl is the provisioner scaffold's placeholder, not a
+    // manifest. This feed is what BMM consumes, so publishing it there fed the dead link to
+    // every client, not just the web page.
+    const repoJsonUrl = (r) => (r.hosted && r.hostPath && r.published) ? `${origin}/hosting/${r.hostPath}/repo.json` : (r.repoUrl || null);
     reply.header('Cache-Control', 'public, max-age=300');
     return {
       name: 'BetterCommunity Server Repos',

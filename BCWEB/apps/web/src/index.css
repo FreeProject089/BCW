@@ -201,9 +201,14 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     -webkit-box-shadow: 0 0 0 1000px #1c1913 inset;
   }
 
+  /* Tags are metadata, not content: they should read as a quiet label beside a name, not
+     compete with it. A repo/catalog card can carry 4+ at once, so the old 11.5px/3x9px pill
+     dominated the card on desktop and forced one-per-line on a phone. Trimmed to 10.5px with
+     tighter padding — still ≥10px (the floor where a uppercase-ish label stops being legible)
+     and the hit area is unchanged since badges aren't interactive. */
   .badge {
-    display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px;
-    font-size: 11.5px; font-weight: 600; letter-spacing: .02em;
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 99px;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .02em; line-height: 1.45;
     background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
   }
   .badge-primary { background: rgba(249,115,22,0.13); border-color: rgba(249,115,22,0.32); color: #d97706; }

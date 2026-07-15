@@ -261,7 +261,6 @@ and sends are admin-triggered only (no auto-send on publish).
 | GET/POST | `/server/db/backups` · `/db/backups/:hash/restore` | server-control | DB git-style backups. |
 | GET/POST/PUT/DELETE | `/server/files*` (read/write/rename/mkdir/download/backups) | server-control | File manager + backups. |
 | GET/POST/PUT | `/server/backups/usage` · `/gc` · `/limit` | server-control | Backup housekeeping. |
-| POST | `/server/restart` | server-control | Restart the stack. |
 | POST | `/admin/telemetry/token` | admin | Mint an SSO token to open the BMM telemetry dashboard (HMAC, epoch-bound). |
 | GET/PUT | `/admin/telemetry/config` | admin | Read/update the BMM telemetry service's live config (storage limit, retention, erase delay) — proxied to the service. |
 | GET | `/server/telemetry-db/tables` · `/table/:name` | server-control | Read-only viewer over the separate BMM telemetry Postgres. |

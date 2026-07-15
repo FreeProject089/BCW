@@ -533,15 +533,9 @@ export default async function serverControlRoutes(app) {
     return { ok: true, restored, skipped };
   });
 
-  // ── Restart this API process. No Docker socket needed: the compose service
-  // already runs with `restart: unless-stopped`, so simply exiting lets Docker's
-  // own supervisor bring it straight back up. ──
-  app.post('/server/restart', { preHandler: DANGEROUS }, async (req, reply) => {
-    const p = await db();
-    await logAudit(p, req.user.uid, 'server.restart', '', clientIp(req));
-    reply.send({ ok: true, message: 'Restarting…' });
-    setTimeout(() => process.exit(0), 400); // let the response flush first
-  });
+  // Restart-from-the-admin-UI was removed: the button is gone, and an endpoint that kills the
+  // process on request has no business staying reachable with nothing calling it. Restart the
+  // API the way you'd restart anything else in the stack — `docker compose restart api`.
 
   // ── Backup storage: usage + admin-configurable size limit. Exceeding the
   // limit doesn't delete anything automatically — see gcRepo()'s doc comment —
