@@ -125,25 +125,32 @@ for (const scn of SCENARIOS) {
   scenarioOut.push({ ...scn, results, knee });
 }
 
-// Write the reports.
+// Write the reports — every run emits both languages (the repo convention), so the FR copy
+// can't silently rot behind the EN one.
 const json = { meta, scenarios: scenarioOut };
-writeFileSync(new URL('./report.md', import.meta.url), toMarkdown(meta, scenarioOut));
 writeFileSync(new URL('./report.json', import.meta.url), JSON.stringify(json, null, 2));
-// report.html is the one to actually LOOK at: self-contained (no CDN/build), open it straight
-// from the filesystem. The <head> is added here so the file stands alone in a browser.
-writeFileSync(new URL('./report.html', import.meta.url),
-  `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BCWEB stress report — ${meta.at}</title><style>html,body{margin:0;padding:0}</style></head><body>
-${toHtml(meta, scenarioOut)}
-</body></html>`);
 // Keep the legacy filename working for anything that read it.
 writeFileSync(new URL('./last-run.json', import.meta.url), JSON.stringify(json, null, 2));
+
+// report.html is the one to actually LOOK at: self-contained (no CDN/build), open it straight
+// from the filesystem. The <head> is added here so the file stands alone in a browser; each
+// language links to the other.
+const page = (lang, altHref) => `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${lang === 'fr' ? 'Rapport de stress BCWEB' : 'BCWEB stress report'} — ${meta.at}</title>
+<style>html,body{margin:0;padding:0}</style></head><body>
+${toHtml(meta, scenarioOut, lang, altHref)}
+</body></html>`;
+writeFileSync(new URL('./report.html', import.meta.url), page('en', './report.fr.html'));
+writeFileSync(new URL('./report.fr.html', import.meta.url), page('fr', './report.html'));
+writeFileSync(new URL('./report.md', import.meta.url), toMarkdown(meta, scenarioOut, 'en'));
+writeFileSync(new URL('./report.fr.md', import.meta.url), toMarkdown(meta, scenarioOut, 'fr'));
 
 const overall = scenarioOut.map((s) => s.knee).filter(Boolean).sort((a, b) => b.ok2xx_s - a.ok2xx_s)[0];
 console.log('────────────────────────────────────────────────────────');
 console.log(`Peak clean throughput: ${overall ? `${fmt(overall.ok2xx_s)} served req/s (${overall.scenario} @ ${overall.level})` : 'none clean — lower the levels or check reachability'}`);
 const here = decodeURIComponent(new URL('.', import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, '$1');
 console.log(`\nReports written to ${here}`);
-console.log('  report.html  ← open this one (charts + tables + diagnosis, self-contained)');
-console.log('  report.md    same thing as text');
-console.log('  report.json  machine-readable — diff it between runs; the knee moving up is the win\n');
+console.log('  report.html / report.fr.html  ← open one of these (charts + tables + diagnosis, self-contained)');
+console.log('  report.md   / report.fr.md    same thing as text');
+console.log('  report.json                   machine-readable — diff it between runs; the knee moving up is the win\n');

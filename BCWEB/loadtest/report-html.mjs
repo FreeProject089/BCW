@@ -6,11 +6,14 @@
 // categorical palette, assigned per SCENARIO in fixed order — a scenario keeps its hue no
 // matter which chart it appears in. Legend + endpoint labels + the full tables mean identity
 // and values are never color-alone.
-import { findKnee, diagnose, minSpec } from './report.mjs';
+import { findKnee, diagnoseText, minSpec, tierKey } from './report.mjs';
+import { tr, LOCALE } from './report-i18n.mjs';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = (n) => (n == null ? '—' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
 const ms = (n) => (n == null ? '—' : `${Math.round(n)}ms`);
+// Translated prose carries **bold** / `code`; escape first, then promote those two.
+const md = (str) => esc(str).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>').replace(/\*(.+?)\*/g, '<i>$1</i>');
 
 // Fixed categorical order — slot per scenario, light/dark steps of the same hues.
 const SLOTS = ['--series-1', '--series-2', '--series-3', '--series-4'];
@@ -95,7 +98,9 @@ function lineChart({ series, levels, yLabel, scale = 'linear', fmtY }) {
   </svg>`;
 }
 
-export function toHtml(meta, scenarios) {
+export function toHtml(meta, scenarios, lang = 'en', altHref = null) {
+  const t = tr(lang);
+  const loc = LOCALE[lang] || 'en-US';
   const knees = scenarios.map((s) => ({ name: s.name, knee: findKnee(s.results) })).filter((x) => x.knee);
   const peak = knees.map((x) => x.knee).reduce((b, k) => (k.ok2xx_s > (b?.ok2xx_s ?? -1) ? k : b), null);
   const mixed = knees.find((x) => x.name === 'mixed')?.knee;
@@ -104,11 +109,11 @@ export function toHtml(meta, scenarios) {
   const worstTail = scenarios.flatMap((s) => s.results).reduce((w, r) => (r.p99_9 > (w?.p99_9 ?? -1) ? r : w), null);
 
   const thr = lineChart({
-    levels: meta.levels, yLabel: 'Served requests/sec (2xx only)', fmtY: fmt,
+    levels: meta.levels, yLabel: t('chart.throughput.y'), fmtY: fmt,
     series: scenarios.map((s) => ({ name: s.name, points: s.results.map((r) => ({ y: r.ok2xx_s, label: r.level })) })),
   });
   const lat = lineChart({
-    levels: meta.levels, yLabel: 'p99.9 latency (ms · log scale)', scale: 'log', fmtY: (v) => (v >= 1000 ? `${v / 1000}s` : `${v}`),
+    levels: meta.levels, yLabel: t('chart.latency.y'), scale: 'log', fmtY: (v) => (v >= 1000 ? `${v / 1000}s` : `${v}`),
     series: scenarios.map((s) => ({ name: s.name, points: s.results.map((r) => ({ y: r.p99_9, label: r.level })) })),
   });
 
@@ -117,19 +122,16 @@ export function toHtml(meta, scenarios) {
       <h3>${esc(s.name)}</h3>
       <p class="desc">${esc(s.desc)}</p>
       <div class="scroll"><table>
-        <thead><tr><th>level</th><th>conns</th><th>req/s</th><th>2xx/s</th><th>p50</th><th>p90</th><th>p99</th><th>p99.9</th><th>non-2xx</th><th>err</th><th>t/o</th><th>ping p99</th></tr></thead>
+        <thead><tr><th>${esc(t('th.level'))}</th><th>${esc(t('th.conns'))}</th><th>${esc(t('th.rps'))}</th><th>${esc(t('th.ok'))}</th><th>p50</th><th>p90</th><th>p99</th><th>p99.9</th><th>${esc(t('th.non2xx'))}</th><th>${esc(t('th.err'))}</th><th>${esc(t('th.to'))}</th><th>${esc(t('th.ping'))}</th></tr></thead>
         <tbody>${s.results.map((r) => `<tr><td>${esc(r.level)}</td><td>${fmt(r.conns)}</td><td>${fmt(r.rps)}</td><td><b>${fmt(r.ok2xx_s)}</b></td>
           <td>${ms(r.p50)}</td><td>${ms(r.p90)}</td><td>${ms(r.p99)}</td><td>${ms(r.p99_9)}</td><td>${fmt(r.non2xx)}</td>
           <td class="${r.errors ? 'bad' : ''}">${r.errors}</td><td class="${r.timeouts ? 'bad' : ''}">${r.timeouts}</td><td>${r.ping ? ms(r.ping.p99) : '—'}</td></tr>`).join('')}</tbody>
       </table></div>
-      <ul class="notes">${diagnose(s).map((n) => `<li>${n.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>')}</li>`).join('')}</ul>
+      <ul class="notes">${diagnoseText(s, t).map((n) => `<li>${md(n)}</li>`).join('')}</ul>
     </section>`).join('');
 
-  const specRows = anchor ? minSpec(meta, anchor.ok2xx_s).map((s) => {
-    const note = s.users <= 100 ? 'single small instance' : s.users <= 1000 ? '1–2 replicas behind the edge'
-      : s.users <= 10000 ? 'horizontal replicas + managed Postgres + Redis' : 'multi-node + read replicas + CDN';
-    return `<tr><td>${s.users.toLocaleString('en-US')}</td><td>${s.coresNeeded}</td><td>${s.gb} GB</td><td>${note}</td></tr>`;
-  }).join('') : '';
+  const specRows = anchor ? minSpec(meta, anchor.ok2xx_s).map((s) =>
+    `<tr><td>${s.users.toLocaleString(loc)}</td><td>${s.coresNeeded}</td><td>${s.gb} GB</td><td>${esc(t(tierKey(s.users)))}</td></tr>`).join('') : '';
 
   return `<div class="viz-root" data-palette="#2a78d6,#1baf7a,#eda100,#008300">
 <style>
@@ -181,50 +183,44 @@ export function toHtml(meta, scenarios) {
     font-size:12px;padding:5px 9px;border-radius:6px;white-space:nowrap;z-index:9}
 </style>
 
-<h1>BCWEB stress report</h1>
-<p class="sub">${esc(meta.at)} · target <code>${esc(meta.origin + meta.prefix)}</code> · ${esc(meta.cores)} cores / ${esc(meta.memGB)} GB · Node ${esc(meta.node)} · ${esc(meta.durationSec)}s per level</p>
+<h1>${esc(t('title'))}</h1>
+<p class="sub">${esc(meta.at)} · ${esc(t('meta.target'))} <code>${esc(meta.origin + meta.prefix)}</code> · ${esc(meta.cores)} ${esc(t('meta.cores'))} / ${esc(meta.memGB)} GB · Node ${esc(meta.node)} · ${esc(meta.durationSec)}s ${esc(t('meta.perLevel'))}${altHref ? ` · <a href="${esc(altHref)}">${lang === 'fr' ? 'English' : 'Français'}</a>` : ''}</p>
 
 <div class="tiles">
-  <div class="card tile"><div class="k">Peak clean throughput</div><div class="v">${peak ? fmt(peak.ok2xx_s) : '—'}</div>
-    <div class="m">${peak ? `req/s · ${esc(peak.scenario)} @ ${esc(peak.level)}` : 'no clean level'}</div></div>
-  <div class="card tile"><div class="k">Realistic blend (sizing anchor)</div><div class="v">${anchor ? fmt(anchor.ok2xx_s) : '—'}</div>
+  <div class="card tile"><div class="k">${esc(t('tile.peak'))}</div><div class="v">${peak ? fmt(peak.ok2xx_s) : '—'}</div>
+    <div class="m">${peak ? `req/s · ${esc(peak.scenario)} @ ${esc(peak.level)}` : esc(t('tile.noClean'))}</div></div>
+  <div class="card tile"><div class="k">${esc(t('tile.anchor'))}</div><div class="v">${anchor ? fmt(anchor.ok2xx_s) : '—'}</div>
     <div class="m">${anchor ? `req/s · ${esc(anchor.scenario)} @ ${esc(anchor.level)}` : '—'}</div></div>
-  <div class="card tile"><div class="k">Worst p99.9</div><div class="v">${worstTail ? ms(worstTail.p99_9) : '—'}</div>
+  <div class="card tile"><div class="k">${esc(t('tile.worstTail'))}</div><div class="v">${worstTail ? ms(worstTail.p99_9) : '—'}</div>
     <div class="m">${worstTail ? `${esc(worstTail.scenario)} @ ${esc(worstTail.level)}` : '—'}</div></div>
 </div>
 
-<div class="callout"><b>Read this first.</b> On loopback with one client box the upper levels aren't real internet clients — one machine
-out-runs the server, and the anti-abuse rate limiter then sheds the flood <b>by design</b> (that's non-2xx, not errors). The honest signals
-are <b>served req/s</b>, the <b>tail</b> (p99/p99.9), and <b>where errors or timeouts first appear</b>.</div>
+<div class="callout">${md(t('readfirst'))}</div>
 
 <section class="card">
-  <h3>Throughput vs concurrency</h3>
-  <p class="desc">Where each curve stops rising is that path's ceiling on this hardware.</p>
+  <h3>${esc(t('chart.throughput'))}</h3>
+  <p class="desc">${esc(t('chart.throughput.desc'))}</p>
   ${thr}
   <ul class="legend">${scenarios.map((s, i) => `<li><span class="sw" style="background:var(${SLOTS[i % SLOTS.length]})"></span>${esc(s.name)}</li>`).join('')}</ul>
 </section>
 
 <section class="card">
-  <h3>Latency tail vs concurrency</h3>
-  <p class="desc">p99.9 — the 1-in-1000 request. Log scale: a straight rise is an order-of-magnitude jump.</p>
+  <h3>${esc(t('chart.latency'))}</h3>
+  <p class="desc">${esc(t('chart.latency.desc'))}</p>
   ${lat}
   <ul class="legend">${scenarios.map((s, i) => `<li><span class="sw" style="background:var(${SLOTS[i % SLOTS.length]})"></span>${esc(s.name)}</li>`).join('')}</ul>
 </section>
 
-<h2>Per scenario</h2>
+<h2>${esc(t('perScenario'))}</h2>
 ${tables}
 
-<h2>Minimum server spec (extrapolated)</h2>
+<h2>${esc(t('minspec'))}</h2>
 <section class="card">
-  ${anchor ? `<p class="desc">Anchored to the <b>${esc(anchor.scenario)}</b> scenario — the realistic blend, <i>not</i> the trivial /health peak:
-    <b>${fmt(anchor.ok2xx_s)} served req/s on ${esc(meta.cores)} core(s)</b> (≈ ${fmt(anchor.ok2xx_s / meta.cores)} req/s/core), assuming
-    <b>${esc(meta.rpmPerUser)} requests/min per active user</b>. Linear and conservative — a starting point, then measure.</p>
-  <div class="scroll"><table><thead><tr><th>Concurrent active users</th><th>vCPU (API)</th><th>RAM (API)</th><th>Notes</th></tr></thead>
+  ${anchor ? `<p class="desc">${md(t('minspec.intro', { scenario: anchor.scenario, rps: fmt(anchor.ok2xx_s), cores: meta.cores, perCore: fmt(anchor.ok2xx_s / meta.cores), rpm: meta.rpmPerUser, usersPerCore: minSpec(meta, anchor.ok2xx_s)[0].usersPerCore.toLocaleString(loc) }))}</p>
+  <div class="scroll"><table><thead><tr><th>${esc(t('minspec.users'))}</th><th>${esc(t('minspec.cpu'))}</th><th>${esc(t('minspec.ram'))}</th><th>${esc(t('minspec.notes'))}</th></tr></thead>
     <tbody>${specRows}</tbody></table></div>
-  <ul class="notes"><li>These are <b>API-tier</b> numbers. The first real ceiling is usually <b>Postgres</b> (pool + slow queries) and Redis
-    memory, not API CPU — size those from the <code>db-read</code> knee, and put the static site + <code>catalog.json</code> behind a CDN so
-    they never reach the origin. The API scales horizontally; the database does not for free.</li></ul>`
-    : '<p class="desc">No clean capacity anchor was measured, so no extrapolation is given.</p>'}
+  <ul class="notes"><li>${md(t('minspec.caveat'))}</li></ul>`
+    : `<p class="desc">${md(t('minspec.none'))}</p>`}
 </section>
 
 <div id="tip"></div>
