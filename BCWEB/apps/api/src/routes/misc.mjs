@@ -752,7 +752,18 @@ export default async function miscRoutes(app) {
   const UTIL_KEYS = ['notifications', 'projects', 'lang', 'theme', 'settings', 'dashboard', 'admin', 'profile', 'logout', 'login'];
   const utilEntry = z.object({ visible: z.boolean().optional(), order: z.number().int().min(0).max(50).optional() });
   const utilitySchema = z.record(z.enum(UTIL_KEYS), utilEntry).optional().default({});
-  const navSchema = z.object({ enabled: z.boolean(), items: z.array(navItem).max(16), utility: utilitySchema });
+  const navSchema = z.object({
+    enabled: z.boolean(),
+    items: z.array(navItem).max(16),
+    utility: utilitySchema,
+    // How admin-pinned showcase projects appear in the topbar: as their own inline
+    // pills, or grouped under a single "Projects" hover-dropdown. Icons stay each
+    // project's own either way.
+    projectsMode: z.enum(['inline', 'dropdown']).optional().default('inline'),
+    // Mobile bottom tab bar. Its contents are derived from the nav items (home + the
+    // first few links), so there's nothing to list here — just an on/off toggle.
+    downbar: z.object({ enabled: z.boolean().optional().default(true) }).optional().default({ enabled: true }),
+  });
 
   // Admin editor reads the RAW config (even when disabled) so it can be edited.
   app.get('/admin/nav', { preHandler: requireRole('ADMIN') }, async () => {
@@ -778,7 +789,15 @@ export default async function miscRoutes(app) {
     // Utility (topbar button show/hide/order) applies independently of custom nav items —
     // an admin may want to hide the login button without configuring the whole nav.
     const utility = cfg?.utility && Object.keys(cfg.utility).length ? cfg.utility : null;
-    if (!usable && !utility) return { nav: null };
-    return { nav: { ...(usable ? { items: cfg.items } : {}), ...(utility ? { utility } : {}) } };
+    // projectsMode + downbar apply independently of custom items (like utility).
+    const projectsMode = cfg?.projectsMode === 'dropdown' ? 'dropdown' : null; // 'inline' is the default → omit
+    const downbar = cfg?.downbar && cfg.downbar.enabled === false ? cfg.downbar : null; // enabled is the default → omit
+    if (!usable && !utility && !projectsMode && !downbar) return { nav: null };
+    return { nav: {
+      ...(usable ? { items: cfg.items } : {}),
+      ...(utility ? { utility } : {}),
+      ...(projectsMode ? { projectsMode } : {}),
+      ...(downbar ? { downbar } : {}),
+    } };
   });
 }
