@@ -66,9 +66,9 @@ docker compose logs -f caddy # watch the TLS certificate get issued
 Caddy provisions and auto-renews a Let's Encrypt certificate for `SITE_DOMAIN` —
 **no manual cert handling**. First issuance takes a few seconds once DNS resolves.
 
-The API runs migrations on boot (`prisma db push`), so the schema is created
-automatically. Visit `https://community.example.com` — you should get the app over
-HTTPS.
+The API runs the checked-in migrations on boot (`boot-migrate.mjs` → `prisma migrate
+deploy`), so the schema is created automatically. Visit `https://community.example.com` —
+you should get the app over HTTPS.
 
 ## 5. First-run admin
 
@@ -156,7 +156,7 @@ Any SMTP provider works — your host's, SendGrid, Mailgun, Amazon SES, or a sel
 ```bash
 git pull --recurse-submodules
 cd infra/compose
-docker compose up -d --build      # rebuilds changed images, runs db push on boot
+docker compose up -d --build      # rebuilds changed images, applies migrations on boot
 ```
 
 Updates are **graceful**: when the API container is replaced it catches `SIGTERM`,

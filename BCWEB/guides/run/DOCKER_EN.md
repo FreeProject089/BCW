@@ -31,9 +31,13 @@ before `api`/`provisioner` start; `caddy` fronts everything.
 
 - **`apps/api/Dockerfile`** — `node:20-alpine` + `openssl` (Prisma), `git` (the
   admin file/DB backup system shells out to real git), fonts (welcome-banner canvas).
-  Build runs `prisma generate`; **at container start** it runs
-  `prisma db push` (syncs the schema — this is why a fresh DB "just works") then
-  `node src/server.mjs`.
+  Build runs `prisma generate`; **at container start** it runs `node src/boot-migrate.mjs`
+  then `node src/server.mjs`. `boot-migrate.mjs` applies the checked-in migrations via
+  `prisma migrate deploy` — **not** `db push`, which can silently drop a column or table on
+  a rename or a narrowing. It handles all three database states with no manual step: fresh
+  (applies the baseline), previously synced with an old `db push` (baselines it so deploy
+  recreates nothing), or already migrated (applies pending migrations). That's why a fresh
+  DB "just works".
 - **`apps/web/Dockerfile`** — multi-stage: stage 1 builds the Vite bundle, stage 2 is
   plain **nginx** serving `dist/` with `apps/web/nginx.conf` (immutable cache on
   hashed `/assets/*`, no-cache on `index.html`, SPA fallback). ⚠️ `VITE_*` vars are
@@ -78,7 +82,10 @@ containers with the new env; a plain `restart` does NOT re-read `.env`).
 1. `git pull --recurse-submodules`
 2. `cd infra/compose && docker compose up -d --build`
    - Only changed images rebuild (Docker layer cache).
-   - The api runs `prisma db push` at boot → schema migrations apply automatically.
+   - The api runs `boot-migrate.mjs` at boot → `prisma migrate deploy` applies the
+     **checked-in** migrations. The consequence to remember: if you changed the schema, its
+     migration must be committed in `packages/db/migrations/` **before** the rebuild, or it
+     won't apply (the DB keeps the old schema, with no error at boot).
    - nginx serves the new hashed assets; `index.html` is no-cache so clients pick the
      new build up immediately (Ctrl+Shift+R never needed in prod).
 3. Check `docker compose ps` (healthy) and the admin **Server perf** tab.

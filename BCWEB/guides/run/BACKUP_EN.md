@@ -65,8 +65,9 @@ cd infra/compose
 gunzip -c /var/backups/bcweb/pg-bcweb-<ts>.sql.gz | docker compose exec -T db psql -U bcweb bcweb
 ```
 
-The API runs `prisma db push` at boot, so the schema self-heals — but the dump already
-contains it, so a plain restore is enough. Restart the api after restoring: `docker compose restart api`.
+The API applies the checked-in migrations at boot (`boot-migrate.mjs` → `prisma migrate
+deploy`), so the schema self-heals — but the dump already contains it, so a plain restore is
+enough. Restart the api after restoring: `docker compose restart api`.
 
 ### 2. MinIO object storage
 

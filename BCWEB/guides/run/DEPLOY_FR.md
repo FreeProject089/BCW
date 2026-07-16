@@ -67,8 +67,9 @@ Caddy provisionne et renouvelle automatiquement un certificat Let's Encrypt pour
 `SITE_DOMAIN` — **aucune gestion manuelle de certificat**. La première émission prend
 quelques secondes une fois le DNS résolu.
 
-L'API applique les migrations au démarrage (`prisma db push`), le schéma est donc créé
-automatiquement. Va sur `https://community.example.com` — l'app doit s'afficher en HTTPS.
+L'API applique les migrations commitées au démarrage (`boot-migrate.mjs` → `prisma migrate
+deploy`), le schéma est donc créé automatiquement. Va sur `https://community.example.com` —
+l'app doit s'afficher en HTTPS.
 
 ## 5. Premier admin
 
@@ -157,7 +158,7 @@ convient — celui de ton hébergeur, SendGrid, Mailgun, Amazon SES, ou un relai
 ```bash
 git pull --recurse-submodules
 cd infra/compose
-docker compose up -d --build      # reconstruit les images modifiées, db push au boot
+docker compose up -d --build      # reconstruit les images modifiées, migrations au boot
 ```
 
 Les mises à jour sont **gracieuses** : quand le conteneur API est remplacé, il capte le

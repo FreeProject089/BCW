@@ -31,9 +31,14 @@ healthy avant que `api`/`provisioner` démarrent ; `caddy` est devant tout.
 
 - **`apps/api/Dockerfile`** — `node:20-alpine` + `openssl` (Prisma), `git` (le système
   de backup fichiers/DB de l'admin utilise le vrai git), polices (bannière de
-  bienvenue). Le build lance `prisma generate` ; **au démarrage du conteneur** il fait
-  `prisma db push` (synchronise le schéma — c'est pour ça qu'une DB neuve « marche
-  toute seule ») puis `node src/server.mjs`.
+  bienvenue). Le build lance `prisma generate` ; **au démarrage du conteneur** il lance
+  `node src/boot-migrate.mjs` puis `node src/server.mjs`. `boot-migrate.mjs` applique les
+  migrations commitées via `prisma migrate deploy` — et **pas** `db push`, qui peut
+  supprimer une colonne ou une table sans prévenir lors d'un renommage. Il gère les trois
+  états possibles de la base sans intervention : neuve (applique la baseline), déjà
+  synchronisée avec un ancien `db push` (la baseline pour que deploy ne recrée rien), ou
+  déjà migrée (applique les migrations en attente). C'est pour ça qu'une DB neuve
+  « marche toute seule ».
 - **`apps/web/Dockerfile`** — multi-étapes : étape 1 compile le bundle Vite, étape 2 =
   **nginx** qui sert `dist/` avec `apps/web/nginx.conf` (cache immutable sur les
   `/assets/*` hashés, no-cache sur `index.html`, fallback SPA). ⚠️ Les variables
@@ -79,7 +84,10 @@ Règle simple : **changement de code → `--build`**, **changement de `.env` →
 1. `git pull --recurse-submodules`
 2. `cd infra/compose && docker compose up -d --build`
    - Seules les images modifiées se reconstruisent (cache de couches Docker).
-   - L'api fait `prisma db push` au boot → le schéma migre automatiquement.
+   - L'api lance `boot-migrate.mjs` au boot → `prisma migrate deploy` applique les
+     migrations **commitées**. Conséquence à retenir : si tu changes le schéma, sa
+     migration doit être commitée dans `packages/db/migrations/` **avant** le rebuild,
+     sinon elle ne s'applique pas (la base garde l'ancien schéma, sans erreur au boot).
    - nginx sert les nouveaux assets hashés ; `index.html` est en no-cache donc les
      clients prennent le nouveau build immédiatement (pas besoin de Ctrl+Shift+R en prod).
 3. Vérifie `docker compose ps` (healthy) et l'onglet admin **Server perf**.
