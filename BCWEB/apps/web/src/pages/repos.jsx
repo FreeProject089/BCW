@@ -469,7 +469,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
                 <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : '#f97316'} onChange={(e) => setColor(g, e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
               </label>
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm truncate flex items-center gap-2">{g.name} {g.freePlan && <Badge tone="">{t('pools.free', 'free')}</Badge>}</div>
+                <div className="font-medium text-sm flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{g.name}</span> {g.freePlan && <Badge tone="">{t('pools.free', 'free')}</Badge>}</div>
                 <div className="text-[11px] text-[var(--faint)]">{gb(g.usedBytes)} / {gb(g.poolBytes)} GB {t('pools.used', 'used')} · {gb(free)} GB {t('pools.freespace', 'free')}</div>
               </div>
               <Button size="sm" variant="primary" onClick={() => onAddRepo(g)}><Plus size={13} /> {t('repos.addrepo', 'Add repo')}</Button>
@@ -1119,7 +1119,7 @@ function SubscriptionRow({ repo, stripeSub, onChanged }) {
     <div className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm border-t border-[var(--line)] first:border-t-0">
       <Server size={15} className="text-[var(--primary-2)] shrink-0" />
       <div className="flex-1 min-w-0">
-        <div className="font-medium truncate flex items-center gap-2">{repo.name} <Badge tone={repo.status === 'SUSPENDED' ? 'red' : repo.status === 'ONLINE' ? 'green' : ''}>{repo.status}</Badge>{hasSub && (canceling ? <Badge tone="amber">{t('bill.sub.canceling', 'canceling')}</Badge> : <Badge tone="green"><RefreshCw size={9} /> {t('bill.ah.auto', 'auto-renew')}</Badge>)}</div>
+        <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{repo.name}</span> <Badge tone={repo.status === 'SUSPENDED' ? 'red' : repo.status === 'ONLINE' ? 'green' : ''}>{repo.status}</Badge>{hasSub && (canceling ? <Badge tone="amber">{t('bill.sub.canceling', 'canceling')}</Badge> : <Badge tone="green"><RefreshCw size={9} /> {t('bill.ah.auto', 'auto-renew')}</Badge>)}</div>
         <div className="text-xs text-[var(--faint)]">{gb(repo.storageQuotaBytes)} GB · {(repo.uploadLimitKbps / 1024).toFixed(1)} Mbps</div>
       </div>
       {periodEnd && (

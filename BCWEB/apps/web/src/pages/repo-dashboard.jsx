@@ -513,7 +513,7 @@ function UsersTab({ r }) {
             <div key={c.ip + (c.accessKey || '')} className="flex items-center gap-3 px-4 py-2.5 text-sm">
               <div className={`w-2 h-2 rounded-full shrink-0 ${c.banned ? 'bg-red-500' : (Date.now() - new Date(c.lastSeen) < 6e5 ? 'bg-emerald-400' : 'bg-[var(--line-strong)]')}`} />
               <div className="flex-1 min-w-0">
-                <div className="font-mono text-xs truncate flex items-center gap-2">{c.ip}{c.accessKey && <Badge><Hash size={9} /> {c.accessKey.slice(0, 10)}</Badge>}{c.account && <Badge tone="primary"><Users size={9} /> {c.account.label}</Badge>}{c.banned && <Badge tone="red"><Ban size={9} /> {t('rd.bannedbadge', 'Banned')}</Badge>}</div>
+                <div className="font-mono text-xs flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{c.ip}</span>{c.accessKey && <Badge><Hash size={9} /> {c.accessKey.slice(0, 10)}</Badge>}{c.account && <Badge tone="primary"><Users size={9} /> {c.account.label}</Badge>}{c.banned && <Badge tone="red"><Ban size={9} /> {t('rd.bannedbadge', 'Banned')}</Badge>}</div>
                 <div className="text-[11px] text-[var(--faint)]">{t('rd.lastseen', 'last seen')} {timeAgo(c.lastSeen, t)} · {c.downloads} {t('rd.dl', 'dl')} · {c.connects} {t('rd.conn', 'conn')}</div>
               </div>
               {c.banned

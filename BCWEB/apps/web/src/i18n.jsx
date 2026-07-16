@@ -583,6 +583,7 @@ const DICT = {
     'sh.sub': 'Mets en avant n’importe quel projet sur la page publique /projects. L’aperçu est toujours affiché ; active Notes de version, Communauté et Légal par projet.',
     'sh.overviewonly': 'aperçu seulement', 'sh.topbar': 'barre du haut', 'sh.published': 'publié', 'sh.hidden': 'masqué',
     'sh.countdown': 'compte à rebours', 'sh.update': 'màj', 'sh.schedtip': 'Programmer une mise à jour', 'sh.editbtn': 'Modifier',
+    'sh.openpage': 'Ouvrir la page',
     'sh.empty': 'Aucun projet', 'sh.emptysub': 'Ajoute ton premier projet mis en avant.', 'sh.schedmodal': 'Programmer une mise à jour — {name}',
     // ShowcaseEditModal
     'sh.e.namereq': 'Le nom est requis.', 'sh.e.shortreq': 'Le nom court est requis.', 'sh.e.jsoninvalid': 'Le JSON des détails est invalide.',

@@ -151,7 +151,7 @@ export function UserSearch() {
             <Link key={u.id} to={`/u/${u.id}`}><Card className="p-3 flex items-center gap-3 card-hover">
               <Avatar variant={av.variant} seed={av.seed || u.id} colors={av.colors} image={av.image} size={40} />
               <div className="flex-1 min-w-0">
-                <div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badges badges={u.badges} size={14} /></div>
+                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{u.displayName}</span> <Badges badges={u.badges} size={14} /></div>
                 {u.private && <div className="text-[11px] text-[var(--faint)] flex items-center gap-1"><Lock size={10} /> {t('pp.privatebadge', 'private')}</div>}
               </div>
               {u.role !== 'USER' && <Badge tone={roleTone(u.role)}>{u.role}</Badge>}

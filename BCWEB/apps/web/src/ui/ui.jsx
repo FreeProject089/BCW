@@ -127,8 +127,8 @@ export function ActionBar({ actions, extra = [], className = '', size = 'sm' }) 
         // handed to `onClick` for SPA routing (a bare <a> would full-reload). Kept as an
         // <a> rather than react-router's <Link> so this kit stays router-agnostic.
         return a.href && !a.disabled ? (
-          <a key={a.key} href={a.href} className="shrink-0 inline-flex"
-            onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; e.preventDefault(); a.onClick?.(); }}>
+          <a key={a.key} href={a.href} target={a.target} rel={a.target === '_blank' ? 'noreferrer' : undefined} className="shrink-0 inline-flex"
+            onClick={(e) => { if (a.target || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; e.preventDefault(); a.onClick?.(); }}>
             {btn}
           </a>
         ) : btn;
@@ -148,16 +148,19 @@ export function ActionBar({ actions, extra = [], className = '', size = 'sm' }) 
           {open && pos && createPortal(
             <>
               <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
-              <div role="menu" className="fixed z-[61] rounded-xl border border-[var(--line-strong)] bg-[var(--surface-1)] shadow-xl p-1"
-                style={{ top: pos.top, right: pos.right, minWidth: pos.minWidth }}>
+              {/* --bg-solid, not --surface-1: a popup must stay OPAQUE, else "Translucent
+                  surfaces" makes the cards behind it show through its text. Same rule the
+                  Dropdown/DotDropdown menus follow. */}
+              <div role="menu" className="fixed z-[61] rounded-xl border border-[var(--line-strong)] shadow-xl p-1"
+                style={{ top: pos.top, right: pos.right, minWidth: pos.minWidth, background: 'var(--bg-solid)' }}>
                 {rest.map((a) => {
                   const cls = `w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 enabled:hover:bg-[var(--surface-2)] disabled:opacity-40 disabled:cursor-not-allowed ${a.danger ? 'text-red-400' : 'text-[var(--text)]'}`;
                   const body = <>{a.icon && <a.icon size={14} />} {a.label}</>;
                   // A navigating action stays a link once it folds in here too — otherwise
                   // the affordance would vanish at exactly the narrow widths that fold it.
                   return a.href && !a.disabled ? (
-                    <a key={a.key} role="menuitem" href={a.href} className={`${cls} hover:bg-[var(--surface-2)]`}
-                      onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; e.preventDefault(); setOpen(false); a.onClick?.(); }}>
+                    <a key={a.key} role="menuitem" href={a.href} target={a.target} rel={a.target === '_blank' ? 'noreferrer' : undefined} className={`${cls} hover:bg-[var(--surface-2)]`}
+                      onClick={(e) => { if (a.target) { setOpen(false); return; } if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; e.preventDefault(); setOpen(false); a.onClick?.(); }}>
                       {body}
                     </a>
                   ) : (

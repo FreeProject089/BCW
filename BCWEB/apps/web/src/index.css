@@ -206,10 +206,14 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
      dominated the card on desktop and forced one-per-line on a phone. Trimmed to 10.5px with
      tighter padding — still ≥10px (the floor where a uppercase-ish label stops being legible)
      and the hit area is unchanged since badges aren't interactive. */
+  /* flex: none + nowrap: a badge is an atom. As a flex child it defaulted to shrink:1, so a
+     tight row squeezed it until its label broke or vanished ("SUSPENDE…"). It must keep its
+     natural width and push the row to wrap instead. */
   .badge {
     display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 99px;
     font-size: 10.5px; font-weight: 600; letter-spacing: .02em; line-height: 1.45;
     background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
+    flex: none; white-space: nowrap;
   }
   .badge-primary { background: rgba(249,115,22,0.13); border-color: rgba(249,115,22,0.32); color: #d97706; }
   [data-theme="dark"] .badge-primary { color: #fdba74; }
@@ -259,6 +263,12 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     background: color-mix(in srgb, var(--surface) calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
     backdrop-filter: blur(18px) saturate(1.4) !important;
   }
+  /* …except a dialog, which sits ON the modal overlay — and that overlay already dims and
+     blurs the page. Blurring again here filters an ALREADY-blurred backdrop: the smear shows
+     through the card's translucency and the whole dialog reads hazy. The overlay owns the
+     blur; the card owns only its tint. (This also restores the dark-theme intent above, which
+     set backdrop-filter:none for legibility and was being overridden by the !important here.) */
+  [data-surface-glass] .modal-card { backdrop-filter: none !important; }
   [data-theme="dark"][data-surface-glass] .card,
   [data-theme="dark"][data-surface-glass] .modal-card {
     background: color-mix(in srgb, #17130e calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;

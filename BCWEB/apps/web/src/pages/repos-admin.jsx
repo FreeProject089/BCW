@@ -177,7 +177,7 @@ export function AdminPools() {
                     <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : '#f97316'} onChange={(e) => setColor(g, e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
                   </label>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium truncate flex items-center gap-1.5">{g.name} {g.freePlan && <Badge tone="">{t('pools.free', 'free')}</Badge>} {g.subCount >= 2 && <Badge tone="primary">{g.subCount} {t('apools.subs', 'subs')}</Badge>}</div>
+                    <div className="text-sm font-medium flex items-center gap-1.5 flex-wrap min-w-0"><span className="truncate min-w-0">{g.name}</span> {g.freePlan && <Badge tone="">{t('pools.free', 'free')}</Badge>} {g.subCount >= 2 && <Badge tone="primary">{g.subCount} {t('apools.subs', 'subs')}</Badge>}</div>
                     <div className="text-[11px] text-[var(--faint)]">{gb(g.poolBytes)} GB · {g.repos.length} {t('pools.repos', 'repos')} · {g.catalogs.length} {t('pools.catalogs', 'catalogs')}</div>
                   </div>
                   <button onClick={() => rename(g)} className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]" title={t('apools.rename', 'Rename')}><Pencil size={13} /></button>

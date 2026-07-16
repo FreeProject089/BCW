@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar,
 } from 'lucide-react';
-import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from '../ui/ui.jsx';
+import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
 import IconPicker from '../editor/icon-picker.jsx';
@@ -129,22 +129,33 @@ export function Admin() {
           </div>
           {subs.loading ? <Loading /> : (queue.length ? <div className="space-y-2">
             {queue.map((sub) => { const I = KIND_ICON[sub.item?.kind] || Package; return (
-              <Card key={sub.id} className="p-4 flex items-center gap-3"><I size={18} className="text-[var(--primary-2)]" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{sub.item?.name} {sub.item?.version && <span className="text-xs text-[var(--faint)] font-normal">v{sub.item.version}</span>}</div>
-                  <div className="text-xs text-[var(--faint)] flex items-center gap-1.5 flex-wrap">
-                    <Badge>{sub.type}</Badge> <Badge tone="primary">{sub.item?.kind}</Badge>
-                    {sub.status && sub.status !== 'PENDING' && <Badge tone={sub.status === 'SUSPENDED' ? 'red' : sub.status === 'REJECTED' ? 'amber' : sub.status === 'PUBLISHED' ? 'green' : ''}>{sub.status}</Badge>}
-                    {sub.item?.project?.key && <span className="uppercase">{sub.item.project.key}</span>} · {sub.item?.owner?.displayName || '—'}
-                    {sub.tags?.map((tg) => <Badge key={tg} tone="amber"><Tag size={9} /> {tg}</Badge>)}
-                    {sub.comments?.length > 0 && <span className="flex items-center gap-1 text-[var(--faint)]"><MessageSquare size={11} /> {sub.comments.length}</span>}
+              /* The four actions used to be flex children of the card row: with no shrink-0
+                 they squashed against the content on a phone and their labels printed over
+                 the badges. Content first, actions on their own measured row. */
+              <Card key={sub.id} className="p-4">
+                <div className="flex items-start gap-3">
+                  <I size={18} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{sub.item?.name} {sub.item?.version && <span className="text-xs text-[var(--faint)] font-normal">v{sub.item.version}</span>}</div>
+                    <div className="text-xs text-[var(--faint)] flex items-center gap-1.5 flex-wrap">
+                      <Badge>{sub.type}</Badge> <Badge tone="primary">{sub.item?.kind}</Badge>
+                      {sub.status && sub.status !== 'PENDING' && <Badge tone={sub.status === 'SUSPENDED' ? 'red' : sub.status === 'REJECTED' ? 'amber' : sub.status === 'PUBLISHED' ? 'green' : ''}>{sub.status}</Badge>}
+                      {sub.item?.project?.key && <span className="uppercase">{sub.item.project.key}</span>} · {sub.item?.owner?.displayName || '—'}
+                      {sub.tags?.map((tg) => <Badge key={tg} tone="amber"><Tag size={9} /> {tg}</Badge>)}
+                      {sub.comments?.length > 0 && <span className="flex items-center gap-1 text-[var(--faint)]"><MessageSquare size={11} /> {sub.comments.length}</span>}
+                    </div>
+                    {sub.reason && (sub.status === 'REJECTED' || sub.status === 'SUSPENDED') && <div className="text-[11px] text-[var(--muted)] mt-1 truncate" title={sub.reason}><b>{t('mod.reasonlabel', 'Reason')}:</b> {sub.reason}</div>}
                   </div>
-                  {sub.reason && (sub.status === 'REJECTED' || sub.status === 'SUSPENDED') && <div className="text-[11px] text-[var(--muted)] mt-1 truncate" title={sub.reason}><b>{t('mod.reasonlabel', 'Reason')}:</b> {sub.reason}</div>}
                 </div>
-                <Button size="sm" onClick={() => setReview(sub)}><Eye size={15} /> {t('mod.review', 'Review')}</Button>
-                {sub.status !== 'PUBLISHED' && <Button size="sm" variant="primary" onClick={() => approve(sub)}><CheckCircle2 size={15} /> {t('mod.approve', 'Approve')}</Button>}
-                {sub.status !== 'REJECTED' && <Button size="sm" onClick={() => reject(sub)}><XCircle size={15} /> {t('mod.reject', 'Reject')}</Button>}
-                {isAdmin && sub.status !== 'SUSPENDED' && <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => suspend(sub)}><Ban size={15} /> {t('mod.suspend', 'Suspend')}</Button>}</Card>); })}
+                <div className="mt-3">
+                  <ActionBar actions={[
+                    { key: 'review', label: t('mod.review', 'Review'), icon: Eye, onClick: () => setReview(sub) },
+                    sub.status !== 'PUBLISHED' && { key: 'approve', label: t('mod.approve', 'Approve'), icon: CheckCircle2, variant: 'primary', onClick: () => approve(sub) },
+                    sub.status !== 'REJECTED' && { key: 'reject', label: t('mod.reject', 'Reject'), icon: XCircle, onClick: () => reject(sub) },
+                    isAdmin && sub.status !== 'SUSPENDED' && { key: 'suspend', label: t('mod.suspend', 'Suspend'), icon: Ban, danger: true, onClick: () => suspend(sub) },
+                  ].filter(Boolean)} />
+                </div>
+              </Card>); })}
           </div> : <EmptyState icon={CheckCircle2} title={t('mod.empty.t', 'Queue is empty')} sub={t('mod.empty.s', 'Nothing waiting for review.')} />)}
           {review && <SubmissionReview sub={review} onClose={() => setReview(null)} onApprove={() => { approve(review); setReview(null); }} onReject={() => { reject(review); setReview(null); }} reload={subs.reload} />}
         </div>}
@@ -351,7 +362,7 @@ function AdminUsers() {
             <button key={u.id} onClick={() => setDetail(u.id)} className="w-full text-left card card-hover p-4 flex items-center gap-3">
               <Avatar user={u} size={40} />
               <div className="flex-1 min-w-0">
-                <div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge>{u.status === 'banned' ? <Badge tone="red"><Ban size={10} /> {t('au.banned', 'banned')}</Badge> : u.status === 'suspended' ? <Badge tone="amber"><Clock size={10} /> {t('au.suspended', 'suspended')}</Badge> : null}</div>
+                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{u.displayName}</span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge>{u.status === 'banned' ? <Badge tone="red"><Ban size={10} /> {t('au.banned', 'banned')}</Badge> : u.status === 'suspended' ? <Badge tone="amber"><Clock size={10} /> {t('au.suspended', 'suspended')}</Badge> : null}</div>
                 <div className="text-xs text-[var(--faint)] truncate">{u.email} · {t('au.since', 'since')} {since(u.createdAt)}</div>
                 <div className="text-xs text-[var(--faint)] mt-0.5 font-mono truncate flex items-center gap-2">
                   {u.bcId && <span className="inline-flex items-center gap-1 text-[var(--primary-2)]"><Fingerprint size={11} /> {u.bcId}</span>}
@@ -452,7 +463,7 @@ function AdminPlanUsers() {
             <button onClick={() => setExpanded(isOpen ? null : u.id)} className="w-full text-left p-4 flex items-center gap-3 hover:bg-[var(--surface-2)] transition">
               <Avatar user={u} size={40} />
               <div className="flex-1 min-w-0">
-                <div className="font-medium truncate flex items-center gap-2"><span onClick={(e) => { e.stopPropagation(); setDetail(u.id); }} className="hover:underline hover:text-[var(--primary-2)]">{u.displayName}</span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
+                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0"><span onClick={(e) => { e.stopPropagation(); setDetail(u.id); }} className="hover:underline hover:text-[var(--primary-2)]">{u.displayName}</span></span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
                 <div className="text-xs text-[var(--faint)] truncate">{u.email}</div>
               </div>
               {tab === 'paying' && (u.totalSpentCents != null || u.mrrCents > 0) && (
@@ -1706,7 +1717,7 @@ function AdminAccess({ isSuperAdmin }) {
           {results.map((u) => (
             <button key={u.id} onClick={() => pick(u)} className={`w-full text-left card p-3 flex items-center gap-3 ${picked?.id === u.id ? 'border-[var(--primary)]' : ''}`}>
               <Avatar user={u} size={32} />
-              <div className="flex-1 min-w-0"><div className="font-medium truncate flex items-center gap-2">{u.displayName} <Badge tone={roleTone(u.role)}>{u.role}</Badge>{u.canControlServer && <Badge tone="red"><Server size={9} /> {t('acc.server', 'server')}</Badge>}{u.canViewTelemetry && <Badge tone="primary"><TrendingUp size={9} /> {t('acc.telemetry', 'telemetry')}</Badge>}{u.permissions?.length > 0 && !['ADMIN', 'SUPERADMIN'].includes(u.role) && <Badge tone="amber"><Shield size={9} /> {t('acc.perms.count', '{n} perms').replace('{n}', u.permissions.length)}</Badge>}</div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
+              <div className="flex-1 min-w-0"><div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{u.displayName}</span> <Badge tone={roleTone(u.role)}>{u.role}</Badge>{u.canControlServer && <Badge tone="red"><Server size={9} /> {t('acc.server', 'server')}</Badge>}{u.canViewTelemetry && <Badge tone="primary"><TrendingUp size={9} /> {t('acc.telemetry', 'telemetry')}</Badge>}{u.permissions?.length > 0 && !['ADMIN', 'SUPERADMIN'].includes(u.role) && <Badge tone="amber"><Shield size={9} /> {t('acc.perms.count', '{n} perms').replace('{n}', u.permissions.length)}</Badge>}</div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
             </button>
           ))}
         </div> : <div className="text-sm text-[var(--faint)]">{t('acc.nousers', 'No users found.')}</div>)}
@@ -5969,23 +5980,37 @@ function AdminShowcase() {
         {projects.map((pr) => {
           const announcing = pr.announceEnabled && pr.announceRevealAt && new Date(pr.announceRevealAt) > new Date();
           return (
-          <Card key={pr.id} className="p-4 flex items-center gap-3 flex-wrap">
-            {pr.icon
-              ? <div className="grid place-items-center w-10 h-10 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] shrink-0 text-[var(--primary-2)]"><ShowcaseIcon icon={pr.icon} size={24} rounded={6} /></div>
-              : <div className="grid place-items-center w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white font-extrabold text-xs shrink-0">{pr.short}</div>}
-            <div className="flex-1 min-w-0"><div className="font-medium truncate">{pr.name} <span className="text-xs text-[var(--faint)] font-normal">/project/{pr.slug}</span></div>
-              <div className="text-xs text-[var(--faint)] flex items-center gap-1.5 flex-wrap">
-                {[pr.config?.tabs?.releases && 'releases', pr.config?.tabs?.community && 'community', pr.config?.tabs?.legal && 'legal'].filter(Boolean).join(' · ') || t('sh.overviewonly', 'overview only')}
-                {pr.pinTopbar && <span className="inline-flex items-center gap-0.5 text-[var(--primary-2)]"><Rss size={10} /> topbar</span>}
-                {pr.visibility && pr.visibility !== 'public' && <span className="inline-flex items-center gap-0.5"><EyeOff size={10} /> {pr.visibility}</span>}
-              </div></div>
-            <Badge tone={pr.published ? 'green' : ''}>{pr.published ? t('sh.published', 'published') : t('sh.hidden', 'hidden')}</Badge>
-            {announcing && <Badge tone="primary"><Megaphone size={10} /> {t('sh.countdown', 'counting down')}</Badge>}
-            {pr.scheduledAt && <Badge tone="primary"><Clock size={10} /> {t('sh.update', 'update')} {new Date(pr.scheduledAt).toLocaleDateString()}</Badge>}
-            <Button size="sm" variant="ghost" onClick={() => setScheduling(pr)} title={t('sh.schedtip', 'Schedule an update')}><Clock size={14} /></Button>
-            <Button size="sm" variant="ghost" onClick={() => setEditing(pr)}><PenSquare size={14} /> {t('sh.editbtn', 'Edit')}</Button>
-            <a href={`/project/${pr.slug}`} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost"><ArrowUpRight size={14} /></Button></a>
-            <Button size="sm" variant="ghost" onClick={() => del(pr)}><Trash2 size={14} /></Button>
+          /* Badges and four buttons used to be flex siblings of the content, which on a phone
+             squeezed the name down to an ellipsis ("S…") while they kept their width. Badges
+             now live with the name (and wrap); the actions get their own measured row. */
+          <Card key={pr.id} className="p-4">
+            <div className="flex items-start gap-3">
+              {pr.icon
+                ? <div className="grid place-items-center w-10 h-10 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] shrink-0 text-[var(--primary-2)]"><ShowcaseIcon icon={pr.icon} size={24} rounded={6} /></div>
+                : <div className="grid place-items-center w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white font-extrabold text-xs shrink-0">{pr.short}</div>}
+              <div className="flex-1 min-w-0">
+                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0">
+                  <span className="truncate min-w-0">{pr.name}</span>
+                  <span className="text-xs text-[var(--faint)] font-normal truncate min-w-0">/project/{pr.slug}</span>
+                  <Badge tone={pr.published ? 'green' : ''}>{pr.published ? t('sh.published', 'published') : t('sh.hidden', 'hidden')}</Badge>
+                  {announcing && <Badge tone="primary"><Megaphone size={10} /> {t('sh.countdown', 'counting down')}</Badge>}
+                  {pr.scheduledAt && <Badge tone="primary"><Clock size={10} /> {t('sh.update', 'update')} {new Date(pr.scheduledAt).toLocaleDateString()}</Badge>}
+                </div>
+                <div className="text-xs text-[var(--faint)] flex items-center gap-1.5 flex-wrap mt-0.5">
+                  {[pr.config?.tabs?.releases && 'releases', pr.config?.tabs?.community && 'community', pr.config?.tabs?.legal && 'legal'].filter(Boolean).join(' · ') || t('sh.overviewonly', 'overview only')}
+                  {pr.pinTopbar && <span className="inline-flex items-center gap-0.5 text-[var(--primary-2)]"><Rss size={10} /> topbar</span>}
+                  {pr.visibility && pr.visibility !== 'public' && <span className="inline-flex items-center gap-0.5"><EyeOff size={10} /> {pr.visibility}</span>}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3">
+              <ActionBar actions={[
+                { key: 'sched', label: t('sh.schedtip', 'Schedule an update'), icon: Clock, onClick: () => setScheduling(pr) },
+                { key: 'edit', label: t('sh.editbtn', 'Edit'), icon: PenSquare, onClick: () => setEditing(pr) },
+                { key: 'open', label: t('sh.openpage', 'Open page'), icon: ArrowUpRight, href: `/project/${pr.slug}`, target: '_blank' },
+                { key: 'del', label: t('common.delete', 'Delete'), icon: Trash2, danger: true, onClick: () => del(pr) },
+              ]} />
+            </div>
           </Card>
           );
         })}
@@ -6590,19 +6615,25 @@ export function OwnerCatalogs() {
       {loading ? <Loading /> : cats.length ? <div className="space-y-2">
         {cats.map((c) => (
           <Card key={c.id} className="p-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex-1 min-w-0">
-                <div className="font-medium truncate flex items-center gap-2">{c.name} <Badge tone={tone(c.status)}>{c.status}</Badge><Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
-                <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap">
-                  <span>{c.itemCount} {t('cc.items', 'items')}</span>
-                  <span className="flex items-center gap-1"><Download size={11} /> {c.downloads ?? 0}</span>
-                  <span className="flex items-center gap-1"><Eye size={11} /> {c.views ?? 0}</span>
-                  <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline">/c/{c.slug}</a>
-                </div>
+            {/* Content, then actions on their own row — the same shape as the repo cards.
+                The actions can't share a row with the title: ActionBar sizes itself from its
+                container, and next to a flex-1 sibling that container IS its content, so it
+                would measure "everything fits" at every width and never fold. */}
+            <div className="min-w-0">
+              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{c.name}</span> <Badge tone={tone(c.status)}>{c.status}</Badge><Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
+              <div className="text-xs text-[var(--faint)] flex items-center gap-2 flex-wrap mt-0.5">
+                <span>{c.itemCount} {t('cc.items', 'items')}</span>
+                <span className="flex items-center gap-1"><Download size={11} /> {c.downloads ?? 0}</span>
+                <span className="flex items-center gap-1"><Eye size={11} /> {c.views ?? 0}</span>
+                <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline truncate max-w-full">/c/{c.slug}</a>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => copyFeed(c)}><Copy size={13} /> {t('oc.feed', 'Feed URL')}</Button>
-              {c.mode === 'managed' && <Button size="sm" variant="ghost" onClick={() => setOpenId(openId === c.id ? null : c.id)}><Package size={13} /> {t('oc.items', 'Items')}</Button>}
-              <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(c)}><Trash2 size={13} /></Button>
+            </div>
+            <div className="mt-3">
+              <ActionBar actions={[
+                { key: 'feed', label: t('oc.feed', 'Feed URL'), icon: Copy, onClick: () => copyFeed(c) },
+                c.mode === 'managed' && { key: 'items', label: t('oc.items', 'Items'), icon: Package, onClick: () => setOpenId(openId === c.id ? null : c.id) },
+                { key: 'del', label: t('common.delete', 'Delete'), icon: Trash2, danger: true, onClick: () => del(c) },
+              ].filter(Boolean)} />
             </div>
             <div className="flex items-center gap-3 mt-3 pt-3 border-t border-[var(--line)] flex-wrap text-sm">
               <label className="flex items-center gap-1.5 text-[var(--muted)]">{t('oc.visibility', 'Visibility')}
@@ -6739,7 +6770,7 @@ function AdminCatalogs() {
           <Card key={c.id} className="p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <div className="flex-1 min-w-0">
               {/* Line 1: name + a couple of defining tags (status lives in the dropdown). */}
-              <div className="font-medium truncate flex items-center gap-2">{c.name} <Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
+              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{c.name}</span> <Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
               {/* Line 2: WHO — owner (→ profile) + one BMM creator id (copy) + a compact count. */}
               <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2.5 flex-wrap mt-0.5">
                 <a href={`/u/${c.ownerId}`} className="flex items-center gap-1 hover:text-[var(--primary)]" title={c.email}><Users size={11} /> {c.owner || t('cc.noname', '—')}{c.ownerRole && c.ownerRole !== 'USER' && <Badge tone={roleTone(c.ownerRole)}>{c.ownerRole}</Badge>}</a>
@@ -6866,7 +6897,7 @@ function AdminBadges() {
           <Card key={b.id} className="p-3 flex items-center gap-3 flex-wrap">
             <span className="grid place-items-center w-9 h-9 rounded-lg shrink-0" style={{ background: `color-mix(in srgb, ${b.color} 16%, transparent)` }}><BadgeIcon badge={b} size={18} /></span>
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate flex items-center gap-2">{b.name} {!b.active && <Badge tone="">{t('ab.inactive', 'inactive')}</Badge>}<Badge tone={b.grant === 'easter_egg' ? 'amber' : b.grant === 'auto' ? 'info' : ''}>{b.grant}{b.trigger ? `:${b.trigger}` : ''}</Badge></div>
+              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{b.name}</span> {!b.active && <Badge tone="">{t('ab.inactive', 'inactive')}</Badge>}<Badge tone={b.grant === 'easter_egg' ? 'amber' : b.grant === 'auto' ? 'info' : ''}>{b.grant}{b.trigger ? `:${b.trigger}` : ''}</Badge></div>
               <div className="text-xs text-[var(--faint)] truncate">{b.description || '—'} · {b.holders} {t('ab.holders', 'holders')}</div>
             </div>
             <Button size="sm" variant="ghost" onClick={() => setHoldersOf(b)}><Users size={13} /> {t('ab.grant', 'Grant')}</Button>
@@ -6981,7 +7012,7 @@ export function MyReports() {
           <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-left"><Card className="p-3 flex items-center gap-3 card-hover">
             <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--primary-2)]" /></span>
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate flex items-center gap-2">{r.targetLabel || t('mr.general', 'Support request')} <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>{r.userUnread && <Badge tone="red">{t('mr.new', 'new reply')}</Badge>}</div>
+              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{r.targetLabel || t('mr.general', 'Support request')}</span> <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>{r.userUnread && <Badge tone="red">{t('mr.new', 'new reply')}</Badge>}</div>
               <div className="text-xs text-[var(--faint)]">{t('mr.on', 'on {t}').replace('{t}', r.targetType)} · {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</div>
             </div>
           </Card></button>
@@ -7132,7 +7163,7 @@ function AdminReports() {
           <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-left"><Card className="p-3 flex items-center gap-3 card-hover">
             <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--primary-2)]" /></span>
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate flex items-center gap-2">{r.targetLabel || t('mr.general', 'Support request')} {r.staffUnread && <Badge tone="red">{t('ar.unread', 'new')}</Badge>}{r.reporterId === user?.id && <Badge tone="amber">{t('ar.yours', 'your report')}</Badge>}<Badge tone="">{r.reason || r.targetType}</Badge></div>
+              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{r.targetLabel || t('mr.general', 'Support request')}</span> {r.staffUnread && <Badge tone="red">{t('ar.unread', 'new')}</Badge>}{r.reporterId === user?.id && <Badge tone="amber">{t('ar.yours', 'your report')}</Badge>}<Badge tone="">{r.reason || r.targetType}</Badge></div>
               <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap"><span className="flex items-center gap-1"><Users size={11} /> {r.reporter}</span>{r.reporterBcId && <span className="font-mono flex items-center gap-1"><Fingerprint size={10} /> {r.reporterBcId}</span>}<span>· {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</span></div>
             </div>
           </Card></button>
