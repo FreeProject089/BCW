@@ -5292,7 +5292,7 @@ const GOAL_KINDS = [
 // Kinds that match a pageview attribute (referrer / geo / tech) rather than an interaction.
 const GOAL_DIM = { referrer: ['goal.t.ref', 'Referrer contains', 'google, reddit, t.co…'], country: ['goal.t.country', 'Country code (2 letters)', 'US, FR, DE…'], region: ['goal.t.region', 'Region contains', 'California, Île-de-France…'], city: ['goal.t.city', 'City contains', 'Paris, Berlin…'], device: ['goal.t.device', 'Device', 'desktop / mobile / tablet'], os: ['goal.t.os', 'OS contains', 'Windows, macOS, Android…'], browser: ['goal.t.browser', 'Browser contains', 'Chrome, Firefox, Safari…'] };
 function AdminGoals() {
-  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { t } = useI18n(); const toast = useToast();
   const [range, setRange] = useState('30d');
   const rq = Object.fromEntries(WV_RANGES)[range] || { days: 30 };
   const qs = rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`;
@@ -5300,6 +5300,11 @@ function AdminGoals() {
   const goals = data?.goals || [];
   const [f, setF] = useState({ name: '', kind: 'pageview', path: '', label: '', target: '' });
   const [editId, setEditId] = useState(null); const [busy, setBusy] = useState(false);
+  // Optimistic undo state: goals mid-add (temp client ids) and mid-delete (real ids
+  // hidden during the undo window). The real POST/DELETE is deferred to the toast's
+  // onCommit; onCancel just drops the optimistic change. Restores immediately either way.
+  const [pendingAdd, setPendingAdd] = useState([]);
+  const [pendingDel, setPendingDel] = useState(() => new Set());
   const reset = () => { setF({ name: '', kind: 'pageview', path: '', label: '', target: '' }); setEditId(null); };
   // A sensible default name from what the goal targets, so the admin rarely has to type one.
   const autoName = () => {
@@ -5311,13 +5316,46 @@ function AdminGoals() {
   const save = async () => {
     // Auto-name if the admin left it blank — one less field to think about.
     const name = f.name.trim() || autoName();
-    setBusy(true);
     const payload = { name, kind: f.kind, path: f.path.trim() || null, label: f.kind === 'pageview' ? null : (f.label.trim() || null), target: f.target === '' ? null : Math.max(0, Number(f.target) || 0) };
-    try { if (editId) await api.patch(`/admin/analytics/goals/${editId}`, payload); else await api.post('/admin/analytics/goals', payload); toast.success(editId ? t('goal.saved', 'Goal saved.') : t('goal.added', 'Goal added.')); reset(); reload(); }
-    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+    // Editing an existing goal stays immediate (it's not an add/remove).
+    if (editId) {
+      setBusy(true);
+      try { await api.patch(`/admin/analytics/goals/${editId}`, payload); toast.success(t('goal.saved', 'Goal saved.')); reset(); reload(); }
+      catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+      return;
+    }
+    // Adding: show the new goal optimistically, defer the POST behind an undo window.
+    const tmpId = 'tmp-' + Math.random().toString(36).slice(2);
+    const draft = { id: tmpId, name, kind: payload.kind, path: payload.path, label: payload.label, target: payload.target, completions: 0, visitors: 0, rate: 0, progress: 0, _pending: true };
+    setPendingAdd((a) => [draft, ...a]);
+    reset();
+    toast.action({
+      tone: 'success', msg: t('goal.added', 'Goal added.'), cancelLabel: t('common.undo', 'Undo'),
+      onCommit: async () => {
+        try { await api.post('/admin/analytics/goals', payload); }
+        catch { toast.error(t('common.failed', 'Failed.')); }
+        finally { setPendingAdd((a) => a.filter((x) => x.id !== tmpId)); reload(); }
+      },
+      onCancel: () => setPendingAdd((a) => a.filter((x) => x.id !== tmpId)),
+    });
   };
   const edit = (g) => { setEditId(g.id); setF({ name: g.name, kind: g.kind, path: g.path || '', label: g.label || '', target: g.target ?? '' }); };
-  const del = async (g) => { if (!(await dialog.confirm({ title: t('goal.del', 'Delete goal?'), message: g.name, okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/admin/analytics/goals/${g.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  // Deleting: hide it immediately and defer the DELETE behind an undo window — the undo
+  // replaces the old confirm dialog (Undo is the safety net now).
+  const del = (g) => {
+    setPendingDel((s) => new Set(s).add(g.id));
+    toast.action({
+      tone: 'info', msg: t('goal.deleted', 'Goal deleted.'), cancelLabel: t('common.undo', 'Undo'),
+      onCommit: async () => {
+        try { await api.del(`/admin/analytics/goals/${g.id}`); }
+        catch { toast.error(t('common.failed', 'Failed.')); }
+        finally { setPendingDel((s) => { const n = new Set(s); n.delete(g.id); return n; }); reload(); }
+      },
+      onCancel: () => setPendingDel((s) => { const n = new Set(s); n.delete(g.id); return n; }),
+    });
+  };
+  // Displayed list = optimistic adds on top, minus anything mid-delete.
+  const shown = [...pendingAdd, ...goals.filter((g) => !pendingDel.has(g.id))];
   const kindLabel = (k) => { const x = GOAL_KINDS.find((g) => g[0] === k); return x ? t(x[1], x[2]) : k; };
   return (
     <div>
@@ -5356,9 +5394,9 @@ function AdminGoals() {
         </div>
       </Card>
 
-      {loading ? <Loading /> : goals.length ? <div className="space-y-2">
-        {goals.map((g) => (
-          <Card key={g.id} className="p-4">
+      {loading ? <Loading /> : shown.length ? <div className="space-y-2">
+        {shown.map((g) => (
+          <Card key={g.id} className={`p-4 ${g._pending ? 'opacity-60' : ''}`}>
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex-1 min-w-[160px]">
                 <div className="font-medium flex items-center gap-2">{g.name} <Badge tone="">{kindLabel(g.kind)}</Badge></div>
@@ -5368,8 +5406,12 @@ function AdminGoals() {
               <div className="text-center px-3"><div className="text-lg font-bold tabular-nums">{g.visitors}</div><div className="text-[10px] text-[var(--faint)] uppercase">{t('goal.visitors', 'visitors')}</div></div>
               <div className="text-center px-3 min-w-[90px]"><div className="text-lg font-bold tabular-nums text-[var(--primary-2)]">{g.rate}%</div><div className="text-[10px] text-[var(--faint)] uppercase">{t('goal.rate', 'conv. rate')}</div></div>
               <div className="flex gap-1">
-                <button onClick={() => edit(g)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-[var(--primary-2)] hover:bg-[var(--surface-2)]"><PenSquare size={15} /></button>
-                <button onClick={() => del(g)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-red-400 hover:bg-[var(--surface-2)]"><Trash2 size={15} /></button>
+                {g._pending
+                  ? <span className="text-[10px] uppercase tracking-wide text-[var(--faint)] px-1.5 py-1">{t('goal.pending', 'saving…')}</span>
+                  : <>
+                      <button onClick={() => edit(g)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-[var(--primary-2)] hover:bg-[var(--surface-2)]"><PenSquare size={15} /></button>
+                      <button onClick={() => del(g)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-red-400 hover:bg-[var(--surface-2)]"><Trash2 size={15} /></button>
+                    </>}
               </div>
             </div>
             <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-3"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${Math.min(100, g.rate)}%` }} /></div>
