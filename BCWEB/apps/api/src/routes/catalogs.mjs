@@ -106,11 +106,25 @@ const acctEntry = z.object({ type: z.enum(['bcweb', 'discord', 'creator']), id: 
 const accessList = z.object({ ips: z.array(z.string().max(64)).max(500).optional(), keys: z.array(z.string().max(120)).max(500).optional(), accounts: z.array(acctEntry).max(500).optional() });
 const accessSchema = accessList.extend({ bans: accessList.optional() });
 
+// How many things is this catalog offering? The two modes store that in different places, so
+// asking Prisma for `_count.items` only answers it for one of them: a `raw` catalog's content
+// lives in its rawJson feed, and the item-create route refuses anything that isn't `managed`
+// — so its `items` relation is structurally empty. Counting it reported "0 items" for a raw
+// catalog holding fifty plugins, on the public browse page and its own dashboard alike.
+const RAW_FEED_ARRAYS = ['plugins', 'themes', 'apps'];
+const rawFeedCount = (j) => (j && typeof j === 'object' && !Array.isArray(j)
+  ? RAW_FEED_ARRAYS.reduce((n, k) => n + (Array.isArray(j[k]) ? j[k].length : 0), 0)
+  : 0);
+// Needs `mode`, and either `_count.items` (managed) or `rawJson` (raw) — every caller uses
+// `include`, which returns all scalars, so rawJson is already there; the one caller with an
+// explicit `select` asks for it too.
+export const catalogItemCount = (c) => (c.mode === 'raw' ? rawFeedCount(c.rawJson) : (c._count?.items ?? 0));
+
 const ser = (c) => ({
   id: c.id, name: c.name, slug: c.slug, description: c.description, kinds: c.kinds, mode: c.mode,
   status: c.status, visibility: c.visibility, listed: c.listed, shareKey: c.shareKey,
   groupId: c.groupId, storageQuotaBytes: Number(c.storageQuotaBytes || 0n), storageUsedBytes: Number(c.storageUsedBytes || 0n),
-  views: c.views, downloads: c.downloads, itemCount: c._count?.items, createdAt: c.createdAt, updatedAt: c.updatedAt,
+  views: c.views, downloads: c.downloads, itemCount: catalogItemCount(c), createdAt: c.createdAt, updatedAt: c.updatedAt,
 });
 
 export default async function communityCatalogRoutes(app) {
@@ -183,7 +197,9 @@ export default async function communityCatalogRoutes(app) {
       }),
       p.catalogFavorite.findMany({
         where: { userId: uid }, orderBy: { createdAt: 'desc' },
-        include: { catalog: { select: { id: true, slug: true, name: true, description: true, mode: true, status: true, listed: true, visibility: true, ownerId: true, owner: { select: { displayName: true } }, _count: { select: { items: true } } } } },
+        // rawJson is selected for catalogItemCount(): a raw catalog counts its feed, not its
+        // (always empty) items relation. This list is a user's own favourites, so it's short.
+        include: { catalog: { select: { id: true, slug: true, name: true, description: true, mode: true, rawJson: true, status: true, listed: true, visibility: true, ownerId: true, owner: { select: { displayName: true } }, _count: { select: { items: true } } } } },
       }),
     ]);
     const repos = repoFavs.map((f) => f.repo).filter(Boolean)
@@ -191,7 +207,7 @@ export default async function communityCatalogRoutes(app) {
       .map((r) => ({ id: r.id, name: r.name, description: r.description || '', category: r.category, hosted: r.hosted, status: r.status, author: r.owner?.displayName || null, url: `/r/${r.id}` }));
     const catalogs = catFavs.map((f) => f.catalog).filter(Boolean)
       .filter((c) => (c.status !== 'SUSPENDED' && c.listed && c.visibility === 'public') || c.ownerId === uid)
-      .map((c) => ({ id: c.id, slug: c.slug, name: c.name, description: c.description || '', mode: c.mode, itemCount: c._count.items, author: c.owner?.displayName || null, url: `/c/${c.slug}` }));
+      .map((c) => ({ id: c.id, slug: c.slug, name: c.name, description: c.description || '', mode: c.mode, itemCount: catalogItemCount(c), author: c.owner?.displayName || null, url: `/c/${c.slug}` }));
     return { repos, catalogs, total: repos.length + catalogs.length };
   });
 
