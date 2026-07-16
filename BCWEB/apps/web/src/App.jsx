@@ -13,6 +13,7 @@ import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
 import { trackPageview, initVitals, initInteractions, initErrors } from './lib/analytics.js';
 import { loadGtmIfConsented } from './lib/gtm.js';
 import { getOrbTransitionPref } from './lib/prefs.js';
+import { ADMIN_TIER_ROLES, canAdmin, utilAllowed } from './lib/roles.js';
 import CookieConsent from './ui/CookieConsent.jsx';
 import PromoBadge from './ui/promo-badge.jsx';
 import EventEffect from './hero/event-effect.jsx';
@@ -385,18 +386,21 @@ function Nav() {
   const orderIn = (list) => [...list].sort((a, b) => (uCfg[a]?.order ?? list.indexOf(a)) - (uCfg[b]?.order ?? list.indexOf(b)));
   const clusterA = orderIn(UTIL_A);
   const clusterB = orderIn(UTIL_B);
+  // The auth/staff precondition is applied once, from the shared rule the Live preview
+  // also uses — never re-tested per case below.
   const utilNode = (k) => {
+    if (!utilAllowed(k, user)) return null;
     switch (k) {
-      case 'notifications': return user ? <NavNotifications key="u-notif" /> : null;
+      case 'notifications': return <NavNotifications key="u-notif" />;
       case 'projects': return <NavLink key="u-proj" to="/projects" className={({ isActive }) => `hidden sm:inline-flex nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}><Boxes size={16} /></NavLink>;
       case 'lang': return <LangToggle key="u-lang" />;
       case 'theme': return <ThemeToggle key="u-theme" />;
       case 'settings': return <NavLink key="u-set" to="/settings" className={({ isActive }) => `nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.settings', 'Settings')} aria-label="Settings"><SettingsIcon size={16} /></NavLink>;
-      case 'dashboard': return user ? <NavLink key="u-dash" to="/dashboard" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.dashboard')} aria-label={t('nav.dashboard')}><LayoutDashboard size={15} /></NavLink> : null;
-      case 'admin': return user && canAdmin(user) ? <NavLink key="u-adm" to="/admin" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.admin')} aria-label={t('nav.admin')}><Shield size={15} /></NavLink> : null;
-      case 'profile': return user ? <Link key="u-prof" to="/profile" className="rounded-full p-0.5 hover:ring-2 hover:ring-[var(--line-strong)] transition" title={user.displayName}><Avatar user={user} size={28} /></Link> : null;
-      case 'logout': return user ? <Button key="u-out" variant="ghost" size="sm" onClick={logout} title={t('nav.signout')}><LogOut size={15} /></Button> : null;
-      case 'login': return !user ? <Link key="u-login" to="/auth"><Button variant="primary" size="sm" className="whitespace-nowrap rounded-full">{t('nav.signin')}</Button></Link> : null;
+      case 'dashboard': return <NavLink key="u-dash" to="/dashboard" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.dashboard')} aria-label={t('nav.dashboard')}><LayoutDashboard size={15} /></NavLink>;
+      case 'admin': return <NavLink key="u-adm" to="/admin" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.admin')} aria-label={t('nav.admin')}><Shield size={15} /></NavLink>;
+      case 'profile': return <Link key="u-prof" to="/profile" className="rounded-full p-0.5 hover:ring-2 hover:ring-[var(--line-strong)] transition" title={user.displayName}><Avatar user={user} size={28} /></Link>;
+      case 'logout': return <Button key="u-out" variant="ghost" size="sm" onClick={logout} title={t('nav.signout')}><LogOut size={15} /></Button>;
+      case 'login': return <Link key="u-login" to="/auth"><Button variant="primary" size="sm" className="whitespace-nowrap rounded-full">{t('nav.signin')}</Button></Link>;
       default: return null;
     }
   };
@@ -643,16 +647,12 @@ function Footer() {
   );
 }
 
-const ADMIN_TIER_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
-
-// May this user reach the admin dashboard at all? True for the staff roles, and also
-// for a plain user who has been granted at least one capability (manage_repos, etc.) —
-// the dashboard then shows only the sections their capabilities unlock. The API enforces
-// each action independently via requireCap(), so this only governs surface visibility.
-function canAdmin(user) {
-  if (!user) return false;
-  return ADMIN_TIER_ROLES.includes(user.role) || (user.permissions?.length > 0);
-}
+// canAdmin / ADMIN_TIER_ROLES now live in lib/roles.js — the admin's topbar Live preview
+// has to apply the same rules, and keeping a second copy here is what let the two drift.
+// (May this user reach the admin dashboard at all? True for the staff roles, and also for
+// a plain user granted at least one capability — the dashboard then shows only what their
+// capabilities unlock. The API enforces each action via requireCap(), so this only governs
+// surface visibility.)
 
 function Protected({ children, role }) {
   const { t } = useI18n();

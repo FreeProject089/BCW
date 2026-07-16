@@ -13,6 +13,7 @@ import { KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
 import Avatar from '../ui/Avatar.jsx';
 import { useAuth } from './auth.jsx';
+import { utilAllowed } from '../lib/roles.js';
 import { useI18n } from '../i18n.jsx';
 import { rawStatusLabel, DotDropdown } from './repos.jsx';
 import { AdminRepos, AdminPools } from './repos-admin.jsx';
@@ -6270,21 +6271,52 @@ const pvLabel = (it, lang) => (lang === 'fr' && it.labelFr ? it.labelFr : (it.la
 // = the hamburger sheet (tap a group to expand, tap the phone to reveal the sheet).
 function NavPreview({ items, lang, device, onEdit, utility = {} }) {
   const { t } = useI18n();
+  const { user } = useAuth();
   const [openIdx, setOpenIdx] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // The desktop preview must LOOK like a desktop: it renders at a real desktop width and is
+  // scaled down to whatever room it has. Letting it reflow into the admin column (or worse, a
+  // phone) is what made it "buggy" — it wrapped into a stack of pills, i.e. a preview of a
+  // layout the desktop topbar never actually produces.
+  const DESKTOP_W = 1120;
+  const fitRef = useRef(null);
+  const barRef = useRef(null);
+  const [fit, setFit] = useState({ scale: 1, h: 0 });
+  useEffect(() => {
+    if (device === 'mobile') return undefined;
+    const wrap = fitRef.current, bar = barRef.current;
+    if (!wrap || !bar) return undefined;
+    const compute = () => {
+      const w = wrap.getBoundingClientRect().width;
+      if (!w) return;
+      const s = Math.min(1, w / DESKTOP_W);
+      // Reserve the SCALED height: a transform doesn't change layout size, so without this
+      // the wrapper keeps the full unscaled height and leaves a gap under the bar.
+      setFit({ scale: s, h: bar.offsetHeight * s });
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [device, items, utility]);
   // Keep each valid item's ORIGINAL index so clicking it in the preview can jump to the
   // matching editor card (onEdit). Filter mirrors the server's accept rules.
   const valid = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.type === 'group' ? (it.label.trim() && it.children.some((c) => c.label.trim() && c.to.trim().startsWith('/'))) : (it.label.trim() && it.to.trim().startsWith('/')));
   const pillCls = (active) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition ${active ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
-  // Which built-in utility buttons are shown, in configured order (mirrors App.jsx).
-  const uOn = (k) => utility[k]?.visible !== false;
+  // Which built-in utility buttons are shown, in configured order. The precondition comes
+  // from the SAME shared rule the real topbar uses (lib/roles.js) — re-deriving it here is
+  // what made the preview lie: it drew "Log out" and "Sign in" at once, and offered
+  // Dashboard/Admin/Profile to a signed-out viewer.
+  const uOn = (k) => utility[k]?.visible !== false && utilAllowed(k, user);
   const ordU = (list) => [...list].filter(uOn).sort((a, b) => (utility[a]?.order ?? list.indexOf(a)) - (utility[b]?.order ?? list.indexOf(b)));
   const clusterA = ordU(UTIL_A_KEYS), clusterB = ordU(UTIL_B_KEYS);
 
   if (device === 'mobile') {
     // Faithful to the real phone topbar: logo + name + the always-visible cluster-A
     // icons + avatar + hamburger; the sheet lists the nav items then the account items.
-    const sheetAccount = ['projects', 'settings', ...UTIL_B_KEYS].filter((k) => uOn(k) && k !== 'login');
+    // No 'login' special-case any more: uOn() now carries the real precondition, which
+    // already excludes it for a signed-in viewer (and keeps it for a signed-out one).
+    const sheetAccount = ['projects', 'settings', ...UTIL_B_KEYS].filter(uOn);
     return (
       <div className="mx-auto w-[320px] rounded-[2rem] border-4 border-[var(--line-strong)] bg-[var(--bg)] p-2.5 shadow-lg">
         <div className="rounded-2xl border border-[var(--line)] px-2 h-12 flex items-center gap-1 topbar bg-[var(--bg-solid)]">
@@ -6314,9 +6346,13 @@ function NavPreview({ items, lang, device, onEdit, utility = {} }) {
   // preview" on desktop. The chevron still toggles a group's dropdown independently.
   const jump = (idx) => onEdit && onEdit(idx);
   return (
-    // overflow-visible (not overflow-x-auto): an auto overflow-x also clips overflow-y,
-    // which used to hide the group dropdown that hangs below the bar. Wrap instead.
-    <div className="rounded-2xl border border-[var(--line)] px-3 py-2 min-h-14 flex items-center gap-1 flex-wrap topbar bg-[var(--bg-solid)]">
+    // The bar is laid out at DESKTOP_W and scaled to fit; the wrapper reserves the scaled
+    // height. Overflow stays visible (not overflow-x-auto): an auto overflow-x also clips
+    // overflow-y, which used to hide the group dropdown hanging below the bar. Scaling down
+    // never overflows horizontally, so nothing needs clipping.
+    <div ref={fitRef} style={{ height: fit.h || undefined }}>
+    <div ref={barRef} style={{ width: DESKTOP_W, transform: `scale(${fit.scale})`, transformOrigin: 'top left' }}
+      className="rounded-2xl border border-[var(--line)] px-3 py-2 min-h-14 flex items-center gap-1 topbar bg-[var(--bg-solid)]">
       <img src="/logo.png" alt="" className="w-8 h-8 rounded-lg shrink-0" />
       <span className="font-bold text-sm mr-2 shrink-0">BetterCommunity</span>
       <div className="flex items-center gap-1 flex-wrap bg-[var(--surface-2)] rounded-full p-0.5">
@@ -6345,6 +6381,7 @@ function NavPreview({ items, lang, device, onEdit, utility = {} }) {
           ? <span key={k} className="w-6 h-6 rounded-full bg-[var(--surface-2)] border border-[var(--line)]" title={t('nav.util.profile', 'Profile')} />
           : <span key={k} className="p-1.5" title={t('nav.util.' + k, UTIL_LABEL[k])}><NavPvIcon name={UTIL_ICON[k]} size={16} /></span>)}
       </div>
+    </div>
     </div>
   );
 }
