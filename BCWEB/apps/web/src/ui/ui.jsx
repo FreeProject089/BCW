@@ -279,7 +279,10 @@ export function EmptyState({ icon: Icon, title, sub, children }) {
       {Icon && <Icon size={32} className="mx-auto text-[var(--faint)] mb-3" />}
       <div className="font-semibold">{title}</div>
       {sub && <div className="text-sm text-[var(--muted)] mt-1">{sub}</div>}
-      {children && <div className="mt-4">{children}</div>}
+      {/* Center the action row explicitly: the card's `text-center` only centers inline
+          content, so a caller passing a flex row (two buttons side by side) got them
+          left-aligned under centered text. */}
+      {children && <div className="mt-4 flex flex-wrap justify-center gap-2">{children}</div>}
     </Card>
   );
 }

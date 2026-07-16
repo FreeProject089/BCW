@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar,
+  Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -29,17 +29,36 @@ export function Admin() {
   const [modQ, setModQ] = useState(''); const [modQApplied, setModQApplied] = useState('');
   const [modSort, setModSort] = useState('oldest'); const [modKind, setModKind] = useState(''); const [modType, setModType] = useState(''); const [modStatus, setModStatus] = useState('PENDING');
   const subs = useAsync(() => api.get(`/mod/submissions?q=${encodeURIComponent(modQApplied)}&sort=${modSort}&kind=${modKind}&type=${modType}&status=${modStatus}`), [modQApplied, modSort, modKind, modType, modStatus]);
-  const approve = async (s) => { try { await api.post(`/mod/submissions/${s.id}/approve`); toast.success(t('mod.approved', 'Approved "{name}".').replace('{name}', s.item?.name)); subs.reload(); } catch { toast.error(t('mod.failed', 'Failed.')); } };
+  // Moderating notifies the author (and suspend blocks resubmission), so every verdict gets
+  // an undo window. The API call is DEFERRED, not reversed: the card hides immediately, and
+  // nothing is sent — no mail, no state change — unless the window elapses. Undo means the
+  // author never knew.
+  const [modPending, setModPending] = useState(new Set()); // ids hidden during their window
+  const unhideSub = (id) => setModPending((s) => { const n = new Set(s); n.delete(id); return n; });
+  const modVerdict = (s, url, body, msg) => {
+    setModPending((p) => new Set(p).add(s.id));
+    setReview((r) => (r?.id === s.id ? null : r)); // close the review modal if it's this one
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'), msg,
+      onCommit: async () => {
+        try { await api.post(url, body); subs.reload(); }
+        catch { toast.error(t('mod.failed', 'Failed.')); }
+        finally { unhideSub(s.id); } // reload() drops it from the list when it really applied
+      },
+      onCancel: () => unhideSub(s.id),
+    });
+  };
+  const approve = (s) => modVerdict(s, `/mod/submissions/${s.id}/approve`, undefined, t('mod.approved', 'Approved "{name}".').replace('{name}', s.item?.name));
   const reject = async (s) => {
     const reason = await dialog.prompt({ title: t('mod.reject.title', 'Reject submission'), label: t('mod.reject.label', 'Reason (sent to the author)'), placeholder: t('mod.reject.ph', 'Why is this rejected?'), okLabel: t('mod.reject.ok', 'Reject'), danger: true });
     if (!reason) return;
-    try { await api.post(`/mod/submissions/${s.id}/reject`, { reason }); toast.success(t('mod.rejected', 'Rejected and author notified.')); subs.reload(); } catch { toast.error(t('mod.failed', 'Failed.')); }
+    modVerdict(s, `/mod/submissions/${s.id}/reject`, { reason }, t('mod.rejected', 'Rejected and author notified.'));
   };
   // Suspend (ADMIN): harsher than reject — the owner can't resubmit. Reversible via approve/reject.
   const suspend = async (s) => {
     const reason = await dialog.prompt({ title: t('mod.suspend.title', 'Suspend submission'), label: t('mod.suspend.label', 'Reason (sent to the author)'), placeholder: t('mod.suspend.ph', "Why is this suspended? The author can't resubmit."), okLabel: t('mod.suspend.ok', 'Suspend'), danger: true });
     if (!reason) return;
-    try { await api.post(`/mod/submissions/${s.id}/suspend`, { reason }); toast.success(t('mod.suspended2', 'Suspended — the author can no longer resubmit.')); subs.reload(); } catch { toast.error(t('mod.failed', 'Failed.')); }
+    modVerdict(s, `/mod/submissions/${s.id}/suspend`, { reason }, t('mod.suspended2', 'Suspended — the author can no longer resubmit.'));
   };
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPERADMIN';
   const isSuperAdmin = user?.role === 'SUPERADMIN';
@@ -48,7 +67,7 @@ export function Admin() {
   // the capabilities MODs hold by default (users/repos) — mirrors the server's requireCap.
   const caps = user?.permissions || [];
   const can = (c) => isAdmin || caps.includes(c) || (isMod && ['manage_users', 'manage_repos'].includes(c));
-  const queue = subs.data?.submissions || [];
+  const queue = (subs.data?.submissions || []).filter((s) => !modPending.has(s.id));
   const [review, setReview] = useState(null);
   const raw = [
     { heading: t('adm.h.moderation', 'Moderation') },
@@ -2241,48 +2260,62 @@ function UserModerationCard({ user, onChange }) {
   const [form, setForm] = useState(null); // { action:'suspend'|'ban' } when composing
   const [dur, setDur] = useState('24h');
   const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
+  // No `busy` state any more: the verdict is deferred behind the undo window, so there is
+  // no in-flight request to spin on — `pending` is what the buttons gate on instead.
   // Moderation hierarchy (mirrors the API): you can act only on someone strictly below
   // your own rank, and only ADMIN+ may ban — a MOD can suspend users but never ban.
   const myRank = MOD_RANK[me?.role] ?? 0;
   const targetRank = MOD_RANK[user.role] ?? 0;
   const canModerate = myRank > targetRank;
   const canBan = me?.role === 'ADMIN' || me?.role === 'SUPERADMIN';
-  const locked = user.status && user.status !== 'active';
-  const submit = async () => {
-    setBusy(true);
-    try {
-      const d = MOD_DURATIONS.find((x) => x.key === dur);
-      const body = { action: form.action, reason: reason.trim() || undefined };
-      if (d && d.hours > 0) body.durationHours = d.hours;
-      const r = await api.post(`/admin/users/${user.id}/moderate`, body);
-      toast.success(form.action === 'ban' ? t('mod.banned', 'Account banned.') : t('mod.suspended', 'Account suspended.'));
-      setForm(null); setReason(''); onChange?.(r);
-    } catch (x) { toast.error(
-      x.data?.error === 'cannot_moderate_higher' ? t('mod.higher', "You can only moderate accounts below your own level.")
-      : x.data?.error === 'mod_cannot_ban' ? t('mod.nobanperm', 'Moderators can suspend but not ban.')
-      : x.data?.error === 'cannot_moderate_self' ? t('mod.self', "You can't moderate your own account.")
-      : t('common.failed', 'Failed.')); }
-    finally { setBusy(false); }
+  // Banning/suspending emails the person and locks them out; reactivating lets them back in.
+  // Each gets an undo window, and like everywhere else the call is DEFERRED rather than
+  // reversed — undo means no mail was sent and no state ever changed. `pending` holds the
+  // status we're about to apply so the card agrees with the toast during the window (it
+  // would otherwise still read "active" while the toast says "banned").
+  const [pending, setPending] = useState(null); // 'banned' | 'suspended' | 'active'
+  const status = pending || user.status || 'active';
+  const locked = status !== 'active';
+  const moderate = (body, nextStatus, msg) => {
+    setPending(nextStatus);
+    setForm(null); setReason('');
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'), msg,
+      onCommit: async () => {
+        try { const r = await api.post(`/admin/users/${user.id}/moderate`, body); onChange?.(r); }
+        catch (x) {
+          toast.error(
+            x.data?.error === 'cannot_moderate_higher' ? t('mod.higher', "You can only moderate accounts below your own level.")
+            : x.data?.error === 'mod_cannot_ban' ? t('mod.nobanperm', 'Moderators can suspend but not ban.')
+            : x.data?.error === 'cannot_moderate_self' ? t('mod.self', "You can't moderate your own account.")
+            : t('common.failed', 'Failed.'));
+        }
+        finally { setPending(null); } // onChange refetches; the real status takes over
+      },
+      onCancel: () => setPending(null),
+    });
   };
-  const reactivate = async () => {
-    setBusy(true);
-    try { const r = await api.post(`/admin/users/${user.id}/moderate`, { action: 'reactivate' }); toast.success(t('mod.reactivated', 'Account reactivated.')); onChange?.(r); }
-    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  const submit = () => {
+    const d = MOD_DURATIONS.find((x) => x.key === dur);
+    const body = { action: form.action, reason: reason.trim() || undefined };
+    if (d && d.hours > 0) body.durationHours = d.hours;
+    moderate(body, form.action === 'ban' ? 'banned' : 'suspended',
+      form.action === 'ban' ? t('mod.banned', 'Account banned.') : t('mod.suspended', 'Account suspended.'));
   };
+  const reactivate = () => moderate({ action: 'reactivate' }, 'active', t('mod.reactivated', 'Account reactivated.'));
   return (
     <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Ban size={12} /> {t('mod.title', 'Account moderation')}</div>
-        <Badge tone={user.status === 'banned' ? 'red' : user.status === 'suspended' ? 'amber' : 'green'}>{user.status || 'active'}</Badge>
+        <Badge tone={status === 'banned' ? 'red' : status === 'suspended' ? 'amber' : 'green'}>{status}</Badge>
       </div>
       {!canModerate ? (
         <div className="text-sm text-[var(--faint)] mt-2">{t('mod.higher', 'You can only moderate accounts below your own level.')}</div>
       ) : locked ? (
         <div className="mt-2">
-          <div className="text-sm">{user.status === 'banned' ? t('mod.isbanned', 'This account is banned') : t('mod.issusp', 'This account is suspended')} {user.moderationUntil ? t('mod.until', 'until {d}').replace('{d}', new Date(user.moderationUntil).toLocaleString()) : t('mod.permlabel', '(permanent)')}.</div>
+          <div className="text-sm">{status === 'banned' ? t('mod.isbanned', 'This account is banned') : t('mod.issusp', 'This account is suspended')} {user.moderationUntil ? t('mod.until', 'until {d}').replace('{d}', new Date(user.moderationUntil).toLocaleString()) : t('mod.permlabel', '(permanent)')}.</div>
           {user.moderationReason && <div className="text-xs text-[var(--muted)] mt-1"><b>{t('lock.reason', 'Reason')}:</b> {user.moderationReason}</div>}
-          <Button size="sm" variant="primary" className="mt-2" disabled={busy} onClick={reactivate}>{busy ? <Spinner /> : <><CheckCircle2 size={14} /> {t('mod.reactivate', 'Reactivate account')}</>}</Button>
+          <Button size="sm" variant="primary" className="mt-2" disabled={!!pending} onClick={reactivate}><CheckCircle2 size={14} /> {t('mod.reactivate', 'Reactivate account')}</Button>
         </div>
       ) : form ? (
         <div className="mt-2 space-y-2">
@@ -2295,7 +2328,7 @@ function UserModerationCard({ user, onChange }) {
           </div>
           <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('mod.reasonph', 'Reason — shown to the user and emailed to them…')} rows={2} />
           <div className="flex gap-2">
-            <Button size="sm" variant="primary" className={form.action === 'ban' ? '!bg-red-500 hover:!bg-red-600' : ''} disabled={busy} onClick={submit}>{busy ? <Spinner /> : (form.action === 'ban' ? t('mod.confirmban', 'Ban account') : t('mod.confirmsusp', 'Suspend account'))}</Button>
+            <Button size="sm" variant="primary" className={form.action === 'ban' ? '!bg-red-500 hover:!bg-red-600' : ''} disabled={!!pending} onClick={submit}>{form.action === 'ban' ? t('mod.confirmban', 'Ban account') : t('mod.confirmsusp', 'Suspend account')}</Button>
             <Button size="sm" variant="ghost" onClick={() => setForm(null)}>{t('su.cancel', 'Cancel')}</Button>
           </div>
         </div>
@@ -6284,13 +6317,21 @@ function NavPreview({ items, lang, device, onEdit, utility = {} }) {
   const [openIdx, setOpenIdx] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   // The desktop preview must LOOK like a desktop: it renders at a real desktop width and is
-  // scaled down to whatever room it has. Letting it reflow into the admin column (or worse, a
+  // scaled to whatever room it has. Letting it reflow into the admin column (or worse, a
   // phone) is what made it "buggy" — it wrapped into a stack of pills, i.e. a preview of a
   // layout the desktop topbar never actually produces.
+  //
+  // Fit-to-width alone isn't enough though: on a phone that's ~0.26, a 15px-tall sliver you
+  // can't read. So fit is only the BASELINE — `zoom` multiplies it, and once the result is
+  // wider than the container the wrapper pans horizontally. Zoom 1 always means "the whole
+  // bar, exactly fitted", whatever the screen.
   const DESKTOP_W = 1120;
+  const ZOOM_MIN = 1, ZOOM_MAX = 6;
   const fitRef = useRef(null);
   const barRef = useRef(null);
-  const [fit, setFit] = useState({ scale: 1, h: 0 });
+  const [fit, setFit] = useState({ base: 1, h: 0 });
+  const [zoom, setZoom] = useState(1);
+  const scale = fit.base * zoom;
   useEffect(() => {
     if (device === 'mobile') return undefined;
     const wrap = fitRef.current, bar = barRef.current;
@@ -6298,16 +6339,18 @@ function NavPreview({ items, lang, device, onEdit, utility = {} }) {
     const compute = () => {
       const w = wrap.getBoundingClientRect().width;
       if (!w) return;
-      const s = Math.min(1, w / DESKTOP_W);
+      const base = Math.min(1, w / DESKTOP_W);
       // Reserve the SCALED height: a transform doesn't change layout size, so without this
       // the wrapper keeps the full unscaled height and leaves a gap under the bar.
-      setFit({ scale: s, h: bar.offsetHeight * s });
+      setFit({ base, h: bar.offsetHeight * base });
     };
     compute();
     const ro = new ResizeObserver(compute);
     ro.observe(wrap);
     return () => ro.disconnect();
   }, [device, items, utility]);
+  // Height follows the zoom too, else zooming in would overlap whatever sits below.
+  const boxH = fit.h ? fit.h * zoom : undefined;
   // Keep each valid item's ORIGINAL index so clicking it in the preview can jump to the
   // matching editor card (onEdit). Filter mirrors the server's accept rules.
   const valid = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.type === 'group' ? (it.label.trim() && it.children.some((c) => c.label.trim() && c.to.trim().startsWith('/'))) : (it.label.trim() && it.to.trim().startsWith('/')));
@@ -6354,13 +6397,28 @@ function NavPreview({ items, lang, device, onEdit, utility = {} }) {
   // Clicking an item jumps to (and flashes) its editor card — "edit from the live
   // preview" on desktop. The chevron still toggles a group's dropdown independently.
   const jump = (idx) => onEdit && onEdit(idx);
+  const zoomPct = Math.round(scale * 100);
   return (
-    // The bar is laid out at DESKTOP_W and scaled to fit; the wrapper reserves the scaled
-    // height. Overflow stays visible (not overflow-x-auto): an auto overflow-x also clips
-    // overflow-y, which used to hide the group dropdown hanging below the bar. Scaling down
-    // never overflows horizontally, so nothing needs clipping.
-    <div ref={fitRef} style={{ height: fit.h || undefined }}>
-    <div ref={barRef} style={{ width: DESKTOP_W, transform: `scale(${fit.scale})`, transformOrigin: 'top left' }}
+    <>
+    {/* Zoom controls. At zoom 1 the whole bar is fitted; above it, the row below pans. */}
+    <div className="flex items-center justify-end gap-1.5 mb-1.5">
+      <Button size="sm" variant="ghost" disabled={zoom <= ZOOM_MIN} title={t('nav.pv.zoomout', 'Zoom out')}
+        onClick={() => setZoom((z) => Math.max(ZOOM_MIN, +(z - 0.5).toFixed(2)))}><Minus size={13} /></Button>
+      <button type="button" onClick={() => setZoom(1)} title={t('nav.pv.zoomreset', 'Fit to width')}
+        className="text-[11px] tabular-nums text-[var(--muted)] hover:text-[var(--text)] min-w-[3.2rem] text-center">{zoomPct}%</button>
+      <Button size="sm" variant="ghost" disabled={zoom >= ZOOM_MAX} title={t('nav.pv.zoomin', 'Zoom in')}
+        onClick={() => setZoom((z) => Math.min(ZOOM_MAX, +(z + 0.5).toFixed(2)))}><Plus size={13} /></Button>
+    </div>
+    {/* The bar is laid out at DESKTOP_W and scaled; the wrapper reserves the scaled height.
+        Overflow is visible at zoom 1 so the group dropdown (which hangs BELOW the bar) isn't
+        clipped — an auto overflow-x would clip overflow-y too. Only once zoomed past the fit
+        does it become a pan container, where that trade is worth it. */}
+    <div ref={fitRef} className={zoom > 1 ? 'overflow-x-auto scroll-thin' : ''} style={{ height: boxH }}>
+    {/* Sized to the bar's VISUAL width. A transform is painted, not laid out: the scroll area
+        would otherwise follow the bar's 1120px layout box and let you pan into hundreds of
+        pixels of nothing at low zoom. */}
+    <div style={{ width: fit.base ? DESKTOP_W * scale : undefined, height: boxH }}>
+    <div ref={barRef} style={{ width: DESKTOP_W, transform: `scale(${scale})`, transformOrigin: 'top left' }}
       className="rounded-2xl border border-[var(--line)] px-3 py-2 min-h-14 flex items-center gap-1 topbar bg-[var(--bg-solid)]">
       <img src="/logo.png" alt="" className="w-8 h-8 rounded-lg shrink-0" />
       <span className="font-bold text-sm mr-2 shrink-0">BetterCommunity</span>
@@ -6392,6 +6450,8 @@ function NavPreview({ items, lang, device, onEdit, utility = {} }) {
       </div>
     </div>
     </div>
+    </div>
+    </>
   );
 }
 

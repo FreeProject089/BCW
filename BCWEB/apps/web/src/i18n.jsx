@@ -1552,6 +1552,7 @@ const DICT = {
     'nav.pickicon': 'Choisir une icône de menu',
     'nav.pv.title': 'Aperçu en direct', 'nav.pv.desktop': 'Bureau', 'nav.pv.mobile': 'Mobile',
     'nav.pv.tap': 'Touche le menu pour prévisualiser', 'nav.pv.empty': 'Aucun élément valide pour l’instant.',
+    'nav.pv.zoomin': 'Zoomer', 'nav.pv.zoomout': 'Dézoomer', 'nav.pv.zoomreset': 'Ajuster à la largeur',
     'nav.pv.edit': 'Cliquer pour modifier · le chevron ouvre le menu déroulant', 'nav.pv.editlink': 'Cliquer pour modifier cet élément', 'nav.pv.edithint': 'Cliquez sur un élément de l’aperçu pour accéder à ses réglages ci-dessous.',
     'nav.import': 'Importer un preset', 'nav.export': 'Exporter le preset', 'nav.reset': 'Réinitialiser par défaut',
     'nav.util.title': 'Boutons de la barre', 'nav.util.reset': 'Réinitialiser', 'nav.util.desc': 'Afficher/masquer et réordonner les boutons intégrés. Chacun respecte sa propre règle (ex. Admin ne s’affiche que pour le staff, Connexion seulement si déconnecté). L’ordre reste dans son groupe.',
