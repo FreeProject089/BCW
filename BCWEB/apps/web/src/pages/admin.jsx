@@ -483,7 +483,10 @@ function AdminPlanUsers() {
             <button onClick={() => setExpanded(isOpen ? null : u.id)} className="w-full text-left p-4 flex items-center gap-3 hover:bg-[var(--surface-2)] transition">
               <Avatar user={u} size={40} />
               <div className="flex-1 min-w-0">
-                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0"><span onClick={(e) => { e.stopPropagation(); setDetail(u.id); }} className="hover:underline hover:text-[var(--primary-2)]">{u.displayName}</span></span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
+                {/* A <button>, not a clickable <span>: it opens the user detail, and looked
+                    like a link (hover:underline) while being unreachable by keyboard — no
+                    focus, no Enter (WCAG 2.1.1 / 4.1.2). */}
+                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0"><button type="button" onClick={(e) => { e.stopPropagation(); setDetail(u.id); }} className="text-left hover:underline hover:text-[var(--primary-2)]" title={t('au.opendetail', 'Open this account’s details')}>{u.displayName}</button></span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
                 <div className="text-xs text-[var(--faint)] truncate">{u.email}</div>
               </div>
               {tab === 'paying' && (u.totalSpentCents != null || u.mrrCents > 0) && (

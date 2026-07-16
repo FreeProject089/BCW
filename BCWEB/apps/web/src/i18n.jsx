@@ -1573,7 +1573,7 @@ const DICT = {
 
     // ── Admin : recherche d'utilisateurs ──
     'au.title': 'Recherche d’utilisateurs',
-    'au.banned': 'banni', 'au.suspended': 'suspendu',
+    'au.banned': 'banni', 'au.suspended': 'suspendu', 'au.opendetail': 'Ouvrir les détails de ce compte',
     // Catalog private-link visibility + suspend
     'dash.copypublic': 'Copier le lien public', 'dash.copyprivate': 'Copier le lien privé',
     'dash.pubcopied': 'Lien public copié.', 'dash.privcopied': 'Lien privé copié.',

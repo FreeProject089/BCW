@@ -24,9 +24,15 @@
   --avatar-ring: #ffffff;
   --line: rgba(24, 20, 14, 0.12);
   --line-strong: rgba(24, 20, 14, 0.22);
+  /* Borders that IDENTIFY a control (button/input), as opposed to the decorative --line*
+     separators. WCAG 1.4.11 wants 3:1 for those, and they need it here: a default button's
+     fill (--surface-2) is 1.01:1 against the page, so the border is the only thing saying
+     "this is a button" — at --line-strong it was 1.60:1 and the control was, measurably,
+     invisible. Kept separate so card/divider lines stay light. */
+  --control-border: rgba(24, 20, 14, 0.47);
   --text: #17140f;
   --muted: #57514a;
-  --faint: #837c72;       /* darkened for legibility on white (was too light for WCAG AA) */
+  --faint: #726b61;       /* 4.56:1 on --surface-2, its worst case (was #837c72 → 3.57:1) */
   /* Light depth = SUBTLE shadows: low opacity, generous blur, no dark border. Nudged up a
      hair so cards read as raised, not painted-on. */
   --shadow-sm: 0 1px 2px rgba(30, 20, 5, 0.06);
@@ -45,9 +51,10 @@
   --avatar-ring: #16130f;  /* opaque, ~ the dark card colour (surface over bg-solid) */
   --line: rgba(255, 255, 255, 0.09);
   --line-strong: rgba(255, 255, 255, 0.16);
+  --control-border: rgba(255, 255, 255, 0.34); /* 3.01:1 vs the page — see the light theme */
   --text: #f3efe9;
   --muted: #a39b8f;
-  --faint: #6f685d;
+  --faint: #857e73;       /* 4.53:1 on --surface-2 (was #6f685d → 3.31:1) */
   /* Dark depth = NO shadows. Elevation comes from surface lightness steps + borders. */
   --shadow-sm: none;
   --shadow: none;
@@ -65,10 +72,13 @@
   /* Radius scale — 4px grid. */
   --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px;
   /* Semantic colours — used for MEANING, not decoration: blue=info, green=success,
-     amber=warning, red=error. Each: a solid tone, a tint background, a border. */
+     amber=warning, red=error. Each: a solid tone, a tint background, a border.
+     The TONE is used as text, so it carries the 4.5:1 burden (WCAG 1.4.3) on a white card.
+     The cheerful mid-scale green/amber sat at 3.30:1 and 3.19:1 — they now hold 4.5:1.
+     Dark overrides these below with brighter tones, which already passed. */
   --info: #2563eb;    --info-bg: rgba(37,99,235,.12);   --info-border: rgba(37,99,235,.30);
-  --success: #16a34a; --success-bg: rgba(22,163,74,.12); --success-border: rgba(22,163,74,.30);
-  --warning: #d97706; --warning-bg: rgba(217,119,6,.13); --warning-border: rgba(217,119,6,.30);
+  --success: #008930; --success-bg: rgba(22,163,74,.12); --success-border: rgba(22,163,74,.30);
+  --warning: #bd5b00; --warning-bg: rgba(217,119,6,.13); --warning-border: rgba(217,119,6,.30);
   --error: #dc2626;   --error-bg: rgba(220,38,38,.12);   --error-border: rgba(220,38,38,.30);
 }
 /* Dark: brighter semantic TONES so text/icons keep contrast on dark surfaces
@@ -149,7 +159,7 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
     padding: 10px 16px; border-radius: var(--r-md); font-size: 14px; font-weight: 500;
-    border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--control-border); background: var(--surface-2); color: var(--text);
     cursor: pointer; transition: all .16s ease; white-space: nowrap; line-height: 1;
   }
   .btn:hover { border-color: var(--ring); }
@@ -176,7 +186,9 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 
   .input {
     width: 100%; padding: 10px 14px; border-radius: var(--r-md); font-size: 14px;
-    background: var(--bg-solid); border: 1px solid var(--line); color: var(--text);
+    /* --control-border, not --line: an input's fill IS --bg-solid, the same colour as the
+       card it sits on, so the border is the only thing that makes the field a field. */
+    background: var(--bg-solid); border: 1px solid var(--control-border); color: var(--text);
     transition: border-color .16s ease, box-shadow .16s ease; outline: none;
   }
   .input[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 3px var(--error-bg); }
@@ -215,7 +227,10 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
     flex: none; white-space: nowrap;
   }
-  .badge-primary { background: rgba(249,115,22,0.13); border-color: rgba(249,115,22,0.32); color: #d97706; }
+  /* #b25000, not #d97706: the badge label is TEXT and owes 4.5:1 (1.4.3). The amber sat at
+     2.76:1 on --surface-2 — brand-coloured and unreadable. The tint bg/border keep the
+     orange, so it still reads as the brand at a glance. Dark keeps #fdba74 (10.8:1). */
+  .badge-primary { background: rgba(249,115,22,0.13); border-color: rgba(249,115,22,0.32); color: #b25000; }
   [data-theme="dark"] .badge-primary { color: #fdba74; }
   /* Semantic badges — colour follows the shared tokens, so light/dark switch automatically. */
   .badge-green { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
