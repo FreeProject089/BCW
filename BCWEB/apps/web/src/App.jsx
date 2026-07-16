@@ -96,6 +96,36 @@ const navIconName = (icon) => {
   return s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/\s+/g, '-').toLowerCase();
 };
 
+// The admin nav config (items / utility / projectsMode / downbar), fetched once and
+// shared by the topbar and the mobile bottom bar so they never disagree or double-fetch.
+let _navCfgCache; // undefined = not fetched, null = no config, object = config
+let _navCfgPromise;
+function useNavConfig() {
+  const [cfg, setCfg] = useState(_navCfgCache ?? null);
+  useEffect(() => {
+    if (_navCfgCache !== undefined) { setCfg(_navCfgCache); return; }
+    _navCfgPromise = _navCfgPromise || api.get('/nav')
+      .then((r) => { _navCfgCache = r.nav || null; return _navCfgCache; })
+      .catch(() => { _navCfgCache = null; return null; });
+    let alive = true;
+    _navCfgPromise.then((v) => { if (alive) setCfg(v); });
+    return () => { alive = false; };
+  }, []);
+  return cfg;
+}
+
+// A pinned showcase project's icon (a string) → the shape NavIcon renders: a URL/path
+// becomes an <img>, a name goes through IconGlyph — same result as ShowcaseIcon.
+const showcaseChildIcon = (icon) => /^(https?:|data:|\/)/i.test(icon || '') ? { img: icon } : { icon: icon || 'sparkles' };
+
+// Mobile bottom bar items derived from the nav config: home first, then the leading
+// top-level LINK items (groups are skipped — a bottom bar can't nest). Capped so the bar
+// stays legible on a phone. `k`-less items carry raw label/labelFr like configured nav.
+function deriveDownbar(items) {
+  const leaves = (items || []).filter((it) => it.type !== 'group' && it.to).slice(0, 4);
+  return [{ to: '/', k: 'nav.home', icon: HomeIcon, exact: true }, ...leaves];
+}
+
 // Real app icon when /icons/<app>.png exists, otherwise any Lucide icon or Simple Icons
 // brand (via IconGlyph). `item.icon` may be a lucide component (hardcoded NAV) or a string
 // name / "simple:<slug>" (admin-configured nav).
@@ -315,11 +345,10 @@ function Nav() {
   // to the topbar (task: Project Announcement pages / visibility system).
   const [projVisible, setProjVisible] = useState(null); // { bmm: true, bsm: false, ... } | null (not loaded yet -> show all)
   const [pinnedShowcase, setPinnedShowcase] = useState([]);
-  const [navCfg, setNavCfg] = useState(null); // admin-configured nav (null -> use hardcoded NAV)
+  const navCfg = useNavConfig(); // admin-configured nav (null -> use hardcoded NAV), shared with the bottom bar
   useEffect(() => {
     api.get('/projects').then((r) => setProjVisible(r.visible || null)).catch(() => {});
     api.get('/showcase').then((r) => setPinnedShowcase((r.projects || []).filter((p) => p.pinTopbar))).catch(() => {});
-    api.get('/nav').then((r) => setNavCfg(r.nav || null)).catch(() => {});
   }, []);
   // Per-project visibility still applies to any nav link that points at a project page,
   // whether it comes from the hardcoded NAV or an admin's custom config.
@@ -333,6 +362,18 @@ function Nav() {
   const effItems = rawItems
     .map((it) => it.type === 'group' ? { ...it, children: (it.children || []).filter((c) => gateTo(c.to)) } : it)
     .filter((it) => it.type === 'group' ? it.children.length > 0 : gateTo(it.to));
+  // Admin-pinned showcase projects: shown as their own inline pills (default) or grouped
+  // under a single "Projects" hover-dropdown when the admin chose projectsMode:'dropdown'.
+  // Each keeps its own icon. Visitor-gated project links already filtered upstream.
+  const projectsDropdown = navCfg?.projectsMode === 'dropdown' && pinnedShowcase.length > 0;
+  const projectsGroup = projectsDropdown ? {
+    type: 'group', k: 'nav.projects', icon: Boxes,
+    children: pinnedShowcase.map((p) => ({
+      to: `/project/${p.slug}`,
+      label: p.isAnnouncing ? (p.announceTitle || p.name) : p.name,
+      ...showcaseChildIcon(p.icon),
+    })),
+  } : null;
   // Now that the segmented nav scrolls horizontally when it doesn't all fit, keep
   // the current page's pill actually in view instead of possibly scrolled off.
   // scrollIntoView() was unreliable here (this row sits in a `position:sticky`
@@ -427,11 +468,13 @@ function Nav() {
             {effItems.map((it, i) => it.type === 'group'
               ? <NavDropdown key={'g' + i} item={it} t={t} lang={lang} />
               : <NavLink key={it.to} to={it.to} title={navLabel(it, t, lang)} aria-label={navLabel(it, t, lang)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={it} size={16} /><span className="nav-lbl">{navLabel(it, t, lang)}</span></NavLink>)}
-            {pinnedShowcase.map((p) => (
-              <NavLink key={p.slug} to={`/project/${p.slug}`} title={p.name} aria-label={p.name} className={(s) => pill(s) + ' shrink-0'}>
-                <ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /><span className="nav-lbl">{p.isAnnouncing ? p.announceTitle || p.name : p.name}</span>
-              </NavLink>
-            ))}
+            {projectsDropdown
+              ? <NavDropdown key="proj-dd" item={projectsGroup} t={t} lang={lang} />
+              : pinnedShowcase.map((p) => (
+                <NavLink key={p.slug} to={`/project/${p.slug}`} title={p.name} aria-label={p.name} className={(s) => pill(s) + ' shrink-0'}>
+                  <ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /><span className="nav-lbl">{p.isAnnouncing ? p.announceTitle || p.name : p.name}</span>
+                </NavLink>
+              ))}
           </nav>
         </div>
         {/* Below lg the segmented nav is hidden, so this spacer takes the slack and
@@ -461,7 +504,9 @@ function Nav() {
             {effItems.map((it, i) => it.type === 'group'
               ? <NavSheetGroup key={'g' + i} item={it} t={t} lang={lang} onNavigate={() => setOpen(false)} />
               : <NavLink key={it.to} to={it.to} className={sheet} onClick={() => setOpen(false)}><NavIcon item={it} size={16} />{navLabel(it, t, lang)}</NavLink>)}
-            {pinnedShowcase.map((p) => <NavLink key={p.slug} to={`/project/${p.slug}`} className={sheet} onClick={() => setOpen(false)}><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} />{p.isAnnouncing ? p.announceTitle || p.name : p.name}</NavLink>)}
+            {projectsDropdown
+              ? <NavSheetGroup key="proj-dd" item={projectsGroup} t={t} lang={lang} onNavigate={() => setOpen(false)} />
+              : pinnedShowcase.map((p) => <NavLink key={p.slug} to={`/project/${p.slug}`} className={sheet} onClick={() => setOpen(false)}><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} />{p.isAnnouncing ? p.announceTitle || p.name : p.name}</NavLink>)}
             {uVisible('projects') && <NavLink to="/projects" className={sheet} onClick={() => setOpen(false)}><Boxes size={16} /> {t('nav.projects')}</NavLink>}
             <NavLink to="/contact" className={sheet} onClick={() => setOpen(false)}><Mail size={16} /> Contact</NavLink>
             {uVisible('settings') && <NavLink to="/settings" className={sheet} onClick={() => setOpen(false)}><SettingsIcon size={16} /> {t('nav.settings', 'Settings')}</NavLink>}
@@ -487,7 +532,8 @@ function Nav() {
 // App-style bottom tab bar (mobile only). Labels collapse while actively scrolling
 // and slide back in when the user stops — a clean, contextual reveal.
 function MobileTabBar() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  const navCfg = useNavConfig();
   const [showLabels, setShowLabels] = useState(true);
   useEffect(() => {
     let tmr;
@@ -495,14 +541,19 @@ function MobileTabBar() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => { window.removeEventListener('scroll', onScroll); clearTimeout(tmr); };
   }, []);
+  // Off when the admin disabled it. Otherwise it mirrors the configured nav items (home +
+  // the leading links) when a custom nav exists, else the default app-shortcut bar.
+  if (navCfg?.downbar?.enabled === false) return null;
+  const items = navCfg?.items?.length ? deriveDownbar(navCfg.items) : BOTTOM;
+  const label = (n) => (n.k ? t(n.k) : navLabel(n, t, lang));
   const tab = ({ isActive }) => `flex-1 flex flex-col items-center justify-center py-1.5 ${isActive ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}`;
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-[var(--line)] topbar flex items-stretch px-1" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      {BOTTOM.map((n) => (
-        <NavLink key={n.to} to={n.to} end={n.exact} className={tab}>
+      {items.map((n) => (
+        <NavLink key={n.to} to={n.to} end={n.exact} className={tab} title={label(n)} aria-label={label(n)}>
           {({ isActive }) => <>
             <span className={`grid place-items-center w-9 h-7 rounded-full transition ${isActive ? 'bg-[var(--surface-2)]' : ''}`}><NavIcon item={n} size={18} /></span>
-            <span className={`text-[10px] leading-none overflow-hidden transition-all duration-200 ${showLabels ? 'max-h-4 opacity-100 mt-0.5' : 'max-h-0 opacity-0 mt-0'}`}>{t(n.k)}</span>
+            <span className={`text-[10px] leading-none overflow-hidden transition-all duration-200 ${showLabels ? 'max-h-4 opacity-100 mt-0.5' : 'max-h-0 opacity-0 mt-0'}`}>{label(n)}</span>
           </>}
         </NavLink>
       ))}
