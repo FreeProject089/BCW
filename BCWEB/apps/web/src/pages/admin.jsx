@@ -6356,11 +6356,18 @@ const pvLabel = (it, lang) => (lang === 'fr' && it.labelFr ? it.labelFr : (it.la
 // Live preview of the public topbar built from the editor's items — faithful to the real
 // component's styling (App.jsx). Desktop = the pill bar with a hover/click dropdown; mobile
 // = the hamburger sheet (tap a group to expand, tap the phone to reveal the sheet).
-function NavPreview({ items, lang, device, onEdit, utility = {} }) {
+function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 'inline', downbar = true, projects = [] }) {
   const { t } = useI18n();
   const { user } = useAuth();
   const [openIdx, setOpenIdx] = useState(null);
+  const [projOpen, setProjOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Pinned projects for the preview, and whether they collapse into one "Projects" dropdown.
+  const pvProjects = (projects || []).map((p) => ({ slug: p.slug, name: (p.isAnnouncing && p.announceTitle) || p.name, icon: p.icon }));
+  const projDropdown = projectsMode === 'dropdown' && pvProjects.length > 0;
+  // Mobile bottom bar the preview shows under the phone: home + the leading valid links,
+  // mirroring deriveDownbar() in App.jsx. Rendered only when the admin left it enabled.
+  const validLeaves = items.filter((it) => it.type !== 'group' && it.label.trim() && it.to.trim().startsWith('/')).slice(0, 4);
   // The desktop preview must LOOK like a desktop: it renders at a real desktop width and is
   // scaled to whatever room it has. Letting it reflow into the admin column (or worse, a
   // phone) is what made it "buggy" — it wrapped into a stack of pills, i.e. a preview of a
@@ -6432,10 +6439,30 @@ function NavPreview({ items, lang, device, onEdit, utility = {} }) {
               </div>
             </div>
           ) : <div key={idx} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={it.icon} size={16} /> {pvLabel(it, lang)}</div>)}
+          {pvProjects.length > 0 && (projDropdown ? (
+            <div>
+              <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><Sparkles size={16} /><span className="flex-1">{t('nav.projects', 'Projects')}</span><ChevronDown size={15} /></div>
+              <div className="pl-3 ml-3 border-l border-[var(--line)] space-y-0.5">
+                {pvProjects.map((p) => <div key={p.slug} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /> {p.name}</div>)}
+              </div>
+            </div>
+          ) : pvProjects.map((p) => <div key={p.slug} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} /> {p.name}</div>))}
           {sheetAccount.length > 0 && <div className="h-px bg-[var(--line)] my-1.5" />}
           {sheetAccount.map((k) => <div key={k} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={UTIL_ICON[k]} size={15} /> {t('nav.util.' + k, UTIL_LABEL[k])}</div>)}
         </div>}
         {!sheetOpen && <div className="text-[11px] text-[var(--faint)] text-center mt-2 flex items-center justify-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.tap', 'Tap the menu to preview')}</div>}
+        {/* The real phone gets a bottom tab bar too — home + the leading links (derived), or
+            nothing when the admin turned it off. This is the part the old preview never showed. */}
+        {downbar
+          ? <div className="mt-2 rounded-2xl border border-[var(--line)] bg-[var(--bg-solid)] flex items-stretch px-1 py-1">
+              {[{ home: true }, ...validLeaves].map((n, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center justify-center py-1 text-[var(--muted)]">
+                  <span className="grid place-items-center w-8 h-6"><NavPvIcon name={n.home ? 'home' : n.icon} size={16} /></span>
+                  <span className="text-[9px] leading-none mt-0.5 truncate max-w-[52px]">{n.home ? t('nav.home', 'Home') : pvLabel(n, lang)}</span>
+                </div>
+              ))}
+            </div>
+          : <div className="mt-2 text-[10px] text-[var(--faint)] text-center italic">{t('nav.pv.nodownbar', 'Bottom bar off')}</div>}
       </div>
     );
   }
@@ -6484,6 +6511,17 @@ function NavPreview({ items, lang, device, onEdit, utility = {} }) {
             </div>}
           </div>
         ) : <button key={idx} title={onEdit ? t('nav.pv.editlink', 'Click to edit this item') : undefined} onClick={() => jump(idx)} className={pillCls(false)}><NavPvIcon name={it.icon} /> {pvLabel(it, lang)}</button>)}
+        {/* Pinned projects — inline pills, or one "Projects" dropdown, per projectsMode. */}
+        {projDropdown ? (
+          <div className="relative">
+            <button onClick={() => setProjOpen((o) => !o)} className={pillCls(projOpen)}>
+              <Sparkles size={15} /><span>{t('nav.projects', 'Projects')}</span><ChevronDown size={13} className={`transition-transform ${projOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {projOpen && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[220px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
+              {pvProjects.map((p) => <div key={p.slug} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]"><span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /></span><span className="text-sm font-medium truncate">{p.name}</span></div>)}
+            </div>}
+          </div>
+        ) : pvProjects.map((p) => <span key={p.slug} className={pillCls(false)}><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /> {p.name}</span>)}
       </div>
       {/* Right-side utility cluster — mirrors the real topbar's configurable buttons. */}
       <div className="ml-auto flex items-center gap-0.5 shrink-0 text-[var(--muted)]">
@@ -6511,8 +6549,14 @@ function AdminNav() {
   const [enabled, setEnabled] = useState(false);
   const [items, setItems] = useState([]);
   const [utility, setUtility] = useState({}); // { <key>: { visible, order } } for built-in topbar buttons
+  const [projectsMode, setProjectsMode] = useState('inline'); // how pinned showcase projects show: inline pills | one "Projects" dropdown
+  const [downbarEnabled, setDownbarEnabled] = useState(true);  // mobile bottom tab bar on/off (its items derive from the nav)
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState('desktop'); // preview device
+  // Pinned showcase projects, so the preview shows them exactly as the live topbar will
+  // (inline or grouped, per projectsMode) instead of pretending they don't exist.
+  const [pinnedProjects, setPinnedProjects] = useState([]);
+  useEffect(() => { api.get('/showcase').then((r) => setPinnedProjects((r.projects || []).filter((p) => p.pinTopbar))).catch(() => {}); }, []);
   const [iconPick, setIconPick] = useState(null); // { onChange } while the icon picker is open
   const fileRef = useRef(null);
   const itemRefs = useRef([]);            // editor-card DOM nodes, indexed by item position
@@ -6531,6 +6575,8 @@ function AdminNav() {
     setEnabled(!!n.enabled);
     setItems((n.items || []).map((it) => ({ type: it.type === 'group' ? 'group' : 'link', label: it.label || '', labelFr: it.labelFr || '', to: it.to || '', icon: it.icon || 'Boxes', children: (it.children || []).map((c) => ({ label: c.label || '', labelFr: c.labelFr || '', to: c.to || '/', desc: c.desc || '', descFr: c.descFr || '', icon: c.icon || 'Boxes' })) })));
     setUtility(n.utility && typeof n.utility === 'object' ? n.utility : {});
+    setProjectsMode(n.projectsMode === 'dropdown' ? 'dropdown' : 'inline');
+    setDownbarEnabled(n.downbar?.enabled !== false);
   }, [loaded.data]);
 
   const patchItem = (i, patch) => setItems((s) => s.map((it, k) => k === i ? { ...it, ...patch } : it));
@@ -6566,7 +6612,7 @@ function AdminNav() {
         out.push({ type: 'link', label: it.label.trim(), labelFr: (it.labelFr || '').trim(), to: it.to.trim(), icon: it.icon || '', children: [] });
       }
     }
-    return { enabled, items: out, utility };
+    return { enabled, items: out, utility, projectsMode, downbar: { enabled: downbarEnabled } };
   };
 
   const save = async () => {
@@ -6591,6 +6637,8 @@ function AdminNav() {
       setItems(arr.map((it) => ({ type: it.type === 'group' ? 'group' : 'link', label: it.label || '', labelFr: it.labelFr || '', to: it.to || '', icon: it.icon || 'Boxes', children: (it.children || []).map((c) => ({ label: c.label || '', labelFr: c.labelFr || '', to: c.to || '/', desc: c.desc || '', descFr: c.descFr || '', icon: c.icon || 'Boxes' })) })));
       if (typeof parsed.enabled === 'boolean') setEnabled(parsed.enabled);
       if (parsed.utility && typeof parsed.utility === 'object' && !Array.isArray(parsed.utility)) setUtility(parsed.utility);
+      if (parsed.projectsMode === 'dropdown' || parsed.projectsMode === 'inline') setProjectsMode(parsed.projectsMode);
+      if (parsed.downbar && typeof parsed.downbar === 'object') setDownbarEnabled(parsed.downbar.enabled !== false);
       toast.success(t('nav.imported', 'Preset imported — review and save.'));
     } catch { toast.error(t('nav.importbad', 'Not a valid topbar preset JSON.')); }
   };
@@ -6630,7 +6678,7 @@ function AdminNav() {
             <button onClick={() => setDevice('mobile')} className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${device === 'mobile' ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}><Smartphone size={13} /> {t('nav.pv.mobile', 'Mobile')}</button>
           </div>
         </div>
-        <div className="rounded-xl bg-[var(--bg)] p-4"><NavPreview items={items} lang={lang} device={device} utility={utility} onEdit={device === 'desktop' ? editItem : undefined} /></div>
+        <div className="rounded-xl bg-[var(--bg)] p-4"><NavPreview items={items} lang={lang} device={device} utility={utility} projectsMode={projectsMode} downbar={downbarEnabled} projects={pinnedProjects} onEdit={device === 'desktop' ? editItem : undefined} /></div>
         {device === 'desktop' && items.length > 0 && <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.edithint', 'Click any item in the preview to jump to its settings below.')}</div>}
       </Card>
 
@@ -6641,6 +6689,28 @@ function AdminNav() {
         <Button size="sm" variant="ghost" onClick={exportPreset}><Download size={14} /> {t('nav.export', 'Export preset')}</Button>
         <Button size="sm" variant="ghost" onClick={resetDefault}><RotateCcw size={14} /> {t('nav.reset', 'Reset to default')}</Button>
       </div>
+
+      {/* Pinned projects display + mobile bottom bar. */}
+      <Card className="p-4 space-y-4">
+        <h3 className="font-semibold text-sm flex items-center gap-2"><Sparkles size={15} className="text-[var(--primary-2)]" /> {t('nav.extra.title', 'Projects & mobile')}</h3>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <div className="font-medium text-sm">{t('nav.projmode', 'Pinned projects in the topbar')}</div>
+            <div className="text-xs text-[var(--faint)]">{t('nav.projmode.d', 'Show admin-pinned projects as their own pills, or grouped under one “Projects” dropdown. Each keeps its own icon.')}</div>
+          </div>
+          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden shrink-0">
+            {[['inline', t('nav.projmode.inline', 'Inline')], ['dropdown', t('nav.projmode.dropdown', 'Dropdown')]].map(([v, lbl]) =>
+              <button key={v} type="button" onClick={() => setProjectsMode(v)} className={`px-3 py-1.5 text-xs ${projectsMode === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}</button>)}
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-3 flex-wrap border-t border-[var(--line)] pt-3">
+          <div className="min-w-0">
+            <div className="font-medium text-sm flex items-center gap-1.5"><Smartphone size={14} /> {t('nav.downbar', 'Mobile bottom bar')}</div>
+            <div className="text-xs text-[var(--faint)]">{t('nav.downbar.d', 'The app-style tab bar at the bottom of the screen on phones. Its buttons follow your nav items (home + the first few links).')}</div>
+          </div>
+          <button type="button" onClick={() => setDownbarEnabled((v) => !v)} aria-pressed={downbarEnabled} title={downbarEnabled ? t('nav.util.hide', 'Hide') : t('nav.util.show', 'Show')} className={`w-11 h-6 rounded-full relative shrink-0 transition ${downbarEnabled ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${downbarEnabled ? 'left-[22px]' : 'left-0.5'}`} /></button>
+        </div>
+      </Card>
 
       {/* Built-in topbar buttons: show/hide + reorder (within each responsive cluster). */}
       <Card className="p-4">
