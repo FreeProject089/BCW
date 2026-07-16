@@ -497,20 +497,28 @@ export default async function analyticsRoutes(app) {
     const days = Math.min(Math.max(Number(req.query?.days) || 7, 1), 365);
     const since = hours ? new Date(Date.now() - hours * 3600e3) : new Date(Date.now() - days * 864e5);
     const q = String(req.query?.path || '').trim();
-    const where = { createdAt: { gte: since }, ...(q ? { path: { contains: q, mode: 'insensitive' } } : {}) };
-    // Aggregate per message: occurrences, distinct visitors, first/last seen.
+    // 'server' = a 5xx the API caught, 'client' = an uncaught error in a visitor's browser.
+    const src = ['server', 'client'].includes(String(req.query?.source || '')) ? String(req.query.source) : null;
+    const where = { createdAt: { gte: since }, ...(q ? { path: { contains: q, mode: 'insensitive' } } : {}), ...(src ? { source: src } : {}) };
+    // Aggregate per message: occurrences, distinct visitors, first/last seen. Params are
+    // positional and appended in the same order the predicates are, so the indexes line up.
+    const params = [since];
+    if (q) params.push(`%${q}%`);
+    const pathPred = q ? `AND path ILIKE $${params.length}` : '';
+    if (src) params.push(src);
+    const srcPred = src ? `AND source = $${params.length}` : '';
     const groups = await p.$queryRawUnsafe(
       `SELECT message, count(*)::int AS occurrences, count(DISTINCT visitor)::int AS sessions,
               min("createdAt") AS "firstSeen", max("createdAt") AS "lastSeen"
-         FROM "ErrorEvent" WHERE "createdAt" >= $1 ${q ? 'AND path ILIKE $2' : ''}
+         FROM "ErrorEvent" WHERE "createdAt" >= $1 ${pathPred} ${srcPred}
          GROUP BY message ORDER BY max("createdAt") DESC LIMIT 100`,
-      ...(q ? [since, `%${q}%`] : [since]));
+      ...params);
     // Latest sample per message (path/stack/device/browser/os/country) for the detail view.
     const msgs = groups.map((g) => g.message);
     const samples = new Map();
     const bcIdsByMsg = new Map();
     if (msgs.length) {
-      const rows = await p.errorEvent.findMany({ where: { ...where, message: { in: msgs } }, orderBy: { createdAt: 'desc' }, distinct: ['message'], select: { message: true, path: true, stack: true, device: true, browser: true, os: true, country: true, createdAt: true } });
+      const rows = await p.errorEvent.findMany({ where: { ...where, message: { in: msgs } }, orderBy: { createdAt: 'desc' }, distinct: ['message'], select: { message: true, path: true, stack: true, source: true, device: true, browser: true, os: true, country: true, createdAt: true } });
       rows.forEach((r) => samples.set(r.message, r));
       // Which signed-in accounts hit each error → their BC ids (admin-only). Anonymous
       // (logged-out) hits contribute no id. Bounded to a handful of ids per message.
@@ -526,7 +534,7 @@ export default async function analyticsRoutes(app) {
       errors: groups.map((g) => { const s = samples.get(g.message) || {}; return {
         message: g.message, occurrences: Number(g.occurrences), sessions: Number(g.sessions),
         firstSeen: g.firstSeen, lastSeen: g.lastSeen,
-        path: s.path || null, stack: s.stack || null, device: s.device || null, browser: s.browser || null, os: s.os || null, country: s.country || null,
+        path: s.path || null, stack: s.stack || null, source: s.source || 'client', device: s.device || null, browser: s.browser || null, os: s.os || null, country: s.country || null,
         bcIds: bcIdsByMsg.get(g.message) || [],
       }; }),
     };
@@ -725,10 +733,10 @@ export default async function analyticsRoutes(app) {
       ]);
       return { count, oldest: oldest?.createdAt || null };
     };
-    const [pageview, interaction, vital, login] = await Promise.all([
-      stat(p.analyticsEvent), stat(p.interactionEvent), stat(p.webVital), stat(p.loginAttempt),
+    const [pageview, interaction, vital, login, error] = await Promise.all([
+      stat(p.analyticsEvent), stat(p.interactionEvent), stat(p.webVital), stat(p.loginAttempt), stat(p.errorEvent),
     ]);
-    return { config: resolveRetention(row?.value), defaults: RETENTION_DEFAULTS, tables: { pageview, interaction, vital, login } };
+    return { config: resolveRetention(row?.value), defaults: RETENTION_DEFAULTS, tables: { pageview, interaction, vital, login, error } };
   });
 
   const retentionSchema = z.object({
@@ -736,6 +744,7 @@ export default async function analyticsRoutes(app) {
     interactionDays: z.number().int().min(0).max(3650),
     vitalDays: z.number().int().min(0).max(3650),
     loginDays: z.number().int().min(0).max(3650),
+    errorDays: z.number().int().min(0).max(3650),
   }).partial();
   app.put('/admin/analytics/retention', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
     const b = retentionSchema.safeParse(req.body);

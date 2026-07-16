@@ -9,6 +9,7 @@ import { db } from './lib/lib.mjs';
 import { getRedis } from './lib/redis.mjs';
 import { ensureBucket } from './lib/storage.mjs';
 import { startSweeper } from './lib/sweeper.mjs';
+import { recordServerError } from './lib/errorlog.mjs';
 import authRoutes from './routes/auth.mjs';
 import catalogRoutes from './routes/catalog.mjs';
 import communityCatalogRoutes from './routes/catalogs.mjs';
@@ -114,6 +115,12 @@ app.setErrorHandler((err, req, reply) => {
   const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
   if (status < 500) return reply.code(status).send(err.payload || { error: err.message || 'error' });
   req.log.error({ err: { message: err.message, stack: err.stack }, url: req.url }, 'request error');
+  // …and record it, so the admin Errors page shows API failures too. It only ever held
+  // browser-reported errors (POST /analytics/error, which is consent-gated), so a 500 was
+  // invisible to anyone not tailing stdout — the client saw {error:'internal_error'} and
+  // the dashboard stayed empty. Fire-and-forget and fully swallowed: an error handler that
+  // can throw (or that awaits a dead DB) turns one failure into two.
+  recordServerError(req, err);
   return reply.code(500).send({ error: 'internal_error' });
 });
 // Anti-bot / anti-scan guards (bad-UA denylist + repeat-offender soft block),

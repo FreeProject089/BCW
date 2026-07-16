@@ -5,12 +5,15 @@
 // Each value is a retention window in DAYS for one append-only analytics table; the
 // sweeper deletes rows older than that. A window of 0 (or negative) keeps that table
 // forever. Admins override these via the `analytics.retention` AdminSetting.
-export const RETENTION_DEFAULTS = { pageviewDays: 365, interactionDays: 120, vitalDays: 120, loginDays: 180 };
+// errorDays: ErrorEvent was in NO retention window — it grew forever, and it now also takes
+// server 5xx, which arrive far faster than browser reports. 90 days is plenty to spot and
+// fix a regression.
+export const RETENTION_DEFAULTS = { pageviewDays: 365, interactionDays: 120, vitalDays: 120, loginDays: 180, errorDays: 90 };
 
 // Merge a (possibly partial / untrusted) stored value over the defaults, coercing each
 // field to a finite number and falling back to the default when it isn't one.
 export function resolveRetention(raw) {
   const v = raw && typeof raw === 'object' ? raw : {};
   const pick = (k) => (Number.isFinite(Number(v[k])) ? Number(v[k]) : RETENTION_DEFAULTS[k]);
-  return { pageviewDays: pick('pageviewDays'), interactionDays: pick('interactionDays'), vitalDays: pick('vitalDays'), loginDays: pick('loginDays') };
+  return { pageviewDays: pick('pageviewDays'), interactionDays: pick('interactionDays'), vitalDays: pick('vitalDays'), loginDays: pick('loginDays'), errorDays: pick('errorDays') };
 }

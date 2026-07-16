@@ -240,7 +240,8 @@ export async function sweepAnalyticsRetention(p, log) {
   const purged = await purgeOlderThan(p.analyticsEvent, cfg.pageviewDays, log, 'AnalyticsEvent')
     + await purgeOlderThan(p.interactionEvent, cfg.interactionDays, log, 'InteractionEvent')
     + await purgeOlderThan(p.webVital, cfg.vitalDays, log, 'WebVital')
-    + await purgeOlderThan(p.loginAttempt, cfg.loginDays, log, 'LoginAttempt');
+    + await purgeOlderThan(p.loginAttempt, cfg.loginDays, log, 'LoginAttempt')
+    + await purgeOlderThan(p.errorEvent, cfg.errorDays, log, 'ErrorEvent');
   return purged;
 }
 

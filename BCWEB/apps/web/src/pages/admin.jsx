@@ -5463,8 +5463,9 @@ function AdminErrors() {
   const { t } = useI18n(); const toast = useToast();
   const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState('');
   const [range, setRange] = useState('7d'); const [open, setOpen] = useState(null);
+  const [source, setSource] = useState(''); // '' = both · server = API 5xx · client = browser
   const rq = Object.fromEntries(WV_RANGES)[range] || { days: 7 };
-  const qs = `${rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`}${qApplied ? `&path=${encodeURIComponent(qApplied)}` : ''}`;
+  const qs = `${rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`}${qApplied ? `&path=${encodeURIComponent(qApplied)}` : ''}${source ? `&source=${source}` : ''}`;
   const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/errors?${qs}`), [qs]);
   const errors = data?.errors || [];
   const copy = (txt, msg) => { navigator.clipboard?.writeText(txt); toast.success(msg || t('er.copied', 'Copied.')); };
@@ -5484,10 +5485,15 @@ function AdminErrors() {
           <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
         </div>
       </div>
-      <p className="text-sm text-[var(--muted)] mb-3">{t('er.sub', 'Uncaught JavaScript errors and unhandled promise rejections captured from real visits, grouped by message.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('er.sub', 'Server errors (API 5xx) and uncaught JavaScript errors from real visits, grouped by message. Repeated identical server errors collapse to one entry per minute — the occurrence count is per entry, not per request.')}</p>
       <div className="flex flex-wrap gap-2 mb-4">
         <div className="relative flex-1 min-w-[220px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
           <Input className="!pl-9" placeholder={t('er.pathph', 'Filter by page path…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
+        <Dropdown value={source} onChange={setSource} options={[
+          { value: '', label: t('er.src.all', 'All sources') },
+          { value: 'server', label: t('er.src.server', 'Server (API 5xx)') },
+          { value: 'client', label: t('er.src.client', 'Browser') },
+        ]} />
         <Button variant="primary" onClick={() => setQApplied(q.trim())}><Search size={15} /> {t('ev.filter', 'Filter')}</Button>
       </div>
       {loading ? <Loading /> : errors.length ? <div className="space-y-2">
@@ -5498,6 +5504,9 @@ function AdminErrors() {
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm text-red-300 break-words">{e.message}</div>
                 <div className="text-xs text-[var(--faint)] mt-1 flex items-center gap-3 flex-wrap">
+                  {/* A server 5xx and a browser exception need very different responses —
+                      say which one this is instead of leaving them indistinguishable. */}
+                  <Badge tone={e.source === 'server' ? 'red' : ''}>{e.source === 'server' ? <><Server size={9} /> {t('er.src.server', 'Server (API 5xx)')}</> : <><Globe size={9} /> {t('er.src.client', 'Browser')}</>}</Badge>
                   {e.country ? <span className="inline-flex items-center gap-1"><Flag cc={e.country} className="w-4 h-3" /></span> : null}
                   {e.browser && <span>{e.browser}{e.os ? ` · ${e.os}` : ''}</span>}
                   <span className="font-mono truncate max-w-[220px]" title={e.path}>{e.path}</span>

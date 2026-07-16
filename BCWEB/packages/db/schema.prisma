@@ -1589,7 +1589,11 @@ model ErrorEvent {
   id        String   @id @default(cuid())
   message   String // error message (bounded, client-clipped)
   stack     String? // stack trace (bounded)
-  path      String // page path where it fired
+  path      String // page path where it fired (or the request URL, for a server error)
+  // "client" = reported by the browser (uncaught JS, consent-gated); "server" = a 5xx the
+  // API's error handler caught. Server errors used to only reach stdout, so an admin
+  // reading this page had no idea the API was failing.
+  source    String   @default("client")
   visitor   String? // daily anonymous hash
   userId    String? // the signed-in account that hit it, if any (admin-only; resolved to a BC id)
   device    String?
@@ -1600,6 +1604,7 @@ model ErrorEvent {
 
   @@index([createdAt])
   @@index([message])
+  @@index([source, createdAt])
 }
 
 // 404-page mini-game high scores. One best score per user per game (leaderboard). `userId`
