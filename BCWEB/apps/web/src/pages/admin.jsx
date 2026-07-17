@@ -2046,8 +2046,9 @@ function AdminNewsletter() {
   const [picked, setPicked] = useState(() => new Set());
   const [q, setQ] = useState('');
 
+  const undo = useUndoableDelete(reload);
   const counts = data?.counts || { active: 0, pending: 0, unsubscribed: 0, activeEn: 0, activeFr: 0 };
-  const subscribers = data?.subscribers || [];
+  const subscribers = (data?.subscribers || []).filter((s) => !undo.pending.has(s.id));
   const activeSubs = subscribers.filter((s) => s.status === 'active');
   const shown = activeSubs.filter((s) => !q.trim() || s.email.toLowerCase().includes(q.trim().toLowerCase()));
 
@@ -2086,11 +2087,7 @@ function AdminNewsletter() {
     try { await api.post('/admin/newsletter/add', { email: addEmail.trim(), locale: addLocale }); toast.success(t('nl.add.done', 'Subscriber added.')); setAddEmail(''); reload(); }
     catch (x) { toast.error(x.data?.error || t('nl.add.err', 'Could not add.')); } finally { setAdding(false); }
   };
-  const removeSub = async (sub) => {
-    if (!(await dialog.confirm({ title: t('nl.rm.t', 'Remove subscriber'), message: t('nl.rm.m', 'Remove {e} from the newsletter?').replace('{e}', sub.email), okLabel: t('nl.rm.ok', 'Remove'), danger: true }))) return;
-    try { await api.del(`/admin/newsletter/${sub.id}`); toast.success(t('nl.rm.done', 'Removed.')); reload(); }
-    catch { toast.error(t('nl.rm.err', 'Could not remove.')); }
-  };
+  const removeSub = (sub) => undo.del(sub.id, () => api.del(`/admin/newsletter/${sub.id}`), t('nl.rm.done', 'Removed.'));
   const send = async () => {
     if (!validComposed()) return;
     if (mode === 'pick' && picked.size === 0) return toast.error(t('nl.pick.req', 'Select at least one recipient.'));
@@ -3021,9 +3018,10 @@ const fmtBytes = (n) => {
 function AdminMessages() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/contact'), []);
-  const msgs = data?.messages || [];
+  const undo = useUndoableDelete(reload);
+  const msgs = (data?.messages || []).filter((m) => !undo.pending.has(m.id));
   const markRead = async (m) => { if (m.readAt) return; try { await api.post(`/admin/contact/${m.id}/read`); reload(); } catch {} };
-  const del = async (m) => { try { await api.del(`/admin/contact/${m.id}`); toast.success(t('common.deleted', 'Deleted.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = (m) => undo.del(m.id, () => api.del(`/admin/contact/${m.id}`), t('common.deleted', 'Deleted.'));
   if (loading) return <Loading />;
   return (
     <div>
@@ -4005,7 +4003,8 @@ function BotGiveawaysCard() {
   const { data, loading, reload } = useAsync(() => api.get('/admin/bot/giveaways'), []);
   const [f, setF] = useState({ prize: '', channelId: '', durationMinutes: 60, winnersCount: 1, reqLinked: false, reqCreator: false, withGift: false, winnerMessage: 'Congrats {user} — you won {prize}! 🎉 Thanks for entering.', gift: { kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, boostDays: 7 } });
   const [busy, setBusy] = useState(false);
-  const giveaways = data?.giveaways || [];
+  const undo = useUndoableDelete(reload);
+  const giveaways = (data?.giveaways || []).filter((g) => !undo.pending.has(g.id));
   const create = async () => {
     if (!f.prize.trim() || !f.channelId.trim()) return toast.error(t('gw.needfields', 'Prize and channel id are required.'));
     setBusy(true);
@@ -4019,7 +4018,7 @@ function BotGiveawaysCard() {
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const end = async (g) => { if (!(await dialog.confirm({ title: t('gw.end.t', 'Draw now?'), message: t('gw.end.m', 'End this giveaway now and draw the winners?'), okLabel: t('gw.end.ok', 'Draw now') }))) return; try { await api.post(`/admin/bot/giveaways/${g.id}/end`); toast.success(t('gw.ending', 'Drawing — winners announced within ~30s.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
-  const del = async (g) => { try { await api.del(`/admin/bot/giveaways/${g.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = (g) => undo.del(g.id, () => api.del(`/admin/bot/giveaways/${g.id}`), t('common.deleted', 'Deleted.'));
   return (
     <Card className="p-4 mb-4">
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-left">
@@ -5355,7 +5354,7 @@ function AdminGoals() {
   // hidden during the undo window). The real POST/DELETE is deferred to the toast's
   // onCommit; onCancel just drops the optimistic change. Restores immediately either way.
   const [pendingAdd, setPendingAdd] = useState([]);
-  const [pendingDel, setPendingDel] = useState(() => new Set());
+  const undo = useUndoableDelete(reload);
   const reset = () => { setF({ name: '', kind: 'pageview', path: '', label: '', target: '' }); setEditId(null); };
   // A sensible default name from what the goal targets, so the admin rarely has to type one.
   const autoName = () => {
@@ -5391,22 +5390,11 @@ function AdminGoals() {
     });
   };
   const edit = (g) => { setEditId(g.id); setF({ name: g.name, kind: g.kind, path: g.path || '', label: g.label || '', target: g.target ?? '' }); };
-  // Deleting: hide it immediately and defer the DELETE behind an undo window — the undo
-  // replaces the old confirm dialog (Undo is the safety net now).
-  const del = (g) => {
-    setPendingDel((s) => new Set(s).add(g.id));
-    toast.action({
-      tone: 'info', msg: t('goal.deleted', 'Goal deleted.'), cancelLabel: t('common.undo', 'Undo'),
-      onCommit: async () => {
-        try { await api.del(`/admin/analytics/goals/${g.id}`); }
-        catch { toast.error(t('common.failed', 'Failed.')); }
-        finally { setPendingDel((s) => { const n = new Set(s); n.delete(g.id); return n; }); reload(); }
-      },
-      onCancel: () => setPendingDel((s) => { const n = new Set(s); n.delete(g.id); return n; }),
-    });
-  };
+  // Deleting: hide it and defer the DELETE behind an undo window — the undo replaces the old
+  // confirm dialog. Uses the shared useUndoableDelete hook (this component predated it).
+  const del = (g) => undo.del(g.id, () => api.del(`/admin/analytics/goals/${g.id}`), t('goal.deleted', 'Goal deleted.'));
   // Displayed list = optimistic adds on top, minus anything mid-delete.
-  const shown = [...pendingAdd, ...goals.filter((g) => !pendingDel.has(g.id))];
+  const shown = [...pendingAdd, ...goals.filter((g) => !undo.pending.has(g.id))];
   const kindLabel = (k) => { const x = GOAL_KINDS.find((g) => g[0] === k); return x ? t(x[1], x[2]) : k; };
   return (
     <div>
