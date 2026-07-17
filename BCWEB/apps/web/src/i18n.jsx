@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useRef, useEffect } from 'react';
-import { Languages } from 'lucide-react';
+import { Languages, ChevronDown, Check } from 'lucide-react';
 
 // Lightweight i18n. Add a language = add a dictionary below. Strings fall back to
 // English, then to the key, so missing translations never break the UI.
@@ -1868,15 +1868,40 @@ export function LangToggle() {
 
 // Footer language switcher — a compact native <select> that reads cleanly on
 // both desktop and mobile and needs no popover/positioning logic.
+// Footer language switcher. A themed button + popover, NOT a native <select>: the rest of the
+// app replaced native selects app-wide because their <option> popups ignore the theme and
+// render as an OS-grey menu — this was the last one left. Self-contained (no import from
+// ui.jsx, which would cycle back through useI18n here); mirrors LangToggle's opaque menu.
 export function LangSelect({ className = '' }) {
   const { lang, setLang } = useI18n();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const cur = LANGS.find((l) => l.code === lang) || LANGS[0];
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [open]);
   return (
-    <div className={`inline-flex items-center gap-1.5 text-[var(--muted)] ${className}`}>
-      <Languages size={14} className="shrink-0" />
-      <select value={lang} onChange={(e) => setLang(e.target.value)} aria-label="Language"
-        className="bg-transparent text-xs font-medium text-[var(--muted)] hover:text-[var(--text)] outline-none cursor-pointer py-1 pr-1 rounded-md focus:ring-2 focus:ring-[var(--ring)]">
-        {LANGS.map((l) => <option key={l.code} value={l.code} className="bg-[var(--bg-solid)] text-[var(--text)]">{l.label}</option>)}
-      </select>
+    <div className={`relative inline-flex ${className}`} ref={ref}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open} aria-label="Language"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--ring)] transition-colors">
+        <Languages size={14} className="shrink-0" /> {cur.label}
+        <ChevronDown size={13} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div role="listbox" className="absolute left-0 bottom-full mb-2 w-40 rounded-xl border border-[var(--line-strong)] py-1 z-[60] anim-fade overflow-hidden"
+          style={{ background: 'var(--bg-solid)', boxShadow: '0 18px 50px -12px rgba(0,0,0,0.5)' }}>
+          {LANGS.map((l) => (
+            <button key={l.code} type="button" role="option" aria-selected={l.code === lang} onClick={() => { setLang(l.code); setOpen(false); }}
+              className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--surface-2)] transition ${l.code === lang ? 'text-[var(--primary-2)] font-medium' : 'text-[var(--text)]'}`}>
+              {l.label} {l.code === lang && <Check size={13} />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
