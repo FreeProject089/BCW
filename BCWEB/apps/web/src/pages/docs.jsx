@@ -80,19 +80,30 @@ export default function Docs() {
     return tree.map((c) => ({ ...c, pages: c.pages.filter((p) => p.title.toLowerCase().includes(n) || c.category.toLowerCase().includes(n)) }))
       .filter((c) => c.pages.length);
   }, [tree, q]);
-  // Nested sidebar: a category written "Top / Sub" (slash-separated) becomes a top group
-  // with a sub-group — one level of subcategories, no schema change. Order follows the tree.
+  // Nested sidebar of ARBITRARY depth: a category written "Top / Sub / Sub-sub" (slash-
+  // separated) becomes nested groups, no schema change and no fixed level cap — the old code
+  // stopped at one sub-level. Each node keeps a full `path` (used as the collapse key, so two
+  // groups that share a leaf name under different parents don't collapse together) and a
+  // recursive `count` of every page beneath it. Order follows the pages' order within a group.
   const nested = useMemo(() => {
-    const tops = new Map();
+    const root = { name: '', path: '', pages: [], children: new Map(), count: 0 };
     for (const cat of filtered) {
       const parts = cat.category.split('/').map((s) => s.trim()).filter(Boolean);
-      const top = parts[0] || 'General'; const sub = parts[1] || null;
-      if (!tops.has(top)) tops.set(top, { name: top, pages: [], subs: new Map(), count: 0 });
-      const node = tops.get(top); node.count += cat.pages.length;
-      if (sub) { if (!node.subs.has(sub)) node.subs.set(sub, []); node.subs.get(sub).push(...cat.pages); }
-      else node.pages.push(...cat.pages);
+      let node = root, path = '';
+      for (const part of (parts.length ? parts : ['General'])) {
+        path = path ? `${path}/${part}` : part;
+        if (!node.children.has(part)) node.children.set(part, { name: part, path, pages: [], children: new Map(), count: 0 });
+        node = node.children.get(part);
+      }
+      node.pages.push(...cat.pages);
     }
-    return [...tops.values()].map((n) => ({ ...n, subs: [...n.subs.entries()] }));
+    const finalize = (n) => {
+      const kids = [...n.children.values()].map(finalize);
+      n.children = kids;
+      n.count = n.pages.length + kids.reduce((s, k) => s + k.count, 0);
+      return n;
+    };
+    return finalize(root).children;
   }, [filtered]);
 
   const body = page ? (lang === 'fr' && page.bodyFr ? page.bodyFr : page.body) : '';
@@ -127,7 +138,7 @@ export default function Docs() {
       <div className="relative mb-4">
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('docs.filter')} className="!py-2 !text-sm !rounded-2xl" />
       </div>
-      {nested.map((cat) => { const isCollapsed = collapsed.has(cat.name) && !q.trim();
+      {(() => {
         const PageLink = (p) => (
           <Link key={p.slug} to={`/docs/${p.slug}`} onClick={() => { if (window.innerWidth < 768) setSidebar(false); }}
             className={`group relative flex items-center gap-2.5 pl-3 pr-2.5 py-1.5 rounded-lg text-sm transition ${activeSlug === p.slug ? 'bg-[var(--primary)]/10 text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
@@ -137,23 +148,28 @@ export default function Docs() {
             {!p.published && <span className="text-[10px] text-orange-400 shrink-0">draft</span>}
           </Link>
         );
-        return (
-        <div key={cat.name} className="mb-3">
-          <button onClick={() => toggleCat(cat.name)} className="w-full flex items-center gap-1 px-1 mb-1 text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] hover:text-[var(--muted)]">
-            <ChevronRight size={12} className={`transition-transform shrink-0 ${isCollapsed ? '' : 'rotate-90'}`} /> <span className="flex-1 text-left truncate">{cat.name}</span>
-            <span className="text-[10px] font-semibold tabular-nums text-[var(--faint)] bg-[var(--surface-2)] rounded-full px-1.5 py-px">{cat.count}</span>
-          </button>
-          {!isCollapsed && <div className="space-y-0.5">
-            {cat.pages.map(PageLink)}
-            {cat.subs.map(([sub, pages]) => (
-              <div key={sub} className="mt-1.5">
-                <div className="px-3 mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--faint)]/80">{sub}</div>
-                <div className="ml-2 border-l border-[var(--line)] pl-1.5 space-y-0.5">{pages.map(PageLink)}</div>
-              </div>
-            ))}
-          </div>}
-        </div>
-      ); })}
+        // Recursive group renderer — one function, any depth. The search filter (q) force-
+        // expands everything so a match is never hidden inside a collapsed sub-group.
+        const renderNode = (node, depth) => {
+          const isCollapsed = collapsed.has(node.path) && !q.trim();
+          const head = depth === 0 ? 'text-[11px] text-[var(--faint)]' : 'text-[10px] text-[var(--faint)]/80';
+          return (
+            <div key={node.path} className={depth === 0 ? 'mb-3' : 'mt-1.5'}>
+              <button onClick={() => toggleCat(node.path)} className={`w-full flex items-center gap-1 px-1 mb-1 font-bold uppercase tracking-wide hover:text-[var(--muted)] ${head}`}>
+                <ChevronRight size={12} className={`transition-transform shrink-0 ${isCollapsed ? '' : 'rotate-90'}`} /> <span className="flex-1 text-left truncate">{node.name}</span>
+                <span className="text-[10px] font-semibold tabular-nums text-[var(--faint)] bg-[var(--surface-2)] rounded-full px-1.5 py-px">{node.count}</span>
+              </button>
+              {!isCollapsed && (
+                <div className={depth === 0 ? 'space-y-0.5' : 'ml-2 border-l border-[var(--line)] pl-1.5 space-y-0.5'}>
+                  {node.pages.map(PageLink)}
+                  {node.children.map((c) => renderNode(c, depth + 1))}
+                </div>
+              )}
+            </div>
+          );
+        };
+        return nested.map((n) => renderNode(n, 0));
+      })()}
       {canEdit && <Button size="sm" variant="ghost" className="w-full mt-1" onClick={() => setEditing({})}><Plus size={14} /> {t('docs.newpage')}</Button>}
     </>
   );
