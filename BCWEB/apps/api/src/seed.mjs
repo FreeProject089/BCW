@@ -363,35 +363,35 @@ if (adminUser && communityProject) {
       body:
 `:badge[Announcement]{color="#f59e0b"} :badge[Welcome]{color="#16a34a"}
 
-**BetterCommunity** is the hub for the whole Better* ecosystem. Browse moderated catalogs, share presets, manage your uploads, and host your own Server-Repos — all from a single account.
+Modding used to mean a dozen browser tabs: one site for the mod, another for its dependencies, a Discord for the update you missed. **BetterCommunity** is the attempt to put all of that in one place — and behind one account.
 
-:::tip[Get started in a minute]
-Create a free account, then open the **Catalog** to install apps, plugins and themes straight into BMM with one click.
+It's the hub for the whole Better* ecosystem. Everything BMM installs from lives here: **moderated** catalogs of apps, plugins, themes and BSM presets, where "moderated" isn't a slogan — every submission is reviewed by a human before it reaches you. Find something you like and it's one click into BMM; nothing to unzip, no folder to guess at.
+
+:::tip[A minute to your first install]
+Create a free account, open the **Catalog**, and install straight into BMM. That's the whole loop.
 :::
 
-## What you can do here
-- **Browse** moderated catalogs of apps, plugins, themes and BSM presets
-- **Publish** your own content — every submission is reviewed before it goes live
-- **Host** a Server-Repo, billed only for what you use (there's a free tier to start)
-- **Link** your Discord and BMM creator id for roles, credit and gated channels
+When you're ready to give back, the same account lets you **publish** your own work and **host** it: a Server-Repo gives your content a stable URL and real update detection, on a free tier to start and pay-for-what-you-use above it. Link your **Discord** and **BMM creator id** and the platform knows who you are across all of it — roles, credit on your uploads, access to gated channels.
+
+One account, from "I just want this mod" to "here's the catalog I maintain."
 
 :::card{title="Open the catalog" href=/catalog icon=box}
-Discover what the community has already built.
+See what the community has already built.
 :::`,
       bodyFr:
 `:badge[Annonce]{color="#f59e0b"} :badge[Bienvenue]{color="#16a34a"}
 
-**BetterCommunity** est le hub de tout l'écosystème Better*. Parcours des catalogues modérés, partage des presets, gère tes envois et héberge tes propres Server-Repos — le tout depuis un seul compte.
+Modder, c'était une douzaine d'onglets : un site pour le mod, un autre pour ses dépendances, un Discord pour la mise à jour qu'on a ratée. **BetterCommunity**, c'est la tentative de tout réunir au même endroit — et derrière un seul compte.
 
-:::tip[Commence en une minute]
-Crée un compte gratuit, puis ouvre le **Catalogue** pour installer apps, plugins et thèmes directement dans BMM en un clic.
+C'est le hub de tout l'écosystème Better*. Tout ce que BMM installe vit ici : des catalogues **modérés** d'apps, plugins, thèmes et presets BSM — et « modéré » n'est pas un slogan : chaque soumission est relue par un humain avant de t'arriver. Tu trouves ce qui te plaît, et c'est un clic dans BMM ; rien à dézipper, aucun dossier à deviner.
+
+:::tip[Une minute avant ta première install]
+Crée un compte gratuit, ouvre le **Catalogue**, et installe directement dans BMM. Toute la boucle est là.
 :::
 
-## Ce que tu peux faire ici
-- **Parcourir** des catalogues modérés d'apps, plugins, thèmes et presets BSM
-- **Publier** ton propre contenu — chaque soumission est vérifiée avant sa mise en ligne
-- **Héberger** un Server-Repo, facturé seulement à l'usage (un palier gratuit pour commencer)
-- **Lier** ton Discord et ton creator id BMM pour les rôles, le crédit et les salons réservés
+Quand tu veux rendre la pareille, le même compte te laisse **publier** ton travail et l'**héberger** : un Server-Repo donne à ton contenu une URL stable et une vraie détection des mises à jour, sur un palier gratuit pour commencer et à l'usage au-delà. Lie ton **Discord** et ton **creator id BMM**, et la plateforme sait qui tu es partout — rôles, crédit sur tes envois, accès aux salons réservés.
+
+Un seul compte, de « je veux juste ce mod » à « voici le catalogue que je maintiens ».
 
 :::card{title="Ouvrir le catalogue" href=/catalog icon=box}
 Découvre ce que la communauté a déjà créé.
