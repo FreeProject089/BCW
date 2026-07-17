@@ -310,16 +310,22 @@ function PageToc({ body }) {
 
 /* ⌘K command-palette search over doc titles + bodies (server-side ranked). */
 // Wrap every case-insensitive occurrence of `q` in <mark> for result highlighting.
+// Highlight EACH query term, not just the whole string — so a multi-word search ("plugin
+// permission") marks both words wherever they land, matching the multi-term backend ranking.
 function highlight(text, q) {
-  const s = String(text || ''); const needle = String(q || '').trim();
-  if (!needle) return s;
-  const parts = []; let i = 0; const low = s.toLowerCase(); const nl = needle.toLowerCase();
+  const s = String(text || '');
+  const terms = [...new Set(String(q || '').toLowerCase().split(/\s+/).filter((w) => w.length >= 2))];
+  if (!terms.length) return s;
+  const low = s.toLowerCase();
+  const parts = []; let i = 0;
   while (i < s.length) {
-    const idx = low.indexOf(nl, i);
-    if (idx < 0) { parts.push(s.slice(i)); break; }
-    if (idx > i) parts.push(s.slice(i, idx));
-    parts.push(<mark key={idx} className="doc-hl">{s.slice(idx, idx + needle.length)}</mark>);
-    i = idx + needle.length;
+    // Nearest occurrence of any term from position i.
+    let best = -1, bestLen = 0;
+    for (const tm of terms) { const idx = low.indexOf(tm, i); if (idx >= 0 && (best < 0 || idx < best)) { best = idx; bestLen = tm.length; } }
+    if (best < 0) { parts.push(s.slice(i)); break; }
+    if (best > i) parts.push(s.slice(i, best));
+    parts.push(<mark key={best} className="doc-hl">{s.slice(best, best + bestLen)}</mark>);
+    i = best + bestLen;
   }
   return parts;
 }

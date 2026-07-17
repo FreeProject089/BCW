@@ -92,29 +92,39 @@ export default async function docRoutes(app) {
     const where = isEditor(req) ? {} : { published: true };
     const pages = await p.docPage.findMany({ where, select: { slug: true, title: true, category: true, icon: true, body: true, bodyFr: true } });
     const nq = q.toLowerCase();
+    // Multi-term (AND) matching: split the query into words and require a page to contain ALL
+    // of them somewhere. The old single-substring match meant "plugin permission" only hit if
+    // that exact phrase existed — now it finds the page that mentions both, in any order. The
+    // terms are returned so the client highlights each one, not just the raw query string.
+    const terms = [...new Set(nq.split(/\s+/).filter((w) => w.length >= 2))];
+    if (!terms.length) return { results: [] };
+    const clean = (s) => s.replace(/:{2,}[\w-]*(\[[^\]]*\])?(\{[^}]*\})?/g, ' ').replace(/[|`{}#>*_[\]]+/g, ' ').replace(/-{3,}/g, ' ').replace(/\s+/g, ' ').trim();
     const results = [];
     for (const pg of pages) {
       const hay = `${pg.body || ''}\n${pg.bodyFr || ''}`;
-      const inTitle = pg.title.toLowerCase().includes(nq);
-      const bi = hay.toLowerCase().indexOf(nq);
-      if (inTitle || bi >= 0) {
+      const titleLow = pg.title.toLowerCase();
+      const hayLow = hay.toLowerCase();
+      // A page qualifies only if EVERY term appears (title or body). Score rewards title hits
+      // and full-title coverage, so "server repo" ranks the "Server repos" page top.
+      const inTitle = terms.filter((tm) => titleLow.includes(tm));
+      const present = terms.every((tm) => titleLow.includes(tm) || hayLow.includes(tm));
+      if (present) {
+        let score = 1 + inTitle.length * 3;
+        if (inTitle.length === terms.length) score += 4; // whole query is in the title
+        // Snippet centred on the first term found in the body.
         let snippet = '';
-        if (bi >= 0) {
-          const start = Math.max(0, bi - 40);
-          // Strip markdown/table/directive noise so snippets read as prose (they
-          // were showing raw `| GET | \`/docs\` |` pipes and ::: fences).
-          snippet = (start > 0 ? '…' : '') + hay.slice(start, bi + q.length + 70)
-            .replace(/:{2,}[\w-]*(\[[^\]]*\])?(\{[^}]*\})?/g, ' ')
-            .replace(/[|`{}#>*_[\]]+/g, ' ')
-            .replace(/-{3,}/g, ' ')
-            .replace(/\s+/g, ' ').trim() + '…';
+        const first = terms.map((tm) => hayLow.indexOf(tm)).filter((x) => x >= 0).sort((a, b) => a - b)[0];
+        if (first != null && first >= 0) {
+          const start = Math.max(0, first - 40);
+          snippet = (start > 0 ? '…' : '') + clean(hay.slice(start, first + 110)) + '…';
         }
-        results.push({ slug: pg.slug, title: pg.title, category: pg.category, icon: pg.icon, snippet, score: inTitle ? 3 : 1 });
+        results.push({ slug: pg.slug, title: pg.title, category: pg.category, icon: pg.icon, snippet, terms, score });
       }
-      // Heading-level matches — jump straight to that section (#anchor).
+      // Heading-level matches — jump straight to that section (#anchor). All terms in one heading.
       for (const h of (pg.body || '').match(/^#{2,3}\s+.+$/gm) || []) {
         const text = h.replace(/^#{2,3}\s+/, '').trim();
-        if (text.toLowerCase().includes(nq)) results.push({ slug: pg.slug, title: pg.title, category: pg.category, icon: pg.icon, section: text, anchor: headingSlug(text), score: 2 });
+        const hl = text.toLowerCase();
+        if (terms.every((tm) => hl.includes(tm))) results.push({ slug: pg.slug, title: pg.title, category: pg.category, icon: pg.icon, section: text, anchor: headingSlug(text), terms, score: 2 + terms.length });
       }
     }
     results.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
