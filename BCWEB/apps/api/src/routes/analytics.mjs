@@ -5,6 +5,7 @@ import { db, requireRole, requireCap, optionalUid } from '../lib/lib.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
 import { RETENTION_DEFAULTS, resolveRetention } from '../lib/retention.mjs';
 import { getRedis, getRedisSubscriber } from '../lib/redis.mjs';
+import { getRecentServerErrors } from '../lib/errorlog.mjs';
 
 // Push bus for the admin live events feed: ingestion emits normalized events, the SSE
 // endpoint (/admin/analytics/events/stream) relays them to connected admins in real time.
@@ -538,6 +539,15 @@ export default async function analyticsRoutes(app) {
         bcIds: bcIdsByMsg.get(g.message) || [],
       }; }),
     };
+  });
+
+  // The in-memory tail of server errors — deliberately does NOT touch the DB. Its whole
+  // reason to exist is the case where the DB is what's broken: the /errors query above would
+  // then fail too, so this is the only window into a data-layer outage. `persisted:false`
+  // entries are the ones that never reached the table — exactly the previously-invisible 500s.
+  app.get('/admin/analytics/errors/recent', { preHandler: requireCap('manage_analytics') }, async () => {
+    const recent = getRecentServerErrors();
+    return { recent, unpersisted: recent.filter((e) => e.persisted === false).length };
   });
 
   // ── Conversion goals ────────────────────────────────────────────────────────

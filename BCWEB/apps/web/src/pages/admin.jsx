@@ -5463,12 +5463,23 @@ function AdminEventsFeed() {
   // path/kind filters server-side. On disconnect EventSource auto-reconnects (retry: 5s).
   const [live, setLive] = useState(false);
   const [streamed, setStreamed] = useState([]);
+  // Connection state of the SSE stream. Without this the Live dot pulsed green even when the
+  // socket never connected (e.g. a dev proxy that can't hijack an SSE response): the feed sat
+  // empty and nothing said why. EventSource errors are delivered ONLY to es.onerror — they do
+  // NOT reach window.onerror, so the global client-error reporter can't see them either. That
+  // is the whole reason a broken stream was invisible; the fix is to show it here.
+  const [conn, setConn] = useState('idle'); // idle · connecting · open · error
   const streamQs = `${qApplied ? `path=${encodeURIComponent(qApplied)}` : ''}${kinds.size ? `${qApplied ? '&' : ''}kinds=${[...kinds].join(',')}` : ''}`;
   useEffect(() => {
     setStreamed([]); // filters (or live off) → drop the old stream buffer and re-subscribe
-    if (!live || typeof EventSource === 'undefined') return undefined;
+    if (!live || typeof EventSource === 'undefined') { setConn('idle'); return undefined; }
+    setConn('connecting');
     const es = new EventSource(`/api/admin/analytics/events/stream${streamQs ? `?${streamQs}` : ''}`);
-    es.onmessage = (m) => { try { const ev = JSON.parse(m.data); setStreamed((s) => [ev, ...s].slice(0, 300)); } catch { /* ignore malformed frame */ } };
+    es.onopen = () => setConn('open');
+    es.onmessage = (m) => { setConn('open'); try { const ev = JSON.parse(m.data); setStreamed((s) => [ev, ...s].slice(0, 300)); } catch { /* ignore malformed frame */ } };
+    // EventSource retries on its own (retry: 5s from the server); this just surfaces that it's
+    // currently NOT connected, so the admin sees "reconnecting" instead of a false "live".
+    es.onerror = () => setConn((c) => (c === 'open' ? 'error' : 'connecting'));
     return () => es.close();
   }, [live, streamQs]);
   // Merge the pushed events on top of the initial fetch, de-duplicating the small overlap
@@ -5489,9 +5500,23 @@ function AdminEventsFeed() {
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
           </div>
-          <button onClick={() => setLive((v) => !v)} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border transition ${live ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-500' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <span className={`w-2 h-2 rounded-full ${live ? 'bg-emerald-500 animate-pulse' : 'bg-[var(--faint)]'}`} /> {t('evf.live', 'Live')}
-          </button>
+          {(() => {
+            // Colour follows the ACTUAL connection, not just the toggle: green when the socket
+            // is open, amber+pulsing while (re)connecting or after a drop, grey when off.
+            const on = live && conn === 'open';
+            const reconnecting = live && conn !== 'open';
+            const cls = on ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-500'
+              : reconnecting ? 'border-amber-500/50 bg-amber-500/10 text-amber-500'
+              : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]';
+            const dot = on ? 'bg-emerald-500 animate-pulse' : reconnecting ? 'bg-amber-500 animate-pulse' : 'bg-[var(--faint)]';
+            const label = reconnecting ? t('evf.connecting', 'Reconnecting…') : t('evf.live', 'Live');
+            return (
+              <button onClick={() => setLive((v) => !v)} title={reconnecting ? t('evf.connecting.tip', 'The live stream is not connected — check the API is reachable') : undefined}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border transition ${cls}`}>
+                <span className={`w-2 h-2 rounded-full ${dot}`} /> {label}
+              </button>
+            );
+          })()}
           <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
         </div>
       </div>
@@ -5547,6 +5572,11 @@ function AdminErrors() {
   const qs = `${rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`}${qApplied ? `&path=${encodeURIComponent(qApplied)}` : ''}${source ? `&source=${source}` : ''}`;
   const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/errors?${qs}`), [qs]);
   const errors = data?.errors || [];
+  // The in-memory tail (survives a DB outage). We only surface it when it holds errors that
+  // FAILED to persist — those are the previously-invisible ones, the 500s where the database
+  // was the thing that broke, so neither the list below nor its own logger could record them.
+  const recent = useAsync(() => api.get('/admin/analytics/errors/recent'), []);
+  const unpersisted = (recent.data?.recent || []).filter((e) => e.persisted === false);
   const copy = (txt, msg) => { navigator.clipboard?.writeText(txt); toast.success(msg || t('er.copied', 'Copied.')); };
   const exportJson = () => {
     const blob = new Blob([JSON.stringify(errors, null, 2)], { type: 'application/json' });
@@ -5565,6 +5595,12 @@ function AdminErrors() {
         </div>
       </div>
       <p className="text-sm text-[var(--muted)] mb-3">{t('er.sub', 'Server errors (API 5xx) and uncaught JavaScript errors from real visits, grouped by message. Repeated identical server errors collapse to one entry per minute — the occurrence count is per entry, not per request.')}</p>
+      {unpersisted.length > 0 && (
+        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5">
+          <div className="font-medium text-red-300 flex items-center gap-2 text-sm"><AlertTriangle size={14} /> {t('er.dbdown.t', '{n} recent server error(s) could not be written to the database').replace('{n}', unpersisted.length)}</div>
+          <div className="text-xs text-[var(--muted)] mt-1">{t('er.dbdown.s', 'The data layer itself may be failing — which is why these are not in the list below. This tail is kept in memory. Newest:')} <span className="font-mono text-[var(--text)]">{unpersisted[0].path}</span> — {unpersisted[0].message}</div>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2 mb-4">
         <div className="relative flex-1 min-w-[220px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
           <Input className="!pl-9" placeholder={t('er.pathph', 'Filter by page path…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
