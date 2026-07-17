@@ -236,77 +236,114 @@ Files sit in a temporary area until a moderator approves them — then they beco
   },
   {
     slug: 'app-catalog', category: 'BetterCommunity', title: 'App catalog format', icon: 'boxes', order: 302,
-    body: `# App catalog format
+    body: `::toc[On this page]
 
-An app entry describes a standalone app in the catalog.
+# App catalog format
 
-## Fields
+An App Catalog is a \`catalog.json\` with an \`apps\` array. Each entry describes one standalone app; BMM installs from it in one click.
 
-| Field | Meaning |
+## Envelope
+
+\`\`\`json
+{ "version": "1.0", "name": "My catalog", "description": "…", "apps": [ … ] }
+\`\`\`
+
+## App entry — required fields
+
+| Field | Values |
 |---|---|
-| \`name\` | Display name |
-| \`version\` | Semantic version, e.g. \`1.4.0\` |
+| \`id\` | Unique slug (dashes). |
+| \`title\` | Display name (note: \`title\`, not \`name\`). |
+| \`description\` | 1–3 sentences shown on the card. |
 | \`category\` | \`game\` · \`utility\` · \`other\` |
-| \`description\` | Short summary shown on the card |
-| \`download_url\` | Direct download, **or** host it with us |
+| \`price\` | \`free\` · \`freemium\` · \`paid\` |
+| \`tags\` | Up to 3. |
+| \`download.url\` | Direct download link. |
+| \`download.file_type\` | \`zip\` · \`exe\` · \`msi\` · \`script\` |
 
-:::tip
-Keep \`version\` accurate — updates in BMM are driven by it.
+## Optional fields
+
+\`version\`, \`requirements\`, \`md_link\`, \`images.thumb\` (16:9, ≥400×225) and \`images.extra\`, \`download.size\`.
+
+:::note[Integrity]
+\`download.sha256\` is optional but **recommended** — BMM verifies it on install.
+:::
+
+:::tip[Don't hand-write it]
+Create official apps via **Admin → Catalogs**, or community apps via **Dashboard → Submit content**. Either way BMM builds the \`catalog.json\` and a \`bmm://\` deeplink, so an "Install in BMM" button just works. Host the payload yourself, or with us.
 :::`,
   },
   {
     slug: 'plugin-catalog', category: 'BetterCommunity', title: 'Plugin catalog (.bmmplug)', icon: 'puzzle', order: 303,
-    body: `# Plugin catalog · \`.bmmplug\`
+    body: `::toc[On this page]
 
-A plugin is packaged as a \`.bmmplug\` and declares what it needs to run.
+# Plugin catalog · \`.bmmplug\`
 
-## Key fields
+Two things share this page: the **catalog entry** (what a \`plugins\` feed lists) and the **\`.bmmplug\` package** (the file itself). They're different — the entry points at the package.
 
-| Field | Meaning |
-|---|---|
-| \`name\` / \`version\` | Identity |
-| \`permissions\` | Capabilities the plugin requests (network, files, deep links…) |
-| \`entry\` | The plugin's entry point |
+## Catalog entry
 
-:::warning[Permissions are shown to users]
-Only request what you actually use — users approve each permission before the plugin runs.
+Emitted into a \`plugins\` array. **Required:** \`id\`, \`name\`, \`version\`, \`author\`, \`download_url\`. **Optional:** \`game\`, \`description\`, \`official\`, \`tags\`, \`icon_url\`, and a \`sha256\` of the \`.bmmplug\`.
+
+## The \`.bmmplug\` package (a ZIP)
+
+- \`plugin.json\` — the manifest (**required**).
+- \`icon.png\` — 40×40 (optional).
+- \`checksums.json\` — **sha256 of every file** in the package.
+
+The manifest declares \`id\`, \`name\`, \`version\`, \`author\`, \`description\`, \`game\`, \`permissions\`, and how it applies (\`scripts\`, \`folders\`, \`apply_mode\`) — plus an optional \`modlist\`.
+
+:::warning[Permissions are a fixed set — and they're shown to users]
+A plugin requests capabilities from the API's real permission set (\`mods.write\`, \`profiles.write\`, \`modpacks.write\`, \`plugins.read\`/\`write\`, \`catalog.read\`/\`write\`, \`app.read\`/\`write\`, \`repo.write\`) — **not** free-form things like "network" or "files". Request only what you use; the user grants each one. See the [API reference](/docs/api-reference).
+:::
+
+:::danger[Both checksums are validated]
+The catalog entry's \`sha256\` covers the whole \`.bmmplug\`; \`checksums.json\` covers each file inside. If either fails, BMM flags the plugin **invalid** and recommends not installing it. Catalog plugins are always validated.
 :::`,
   },
   {
     slug: 'theme-catalog', category: 'BetterCommunity', title: 'Theme catalog (.bmmtheme)', icon: 'palette', order: 304,
-    body: `# Theme catalog · \`.bmmtheme\`
+    body: `::toc[On this page]
 
-A theme is a set of design tokens exported from the theme editor.
+# Theme catalog · \`.bmmtheme\`
 
-## Fields
+As with plugins, there's a **catalog entry** and the **\`.bmmtheme\` package**.
 
-| Field | Meaning |
-|---|---|
-| \`name\` | Theme name |
-| \`tokens\` | Colours, surfaces, borders, text |
-| \`mode\` | \`dark\` or \`light\` base |
+## Catalog entry
 
-:::tip
-Test your theme across every page before publishing — tokens apply app-wide.
-:::
+Emitted into a \`themes\` array: \`id\`, \`name\`, \`description\`, \`author\`, \`version\`, \`url\` (the download), \`tags\`.
 
-:::card{title="Build one" href=/docs/themes icon=palette}
-See the theme editor guide.
+## The \`.bmmtheme\` package (a ZIP)
+
+- \`theme.json\` — the manifest (**required**).
+- \`assets/\` — optional (embedded images: logo, wallpaper, mascot).
+
+The manifest carries \`id\`, \`name\`, \`author\`, \`version\`, a \`tokens\` map of \`--bmm-*\` CSS variables, and optional per-selector \`overrides\`.
+
+:::tip[Don't hand-write it]
+Export a theme from the in-app **[Theme Editor](/docs/themes)** — it writes a valid \`theme.json\`. Then publish via **Dashboard → Submit content** (Project **BMM**, Type **Theme**). Installing applies instantly and is reversible.
 :::`,
   },
   {
     slug: 'preset-catalog', category: 'BetterCommunity', title: 'Preset catalog (BSM)', icon: 'sliders', order: 305,
     body: `# Preset catalog · BSM
 
-A preset is a shareable BSM configuration bundle.
+A BSM preset is a **single JSON file** — no ZIP, no separate manifest. Its metadata lives inside the file.
 
 ## Fields
 
-| Field | Meaning |
-|---|---|
-| \`name\` | Preset name |
-| \`config\` | The BSM settings payload |
-| \`version\` | Semantic version |
+| Field | Required | Meaning |
+|---|---|---|
+| \`name\` | yes | Preset name. |
+| \`version\` | yes | Semantic version. |
+| \`assetPaths\` | yes | The asset paths the preset drives. |
+| \`color\` | no | Accent colour. |
+| \`UpdateNumber\` | no | Revision counter. |
+| \`date\` | no | Publish date. |
+
+:::tip[Publishing]
+Submit via **Dashboard → Submit content** (Project **BSM**, Type **Preset**). On the catalog, users can download, multi-select download, and sort by *popular (all-time / month)*, *newest* or *most viewed* — every download counts toward your stats.
+:::
 
 :::card{title="Using presets" href=/docs/presets icon=sliders}
 Install and export presets in BMM.
