@@ -14,6 +14,7 @@ import { trackPageview, initVitals, initInteractions, initErrors } from './lib/a
 import { loadGtmIfConsented } from './lib/gtm.js';
 import { getOrbTransitionPref } from './lib/prefs.js';
 import { ADMIN_TIER_ROLES, canAdmin, utilAllowed } from './lib/roles.js';
+import { readLayout, navAlignClass } from './lib/navLayout.js';
 import CookieConsent from './ui/CookieConsent.jsx';
 import PromoBadge from './ui/promo-badge.jsx';
 import EventEffect from './hero/event-effect.jsx';
@@ -423,6 +424,11 @@ function Nav() {
   // lg+ account cluster (dashboard · admin · profile · logout / login). Each element
   // still has a hard precondition (auth, admin) that the config can only further hide.
   const uCfg = navCfg?.utility || {};
+  // Admin-configured desktop layout (align · density · labels), via the shared reader the
+  // preview also uses. labels:'icons' reuses the existing responsive icons-only mode by
+  // FORCING is-compact regardless of width; density:'compact' tightens the pill gap.
+  const layout = readLayout(navCfg?.layout);
+  const iconsOnly = layout.labels === 'icons';
   const uVisible = (k) => uCfg[k]?.visible !== false; // default: shown
   const orderIn = (list) => [...list].sort((a, b) => (uCfg[a]?.order ?? list.indexOf(a)) - (uCfg[b]?.order ?? list.indexOf(b)));
   const clusterA = orderIn(UTIL_A);
@@ -463,8 +469,8 @@ function Nav() {
             horizontal scroll). The rounded background lives on the INNER nav which is
             content-width, so the pill bar ends right after the last tab instead of
             stretching the whole width. */}
-        <div ref={segNavRef} className={`seg-nav ${compact ? 'is-compact' : ''} hidden lg:flex flex-1 min-w-0 overflow-x-auto no-scrollbar`}>
-          <nav className="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] shrink-0">
+        <div ref={segNavRef} className={`seg-nav ${compact || iconsOnly ? 'is-compact' : ''} hidden lg:flex flex-1 min-w-0 overflow-x-auto no-scrollbar ${navAlignClass(layout.align)}`}>
+          <nav className={`inline-flex items-center rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] shrink-0 ${layout.density === 'compact' ? 'gap-0' : 'gap-0.5'}`}>
             {effItems.map((it, i) => it.type === 'group'
               ? <NavDropdown key={'g' + i} item={it} t={t} lang={lang} />
               : <NavLink key={it.to} to={it.to} title={navLabel(it, t, lang)} aria-label={navLabel(it, t, lang)} className={(s) => pill(s) + ' shrink-0'}><NavIcon item={it} size={16} /><span className="nav-lbl">{navLabel(it, t, lang)}</span></NavLink>)}

@@ -763,6 +763,14 @@ export default async function miscRoutes(app) {
     // Mobile bottom tab bar. Its contents are derived from the nav items (home + the
     // first few links), so there's nothing to list here — just an on/off toggle.
     downbar: z.object({ enabled: z.boolean().optional().default(true) }).optional().default({ enabled: true }),
+    // Desktop topbar layout. align = where the nav sits; density = spacing; labels = whether
+    // link/group text shows next to icons ('icons' hides it, saving room). Applied identically
+    // by the real topbar (App.jsx) and the admin Live preview from one shared reader.
+    layout: z.object({
+      align: z.enum(['start', 'center', 'end']).optional().default('start'),
+      density: z.enum(['comfortable', 'compact']).optional().default('comfortable'),
+      labels: z.enum(['both', 'icons']).optional().default('both'),
+    }).optional().default({}),
   });
 
   // Admin editor reads the RAW config (even when disabled) so it can be edited.
@@ -789,15 +797,20 @@ export default async function miscRoutes(app) {
     // Utility (topbar button show/hide/order) applies independently of custom nav items —
     // an admin may want to hide the login button without configuring the whole nav.
     const utility = cfg?.utility && Object.keys(cfg.utility).length ? cfg.utility : null;
-    // projectsMode + downbar apply independently of custom items (like utility).
+    // projectsMode + downbar + layout apply independently of custom items (like utility).
     const projectsMode = cfg?.projectsMode === 'dropdown' ? 'dropdown' : null; // 'inline' is the default → omit
     const downbar = cfg?.downbar && cfg.downbar.enabled === false ? cfg.downbar : null; // enabled is the default → omit
-    if (!usable && !utility && !projectsMode && !downbar) return { nav: null };
+    // layout: only forward it when it differs from the defaults (start/comfortable/both), so an
+    // untouched install still gets nav:null and the built-in look.
+    const L = cfg?.layout;
+    const layout = L && ((L.align && L.align !== 'start') || (L.density && L.density !== 'comfortable') || (L.labels && L.labels !== 'both')) ? L : null;
+    if (!usable && !utility && !projectsMode && !downbar && !layout) return { nav: null };
     return { nav: {
       ...(usable ? { items: cfg.items } : {}),
       ...(utility ? { utility } : {}),
       ...(projectsMode ? { projectsMode } : {}),
       ...(downbar ? { downbar } : {}),
+      ...(layout ? { layout } : {}),
     } };
   });
 }

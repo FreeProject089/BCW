@@ -14,6 +14,7 @@ import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
 import Avatar from '../ui/Avatar.jsx';
 import { useAuth } from './auth.jsx';
 import { utilAllowed } from '../lib/roles.js';
+import { readLayout, navAlignClass } from '../lib/navLayout.js';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
 import { rawStatusLabel, DotDropdown } from './repos.jsx';
@@ -6449,7 +6450,9 @@ const pvSheet = 'flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[
 // Live preview of the public topbar built from the editor's items — faithful to the real
 // component's styling (App.jsx). Desktop = the pill bar with a hover/click dropdown; mobile
 // = the hamburger sheet (tap a group to expand, tap the phone to reveal the sheet).
-function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 'inline', downbar = true, projects = [] }) {
+function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 'inline', downbar = true, projects = [], layout: layoutProp }) {
+  const layout = readLayout(layoutProp);
+  const iconsOnly = layout.labels === 'icons';
   const { t } = useI18n();
   const { user } = useAuth();
   const [openIdx, setOpenIdx] = useState(null);
@@ -6611,11 +6614,14 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
       className="rounded-2xl border border-[var(--line)] px-3 py-2 min-h-14 flex items-center gap-1 topbar bg-[var(--bg-solid)]">
       <img src="/logo.png" alt="" className="w-8 h-8 rounded-lg shrink-0" />
       <span className="font-bold text-sm mr-2 shrink-0">BetterCommunity</span>
-      <div className="inline-flex items-center gap-0.5 bg-[var(--surface-2)] rounded-full p-1 border border-[var(--line)] shrink-0">
+      {/* flex-1 align track + inline pill bar, mirroring the real topbar (App.jsx): the track
+          positions the content-width pill bar left/center/right per layout.align. */}
+      <div className={`flex-1 min-w-0 flex ${navAlignClass(layout.align)}`}>
+      <div className={`inline-flex items-center ${layout.density === 'compact' ? 'gap-0' : 'gap-0.5'} bg-[var(--surface-2)] rounded-full p-1 border border-[var(--line)] shrink-0`}>
         {valid.length === 0 ? <span className="text-xs text-[var(--faint)] px-3 py-1.5">{t('nav.pv.empty', 'No valid items yet.')}</span> : valid.map(({ it, idx }) => it.type === 'group' ? (
           <div key={idx} className="relative">
             <button title={onEdit ? t('nav.pv.edit', 'Click to edit · chevron opens the dropdown') : undefined} onClick={() => jump(idx)} className={pillCls(openIdx === idx)}>
-              <NavPvIcon name={it.icon} /><span>{pvLabel(it, lang)}</span>
+              <NavPvIcon name={it.icon} />{!iconsOnly && <span>{pvLabel(it, lang)}</span>}
               <span role="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); setOpenIdx(openIdx === idx ? null : idx); }} className="-mr-1 p-0.5 rounded hover:bg-[var(--surface-3,var(--line))]"><ChevronDown size={13} className={`transition-transform ${openIdx === idx ? 'rotate-180' : ''}`} /></span>
             </button>
             {openIdx === idx && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[240px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
@@ -6627,18 +6633,19 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
               ))}
             </div>}
           </div>
-        ) : <button key={idx} title={onEdit ? t('nav.pv.editlink', 'Click to edit this item') : undefined} onClick={() => jump(idx)} className={pillCls(false)}><NavPvIcon name={it.icon} /> {pvLabel(it, lang)}</button>)}
+        ) : <button key={idx} title={onEdit ? t('nav.pv.editlink', 'Click to edit this item') : undefined} onClick={() => jump(idx)} className={pillCls(false)}><NavPvIcon name={it.icon} /> {iconsOnly ? null : pvLabel(it, lang)}</button>)}
         {/* Pinned projects — inline pills, or one "Projects" dropdown, per projectsMode. */}
         {projDropdown ? (
           <div className="relative">
             <button onClick={() => setProjOpen((o) => !o)} className={pillCls(projOpen)}>
-              <Sparkles size={15} /><span>{t('nav.projects', 'Projects')}</span><ChevronDown size={13} className={`transition-transform ${projOpen ? 'rotate-180' : ''}`} />
+              <Sparkles size={15} />{!iconsOnly && <span>{t('nav.projects', 'Projects')}</span>}<ChevronDown size={13} className={`transition-transform ${projOpen ? 'rotate-180' : ''}`} />
             </button>
             {projOpen && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[220px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
               {pvProjects.map((p) => <div key={p.slug} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]"><span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /></span><span className="text-sm font-medium truncate">{p.name}</span></div>)}
             </div>}
           </div>
-        ) : pvProjects.map((p) => <span key={p.slug} className={pillCls(false)}><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /> {p.name}</span>)}
+        ) : pvProjects.map((p) => <span key={p.slug} className={pillCls(false)}><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /> {iconsOnly ? null : p.name}</span>)}
+      </div>
       </div>
       {/* Right-side utility cluster — mirrors the real topbar (App.jsx): cluster A always
           on, then a border divider, then the account cluster B. Theme = the real switch,
@@ -6668,6 +6675,7 @@ function AdminNav() {
   const [utility, setUtility] = useState({}); // { <key>: { visible, order } } for built-in topbar buttons
   const [projectsMode, setProjectsMode] = useState('inline'); // how pinned showcase projects show: inline pills | one "Projects" dropdown
   const [downbarEnabled, setDownbarEnabled] = useState(true);  // mobile bottom tab bar on/off (its items derive from the nav)
+  const [layout, setLayout] = useState({ align: 'start', density: 'comfortable', labels: 'both' }); // desktop topbar layout
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState('desktop'); // preview device
   // Pinned showcase projects, so the preview shows them exactly as the live topbar will
@@ -6694,6 +6702,7 @@ function AdminNav() {
     setUtility(n.utility && typeof n.utility === 'object' ? n.utility : {});
     setProjectsMode(n.projectsMode === 'dropdown' ? 'dropdown' : 'inline');
     setDownbarEnabled(n.downbar?.enabled !== false);
+    setLayout(readLayout(n.layout));
   }, [loaded.data]);
 
   const patchItem = (i, patch) => setItems((s) => s.map((it, k) => k === i ? { ...it, ...patch } : it));
@@ -6735,7 +6744,7 @@ function AdminNav() {
         out.push({ type: 'link', label: it.label.trim(), labelFr: (it.labelFr || '').trim(), to: it.to.trim(), icon: it.icon || '', children: [] });
       }
     }
-    return { enabled, items: out, utility, projectsMode, downbar: { enabled: downbarEnabled } };
+    return { enabled, items: out, utility, projectsMode, downbar: { enabled: downbarEnabled }, layout };
   };
 
   const save = async () => {
@@ -6762,6 +6771,7 @@ function AdminNav() {
       if (parsed.utility && typeof parsed.utility === 'object' && !Array.isArray(parsed.utility)) setUtility(parsed.utility);
       if (parsed.projectsMode === 'dropdown' || parsed.projectsMode === 'inline') setProjectsMode(parsed.projectsMode);
       if (parsed.downbar && typeof parsed.downbar === 'object') setDownbarEnabled(parsed.downbar.enabled !== false);
+      if (parsed.layout && typeof parsed.layout === 'object') setLayout(readLayout(parsed.layout));
       toast.success(t('nav.imported', 'Preset imported — review and save.'));
     } catch { toast.error(t('nav.importbad', 'Not a valid topbar preset JSON.')); }
   };
@@ -6801,7 +6811,7 @@ function AdminNav() {
             <button onClick={() => setDevice('mobile')} className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${device === 'mobile' ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}><Smartphone size={13} /> {t('nav.pv.mobile', 'Mobile')}</button>
           </div>
         </div>
-        <div className="rounded-xl bg-[var(--bg)] p-4"><NavPreview items={items} lang={lang} device={device} utility={utility} projectsMode={projectsMode} downbar={downbarEnabled} projects={pinnedProjects} onEdit={device === 'desktop' ? editItem : undefined} /></div>
+        <div className="rounded-xl bg-[var(--bg)] p-4"><NavPreview items={items} lang={lang} device={device} utility={utility} projectsMode={projectsMode} downbar={downbarEnabled} layout={layout} projects={pinnedProjects} onEdit={device === 'desktop' ? editItem : undefined} /></div>
         {device === 'desktop' && items.length > 0 && <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.edithint', 'Click any item in the preview to jump to its settings below.')}</div>}
       </Card>
 
@@ -6833,6 +6843,23 @@ function AdminNav() {
           </div>
           <button type="button" onClick={() => setDownbarEnabled((v) => !v)} aria-pressed={downbarEnabled} title={downbarEnabled ? t('nav.util.hide', 'Hide') : t('nav.util.show', 'Show')} className={`w-11 h-6 rounded-full relative shrink-0 transition ${downbarEnabled ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${downbarEnabled ? 'left-[22px]' : 'left-0.5'}`} /></button>
         </div>
+        {/* Desktop layout — align · density · labels. Applied live by the preview above and
+            by the real topbar via the shared lib/navLayout reader. */}
+        {(() => {
+          const seg = (label, hint, field, opts) => (
+            <div className="flex items-center justify-between gap-3 flex-wrap border-t border-[var(--line)] pt-3">
+              <div className="min-w-0"><div className="font-medium text-sm">{label}</div><div className="text-xs text-[var(--faint)]">{hint}</div></div>
+              <div className="flex rounded-lg border border-[var(--line)] overflow-hidden shrink-0">
+                {opts.map(([v, lbl]) => <button key={v} type="button" onClick={() => setLayout((s) => ({ ...s, [field]: v }))} className={`px-3 py-1.5 text-xs ${layout[field] === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}</button>)}
+              </div>
+            </div>
+          );
+          return <>
+            {seg(t('nav.layout.align', 'Nav alignment'), t('nav.layout.align.d', 'Where the nav sits in the bar on desktop.'), 'align', [['start', t('nav.layout.left', 'Left')], ['center', t('nav.layout.center', 'Center')], ['end', t('nav.layout.right', 'Right')]])}
+            {seg(t('nav.layout.density', 'Density'), t('nav.layout.density.d', 'Spacing between nav items.'), 'density', [['comfortable', t('nav.layout.comfortable', 'Comfortable')], ['compact', t('nav.layout.compact', 'Compact')]])}
+            {seg(t('nav.layout.labels', 'Labels'), t('nav.layout.labels.d', 'Show text next to icons, or icons only to save room.'), 'labels', [['both', t('nav.layout.both', 'Icons + text')], ['icons', t('nav.layout.iconsonly', 'Icons only')]])}
+          </>;
+        })()}
       </Card>
 
       {/* Built-in topbar buttons: show/hide + reorder (within each responsive cluster). */}
