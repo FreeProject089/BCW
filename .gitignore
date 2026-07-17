@@ -34,3 +34,4 @@ target/
 apps/web/public/*.bmmreplay
 
 *.bmmreplay
+.claude/
