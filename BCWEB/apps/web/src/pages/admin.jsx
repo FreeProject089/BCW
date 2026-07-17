@@ -25,6 +25,27 @@ import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 import { useAsync, Loading, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, SideDash } from './pages.jsx';
 
+// Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
+// actual api.del only fires once the 6s window elapses — Undo means nothing was ever deleted,
+// no email sent, no round-trip. Replaces a confirm modal, which asks BEFORE and can't take it
+// back AFTER. Returns { pending, del }: filter your list by `!pending.has(id)`, and call
+// del(id, run, msg) where run() does the delete. On success the reload() drops the row for
+// real; on failure the row is restored.
+function useUndoableDelete(reload) {
+  const toast = useToast(); const { t } = useI18n();
+  const [pending, setPending] = useState(() => new Set());
+  const unhide = (id) => setPending((s) => { const n = new Set(s); n.delete(id); return n; });
+  const del = (id, run, msg) => {
+    setPending((s) => new Set(s).add(id));
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'), msg,
+      onCommit: async () => { try { await run(); reload?.(); } catch { toast.error(t('common.failed', 'Failed.')); unhide(id); } },
+      onCancel: () => unhide(id),
+    });
+  };
+  return { pending, del };
+}
+
 /* ─────────────────────────  Admin  ───────────────────────── */
 export function Admin() {
   const { user } = useAuth(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
@@ -1939,7 +1960,8 @@ function AdminAnnouncements() {
   const [busy, setBusy] = useState(false);
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [broadcastBusy, setBroadcastBusy] = useState(false);
-  const announcements = data?.announcements || [];
+  const undo = useUndoableDelete(reload);
+  const announcements = (data?.announcements || []).filter((a) => !undo.pending.has(a.id));
 
   const create = async () => {
     if (f.title.length < 2) return toast.error(t('ann.title.req', 'Title is required.'));
@@ -1949,10 +1971,7 @@ function AdminAnnouncements() {
   };
   const toggleActive = async (a) => { try { await api.put(`/admin/announcements/${a.id}`, { active: !a.active }); reload(); } catch { toast.error(t('ann.failed', 'Failed.')); } };
   const toggleBanner = async (a) => { try { await api.put(`/admin/announcements/${a.id}`, { showBanner: !a.showBanner }); reload(); } catch { toast.error(t('ann.failed', 'Failed.')); } };
-  const del = async (a) => {
-    if (!(await dialog.confirm({ title: t('ann.del.t', 'Delete announcement'), message: t('ann.del.m', 'Delete "{name}"?').replace('{name}', a.title), okLabel: t('ann.del.ok', 'Delete'), danger: true }))) return;
-    try { await api.del(`/admin/announcements/${a.id}`); toast.success(t('ann.deleted', 'Deleted.')); reload(); } catch { toast.error(t('ann.failed', 'Failed.')); }
-  };
+  const del = (a) => undo.del(a.id, () => api.del(`/admin/announcements/${a.id}`), t('ann.deleted2', 'Announcement deleted.'));
   const notifyAll = async () => {
     if (broadcastMsg.length < 2) return toast.error(t('ann.msg.req', 'Message is required.'));
     if (!(await dialog.confirm({ title: t('ann.notify.confirm.t', 'Notify every user'), message: t('ann.notify.confirm.m', 'This pushes a notification to every registered user immediately. Continue?'), okLabel: t('ann.notify.confirm.ok', 'Send') }))) return;
@@ -2193,9 +2212,10 @@ function AdminNewsletter() {
 // Admin: FAQ manager — CRUD of Q&A items grouped by category, answers authored with the
 // BetterCommunity markdown editor (same block system as blog/docs). Public at /faq.
 function AdminFaq() {
-  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/admin/faq'), []);
-  const items = data?.items || [];
+  const undo = useUndoableDelete(reload);
+  const items = (data?.items || []).filter((i) => !undo.pending.has(i.id));
   const [f, setF] = useState({ question: '', answer: '', category: 'General', published: true });
   const [editId, setEditId] = useState(null); const [busy, setBusy] = useState(false);
   const categories = [...new Set(items.map((i) => i.category))];
@@ -2208,7 +2228,7 @@ function AdminFaq() {
     catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const edit = (it) => { setEditId(it.id); setF({ question: it.question, answer: it.answer || '', category: it.category || 'General', published: it.published !== false }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const del = async (it) => { if (!(await dialog.confirm({ title: t('faqa.del', 'Delete question?'), message: it.question, okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/admin/faq/${it.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = (it) => undo.del(it.id, () => api.del(`/admin/faq/${it.id}`), t('faqa.deleted', 'Question deleted.'));
   const toggle = async (it) => { try { await api.patch(`/admin/faq/${it.id}`, { published: !it.published }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   return (
     <div>
@@ -7245,12 +7265,13 @@ function AdminCatalogExamine({ catalog, onClose }) {
 // are granted to users by id/email, easter-egg ones are self-claimed via a trigger.
 const BADGE_BLANK = { name: '', description: '', iconType: 'lucide', icon: 'BadgeCheck', color: '#f59e0b', grant: 'manual', trigger: '', earnMessage: '', priority: 0, active: true };
 function AdminBadges() {
-  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/admin/badges'), []);
+  const undo = useUndoableDelete(reload);
   const [edit, setEdit] = useState(null); // badge being edited, or BADGE_BLANK for new
   const [holdersOf, setHoldersOf] = useState(null);
   const [iconPick, setIconPick] = useState(false);
-  const badges = data?.badges || [];
+  const badges = (data?.badges || []).filter((b) => !undo.pending.has(b.id));
   // The shared icon picker returns a lucide kebab name, or "simple:<slug>" for a brand.
   const onPickIcon = (v) => setEdit((e) => v.startsWith('simple:') ? { ...e, iconType: 'brand', icon: v.slice(7) } : { ...e, iconType: 'lucide', icon: v });
   const save = async () => {
@@ -7262,10 +7283,7 @@ function AdminBadges() {
       toast.success(t('ab.saved', 'Badge saved.')); setEdit(null); reload();
     } catch (x) { toast.error(x.data?.error === 'trigger_taken' ? t('ab.triggertaken', 'Another badge already uses that trigger.') : x.data?.error || t('acc.failed', 'Failed.')); }
   };
-  const del = async (b) => {
-    if (!(await dialog.confirm({ title: t('ab.del.t', 'Delete badge?'), message: t('ab.del.m', 'Delete "{n}"? It is removed from everyone who has it.').replace('{n}', b.name), okLabel: t('common.delete', 'Delete'), danger: true }))) return;
-    try { await api.del(`/admin/badges/${b.id}`); toast.success(t('ab.deleted', 'Badge deleted.')); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); }
-  };
+  const del = (b) => undo.del(b.id, () => api.del(`/admin/badges/${b.id}`), t('ab.deleted', 'Badge deleted.'));
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
