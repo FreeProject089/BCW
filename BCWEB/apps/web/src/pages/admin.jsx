@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon,
+  Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -6408,6 +6408,9 @@ const UTIL_LABEL = { notifications: 'Notifications', projects: 'Projects', lang:
 const UTIL_ICON = { notifications: 'Bell', projects: 'Boxes', lang: 'Languages', theme: 'SunMoon', settings: 'Settings', dashboard: 'LayoutDashboard', admin: 'Shield', profile: 'User', logout: 'LogOut', login: 'LogIn' };
 // Immutably move element `i` of `arr` by `dir` (±1); returns the same array if out of range.
 const moveIn = (arr, i, dir) => { const j = i + dir; if (j < 0 || j >= arr.length) return arr; const c = arr.slice(); [c[i], c[j]] = [c[j], c[i]]; return c; };
+// Immutably move element `from` to index `to` — for drag-and-drop, which lands anywhere, not
+// just a neighbour. No-op if the indices are equal or out of range.
+const moveTo = (arr, from, to) => { if (from === to || from < 0 || to < 0 || from >= arr.length || to >= arr.length) return arr; const c = arr.slice(); const [x] = c.splice(from, 1); c.splice(to, 0, x); return c; };
 
 // Renders the preview icon the exact way the live topbar does (any Lucide icon or Simple
 // Icons brand, via IconGlyph). PascalCase/old names are kebab-ized first.
@@ -6695,6 +6698,12 @@ function AdminNav() {
 
   const patchItem = (i, patch) => setItems((s) => s.map((it, k) => k === i ? { ...it, ...patch } : it));
   const moveItem = (i, dir) => setItems((s) => moveIn(s, i, dir));
+  // Drag-to-reorder the top-level items. HTML5 DnD (mouse/desktop) — the up/down buttons stay
+  // for touch, where native drag is unreliable. dragIdx = the row being dragged; overIdx = the
+  // row it's hovering, for a drop line. On drop, moveTo lands it wherever it was released.
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
+  const onDrop = () => { if (dragIdx != null && overIdx != null) setItems((s) => moveTo(s, dragIdx, overIdx)); setDragIdx(null); setOverIdx(null); };
   const removeItem = (i) => setItems((s) => s.filter((_, k) => k !== i));
   const addItem = (type) => setItems((s) => [...s, blankItem(type)]);
   const patchChild = (i, j, patch) => setItems((s) => s.map((it, k) => k === i ? { ...it, children: it.children.map((c, m) => m === j ? { ...c, ...patch } : c) } : it));
@@ -6855,8 +6864,18 @@ function AdminNav() {
         <EmptyState icon={Navigation} title={t('nav.none.t', 'No items yet')} sub={t('nav.none.s', 'Add a link or a dropdown group, or start from the built-in navigation.')} />
       ) : <div className="space-y-3">
         {items.map((it, i) => (
-          <Card key={i} ref={(el) => { itemRefs.current[i] = el; }} className={`p-4 space-y-3 transition-shadow ${flashIdx === i ? 'ring-2 ring-[var(--primary)] shadow-lg' : ''}`}>
+          <Card key={i} ref={(el) => { itemRefs.current[i] = el; }}
+            onDragOver={dragIdx != null ? (e) => { e.preventDefault(); if (overIdx !== i) setOverIdx(i); } : undefined}
+            onDrop={dragIdx != null ? (e) => { e.preventDefault(); onDrop(); } : undefined}
+            className={`p-4 space-y-3 transition-all ${flashIdx === i ? 'ring-2 ring-[var(--primary)] shadow-lg' : ''} ${dragIdx === i ? 'opacity-40' : ''} ${dragIdx != null && overIdx === i && dragIdx !== i ? 'ring-2 ring-[var(--primary)]/60' : ''}`}>
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Drag handle: only this is draggable, so the fields inside stay selectable. */}
+              <button type="button" draggable
+                onDragStart={(e) => { setDragIdx(i); setOverIdx(i); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch { /* Safari */ } }}
+                onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
+                className="p-1 -ml-1 rounded-md text-[var(--faint)] hover:text-[var(--text)] cursor-grab active:cursor-grabbing" title={t('nav.drag', 'Drag to reorder')} aria-label={t('nav.drag', 'Drag to reorder')}>
+                <GripVertical size={15} />
+              </button>
               <Badge tone={it.type === 'group' ? 'primary' : ''}>{it.type === 'group' ? <><Layers size={11} /> {t('nav.group', 'Dropdown')}</> : <><Link2 size={11} /> {t('nav.link', 'Link')}</>}</Badge>
               <div className="flex-1" />
               <button className="nav-icon-btn p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] disabled:opacity-30" disabled={i === 0} onClick={() => moveItem(i, -1)} title={t('nav.up', 'Move up')}><ChevronDown size={14} className="rotate-180" /></button>

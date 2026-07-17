@@ -1543,7 +1543,7 @@ const DICT = {
     'nav.title': 'Navigation du menu', 'nav.desc': 'Conçois le menu public : une liste ordonnée de liens et de groupes déroulants, chacun avec une icône et un nom dans les deux langues. Tant que c’est désactivé (ou vide), le site utilise sa navigation par défaut.',
     'nav.enable': 'Utiliser cette navigation personnalisée', 'nav.enable.on': 'Le menu affiche les éléments configurés ci-dessous.', 'nav.enable.off': 'Le menu affiche la navigation par défaut.', 'nav.enable.empty': 'aucun élément valide — la navigation par défaut reste affichée',
     'nav.none.t': 'Aucun élément', 'nav.none.s': 'Ajoute un lien ou un groupe déroulant, ou pars de la navigation par défaut.',
-    'nav.group': 'Déroulant', 'nav.link': 'Lien', 'nav.up': 'Monter', 'nav.down': 'Descendre', 'nav.remove': 'Retirer',
+    'nav.group': 'Déroulant', 'nav.link': 'Lien', 'nav.up': 'Monter', 'nav.down': 'Descendre', 'nav.remove': 'Retirer', 'nav.drag': 'Glisser pour réordonner',
     'nav.label.en': 'Libellé (EN)', 'nav.label.fr': 'Libellé (FR)', 'nav.icon': 'Icône',
     'nav.to': 'Lien vers (chemin interne)', 'nav.to.hint': 'Doit commencer par /',
     'nav.children': 'Liens du déroulant', 'nav.children.none': 'Ajoute au moins un lien — un groupe vide est retiré à l’enregistrement.',
