@@ -2692,6 +2692,26 @@ function AdminProjects() {
   const showcase = show.data?.projects || [];
   const keys = ['community', 'bmm', 'bsm', 'installer'];
   const isShowcase = active.startsWith('sc:');
+  // Collapse the showcase chips into a picker when the rail can't hold everything on one line.
+  // Measured, not guessed at a count: a hidden nowrap copy gives the natural width, compared to
+  // the rail's real width via a ResizeObserver, so it reflows with the viewport (phone → menu,
+  // wide desktop → chips). The built-in four always stay chips.
+  const railRef = useRef(null);
+  const railMeasureRef = useRef(null);
+  const [railFits, setRailFits] = useState(true);
+  useEffect(() => {
+    const wrap = railRef.current, measure = railMeasureRef.current;
+    if (!wrap || !measure) return undefined;
+    const compute = () => {
+      const avail = wrap.getBoundingClientRect().width;
+      const need = measure.scrollWidth;
+      if (avail) setRailFits(need <= avail + 1);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [showcase.length, showcase.map((s) => s.name).join('|')]);
   const activeShow = isShowcase ? showcase.find((s) => s.id === active.slice(3)) : null;
   const activeMeta = !isShowcase ? adminMeta.data?.projects.find((p) => p.key === active) : null;
   useEffect(() => {
@@ -2774,13 +2794,18 @@ function AdminProjects() {
           without the fragile inline ml-auto / orphaned w-px of the old flex row. */}
       {(() => {
         const chip = (on) => `flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm transition press-sm ${on ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'border-[var(--line)] bg-[var(--surface-2)]/40 text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`;
-        // Past a handful, one chip per showcase project turns the rail into a wall of
-        // buttons (they keep coming — anyone can add one). Swap to a picker: the built-in
-        // four stay chips, since that set is fixed and worth having one click away.
-        const asMenu = showcase.length > 6;
+        // Chips while they fit on one line; a picker once they don't (measured above). The
+        // built-in four stay chips, since that set is fixed and worth having one click away.
+        const asMenu = !railFits && showcase.length > 0;
         const scIcon = (s) => <ShowcaseIcon icon={s.icon} size={14} fallback={<Sparkles size={14} />} />;
         return (
-          <div className="seg-rail !flex-wrap gap-2 p-2 rounded-2xl mb-4">
+          <div ref={railRef} className="seg-rail !flex-wrap gap-2 p-2 rounded-2xl mb-4">
+            {/* Hidden nowrap copy — the source of truth for the natural (unwrapped) width. */}
+            <div ref={railMeasureRef} aria-hidden className="absolute -z-10 opacity-0 pointer-events-none flex gap-2 whitespace-nowrap" style={{ left: -9999, top: -9999 }}>
+              {keys.map((k) => <span key={k} className={chip(false)}><AppLogo pkey={k} size={16} fallback={PROJ_META[k].icon} /> {PROJ_META[k].name}</span>)}
+              {showcase.length > 0 && <span className="px-1.5" />}
+              {showcase.map((s) => <span key={s.id} className={chip(false)}>{scIcon(s)} <span className="max-w-[160px]">{s.name}</span></span>)}
+            </div>
             {keys.map((k) => { const Pm = PROJ_META[k]; return (
               <button key={k} onClick={() => setActive(k)} className={chip(active === k)}>
                 <AppLogo pkey={k} size={16} fallback={Pm.icon} /> {Pm.name}
