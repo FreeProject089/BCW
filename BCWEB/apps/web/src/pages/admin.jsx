@@ -3307,7 +3307,8 @@ function AdminPromo() {
   const { data, loading, reload } = useAsync(() => api.get('/admin/promo'), []);
   const [f, setF] = useState({ kind: 'discount', code: '', percentOff: 20, freeMonths: 0, minMonths: 0, storageGB: 10, uploadMbps: 8, hostMonths: 0, boostDays: 7, maxRedemptions: '', perUserLimit: 1, stackable: false, assignType: 'email', assignInput: '', assignedTokens: [], note: '' });
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
-  const codes = data?.codes || [];
+  const undo = useUndoableDelete(reload);
+  const codes = (data?.codes || []).filter((c) => !undo.pending.has(c.id));
   const addToken = () => setF((s) => {
     const val = s.assignInput.trim(); if (!val) return s;
     const norm = s.assignType === 'email' ? val.toLowerCase() : val;
@@ -3325,7 +3326,7 @@ function AdminPromo() {
   };
   const toggle = async (c) => { try { await api.patch(`/admin/promo/${c.id}`, { active: !c.active }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const toggleStack = async (c) => { try { await api.patch(`/admin/promo/${c.id}`, { stackable: !c.stackable }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
-  const del = async (c) => { try { await api.del(`/admin/promo/${c.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = (c) => undo.del(c.id, () => api.del(`/admin/promo/${c.id}`), t('common.deleted', 'Deleted.'));
   const [openId, setOpenId] = useState(null);
   const [reds, setReds] = useState({});
   const viewReds = async (c) => {
@@ -3427,7 +3428,8 @@ function AdminCampaigns() {
   const blank = () => ({ name: '', kind: 'custom', percentOff: 20, appliesTo: 'all', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 3 * 864e5)), badgeMessageEn: '', badgeMessageFr: '', badgeColor: '', badgeLink: '', badgeEnabled: true });
   const [f, setF] = useState(blank);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
-  const list = data?.campaigns || [];
+  const undo = useUndoableDelete(reload);
+  const list = (data?.campaigns || []).filter((c) => !undo.pending.has(c.id));
   // Quick presets the admin can then tweak.
   const presetRandom = () => setF((s) => ({ ...s, name: 'Flash sale', kind: 'flash', percentOff: 10 + Math.floor(Math.random() * 41), appliesTo: 'all', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 2 * 864e5)), badgeMessageEn: 'Flash sale — limited time!', badgeMessageFr: 'Vente flash — durée limitée !' }));
   const presetBlackFriday = () => setF((s) => ({ ...s, name: 'Black Friday', kind: 'black_friday', percentOff: 30, appliesTo: 'all', badgeMessageEn: 'Black Friday — 30% off all purchases!', badgeMessageFr: 'Black Friday — 30% sur tous les achats !', badgeColor: '#111111' }));
@@ -3443,7 +3445,7 @@ function AdminCampaigns() {
     catch (x) { toast.error(x.data?.error === 'end_before_start' ? t('cmp.err.dates', 'End must be after start.') : x.data?.error === 'bad_color' ? t('cmp.err.color', 'Color must be a hex like #f97316.') : x.data?.error === 'bad_link' ? t('cmp.err.link', 'Link must be an internal /path or an https:// URL.') : t('common.failed', 'Failed.')); }
   };
   const toggle = async (c) => { try { await api.patch(`/admin/campaigns/${c.id}`, { active: !c.active }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
-  const del = async (c) => { try { await api.del(`/admin/campaigns/${c.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = (c) => undo.del(c.id, () => api.del(`/admin/campaigns/${c.id}`), t('common.deleted', 'Deleted.'));
   const status = (c) => {
     const now = Date.now(), s = new Date(c.startsAt).getTime(), e = new Date(c.endsAt).getTime();
     if (!c.active) return { label: t('cmp.st.off', 'Disabled'), tone: undefined };
@@ -3507,7 +3509,8 @@ function AdminEvents() {
   const blank = () => ({ name: '', kind: 'custom', countryCode: '', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 2 * 864e5)), titleEn: '', titleFr: '', messageEn: '', messageFr: '', notifyDaysBefore: 3, eventCode: '', fxDensity: 4, fxSize: 5, fxFlagDrops: 2, badgeIcon: 'sparkles', linkUrl: '', promoPercent: 0 });
   const [f, setF] = useState(blank);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
-  const list = data?.events || [];
+  const undo = useUndoableDelete(reload);
+  const list = (data?.events || []).filter((e) => !undo.pending.has(e.id));
   const presetNY = () => setF((s) => ({ ...s, name: 'New Year', kind: 'new_year', countryCode: '', badgeIcon: 'party', titleEn: 'Happy New Year!', titleFr: 'Bonne année !', messageEn: 'Fireworks on us', messageFr: 'Des feux d\'artifice pour vous' }));
   const presetHoliday = () => setF((s) => ({ ...s, name: 'National day', kind: 'national_holiday', countryCode: s.countryCode || 'FR', badgeIcon: 'flag', titleEn: 'National day', titleFr: 'Fête nationale', messageEn: 'Celebrating with a flag in the sky', messageFr: 'On célèbre avec un drapeau dans le ciel' }));
   const create = async () => {
@@ -3529,7 +3532,7 @@ function AdminEvents() {
     }
   };
   const toggle = async (e) => { try { await api.patch(`/admin/events/${e.id}`, { active: !e.active }); reload(); } catch (x) { toast.error(x.data?.error === 'overlap' ? t('ev.err.overlap2', 'Another event is active in that window.') : t('common.failed', 'Failed.')); } };
-  const del = async (e) => { try { await api.del(`/admin/events/${e.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = (e) => undo.del(e.id, () => api.del(`/admin/events/${e.id}`), t('common.deleted', 'Deleted.'));
   const status = (e) => {
     const now = Date.now(), s = new Date(e.startsAt).getTime(), en = new Date(e.endsAt).getTime();
     if (!e.active) return { label: t('ev.st.off', 'Disabled'), tone: undefined };
@@ -3597,7 +3600,8 @@ function AdminOAuthClients() {
   const { data, loading, reload } = useAsync(() => api.get('/admin/oauth-clients'), []);
   const [f, setF] = useState({ name: '', confidential: true, redirectUris: '', scopes: ['openid', 'profile', 'email'] });
   const [created, setCreated] = useState(null); // { id, secret } — shown once
-  const list = data?.clients || [];
+  const undo = useUndoableDelete(reload);
+  const list = (data?.clients || []).filter((c) => !undo.pending.has(c.id));
   const toggleScope = (s) => setF((st) => ({ ...st, scopes: st.scopes.includes(s) ? st.scopes.filter((x) => x !== s) : [...st.scopes, s] }));
   const copy = (v) => { navigator.clipboard?.writeText(v); toast.success(t('common.copied', 'Copied.')); };
   const create = async () => {
@@ -3612,7 +3616,7 @@ function AdminOAuthClients() {
     } catch (x) { toast.error(x.data?.error === 'invalid_input' ? t('oc.err.input', 'Check the fields — redirect URIs must be valid absolute URLs.') : t('common.failed', 'Failed.')); }
   };
   const toggle = async (c) => { try { await api.patch(`/admin/oauth-clients/${c.id}`, { active: !c.active }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
-  const del = async (c) => { try { await api.del(`/admin/oauth-clients/${c.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = (c) => undo.del(c.id, () => api.del(`/admin/oauth-clients/${c.id}`), t('common.deleted', 'Deleted.'));
   const rotate = async (c) => { try { const r = await api.post(`/admin/oauth-clients/${c.id}/rotate`); setCreated({ id: c.id, secret: r.clientSecret }); } catch { toast.error(t('common.failed', 'Failed.')); } };
   return (
     <div>
