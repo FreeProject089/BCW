@@ -11,7 +11,9 @@
     "nuke": "node src/clear-repos-catalogs.mjs --nuke",
     "migrate": "prisma migrate deploy --schema ../../packages/db/schema.prisma",
     "test": "node --test test/*.test.mjs",
-    "seed:demo": "node src/seed-demo.mjs"
+    "seed:demo": "node src/seed-demo.mjs",
+    "seed:docs": "node src/seed-docs.mjs",
+    "seed:faq": "node src/seed-faq.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.637.0",

@@ -388,6 +388,133 @@ Add \`::toc[On this page]\` at the top and it builds a summary from your \`##\` 
 Wrap text in a \`<doc-comment data-comment="…">\` to add a hover note — great for glossary terms.
 :::`,
   },
+
+  // ── Reference ─────────────────────────────────────────────────────────────────
+  // Read from src-tauri/src/api/mod.rs (routes, bearer auth, require_permission filters).
+  // If the API changes, re-read that file — do not trust this page over the source.
+  {
+    slug: 'api-reference', category: 'Reference', title: 'Plugin API reference', icon: 'plug', order: 600,
+    body: `::toc[On this page]
+
+# Plugin API reference
+
+BMM runs a local HTTP API. It's what [plugins](/docs/plugins) talk to, what the scheduler drives, and what you can \`curl\` yourself.
+
+**Base URL:** \`http://127.0.0.1:51274\` — local only. 51274 is the default; if it's taken BMM binds another port and reports the effective one, so read it from the app rather than hard-coding it.
+
+## Authenticating
+
+Every call carries a bearer token:
+
+\`\`\`bash
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:51274/api/health
+\`\`\`
+
+There are **two kinds of token**, and the difference is the whole security model:
+
+| Token | Where it comes from | What it can do |
+|---|---|---|
+| **Admin token** | Settings — one per install | Everything. No permission checks. |
+| **Plugin token** | Issued per plugin | Only what that plugin has been granted. |
+
+:::tip[Give each plugin its own token]
+BMM resolves *who is calling* from the token itself, never from a header a caller could forge. That's what makes permissions mean anything — so authenticate each plugin with its own token, not the admin one.
+:::
+
+## Permissions
+
+**Writes are gated. Reads are not.** A read endpoint (\`GET /api/mods\`, \`/api/profiles\`, …) needs no token; what protects it is the loopback bind + CORS (release allows only the app's own origins). A write endpoint demands a specific permission, and a caller without it gets an error naming exactly which one it lacked.
+
+| Permission | Gates |
+|---|---|
+| \`mods.write\` | Enable / disable / delete a mod |
+| \`profiles.write\` | Create / activate / delete a profile |
+| \`modpacks.write\` | Enable / disable / create a modpack |
+| \`plugins.read\` · \`plugins.write\` | \`plugins/compare\` · \`plugins/apply\` |
+| \`catalog.read\` · \`catalog.write\` | App Catalog |
+| \`app.read\` · \`app.write\` | App-level actions |
+| \`repo.write\` | Server Repo actions |
+
+## Endpoints
+
+\`GET\` reads, \`POST\` acts.
+
+| Endpoint | Does |
+|---|---|
+| \`GET /api/health\` · \`/api/status\` | Liveness · current activity (no auth). |
+| \`GET /api/mods\` · \`/api/mods/active\` · \`/api/mods/{id}\` | The library · what's enabled · one mod. |
+| \`GET /api/profiles\` · \`/api/modpacks\` · \`/api/plugins\` | Lists. |
+| \`GET /api/creator-id\` | Your creator ID (how repos know you). |
+| \`POST /api/mods/enable\` · \`/api/mods/disable\` | \`mods.write\`. |
+| \`POST /api/profiles/create\` · \`/api/profiles/activate\` | \`profiles.write\`. |
+| \`POST /api/plugins/compare\` · \`/api/plugins/apply\` | Dry-run · run a plugin's mod list. |
+
+:::warning[compare before apply]
+\`plugins/compare\` says what *would* change without changing it — use it before \`apply\`, especially in strict mode, where apply disables everything not in the plugin's list.
+:::
+
+Test any endpoint from **Plugins → API** in the app. That tester uses the admin token, so it sees everything — which is the wrong place to check whether a *plugin's* permissions are right; use the plugin's own token for that.`,
+    bodyFr: `::toc[Sur cette page]
+
+# Référence de l'API plugins
+
+BMM fait tourner une API HTTP locale. C'est ce à quoi parlent les [plugins](/docs/plugins), ce que pilote le planificateur, et ce que tu peux interroger toi-même au \`curl\`.
+
+**URL de base :** \`http://127.0.0.1:51274\` — locale uniquement. 51274 est le défaut ; s'il est pris, BMM en lie un autre et annonce le port effectif : lis-le depuis l'app plutôt que de le coder en dur.
+
+## S'authentifier
+
+Chaque appel porte un token :
+
+\`\`\`bash
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:51274/api/health
+\`\`\`
+
+Il existe **deux sortes de tokens**, et la différence *est* le modèle de sécurité :
+
+| Token | D'où il vient | Ce qu'il peut faire |
+|---|---|---|
+| **Token admin** | Paramètres — un par installation | Tout. Aucun contrôle. |
+| **Token de plugin** | Émis par plugin | Uniquement ce qui lui est accordé. |
+
+:::tip[Donne à chaque plugin son propre token]
+BMM déduit *qui appelle* du token lui-même, jamais d'un en-tête qu'un appelant pourrait forger. C'est ce qui donne un sens aux permissions — authentifie donc chaque plugin avec son propre token, pas celui d'admin.
+:::
+
+## Les permissions
+
+**Les écritures sont contrôlées, pas les lectures.** Une route de lecture (\`GET /api/mods\`, \`/api/profiles\`…) n'exige aucun token ; ce qui la protège, c'est l'écoute en loopback + le CORS (en release, seules les origines de l'app sont autorisées). Une écriture exige une permission précise, et un appelant qui ne l'a pas reçoit une erreur nommant celle qui manque.
+
+| Permission | Contrôle |
+|---|---|
+| \`mods.write\` | Activer / désactiver / supprimer un mod |
+| \`profiles.write\` | Créer / activer / supprimer un profil |
+| \`modpacks.write\` | Activer / désactiver / créer un modpack |
+| \`plugins.read\` · \`plugins.write\` | \`plugins/compare\` · \`plugins/apply\` |
+| \`catalog.read\` · \`catalog.write\` | App Catalog |
+| \`app.read\` · \`app.write\` | Actions au niveau de l'app |
+| \`repo.write\` | Actions Dépôt Serveur |
+
+## Les endpoints
+
+\`GET\` lit, \`POST\` agit.
+
+| Endpoint | Rôle |
+|---|---|
+| \`GET /api/health\` · \`/api/status\` | Vivant · activité en cours (sans auth). |
+| \`GET /api/mods\` · \`/api/mods/active\` · \`/api/mods/{id}\` | La bibliothèque · ce qui est actif · un mod. |
+| \`GET /api/profiles\` · \`/api/modpacks\` · \`/api/plugins\` | Listes. |
+| \`GET /api/creator-id\` | Ton creator ID (comment les dépôts te connaissent). |
+| \`POST /api/mods/enable\` · \`/api/mods/disable\` | \`mods.write\`. |
+| \`POST /api/profiles/create\` · \`/api/profiles/activate\` | \`profiles.write\`. |
+| \`POST /api/plugins/compare\` · \`/api/plugins/apply\` | Simulation · exécute la liste d'un plugin. |
+
+:::warning[compare avant apply]
+\`plugins/compare\` dit ce qui *changerait* sans rien changer — utilise-le avant \`apply\`, surtout en mode strict, où apply désactive tout ce qui n'est pas dans la liste du plugin.
+:::
+
+Teste n'importe quel endpoint depuis **Plugins → API** dans l'app. Ce testeur utilise le token admin : il voit donc tout — mauvais endroit pour vérifier les *permissions* d'un plugin ; pour ça, sers-toi du token du plugin.`,
+  },
 ];
 
 const run = async () => {
@@ -396,8 +523,8 @@ const run = async () => {
     const existing = await p.docPage.findUnique({ where: { slug: pg.slug } });
     await p.docPage.upsert({
       where: { slug: pg.slug },
-      update: { title: pg.title, category: pg.category, icon: pg.icon, body: pg.body, order: pg.order, published: true },
-      create: { slug: pg.slug, title: pg.title, category: pg.category, icon: pg.icon, body: pg.body, order: pg.order, published: true },
+      update: { title: pg.title, category: pg.category, icon: pg.icon, body: pg.body, bodyFr: pg.bodyFr ?? null, order: pg.order, published: true },
+      create: { slug: pg.slug, title: pg.title, category: pg.category, icon: pg.icon, body: pg.body, bodyFr: pg.bodyFr ?? null, order: pg.order, published: true },
     });
     existing ? updated++ : created++;
   }
