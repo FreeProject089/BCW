@@ -70,6 +70,31 @@ for (const [key, value] of Object.entries(settings)) {
   await p.adminSetting.upsert({ where: { key }, create: { key, value }, update: {} }); // don't clobber admin edits
 }
 
+// A custom topbar out of the box: a "Projects" DROPDOWN group (with per-item descriptions, so
+// the desktop menu reads well) plus flat links. Matches the navItem schema in routes/misc.mjs
+// (group needs ≥1 child; every `to` starts with '/'), and the icon names resolve in App.jsx's
+// NAV_ICONS. Seeded create-if-absent — the moment an admin edits the topbar in
+// Admin → Topbar navigation, this never overwrites their version.
+await p.adminSetting.upsert({
+  where: { key: 'nav.config' },
+  update: {}, // never clobber admin edits
+  create: { key: 'nav.config', value: {
+    enabled: true,
+    items: [
+      { type: 'group', label: 'Projects', labelFr: 'Projets', icon: 'Boxes', children: [
+        { label: 'BMM', labelFr: 'BMM', to: '/p/bmm', desc: 'The mods manager', descFr: 'Le gestionnaire de mods', icon: 'Boxes' },
+        { label: 'BSM', labelFr: 'BSM', to: '/p/bsm', desc: 'Sound presets', descFr: 'Presets sonores', icon: 'Music2' },
+        { label: 'Installer', labelFr: 'Installeur', to: '/p/installer', desc: 'Get set up fast', descFr: 'Installe en un clin d’œil', icon: 'Download' },
+      ] },
+      { type: 'link', label: 'Blog', labelFr: 'Blog', to: '/blog', icon: 'Newspaper' },
+      { type: 'link', label: 'Docs', labelFr: 'Docs', to: '/docs', icon: 'BookOpen' },
+      { type: 'link', label: 'Repos', labelFr: 'Dépôts', to: '/repos', icon: 'Server' },
+      { type: 'link', label: 'Hosting', labelFr: 'Hébergement', to: '/hosting', icon: 'Rocket' },
+    ],
+    utility: {},
+  } },
+});
+
 // Core staff shown on every project's Community tab (category resolves to "Staff").
 const PFP_BASE = 'https://raw.githubusercontent.com/FreeProject089/BetterModsManager/Tdev/frontend/';
 const STAFF = [
