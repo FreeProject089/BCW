@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus,
+  Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -15,6 +15,7 @@ import Avatar from '../ui/Avatar.jsx';
 import { useAuth } from './auth.jsx';
 import { utilAllowed } from '../lib/roles.js';
 import { useI18n } from '../i18n.jsx';
+import { useTheme } from '../ui/theme.jsx';
 import { rawStatusLabel, DotDropdown } from './repos.jsx';
 import { AdminRepos, AdminPools } from './repos-admin.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
@@ -6353,6 +6354,34 @@ const navPvName = (icon) => { const s = String(icon || 'boxes'); return (s.start
 const NavPvIcon = ({ name, size = 15 }) => <IconGlyph name={navPvName(name)} size={size} />;
 const pvLabel = (it, lang) => (lang === 'fr' && it.labelFr ? it.labelFr : (it.label || '')) || (lang === 'fr' ? 'Sans titre' : 'Untitled');
 
+// Faithful, non-interactive replica of the real ThemeToggle switch (ui/theme.jsx) so the
+// preview shows the actual sliding switch — not a flat icon — and mirrors the current theme.
+function PvTheme() {
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
+  return (
+    <span className="relative inline-block h-6 w-11 rounded-full border align-middle shrink-0"
+      style={{ background: dark ? 'var(--primary)' : 'color-mix(in srgb, var(--text) 12%, transparent)', borderColor: 'var(--line-strong)' }}>
+      <span className="absolute top-1/2 grid place-items-center w-[18px] h-[18px] rounded-full"
+        style={{ left: 2, marginTop: -9, transform: dark ? 'translateX(20px)' : 'translateX(0)', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
+        {dark ? <Moon size={11} className="text-[var(--primary)] fill-[var(--primary)]" /> : <Sun size={11} className="text-amber-500" />}
+      </span>
+    </span>
+  );
+}
+// One utility button rendered exactly as the live topbar draws it (App.jsx): theme = the
+// switch, lang = globe + language code, profile = avatar disc, everything else its lucide
+// icon. Callers wrap it for spacing; this owns the per-key shape so desktop & mobile agree.
+function PvUtil({ k, lang, size = 16 }) {
+  if (k === 'theme') return <PvTheme />;
+  if (k === 'profile') return <span className="inline-block align-middle w-6 h-6 rounded-full bg-[var(--surface-2)] border border-[var(--line)]" />;
+  if (k === 'lang') return <span className="inline-flex items-center gap-1 text-[var(--muted)]"><Languages size={size} /><span className="text-xs font-semibold uppercase">{lang}</span></span>;
+  const Icon = { notifications: Bell, projects: Boxes, settings: SettingsIcon, dashboard: LayoutDashboard, admin: Shield, logout: LogOut, login: LogIn }[k] || Boxes;
+  return <Icon size={size} className="text-[var(--muted)]" />;
+}
+// Mobile hamburger-sheet row, matching the real sheet() style in App.jsx.
+const pvSheet = 'flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]';
+
 // Live preview of the public topbar built from the editor's items — faithful to the real
 // component's styling (App.jsx). Desktop = the pill bar with a hover/click dropdown; mobile
 // = the hamburger sheet (tap a group to expand, tap the phone to reveal the sheet).
@@ -6362,6 +6391,7 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
   const [openIdx, setOpenIdx] = useState(null);
   const [projOpen, setProjOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState({}); // per-group accordion state in the mobile sheet
   // Pinned projects for the preview, and whether they collapse into one "Projects" dropdown.
   const pvProjects = (projects || []).map((p) => ({ slug: p.slug, name: (p.isAnnouncing && p.announceTitle) || p.name, icon: p.icon }));
   const projDropdown = projectsMode === 'dropdown' && pvProjects.length > 0;
@@ -6416,39 +6446,62 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
   const clusterA = ordU(UTIL_A_KEYS), clusterB = ordU(UTIL_B_KEYS);
 
   if (device === 'mobile') {
-    // Faithful to the real phone topbar: logo + name + the always-visible cluster-A
-    // icons + avatar + hamburger; the sheet lists the nav items then the account items.
-    // No 'login' special-case any more: uOn() now carries the real precondition, which
-    // already excludes it for a signed-in viewer (and keeps it for a signed-out one).
-    const sheetAccount = ['projects', 'settings', ...UTIL_B_KEYS].filter(uOn);
+    // Faithful to the real phone menu (App.jsx <Nav> sheet): logo + name + always-visible
+    // cluster-A icons + avatar + hamburger, then a 2-column grid — groups are full-width
+    // collapsible accordions (tap to expand, like NavSheetGroup) — followed by the
+    // projects/contact/settings row, a divider, and the account grid (dashboard/admin/
+    // profile/logout, or a single "Sign in" when signed out).
+    const topExtras = [uOn('projects') && 'projects', 'contact', uOn('settings') && 'settings'].filter(Boolean);
+    const account = UTIL_B_KEYS.filter(uOn);
+    const toggleGroup = (i) => setOpenGroups((g) => ({ ...g, [i]: !g[i] }));
+    // Use the SAME visible strings the real phone menu uses (App.jsx), not the util-editor
+    // labels — so e.g. it reads "Sign out"/"Sign in", not "Log out".
+    const mLabel = { projects: t('nav.projects', 'Projects'), settings: t('nav.settings', 'Settings'), dashboard: t('nav.dashboard'), admin: t('nav.admin'), profile: 'Profile', logout: t('nav.signout'), login: t('nav.signin') };
+    const extraRow = (k) => k === 'contact'
+      ? <div key="contact" className={pvSheet}><Mail size={16} /> Contact</div>
+      : <div key={k} className={pvSheet}><PvUtil k={k} lang={lang} /> {mLabel[k]}</div>;
     return (
       <div className="mx-auto w-[320px] rounded-[2rem] border-4 border-[var(--line-strong)] bg-[var(--bg)] p-2.5 shadow-lg">
         <div className="rounded-2xl border border-[var(--line)] px-2 h-12 flex items-center gap-1 topbar bg-[var(--bg-solid)]">
           <img src="/logo.png" alt="" className="w-7 h-7 rounded-lg shrink-0" />
           <span className="font-bold text-[13px] flex-1 min-w-0 truncate">BetterCommunity</span>
-          {clusterA.map((k) => <span key={k} className="text-[var(--muted)] p-0.5 shrink-0" title={t('nav.util.' + k, UTIL_LABEL[k])}><NavPvIcon name={UTIL_ICON[k]} size={15} /></span>)}
-          {uOn('profile') && <span className="w-6 h-6 rounded-full bg-[var(--surface-2)] border border-[var(--line)] shrink-0" title={t('nav.util.profile', 'Profile')} />}
+          {/* On a real phone the Projects icon is hidden in the bar (hidden sm:inline-flex)
+              and only lives in the menu — mirror that so the header doesn't crowd/overflow. */}
+          {clusterA.filter((k) => k !== 'projects').map((k) => <span key={k} className="shrink-0 px-0.5" title={t('nav.util.' + k, UTIL_LABEL[k])}><PvUtil k={k} lang={lang} size={15} /></span>)}
+          {uOn('profile') && <span className="shrink-0" title={t('nav.util.profile', 'Profile')}><PvUtil k="profile" lang={lang} /></span>}
           <button onClick={() => setSheetOpen((v) => !v)} className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] shrink-0" title={t('nav.pv.tap', 'Tap to preview the menu')}>{sheetOpen ? <X size={15} /> : <Navigation size={15} />}</button>
         </div>
-        {sheetOpen && <div className="mt-2 rounded-2xl border border-[var(--line)] p-2 topbar bg-[var(--bg-solid)] space-y-0.5">
-          {valid.length === 0 ? <div className="text-xs text-[var(--faint)] p-2">{t('nav.pv.empty', 'No valid items yet.')}</div> : valid.map(({ it, idx }) => it.type === 'group' ? (
-            <div key={idx}>
-              <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={it.icon} size={16} /><span className="flex-1">{pvLabel(it, lang)}</span><ChevronDown size={15} /></div>
-              <div className="pl-3 ml-3 border-l border-[var(--line)] space-y-0.5">
-                {it.children.filter((c) => c.label.trim() && c.to.trim().startsWith('/')).map((c, j) => <div key={j} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={c.icon} size={15} /> {pvLabel(c, lang)}</div>)}
+        {sheetOpen && <div className="mt-2 rounded-2xl border border-[var(--line)] p-2 topbar bg-[var(--bg-solid)]">
+          <div className="grid grid-cols-2 gap-1">
+            {valid.length === 0 && <div className="col-span-2 text-xs text-[var(--faint)] p-2">{t('nav.pv.empty', 'No valid items yet.')}</div>}
+            {valid.map(({ it, idx }) => it.type === 'group' ? (
+              <div key={idx} className="col-span-2">
+                <button type="button" onClick={() => toggleGroup(idx)} className={pvSheet + ' w-full text-left'} aria-expanded={!!openGroups[idx]}>
+                  <NavPvIcon name={it.icon} size={16} /><span className="flex-1">{pvLabel(it, lang)}</span><ChevronDown size={15} className={`transition-transform ${openGroups[idx] ? 'rotate-180' : ''}`} />
+                </button>
+                {openGroups[idx] && <div className="pl-3 ml-3 border-l border-[var(--line)] space-y-0.5">
+                  {it.children.filter((c) => c.label.trim() && c.to.trim().startsWith('/')).map((c, j) => <div key={j} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={c.icon} size={16} /> {pvLabel(c, lang)}</div>)}
+                </div>}
               </div>
-            </div>
-          ) : <div key={idx} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={it.icon} size={16} /> {pvLabel(it, lang)}</div>)}
-          {pvProjects.length > 0 && (projDropdown ? (
-            <div>
-              <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><Sparkles size={16} /><span className="flex-1">{t('nav.projects', 'Projects')}</span><ChevronDown size={15} /></div>
-              <div className="pl-3 ml-3 border-l border-[var(--line)] space-y-0.5">
-                {pvProjects.map((p) => <div key={p.slug} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /> {p.name}</div>)}
+            ) : <div key={idx} className={pvSheet}><NavPvIcon name={it.icon} size={16} /> {pvLabel(it, lang)}</div>)}
+            {pvProjects.length > 0 && (projDropdown ? (
+              <div className="col-span-2">
+                <button type="button" onClick={() => setProjOpen((o) => !o)} className={pvSheet + ' w-full text-left'} aria-expanded={projOpen}><Sparkles size={16} /><span className="flex-1">{t('nav.projects', 'Projects')}</span><ChevronDown size={15} className={`transition-transform ${projOpen ? 'rotate-180' : ''}`} /></button>
+                {projOpen && <div className="pl-3 ml-3 border-l border-[var(--line)] space-y-0.5">
+                  {pvProjects.map((p) => <div key={p.slug} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} /> {p.name}</div>)}
+                </div>}
               </div>
+            ) : pvProjects.map((p) => <div key={p.slug} className={pvSheet}><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} /> {p.name}</div>))}
+            {topExtras.map(extraRow)}
+          </div>
+          {account.length > 0 && <>
+            <div className="h-px bg-[var(--line)] my-2" />
+            <div className="grid grid-cols-2 gap-1">
+              {account.map((k) => k === 'login'
+                ? <div key={k} className="col-span-2 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-white bg-[var(--primary)]">{mLabel.login}</div>
+                : <div key={k} className={pvSheet}><PvUtil k={k} lang={lang} /> {mLabel[k]}</div>)}
             </div>
-          ) : pvProjects.map((p) => <div key={p.slug} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[var(--muted)]"><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} /> {p.name}</div>))}
-          {sheetAccount.length > 0 && <div className="h-px bg-[var(--line)] my-1.5" />}
-          {sheetAccount.map((k) => <div key={k} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={UTIL_ICON[k]} size={15} /> {t('nav.util.' + k, UTIL_LABEL[k])}</div>)}
+          </>}
         </div>}
         {!sheetOpen && <div className="text-[11px] text-[var(--faint)] text-center mt-2 flex items-center justify-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.tap', 'Tap the menu to preview')}</div>}
         {/* The real phone gets a bottom tab bar too — home + the leading links (derived), or
@@ -6494,7 +6547,7 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
       className="rounded-2xl border border-[var(--line)] px-3 py-2 min-h-14 flex items-center gap-1 topbar bg-[var(--bg-solid)]">
       <img src="/logo.png" alt="" className="w-8 h-8 rounded-lg shrink-0" />
       <span className="font-bold text-sm mr-2 shrink-0">BetterCommunity</span>
-      <div className="flex items-center gap-1 flex-wrap bg-[var(--surface-2)] rounded-full p-0.5">
+      <div className="inline-flex items-center gap-0.5 bg-[var(--surface-2)] rounded-full p-1 border border-[var(--line)] shrink-0">
         {valid.length === 0 ? <span className="text-xs text-[var(--faint)] px-3 py-1.5">{t('nav.pv.empty', 'No valid items yet.')}</span> : valid.map(({ it, idx }) => it.type === 'group' ? (
           <div key={idx} className="relative">
             <button title={onEdit ? t('nav.pv.edit', 'Click to edit · chevron opens the dropdown') : undefined} onClick={() => jump(idx)} className={pillCls(openIdx === idx)}>
@@ -6523,13 +6576,13 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
           </div>
         ) : pvProjects.map((p) => <span key={p.slug} className={pillCls(false)}><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /> {p.name}</span>)}
       </div>
-      {/* Right-side utility cluster — mirrors the real topbar's configurable buttons. */}
-      <div className="ml-auto flex items-center gap-0.5 shrink-0 text-[var(--muted)]">
-        {clusterA.map((k) => <span key={k} className="p-1.5" title={t('nav.util.' + k, UTIL_LABEL[k])}><NavPvIcon name={UTIL_ICON[k]} size={16} /></span>)}
-        {clusterB.length > 0 && <span className="w-px h-5 bg-[var(--line)] mx-1" />}
-        {clusterB.map((k) => k === 'profile'
-          ? <span key={k} className="w-6 h-6 rounded-full bg-[var(--surface-2)] border border-[var(--line)]" title={t('nav.util.profile', 'Profile')} />
-          : <span key={k} className="p-1.5" title={t('nav.util.' + k, UTIL_LABEL[k])}><NavPvIcon name={UTIL_ICON[k]} size={16} /></span>)}
+      {/* Right-side utility cluster — mirrors the real topbar (App.jsx): cluster A always
+          on, then a border divider, then the account cluster B. Theme = the real switch,
+          lang = globe + code, profile = avatar disc — drawn by PvUtil so it matches 1:1. */}
+      <div className="ml-auto flex items-center gap-0.5 shrink-0">
+        {clusterA.map((k) => <span key={k} className="inline-flex items-center px-1.5 py-1" title={t('nav.util.' + k, UTIL_LABEL[k])}><PvUtil k={k} lang={lang} /></span>)}
+        {clusterB.length > 0 && <span className="w-px h-5 bg-[var(--line)] mx-1.5" />}
+        {clusterB.map((k) => <span key={k} className="inline-flex items-center px-1.5 py-1" title={t('nav.util.' + k, UTIL_LABEL[k])}><PvUtil k={k} lang={lang} /></span>)}
       </div>
     </div>
     </div>
