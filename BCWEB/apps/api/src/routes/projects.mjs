@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage } from '../lib/lib.mjs';
+import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants } from '../lib/lib.mjs';
 import { safeFetch } from '../lib/net.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
@@ -67,10 +67,14 @@ export default async function projectRoutes(app) {
   // Admin: raw visibility/schedule state per fixed project — the public
   // GET /projects only exposes a computed `visible` bool for the CURRENT
   // visitor, not the admin-editable settings themselves.
-  app.get('/admin/projects', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/projects', { preHandler: requireEditor() }, async (req) => {
     const p = await db();
+    const manage = canManageProjects(req.user);
     const rows = await p.project.findMany({ where: { key: { in: KEYS } } });
-    return { projects: rows.map((r) => ({ key: r.key, visibility: r.visibility, visibilityWhitelist: r.visibilityWhitelist, scheduledAt: r.scheduledAt, scheduledNext: r.scheduledNext })) };
+    // A non-manager grantee sees only the fixed projects they hold an edit grant for.
+    let list = rows;
+    if (!manage) { const g = await projectGrants(req.user.uid); list = rows.filter((r) => g.projectKeys.has(r.key)); }
+    return { canManage: manage, projects: list.map((r) => ({ key: r.key, visibility: r.visibility, visibilityWhitelist: r.visibilityWhitelist, scheduledAt: r.scheduledAt, scheduledNext: r.scheduledNext })) };
   });
 
   app.get('/projects', { preHandler: optionalAuth() }, async (req) => {
@@ -125,7 +129,7 @@ export default async function projectRoutes(app) {
 
   // Admin: per-project "show this blog's posts in the home page's Latest news"
   // toggle. Posts always show on /blog regardless — this only affects the home feed.
-  app.put('/admin/projects/:key/home-news', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/projects/:key/home-news', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
     if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
     const b = z.object({ show: z.boolean() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -136,7 +140,7 @@ export default async function projectRoutes(app) {
 
   // Admin: per-project "Blog" tab toggle on the project's own page — the tab shows
   // only THIS project's posts (via GET /blog?project=<key>). Off by default (opt-in).
-  app.put('/admin/projects/:key/blog-tab', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/projects/:key/blog-tab', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
     if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
     const b = z.object({ show: z.boolean() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -147,7 +151,7 @@ export default async function projectRoutes(app) {
 
   // Admin: visibility gate — every fixed project EXCEPT 'community' (see
   // VISIBILITY_KEYS above).
-  app.put('/admin/projects/:key/visibility', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/projects/:key/visibility', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
     if (!VISIBILITY_KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
     const b = z.object({ visibility: pageVisibilitySchema, whitelist: z.array(pageAccountEntrySchema).max(2000).default([]) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -158,7 +162,7 @@ export default async function projectRoutes(app) {
 
   // Admin: stage a future config swap (task: scheduled Projects-config updates) —
   // applies to every fixed project, including 'community'. Passing at:null cancels.
-  app.put('/admin/projects/:key/schedule', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/projects/:key/schedule', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
     if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
     const b = z.object({ at: z.string().datetime().nullable(), next: z.object({ config: z.record(z.any()) }).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -170,14 +174,18 @@ export default async function projectRoutes(app) {
 
   // Admin: flush the GitHub proxy cache so a change in a repo (progress.json,
   // release notes, links…) is visible on the site immediately.
-  app.post('/admin/projects/flush-cache', { preHandler: requireRole('ADMIN') }, async () => {
+  app.post('/admin/projects/flush-cache', { preHandler: requireCap('manage_projects') }, async () => {
     const n = cache.size;
     cache.clear();
     return { ok: true, flushed: n };
   });
 
-  app.put('/projects/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/projects/:key', { preHandler: requireEditor() }, async (req, reply) => {
     if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    // Editing a fixed project's page config: managers (manage_projects / admin) for any,
+    // or a grantee holding that specific project key. Content only — the reserved toggles
+    // (visibility / home-news / blog-tab / schedule) live on their own cap-gated routes.
+    if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
     const b = z.object({ config: z.record(z.any()) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_config' });
     const p = await db();

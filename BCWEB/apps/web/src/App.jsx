@@ -13,7 +13,7 @@ import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
 import { trackPageview, initVitals, initInteractions, initErrors } from './lib/analytics.js';
 import { loadGtmIfConsented } from './lib/gtm.js';
 import { getOrbTransitionPref } from './lib/prefs.js';
-import { ADMIN_TIER_ROLES, canAdmin, utilAllowed } from './lib/roles.js';
+import { canAdmin, effectiveCaps, hasProjectGrant, utilAllowed } from './lib/roles.js';
 import { readLayout, navAlignClass } from './lib/navLayout.js';
 import CookieConsent from './ui/CookieConsent.jsx';
 import PromoBadge from './ui/promo-badge.jsx';
@@ -720,12 +720,15 @@ function Protected({ children, role }) {
   // backend's requireRole() — instead of retrofitting every <Protected role={...}> call site.
   // A capability-granted user is also admitted to a role-gated surface (the dashboard hides
   // what they can't touch); the backend still gates each action with requireCap().
-  const elevated = user.role === 'SUPERADMIN' || (user.permissions?.length > 0);
+  // Bypass the specific role list for cross-cutting access: SUPERADMIN, anyone holding a
+  // capability (individually OR via a custom role — effectiveCaps), or a per-project
+  // grantee. NOT plain MOD/ADMIN — those still match against `role` directly.
+  const elevated = user.role === 'SUPERADMIN' || effectiveCaps(user).length > 0 || hasProjectGrant(user);
   if (role && !elevated && !role.includes(user.role)) return <Navigate to="/" replace />;
   // The admin dashboard (and everything it talks to — the API enforces this too,
   // in requireRole()/requireCap()) requires 2FA, whatever the exact role or grant — a
   // password alone isn't enough for a surface this privileged.
-  if (role && (ADMIN_TIER_ROLES.includes(user.role) || user.permissions?.length > 0) && !user.totpEnabled) {
+  if (role && canAdmin(user) && !user.totpEnabled) {
     return (
       <div className="max-w-sm mx-auto py-16">
         <div className="card p-6 text-center">

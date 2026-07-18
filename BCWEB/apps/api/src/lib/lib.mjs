@@ -201,10 +201,18 @@ const UID_CACHE_MAX = 5000;
 const _modCache = new Map(); // uid -> { at, state }
 export function clearAccountLockCache(uid) { if (uid) _modCache.delete(uid); else _modCache.clear(); }
 
-// Fine-grained admin capabilities that can be granted to a user on top of their role.
-// Each maps to an admin surface enforced by requireCap(...) on the server AND gates the
-// matching admin tab client-side. Extend this list as more areas are capability-gated.
-export const CAPABILITIES = ['manage_users', 'manage_repos', 'manage_analytics', 'manage_newsletter', 'manage_faq', 'manage_catalogs', 'manage_reports'];
+// Fine-grained admin capabilities that can be granted to a user on top of their role —
+// individually (User.permissions) or bundled into a CustomRole. Each maps to an admin
+// surface enforced by requireCap(...) on the server AND gates the matching admin tab
+// client-side (ADMIN_CAPS in admin.jsx must mirror this list). Extend as more areas are
+// capability-gated; a slug listed here MUST be enforced end-to-end, never client-only.
+export const CAPABILITIES = [
+  'manage_users', 'manage_repos', 'manage_analytics', 'manage_newsletter', 'manage_faq', 'manage_catalogs', 'manage_reports',
+  // Content elements
+  'manage_projects', 'manage_showcase', 'manage_announcements',
+  // Growth elements
+  'manage_events', 'manage_promotions',
+];
 // Default capabilities a MOD holds without explicit grants.
 const MOD_DEFAULT_CAPS = ['manage_users'];
 
@@ -212,13 +220,28 @@ const MOD_DEFAULT_CAPS = ['manage_users'];
 // effect WITHOUT the target having to log out and back in (the JWT still carries the OLD
 // role; we look up the current one here). Cache is cleared on any role/permission change.
 const _userCache = new Map(); // uid -> { at, role, perms }
+// Clear one user (or, with no arg, everyone). Pass no arg after ANY CustomRole edit/delete,
+// since a single role change affects every member's effective perms.
 export function clearUserCache(uid) { if (uid) _userCache.delete(uid); else _userCache.clear(); }
 export async function currentUser(uid) {
   if (!uid) return { role: null, perms: [] };
   const hit = _userCache.get(uid);
   if (hit && Date.now() - hit.at < MOD_TTL) return hit;
   let role = null, perms = [];
-  try { const p = await db(); const u = await p.user.findUnique({ where: { id: uid }, select: { role: true, permissions: true } }); if (u) { role = u.role; perms = u.permissions || []; } } catch { /* keep nulls */ }
+  try {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: uid }, select: { role: true, permissions: true, customRoleIds: true } });
+    if (u) {
+      role = u.role;
+      perms = u.permissions || [];
+      // Expand any assigned CustomRole into its capabilities and UNION them in — additive
+      // only, so a role can never strip what the tier/individual grants already give.
+      if (u.customRoleIds?.length) {
+        const roles = await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { capabilities: true } });
+        if (roles.length) perms = [...new Set([...perms, ...roles.flatMap((r) => r.capabilities || [])])];
+      }
+    }
+  } catch { /* keep nulls */ }
   const rec = { at: Date.now(), role, perms };
   boundedSet(_userCache, uid, rec, UID_CACHE_MAX, MOD_TTL);
   return rec;
@@ -230,6 +253,43 @@ export function hasCap(user, cap) {
   if (user.role === 'ADMIN' || user.role === 'SUPERADMIN') return true;
   if (user.role === 'MOD' && MOD_DEFAULT_CAPS.includes(cap)) return true;
   return (user.perms || []).includes(cap);
+}
+
+// ── Project editing ─────────────────────────────────────────────────────────────
+// "Manage" = full control over EVERY project of that kind, including the reserved
+// controls (pinTopbar, visibility, announcement, publish/order). Admin-tier roles pass
+// via hasCap; a capability bundle can grant it to a non-admin (a "project moderator").
+export function canManageShowcase(user) { return hasCap(user, 'manage_showcase'); }
+export function canManageProjects(user) { return hasCap(user, 'manage_projects'); }
+
+// A user's per-project EDIT grants (ProjectPermission rows), collapsed into a quick-check
+// shape. Content-only: reserved controls are still gated behind canManage*(). Not cached —
+// project edits are rare and always want the live grant set.
+export async function projectGrants(uid) {
+  const out = { allShowcase: false, showcaseIds: new Set(), projectKeys: new Set() };
+  if (!uid) return out;
+  try {
+    const p = await db();
+    const gs = await p.projectPermission.findMany({ where: { userId: uid }, select: { showcaseProjectId: true, projectKey: true, allShowcase: true } });
+    for (const g of gs) {
+      if (g.allShowcase) out.allShowcase = true;
+      if (g.showcaseProjectId) out.showcaseIds.add(g.showcaseProjectId);
+      if (g.projectKey) out.projectKeys.add(g.projectKey);
+    }
+  } catch { /* no grants on error */ }
+  return out;
+}
+// May this user edit this ONE other-project's content? True for managers (all projects)
+// or a matching per-project / allShowcase grant. `user` is req.user ({ uid, role, perms }).
+export async function canEditShowcase(user, showcaseId) {
+  if (canManageShowcase(user)) return true;
+  const g = await projectGrants(user?.uid);
+  return g.allShowcase || g.showcaseIds.has(showcaseId);
+}
+export async function canEditProject(user, projectKey) {
+  if (canManageProjects(user)) return true;
+  const g = await projectGrants(user?.uid);
+  return g.projectKeys.has(projectKey);
 }
 export async function accountLock(uid) {
   if (!uid) return null;
@@ -292,6 +352,23 @@ export function requireCap(cap, ...alsoRoles) {
       if (!allowed) return reply.code(403).send({ error: 'missing_permission', capability: cap });
       if (!(await ensure2fa(claims.uid, reply))) return;
       req.user = user;
+    } catch { return reply.code(401).send({ error: 'unauthenticated' }); }
+  };
+}
+
+// Any logged-in user, but — like every admin-dashboard surface — 2FA-gated. Used by the
+// project-EDIT routes a non-admin grantee (ProjectPermission) may reach: they pass through
+// the same 2FA wall as staff, then the route itself checks canEdit*/strips reserved fields.
+// Sets req.user = { uid, role (live), perms }.
+export function requireEditor() {
+  return async (req, reply) => {
+    try {
+      const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
+      const lock = await accountLock(claims.uid);
+      if (lock) return reply.code(403).send(lockBody(lock));
+      const cur = await currentUser(claims.uid);
+      if (!(await ensure2fa(claims.uid, reply))) return;
+      req.user = { ...claims, role: cur.role || claims.role, perms: cur.perms };
     } catch { return reply.code(401).send({ error: 'unauthenticated' }); }
   };
 }

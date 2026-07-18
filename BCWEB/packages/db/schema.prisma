@@ -75,6 +75,12 @@ model User {
   // "manage_repos"). ADMIN/SUPERADMIN implicitly have every capability; see CAPABILITIES
   // in lib/lib.mjs. Empty for most accounts.
   permissions       String[]  @default([])
+  // Custom, SUPERADMIN-authored roles (CustomRole) assigned to this user. Each expands
+  // into a bundle of capabilities that are UNION-ed with `permissions` to form the
+  // user's effective caps (see currentUser() in lib/lib.mjs). A user may hold several.
+  // Denormalized id list (matches the codebase's String[] idiom); dangling ids left by a
+  // deleted role are simply ignored at resolution time.
+  customRoleIds     String[]  @default([])
   emailVerified     Boolean   @default(false)
   bio               String    @default("")
   avatar            Json? // { variant, seed } for the Boring Avatar
@@ -144,6 +150,7 @@ model User {
   creatorLinks       CreatorLink[]
   discordLinks       DiscordLink[]
   blogPermissions    BlogPermission[]
+  projectPermissions ProjectPermission[]
   submissionComments SubmissionComment[]
   contactMessages    ContactMessage[]
   reportsMade         Report[]            @relation("ReportReporter")
@@ -517,6 +524,45 @@ model BlogPermission {
   createdAt         DateTime    @default(now())
 
   @@unique([userId, projectKey, showcaseProjectId])
+  @@index([userId])
+}
+
+// A SUPERADMIN-authored, reusable named bundle of capabilities. Assigning one (or
+// several) to a user via User.customRoleIds grants that user every capability in the
+// bundle, on top of their built-in role tier and any individual `permissions`. Purely
+// additive — a custom role can never REMOVE what the tier already grants. `capabilities`
+// holds capability slugs from CAPABILITIES (lib/lib.mjs); unknown slugs are ignored.
+model CustomRole {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  // Badge tone shown in the UI: one of the Badge component's tones (primary/amber/green/
+  // red/…) — cosmetic only.
+  color        String   @default("primary")
+  capabilities String[] @default([])
+  createdBy    String // SUPERADMIN userId — audit trail only
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Per-project EDIT grant, mirroring BlogPermission but for a project's own content/config
+// rather than its blog. Exactly one scope is set:
+//   • showcaseProjectId → edit that one "other project" (ShowcaseProject)
+//   • projectKey        → edit that one fixed Project (bmm/bsm/community/installer)
+//   • allShowcase=true  → edit EVERY other project (blanket grant)
+// A grantee edits content + config but NOT the reserved controls (pinTopbar, visibility,
+// announcement, publish/order) — those require the manage_showcase capability or an
+// admin-tier role. Enforced field-by-field in showcase.mjs / projects.mjs.
+model ProjectPermission {
+  id                String      @id @default(cuid())
+  user              User        @relation(fields: [userId], references: [id])
+  userId            String
+  showcaseProjectId String?
+  projectKey        ProjectKey?
+  allShowcase       Boolean     @default(false)
+  grantedBy         String // admin userId — audit trail only
+  createdAt         DateTime    @default(now())
+
+  @@unique([userId, showcaseProjectId, projectKey, allShowcase])
   @@index([userId])
 }
 

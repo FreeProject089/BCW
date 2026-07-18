@@ -413,7 +413,7 @@ export default async function miscRoutes(app) {
     const rows = await p.user.findMany({
       where, take: take + 1, skip, orderBy: { createdAt: 'desc' },
       select: { id: true, displayName: true, email: true, role: true, avatar: true, createdAt: true,
-        totpEnabled: true, canControlServer: true, canViewTelemetry: true, permissions: true,
+        totpEnabled: true, canControlServer: true, canViewTelemetry: true, permissions: true, customRoleIds: true,
         status: true, moderationUntil: true, moderationReason: true,
         creatorLinks: { select: { creatorId: true } }, discordLinks: { select: { discordId: true, username: true } },
         _count: { select: { serverRepos: true, items: true } } },

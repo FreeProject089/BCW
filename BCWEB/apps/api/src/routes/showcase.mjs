@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate } from '../lib/lib.mjs';
+import { db, requireCap, requireEditor, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate, canManageShowcase, canEditShowcase, projectGrants } from '../lib/lib.mjs';
 import { invalidate, replyCachedJson } from '../lib/cache.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { gh, ghCache, versionedRawUrl } from './projects.mjs';
@@ -126,10 +126,18 @@ export default async function showcaseRoutes(app) {
   });
 
   // ── Admin ──
-  app.get('/admin/showcase', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/showcase', { preHandler: requireEditor() }, async (req) => {
     const p = await db();
-    const rows = await p.showcaseProject.findMany({ orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
+    const manage = canManageShowcase(req.user);
+    let rows = await p.showcaseProject.findMany({ orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
+    // A non-manager grantee sees only the projects they were granted (a blanket
+    // allShowcase grant → all of them). Managers/admins see every project.
+    if (!manage) {
+      const g = await projectGrants(req.user.uid);
+      if (!g.allShowcase) rows = rows.filter((r) => g.showcaseIds.has(r.id));
+    }
     return {
+      canManage: manage, // client hides pin/visibility/announce/publish when false
       projects: rows.map((r) => ({
         id: r.id, slug: r.slug, name: r.name, short: r.short, icon: r.icon, published: r.published, order: r.order, config: r.config,
         showOnHomeNews: r.showOnHomeNews, showBlogTab: r.showBlogTab,
@@ -163,7 +171,11 @@ export default async function showcaseRoutes(app) {
     announceButtonUrl: z.string().max(500).default(''),
   });
 
-  app.post('/admin/showcase', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  // Reserved controls a per-project GRANTEE may never touch — only a manager (admin-tier
+  // or the manage_showcase capability). Stripped from a grantee's PUT payload below.
+  const RESERVED_SHOWCASE = ['published', 'order', 'visibility', 'visibilityWhitelist', 'pinTopbar', 'announceEnabled', 'announceTitle', 'announceLogo', 'announceMarkdown', 'announceRevealAt', 'announceShowPage', 'announceButtonLabel', 'announceButtonUrl'];
+
+  app.post('/admin/showcase', { preHandler: requireCap('manage_showcase') }, async (req, reply) => {
     const b = upsertSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
     const p = await db();
@@ -175,12 +187,19 @@ export default async function showcaseRoutes(app) {
     return reply.code(201).send({ project: { id: row.id, slug: row.slug } });
   });
 
-  app.put('/admin/showcase/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/showcase/:id', { preHandler: requireEditor() }, async (req, reply) => {
+    // A grantee can edit a project's content; a manager can also change the reserved
+    // controls. Non-editors are refused outright.
+    if (!(await canEditShowcase(req.user, req.params.id))) return reply.code(403).send({ error: 'forbidden' });
     const b = upsertSchema.partial().safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const data = { ...b.data };
+    // Strip reserved fields for a non-manager so a grantee can't pin/publish/change
+    // visibility even by hand-crafting the request — server is the authority.
+    if (!canManageShowcase(req.user)) for (const k of RESERVED_SHOWCASE) delete data[k];
     if (data.announceRevealAt !== undefined) data.announceRevealAt = data.announceRevealAt ? new Date(data.announceRevealAt) : null;
+    if (!Object.keys(data).length) return { ok: true }; // nothing left to write
     const row = await p.showcaseProject.update({ where: { id: req.params.id }, data }).catch(() => null);
     if (!row) return reply.code(404).send({ error: 'not_found' });
     // Snapshot this version for the version-history modal (target = sc:<id>).
@@ -222,7 +241,7 @@ export default async function showcaseRoutes(app) {
   // Stage a future content swap — { name?, short?, config? } replaces the live
   // fields the first time the page is read after `at` (see applyScheduledUpdate
   // in lib.mjs). Passing at:null cancels a pending schedule.
-  app.put('/admin/showcase/:id/schedule', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/showcase/:id/schedule', { preHandler: requireCap('manage_showcase') }, async (req, reply) => {
     const b = z.object({
       at: z.string().datetime().nullable(),
       next: z.object({ name: z.string().min(2).max(60).optional(), short: z.string().min(1).max(5).optional(), config: configSchema.optional() }).optional(),
@@ -238,7 +257,7 @@ export default async function showcaseRoutes(app) {
     return { ok: true };
   });
 
-  app.delete('/admin/showcase/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.delete('/admin/showcase/:id', { preHandler: requireCap('manage_showcase') }, async (req) => {
     const p = await db();
     await p.showcaseProject.deleteMany({ where: { id: req.params.id } });
     invalidate('showcase.list');

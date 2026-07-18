@@ -6,9 +6,24 @@
 // and "Sign in" side by side, states that can never coexist. One rule, imported twice.
 export const ADMIN_TIER_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
 
+// Effective capabilities the viewer holds: individual grants UNION any custom-role
+// bundles. The server computes this in /me (effectivePermissions); fall back to the raw
+// permissions column for older payloads.
+export function effectiveCaps(user) {
+  return user?.effectivePermissions || user?.permissions || [];
+}
+
+// Does this user hold at least one per-project EDIT grant (a specific project or the
+// blanket "all other-projects")? Such a grantee reaches the dashboard's project tabs even
+// with no admin role or capability.
+export function hasProjectGrant(user) {
+  const g = user?.projectGrants;
+  return !!g && (g.allShowcase || (g.showcaseIds?.length > 0) || (g.projectKeys?.length > 0));
+}
+
 export function canAdmin(user) {
   if (!user) return false;
-  return ADMIN_TIER_ROLES.includes(user.role) || (user.permissions?.length > 0);
+  return ADMIN_TIER_ROLES.includes(user.role) || effectiveCaps(user).length > 0 || hasProjectGrant(user);
 }
 
 // Hard precondition for each configurable topbar utility button. The admin's nav config

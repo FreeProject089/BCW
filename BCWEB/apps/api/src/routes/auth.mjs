@@ -2,7 +2,7 @@ import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
-import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache } from '../lib/lib.mjs';
+import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache, projectGrants } from '../lib/lib.mjs';
 import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '../lib/totp.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
 import { grantAutoBadges } from './social.mjs';
@@ -263,7 +263,7 @@ export default async function authRoutes(app) {
     return { ok: true };
   });
 
-  const profileSelect = { id: true, email: true, displayName: true, role: true, permissions: true, emailVerified: true, bio: true, avatar: true, createdAt: true, totpEnabled: true, profilePublic: true, showConnections: true, website: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } } }, oauthAccounts: { select: { provider: true } }, socialConnections: { select: { provider: true } }, _count: { select: { discordLinks: true, creatorLinks: true } } };
+  const profileSelect = { id: true, email: true, displayName: true, role: true, permissions: true, customRoleIds: true, emailVerified: true, bio: true, avatar: true, createdAt: true, totpEnabled: true, profilePublic: true, showConnections: true, website: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } } }, oauthAccounts: { select: { provider: true } }, socialConnections: { select: { provider: true } }, _count: { select: { discordLinks: true, creatorLinks: true } } };
 
   // Soft-authed "who am I": logged-out visitors get 200 { user: null } instead of a
   // noisy 401 in the console. The app boots this on every load.
@@ -271,7 +271,18 @@ export default async function authRoutes(app) {
     if (!req.user?.uid) return { user: null };
     const p = await db();
     const user = await p.user.findUnique({ where: { id: req.user.uid }, select: profileSelect });
-    return { user: user ? { ...user, bcId: userBcId(user.id) } : null };
+    if (!user) return { user: null };
+    // Resolve the assigned custom roles + per-project grants so the client can gate the
+    // dashboard off EFFECTIVE capabilities (tier ∪ individual ∪ role bundles), not just the
+    // raw `permissions` column. `permissions` stays the individual grants (what the Access
+    // editor edits); `effectivePermissions` is the union the UI keys off.
+    let customRoles = [];
+    if (user.customRoleIds?.length) {
+      customRoles = await p.customRole.findMany({ where: { id: { in: user.customRoleIds } }, select: { id: true, name: true, color: true, capabilities: true } });
+    }
+    const effectivePermissions = [...new Set([...(user.permissions || []), ...customRoles.flatMap((r) => r.capabilities || [])])];
+    const g = await projectGrants(user.id);
+    return { user: { ...user, bcId: userBcId(user.id), customRoles, effectivePermissions, projectGrants: { allShowcase: g.allShowcase, showcaseIds: [...g.showcaseIds], projectKeys: [...g.projectKeys] } } };
   });
 
   // Update profile (display name, bio, avatar).

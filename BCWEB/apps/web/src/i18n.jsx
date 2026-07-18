@@ -725,6 +725,9 @@ const DICT = {
 
     // ── Éditeur de blog ──
     'be.uploading': 'Import…', 'be.uploadfail': 'Échec de l’import.', 'be.validemail': 'Saisis un e-mail valide.',
+    'be.replay.upload': 'Replay de session (importer un .bmmreplay)', 'be.replay.url': 'Replay de session (depuis une URL)',
+    'be.replay.title': 'Légende du replay', 'be.replay.titlelabel': 'Légende facultative affichée au-dessus du lecteur', 'be.replay.titleph': 'ex. Installation d’un plugin',
+    'be.replay.toolarge': 'Replay trop volumineux (40 Mo max).',
     'be.titlereq': 'Le titre et le contenu (base, anglais) sont requis.', 'be.conflicts': 'Résous d’abord les marqueurs de conflit (<<<<<<< … >>>>>>>), puis enregistre.',
     'be.conflictvisual': 'Quelqu’un d’autre a modifié ce billet — résous les conflits visuellement, puis Enregistre.',
     'be.mergedreview': 'Fusionné avec les modifications de quelqu’un d’autre — revois le contenu, puis Enregistre à nouveau.',
@@ -1690,10 +1693,39 @@ const DICT = {
     'acc.perm.manage_newsletter': 'Gérer la newsletter', 'acc.permd.manage_newsletter': 'Rédiger et envoyer des newsletters.',
     'acc.perm.manage_faq': 'Gérer la FAQ', 'acc.permd.manage_faq': 'Créer et modifier les entrées de la FAQ.',
     'acc.perm.manage_catalogs': 'Gérer les catalogues', 'acc.permd.manage_catalogs': 'Modérer les catalogues communautaires (suspendre / délister).',
+    'acc.perm.manage_projects': 'Gérer les projets', 'acc.permd.manage_projects': 'Modifier chaque page de projet fixe + sa visibilité et sa planification.',
+    'acc.perm.manage_showcase': 'Gérer les autres projets', 'acc.permd.manage_showcase': 'Créer, modifier, épingler et publier chaque page « autre projet ».',
+    'acc.perm.manage_announcements': 'Gérer les annonces', 'acc.permd.manage_announcements': 'Publier et modifier les bannières d’annonce du site.',
+    'acc.perm.manage_events': 'Gérer les événements', 'acc.permd.manage_events': 'Événements du site (feux d’artifice, présentations thématiques).',
+    'acc.perm.manage_promotions': 'Gérer les promotions', 'acc.permd.manage_promotions': 'Campagnes promo, codes de réduction et d’hébergement.',
+    // Rôles personnalisés (assignation) + accès à l’édition des projets
+    'acc.roles.title': 'Rôles personnalisés', 'acc.roles.save': 'Enregistrer les rôles', 'acc.roles.saved': 'Rôles mis à jour pour {name}.',
+    'acc.roles.own': 'Tu ne peux pas changer tes propres rôles.', 'acc.roles.ncaps': '{n} capacités',
+    'acc.roles.desc': 'Attribue un ou plusieurs rôles — chacun donne à cet utilisateur tout son lot de capacités, en plus des permissions individuelles ci-dessus.',
+    'acc.proj.title': 'Accès à l’édition des projets', 'acc.proj.isadmin': 'Les admins peuvent déjà modifier tous les projets.',
+    'acc.proj.desc': 'Laisse cet utilisateur modifier le contenu d’une page de projet depuis le tableau de bord — un projet, plusieurs, ou tous les autres projets. Il ne peut toujours pas épingler, publier ni changer la visibilité (cela nécessite la capacité « Gérer les autres projets »).',
+    'acc.proj.granted': 'Accès à l’édition du projet accordé à {name}.',
+    'acc.proj.all': 'Tous les autres projets', 'acc.proj.custom': 'Autre · {name}', 'acc.proj.project': 'Projet · {key}',
+    'acc.proj.allopt': 'Tous les autres projets', 'acc.proj.customopt': 'Autre · {name}', 'acc.proj.projectopt': 'Projet · {name}',
+    'acc.allproj.title': 'Tous les accès d’édition de projet', 'acc.allproj.desc': 'Toutes les personnes autorisées à modifier le contenu d’un projet, et lesquels. Choisis un utilisateur ci-dessus pour modifier les siens.',
+    // Gestionnaire de rôles personnalisés (CRUD)
+    'rm.title': 'Rôles personnalisés', 'rm.new': 'Nouveau rôle', 'rm.nocaps': 'Aucune capacité pour l’instant', 'rm.members': '{n} membres',
+    'rm.desc': 'Des lots de capacités réutilisables. Attribue-les aux utilisateurs ci-dessus — l’accès effectif est celui des capacités du rôle en plus des permissions individuelles.',
+    'rm.none.t': 'Aucun rôle personnalisé', 'rm.none.s': 'Créez-en un pour regrouper des capacités et les attribuer en un clic.',
+    'rm.edit': 'Modifier le rôle', 'rm.create': 'Créer un rôle', 'rm.name': 'Nom du rôle', 'rm.name.ph': 'ex. Modérateur des autres projets',
+    'rm.color': 'Couleur du badge', 'rm.caps': 'Capacités', 'rm.save': 'Enregistrer le rôle', 'rm.createbtn': 'Créer le rôle',
+    'rm.updated': 'Rôle mis à jour.', 'rm.created': 'Rôle créé.', 'rm.deleted': 'Rôle supprimé.',
+    'rm.nametaken': 'Un rôle portant ce nom existe déjà.', 'rm.nametooShort': 'Donne un nom au rôle (2 caractères min).',
+    'rm.del.title': 'Supprimer le rôle', 'rm.del.ok': 'Supprimer le rôle',
+    'rm.del.msg': 'Supprimer « {name} » ? Il sera retiré de tous ceux qui l’ont. Leurs permissions individuelles ne sont pas touchées.',
+    // Projets : notes pour un utilisateur avec un simple accès d’édition
+    'sh.sub.grantee': 'Tu peux modifier le contenu des projets qui t’ont été attribués. L’épinglage, la visibilité et la publication sont gérés par un admin.',
+    'sh.e.reservednote': 'La publication, l’épinglage dans la barre, la visibilité et l’annonce sont gérés par un admin.',
     // Toast « permission refusée » (global)
     'perm.denied': 'Tu n’as pas la permission pour ça — « {cap} » est requise.',
     'perm.cap.manage_users': 'Gérer les utilisateurs', 'perm.cap.manage_repos': 'Gérer les dépôts serveur',
     'perm.cap.manage_analytics': 'Voir les analyses', 'perm.cap.manage_newsletter': 'Gérer la newsletter', 'perm.cap.manage_faq': 'Gérer la FAQ', 'perm.cap.manage_catalogs': 'Gérer les catalogues',
+    'perm.cap.manage_projects': 'Gérer les projets', 'perm.cap.manage_showcase': 'Gérer les autres projets', 'perm.cap.manage_announcements': 'Gérer les annonces', 'perm.cap.manage_events': 'Gérer les événements', 'perm.cap.manage_promotions': 'Gérer les promotions', 'perm.cap.manage_reports': 'Gérer les signalements',
 
     // ── Admin : annonces ──
     'ann.new': 'Nouvelle annonce', 'ann.new.sub': 'S’affiche en bannière fermable sur chaque page et notifie immédiatement tous les utilisateurs.',

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical,
+  Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -13,7 +13,7 @@ import { KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
 import Avatar from '../ui/Avatar.jsx';
 import { useAuth } from './auth.jsx';
-import { utilAllowed } from '../lib/roles.js';
+import { utilAllowed, effectiveCaps } from '../lib/roles.js';
 import { readLayout, navAlignClass } from '../lib/navLayout.js';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
@@ -86,10 +86,16 @@ export function Admin() {
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPERADMIN';
   const isSuperAdmin = user?.role === 'SUPERADMIN';
   const isMod = isAdmin || user?.role === 'MOD';
-  // A tab is visible if the user is an admin, has the capability granted, or is a MOD for
-  // the capabilities MODs hold by default (users/repos) — mirrors the server's requireCap.
-  const caps = user?.permissions || [];
+  // A tab is visible if the user is an admin, has the capability granted (individually OR
+  // via a custom role — effectiveCaps), or is a MOD for the capabilities MODs hold by
+  // default (users/repos) — mirrors the server's requireCap.
+  const caps = effectiveCaps(user);
   const can = (c) => isAdmin || caps.includes(c) || (isMod && ['manage_users', 'manage_repos'].includes(c));
+  // Per-project edit grants (ProjectPermission) let a non-admin reach the project tabs even
+  // with no capability — scoped to what they were granted (the tab itself scopes further).
+  const pg = user?.projectGrants || {};
+  const canShowcaseTab = can('manage_showcase') || !!pg.allShowcase || (pg.showcaseIds?.length > 0);
+  const canProjectsTab = can('manage_projects') || (pg.projectKeys?.length > 0);
   const queue = (subs.data?.submissions || []).filter((s) => !modPending.has(s.id));
   const [review, setReview] = useState(null);
   const raw = [
@@ -105,11 +111,11 @@ export function Admin() {
 
     { heading: t('adm.h.content', 'Content') },
     isAdmin && { id: 'catalogs', label: t('adm.tab.catalogs', 'Catalogs'), icon: Boxes },
-    isAdmin && { id: 'projects', label: t('adm.tab.projects', 'Projects'), icon: Settings2 },
+    canProjectsTab && { id: 'projects', label: t('adm.tab.projects', 'Projects'), icon: Settings2 },
     isAdmin && { id: 'assets', label: t('adm.tab.assets', 'Downloads & assets'), icon: Download },
-    isAdmin && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
+    canShowcaseTab && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
     isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: MessageSquare },
-    isAdmin && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
+    can('manage_announcements') && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
     isAdmin && { id: 'badges', label: t('adm.tab.badges', 'Badges'), icon: BadgeCheck },
     can('manage_newsletter') && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
     can('manage_faq') && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
@@ -122,9 +128,9 @@ export function Admin() {
     isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
 
     { heading: t('adm.h.growth', 'Growth & monetization') },
-    isAdmin && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
+    can('manage_promotions') && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
     isAdmin && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon },
-    isAdmin && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
+    can('manage_events') && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
 
     { heading: t('adm.h.integrations', 'Integrations') },
     isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
@@ -1676,14 +1682,30 @@ function BackupManager() {
 // admin no longer hunts across screens to see what a user can do.
 // Granular admin capabilities a non-admin user can be granted (mirrors CAPABILITIES in
 // the API's lib/lib.mjs). Each unlocks exactly one dashboard section + its endpoints.
+// Mirrors CAPABILITIES in the API's lib/lib.mjs — every slug here MUST be enforced
+// server-side. `cat` groups them in the role editor. Each unlocks exactly one dashboard
+// area + its endpoints.
 const ADMIN_CAPS = [
-  { id: 'manage_users', icon: Users, label: 'Manage users', labelFr: 'Gérer les utilisateurs', desc: 'View users, moderate, suspend/ban.', descFr: 'Voir les utilisateurs, modérer, suspendre/bannir.' },
-  { id: 'manage_repos', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
-  { id: 'manage_analytics', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, events feed, errors and goals.', descFr: "Analyses, flux d'événements, erreurs et objectifs." },
-  { id: 'manage_newsletter', icon: Mail, label: 'Manage newsletter', labelFr: 'Gérer la newsletter', desc: 'Compose and send newsletters.', descFr: 'Rédiger et envoyer des newsletters.' },
-  { id: 'manage_faq', icon: HelpCircle, label: 'Manage FAQ', labelFr: 'Gérer la FAQ', desc: 'Create and edit FAQ entries.', descFr: 'Créer et modifier les entrées de la FAQ.' },
-  { id: 'manage_catalogs', icon: Boxes, label: 'Manage catalogs', labelFr: 'Gérer les catalogues', desc: 'Moderate community catalogs (suspend / unlist).', descFr: 'Modérer les catalogues communautaires (suspendre / délister).' },
-  { id: 'manage_reports', icon: MessageSquare, label: 'Handle reports', labelFr: 'Gérer les signalements', desc: 'View and reply to user reports & support threads.', descFr: 'Voir et répondre aux signalements et fils de support.' },
+  { id: 'manage_users', cat: 'people', icon: Users, label: 'Manage users', labelFr: 'Gérer les utilisateurs', desc: 'View users, moderate, suspend/ban.', descFr: 'Voir les utilisateurs, modérer, suspendre/bannir.' },
+  { id: 'manage_reports', cat: 'people', icon: MessageSquare, label: 'Handle reports', labelFr: 'Gérer les signalements', desc: 'View and reply to user reports & support threads.', descFr: 'Voir et répondre aux signalements et fils de support.' },
+  { id: 'manage_projects', cat: 'content', icon: Settings2, label: 'Manage projects', labelFr: 'Gérer les projets', desc: 'Edit every fixed project page + its visibility & schedule.', descFr: 'Modifier chaque page de projet fixe + sa visibilité et sa planification.' },
+  { id: 'manage_showcase', cat: 'content', icon: Sparkles, label: 'Manage other projects', labelFr: 'Gérer les autres projets', desc: 'Create, edit, pin and publish every other-project page.', descFr: 'Créer, modifier, épingler et publier chaque page « autre projet ».' },
+  { id: 'manage_announcements', cat: 'content', icon: BellIcon, label: 'Manage announcements', labelFr: 'Gérer les annonces', desc: 'Post and edit the site announcement banners.', descFr: 'Publier et modifier les bannières d’annonce du site.' },
+  { id: 'manage_faq', cat: 'content', icon: HelpCircle, label: 'Manage FAQ', labelFr: 'Gérer la FAQ', desc: 'Create and edit FAQ entries.', descFr: 'Créer et modifier les entrées de la FAQ.' },
+  { id: 'manage_catalogs', cat: 'content', icon: Boxes, label: 'Manage catalogs', labelFr: 'Gérer les catalogues', desc: 'Moderate community catalogs (suspend / unlist).', descFr: 'Modérer les catalogues communautaires (suspendre / délister).' },
+  { id: 'manage_newsletter', cat: 'growth', icon: Mail, label: 'Manage newsletter', labelFr: 'Gérer la newsletter', desc: 'Compose and send newsletters.', descFr: 'Rédiger et envoyer des newsletters.' },
+  { id: 'manage_promotions', cat: 'growth', icon: Megaphone, label: 'Manage promotions', labelFr: 'Gérer les promotions', desc: 'Promo campaigns, discount & hosting codes.', descFr: 'Campagnes promo, codes de réduction et d’hébergement.' },
+  { id: 'manage_events', cat: 'growth', icon: Sparkles, label: 'Manage events', labelFr: 'Gérer les événements', desc: 'Site events (fireworks, themed presentations).', descFr: 'Événements du site (feux d’artifice, présentations thématiques).' },
+  { id: 'manage_analytics', cat: 'insight', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, events feed, errors and goals.', descFr: "Analyses, flux d'événements, erreurs et objectifs." },
+  { id: 'manage_repos', cat: 'ops', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
+];
+// Category display order + labels for the role editor's grouping.
+const CAP_CATEGORIES = [
+  { id: 'people', label: 'People', labelFr: 'Personnes' },
+  { id: 'content', label: 'Content', labelFr: 'Contenu' },
+  { id: 'growth', label: 'Growth', labelFr: 'Croissance' },
+  { id: 'insight', label: 'Insight', labelFr: 'Analyse' },
+  { id: 'ops', label: 'Operations', labelFr: 'Opérations' },
 ];
 
 function AdminAccess({ isSuperAdmin }) {
@@ -1696,15 +1718,21 @@ function AdminAccess({ isSuperAdmin }) {
   const [roleSel, setRoleSel] = useState('USER');
   const [scopeSel, setScopeSel] = useState('global');
   const [permsSel, setPermsSel] = useState([]);
+  const [rolesSel, setRolesSel] = useState([]);
+  const [pscopeSel, setPscopeSel] = useState('all');
   const scopes = useAsync(() => api.get('/blog/my-scopes'), []);
   const grants = useAsync(() => api.get('/admin/blog-permissions'), []);
+  // Custom roles are SUPERADMIN-managed; other admins never load the list.
+  const roles = useAsync(() => isSuperAdmin ? api.get('/admin/custom-roles') : Promise.resolve({ roles: [] }), [isSuperAdmin]);
+  const projGrants = useAsync(() => api.get('/admin/project-permissions'), []);
+  const customRoles = roles.data?.roles || [];
 
   const search = async () => {
     if (!q.trim()) return setResults(null);
     setBusy(true);
     try { const { users } = await api.get(`/admin/users?q=${encodeURIComponent(q)}&take=10`); setResults(users); } catch { setResults([]); } finally { setBusy(false); }
   };
-  const pick = (u) => { setPicked(u); setRoleSel(u.role); setScopeSel('global'); setPermsSel(u.permissions || []); };
+  const pick = (u) => { setPicked(u); setRoleSel(u.role); setScopeSel('global'); setPermsSel(u.permissions || []); setRolesSel(u.customRoleIds || []); setPscopeSel('all'); };
   const togglePerm = (cap) => setPermsSel((s) => s.includes(cap) ? s.filter((c) => c !== cap) : [...s, cap]);
   const savePerms = async () => {
     setBusy(true);
@@ -1744,6 +1772,33 @@ function AdminAccess({ isSuperAdmin }) {
   const revoke = async (g) => {
     try { await api.del(`/admin/blog-permissions/${g.id}`); toast.success(t('acc.revoked', 'Revoked.')); grants.reload(); } catch { toast.error(t('acc.failed', 'Failed.')); }
   };
+  const toggleRole = (id) => setRolesSel((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  const saveRoles = async () => {
+    setBusy(true);
+    try {
+      await api.put(`/admin/users/${picked.id}/custom-roles`, { customRoleIds: rolesSel });
+      setPicked((prev) => ({ ...prev, customRoleIds: rolesSel }));
+      setResults((rs) => rs ? rs.map((u) => u.id === picked.id ? { ...u, customRoleIds: rolesSel } : u) : rs);
+      toast.success(t('acc.roles.saved', 'Roles updated for {name}.').replace('{name}', picked.displayName));
+    } catch (x) { toast.error(x.data?.error === 'cannot_change_own_roles' ? t('acc.roles.own', "You can't change your own roles.") : x.data?.error || t('acc.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const grantProject = async () => {
+    setBusy(true);
+    try {
+      const body = { userId: picked.id };
+      if (pscopeSel === 'all') body.allShowcase = true;
+      else { const [kind, val] = pscopeSel.split(':'); if (kind === 'project') body.projectKey = val; else body.showcaseSlug = val; }
+      await api.post('/admin/project-permissions', body);
+      toast.success(t('acc.proj.granted', 'Granted project-edit access to {name}.').replace('{name}', picked.displayName)); projGrants.reload();
+    } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  const revokeProject = async (g) => {
+    try { await api.del(`/admin/project-permissions/${g.id}`); toast.success(t('acc.revoked', 'Revoked.')); projGrants.reload(); } catch { toast.error(t('acc.failed', 'Failed.')); }
+  };
+  const projScopeLabel = (g) => g.allShowcase ? t('acc.proj.all', 'All other-projects') : g.showcase ? t('acc.proj.custom', 'Other · {name}').replace('{name}', g.showcase.name) : g.projectKey ? t('acc.proj.project', 'Project · {key}').replace('{key}', g.projectKey.toUpperCase()) : '';
+  const allProjGrants = projGrants.data?.grants || [];
+  const userProjGrants = picked ? allProjGrants.filter((g) => g.user?.id === picked.id) : [];
   const scopeLabel = (g) => g.showcase ? t('acc.scope.custom', 'Custom · {name}').replace('{name}', g.showcase.name) : g.projectKey ? t('acc.scope.project', 'Project · {key}').replace('{key}', g.projectKey.toUpperCase()) : t('acc.scope.global', 'Global (all blogs)');
   const roleTone = (role) => role === 'SUPERADMIN' ? 'red' : role === 'ADMIN' ? 'amber' : role === 'MOD' ? 'primary' : '';
   const allGrants = grants.data?.grants || [];
@@ -1811,6 +1866,46 @@ function AdminAccess({ isSuperAdmin }) {
             </>)}
           </div>
 
+          {isSuperAdmin && !['ADMIN', 'SUPERADMIN'].includes(picked.role) && customRoles.length > 0 && (
+            <div className="pt-4 border-t border-[var(--line)]">
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><ShieldCheck size={12} /> {t('acc.roles.title', 'Custom roles')}</div>
+              <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.roles.desc', 'Assign one or more roles — each hands this user its whole bundle of capabilities, layered on top of any individual permissions above.')}</p>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {customRoles.map((r) => {
+                  const on = rolesSel.includes(r.id);
+                  return (
+                    <button key={r.id} onClick={() => toggleRole(r.id)} className={`inline-flex items-center gap-1.5 text-sm pl-2.5 pr-3 py-1.5 rounded-full border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                      <Badge tone={r.color || 'primary'}>{r.name}</Badge>
+                      <span className="text-xs text-[var(--faint)]">{t('acc.roles.ncaps', '{n} caps').replace('{n}', (r.capabilities || []).length)}</span>
+                      {on && <Check size={13} className="text-[var(--primary-2)]" />}
+                    </button>
+                  );
+                })}
+              </div>
+              <Button size="sm" variant="primary" disabled={busy || JSON.stringify([...rolesSel].sort()) === JSON.stringify([...(picked.customRoleIds || [])].sort())} onClick={saveRoles}>{busy ? <Spinner /> : t('acc.roles.save', 'Save roles')}</Button>
+            </div>
+          )}
+
+          <div className="pt-4 border-t border-[var(--line)]">
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Settings2 size={12} /> {t('acc.proj.title', 'Project-edit access')}</div>
+            {['ADMIN', 'SUPERADMIN'].includes(picked.role) ? (
+              <p className="text-xs text-[var(--muted)]">{t('acc.proj.isadmin', 'Admins can already edit every project.')}</p>
+            ) : (<>
+              <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.proj.desc', "Let this user edit a project's page content from the dashboard — one project, several, or all other-projects. They still can't pin, publish or change a project's visibility (that needs the “Manage other projects” capability).")}</p>
+              {userProjGrants.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">
+                {userProjGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs pl-2.5 pr-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><Settings2 size={11} className="text-[var(--primary-2)]" /> {projScopeLabel(g)} <button onClick={() => revokeProject(g)} className="opacity-60 hover:opacity-100 hover:text-red-400" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
+              </div>}
+              <div className="flex flex-wrap items-center gap-2">
+                <Select className="!w-auto" value={pscopeSel} onChange={(e) => setPscopeSel(e.target.value)}>
+                  <option value="all">{t('acc.proj.allopt', 'All other-projects')}</option>
+                  {(scopes.data?.showcases || []).map((s) => <option key={s.slug} value={`showcase:${s.slug}`}>{t('acc.proj.customopt', 'Other · {name}').replace('{name}', s.name)}</option>)}
+                  {(scopes.data?.projects || []).map((pr) => <option key={pr.key} value={`project:${pr.key}`}>{t('acc.proj.projectopt', 'Project · {name}').replace('{name}', pr.name)}</option>)}
+                </Select>
+                <Button size="sm" variant="primary" disabled={busy} onClick={grantProject}>{busy ? <Spinner /> : <><Plus size={14} /> {t('acc.grant', 'Grant')}</>}</Button>
+              </div>
+            </>)}
+          </div>
+
           {isSuperAdmin && (picked.role === 'ADMIN' || picked.role === 'SUPERADMIN' || picked.canControlServer) && (
             <div className="pt-4 border-t border-[var(--line)]">
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('acc.sc.title', 'Server-control tools')}</div>
@@ -1844,7 +1939,24 @@ function AdminAccess({ isSuperAdmin }) {
         </Card>
       )}
 
+      {isSuperAdmin && <RoleManager roles={roles} />}
+
       <GlobalAccessPolicyCard />
+
+      {allProjGrants.length > 0 && <div>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('acc.allproj.title', 'All project-edit grants')}</h2>
+        <p className="text-sm text-[var(--muted)] mb-3">{t('acc.allproj.desc', 'Everyone who can edit a project’s content, and which. Pick a user above to edit theirs.')}</p>
+        <div className="space-y-1.5">
+          {allProjGrants.map((g) => (
+            <Card key={g.id} className="p-3 flex items-center gap-3">
+              <Avatar user={g.user} size={32} />
+              <div className="flex-1 min-w-0"><div className="font-medium truncate">{g.user?.displayName || t('acc.deleted', '(deleted)')}</div><div className="text-xs text-[var(--faint)] truncate">{g.user?.email}</div></div>
+              <Badge tone="primary">{projScopeLabel(g)}</Badge>
+              <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => revokeProject(g)}><Trash2 size={13} /></Button>
+            </Card>
+          ))}
+        </div>
+      </div>}
 
       <div>
         <h2 className="font-semibold mb-1 flex items-center gap-2"><PenSquare size={16} className="text-[var(--primary-2)]" /> {t('acc.all.title', 'All blog-post grants')}</h2>
@@ -1860,6 +1972,113 @@ function AdminAccess({ isSuperAdmin }) {
           ))}
         </div> : <EmptyState icon={PenSquare} title={t('acc.all.none.t', 'No grants yet')} sub={t('acc.all.none.s', "Regular users can't write blog posts until you grant access above.")} />}
       </div>
+    </div>
+  );
+}
+
+// SUPERADMIN-only: create/edit/delete custom roles — named bundles of capabilities that
+// can then be assigned to users in the card above. The capability catalog (ADMIN_CAPS) is
+// the same one the per-user toggles use, grouped here by CAP_CATEGORIES.
+const ROLE_COLORS = ['primary', 'blue', 'green', 'amber', 'red'];
+function RoleManager({ roles }) {
+  const toast = useToast(); const dialog = useDialog(); const { t, lang } = useI18n();
+  const [editing, setEditing] = useState(null); // null | {} (new) | role (edit)
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('primary');
+  const [caps, setCaps] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const list = roles.data?.roles || [];
+
+  const open = (r) => { setEditing(r || {}); setName(r?.name || ''); setColor(r?.color || 'primary'); setCaps(r?.capabilities || []); };
+  const close = () => setEditing(null);
+  const toggleCap = (id) => setCaps((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  const capLabel = (c) => lang === 'fr' ? c.labelFr : c.label;
+  const save = async () => {
+    if (name.trim().length < 2) return toast.error(t('rm.nametooShort', 'Give the role a name (2+ characters).'));
+    setBusy(true);
+    try {
+      const body = { name: name.trim(), color, capabilities: caps };
+      if (editing?.id) await api.put(`/admin/custom-roles/${editing.id}`, body);
+      else await api.post('/admin/custom-roles', body);
+      toast.success(editing?.id ? t('rm.updated', 'Role updated.') : t('rm.created', 'Role created.'));
+      close(); roles.reload();
+    } catch (x) { toast.error(x.data?.error === 'name_taken' ? t('rm.nametaken', 'A role with that name already exists.') : x.data?.error || t('acc.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const del = async (r) => {
+    const ok = await dialog.confirm({ title: t('rm.del.title', 'Delete role'), message: t('rm.del.msg', 'Delete “{name}”? It will be removed from everyone who has it. Their individual permissions are untouched.').replace('{name}', r.name), okLabel: t('rm.del.ok', 'Delete role'), danger: true });
+    if (!ok) return;
+    try { await api.del(`/admin/custom-roles/${r.id}`); toast.success(t('rm.deleted', 'Role deleted.')); roles.reload(); } catch { toast.error(t('acc.failed', 'Failed.')); }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="font-semibold flex items-center gap-2"><ShieldCheck size={16} className="text-[var(--primary-2)]" /> {t('rm.title', 'Custom roles')}</h2>
+        <Button size="sm" variant="primary" onClick={() => open(null)}><Plus size={14} /> {t('rm.new', 'New role')}</Button>
+      </div>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('rm.desc', 'Reusable bundles of capabilities. Assign them to users above — effective access is the role’s caps on top of any individual permissions.')}</p>
+      {roles.loading ? <Loading /> : list.length ? <div className="space-y-1.5 mb-3">
+        {list.map((r) => (
+          <Card key={r.id} className="p-3 flex items-center gap-3">
+            <Badge tone={r.color || 'primary'}>{r.name}</Badge>
+            <div className="flex-1 min-w-0 text-xs text-[var(--faint)] truncate">
+              {(r.capabilities || []).length ? r.capabilities.map((id) => (ADMIN_CAPS.find((c) => c.id === id) ? capLabel(ADMIN_CAPS.find((c) => c.id === id)) : id)).join(' · ') : t('rm.nocaps', 'No capabilities yet')}
+            </div>
+            <span className="text-xs text-[var(--faint)] shrink-0">{t('rm.members', '{n} members').replace('{n}', r.memberCount || 0)}</span>
+            <Button size="sm" variant="ghost" onClick={() => open(r)}><PenSquare size={13} /></Button>
+            <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(r)}><Trash2 size={13} /></Button>
+          </Card>
+        ))}
+      </div> : <EmptyState icon={ShieldCheck} title={t('rm.none.t', 'No custom roles yet')} sub={t('rm.none.s', 'Create one to bundle capabilities and hand them out in a click.')} />}
+
+      {editing && (
+        <Modal open onClose={close} title={editing.id ? t('rm.edit', 'Edit role') : t('rm.create', 'Create role')}>
+          <div className="space-y-4">
+            <Field label={t('rm.name', 'Role name')}>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('rm.name.ph', 'e.g. Showcase moderator')} maxLength={40} />
+            </Field>
+            <Field label={t('rm.color', 'Badge color')}>
+              <div className="flex gap-2">
+                {ROLE_COLORS.map((c) => <button key={c} type="button" onClick={() => setColor(c)} className={`px-1 py-0.5 rounded-lg border-2 transition ${color === c ? 'border-[var(--primary)]' : 'border-transparent'}`}><Badge tone={c}>{c}</Badge></button>)}
+              </div>
+            </Field>
+            <div>
+              <div className="text-sm font-medium mb-2">{t('rm.caps', 'Capabilities')} <span className="text-xs text-[var(--faint)]">({caps.length})</span></div>
+              <div className="space-y-3">
+                {CAP_CATEGORIES.map((cat) => {
+                  const inCat = ADMIN_CAPS.filter((c) => c.cat === cat.id);
+                  if (!inCat.length) return null;
+                  return (
+                    <div key={cat.id}>
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{lang === 'fr' ? cat.labelFr : cat.label}</div>
+                      <div className="space-y-1.5">
+                        {inCat.map((c) => {
+                          const on = caps.includes(c.id); const Icon = c.icon;
+                          return (
+                            <button key={c.id} type="button" onClick={() => toggleCap(c.id)} className={`w-full text-left flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                              <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'bg-[var(--primary)]/15 text-[var(--primary-2)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-sm font-medium">{t('acc.perm.' + c.id, capLabel(c))}</span>
+                                <span className="block text-xs text-[var(--faint)]">{t('acc.permd.' + c.id, lang === 'fr' ? c.descFr : c.desc)}</span>
+                              </span>
+                              <span className={`w-9 h-5 rounded-full relative shrink-0 transition ${on ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} /></span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={close}>{t('common.cancel', 'Cancel')}</Button>
+              <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (editing.id ? t('rm.save', 'Save role') : t('rm.createbtn', 'Create role'))}</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -2708,8 +2927,23 @@ function AdminProjects() {
   const [editMode, setEditMode] = useState('form'); // 'form' (visual) | 'json' (raw)
   const projects = data?.projects || {};
   const showcase = show.data?.projects || [];
-  const keys = ['community', 'bmm', 'bsm', 'installer'];
+  // Manage vs. content-only: a per-project grantee edits config/progress only. The reserved
+  // cards (home-news, blog tab, visibility, schedule, cache flush) show for managers only —
+  // matching what the server accepts. adminMeta/show return canManage:false for grantees and
+  // already scope their lists to the granted projects.
+  const canMngProjects = !!adminMeta.data?.canManage;
+  const canMngShowcase = !!show.data?.canManage;
+  const allKeys = ['community', 'bmm', 'bsm', 'installer'];
+  const keys = canMngProjects ? allKeys : allKeys.filter((k) => (adminMeta.data?.projects || []).some((p) => p.key === k));
   const isShowcase = active.startsWith('sc:');
+  const activeManageable = isShowcase ? canMngShowcase : canMngProjects;
+  // Keep `active` on something the viewer may actually edit (a grantee's default 'bmm' might
+  // not be theirs). Runs once the scoped lists arrive.
+  useEffect(() => {
+    if (isShowcase) { if (!showcase.some((s) => `sc:${s.id}` === active)) { if (keys[0]) setActive(keys[0]); else if (showcase[0]) setActive(`sc:${showcase[0].id}`); } return; }
+    if (!keys.includes(active)) { if (keys[0]) setActive(keys[0]); else if (showcase[0]) setActive(`sc:${showcase[0].id}`); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminMeta.data, show.data]);
   // Collapse the showcase chips into a picker when the rail can't hold everything on one line.
   // Measured, not guessed at a count: a hidden nowrap copy gives the natural width, compared to
   // the rail's real width via a ResizeObserver, so it reflows with the viewport (phone → menu,
@@ -2801,9 +3035,9 @@ function AdminProjects() {
           with many showcase projects an ml-auto button in a flex-wrap row orphaned itself. */}
       <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
         <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('ap.title', 'Projects config')}</h2>
-        <Button size="sm" variant="ghost" onClick={flushCache} title="Repo changes (progress.json, release notes, links) can sit in a 5-min cache — this applies them now.">
+        {canMngProjects && <Button size="sm" variant="ghost" onClick={flushCache} title="Repo changes (progress.json, release notes, links) can sit in a 5-min cache — this applies them now.">
           <RefreshCw size={13} /> {t('ap.refreshcaches', 'Refresh site caches')}
-        </Button>
+        </Button>}
       </div>
       <p className="text-sm text-[var(--muted)] mb-4">{t('ap.sub', 'Configure downloads, links, contributors & messages, the progress tracker, legal docs, and the GitHub release-notes source — per project.')}</p>
       {/* Project chooser — a self-contained rail that wraps cleanly (and gives the chips a
@@ -2853,22 +3087,22 @@ function AdminProjects() {
           </div>
         </div>
       </Card>
-      <Card className="p-4 mb-4 flex items-center gap-3">
+      {activeManageable && <Card className="p-4 mb-4 flex items-center gap-3">
         <Newspaper size={15} className="text-[var(--primary-2)] shrink-0" />
         <div className="flex-1"><span className="font-medium text-sm">{t('ap.homenews', 'Show in home "Latest news"')}</span><p className="text-xs text-[var(--muted)]">{t('ap.homenews.d', "{name}'s posts always appear on /blog regardless of this — this only controls the home page feed.").replace('{name}', M.name)}</p></div>
         <button onClick={toggleHomeNews} className={`relative w-10 h-6 rounded-full transition shrink-0 ${showOnHomeNews ? 'bg-[var(--primary)]' : 'bg-[var(--surface-2)] border border-[var(--line)]'}`}>
           <span className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${showOnHomeNews ? 'translate-x-[18px]' : 'translate-x-0'}`} />
         </button>
-      </Card>
-      <Card className="p-4 mb-4 flex items-center gap-3">
+      </Card>}
+      {activeManageable && <Card className="p-4 mb-4 flex items-center gap-3">
         <PenSquare size={15} className="text-[var(--primary-2)] shrink-0" />
         <div className="flex-1"><span className="font-medium text-sm">Show "Blog" tab on the project page</span><p className="text-xs text-[var(--muted)]">Adds a Blog tab to {M.name}'s own page, showing only {M.name}'s posts.</p></div>
         <button onClick={toggleBlogTab} className={`relative w-10 h-6 rounded-full transition shrink-0 ${showBlogTab ? 'bg-[var(--primary)]' : 'bg-[var(--surface-2)] border border-[var(--line)]'}`}>
           <span className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${showBlogTab ? 'translate-x-[18px]' : 'translate-x-0'}`} />
         </button>
-      </Card>
+      </Card>}
       {/* Visibility: every fixed project except 'community', which is always public. */}
-      {!isShowcase && active !== 'community' && activeMeta && (
+      {canMngProjects && !isShowcase && active !== 'community' && activeMeta && (
         <Card className="p-4 mb-4">
           <VisibilitySection visibility={activeMeta.visibility} whitelist={activeMeta.visibilityWhitelist}
             onVisibility={(v) => saveVisibility(v, activeMeta.visibilityWhitelist)}
@@ -2880,7 +3114,7 @@ function AdminProjects() {
           here with Edit (reopens the form pre-filled) + Cancel (clears the schedule). */}
       {(() => {
         const sched = isShowcase ? activeShow : activeMeta;
-        if (!sched?.scheduledAt) return null;
+        if (!activeManageable || !sched?.scheduledAt) return null;
         const when = new Date(sched.scheduledAt);
         const due = when.getTime() <= Date.now();
         const nx = sched.scheduledNext || {};
@@ -2906,9 +3140,9 @@ function AdminProjects() {
           </div>
         );
       })()}
-      <div className="flex justify-end mb-4">
+      {activeManageable && <div className="flex justify-end mb-4">
         <Button size="sm" variant="ghost" onClick={() => setScheduling(true)} title={t('apj.stagefuture', 'Stage a future content swap for this page')}><Clock size={13} /> {(isShowcase ? activeShow : activeMeta)?.scheduledAt ? t('apj.reschedule', 'Reschedule') : t('sh.schedtip', 'Schedule an update')}</Button>
-      </div>
+      </div>}
       <div className="rounded-2xl overflow-hidden border border-[var(--line)]" style={{ boxShadow: 'var(--shadow)' }}>
         <div className="flex items-center justify-between gap-2 px-4 py-2.5 code-chrome flex-wrap">
           <div className="flex items-center gap-2 text-sm font-medium text-[var(--text)]"><M.icon size={15} className="text-orange-400" /> {M.name}</div>
@@ -6131,14 +6365,18 @@ function AdminShowcase() {
   const [editing, setEditing] = useState(null); // project object or 'new'
   const [scheduling, setScheduling] = useState(null); // project object
   const projects = data?.projects || [];
+  // Managers (admin / manage_showcase) get the full surface; a per-project grantee edits
+  // content only — no create/delete/schedule, and the reserved controls in the edit modal
+  // are hidden. The server enforces the same split.
+  const canManage = !!data?.canManage;
   const del = async (pr) => { if (!(await dialog.confirm({ title: t('sh.del.t', 'Delete project'), message: t('sh.del.m', 'Delete "{name}"?').replace('{name}', pr.name), okLabel: t('sh.del.ok', 'Delete'), danger: true }))) return; try { await api.del(`/admin/showcase/${pr.id}`); toast.success(t('common.deleted', 'Deleted.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
         <h2 className="font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[var(--primary-2)]" /> {t('sh.title', 'Other projects')}</h2>
-        <Button size="sm" variant="primary" onClick={() => setEditing('new')}><Plus size={14} /> {t('sh.new', 'New project')}</Button>
+        {canManage && <Button size="sm" variant="primary" onClick={() => setEditing('new')}><Plus size={14} /> {t('sh.new', 'New project')}</Button>}
       </div>
-      <p className="text-sm text-[var(--muted)] mb-4">{t('sh.sub', 'Feature any project on the public /projects page. Overview is always shown; enable Release notes, Community and Legal per project.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-4">{canManage ? t('sh.sub', 'Feature any project on the public /projects page. Overview is always shown; enable Release notes, Community and Legal per project.') : t('sh.sub.grantee', 'You can edit the content of the projects you were granted. Pinning, visibility and publishing are managed by an admin.')}</p>
       {loading ? <Loading /> : projects.length ? <div className="space-y-2">
         {projects.map((pr) => {
           const announcing = pr.announceEnabled && pr.announceRevealAt && new Date(pr.announceRevealAt) > new Date();
@@ -6168,17 +6406,17 @@ function AdminShowcase() {
             </div>
             <div className="mt-3">
               <ActionBar actions={[
-                { key: 'sched', label: t('sh.schedtip', 'Schedule an update'), icon: Clock, onClick: () => setScheduling(pr) },
+                canManage && { key: 'sched', label: t('sh.schedtip', 'Schedule an update'), icon: Clock, onClick: () => setScheduling(pr) },
                 { key: 'edit', label: t('sh.editbtn', 'Edit'), icon: PenSquare, onClick: () => setEditing(pr) },
                 { key: 'open', label: t('sh.openpage', 'Open page'), icon: ArrowUpRight, href: `/project/${pr.slug}`, target: '_blank' },
-                { key: 'del', label: t('common.delete', 'Delete'), icon: Trash2, danger: true, onClick: () => del(pr) },
-              ]} />
+                canManage && { key: 'del', label: t('common.delete', 'Delete'), icon: Trash2, danger: true, onClick: () => del(pr) },
+              ].filter(Boolean)} />
             </div>
           </Card>
           );
         })}
       </div> : <EmptyState icon={Sparkles} title={t('sh.empty', 'No projects yet')} sub={t('sh.emptysub', 'Add your first featured project.')} />}
-      {editing && <ShowcaseEditModal project={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onDone={reload} />}
+      {editing && <ShowcaseEditModal project={editing === 'new' ? null : editing} canManage={canManage} onClose={() => setEditing(null)} onDone={reload} />}
       {scheduling && (
         <ScheduleUpdateModal title={t('sh.schedmodal', 'Schedule an update — {name}').replace('{name}', scheduling.name)} includeNameShort existing={scheduling}
           slug={scheduling.slug} isShowcase
@@ -6190,7 +6428,7 @@ function AdminShowcase() {
   );
 }
 
-function ShowcaseEditModal({ project, onClose, onDone }) {
+function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
   const toast = useToast(); const { t } = useI18n();
   const isNew = !project;
   const cfg0 = project?.config || {};
@@ -6272,13 +6510,17 @@ function ShowcaseEditModal({ project, onClose, onDone }) {
         <p className="text-[11px] text-[var(--faint)] mb-1.5">{t('sh.e.detailshint', 'links (github/source/discord/kofi/website/custom), downloads[], overview media (image/video/replayUrl/rrwebUrl), progressSource, releaseNotes, community, legal cards.')}</p>
         <JsonEditor value={details} onChange={setDetails} minH={220} />
       </div>
-      <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} /> {t('sh.e.published', 'Published (visible on /projects)')}</label>
-      <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer"><input type="checkbox" checked={pinTopbar} onChange={(e) => setPinTopbar(e.target.checked)} /> <Rss size={13} className="text-[var(--primary-2)]" /> {t('sh.e.pin', 'Pin as its own topbar pill (not just the /projects grid)')}</label>
-      <div className="mt-3">
-        <VisibilitySection visibility={visibility} whitelist={whitelist} onVisibility={setVisibility}
-          onAddWhitelist={(e) => setWhitelist((w) => [...w, e])} onRemoveWhitelist={(e) => setWhitelist((w) => w.filter((a) => !(a.type === e.type && a.id === e.id)))} />
-      </div>
-      <div className="mt-3"><AnnouncementSection value={announce} onChange={setAnnounce} /></div>
+      {canManage ? (<>
+        <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} /> {t('sh.e.published', 'Published (visible on /projects)')}</label>
+        <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer"><input type="checkbox" checked={pinTopbar} onChange={(e) => setPinTopbar(e.target.checked)} /> <Rss size={13} className="text-[var(--primary-2)]" /> {t('sh.e.pin', 'Pin as its own topbar pill (not just the /projects grid)')}</label>
+        <div className="mt-3">
+          <VisibilitySection visibility={visibility} whitelist={whitelist} onVisibility={setVisibility}
+            onAddWhitelist={(e) => setWhitelist((w) => [...w, e])} onRemoveWhitelist={(e) => setWhitelist((w) => w.filter((a) => !(a.type === e.type && a.id === e.id)))} />
+        </div>
+        <div className="mt-3"><AnnouncementSection value={announce} onChange={setAnnounce} /></div>
+      </>) : (
+        <p className="text-xs text-[var(--faint)] mt-3 flex items-center gap-1.5"><Lock size={12} /> {t('sh.e.reservednote', 'Publishing, topbar pin, visibility and the announcement are managed by an admin.')}</p>
+      )}
     </Modal>
   );
 }
