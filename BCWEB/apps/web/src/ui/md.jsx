@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -17,7 +17,7 @@ const SANITIZE_SCHEMA = {
   ...defaultSchema,
   tagNames: [...new Set([...(defaultSchema.tagNames || []),
     'div', 'span', 'section', 'details', 'summary', 'nav', 'figure', 'figcaption',
-    'video', 'audio', 'source', 'iframe', 'kbd', 'doc-icon', 'doc-kbd', 'doc-comment', 'doc-roadmap'])],
+    'video', 'audio', 'source', 'iframe', 'kbd', 'doc-icon', 'doc-kbd', 'doc-comment', 'doc-roadmap', 'doc-replay'])],
   attributes: {
     ...defaultSchema.attributes,
     // data-* here are hast (camelCased) property names — rehype-sanitize matches those,
@@ -34,6 +34,7 @@ const SANITIZE_SCHEMA = {
     'doc-kbd': ['className', 'dataKeys'],
     'doc-comment': ['className', 'dataComment', 'dataLink', 'dataImg', 'dataVideo'],
     'doc-roadmap': ['className', 'dataSrc', 'dataJson', 'dataTitle'],
+    'doc-replay': ['className', 'dataSrc', 'dataTitle', 'dataAutoplay', 'dataLoop'],
   },
 };
 
@@ -55,6 +56,7 @@ import {
   Database, Cpu, Bell, Users, User, Folder, File, Link2, ExternalLink, Play, Puzzle,
   Palette, Wrench, GitBranch, Bug, Sparkles, Clock, Hash,
   FileArchive, FileText, FileImage, FileVideo, FileAudio, FileCode, FileDown,
+  Pause, RotateCcw, Maximize2, PlayCircle,
 } from 'lucide-react';
 
 // Shared markdown renderer. On top of GFM (tables, task lists, strikethrough) and
@@ -235,6 +237,18 @@ function remarkDocBlocks() {
           'data-title': labelText || attrs.title || '',
         });
         node.children = [];
+      } else if (name === 'replay' || name === 'bmmreplay') {
+        // Inline BMM session replay (rrweb). `src` points at a .bmmreplay JSON file
+        //   :::replay{src="/api/assets/demo.bmmreplay" title="Installing a plugin"}
+        //   :::replay{src="…" autoplay loop}
+        // Rendered by DocReplay with play/pause/seek/speed/fullscreen controls.
+        setEl('doc-replay', ['doc-replay'], {
+          'data-src': attrs.src || attrs.href || '',
+          'data-title': labelText || attrs.title || '',
+          'data-autoplay': (attrs.autoplay === '' || attrs.autoplay === 'true' || attrs.autoplay === true) ? 'true' : '',
+          'data-loop': (attrs.loop === '' || attrs.loop === 'true' || attrs.loop === true) ? 'true' : '',
+        });
+        node.children = [];
       } else if (name === 'toc') {
         data.hName = 'nav'; data.hProperties = { className: ['doc-toc'] };
         node.children = [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-toc-title'] } }, children: [{ type: 'text', value: labelText || 'On this page' }] },
@@ -384,7 +398,119 @@ function DocRoadmap({ node }) {
   return <div className="doc-roadmap doc-roadmap-empty text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-4">{msg}</div>;
 }
 
-const COMPONENTS = { 'doc-icon': DocIcon, 'doc-kbd': DocKbd, 'doc-comment': DocComment, 'doc-roadmap': DocRoadmap };
+// Inline BMM session replay (rrweb). Authors embed `:::replay{src="…/foo.bmmreplay"}`.
+// The .bmmreplay is JSON `{ bmmReplay, app, durationMs, events:[…] }` (BMM's Session
+// recorder export) OR a bare rrweb events array — DocReplay accepts both. rrweb + the
+// (large) recording are lazy-loaded only when the user hits Play, so a page full of
+// replays costs nothing until watched. Controls: play/pause, restart, seek, speed,
+// fullscreen. Playback advances via requestAnimationFrame → a hidden/background tab
+// throttles it (rrweb limitation, not a bug); it runs normally on a visible tab.
+const fmtTime = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+function DocReplay({ node }) {
+  const { lang } = useI18n();
+  const p = node?.properties || {};
+  const src = p.dataSrc || p['data-src'] || '';
+  const title = p.dataTitle || p['data-title'] || '';
+  const autoplay = (p.dataAutoplay || p['data-autoplay']) === 'true';
+  const loop = (p.dataLoop || p['data-loop']) === 'true';
+  const wrap = useRef(null);
+  const stage = useRef(null);
+  const replayerRef = useRef(null);
+  const rafRef = useRef(0);
+  const [started, setStarted] = useState(autoplay);
+  const [status, setStatus] = useState('idle'); // idle | loading | ready | error
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [dur, setDur] = useState(0);
+  const [cur, setCur] = useState(0);
+
+  const tr = (fr, en) => (lang === 'fr' ? fr : en);
+
+  // Build the Replayer once the user opts in (or autoplay). rrweb is code-split.
+  useEffect(() => {
+    if (!started || !src) return undefined;
+    let cancelled = false, ro;
+    setStatus('loading');
+    (async () => {
+      try {
+        const res = await fetch(src);
+        if (!res.ok) throw new Error('fetch');
+        const doc = await res.json();
+        const events = Array.isArray(doc) ? doc : (doc.events || []);
+        if (!Array.isArray(events) || events.length < 2) throw new Error('empty');
+        const [{ Replayer }] = await Promise.all([import('rrweb'), import('rrweb/dist/style.css')]);
+        if (cancelled || !stage.current) return;
+        const meta = events.find((e) => e.type === 4)?.data || { width: 1480, height: 960 };
+        const replayer = new Replayer(events, { root: stage.current, speed: 1, skipInactive: true, mouseTail: false, showWarning: false, showDebug: false, useVirtualDom: false });
+        replayerRef.current = replayer;
+        const total = replayer.getMetaData?.().totalTime || doc.durationMs || 0;
+        setDur(total);
+        const fit = () => {
+          const w = wrap.current?.clientWidth || 760;
+          const scale = Math.min(1, w / meta.width);
+          const inner = stage.current?.querySelector('.replayer-wrapper');
+          if (inner) { inner.style.transform = `scale(${scale})`; inner.style.transformOrigin = 'top left'; }
+          if (stage.current) stage.current.style.height = `${meta.height * scale}px`;
+        };
+        fit();
+        ro = new ResizeObserver(fit); if (wrap.current) ro.observe(wrap.current);
+        replayer.on('finish', () => {
+          if (loop) { try { replayer.play(0); } catch { /* ignore */ } }
+          else { setPlaying(false); cancelAnimationFrame(rafRef.current); }
+        });
+        // Poll current time while playing for the seek bar.
+        const tick = () => { try { setCur(replayer.getCurrentTime?.() ?? 0); } catch { /* ignore */ } rafRef.current = requestAnimationFrame(tick); };
+        replayer.play(0); setPlaying(true); setStatus('ready'); rafRef.current = requestAnimationFrame(tick);
+      } catch { if (!cancelled) setStatus('error'); }
+    })();
+    return () => { cancelled = true; cancelAnimationFrame(rafRef.current); try { ro?.disconnect(); } catch { /* ignore */ } try { replayerRef.current?.pause?.(); } catch { /* ignore */ } };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [started, src]);
+
+  const toggle = () => {
+    const r = replayerRef.current; if (!r) return;
+    if (playing) { r.pause(); setPlaying(false); cancelAnimationFrame(rafRef.current); }
+    else { const at = cur >= dur - 50 ? 0 : cur; r.play(at); setPlaying(true); const tick = () => { try { setCur(r.getCurrentTime?.() ?? 0); } catch { /* ignore */ } rafRef.current = requestAnimationFrame(tick); }; rafRef.current = requestAnimationFrame(tick); }
+  };
+  const restart = () => { const r = replayerRef.current; if (!r) return; r.play(0); setPlaying(true); if (!rafRef.current) { const tick = () => { try { setCur(r.getCurrentTime?.() ?? 0); } catch { /* ignore */ } rafRef.current = requestAnimationFrame(tick); }; rafRef.current = requestAnimationFrame(tick); } };
+  const seek = (e) => { const r = replayerRef.current; if (!r || !dur) return; const to = Number(e.target.value); setCur(to); if (playing) r.play(to); else r.pause(to); };
+  const changeSpeed = () => { const next = speed === 1 ? 2 : speed === 2 ? 4 : 1; setSpeed(next); try { replayerRef.current?.setConfig?.({ speed: next }); } catch { /* ignore */ } };
+  const fullscreen = () => { const el = wrap.current; if (!el) return; if (document.fullscreenElement) document.exitFullscreen?.(); else el.requestFullscreen?.(); };
+
+  if (!src) return <div className="doc-replay doc-replay-empty text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-4">{tr('Replay vide — fournis un « src » vers un fichier .bmmreplay.', 'Empty replay — provide a "src" to a .bmmreplay file.')}</div>;
+
+  return (
+    <figure className="doc-replay not-prose my-4 rounded-2xl overflow-hidden border border-[var(--line)] bg-[var(--bg-solid)]" style={{ boxShadow: 'var(--shadow)' }}>
+      {title && <figcaption className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b border-[var(--line)] bg-[var(--surface-2)]"><PlayCircle size={15} className="text-[var(--primary-2)]" /> {title}</figcaption>}
+      <div ref={wrap} className="relative bg-black" style={{ minHeight: 200 }}>
+        <div ref={stage} style={{ position: 'relative', width: '100%' }} />
+        {!started && (
+          <button type="button" onClick={() => setStarted(true)} className="absolute inset-0 grid place-items-center bg-black/50 hover:bg-black/40 transition group" aria-label={tr('Lire le replay', 'Play replay')}>
+            <span className="flex flex-col items-center gap-2 text-white">
+              <span className="w-16 h-16 rounded-full bg-[var(--primary)]/90 grid place-items-center group-hover:scale-105 transition-transform"><Play size={28} className="translate-x-0.5" fill="currentColor" /></span>
+              <span className="text-xs opacity-90">{tr('Lire la session', 'Play session')}</span>
+            </span>
+          </button>
+        )}
+        {status === 'loading' && <div className="absolute inset-0 grid place-items-center text-sm text-white/80">{tr('Chargement du replay…', 'Loading replay…')}</div>}
+        {status === 'error' && <div className="absolute inset-0 grid place-items-center text-sm text-red-300 px-4 text-center">{tr('Impossible de charger ce replay.', 'Could not load this replay.')}</div>}
+      </div>
+      {status === 'ready' && (
+        <div className="flex items-center gap-2 px-3 py-2 border-t border-[var(--line)] bg-[var(--surface-2)]">
+          <button type="button" onClick={toggle} className="shrink-0 text-[var(--text)] hover:text-[var(--primary-2)]" aria-label={playing ? tr('Pause', 'Pause') : tr('Lire', 'Play')}>{playing ? <Pause size={17} /> : <Play size={17} />}</button>
+          <button type="button" onClick={restart} className="shrink-0 text-[var(--muted)] hover:text-[var(--text)]" aria-label={tr('Recommencer', 'Restart')}><RotateCcw size={15} /></button>
+          <span className="text-[11px] tabular-nums text-[var(--faint)] shrink-0 w-9 text-right">{fmtTime(cur)}</span>
+          <input type="range" min={0} max={dur || 0} value={Math.min(cur, dur || 0)} onChange={seek} className="flex-1 accent-[var(--primary)] h-1 cursor-pointer" aria-label={tr('Position', 'Seek')} />
+          <span className="text-[11px] tabular-nums text-[var(--faint)] shrink-0 w-9">{fmtTime(dur)}</span>
+          <button type="button" onClick={changeSpeed} className="shrink-0 text-xs font-semibold text-[var(--muted)] hover:text-[var(--text)] w-7 text-center" aria-label={tr('Vitesse', 'Speed')}>{speed}×</button>
+          <button type="button" onClick={fullscreen} className="shrink-0 text-[var(--muted)] hover:text-[var(--text)]" aria-label={tr('Plein écran', 'Fullscreen')}><Maximize2 size={15} /></button>
+        </div>
+      )}
+    </figure>
+  );
+}
+
+const COMPONENTS = { 'doc-icon': DocIcon, 'doc-kbd': DocKbd, 'doc-comment': DocComment, 'doc-roadmap': DocRoadmap, 'doc-replay': DocReplay };
 
 // Internal link with a GitBook-style hover-preview card (title + category), shown
 // only when the href is a known page in `pageMap`.

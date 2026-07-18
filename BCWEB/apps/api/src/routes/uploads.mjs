@@ -63,10 +63,15 @@ const LIMITS = {
   // replay JSON. ADMIN-only (enforced below) since it serves arbitrary bytes from
   // our domain and is only used by the project config editor.
   MEDIA:  { maxBytes: 100 * 1024 * 1024, types: [...IMG, 'video/mp4', 'video/webm', 'application/json', 'application/octet-stream'], prefix: 'blog', adminOnly: true },
+  // A .bmmreplay rrweb recording embedded in a blog post / doc page via :::replay{src}.
+  // JSON only (the client forces application/json for the custom extension), served from
+  // the public blog/ proxy which forces Content-Disposition: attachment on non-media — so
+  // it never renders/executes on our origin, yet DocReplay's fetch() still reads it.
+  REPLAY: { maxBytes: 40 * 1024 * 1024, types: ['application/json'], prefix: 'blog' },
 };
 
 const schema = z.object({
-  kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET', 'BLOG', 'MEDIA', 'REPORT']),
+  kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET', 'BLOG', 'MEDIA', 'REPORT', 'REPLAY']),
   filename: z.string().min(1).max(160),
   contentType: z.string().min(1).max(120),
   size: z.number().int().positive(),

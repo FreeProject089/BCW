@@ -127,6 +127,17 @@ export async function uploadReportImage(file) {
   return mediaUrl;
 }
 
+// Upload a .bmmreplay rrweb recording for a blog/doc :::replay embed. Forces
+// application/json (the custom .bmmreplay extension has no browser MIME), so the server's
+// REPLAY kind accepts it; returns a stable public media URL. Available to any author.
+export async function uploadReplay(file) {
+  const contentType = 'application/json';
+  const { url, mediaUrl } = await api.post('/uploads/presign', { kind: 'REPLAY', filename: file.name, contentType, size: file.size });
+  const put = await fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+  if (!put.ok) throw Object.assign(new Error('upload_failed'), { status: put.status });
+  return mediaUrl;
+}
+
 // Upload a project/showcase page asset (image, short video, or rrweb replay JSON)
 // — ADMIN-only, returns a stable public media URL. Used by the visual project editor.
 export async function uploadMedia(file) {

@@ -4,9 +4,9 @@ import {
   Newspaper, PenSquare, ImagePlus, Youtube, Link2, Video, Bold, Heading, List, Eye,
   Trash2, Pencil, ArrowLeft, CalendarDays, User as UserIcon, Plus, X, Tag as TagIcon, HelpCircle, Languages, Sparkles,
   Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge, History, MessageSquare, Globe,
-  Table, Quote, Minus, AlignLeft, AlignRight, Mail,
+  Table, Quote, Minus, AlignLeft, AlignRight, Mail, PlayCircle,
 } from 'lucide-react';
-import { api, uploadBlogImage } from '../lib/api.js';
+import { api, uploadBlogImage, uploadReplay } from '../lib/api.js';
 import { thumb } from '../lib/img.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -408,6 +408,21 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
     { icon: ImagePlus, label: 'Image', snip: '\n![alt text](https://picsum.photos/600/300)\n' },
     { icon: Video, label: 'Video (mp4/webm)', snip: '\n<video src="https://example.com/clip.mp4" controls></video>\n' },
     { icon: Youtube, label: 'YouTube embed', snip: '\n<iframe src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>\n' },
+    { icon: PlayCircle, label: t('be.replay.upload', 'Session replay (upload .bmmreplay)'), onPick: () => {
+      setBlocksOpen(false);
+      const i = document.createElement('input'); i.type = 'file'; i.accept = '.bmmreplay,application/json';
+      i.onchange = async () => {
+        const f = i.files?.[0]; if (!f) return;
+        try {
+          toast.info(t('be.uploading', 'Uploading…'));
+          const url = await uploadReplay(f);
+          const title = await dialog.prompt({ title: t('be.replay.title', 'Replay caption'), label: t('be.replay.titlelabel', 'Optional caption shown above the player'), placeholder: t('be.replay.titleph', 'e.g. Installing a plugin') });
+          insertBlock(`\n:::replay{src="${url}"${title ? ` title="${title}"` : ''}}\n:::\n`);
+        } catch (x) { toast.error(x?.status === 413 ? t('be.replay.toolarge', 'Replay too large (max 40 MB).') : t('be.uploadfail', 'Upload failed.')); }
+      };
+      i.click();
+    } },
+    { icon: PlayCircle, label: t('be.replay.url', 'Session replay (from URL)'), snip: '\n:::replay{src="https://example.com/session.bmmreplay" title="What happens here"}\n:::\n' },
     { icon: Quote, label: 'Quote', snip: '\n> A blockquote — supports **markdown**.\n' },
     { icon: Minus, label: 'Divider', snip: '\n---\n' },
     { icon: AlignCenter, label: 'Align (center)', snip: '\n:::center\nCentered content — text or an ![image](url).\n:::\n' },
