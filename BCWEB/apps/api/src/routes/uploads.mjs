@@ -68,10 +68,14 @@ const LIMITS = {
   // the public blog/ proxy which forces Content-Disposition: attachment on non-media — so
   // it never renders/executes on our origin, yet DocReplay's fetch() still reads it.
   REPLAY: { maxBytes: 40 * 1024 * 1024, types: ['application/json'], prefix: 'blog' },
+  // A finished "Make Your Own" deliverable an admin uploads into a request conversation —
+  // a built app/site/bot bundle, with or without source. Admin-tier only; served from the
+  // media proxy behind an unguessable UUID URL (attachment on direct navigation).
+  MYO_DELIVER: { maxBytes: 500 * 1024 * 1024, types: [...IMG, 'application/zip', 'application/x-zip-compressed', 'application/octet-stream', 'application/json', 'application/pdf'], prefix: 'blog', adminOnly: true },
 };
 
 const schema = z.object({
-  kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET', 'BLOG', 'MEDIA', 'REPORT', 'REPLAY']),
+  kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET', 'BLOG', 'MEDIA', 'REPORT', 'REPLAY', 'MYO_DELIVER']),
   filename: z.string().min(1).max(160),
   contentType: z.string().min(1).max(120),
   size: z.number().int().positive(),

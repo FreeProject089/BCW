@@ -138,6 +138,16 @@ export async function uploadReplay(file) {
   return mediaUrl;
 }
 
+// Upload a finished "Make Your Own" deliverable (built app/site/bot bundle, ≤500 MB) —
+// admin-tier only. Returns a stable media URL (served as an attachment behind a UUID).
+export async function uploadMyoDeliverable(file) {
+  const contentType = file.type || 'application/octet-stream';
+  const { url, mediaUrl } = await api.post('/uploads/presign', { kind: 'MYO_DELIVER', filename: file.name, contentType, size: file.size });
+  const put = await fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+  if (!put.ok) throw Object.assign(new Error('upload_failed'), { status: put.status });
+  return { url: mediaUrl, name: file.name };
+}
+
 // Upload a project/showcase page asset (image, short video, or rrweb replay JSON)
 // — ADMIN-only, returns a stable public media URL. Used by the visual project editor.
 export async function uploadMedia(file) {

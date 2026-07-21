@@ -212,6 +212,8 @@ export const CAPABILITIES = [
   'manage_projects', 'manage_showcase', 'manage_announcements',
   // Growth elements
   'manage_events', 'manage_promotions',
+  // Services
+  'manage_myo',
 ];
 // Default capabilities a MOD holds without explicit grants.
 const MOD_DEFAULT_CAPS = ['manage_users'];

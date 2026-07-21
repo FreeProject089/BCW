@@ -23,29 +23,13 @@ import { TotpQuickFill } from './twofa-fill.jsx';
 import { MarkdownEditor } from './blog.jsx';
 import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
-import { useAsync, Loading, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, SideDash } from './pages.jsx';
+import { AdminMyo } from './admin-myo.jsx';
+import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, SideDash } from './pages.jsx';
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
 // actual api.del only fires once the 6s window elapses — Undo means nothing was ever deleted,
 // no email sent, no round-trip. Replaces a confirm modal, which asks BEFORE and can't take it
 // back AFTER. Returns { pending, del }: filter your list by `!pending.has(id)`, and call
-// del(id, run, msg) where run() does the delete. On success the reload() drops the row for
-// real; on failure the row is restored.
-function useUndoableDelete(reload) {
-  const toast = useToast(); const { t } = useI18n();
-  const [pending, setPending] = useState(() => new Set());
-  const unhide = (id) => setPending((s) => { const n = new Set(s); n.delete(id); return n; });
-  const del = (id, run, msg) => {
-    setPending((s) => new Set(s).add(id));
-    toast.action({
-      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'), msg,
-      onCommit: async () => { try { await run(); reload?.(); } catch { toast.error(t('common.failed', 'Failed.')); unhide(id); } },
-      onCancel: () => unhide(id),
-    });
-  };
-  return { pending, del };
-}
-
 /* ─────────────────────────  Admin  ───────────────────────── */
 export function Admin() {
   const { user } = useAuth(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
@@ -131,6 +115,7 @@ export function Admin() {
     can('manage_promotions') && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
     isAdmin && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon },
     can('manage_events') && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
+    can('manage_myo') && { id: 'myo', label: t('adm.tab.myo', 'Commissions'), icon: Wand2 },
 
     { heading: t('adm.h.integrations', 'Integrations') },
     isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
@@ -228,6 +213,7 @@ export function Admin() {
         {s === 'promotions' && <><AdminCampaigns /><div className="mt-8"><AdminPromo /></div></>}
         {s === 'kofi' && <AdminKofi />}
         {s === 'events' && <AdminEvents />}
+        {s === 'myo' && <AdminMyo />}
         {s === 'sso' && <AdminOAuthClients />}
         {s === 'storage' && <AdminStorage />}
         {s === 'bot' && <AdminBot />}
@@ -1696,6 +1682,7 @@ const ADMIN_CAPS = [
   { id: 'manage_newsletter', cat: 'growth', icon: Mail, label: 'Manage newsletter', labelFr: 'Gérer la newsletter', desc: 'Compose and send newsletters.', descFr: 'Rédiger et envoyer des newsletters.' },
   { id: 'manage_promotions', cat: 'growth', icon: Megaphone, label: 'Manage promotions', labelFr: 'Gérer les promotions', desc: 'Promo campaigns, discount & hosting codes.', descFr: 'Campagnes promo, codes de réduction et d’hébergement.' },
   { id: 'manage_events', cat: 'growth', icon: Sparkles, label: 'Manage events', labelFr: 'Gérer les événements', desc: 'Site events (fireworks, themed presentations).', descFr: 'Événements du site (feux d’artifice, présentations thématiques).' },
+  { id: 'manage_myo', cat: 'growth', icon: Wand2, label: 'Manage commissions', labelFr: 'Gérer les commandes', desc: 'Handle "Make Your Own" requests, quotes, delivery + the catalog.', descFr: 'Gérer les demandes « Make Your Own », devis, livraisons + le catalogue.' },
   { id: 'manage_analytics', cat: 'insight', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, events feed, errors and goals.', descFr: "Analyses, flux d'événements, erreurs et objectifs." },
   { id: 'manage_repos', cat: 'ops', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
 ];
@@ -1769,9 +1756,9 @@ function AdminAccess({ isSuperAdmin }) {
       toast.success(t('acc.blog.granted', 'Granted blog access to {name}.').replace('{name}', picked.displayName)); grants.reload();
     } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } finally { setBusy(false); }
   };
-  const revoke = async (g) => {
-    try { await api.del(`/admin/blog-permissions/${g.id}`); toast.success(t('acc.revoked', 'Revoked.')); grants.reload(); } catch { toast.error(t('acc.failed', 'Failed.')); }
-  };
+  const undoBlog = useUndoableDelete(() => grants.reload());
+  const undoProj = useUndoableDelete(() => projGrants.reload());
+  const revoke = (g) => undoBlog.del(g.id, () => api.del(`/admin/blog-permissions/${g.id}`), t('acc.revoked', 'Revoked.'));
   const toggleRole = (id) => setRolesSel((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
   const saveRoles = async () => {
     setBusy(true);
@@ -1793,15 +1780,13 @@ function AdminAccess({ isSuperAdmin }) {
       toast.success(t('acc.proj.granted', 'Granted project-edit access to {name}.').replace('{name}', picked.displayName)); projGrants.reload();
     } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } finally { setBusy(false); }
   };
-  const revokeProject = async (g) => {
-    try { await api.del(`/admin/project-permissions/${g.id}`); toast.success(t('acc.revoked', 'Revoked.')); projGrants.reload(); } catch { toast.error(t('acc.failed', 'Failed.')); }
-  };
+  const revokeProject = (g) => undoProj.del(g.id, () => api.del(`/admin/project-permissions/${g.id}`), t('acc.revoked', 'Revoked.'));
   const projScopeLabel = (g) => g.allShowcase ? t('acc.proj.all', 'All other-projects') : g.showcase ? t('acc.proj.custom', 'Other · {name}').replace('{name}', g.showcase.name) : g.projectKey ? t('acc.proj.project', 'Project · {key}').replace('{key}', g.projectKey.toUpperCase()) : '';
-  const allProjGrants = projGrants.data?.grants || [];
+  const allProjGrants = (projGrants.data?.grants || []).filter((g) => !undoProj.pending.has(g.id));
   const userProjGrants = picked ? allProjGrants.filter((g) => g.user?.id === picked.id) : [];
   const scopeLabel = (g) => g.showcase ? t('acc.scope.custom', 'Custom · {name}').replace('{name}', g.showcase.name) : g.projectKey ? t('acc.scope.project', 'Project · {key}').replace('{key}', g.projectKey.toUpperCase()) : t('acc.scope.global', 'Global (all blogs)');
   const roleTone = (role) => role === 'SUPERADMIN' ? 'red' : role === 'ADMIN' ? 'amber' : role === 'MOD' ? 'primary' : '';
-  const allGrants = grants.data?.grants || [];
+  const allGrants = (grants.data?.grants || []).filter((g) => !undoBlog.pending.has(g.id));
   const userGrants = picked ? allGrants.filter((g) => g.user?.id === picked.id) : [];
 
   return (
@@ -1875,7 +1860,7 @@ function AdminAccess({ isSuperAdmin }) {
                   const on = rolesSel.includes(r.id);
                   return (
                     <button key={r.id} onClick={() => toggleRole(r.id)} className={`inline-flex items-center gap-1.5 text-sm pl-2.5 pr-3 py-1.5 rounded-full border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
-                      <Badge tone={r.color || 'primary'}>{r.name}</Badge>
+                      <RoleBadge color={r.color}>{r.name}</RoleBadge>
                       <span className="text-xs text-[var(--faint)]">{t('acc.roles.ncaps', '{n} caps').replace('{n}', (r.capabilities || []).length)}</span>
                       {on && <Check size={13} className="text-[var(--primary-2)]" />}
                     </button>
@@ -1979,17 +1964,26 @@ function AdminAccess({ isSuperAdmin }) {
 // SUPERADMIN-only: create/edit/delete custom roles — named bundles of capabilities that
 // can then be assigned to users in the card above. The capability catalog (ADMIN_CAPS) is
 // the same one the per-user toggles use, grouped here by CAP_CATEGORIES.
-const ROLE_COLORS = ['primary', 'blue', 'green', 'amber', 'red'];
+// A few starting swatches for the role-badge colour picker; any hex is allowed.
+const ROLE_SWATCHES = ['#3b82f6', '#8b5cf6', '#ec4899', '#ef4444', '#f59e0b', '#22c55e', '#14b8a6', '#64748b'];
+const isHex = (c) => /^#[0-9a-fA-F]{6}$/.test(c || '');
+// Role badge that honours a chosen hex colour (tinted fill + coloured text/border), while
+// staying back-compatible with roles created before the picker (a named Badge tone).
+export function RoleBadge({ color, children, className = '' }) {
+  if (isHex(color)) return <span className={`badge ${className}`} style={{ backgroundColor: `${color}22`, color, border: `1px solid ${color}66` }}>{children}</span>;
+  return <Badge tone={color || 'primary'} className={className}>{children}</Badge>;
+}
 function RoleManager({ roles }) {
-  const toast = useToast(); const dialog = useDialog(); const { t, lang } = useI18n();
+  const toast = useToast(); const { t, lang } = useI18n();
+  const undo = useUndoableDelete(() => roles.reload());
   const [editing, setEditing] = useState(null); // null | {} (new) | role (edit)
   const [name, setName] = useState('');
-  const [color, setColor] = useState('primary');
+  const [color, setColor] = useState('#3b82f6');
   const [caps, setCaps] = useState([]);
   const [busy, setBusy] = useState(false);
-  const list = roles.data?.roles || [];
+  const list = (roles.data?.roles || []).filter((r) => !undo.pending.has(r.id));
 
-  const open = (r) => { setEditing(r || {}); setName(r?.name || ''); setColor(r?.color || 'primary'); setCaps(r?.capabilities || []); };
+  const open = (r) => { setEditing(r || {}); setName(r?.name || ''); setColor(r?.color || '#3b82f6'); setCaps(r?.capabilities || []); };
   const close = () => setEditing(null);
   const toggleCap = (id) => setCaps((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
   const capLabel = (c) => lang === 'fr' ? c.labelFr : c.label;
@@ -2005,11 +1999,9 @@ function RoleManager({ roles }) {
     } catch (x) { toast.error(x.data?.error === 'name_taken' ? t('rm.nametaken', 'A role with that name already exists.') : x.data?.error || t('acc.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
-  const del = async (r) => {
-    const ok = await dialog.confirm({ title: t('rm.del.title', 'Delete role'), message: t('rm.del.msg', 'Delete “{name}”? It will be removed from everyone who has it. Their individual permissions are untouched.').replace('{name}', r.name), okLabel: t('rm.del.ok', 'Delete role'), danger: true });
-    if (!ok) return;
-    try { await api.del(`/admin/custom-roles/${r.id}`); toast.success(t('rm.deleted', 'Role deleted.')); roles.reload(); } catch { toast.error(t('acc.failed', 'Failed.')); }
-  };
+  // Undoable — the delete only fires when the Undo window elapses; nothing is removed from
+  // members until then. (No confirm dialog: the 6s Undo IS the safety net.)
+  const del = (r) => undo.del(r.id, () => api.del(`/admin/custom-roles/${r.id}`), t('rm.deleted', 'Role deleted.'));
 
   return (
     <div>
@@ -2021,7 +2013,7 @@ function RoleManager({ roles }) {
       {roles.loading ? <Loading /> : list.length ? <div className="space-y-1.5 mb-3">
         {list.map((r) => (
           <Card key={r.id} className="p-3 flex items-center gap-3">
-            <Badge tone={r.color || 'primary'}>{r.name}</Badge>
+            <RoleBadge color={r.color}>{r.name}</RoleBadge>
             <div className="flex-1 min-w-0 text-xs text-[var(--faint)] truncate">
               {(r.capabilities || []).length ? r.capabilities.map((id) => (ADMIN_CAPS.find((c) => c.id === id) ? capLabel(ADMIN_CAPS.find((c) => c.id === id)) : id)).join(' · ') : t('rm.nocaps', 'No capabilities yet')}
             </div>
@@ -2039,8 +2031,12 @@ function RoleManager({ roles }) {
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('rm.name.ph', 'e.g. Showcase moderator')} maxLength={40} />
             </Field>
             <Field label={t('rm.color', 'Badge color')}>
-              <div className="flex gap-2">
-                {ROLE_COLORS.map((c) => <button key={c} type="button" onClick={() => setColor(c)} className={`px-1 py-0.5 rounded-lg border-2 transition ${color === c ? 'border-[var(--primary)]' : 'border-transparent'}`}><Badge tone={c}>{c}</Badge></button>)}
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="relative w-9 h-9 rounded-lg border border-[var(--line)] overflow-hidden cursor-pointer shrink-0" title={t('rm.colorpick', 'Pick a colour')} style={{ backgroundColor: isHex(color) ? color : '#3b82f6' }}>
+                  <input type="color" value={isHex(color) ? color : '#3b82f6'} onChange={(e) => setColor(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
+                </label>
+                {ROLE_SWATCHES.map((c) => <button key={c} type="button" onClick={() => setColor(c)} className={`w-6 h-6 rounded-full border-2 transition ${color === c ? 'border-[var(--text)] scale-110' : 'border-transparent hover:scale-105'}`} style={{ backgroundColor: c }} title={c} />)}
+                <span className="ml-1"><RoleBadge color={color}>{name.trim() || t('rm.preview', 'Preview')}</RoleBadge></span>
               </div>
             </Field>
             <div>
@@ -2098,7 +2094,8 @@ function AdminReviews() {
   const [f, setF] = useState({ author: '', role: '', body: '', bodyFr: '', rating: '', enabled: true, avatar: null });
   const [editId, setEditId] = useState(null);
   const [busy, setBusy] = useState(false);
-  const reviews = data?.reviews || [];
+  const utog = useUndoableToggle(reload);
+  const reviews = (data?.reviews || []).map(utog.apply);
   const sectionOn = data?.enabled !== false;
   const reset = () => { setF({ author: '', role: '', body: '', bodyFr: '', rating: '', enabled: true, avatar: null }); setEditId(null); };
   const toggleSection = async () => { try { await api.put('/admin/reviews/settings', { enabled: !sectionOn }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
@@ -2114,7 +2111,7 @@ function AdminReviews() {
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const edit = (rv) => { setEditId(rv.id); setF({ author: rv.author, role: rv.role || '', body: rv.body, bodyFr: rv.bodyFr || '', rating: rv.rating ? String(rv.rating) : '', enabled: rv.enabled, avatar: rv.avatar || null }); };
-  const toggleEnabled = async (rv) => { try { await api.patch(`/admin/reviews/${rv.id}`, { enabled: !rv.enabled }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const toggleEnabled = (rv) => utog.act(rv.id, { enabled: !rv.enabled }, () => api.patch(`/admin/reviews/${rv.id}`, { enabled: !rv.enabled }), !rv.enabled ? t('arv.shown2', 'Review shown.') : t('arv.hidden2', 'Review hidden.'));
   const del = async (rv) => { if (!(await dialog.confirm({ title: t('arv.del', 'Delete review?'), message: rv.author, okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/admin/reviews/${rv.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   return (
     <div>
@@ -2180,7 +2177,8 @@ function AdminAnnouncements() {
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [broadcastBusy, setBroadcastBusy] = useState(false);
   const undo = useUndoableDelete(reload);
-  const announcements = (data?.announcements || []).filter((a) => !undo.pending.has(a.id));
+  const utog = useUndoableToggle(reload);
+  const announcements = (data?.announcements || []).filter((a) => !undo.pending.has(a.id)).map(utog.apply);
 
   const create = async () => {
     if (f.title.length < 2) return toast.error(t('ann.title.req', 'Title is required.'));
@@ -2188,8 +2186,8 @@ function AdminAnnouncements() {
     try { const r = await api.post('/admin/announcements', { ...f, linkUrl: f.linkUrl.trim() || null }); toast.success(t('ann.published', 'Published — notified {n} user(s).').replace('{n}', r.notified)); setF({ title: '', body: '', tone: 'info', showBanner: true, linkUrl: '' }); reload(); }
     catch (x) { toast.error(x.data?.error || t('ann.failed', 'Failed.')); } finally { setBusy(false); }
   };
-  const toggleActive = async (a) => { try { await api.put(`/admin/announcements/${a.id}`, { active: !a.active }); reload(); } catch { toast.error(t('ann.failed', 'Failed.')); } };
-  const toggleBanner = async (a) => { try { await api.put(`/admin/announcements/${a.id}`, { showBanner: !a.showBanner }); reload(); } catch { toast.error(t('ann.failed', 'Failed.')); } };
+  const toggleActive = (a) => utog.act(a.id, { active: !a.active }, () => api.put(`/admin/announcements/${a.id}`, { active: !a.active }), !a.active ? t('ann.activated', 'Announcement activated.') : t('ann.deactivated', 'Announcement deactivated.'));
+  const toggleBanner = (a) => utog.act(a.id, { showBanner: !a.showBanner }, () => api.put(`/admin/announcements/${a.id}`, { showBanner: !a.showBanner }), !a.showBanner ? t('ann.bannerturnon', 'Site-wide banner on.') : t('ann.bannerturnoff', 'Site-wide banner off.'));
   const del = (a) => undo.del(a.id, () => api.del(`/admin/announcements/${a.id}`), t('ann.deleted2', 'Announcement deleted.'));
   const notifyAll = async () => {
     if (broadcastMsg.length < 2) return toast.error(t('ann.msg.req', 'Message is required.'));

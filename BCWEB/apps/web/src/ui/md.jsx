@@ -441,25 +441,37 @@ function DocReplay({ node }) {
         const [{ Replayer }] = await Promise.all([import('rrweb'), import('rrweb/dist/style.css')]);
         if (cancelled || !stage.current) return;
         const meta = events.find((e) => e.type === 4)?.data || { width: 1480, height: 960 };
+        // A Replay-Studio recording can carry a `regions` timeline (the moving capture
+        // frame); when present we crop the viewport to the active region and follow it.
+        const regs = (Array.isArray(doc.regions) ? doc.regions : []).filter((r) => r && r.rect && r.rect.w).sort((a, b) => a.t - b.t);
+        const hasRegions = regs.length > 0;
+        const rectAt = (t) => { let r = { x: 0, y: 0, w: meta.width, h: meta.height }; for (const k of regs) { if (k.t <= t) r = k.rect; else break; } return r; };
         const replayer = new Replayer(events, { root: stage.current, speed: 1, skipInactive: true, mouseTail: false, showWarning: false, showDebug: false, useVirtualDom: false });
         replayerRef.current = replayer;
         const total = replayer.getMetaData?.().totalTime || doc.durationMs || 0;
         setDur(total);
-        const fit = () => {
+        const fit = (t) => {
           const w = wrap.current?.clientWidth || 760;
-          const scale = Math.min(1, w / meta.width);
+          const rect = hasRegions ? rectAt(t ?? (replayer.getCurrentTime?.() || 0)) : { x: 0, y: 0, w: meta.width, h: meta.height };
+          const scale = Math.min(1, w / rect.w);
           const inner = stage.current?.querySelector('.replayer-wrapper');
-          if (inner) { inner.style.transform = `scale(${scale})`; inner.style.transformOrigin = 'top left'; }
-          if (stage.current) stage.current.style.height = `${meta.height * scale}px`;
+          if (inner) { inner.style.transform = `translate(${-rect.x * scale}px,${-rect.y * scale}px) scale(${scale})`; inner.style.transformOrigin = 'top left'; if (hasRegions) inner.style.transition = 'transform .35s ease'; }
+          if (stage.current) stage.current.style.height = `${rect.h * scale}px`;
         };
         fit();
-        ro = new ResizeObserver(fit); if (wrap.current) ro.observe(wrap.current);
+        ro = new ResizeObserver(() => fit()); if (wrap.current) ro.observe(wrap.current);
         replayer.on('finish', () => {
           if (loop) { try { replayer.play(0); } catch { /* ignore */ } }
           else { setPlaying(false); cancelAnimationFrame(rafRef.current); }
         });
-        // Poll current time while playing for the seek bar.
-        const tick = () => { try { setCur(replayer.getCurrentTime?.() ?? 0); } catch { /* ignore */ } rafRef.current = requestAnimationFrame(tick); };
+        // Poll current time for the seek bar, and follow the capture frame (re-fit only when
+        // the active region changes so the CSS transition animates the move).
+        let lastIdx = -2;
+        const tick = () => {
+          let t = 0; try { t = replayer.getCurrentTime?.() ?? 0; setCur(t); } catch { /* ignore */ }
+          if (hasRegions) { let i = -1; for (let k = 0; k < regs.length; k++) { if (regs[k].t <= t) i = k; else break; } if (i !== lastIdx) { lastIdx = i; fit(t); } }
+          rafRef.current = requestAnimationFrame(tick);
+        };
         replayer.play(0); setPlaying(true); setStatus('ready'); rafRef.current = requestAnimationFrame(tick);
       } catch { if (!cancelled) setStatus('error'); }
     })();

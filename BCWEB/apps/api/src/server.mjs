@@ -39,6 +39,7 @@ import botRoutes from './routes/bot.mjs';
 import showcaseRoutes from './routes/showcase.mjs';
 import announcementRoutes from './routes/announcements.mjs';
 import roleRoutes from './routes/roles.mjs';
+import myoRoutes from './routes/myo.mjs';
 import accessPolicyRoutes from './routes/access-policy.mjs';
 import serverControlRoutes from './routes/server-control.mjs';
 import telemetryRoutes from './routes/telemetry.mjs';
@@ -187,6 +188,7 @@ await app.register(botRoutes);
 await app.register(showcaseRoutes);
 await app.register(announcementRoutes);
 await app.register(roleRoutes); // custom roles + per-project edit grants
+await app.register(myoRoutes); // "Make Your Own" commission service
 await app.register(accessPolicyRoutes);
 await app.register(serverControlRoutes);
 await app.register(telemetryRoutes);

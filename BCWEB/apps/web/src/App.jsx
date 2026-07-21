@@ -48,6 +48,8 @@ const UserSearch = named(() => import('./pages/publicprofile.jsx'), 'UserSearch'
 const BlogList = named(() => import('./pages/blog.jsx'), 'BlogList');
 const BlogPostPage = named(() => import('./pages/blog.jsx'), 'BlogPostPage');
 const Docs = lazy(() => import('./pages/docs.jsx'));
+const MyoPage = named(() => import('./pages/myo.jsx'), 'MyoPage');
+const MyoRequestPage = named(() => import('./pages/myo.jsx'), 'MyoRequestPage');
 const Faq = lazy(() => import('./pages/faq.jsx'));
 const Submit = named(() => import('./pages/submit.jsx'), 'Submit');
 const CommunityCatalogPage = lazy(() => import('./pages/catalogpage.jsx'));
@@ -689,7 +691,7 @@ function Footer() {
           </div>
           <FooterNewsletter />
         </div>
-        <FooterCol title={t('foot.products')} links={[['BetterModsManager', '/p/bmm'], ['BetterSoundMaker', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting']]} />
+        <FooterCol title={t('foot.products')} links={[['BetterModsManager', '/p/bmm'], ['BetterSoundMaker', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting'], [t('myo.badge', 'Make Your Own'), '/myo']]} />
         <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/legal/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('faq.title', 'FAQ'), '/faq'], [t('nav.repos'), '/repos'], [t('foot.members', 'Members'), '/users'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
         <FooterCol title={t('foot.legal')} links={[[t('legal.all', 'All'), '/legal'], [t('foot.privacy'), '/legal/privacy'], [t('foot.terms'), '/legal/terms'], [t('foot.cookies'), '/legal/cookies'], [t('foot.refunds', 'Payments & Refunds'), '/legal/refunds']]} />
       </div>
@@ -856,6 +858,8 @@ export default function App() {
               <Route path="/repos" element={<ReposPage />} />
               <Route path="/repo/:id" element={<RepoDashboard />} />
               <Route path="/hosting" element={<Hosting />} />
+              <Route path="/myo" element={<MyoPage />} />
+              <Route path="/myo/:id" element={<Protected><MyoRequestPage /></Protected>} />
               <Route path="/p/:key" element={<ProjectPage />} />
               <Route path="/projects" element={<OtherProjects />} />
               <Route path="/project/:slug" element={<ShowcaseProjectPage />} />

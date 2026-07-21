@@ -47,7 +47,7 @@ export function useAsync(fn, deps = []) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(true);
-  const reload = () => { setLoading(true); fn().then((d) => { setData(d); setErr(null); }).catch(setErr).finally(() => setLoading(false)); };
+  const reload = () => { setLoading(true); return fn().then((d) => { setData(d); setErr(null); }).catch(setErr).finally(() => setLoading(false)); };
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, deps);
   return { data, err, loading, reload };
 }
@@ -70,6 +70,46 @@ export const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: F
 export const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset' };
 export const statusTone = (s) => s === 'PUBLISHED' ? 'green' : (s === 'REJECTED' || s === 'SUSPENDED') ? 'red' : 'amber';
 export const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> Loading…</div>;
+
+// Optimistic, undoable delete/revoke. `del(id, run, msg)` hides the row immediately (add id
+// to `pending`, filter your list by !pending.has(id)) and shows a "Undo" toast; the actual
+// `run()` (the DELETE) only fires when the window elapses — Undo means nothing was ever
+// sent. On failure the row is un-hidden. Shared so admin.jsx AND admin-myo.jsx use one copy.
+export function useUndoableDelete(reload) {
+  const toast = useToast(); const { t } = useI18n();
+  const [pending, setPending] = useState(() => new Set());
+  const unhide = (id) => setPending((s) => { const n = new Set(s); n.delete(id); return n; });
+  const del = (id, run, msg) => {
+    setPending((s) => new Set(s).add(id));
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'), msg,
+      onCommit: async () => { try { await run(); reload?.(); } catch { toast.error(t('common.failed', 'Failed.')); unhide(id); } },
+      onCancel: () => unhide(id),
+    });
+  };
+  return { pending, del };
+}
+// Optimistic, undoable field mutation (a toggle or small edit that would otherwise fire an
+// immediate PATCH/PUT). `act(id, patch, run, msg)` overlays `patch` on the row right away —
+// read the displayed row through `apply(row)` — shows an "Undo" toast, and only fires `run()`
+// (the actual request) once the window elapses. Undo means the server was never touched. The
+// override is held until a post-commit reload lands so the value never flashes back. Mirrors
+// useUndoableDelete; shared so any admin panel gets the same feel.
+export function useUndoableToggle(reload) {
+  const toast = useToast(); const { t } = useI18n();
+  const [overrides, setOverrides] = useState(() => new Map());
+  const clear = (id) => setOverrides((m) => { const n = new Map(m); n.delete(id); return n; });
+  const apply = (row) => { const o = overrides.get(row.id); return o ? { ...row, ...o } : row; };
+  const act = (id, patch, run, msg) => {
+    setOverrides((m) => new Map(m).set(id, patch));
+    toast.action({
+      tone: 'info', duration: 6000, cancelLabel: t('common.undo', 'Undo'), msg,
+      onCommit: async () => { try { await run(); } catch { toast.error(t('common.failed', 'Failed.')); } await reload?.(); clear(id); },
+      onCancel: () => clear(id),
+    });
+  };
+  return { overrides, apply, act };
+}
 // CSV cell that is safe against spreadsheet formula injection (CWE-1236): a value that
 // starts with =, @, or a +/- that isn't a plain number is prefixed with ' so Excel/Sheets
 // treat it as text, then quoted if it contains CSV specials. Analytics paths, emails, IPs,

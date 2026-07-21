@@ -151,6 +151,8 @@ model User {
   discordLinks       DiscordLink[]
   blogPermissions    BlogPermission[]
   projectPermissions ProjectPermission[]
+  myoRequests        MyoRequest[]
+  myoMessages        MyoMessage[]
   submissionComments SubmissionComment[]
   contactMessages    ContactMessage[]
   reportsMade         Report[]            @relation("ReportReporter")
@@ -1531,6 +1533,8 @@ model ContactMessage {
 enum PaymentKind {
   FEATURE
   HOSTING
+  MYO_CONSULTATION // "Make Your Own" consultation fee (opens the advice conversation)
+  MYO_PRODUCT // "Make Your Own" quote payment (starts the actual product build)
 }
 
 // Billing history / invoices (one-time feature promotions, hosting charges…).
@@ -1550,6 +1554,132 @@ model Payment {
   createdAt       DateTime    @default(now())
 
   @@index([userId])
+}
+
+// ── "Make Your Own" (MYO) — a paid consultation + commission service ─────────────
+// A visitor pays a small CONSULTATION fee to open a conversation about a product they
+// want built (a Discord bot, an app, a website, a custom job, a security audit…). In the
+// conversation they get advice + a real QUOTE; paying the quote starts the actual build;
+// the finished product is delivered back into the same conversation. Two clearly-separate
+// payments: the consultation fee (this is an *avis*/advice — not the product) and, later,
+// the quote (the product itself). Managed under the `manage_myo` capability.
+
+// Admin-curated catalog card shown on the public /myo page (the 3 base options —
+// discord_bot / app / website — plus custom / audit). Prices here are display-only "from"
+// signals; the binding price is always the admin's per-request MyoQuote.
+model MyoProduct {
+  id             String       @id @default(cuid())
+  kind           String // discord_bot | app | website | custom | audit | …
+  name           String
+  tagline        String       @default("")
+  description    String       @default("")
+  icon           String? // lucide name / brand icon / image URL
+  basePriceCents Int          @default(0) // shown as "from $X" (0 = "quote only")
+  options        Json         @default("[]") // [{ label, priceCents, note }] shown on the card
+  includesSource Boolean      @default(true) // whether this kind usually ships with source
+  active         Boolean      @default(true)
+  featured       Boolean      @default(false)
+  order          Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  requests       MyoRequest[]
+
+  @@index([active, order])
+}
+
+// One user's commission request — the paid consultation conversation.
+model MyoRequest {
+  id                String      @id @default(cuid())
+  user              User        @relation(fields: [userId], references: [id])
+  userId            String
+  product           MyoProduct? @relation(fields: [productId], references: [id])
+  productId         String?
+  productKind       String      @default("custom") // snapshot of the chosen kind
+  // ── Intake (collected before the consultation payment) ──
+  name              String // the product's name
+  logo              String? // optional logo URL
+  objective         String      @default("") // what it's for, in one line
+  target            String      @default("personal") // personal|friends|community|nonprofit|commercial|other
+  description       String      @default("") // ≤ 2000 chars (enforced in the route)
+  lang              String      @default("en") // conversation language: en | fr
+  urgent            Boolean     @default(false) // higher consultation fee, flagged to staff
+  // ── Consultation payment (gate to open the conversation) ──
+  consultationPaid  Boolean     @default(false)
+  consultationCents Int         @default(0)
+  stripeSessionId   String?
+  // pending_payment → open (paid, advice stage) → quoted → in_production (quote paid) →
+  // delivered → closed (reopenable) / cancelled.
+  status            String      @default("pending_payment")
+  staffUnread       Boolean     @default(true) // a user message staff hasn't seen
+  userUnread        Boolean     @default(false) // a staff message the user hasn't seen
+  lastActivityAt    DateTime    @default(now())
+  closedAt          DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  messages          MyoMessage[]
+  quotes            MyoQuote[]
+  deliverables      MyoDeliverable[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([lastActivityAt])
+}
+
+// A message in a request's conversation (mirrors ReportMessage). Both the user and staff
+// post here; `staff` marks the author side; `images` are uploaded attachment URLs.
+model MyoMessage {
+  id        String     @id @default(cuid())
+  request   MyoRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId String
+  author    User?      @relation(fields: [authorId], references: [id])
+  authorId  String? // null = system note
+  staff     Boolean    @default(false)
+  body      String     @default("")
+  images    String[]   @default([]) // uploaded attachment URLs (media presign)
+  createdAt DateTime   @default(now())
+
+  @@index([requestId])
+}
+
+// A priced quote (devis) an admin builds inside a conversation. The user pays it to move
+// the request into production. Line items are shown itemised; `includesSource` is surfaced
+// as a badge (some products ship with source, some without).
+model MyoQuote {
+  id              String     @id @default(cuid())
+  request         MyoRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId       String
+  title           String     @default("")
+  note            String     @default("")
+  lineItems       Json       @default("[]") // [{ label, priceCents }]
+  totalCents      Int        @default(0)
+  currency        String     @default("usd")
+  includesSource  Boolean    @default(false)
+  validUntil      DateTime?
+  status          String     @default("sent") // sent | paid | rejected | withdrawn
+  stripeSessionId String?
+  createdBy       String // admin userId
+  createdAt       DateTime   @default(now())
+  paidAt          DateTime?
+
+  @@index([requestId])
+}
+
+// A finished-product delivery an admin posts into the conversation: an uploaded file
+// and/or an external link (repo / hosted site), flagged whether it includes source code.
+model MyoDeliverable {
+  id             String     @id @default(cuid())
+  request        MyoRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId      String
+  title          String     @default("")
+  note           String     @default("")
+  fileUrl        String? // uploaded artifact (served via the media proxy)
+  fileName       String?
+  linkUrl        String? // external link / repo / hosted URL
+  includesSource Boolean    @default(false)
+  createdBy      String // admin userId
+  createdAt      DateTime   @default(now())
+
+  @@index([requestId])
 }
 
 // First-party, cookie-consent-gated page analytics (no third party, minimal data).

@@ -87,6 +87,31 @@ export default async function stripeWebhook(app) {
       // This is a real RECURRING Stripe subscription (billed monthly by file size) —
       // stash its id so `customer.subscription.deleted` can find and unpublish the
       // item again if the recurring charge ever stops being paid.
+      // "Make Your Own" consultation fee → open the advice conversation.
+      if (meta.type === 'myo_consultation' && meta.requestId && meta.userId) {
+        const r = await p.myoRequest.findUnique({ where: { id: meta.requestId } });
+        if (r && r.userId === meta.userId && !r.consultationPaid) {
+          await p.myoRequest.update({ where: { id: r.id }, data: { consultationPaid: true, status: 'open', staffUnread: true, lastActivityAt: new Date() } });
+          await p.myoMessage.create({ data: { requestId: r.id, authorId: null, staff: true, body: `Consultation paid — thanks! Tell us more about "${r.name}" and a consultant will reply with advice and a quote. You're paying for advice here; building the product starts once you approve a quote.` } }).catch(() => {});
+          await p.payment.create({ data: { userId: meta.userId, kind: 'MYO_CONSULTATION', description: `MYO consultation — "${r.name}"${r.urgent ? ' (urgent)' : ''}`, amountCents: s.amount_total ?? r.consultationCents, currency: s.currency || 'usd', stripeSessionId: s.id } }).catch(() => {});
+          await notify(p, meta.userId, 'myo_open', `Your consultation for "${r.name}" is open — a consultant will reply shortly.`).catch(() => {});
+        }
+        return { received: true };
+      }
+
+      // "Make Your Own" quote payment → the product build starts.
+      if (meta.type === 'myo_quote' && meta.quoteId && meta.requestId && meta.userId) {
+        const q = await p.myoQuote.findUnique({ where: { id: meta.quoteId }, include: { request: true } });
+        if (q && q.request?.userId === meta.userId && q.status !== 'paid') {
+          await p.myoQuote.update({ where: { id: q.id }, data: { status: 'paid', paidAt: new Date() } });
+          await p.myoRequest.update({ where: { id: q.requestId }, data: { status: 'in_production', staffUnread: true, lastActivityAt: new Date() } });
+          await p.myoMessage.create({ data: { requestId: q.requestId, authorId: null, staff: true, body: `Quote paid (${((q.totalCents) / 100).toFixed(2)} ${(q.currency || 'usd').toUpperCase()})${q.includesSource ? ' — includes source code' : ''}. Work on your product starts now.` } }).catch(() => {});
+          await p.payment.create({ data: { userId: meta.userId, kind: 'MYO_PRODUCT', description: `MYO product — "${q.request.name}"`, amountCents: s.amount_total ?? q.totalCents, currency: s.currency || 'usd', stripeSessionId: s.id } }).catch(() => {});
+          await notify(p, meta.userId, 'myo_production', `Payment received for "${q.request.name}" — your product is now in production.`).catch(() => {});
+        }
+        return { received: true };
+      }
+
       if (meta.type === 'catalog_hosting' && meta.itemId && meta.userId) {
         const item = await p.catalogItem.findUnique({ where: { id: meta.itemId } });
         if (item) {

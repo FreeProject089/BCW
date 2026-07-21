@@ -25,7 +25,9 @@ export default async function roleRoutes(app) {
 
   const roleBody = z.object({
     name: z.string().trim().min(2).max(40),
-    color: z.enum(['primary', 'amber', 'green', 'red', 'blue', '']).default('primary'),
+    // A hex colour from the picker (e.g. "#3b82f6"), or a legacy named Badge tone for
+    // roles created before the picker existed. The client renders both (see RoleBadge).
+    color: z.string().trim().regex(/^(#[0-9a-fA-F]{6}|primary|amber|green|red|blue)$/).default('#3b82f6'),
     capabilities: z.array(z.enum(CAPABILITIES)).max(CAPABILITIES.length).default([]),
   });
   app.post('/admin/custom-roles', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
