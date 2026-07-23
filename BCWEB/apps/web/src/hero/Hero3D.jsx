@@ -194,18 +194,17 @@ export default function Hero3D() {
     const el = mount.current;
     if (!el) return;
 
-    // No WebGL2 → skip the orb entirely and reveal the page immediately, so the
-    // intro loader never hangs on top of the site (and no THREE console errors).
-    // Paint a static amber-glow backdrop in the orb's corner so the hero isn't
-    // empty; the real animated orb needs WebGL2.
-    if (!webglAvailable()) {
+    // Static amber-glow backdrop used whenever the animated orb can't run well (no
+    // WebGL2, or a software renderer that would lag). Reveals the page immediately so
+    // the intro loader never hangs on top of the site.
+    const paintStaticGlow = () => {
       el.style.background = isLight()
         ? 'radial-gradient(1100px 780px at 80% 16%, rgba(243,168,105,0.34), rgba(255,224,191,0.12) 42%, transparent 70%)'
         : 'radial-gradient(1100px 780px at 80% 16%, rgba(217,119,10,0.26), rgba(58,28,13,0.16) 42%, transparent 70%)';
       el.style.opacity = '1';
       setShowOverlay(false); finish();
-      return;
-    }
+    };
+    if (!webglAvailable()) { paintStaticGlow(); return; }
 
     const W = () => window.innerWidth, H = () => window.innerHeight;
 
@@ -215,13 +214,30 @@ export default function Hero3D() {
     let renderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-    } catch { setShowOverlay(false); finish(); return; }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    } catch { paintStaticGlow(); return; }
+    // Cap at 1.5 (not 2): on HiDPI/4K screens a ratio of 2 quadruples the fragment
+    // count for a background element — the single biggest fill-rate cost of the orb.
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setSize(W(), H());
     el.appendChild(renderer.domElement);
 
+    // A software renderer (e.g. Firefox with webgl.force-enabled but no working GPU
+    // path, or a VM/RDP) would run the orb's shaders on the CPU and lag hard — detect
+    // it and use the static glow instead.
+    try {
+      const gl = renderer.getContext();
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      const rname = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '') : '';
+      if (/swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic|warp/i.test(rname)) {
+        renderer.dispose();
+        if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
+        paintStaticGlow();
+        return;
+      }
+    } catch { /* detection unavailable — proceed with the orb */ }
+
     // ── the orb: one smooth icosahedron, displaced by noise in the vertex shader ──
-    const geo = new THREE.IcosahedronGeometry(2.9, 5); // detail 5 = 10242 verts, plenty smooth
+    const geo = new THREE.IcosahedronGeometry(2.9, 4); // detail 4 = 2562 verts — smooth enough for a blurred, displaced orb at a fraction of the per-frame vertex-shader cost of detail 5 (10242)
 
     // Fracture shards: a coarser icosahedron (detail 2 = 320 faces). Icosahedron
     // geometry is ALREADY non-indexed (every face owns its 3 vertices — calling
@@ -504,9 +520,23 @@ export default function Hero3D() {
       lastSide = side;
       document.documentElement.style.setProperty('--reveal-x', `${side * 44}px`);
     };
+    // Adaptive quality: sample the first ~1.5 s of frames; if it runs below ~45 fps,
+    // drop the device pixel ratio to 1 (the biggest fill-rate lever) so a weak GPU
+    // stops dropping frames. One-shot — never fights back up.
+    let fpsStart = 0, fpsFrames = 0, qualityLocked = false;
     const tick = () => {
       raf = requestAnimationFrame(tick);
       if (ctxLost) return;
+      if (!qualityLocked) {
+        const now = performance.now();
+        if (!fpsStart) fpsStart = now;
+        fpsFrames++;
+        if (now - fpsStart > 1500) {
+          const fps = fpsFrames / ((now - fpsStart) / 1000);
+          if (fps < 45 && renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); renderer.setSize(W(), H()); }
+          qualityLocked = true;
+        }
+      }
       try {
         t += 0.01;
         uniforms.uTime.value = t;
