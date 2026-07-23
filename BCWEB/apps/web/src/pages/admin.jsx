@@ -2582,6 +2582,56 @@ function UserModerationCard({ user, onChange }) {
   );
 }
 
+// Lost-authenticator recovery. 2FA is a personal factor a user normally disables only with
+// their password + a live code; someone who loses BOTH the app and their recovery codes is
+// locked out for good. Staff can clear it here so they sign in with their password and
+// re-enrol. Same rank rules as moderation, deferred behind an undo window (so "undo" means
+// nothing ever happened), and the API logs it + emails the user as a security event.
+function UserTwoFactorCard({ user, onChange }) {
+  const { t } = useI18n(); const toast = useToast(); const { user: me } = useAuth();
+  const myRank = MOD_RANK[me?.role] ?? 0;
+  const targetRank = MOD_RANK[user.role] ?? 0;
+  const canReset = myRank > targetRank; // your own row → equal rank → false, naturally hidden
+  const [pending, setPending] = useState(false);
+  const enabled = pending ? false : !!user.totpEnabled;
+  const reset = () => {
+    setPending(true);
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('twofa.reset.done', 'Two-factor reset — the user can now sign in with their password.'),
+      onCommit: async () => {
+        try { const r = await api.post(`/admin/users/${user.id}/2fa/reset`); onChange?.(r); }
+        catch (x) {
+          toast.error(
+            x.data?.error === 'cannot_moderate_higher' ? t('mod.higher', 'You can only moderate accounts below your own level.')
+            : x.data?.error === 'cannot_reset_self' ? t('twofa.reset.self', "You can't reset your own 2FA here — use Settings.")
+            : t('common.failed', 'Failed.'));
+        }
+        finally { setPending(false); }
+      },
+      onCancel: () => setPending(false),
+    });
+  };
+  return (
+    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><KeyRound size={12} /> {t('twofa.title', 'Two-factor authentication')}</div>
+        <Badge tone={enabled ? 'green' : ''}>{enabled ? t('twofa.on', 'Enabled') : t('twofa.off', 'Disabled')}</Badge>
+      </div>
+      {!enabled ? (
+        <div className="text-sm text-[var(--faint)] mt-2">{t('twofa.notenabled', 'No two-factor authentication on this account — nothing to reset.')}</div>
+      ) : !canReset ? (
+        <div className="text-sm text-[var(--faint)] mt-2">{t('mod.higher', 'You can only moderate accounts below your own level.')}</div>
+      ) : (
+        <div className="mt-2">
+          <div className="text-sm text-[var(--muted)]">{t('twofa.reset.desc', 'Lost their authenticator and recovery codes? Reset 2FA so they can sign in with their password and re-enrol. This is logged and the user is emailed.')}</div>
+          <Button size="sm" variant="ghost" className="!text-amber-400 mt-2" disabled={pending} onClick={reset}><KeyRound size={14} /> {t('twofa.reset', 'Reset 2FA')}</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UserDetailModal({ id, onClose }) {
   const { data, loading, reload } = useAsync(() => api.get(`/admin/users/${id}`), [id]);
   const toast = useToast(); const { t } = useI18n();
@@ -2620,6 +2670,8 @@ function UserDetailModal({ id, onClose }) {
           {u.bio && <p className="text-sm text-[var(--muted)]">{u.bio}</p>}
 
           <UserModerationCard user={u} onChange={reload} />
+
+          <UserTwoFactorCard user={u} onChange={reload} />
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><BadgeCheck size={12} /> {t('ud.creatorids', 'Linked creator ids')}</div>

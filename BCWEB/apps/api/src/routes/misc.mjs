@@ -439,7 +439,7 @@ export default async function miscRoutes(app) {
     const p = await db();
     const u = await p.user.findUnique({ where: { id: req.params.id }, select: {
       id: true, displayName: true, email: true, role: true, permissions: true, avatar: true, bio: true, createdAt: true, stripeCustomerId: true,
-      status: true, moderationUntil: true, moderationReason: true, moderatedAt: true,
+      status: true, moderationUntil: true, moderationReason: true, moderatedAt: true, totpEnabled: true,
       serverRepos: { select: { id: true, name: true, hosted: true, status: true, listed: true, verified: true }, orderBy: { createdAt: 'desc' } },
       items: { select: { id: true, name: true, slug: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' } },
       creatorLinks: { select: { creatorId: true, displayName: true, linkedAt: true, unlinkableAt: true } },
@@ -558,6 +558,34 @@ export default async function miscRoutes(app) {
       html: mailShell(`Account ${label}`, `<p>Hi ${escapeHtml(target.displayName)},</p><p>Your account has been <b>${label}</b> ${dur}.</p>${reason ? `<p style="margin-top:12px"><b>Reason:</b><br>${escapeHtml(reason)}</p>` : ''}${until ? '' : '<p style="margin-top:12px">If you believe this was a mistake, you can appeal by contacting support.</p>'}`, until ? null : { url: `${SITE_URL}/contact?ref=appeal`, label: 'Contact support' }),
       text: `Your BetterCommunity account has been ${label} ${dur}.${reason ? ` Reason: ${reason}` : ''}${until ? '' : ` Appeal: ${SITE_URL}/contact`}` }).catch(() => {});
     return { ok: true, status, until: until ? until.toISOString() : null };
+  });
+
+  // ── Admin: reset a user's 2FA (lost-authenticator recovery) ───────────────────
+  // Two-factor is a personal auth factor: normally ONLY the owner can disable it, and
+  // only by proving both their password AND a current TOTP/recovery code. A user who
+  // loses their authenticator AND their recovery codes is otherwise locked out for good.
+  // This is the sole staff escape hatch — it CLEARS the secret + recovery codes so the
+  // user can sign in with their password alone and re-enrol from scratch. It never
+  // reveals or sets a secret. Same seniority rules as moderation (act strictly below your
+  // own rank), you can't reset your own (that would bypass the password+code gate on
+  // /me/2fa/disable), and every reset is audited + emailed to the user as a security event.
+  app.post('/admin/users/:id/2fa/reset', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
+    if (req.params.id === req.user.uid) return reply.code(400).send({ error: 'cannot_reset_self' });
+    const p = await db();
+    const target = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, displayName: true, email: true, role: true, totpEnabled: true } });
+    if (!target) return reply.code(404).send({ error: 'not_found' });
+    // Can only act on someone strictly below your own level (USER<MOD<ADMIN<SUPERADMIN).
+    if (MOD_RANK[req.user.role] <= MOD_RANK[target.role ?? 'USER']) return reply.code(403).send({ error: 'cannot_moderate_higher' });
+    if (!target.totpEnabled) return { ok: true, wasEnabled: false };
+
+    await p.user.update({ where: { id: target.id }, data: { totpSecret: null, totpEnabled: false, totpRecoveryCodes: [] } });
+    clearUserCache(target.id); // any live 2FA-gated admin session re-evaluates within ~15s
+    await logAudit(p, req.user.uid, 'user.2fa_reset', `${target.displayName} (${target.email})`, clientIp(req));
+    await notify(p, target.id, 'account', 'An administrator reset the two-factor authentication on your account. 2FA is now OFF — please re-enable it from Settings.').catch(() => {});
+    if (emailEnabled()) sendMail({ to: target.email, subject: 'Two-factor authentication was reset on your BetterCommunity account',
+      html: mailShell('Two-factor authentication reset', `<p>Hi ${escapeHtml(target.displayName)},</p><p>An administrator has <b>reset the two-factor authentication</b> on your account — for example, to help you recover after losing your authenticator app. Two-factor is now <b>disabled</b>, so you can sign in with just your password.</p><p style="margin-top:12px">For your security, please sign in and re-enable two-factor authentication right away. If you did <b>not</b> request this, change your password immediately.</p>`, { url: `${SITE_URL}/settings`, label: 'Re-enable 2FA' }),
+      text: `An administrator reset the two-factor authentication on your BetterCommunity account. 2FA is now disabled; sign in with your password and re-enable it: ${SITE_URL}/settings . If you did not request this, change your password immediately.` }).catch(() => {});
+    return { ok: true, wasEnabled: true };
   });
 
   // ── Admin: free-plan vs. paying vs. archived users ──

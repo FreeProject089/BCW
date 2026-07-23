@@ -100,7 +100,7 @@ export function auditHash(prevHash, e) {
 // Sensitive staff actions that should immediately surface to SUPERADMINs — the tripwire
 // for a compromised staff account (someone pulling another user's files, writing to the
 // DB, or hitting power/terminal). Matched by action prefix.
-const SENSITIVE_ACTION = /^server\.(file_download|file_delete|db_write|db_restore|restart|terminal|power|db_write_blocked|db_restore_blocked)/;
+const SENSITIVE_ACTION = /^(server\.(file_download|file_delete|db_write|db_restore|restart|terminal|power|db_write_blocked|db_restore_blocked)|user\.2fa_reset)/;
 let _auditSettingsCache = { v: null, at: 0 };
 
 // ── Append-only external anchor (closes the end-truncation gap) ──
