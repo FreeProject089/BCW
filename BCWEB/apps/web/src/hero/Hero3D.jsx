@@ -520,22 +520,36 @@ export default function Hero3D() {
       lastSide = side;
       document.documentElement.style.setProperty('--reveal-x', `${side * 44}px`);
     };
-    // Adaptive quality: sample the first ~1.5 s of frames; if it runs below ~45 fps,
-    // drop the device pixel ratio to 1 (the biggest fill-rate lever) so a weak GPU
-    // stops dropping frames. One-shot — never fights back up.
-    let fpsStart = 0, fpsFrames = 0, qualityLocked = false;
+    // Adaptive-quality watchdog. Measure fps in ~1 s windows and degrade in stages so
+    // the hero stays smooth on ANY hardware:
+    //   • window 0        → warm-up (shader compile), ignored
+    //   • still < 48 fps  → drop devicePixelRatio to 1 (the biggest fill-rate lever)
+    //   • still < 30 fps  → give up on the live orb: dispose it and switch to the
+    //                       (free) static glow. Guarantees no sustained lag.
+    let winStart = 0, winFrames = 0, stage = 0, bailed = false;
+    const bailToStatic = () => {
+      bailed = true;
+      if (raf) cancelAnimationFrame(raf);
+      try { renderer.dispose(); if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement); } catch { /* ignore */ }
+      paintStaticGlow();
+    };
     const tick = () => {
+      if (bailed) return;
       raf = requestAnimationFrame(tick);
       if (ctxLost) return;
-      if (!qualityLocked) {
-        const now = performance.now();
-        if (!fpsStart) fpsStart = now;
-        fpsFrames++;
-        if (now - fpsStart > 1500) {
-          const fps = fpsFrames / ((now - fpsStart) / 1000);
-          if (fps < 45 && renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); renderer.setSize(W(), H()); }
-          qualityLocked = true;
-        }
+      // Pause work while the tab/page is hidden — no point rendering off-screen.
+      if (document.hidden) { winStart = 0; winFrames = 0; return; }
+      const now = performance.now();
+      if (!winStart) winStart = now;
+      winFrames++;
+      if (now - winStart >= 1000) {
+        const fps = winFrames / ((now - winStart) / 1000);
+        winStart = now; winFrames = 0;
+        if (stage === 0) stage = 1;
+        else if (stage === 1) {
+          if (fps < 48 && renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); renderer.setSize(W(), H()); }
+          stage = 2;
+        } else if (fps < 30) { bailToStatic(); return; }
       }
       try {
         t += 0.01;
