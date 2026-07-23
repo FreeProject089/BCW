@@ -565,11 +565,12 @@ export default async function miscRoutes(app) {
   // only by proving both their password AND a current TOTP/recovery code. A user who
   // loses their authenticator AND their recovery codes is otherwise locked out for good.
   // This is the sole staff escape hatch — it CLEARS the secret + recovery codes so the
-  // user can sign in with their password alone and re-enrol from scratch. It never
-  // reveals or sets a secret. Same seniority rules as moderation (act strictly below your
-  // own rank), you can't reset your own (that would bypass the password+code gate on
+  // user can sign in with their password alone and re-enrol from scratch. It never reveals
+  // or sets a secret. Because disabling someone's 2FA is a security downgrade it's ADMIN+
+  // only (not MODs), still bounded by the moderation seniority rule (act strictly below
+  // your own rank), you can't reset your own (that would bypass the password+code gate on
   // /me/2fa/disable), and every reset is audited + emailed to the user as a security event.
-  app.post('/admin/users/:id/2fa/reset', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
+  app.post('/admin/users/:id/2fa/reset', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     if (req.params.id === req.user.uid) return reply.code(400).send({ error: 'cannot_reset_self' });
     const p = await db();
     const target = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, displayName: true, email: true, role: true, totpEnabled: true } });

@@ -2591,7 +2591,9 @@ function UserTwoFactorCard({ user, onChange }) {
   const { t } = useI18n(); const toast = useToast(); const { user: me } = useAuth();
   const myRank = MOD_RANK[me?.role] ?? 0;
   const targetRank = MOD_RANK[user.role] ?? 0;
-  const canReset = myRank > targetRank; // your own row → equal rank → false, naturally hidden
+  // ADMIN+ only (mirrors requireRole('ADMIN') on the API) — disabling 2FA is a security
+  // downgrade a MOD shouldn't do. Still bounded by rank, so your own row is never actionable.
+  const canReset = myRank >= MOD_RANK.ADMIN && myRank > targetRank;
   const [pending, setPending] = useState(false);
   const enabled = pending ? false : !!user.totpEnabled;
   const reset = () => {
