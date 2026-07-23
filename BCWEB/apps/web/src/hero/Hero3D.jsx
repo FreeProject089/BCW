@@ -196,7 +196,16 @@ export default function Hero3D() {
 
     // No WebGL2 → skip the orb entirely and reveal the page immediately, so the
     // intro loader never hangs on top of the site (and no THREE console errors).
-    if (!webglAvailable()) { setShowOverlay(false); finish(); return; }
+    // Paint a static amber-glow backdrop in the orb's corner so the hero isn't
+    // empty; the real animated orb needs WebGL2.
+    if (!webglAvailable()) {
+      el.style.background = isLight()
+        ? 'radial-gradient(1100px 780px at 80% 16%, rgba(243,168,105,0.34), rgba(255,224,191,0.12) 42%, transparent 70%)'
+        : 'radial-gradient(1100px 780px at 80% 16%, rgba(217,119,10,0.26), rgba(58,28,13,0.16) 42%, transparent 70%)';
+      el.style.opacity = '1';
+      setShowOverlay(false); finish();
+      return;
+    }
 
     const W = () => window.innerWidth, H = () => window.innerHeight;
 
