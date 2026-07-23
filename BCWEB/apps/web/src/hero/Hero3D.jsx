@@ -12,6 +12,17 @@ import { useI18n } from '../i18n.jsx';
 // parallax drift, luxury-brand subtle, not a gimmick). No dust/particles — one
 // clean shape.
 
+// Three r16x is WebGL2-only. Some environments block it (WebGL disabled, headless
+// capture / screenshot services, "AllowWebgl2:false"). Probe once so we can skip the
+// 3D orb cleanly instead of letting THREE.WebGLRenderer spam the console and throw.
+function webglAvailable() {
+  try {
+    if (!window.WebGL2RenderingContext) return false;
+    const c = document.createElement('canvas');
+    return !!c.getContext('webgl2');
+  } catch { return false; }
+}
+
 function isLight() { return document.documentElement.getAttribute('data-theme') !== 'dark'; } // default theme is light
 function palette() {
   return isLight()
@@ -182,6 +193,11 @@ export default function Hero3D() {
   useEffect(() => {
     const el = mount.current;
     if (!el) return;
+
+    // No WebGL2 → skip the orb entirely and reveal the page immediately, so the
+    // intro loader never hangs on top of the site (and no THREE console errors).
+    if (!webglAvailable()) { setShowOverlay(false); finish(); return; }
+
     const W = () => window.innerWidth, H = () => window.innerHeight;
 
     const scene = new THREE.Scene();
@@ -190,7 +206,7 @@ export default function Hero3D() {
     let renderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-    } catch { return; }
+    } catch { setShowOverlay(false); finish(); return; }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(W(), H());
     el.appendChild(renderer.domElement);

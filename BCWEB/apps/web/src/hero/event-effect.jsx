@@ -150,6 +150,9 @@ export default function EventEffect() {
     const fx = preview || (ev && ev.effect === 'fireworks' && !reduced && !dismissed ? ev : null);
     if (!fx) return;
     const el = mount.current; if (!el) return;
+    // No WebGL2 → skip the effect silently (no THREE console errors). This is a pure
+    // overlay, so nothing else depends on it running.
+    try { if (!window.WebGL2RenderingContext || !document.createElement('canvas').getContext('webgl2')) return; } catch { return; }
     const W = () => window.innerWidth, H = () => window.innerHeight;
     let renderer;
     // premultipliedAlpha:false — with the default (true), additive sprites over a
