@@ -1942,17 +1942,21 @@ function RoleManager({ roles }) {
   const close = () => setEditing(null);
   const toggleCap = (id) => setCaps((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
   const capLabel = (c) => lang === 'fr' ? c.labelFr : c.label;
-  const save = async () => {
+  const undoSave = useUndoableSave(() => roles.reload());
+  const save = () => {
     if (name.trim().length < 2) return toast.error(t('rm.nametooShort', 'Give the role a name (2+ characters).'));
     setBusy(true);
-    try {
-      const body = { name: name.trim(), color, capabilities: caps };
-      if (editing?.id) await api.put(`/admin/custom-roles/${editing.id}`, body);
-      else await api.post('/admin/custom-roles', body);
-      toast.success(editing?.id ? t('rm.updated', 'Role updated.') : t('rm.created', 'Role created.'));
-      close(); roles.reload();
-    } catch (x) { toast.error(x.data?.error === 'name_taken' ? t('rm.nametaken', 'A role with that name already exists.') : x.data?.error || t('acc.failed', 'Failed.')); }
-    finally { setBusy(false); }
+    const body = { name: name.trim(), color, capabilities: caps };
+    // Snapshot the target before deferring — `editing` is the modal's own state and the user
+    // can switch roles inside the undo window, which would send the PUT to the wrong one.
+    const id = editing?.id;
+    // The editor closes right away (the change reads as done); Undo reopens nothing because
+    // the request never went out, and the role list is simply left as the server has it.
+    close();
+    undoSave(() => (id ? api.put(`/admin/custom-roles/${id}`, body) : api.post('/admin/custom-roles', body)),
+      id ? t('rm.updated', 'Role updated.') : t('rm.created', 'Role created.'),
+      { onSettled: () => setBusy(false),
+        errorFor: (x) => x.data?.error === 'name_taken' ? t('rm.nametaken', 'A role with that name already exists.') : (x.data?.error || t('acc.failed', 'Failed.')) });
   };
   // Undoable — the delete only fires when the Undo window elapses; nothing is removed from
   // members until then. (No confirm dialog: the 6s Undo IS the safety net.)
@@ -2394,12 +2398,18 @@ function AdminFaq() {
   const [editId, setEditId] = useState(null); const [busy, setBusy] = useState(false);
   const categories = [...new Set(items.map((i) => i.category))];
   const reset = () => { setF({ question: '', answer: '', category: 'General', published: true }); setEditId(null); };
-  const save = async () => {
+  const undoSave = useUndoableSave(reload);
+  const save = () => {
     if (f.question.trim().length < 2) return toast.error(t('faqa.qreq', 'The question is required.'));
     setBusy(true);
     const payload = { question: f.question.trim(), answer: f.answer, category: f.category.trim() || 'General', published: f.published };
-    try { if (editId) await api.patch(`/admin/faq/${editId}`, payload); else await api.post('/admin/faq', payload); toast.success(editId ? t('faqa.saved', 'Saved.') : t('faqa.added', 'Added.')); reset(); reload(); }
-    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+    // id captured now, not read inside the window: editing a different question during those
+    // six seconds would otherwise retarget the PATCH. reset() moves in for the same reason.
+    const id = editId;
+    undoSave(async () => {
+      if (id) await api.patch(`/admin/faq/${id}`, payload); else await api.post('/admin/faq', payload);
+      reset();
+    }, id ? t('faqa.saved', 'Saved.') : t('faqa.added', 'Added.'), { onSettled: () => setBusy(false) });
   };
   const edit = (it) => { setEditId(it.id); setF({ question: it.question, answer: it.answer || '', category: it.category || 'General', published: it.published !== false }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const del = (it) => undo.del(it.id, () => api.del(`/admin/faq/${it.id}`), t('faqa.deleted', 'Question deleted.'));
