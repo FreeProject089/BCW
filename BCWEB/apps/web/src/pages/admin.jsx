@@ -24,7 +24,7 @@ import { MarkdownEditor } from './blog.jsx';
 import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 import { AdminMyo } from './admin-myo.jsx';
-import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, SideDash } from './pages.jsx';
+import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, SideDash } from './pages.jsx';
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
 // actual api.del only fires once the 6s window elapses — Undo means nothing was ever deleted,
@@ -5959,11 +5959,14 @@ function RetentionCard() {
     ['loginDays', t('an.ret.logins', 'Login attempts'), data.tables.login],
   ];
   const set = (k, v) => setForm((f) => ({ ...f, [k]: Math.max(0, Math.min(3650, Math.floor(Number(v) || 0))) }));
-  const save = async () => {
+  // Deferred behind the undo window: the PUT is idempotent and the server still holds the
+  // previous windows, so Undo just means the request never went out.
+  const undoSave = useUndoableSave(reload);
+  const save = () => {
     setBusy(true);
-    try { await api.put('/admin/analytics/retention', form); toast.success(t('an.ret.saved', 'Retention windows saved.')); reload(); }
-    catch { toast.error(t('an.ret.saveerr', 'Could not save the retention windows.')); }
-    finally { setBusy(false); }
+    undoSave(() => api.put('/admin/analytics/retention', form),
+      t('an.ret.saved', 'Retention windows saved.'),
+      { onSettled: () => setBusy(false), errorFor: () => t('an.ret.saveerr', 'Could not save the retention windows.') });
   };
   return (
     <Card className="p-5 max-w-2xl">
@@ -6473,12 +6476,12 @@ function TelemetryConfigCard() {
   const usedGB = (data.used_bytes || 0) / (1024 ** 3);
   const limitGB = Number(f.storageGB) || 0;
   const pct = limitGB > 0 ? Math.min(100, (usedGB / limitGB) * 100) : 0;
-  const save = async () => {
+  const undoSave = useUndoableSave(reload);
+  const save = () => {
     setBusy(true);
-    try {
-      await api.put('/admin/telemetry/config', { storageLimitMb: Math.round(Number(f.storageGB) * 1024), retentionDays: Number(f.retentionDays), deleteDelayH: Number(f.deleteDelayH) });
-      toast.success(t('tc.saved', 'Applied to the telemetry service.')); reload();
-    } catch { toast.error(t('tc.savefail', 'Could not update telemetry.')); } finally { setBusy(false); }
+    undoSave(() => api.put('/admin/telemetry/config', { storageLimitMb: Math.round(Number(f.storageGB) * 1024), retentionDays: Number(f.retentionDays), deleteDelayH: Number(f.deleteDelayH) }),
+      t('tc.saved', 'Applied to the telemetry service.'),
+      { onSettled: () => setBusy(false), errorFor: () => t('tc.savefail', 'Could not update telemetry.') });
   };
   return (
     <Card className="p-4 mb-3">

@@ -110,6 +110,26 @@ export function useUndoableToggle(reload) {
   };
   return { overrides, apply, act };
 }
+// Undoable SAVE — the third member of the family, for a form's "Save"/"Publish" button.
+// `save(run, msg, opts)` defers `run()` (the PUT/POST) behind the undo window and reloads
+// after it lands; Undo means the request was never sent, so there is nothing to roll back.
+//
+// Use `opts.onSettled` for the busy flag: it fires on BOTH paths, so a spinner can't be left
+// spinning when the user cancels. `opts.errorFor(x)` maps a server error to a message.
+export function useUndoableSave(reload) {
+  const toast = useToast(); const { t } = useI18n();
+  return (run, msg, opts = {}) => {
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'), msg,
+      onCommit: async () => {
+        try { await run(); await reload?.(); }
+        catch (x) { toast.error(opts.errorFor?.(x) || x?.data?.detail || x?.data?.error || t('common.failed', 'Failed.')); }
+        finally { opts.onSettled?.(); }
+      },
+      onCancel: () => { opts.onCancel?.(); opts.onSettled?.(); },
+    });
+  };
+}
 // CSV cell that is safe against spreadsheet formula injection (CWE-1236): a value that
 // starts with =, @, or a +/- that isn't a plain number is prefixed with ' so Excel/Sheets
 // treat it as text, then quoted if it contains CSV specials. Analytics paths, emails, IPs,
