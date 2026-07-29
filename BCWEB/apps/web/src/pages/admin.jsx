@@ -1232,6 +1232,9 @@ function FileManager() {
     catch (x) { toast.error(x.data?.error === 'too_large' ? t('fm.toolarge', 'File too large to view here — use download instead.') : t('fm.readfail', 'Failed to read (probably binary — use download instead).')); }
   };
   const up = () => { const parts = dir.split('/').filter((x) => x !== '.'); parts.pop(); load(parts.length ? parts.join('/') : '.'); };
+  // DELIBERATELY NOT behind the undo window. The undo window is a convenience for edits you
+  // might regret, not a safety mechanism — and for this action a six-second "maybe" is worse
+  // than a plain yes: you want to know, at the moment you click, that it has taken effect.
   const saveFile = async () => {
     if (!(await doubleConfirm(dialog, { title: t('fm.savechanges', 'Save changes'), message: t('fm.saveconfirm', 'Overwrite "{p}" on the live server? A backup of the current content is kept automatically.').replace('{p}', editing.path), okLabel: t('common.save', 'Save') }))) return;
     setBusy(true);
@@ -1676,6 +1679,9 @@ function AdminAccess({ isSuperAdmin }) {
   };
   const pick = (u) => { setPicked(u); setRoleSel(u.role); setScopeSel('global'); setPermsSel(u.permissions || []); setRolesSel(u.customRoleIds || []); setPscopeSel('all'); };
   const togglePerm = (cap) => setPermsSel((s) => s.includes(cap) ? s.filter((c) => c !== cap) : [...s, cap]);
+  // DELIBERATELY NOT behind the undo window. The undo window is a convenience for edits you
+  // might regret, not a safety mechanism — and for this action a six-second "maybe" is worse
+  // than a plain yes: you want to know, at the moment you click, that it has taken effect.
   const savePerms = async () => {
     setBusy(true);
     try {
@@ -1687,6 +1693,9 @@ function AdminAccess({ isSuperAdmin }) {
       toast.error(x.data?.error === 'cannot_change_own_permissions' ? t('acc.perms.own', "You can't change your own permissions.") : x.data?.error || t('acc.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
+  // DELIBERATELY NOT behind the undo window. The undo window is a convenience for edits you
+  // might regret, not a safety mechanism — and for this action a six-second "maybe" is worse
+  // than a plain yes: you want to know, at the moment you click, that it has taken effect.
   const saveRole = async () => {
     setBusy(true);
     try { await api.put(`/admin/users/${picked.id}/role`, { role: roleSel }); toast.success(t('acc.rolenow', '{name} is now {role}.').replace('{name}', picked.displayName).replace('{role}', roleSel)); setPicked((p) => ({ ...p, role: roleSel })); }
@@ -1715,6 +1724,9 @@ function AdminAccess({ isSuperAdmin }) {
   const undoProj = useUndoableDelete(() => projGrants.reload());
   const revoke = (g) => undoBlog.del(g.id, () => api.del(`/admin/blog-permissions/${g.id}`), t('acc.revoked', 'Revoked.'));
   const toggleRole = (id) => setRolesSel((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  // DELIBERATELY NOT behind the undo window. The undo window is a convenience for edits you
+  // might regret, not a safety mechanism — and for this action a six-second "maybe" is worse
+  // than a plain yes: you want to know, at the moment you click, that it has taken effect.
   const saveRoles = async () => {
     setBusy(true);
     try {
@@ -2996,13 +3008,17 @@ function AdminProjects() {
     if (isShowcase) await api.put(`/admin/showcase/${activeShow.id}`, { config: cfg });
     else await api.put(`/projects/${active}`, { config: cfg });
   };
-  const saveSource = async () => {
-    try {
-      const cfg = JSON.parse(text || '{}');
-      if (progUrl.trim()) cfg.progressSource = progUrl.trim(); else delete cfg.progressSource;
-      await putConfig(cfg);
-      setText(JSON.stringify(cfg, null, 2)); toast.success(t('ap.srcsaved', 'Progress source saved.')); reload(); show.reload?.();
-    } catch (x) { toast.error(x.data?.error || t('common.savefail', 'Save failed.')); }
+  const undoSaveSrc = useUndoableSave(() => { reload(); show.reload?.(); });
+  const saveSource = () => {
+    // Parse BEFORE deferring so bad JSON is reported straight away — it used to be inside the
+    // same try as the request, which reported a syntax error as "Save failed".
+    let cfg;
+    try { cfg = JSON.parse(text || '{}'); }
+    catch { return toast.error(t('ap.badjson', 'Config JSON is invalid.')); }
+    if (progUrl.trim()) cfg.progressSource = progUrl.trim(); else delete cfg.progressSource;
+    undoSaveSrc(async () => { await putConfig(cfg); setText(JSON.stringify(cfg, null, 2)); },
+      t('ap.srcsaved', 'Progress source saved.'),
+      { errorFor: (x) => x.data?.error || t('common.savefail', 'Save failed.') });
   };
   // A change on GitHub (progress.json, release notes…) can sit in the server's
   // 5-min proxy cache — this makes it visible on the site immediately.
@@ -4409,6 +4425,9 @@ function AdminBot() {
   const save = () => undoSave(() => api.put('/admin/bot/config', { config: cfg }),
     t('db.saved', 'Bot config saved.'), { errorFor: () => t('db.savefail', 'Save failed.') });
   const botDisabled = cfg.enabled === false;
+  // DELIBERATELY NOT behind the undo window. The undo window is a convenience for edits you
+  // might regret, not a safety mechanism — and for this action a six-second "maybe" is worse
+  // than a plain yes: you want to know, at the moment you click, that it has taken effect.
   const saveToken = async () => {
     if (!tokenInput.trim()) return toast.error(t('db.token.entered', 'Enter a token.'));
     try { await api.put('/admin/bot/token', { token: tokenInput.trim() }); toast.success(t('db.token.tsaved', 'Token saved — the bot will connect within ~20s.')); setTokenInput(''); reload(); }
@@ -7892,13 +7911,17 @@ function AdminSettings() {
     const saved = data?.settings?.[k] ?? (kind === 'bool' ? false : '');
     return JSON.stringify(cur) !== JSON.stringify(saved);
   });
-  const saveAll = async () => {
+  const undoSaveAll = useUndoableSave(() => { reload(); cap.reload?.(); });
+  const saveAll = () => {
+    // The key list and their values are snapshotted: the user can keep editing during the
+    // window, and this must write the set they pressed Save on, not whatever is dirty later.
+    const batch = dirtyKeys.map((k) => [k, coerce(draft[k], KIND_OF[k])]);
     setBusy('__all__');
-    try {
-      for (const k of dirtyKeys) await api.put(`/admin/settings/${k}`, { value: coerce(draft[k], KIND_OF[k]) });
-      toast.success(t('hs.savecount', `Saved ${dirtyKeys.length} changes.`).replace('{n}', dirtyKeys.length)); reload(); cap.reload?.();
-    } catch (x) { toast.error(x.data?.error === 'exceeds_disk' ? t('hs.exceedsdisk', `Exceeds the real disk capacity (${x.data.diskGB} GB max).`).replace('{n}', x.data.diskGB) : t('hs.savepartial', 'Some changes failed to save.')); }
-    finally { setBusy(null); }
+    undoSaveAll(async () => {
+      for (const [k, value] of batch) await api.put(`/admin/settings/${k}`, { value });
+    }, t('hs.savecount', `Saved ${batch.length} changes.`).replace('{n}', batch.length),
+       { onSettled: () => setBusy(null),
+         errorFor: (x) => x.data?.error === 'exceeds_disk' ? t('hs.exceedsdisk', `Exceeds the real disk capacity (${x.data.diskGB} GB max).`).replace('{n}', x.data.diskGB) : (x.data?.error || t('common.failed', 'Failed.')) });
   };
   const c = cap.data?.capacity;
   const tempPct = c?.tempMarginGB ? Math.min(100, (c.tempUsedGB / c.tempMarginGB) * 100) : 0;

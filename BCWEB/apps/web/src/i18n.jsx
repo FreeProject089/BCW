@@ -404,6 +404,7 @@ const DICT = {
     'set.intro': "Animation d'intro", 'set.intro.d': "Jouer l'intro de l'orbe à chaque chargement de page.",
     'set.orbtr': "Transitions de l'orbe entre les pages", 'set.orbtr.d': "À chaque navigation, l'orbe éclate et la caméra plonge dans un fragment aléatoire, puis se reconstruit. Désactivé par défaut.",
     'set.glass': 'Surfaces translucides', 'set.glass.d': 'Cartes & fenêtres en verre dépoli au lieu de pleines.',
+    'ap.badjson': 'Le JSON de configuration est invalide.',
     'pools.split.cta': 'Séparer ce pool en {n} pools',
     'pools.splitting': 'Séparation de « {n} » en pools distincts…',
     'pools.split.nothing': 'Ce pool ne contient qu’un seul plan — il n’y a rien à séparer.',
