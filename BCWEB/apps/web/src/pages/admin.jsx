@@ -4396,7 +4396,9 @@ function AdminBot() {
     for (let i = 0; i < keys.length - 1; i++) o = (o[keys[i]] ??= {});
     o[keys[keys.length - 1]] = val; return next;
   });
-  const save = async () => { try { await api.put('/admin/bot/config', { config: cfg }); toast.success(t('db.saved', 'Bot config saved.')); reload(); } catch { toast.error(t('db.savefail', 'Save failed.')); } };
+  const undoSave = useUndoableSave(reload);
+  const save = () => undoSave(() => api.put('/admin/bot/config', { config: cfg }),
+    t('db.saved', 'Bot config saved.'), { errorFor: () => t('db.savefail', 'Save failed.') });
   const botDisabled = cfg.enabled === false;
   const saveToken = async () => {
     if (!tokenInput.trim()) return toast.error(t('db.token.entered', 'Enter a token.'));
@@ -7724,7 +7726,14 @@ function AdminReportsConfig({ onClose }) {
   const { data, loading } = useAsync(() => api.get('/admin/reports/config'), []);
   const [f, setF] = useState(null);
   useEffect(() => { if (data?.config) setF(data.config); }, [data]);
-  const save = async () => { try { await api.put('/admin/reports/config', { imageMaxMB: Number(f.imageMaxMB), maxImagesPerMsg: Number(f.maxImagesPerMsg), archiveDays: Number(f.archiveDays), deleteDays: Number(f.deleteDays), archiveEnabled: !!f.archiveEnabled, deleteEnabled: !!f.deleteEnabled, maxOpenPerUser: Number(f.maxOpenPerUser), maxPerDay: Number(f.maxPerDay) }); toast.success(t('arc.saved', 'Settings saved.')); onClose(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  // Snapshot the form before deferring: this modal closes immediately, and `f` would be gone
+  // (or reset) by the time the window elapses.
+  const undoSave = useUndoableSave();
+  const save = () => {
+    const body = { imageMaxMB: Number(f.imageMaxMB), maxImagesPerMsg: Number(f.maxImagesPerMsg), archiveDays: Number(f.archiveDays), deleteDays: Number(f.deleteDays), archiveEnabled: !!f.archiveEnabled, deleteEnabled: !!f.deleteEnabled, maxOpenPerUser: Number(f.maxOpenPerUser), maxPerDay: Number(f.maxPerDay) };
+    onClose();
+    undoSave(() => api.put('/admin/reports/config', body), t('arc.saved', 'Settings saved.'));
+  };
   return (
     <Modal open onClose={onClose} title={t('arc.title', 'Report settings')} icon={Settings2} width="max-w-md"
       footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={save} disabled={!f}>{t('common.save', 'Save')}</Button></>}>
