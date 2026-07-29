@@ -6197,13 +6197,18 @@ function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClo
   const [busy, setBusy] = useState(false);
   const hasExisting = !!existing?.scheduledAt;
   let cfgValid = true; try { JSON.parse(configText || '{}'); } catch { cfgValid = false; }
-  const save = async () => {
+  const undoSave = useUndoableSave();
+  const save = () => {
     if (!at) return toast.error(t('su.pickdate', 'Pick a date/time.'));
     let config; try { config = JSON.parse(configText || '{}'); } catch { return toast.error(t('su.cfginvalid', 'Config JSON is invalid.')); }
     const next = includeNameShort ? { name: name.trim(), short: short.trim(), config } : { config };
+    // `at`/`next` are snapshotted by the closure and the modal closes now, so nothing here
+    // depends on component state surviving the undo window. onSave is the parent's mutation.
+    const when = new Date(at).toISOString();
     setBusy(true);
-    try { await onSave(new Date(at).toISOString(), next); toast.success(t('su.scheduled', 'Update scheduled.')); onClose(); }
-    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+    onClose();
+    undoSave(() => onSave(when, next), t('su.scheduled', 'Update scheduled.'),
+      { onSettled: () => setBusy(false) });
   };
   const cancelSchedule = async () => {
     setBusy(true);
@@ -6355,7 +6360,8 @@ function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
   });
   const [iconPick, setIconPick] = useState(false);
   const [busy, setBusy] = useState(false);
-  const save = async () => {
+  const undoSave = useUndoableSave();
+  const save = () => {
     if (name.trim().length < 2) return toast.error(t('sh.e.namereq', 'Name is required.'));
     if (!short.trim()) return toast.error(t('sh.e.shortreq', 'Short name is required.'));
     let extra = {}; try { extra = JSON.parse(details || '{}'); } catch { return toast.error(t('sh.e.jsoninvalid', 'Details JSON is invalid.')); }
@@ -6365,12 +6371,18 @@ function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
       name: name.trim(), short: short.trim(), icon: icon.trim() || null, published, config, pinTopbar, visibility, visibilityWhitelist: whitelist,
       ...announce, announceRevealAt: announce.announceEnabled && announce.announceRevealAt ? new Date(announce.announceRevealAt).toISOString() : null,
     };
+    // payload and the target id are fixed here; the modal closes immediately. onDone() is the
+    // parent's refresh and belongs with the commit, not with the click.
+    const id = project?.id;
     setBusy(true);
-    try {
+    onClose();
+    undoSave(async () => {
       if (isNew) await api.post('/admin/showcase', payload);
-      else await api.put(`/admin/showcase/${project.id}`, payload);
-      toast.success(t('common.saved', 'Saved.')); onClose(); onDone();
-    } catch (x) { toast.error(x.data?.error || t('common.savefail', 'Save failed.')); } finally { setBusy(false); }
+      else await api.put(`/admin/showcase/${id}`, payload);
+      onDone();
+    }, t('common.saved', 'Saved.'),
+       { onSettled: () => setBusy(false),
+         errorFor: (x) => x.data?.error || t('common.savefail', 'Save failed.') });
   };
   const Toggle = ({ k, label }) => <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={tabs[k]} onChange={(e) => setTabs({ ...tabs, [k]: e.target.checked })} /> {label}</label>;
   return (
