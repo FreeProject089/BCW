@@ -10,6 +10,7 @@ import { api } from '../lib/api.js';
 import { repoStatusMeta, repoCategoryMeta, repoLocked } from './repos.jsx';
 import { useToast, useDialog, Button, Card, Badge, Input, Select, Spinner, copyText } from '../ui/ui.jsx';
 import { useUploads } from './uploads.jsx';
+import { useUndoableSave } from './pages.jsx';
 import { useI18n } from '../i18n.jsx';
 
 const gb = (n) => (Number(n) / 1024 ** 3).toFixed(1);
@@ -753,10 +754,16 @@ function AccessTab({ r, reload }) {
   const [emails, setEmails] = useState(r.access?.emails || []);
   const [hasPassword, setHasPassword] = useState(!!r.access?.hasPassword);
   const [pw, setPw] = useState(''); const [busy, setBusy] = useState(false);
-  const saveEmails = async (next) => {
+  // Fires on every chip add/remove and is optimistic, so it is the clearest place on this page
+  // for an undo window: the chips update at once, the PUT waits, and cancelling puts the
+  // previous list back rather than leaving the UI ahead of the server.
+  const undoSaveEmails = useUndoableSave(reload);
+  const saveEmails = (next) => {
+    const prev = emails;
     setEmails(next);
-    try { await api.put(`/repos/${r.id}/dashboard/access`, { emails: next }); toast.success(t('rd.emailssaved', 'Authorized emails updated.')); }
-    catch { toast.error(t('repos.failed', 'Failed.')); reload(); }
+    undoSaveEmails(() => api.put(`/repos/${r.id}/dashboard/access`, { emails: next }),
+      t('rd.emailssaved', 'Authorized emails updated.'),
+      { onCancel: () => setEmails(prev) });
   };
   const setPassword = async () => {
     if (pw.length < 4) return toast.error(t('rd.pwshort', 'Password too short (min 4).'));
