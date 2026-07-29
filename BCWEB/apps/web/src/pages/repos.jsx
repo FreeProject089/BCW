@@ -417,6 +417,23 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
       onCancel: () => {},
     });
   };
+  // Undo a merge: every EXTRA active subscription on the pool moves back to its own pool,
+  // sized to what it contributes. Repos/catalogs deliberately stay put — deciding which side
+  // each belongs to is a judgement call, and scattering them automatically would be worse.
+  const splitPool = (g) => {
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('pools.splitting', 'Splitting "{n}" back into separate pools…').replace('{n}', g.name),
+      onCommit: async () => {
+        try { await api.post(`/me/hosting/groups/${g.id}/split`); reload?.(); }
+        catch (x) {
+          toast.error(x.data?.error === 'nothing_to_split'
+            ? t('pools.split.nothing', 'This pool holds a single plan — there is nothing to separate.')
+            : t('repos.failed', 'Failed.'));
+        }
+      },
+    });
+  };
   // Valid merge targets = a selected pool (fold the rest into it) or, if the target is
   // unselected, any pool; sources = everything selected that isn't the target.
   const doMultiMerge = () => { if (!mergeInto) return; merge([...sel], mergeInto); };
@@ -501,6 +518,12 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
             {g.subCount >= 2 && (() => {
               const q = quotes[g.id];
               return <div className="mt-2.5 pt-2.5 border-t border-[var(--line)] text-[11px]">
+                {/* subCount >= 2 IS the "this pool was merged" signal, so the un-merge lives here. */}
+                <div className="mb-1.5">
+                  <button onClick={() => splitPool(g)} className="inline-flex items-center gap-1 text-[var(--muted)] hover:text-[var(--primary-2)] hover:underline">
+                    <GitBranch size={12} /> {t('pools.split.cta', 'Separate this pool back into {n} pools').replace('{n}', String(g.subCount))}
+                  </button>
+                </div>
                 {!q && <button onClick={() => loadQuote(g)} className="inline-flex items-center gap-1 text-[var(--primary-2)] hover:underline"><GitMerge size={12} /> {t('pools.consol.cta', '{n} separate subscriptions — see consolidation savings').replace('{n}', String(g.subCount))}</button>}
                 {q === 'loading' && <span className="text-[var(--faint)]">{t('common.loading', 'Loading…')}</span>}
                 {q === 'err' && <span className="text-[var(--faint)]">{t('pools.consol.err', 'Could not load the quote.')}</span>}

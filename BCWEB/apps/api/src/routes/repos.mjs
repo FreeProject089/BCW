@@ -615,6 +615,32 @@ export default async function repoRoutes(app) {
     return { ok: true, created: extra.length };
   });
 
+  // Owner-side: split (unmerge) a pool you merged yourself. Same mechanics as the admin
+  // route above — the first active subscription keeps the pool, every EXTRA one moves to its
+  // own new pool sized to its contribution — but guarded on ownership, because merging is a
+  // self-service action (POST /me/hosting/groups/merge) and undoing it should be too.
+  //
+  // Repos and catalogs deliberately STAY on the original pool: which side each belongs to is
+  // a judgement call, and silently scattering someone's repos across new pools would be far
+  // worse than leaving them put. They can be re-distributed afterwards with
+  // POST /me/hosting/groups/:id/repos.
+  app.post('/me/hosting/groups/:id/split', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const g = await p.hostingGroup.findUnique({ where: { id: req.params.id } });
+    if (!g) return reply.code(404).send({ error: 'not_found' });
+    if (g.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role)) return reply.code(403).send({ error: 'owner_only' });
+    const subs = await p.subscription.findMany({ where: { hostingGroupId: g.id, status: 'active' }, orderBy: { currentPeriodEnd: 'desc' } });
+    if (subs.length < 2) return reply.code(400).send({ error: 'nothing_to_split' });
+    const [, ...extra] = subs;
+    for (const sub of extra) {
+      const np = await p.hostingGroup.create({ data: { ownerId: g.ownerId, name: `${g.name} (split)`, poolBytes: sub.poolContribBytes, uploadLimitKbps: g.uploadLimitKbps, cpuShare: g.cpuShare, freePlan: g.freePlan } });
+      await p.subscription.update({ where: { id: sub.id }, data: { hostingGroupId: np.id } });
+      await recomputePoolBytes(p, np.id);
+    }
+    await recomputePoolBytes(p, g.id);
+    return { ok: true, created: extra.length };
+  });
+
   // Merge one pool into another: the source's repos + catalogs move to the target, the
   // source's subscription(s) re-anchor to the target (each keeps billing separately), and
   // the source pool is deleted. The target's poolBytes becomes the sum of all active subs
