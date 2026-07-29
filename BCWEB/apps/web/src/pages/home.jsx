@@ -6,6 +6,7 @@ import {
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { thumb } from '../lib/img.js';
+import { fmtNum, fmtInt } from '../lib/format.js';
 import Avatar from '../ui/Avatar.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -359,7 +360,7 @@ export function Home() {
 // target via the admin dashboard (see AdminKofiGoal); shows the running total
 // + tip count sourced from logged Ko-fi webhook events.
 function KofiGoalWidget() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { data } = useAsync(() => api.get('/kofi/stats').catch(() => null), []);
   // Always render a support section at the bottom of the page — the progress bar
   // appears only once an admin has set a goal (data.goal); otherwise it's a
@@ -378,8 +379,8 @@ function KofiGoalWidget() {
               <div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-700" style={{ width: `${pct}%` }} />
             </div>
             <div className="flex items-center justify-between mt-2.5 mb-4 text-sm">
-              <span className="font-semibold tabular-nums">{data.totalAmount.toFixed(0)} / {goal.targetAmount} {goal.currency}</span>
-              <span className="text-[var(--muted)]">{pct}% · {t('home.kofi.goal.tips', '{n} tips').replace('{n}', data.tipCount)}</span>
+              <span className="font-semibold tabular-nums">{fmtInt(data.totalAmount, lang)} / {fmtInt(goal.targetAmount, lang)} {goal.currency}</span>
+              <span className="text-[var(--muted)]">{pct}% · {t('home.kofi.goal.tips', '{n} tips').replace('{n}', fmtNum(data.tipCount, lang))}</span>
             </div>
           </>)}
           <a href="https://ko-fi.com/bettercommunity" target="_blank" rel="noreferrer">
