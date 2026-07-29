@@ -3047,9 +3047,12 @@ function AdminProjects() {
     } catch { toast.error(t('common.failed', 'Failed.')); }
   };
   // Visibility gate — every fixed project except 'community' (which is always public).
-  const saveVisibility = async (visibility, whitelist) => {
-    try { await api.put(`/admin/projects/${active}/visibility`, { visibility, whitelist }); toast.success(t('ap.vissaved', 'Visibility saved.')); adminMeta.reload?.(); }
-    catch { toast.error(t('common.failed', 'Failed.')); }
+  const undoSaveVis = useUndoableSave(() => adminMeta.reload?.());
+  const saveVisibility = (visibility, whitelist) => {
+    // `active` is the selected project and can change during the window — pin it.
+    const id = active;
+    undoSaveVis(() => api.put(`/admin/projects/${id}/visibility`, { visibility, whitelist }),
+      t('ap.vissaved', 'Visibility saved.'));
   };
   return (
     <div className="mt-10">
@@ -3362,9 +3365,15 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
     [t('sr.author', 'Author'), `${it.owner?.displayName || '—'}${it.owner?.email ? ` · ${it.owner.email}` : ''}`], [t('sr.slug', 'Slug'), it.slug], [t('sr.subtype', 'Submission type'), sub.type],
   ].filter(([, v]) => v);
 
-  const saveTags = async (next) => {
+  const undoSaveTags = useUndoableSave(reload);
+  const saveTags = (next) => {
+    // This one was ALREADY optimistic — it set the chips before the PUT. That makes the undo
+    // path the interesting half: on cancel the previous tags have to come back, or the UI
+    // would keep a change the server never received.
+    const prev = tags;
     setTags(next);
-    try { await api.put(`/mod/submissions/${sub.id}/tags`, { tags: next }); reload?.(); } catch { toast.error(t('common.failed', 'Failed.')); }
+    undoSaveTags(() => api.put(`/mod/submissions/${sub.id}/tags`, { tags: next }),
+      t('common.saved', 'Saved.'), { onCancel: () => setTags(prev) });
   };
   const addTag = () => { const x = tagInput.trim(); if (x && !tags.includes(x)) saveTags([...tags, x]); setTagInput(''); };
   const removeTag = (x) => saveTags(tags.filter((tg) => tg !== x));
