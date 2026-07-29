@@ -1575,10 +1575,15 @@ function BackupManager() {
   const [limitGB, setLimitGB] = useState('');
   const [busy, setBusy] = useState(false);
   const [gcBusy, setGcBusy] = useState(false);
-  const saveLimit = async () => {
+  // The field is cleared inside the deferred work, not before it: on Undo the value the user
+  // typed is still sitting there, which is what "nothing happened" should look like.
+  const undoSave = useUndoableSave(reload);
+  const saveLimit = () => {
     setBusy(true);
-    try { await api.put('/server/backups/limit', { maxBytes: limitGB.trim() ? Math.round(Number(limitGB) * 1024 ** 3) : null }); toast.success(t('common.saved', 'Saved.')); setLimitGB(''); reload(); }
-    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+    undoSave(async () => {
+      await api.put('/server/backups/limit', { maxBytes: limitGB.trim() ? Math.round(Number(limitGB) * 1024 ** 3) : null });
+      setLimitGB('');
+    }, t('common.saved', 'Saved.'), { onSettled: () => setBusy(false) });
   };
   const runGc = async () => {
     setGcBusy(true);
@@ -2050,15 +2055,20 @@ function AdminReviews() {
   const reset = () => { setF({ author: '', role: '', body: '', bodyFr: '', rating: '', enabled: true, avatar: null }); setEditId(null); };
   const toggleSection = async () => { try { await api.put('/admin/reviews/settings', { enabled: !sectionOn }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const pickAvatar = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { const file = i.files?.[0]; if (!file) return; try { toast.info(t('arv.pfp.uploading', 'Uploading…')); const url = await uploadImage(file); setF((s) => ({ ...s, avatar: { ...(s.avatar || {}), image: url } })); } catch { toast.error(t('arv.pfp.uploadfail', 'Upload failed.')); } }; i.click(); };
-  const save = async () => {
+  const undoSave = useUndoableSave(reload);
+  const save = () => {
     if (!f.author.trim() || !f.body.trim()) return toast.error(t('arv.req', 'Author and English text are required.'));
     setBusy(true);
     const payload = { author: f.author.trim(), role: f.role.trim(), body: f.body.trim(), bodyFr: f.bodyFr.trim(), rating: f.rating ? Number(f.rating) : null, enabled: f.enabled, avatar: f.avatar || null };
-    try {
-      if (editId) await api.patch(`/admin/reviews/${editId}`, payload); else await api.post('/admin/reviews', payload);
-      toast.success(editId ? t('arv.updated', 'Review updated.') : t('arv.added', 'Review added.'));
-      reset(); reload();
-    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+    // editId is captured here rather than read inside the deferred work: the user can start
+    // editing another review during the undo window, and the request must still target the
+    // one they pressed Save on. reset() moves inside too, so Undo leaves the form as it was.
+    const id = editId;
+    undoSave(async () => {
+      if (id) await api.patch(`/admin/reviews/${id}`, payload); else await api.post('/admin/reviews', payload);
+      reset();
+    }, id ? t('arv.updated', 'Review updated.') : t('arv.added', 'Review added.'),
+       { onSettled: () => setBusy(false) });
   };
   const edit = (rv) => { setEditId(rv.id); setF({ author: rv.author, role: rv.role || '', body: rv.body, bodyFr: rv.bodyFr || '', rating: rv.rating ? String(rv.rating) : '', enabled: rv.enabled, avatar: rv.avatar || null }); };
   const toggleEnabled = (rv) => utog.act(rv.id, { enabled: !rv.enabled }, () => api.patch(`/admin/reviews/${rv.id}`, { enabled: !rv.enabled }), !rv.enabled ? t('arv.shown2', 'Review shown.') : t('arv.hidden2', 'Review hidden.'));
