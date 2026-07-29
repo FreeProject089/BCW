@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Sliders, Sparkles, Users } from 'lucide-react';
+import { Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Sliders, Sparkles, Users, Undo2 } from 'lucide-react';
 import { Button, Card, PageHeader, Select, Spinner, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
 import { useAuth } from './auth.jsx';
 import { api } from '../lib/api.js';
-import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from '../lib/prefs.js';
+import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref, getUndoDisabled, setUndoDisabled } from '../lib/prefs.js';
 import { getConsent, setConsent } from '../lib/analytics.js';
 import { SKIP_KEY } from '../ui/IntroContext.jsx';
 
@@ -24,12 +24,14 @@ export function Settings() {
   const [glass, setGlass] = useState(() => getGlassPrefs());
   const [orbTransition, setOrbTransition] = useState(() => getOrbTransitionPref());
   const [fxOff, setFxOff] = useState(() => { try { return localStorage.getItem('bcw_fx_off') === '1'; } catch { return false; } });
+  const [undoOff, setUndoOff] = useState(() => getUndoDisabled());
 
   const setFx = (off) => { setFxOff(off); try { off ? localStorage.setItem('bcw_fx_off', '1') : localStorage.removeItem('bcw_fx_off'); } catch {} };
   const setIntro = (skip) => { setSkipIntro(skip); try { skip ? localStorage.setItem(SKIP_KEY, '1') : localStorage.removeItem(SKIP_KEY); } catch {} };
   const setOrbTr = (on) => { setOrbTransition(on); setOrbTransitionPref(on); };
   const setCookie = (v) => { setConsentState(v); setConsent(v); toast.success(t('set.saved', 'Saved.')); };
   const applyGlass = (next) => { setGlass(next); setGlassPrefs(next); };
+  const setUndo = (off) => { setUndoOff(off); setUndoDisabled(off); };
 
   const Row = ({ icon: Icon, title, desc, children }) => (
     <div className="flex items-center gap-3 py-3.5 border-b border-[var(--line)] last:border-0">
@@ -75,6 +77,13 @@ export function Settings() {
             <span className="text-xs font-medium tabular-nums w-10 text-right">{glass.pct}%</span>
           </div>
         )}
+      </Card>
+
+      <Card className="p-4 sm:p-5 mb-4">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1.5"><Undo2 size={13} /> {t('set.behaviour', 'Actions')}</div>
+        <Row icon={Undo2} title={t('set.undo', 'Undo window')} desc={t('set.undo.d', 'Saving, publishing and deleting wait a few seconds behind an “Undo” toast, so a mistake costs nothing. Turn this off to apply every action immediately.')}>
+          <Switch on={!undoOff} onChange={(v) => setUndo(!v)} />
+        </Row>
       </Card>
 
       <Card className="p-4 sm:p-5">

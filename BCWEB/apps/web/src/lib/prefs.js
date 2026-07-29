@@ -21,6 +21,18 @@ export function setOrbTransitionPref(on) {
   try { localStorage.setItem(ORB_TRANSITION_KEY, on ? '1' : '0'); } catch { /* ignore */ }
 }
 
+// Optional: turn OFF the undo window on destructive/save actions. Normally those actions are
+// DEFERRED behind a countdown toast so they can be taken back; with this on, they fire
+// immediately and the toast is a plain confirmation. OFF by default — the undo window is the
+// safer behaviour, and this exists for people who find the delay slower than it is worth.
+export const UNDO_OFF_KEY = 'bcw_undo_off';
+export function getUndoDisabled() {
+  try { return localStorage.getItem(UNDO_OFF_KEY) === '1'; } catch { return false; }
+}
+export function setUndoDisabled(off) {
+  try { localStorage.setItem(UNDO_OFF_KEY, off ? '1' : '0'); } catch { /* ignore */ }
+}
+
 export function getGlassPrefs() {
   let on = false, pct = 85;
   try {

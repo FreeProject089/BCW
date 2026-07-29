@@ -404,6 +404,8 @@ const DICT = {
     'set.intro': "Animation d'intro", 'set.intro.d': "Jouer l'intro de l'orbe à chaque chargement de page.",
     'set.orbtr': "Transitions de l'orbe entre les pages", 'set.orbtr.d': "À chaque navigation, l'orbe éclate et la caméra plonge dans un fragment aléatoire, puis se reconstruit. Désactivé par défaut.",
     'set.glass': 'Surfaces translucides', 'set.glass.d': 'Cartes & fenêtres en verre dépoli au lieu de pleines.',
+    'set.behaviour': 'Actions', 'set.undo': 'Fenêtre d’annulation',
+    'set.undo.d': 'Enregistrer, publier et supprimer patientent quelques secondes derrière un toast « Annuler », pour qu’une erreur ne coûte rien. Désactive pour appliquer chaque action immédiatement.',
     'set.glass.opacity': 'Opacité',
     'set.privacy': 'Cookies & confidentialité', 'set.cookies': 'Cookies analytiques',
     'set.cookies.d': "« Essentiels » te garde connecté ; « Tous » active aussi des analyses de pages respectueuses de la vie privée.",

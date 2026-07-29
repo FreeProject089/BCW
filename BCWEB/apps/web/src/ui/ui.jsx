@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef, us
 import { createPortal } from 'react-dom';
 import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown, Undo2, Star, MoreHorizontal } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
+import { getUndoDisabled } from '../lib/prefs.js';
 
 // Robust clipboard copy — navigator.clipboard is unavailable on non-HTTPS origins and
 // inside some embedded webviews, so fall back to a hidden <textarea> + execCommand.
@@ -426,7 +427,18 @@ export function ToastProvider({ children }) {
     info: (msg, opts) => push({ tone: 'info', msg, ...opts }),
     // Optimistic action with an undo window: the toast counts down; on expiry onCommit
     // fires (do the real work), or the user cancels (× / Undo) → onCancel restores state.
-    action: ({ tone = 'info', duration = 6000, ...rest }) => push({ tone, action: true, duration, ...rest }),
+    //
+    // Settings → "Instant actions" turns the window off. Then there is nothing to undo, so
+    // the deferred work runs straight away and the toast degrades to a plain confirmation —
+    // every caller keeps working unchanged, because they already put their optimistic UI
+    // update before this call and their real work inside onCommit.
+    action: ({ tone = 'info', duration = 6000, onCommit, onCancel, cancelLabel, ...rest }) => {
+      if (getUndoDisabled()) {
+        try { onCommit?.(); } catch { /* a callback must never crash the toast host */ }
+        return push({ tone, duration: 3200, ...rest });
+      }
+      return push({ tone, action: true, duration, onCommit, onCancel, cancelLabel, ...rest });
+    },
   };
   const Ico = { success: Check, error: AlertTriangle, info: Info };
   return (

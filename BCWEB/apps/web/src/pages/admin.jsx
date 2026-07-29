@@ -6868,11 +6868,23 @@ function AdminNav() {
     return { enabled, items: out, utility, projectsMode, downbar: { enabled: downbarEnabled }, layout };
   };
 
-  const save = async () => {
+  // Deferred behind an undo window, like the blog/docs editors: the PUT is idempotent and we
+  // already hold the previously-saved config, so "Undo" simply means the request never went
+  // out and the editor is restored to what the server still has. With the undo window turned
+  // off in Settings, toast.action runs onCommit immediately instead.
+  const save = () => {
+    const payload = buildClean();
     setBusy(true);
-    try { await api.put('/admin/nav', buildClean()); toast.success(t('nav.saved', 'Navigation saved.')); loaded.reload?.(); }
-    catch (x) { toast.error(x.data?.detail || x.data?.error || t('acc.failed', 'Failed.')); }
-    finally { setBusy(false); }
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('nav.saved', 'Navigation saved.'),
+      onCommit: async () => {
+        try { await api.put('/admin/nav', payload); loaded.reload?.(); }
+        catch (x) { toast.error(x.data?.detail || x.data?.error || t('acc.failed', 'Failed.')); }
+        finally { setBusy(false); }
+      },
+      onCancel: () => { setBusy(false); loaded.reload?.(); },
+    });
   };
 
   // Presets: export the current (cleaned) config as a JSON file; import one back; reset to
