@@ -1466,6 +1466,10 @@ function DbViewer() {
             const isPk = rows?.pkColumn === cell.col;
             const protected_ = DB_SENSITIVE_COL.test(cell.col);
             const editable = canEdit && !!rows?.pkColumn && cell.pk != null && !isPk && !protected_;
+            // DELIBERATELY NOT behind the undo window: this writes a row straight into the
+            // database. It already carries a double confirmation and a confirmToken, and the
+            // server backs the old value up — that is the right shape of safety here. Adding a
+            // six-second "maybe" on top would only blur when the write actually happened.
             const save = async () => {
               if (!(await doubleConfirm(dialog, { title: t('dbv.saverow', 'Save row edit'), message: t('dbv.saverowconfirm', 'Overwrite {t}.{c} (row {pk}) on the live database? The current row is backed up automatically.').replace('{t}', active).replace('{c}', cell.col).replace('{pk}', cell.pk), okLabel: t('common.save', 'Save') }))) return;
               setSaving(true);
@@ -3032,10 +3036,16 @@ function AdminProjects() {
   };
   let valid = true; try { JSON.parse(text || '{}'); } catch { valid = false; }
   const format = () => { try { setText(JSON.stringify(JSON.parse(text), null, 2)); } catch { toast.error(t('common.invalidjson', 'Invalid JSON.')); } };
-  const save = async () => {
+  const undoSaveCfg = useUndoableSave(() => { reload(); show.reload?.(); });
+  const save = () => {
     if (!valid) return toast.error(t('common.invalidjson', 'Invalid JSON.'));
-    try { await putConfig(JSON.parse(text)); toast.success(t('ap.saved', '{name} saved.').replace('{name}', isShowcase ? activeShow?.name : PROJ_META[active].name)); reload(); show.reload?.(); }
-    catch (x) { toast.error(x.data?.error || t('common.savefail', 'Save failed.')); }
+    // Parsed once, up front: the text area stays editable during the window and this must
+    // write what was on screen at click time. Same for the project name in the message.
+    const cfg = JSON.parse(text);
+    const label = isShowcase ? activeShow?.name : PROJ_META[active].name;
+    undoSaveCfg(() => putConfig(cfg),
+      t('ap.saved', '{name} saved.').replace('{name}', label),
+      { errorFor: (x) => x.data?.error || t('common.savefail', 'Save failed.') });
   };
   const hint = (label, val) => <div><div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{label}</div><code className="text-[11px] text-[var(--muted)]">{val}</code></div>;
   const taRef = useRef(null); const gutRef = useRef(null);
@@ -7896,11 +7906,16 @@ function AdminSettings() {
   const [tempOpen, setTempOpen] = useState(false);
   useEffect(() => { if (data?.settings) setDraft(data.settings); }, [data]);
   const coerce = (v, kind) => kind === 'bool' ? !!v : (v !== '' && !isNaN(Number(v)) ? Number(v) : v);
-  const save = async (key, kind) => {
+  const undoSaveOne = useUndoableSave(() => { reload(); cap.reload?.(); });
+  const save = (key, kind) => {
+    // Value coerced now, not inside the window — the field stays editable while it counts down.
+    const value = coerce(draft[key], kind);
     setBusy(key);
-    try { await api.put(`/admin/settings/${key}`, { value: coerce(draft[key], kind) }); toast.success(t('hs.saved', 'Saved.')); reload(); cap.reload?.(); }
-    catch (x) { toast.error(x.data?.error === 'exceeds_disk' ? t('hs.exceedsdisk', `Exceeds the real disk capacity (${x.data.diskGB} GB max).`).replace('{n}', x.data.diskGB) : t('hs.savefail', 'Save failed.')); }
-    finally { setBusy(null); }
+    undoSaveOne(() => api.put(`/admin/settings/${key}`, { value }), t('hs.saved', 'Saved.'),
+      { onSettled: () => setBusy(null),
+        errorFor: (x) => x.data?.error === 'exceeds_disk'
+          ? t('hs.exceedsdisk', `Exceeds the real disk capacity (${x.data.diskGB} GB max).`).replace('{n}', x.data.diskGB)
+          : t('hs.savefail', 'Save failed.') });
   };
   // "Save all changes" — edit several settings (CPU / storage / upload …) and save them
   // in one click, instead of one Save button per field.
