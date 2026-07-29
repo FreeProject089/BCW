@@ -107,6 +107,10 @@ function makeSprite() {
 }
 
 const PALETTE = [[1, 0.32, 0.18], [1, 0.78, 0.2], [0.3, 0.7, 1], [0.7, 0.4, 1], [0.3, 1, 0.6], [1, 0.4, 0.7]];
+// New Year reads as gold/champagne rather than the generic multicolour set. Until now
+// `kind: 'new_year'` had no branch anywhere in this file, so it rendered byte-for-byte
+// like a `custom` event — one of the reasons the event felt "broken".
+const NEW_YEAR_PALETTE = [[1, 0.84, 0.3], [1, 1, 0.92], [1, 0.62, 0.12], [0.86, 0.9, 1], [1, 0.45, 0.6]];
 
 // Small flag image (same CDN the rest of the app uses) — shown in the event badge.
 const flagUrl = (cc) => `https://flagcdn.com/32x24/${String(cc).toLowerCase()}.png`;
@@ -210,7 +214,7 @@ export default function EventEffect() {
     // then fall. With no drawable flag it's a big multi-colour burst at that spot.
     const flagDrop = (cx, cy, worldW) => {
       if (!flagCanvas) {
-        for (let k = 0; k < 4; k++) setTimeout(() => explode(cx + rand(-0.2, 0.2), cy + rand(-0.12, 0.12), PALETTE[(Math.random() * PALETTE.length) | 0], 110), k * 90);
+        for (let k = 0; k < 4; k++) setTimeout(() => explode(cx + rand(-0.2, 0.2), cy + rand(-0.12, 0.12), pick(), 110), k * 90);
         return;
       }
       const targets = sampleFlagTargets(flagCanvas, 460, worldW);
@@ -224,17 +228,31 @@ export default function EventEffect() {
 
     let raf, last = performance.now(), t0 = last, stopped = false;
     const DURATION = 15000; // one festive show, then fade out
+    // …then REST, then play again, for as long as the event is live. Previously the show
+    // ran once on mount and never returned: `ev` is fetched a single time and the effect
+    // deps never change, so anyone who arrived mid-session, navigated inside the SPA, or
+    // simply looked away for 15s saw nothing at all. That is the "l'événement est buggé".
+    // A preview stays one-shot — an admin tuning values wants it to end.
+    const REST = 45000;
+    const isNewYear = fx.kind === 'new_year';
+    const palette = isNewYear ? NEW_YEAR_PALETTE : PALETTE;
+    const pick = () => palette[(Math.random() * palette.length) | 0];
     // Amount is driven by density but kept CALM by default so it never overwhelms the
     // page: at most ~1..3 rockets per wave, with a gap that widens as density drops.
-    const perWave = Math.max(1, Math.round(density / 3.5)); // ~1..3 rockets per wave
-    const burst = () => 55 + density * 6; // ~60..115 particles per burst
+    // New Year gets a denser volley — it's the one night people expect a real barrage.
+    const perWave = Math.max(1, Math.round(density / 3.5)) + (isNewYear ? 1 : 0);
+    const burst = () => 55 + density * 6 + (isNewYear ? 25 : 0); // ~60..140 particles per burst
     const timers = [];
     // A gentle opener (one rocket + one high burst) — enough to notice, not a wall.
-    timers.push(setTimeout(() => launchRocket(), 80));
-    timers.push(setTimeout(() => explode(rand(-aspect * 0.5, aspect * 0.5), rand(0.35, 0.6), PALETTE[(Math.random() * PALETTE.length) | 0], burst()), 260));
+    const opener = () => {
+      timers.push(setTimeout(() => launchRocket(), 80));
+      timers.push(setTimeout(() => explode(rand(-aspect * 0.5, aspect * 0.5), rand(0.35, 0.6), pick(), burst()), 260));
+    };
+    opener();
     let nextRocket = rand(500, 800);
     const rocketGap = () => rand(520, 900) + (10 - density) * 70; // calmer cadence
-    const flagTimes = Array.from({ length: flagDrops }, () => rand(1200, DURATION - 2500)).sort((a, b) => a - b);
+    const rollFlagTimes = () => Array.from({ length: flagDrops }, () => rand(1200, DURATION - 2500)).sort((a, b) => a - b);
+    let flagTimes = rollFlagTimes();
     let dropIdx = 0;
     const tick = (now) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
@@ -251,7 +269,7 @@ export default function EventEffect() {
       for (const p of ps) {
         if (!p.frozen) { p.vy -= 0.9 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
         // A rocket bursts at its APEX (vy crosses 0) — always high in the sky.
-        if (p.rocket && !p.done && (p.vy <= 0 || p.y > 0.85)) { p.done = true; explode(p.x, p.y, PALETTE[(Math.random() * PALETTE.length) | 0], burst()); p.life = 0; }
+        if (p.rocket && !p.done && (p.vy <= 0 || p.y > 0.85)) { p.done = true; explode(p.x, p.y, pick(), burst()); p.life = 0; }
         if (p.life <= 0) continue;
         if (n < MAX) {
           const k = p.frozen ? 1 : Math.max(0, p.life / p.max);
@@ -267,7 +285,23 @@ export default function EventEffect() {
       // work and one more chance for an edge artifact. Now they're simply not drawn.
       geo.setDrawRange(0, n);
       // fade the whole canvas out at the end of the show
-      if (elapsed > DURATION) { stopped = true; el.style.transition = 'opacity 1.5s ease'; el.style.opacity = '0'; if (elapsed > DURATION + 1600) { cancelAnimationFrame(raf); if (preview) setPreview(null); return; } }
+      if (elapsed > DURATION) {
+        if (!stopped) { stopped = true; el.style.transition = 'opacity 1.5s ease'; el.style.opacity = '0'; }
+        if (elapsed > DURATION + 1600) {
+          // A preview is one-shot: tear down and clear the preview state.
+          if (preview) { cancelAnimationFrame(raf); setPreview(null); return; }
+          // A live event rests, then plays again — keep the rAF alive across the pause so
+          // there is nothing to re-arm, and reset the show's clock rather than the effect.
+          if (elapsed > DURATION + 1600 + REST) {
+            ps = []; geo.setDrawRange(0, 0);
+            t0 = now; stopped = false; dropIdx = 0;
+            flagTimes = rollFlagTimes();
+            nextRocket = rand(500, 800);
+            el.style.transition = 'opacity 0.8s ease'; el.style.opacity = '1';
+            opener();
+          }
+        }
+      }
       renderer.render(scene, cam);
       raf = requestAnimationFrame(tick);
     };

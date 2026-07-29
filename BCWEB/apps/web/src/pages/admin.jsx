@@ -3751,7 +3751,7 @@ function AdminEvents() {
       name: f.name.trim(), kind: f.kind, startsAt: new Date(f.startsAt).toISOString(), endsAt: new Date(f.endsAt).toISOString(),
       titleEn: f.titleEn || '', titleFr: f.titleFr || '', messageEn: f.messageEn || '', messageFr: f.messageFr || '',
       notifyDaysBefore: Number(f.notifyDaysBefore) || 0, eventCode: f.eventCode.trim() || '',
-      fxDensity: Number(f.fxDensity) || 4, fxSize: Number(f.fxSize) || 5, fxFlagDrops: Number(f.fxFlagDrops) || 0, badgeIcon: f.badgeIcon, linkUrl: (f.linkUrl || '').trim(), promoPercent: Number(f.promoPercent) || 0,
+      fxDensity: Number(f.fxDensity) || 4, fxSize: Number(f.fxSize) || 5, fxFlagDrops: f.fxFlagDrops === '' || f.fxFlagDrops == null ? 2 : Math.max(0, Number(f.fxFlagDrops) || 0), badgeIcon: f.badgeIcon, linkUrl: (f.linkUrl || '').trim(), promoPercent: Number(f.promoPercent) || 0,
       ...(f.kind === 'national_holiday' ? { countryCode: f.countryCode.trim().toUpperCase() } : {}),
     };
     try { await api.post('/admin/events', body); toast.success(t('ev.created', 'Event created.')); setF(blank()); reload(); }
@@ -3801,7 +3801,7 @@ function AdminEvents() {
           <Field label={t('ev.f.code', 'Event-only promo code (optional)')} hint={t('ev.f.code.h', 'A code valid ONLY during the event window, broadcast to users in the event notification.')}><Input value={f.eventCode} onChange={(e) => set('eventCode', e.target.value.toUpperCase())} placeholder="NY2027" /></Field>
         </div>
         <div className="flex items-center justify-end gap-2 mt-3">
-          <Button variant="ghost" onClick={() => window.dispatchEvent(new CustomEvent('bcw:fx-preview', { detail: { effect: 'fireworks', kind: f.kind, countryCode: (f.countryCode || '').trim().toUpperCase(), fxDensity: Number(f.fxDensity) || 4, fxSize: Number(f.fxSize) || 5, fxFlagDrops: Number(f.fxFlagDrops) || 0 } }))}
+          <Button variant="ghost" onClick={() => window.dispatchEvent(new CustomEvent('bcw:fx-preview', { detail: { effect: 'fireworks', kind: f.kind, countryCode: (f.countryCode || '').trim().toUpperCase(), fxDensity: Number(f.fxDensity) || 4, fxSize: Number(f.fxSize) || 5, fxFlagDrops: f.fxFlagDrops === '' || f.fxFlagDrops == null ? 2 : Math.max(0, Number(f.fxFlagDrops) || 0) } }))}
             title={t('ev.preview.h', 'Plays the fireworks now with the current density / flag-drops (ignores reduce-motion) so you can tune it.')}><Sparkles size={15} /> {t('ev.preview', 'Preview effect')}</Button>
           <Button variant="primary" onClick={create}><Plus size={15} /> {t('ev.create', 'Create event')}</Button>
         </div>
