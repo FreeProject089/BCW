@@ -558,6 +558,7 @@ export function MyRepos() {
   const [sandbox, setSandbox] = useState(null);
   const [sandboxTab, setSandboxTab] = useState('access'); // which tab RepoManageModal opens on
   const [poolAdd, setPoolAdd] = useState(null);
+  const [moveFrom, setMoveFrom] = useState(null);   // { from, options } → destination picker
   const repos = data?.repos || [];
   const shared = data?.shared || [];
   // Search + status + type filters and a sort for the repo list.
@@ -652,10 +653,17 @@ export function MyRepos() {
   // on a path collision rather than overwriting — this is the user's hosted data — so we run
   // the preflight first and name the clashing paths instead of a bare "failed". Deferred
   // behind the undo window like the rest of the site.
-  const moveContent = async (from) => {
+  // One click when there is only one place the content could go; a short pick-list when
+  // there are several. Auto-selecting "the first other repo" would be one click too, but it
+  // would move someone's files into a repo they never chose.
+  const moveContent = (from) => {
     const others = (data?.repos || []).filter((x) => x.id !== from.id && x.hosted);
     if (!others.length) return toast.error(t('repos.move.noneed', 'You need a second hosted repo to move content into.'));
-    const to = others[0];
+    if (others.length === 1) return moveContentTo(from, others[0]);
+    setMoveFrom({ from, options: others });
+  };
+  const moveContentTo = async (from, to) => {
+    setMoveFrom(null);
     let pre;
     try { pre = await api.get(`/me/repos/${from.id}/move-content/preflight?to=${encodeURIComponent(to.id)}`); }
     catch { return toast.error(t('repos.failed', 'Failed.')); }
@@ -839,6 +847,23 @@ export function MyRepos() {
       {managing && <HostFilesModal repo={managing} onClose={() => setManaging(null)} onChanged={reload} />}
       {sandbox && <RepoManageModal repo={sandbox} initialTab={sandboxTab} onClose={() => setSandbox(null)} onChanged={reload} />}
       {poolAdd && <PoolAddModal group={poolAdd} onClose={() => setPoolAdd(null)} onDone={() => { setPoolAdd(null); reload(); }} />}
+      {moveFrom && (
+        <Modal open onClose={() => setMoveFrom(null)} title={t('repos.move.title', 'Move content')} icon={GitMerge}
+          footer={<Button variant="ghost" onClick={() => setMoveFrom(null)}>{t('su.cancel', 'Cancel')}</Button>}>
+          <p className="text-sm text-[var(--muted)] mb-3">
+            {t('repos.move.pick', 'Move everything from “{name}” into:').replace('{name}', moveFrom.from.name)}
+          </p>
+          <div className="space-y-2">
+            {moveFrom.options.map((r) => (
+              <button key={r.id} onClick={() => moveContentTo(moveFrom.from, r)}
+                className="card p-3 w-full text-left flex items-center gap-3 hover:border-[var(--primary)]">
+                <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><Server size={16} /></span>
+                <span className="flex-1 min-w-0"><span className="block font-medium truncate">{r.name}</span></span>
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -407,6 +407,7 @@ const DICT = {
     'pools.split.cta': 'Séparer ce pool en {n} pools',
     'pools.splitting': 'Séparation de « {n} » en pools distincts…',
     'pools.split.nothing': 'Ce pool ne contient qu’un seul plan — il n’y a rien à séparer.',
+    'repos.move.pick': 'Déplacer tout le contenu de « {name} » vers :',
     'repos.movecontent': 'Déplacer le contenu vers…',
     'repos.move.title': 'Déplacer le contenu',
     'repos.move.msg': 'Déplacer {n} fichier(s) de « {from} » vers « {to} » ? La destination repasse en non vérifiée et non publiée jusqu’à un nouveau contrôle.',
