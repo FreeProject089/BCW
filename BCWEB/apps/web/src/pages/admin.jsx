@@ -598,10 +598,12 @@ function GlobalAccessPolicyCard() {
   });
   const rmAccount = (field, entry) => setPolicy((s) => ({ ...s, [field]: (s[field] || []).filter((a) => !(a.type === entry.type && a.id === entry.id)) }));
 
-  const save = async () => {
+  const undoSave = useUndoableSave(reload);
+  const save = () => {
     setBusy(true);
-    try { await api.put('/admin/access-policy', policy); toast.success(t('gap.saved', 'Global access policy saved.')); reload(); }
-    catch { toast.error(t('gap.savefail', 'Failed to save.')); } finally { setBusy(false); }
+    undoSave(() => api.put('/admin/access-policy', policy),
+      t('gap.saved', 'Global access policy saved.'),
+      { onSettled: () => setBusy(false), errorFor: () => t('gap.savefail', 'Failed to save.') });
   };
 
   return (
@@ -3492,12 +3494,14 @@ function AdminKofiGoal() {
   const [f, setF] = useState({ title: '', targetAmount: '', currency: 'USD' });
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (data?.goal) setF({ title: data.goal.title || '', targetAmount: String(data.goal.targetAmount ?? ''), currency: data.goal.currency || 'USD' }); }, [data]);
-  const save = async () => {
+  const undoSave = useUndoableSave(reload);
+  const save = () => {
     const amt = Number(f.targetAmount);
     if (!(amt > 0)) return toast.error(t('kg.amt.req', 'Target amount must be greater than 0.'));
     setBusy(true);
-    try { await api.put('/admin/kofi/goal', { title: f.title.trim(), targetAmount: amt, currency: f.currency.trim() || 'USD' }); toast.success(t('kg.saved', 'Goal saved — now visible on the homepage.')); reload(); }
-    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+    undoSave(() => api.put('/admin/kofi/goal', { title: f.title.trim(), targetAmount: amt, currency: f.currency.trim() || 'USD' }),
+      t('kg.saved', 'Goal saved — now visible on the homepage.'),
+      { onSettled: () => setBusy(false) });
   };
   const clear = async () => {
     if (!(await dialog.confirm({ title: t('kg.rm.t', 'Remove funding goal'), message: t('kg.rm.m', 'The public widget will disappear from the homepage. The running total/tip count keep accumulating in the background.'), okLabel: t('kg.rm.ok', 'Remove') }))) return;
