@@ -164,9 +164,12 @@ function ProductCard({ card, cfg, onStart }) {
           ))}
         </ul>
       )}
-      <div className="relative mt-auto pt-3.5 flex items-center justify-between gap-2 border-t border-[var(--line)]">
+      {/* Footer stacks on phones: side-by-side, the CTA measured 76x28 — the primary
+          conversion action of a paid-service page, well under a comfortable touch target.
+          Full-width and 44px tall below sm, back to the compact inline row from sm up. */}
+      <div className="relative mt-auto pt-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 border-t border-[var(--line)]">
         <span className="text-xs text-[var(--faint)] inline-flex items-center gap-1.5">{card.includesSource ? <><FileText size={12} /> {t('myo.src.with', 'source included')}</> : <><Lock size={12} /> {t('myo.src.without', 'no source')}</>}</span>
-        <Button size="sm" variant="primary" onClick={onStart}>{t('myo.start', 'Start')} <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" /></Button>
+        <Button size="sm" variant="primary" onClick={onStart} className="w-full sm:w-auto !min-h-[44px] sm:!min-h-0 justify-center">{t('myo.start', 'Start')} <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" /></Button>
       </div>
     </Card>
   );
@@ -195,7 +198,7 @@ function CustomFeatureCard({ card, cfg, onStart }) {
         )}
         <div className="text-xs text-[var(--faint)] mt-3.5">{t('myo.cta.fee', 'Consultation from {p} — this pays for the advice, not the product.').replace('{p}', fmtMoney(cfg.consultationCents, cfg.currency))}</div>
       </div>
-      <Button variant="primary" onClick={onStart} className="relative shrink-0 self-start md:self-center !px-5 !py-2.5">{t('myo.cta.btn', 'Start a custom request')} <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" /></Button>
+      <Button variant="primary" onClick={onStart} className="relative shrink-0 w-full self-stretch md:w-auto md:self-center !px-5 !py-2.5 !min-h-[44px] justify-center">{t('myo.cta.btn', 'Start a custom request')} <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" /></Button>
     </Card>
   );
 }
