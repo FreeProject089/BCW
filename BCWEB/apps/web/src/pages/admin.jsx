@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check,
+  Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -126,7 +126,6 @@ export function Admin() {
     isAdmin && { id: 'serveradv', label: t('adm.tab.serveradv', 'Advanced server'), icon: AlertTriangle },
     isAdmin && { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
     can('manage_analytics') && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp },
-    can('manage_analytics') && { id: 'eventsfeed', label: t('adm.tab.eventsfeed', 'Events feed'), icon: Activity },
     can('manage_analytics') && { id: 'errors', label: t('adm.tab.errors', 'Errors'), icon: AlertTriangle },
     can('manage_analytics') && { id: 'goals', label: t('adm.tab.goals', 'Goals'), icon: Target },
 
@@ -206,7 +205,9 @@ export function Admin() {
         {s === 'faq' && <AdminFaq />}
         {s === 'repos' && <AdminRepos />}
         {s === 'pools' && <AdminPools />}
-        {s === 'catalogs' && <><AdminCatalogCreator /><PluginVerifier /><ThemeVerifier /></>}
+        {/* Plugin/theme verification used to live here; the moderation queue now owns that
+            review step, so the standalone panels were a second, diverging place to do it. */}
+        {s === 'catalogs' && <AdminCatalogCreator />}
         {s === 'commcatalogs' && <AdminCatalogs />}
         {s === 'reports' && <AdminReports />}
         {s === 'hosting' && <AdminFreeHost />}
@@ -218,7 +219,6 @@ export function Admin() {
         {s === 'storage' && <AdminStorage />}
         {s === 'bot' && <AdminBot />}
         {s === 'analytics' && <AdminAnalytics />}
-        {s === 'eventsfeed' && <AdminEventsFeed />}
         {s === 'errors' && <AdminErrors />}
         {s === 'goals' && <AdminGoals />}
         {s === 'projects' && <AdminProjects />}
@@ -304,59 +304,7 @@ function AdminCatalogCreator() {
   );
 }
 
-// Admin: verify plugin integrity — validate (download+unzip+checksum), inspect content.
-function PluginVerifier() {
-  const toast = useToast(); const { t } = useI18n();
-  const { data, loading, reload } = useAsync(() => api.get('/admin/catalog?kind=PLUGIN'), []);
-  const [content, setContent] = useState(null);
-  const items = data?.items || [];
-  const validate = async (it) => { try { const r = await api.post(`/admin/catalog/${it.id}/validate`); toast[r.valid ? 'success' : 'error'](r.valid ? t('pv.isvalid', '"{n}" is valid.').replace('{n}', it.name) : t('pv.isinvalid', '"{n}" INVALID: {r}').replace('{n}', it.name).replace('{r}', r.reason)); reload(); } catch (x) { toast.error(x.data?.detail || t('pv.valfail', 'Validation failed.')); } };
-  const dl = async (it) => { try { const { url } = await api.get(`/admin/catalog/${it.id}/file`); window.open(url, '_blank'); } catch { toast.error(t('pv.nofile', 'This plugin has no downloadable file.')); } };
-  return (
-    <div className="mt-10">
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><ShieldCheck size={16} className="text-[var(--primary-2)]" /> {t('pv.title', 'Plugin verification')}</h2>
-      <p className="text-sm text-[var(--muted)] mb-4" dangerouslySetInnerHTML={{ __html: t('pv.sub', 'Download the <code>.bmmplug</code>, unzip it, and verify the package + per-file checksums. Invalid plugins warn users not to install.') }} />
-      {loading ? <Loading /> : items.length ? <div className="space-y-2">
-        {items.map((it) => { const v = it.meta?.validation; return (
-          <Card key={it.id} className="p-4 flex items-center gap-3 flex-wrap">
-            <Puzzle size={17} className="text-[var(--primary-2)]" />
-            <div className="flex-1 min-w-0"><div className="font-medium truncate">{it.name} <span className="text-xs text-[var(--faint)] font-normal">v{it.version} · {it.owner?.displayName}</span></div>
-              <div className="text-xs text-[var(--faint)] mt-0.5">{it.meta?.download_url ? t('pv.selfhosted', 'self-hosted') : it.payloadKey ? t('pv.ourhosted', 'our-hosted') : t('pv.nosource', 'no source')}{v?.sha256 ? ` · ${v.sha256.slice(0, 12)}…` : ''}</div></div>
-            {v ? (v.valid ? <Badge tone="green"><CheckCircle2 size={11} /> {t('pv.valid', 'Valid')}</Badge> : <Badge tone="red"><XCircle size={11} /> {v.reason}</Badge>) : <Badge>{t('pv.unchecked', 'Unchecked')}</Badge>}
-            <Button size="sm" onClick={() => validate(it)}><ShieldCheck size={14} /> {t('pv.validate', 'Validate')}</Button>
-            {(it.payloadKey || it.meta?.download_url) && <Button size="sm" onClick={() => dl(it)}><Download size={14} /> {t('pv.download', 'Download')}</Button>}
-            <Button size="sm" onClick={() => setContent(it)}><Files size={14} /> {t('pv.content', 'Content')}</Button>
-          </Card>); })}
-      </div> : <EmptyState icon={Puzzle} title={t('pv.empty', 'No plugins yet')} />}
-      {content && <PluginContentModal item={content} onClose={() => setContent(null)} />}
-    </div>
-  );
-}
 
-// Admin: theme verification — download & inspect a theme's JSON before it goes live.
-function ThemeVerifier() {
-  const toast = useToast(); const { t } = useI18n();
-  const { data, loading } = useAsync(() => api.get('/admin/catalog?kind=THEME'), []);
-  const items = data?.items || [];
-  const dl = async (it) => { try { const { url } = await api.get(`/admin/catalog/${it.id}/file`); window.open(url, '_blank'); } catch { toast.error(t('tv.nofile', 'This theme has no downloadable file.')); } };
-  return (
-    <div className="mt-10">
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Palette size={16} className="text-[var(--primary-2)]" /> {t('tv.title', 'Theme verification')}</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">{t('tv.sub', "Download and inspect a theme's JSON before it goes live. Themes are served as data, never executed.")}</p>
-      {loading ? <Loading /> : items.length ? <div className="space-y-2">
-        {items.map((it) => (
-          <Card key={it.id} className="p-4 flex items-center gap-3 flex-wrap">
-            <Palette size={17} className="text-[var(--primary-2)]" />
-            <div className="flex-1 min-w-0"><div className="font-medium truncate">{it.name} <span className="text-xs text-[var(--faint)] font-normal">v{it.version} · {it.owner?.displayName}</span></div>
-              <div className="text-xs text-[var(--faint)] mt-0.5">{it.meta?.url || it.meta?.download_url ? t('pv.selfhosted', 'self-hosted') : it.payloadKey ? t('pv.ourhosted', 'our-hosted') : t('pv.nosource', 'no source')}</div></div>
-            <Badge tone={statusTone(it.status)}>{it.status}</Badge>
-            {(it.payloadKey || it.meta?.url || it.meta?.download_url) && <Button size="sm" onClick={() => dl(it)}><Download size={14} /> {t('pv.download', 'Download')}</Button>}
-          </Card>
-        ))}
-      </div> : <EmptyState icon={Palette} title={t('tv.empty', 'No themes yet')} />}
-    </div>
-  );
-}
 
 // Admin: find a user by id / display name / email / linked creator id, then inspect them.
 function AdminUsers() {
@@ -1683,7 +1631,7 @@ const ADMIN_CAPS = [
   { id: 'manage_promotions', cat: 'growth', icon: Megaphone, label: 'Manage promotions', labelFr: 'Gérer les promotions', desc: 'Promo campaigns, discount & hosting codes.', descFr: 'Campagnes promo, codes de réduction et d’hébergement.' },
   { id: 'manage_events', cat: 'growth', icon: Sparkles, label: 'Manage events', labelFr: 'Gérer les événements', desc: 'Site events (fireworks, themed presentations).', descFr: 'Événements du site (feux d’artifice, présentations thématiques).' },
   { id: 'manage_myo', cat: 'growth', icon: Wand2, label: 'Manage commissions', labelFr: 'Gérer les commandes', desc: 'Handle "Make Your Own" requests, quotes, delivery + the catalog.', descFr: 'Gérer les demandes « Make Your Own », devis, livraisons + le catalogue.' },
-  { id: 'manage_analytics', cat: 'insight', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, events feed, errors and goals.', descFr: "Analyses, flux d'événements, erreurs et objectifs." },
+  { id: 'manage_analytics', cat: 'insight', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, errors and goals.', descFr: 'Analyses, erreurs et objectifs.' },
   { id: 'manage_repos', cat: 'ops', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
 ];
 // Category display order + labels for the role editor's grouping.
@@ -5748,139 +5696,6 @@ function AdminGoals() {
         ))}
       </div> : <EmptyState icon={Target} title={t('goal.none', 'No goals yet')} sub={t('goal.none.s', 'Add your first conversion goal above.')} />}
       {data?.totalVisitors != null && <p className="text-[11px] text-[var(--faint)] mt-3">{t('goal.denom', 'Conversion rate is out of {n} unique visitors in this window.').replace('{n}', data.totalVisitors)}</p>}
-    </div>
-  );
-}
-
-// Custom-events feed (Rybbit-style): the live stream of pageviews + in-page interactions,
-// filterable by path (contains) and event kind. Reuses the sessions feed's anonymous
-// nickname/avatar + event metadata.
-const FEED_KINDS = [
-  ['pageview', 'ev.k.pageview', 'Page view', Eye],
-  ['click', 'ev.k.click', 'Button click', MousePointerClick],
-  ['input', 'ev.k.input', 'Input change', PenSquare],
-  ['submit', 'ev.k.submit', 'Form submit', Send],
-  ['copy', 'ev.k.copy', 'Copy', Copy],
-  ['nav', 'ev.k.nav', 'Navigation', ArrowRight],
-  ['modal_open', 'ev.k.modal', 'Modal open', PanelTop],
-];
-function feedData(e, t) {
-  if (e.kind === 'click') return e.label ? t('ev.d.click', 'Clicked button “{x}”').replace('{x}', e.label) : t('ev.d.clickg', 'Clicked');
-  if (e.kind === 'input') return e.label ? t('ev.d.input', 'Field “{x}” changed').replace('{x}', e.label) : t('ev.d.inputg', 'Field changed');
-  if (e.kind === 'submit') return e.label ? t('ev.d.submit', 'Submitted “{x}”').replace('{x}', e.label) : t('ev.d.submitg', 'Form submitted');
-  if (e.kind === 'copy') return t('ev.d.copy', 'Copied');
-  if (e.kind === 'nav') return e.label ? t('ev.d.nav', 'Went to {x}').replace('{x}', e.label) : '';
-  if (e.kind === 'modal_open') return e.label ? t('ev.d.modal', 'Opened “{x}”').replace('{x}', e.label) : t('ev.d.modalg', 'Opened a modal');
-  return e.label || '';
-}
-function AdminEventsFeed() {
-  const { t } = useI18n();
-  const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState('');
-  const [kinds, setKinds] = useState(() => new Set()); // empty = all
-  const [range, setRange] = useState('7d');
-  const rq = Object.fromEntries(WV_RANGES)[range] || { days: 7 };
-  const qs = `${rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`}${qApplied ? `&path=${encodeURIComponent(qApplied)}` : ''}${kinds.size ? `&kinds=${[...kinds].join(',')}` : ''}`;
-  const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/events?${qs}`), [qs]);
-  const fetched = data?.events || []; const counts = data?.counts || {};
-  // Live mode: a real-time Server-Sent-Events stream. New events are PUSHED the instant
-  // they're ingested (no polling) and prepended to the feed. The stream honours the same
-  // path/kind filters server-side. On disconnect EventSource auto-reconnects (retry: 5s).
-  const [live, setLive] = useState(false);
-  const [streamed, setStreamed] = useState([]);
-  // Connection state of the SSE stream. Without this the Live dot pulsed green even when the
-  // socket never connected (e.g. a dev proxy that can't hijack an SSE response): the feed sat
-  // empty and nothing said why. EventSource errors are delivered ONLY to es.onerror — they do
-  // NOT reach window.onerror, so the global client-error reporter can't see them either. That
-  // is the whole reason a broken stream was invisible; the fix is to show it here.
-  const [conn, setConn] = useState('idle'); // idle · connecting · open · error
-  const streamQs = `${qApplied ? `path=${encodeURIComponent(qApplied)}` : ''}${kinds.size ? `${qApplied ? '&' : ''}kinds=${[...kinds].join(',')}` : ''}`;
-  useEffect(() => {
-    setStreamed([]); // filters (or live off) → drop the old stream buffer and re-subscribe
-    if (!live || typeof EventSource === 'undefined') { setConn('idle'); return undefined; }
-    setConn('connecting');
-    const es = new EventSource(`/api/admin/analytics/events/stream${streamQs ? `?${streamQs}` : ''}`);
-    es.onopen = () => setConn('open');
-    es.onmessage = (m) => { setConn('open'); try { const ev = JSON.parse(m.data); setStreamed((s) => [ev, ...s].slice(0, 300)); } catch { /* ignore malformed frame */ } };
-    // EventSource retries on its own (retry: 5s from the server); this just surfaces that it's
-    // currently NOT connected, so the admin sees "reconnecting" instead of a false "live".
-    es.onerror = () => setConn((c) => (c === 'open' ? 'error' : 'connecting'));
-    return () => es.close();
-  }, [live, streamQs]);
-  // Merge the pushed events on top of the initial fetch, de-duplicating the small overlap
-  // window (an event can appear in both the first fetch and the stream).
-  const events = useMemo(() => {
-    const key = (e) => `${e.ts}|${e.kind}|${e.path}|${e.visitor}|${e.label || ''}`;
-    const seen = new Set(); const out = [];
-    for (const e of [...streamed, ...fetched]) { const k = key(e); if (seen.has(k)) continue; seen.add(k); out.push(e); }
-    return out.sort((a, b) => new Date(b.ts) - new Date(a.ts));
-  }, [streamed, fetched]);
-  const toggle = (k) => setKinds((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
-  const EVICON = { pageview: Eye, click: MousePointerClick, copy: Copy, input: PenSquare, submit: Send, nav: ArrowRight, modal_open: PanelTop, modal_close: X };
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><Activity size={16} className="text-[var(--primary-2)]" /> {t('evf.title', 'Events feed')}</h2>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
-            {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
-          </div>
-          {(() => {
-            // Colour follows the ACTUAL connection, not just the toggle: green when the socket
-            // is open, amber+pulsing while (re)connecting or after a drop, grey when off.
-            const on = live && conn === 'open';
-            const reconnecting = live && conn !== 'open';
-            const cls = on ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-500'
-              : reconnecting ? 'border-amber-500/50 bg-amber-500/10 text-amber-500'
-              : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]';
-            const dot = on ? 'bg-emerald-500 animate-pulse' : reconnecting ? 'bg-amber-500 animate-pulse' : 'bg-[var(--faint)]';
-            const label = reconnecting ? t('evf.connecting', 'Reconnecting…') : t('evf.live', 'Live');
-            return (
-              <button onClick={() => setLive((v) => !v)} title={reconnecting ? t('evf.connecting.tip', 'The live stream is not connected — check the API is reachable') : undefined}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs border transition ${cls}`}>
-                <span className={`w-2 h-2 rounded-full ${dot}`} /> {label}
-              </button>
-            );
-          })()}
-          <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
-        </div>
-      </div>
-      <p className="text-sm text-[var(--muted)] mb-3">{t('evf.sub', 'The live stream of what visitors do — pageviews, clicks, form submits, field edits. Anonymous (daily-rotating identity, no PII).')}</p>
-      <div className="flex flex-wrap gap-2 mb-2">
-        <div className="relative flex-1 min-w-[220px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!pl-9" list="evf-paths" placeholder={t('ev.pathph2', 'Filter by page (pick or type a path)…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} />
-          <datalist id="evf-paths">{[...new Set(events.map((e) => e.path).filter(Boolean))].slice(0, 40).map((p2) => <option key={p2} value={p2} />)}</datalist></div>
-        {qApplied && <Button variant="ghost" onClick={() => { setQ(''); setQApplied(''); }}><X size={15} /></Button>}
-        <Button variant="primary" onClick={() => setQApplied(q.trim())}><Search size={15} /> {t('ev.filter', 'Filter')}</Button>
-      </div>
-      {/* Quick-pick the busiest pages so you never have to guess a path. */}
-      {events.length > 0 && <div className="flex flex-wrap gap-1.5 mb-3">
-        {Object.entries(events.reduce((m, e) => { if (e.path) m[e.path] = (m[e.path] || 0) + 1; return m; }, {})).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([p2, n]) => (
-          <button key={p2} onClick={() => { setQ(p2); setQApplied(p2); }} className={`text-xs font-mono px-2 py-1 rounded-lg border transition ${qApplied === p2 ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{p2} <span className="text-[var(--faint)]">{n}</span></button>
-        ))}
-      </div>}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {FEED_KINDS.map(([k, key, fb, Icon]) => { const on = kinds.has(k); return (
-          <button key={k} onClick={() => toggle(k)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <Icon size={13} /> {t(key, fb)} {counts[k] != null && <span className="text-[10px] tabular-nums text-[var(--faint)]">{counts[k]}</span>}
-          </button>
-        ); })}
-      </div>
-      {loading ? <Loading /> : events.length ? <div className="overflow-x-auto rounded-xl border border-[var(--line)]">
-        <table className="w-full text-sm min-w-[720px]">
-          <thead><tr className="text-[10px] uppercase text-[var(--faint)] text-left border-b border-[var(--line)] bg-[var(--surface-2)]/50">
-            <th className="py-2 px-3 font-semibold">{t('ev.c.time', 'Time')}</th><th className="py-2 px-3 font-semibold">{t('ev.c.user', 'Visitor')}</th><th className="py-2 px-3 font-semibold">{t('ev.c.device', 'Device')}</th><th className="py-2 px-3 font-semibold">{t('ev.c.page', 'Page')}</th><th className="py-2 px-3 font-semibold">{t('ev.c.data', 'Data')}</th>
-          </tr></thead>
-          <tbody>{events.map((e, i) => { const Icon = EVICON[e.kind] || Activity; return (
-            <tr key={i} className="border-b border-[var(--line)]/50 hover:bg-[var(--surface-2)]/30">
-              <td className="py-2 px-3 whitespace-nowrap text-xs text-[var(--faint)]"><span className="inline-flex items-center gap-1.5"><Icon size={13} className="text-[var(--primary-2)]" /> {new Date(e.ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></td>
-              <td className="py-2 px-3 whitespace-nowrap"><span className="inline-flex items-center gap-2"><Avatar seed={e.visitor || 'anon'} variant="beam" size={22} /> {fakeNick(e.visitor)}</span></td>
-              <td className="py-2 px-3 whitespace-nowrap text-xs text-[var(--muted)]"><span className="inline-flex items-center gap-1.5">{e.country ? <Flag cc={e.country} className="w-4 h-3" /> : null}{e.browser || '—'}{e.os ? ` · ${e.os}` : ''}{e.device ? ` · ${e.device}` : ''}</span></td>
-              <td className="py-2 px-3 font-mono text-xs text-[var(--muted)] max-w-[220px] truncate" title={e.path}>{e.path}</td>
-              <td className="py-2 px-3 text-xs text-[var(--muted)] max-w-[260px] truncate" title={feedData(e, t)}>{feedData(e, t)}</td>
-            </tr>
-          ); })}</tbody>
-        </table>
-      </div> : <EmptyState icon={Activity} title={t('evf.none', 'No events in this window')} sub={t('evf.none.s2', 'Adjust the range/filters. Note: pageviews & interactions are only recorded for visitors who accepted analytics cookies (consent “all”) — so an empty feed usually means little consented traffic, not a fault.')} />}
     </div>
   );
 }
