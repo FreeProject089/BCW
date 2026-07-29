@@ -760,6 +760,77 @@ export default async function repoRoutes(app) {
     return { ok: true, mode: 'single', storageGB: group ? Number(group.poolBytes) / GiB : undefined };
   });
 
+  // ── Move a repo's CONTENT into another repo ────────────────────────────────────────
+  // "Content" is the RepoFile rows: re-point them at the destination. Two things make this
+  // more than an updateMany:
+  //   • RepoFile has @@unique([serverRepoId, path]), so any path present on BOTH sides would
+  //     abort the whole transaction. We refuse up-front and hand back the colliding paths
+  //     rather than overwriting a file the user still has — this is their hosted data.
+  //   • storageUsedBytes is denormalised on each repo, so both sides are recomputed, and the
+  //     destination's quota is checked before anything moves.
+  // The destination is dropped back to unverified/unpublished afterwards: its contents are
+  // not what was reviewed any more.
+  async function moveContentPlan(p, fromRepo, toId, user) {
+    if (fromRepo.id === toId) return { err: 400, code: 'same_repo' };
+    const dest = await ownRepoMutable(p, toId, user);
+    if (dest.err) return { err: dest.err, code: dest.code || 'dest_not_found' };
+    const to = dest.repo;
+    if (to.ownerId !== fromRepo.ownerId) return { err: 403, code: 'different_owner' };
+    const [srcFiles, dstPaths] = await Promise.all([
+      p.repoFile.findMany({ where: { serverRepoId: fromRepo.id }, select: { id: true, path: true, size: true } }),
+      p.repoFile.findMany({ where: { serverRepoId: toId }, select: { path: true } }),
+    ]);
+    const taken = new Set(dstPaths.map((f) => f.path));
+    const collisions = srcFiles.filter((f) => taken.has(f.path)).map((f) => f.path);
+    const bytes = srcFiles.reduce((n, f) => n + BigInt(f.size || 0), 0n);
+    const quota = to.groupId ? null : to.storageQuotaBytes;
+    const overQuota = quota != null && quota > 0n && BigInt(to.storageUsedBytes || 0) + bytes > quota;
+    return { to, srcFiles, collisions, bytes, overQuota };
+  }
+
+  // Dry run: what WOULD move, and what stands in the way. The UI calls this before offering
+  // the action so the user is never told "failed" after the fact.
+  app.get('/me/repos/:id/move-content/preflight', { preHandler: requireRole() }, async (req, reply) => {
+    const to = String(req.query?.to || '');
+    if (!to) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
+    const plan = await moveContentPlan(p, repo, to, req.user);
+    if (plan.err) return reply.code(plan.err).send({ error: plan.code });
+    return {
+      files: plan.srcFiles.length, bytes: Number(plan.bytes),
+      collisions: plan.collisions.slice(0, 50), collisionCount: plan.collisions.length,
+      overQuota: plan.overQuota, destination: { id: plan.to.id, name: plan.to.name },
+    };
+  });
+
+  app.post('/me/repos/:id/move-content', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ to: z.string().min(1) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
+    const plan = await moveContentPlan(p, repo, b.data.to, req.user);
+    if (plan.err) return reply.code(plan.err).send({ error: plan.code });
+    if (plan.collisions.length) {
+      return reply.code(409).send({ error: 'path_collision', collisions: plan.collisions.slice(0, 50), collisionCount: plan.collisions.length });
+    }
+    if (plan.overQuota) return reply.code(413).send({ error: 'quota_exceeded' });
+    if (!plan.srcFiles.length) return { ok: true, moved: 0 };
+
+    await p.$transaction([
+      p.repoFile.updateMany({ where: { serverRepoId: repo.id }, data: { serverRepoId: plan.to.id } }),
+      p.serverRepo.update({ where: { id: repo.id }, data: { storageUsedBytes: 0n, sha: null, published: false } }),
+      p.serverRepo.update({
+        where: { id: plan.to.id },
+        data: { storageUsedBytes: BigInt(plan.to.storageUsedBytes || 0) + plan.bytes, verified: false, published: false },
+      }),
+    ]);
+    return { ok: true, moved: plan.srcFiles.length, bytes: Number(plan.bytes) };
+  });
+
+
   // Add another repo to a multi pool, drawing from the remaining pool storage.
   app.post('/me/hosting/groups/:id/repos', { preHandler: requireRole() }, async (req, reply) => {
     const b = z.object({ name: z.string().min(2).max(60), storageGB: z.number().min(0.5).max(2000) }).safeParse(req.body);

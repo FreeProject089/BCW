@@ -625,6 +625,47 @@ export function MyRepos() {
     catch (x) { toast.error(x.data?.error === 'pool_has_multiple_repos' ? t('repos.pool.hasmulti', 'Remove the other repos from the pool first.') : t('repos.switch.failed', 'Switch failed.')); }
   };
 
+  // Move every hosted file from one repo into another the same owner holds. The API refuses
+  // on a path collision rather than overwriting — this is the user's hosted data — so we run
+  // the preflight first and name the clashing paths instead of a bare "failed". Deferred
+  // behind the undo window like the rest of the site.
+  const moveContent = async (from) => {
+    const others = (data?.repos || []).filter((x) => x.id !== from.id && x.hosted);
+    if (!others.length) return toast.error(t('repos.move.noneed', 'You need a second hosted repo to move content into.'));
+    const to = others[0];
+    let pre;
+    try { pre = await api.get(`/me/repos/${from.id}/move-content/preflight?to=${encodeURIComponent(to.id)}`); }
+    catch { return toast.error(t('repos.failed', 'Failed.')); }
+    if (!pre.files) return toast.error(t('repos.move.empty', 'That repo has no files to move.'));
+    if (pre.collisionCount) {
+      return toast.error(t('repos.move.collide', '{n} file(s) already exist in "{name}" — rename or remove them first: {list}')
+        .replace('{n}', pre.collisionCount).replace('{name}', to.name)
+        .replace('{list}', pre.collisions.slice(0, 3).join(', ')));
+    }
+    if (pre.overQuota) return toast.error(t('repos.move.quota', 'Not enough storage left in the destination repo.'));
+    const ok = await dialog.confirm({
+      title: t('repos.move.title', 'Move content'),
+      message: t('repos.move.msg', 'Move {n} file(s) from "{from}" into "{to}"? The destination goes back to unverified and unpublished until it is checked again.')
+        .replace('{n}', pre.files).replace('{from}', from.name).replace('{to}', to.name),
+      okLabel: t('repos.move.go', 'Move'),
+    });
+    if (!ok) return;
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('repos.move.done', 'Moved {n} file(s) to "{to}".').replace('{n}', pre.files).replace('{to}', to.name),
+      onCommit: async () => {
+        try { await api.post(`/me/repos/${from.id}/move-content`, { to: to.id }); reload(); }
+        catch (x) {
+          toast.error(x.data?.error === 'path_collision'
+            ? t('repos.move.collide2', 'Some paths now clash in the destination — nothing was moved.')
+            : x.data?.error === 'quota_exceeded' ? t('repos.move.quota', 'Not enough storage left in the destination repo.')
+            : t('repos.failed', 'Failed.'));
+          reload();
+        }
+      },
+    });
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -734,6 +775,7 @@ export function MyRepos() {
                     !r.hosted && !locked && { key: 'check', label: t('repos.check', 'Check'), icon: CheckCircle2, onClick: () => check(r) },
                     r.hosted && !locked && { key: 'mode', label: r.groupId ? t('repos.tosingle', 'Switch to single') : t('repos.tomulti', 'Switch to multi'), icon: HardDrive, onClick: () => switchMode(r) },
                     r.hosted && r.group && !locked && { key: 'addpool', label: t('repos.addtopool', 'Add repo to pool'), icon: Plus, onClick: () => setPoolAdd(r.group) },
+                    r.hosted && !locked && { key: 'movecontent', label: t('repos.movecontent', 'Move content to…'), icon: GitMerge, onClick: () => moveContent(r) },
                     !locked && { key: 'edit', label: t('repos.editdetails', 'Edit details'), icon: Pencil, onClick: () => setEditing(r) },
                     !locked && { key: 'del', label: t('repos.delete', 'Delete repo'), icon: Trash2, danger: true, onClick: () => del(r) },
                   ].filter(Boolean)}
