@@ -5621,15 +5621,19 @@ function AdminGoals() {
     if (GOAL_DIM[f.kind]) { const lbl = GOAL_KINDS.find((k) => k[0] === f.kind); return `${t(lbl[1], lbl[2])}: ${tgt}`; }
     return { click: t('goal.auto.click', 'Click “{x}”'), submit: t('goal.auto.submit', 'Submit “{x}”'), input: t('goal.auto.input', 'Edit “{x}”'), copy: t('goal.auto.copy', 'Copy “{x}”') }[f.kind]?.replace('{x}', tgt) || tgt;
   };
+  const undoSave = useUndoableSave(reload);
   const save = async () => {
     // Auto-name if the admin left it blank — one less field to think about.
     const name = f.name.trim() || autoName();
     const payload = { name, kind: f.kind, path: f.path.trim() || null, label: f.kind === 'pageview' ? null : (f.label.trim() || null), target: f.target === '' ? null : Math.max(0, Number(f.target) || 0) };
-    // Editing an existing goal stays immediate (it's not an add/remove).
+    // Editing used to be immediate on the grounds that it is not an add/remove. It is still a
+    // save, though, and the site-wide rule is now that a save can be taken back — so it goes
+    // through the same window. id captured, reset() deferred, as everywhere else.
     if (editId) {
+      const id = editId;
       setBusy(true);
-      try { await api.patch(`/admin/analytics/goals/${editId}`, payload); toast.success(t('goal.saved', 'Goal saved.')); reset(); reload(); }
-      catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+      undoSave(async () => { await api.patch(`/admin/analytics/goals/${id}`, payload); reset(); },
+        t('goal.saved', 'Goal saved.'), { onSettled: () => setBusy(false) });
       return;
     }
     // Adding: show the new goal optimistically, defer the POST behind an undo window.
@@ -7414,14 +7418,15 @@ function AdminBadges() {
   const badges = (data?.badges || []).filter((b) => !undo.pending.has(b.id));
   // The shared icon picker returns a lucide kebab name, or "simple:<slug>" for a brand.
   const onPickIcon = (v) => setEdit((e) => v.startsWith('simple:') ? { ...e, iconType: 'brand', icon: v.slice(7) } : { ...e, iconType: 'lucide', icon: v });
-  const save = async () => {
+  const undoSave = useUndoableSave(reload);
+  const save = () => {
     if (!edit.name.trim()) return toast.error(t('ab.namereq', 'Name required.'));
     const body = { ...edit, trigger: edit.grant === 'manual' ? null : (edit.trigger || null) };
-    try {
-      if (edit.id) await api.patch(`/admin/badges/${edit.id}`, body);
-      else await api.post('/admin/badges', body);
-      toast.success(t('ab.saved', 'Badge saved.')); setEdit(null); reload();
-    } catch (x) { toast.error(x.data?.error === 'trigger_taken' ? t('ab.triggertaken', 'Another badge already uses that trigger.') : x.data?.error || t('acc.failed', 'Failed.')); }
+    const id = edit.id;                 // captured: `edit` is swapped when another badge is opened
+    setEdit(null);                      // the editor closes now; Undo leaves the list untouched
+    undoSave(() => (id ? api.patch(`/admin/badges/${id}`, body) : api.post('/admin/badges', body)),
+      t('ab.saved', 'Badge saved.'),
+      { errorFor: (x) => x.data?.error === 'trigger_taken' ? t('ab.triggertaken', 'Another badge already uses that trigger.') : (x.data?.error || t('acc.failed', 'Failed.')) });
   };
   const del = (b) => undo.del(b.id, () => api.del(`/admin/badges/${b.id}`), t('ab.deleted', 'Badge deleted.'));
   return (
