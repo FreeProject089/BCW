@@ -246,24 +246,45 @@ export function Admin() {
   );
 }
 
-// Kinds available per project. BSM = presets only; everything else is BMM.
-const PROJECT_KINDS = { bmm: ['APP', 'PLUGIN', 'THEME'], bsm: ['PRESET'] };
+
+// The official catalogs, as catalogs — which is what they have always been on the BMM side:
+// one feed URL per project+kind, each with its own payload shape. The form used to ask for
+// project and kind on every single entry, which made "which catalog am I filling?" something
+// you re-answered each time and never actually saw the contents of.
+//
+// This mirrors the community side deliberately: pick ONE catalog, see what is in it, add to
+// it. The entry's type then follows from the catalog rather than being a per-entry choice
+// that could quietly put a theme in the app feed.
+const OFFICIAL_CATALOGS = [
+  { id: 'bmm-app', projectKey: 'bmm', kind: 'APP', label: (t) => t('cc.cat.bmmapp', 'BMM · Apps') },
+  { id: 'bmm-plugin', projectKey: 'bmm', kind: 'PLUGIN', label: (t) => t('cc.cat.bmmplugin', 'BMM · Plugins') },
+  { id: 'bmm-theme', projectKey: 'bmm', kind: 'THEME', label: (t) => t('cc.cat.bmmtheme', 'BMM · Themes') },
+  { id: 'bsm-preset', projectKey: 'bsm', kind: 'PRESET', label: (t) => t('cc.cat.bsmpreset', 'BSM · Presets') },
+];
 
 // Admin: quickly publish an OFFICIAL catalog entry for BMM or BSM.
 function AdminCatalogCreator() {
   const toast = useToast(); const { t } = useI18n();
-  const [f, setF] = useState({ projectKey: 'bmm', kind: 'APP', name: '', version: '1.0.0', description: '', tags: '', url: '' });
+  const [f, setF] = useState({ name: '', version: '1.0.0', description: '', tags: '', url: '' });
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
-  const kinds = PROJECT_KINDS[f.projectKey] || ['APP'];
-  const setProject = (projectKey) => setF((s) => ({ ...s, projectKey, kind: (PROJECT_KINDS[projectKey] || ['APP'])[0] }));
-  const deeplink = f.projectKey === 'bmm'
-    ? `bmm://catalog/${f.kind.toLowerCase()}/install?name=${encodeURIComponent(f.name || 'name')}${f.url ? `&url=${encodeURIComponent(f.url)}` : ''}`
+  // Picking a catalog sets project AND kind together — they are not independent choices.
+  const [catId, setCatId] = useState(OFFICIAL_CATALOGS[0].id);
+  const cat = OFFICIAL_CATALOGS.find((c) => c.id === catId) || OFFICIAL_CATALOGS[0];
+  // Derived, never mirrored into form state: two copies of the same fact drift, and the one
+  // that drifts here would publish an entry into the wrong feed.
+  const projectKey = cat.projectKey;
+  const kind = cat.kind;
+  // What is already in the catalog being filled — the community catalog page shows its
+  // contents, and there was no reason the official one should not.
+  const contents = useAsync(() => api.get(`/admin/catalog?project=${cat.projectKey}&kind=${cat.kind}&status=PUBLISHED`), [catId]);
+  const deeplink = projectKey === 'bmm'
+    ? `bmm://catalog/${kind.toLowerCase()}/install?name=${encodeURIComponent(f.name || 'name')}${f.url ? `&url=${encodeURIComponent(f.url)}` : ''}`
     : '';
 
   const onFile = async (uploaded) => {
     setFile(uploaded);
-    if (uploaded && f.kind === 'PRESET' && /json$/i.test(uploaded.name)) {
+    if (uploaded && kind === 'PRESET' && /json$/i.test(uploaded.name)) {
       try { const j = JSON.parse(await uploaded.text()); setF((s) => ({ ...s, name: j.name || s.name, version: j.version || s.version, meta: j })); }
       catch { toast.error(t('cc.presetinvalid', 'Preset is not valid JSON.')); }
     }
@@ -272,19 +293,20 @@ function AdminCatalogCreator() {
     if (f.name.length < 2) return toast.error(t('cc.namereq', 'Name is required.'));
     setBusy(true);
     try {
-      let payloadKey; if (file) payloadKey = await uploadPayload(f.kind, file);
+      let payloadKey; if (file) payloadKey = await uploadPayload(kind, file);
       // Plugins use download_url; apps use the BMM App-Catalog shape (download.{url,file_type}).
       const ftype = /\.(zip|msi|exe)(\?|$)/i.exec(f.url || '')?.[1]?.toLowerCase() || 'exe';
-      const meta = f.kind === 'PRESET' ? (f.meta || {})
-        : f.kind === 'PLUGIN' ? { ...(f.url ? { download_url: f.url } : {}), ...(deeplink ? { deeplink } : {}) }
-        : f.kind === 'APP' ? { id: f.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), title: f.name, category: 'utility', price: 'free', tags: f.tags.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 3), ...(f.url ? { download: { url: f.url, file_type: ftype } } : {}), ...(deeplink ? { deeplink } : {}) }
+      const meta = kind === 'PRESET' ? (f.meta || {})
+        : kind === 'PLUGIN' ? { ...(f.url ? { download_url: f.url } : {}), ...(deeplink ? { deeplink } : {}) }
+        : kind === 'APP' ? { id: f.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), title: f.name, category: 'utility', price: 'free', tags: f.tags.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 3), ...(f.url ? { download: { url: f.url, file_type: ftype } } : {}), ...(deeplink ? { deeplink } : {}) }
         : { ...(f.url ? { url: f.url } : {}), ...(deeplink ? { deeplink } : {}) };
-      const body = { projectKey: f.projectKey, kind: f.kind, name: f.name, version: f.version, description: f.description,
+      const body = { projectKey: projectKey, kind: kind, name: f.name, version: f.version, description: f.description,
         tags: f.tags.split(',').map((t) => t.trim()).filter(Boolean), payloadKey, meta };
       const res = await api.post('/admin/catalog', body);
-      if (f.kind === 'PLUGIN' && res.validation) toast[res.validation.valid ? 'success' : 'error'](res.validation.valid ? t('cc.pubvalidated', 'Plugin "{n}" published & validated.').replace('{n}', f.name) : t('cc.pubinvalid', 'Published but INVALID: {r} — fix before users install.').replace('{r}', res.validation.reason));
-      else toast.success(t('cc.published', 'Official {k} "{n}" published.').replace('{k}', KIND_LABEL[f.kind]).replace('{n}', f.name));
-      setF({ projectKey: f.projectKey, kind: f.kind, name: '', version: '1.0.0', description: '', tags: '', url: '' }); setFile(null);
+      if (kind === 'PLUGIN' && res.validation) toast[res.validation.valid ? 'success' : 'error'](res.validation.valid ? t('cc.pubvalidated', 'Plugin "{n}" published & validated.').replace('{n}', f.name) : t('cc.pubinvalid', 'Published but INVALID: {r} — fix before users install.').replace('{r}', res.validation.reason));
+      else toast.success(t('cc.published', 'Official {k} "{n}" published.').replace('{k}', KIND_LABEL[kind]).replace('{n}', f.name));
+      setF({ name: '', version: '1.0.0', description: '', tags: '', url: '' }); setFile(null);
+      contents.reload(); // the new entry should appear in the list below, not on next reload
     } catch (x) {
       const e = x.data?.error;
       // The API returns the accepted list with a 415; showing the raw code left you guessing
@@ -293,6 +315,10 @@ function AdminCatalogCreator() {
         e === 'unsupported_type' ? t('cc.badtype', 'That file type is not accepted for this kind. Allowed: {a}').replace('{a}', (x.data?.allowed || []).join(', '))
         : e === 'invalid_preset' ? t('cc.presetjsoninvalid', 'Preset JSON is invalid.')
         : e || t('common.failed', 'Failed.'));
+    } finally {
+      // Was missing entirely: `busy` went true and was never cleared, so the Publish button
+      // stayed disabled after the FIRST attempt — success or failure — until a page reload.
+      setBusy(false);
     }
   };
   const copy = () => { navigator.clipboard?.writeText(deeplink); toast.success(t('cc.dlcopied', 'Deeplink copied.')); };
@@ -300,13 +326,27 @@ function AdminCatalogCreator() {
   // The URL BMM actually consumes as a catalog source. It is derived from the project + kind
   // already chosen above, so there is nothing extra to fill in — the panel that publishes the
   // entry is also where you get the link to the feed it lands in.
-  const feedUrl = `${location.origin}/api/catalog.json?project=${encodeURIComponent(f.projectKey)}&kind=${encodeURIComponent(f.kind.toLowerCase())}`;
+  const feedUrl = `${location.origin}/api/catalog.json?project=${encodeURIComponent(projectKey)}&kind=${encodeURIComponent(kind.toLowerCase())}`;
   const copyFeed = () => { navigator.clipboard?.writeText(feedUrl); toast.success(t('cc.feedcopied', 'Catalog URL copied.')); };
 
   return (
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><BadgeCheck size={16} className="text-[var(--primary-2)]" /> {t('cc.title', 'Create an official catalog entry')}</h2>
       <p className="text-sm text-[var(--muted)] mb-4" dangerouslySetInnerHTML={{ __html: t('cc.sub', 'Publishes instantly (no moderation) and is flagged <b>Official</b>. BSM offers presets; BMM offers apps, plugins and themes with a <code>bmm://</code> deeplink.') }} />
+      {/* Which catalog you are filling — chosen once, not re-answered per entry. */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {OFFICIAL_CATALOGS.map((c) => {
+          const Icon = KIND_ICON[c.kind] || Boxes;
+          const on = c.id === catId;
+          return (
+            <button key={c.id} type="button" onClick={() => setCatId(c.id)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
+              <Icon size={14} className={on ? 'text-[var(--primary-2)]' : ''} /> {c.label(t)}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Where this entry ends up. BMM adds this URL as a catalog source, so it belongs next to
           the form that publishes into it rather than somewhere a reader has to go and find. */}
       <Card className="p-3 mb-4 flex flex-wrap items-center gap-2">
@@ -317,17 +357,15 @@ function AdminCatalogCreator() {
       </Card>
       <Card className="p-5 space-y-3">
         <div className="grid sm:grid-cols-2 gap-3">
-          <Field label={t('cc.project', 'Project')}><Select value={f.projectKey} onChange={(e) => setProject(e.target.value)}><option value="bmm">BMM</option><option value="bsm">BSM</option></Select></Field>
-          <Field label={t('cc.type', 'Type')}><Dropdown className="w-full" value={f.kind} onChange={(v) => setF({ ...f, kind: v })} options={kinds.map((k) => ({ value: k, label: KIND_LABEL[k] }))} /></Field>
-          <Field label={t('cc.name', 'Name')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={f.kind === 'PRESET' ? 'Afterburner Boom' : f.kind === 'THEME' ? 'Midnight Orange' : 'Auto Backup'} /></Field>
+          <Field label={t('cc.name', 'Name')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={kind === 'PRESET' ? 'Afterburner Boom' : kind === 'THEME' ? 'Midnight Orange' : 'Auto Backup'} /></Field>
           <Field label={t('cc.version', 'Version')}><Input value={f.version} onChange={(e) => setF({ ...f, version: e.target.value })} /></Field>
         </div>
         <Field label={t('cc.description', 'Description')}><Textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder={t('cc.descph', 'What it does, in a sentence or two…')} /></Field>
         <Field label={t('cc.tags', 'Tags (comma-separated)')}><Input value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="audio, utility, dark-theme" /></Field>
-        {f.kind === 'PLUGIN' && <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 text-xs text-[var(--muted)]" dangerouslySetInnerHTML={{ __html: t('cc.pluginnote', "Host the <code>.bmmplug</code> yourself (URL below) or with us (upload it — priced by size). Either way it's checksum-validated on publish.") }} />}
-        {f.kind !== 'PRESET' && <Field label={f.kind === 'PLUGIN' ? t('cc.plugurl', '.bmmplug URL (self-hosted)') : t('cc.dlurl', 'Download URL')} hint={f.kind === 'PLUGIN' ? t('cc.plugurlhint', 'GitHub raw / personal server. Leave empty to host with us via upload.') : t('cc.dlurlhint', 'Where the app/theme is fetched from.')}><Input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder={f.kind === 'PLUGIN' ? 'https://raw.githubusercontent.com/you/repo/main/plugin.bmmplug' : 'https://github.com/you/repo/releases/latest/download/app.zip'} /></Field>}
-        <Field label={f.kind === 'PRESET' ? t('cc.presetfile', 'Preset .json (metadata is read from the file)') : f.kind === 'PLUGIN' ? t('cc.plugfile', '.bmmplug file (our-hosted — priced by size)') : t('cc.payloadfile', 'Payload file (optional — zip / wasm)')}>
-          <Input type="file" accept={f.kind === 'PRESET' ? '.json,application/json' : f.kind === 'PLUGIN' ? '.bmmplug,.zip' : undefined} onChange={(e) => onFile(e.target.files?.[0] || null)} /></Field>
+        {kind === 'PLUGIN' && <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 text-xs text-[var(--muted)]" dangerouslySetInnerHTML={{ __html: t('cc.pluginnote', "Host the <code>.bmmplug</code> yourself (URL below) or with us (upload it — priced by size). Either way it's checksum-validated on publish.") }} />}
+        {kind !== 'PRESET' && <Field label={kind === 'PLUGIN' ? t('cc.plugurl', '.bmmplug URL (self-hosted)') : t('cc.dlurl', 'Download URL')} hint={kind === 'PLUGIN' ? t('cc.plugurlhint', 'GitHub raw / personal server. Leave empty to host with us via upload.') : t('cc.dlurlhint', 'Where the app/theme is fetched from.')}><Input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder={kind === 'PLUGIN' ? 'https://raw.githubusercontent.com/you/repo/main/plugin.bmmplug' : 'https://github.com/you/repo/releases/latest/download/app.zip'} /></Field>}
+        <Field label={kind === 'PRESET' ? t('cc.presetfile', 'Preset .json (metadata is read from the file)') : kind === 'PLUGIN' ? t('cc.plugfile', '.bmmplug file (our-hosted — priced by size)') : t('cc.payloadfile', 'Payload file (optional — zip / wasm)')}>
+          <Input type="file" accept={kind === 'PRESET' ? '.json,application/json' : kind === 'PLUGIN' ? '.bmmplug,.zip' : undefined} onChange={(e) => onFile(e.target.files?.[0] || null)} /></Field>
         {deeplink && (
           <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-3">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1"><Link2 size={11} /> {t('cc.deeplink', 'BMM deeplink')}</div>
@@ -336,6 +374,34 @@ function AdminCatalogCreator() {
         )}
         <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={submit}>{busy ? <Spinner /> : <><BadgeCheck size={15} /> {t('cc.publish', 'Publish official')}</>}</Button></div>
       </Card>
+
+      {/* What is already in this catalog. Without it, publishing was a blind append — no way
+          to see a duplicate, or to check the last entry actually landed. */}
+      <div className="mt-5">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
+          {t('cc.contents', 'Already in this catalog')}
+          {contents.data?.items?.length > 0 && <span className="text-[var(--muted)] normal-case tracking-normal"> · {contents.data.items.length}</span>}
+        </div>
+        {contents.loading ? <Loading /> : !contents.data?.items?.length ? (
+          <EmptyState icon={Boxes} title={t('cc.empty.t', 'Nothing published yet')} sub={t('cc.empty.s', 'Entries you publish above appear here.')} />
+        ) : (
+          <Card className="divide-y divide-[var(--line)] overflow-hidden">
+            {contents.data.items.map((it) => (
+              <div key={it.id} className="p-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium truncate">{it.name}</span>
+                    {it.version && <span className="text-[11px] font-mono text-[var(--faint)]">v{it.version}</span>}
+                    {it.meta?.validation?.valid === false && <Badge tone="red">{t('cc.invalid', 'invalid')}</Badge>}
+                  </div>
+                  {it.description && <p className="text-xs text-[var(--muted)] truncate">{it.description}</p>}
+                </div>
+                <span className="text-[11px] text-[var(--faint)] shrink-0">{fmtAgo(it.updatedAt)}</span>
+              </div>
+            ))}
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

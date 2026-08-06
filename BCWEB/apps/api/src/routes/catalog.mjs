@@ -466,6 +466,16 @@ export default async function catalogRoutes(app) {
     const p = await db();
     const where = {};
     if (req.query?.kind && KINDS.includes(req.query.kind)) where.kind = req.query.kind;
+    // Filtering by project as well, so the admin panel can show ONE official catalog's
+    // contents — "BMM plugins" — the way a community catalog page shows its own. Validated
+    // against the enum for the same reason the feed does it: an unknown key made findUnique
+    // throw, the catch swallow it, and the filter silently drop off.
+    if (req.query?.project && PROJECT_KEYS.includes(req.query.project)) {
+      where.project = { key: String(req.query.project) };
+    }
+    if (req.query?.status && ['PENDING', 'PUBLISHED', 'REJECTED', 'HIDDEN', 'SUSPENDED'].includes(req.query.status)) {
+      where.status = req.query.status;
+    }
     const items = await p.catalogItem.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 200,
       include: { owner: { select: { displayName: true } }, project: { select: { key: true } } } });
     return { items };
