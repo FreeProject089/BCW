@@ -278,6 +278,42 @@ function AdminCatalogCreator() {
   // What is already in the catalog being filled — the community catalog page shows its
   // contents, and there was no reason the official one should not.
   const contents = useAsync(() => api.get(`/admin/catalog?project=${cat.projectKey}&kind=${cat.kind}&status=PUBLISHED`), [catId]);
+  const [edit, setEdit] = useState(null);
+  const [removed, setRemoved] = useState(() => new Set()); // optimistically hidden during the undo window
+
+  // The download URL is stored in a different place per kind — the feeds have different
+  // payload shapes — so reading it back for the edit form has to mirror that.
+  const urlOf = (it) => it.kind === 'PLUGIN' ? (it.meta?.download_url || '')
+    : it.kind === 'APP' ? (it.meta?.download?.url || '')
+    : (it.meta?.url || '');
+  const startEdit = (it) => setEdit({
+    id: it.id, name: it.name || '', version: it.version || '',
+    description: it.description || '', url: urlOf(it), tags: (it.tags || []).join(', '),
+  });
+  const saveEdit = async () => {
+    try {
+      await api.patch(`/admin/catalog/${edit.id}`, {
+        name: edit.name.trim(), version: edit.version.trim(), description: edit.description,
+        url: edit.url.trim(), tags: edit.tags.split(',').map((x) => x.trim()).filter(Boolean),
+      });
+      toast.success(t('common.saved', 'Saved.')); setEdit(null); contents.reload();
+    } catch (x) { toast.error(x.data?.error || t('common.failed', 'Failed.')); }
+  };
+  // Deletion is the existing 72h-grace schedule, not a hard delete — the entry unpublishes now
+  // and its files survive until the window closes, so an undo really can put it back.
+  const removeEntry = (it) => {
+    setRemoved((s) => new Set(s).add(it.id));
+    const restore = () => setRemoved((s) => { const n = new Set(s); n.delete(it.id); return n; });
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('cc.removed', 'Entry removed from the catalog.'),
+      onCommit: async () => {
+        try { await api.post(`/catalog/${it.id}/delete`); contents.reload(); }
+        catch { toast.error(t('common.failed', 'Failed.')); restore(); }
+      },
+      onCancel: restore,
+    });
+  };
   const deeplink = projectKey === 'bmm'
     ? `bmm://catalog/${kind.toLowerCase()}/install?name=${encodeURIComponent(f.name || 'name')}${f.url ? `&url=${encodeURIComponent(f.url)}` : ''}`
     : '';
@@ -386,17 +422,37 @@ function AdminCatalogCreator() {
           <EmptyState icon={Boxes} title={t('cc.empty.t', 'Nothing published yet')} sub={t('cc.empty.s', 'Entries you publish above appear here.')} />
         ) : (
           <Card className="divide-y divide-[var(--line)] overflow-hidden">
-            {contents.data.items.map((it) => (
-              <div key={it.id} className="p-3 flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium truncate">{it.name}</span>
-                    {it.version && <span className="text-[11px] font-mono text-[var(--faint)]">v{it.version}</span>}
-                    {it.meta?.validation?.valid === false && <Badge tone="red">{t('cc.invalid', 'invalid')}</Badge>}
+            {contents.data.items.filter((it) => !removed.has(it.id)).map((it) => (
+              <div key={it.id} className="p-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium truncate">{it.name}</span>
+                      {it.version && <span className="text-[11px] font-mono text-[var(--faint)]">v{it.version}</span>}
+                      {it.status === 'HIDDEN' && <Badge tone="">{t('cc.hidden', 'hidden')}</Badge>}
+                      {it.meta?.validation?.valid === false && <Badge tone="red">{t('cc.invalid', 'invalid')}</Badge>}
+                    </div>
+                    {it.description && <p className="text-xs text-[var(--muted)] truncate">{it.description}</p>}
                   </div>
-                  {it.description && <p className="text-xs text-[var(--muted)] truncate">{it.description}</p>}
+                  <span className="text-[11px] text-[var(--faint)] shrink-0">{fmtAgo(it.updatedAt)}</span>
+                  <button onClick={() => startEdit(it)} title={t('common.edit', 'Edit')}
+                    className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)]"><Pencil size={13} /></button>
+                  <button onClick={() => removeEntry(it)} title={t('common.delete', 'Delete')}
+                    className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10"><Trash2 size={13} /></button>
                 </div>
-                <span className="text-[11px] text-[var(--faint)] shrink-0">{fmtAgo(it.updatedAt)}</span>
+                {edit?.id === it.id && (
+                  <div className="mt-3 pt-3 border-t border-[var(--line)] grid sm:grid-cols-2 gap-2">
+                    <Field label={t('cc.name', 'Name')}><Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
+                    <Field label={t('cc.version', 'Version')}><Input value={edit.version} onChange={(e) => setEdit({ ...edit, version: e.target.value })} /></Field>
+                    <div className="sm:col-span-2"><Field label={t('cc.description', 'Description')}><Textarea rows={2} value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field></div>
+                    <div className="sm:col-span-2"><Field label={t('cc.dlurl', 'Download URL')}><Input value={edit.url} onChange={(e) => setEdit({ ...edit, url: e.target.value })} placeholder="https://…" /></Field></div>
+                    <div className="sm:col-span-2"><Field label={t('cc.tags', 'Tags (comma-separated)')}><Input value={edit.tags} onChange={(e) => setEdit({ ...edit, tags: e.target.value })} /></Field></div>
+                    <div className="sm:col-span-2 flex gap-2">
+                      <Button size="sm" variant="primary" onClick={saveEdit}><Save size={13} /> {t('common.save', 'Save')}</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEdit(null)}>{t('common.cancel', 'Cancel')}</Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </Card>

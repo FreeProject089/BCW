@@ -699,6 +699,53 @@ export default async function catalogRoutes(app) {
     return { items };
   });
 
+  // Edit a published official entry. Until now the only way to fix a typo or a dead download
+  // link was to delete the entry and publish it again — which changes its id and loses its
+  // view/download counts.
+  //
+  // The download URL lives in a DIFFERENT place per kind, because each feed has its own
+  // payload shape: PLUGIN uses meta.download_url, APP uses meta.download.{url,file_type},
+  // THEME/PRESET use meta.url. Writing it to one fixed place would silently drop the link for
+  // the other two kinds, so the shape is preserved per kind and the rest of meta is kept.
+  app.patch('/admin/catalog/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      name: z.string().trim().min(2).max(120).optional(),
+      version: z.string().trim().max(24).optional(),
+      description: z.string().max(4000).optional(),
+      tags: z.array(z.string().max(40)).max(20).optional(),
+      url: z.string().trim().max(500).optional(),
+      status: z.enum(['PUBLISHED', 'HIDDEN']).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const item = await p.catalogItem.findUnique({ where: { id: req.params.id } });
+    if (!item) return reply.code(404).send({ error: 'not_found' });
+
+    const data = {};
+    for (const k of ['name', 'version', 'description', 'tags', 'status']) {
+      if (b.data[k] !== undefined) data[k] = b.data[k];
+    }
+    if (b.data.url !== undefined) {
+      const meta = { ...(item.meta || {}) };
+      const url = b.data.url.trim();
+      if (item.kind === 'PLUGIN') {
+        if (url) meta.download_url = url; else delete meta.download_url;
+      } else if (item.kind === 'APP') {
+        if (url) {
+          const ftype = /\.(zip|msi|exe)(\?|$)/i.exec(url)?.[1]?.toLowerCase() || 'exe';
+          meta.download = { ...(meta.download || {}), url, file_type: ftype };
+        } else delete meta.download;
+      } else if (url) meta.url = url; else delete meta.url;
+      data.meta = meta;
+    }
+    if (!Object.keys(data).length) return { ok: true, unchanged: true };
+    // The name is what the slug was built from, but the slug is NOT regenerated: it is the
+    // stable identity BMM and any existing deeplink resolve against. Renaming an entry must
+    // not break links that already point at it.
+    const updated = await p.catalogItem.update({ where: { id: item.id }, data });
+    return { ok: true, item: { id: updated.id, name: updated.name, version: updated.version, status: updated.status } };
+  });
+
   const GRACE_MS = 72 * 3600 * 1000; // 72h grace, in sync with the hosting-deletion policy
 
   // Schedule deletion: the item is unpublished now and hard-deleted (with its files)

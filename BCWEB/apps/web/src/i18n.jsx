@@ -669,6 +669,7 @@ const DICT = {
     'cc.cat.bmmapp': 'BMM · Apps', 'cc.cat.bmmplugin': 'BMM · Plugins',
     'cc.cat.bmmtheme': 'BMM · Thèmes', 'cc.cat.bsmpreset': 'BSM · Presets',
     'cc.contents': 'Déjà dans ce catalogue', 'cc.invalid': 'invalide',
+    'cc.hidden': 'masqué', 'cc.removed': 'Entrée retirée du catalogue.',
     'cc.empty.t': 'Rien de publié pour l’instant', 'cc.empty.s': 'Les entrées que tu publies ci-dessus apparaîtront ici.',
     'cc.title': 'Créer une entrée de catalogue officielle',
     'cc.sub': 'Publie instantanément (sans modération) et est marqué <b>Officiel</b>. BSM propose des presets ; BMM propose des apps, plugins et thèmes avec un deeplink <code>bmm://</code>.',
