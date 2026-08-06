@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { statfsSync } from 'node:fs';
-import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim } from '../lib/lib.mjs';
+import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPlan, GRANT_PLAN_NAME } from '../lib/lib.mjs';
 import { validatePromo, redeemPromoAtomic } from './promo.mjs';
 import { getActiveCampaign } from './campaigns.mjs';
 
@@ -228,19 +228,11 @@ export default async function hostingRoutes(app) {
   // Admin grants therefore go through a subscription like every other contribution, on a
   // dedicated inactive "Admin grant" plan that marks them as ours. No schema change, and
   // the derived value stays the single source of truth.
-  const ADMIN_GRANT_PLAN = 'Admin grant';
-  async function adminGrantPlan(p) {
-    const found = await p.hostingPlan.findFirst({ where: { name: ADMIN_GRANT_PLAN } });
-    return found || p.hostingPlan.create({ data: {
-      name: ADMIN_GRANT_PLAN, storageGB: 0, uploadLimitKbps: 8192, cpuShare: 0.5,
-      priceMonthlyCents: 0, active: false, // never offered for sale — a marker, not a product
-    } });
-  }
 
   // Move a pool to `targetBytes` by adjusting only OUR grant, leaving paid subscriptions
   // untouched. Returns an error string when the target is unreachable that way.
   async function setPoolStorage(p, group, targetBytes) {
-    const plan = await adminGrantPlan(p);
+    const plan = await grantPlan(p);
     const subs = await p.subscription.findMany({ where: { hostingGroupId: group.id, status: 'active' } });
     const grant = subs.find((s) => s.planId === plan.id);
     const paidBytes = subs.filter((s) => s.id !== grant?.id).reduce((a, s) => a + s.poolContribBytes, 0n);
@@ -282,10 +274,10 @@ export default async function hostingRoutes(app) {
         subscriptions: { select: { id: true, status: true, poolContribBytes: true, planId: true, currentPeriodEnd: true } },
       },
     });
-    const grantPlan = await p.hostingPlan.findFirst({ where: { name: ADMIN_GRANT_PLAN }, select: { id: true } });
+    const planRow = await p.hostingPlan.findFirst({ where: { name: GRANT_PLAN_NAME }, select: { id: true } });
     return { pools: groups.map((g) => {
       const allocated = [...g.repos, ...g.catalogs].reduce((a, x) => a + (x.storageQuotaBytes || 0n), 0n);
-      const grant = g.subscriptions.find((s) => s.status === 'active' && s.planId === grantPlan?.id);
+      const grant = g.subscriptions.find((s) => s.status === 'active' && s.planId === planRow?.id);
       return {
         id: g.id, name: g.name, freePlan: g.freePlan, createdAt: g.createdAt,
         owner: { id: g.owner.id, name: g.owner.displayName, email: g.owner.email },
@@ -316,7 +308,7 @@ export default async function hostingRoutes(app) {
       ? await p.user.findUnique({ where: { id: b.data.userId } })
       : b.data.email ? await p.user.findUnique({ where: { email: b.data.email } }) : null;
     if (!user) return reply.code(404).send({ error: 'unknown_user' });
-    const plan = await adminGrantPlan(p);
+    const plan = await grantPlan(p);
     // storageGB 0 here, then setPoolStorage for the exact figure. provisionHostingPool does
     // BigInt(plan.storageGB), and BigInt(1.5) THROWS — so a half-gigabyte grant would 500 if
     // the size went through that path. Zero is integral, and the resize is exact in bytes.

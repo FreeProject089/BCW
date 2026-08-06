@@ -557,7 +557,7 @@ const DICT = {
     // ── Admin : codes promo ──
     'pc.title': 'Codes promo', 'pc.sub': 'Codes de réduction, hébergement gratuit et boost — à usage unique ou limité, distincts des Promotions à l’échelle du site ci-dessus.', 'pc.created': 'Code {code} créé.',
     'pc.err.discount': 'Définis un % de réduction ou des mois gratuits.', 'pc.err.exists': 'Ce code existe déjà.', 'pc.err.storage': 'Définis le stockage (Go).', 'pc.err.boost': 'Définis les jours de boost.',
-    'pc.f.type': 'Type', 'pc.t.discount': 'Réduction (% / mois gratuits)', 'pc.t.hosting': 'Hébergement gratuit', 'pc.t.boost': 'Boost gratuit',
+    'pc.f.type': 'Type', 'pc.t.discount': 'Réduction (% / mois gratuits)', 'pc.t.hosting': 'Hébergement gratuit (un dépôt)', 'pc.t.pool': 'Pool de stockage gratuit', 'pc.t.boost': 'Boost gratuit',
     'pc.f.code': 'Code (vide = auto-généré)', 'pc.f.pctoff': '% de réduction', 'pc.f.freemonths': 'Premiers mois gratuits', 'pc.f.minterm': 'Durée min. (mois, 0 = toutes)',
     'pc.f.storage': 'Stockage Go', 'pc.f.upload': 'Envoi Mbps', 'pc.f.duration': 'Durée (mois, 0 = pour toujours)', 'pc.f.boostdays': 'Jours de boost',
     'pc.f.maxred': 'Utilisations max (vide = ∞)', 'pc.f.peruser': 'Limite par utilisateur', 'pc.f.note': 'Note (interne)', 'pc.f.note.ph': 'ex. promo de lancement',

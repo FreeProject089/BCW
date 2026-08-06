@@ -448,6 +448,23 @@ export async function pruneRevisions(p, delegate, where) {
   if (doomed.length) await delegate.deleteMany({ where: { id: { in: doomed } } });
 }
 
+/** The plan every GRANTED storage contribution is booked against — an admin gift, a promo
+ *  pool. It is never sold: `active: false` keeps it out of the plan list, and its only job is
+ *  to mark a Subscription as "not something the user paid for", which is what lets a resize
+ *  tell paid storage from granted storage.
+ *
+ *  It lives here rather than in hosting.mjs because promo.mjs needs it too, and hosting.mjs
+ *  already imports from promo.mjs — putting it there would close an import cycle. Both callers
+ *  must agree on the NAME, so there is exactly one copy of it. */
+export const GRANT_PLAN_NAME = 'Admin grant';
+export async function grantPlan(p) {
+  const found = await p.hostingPlan.findFirst({ where: { name: GRANT_PLAN_NAME } });
+  return found || p.hostingPlan.create({ data: {
+    name: GRANT_PLAN_NAME, storageGB: 0, uploadLimitKbps: 8192, cpuShare: 0.5,
+    priceMonthlyCents: 0, active: false,
+  } });
+}
+
 /** Persist a notification (used by moderation to tell the owner). */
 export async function notify(p, userId, kind, body) {
   try { await p.notification.create({ data: { userId, kind, body } }); } catch { /* non-fatal */ }

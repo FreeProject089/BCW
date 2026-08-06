@@ -253,7 +253,7 @@ const NOTIF_LINK = {
   hosting_started: '/dashboard?s=repos', hosting_online: '/dashboard?s=repos', hosting_stopped: '/dashboard?s=repos', hosting_expiring: '/dashboard?s=repos',
   feature_active: '/dashboard?s=repos', server_alert: '/admin?s=serverperf',
   creator_linked: '/profile', discord_linked: '/profile',
-  kofi_reward: '/dashboard', promo_redeemed: '/dashboard', discount: '/hosting', free_hosting: '/dashboard?s=repos', free_boost: '/dashboard?s=repos',
+  kofi_reward: '/dashboard', promo_redeemed: '/dashboard', discount: '/hosting', free_hosting: '/dashboard?s=repos', free_pool: '/dashboard?s=repos', free_boost: '/dashboard?s=repos',
 };
 
 function NavNotifications() {

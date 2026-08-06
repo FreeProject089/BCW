@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, notify } from '../lib/lib.mjs';
+import { db, requireRole, notify, grantPlan } from '../lib/lib.mjs';
 
 const GiB = 1024 ** 3;
 function genCode() {
@@ -106,7 +106,10 @@ export default async function promoRoutes(app) {
   app.post('/admin/promo', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
       code: z.string().min(3).max(40).optional(),
-      kind: z.enum(['discount', 'free_hosting', 'free_boost']),
+      // free_pool grants a storage POOL — the unit hosting actually uses now, fillable with
+      // repos AND catalogs. free_hosting predates pools and still grants a single solo repo;
+      // it is kept so existing codes in the wild keep working.
+      kind: z.enum(['discount', 'free_hosting', 'free_pool', 'free_boost']),
       percentOff: z.number().int().min(1).max(100).nullable().optional(),
       freeMonths: z.number().int().min(0).max(24).nullable().optional(),
       minMonths: z.number().int().min(1).max(24).nullable().optional(),
@@ -132,6 +135,7 @@ export default async function promoRoutes(app) {
     const d = b.data;
     if (d.kind === 'discount' && !d.percentOff && !d.freeMonths) return reply.code(400).send({ error: 'discount_needs_value' });
     if (d.kind === 'free_hosting' && !d.storageGB) return reply.code(400).send({ error: 'hosting_needs_storage' });
+    if (d.kind === 'free_pool' && !d.storageGB) return reply.code(400).send({ error: 'pool_needs_storage' });
     if (d.kind === 'free_boost' && !d.boostDays) return reply.code(400).send({ error: 'boost_needs_days' });
     const p = await db();
     const assignedUserIds = [...new Set((d.assignedUserIds || []).map((s) => s.trim()).filter(Boolean))];
@@ -221,7 +225,7 @@ export default async function promoRoutes(app) {
     // A hosted repo (even a free one from a promo) requires a linked BMM creator id —
     // same rule as paid hosting checkout, so a repo is never created for an unlinked
     // account. (free_boost only touches an EXISTING owned repo, so it's fine.)
-    if (peek.promo.kind === 'free_hosting' && await p.creatorLink.count({ where: { userId: req.user.uid } }) === 0) {
+    if (['free_hosting', 'free_pool'].includes(peek.promo.kind) && await p.creatorLink.count({ where: { userId: req.user.uid } }) === 0) {
       return reply.code(403).send({ error: 'creator_link_required' });
     }
 
@@ -235,6 +239,29 @@ export default async function promoRoutes(app) {
         } });
         return { kind: 'free_hosting', repoId: repo.id, detail: `free hosting ${promo.storageGB}GB → ${repo.name}` };
       }
+      // A pool, not a repo — the unit hosting uses now. The owner then puts repos and/or
+      // catalogs in it, instead of being handed one pre-made repo they may not want.
+      //
+      // The storage is booked as a Subscription on the shared grant plan, exactly like an
+      // admin gift, because HostingGroup.poolBytes is DERIVED: recomputePoolBytes() rewrites
+      // it from the active subscriptions whenever one changes, so a pool with no subscription
+      // behind it would silently collapse to 0 GB at the next recompute.
+      if (promo.kind === 'free_pool') {
+        const plan = await grantPlan(tx);
+        const bytes = BigInt(promo.storageGB) * BigInt(GiB); // storageGB is an int in the schema
+        const group = await tx.hostingGroup.create({ data: {
+          ownerId: req.user.uid, name: `promo-${Date.now().toString(36)}`, poolBytes: bytes,
+          uploadLimitKbps: (promo.uploadMbps || 8) * 1024, cpuShare: 0.5, freePlan: true,
+        } });
+        await tx.subscription.create({ data: {
+          userId: req.user.uid, hostingGroupId: group.id, planId: plan.id, status: 'active',
+          poolContribBytes: bytes,
+          // hostMonths = 0/absent means the grant does not expire; the sweeper only acts on
+          // subscriptions whose period has ended, so a far date is what "no expiry" looks like.
+          currentPeriodEnd: new Date(Date.now() + (promo.hostMonths || 1200) * 30 * 864e5),
+        } });
+        return { kind: 'free_pool', poolId: group.id, detail: `free pool ${promo.storageGB}GB → ${group.name}` };
+      }
       if (promo.kind === 'free_boost') {
         const repo = await tx.serverRepo.findUnique({ where: { id: b.data.repoId } });
         if (!repo || repo.ownerId !== req.user.uid) return { error: 'repo_not_found' };
@@ -246,10 +273,14 @@ export default async function promoRoutes(app) {
       return { error: 'unsupported' };
     });
     if (result.error) return reply.code(result.error === 'repo_not_found' ? 404 : 400).send({ error: result.error });
-    const msg = result.kind === 'free_hosting'
-      ? `Promo "${result.promo.code}" redeemed — a free ${result.promo.storageGB} GB hosted repo was created.`
-      : `Promo "${result.promo.code}" redeemed — a repo is boosted for ${result.promo.boostDays} days.`;
+    // Keyed on the kind rather than a two-way ternary: adding free_pool to that ternary would
+    // have described a new pool as "a repo is boosted for undefined days".
+    const msg = {
+      free_hosting: `Promo "${result.promo.code}" redeemed — a free ${result.promo.storageGB} GB hosted repo was created.`,
+      free_pool: `Promo "${result.promo.code}" redeemed — a free ${result.promo.storageGB} GB storage pool is ready. Add repos or catalogs to it.`,
+      free_boost: `Promo "${result.promo.code}" redeemed — a repo is boosted for ${result.promo.boostDays} days.`,
+    }[result.kind] || `Promo "${result.promo.code}" redeemed.`;
     await notify(p, req.user.uid, 'promo_redeemed', msg);
-    return { ok: true, kind: result.kind, repoId: result.repoId, featuredUntil: result.featuredUntil };
+    return { ok: true, kind: result.kind, repoId: result.repoId, poolId: result.poolId, featuredUntil: result.featuredUntil };
   });
 }

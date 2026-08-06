@@ -427,7 +427,7 @@ export default async function botRoutes(app) {
       discordId: z.string().min(5).max(32),
       message: z.string().max(1500).default(''),
       gift: z.object({
-        kind: z.enum(['discount', 'free_hosting', 'free_boost']),
+        kind: z.enum(['discount', 'free_hosting', 'free_pool', 'free_boost']),
         percentOff: z.number().int().min(1).max(100).optional(),
         freeMonths: z.number().int().min(0).max(24).optional(),
         storageGB: z.number().int().min(1).max(2000).optional(),
@@ -444,6 +444,7 @@ export default async function botRoutes(app) {
       const g = b.data.gift;
       if (g.kind === 'discount' && !g.percentOff && !g.freeMonths) return reply.code(400).send({ error: 'discount_needs_value' });
       if (g.kind === 'free_hosting' && !g.storageGB) return reply.code(400).send({ error: 'hosting_needs_storage' });
+      if (g.kind === 'free_pool' && !g.storageGB) return reply.code(400).send({ error: 'pool_needs_storage' });
       if (g.kind === 'free_boost' && !g.boostDays) return reply.code(400).send({ error: 'boost_needs_days' });
       // Assigning a gift code needs the recipient's BCWEB account (via their Discord link).
       const link = await p.discordLink.findUnique({ where: { discordId: b.data.discordId } });
@@ -512,7 +513,7 @@ export default async function botRoutes(app) {
 
   // ── Giveaways ──
   const giftShape = z.object({
-    kind: z.enum(['discount', 'free_hosting', 'free_boost']),
+    kind: z.enum(['discount', 'free_hosting', 'free_pool', 'free_boost']),
     percentOff: z.number().int().min(1).max(100).optional(),
     freeMonths: z.number().int().min(0).max(24).optional(),
     storageGB: z.number().int().min(1).max(2000).optional(),
