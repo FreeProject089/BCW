@@ -67,11 +67,12 @@
 :root {
   --primary: #f97316;
   --primary-2: #f59e0b;
-  /* Ink for text sitting ON the accent fill. It was #fff hardcoded in .btn-primary, which is
-     right for the default orange and wrong the moment the accent is light — a pastel site
-     theme (and several of the Pantone presets are pastels) gave white-on-pastel buttons. The
-     runtime theme injector recomputes this from the accent's luminance; this is the default. */
-  --on-primary: #ffffff;
+  /* Ink for text sitting ON the accent fill. It was #fff hardcoded in .btn-primary — 2.90:1
+     against the brand orange, below WCAG AA (4.5:1) and below even the large-text threshold.
+     Near-black is 6.55:1 on the same fill. The runtime theme injector recomputes this from
+     the accent's luminance; this default is the derived value for the built-in orange, so
+     the two agree and there is no flash of white text before /api/theme answers. */
+  --on-primary: #17140f;
   --primary-glow: rgba(249, 115, 22, 0.4);
   --ring: rgba(249, 115, 22, 0.55);
   /* Radius scale — 4px grid. */

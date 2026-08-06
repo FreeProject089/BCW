@@ -49,21 +49,17 @@ export function themeCss({ accent, accent2 }) {
     + `--glow-a:${rgba(accent, 0.15)};--glow-b:${rgba(a2, 0.12)};}`;
 }
 
-// The stylesheet's own values. While the site theme still matches these, NOTHING is injected.
+// Applied unconditionally, including for the built-in orange — which does change how primary
+// buttons have always looked, so the reasoning is worth recording.
 //
-// That is deliberate, and it is about --on-primary rather than the accent: the brand orange
-// against white text is 2.90:1, and deriving the ink would flip it to near-black at 6.55:1.
-// More readable — but it silently restyles every primary button on a site nobody asked to
-// restyle. So the built-in look is left exactly as it is, and the derived ink only applies
-// once a superadmin actually chooses a theme (where it is what stops a pastel preset from
-// shipping white-on-pastel buttons).
-const BUILT_IN = { accent: '#f97316', accent2: '#f59e0b' };
-
+// `.btn-primary` shipped white text on the brand orange. Measured, that is 2.90:1: below
+// WCAG AA for normal text (4.5:1) and below even the large-text threshold (3:1). Deriving the
+// ink flips it to near-black at 6.55:1. Gating the derivation to "only when someone picks a
+// custom theme" would have preserved the familiar look, but it would also have meant shipping
+// a known-unreadable default on purpose and applying the accessible rule only to other
+// people's colours. One rule, applied everywhere.
 export function applySiteTheme(theme) {
-  const t = theme || {};
-  const isBuiltIn = (t.accent || BUILT_IN.accent).toLowerCase() === BUILT_IN.accent
-    && (t.accent2 || BUILT_IN.accent2).toLowerCase() === BUILT_IN.accent2;
-  const css = isBuiltIn ? '' : themeCss(t);
+  const css = themeCss(theme || {});
   let el = document.getElementById('bcw-site-theme');
   if (!css) { el?.remove(); return; }
   if (!el) { el = document.createElement('style'); el.id = 'bcw-site-theme'; document.head.appendChild(el); }
