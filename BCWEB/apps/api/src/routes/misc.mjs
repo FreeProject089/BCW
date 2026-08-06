@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, requireCap, optionalAuth, slugify, logAudit, notify, clearAccountLockCache, clearUserCache, CAPABILITIES } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, clearAccountLockCache, clearUserCache, CAPABILITIES } from '../lib/lib.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
@@ -42,7 +42,76 @@ async function forwardContactToDiscord(msg) {
 // Public homepage counters — real DB counts, cached 60s so the landing page
 // can't hammer Postgres. Zeros are returned as-is (the client hides them).
 let _stats = null;
+// Everything currently waiting on a human, in one place.
+//
+// Each queue is gated on the capability that lets you ACT on it — a moderator who cannot
+// answer contact mail is not shown a contact backlog they can do nothing about, and the
+// counts never become a side channel for data the caller has no access to. `hasCap` is the
+// same predicate the individual routes use, so this cannot drift into being more permissive
+// than the pages it links to.
+//
+// Cheap by construction: counts are COUNT queries, and only a small, capped slice of rows is
+// fetched for the preview list. It is polled by the admin shell, so it must stay cheap.
+const PENDING_QUEUES = [
+  {
+    key: 'submissions', cap: 'manage_catalogs', to: '/admin?s=moderation',
+    count: (p) => p.catalogItem.count({ where: { status: 'PENDING' } }),
+    recent: (p) => p.catalogItem.findMany({
+      where: { status: 'PENDING' }, orderBy: { createdAt: 'desc' }, take: 5,
+      select: { id: true, name: true, kind: true, createdAt: true },
+    }).then((rows) => rows.map((r) => ({ id: r.id, title: r.name, sub: r.kind, at: r.createdAt }))),
+  },
+  {
+    key: 'reports', cap: 'manage_reports', to: '/admin?s=reports',
+    count: (p) => p.report.count({ where: { status: 'open' } }),
+    recent: (p) => p.report.findMany({
+      where: { status: 'open' }, orderBy: { createdAt: 'desc' }, take: 5,
+      select: { id: true, targetType: true, reason: true, createdAt: true },
+    }).then((rows) => rows.map((r) => ({ id: r.id, title: r.reason || r.targetType, sub: r.targetType, at: r.createdAt }))),
+  },
+  {
+    key: 'contact', cap: 'manage_users', to: '/admin?s=messages',
+    count: (p) => p.contactMessage.count({ where: { status: 'new' } }),
+    recent: (p) => p.contactMessage.findMany({
+      where: { status: 'new' }, orderBy: { createdAt: 'desc' }, take: 5,
+      select: { id: true, name: true, email: true, body: true, createdAt: true },
+    }).then((rows) => rows.map((r) => ({ id: r.id, title: r.name || r.email, sub: String(r.body || '').slice(0, 90), at: r.createdAt }))),
+  },
+  {
+    // staffUnread is the model's own "a user wrote and nobody has read it" flag — a far
+    // better signal than a status, which stays 'open' long after staff have replied.
+    key: 'myo', cap: 'manage_myo', to: '/admin?s=myo',
+    count: (p) => p.myoRequest.count({ where: { staffUnread: true, status: { notIn: ['cancelled', 'closed'] } } }),
+    recent: (p) => p.myoRequest.findMany({
+      where: { staffUnread: true, status: { notIn: ['cancelled', 'closed'] } },
+      orderBy: { lastActivityAt: 'desc' }, take: 5,
+      select: { id: true, name: true, status: true, lastActivityAt: true },
+    }).then((rows) => rows.map((r) => ({ id: r.id, title: r.name, sub: r.status, at: r.lastActivityAt }))),
+  },
+];
+
 export default async function miscRoutes(app) {
+  // What is waiting on staff right now. Drives the tab badges and the "Needs attention"
+  // section. MOD is the floor; each queue is then filtered by capability.
+  app.get('/admin/pending', { preHandler: requireCap('manage_users', 'MOD', 'ADMIN', 'SUPERADMIN') }, async (req) => {
+    const p = await db();
+    const allowed = PENDING_QUEUES.filter((q) => hasCap(req.user, q.cap));
+    const counts = {};
+    const results = await Promise.all(allowed.map(async (q) => {
+      // One failing queue must not blank the whole panel — a null count reads as "unknown"
+      // in the UI rather than as a reassuring zero.
+      try { return { key: q.key, to: q.to, n: await q.count(p), rows: await q.recent(p) }; }
+      catch { return { key: q.key, to: q.to, n: null, rows: [] }; }
+    }));
+    const items = [];
+    for (const r of results) {
+      counts[r.key] = r.n;
+      for (const row of r.rows) items.push({ ...row, queue: r.key, to: r.to });
+    }
+    items.sort((a, b) => new Date(b.at) - new Date(a.at));
+    return { counts, items: items.slice(0, 12), total: results.reduce((a, r) => a + (r.n || 0), 0) };
+  });
+
   app.get('/stats', async () => {
     if (_stats && Date.now() - _stats.at < 60_000) return _stats.data;
     const p = await db();

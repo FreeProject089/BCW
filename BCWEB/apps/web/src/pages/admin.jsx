@@ -81,11 +81,24 @@ export function Admin() {
   const canShowcaseTab = can('manage_showcase') || !!pg.allShowcase || (pg.showcaseIds?.length > 0);
   const canProjectsTab = can('manage_projects') || (pg.projectKeys?.length > 0);
   const queue = (subs.data?.submissions || []).filter((s) => !modPending.has(s.id));
+  // What is waiting on a human, refreshed on a slow poll so a badge appearing is the first
+  // thing you notice rather than something you find by opening every tab. The server filters
+  // each queue by capability, so a count here is always something this user can act on.
+  const pending = useAsync(() => api.get('/admin/pending'), []);
+  // useAsync builds `reload` fresh on every render, so depending on it would clear and
+  // recreate this interval each time — the 60s timer would restart on every keystroke
+  // elsewhere in the shell and, in practice, never mature. Hold the latest reload in a ref
+  // and set the interval up exactly once.
+  const pendingReload = useRef(pending.reload);
+  pendingReload.current = pending.reload;
+  useEffect(() => { const id = setInterval(() => pendingReload.current?.(), 60_000); return () => clearInterval(id); }, []);
+  const pc = pending.data?.counts || {};
   const [review, setReview] = useState(null);
   const raw = [
     { heading: t('adm.h.moderation', 'Moderation') },
+    isMod && { id: 'needs', label: t('adm.tab.needs', 'Needs attention'), icon: BellIcon, badge: pending.data?.total || undefined },
     isMod && { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: Inbox, badge: queue.length || undefined },
-    isMod && { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail },
+    isMod && { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
 
     { heading: t('adm.h.users', 'Users & access') },
     can('manage_users') && { id: 'users', label: t('adm.tab.users', 'Users'), icon: Users },
@@ -104,7 +117,7 @@ export function Admin() {
     can('manage_newsletter') && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
     can('manage_faq') && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
     can('manage_catalogs') && { id: 'commcatalogs', label: t('adm.tab.commcatalogs', 'Community catalogs'), icon: Layers },
-    can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: Inbox },
+    can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: Inbox, badge: pc.reports || undefined },
 
     { heading: t('adm.h.repos', 'Repos & hosting') },
     can('manage_repos') && { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
@@ -115,7 +128,7 @@ export function Admin() {
     can('manage_promotions') && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
     isAdmin && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon },
     can('manage_events') && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
-    can('manage_myo') && { id: 'myo', label: t('adm.tab.myo', 'Commissions'), icon: Wand2 },
+    can('manage_myo') && { id: 'myo', label: t('adm.tab.myo', 'Commissions'), icon: Wand2, badge: pc.myo || undefined },
 
     { heading: t('adm.h.integrations', 'Integrations') },
     isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
@@ -192,6 +205,7 @@ export function Admin() {
           </div> : <EmptyState icon={CheckCircle2} title={t('mod.empty.t', 'Queue is empty')} sub={t('mod.empty.s', 'Nothing waiting for review.')} />)}
           {review && <SubmissionReview sub={review} onClose={() => setReview(null)} onApprove={() => { approve(review); setReview(null); }} onReject={() => { reject(review); setReview(null); }} reload={subs.reload} />}
         </div>}
+        {s === 'needs' && <AdminNeedsAttention data={pending.data} loading={pending.loading} onReload={pending.reload} />}
         {s === 'messages' && <AdminMessages />}
         {s === 'users' && <AdminUsers />}
         {s === 'planusers' && <AdminPlanUsers />}
@@ -7872,6 +7886,80 @@ function AdminReportsConfig({ onClose }) {
 // Admin: what actually fills the Free-plan pool — every $0-provisioned pool/repo with
 // its owner. Makes the gauge auditable instead of a black box (root of the "70/10 GB
 // while empty" confusion: admin/promo repos used to be miscounted as free-plan usage).
+// Everything currently waiting on a human, in one tab.
+//
+// Its counts come from the server, which filters every queue by the capability that lets you
+// ACT on it — so a moderator is never shown a backlog they cannot touch, and a zero here
+// means "nothing for you", not "nothing at all".
+//
+// A count of `null` means that queue's query failed. It is rendered as "—", deliberately
+// distinct from 0: a broken query that displays a reassuring zero is worse than one that
+// admits it does not know.
+// The labels are functions rather than [key, fallback] pairs on purpose: i18n-check finds
+// keys by matching the literal text `t('...'`, so a key passed as data — or built from a
+// template string — is invisible to it and would sit in English forever with nothing to
+// flag it. Written this way, every key below is seen and required to have a French entry.
+const NEEDS_QUEUES = [
+  { key: 'submissions', to: '/admin?s=moderation', icon: Inbox, label: (t) => t('nq.submissions', 'Submissions to review'), chip: (t) => t('nq.k.submissions', 'Submission') },
+  { key: 'reports', to: '/admin?s=reports', icon: Flag, label: (t) => t('nq.reports', 'Open reports'), chip: (t) => t('nq.k.reports', 'Report') },
+  { key: 'contact', to: '/admin?s=messages', icon: Mail, label: (t) => t('nq.contact', 'Unread messages'), chip: (t) => t('nq.k.contact', 'Message') },
+  { key: 'myo', to: '/admin?s=myo', icon: Wand2, label: (t) => t('nq.myo', 'Commissions awaiting a reply'), chip: (t) => t('nq.k.myo', 'Commission') },
+];
+
+function AdminNeedsAttention({ data, loading, onReload }) {
+  const { t } = useI18n();
+  const counts = data?.counts || {};
+  const items = data?.items || [];
+  // Only the queues this account can act on come back from the server.
+  const shown = NEEDS_QUEUES.filter((q) => q.key in counts);
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <h2 className="font-semibold flex items-center gap-2 flex-1"><BellIcon size={16} className="text-[var(--primary-2)]" /> {t('adm.tab.needs', 'Needs attention')}</h2>
+        <Button size="sm" variant="ghost" onClick={() => onReload?.()}><RefreshCw size={13} /> {t('common.refresh', 'Refresh')}</Button>
+      </div>
+
+      {loading && !data ? <Loading /> : (
+        <>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mb-4">
+            {shown.map((q) => {
+              const n = counts[q.key];
+              return (
+                <Link key={q.key} to={q.to}>
+                  <Card className={`p-3.5 h-full transition-colors ${n > 0 ? 'border-[var(--primary)]/40' : ''} hover:border-[var(--primary)]`}>
+                    <div className="flex items-center gap-2 text-xs text-[var(--muted)] mb-1"><q.icon size={13} /> {q.label(t)}</div>
+                    <div className={`text-2xl font-semibold tabular-nums ${n > 0 ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`}>
+                      {n == null ? '—' : n}
+                    </div>
+                  </Card>
+                </Link>
+              );
+            })}
+          </div>
+
+          {items.length === 0 ? (
+            <EmptyState icon={CheckCircle2} title={t('nq.clear.t', 'Nothing waiting')} sub={t('nq.clear.s', 'Every queue you can act on is empty.')} />
+          ) : (
+            <Card className="divide-y divide-[var(--line)] overflow-hidden">
+              {items.map((it) => (
+                <Link key={`${it.queue}-${it.id}`} to={it.to} className="flex items-start gap-3 p-3 hover:bg-[var(--surface-2)]">
+                  <Badge tone="">{NEEDS_QUEUES.find((q) => q.key === it.queue)?.chip(t) || it.queue}</Badge>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{it.title}</div>
+                    {it.sub && <div className="text-xs text-[var(--muted)] truncate">{it.sub}</div>}
+                  </div>
+                  <span className="text-[11px] text-[var(--faint)] shrink-0">{fmtAgo(it.at)}</span>
+                </Link>
+              ))}
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function FreePoolBreakdown({ open, onClose }) {
   const { t } = useI18n();
   const [data, setData] = useState(null);
