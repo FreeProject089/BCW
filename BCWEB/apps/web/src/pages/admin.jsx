@@ -2860,6 +2860,11 @@ const ASSET_SLOTS = [
   { key: 'bsm-installer', kind: 'file', label: 'BSM installer' },
   { key: 'bi-installer', kind: 'file', label: 'BetterInstaller' },
   { key: 'bmm-update-manifest', kind: 'json', label: 'BMM update manifest' },
+  // The two files BetterInstaller's updater reads. installer.toml lists these exact URLs as
+  // mirrors, so filling both slots is what stops GitHub being a single point of failure for
+  // updating BMM. Upload Release/update.json and Release/bmm.bpkg from a release build.
+  { key: 'bmm-update-json', kind: 'json', label: 'BMM update.json (BetterInstaller)' },
+  { key: 'bmm-bpkg', kind: 'file', label: 'BMM package (.bpkg)' },
   { key: 'links.json', kind: 'json', label: 'links.json' },
   { key: 'contributors.json', kind: 'json', label: 'contributors.json' },
 ];
