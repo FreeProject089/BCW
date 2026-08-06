@@ -2844,12 +2844,20 @@ const ASSET_SLOTS = [
 function AdminAssets() {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/assets'), []);
-  const assets = data?.assets || [];
+  const assetsAll = data?.assets || [];
   const [newKey, setNewKey] = useState(''); const [newKind, setNewKind] = useState('file');
   const [editJson, setEditJson] = useState({}); // { [key]: draftString }
   const [busy, setBusy] = useState('');
   const fileRefs = useRef({});
-  const has = (k) => assets.some((a) => a.key === k);
+  // A brand-new key has no hidden <input> yet — those exist only for ASSET_SLOTS and for assets
+  // that already exist. createNew used to click fileRefs.current[key], which is undefined for a
+  // custom key, so `?.click()` silently did nothing: the picker never opened and the field was
+  // cleared, making it look as though a custom key was refused. One dedicated input fixes it.
+  const newFileRef = useRef(null);
+  const [pendingKey, setPendingKey] = useState('');
+  // assetsAll, not the filtered list: a key whose delete is still inside the undo window has NOT
+  // left the server yet, so offering to create it again would race the pending DELETE.
+  const has = (k) => assetsAll.some((a) => a.key === k);
   const publicUrl = (k) => `${location.origin}/api/assets/${k}`;
 
   const saveJson = async (key, label) => {
@@ -2867,16 +2875,21 @@ function AdminAssets() {
       toast.success(t('assets.uploaded', 'Uploaded “{n}”.').replace('{n}', file.name)); reload();
     } catch (x) { toast.error(x.data?.error || t('assets.uploadfail', 'Upload failed.')); } finally { setBusy(''); }
   };
-  const del = async (a) => {
-    if (!await dialog.confirm({ title: t('assets.del.t', 'Delete asset?'), body: t('assets.del.b', 'Remove “{k}” and its stored file. Apps pointing at it will fall back.').replace('{k}', a.key), okText: t('common.delete', 'Delete'), danger: true })) return;
-    try { await api.del(`/admin/assets/${encodeURIComponent(a.key)}`); toast.success(t('common.deleted', 'Deleted.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); }
-  };
+  // Delete through the shared undo window rather than a confirm dialog — useUndoableDelete is
+  // what the rest of this page uses, so the asset list behaves like every other admin list: the
+  // row goes immediately, the DELETE only fires when the window closes, and Undo means the
+  // server was never touched.
+  const undo = useUndoableDelete(reload);
+  const assets = assetsAll.filter((a) => !undo.pending.has(a.key));
+  const del = (a) => undo.del(a.key, () => api.del(`/admin/assets/${encodeURIComponent(a.key)}`),
+    t('assets.deleted', 'Deleted “{k}”.').replace('{k}', a.key));
+
   const createNew = async () => {
     const key = newKey.trim();
     if (!/^[a-zA-Z0-9._-]{1,64}$/.test(key)) return toast.error(t('assets.badkey', 'Key: letters, numbers, . _ - only.'));
     if (has(key)) return toast.error(t('assets.exists', 'That key already exists.'));
     if (newKind === 'json') { setEditJson((s) => ({ ...s, [key]: '{\n  \n}' })); await api.put(`/admin/assets/json/${encodeURIComponent(key)}`, { json: {} }).then(reload).catch(() => {}); }
-    else fileRefs.current[key]?.click();
+    else { setPendingKey(key); newFileRef.current?.click(); return; }   // keep newKey until the file lands
     setNewKey('');
   };
 
@@ -2906,6 +2919,14 @@ function AdminAssets() {
         <Field label={t('assets.kind', 'Type')}><Select value={newKind} onChange={(e) => setNewKind(e.target.value)} className="!w-auto"><option value="file">{t('assets.file', 'File')}</option><option value="json">{t('assets.json', 'JSON')}</option></Select></Field>
         <Button variant="primary" onClick={createNew}><Plus size={14} /> {t('assets.create', 'Create / upload')}</Button>
         {ASSET_SLOTS.map((sl) => <input key={sl.key} ref={(el) => (fileRefs.current[sl.key] = el)} type="file" className="hidden" onChange={(e) => { pickFile(sl.key, sl.label, e.target.files?.[0]); e.target.value = ''; }} />)}
+        {/* The one input a custom key uses. Cleared and reset after the pick either way, so
+            choosing the same file twice in a row still fires a change event. */}
+        <input ref={newFileRef} type="file" className="hidden" onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f && pendingKey) { pickFile(pendingKey, '', f); setNewKey(''); }
+          setPendingKey('');
+        }} />
       </Card>
 
       {assets.length === 0 ? <EmptyState icon={Download} title={t('assets.none', 'No assets yet')} sub={t('assets.none.s', 'Create one above or pick a standard slot.')} /> : (
