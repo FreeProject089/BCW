@@ -24,7 +24,7 @@ import { MarkdownEditor } from './blog.jsx';
 import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 import { AdminMyo } from './admin-myo.jsx';
-import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, SideDash } from './pages.jsx';
+import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash } from './pages.jsx';
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
 // actual api.del only fires once the 6s window elapses — Undo means nothing was ever deleted,
@@ -2981,7 +2981,10 @@ function AdminAssets() {
                 <div>
                   {editJson[a.key] != null ? (
                     <div className="space-y-2">
-                      <Textarea value={editJson[a.key]} onChange={(e) => setEditJson((s) => ({ ...s, [a.key]: e.target.value }))} className="!font-mono !text-xs" rows={10} />
+                      {/* These are the files the apps actually read (links.json, update.json).
+                          A plain textarea let a stray comma ship silently; JsonEditor colours
+                          the syntax and says valid/invalid as you type. */}
+                      <JsonEditor value={editJson[a.key]} onChange={(v) => setEditJson((s) => ({ ...s, [a.key]: v }))} minH={220} />
                       <div className="flex gap-2">
                         <Button size="sm" variant="primary" disabled={busy === a.key} onClick={() => saveJson(a.key, a.label)}><Save size={13} /> {t('common.save', 'Save')}</Button>
                         <Button size="sm" variant="ghost" onClick={() => setEditJson((s) => { const n = { ...s }; delete n[a.key]; return n; })}>{t('common.cancel', 'Cancel')}</Button>
@@ -3096,7 +3099,7 @@ function AdminProjects() {
       { errorFor: (x) => x.data?.error || t('common.savefail', 'Save failed.') });
   };
   const hint = (label, val) => <div><div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{label}</div><code className="text-[11px] text-[var(--muted)]">{val}</code></div>;
-  const taRef = useRef(null); const gutRef = useRef(null);
+  const taRef = useRef(null); const gutRef = useRef(null); const ovRef = useRef(null);
   const lineCount = (text.match(/\n/g) || []).length + 1;
   const M = isShowcase ? { icon: Sparkles, name: activeShow?.name || 'Project' } : PROJ_META[active];
   // Per-blog toggle: this project/page's posts always show on /blog, but only
@@ -3269,9 +3272,18 @@ function AdminProjects() {
           <>
             <div className="code-editor flex" style={{ height: 460 }}>
               <pre ref={gutRef} className="code-gutter" aria-hidden="true">{Array.from({ length: lineCount }, (_, i) => i + 1).join('\n')}</pre>
-              <textarea ref={taRef} className="code-area" value={text} spellCheck={false}
-                onChange={(e) => setText(e.target.value)}
-                onScroll={() => { if (gutRef.current && taRef.current) gutRef.current.scrollTop = taRef.current.scrollTop; }} />
+              {/* Prism paints the <pre>; the textarea above it keeps only its caret. Both share
+                  .code-area's metrics (see index.css) so the caret tracks the glyphs. */}
+              <div className="code-wrap">
+                <pre ref={ovRef} className="code-overlay" aria-hidden="true"
+                     dangerouslySetInnerHTML={{ __html: highlightJson(text) }} />
+                <textarea ref={taRef} className="code-area is-highlighted" value={text} spellCheck={false}
+                  onChange={(e) => setText(e.target.value)}
+                  onScroll={() => {
+                    if (gutRef.current && taRef.current) gutRef.current.scrollTop = taRef.current.scrollTop;
+                    if (ovRef.current && taRef.current) { ovRef.current.scrollTop = taRef.current.scrollTop; ovRef.current.scrollLeft = taRef.current.scrollLeft; }
+                  }} />
+              </div>
             </div>
             <div className="grid sm:grid-cols-3 gap-3 px-4 py-3 code-chrome">
               {hint('releaseNotes', '{ owner, repo, branch, path }')}

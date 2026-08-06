@@ -637,6 +637,22 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
 .code-gutter { margin: 0; padding: 14px 10px; text-align: right; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.6; user-select: none; overflow: hidden; min-width: 44px; border-right: 1px solid var(--line); }
 .code-area { flex: 1; resize: none; padding: 14px 16px; background: transparent; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.6; border: 0; outline: none; white-space: pre; overflow: auto; tab-size: 2; }
 .code-area::placeholder { color: var(--faint); }
+/* Prism layer for .code-area. A textarea cannot render markup, so the colours live in a <pre>
+   underneath and the textarea sits on top with transparent ink — only its caret and selection
+   show. Every property that affects where a glyph lands (font, size, line-height, padding,
+   white-space, tab-size) MUST match .code-area exactly, or the caret drifts from the text.
+   The overlay never scrolls itself; JS mirrors the textarea's scrollTop/scrollLeft. */
+.code-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
+.code-overlay { position: absolute; inset: 0; margin: 0; padding: 14px 16px; pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.6;
+  white-space: pre; overflow: hidden; tab-size: 2; background: transparent;
+  /* Explicit: characters Prism leaves untokenised (punctuation, stray text) would otherwise
+     inherit whatever the ancestor happens to set, and the textarea's own ink is transparent —
+     so an inherited dark colour makes them invisible rather than merely off-palette. */
+  color: var(--text); }
+.code-area.is-highlighted { position: relative; background: transparent; color: transparent; caret-color: var(--text); }
+/* Keep the selection visible against invisible text. */
+.code-area.is-highlighted::selection { background: color-mix(in srgb, var(--primary) 35%, transparent); color: transparent; }
 
 /* range slider (custom plan) */
 .bcw-range { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); outline: none; }

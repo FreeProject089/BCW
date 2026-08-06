@@ -156,7 +156,12 @@ const EDITOR_TEXT = 'px-3 py-2.5 font-mono text-xs leading-relaxed whitespace-pr
 
 /** JSON, highlighted with Prism into the classes prism-bmm.css already styles. Escaped first:
  *  this renders with dangerouslySetInnerHTML, and the value is whatever is being typed. */
-function highlightJson(src) {
+// Exported for the Projects-config editor, which has its own chrome (line gutter, fixed
+// height) and so reuses the highlighting rather than the whole JsonEditor.
+//
+// Safe for dangerouslySetInnerHTML: Prism.highlight() escapes the source it tokenises, and
+// the no-Prism fallback escapes explicitly. Nothing here interpolates raw input.
+export function highlightJson(src) {
   const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   try {
     if (Prism?.languages?.json) return Prism.highlight(src, Prism.languages.json, 'json');
