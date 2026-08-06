@@ -293,13 +293,27 @@ export function Modal({ open, onClose, title, icon: Icon, children, footer, widt
   const cardRef = useRef(null);
   const restoreRef = useRef(null);
   const titleId = useId();
+  // `onClose` must NOT be a dependency of the focus effect below, and this ref is why.
+  //
+  // Every call site passes an inline arrow (`onClose={() => setOpen(false)}`), so its identity
+  // changes on every render of the parent — and the field you are typing into keeps its value
+  // in that parent's state. With `onClose` in the deps, one keystroke meant: parent re-renders
+  // → deps changed → cleanup runs → `restoreRef.current.focus()` pulls focus OUT of the dialog
+  // → the effect re-runs and focuses the FIRST focusable element in it. So you typed one
+  // letter and had to click the field again. Every modal in the app, not just one.
+  //
+  // It also tore down the Escape listener and re-locked body scroll on every render, and reset
+  // `restoreRef` to whatever was focused mid-edit — so closing the dialog no longer returned
+  // focus where it came from.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     // Remember what had focus so we can restore it when the dialog closes (keyboard users
     // shouldn't be dumped back at the top of the page).
     restoreRef.current = document.activeElement;
     const onKey = (e) => {
-      if (e.key === 'Escape') { onClose?.(); return; }
+      if (e.key === 'Escape') { closeRef.current?.(); return; }
       if (e.key !== 'Tab') return;
       // Focus trap: keep Tab / Shift+Tab cycling inside the dialog.
       const f = cardRef.current?.querySelectorAll('a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])');
@@ -318,7 +332,7 @@ export function Modal({ open, onClose, title, icon: Icon, children, footer, widt
       document.body.style.overflow = '';
       restoreRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
   return createPortal(
     <div className="fixed inset-0 z-50 grid place-items-center p-4 anim-fade" style={{ background: 'rgba(4,5,8,0.62)', backdropFilter: 'blur(4px)' }} onMouseDown={onClose}>
