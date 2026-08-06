@@ -168,7 +168,11 @@ function OfficialSubmit({ onBack }) {
 // ── Path 2: host your OWN catalog (paid/mo for managed, free for raw) ──
 function HostCatalog({ onBack }) {
   const { t } = useI18n(); const toast = useToast(); const navigate = useNavigate();
-  const [form, setForm] = useState({ name: '', description: '', visibility: 'public', mode: 'raw' });
+  // `kind` is required, and used to be absent entirely: a catalog was created with no kind at
+  // all, so the feed fell back to APP and a plugin catalog answered `unsupported_type` for the
+  // only type it actually held. One catalog serves one type — BMM reads a separate URL per
+  // type, each with its own payload shape.
+  const [form, setForm] = useState({ name: '', description: '', visibility: 'public', mode: 'raw', kind: 'plugin' });
   const [rawFile, setRawFile] = useState(null);
   const [rawJson, setRawJson] = useState(null);
   const [pools, setPools] = useState(null);
@@ -195,7 +199,7 @@ function HostCatalog({ onBack }) {
 
   const create = () => {
     if (form.name.trim().length < 2) return toast.error(t('sub2.catname', 'A catalog name is required.'));
-    const body = { name: form.name.trim(), description: form.description.trim(), mode: form.mode, visibility: form.visibility };
+    const body = { name: form.name.trim(), description: form.description.trim(), mode: form.mode, visibility: form.visibility, kind: form.kind };
     if (form.mode === 'raw') { if (!rawJson) return toast.error(t('sub2.raw.need', 'Upload your catalog.json first.')); body.rawJson = rawJson; }
     else {
       if (!groupId) return toast.error(t('sub2.pool.need', 'Pick a storage pool (or buy one on the Hosting page).'));
@@ -233,6 +237,14 @@ function HostCatalog({ onBack }) {
           <Field label={t('sub2.visibility', 'Visibility')}><Select value={form.visibility} onChange={(e) => setForm({ ...form, visibility: e.target.value })}><option value="public">{t('sub2.public', 'Public (listed)')}</option><option value="private">{t('sub2.private', 'Private (invite only)')}</option></Select></Field>
         </div>
         <Field label={t('sub.desc', 'Description')}><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+
+        <Field label={t('sub2.kind', 'Catalog type')} hint={t('sub2.kind.h', 'A catalog serves one type. BMM reads plugins, themes and apps from separate URLs, each with its own format, so a mixed catalog is one no client can read — create a second catalog for another type.')}>
+          <Select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+            <option value="plugin">{t('sub2.k.plugin', 'Plugins')}</option>
+            <option value="theme">{t('sub2.k.theme', 'Themes')}</option>
+            <option value="app">{t('sub2.k.app', 'Apps')}</option>
+          </Select>
+        </Field>
 
         <Field label={t('sub2.mode', 'Hosting mode')}>
           <div className="grid sm:grid-cols-2 gap-2">

@@ -120,8 +120,22 @@ const rawFeedCount = (j) => (j && typeof j === 'object' && !Array.isArray(j)
 // explicit `select` asks for it too.
 export const catalogItemCount = (c) => (c.mode === 'raw' ? rawFeedCount(c.rawJson) : (c._count?.items ?? 0));
 
+// A catalog serves exactly ONE kind, and that is not a UI preference — it is what makes the
+// feed consumable at all. BMM reads a separate URL per type (plugin_catalog, apps_catalog,
+// themes) and each has its own payload shape, so a feed mixing apps and themes is a feed no
+// client can read: whichever type it asks for, half the catalog is invisible and the rest
+// comes back as an unsupported type.
+//
+// The column stays `kinds String[]` so no migration is needed and pre-existing rows keep
+// serving. The invariant lives at the API boundary instead: create/patch accept one kind and
+// write a single-element array, item upload refuses a foreign kind, and the feed refuses a
+// ?kind= that is not this catalog's. Legacy multi-kind rows read as their FIRST kind — they
+// keep working, and narrow to one the next time they are edited.
+export const catalogKind = (c) => String(c?.kinds?.[0] || 'app').toUpperCase();
+
 const ser = (c) => ({
-  id: c.id, name: c.name, slug: c.slug, description: c.description, kinds: c.kinds, mode: c.mode,
+  id: c.id, name: c.name, slug: c.slug, description: c.description,
+  kind: catalogKind(c), kinds: c.kinds, mode: c.mode,
   status: c.status, visibility: c.visibility, listed: c.listed, shareKey: c.shareKey,
   groupId: c.groupId, storageQuotaBytes: Number(c.storageQuotaBytes || 0n), storageUsedBytes: Number(c.storageUsedBytes || 0n),
   views: c.views, downloads: c.downloads, itemCount: catalogItemCount(c), createdAt: c.createdAt, updatedAt: c.updatedAt,
@@ -223,8 +237,15 @@ export default async function communityCatalogRoutes(app) {
     const denied = catalogGate(c, identity, globalPolicy, ownerPolicy, req.query?.k);
     if (denied) return reply.code(denied.code).send({ error: denied.error });
 
-    const reqKind = String(req.query?.kind || (c.kinds?.[0] || 'app')).toUpperCase();
-    const kind = KINDS.includes(reqKind) ? reqKind : 'APP';
+    // Default to the catalog's own kind, so the URL needs no ?kind= at all — that plain URL
+    // is what gets pasted into BMM. An explicit ?kind= for a different type used to fall back
+    // to APP and return an empty-but-successful feed, which reads as "the catalog is broken".
+    // Say what is actually wrong instead.
+    const own = catalogKind(c);
+    const reqKind = String(req.query?.kind || own).toUpperCase();
+    if (!KINDS.includes(reqKind)) return reply.code(400).send({ error: 'unsupported_type', supported: own });
+    if (reqKind !== own) return reply.code(404).send({ error: 'unsupported_type', supported: own });
+    const kind = own;
     const priv = c.visibility === 'private';
     reply.header('Cache-Control', priv || c.access?.bans ? 'private, no-store' : 'public, max-age=300');
     // Count a public feed hit as a view (not for private share-link traffic).
@@ -270,13 +291,20 @@ export default async function communityCatalogRoutes(app) {
       name: z.string().trim().min(2).max(80),
       description: z.string().max(2000).optional().default(''),
       mode: z.enum(['managed', 'raw']).default('managed'),
-      kinds: z.array(z.enum(['app', 'plugin', 'theme', 'preset'])).max(4).optional().default([]),
+      // One kind per catalog (see catalogKind). `kinds` is still accepted for older clients,
+      // but only as a single-element array — a mixed feed is rejected rather than stored and
+      // discovered to be unreadable later.
+      kind: z.enum(['app', 'plugin', 'theme', 'preset']).optional(),
+      // Accepted at up to 4 so an older client gets a NAMED error (mixed_kinds, below) instead
+      // of a blanket invalid_input it cannot act on; an empty array means "not specified".
+      kinds: z.array(z.enum(['app', 'plugin', 'theme', 'preset'])).max(4).optional(),
       visibility: z.enum(['public', 'private']).default('public'),
       groupId: z.string().optional(),
       storageGB: z.number().min(0.5).max(2000).optional().default(1),
       rawJson: rawFeedSchema.optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if ((b.data.kinds?.length || 0) > 1) return reply.code(400).send({ error: 'mixed_kinds' });
     const p = await db();
     // Hosting a catalog requires a linked BMM identity (creator id) — it's what gates
     // private access and identifies the author beyond an email. Staff are exempt.
@@ -301,7 +329,7 @@ export default async function communityCatalogRoutes(app) {
     let slug = base; for (let i = 2; await p.communityCatalog.findUnique({ where: { slug } }); i++) slug = `${base}-${i}`;
     const c = await p.communityCatalog.create({ data: {
       ownerId: req.user.uid, name: b.data.name, slug, description: b.data.description,
-      mode: b.data.mode, kinds: b.data.kinds, visibility: b.data.visibility,
+      mode: b.data.mode, kinds: [b.data.kind || b.data.kinds?.[0] || 'app'], visibility: b.data.visibility,
       listed: b.data.visibility === 'public', groupId, storageQuotaBytes: quotaBytes,
       freePlan: b.data.mode === 'raw',
       shareKey: crypto.randomBytes(12).toString('base64url'),
@@ -315,6 +343,9 @@ export default async function communityCatalogRoutes(app) {
     const b = z.object({
       name: z.string().trim().min(2).max(80).optional(),
       description: z.string().max(2000).optional(),
+      kind: z.enum(['app', 'plugin', 'theme', 'preset']).optional(),
+      // Accepted at up to 4 so an older client gets a NAMED error (mixed_kinds, below) instead
+      // of a blanket invalid_input it cannot act on; an empty array means "not specified".
       kinds: z.array(z.enum(['app', 'plugin', 'theme', 'preset'])).max(4).optional(),
       visibility: z.enum(['public', 'private']).optional(),
       listed: z.boolean().optional(),
@@ -322,10 +353,27 @@ export default async function communityCatalogRoutes(app) {
       rawJson: rawFeedSchema.optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if ((b.data.kinds?.length || 0) > 1) return reply.code(400).send({ error: 'mixed_kinds' });
     const p = await db();
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
     if (!c || (c.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role))) return reply.code(404).send({ error: 'not_found' });
     const data = { ...b.data };
+    // `kind` is the API's word for it; the column is `kinds`. Map it and drop the alias —
+    // Prisma rejects an unknown field, so leaving it in would fail the whole PATCH.
+    // An empty `kinds: []` means "unchanged", not "clear it" — a bare [] must not become the
+    // string "UNDEFINED" as the catalog's type.
+    if (data.kind || data.kinds?.length) {
+      const next = String(data.kind || data.kinds[0]).toUpperCase();
+      delete data.kind;
+      delete data.kinds;
+      // Re-typing a catalog that already holds items of another kind would orphan every one
+      // of them (the feed only ever emits the catalog's own kind). Make the caller empty it
+      // first rather than silently hiding its contents.
+      const foreign = await p.communityCatalogItem.count({ where: { catalogId: c.id, kind: { not: next } } });
+      if (foreign) return reply.code(409).send({ error: 'kind_has_items', kind: catalogKind(c), foreign });
+      data.kinds = [next.toLowerCase()];
+    } else delete data.kinds; // a bare [] would blank the type on an untouched field
+
     // A private catalog is never publicly listed, whatever `listed` said.
     if (data.visibility === 'private') data.listed = false;
     if (data.rawJson && c.mode !== 'raw') delete data.rawJson;
@@ -371,6 +419,10 @@ export default async function communityCatalogRoutes(app) {
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
     if (!c || c.ownerId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
     if (c.mode !== 'managed') return reply.code(400).send({ error: 'not_managed' });
+    // One catalog, one kind. Accepting a theme into an app catalog "works" — right up to the
+    // point where the feed emits only apps and the theme is simply gone, with nothing to
+    // explain where it went. Refuse it at upload, where the author can still act on it.
+    if (b.data.kind !== catalogKind(c)) return reply.code(409).send({ error: 'kind_mismatch', expected: catalogKind(c) });
     // Defence in depth: a payloadKey must be one the caller themselves uploaded (presign
     // returns `uploads/<uid>/…`), never an arbitrary object key pointing at someone else's
     // upload — otherwise the gated /dl route could presign+serve another user's object.

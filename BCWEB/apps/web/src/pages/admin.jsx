@@ -7300,20 +7300,23 @@ export function OwnerCatalogs() {
 function OwnerCatalogItems({ catalog, onChange }) {
   const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get(`/me/catalogs/${catalog.id}`), [catalog.id]);
-  const [f, setF] = useState({ kind: 'PLUGIN', name: '', url: '' });
+  const [f, setF] = useState({ name: '', url: '' });
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(() => new Set());
   const fileRef = useRef(null);
+  // The catalog's own kind — every item takes it. `kind` comes from the API; `kinds[0]` is
+  // the fallback for a catalog serialised before that field existed.
+  const itemKind = String(catalog.kind || catalog.kinds?.[0] || 'APP').toUpperCase();
   const items = (data?.catalog?.items || []).filter((it) => !hidden.has(it.id));
   const add = async () => {
     if (f.name.trim().length < 1) return toast.error(t('oc.it.name', 'Name required.'));
     setBusy(true);
     try {
       let payloadKey, payloadSize;
-      if (file) { payloadKey = await uploadPayload(f.kind, file); payloadSize = file.size; }
+      if (file) { payloadKey = await uploadPayload(itemKind, file); payloadSize = file.size; }
       await api.post(`/me/catalogs/${catalog.id}/items`, {
-        kind: f.kind, name: f.name.trim(),
+        kind: itemKind, name: f.name.trim(),
         payloadKey, payloadSize,
         meta: (!file && f.url) ? { download_url: f.url.trim() } : {},
       });
@@ -7348,7 +7351,10 @@ function OwnerCatalogItems({ catalog, onChange }) {
           ))}
         </div>}
         <div className="flex flex-wrap items-end gap-2">
-          <Select className="!w-auto" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="PLUGIN">Plugin</option><option value="THEME">Theme</option><option value="APP">App</option></Select>
+          {/* Not a choice. A catalog serves one kind, so every item in it has that kind by
+              definition — offering a picker here only invited an item the feed would refuse
+              to emit (the API now answers kind_mismatch). Shown, not selectable. */}
+          <Badge tone="primary" title={t('oc.it.kindfixed', 'This catalog serves one type; every item uses it.')}>{KIND_LABEL[itemKind] || itemKind}</Badge>
           <Input className="flex-1 min-w-[120px]" placeholder={t('sub.name', 'Name')} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
           {!file && <Input className="flex-1 min-w-[160px]" placeholder="https://…/download" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />}
           {file && <span className="text-xs text-[var(--muted)] flex items-center gap-1 min-w-0"><Upload size={12} /> <span className="truncate max-w-[160px]">{file.name}</span> ({fmtBytes(file.size)}) <button onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="hover:text-red-400"><X size={12} /></button></span>}
