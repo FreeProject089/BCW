@@ -22,6 +22,7 @@ guides/
 | **Point a domain at it / fix HTTPS** | Domain & HTTPS | [EN](run/DOMAIN_SETUP_EN.md) | [FR](run/DOMAIN_SETUP_FR.md) |
 | **Understand the Docker setup** (services, volumes, updating prod) | Docker | [EN](run/DOCKER_EN.md) | [FR](run/DOCKER_FR.md) |
 | **Not lose data** (backup, restore, off-site, cron) | Backup & restore | [EN](run/BACKUP_EN.md) | [FR](run/BACKUP_FR.md) |
+| **Decide how many machines** (1 VPS, DB on its own, several web hosts) | Topology | [EN](run/TOPOLOGY_EN.md) | [FR](run/TOPOLOGY_FR.md) |
 | **Scale it up** (CDN, PgBouncer, replicas, R2, separate DB) | Add-ons | [EN](run/ADDONS_EN.md) | [FR](run/ADDONS_FR.md) |
 | **Ship app updates through BCWEB** (BMM/BSM release feeds) | Auto-updates | [EN](run/AUTO_UPDATE_EN.md) | [FR](run/AUTO_UPDATE_FR.md) |
 | **Use the site as a member** | User guide | [EN](use/USER_GUIDE_EN.md) | [FR](use/USER_GUIDE_FR.md) |
