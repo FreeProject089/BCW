@@ -133,6 +133,33 @@ export const catalogItemCount = (c) => (c.mode === 'raw' ? rawFeedCount(c.rawJso
 // keep working, and narrow to one the next time they are edited.
 export const catalogKind = (c) => String(c?.kinds?.[0] || 'app').toUpperCase();
 
+// What a visitor may see of a catalog's contents, for both storage modes. A raw catalog keeps
+// its entries in the uploaded feed and a managed one in the items table, but a reader should
+// not have to know which — so both normalise to the same shape.
+//
+// Whitelisted field by field rather than spread: a raw feed is arbitrary author-supplied JSON
+// (rawFeedSchema passthrough), so spreading it would publish whatever happened to be in there.
+function publicContents(c) {
+  if (c.mode === 'raw') {
+    const raw = c.rawJson || {};
+    const kind = catalogKind(c);
+    const list = raw.plugins || raw.themes || raw.apps || [];
+    return list.slice(0, 300).map((e, i) => ({
+      id: `raw-${i}`, kind,
+      name: String(e?.name ?? e?.title ?? e?.id ?? '—').slice(0, 120),
+      version: String(e?.version ?? '').slice(0, 24),
+      description: String(e?.description ?? '').slice(0, 400),
+      tags: Array.isArray(e?.tags) ? e.tags.slice(0, 8).map((x) => String(x).slice(0, 40)) : [],
+      external: true,
+    }));
+  }
+  return (c.items || []).map((it) => ({
+    id: it.id, kind: it.kind, name: it.name, slug: it.slug, version: it.version,
+    description: String(it.description || '').slice(0, 400), tags: it.tags || [],
+    downloads: it.downloads ?? 0, size: it.payloadSize ?? 0, updatedAt: it.updatedAt,
+  }));
+}
+
 const ser = (c) => ({
   id: c.id, name: c.name, slug: c.slug, description: c.description,
   kind: catalogKind(c), kinds: c.kinds, mode: c.mode,
@@ -158,7 +185,15 @@ export default async function communityCatalogRoutes(app) {
   // ── Public: a community catalog's metadata (for its /c/:slug page) ──
   app.get('/c/:slug', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
-    const c = await p.communityCatalog.findUnique({ where: { slug: req.params.slug }, include: { owner: { select: { displayName: true } }, items: { select: { kind: true } }, _count: { select: { items: true } } } });
+    // The page listed a catalog's name and a download button but never what was IN it — you
+    // had to fetch the feed by hand to find out. Pull enough of each item to show a contents
+    // list. Deliberately NOT payloadKey: that is the storage object, never public.
+    const c = await p.communityCatalog.findUnique({ where: { slug: req.params.slug }, include: {
+      owner: { select: { displayName: true } },
+      items: { select: { id: true, kind: true, name: true, slug: true, version: true, description: true, tags: true, downloads: true, payloadSize: true, updatedAt: true },
+               orderBy: [{ downloads: 'desc' }, { name: 'asc' }], take: 300 },
+      _count: { select: { items: true } },
+    } });
     if (!isServable(c)) return reply.code(404).send({ error: 'not_found' });
     const [globalPolicy, ownerPolicy, identity] = await Promise.all([
       getGlobalAccessPolicy(p), getUserAccessPolicy(p, c.ownerId), resolveClientIdentity(p, req),
@@ -178,7 +213,7 @@ export default async function communityCatalogRoutes(app) {
     ]);
     return { catalog: {
       ...ser(c), owner: c.owner?.displayName, ownerId: c.ownerId, ownerBcId: userBcId(c.ownerId), kindsPresent: [...present],
-      favoriteCount, favorited: !!mine,
+      favoriteCount, favorited: !!mine, items: publicContents(c),
       private: c.visibility === 'private', keySuffix: c.visibility === 'private' && req.query?.k ? `?k=${encodeURIComponent(String(req.query.k))}` : '',
     } };
   });

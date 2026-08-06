@@ -41,7 +41,12 @@ export default function CommunityCatalogPage() {
 
   const feedUrl = (kind) => `${location.origin}/api/c/${cat.slug}/catalog.json?kind=${KIND_FEED[kind]}${cat.keySuffix ? `&k=${encodeURIComponent(k)}` : ''}`;
   const deeplink = (kind) => `bmm://catalog/${KIND_FEED[kind]}/add-source?url=${encodeURIComponent(feedUrl(kind))}`;
-  const kinds = (cat.kindsPresent || []).filter((kk) => kk !== 'PRESET'); // presets aren't BMM add-source
+  // A catalog serves exactly one kind, and the feed answers `unsupported_type` for any other —
+  // so offering a button per kind PRESENT would show buttons that 404 on a legacy multi-kind
+  // row. Trust the catalog's own kind, and fall back to kindsPresent only if it has none.
+  const own = String(cat.kind || '').toUpperCase();
+  const kinds = (own ? [own] : (cat.kindsPresent || [])).filter((kk) => kk && kk !== 'PRESET'); // presets aren't BMM add-source
+  const contents = cat.items || [];
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -78,6 +83,44 @@ export default function CommunityCatalogPage() {
           })}
         </div>
       )}
+      {/* What is actually in it. The page used to show a name, a count and a download button
+          and nothing else — you had to open the raw feed to find out what you were adding. */}
+      {contents.length > 0 && (
+        <div className="mt-6">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
+            {t('ccp.contents', 'What’s inside')} <span className="text-[var(--muted)] normal-case tracking-normal">· {cat.itemCount} {t('cc.items', 'items')}</span>
+          </div>
+          <Card className="divide-y divide-[var(--line)] overflow-hidden">
+            {contents.map((it) => (
+              <div key={it.id} className="p-3 flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium truncate">{it.name}</span>
+                    {it.version && <span className="text-[11px] font-mono text-[var(--faint)]">v{it.version}</span>}
+                  </div>
+                  {it.description && <p className="text-xs text-[var(--muted)] mt-0.5 line-clamp-2">{it.description}</p>}
+                  {it.tags?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {it.tags.slice(0, 6).map((tag) => <Badge key={tag} tone="">{tag}</Badge>)}
+                    </div>
+                  )}
+                </div>
+                <div className="text-[11px] text-[var(--faint)] text-right shrink-0 space-y-0.5">
+                  {it.downloads > 0 && <div className="flex items-center gap-1 justify-end"><Download size={10} /> {it.downloads}</div>}
+                  {it.size > 0 && <div>{(it.size / 1048576).toFixed(1)} MB</div>}
+                  {it.external && <div className="italic">{t('ccp.extern', 'external link')}</div>}
+                </div>
+              </div>
+            ))}
+          </Card>
+          {cat.itemCount > contents.length && (
+            <p className="text-[11px] text-[var(--faint)] mt-1.5">
+              {t('ccp.more', 'Showing the first {n} — open the feed for the full list.').replace('{n}', contents.length)}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="mt-6"><Link to="/catalog" className="text-sm text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><Link2 size={14} /> {t('ccp.browse', 'Browse all catalogs')}</Link></div>
     </div>
   );

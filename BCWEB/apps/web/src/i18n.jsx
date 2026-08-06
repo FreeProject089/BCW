@@ -1610,6 +1610,9 @@ const DICT = {
     'ccp.banned.t': 'Accès bloqué', 'ccp.banned.s': 'Tu n’es pas autorisé à voir ce catalogue.',
     'ccp.gone.t': 'Catalogue introuvable', 'ccp.gone.s': 'Il a peut-être été retiré ou suspendu.',
     'ccp.empty.t': 'Rien à ajouter pour l’instant', 'ccp.empty.s': 'Ce catalogue n’a pas encore de contenu importable dans BMM.',
+    'ccp.contents': 'Ce qu’il contient',
+    'ccp.extern': 'lien externe',
+    'ccp.more': 'Les {n} premiers — ouvre le feed pour la liste complète.',
     'ccp.addto': 'Ajouter à BetterModsManager', 'ccp.addbmm': 'Ajouter à BMM', 'ccp.copyurl': 'Copier l’URL du feed', 'ccp.view': 'Voir le feed', 'ccp.browse': 'Parcourir tous les catalogues',
     'ccp.kind.plugin': 'Plugins', 'ccp.kind.theme': 'Thèmes', 'ccp.kind.app': 'Apps', 'ccp.kind.preset': 'Presets',
 
