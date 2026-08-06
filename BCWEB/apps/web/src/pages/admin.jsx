@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink
+  Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -12,6 +12,8 @@ import { createRoot } from 'react-dom/client';
 import { KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
 import Avatar from '../ui/Avatar.jsx';
+import { THEME_PRESETS } from '../ui/theme-presets.js';
+import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
 import { useAuth } from './auth.jsx';
 import { utilAllowed, effectiveCaps } from '../lib/roles.js';
 import { readLayout, navAlignClass } from '../lib/navLayout.js';
@@ -145,6 +147,9 @@ export function Admin() {
     { heading: t('adm.h.settings', 'Settings') },
     isAdmin && { id: 'navui', label: t('adm.tab.navui', 'Topbar navigation'), icon: Navigation },
     isAdmin && { id: 'settings', label: t('adm.tab.settings', 'Settings'), icon: Sliders },
+    // Site theme changes what EVERY visitor sees, so it sits a tier above the per-project
+    // settings an ADMIN manages.
+    isSuperAdmin && { id: 'sitetheme', label: t('adm.tab.sitetheme', 'Site theme'), icon: Palette },
   ].filter(Boolean);
   // Drop group headings whose whole group is hidden (no visible tab follows before the
   // next heading / the end) — so a granted non-admin sees only their sections.
@@ -241,6 +246,7 @@ export function Admin() {
         {s === 'reviews' && <AdminReviews />}
         {s === 'navui' && <AdminNav />}
         {s === 'settings' && <AdminSettings />}
+        {s === 'sitetheme' && <AdminSiteTheme />}
       </>)}
     </SideDash>
   );
@@ -8026,7 +8032,7 @@ function AdminReportsConfig({ onClose }) {
 // flag it. Written this way, every key below is seen and required to have a French entry.
 const NEEDS_QUEUES = [
   { key: 'submissions', to: '/admin?s=moderation', icon: Inbox, label: (t) => t('nq.submissions', 'Submissions to review'), chip: (t) => t('nq.k.submissions', 'Submission') },
-  { key: 'reports', to: '/admin?s=reports', icon: Flag, label: (t) => t('nq.reports', 'Open reports'), chip: (t) => t('nq.k.reports', 'Report') },
+  { key: 'reports', to: '/admin?s=reports', icon: Inbox, label: (t) => t('nq.reports', 'Open reports'), chip: (t) => t('nq.k.reports', 'Report') },
   { key: 'contact', to: '/admin?s=messages', icon: Mail, label: (t) => t('nq.contact', 'Unread messages'), chip: (t) => t('nq.k.contact', 'Message') },
   { key: 'myo', to: '/admin?s=myo', icon: Wand2, label: (t) => t('nq.myo', 'Commissions awaiting a reply'), chip: (t) => t('nq.k.myo', 'Commission') },
 ];
@@ -8081,6 +8087,107 @@ function AdminNeedsAttention({ data, loading, onReload }) {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// SUPERADMIN: the accent every visitor sees, in both light and dark.
+//
+// Deliberately small. The stylesheet defines ~40 tokens per mode; exposing all of them would
+// be a way to make the site unreadable in one click. Light and dark share their accent (the
+// dark block never redefines --primary), so one colour pair recolours both — which is what
+// "theme the site" means here in practice.
+//
+// The preview is not a mock-up: it calls the SAME themeCss() the live site applies, scoped to
+// a container, so what you see is what visitors get.
+function AdminSiteTheme() {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/theme'), []);
+  const [f, setF] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data?.theme) setF(data.theme); }, [data]);
+
+  if (loading || !f) return <Loading />;
+
+  const ink = inkOn(f.accent || '#f97316');
+  // Contrast of the button ink against the accent, measured — not eyeballed. Several of the
+  // Pantone presets are pastels, where white text fails outright; the ink flips automatically,
+  // and this says whether the result actually clears WCAG's 4.5:1 for body-size text.
+  const ratio = contrastRatio(f.accent || '#f97316', ink);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.put('/admin/theme', { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '' });
+      applySiteTheme(f); // take effect here immediately rather than on the next reload
+      toast.success(t('st.saved', 'Site theme updated for everyone.'));
+      reload();
+    } catch (x) { toast.error(x.data?.error || t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const pick = (p) => setF({ ...f, accent: p.accent, accent2: p.accent2, preset: p.id });
+
+  return (
+    <div>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Palette size={16} className="text-[var(--primary-2)]" /> {t('adm.tab.sitetheme', 'Site theme')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('st.sub', 'The accent colour every visitor sees, in both light and dark. Only a superadmin can change it.')}</p>
+
+      <Card className="p-4 mb-4">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2.5">{t('st.presets', 'Presets')}</div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {THEME_PRESETS.map((p) => (
+            <button key={p.id} type="button" onClick={() => pick(p)}
+              className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-colors ${f.preset === p.id ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+              <span className="w-9 h-9 rounded-lg shrink-0" style={{ background: `linear-gradient(120deg, ${p.accent}, ${p.accent2})` }} />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium truncate">{p.name}</span>
+                <span className="block text-[11px] text-[var(--faint)] truncate">{p.sub}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-[var(--faint)] mt-2.5">{t('st.pantonenote', 'Pantone names are used as labels only — these hex values are the widely-published approximations of each Color of the Year, not licensed Pantone data. Use a real Pantone reference for anything colour-critical.')}</p>
+      </Card>
+
+      <Card className="p-4 mb-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label={t('st.accent', 'Accent')}>
+            <div className="flex items-center gap-2">
+              <input type="color" value={f.accent} onChange={(e) => setF({ ...f, accent: e.target.value, preset: '' })} className="w-10 h-9 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer" />
+              <Input className="!w-28 font-mono" value={f.accent} onChange={(e) => setF({ ...f, accent: e.target.value, preset: '' })} />
+            </div>
+          </Field>
+          <Field label={t('st.accent2', 'Second accent (gradient)')}>
+            <div className="flex items-center gap-2">
+              <input type="color" value={f.accent2} onChange={(e) => setF({ ...f, accent2: e.target.value, preset: '' })} className="w-10 h-9 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer" />
+              <Input className="!w-28 font-mono" value={f.accent2} onChange={(e) => setF({ ...f, accent2: e.target.value, preset: '' })} />
+            </div>
+          </Field>
+          <Field label={t('st.mode', 'Default mode for new visitors')} hint={t('st.modehint', 'Anyone who has used the toggle keeps their own choice.')}>
+            <Select value={f.mode} onChange={(e) => setF({ ...f, mode: e.target.value })} className="!w-auto">
+              <option value="light">{t('st.light', 'Light')}</option>
+              <option value="dark">{t('st.dark', 'Dark')}</option>
+            </Select>
+          </Field>
+          <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={14} /> {t('st.apply', 'Apply to the whole site')}</>}</Button>
+        </div>
+      </Card>
+
+      {/* The preview applies the real themeCss to a scoped container. */}
+      <Card className="p-4">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2.5">{t('st.preview', 'Preview')}</div>
+        <style>{themeCss(f).replace(':root{', '#st-preview{')}</style>
+        <div id="st-preview" className="rounded-xl border border-[var(--line)] p-4 flex flex-wrap items-center gap-3">
+          <button className="btn btn-primary btn-sm">{t('st.samplebtn', 'Primary button')}</button>
+          <span className="gradient-text text-lg font-semibold">{t('st.sampletext', 'Gradient heading')}</span>
+          <span className="px-2 py-0.5 rounded-md text-xs" style={{ background: 'var(--primary)', color: 'var(--on-primary)' }}>Badge</span>
+        </div>
+        <div className={`text-[11px] mt-2 ${ratio >= 4.5 ? 'text-emerald-400' : 'text-amber-400'}`}>
+          {ratio >= 4.5
+            ? t('st.contrastok', 'Button text contrast {n}:1 — clears WCAG AA (4.5:1).').replace('{n}', ratio.toFixed(2))
+            : t('st.contrastlow', 'Button text contrast {n}:1 — below WCAG AA (4.5:1). The ink already flipped to its best option; this accent is simply hard to write on.').replace('{n}', ratio.toFixed(2))}
+        </div>
+      </Card>
     </div>
   );
 }

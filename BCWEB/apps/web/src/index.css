@@ -67,6 +67,11 @@
 :root {
   --primary: #f97316;
   --primary-2: #f59e0b;
+  /* Ink for text sitting ON the accent fill. It was #fff hardcoded in .btn-primary, which is
+     right for the default orange and wrong the moment the accent is light — a pastel site
+     theme (and several of the Pantone presets are pastels) gave white-on-pastel buttons. The
+     runtime theme injector recomputes this from the accent's luminance; this is the default. */
+  --on-primary: #ffffff;
   --primary-glow: rgba(249, 115, 22, 0.4);
   --ring: rgba(249, 115, 22, 0.55);
   /* Radius scale — 4px grid. */
@@ -175,7 +180,7 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   }
   .btn:not(.btn-primary)[aria-busy="true"]::after { border-color: var(--text); border-top-color: transparent; }
   .btn-primary {
-    border: 1px solid transparent; color: #fff;
+    border: 1px solid transparent; color: var(--on-primary);
     background: linear-gradient(120deg, var(--primary), var(--primary-2));
     box-shadow: 0 8px 22px -8px var(--primary-glow);
   }

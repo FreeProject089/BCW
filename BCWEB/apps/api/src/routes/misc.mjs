@@ -90,7 +90,47 @@ const PENDING_QUEUES = [
   },
 ];
 
+// ── Site theme (SUPERADMIN) ────────────────────────────────────────────────────────────
+//
+// Deliberately NOT a full palette editor. The stylesheet defines ~40 tokens per mode and
+// exposing all of them would be a way to make the site unreadable in one click. Light and
+// dark already share their accent — the dark block never redefines --primary — so ONE colour
+// pair recolours the brand across both modes, which is the whole of what "theme the site"
+// usually means here.
+//
+// `mode` is the default a first-time visitor gets; anyone who has used the toggle keeps their
+// own choice (it lives in localStorage and wins).
+const THEME_KEY = 'site.theme';
+const HEX = /^#[0-9a-fA-F]{6}$/;
+const THEME_DEFAULTS = { accent: '#f97316', accent2: '#f59e0b', mode: 'light', preset: '' };
+
 export default async function miscRoutes(app) {
+  // Public: every visitor reads this to paint the site. Cheap and cacheable.
+  app.get('/theme', async (req, reply) => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: THEME_KEY } });
+    reply.header('Cache-Control', 'public, max-age=60');
+    return { theme: { ...THEME_DEFAULTS, ...(row?.value || {}) } };
+  });
+
+  // SUPERADMIN only. This changes what every visitor sees, which is a different class of
+  // action from the per-project settings an ADMIN manages — hence the higher bar.
+  app.put('/admin/theme', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
+    const b = z.object({
+      accent: z.string().regex(HEX).optional(),
+      accent2: z.string().regex(HEX).optional(),
+      mode: z.enum(['light', 'dark']).optional(),
+      preset: z.string().max(60).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: THEME_KEY } });
+    const value = { ...THEME_DEFAULTS, ...(row?.value || {}), ...b.data };
+    await p.adminSetting.upsert({ where: { key: THEME_KEY }, create: { key: THEME_KEY, value }, update: { value } });
+    await logAudit(p, req.user.uid, 'site.theme', `accent=${value.accent} accent2=${value.accent2} mode=${value.mode} preset=${value.preset || '-'}`);
+    return { ok: true, theme: value };
+  });
+
   // What is waiting on staff right now. Drives the tab badges and the "Needs attention"
   // section. MOD is the floor; each queue is then filtered by capability.
   app.get('/admin/pending', { preHandler: requireCap('manage_users', 'MOD', 'ADMIN', 'SUPERADMIN') }, async (req) => {
