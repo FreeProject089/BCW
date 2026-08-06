@@ -162,9 +162,19 @@ export default async function oauthRoutes(app) {
           // New account — adopt the provider's picture as the BCWEB avatar straight away.
           user = await p.user.create({ data: { email: profile.email, displayName: profile.displayName || slugName(profile.username), emailVerified: true, avatar: profile.avatar ? { image: profile.avatar } : undefined } });
           grantAutoBadges(p, { event: 'signup', user }).catch(() => {});
-        } else if (profile.avatar && !user.avatar?.image) {
-          // Linking to an existing account that has no custom photo — use the provider's.
-          user = await p.user.update({ where: { id: user.id }, data: { avatar: { ...(user.avatar || {}), image: profile.avatar } } });
+        } else if (profile.avatar && !user.avatar) {
+          // Linking to an existing account that has NEVER set an avatar — adopt the
+          // provider's picture. The test is `!user.avatar`, not `!user.avatar?.image`.
+          //
+          // Those differ in exactly the case that matters: someone who signed up with Google,
+          // got the Google picture, then deliberately removed it in favour of a generated
+          // avatar. That saves `{variant, seed, colors, image: null}` — an avatar with no
+          // image — and the old test read it as "has no photo, help yourself", so linking a
+          // second provider later silently replaced their choice with the new provider's
+          // picture. Any account that has touched its avatar settings has a non-null
+          // `avatar`, so this leaves a deliberate choice alone while still helping accounts
+          // that never made one.
+          user = await p.user.update({ where: { id: user.id }, data: { avatar: { image: profile.avatar } } });
         }
         await p.oAuthAccount.create({ data: { userId: user.id, provider: name, providerAccountId: profile.id, username: profile.username } });
       }
