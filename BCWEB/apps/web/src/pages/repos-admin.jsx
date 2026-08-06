@@ -136,12 +136,47 @@ export function AdminPools() {
   const mergeOwner = async (o, into) => {
     const ids = [...(sel[o.ownerId] || [])].filter((id) => id !== into);
     if (!into || !ids.length) return;
-    if (!await dialog.confirm({ title: t('apools.merge.t', 'Merge pools?'), body: t('apools.merge.b', 'Merge {n} pool(s) into the target. Subscriptions move with them.').replace('{n}', String(ids.length)), okText: t('pools.mergebtn', 'Merge') })) return;
+    if (!await dialog.confirm({ title: t('apools.merge.t', 'Merge pools?'), message: t('apools.merge.b', 'Merge {n} pool(s) into the target. Subscriptions move with them.').replace('{n}', String(ids.length)), okLabel: t('pools.mergebtn', 'Merge') })) return;
     try { await api.post('/me/hosting/groups/merge', { sourceIds: ids, targetId: into }); setSel((s) => ({ ...s, [o.ownerId]: new Set() })); reload(); }
     catch (x) { toast.error(x.data?.error || t('repos.failed', 'Failed.')); }
   };
+  // Resize a pool. This does NOT write poolBytes: that value is derived from the pool's active
+  // subscriptions and is recomputed whenever one changes, so a direct write would be undone at
+  // the next renewal or lapse. The endpoint adjusts an admin-grant subscription instead, and
+  // refuses a size below what the owner paid for or below what their content already reserves.
+  const resize = async (g) => {
+    const cur = gb(g.poolBytes);
+    const v = await dialog.prompt({
+      title: t('apools.resize.t', 'Change pool size'),
+      label: t('apools.resize.l', 'Size in GB'),
+      message: t('apools.resize.b', 'Storage above what the owner paid for is recorded as an administrator grant.'),
+      defaultValue: String(cur),
+    });
+    if (v == null || v === '') return;
+    const n = Number(v);
+    if (!isFinite(n) || n < 0) return toast.error(t('apools.resize.bad', 'Enter a number of GB.'));
+    try { await api.patch(`/admin/hosting/pools/${g.id}`, { storageGB: n }); reload(); toast.success(t('common.saved', 'Saved.')); }
+    catch (x) {
+      const e = x.data?.error;
+      toast.error(
+        e === 'below_paid' ? t('apools.belowpaid', 'Below what the owner paid for ({n} GB) — change their subscription instead.').replace('{n}', (x.data.paidGB ?? 0).toFixed(1))
+        : e === 'below_allocated' ? t('apools.belowalloc', 'Their repos and catalogs already reserve {n} GB — free some first.').replace('{n}', (x.data.allocatedGB ?? 0).toFixed(1))
+        : t('repos.failed', 'Failed.'));
+    }
+  };
+  // Grant a user a pool outright (no purchase, no Stripe).
+  const grant = async () => {
+    const email = await dialog.prompt({ title: t('apools.grant.t', 'Grant a storage pool'), label: t('apools.grant.email', 'Account email') });
+    if (!email) return;
+    const size = await dialog.prompt({ title: t('apools.grant.t', 'Grant a storage pool'), label: t('apools.resize.l', 'Size in GB'), defaultValue: '5' });
+    if (size == null || size === '') return;
+    const n = Number(size);
+    if (!isFinite(n) || n <= 0) return toast.error(t('apools.resize.bad', 'Enter a number of GB.'));
+    try { await api.post('/admin/hosting/pools', { email: email.trim(), name: 'Pool', storageGB: n }); reload(); toast.success(t('apools.granted', 'Pool granted.')); }
+    catch (x) { toast.error(x.data?.error === 'unknown_user' ? t('apools.nouser', 'No account with that email.') : t('repos.failed', 'Failed.')); }
+  };
   const split = async (g) => {
-    if (!await dialog.confirm({ title: t('apools.split.t', 'Split this pool?'), body: t('apools.split.b', 'Each extra subscription becomes its own pool. Repos/catalogs stay on the original pool — reassign them afterward if needed.'), okText: t('apools.split.ok', 'Split') })) return;
+    if (!await dialog.confirm({ title: t('apools.split.t', 'Split this pool?'), message: t('apools.split.b', 'Each extra subscription becomes its own pool. Repos/catalogs stay on the original pool — reassign them afterward if needed.'), okLabel: t('apools.split.ok', 'Split') })) return;
     try { const r = await api.post(`/admin/hosting/groups/${g.id}/split`, {}); toast.success(t('apools.split.done', 'Split into {n} new pool(s).').replace('{n}', String(r.created))); reload(); }
     catch (x) { toast.error(x.data?.error === 'nothing_to_split' ? t('apools.split.none', 'This pool has only one subscription — nothing to split.') : t('repos.failed', 'Failed.')); }
   };
@@ -151,7 +186,10 @@ export function AdminPools() {
     <div>
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--primary-2)]" /> {t('apools.title', 'Storage pools (all users)')} <span className="text-xs text-[var(--faint)] font-normal">{groups.length}</span></h2>
-        <div className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-8 !py-1 !text-sm" placeholder={t('apools.search', 'Search owner / pool…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <div className="flex items-center gap-2">
+          <div className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-8 !py-1 !text-sm" placeholder={t('apools.search', 'Search owner / pool…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <Button size="sm" variant="primary" onClick={grant}><HardDrive size={13} /> {t('apools.grantbtn', 'Grant a pool')}</Button>
+        </div>
       </div>
       {owners.length === 0 ? <EmptyState icon={HardDrive} title={t('apools.none', 'No pools')} sub={t('apools.none.s', 'No storage pools match.')} /> : <div className="space-y-4">
         {owners.map((o) => { const selected = sel[o.ownerId] || new Set(); return (
@@ -181,6 +219,7 @@ export function AdminPools() {
                     <div className="text-[11px] text-[var(--faint)]">{gb(g.poolBytes)} GB · {g.repos.length} {t('pools.repos', 'repos')} · {g.catalogs.length} {t('pools.catalogs', 'catalogs')}</div>
                   </div>
                   <button onClick={() => rename(g)} className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]" title={t('apools.rename', 'Rename')}><Pencil size={13} /></button>
+                  <button onClick={() => resize(g)} className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]" title={t('apools.resize', 'Change size')}><Sliders size={13} /></button>
                   {g.subCount >= 2 && <Button size="sm" variant="ghost" onClick={() => split(g)}><GitBranch size={13} /> {t('apools.split', 'Split')}</Button>}
                 </div>
               ); })}

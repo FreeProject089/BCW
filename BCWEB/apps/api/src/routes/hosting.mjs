@@ -220,6 +220,165 @@ export default async function hostingRoutes(app) {
     ].sort((a, b) => b.gb - a.gb) };
   });
 
+  // ── Admin: storage pools ────────────────────────────────────────────────────────────
+  //
+  // A pool's poolBytes is DERIVED — recomputePoolBytes() rewrites it from the sum of its
+  // active subscriptions' contributions whenever one changes. So an admin who edited
+  // poolBytes directly would watch the change evaporate at the next renewal or lapse.
+  // Admin grants therefore go through a subscription like every other contribution, on a
+  // dedicated inactive "Admin grant" plan that marks them as ours. No schema change, and
+  // the derived value stays the single source of truth.
+  const ADMIN_GRANT_PLAN = 'Admin grant';
+  async function adminGrantPlan(p) {
+    const found = await p.hostingPlan.findFirst({ where: { name: ADMIN_GRANT_PLAN } });
+    return found || p.hostingPlan.create({ data: {
+      name: ADMIN_GRANT_PLAN, storageGB: 0, uploadLimitKbps: 8192, cpuShare: 0.5,
+      priceMonthlyCents: 0, active: false, // never offered for sale — a marker, not a product
+    } });
+  }
+
+  // Move a pool to `targetBytes` by adjusting only OUR grant, leaving paid subscriptions
+  // untouched. Returns an error string when the target is unreachable that way.
+  async function setPoolStorage(p, group, targetBytes) {
+    const plan = await adminGrantPlan(p);
+    const subs = await p.subscription.findMany({ where: { hostingGroupId: group.id, status: 'active' } });
+    const grant = subs.find((s) => s.planId === plan.id);
+    const paidBytes = subs.filter((s) => s.id !== grant?.id).reduce((a, s) => a + s.poolContribBytes, 0n);
+    // Shrinking below what the user actually paid for is not ours to do — say so instead of
+    // writing a number the next recompute would overwrite.
+    if (targetBytes < paidBytes) return { error: 'below_paid', paidGB: Number(paidBytes) / GiB };
+    const grantBytes = targetBytes - paidBytes;
+    if (grant) {
+      if (grantBytes === 0n) await p.subscription.delete({ where: { id: grant.id } });
+      else await p.subscription.update({ where: { id: grant.id }, data: { poolContribBytes: grantBytes } });
+    } else if (grantBytes > 0n) {
+      await p.subscription.create({ data: {
+        userId: group.ownerId, hostingGroupId: group.id, planId: plan.id, status: 'active',
+        poolContribBytes: grantBytes,
+        // Far future: a grant has no billing term to lapse. The expiry sweeper only acts on
+        // subs whose period has ended, so this keeps one from being swept away.
+        currentPeriodEnd: new Date(Date.now() + 3650 * 864e5),
+      } });
+    }
+    await recomputePoolBytes(p, group.id);
+    return { ok: true };
+  }
+
+  // List pools with their owner and what actually sits in them.
+  app.get('/admin/hosting/pools', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const q = String(req.query?.q || '').trim();
+    const where = q ? { OR: [
+      { name: { contains: q, mode: 'insensitive' } },
+      { owner: { displayName: { contains: q, mode: 'insensitive' } } },
+      { owner: { email: { contains: q, mode: 'insensitive' } } },
+    ] } : {};
+    const groups = await p.hostingGroup.findMany({
+      where, orderBy: { createdAt: 'desc' }, take: 200,
+      include: {
+        owner: { select: { id: true, displayName: true, email: true } },
+        repos: { select: { id: true, name: true, storageQuotaBytes: true, status: true } },
+        catalogs: { select: { id: true, name: true, storageQuotaBytes: true, status: true } },
+        subscriptions: { select: { id: true, status: true, poolContribBytes: true, planId: true, currentPeriodEnd: true } },
+      },
+    });
+    const grantPlan = await p.hostingPlan.findFirst({ where: { name: ADMIN_GRANT_PLAN }, select: { id: true } });
+    return { pools: groups.map((g) => {
+      const allocated = [...g.repos, ...g.catalogs].reduce((a, x) => a + (x.storageQuotaBytes || 0n), 0n);
+      const grant = g.subscriptions.find((s) => s.status === 'active' && s.planId === grantPlan?.id);
+      return {
+        id: g.id, name: g.name, freePlan: g.freePlan, createdAt: g.createdAt,
+        owner: { id: g.owner.id, name: g.owner.displayName, email: g.owner.email },
+        poolGB: Number(g.poolBytes) / GiB,
+        allocatedGB: Number(allocated) / GiB,
+        freeGB: Number(g.poolBytes - allocated) / GiB,
+        grantGB: grant ? Number(grant.poolContribBytes) / GiB : 0,
+        uploadLimitKbps: g.uploadLimitKbps, cpuShare: g.cpuShare,
+        repos: g.repos.map((r) => ({ id: r.id, name: r.name, status: r.status })),
+        catalogs: g.catalogs.map((c) => ({ id: c.id, name: c.name, status: c.status })),
+        activeSubs: g.subscriptions.filter((s) => s.status === 'active').length,
+      };
+    }) };
+  });
+
+  // Grant a user a brand-new pool.
+  app.post('/admin/hosting/pools', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      userId: z.string().min(1).optional(),
+      email: z.string().email().optional(),
+      name: z.string().trim().min(1).max(80).default('Pool'),
+      storageGB: z.number().min(0.5).max(4000),
+      uploadMbps: z.number().min(0.5).max(1000).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const user = b.data.userId
+      ? await p.user.findUnique({ where: { id: b.data.userId } })
+      : b.data.email ? await p.user.findUnique({ where: { email: b.data.email } }) : null;
+    if (!user) return reply.code(404).send({ error: 'unknown_user' });
+    const plan = await adminGrantPlan(p);
+    // storageGB 0 here, then setPoolStorage for the exact figure. provisionHostingPool does
+    // BigInt(plan.storageGB), and BigInt(1.5) THROWS — so a half-gigabyte grant would 500 if
+    // the size went through that path. Zero is integral, and the resize is exact in bytes.
+    const group = await provisionHostingPool(p, {
+      userId: user.id, poolName: b.data.name, months: 120, freePlan: true,
+      plan: { ...plan, storageGB: 0, uploadLimitKbps: Math.round((b.data.uploadMbps ?? 8) * 1024) },
+    });
+    // provisionHostingPool writes the sub against plan.id, so the grant is already marked.
+    const sized = await setPoolStorage(p, group, BigInt(Math.round(b.data.storageGB * GiB)));
+    if (sized.error) return reply.code(409).send(sized);
+    await notify(p, user.id, 'hosting_started', `An administrator granted you a storage pool "${group.name}" (${b.data.storageGB} GB).`);
+    return reply.code(201).send({ ok: true, poolId: group.id });
+  });
+
+  // Edit a pool: rename, resize, retune. Resize goes through setPoolStorage (see above).
+  app.patch('/admin/hosting/pools/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      name: z.string().trim().min(1).max(80).optional(),
+      storageGB: z.number().min(0).max(4000).optional(),
+      uploadMbps: z.number().min(0.5).max(1000).optional(),
+      cpuShare: z.number().min(0.1).max(8).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const group = await p.hostingGroup.findUnique({ where: { id: req.params.id } });
+    if (!group) return reply.code(404).send({ error: 'not_found' });
+
+    if (b.data.storageGB != null) {
+      const target = BigInt(Math.round(b.data.storageGB * GiB));
+      // Never leave a pool smaller than what its repos and catalogs already reserve — that
+      // would over-commit storage the owner is currently using.
+      const [repos, catalogs] = await Promise.all([
+        p.serverRepo.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
+        p.communityCatalog.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
+      ]);
+      const allocated = (repos._sum.storageQuotaBytes || 0n) + (catalogs._sum.storageQuotaBytes || 0n);
+      if (target < allocated) return reply.code(409).send({ error: 'below_allocated', allocatedGB: Number(allocated) / GiB });
+      const r = await setPoolStorage(p, group, target);
+      if (r.error) return reply.code(409).send(r);
+    }
+    const data = {};
+    if (b.data.name) data.name = b.data.name;
+    if (b.data.uploadMbps != null) data.uploadLimitKbps = Math.round(b.data.uploadMbps * 1024);
+    if (b.data.cpuShare != null) data.cpuShare = b.data.cpuShare;
+    if (Object.keys(data).length) await p.hostingGroup.update({ where: { id: group.id }, data });
+    return { ok: true };
+  });
+
+  // Delete an EMPTY pool. Anything still in it is content someone owns; removing the pool
+  // under it would strand repos and catalogs with no storage behind them.
+  app.delete('/admin/hosting/pools/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const group = await p.hostingGroup.findUnique({ where: { id: req.params.id }, include: { _count: { select: { repos: true, catalogs: true } } } });
+    if (!group) return reply.code(404).send({ error: 'not_found' });
+    if (group._count.repos || group._count.catalogs) {
+      return reply.code(409).send({ error: 'pool_not_empty', repos: group._count.repos, catalogs: group._count.catalogs });
+    }
+    await p.subscription.deleteMany({ where: { hostingGroupId: group.id } });
+    await p.hostingGroup.delete({ where: { id: group.id } });
+    return { ok: true };
+  });
+
   // Live price preview for arbitrary specs: base + capacity-adjusted monthly, per-term
   // totals with discounts, and the current CPU/upload caps.
   app.get('/hosting/price', async (req) => {
