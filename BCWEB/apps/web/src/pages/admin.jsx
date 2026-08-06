@@ -24,7 +24,7 @@ import { MarkdownEditor } from './blog.jsx';
 import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 import { AdminMyo } from './admin-myo.jsx';
-import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash } from './pages.jsx';
+import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash, useThreadStream } from './pages.jsx';
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
 // actual api.del only fires once the 6s window elapses — Undo means nothing was ever deleted,
@@ -7705,6 +7705,9 @@ function ReportThreadModal({ id, admin, onClose }) {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { user } = useAuth();
   const base = admin ? `/admin/reports/${id}` : `/me/reports/${id}`;
   const { data, loading, reload } = useAsync(() => api.get(base), [id]);
+  // Live thread. The stream lives under /me/ for BOTH views: canAccessReport already covers
+  // staff, so there is no second authorisation path to keep in step with the first.
+  useThreadStream(id ? `/me/reports/${id}/stream` : null, () => reload());
   const [sending, setSending] = useState(false);
   const [people, setPeople] = useState(false);
   const r = data?.report;

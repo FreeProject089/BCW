@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { publishToThread, streamThread } from '../lib/threadbus.mjs';
 import { db, requireRole, requireCap, hasCap, logAudit, clientIp } from '../lib/lib.mjs';
 import { stripe, ensureCustomer } from './hosting.mjs';
 
@@ -164,7 +165,20 @@ export default async function myoRoutes(app) {
       ...(staff ? { userUnread: true } : { staffUnread: true }),
       ...(r.status === 'closed' ? { status: 'open', closedAt: null } : {}),
     } });
+    // Published only now: both the message and the thread update have committed, so nobody
+    // is told about a message the database does not have.
+    publishToThread('myo', r.id, { type: 'message', message: ser.message(msg) });
     return reply.code(201).send({ message: ser.message(msg) });
+  });
+
+  // Live thread (SSE). Authorised with the SAME rule as GET /myo/requests/:id — owner or
+  // staff — so the stream can never deliver what a read would refuse.
+  app.get('/myo/requests/:id/stream', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const r = await p.myoRequest.findUnique({ where: { id: req.params.id }, select: { id: true, userId: true } });
+    if (!r) return reply.code(404).send({ error: 'not_found' });
+    if (r.userId !== req.user.uid && !isStaff(req.user)) return reply.code(403).send({ error: 'forbidden' });
+    streamThread(req, reply, 'myo', r.id);
   });
 
   app.post('/myo/requests/:id/close', { preHandler: requireRole() }, async (req, reply) => {

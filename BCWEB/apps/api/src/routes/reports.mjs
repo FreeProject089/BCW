@@ -4,6 +4,7 @@ import { db, requireRole, requireCap, notify } from '../lib/lib.mjs';
 import { userBcId, findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { powVerify } from './auth.mjs';
+import { publishToThread, streamThread } from '../lib/threadbus.mjs';
 
 const STAFF_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
 
@@ -141,7 +142,19 @@ export default async function reportRoutes(app) {
     const m = await p.reportMessage.create({ data: { reportId: r.id, authorId: req.user.uid, staff: asStaff, body: b.data.body, images: b.data.images } });
     // A message reopens an archived thread; flag the "other side" as unread.
     await p.report.update({ where: { id: r.id }, data: { status: 'open', archivedAt: null, staffUnread: !asStaff ? true : r.staffUnread, userUnread: asStaff ? true : r.userUnread, lastActivityAt: new Date() } });
+    publishToThread('report', r.id, { type: 'message', message: msgPublic({ ...m, author: null }) });
     return { message: msgPublic({ ...m, author: null }) };
+  });
+
+  // Live thread (SSE). canAccessReport is the SAME predicate GET /me/reports/:id uses —
+  // reporter, participant, or staff — so a stream can never reveal a thread a read would
+  // hide. Note it 404s rather than 403s, exactly as the read does: whether a report exists
+  // is itself not public.
+  app.get('/me/reports/:id/stream', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const r = await p.report.findUnique({ where: { id: req.params.id } });
+    if (!(await canAccessReport(p, r, req.user))) return reply.code(404).send({ error: 'not_found' });
+    streamThread(req, reply, 'report', r.id);
   });
 
   // ── Admin/mod (cap: manage_reports) ──
@@ -279,6 +292,7 @@ export default async function reportRoutes(app) {
     await p.report.update({ where: { id: r.id }, data: { status: r.status === 'closed' ? 'closed' : 'open', archivedAt: r.status === 'closed' ? r.archivedAt : null, userUnread: true, lastActivityAt: new Date() } });
     notify(p, r.reporterId, 'report_reply', 'A staff member replied to your report.').catch(() => {});
     mailReport(p, r.reporter?.email, 'Reply to your report', 'A staff member replied to your report.', r.id);
+    publishToThread('report', r.id, { type: 'message', message: msgPublic({ ...m, author: null }) });
     return { message: msgPublic({ ...m, author: null }) };
   });
 

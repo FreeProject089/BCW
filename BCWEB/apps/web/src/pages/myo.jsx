@@ -9,7 +9,7 @@ import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
 import { Card, Button, Input, Textarea, Select, Badge, Modal, EmptyState, Spinner, Field, useToast, useDialog } from '../ui/ui.jsx';
 import Avatar from '../ui/Avatar.jsx';
-import { useAsync } from './pages.jsx';
+import { useAsync, useThreadStream } from './pages.jsx';
 import { ReportComposer } from '../ui/report.jsx';
 
 // ── shared helpers ──────────────────────────────────────────────────────────────
@@ -276,6 +276,11 @@ export function MyoRequestPage() {
 export function MyoConversation({ id, admin = false }) {
   const { t, lang } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get(`/myo/requests/${id}`), [id]);
+  // Live: a message from the other side lands without a refresh. Refetching the whole thread
+  // rather than splicing the pushed message into local state — the timeline interleaves
+  // messages, quotes and deliverables by date, and a hand-inserted message would have to
+  // reproduce that ordering and the server's serialisation exactly to stay consistent.
+  useThreadStream(id ? `/myo/requests/${id}/stream` : null, () => reload());
   const [sending, setSending] = useState(false);
   const [params] = useSearchParams();
   const r = data?.request;

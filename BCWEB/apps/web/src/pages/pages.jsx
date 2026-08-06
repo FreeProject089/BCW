@@ -54,6 +54,29 @@ export function useAsync(fn, deps = []) {
   return { data, err, loading, reload };
 }
 
+// Subscribe to a conversation thread's SSE stream and run `onEvent` for each event.
+//
+// `onEvent` is held in a ref rather than being a dependency: it is almost always an inline
+// arrow, so depending on it would tear down and rebuild the EventSource on every render —
+// reconnecting constantly, and dropping messages in the gaps.
+//
+// EventSource sends the session cookie on same-origin requests, which is what authenticates
+// the stream; it also reconnects on its own, so a dropped connection needs no handling here.
+// A null `path` disables it (a thread that is not open yet).
+export function useThreadStream(path, onEvent) {
+  const cb = useRef(onEvent);
+  cb.current = onEvent;
+  useEffect(() => {
+    if (!path || typeof EventSource === 'undefined') return;
+    const es = new EventSource(`/api${path}`);
+    es.onmessage = (e) => {
+      // A malformed frame must not kill the subscription — skip it and keep listening.
+      try { cb.current?.(JSON.parse(e.data)); } catch { /* ignore */ }
+    };
+    return () => es.close();
+  }, [path]);
+}
+
 // Measure an element's live pixel width (ResizeObserver). Used to size SVG charts so
 // their viewBox matches real pixels 1:1 — keeps axis/label text legible on phones
 // instead of shrinking with a fixed-width viewBox.
