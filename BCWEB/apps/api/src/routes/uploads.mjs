@@ -43,18 +43,37 @@ export async function tempMarginStatus(p) {
 
 const IMG = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'];
 // Per-kind upload caps + allowed content types (defence in depth; MinIO also enforced).
+// The MIME labels a browser actually puts on a file, which are not the ones a spec would
+// suggest. Windows reads the type from the registry, so the SAME .zip arrives as
+// application/zip on one machine and application/x-zip-compressed on another; a file with a
+// custom extension (.bmmtheme, .bmmplug, .bmmpreset) has no entry at all and arrives with an
+// empty type, which uploadPayload() turns into application/octet-stream.
+//
+// These lists were narrower and produced a steady trickle of 415 unsupported_type on uploads
+// that were perfectly fine — a .zip picked on Windows, or a .json catalog under APP/PLUGIN.
+//
+// Widening them is not a weakening. application/octet-stream is already accepted for every one
+// of these kinds, so anyone could pass the old gate by renaming the file to .dat: the narrowness
+// never blocked a byte, it only rejected honest uploads whose browser happened to be MORE
+// specific about what they were. Real protection is elsewhere — the byte cap, the temp-storage
+// margin, admin-only kinds, and object storage serving these as attachments rather than
+// executing them.
+const ARCHIVE = ['application/zip', 'application/x-zip-compressed', 'application/x-compressed', 'multipart/x-zip'];
+// An opaque or self-describing payload: no type, or a structured one we can serve as bytes.
+const OPAQUE = ['application/octet-stream', 'application/json'];
+
 const LIMITS = {
   // Direct uploads are capped at 100MB across the submittable kinds; anything larger is
   // arranged via the contact page (the /submit UI directs there). Apps (installers) may
   // legitimately be bigger, so they keep the higher ceiling.
-  APP:    { maxBytes: 500 * 1024 * 1024, types: ['application/zip', 'application/octet-stream', 'application/x-msdownload'] },
-  PLUGIN: { maxBytes: 100 * 1024 * 1024, types: ['application/zip', 'application/octet-stream', 'application/wasm'] },
+  APP:    { maxBytes: 500 * 1024 * 1024, types: [...ARCHIVE, ...OPAQUE, 'application/x-msdownload'] },
+  PLUGIN: { maxBytes: 100 * 1024 * 1024, types: [...ARCHIVE, ...OPAQUE, 'application/wasm'] },
   // .bmmtheme is a custom extension unknown to browser MIME tables, so
   // <input type=file> reports an empty file.type → uploadPayload() falls back
   // to 'application/octet-stream'. Without it here every real .bmmtheme
   // submission 415'd (this was the "submit content doesn't work" bug).
-  THEME:  { maxBytes: 100 * 1024 * 1024, types: ['application/json', 'application/zip', 'text/css', 'application/octet-stream'] },
-  PRESET: { maxBytes: 2 * 1024 * 1024, types: ['application/json'] },
+  THEME:  { maxBytes: 100 * 1024 * 1024, types: [...ARCHIVE, ...OPAQUE, 'text/css'] },
+  PRESET: { maxBytes: 2 * 1024 * 1024, types: [...OPAQUE] },
   BLOG:   { maxBytes: 10 * 1024 * 1024, types: IMG, prefix: 'blog' },
   // Report / support-thread image attachments. Public (served from blog/ proxy), any
   // logged-in user. The byte cap is admin-configurable (reports.imageMaxMB), applied below.

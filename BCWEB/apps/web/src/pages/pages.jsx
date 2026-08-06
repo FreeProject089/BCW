@@ -1,5 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import Prism from 'prismjs';
+import 'prismjs/components/prism-json';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload,
@@ -149,8 +151,24 @@ export function fmtRemaining(deleteAt) {
 
 // A friendlier JSON editor: framed panel with a live valid/invalid indicator, a
 // one-click Format button, and tab-to-indent — replaces the raw ugly <textarea>.
+// Both layers must lay text out identically or the caret and the glyphs part company.
+const EDITOR_TEXT = 'px-3 py-2.5 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words';
+
+/** JSON, highlighted with Prism into the classes prism-bmm.css already styles. Escaped first:
+ *  this renders with dangerouslySetInnerHTML, and the value is whatever is being typed. */
+function highlightJson(src) {
+  const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  try {
+    if (Prism?.languages?.json) return Prism.highlight(src, Prism.languages.json, 'json');
+  } catch { /* fall through to plain text */ }
+  return esc(src);
+}
+
 export function JsonEditor({ value, onChange, placeholder, minH = 170 }) {
   const [err, setErr] = useState(null);
+  const taRef = useRef(null); const preRef = useRef(null);
+  // The overlay does not scroll on its own; it follows the textarea exactly.
+  const syncScroll = () => { if (preRef.current && taRef.current) { preRef.current.scrollTop = taRef.current.scrollTop; preRef.current.scrollLeft = taRef.current.scrollLeft; } };
   useEffect(() => { try { if ((value || '').trim()) JSON.parse(value); setErr(null); } catch (e) { setErr(String(e.message || e)); } }, [value]);
   const format = () => { try { onChange(JSON.stringify(JSON.parse(value || '{}'), null, 2)); } catch {} };
   const onKey = (e) => {
@@ -169,8 +187,18 @@ export function JsonEditor({ value, onChange, placeholder, minH = 170 }) {
           <button type="button" onClick={format} className="flex items-center gap-1 text-[var(--muted)] hover:text-[var(--text)]"><Wand2 size={11} /> Format</button>
         </div>
       </div>
-      <textarea value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} placeholder={placeholder} spellCheck={false}
-        className="w-full bg-transparent px-3 py-2.5 font-mono text-xs leading-relaxed outline-none resize-y text-[var(--text)]" style={{ minHeight: minH }} />
+      {/* Highlighted overlay: a <pre> Prism paints, with the real <textarea> transparent on top.
+          A textarea cannot render markup, so this is the only way to colour what is being typed.
+          The two must agree on font, size, line-height, padding and wrapping or the caret drifts
+          away from the glyphs — hence the shared EDITOR_TEXT class rather than two style props. */}
+      <div className="relative">
+        <pre aria-hidden="true" ref={preRef}
+             className={`${EDITOR_TEXT} pointer-events-none absolute inset-0 overflow-hidden m-0`}
+             style={{ minHeight: minH }}><code className="language-json"
+             dangerouslySetInnerHTML={{ __html: highlightJson(value || '') }} /></pre>
+      <textarea ref={taRef} onScroll={syncScroll} value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} placeholder={placeholder} spellCheck={false}
+        className={`${EDITOR_TEXT} relative w-full bg-transparent outline-none resize-y text-transparent caret-[var(--text)]`} style={{ minHeight: minH }} />
+      </div>
       {err && <div className="px-3 py-1.5 text-[10px] text-red-400 border-t border-red-500/20 truncate" title={err}>{err}</div>}
     </div>
   );

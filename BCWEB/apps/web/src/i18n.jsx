@@ -1577,6 +1577,8 @@ const DICT = {
     'assets.title': 'Téléchargements & assets', 'assets.sub': 'Héberge les installeurs des apps, les manifestes d’auto-update et les configs JSON (links.json, contributors.json) à des URLs stables /api/assets/<clé>. Les apps lisent BCWEB d’abord, puis GitHub, puis leur copie locale.',
     'assets.key': 'Clé (slug public)', 'assets.kind': 'Type', 'assets.file': 'Fichier', 'assets.json': 'JSON', 'assets.create': 'Créer / téléverser', 'assets.copyurl': 'Copier l’URL', 'assets.download': 'Télécharger',
     'assets.replace': 'Remplacer le fichier', 'assets.uploading': 'Téléversement…', 'assets.editjson': 'Éditer le JSON', 'assets.saved': 'Enregistré.', 'assets.uploaded': '« {n} » téléversé.', 'assets.uploadfail': 'Échec du téléversement.', 'assets.deleted': '« {k} » supprimé.',
+    'cc.badtype': "Ce type de fichier n'est pas accepté pour ce genre. Autorisés : {a}",
+    'cc.feed': 'URL du catalogue pour BMM', 'cc.feedcopied': 'URL du catalogue copiée.', 'cc.open': 'Ouvrir',
     'assets.badjson': 'JSON invalide.', 'assets.badkey': 'Clé : lettres, chiffres, . _ - uniquement.', 'assets.exists': 'Cette clé existe déjà.', 'assets.none': 'Aucun asset', 'assets.none.s': 'Crée-en un ci-dessus ou choisis un emplacement standard.',
     'assets.del.t': 'Supprimer l’asset ?', 'assets.del.b': 'Retirer « {k} » et son fichier stocké. Les apps qui le visent basculeront sur le fallback.',
     'apools.title': 'Pools de stockage (tous les utilisateurs)', 'apools.search': 'Rechercher propriétaire / pool…', 'apools.none': 'Aucun pool', 'apools.none.s': 'Aucun pool de stockage ne correspond.',

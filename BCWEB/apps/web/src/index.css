@@ -652,3 +652,21 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
   #invoice-print { position: absolute !important; left: 0; top: 0; width: 100%; max-width: 640px; margin: 0 auto; padding: 32px; color: #111; background: #fff; }
   #invoice-print .tabular-nums, #invoice-print b, #invoice-print .font-bold, #invoice-print .font-medium, #invoice-print .font-extrabold { color: #111; }
 }
+
+/* ── Prism, wearing BCWEB's variables ───────────────────────────────────────
+   Used by JsonEditor's highlighted overlay (Downloads & assets, Projects config, Other
+   projects — the three admin screens that edit JSON by hand). Mapping the token types onto the
+   site's own variables rather than shipping a Prism theme keeps the editor readable in both the
+   light and dark schemes, and means a palette change reaches it like everything else.
+
+   Note: markdown code blocks elsewhere are highlighted by rehype-highlight, which was already a
+   dependency. Prism is scoped to this editor, where a textarea overlay needs a plain
+   string-to-HTML highlighter that rehype cannot provide. */
+.token.property, .token.tag, .token.attr-name { color: var(--info); }
+.token.string, .token.attr-value, .token.inserted { color: var(--success); }
+.token.number, .token.boolean, .token.constant, .token.symbol { color: var(--primary-2); }
+.token.punctuation, .token.operator { color: var(--muted); }
+.token.comment, .token.prolog, .token.cdata { color: var(--faint); font-style: italic; }
+.token.keyword, .token.atrule { color: var(--warning); }
+.token.deleted { color: var(--error); }
+.token.null, .token.nil { color: var(--faint); }

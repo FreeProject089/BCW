@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check,
+  Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -271,14 +271,36 @@ function AdminCatalogCreator() {
       if (f.kind === 'PLUGIN' && res.validation) toast[res.validation.valid ? 'success' : 'error'](res.validation.valid ? t('cc.pubvalidated', 'Plugin "{n}" published & validated.').replace('{n}', f.name) : t('cc.pubinvalid', 'Published but INVALID: {r} — fix before users install.').replace('{r}', res.validation.reason));
       else toast.success(t('cc.published', 'Official {k} "{n}" published.').replace('{k}', KIND_LABEL[f.kind]).replace('{n}', f.name));
       setF({ projectKey: f.projectKey, kind: f.kind, name: '', version: '1.0.0', description: '', tags: '', url: '' }); setFile(null);
-    } catch (x) { toast.error(x.data?.error === 'invalid_preset' ? t('cc.presetjsoninvalid', 'Preset JSON is invalid.') : x.data?.error || t('common.failed', 'Failed.')); } finally { setBusy(false); }
+    } catch (x) {
+      const e = x.data?.error;
+      // The API returns the accepted list with a 415; showing the raw code left you guessing
+      // which of a dozen allowlists you had just missed.
+      toast.error(
+        e === 'unsupported_type' ? t('cc.badtype', 'That file type is not accepted for this kind. Allowed: {a}').replace('{a}', (x.data?.allowed || []).join(', '))
+        : e === 'invalid_preset' ? t('cc.presetjsoninvalid', 'Preset JSON is invalid.')
+        : e || t('common.failed', 'Failed.'));
+    }
   };
   const copy = () => { navigator.clipboard?.writeText(deeplink); toast.success(t('cc.dlcopied', 'Deeplink copied.')); };
+
+  // The URL BMM actually consumes as a catalog source. It is derived from the project + kind
+  // already chosen above, so there is nothing extra to fill in — the panel that publishes the
+  // entry is also where you get the link to the feed it lands in.
+  const feedUrl = `${location.origin}/api/catalog.json?project=${encodeURIComponent(f.projectKey)}&kind=${encodeURIComponent(f.kind.toLowerCase())}`;
+  const copyFeed = () => { navigator.clipboard?.writeText(feedUrl); toast.success(t('cc.feedcopied', 'Catalog URL copied.')); };
 
   return (
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><BadgeCheck size={16} className="text-[var(--primary-2)]" /> {t('cc.title', 'Create an official catalog entry')}</h2>
       <p className="text-sm text-[var(--muted)] mb-4" dangerouslySetInnerHTML={{ __html: t('cc.sub', 'Publishes instantly (no moderation) and is flagged <b>Official</b>. BSM offers presets; BMM offers apps, plugins and themes with a <code>bmm://</code> deeplink.') }} />
+      {/* Where this entry ends up. BMM adds this URL as a catalog source, so it belongs next to
+          the form that publishes into it rather than somewhere a reader has to go and find. */}
+      <Card className="p-3 mb-4 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-[var(--muted)]">{t('cc.feed', 'Catalog URL for BMM')}</span>
+        <code className="font-mono text-xs px-2 py-1 rounded-lg bg-[var(--surface-2)] break-all flex-1 min-w-0">{feedUrl}</code>
+        <Button size="sm" variant="ghost" onClick={copyFeed}><Copy size={13} /> {t('common.copy', 'Copy')}</Button>
+        <a href={feedUrl} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost"><ExternalLink size={13} /> {t('cc.open', 'Open')}</Button></a>
+      </Card>
       <Card className="p-5 space-y-3">
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('cc.project', 'Project')}><Select value={f.projectKey} onChange={(e) => setProject(e.target.value)}><option value="bmm">BMM</option><option value="bsm">BSM</option></Select></Field>
