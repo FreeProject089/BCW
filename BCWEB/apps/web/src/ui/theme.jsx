@@ -32,9 +32,41 @@ export const contrastRatio = contrast;
 
 const rgba = (hex, a) => `rgba(${srgb(hex).map((c) => Math.round(c * 255)).join(', ')}, ${a})`;
 
-/** Build the CSS for an accent pair. Kept pure so the admin preview and the live site
- *  cannot drift — the preview applies the very same text. */
-export function themeCss({ accent, accent2 }) {
+/** Surfaces, lines and secondary inks, derived from a page colour and its text colour.
+ *
+ *  Only two colours are asked for per mode, because the stylesheet's ~15 surface tokens are
+ *  not independent: they are one page colour lifted by degrees, and one ink faded by degrees.
+ *  Asking a superadmin to pick fifteen is how you get a site where the cards no longer sit on
+ *  the page. Deriving them means any background produces a coherent set.
+ *
+ *  Surfaces lift toward WHITE in both modes — that is how the shipped themes work too (dark
+ *  elevation is a lighter surface, not a shadow), so the direction holds whether the page is
+ *  cream or near-black. `lift` differs per mode only in amount: a light page needs a small
+ *  step to separate a card, a dark page needs a larger one to read at all. */
+function surfaceVars(bg, text, lift) {
+  const up = (pct) => `color-mix(in srgb, #ffffff ${pct}%, ${bg})`;
+  const ink = (pct) => `color-mix(in srgb, ${text} ${pct}%, ${bg})`;
+  return [
+    `--bg:${bg}`,
+    `--bg-solid:${up(lift * 1.6)}`,
+    `--surface:${up(lift * 1.6)}`,
+    `--surface-2:${up(lift * 2.6)}`,
+    `--surface-3:${up(lift * 4)}`,
+    `--avatar-ring:${up(lift * 1.6)}`,
+    `--text:${text}`,
+    // The muted/faint scale is the text colour fading into the page, not a separate grey —
+    // which is what keeps it readable whatever the background is.
+    `--muted:${ink(72)}`,
+    `--faint:${ink(56)}`,
+    `--line:${ink(14)}`,
+    `--line-strong:${ink(26)}`,
+    `--control-border:${ink(48)}`,
+  ].join(';');
+}
+
+/** Build the CSS for a theme. Kept pure so the admin preview and the live site cannot drift —
+ *  the preview applies the very same text, scoped to a container. */
+export function themeCss({ accent, accent2, light, dark }) {
   if (!accent) return '';
   const a2 = accent2 || accent;
   // --on-primary is derived from the MIDPOINT of the gradient, not from `accent` alone:
@@ -44,9 +76,18 @@ export function themeCss({ accent, accent2 }) {
     const v = Math.round((srgb(accent)[i] + srgb(a2)[i]) / 2 * 255);
     return v.toString(16).padStart(2, '0');
   }).join('');
-  return `:root{--primary:${accent};--primary-2:${a2};--on-primary:${inkOn(mid)};`
+  let css = `:root{--primary:${accent};--primary-2:${a2};--on-primary:${inkOn(mid)};`
     + `--primary-glow:${rgba(accent, 0.4)};--ring:${rgba(accent, 0.55)};`
     + `--glow-a:${rgba(accent, 0.15)};--glow-b:${rgba(a2, 0.12)};}`;
+  // Page colours are per mode and entirely optional: a theme that only recolours the accent
+  // leaves the shipped light/dark palettes exactly as they are.
+  //
+  // Selector weight matters here. The stylesheet writes `:root, [data-theme="light"]` and
+  // `[data-theme="dark"]`; these blocks are appended to <head> AFTER it, so equal specificity
+  // resolves in our favour — which is why the dark override does not need to be forced.
+  if (light?.bg && light?.text) css += `:root,[data-theme="light"]{${surfaceVars(light.bg, light.text, 3)}}`;
+  if (dark?.bg && dark?.text) css += `[data-theme="dark"]{${surfaceVars(dark.bg, dark.text, 5)}}`;
+  return css;
 }
 
 // Applied unconditionally, including for the built-in orange — which does change how primary
@@ -61,9 +102,16 @@ export function themeCss({ accent, accent2 }) {
 export function applySiteTheme(theme) {
   const css = themeCss(theme || {});
   let el = document.getElementById('bcw-site-theme');
-  if (!css) { el?.remove(); return; }
-  if (!el) { el = document.createElement('style'); el.id = 'bcw-site-theme'; document.head.appendChild(el); }
-  el.textContent = css;
+  if (!css) { el?.remove(); }
+  else {
+    if (!el) { el = document.createElement('style'); el.id = 'bcw-site-theme'; document.head.appendChild(el); }
+    el.textContent = css;
+  }
+  // Anything painting OUTSIDE CSS has to be told. The hero orb is a WebGL material: it reads
+  // colours once and keeps them in uniforms, so a stylesheet change means nothing to it. It
+  // already watches <html data-theme> for the light/dark switch, but that attribute does not
+  // move when only the palette changes — hence this event.
+  try { document.dispatchEvent(new CustomEvent('bcw:site-theme')); } catch { /* ignore */ }
 }
 
 export function ThemeProvider({ children }) {

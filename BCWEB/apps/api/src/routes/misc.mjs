@@ -102,7 +102,12 @@ const PENDING_QUEUES = [
 // own choice (it lives in localStorage and wins).
 const THEME_KEY = 'site.theme';
 const HEX = /^#[0-9a-fA-F]{6}$/;
-const THEME_DEFAULTS = { accent: '#f97316', accent2: '#f59e0b', mode: 'light', preset: '' };
+// `light` / `dark` are OPTIONAL page colours. Absent means "keep the shipped palette", which
+// is why they default to null rather than to the current values: storing a copy of the
+// built-ins would freeze them, and a later change to the stylesheet would silently stop
+// reaching anyone who had ever opened this panel.
+const THEME_DEFAULTS = { accent: '#f97316', accent2: '#f59e0b', mode: 'light', preset: '', light: null, dark: null };
+const pageColours = z.object({ bg: z.string().regex(HEX), text: z.string().regex(HEX) }).nullable().optional();
 
 export default async function miscRoutes(app) {
   // Public: every visitor reads this to paint the site. Cheap and cacheable.
@@ -121,13 +126,15 @@ export default async function miscRoutes(app) {
       accent2: z.string().regex(HEX).optional(),
       mode: z.enum(['light', 'dark']).optional(),
       preset: z.string().max(60).optional(),
+      light: pageColours,
+      dark: pageColours,
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: THEME_KEY } });
     const value = { ...THEME_DEFAULTS, ...(row?.value || {}), ...b.data };
     await p.adminSetting.upsert({ where: { key: THEME_KEY }, create: { key: THEME_KEY, value }, update: { value } });
-    await logAudit(p, req.user.uid, 'site.theme', `accent=${value.accent} accent2=${value.accent2} mode=${value.mode} preset=${value.preset || '-'}`);
+    await logAudit(p, req.user.uid, 'site.theme', `accent=${value.accent} accent2=${value.accent2} mode=${value.mode} preset=${value.preset || '-'} pages=${value.light || value.dark ? 'custom' : 'default'}`);
     return { ok: true, theme: value };
   });
 

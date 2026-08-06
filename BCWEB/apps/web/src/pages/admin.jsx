@@ -8118,7 +8118,7 @@ function AdminSiteTheme() {
   const save = async () => {
     setBusy(true);
     try {
-      await api.put('/admin/theme', { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '' });
+      await api.put('/admin/theme', { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '', light: f.light || null, dark: f.dark || null });
       applySiteTheme(f); // take effect here immediately rather than on the next reload
       toast.success(t('st.saved', 'Site theme updated for everyone.'));
       reload();
@@ -8173,10 +8173,62 @@ function AdminSiteTheme() {
         </div>
       </Card>
 
+      {/* Page colours, per mode. Optional: off means the shipped palette is untouched. */}
+      <Card className="p-4 mb-4">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{t('st.pages', 'Page colours')}</div>
+        <p className="text-xs text-[var(--muted)] mb-3">{t('st.pages.h', 'Two colours per mode — the page and its text. Cards, borders and the muted greys are derived from them, so any background gives a coherent set. Leave a mode off to keep the built-in palette.')}</p>
+        {[['light', t('st.light', 'Light'), { bg: '#f4efe8', text: '#17140f' }],
+          ['dark', t('st.dark', 'Dark'), { bg: '#0a0907', text: '#f3efe9' }]].map(([modeKey, label, seed]) => {
+          const on = !!f[modeKey];
+          return (
+            <div key={modeKey} className="flex flex-wrap items-end gap-3 py-2 border-t border-[var(--line)] first:border-t-0">
+              <label className="flex items-center gap-2 text-sm font-medium w-24 shrink-0">
+                <input type="checkbox" checked={on} onChange={(e) => setF({ ...f, [modeKey]: e.target.checked ? seed : null })} />
+                {label}
+              </label>
+              {on ? (
+                <>
+                  <Field label={t('st.page', 'Page')}>
+                    <div className="flex items-center gap-2">
+                      <input type="color" value={f[modeKey].bg} onChange={(e) => setF({ ...f, [modeKey]: { ...f[modeKey], bg: e.target.value } })} className="w-10 h-9 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer" />
+                      <Input className="!w-28 font-mono" value={f[modeKey].bg} onChange={(e) => setF({ ...f, [modeKey]: { ...f[modeKey], bg: e.target.value } })} />
+                    </div>
+                  </Field>
+                  <Field label={t('st.textc', 'Text')}>
+                    <div className="flex items-center gap-2">
+                      <input type="color" value={f[modeKey].text} onChange={(e) => setF({ ...f, [modeKey]: { ...f[modeKey], text: e.target.value } })} className="w-10 h-9 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer" />
+                      <Input className="!w-28 font-mono" value={f[modeKey].text} onChange={(e) => setF({ ...f, [modeKey]: { ...f[modeKey], text: e.target.value } })} />
+                    </div>
+                  </Field>
+                  {(() => {
+                    // Body text on the page is the contrast that decides whether the site is
+                    // readable at all, so it is measured and shown rather than left to taste.
+                    const r = contrastRatio(f[modeKey].bg, f[modeKey].text);
+                    return <span className={`text-[11px] ${r >= 4.5 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {t('st.textcontrast', 'Text {n}:1').replace('{n}', r.toFixed(2))}{r >= 4.5 ? '' : ` — ${t('st.belowaa', 'below AA')}`}
+                    </span>;
+                  })()}
+                </>
+              ) : <span className="text-xs text-[var(--faint)]">{t('st.usingbuiltin', 'Using the built-in palette.')}</span>}
+            </div>
+          );
+        })}
+      </Card>
+
       {/* The preview applies the real themeCss to a scoped container. */}
       <Card className="p-4">
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2.5">{t('st.preview', 'Preview')}</div>
-        <style>{themeCss(f).replace(':root{', '#st-preview{')}</style>
+        {/* Every selector themeCss emits is rewritten to the preview container, so the page
+            colours are previewed as well as the accent — a preview that showed only half of
+            what Apply does would be worse than none. */}
+        <style>{(() => {
+          // Only the mode currently on screen is emitted. Rewriting BOTH page blocks onto the
+          // same container would let the dark one win (it comes last), so a light preview
+          // would have silently shown dark colours.
+          const active = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+          const scoped = { accent: f.accent, accent2: f.accent2, [active]: f[active] };
+          return themeCss(scoped).replace(/:root,\[data-theme="light"\]|\[data-theme="dark"\]|:root/g, '#st-preview');
+        })()}</style>
         <div id="st-preview" className="rounded-xl border border-[var(--line)] p-4 flex flex-wrap items-center gap-3">
           <button className="btn btn-primary btn-sm">{t('st.samplebtn', 'Primary button')}</button>
           <span className="gradient-text text-lg font-semibold">{t('st.sampletext', 'Gradient heading')}</span>

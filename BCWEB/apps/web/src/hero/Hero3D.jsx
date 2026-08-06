@@ -24,12 +24,35 @@ function webglAvailable() {
 }
 
 function isLight() { return document.documentElement.getAttribute('data-theme') !== 'dark'; } // default theme is light
+// The orb's colours are DERIVED from the site accent rather than hardcoded, so a superadmin
+// who recolours the site recolours the hero with it. The shipped values were an orange-only
+// hand-tune — beautiful against orange, and jarring the moment the accent became, say, Classic
+// Blue, because the orb would have stayed amber while everything around it moved.
+//
+// Read from the live computed style, so this picks up whatever the theme layer resolved
+// (including color-mix) without needing to know how the value was produced.
+function cssHex(name, fallback) {
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    if (!v) return fallback;
+    const c = new THREE.Color(v);          // parses hex, rgb(), and named colours
+    return c.getHex();
+  } catch { return fallback; }
+}
 function palette() {
-  return isLight()
-    // light: soft peach → warm gold, bright cream rim — airy daylight glass
-    ? { colorA: 0xffe0bf, colorB: 0xf3a869, rim: 0xfff7ec, opacity: 0.8, heroOp: 0.55, blending: THREE.NormalBlending }
-    // dark: deep amber core → glowing gold, bright rim — molten metal at night
-    : { colorA: 0x3a1c0d, colorB: 0xd9770a, rim: 0xffd27a, opacity: 0.8, heroOp: 0.55, blending: THREE.AdditiveBlending };
+  const light = isLight();
+  const a = cssHex('--primary', 0xf97316);
+  const b = cssHex('--primary-2', 0xf59e0b);
+  const A = new THREE.Color(a), B = new THREE.Color(b);
+  // Light: an airy tint of the accent, near-white rim — daylight glass.
+  // Dark:  a deep core with the accent glowing through, bright rim — molten metal at night.
+  // Same recipe, opposite direction, so any accent produces the same *character* of orb.
+  const mix = (c, target, amt) => c.clone().lerp(new THREE.Color(target), amt).getHex();
+  return light
+    ? { colorA: mix(A, 0xffffff, 0.62), colorB: mix(B, 0xffffff, 0.18), rim: mix(A, 0xffffff, 0.9),
+        opacity: 0.8, heroOp: 0.55, blending: THREE.NormalBlending }
+    : { colorA: mix(A, 0x000000, 0.72), colorB: mix(B, 0x000000, 0.12), rim: mix(B, 0xffffff, 0.55),
+        opacity: 0.8, heroOp: 0.55, blending: THREE.AdditiveBlending };
 }
 
 // Classic Ashima/Stefan Gustavson 3D simplex noise (public-domain-style, widely
@@ -358,6 +381,10 @@ export default function Hero3D() {
     applyPalette();
     const themeObs = new MutationObserver(applyPalette);
     themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    // data-theme only moves on the light/dark switch. A superadmin changing the site palette
+    // leaves it exactly where it was, so the observer above never fires — the orb would keep
+    // the old accent until a reload. applySiteTheme announces itself for precisely this.
+    document.addEventListener('bcw:site-theme', applyPalette);
 
     // ── mouse parallax: the orb tilts slightly toward the cursor, never a full
     //    drag/orbit — just enough to feel alive without being distracting ──
@@ -616,6 +643,7 @@ export default function Hero3D() {
       gsap.killTweensOf(fractureState);
       gsap.killTweensOf(orbTransition);
       themeObs.disconnect();
+      document.removeEventListener('bcw:site-theme', applyPalette);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('click', onClick);
       window.removeEventListener('bcweb:orb-transition', onPageTransition);
