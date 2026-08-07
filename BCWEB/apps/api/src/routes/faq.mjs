@@ -4,11 +4,16 @@
 import { z } from 'zod';
 import { db, requireRole, requireCap, optionalAuth } from '../lib/lib.mjs';
 
+// Every user-visible string has an optional French counterpart. The question and the
+// category are TITLES — the first thing a French reader sees — and they had none while the
+// answer did, so a translated answer still sat under an English heading.
 const faqSchema = z.object({
   question: z.string().min(1).max(300),
+  questionFr: z.string().max(300).nullish(),
   answer: z.string().max(20_000).optional(),
   answerFr: z.string().max(20_000).nullish(),
   category: z.string().min(1).max(60).optional(),
+  categoryFr: z.string().max(60).nullish(),
   order: z.number().int().optional(),
   published: z.boolean().optional(),
 });
@@ -35,8 +40,10 @@ export default async function faqRoutes(app) {
     const p = await db();
     const max = await p.faqItem.aggregate({ _max: { order: true } });
     const item = await p.faqItem.create({ data: {
-      question: b.data.question, answer: b.data.answer || '', answerFr: b.data.answerFr || null,
-      category: b.data.category || 'General', published: b.data.published ?? true,
+      question: b.data.question, questionFr: b.data.questionFr || null,
+      answer: b.data.answer || '', answerFr: b.data.answerFr || null,
+      category: b.data.category || 'General', categoryFr: b.data.categoryFr || null,
+      published: b.data.published ?? true,
       order: b.data.order ?? ((max._max.order ?? 0) + 1),
     } });
     return { ok: true, item };
@@ -47,7 +54,9 @@ export default async function faqRoutes(app) {
     const p = await db();
     const data = {};
     for (const k of ['question', 'answer', 'category', 'order', 'published']) if (b.data[k] !== undefined) data[k] = b.data[k];
-    if (b.data.answerFr !== undefined) data.answerFr = b.data.answerFr || null;
+    // The nullable French fields are handled apart because '' must become NULL, not an empty
+    // string: an empty translation should fall back to the English, and '' would not.
+    for (const k of ['questionFr', 'answerFr', 'categoryFr']) if (b.data[k] !== undefined) data[k] = b.data[k] || null;
     const item = await p.faqItem.update({ where: { id: req.params.id }, data }).catch(() => null);
     if (!item) return reply.code(404).send({ error: 'not_found' });
     return { ok: true, item };

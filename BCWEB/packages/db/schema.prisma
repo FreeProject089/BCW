@@ -1801,11 +1801,16 @@ model GameScore {
 // FAQ — admin/editor-curated questions & answers, grouped by category. Answers use the
 // BetterCommunity doc-block markdown (rendered with the same md.jsx pipeline as blog/docs).
 model FaqItem {
-  id        String   @id @default(cuid())
-  question  String
-  answer    String   @default("") // markdown (doc-block system), EN base
-  answerFr  String? // optional French translation
-  category  String   @default("General")
+  id          String   @id @default(cuid())
+  question    String
+  // The question and the category are TITLES — they are what a French reader sees first, and
+  // they had no translation while the answer did. Nullable: an entry with no French title
+  // falls back to the English one rather than showing an empty heading.
+  questionFr  String?
+  answer      String   @default("") // markdown (doc-block system), EN base
+  answerFr    String? // optional French translation
+  category    String   @default("General")
+  categoryFr  String?
   order     Int      @default(0)
   published Boolean  @default(true)
   updatedAt DateTime @updatedAt

@@ -19,17 +19,24 @@ export default function Faq() {
   const [open, setOpen] = useState(() => new Set());
   useEffect(() => { api.get('/faq').then(setData).catch(() => setData(null)).finally(() => setLoading(false)); }, []);
   const canEdit = data?.canEdit || (user && ['ADMIN', 'SUPERADMIN'].includes(user.role));
-  const answerOf = (it) => (lang === 'fr' && it.answerFr && it.answerFr.trim()) ? it.answerFr : it.answer;
+  // One rule for all three translatable fields: use the French when there IS a French, fall
+  // back to the English otherwise. An entry half-translated shows a French answer under an
+  // English question rather than an empty heading.
+  const fr = (v, base) => (lang === 'fr' && v && v.trim()) ? v : base;
+  const answerOf = (it) => fr(it.answerFr, it.answer);
+  const questionOf = (it) => fr(it.questionFr, it.question);
+  const categoryOf = (it) => fr(it.categoryFr, it.category);
 
   // Filter by question/answer text, then group by category (preserving admin order).
   const groups = useMemo(() => {
     const items = (data?.items || []).filter((it) => {
       if (!q.trim()) return true;
       const n = q.trim().toLowerCase();
-      return it.question.toLowerCase().includes(n) || (answerOf(it) || '').toLowerCase().includes(n) || it.category.toLowerCase().includes(n);
+      const hay = [it.question, it.questionFr, it.category, it.categoryFr, answerOf(it)].filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(n);
     });
     const map = new Map();
-    for (const it of items) { if (!map.has(it.category)) map.set(it.category, []); map.get(it.category).push(it); }
+    for (const it of items) { const c = categoryOf(it); if (!map.has(c)) map.set(c, []); map.get(c).push(it); }
     return [...map.entries()];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, q, lang]);
@@ -53,7 +60,7 @@ export default function Faq() {
                 {items.map((it) => { const isOpen = open.has(it.id); return (
                   <Card key={it.id} className="overflow-hidden">
                     <button onClick={() => toggle(it.id)} className="w-full flex items-center gap-3 text-left p-4 hover:bg-[var(--surface-2)]/40 transition">
-                      <span className="flex-1 font-medium">{it.question}{!it.published && <span className="ml-2 text-[10px] uppercase tracking-wide text-amber-400">{t('faq.draft', 'draft')}</span>}</span>
+                      <span className="flex-1 font-medium">{questionOf(it)}{!it.published && <span className="ml-2 text-[10px] uppercase tracking-wide text-amber-400">{t('faq.draft', 'draft')}</span>}</span>
                       <ChevronDown size={17} className={`text-[var(--faint)] shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {isOpen && <div className="px-4 pb-4 pt-1 border-t border-[var(--line)] text-sm"><Markdown>{answerOf(it) || t('faq.empty', '*No answer yet.*')}</Markdown></div>}

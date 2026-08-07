@@ -2575,15 +2575,19 @@ function AdminFaq() {
   const { data, loading, reload } = useAsync(() => api.get('/admin/faq'), []);
   const undo = useUndoableDelete(reload);
   const items = (data?.items || []).filter((i) => !undo.pending.has(i.id));
-  const [f, setF] = useState({ question: '', answer: '', category: 'General', published: true });
+  const [f, setF] = useState({ question: '', questionFr: '', answer: '', answerFr: '', category: 'General', categoryFr: '', published: true });
   const [editId, setEditId] = useState(null); const [busy, setBusy] = useState(false);
   const categories = [...new Set(items.map((i) => i.category))];
-  const reset = () => { setF({ question: '', answer: '', category: 'General', published: true }); setEditId(null); };
+  const reset = () => { setF({ question: '', questionFr: '', answer: '', answerFr: '', category: 'General', categoryFr: '', published: true }); setEditId(null); };
   const undoSave = useUndoableSave(reload);
   const save = () => {
     if (f.question.trim().length < 2) return toast.error(t('faqa.qreq', 'The question is required.'));
     setBusy(true);
-    const payload = { question: f.question.trim(), answer: f.answer, category: f.category.trim() || 'General', published: f.published };
+    // The French fields are sent even when empty, so CLEARING a translation actually clears
+    // it — omitting them would leave the old value in place with no way to remove it.
+    const payload = { question: f.question.trim(), questionFr: f.questionFr.trim() || null,
+      answer: f.answer, answerFr: f.answerFr || null,
+      category: f.category.trim() || 'General', categoryFr: f.categoryFr.trim() || null, published: f.published };
     // id captured now, not read inside the window: editing a different question during those
     // six seconds would otherwise retarget the PATCH. reset() moves in for the same reason.
     const id = editId;
@@ -2592,7 +2596,7 @@ function AdminFaq() {
       reset();
     }, id ? t('faqa.saved', 'Saved.') : t('faqa.added', 'Added.'), { onSettled: () => setBusy(false) });
   };
-  const edit = (it) => { setEditId(it.id); setF({ question: it.question, answer: it.answer || '', category: it.category || 'General', published: it.published !== false }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const edit = (it) => { setEditId(it.id); setF({ question: it.question, questionFr: it.questionFr || '', answer: it.answer || '', answerFr: it.answerFr || '', category: it.category || 'General', categoryFr: it.categoryFr || '', published: it.published !== false }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const del = (it) => undo.del(it.id, () => api.del(`/admin/faq/${it.id}`), t('faqa.deleted', 'Question deleted.'));
   const toggle = async (it) => { try { await api.patch(`/admin/faq/${it.id}`, { published: !it.published }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   return (
@@ -2605,11 +2609,19 @@ function AdminFaq() {
 
       <Card className="p-4 mb-5 space-y-3">
         <div className="text-sm font-semibold">{editId ? t('faqa.editing', 'Edit question') : t('faqa.new', 'New question')}</div>
+        {/* English is the base; every French field is optional and falls back to it. There was
+            no French input at all before — not even for answerFr, which the schema had and the
+            public page rendered, so a French answer could never actually be entered. */}
         <div className="grid sm:grid-cols-[1fr_200px] gap-3">
           <Field label={t('faqa.q', 'Question')}><Input value={f.question} onChange={(e) => setF({ ...f, question: e.target.value })} placeholder={t('faqa.qph', 'How do I…?')} /></Field>
           <Field label={t('faqa.cat', 'Category')}><Input value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="General" list="faq-cats" /><datalist id="faq-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist></Field>
         </div>
+        <div className="grid sm:grid-cols-[1fr_200px] gap-3">
+          <Field label={t('faqa.qfr', 'Question (FR)')} hint={t('faqa.frhint', 'Optional — falls back to the English when empty.')}><Input value={f.questionFr} onChange={(e) => setF({ ...f, questionFr: e.target.value })} placeholder={t('faqa.qfrph', 'Comment faire… ?')} /></Field>
+          <Field label={t('faqa.catfr', 'Category (FR)')}><Input value={f.categoryFr} onChange={(e) => setF({ ...f, categoryFr: e.target.value })} placeholder="Général" /></Field>
+        </div>
         <Field label={t('faqa.a', 'Answer (markdown)')}><MarkdownEditor value={f.answer} onChange={(v) => setF({ ...f, answer: v })} placeholder={t('faqa.aph', 'Write the answer — supports **markdown** and blocks.')} full /></Field>
+        <Field label={t('faqa.afr', 'Answer FR (markdown)')} hint={t('faqa.frhint', 'Optional — falls back to the English when empty.')}><MarkdownEditor value={f.answerFr} onChange={(v) => setF({ ...f, answerFr: v })} placeholder={t('faqa.afrph', 'Écris la réponse en français…')} full /></Field>
         <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked={f.published} onChange={(e) => setF({ ...f, published: e.target.checked })} /> {t('faqa.published', 'Published (visible on /faq)')}</label>
         <div className="flex justify-end gap-2">
           {editId && <Button variant="ghost" onClick={reset}>{t('common.cancel', 'Cancel')}</Button>}
