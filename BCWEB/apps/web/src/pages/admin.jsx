@@ -13,6 +13,7 @@ import { KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
 import Avatar from '../ui/Avatar.jsx';
 import { THEME_PRESETS } from '../ui/theme-presets.js';
+import { TOKENS, TOKEN_GROUPS } from '../ui/theme-tokens.js';
 import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
 import { useAuth } from './auth.jsx';
 import { utilAllowed, effectiveCaps } from '../lib/roles.js';
@@ -8101,10 +8102,17 @@ function AdminNeedsAttention({ data, loading, onReload }) {
 // The preview is not a mock-up: it calls the SAME themeCss() the live site applies, scoped to
 // a container, so what you see is what visitors get.
 function AdminSiteTheme() {
-  const { t } = useI18n(); const toast = useToast();
+  const { t, lang } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/theme'), []);
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Which set of tokens is on screen. 'shared' holds the accent (light and dark use the same
+  // one); 'light'/'dark' hold everything the two modes define differently.
+  const [scope, setScope] = useState('shared');
+  // The token catalogue carries its own {en,fr} strings rather than i18n keys: they describe
+  // what a token PAINTS, they live next to the token list, and adding a token should not mean
+  // remembering to add two dictionary entries somewhere else.
+  const tGroup = (o) => (lang === 'fr' ? o.fr : o.en);
   useEffect(() => { if (data?.theme) setF(data.theme); }, [data]);
 
   if (loading || !f) return <Loading />;
@@ -8118,7 +8126,7 @@ function AdminSiteTheme() {
   const save = async () => {
     setBusy(true);
     try {
-      await api.put('/admin/theme', { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '', light: f.light || null, dark: f.dark || null });
+      await api.put('/admin/theme', { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '', light: f.light || null, dark: f.dark || null, shared: f.shared || null });
       applySiteTheme(f); // take effect here immediately rather than on the next reload
       toast.success(t('st.saved', 'Site theme updated for everyone.'));
       reload();
@@ -8173,43 +8181,81 @@ function AdminSiteTheme() {
         </div>
       </Card>
 
-      {/* Page colours, per mode. Optional: off means the shipped palette is untouched. */}
+      {/* Full token editor. Two colours per mode still DERIVE the whole surface set; every
+          individual token can then be corrected on top. That order is the point — "derive
+          everything, then fix one thing" keeps full control from being a 27-field form you
+          must complete before the site looks right. */}
       <Card className="p-4 mb-4">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{t('st.pages', 'Page colours')}</div>
-        <p className="text-xs text-[var(--muted)] mb-3">{t('st.pages.h', 'Two colours per mode — the page and its text. Cards, borders and the muted greys are derived from them, so any background gives a coherent set. Leave a mode off to keep the built-in palette.')}</p>
-        {[['light', t('st.light', 'Light'), { bg: '#f4efe8', text: '#17140f' }],
-          ['dark', t('st.dark', 'Dark'), { bg: '#0a0907', text: '#f3efe9' }]].map(([modeKey, label, seed]) => {
-          const on = !!f[modeKey];
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('st.tokens', 'Tokens')}</div>
+          <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs ml-auto">
+            {[['shared', t('st.scope.shared', 'Shared')], ['light', t('st.light', 'Light')], ['dark', t('st.dark', 'Dark')]].map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setScope(k)}
+                className={`px-2.5 py-1 rounded-md ${scope === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+        <p className="text-xs text-[var(--muted)] mb-3">{t('st.tokens.h', 'Set the page and its text, and the surfaces, greys and borders derive from them. Override any single token on top. An empty field means "derived" — clearing one gives it back to the recipe.')}</p>
+
+        {scope !== 'shared' && (
+          <div className="flex flex-wrap items-end gap-3 pb-3 mb-3 border-b border-[var(--line)]">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" checked={!!f[scope]} onChange={(e) => setF({ ...f, [scope]: e.target.checked ? (scope === 'light' ? { bg: '#f4efe8', text: '#17140f' } : { bg: '#0a0907', text: '#f3efe9' }) : null })} />
+              {t('st.customise', 'Customise this mode')}
+            </label>
+            {f[scope] ? (
+              <>
+                {[['bg', t('st.page', 'Page')], ['text', t('st.textc', 'Text')]].map(([k, label]) => (
+                  <Field key={k} label={label}>
+                    <div className="flex items-center gap-2">
+                      <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(f[scope][k] || '') ? f[scope][k] : '#000000'} onChange={(e) => setF({ ...f, [scope]: { ...f[scope], [k]: e.target.value } })} className="w-10 h-9 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer" />
+                      <Input className="!w-28 font-mono" value={f[scope][k] || ''} onChange={(e) => setF({ ...f, [scope]: { ...f[scope], [k]: e.target.value } })} />
+                    </div>
+                  </Field>
+                ))}
+                {f[scope].bg && f[scope].text && (() => {
+                  const r = contrastRatio(f[scope].bg, f[scope].text);
+                  return <span className={`text-[11px] ${r >= 4.5 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {t('st.textcontrast', 'Text {n}:1').replace('{n}', r.toFixed(2))}{r >= 4.5 ? '' : ` — ${t('st.belowaa', 'below AA')}`}
+                  </span>;
+                })()}
+              </>
+            ) : <span className="text-xs text-[var(--faint)]">{t('st.usingbuiltin', 'Using the built-in palette.')}</span>}
+          </div>
+        )}
+
+        {(scope === 'shared' || f[scope]) && TOKEN_GROUPS.map((g) => {
+          const items = TOKENS.filter((tk) => tk.group === g.id && (scope === 'shared' ? tk.scope === 'shared' : tk.scope === 'mode'));
+          if (!items.length) return null;
+          const bag = f[scope] || {};
+          const setTok = (name, val) => {
+            const next = { ...bag };
+            if (val) next[name] = val; else delete next[name];
+            setF({ ...f, [scope]: Object.keys(next).length ? next : (scope === 'shared' ? null : next) });
+          };
           return (
-            <div key={modeKey} className="flex flex-wrap items-end gap-3 py-2 border-t border-[var(--line)] first:border-t-0">
-              <label className="flex items-center gap-2 text-sm font-medium w-24 shrink-0">
-                <input type="checkbox" checked={on} onChange={(e) => setF({ ...f, [modeKey]: e.target.checked ? seed : null })} />
-                {label}
-              </label>
-              {on ? (
-                <>
-                  <Field label={t('st.page', 'Page')}>
-                    <div className="flex items-center gap-2">
-                      <input type="color" value={f[modeKey].bg} onChange={(e) => setF({ ...f, [modeKey]: { ...f[modeKey], bg: e.target.value } })} className="w-10 h-9 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer" />
-                      <Input className="!w-28 font-mono" value={f[modeKey].bg} onChange={(e) => setF({ ...f, [modeKey]: { ...f[modeKey], bg: e.target.value } })} />
+            <div key={g.id} className="mb-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{tGroup(g.label)}</div>
+              <div className="space-y-1.5">
+                {items.map((tk) => (
+                  <div key={tk.name} className="flex items-start gap-2.5 flex-wrap">
+                    <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(bag[tk.name] || '') ? bag[tk.name] : '#888888'}
+                      onChange={(e) => setTok(tk.name, e.target.value)}
+                      className="w-8 h-8 mt-0.5 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer shrink-0" />
+                    <Input className="!w-40 font-mono !text-xs" placeholder={tk.derived ? t('st.derived', 'derived') : t('st.default', 'default')}
+                      value={bag[tk.name] || ''} onChange={(e) => setTok(tk.name, e.target.value)} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
+                        {tGroup(tk.label)}
+                        <code className="text-[10px] text-[var(--faint)]">{tk.name}</code>
+                        <span className="text-[10px] text-[var(--faint)]">{t('st.uses', '{n} uses').replace('{n}', tk.uses)}</span>
+                      </div>
+                      <div className="text-[11px] text-[var(--muted)]">{tGroup(tk.affects)}</div>
                     </div>
-                  </Field>
-                  <Field label={t('st.textc', 'Text')}>
-                    <div className="flex items-center gap-2">
-                      <input type="color" value={f[modeKey].text} onChange={(e) => setF({ ...f, [modeKey]: { ...f[modeKey], text: e.target.value } })} className="w-10 h-9 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer" />
-                      <Input className="!w-28 font-mono" value={f[modeKey].text} onChange={(e) => setF({ ...f, [modeKey]: { ...f[modeKey], text: e.target.value } })} />
-                    </div>
-                  </Field>
-                  {(() => {
-                    // Body text on the page is the contrast that decides whether the site is
-                    // readable at all, so it is measured and shown rather than left to taste.
-                    const r = contrastRatio(f[modeKey].bg, f[modeKey].text);
-                    return <span className={`text-[11px] ${r >= 4.5 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                      {t('st.textcontrast', 'Text {n}:1').replace('{n}', r.toFixed(2))}{r >= 4.5 ? '' : ` — ${t('st.belowaa', 'below AA')}`}
-                    </span>;
-                  })()}
-                </>
-              ) : <span className="text-xs text-[var(--faint)]">{t('st.usingbuiltin', 'Using the built-in palette.')}</span>}
+                    {bag[tk.name] && <button onClick={() => setTok(tk.name, '')} className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] mt-1">{t('st.reset', 'reset')}</button>}
+                  </div>
+                ))}
+              </div>
             </div>
           );
         })}
@@ -8226,7 +8272,7 @@ function AdminSiteTheme() {
           // same container would let the dark one win (it comes last), so a light preview
           // would have silently shown dark colours.
           const active = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-          const scoped = { accent: f.accent, accent2: f.accent2, [active]: f[active] };
+          const scoped = { accent: f.accent, accent2: f.accent2, shared: f.shared, [active]: f[active] };
           return themeCss(scoped).replace(/:root,\[data-theme="light"\]|\[data-theme="dark"\]|:root/g, '#st-preview');
         })()}</style>
         <div id="st-preview" className="rounded-xl border border-[var(--line)] p-4 flex flex-wrap items-center gap-3">

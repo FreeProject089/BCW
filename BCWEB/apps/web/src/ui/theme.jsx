@@ -64,9 +64,31 @@ function surfaceVars(bg, text, lift) {
   ].join(';');
 }
 
+// A token value ends up inside a <style> element, so it is a place where a stray `}` would
+// end the rule and everything after it would be attacker-chosen CSS. Only colours are
+// allowed through, by shape: hex, rgb()/rgba(), hsl()/hsla(), and color-mix(in srgb, …).
+// The API enforces the same rule — this copy exists so the PREVIEW cannot render something
+// the server would refuse, which would be a preview that lies.
+const COLOUR = /^(#[0-9a-fA-F]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|color-mix\(in srgb[^;{}]*\))$/;
+export function safeColour(v) {
+  const s = String(v ?? '').trim();
+  return s && s.length <= 120 && COLOUR.test(s) ? s : null;
+}
+
+/** Explicit per-token overrides, filtered to what is safe to emit. */
+function overrideVars(map) {
+  if (!map) return '';
+  return Object.entries(map)
+    .filter(([k]) => /^--[a-z0-9-]+$/.test(k))
+    .map(([k, v]) => [k, safeColour(v)])
+    .filter(([, v]) => v)
+    .map(([k, v]) => `${k}:${v}`)
+    .join(';');
+}
+
 /** Build the CSS for a theme. Kept pure so the admin preview and the live site cannot drift —
  *  the preview applies the very same text, scoped to a container. */
-export function themeCss({ accent, accent2, light, dark }) {
+export function themeCss({ accent, accent2, light, dark, shared }) {
   if (!accent) return '';
   const a2 = accent2 || accent;
   // --on-primary is derived from the MIDPOINT of the gradient, not from `accent` alone:
@@ -85,8 +107,25 @@ export function themeCss({ accent, accent2, light, dark }) {
   // Selector weight matters here. The stylesheet writes `:root, [data-theme="light"]` and
   // `[data-theme="dark"]`; these blocks are appended to <head> AFTER it, so equal specificity
   // resolves in our favour — which is why the dark override does not need to be forced.
-  if (light?.bg && light?.text) css += `:root,[data-theme="light"]{${surfaceVars(light.bg, light.text, 3)}}`;
-  if (dark?.bg && dark?.text) css += `[data-theme="dark"]{${surfaceVars(dark.bg, dark.text, 5)}}`;
+  // Shared tokens (accent-side) can be overridden individually — appended AFTER the block
+  // above so an explicit value beats the derived one.
+  const sharedCss = overrideVars(shared);
+  if (sharedCss) css += `:root{${sharedCss}}`;
+
+  // Per mode: the derived surface set first (when a page colour is given), then any explicit
+  // token. Order is the whole mechanism — "derive everything, then let me correct one thing"
+  // is what makes full control usable instead of a 27-field form.
+  for (const [key, sel, lift] of [['light', ':root,[data-theme="light"]', 3], ['dark', '[data-theme="dark"]', 5]]) {
+    const m = key === 'light' ? light : dark;
+    if (!m) continue;
+    const derived = m.bg && m.text ? surfaceVars(m.bg, m.text, lift) : '';
+    // `bg`/`text` are the two inputs to the derivation, not tokens themselves — they are
+    // already emitted by surfaceVars, so they must not be re-emitted as `--bg`/`--text`.
+    const { bg, text, ...rest } = m;
+    const explicit = overrideVars(rest);
+    const body = [derived, explicit].filter(Boolean).join(';');
+    if (body) css += `${sel}{${body}}`;
+  }
   return css;
 }
 

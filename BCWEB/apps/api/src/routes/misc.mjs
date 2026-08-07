@@ -106,8 +106,34 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
 // is why they default to null rather than to the current values: storing a copy of the
 // built-ins would freeze them, and a later change to the stylesheet would silently stop
 // reaching anyone who had ever opened this panel.
-const THEME_DEFAULTS = { accent: '#f97316', accent2: '#f59e0b', mode: 'light', preset: '', light: null, dark: null };
-const pageColours = z.object({ bg: z.string().regex(HEX), text: z.string().regex(HEX) }).nullable().optional();
+const THEME_DEFAULTS = { accent: '#f97316', accent2: '#f59e0b', mode: 'light', preset: '', light: null, dark: null, shared: null };
+// A token value is emitted into a <style> element on every visitor's page, so it is a CSS
+// injection point: a stray `}` would end the rule and everything after it would be
+// attacker-chosen CSS. Only colour SHAPES are accepted — hex, rgb/hsl functions, and
+// color-mix — and the token NAME is checked against an allowlist, not merely pattern-matched,
+// so a superadmin cannot set `--anything` the stylesheet does not already define.
+//
+// The same regex lives in apps/web/src/ui/theme.jsx. Duplicated deliberately: the client copy
+// makes the admin PREVIEW refuse what the server would refuse, and a preview that renders
+// something the server rejects is a preview that lies.
+const COLOUR = /^(#[0-9a-fA-F]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|color-mix\(in srgb[^;{}]*\))$/;
+const TOKEN_NAMES = new Set([
+  '--primary', '--primary-2', '--on-primary',
+  '--bg', '--bg-solid', '--surface', '--surface-2', '--surface-3', '--avatar-ring',
+  '--text', '--muted', '--faint',
+  '--line', '--line-strong', '--control-border',
+  '--info', '--success', '--warning', '--error',
+  '--ring', '--primary-glow', '--glow-a', '--glow-b',
+]);
+const colour = z.string().max(120).regex(COLOUR);
+// `bg` and `text` are the two inputs the surface set is derived from; every other key must be
+// a known token name.
+const pageColours = z.object({ bg: colour.optional(), text: colour.optional() })
+  .catchall(colour)
+  .refine((o) => Object.keys(o).every((k) => k === 'bg' || k === 'text' || TOKEN_NAMES.has(k)), {
+    message: 'unknown theme token',
+  })
+  .nullable().optional();
 
 export default async function miscRoutes(app) {
   // Public: every visitor reads this to paint the site. Cheap and cacheable.
@@ -128,6 +154,7 @@ export default async function miscRoutes(app) {
       preset: z.string().max(60).optional(),
       light: pageColours,
       dark: pageColours,
+      shared: pageColours,
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
