@@ -15,7 +15,8 @@
     "seed:docs": "node src/seed-docs.mjs",
     "seed:faq": "node src/seed-faq.mjs",
     "setup": "node src/setup.mjs",
-    "test:e2e": "node --test test/e2e/*.test.mjs"
+    "test:e2e": "node --test test/e2e/*.test.mjs",
+    "seed:site": "node src/seed-site-guide.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.637.0",

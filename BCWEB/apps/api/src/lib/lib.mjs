@@ -209,7 +209,7 @@ export function clearAccountLockCache(uid) { if (uid) _modCache.delete(uid); els
 export const CAPABILITIES = [
   'manage_users', 'manage_repos', 'manage_analytics', 'manage_newsletter', 'manage_faq', 'manage_catalogs', 'manage_reports',
   // Content elements
-  'manage_projects', 'manage_showcase', 'manage_announcements',
+  'manage_projects', 'manage_showcase', 'manage_announcements', 'manage_docs',
   // Growth elements
   'manage_events', 'manage_promotions',
   // Services

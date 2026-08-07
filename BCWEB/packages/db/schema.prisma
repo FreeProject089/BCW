@@ -426,7 +426,11 @@ model DocPage {
   id             String        @id @default(cuid())
   slug           String        @unique
   title          String
+  // The sidebar entry and the page heading. The body had bodyFr while the TITLE did not, so
+  // a fully translated page still appeared under an English name in the French sidebar.
+  titleFr        String?
   category       String        @default("General")
+  categoryFr     String?
   icon           String? // lucide icon name (see md.jsx ICONS) shown in the sidebar
   body           String        @default("") // markdown w/ doc blocks (EN base)
   bodyFr         String? // optional French translation

@@ -3,15 +3,17 @@
 // editing / reordering / deleting is gated to ADMIN (SUPERADMIN implicitly), the
 // "special role" the docs are editable with.
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, slugify, pruneRevisions } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, pruneRevisions } from '../lib/lib.mjs';
 
-const LIST_SELECT = { id: true, slug: true, title: true, category: true, icon: true, order: true, published: true, updatedAt: true };
+const LIST_SELECT = { id: true, slug: true, title: true, titleFr: true, category: true, categoryFr: true, icon: true, order: true, published: true, updatedAt: true };
 // Must match the heading-anchor slug produced by the renderer (md.jsx slugify).
 const headingSlug = (s) => String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'section';
 
 const pageSchema = z.object({
   title: z.string().min(1).max(160),
+  titleFr: z.string().max(160).nullish(),
   category: z.string().min(1).max(60).optional(),
+  categoryFr: z.string().max(60).nullish(),
   icon: z.string().max(30).nullish(),
   body: z.string().max(200_000).optional(),
   bodyFr: z.string().max(200_000).nullish(),
@@ -73,7 +75,10 @@ export default async function docRoutes(app) {
   // Editing docs is an ADMIN/SUPERADMIN capability (a role only an admin/superadmin
   // assigns) — matches the requireRole('ADMIN') guard on the write routes, so the
   // client never shows New/Edit to someone who would be 403'd on save.
-  const isEditor = (req) => req.user && ['ADMIN', 'SUPERADMIN'].includes(req.user.role);
+  // Mirrors the write guard exactly. It used to be role-only while the writes were
+  // ADMIN-only; now that a moderator can hold manage_docs, a mismatch here would show them
+  // edit buttons that then 403 — or hide buttons for something they are allowed to do.
+  const isEditor = (req) => !!req.user && (hasCap(req.user, 'manage_docs') || ['ADMIN', 'SUPERADMIN'].includes(req.user.role));
 
   // Sidebar / index. Editors also see unpublished drafts.
   app.get('/docs', { preHandler: optionalAuth() }, async (req) => {
@@ -90,7 +95,7 @@ export default async function docRoutes(app) {
     if (q.length < 2) return { results: [] };
     const p = await db();
     const where = isEditor(req) ? {} : { published: true };
-    const pages = await p.docPage.findMany({ where, select: { slug: true, title: true, category: true, icon: true, body: true, bodyFr: true } });
+    const pages = await p.docPage.findMany({ where, select: { slug: true, title: true, titleFr: true, category: true, categoryFr: true, icon: true, body: true, bodyFr: true } });
     const nq = q.toLowerCase();
     // Multi-term (AND) matching: split the query into words and require a page to contain ALL
     // of them somewhere. The old single-substring match meant "plugin permission" only hit if
@@ -163,7 +168,7 @@ export default async function docRoutes(app) {
   });
 
   // Create.
-  app.post('/docs', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/docs', { preHandler: requireCap('manage_docs', 'ADMIN') }, async (req, reply) => {
     const b = pageSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid', detail: b.error.flatten() });
     const p = await db();
@@ -175,7 +180,8 @@ export default async function docRoutes(app) {
     let base = slugify(b.data.title), slug = base, n = 1;
     while (await p.docPage.findUnique({ where: { slug } })) slug = `${base}-${++n}`;
     const page = await p.docPage.create({ data: {
-      slug, title: b.data.title, category: b.data.category || 'General', icon: b.data.icon || null,
+      slug, title: b.data.title, titleFr: b.data.titleFr || null,
+      category: b.data.category || 'General', categoryFr: b.data.categoryFr || null, icon: b.data.icon || null,
       body: b.data.body || '', bodyFr: b.data.bodyFr || null,
       order: b.data.order ?? 0, published: b.data.published ?? true,
       commentsPublic: !!b.data.commentsPublic,
@@ -185,7 +191,7 @@ export default async function docRoutes(app) {
   });
 
   // Update.
-  app.patch('/docs/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/docs/:id', { preHandler: requireCap('manage_docs', 'ADMIN') }, async (req, reply) => {
     const b = pageSchema.partial().safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid', detail: b.error.flatten() });
     const p = await db();
@@ -194,7 +200,9 @@ export default async function docRoutes(app) {
     const d = b.data;
     // Optimistic concurrency — a stale baseVersion means a concurrent save; hand back
     // the current copy so the editor can 3-way merge instead of overwriting it.
-    const touchesContent = ['title', 'body', 'bodyFr'].some((k) => d[k] !== undefined);
+    // A title change is a content change for revision purposes — renaming a page without
+    // recording it would leave the history unable to explain how it got its name.
+    const touchesContent = ['title', 'titleFr', 'body', 'bodyFr'].some((k) => d[k] !== undefined);
     if (d.baseVersion !== undefined && touchesContent && d.baseVersion !== exists.version) {
       return reply.code(409).send({ error: 'version_conflict', current: {
         version: exists.version, title: exists.title, body: exists.body, bodyFr: exists.bodyFr,
@@ -209,7 +217,9 @@ export default async function docRoutes(app) {
     }
     const page = await p.docPage.update({ where: { id: req.params.id }, data: {
       ...(d.title !== undefined ? { title: d.title } : {}),
+      ...(d.titleFr !== undefined ? { titleFr: d.titleFr || null } : {}),
       ...(d.category !== undefined ? { category: d.category } : {}),
+      ...(d.categoryFr !== undefined ? { categoryFr: d.categoryFr || null } : {}),
       ...(d.icon !== undefined ? { icon: d.icon || null } : {}),
       ...(d.body !== undefined ? { body: d.body } : {}),
       ...(d.bodyFr !== undefined ? { bodyFr: d.bodyFr || null } : {}),
@@ -270,7 +280,7 @@ export default async function docRoutes(app) {
     return { canComment: editor, commentsPublic: page.commentsPublic, comments: comments.map((c) => shapeC(c, umap)) };
   });
 
-  app.post('/docs/:id/comments', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/docs/:id/comments', { preHandler: requireCap('manage_docs', 'ADMIN') }, async (req, reply) => {
     const b = z.object({ body: z.string().min(1).max(5000), anchor: z.string().max(120).nullish(), parentId: z.string().nullish() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -282,7 +292,7 @@ export default async function docRoutes(app) {
     return reply.code(201).send({ comment: shapeC(c, await usersMap(p, [c.authorId])) });
   });
 
-  app.patch('/docs/:id/comments/:cid', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/docs/:id/comments/:cid', { preHandler: requireCap('manage_docs', 'ADMIN') }, async (req, reply) => {
     const b = z.object({ body: z.string().min(1).max(5000).optional(), resolved: z.boolean().optional(), baseBody: z.string().max(5000).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -315,7 +325,7 @@ export default async function docRoutes(app) {
     return { revisions: revs.map((r) => ({ id: r.id, body: r.body, editor: umap.get(r.editorId)?.name || null, createdAt: r.createdAt })) };
   });
 
-  app.delete('/docs/:id/comments/:cid', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.delete('/docs/:id/comments/:cid', { preHandler: requireCap('manage_docs', 'ADMIN') }, async (req, reply) => {
     const p = await db();
     const doomed = await p.docComment.findMany({ where: { pageId: req.params.id, OR: [{ id: req.params.cid }, { parentId: req.params.cid }] }, select: { id: true } });
     const ids = doomed.map((d) => d.id);
@@ -325,7 +335,7 @@ export default async function docRoutes(app) {
   });
 
   // Bulk reorder: [{ id, order, category? }] — used by the sidebar drag/reorder.
-  app.patch('/docs', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/docs', { preHandler: requireCap('manage_docs', 'ADMIN') }, async (req, reply) => {
     const b = z.array(z.object({ id: z.string(), order: z.number().int(), category: z.string().max(60).optional() })).max(500).safeParse(req.body?.pages);
     if (!b.success) return reply.code(400).send({ error: 'invalid' });
     const p = await db();
@@ -334,7 +344,7 @@ export default async function docRoutes(app) {
   });
 
   // Delete.
-  app.delete('/docs/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.delete('/docs/:id', { preHandler: requireCap('manage_docs', 'ADMIN') }, async (req, reply) => {
     const p = await db();
     await p.docPage.delete({ where: { id: req.params.id } }).catch(() => {});
     return reply.code(204).send();

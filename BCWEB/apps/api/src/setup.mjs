@@ -85,6 +85,9 @@ run('node', ['src/seed-docs.mjs'], 'seed:docs');
 say('seeding the FAQ');
 run('node', ['src/seed-faq.mjs'], 'seed:faq');
 
+say('seeding the site guide');
+run('node', ['src/seed-site-guide.mjs'], 'seed:site');
+
 if (withDemo) {
   say('seeding demo fixtures');
   run('node', ['src/seed-demo.mjs'], 'seed:demo');

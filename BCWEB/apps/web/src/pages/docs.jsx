@@ -77,7 +77,8 @@ export default function Docs() {
   const filtered = useMemo(() => {
     if (!q.trim()) return tree;
     const n = q.toLowerCase();
-    return tree.map((c) => ({ ...c, pages: c.pages.filter((p) => p.title.toLowerCase().includes(n) || c.category.toLowerCase().includes(n)) }))
+    // Search both languages: someone reading in French may still search an English term.
+    return tree.map((c) => ({ ...c, pages: c.pages.filter((p) => [p.title, p.titleFr, c.category, c.categoryFr].filter(Boolean).join(' ').toLowerCase().includes(n)) }))
       .filter((c) => c.pages.length);
   }, [tree, q]);
   // Nested sidebar of ARBITRARY depth: a category written "Top / Sub / Sub-sub" (slash-
@@ -106,12 +107,18 @@ export default function Docs() {
     return finalize(root).children;
   }, [filtered]);
 
-  const body = page ? (lang === 'fr' && page.bodyFr ? page.bodyFr : page.body) : '';
+  // One fallback rule for body AND titles: the French when there is one, the English
+  // otherwise. The body already had this; the title did not, so a fully translated page
+  // still appeared under an English name in the sidebar and the breadcrumb.
+  const frOr = (v, base) => (lang === 'fr' && v && String(v).trim()) ? v : base;
+  const body = page ? frOr(page.bodyFr, page.body) : '';
+  const titleOf = (p) => frOr(p?.titleFr, p?.title);
+  const catOf = (c) => frOr(c?.categoryFr, c?.category);
   // Comment pins on headings → hover a section to open its comments.
   const sectionComments = useSectionComments(page ? `/docs/${page.id}` : '', !!page);
   useSectionCommentPills(articleRef, sectionComments, () => setReaderComments(true), [sectionComments, page?.body, lang]);
   // Map of /docs/<slug> → { title, category } for link hover-previews.
-  const pageMap = useMemo(() => { const m = {}; tree.forEach((c) => c.pages.forEach((p) => { m[`/docs/${p.slug}`] = { title: p.title, category: c.category }; })); return m; }, [tree]);
+  const pageMap = useMemo(() => { const m = {}; tree.forEach((c) => c.pages.forEach((p) => { m[`/docs/${p.slug}`] = { title: titleOf(p), category: catOf(c) }; })); return m; }, [tree, lang]);
   const onSaved = async (savedSlug) => { setEditing(null); await loadTree(); if (savedSlug) nav(`/docs/${savedSlug}`); else if (slug) { const r = await api.get(`/docs/${slug}`).catch(() => null); if (r) { setPage(r.page); setContributors(r.contributors || []); } } };
   const activeSlug = slug || firstSlug;
   const goTo = (r) => {
@@ -144,7 +151,7 @@ export default function Docs() {
             className={`group relative flex items-center gap-2.5 pl-3 pr-2.5 py-1.5 rounded-lg text-sm transition ${activeSlug === p.slug ? 'bg-[var(--primary)]/10 text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
             {activeSlug === p.slug && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-full bg-[var(--primary)]" />}
             <IconGlyph name={p.icon || 'file'} size={14} className={activeSlug === p.slug ? 'text-[var(--primary)]' : 'text-[var(--faint)] group-hover:text-[var(--muted)]'} />
-            <span className="truncate flex-1">{p.title}</span>
+            <span className="truncate flex-1">{titleOf(p)}</span>
             {!p.published && <span className="text-[10px] text-orange-400 shrink-0">draft</span>}
           </Link>
         );
@@ -215,7 +222,7 @@ export default function Docs() {
               <nav className="flex items-center gap-1.5 text-xs text-[var(--faint)] mb-3 flex-wrap">
                 <Link to="/docs" className="hover:text-[var(--primary-2)] transition">{t('docs.title', 'Docs')}</Link>
                 {(page.category || '').split('/').map((s) => s.trim()).filter(Boolean).map((c, i) => <span key={i} className="inline-flex items-center gap-1.5"><ChevronRight size={11} className="opacity-60" /> {c}</span>)}
-                <ChevronRight size={11} className="opacity-60" /> <span className="text-[var(--muted)] font-medium truncate max-w-[220px]">{page.title}</span>
+                <ChevronRight size={11} className="opacity-60" /> <span className="text-[var(--muted)] font-medium truncate max-w-[220px]">{titleOf(page)}</span>
               </nav>
               <h1 className="text-2xl md:text-3xl font-extrabold mb-1">{page.title}</h1>
               <div className="flex items-center flex-wrap gap-x-3 gap-y-1.5 text-xs text-[var(--faint)] mb-6">
@@ -489,7 +496,7 @@ function HelpfulWidget({ page, canEdit }) {
 function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReopen, reopenDraft }) {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const categories = [...new Set(tree.map((c) => c.category))];
-  const [f, setF] = useState({ title: '', category: 'General', icon: '', order: 0, published: true, body: '', bodyFr: '', commentsPublic: false });
+  const [f, setF] = useState({ title: '', titleFr: '', category: 'General', categoryFr: '', icon: '', order: 0, published: true, body: '', bodyFr: '', commentsPublic: false });
   const [tab, setTab] = useState('en');
   const [busy, setBusy] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -503,7 +510,7 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
     // Restored after an "undo" on the save toast — re-seed the exact editor state (and
     // the original base version, so a post-conflict re-save can still 3-way-merge).
     if (draft) { setF(draft); if (draftBase) baseRef.current = draftBase; return; }
-    if (page) setF({ title: page.title || '', category: page.category || 'General', icon: page.icon || '', order: page.order || 0, published: page.published !== false, body: '', bodyFr: '', commentsPublic: page.commentsPublic === true });
+    if (page) setF({ title: page.title || '', titleFr: page.titleFr || '', category: page.category || 'General', categoryFr: page.categoryFr || '', icon: page.icon || '', order: page.order || 0, published: page.published !== false, body: '', bodyFr: '', commentsPublic: page.commentsPublic === true });
     // full bodies aren't in the sidebar tree — fetch the page.
     if (page?.slug) api.get(`/docs/${page.slug}`).then((r) => { setF((s) => ({ ...s, body: r.page.body || '', bodyFr: r.page.bodyFr || '' })); baseRef.current = { version: r.page.version ?? null, body: r.page.body || '', bodyFr: r.page.bodyFr || '' }; }).catch(() => {});
     // eslint-disable-next-line
@@ -512,7 +519,9 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
   const save = async () => {
     if (f.title.trim().length < 1) return toast.error(t('de.titlereq', 'A title is required.'));
     if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) return toast.error(t('be.conflicts', 'Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.'));
-    const b = { title: f.title, category: f.category || 'General', icon: f.icon || null, order: Number(f.order) || 0, published: f.published, body: f.body, bodyFr: f.bodyFr || null, commentsPublic: f.commentsPublic,
+    // The French fields are sent even when empty so clearing a translation actually clears
+    // it — omitting them would leave the old value with no way to remove it.
+    const b = { title: f.title, titleFr: f.titleFr || null, category: f.category || 'General', categoryFr: f.categoryFr || null, icon: f.icon || null, order: Number(f.order) || 0, published: f.published, body: f.body, bodyFr: f.bodyFr || null, commentsPublic: f.commentsPublic,
       ...(page && baseRef.current.version != null ? { baseVersion: baseRef.current.version } : {}) };
 
     // Optimistic save with an undo window (see the blog editor). Skipped mid-merge or on a
@@ -603,6 +612,8 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
       )}
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 mb-3">
         <Field label="Title"><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Page title" /></Field>
+        <Field label="Titre (FR)" hint={t('de.frhint', 'Optional — falls back to the English.')}><Input value={f.titleFr || ''} onChange={(e) => setF({ ...f, titleFr: e.target.value })} placeholder="Titre de la page" /></Field>
+        <Field label="Catégorie (FR)"><Input value={f.categoryFr || ''} onChange={(e) => setF({ ...f, categoryFr: e.target.value })} placeholder="Guides / Installation" /></Field>
         <Field label="Category" hint={t('docs.cat.hint', 'Use "Top / Sub" for a subcategory')}><Input list="doc-cats" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="Guides / Setup" />
           <datalist id="doc-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist></Field>
         <Field label="Icon"><Input value={f.icon} onChange={(e) => setF({ ...f, icon: e.target.value })} placeholder="book" className="!w-24" /></Field>

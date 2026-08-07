@@ -1584,6 +1584,7 @@ const DICT = {
     'adm.h.moderation': 'Modération', 'adm.h.users': 'Utilisateurs & accès', 'adm.h.repos': 'Dépôts & hébergement',
     'adm.h.content': 'Contenu', 'adm.h.server': 'Serveur', 'adm.h.botanalytics': 'Bot & analytique', 'adm.h.settings': 'Réglages',
     'adm.h.growth': 'Croissance & monétisation', 'adm.h.integrations': 'Intégrations', 'adm.h.serverdata': 'Serveur & données',
+    'de.frhint': 'Optionnel — retombe sur l’anglais.',
     'adm.tab.footer': 'Pied de page',
     'afoot.enabled': 'Utiliser ce pied de page',
     'afoot.sub': 'Colonnes, liens, et ce qui apparaît sur téléphone plutôt que sur ordinateur. Désactivé, ou sans colonne, le site garde son pied de page d’origine — ça ne peut donc jamais laisser la page sans.',
