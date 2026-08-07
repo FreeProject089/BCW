@@ -23,6 +23,7 @@
 | `LINK_LOOKUP_SECRET` | signs the BMM↔BCWEB link lookup and the telemetry SSO handoff (the telemetry service verifies the same value as `BC_LINK_SECRET`). Has a fallback — but it's `dev-link-secret`, committed in this repo, so set it. `openssl rand -hex 32`. |
 | `BOT_SHARED_SECRET` | the Discord bot's API credential. Unset, compose gives **both** the api and the bot `LINK_LOOKUP_SECRET`'s value, so they agree — only set this to give the bot its own secret. Running the bot **outside** compose is the exception: its code reads only this one. |
 | `AUDIT_SECRET` | HMAC key for the tamper-evident staff audit chain. Unset → falls back to `JWT_SECRET` (fine). ⚠️ **Changing it once entries exist invalidates verification of every earlier entry** — set it once, before going live. |
+| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | The first SUPERADMIN account, created by `npm run setup`. **Set both before the first run**: the account is only created when it does not already exist, so changing them later does nothing. Left unset, every install ships with the same published default (`admin@bettercommunity.local` / `change-me-now`). |
 
 ## 3. Domain & HTTPS (required in production)
 | Variable | Purpose |

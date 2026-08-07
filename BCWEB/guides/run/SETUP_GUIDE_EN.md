@@ -37,16 +37,26 @@ running.
 
 ```bash
 docker compose up -d
-docker compose exec api npm run seed
+docker compose exec api npm run setup
 ```
 
-The seed is idempotent (safe to re-run) and creates:
+`setup` runs migrations and then EVERY seed in the right order. It replaces running them
+one at a time — which was easy to get half-right: the core seed alone leaves the site with
+no documentation and no FAQ, and nothing tells you, because an empty docs page looks the
+same as one you have not opened yet.
+
+It is idempotent (safe to re-run) and creates:
 - The four core projects (BMM, BSM, community, installer).
-- Default hosting plans.
+- Default hosting plans and admin settings.
+- The documentation pages and the FAQ entries.
 - **A SUPERADMIN account**: `admin@bettercommunity.local` / `change-me-now`
-  (or `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` if you set those env vars before
-  seeding). Seeded as **SUPERADMIN** specifically so there's always at least one
-  account able to grant/reassign roles afterward.
+  (or `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` if you set those in `.env` **before** the
+  first run — the account is only created when it does not already exist, so re-running
+  never resets a password you have since changed). Seeded as **SUPERADMIN** specifically so
+  there's always at least one account able to grant/reassign roles afterward.
+
+Add `-- --demo` for the demo fixtures, or `-- --skip-migrate` if migrations are handled
+elsewhere.
 
 Check it's healthy:
 ```bash

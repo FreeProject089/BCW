@@ -36,16 +36,26 @@ section ci-dessous — laisse-les vides pour l'instant et reviens une fois le si
 
 ```bash
 docker compose up -d
-docker compose exec api npm run seed
+docker compose exec api npm run setup
 ```
 
-Le seed est idempotent (rejouable sans risque) et crée :
+`setup` applique les migrations puis lance **tous** les seeds dans le bon ordre. Il remplace
+le fait de les lancer un par un — ce qui était facile à faire à moitié : le seed principal
+seul laisse le site sans documentation et sans FAQ, et rien ne te le signale, parce qu'une
+page de docs vide ressemble exactement à une page qu'on n'a pas encore ouverte.
+
+Il est idempotent (rejouable sans risque) et crée :
 - Les quatre projets de base (BMM, BSM, community, installer).
-- Les plans d'hébergement par défaut.
+- Les plans d'hébergement et les réglages par défaut.
+- Les pages de documentation et les entrées de la FAQ.
 - **Un compte SUPERADMIN** : `admin@bettercommunity.local` / `change-me-now` (ou
-  `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` si tu as réglé ces variables avant le seed). Créé
-  en **SUPERADMIN** spécifiquement pour qu'il y ait toujours au moins un compte capable
-  d'accorder/réassigner les rôles ensuite.
+  `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` si tu les règles dans `.env` **avant** le premier
+  lancement — le compte n'est créé que s'il n'existe pas déjà, donc relancer ne réinitialise
+  jamais un mot de passe changé depuis). Créé en **SUPERADMIN** spécifiquement pour qu'il y
+  ait toujours au moins un compte capable d'accorder/réassigner les rôles ensuite.
+
+Ajoute `-- --demo` pour les fixtures de démonstration, ou `-- --skip-migrate` si les
+migrations sont gérées ailleurs.
 
 ### Optionnel : contenu de démo (dev uniquement)
 
