@@ -87,6 +87,7 @@ function useFetch(fn, deps) {
 // main button plus a chevron dropdown listing every choice with its label —
 // instead of a cluttered row of look-alike buttons.
 function DownloadMenu({ downloads = [], children }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const closeTimer = useRef(null);
@@ -114,21 +115,47 @@ function DownloadMenu({ downloads = [], children }) {
     </>);
   }
   return (
-    <div className="relative flex" ref={ref} onMouseEnter={hoverOpen} onMouseLeave={hoverClose}>
-      <a href={primary.url} download rel="noreferrer"><Button variant="primary" className="!rounded-r-none">{dlIcon(primary)} {primary.label}</Button></a>
-      <Button variant="primary" className="!rounded-l-none !px-2 border-l border-white/25" aria-label="More download options" onClick={() => setOpen((v) => !v)}><ChevronDown size={15} className={`transition-transform ${open ? 'rotate-180' : ''}`} /></Button>
+    <div className="relative inline-flex" ref={ref} onMouseEnter={hoverOpen} onMouseLeave={hoverClose}>
+      {/* ONE gradient across the whole split button, painted by this wrapper.
+          Before, each half was its own .btn-primary, and .btn-primary fills with
+          `linear-gradient(120deg, var(--primary), var(--primary-2))` — so the gradient
+          restarted on the 30px chevron, producing a visible step at the seam. The halves are
+          now transparent (`!bg-none`) and this one surface shows through both. */}
+      <div className="inline-flex rounded-[10px] overflow-hidden"
+        style={{ background: 'linear-gradient(120deg, var(--primary), var(--primary-2))', boxShadow: '0 6px 20px -8px var(--primary-glow)' }}>
+        <a href={primary.url} download rel="noreferrer" className="inline-flex">
+          <Button variant="primary" className="!bg-none !rounded-none !shadow-none">{dlIcon(primary)} {primary.label}</Button>
+        </a>
+        {/* The divider was `border-white/25` — invisible the moment the accent is a pastel,
+            which site themes can now make it. --on-primary is the ink already chosen for
+            THIS accent, so the separator follows it. */}
+        <span aria-hidden="true" className="self-stretch w-px my-2 shrink-0"
+          style={{ background: 'color-mix(in srgb, var(--on-primary) 35%, transparent)' }} />
+        <Button variant="primary" className="!bg-none !rounded-none !shadow-none !px-2.5"
+          aria-label={t('dl.more', 'More download options')} aria-expanded={open} aria-haspopup="menu"
+          onClick={() => setOpen((v) => !v)}>
+          <ChevronDown size={15} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        </Button>
+      </div>
       {children}
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-[var(--line-strong)] py-1 z-[60] anim-fade overflow-hidden"
-          style={{ background: 'var(--bg-solid)', boxShadow: '0 18px 50px -12px rgba(0,0,0,0.5)' }}>
-          {list.map((d) => (
-            <a key={`${d.label}:${d.url}`} href={d.url} download rel="noreferrer" onClick={() => setOpen(false)}
-              className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-[var(--text)] hover:bg-[var(--surface-2)] transition">
-              <span className="text-[var(--primary-2)] shrink-0">{dlIcon(d, 15)}</span>
-              <span className="min-w-0 flex-1 truncate">{d.label}</span>
-              {d.primary && <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">default</span>}
-            </a>
-          ))}
+        <div role="menu"
+          className="absolute right-0 top-full mt-2 min-w-[15rem] max-w-[22rem] rounded-xl border border-[var(--line-strong)] p-1 z-[60] anim-fade"
+          style={{ background: 'var(--bg-solid)', boxShadow: 'var(--shadow-lg, 0 18px 50px -12px rgba(0,0,0,0.5))' }}>
+          {list.map((d) => {
+            const isPrimary = d === primary;
+            return (
+              <a key={`${d.label}:${d.url}`} href={d.url} download rel="noreferrer" role="menuitem" onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-[var(--text)] hover:bg-[var(--surface-2)] transition-colors">
+                <span className={`shrink-0 ${isPrimary ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}`}>{dlIcon(d, 15)}</span>
+                <span className="min-w-0 flex-1 truncate">{d.label}</span>
+                {/* A dot, not the word "default": the label is often already long, and the
+                    row used to end in an all-caps English word in the French UI. */}
+                {isPrimary && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: 'var(--primary)' }}
+                  title={t('dl.default', 'Default download')} />}
+              </a>
+            );
+          })}
         </div>
       )}
     </div>

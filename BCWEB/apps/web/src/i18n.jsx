@@ -386,6 +386,7 @@ const DICT = {
     'faq.nomatch': 'Aucune question correspondante', 'faq.nomatch.s': 'Essaie une autre recherche.', 'faq.none': 'Aucune question pour le moment', 'faq.none.s': 'Reviens bientôt.', 'faq.none.admin': "Ajoute la première depuis Admin → FAQ.",
     'adm.tab.faq': 'FAQ',
     'faqa.title': 'FAQ', 'faqa.view': 'Voir la page', 'faqa.sub': 'Questions & réponses affichées sur /faq. Les réponses acceptent tout le markdown BetterCommunity (titres, encadrés, code, liens…).',
+    'dl.more': 'Autres options de téléchargement', 'dl.default': 'Téléchargement par défaut',
     'faqa.qfr': 'Question (FR)', 'faqa.qfrph': 'Comment faire… ?', 'faqa.catfr': 'Catégorie (FR)',
     'faqa.afr': 'Réponse FR (markdown)', 'faqa.afrph': 'Écris la réponse en français…',
     'faqa.frhint': 'Optionnel — retombe sur l’anglais si vide.',
