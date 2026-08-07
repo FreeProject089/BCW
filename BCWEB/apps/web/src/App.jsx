@@ -577,6 +577,27 @@ const SOCIAL = [
 ];
 // A footer link column. On desktop it's always expanded; on phone the title becomes
 // a collapsible accordion header (collapsed by default).
+// Admin-configured footer, fetched once and cached in a module promise like the nav config.
+// Null means "not configured" — the built-in footer below is then used unchanged, so this is
+// purely additive and a broken/absent config can never leave the page without a footer.
+let _footCfgPromise = null;
+function useFooterConfig() {
+  const [cfg, setCfg] = useState(null);
+  useEffect(() => {
+    _footCfgPromise = _footCfgPromise || api.get('/footer').then((r) => r.footer || null).catch(() => null);
+    let alive = true;
+    _footCfgPromise.then((v) => { if (alive) setCfg(v); });
+    return () => { alive = false; };
+  }, []);
+  return cfg;
+}
+// `on` is per link and per column: a phone genuinely wants fewer footer links than a desktop,
+// and hiding them with CSS would still ship them to the DOM and to screen readers.
+const showsOn = (item, mobile) => {
+  const v = item?.on || 'both';
+  return v === 'both' || (mobile ? v === 'mobile' : v === 'desktop');
+};
+
 function FooterCol({ title, links }) {
   const [open, setOpen] = useState(false);
   const render = ([l, to, ext]) => ext
@@ -671,17 +692,40 @@ function FooterEgg() {
 }
 
 function Footer() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  const cfg = useFooterConfig();
+  // Which device is on screen. The `on` filter REMOVES links rather than hiding them, so it
+  // has to be decided in JS: a CSS-hidden link is still in the DOM and still announced by a
+  // screen reader, which is not what "hide this on mobile" means.
+  const [isMobile, setIsMobile] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 767px)').matches);
+  useEffect(() => {
+    if (typeof matchMedia === 'undefined') return;
+    const mq = matchMedia('(max-width: 767px)');
+    const on = (e) => setIsMobile(e.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  const frOr = (v, base) => (lang === 'fr' && v && v.trim()) ? v : base;
+  // Configured columns, filtered for this device. Empty → the built-in columns below stand.
+  const cols = (cfg?.columns || [])
+    .filter((c) => showsOn(c, isMobile))
+    .map((c) => ({
+      title: frOr(c.titleFr, c.title),
+      links: (c.links || []).filter((l) => showsOn(l, isMobile))
+        .map((l) => [frOr(l.labelFr, l.label), l.to, /^https?:\/\//i.test(l.to)]),
+    }))
+    .filter((c) => c.links.length);
   return (
     <footer className="mt-16 md:mt-24 relative clear-both">
       {/* gradient accent line */}
       <div className="h-px bg-gradient-to-r from-transparent via-[var(--primary)]/40 to-transparent" />
-      <div className="max-w-6xl mx-auto px-4 py-14 flex flex-col md:grid md:gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+      <div className="max-w-6xl mx-auto px-4 py-14 flex flex-col md:grid md:gap-10"
+        style={{ gridTemplateColumns: `1.4fr repeat(${cols.length || 3}, 1fr)` }}>
         {/* brand block */}
         <div className="mb-4 md:mb-0">
           <div className="flex items-center gap-2.5 font-extrabold text-lg"><img src="/logo.png" alt="BC" className="w-9 h-9 rounded-xl" /> BetterCommunity</div>
-          <p className="text-sm text-[var(--muted)] mt-3 max-w-xs leading-relaxed">{t('foot.tagline')}</p>
-          <div className="flex items-center gap-2 mt-5">
+          <p className="text-sm text-[var(--muted)] mt-3 max-w-xs leading-relaxed">{frOr(cfg?.brand?.taglineFr, cfg?.brand?.tagline) || t('foot.tagline')}</p>
+          <div className={`items-center gap-2 mt-5 ${cfg && cfg.brand?.socials === false ? 'hidden' : 'flex'}`}>
             {SOCIAL.map((s) => (
               <a key={s.label} href={s.href} target="_blank" rel="noreferrer" title={s.label}
                 className="grid place-items-center w-9 h-9 rounded-xl border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)] transition">
@@ -689,11 +733,15 @@ function Footer() {
               </a>
             ))}
           </div>
-          <FooterNewsletter />
+          {(!cfg || cfg.brand?.newsletter !== false) && <FooterNewsletter />}
         </div>
+        {cols.length
+          ? cols.map((c) => <FooterCol key={c.title} title={c.title} links={c.links} />)
+          : <>
         <FooterCol title={t('foot.products')} links={[['BetterModsManager', '/p/bmm'], ['BetterSoundMaker', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting'], [t('myo.badge', 'Make Your Own'), '/myo']]} />
         <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/legal/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('faq.title', 'FAQ'), '/faq'], [t('nav.repos'), '/repos'], [t('foot.members', 'Members'), '/users'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
         <FooterCol title={t('foot.legal')} links={[[t('legal.all', 'All'), '/legal'], [t('foot.privacy'), '/legal/privacy'], [t('foot.terms'), '/legal/terms'], [t('foot.cookies'), '/legal/cookies'], [t('foot.refunds', 'Payments & Refunds'), '/legal/refunds']]} />
+          </>}
       </div>
       <div className="border-t border-[var(--line)]"><div className="max-w-6xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 text-xs text-[var(--faint)] pb-24 md:pb-5">
         <span>© {new Date().getFullYear()} BetterCommunity. {t('foot.rights')}</span>

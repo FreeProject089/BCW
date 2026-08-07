@@ -147,6 +147,7 @@ export function Admin() {
 
     { heading: t('adm.h.settings', 'Settings') },
     isAdmin && { id: 'navui', label: t('adm.tab.navui', 'Topbar navigation'), icon: Navigation },
+    isAdmin && { id: 'footer', label: t('adm.tab.footer', 'Footer'), icon: PanelTop },
     isAdmin && { id: 'settings', label: t('adm.tab.settings', 'Settings'), icon: Sliders },
     // Site theme changes what EVERY visitor sees, so it sits a tier above the per-project
     // settings an ADMIN manages.
@@ -246,6 +247,7 @@ export function Admin() {
         {s === 'showcase' && <AdminShowcase />}
         {s === 'reviews' && <AdminReviews />}
         {s === 'navui' && <AdminNav />}
+        {s === 'footer' && <AdminFooter />}
         {s === 'settings' && <AdminSettings />}
         {s === 'sitetheme' && <AdminSiteTheme />}
       </>)}
@@ -8100,6 +8102,119 @@ function AdminNeedsAttention({ data, loading, onReload }) {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// Admin: the site footer — columns, links, and what shows on which device.
+//
+// Same shape as the topbar manager: an optional config that REPLACES the built-in footer only
+// when it is enabled AND has columns. Leave it off and the hardcoded footer stands, so turning
+// this on can never leave the site without one.
+function AdminFooter() {
+  const { t, lang } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/footer'), []);
+  const [f, setF] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [device, setDevice] = useState('desktop');
+  useEffect(() => { if (data?.footer) setF({ columns: [], brand: {}, mobile: {}, bottom: {}, ...data.footer }); }, [data]);
+  if (loading || !f) return <Loading />;
+
+  const frOr = (v, base) => (lang === 'fr' && v && v.trim()) ? v : base;
+  const setCol = (i, patch) => setF({ ...f, columns: f.columns.map((c, n) => (n === i ? { ...c, ...patch } : c)) });
+  const setLink = (ci, li, patch) => setCol(ci, { links: f.columns[ci].links.map((l, n) => (n === li ? { ...l, ...patch } : l)) });
+  const move = (arr, i, d) => { const a = [...arr]; const j = i + d; if (j < 0 || j >= a.length) return a; [a[i], a[j]] = [a[j], a[i]]; return a; };
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.put('/admin/footer', f);
+      toast.success(t('afoot.saved', 'Footer saved.'));
+      reload();
+    } catch (x) { toast.error(x.data?.detail || x.data?.error || t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+
+  // The same `on` rule the live footer applies, so the preview cannot promise a link the
+  // footer will drop.
+  const shows = (item) => { const v = item?.on || 'both'; return v === 'both' || v === device; };
+  const ON_OPTS = [['both', t('afoot.on.both', 'Both')], ['desktop', t('afoot.on.desktop', 'Desktop')], ['mobile', t('afoot.on.mobile', 'Mobile')]];
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <h2 className="font-semibold flex items-center gap-2 flex-1"><PanelTop size={16} className="text-[var(--primary-2)]" /> {t('adm.tab.footer', 'Footer')}</h2>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={!!f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} />
+          {t('afoot.enabled', 'Use this footer')}
+        </label>
+        <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={14} /> {t('common.save', 'Save')}</>}</Button>
+      </div>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('afoot.sub', 'Columns, links, and what appears on phone versus desktop. Turned off, or with no columns, the site keeps its built-in footer — so this can never leave the page without one.')}</p>
+
+      <Card className="p-4 mb-4 flex flex-wrap items-end gap-4">
+        <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
+          {[['desktop', t('afoot.on.desktop', 'Desktop')], ['mobile', t('afoot.on.mobile', 'Mobile')]].map(([k, label]) => (
+            <button key={k} type="button" onClick={() => setDevice(k)}
+              className={`px-2.5 py-1 rounded-md ${device === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{label}</button>
+          ))}
+        </div>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.brand?.socials !== false} onChange={(e) => setF({ ...f, brand: { ...f.brand, socials: e.target.checked } })} /> {t('afoot.socials', 'Social icons')}</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.brand?.newsletter !== false} onChange={(e) => setF({ ...f, brand: { ...f.brand, newsletter: e.target.checked } })} /> {t('afoot.newsletter', 'Newsletter box')}</label>
+        <Field label={t('afoot.tagline', 'Tagline')}><Input className="!w-56" value={f.brand?.tagline || ''} onChange={(e) => setF({ ...f, brand: { ...f.brand, tagline: e.target.value } })} placeholder={t('afoot.taglineph', 'Empty = the default')} /></Field>
+        <Field label={t('afoot.taglinefr', 'Tagline (FR)')}><Input className="!w-56" value={f.brand?.taglineFr || ''} onChange={(e) => setF({ ...f, brand: { ...f.brand, taglineFr: e.target.value } })} /></Field>
+      </Card>
+
+      <div className="space-y-3">
+        {f.columns.map((c, ci) => (
+          <Card key={ci} className={`p-3.5 ${shows(c) ? '' : 'opacity-50'}`}>
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <Input className="!w-44" value={c.title} onChange={(e) => setCol(ci, { title: e.target.value })} placeholder={t('afoot.coltitle', 'Column title')} />
+              <Input className="!w-44" value={c.titleFr || ''} onChange={(e) => setCol(ci, { titleFr: e.target.value })} placeholder={t('afoot.coltitlefr', 'Title (FR)')} />
+              <Select className="!w-auto" value={c.on || 'both'} onChange={(e) => setCol(ci, { on: e.target.value })}>{ON_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
+              <div className="flex-1" />
+              <button onClick={() => setF({ ...f, columns: move(f.columns, ci, -1) })} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)]" aria-label="up">↑</button>
+              <button onClick={() => setF({ ...f, columns: move(f.columns, ci, 1) })} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)]" aria-label="down">↓</button>
+              <button onClick={() => setF({ ...f, columns: f.columns.filter((_, n) => n !== ci) })} className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10"><Trash2 size={13} /></button>
+            </div>
+            <div className="space-y-1.5 pl-1">
+              {(c.links || []).map((l, li) => (
+                <div key={li} className={`flex items-center gap-2 flex-wrap ${shows(l) ? '' : 'opacity-50'}`}>
+                  <Input className="!w-40 !text-xs" value={l.label} onChange={(e) => setLink(ci, li, { label: e.target.value })} placeholder={t('afoot.label', 'Label')} />
+                  <Input className="!w-40 !text-xs" value={l.labelFr || ''} onChange={(e) => setLink(ci, li, { labelFr: e.target.value })} placeholder={t('afoot.labelfr', 'Label (FR)')} />
+                  <Input className="!w-56 !text-xs font-mono" value={l.to} onChange={(e) => setLink(ci, li, { to: e.target.value })} placeholder="/blog — https://…" />
+                  <Select className="!w-auto !text-xs" value={l.on || 'both'} onChange={(e) => setLink(ci, li, { on: e.target.value })}>{ON_OPTS.map(([v, lb]) => <option key={v} value={v}>{lb}</option>)}</Select>
+                  <button onClick={() => setCol(ci, { links: move(c.links, li, -1) })} className="text-[var(--faint)] hover:text-[var(--text)] px-1">↑</button>
+                  <button onClick={() => setCol(ci, { links: move(c.links, li, 1) })} className="text-[var(--faint)] hover:text-[var(--text)] px-1">↓</button>
+                  <button onClick={() => setCol(ci, { links: c.links.filter((_, n) => n !== li) })} className="text-red-400 px-1"><Trash2 size={12} /></button>
+                </div>
+              ))}
+              <Button size="sm" variant="ghost" onClick={() => setCol(ci, { links: [...(c.links || []), { label: '', to: '/', on: 'both' }] })}><Plus size={13} /> {t('afoot.addlink', 'Add link')}</Button>
+            </div>
+          </Card>
+        ))}
+        <Button variant="default" onClick={() => setF({ ...f, columns: [...f.columns, { title: '', links: [], on: 'both' }] })}><Plus size={14} /> {t('afoot.addcol', 'Add column')}</Button>
+      </div>
+
+      <Card className="p-4 mt-4">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2.5">{t('afoot.preview', 'Preview')} — {device === 'mobile' ? t('afoot.on.mobile', 'Mobile') : t('afoot.on.desktop', 'Desktop')}</div>
+        {!f.enabled || !f.columns.some((c) => shows(c) && (c.links || []).some(shows))
+          ? <div className="text-sm text-[var(--muted)]">{t('afoot.fallback', 'The built-in footer is used.')}</div>
+          : <div className={`grid gap-6 ${device === 'mobile' ? 'grid-cols-1 max-w-[22rem]' : 'sm:grid-cols-3'}`}>
+              {f.columns.filter((c) => shows(c)).map((c, i) => {
+                const links = (c.links || []).filter(shows);
+                if (!links.length) return null;
+                return (
+                  <div key={i}>
+                    <div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-2">{frOr(c.titleFr, c.title) || '—'}</div>
+                    <div className="flex flex-col gap-1.5">
+                      {links.map((l, n) => <span key={n} className="text-sm text-[var(--muted)]">{frOr(l.labelFr, l.label) || '—'}</span>)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>}
+      </Card>
     </div>
   );
 }

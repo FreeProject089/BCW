@@ -945,6 +945,75 @@ export default async function miscRoutes(app) {
     }).optional().default({}),
   });
 
+  // ── Admin-configurable FOOTER ─────────────────────────────────────────────────
+  // Same shape of idea as the topbar above: an optional JSON blob in
+  // AdminSetting['footer.config'], so there is no schema change and no migration, and when
+  // it is disabled or empty the frontend keeps its hardcoded footer. Purely additive.
+  //
+  // `to` is an internal path OR an http(s) URL, unlike the topbar where only internal paths
+  // are allowed: a footer legitimately links out (Ko-fi, Discord, the forum). Everything else
+  // is refused, so a configured link can never become a `javascript:` URL.
+  const footLink = z.object({
+    label: z.string().trim().min(1).max(40),
+    labelFr: z.string().trim().max(40).optional().default(''),
+    to: z.string().trim().min(1).max(300)
+      .refine((v) => v.startsWith('/') || /^https?:\/\//i.test(v), 'must be an internal path or an http(s) URL'),
+    icon: z.string().trim().max(60).optional().default(''),
+    // Which devices show it. The footer is the one place where a phone genuinely wants
+    // FEWER links than a desktop, so this is per link rather than a single global switch.
+    on: z.enum(['both', 'desktop', 'mobile']).optional().default('both'),
+  });
+  const footColumn = z.object({
+    title: z.string().trim().min(1).max(40),
+    titleFr: z.string().trim().max(40).optional().default(''),
+    on: z.enum(['both', 'desktop', 'mobile']).optional().default('both'),
+    links: z.array(footLink).max(16).default([]),
+  });
+  const footerSchema = z.object({
+    enabled: z.boolean(),
+    columns: z.array(footColumn).max(6).default([]),
+    brand: z.object({
+      tagline: z.string().trim().max(200).optional().default(''),
+      taglineFr: z.string().trim().max(200).optional().default(''),
+      socials: z.boolean().optional().default(true),
+      newsletter: z.boolean().optional().default(true),
+    }).optional().default({}),
+    // Phone layout. The desktop grid is driven by the column count; a phone has to choose
+    // between one column per row and a two-up grid, and neither is right for every site.
+    mobile: z.object({
+      layout: z.enum(['stacked', 'grid']).optional().default('stacked'),
+      brand: z.boolean().optional().default(true),
+    }).optional().default({}),
+    bottom: z.object({
+      copyright: z.boolean().optional().default(true),
+      text: z.string().trim().max(120).optional().default(''),
+      textFr: z.string().trim().max(120).optional().default(''),
+    }).optional().default({}),
+  });
+
+  app.get('/admin/footer', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'footer.config' } });
+    return { footer: row?.value || { enabled: false, columns: [] } };
+  });
+  app.put('/admin/footer', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const parsed = footerSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', detail: parsed.error.issues?.[0]?.message });
+    const p = await db();
+    await p.adminSetting.upsert({ where: { key: 'footer.config' }, create: { key: 'footer.config', value: parsed.data }, update: { value: parsed.data } });
+    await logAudit(p, req.user.uid, 'footer.config', `${parsed.data.columns.length} columns · ${parsed.data.enabled ? 'enabled' : 'disabled'}`, clientIp(req));
+    return { ok: true };
+  });
+  // Public: what the site renders. Disabled config returns null so the frontend keeps its
+  // built-in footer rather than rendering an empty one.
+  app.get('/footer', async (req, reply) => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'footer.config' } });
+    reply.header('Cache-Control', 'public, max-age=60');
+    const cfg = row?.value;
+    return { footer: cfg?.enabled ? cfg : null };
+  });
+
   // Admin editor reads the RAW config (even when disabled) so it can be edited.
   app.get('/admin/nav', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
