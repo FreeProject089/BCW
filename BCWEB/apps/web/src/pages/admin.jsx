@@ -7850,7 +7850,7 @@ function ReportThreadModal({ id, admin, onClose }) {
   const { data, loading, reload } = useAsync(() => api.get(base), [id]);
   // Live thread. The stream lives under /me/ for BOTH views: canAccessReport already covers
   // staff, so there is no second authorisation path to keep in step with the first.
-  useThreadStream(id ? `/me/reports/${id}/stream` : null, () => reload());
+  useThreadStream(id ? `/me/reports/${id}/stream` : null, () => reload(true));
   const [sending, setSending] = useState(false);
   const [people, setPeople] = useState(false);
   const r = data?.report;
@@ -7859,11 +7859,16 @@ function ReportThreadModal({ id, admin, onClose }) {
   const own = admin && r && r.reporterId === user?.id;
   const send = async ({ body, images }) => {
     setSending(true);
-    try { await api.post(`${base}/messages`, { body, images }); reload(); return true; }
+    try { await api.post(`${base}/messages`, { body, images }); reload(true); return true; }
     catch (x) { toast.error(x.data?.error === 'closed' ? t('mr.closed', 'This report is closed.') : t('acc.failed', 'Failed.')); return false; }
     finally { setSending(false); }
   };
-  const setStatus = async (status) => { try { await api.post(`/admin/reports/${id}/status`, { status }); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  const setStatus = async (status) => { try { await api.post(`/admin/reports/${id}/status`, { status }); reload(true); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  // The reporter's own close/reopen. Separate endpoint from the staff one, and narrower:
+  // open <-> closed only. Someone who solved their own problem should be able to say so
+  // without waiting for staff to clear the thread.
+  const mine = r && r.reporterId === user?.id;
+  const setOwnStatus = async (status) => { try { await api.post(`/me/reports/${id}/status`, { status }); reload(true); } catch { toast.error(t('acc.failed', 'Failed.')); } };
   const del = async () => { if (!(await dialog.confirm({ title: t('ar.del.t', 'Delete report?'), message: t('ar.del.m', 'Permanently delete this report and its messages?'), okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/admin/reports/${id}`); toast.success(t('ar.deleted', 'Deleted.')); onClose(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
   return (
     <Modal open onClose={onClose} icon={admin ? Inbox : MessageSquare} width="max-w-2xl"
@@ -7886,9 +7891,16 @@ function ReportThreadModal({ id, admin, onClose }) {
           <Button size="sm" variant="ghost" className="!text-red-400" onClick={del}><Trash2 size={13} /> {t('common.delete', 'Delete')}</Button>
         </div>}
         {admin && !own && people && <ReportPeoplePanel report={r} onChange={reload} />}
+        {/* The reporter's own controls — shown in the user view, and also to a staff member
+            looking at a report they opened themselves (where the staff bar is hidden). */}
+        {mine && !admin && <div className="flex flex-wrap gap-2">
+          {r.status === 'closed'
+            ? <Button size="sm" variant="ghost" onClick={() => setOwnStatus('open')}><RefreshCw size={13} /> {t('mr.reopen', 'Reopen my report')}</Button>
+            : <Button size="sm" variant="ghost" onClick={() => setOwnStatus('closed')}><CheckCircle2 size={13} /> {t('mr.close', 'Close my report')}</Button>}
+        </div>}
         <div className="max-h-[45vh] overflow-y-auto pr-1"><ReportThread messages={r.messages} /></div>
         {own ? null
-          : r.status === 'closed' && !admin ? <p className="text-sm text-[var(--faint)] text-center py-2">{t('mr.closednote', 'This report is closed. Open a new one if you still need help.')}</p>
+          : r.status === 'closed' && !admin ? <p className="text-sm text-[var(--faint)] text-center py-2">{t('mr.closednote', 'This report is closed — reopen it above if you still need help.')}</p>
           : <ReportComposer onSend={send} sending={sending} placeholder={admin ? t('ar.reply', 'Reply as staff…') : t('rp.msgph', 'Write a message…')} />}
       </div>}
     </Modal>
@@ -8228,6 +8240,24 @@ function AdminFooter() {
 //
 // The preview is not a mock-up: it calls the SAME themeCss() the live site applies, scoped to
 // a container, so what you see is what visitors get.
+// What a token paints RIGHT NOW, read off the live document. `<input type="color">` only
+// accepts `#rrggbb`, so anything the browser reports in another notation (rgb(), a colour
+// name, a colour-mix() it could not resolve) is converted through a canvas — and anything
+// still unresolvable falls back to grey rather than throwing.
+function liveToken(name) {
+  if (typeof window === 'undefined') return '#888888';
+  try {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    if (!raw) return '#888888';
+    if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw;
+    if (/^#[0-9a-fA-F]{3}$/.test(raw)) return '#' + [...raw.slice(1)].map((c) => c + c).join('');
+    const cv = document.createElement('canvas').getContext('2d');
+    cv.fillStyle = '#888888';
+    cv.fillStyle = raw;              // invalid values leave the previous one in place
+    return cv.fillStyle;
+  } catch { return '#888888'; }
+}
+
 function AdminSiteTheme() {
   const { t, lang } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/theme'), []);
@@ -8366,7 +8396,12 @@ function AdminSiteTheme() {
               <div className="space-y-1.5">
                 {items.map((tk) => (
                   <div key={tk.name} className="flex items-start gap-2.5 flex-wrap">
-                    <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(bag[tk.name] || '') ? bag[tk.name] : '#888888'}
+                    {/* An unset token used to fall back to a hardcoded #888888, so every
+                        token with no override showed the SAME grey — the one thing the
+                        swatch must never do, since its job is to tell you what the token
+                        currently paints. It now reads the live computed value, which is what
+                        a visitor actually sees. */}
+                    <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(bag[tk.name] || '') ? bag[tk.name] : liveToken(tk.name)}
                       onChange={(e) => setTok(tk.name, e.target.value)}
                       className="w-8 h-8 mt-0.5 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer shrink-0" />
                     <Input className="!w-40 font-mono !text-xs" placeholder={tk.derived ? t('st.derived', 'derived') : t('st.default', 'default')}

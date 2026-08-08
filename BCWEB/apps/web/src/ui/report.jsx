@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { Flag, Send, ImagePlus, X, Loader2, Shield, MessageSquare, Lock } from 'lucide-react';
+import { Flag, Send, ImagePlus, X, Loader2, Shield, MessageSquare, Lock, Info } from 'lucide-react';
 import { api, uploadReportImage } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from '../pages/auth.jsx';
@@ -63,6 +63,19 @@ export function ReportThread({ messages }) {
   return (
     <div className="space-y-3">
       {messages.map((m) => (
+        // A system note (authorId null — the schema's own convention) records something
+        // that HAPPENED to the thread rather than something someone said: closed, reopened,
+        // archived. Rendered as a centred line, not a bubble, so the eye reads it as a
+        // timeline entry and never mistakes it for a reply from the other side.
+        m.authorId === null && !m.staff ? (
+          <div key={m.id} className="flex justify-center">
+            <div className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--line)]">
+              <Info size={11} />
+              <span>{m.body}</span>
+              <span>· {new Date(m.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          </div>
+        ) : (
         <div key={m.id} className={`flex ${m.staff ? 'justify-start' : 'justify-end'}`}>
           <div className={`max-w-[85%] rounded-xl px-3 py-2 border ${m.staff ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'bg-[var(--primary)]/10 border-[var(--primary)]/30'}`}>
             <div className="text-[11px] text-[var(--faint)] mb-1 flex items-center gap-1.5">
@@ -76,6 +89,7 @@ export function ReportThread({ messages }) {
             </div>}
           </div>
         </div>
+        )
       ))}
     </div>
   );

@@ -181,12 +181,54 @@ export default async function myoRoutes(app) {
     streamThread(req, reply, 'myo', r.id);
   });
 
+// A status change is part of the conversation, so it is written into it. Before this, a
+// request moving to "in production" or being closed changed a badge and published nothing —
+// the other side saw no reason, no author, no date, and nothing at all until a reload.
+//
+// `authorId: null` is the schema's own convention for a system note (see MyoMessage).
+const MYO_STATUS_NOTE = {
+  open: (who) => `${who} reopened this request.`,
+  quoted: (who) => `${who} sent a quote.`,
+  in_production: (who) => `${who} started production.`,
+  delivered: (who) => `${who} marked this request delivered.`,
+  closed: (who) => `${who} closed this request.`,
+  cancelled: (who) => `${who} cancelled this request.`,
+};
+
+async function noteMyoStatus(p, request, status, actorName) {
+  const body = (MYO_STATUS_NOTE[status] || ((w) => `${w} set the status to ${status}.`))(actorName);
+  const msg = await p.myoMessage.create({
+    data: { requestId: request.id, authorId: null, staff: false, body, images: [] },
+  });
+  publishToThread('myo', request.id, { type: 'message', message: ser.message(msg) });
+  return msg;
+}
+
+async function actorName(p, uid, fallback) {
+  const u = await p.user.findUnique({ where: { id: uid }, select: { displayName: true } }).catch(() => null);
+  return u?.displayName || fallback;
+}
+
   app.post('/myo/requests/:id/close', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
     const r = await p.myoRequest.findUnique({ where: { id: req.params.id } });
     if (!r) return reply.code(404).send({ error: 'not_found' });
     if (r.userId !== req.user.uid && !isStaff(req.user)) return reply.code(403).send({ error: 'forbidden' });
-    await p.myoRequest.update({ where: { id: r.id }, data: { status: 'closed', closedAt: new Date() } });
+    await p.myoRequest.update({ where: { id: r.id }, data: { status: 'closed', closedAt: new Date(), staffUnread: true, lastActivityAt: new Date() } });
+    await noteMyoStatus(p, r, 'closed', await actorName(p, req.user.uid, 'The requester'));
+    return { ok: true };
+  });
+
+  // Reopen one you closed yourself. Closing a request you no longer need should not be a
+  // one-way door — and a reopened thread is cheaper for everyone than a duplicate one.
+  app.post('/myo/requests/:id/reopen', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const r = await p.myoRequest.findUnique({ where: { id: req.params.id } });
+    if (!r) return reply.code(404).send({ error: 'not_found' });
+    if (r.userId !== req.user.uid && !isStaff(req.user)) return reply.code(403).send({ error: 'forbidden' });
+    if (r.status !== 'closed') return { ok: true };
+    await p.myoRequest.update({ where: { id: r.id }, data: { status: 'open', closedAt: null, staffUnread: true, lastActivityAt: new Date() } });
+    await noteMyoStatus(p, r, 'open', await actorName(p, req.user.uid, 'The requester'));
     return { ok: true };
   });
 
@@ -323,8 +365,9 @@ export default async function myoRoutes(app) {
     const b = z.object({ status: z.enum(['open', 'quoted', 'in_production', 'delivered', 'closed', 'cancelled']) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const r = await p.myoRequest.update({ where: { id: req.params.id }, data: { status: b.data.status, ...(b.data.status === 'closed' ? { closedAt: new Date() } : { closedAt: null }), userUnread: true } }).catch(() => null);
+    const r = await p.myoRequest.update({ where: { id: req.params.id }, data: { status: b.data.status, ...(b.data.status === 'closed' ? { closedAt: new Date() } : { closedAt: null }), userUnread: true, lastActivityAt: new Date() } }).catch(() => null);
     if (!r) return reply.code(404).send({ error: 'not_found' });
+    await noteMyoStatus(p, r, b.data.status, await actorName(p, req.user.uid, 'Staff'));
     return { ok: true, status: r.status };
   });
 

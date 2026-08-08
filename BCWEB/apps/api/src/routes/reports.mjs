@@ -57,6 +57,29 @@ const reportPublic = (r) => ({
 });
 const msgPublic = (m) => ({ id: m.id, body: m.body, images: m.images, staff: m.staff, authorId: m.authorId, author: m.author?.displayName || null, createdAt: m.createdAt });
 
+// A status change is a thing that happened to the conversation, so it belongs IN the
+// conversation. Before this, closing or reopening a report changed a badge and nothing
+// else: the other side saw no reason, no author and no date — and, because nothing was
+// published to the thread bus, saw nothing at all until they reloaded the page.
+//
+// `authorId: null` is the schema's own convention for a system note (see ReportMessage).
+// The actor's name is baked into the body rather than linked, so deleting an account later
+// cannot turn a history entry into "someone".
+const STATUS_NOTE = {
+  open: (who) => `${who} reopened this report.`,
+  closed: (who) => `${who} closed this report.`,
+  archived: (who) => `${who} archived this report.`,
+};
+
+async function noteStatusChange(p, report, status, actorName) {
+  const body = (STATUS_NOTE[status] || ((w) => `${w} set the status to ${status}.`))(actorName);
+  const m = await p.reportMessage.create({
+    data: { reportId: report.id, authorId: null, staff: false, body, images: [] },
+  });
+  publishToThread('report', report.id, { type: 'message', message: msgPublic({ ...m, author: null }) });
+  return m;
+}
+
 export default async function reportRoutes(app) {
   // Public: the config a client needs (max image size / count) to build the composer.
   app.get('/reports/config', async () => {
@@ -144,6 +167,29 @@ export default async function reportRoutes(app) {
     await p.report.update({ where: { id: r.id }, data: { status: 'open', archivedAt: null, staffUnread: !asStaff ? true : r.staffUnread, userUnread: asStaff ? true : r.userUnread, lastActivityAt: new Date() } });
     publishToThread('report', r.id, { type: 'message', message: msgPublic({ ...m, author: null }) });
     return { message: msgPublic({ ...m, author: null }) };
+  });
+
+  // The reporter can close their own report, and reopen it while it is still theirs to
+  // reopen. Asking staff to close a thread you no longer need is friction with no purpose —
+  // and someone who solved their own problem is exactly who should be able to say so.
+  //
+  // Deliberately narrower than the staff endpoint: only the reporter (not a participant),
+  // and only open <-> closed. Archiving stays a staff decision because it is about the
+  // queue, not about the conversation.
+  app.post('/me/reports/:id/status', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ status: z.enum(['open', 'closed']) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const r = await p.report.findUnique({ where: { id: req.params.id } });
+    if (!r || r.reporterId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
+    if (r.status === b.data.status) return { ok: true };
+    await p.report.update({
+      where: { id: r.id },
+      data: { status: b.data.status, archivedAt: null, lastActivityAt: new Date(), staffUnread: true },
+    });
+    const actor = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true } });
+    await noteStatusChange(p, r, b.data.status, actor?.displayName || 'The reporter');
+    return { ok: true };
   });
 
   // Live thread (SSE). canAccessReport is the SAME predicate GET /me/reports/:id uses —
@@ -307,6 +353,8 @@ export default async function reportRoutes(app) {
     if (b.data.status === 'archived') data.archivedAt = new Date();
     if (b.data.status === 'open') data.archivedAt = null;
     await p.report.update({ where: { id: r.id }, data });
+    const actor = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true } });
+    await noteStatusChange(p, r, b.data.status, actor?.displayName || 'Staff');
     if (b.data.status === 'archived') mailReport(p, r.reporter?.email, 'Your report was archived', 'Your report was archived. Reply any time to reopen it.', r.id);
     return { ok: true };
   });

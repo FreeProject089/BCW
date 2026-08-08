@@ -280,7 +280,7 @@ export function MyoConversation({ id, admin = false }) {
   // rather than splicing the pushed message into local state — the timeline interleaves
   // messages, quotes and deliverables by date, and a hand-inserted message would have to
   // reproduce that ordering and the server's serialisation exactly to stay consistent.
-  useThreadStream(id ? `/myo/requests/${id}/stream` : null, () => reload());
+  useThreadStream(id ? `/myo/requests/${id}/stream` : null, () => reload(true));
   const [sending, setSending] = useState(false);
   const [params] = useSearchParams();
   const r = data?.request;

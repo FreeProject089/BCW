@@ -49,7 +49,15 @@ export function useAsync(fn, deps = []) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(true);
-  const reload = () => { setLoading(true); return fn().then((d) => { setData(d); setErr(null); }).catch(setErr).finally(() => setLoading(false)); };
+  // `quiet` refetches WITHOUT flipping `loading`. A live thread reloads on every incoming
+  // message, and flipping `loading` swaps the whole conversation for a spinner each time —
+  // the page visibly blinked on every message, which is the opposite of what a live chat
+  // should feel like. The new data still replaces the old in one render; only the
+  // intermediate "we are loading" state is skipped.
+  const reload = (quiet = false) => {
+    if (!quiet) setLoading(true);
+    return fn().then((d) => { setData(d); setErr(null); }).catch(setErr).finally(() => { if (!quiet) setLoading(false); });
+  };
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, deps);
   return { data, err, loading, reload };
 }
