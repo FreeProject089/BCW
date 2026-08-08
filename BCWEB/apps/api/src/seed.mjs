@@ -2,6 +2,7 @@
 // Run inside the api container: `node src/seed.mjs` (idempotent).
 import argon2 from 'argon2';
 import { db } from './lib/lib.mjs';
+import { BLOG_FR } from './seed-blog-fr.mjs';
 
 const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || 'admin@bettercommunity.local';
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || 'change-me-now';
@@ -258,7 +259,13 @@ Embed the same customisable progress tracker used on the project pages — right
 :::
 
 That's everything — combine badges + callouts + short bullets for clean, readable posts.`;
-  const guide = { title: 'Markdown guide — writing notes & blog posts', excerpt: 'Every Markdown feature the blog supports: badges, callouts, media, tables and more.', body: guideBody, status: 'PUBLISHED' };
+  const guideFr = BLOG_FR['markdown-guide'] || {};
+  const guide = {
+    title: 'Markdown guide — writing notes & blog posts',
+    excerpt: 'Every Markdown feature the blog supports: badges, callouts, media, tables and more.',
+    body: guideBody, status: 'PUBLISHED',
+    titleFr: guideFr.title ?? null, excerptFr: guideFr.excerpt ?? null, bodyFr: guideFr.body ?? null,
+  };
   await p.blogPost.upsert({
     where: { slug: 'markdown-guide' },
     create: { slug: 'markdown-guide', projectId: communityProject.id, authorId: adminUser.id, publishedAt: new Date(), ...guide },
@@ -344,7 +351,14 @@ The .bmmtheme package format, in the documentation.
 :::` },
   ];
   for (const g of GUIDES) {
-    const data = { title: g.title, excerpt: g.excerpt, body: g.body, status: 'PUBLISHED' };
+    // BLOG_FR carries the French for the reference posts. The four news posts below already
+    // hold theirs inline; these five never had any, and an untranslated post is easy to miss
+    // because it renders in English with only a small "not translated" note.
+    const fr = BLOG_FR[g.slug] || {};
+    const data = {
+      title: g.title, excerpt: g.excerpt, body: g.body, status: 'PUBLISHED',
+      titleFr: fr.title ?? null, excerptFr: fr.excerpt ?? null, bodyFr: fr.body ?? null,
+    };
     await p.blogPost.upsert({ where: { slug: g.slug }, create: { slug: g.slug, projectId: communityProject.id, authorId: adminUser.id, publishedAt: new Date(), ...data }, update: data });
   }
 }
