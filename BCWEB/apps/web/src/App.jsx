@@ -865,6 +865,29 @@ export default function App() {
     if (firstNav.current) { firstNav.current = false; return; }
     if (getOrbTransitionPref()) window.dispatchEvent(new CustomEvent('bcweb:orb-transition'));
   }, [loc.pathname]);
+
+  // Replay the content fade on EVERY navigation.
+  //
+  // `.anim-fade` is a CSS animation, and a CSS animation runs when the element appears. <main>
+  // never unmounts — React keeps the same node and swaps its children — so the fade played
+  // once, on the first page load, and never again. Moving between sections looked like it
+  // animated only because the whole page content changed at once; moving from /docs/a to
+  // /docs/b changes less, and with no animation at all the swap read as a jump.
+  //
+  // Re-triggered by class rather than by keying <main> on the pathname: a key would remount
+  // the entire page subtree on every navigation, which for a same-route param change
+  // (/docs/a -> /docs/b) would throw away the Docs component's own state — sidebar, scroll,
+  // open categories — on every click in its own sidebar. Reading offsetWidth between the
+  // remove and the add is what forces the reflow that makes the browser treat it as a new
+  // animation instead of a no-op.
+  const mainRef = useRef(null);
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el || firstNav.current) return;
+    el.classList.remove('anim-fade');
+    void el.offsetWidth;
+    el.classList.add('anim-fade');
+  }, [loc.pathname]);
   // Per-route document title (helps SEO + shows in tabs/history).
   useEffect(() => {
     const p = loc.pathname;
@@ -889,7 +912,7 @@ export default function App() {
           {/* relative z-10: keep the page content (and any in-page overlays like the
               mobile dashboard nav sheet) stacked ABOVE the footer, which follows in the
               DOM and would otherwise paint over an open dropdown on short pages. */}
-          <main id="main-content" tabIndex={-1} className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-10 anim-fade">
+          <main ref={mainRef} id="main-content" tabIndex={-1} className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-10 anim-fade">
             <Suspense fallback={<div className="flex justify-center py-20 text-[var(--muted)]"><span className="anim-fade">…</span></div>}>
             <Routes>
               <Route path="/" element={<Home />} />
