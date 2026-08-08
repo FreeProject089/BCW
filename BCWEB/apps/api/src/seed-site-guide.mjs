@@ -31,6 +31,19 @@ You do not need an account to read anything, and you do not need one to download
 **Find** content in the catalogs and repos, **add** it to BMM with one click, and — if you make things — **publish** or **host** it here.
 :::
 
+## Your first five minutes
+
+If you have just arrived and want the shortest useful path:
+
+1. **Browse the [catalog](/catalog).** Everything there installs into BMM; nothing needs an account to look at.
+2. **Open an entry.** Each one names its author, its version, and where the file is hosted — so you know what you are about to run before you run it.
+3. **Press Install in BMM.** That is a \`bmm://\` deeplink: your browser hands it to the app, which asks before doing anything. BMM has to already be open — the link reaches a running app, it will not start one.
+4. **Only if you want to publish or host:** [make an account](/auth). Reading and downloading never needs one.
+
+:::note[Nothing happens silently]
+Every deeplink shows a notice when it lands in BMM, and the ones that could surprise you — connecting a repo, subscribing to a catalog — ask first. There is also a single switch in BMM that refuses all of them.
+:::
+
 ## The five things this site does
 
 :::cards
@@ -48,6 +61,33 @@ Blog, documentation, FAQ, member profiles.
 :::
 :::
 
+## Reading a listing
+
+Two things on an entry decide how much you should trust it, and they are not the same thing.
+
+| | What it means |
+|---|---|
+| **Official** | The entry comes from our own catalog. |
+| **Partner** | It comes from a catalog the official one vouches for. |
+| *no badge* | A community or self-added source. Fine to use — simply not vouched for. |
+
+Badges are assigned by **where the entry came from**, never by what its file claims. A community catalog cannot badge itself Official.
+
+The other signal is the **checksum**. Where a publisher supplies one, BMM verifies the download against it and refuses a file that does not match — which is what stops a tampered or half-downloaded file from ever running.
+
+## What costs money, and what does not
+
+Almost none of this does.
+
+- **Reading, searching, downloading, commenting** — free, and mostly without an account.
+- **Publishing** to a catalog — free for your first entry; beyond that it depends on the size of what you upload, and you can always host the file yourself and simply link to it.
+- **Hosting** a repo or a catalog with us — paid, prepaid per term, priced by storage. There is a free floor: you pay for what is above it, not from the first megabyte.
+- **[Make Your Own](/myo)** — a paid commission service, and the only thing here that starts with a fee. You pay for a consultation, get a quote, and decide.
+
+:::tip[Self-hosting is always an option]
+Nothing forces you to host with us. Point BMM at your own URL and it works the same — hosting here buys convenience and a stable address, not access.
+:::
+
 ## Finding your way around
 
 **The top bar** carries the site sections, plus your language, the light/dark switch, notifications and your account menu. An administrator can add, rename and reorder those entries, so it may not look identical everywhere.
@@ -55,6 +95,12 @@ Blog, documentation, FAQ, member profiles.
 **The footer** repeats the important links and holds the legal pages and the newsletter box.
 
 **Ctrl + K** is not here — that is BMM's command palette, in the desktop app. On the site, use the search box on the page you are on.
+
+## Two things people miss
+
+**[The authenticator](/2fa).** A TOTP app that runs in this page — the same six-digit codes as any other authenticator, for any site, not just this one. It never sends anything: the seeds stay in your browser, and you can lock them behind a password. Useful even if you never publish anything here.
+
+**[Member profiles](/users).** Every account can have a public page showing what they have published. Yours is private until you decide otherwise.
 
 ## Light, dark, and language
 
@@ -69,58 +115,106 @@ The language switch does the same. Where a page has no French translation yet, y
 | Get content into BMM | [Catalogs and repos](/docs/site-content) |
 | Make an account, secure it, link BMM | [Your account](/docs/site-account) |
 | Publish or host your own work | [Publishing and hosting](/docs/site-publishing) |
-| Report something, or get help | [Getting help](/docs/site-help) |`,
+| Report something, or get help | [Getting help](/docs/site-help) |
+| Ask a quick question | [The FAQ](/faq) |`,
     bodyFr: `::toc[Sur cette page]
 
 # Bien démarrer sur BetterCommunity
 
-Ce site est le **point de rencontre** autour des applications Better\\*. Les applications installent et gèrent ; ici, on publie, on héberge, on discute et on paie.
+Ce site est le **hub** autour des applications de bureau Better\\*. Les applications installent et gèrent ; c'est ici que ce qu'elles gèrent est publié, hébergé, discuté et payé.
 
-Aucun compte n'est nécessaire pour lire, ni pour télécharger depuis une source publique. Il en faut un pour *publier*, pour *héberger*, ou pour accéder à ce qu'un créateur a restreint.
+Tu n'as besoin d'aucun compte pour lire, ni pour télécharger depuis une source publique. Il t'en faut un pour *publier*, pour *héberger*, ou pour atteindre ce qu'un créateur a restreint.
 
 :::tip[En une phrase]
-**Trouve** du contenu dans les catalogues et les dépôts, **ajoute-le** à BMM en un clic, et — si tu crées — **publie** ou **héberge** ici.
+**Trouve** du contenu dans les catalogues et les dépôts, **ajoute**-le à BMM en un clic, et — si tu crées — **publie** ou **héberge** ici.
+:::
+
+## Tes cinq premières minutes
+
+Si tu viens d'arriver et que tu veux le chemin le plus court :
+
+1. **Parcours le [catalogue](/catalog).** Tout s'y installe dans BMM ; regarder ne demande aucun compte.
+2. **Ouvre une entrée.** Chacune nomme son auteur, sa version et l'endroit où le fichier est hébergé — tu sais donc ce que tu vas lancer avant de le lancer.
+3. **Clique sur Installer dans BMM.** C'est un deeplink \`bmm://\` : ton navigateur le passe à l'application, qui demande avant d'agir. BMM doit déjà être ouvert — le lien atteint une app en cours, il n'en démarre pas une.
+4. **Seulement si tu veux publier ou héberger :** [crée un compte](/auth). Lire et télécharger n'en demandent jamais.
+
+:::note[Rien ne se fait en silence]
+Chaque deeplink affiche un avis quand il arrive dans BMM, et ceux qui pourraient te surprendre — connecter un dépôt, s'abonner à un catalogue — demandent d'abord. Un interrupteur unique, dans BMM, les refuse tous.
 :::
 
 ## Les cinq choses que fait ce site
 
 :::cards
 :::card{title="Catalogues" href=/catalog icon=boxes}
-Des listes de plugins, thèmes ou apps que BMM lit directement. Les officiels sont les nôtres ; les communautaires sont hébergés par leurs auteurs.
+Des listes de plugins, thèmes ou applications que BMM lit directement. Les officiels sont les nôtres ; les communautaires sont hébergés par leurs auteurs.
 :::
-:::card{title="Dépôts serveur" href=/repos icon=server}
+:::card{title="Dépôts Serveur" href=/repos icon=server}
 Une collection de mods entière, tenue à jour. Rejoins-en un et BMM ne télécharge que ce qui a changé.
 :::
 :::card{title="Hébergement" href=/hosting icon=rocket}
 Des pools de stockage à remplir avec tes propres dépôts et catalogues.
 :::
 :::card{title="Communauté" href=/blog icon=users}
-Blog, documentation, FAQ, profils des membres.
+Blog, documentation, FAQ, profils de membres.
 :::
+:::
+
+## Lire une fiche
+
+Deux éléments décident de la confiance à accorder à une entrée, et ce ne sont pas les mêmes.
+
+| | Ce que ça veut dire |
+|---|---|
+| **Officiel** | L'entrée vient de notre propre catalogue. |
+| **Partenaire** | Elle vient d'un catalogue dont l'officiel se porte garant. |
+| *aucun badge* | Une source communautaire ou ajoutée par toi. Utilisable — simplement sans garant. |
+
+Les badges sont attribués selon **la provenance de l'entrée**, jamais selon ce que son fichier prétend. Un catalogue communautaire ne peut pas se décerner « Officiel ».
+
+L'autre signal, c'est l'**empreinte**. Quand un éditeur en fournit une, BMM vérifie le téléchargement contre elle et refuse un fichier qui ne correspond pas — c'est ce qui empêche un fichier altéré ou à moitié téléchargé de s'exécuter.
+
+## Ce qui coûte, et ce qui ne coûte pas
+
+Presque rien ici n'est payant.
+
+- **Lire, chercher, télécharger, commenter** — gratuit, et le plus souvent sans compte.
+- **Publier** dans un catalogue — gratuit pour ta première entrée ; au-delà ça dépend de la taille de ce que tu envoies, et tu peux toujours héberger le fichier toi-même et te contenter d'un lien.
+- **Héberger** un dépôt ou un catalogue chez nous — payant, prépayé par période, tarifé au stockage. Il y a un seuil gratuit : tu paies ce qui dépasse, pas dès le premier mégaoctet.
+- **[Make Your Own](/myo)** — un service de commande payant, et la seule chose ici qui commence par des frais. Tu paies une consultation, tu reçois un devis, tu décides.
+
+:::tip[L'auto-hébergement reste toujours possible]
+Rien ne t'oblige à héberger chez nous. Pointe BMM sur ta propre URL et ça marche pareil — héberger ici achète du confort et une adresse stable, pas un accès.
 :::
 
 ## S'orienter
 
-**La barre du haut** porte les sections du site, la langue, le bouton clair/sombre, les notifications et le menu de ton compte. Un administrateur peut y ajouter, renommer et réordonner des entrées : elle n'est donc pas forcément identique partout.
+**La barre du haut** porte les sections du site, plus ta langue, le bouton clair/sombre, les notifications et ton menu de compte. Un administrateur peut ajouter, renommer et réordonner ces entrées : l'affichage n'est donc pas identique partout.
 
-**Le pied de page** reprend les liens importants et contient les pages légales et l'encart newsletter.
+**Le pied de page** répète les liens importants et contient les pages légales et la boîte d'inscription à la newsletter.
 
-**Ctrl + K** n'existe pas ici — c'est la palette de commandes de BMM, dans l'application de bureau. Sur le site, sers-toi du champ de recherche de la page où tu es.
+**Ctrl + K** n'existe pas ici — c'est la palette de commandes de BMM, dans l'application. Sur le site, sers-toi du champ de recherche de la page où tu es.
 
-## Clair, sombre, et la langue
+## Deux choses que l'on rate
 
-Le bouton de thème est dans la barre du haut et ton choix est retenu sur cet appareil. Si tu n'y as jamais touché, tu obtiens celui que le site propose par défaut.
+**[L'authentificateur](/2fa).** Une application TOTP qui tourne dans cette page — les mêmes codes à six chiffres que n'importe quel authentificateur, pour n'importe quel site, pas seulement celui-ci. Il n'envoie jamais rien : les secrets restent dans ton navigateur, et tu peux les verrouiller derrière un mot de passe. Utile même si tu ne publies jamais rien ici.
 
-Le sélecteur de langue fonctionne pareil. Quand une page n'a pas encore de traduction française, tu obtiens l'anglais avec une note qui le dit — jamais une page vide.
+**[Les profils de membres](/users).** Chaque compte peut avoir une page publique montrant ce qu'il a publié. Le tien reste privé tant que tu n'en décides pas autrement.
 
-## Et ensuite
+## Clair, sombre, et langue
+
+Le sélecteur de thème est dans la barre du haut et ton choix est retenu sur cet appareil. Si tu n'y as jamais touché, tu obtiens le réglage par défaut du site.
+
+Le sélecteur de langue fonctionne pareil. Là où une page n'a pas encore de traduction française, tu obtiens l'anglais avec une note qui le signale — jamais une page vide.
+
+## À lire ensuite
 
 | Si tu veux… | Va voir |
 |---|---|
 | Faire entrer du contenu dans BMM | [Catalogues et dépôts](/docs/site-content) |
 | Créer un compte, le sécuriser, lier BMM | [Ton compte](/docs/site-account) |
 | Publier ou héberger ton travail | [Publier et héberger](/docs/site-publishing) |
-| Signaler quelque chose, ou être aidé | [Obtenir de l'aide](/docs/site-help) |`,
+| Signaler quelque chose, ou être aidé | [Obtenir de l'aide](/docs/site-help) |
+| Poser une question rapide | [La FAQ](/faq) |`,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
