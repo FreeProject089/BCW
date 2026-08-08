@@ -13,6 +13,7 @@ import { KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
 import Avatar from '../ui/Avatar.jsx';
 import { THEME_PRESETS } from '../ui/theme-presets.js';
+import { defaultFooterConfig } from '../ui/footer-default.js';
 import { TOKENS, TOKEN_GROUPS } from '../ui/theme-tokens.js';
 import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
 import { useAuth } from './auth.jsx';
@@ -8124,13 +8125,50 @@ function AdminNeedsAttention({ data, loading, onReload }) {
 // when it is enabled AND has columns. Leave it off and the hardcoded footer stands, so turning
 // this on can never leave the site without one.
 function AdminFooter() {
-  const { t, lang } = useI18n(); const toast = useToast();
+  const { t, lang } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/admin/footer'), []);
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState('desktop');
   useEffect(() => { if (data?.footer) setF({ columns: [], brand: {}, mobile: {}, bottom: {}, ...data.footer }); }, [data]);
   if (loading || !f) return <Loading />;
+
+  // Start from the footer the site actually ships rather than from nothing. Opening this page
+  // used to give an empty list, so "customise the footer" meant rebuilding all three columns
+  // and nineteen links by hand — and getting one wrong meant quietly losing it. The columns
+  // come from ui/footer-default.js, the same definition <Footer/> renders, so what you load
+  // here is what visitors see today.
+  const loadBuiltIn = async () => {
+    if (f.columns.length && !(await dialog.confirm({
+      title: t('afoot.load.t', 'Replace what is here?'),
+      message: t('afoot.load.m', 'Loads the built-in footer over your current columns. Nothing is saved until you press Save.'),
+      okLabel: t('afoot.load.ok', 'Load'),
+    }))) return;
+    setF({ ...f, ...defaultFooterConfig(t) });
+    toast.success(t('afoot.loaded', 'Built-in footer loaded — edit it, then Save.'));
+  };
+
+  // Hand the footer back to the site. Clearing the config rather than writing the built-in
+  // columns into it is the difference between "the site's footer" and "a copy of it frozen on
+  // the day you pressed the button": a link added to the built-in footer later would never
+  // reach a saved copy.
+  const resetToBuiltIn = async () => {
+    if (!(await dialog.confirm({
+      title: t('afoot.reset.t', 'Back to the built-in footer?'),
+      message: t('afoot.reset.m', 'Discards this custom footer. The site goes back to its built-in one, which stays up to date on its own. Applies immediately.'),
+      okLabel: t('afoot.reset.ok', 'Reset'),
+      danger: true,
+    }))) return;
+    const blank = { enabled: false, columns: [], brand: {}, mobile: {}, bottom: {} };
+    setBusy(true);
+    try {
+      await api.put('/admin/footer', blank);
+      setF(blank);
+      toast.success(t('afoot.resetdone', 'Back to the built-in footer.'));
+      reload();
+    } catch (x) { toast.error(x.data?.detail || x.data?.error || t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
 
   const frOr = (v, base) => (lang === 'fr' && v && v.trim()) ? v : base;
   const setCol = (i, patch) => setF({ ...f, columns: f.columns.map((c, n) => (n === i ? { ...c, ...patch } : c)) });
@@ -8160,9 +8198,11 @@ function AdminFooter() {
           <input type="checkbox" checked={!!f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} />
           {t('afoot.enabled', 'Use this footer')}
         </label>
+        <Button variant="ghost" disabled={busy} onClick={loadBuiltIn}><LayoutGrid size={14} /> {t('afoot.loadbuiltin', 'Start from the built-in footer')}</Button>
+        <Button variant="ghost" disabled={busy} onClick={resetToBuiltIn}><RotateCcw size={14} /> {t('afoot.resetbuiltin', 'Reset to default')}</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={14} /> {t('common.save', 'Save')}</>}</Button>
       </div>
-      <p className="text-sm text-[var(--muted)] mb-4">{t('afoot.sub', 'Columns, links, and what appears on phone versus desktop. Turned off, or with no columns, the site keeps its built-in footer — so this can never leave the page without one.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('afoot.sub', 'Columns, links, and what appears on phone versus desktop. Turned off, or with no columns, the site keeps its built-in footer — so this can never leave the page without one. Start from the built-in one and edit it, or build your own from scratch.')}</p>
 
       <Card className="p-4 mb-4 flex flex-wrap items-end gap-4">
         <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
