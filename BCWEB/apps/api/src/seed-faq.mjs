@@ -109,11 +109,21 @@ const run = async () => {
   let created = 0, updated = 0;
   for (const [i, f] of FAQ.entries()) {
     const existing = await p.faqItem.findFirst({ where: { question: f.question } });
+    // questionFr and categoryFr were written by nobody. Every entry below has carried them
+    // since the migration that added the columns, and the upsert listed answerFr but not the
+    // other two — so a French reader got French answers under English questions, filed under
+    // English category headings, with nothing to suggest a translation existed.
+    const data = {
+      answer: f.answer, answerFr: f.answerFr ?? null,
+      category: f.category, categoryFr: f.categoryFr ?? null,
+      questionFr: f.questionFr ?? null,
+      order: f.order, published: true,
+    };
     if (existing) {
-      await p.faqItem.update({ where: { id: existing.id }, data: { answer: f.answer, answerFr: f.answerFr, category: f.category, order: f.order, published: true } });
+      await p.faqItem.update({ where: { id: existing.id }, data });
       updated++;
     } else {
-      await p.faqItem.create({ data: { question: f.question, answer: f.answer, answerFr: f.answerFr, category: f.category, order: f.order ?? i * 10, published: true } });
+      await p.faqItem.create({ data: { question: f.question, ...data, order: f.order ?? i * 10 } });
       created++;
     }
   }

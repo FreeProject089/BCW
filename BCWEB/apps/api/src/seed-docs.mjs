@@ -2,6 +2,7 @@
 // admin / staff topics). Idempotent: upserts each page by slug, so re-running just
 // refreshes the content. Run: `docker compose exec api node src/seed-docs.mjs`.
 import { PrismaClient } from '@prisma/client';
+import { DOCS_FR } from './seed-docs-fr.mjs';
 const p = new PrismaClient();
 
 // category order is derived from each page's `order` (see toTree in docs.mjs); we keep
@@ -556,21 +557,33 @@ Teste n'importe quel endpoint depuis **Plugins → API** dans l'app. Ce testeur 
 
 const run = async () => {
   let created = 0, updated = 0;
+  let translated = 0;
   for (const pg of PAGES) {
     const existing = await p.docPage.findUnique({ where: { slug: pg.slug } });
-    await p.docPage.upsert({
-      where: { slug: pg.slug },
-      update: { title: pg.title, category: pg.category, icon: pg.icon, body: pg.body, bodyFr: pg.bodyFr ?? null, order: pg.order, published: true },
-      create: { slug: pg.slug, title: pg.title, category: pg.category, icon: pg.icon, body: pg.body, bodyFr: pg.bodyFr ?? null, order: pg.order, published: true },
-    });
+    // A page's own inline `bodyFr` wins over the table: api-reference carries its French
+    // beside its English on purpose (the two are read together when the API changes), and
+    // this must not quietly replace it.
+    const fr = DOCS_FR[pg.slug] || {};
+    const data = {
+      title: pg.title, category: pg.category, icon: pg.icon, body: pg.body, order: pg.order, published: true,
+      bodyFr: pg.bodyFr ?? fr.body ?? null,
+      titleFr: fr.title ?? null,
+      categoryFr: fr.category ?? null,
+    };
+    if (data.bodyFr) translated++;
+    await p.docPage.upsert({ where: { slug: pg.slug }, update: data, create: { slug: pg.slug, ...data } });
     existing ? updated++ : created++;
   }
+  // Loud rather than silent: a page with no French entry is invisible to a French reader as
+  // "untranslated", it just shows up in English with no sign that anything is missing.
+  const missing = PAGES.filter((pg) => !(pg.bodyFr ?? DOCS_FR[pg.slug]?.body)).map((pg) => pg.slug);
+  if (missing.length) console.warn(`docs seed: no French body for ${missing.length} page(s): ${missing.join(', ')}`);
   // Drop leftover pages from the old structure: the scratch page, the features overview
   // (superseded by Introduction + it referenced admin-only telemetry), and the catalog
   // overview (superseded by the new Publishing page). 'api-reference' is kept — it's a
   // real public API reference, not an admin topic.
   await p.docPage.deleteMany({ where: { slug: { in: ['test', 'features', 'catalog-formats'] } } }).catch(() => {});
-  console.log(`docs seed: ${created} created, ${updated} updated, ${PAGES.length} total.`);
+  console.log(`docs seed: ${created} created, ${updated} updated, ${PAGES.length} total, ${translated} with a French body.`);
   await p.$disconnect();
 };
 run().catch((e) => { console.error(e); process.exit(1); });
