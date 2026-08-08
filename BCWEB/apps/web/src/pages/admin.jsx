@@ -8259,7 +8259,7 @@ function liveToken(name) {
 }
 
 function AdminSiteTheme() {
-  const { t, lang } = useI18n(); const toast = useToast();
+  const { t, lang } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/theme'), []);
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -8291,6 +8291,37 @@ function AdminSiteTheme() {
     finally { setBusy(false); }
   };
   const pick = (p) => setF({ ...f, accent: p.accent, accent2: p.accent2, preset: p.id });
+
+  // "Back to the built-in theme", and it has to clear the token bags too.
+  //
+  // Picking the "BetterCommunity / Default" preset only restores accent + accent2 — every
+  // per-token override in shared/light/dark survived it, so the site kept the previous
+  // custom colours and it looked like resetting had done nothing. That is the whole bug:
+  // there was no way, from this page, to actually get back to the built-in palette.
+  //
+  // Saved immediately rather than staged, because a reset you then have to remember to save
+  // is the same trap in a different shape.
+  const resetAll = async () => {
+    if (!(await dialog.confirm({
+      title: t('st.reset.t', 'Reset the site theme?'),
+      message: t('st.reset.m', 'Restores the built-in palette for everyone and clears every token override in Shared, Light and Dark. Applies immediately.'),
+      okLabel: t('st.reset.ok', 'Reset'),
+      danger: true,
+    }))) return;
+    const base = { accent: '#f97316', accent2: '#f59e0b', mode: 'light', preset: '', light: null, dark: null, shared: null };
+    setBusy(true);
+    try {
+      await api.put('/admin/theme', base);
+      setF(base);
+      applySiteTheme(base);
+      toast.success(t('st.resetdone', 'Back to the built-in theme.'));
+      reload();
+    } catch (x) { toast.error(x.data?.error || t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+
+  // Clear every override in the scope on screen, without touching the other two.
+  const clearScope = () => setF({ ...f, [scope]: null });
 
   return (
     <div>
@@ -8335,6 +8366,10 @@ function AdminSiteTheme() {
             </Select>
           </Field>
           <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={14} /> {t('st.apply', 'Apply to the whole site')}</>}</Button>
+          {/* Picking the "Default" preset only restores the accent — every token override
+              survives it, which is why resetting used to bring the old custom colours back.
+              This clears all three bags as well, and saves immediately. */}
+          <Button variant="ghost" disabled={busy} onClick={resetAll}><RotateCcw size={14} /> {t('st.resetall', 'Reset to the built-in theme')}</Button>
         </div>
       </Card>
 
@@ -8352,7 +8387,11 @@ function AdminSiteTheme() {
             ))}
           </div>
         </div>
-        <p className="text-xs text-[var(--muted)] mb-3">{t('st.tokens.h', 'Set the page and its text, and the surfaces, greys and borders derive from them. Override any single token on top. An empty field means "derived" — clearing one gives it back to the recipe.')}</p>
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <p className="text-xs text-[var(--muted)]">{t('st.tokens.h', 'Set the page and its text, and the surfaces, greys and borders derive from them. Override any single token on top. An empty field means "derived" — clearing one gives it back to the recipe.')}</p>
+          {f[scope] && Object.keys(f[scope] || {}).length > 0 &&
+            <Button size="sm" variant="ghost" className="shrink-0" onClick={clearScope}><RotateCcw size={13} /> {t('st.clearscope', 'Clear this scope')}</Button>}
+        </div>
 
         {scope !== 'shared' && (
           <div className="flex flex-wrap items-end gap-3 pb-3 mb-3 border-b border-[var(--line)]">
