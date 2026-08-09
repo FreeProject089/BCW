@@ -5,6 +5,7 @@ import { X, Sparkles, PartyPopper, Flag, Gift, Star, Rocket, CalendarDays, Bell,
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
+import { fxAllowed } from '../lib/fx-pref.js';
 
 // Announcement icon options (named lucide icons — never a unicode emoji).
 const BADGE_ICONS = { sparkles: Sparkles, party: PartyPopper, flag: Flag, gift: Gift, star: Star, rocket: Rocket, calendar: CalendarDays, bell: Bell };
@@ -154,13 +155,13 @@ export default function EventEffect() {
   // Respect prefers-reduced-motion (no canvas, announcement only). A localStorage
   // override (`bcw_fx_preview=1`) forces the effect on — a preview hook for admins
   // (and for testing in reduced-motion environments like headless browsers).
-  const prefersReduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let forcePreview = false, fxOff = false;
+  let forcePreview = false;
   try { forcePreview = localStorage.getItem('bcw_fx_preview') === '1'; } catch {}
-  // Device setting (Settings → Appearance): turn the fireworks canvas off entirely while
-  // keeping the (informational) event badge. A preview still bypasses it for admins.
-  try { fxOff = localStorage.getItem('bcw_fx_off') === '1'; } catch {}
-  const reduced = (prefersReduced && !forcePreview) || fxOff;
+  // One shared rule (lib/fx-pref.js), not a copy. The old inline version let
+  // prefers-reduced-motion veto the effect with no override, while Settings showed the
+  // switch as ON — so on a machine with reduced motion enabled the admin preview played
+  // and the live event did nothing, with the UI insisting it was enabled.
+  const reduced = !fxAllowed({ force: forcePreview });
 
   useEffect(() => {
     // A preview always plays (bypasses reduce-motion + the live gate); otherwise the
@@ -210,7 +211,7 @@ export default function EventEffect() {
     // the event, so two over a 15s show is thin — four reads as "it keeps happening,
     // somewhere new" rather than "it happened once and I looked away". Every drop already
     // picks its own position and size, so more of them does not mean more of the same.
-    const flagDrops = Math.max(0, Math.min(20, fx.fxFlagDrops ?? (fx.kind === 'national_holiday' ? 4 : 2)));
+    const flagDrops = Math.max(0, Math.min(20, fx.fxFlagDrops ?? (fx.kind === 'national_holiday' ? 3 : 2)));
     // Rockets launch fast enough to burst in the UPPER part of the screen (the "sky"),
     // then explode at their apex — so the show stays overhead and doesn't cover the
     // content the user is reading lower down.
@@ -269,17 +270,48 @@ export default function EventEffect() {
     opener();
     let nextRocket = rand(500, 800);
     const rocketGap = () => rand(520, 900) + (10 - density) * 70; // calmer cadence
-    const rollFlagTimes = () => Array.from({ length: flagDrops }, () => rand(1200, DURATION - 2500)).sort((a, b) => a - b);
+    // Spread the flag formations across the show instead of drawing each time at random.
+    // Random times cluster: with four draws over an 11s window, two landing within a second
+    // of each other is common, and that is what put two flags in the sky at once. Evenly
+    // spaced with a little jitter keeps them apart by construction, and the runtime guard
+    // below is the backstop rather than the mechanism. Where each flag APPEARS stays fully
+    // random — that is the part that should not be predictable.
+    const rollFlagTimes = () => {
+      const from = 1200, to = DURATION - 2500;
+      if (flagDrops <= 0) return [];
+      if (flagDrops === 1) return [rand(from, to)];
+      const step = (to - from) / (flagDrops - 1);
+      const jitter = Math.min(step * 0.25, 600);
+      return Array.from({ length: flagDrops }, (_, i) =>
+        Math.max(from, Math.min(to, from + i * step + rand(-jitter, jitter)))).sort((a, b) => a - b);
+    };
     let flagTimes = rollFlagTimes();
     let dropIdx = 0;
+    // Travel (~0.95s) + hold (~2.6s) + fall (1.2s), rounded up: the sky is clear again.
+    const FLAG_SPACING = 5000;
+    let flagFreeAt = 0;
     const tick = (now) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       const elapsed = now - t0;
       if (!stopped) {
         if (elapsed > nextRocket && elapsed < DURATION - 2000) { for (let i = 0; i < perWave; i++) launchRocket(); nextRocket = elapsed + rocketGap(); }
-        while (dropIdx < flagTimes.length && elapsed > flagTimes[dropIdx]) {
-          flagDrop(rand(-aspect * 0.5, aspect * 0.5), rand(0.2, 0.6), rand(aspect * 0.45, aspect * 0.85));
-          dropIdx++;
+        // ONE flag in the sky at a time. Two were possible for two separate reasons, and
+        // fixing either alone would have left the other: the times are drawn at random and
+        // can land within a second of each other, AND this was a `while`, so every drop
+        // that had come due fired in the SAME frame — two flags perfectly superimposed.
+        //
+        // A drop is not instant: the particles fly to the shape (~0.9s), hold (~2.6s),
+        // then fall (~1.2s). FLAG_SPACING covers that, so the next one starts on an empty
+        // sky. A drop that comes due too early is pushed back rather than dropped — the
+        // event keeps the number of flags the admin asked for, it just spaces them out.
+        if (dropIdx < flagTimes.length && elapsed > flagTimes[dropIdx]) {
+          if (elapsed < flagFreeAt) {
+            flagTimes[dropIdx] = flagFreeAt;
+          } else {
+            flagDrop(rand(-aspect * 0.5, aspect * 0.5), rand(0.2, 0.6), rand(aspect * 0.45, aspect * 0.85));
+            flagFreeAt = elapsed + FLAG_SPACING;
+            dropIdx++;
+          }
         }
       }
       // physics + write buffers

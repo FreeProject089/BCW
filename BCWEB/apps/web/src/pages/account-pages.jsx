@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Sliders, Sparkles, Users, Undo2 } from 'lucide-react';
 import { Button, Card, PageHeader, Select, Spinner, useToast } from '../ui/ui.jsx';
+import { fxPref, setFxPref, prefersReducedMotion } from '../lib/fx-pref.js';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
 import { useAuth } from './auth.jsx';
@@ -23,10 +24,10 @@ export function Settings() {
   const [consent, setConsentState] = useState(() => getConsent() || 'essential');
   const [glass, setGlass] = useState(() => getGlassPrefs());
   const [orbTransition, setOrbTransition] = useState(() => getOrbTransitionPref());
-  const [fxOff, setFxOff] = useState(() => { try { return localStorage.getItem('bcw_fx_off') === '1'; } catch { return false; } });
+  const [fx, setFxState] = useState(() => fxPref());
   const [undoOff, setUndoOff] = useState(() => getUndoDisabled());
 
-  const setFx = (off) => { setFxOff(off); try { off ? localStorage.setItem('bcw_fx_off', '1') : localStorage.removeItem('bcw_fx_off'); } catch {} };
+  const setFx = (v) => { setFxState(v); setFxPref(v); };
   const setIntro = (skip) => { setSkipIntro(skip); try { skip ? localStorage.setItem(SKIP_KEY, '1') : localStorage.removeItem(SKIP_KEY); } catch {} };
   const setOrbTr = (on) => { setOrbTransition(on); setOrbTransitionPref(on); };
   const setCookie = (v) => { setConsentState(v); setConsent(v); toast.success(t('set.saved', 'Saved.')); };
@@ -64,8 +65,20 @@ export function Settings() {
         <Row icon={Orbit} title={t('set.orbtr', 'Orb page transitions')} desc={t('set.orbtr.d', 'On each navigation, the hero orb shatters and dives into a random shard, then rebuilds. Off by default.')}>
           <Switch on={orbTransition} onChange={setOrbTr} />
         </Row>
-        <Row icon={Sparkles} title={t('set.fx', 'Event fireworks')} desc={t('set.fx.d', 'Full-screen fireworks during a live event (New Year, national days…). The announcement badge still shows.')}>
-          <Switch on={!fxOff} onChange={(v) => setFx(!v)} />
+        {/* Three states, not a switch. A switch could only say on/off, and "off" was
+            being reported for two very different reasons — you turned it off, or your
+            system asks for reduced motion. The second one used to be unoverridable and
+            still displayed as ON, so the setting lied. Now Automatic is the default and
+            says out loud when the OS is the one holding it back. */}
+        <Row icon={Sparkles} title={t('set.fx', 'Event fireworks')}
+          desc={fx === 'auto' && prefersReducedMotion()
+            ? t('set.fx.reduced', 'Your system asks for reduced motion, so Automatic keeps these off. Choose On if you want them anyway.')
+            : t('set.fx.d', 'Full-screen fireworks during a live event (New Year, national days…). The announcement badge still shows.')}>
+          <Select className="!w-auto" value={fx} onChange={(e) => setFx(e.target.value)}>
+            <option value="auto">{t('set.fx.auto', 'Automatic')}</option>
+            <option value="on">{t('set.fx.on', 'On')}</option>
+            <option value="off">{t('set.fx.off', 'Off')}</option>
+          </Select>
         </Row>
         <Row icon={Eye} title={t('set.glass', 'Translucent surfaces')} desc={t('set.glass.d', 'Frosted-glass cards & dialogs instead of solid ones.')}>
           <Switch on={glass.on} onChange={(v) => applyGlass({ ...glass, on: v })} />
