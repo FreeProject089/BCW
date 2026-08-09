@@ -249,8 +249,20 @@ export default function Hero3D() {
     // it and use the static glow instead.
     try {
       const gl = renderer.getContext();
-      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-      const rname = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '') : '';
+      // Plain RENDERER first. WEBGL_debug_renderer_info is deprecated — Firefox logs
+      // "…is deprecated in Firefox and will be removed. Please use RENDERER." the moment
+      // the extension is REQUESTED, so the warning cannot be avoided by ignoring the
+      // result; the call itself has to go. Modern browsers put the real renderer in
+      // RENDERER, which is all this check needs.
+      let rname = '';
+      try { rname = String(gl.getParameter(gl.RENDERER) || ''); } catch { /* keep '' */ }
+      // Only fall back to the extension when RENDERER is one of the legacy placeholders
+      // that told you nothing — old engines that predate the change, and which therefore
+      // do not warn about it either.
+      if (!rname || /^(webkit webgl|mozilla|opera)$/i.test(rname.trim())) {
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+        if (dbg) rname = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '');
+      }
       if (/swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic|warp/i.test(rname)) {
         renderer.dispose();
         if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
