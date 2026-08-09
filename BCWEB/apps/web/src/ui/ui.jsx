@@ -21,7 +21,7 @@ export async function copyText(text) {
 
 /* ── Primitives ── */
 export function Button({ variant = 'default', size, className = '', loading = false, disabled, children, ...p }) {
-  const v = variant === 'primary' ? 'btn-primary' : variant === 'ghost' ? 'btn-ghost' : '';
+  const v = variant === 'primary' ? 'btn-primary' : variant === 'danger' ? 'btn-danger' : variant === 'ghost' ? 'btn-ghost' : '';
   // `loading` → aria-busy shows the CSS spinner and blocks the click (also disables).
   return <button className={`btn ${v} ${size === 'sm' ? 'btn-sm' : ''} ${className}`} aria-busy={loading || undefined} disabled={disabled || loading} {...p}>{children}</button>;
 }
@@ -377,7 +377,7 @@ export function DialogProvider({ children }) {
         title={o.title || 'Confirm'} icon={Icon}
         footer={<>
           {state?.kind !== 'alert' && <Button variant="ghost" onClick={() => close(false)}>{o.cancelLabel || 'Cancel'}</Button>}
-          <Button variant="primary" className={danger ? '!bg-none !bg-error-bg' : ''}
+          <Button variant={danger ? 'danger' : 'primary'}
             onClick={() => close(state?.kind === 'prompt' ? (value || '') : true)}>{o.okLabel || 'OK'}</Button>
         </>}>
         {o.message && <p className="text-sm text-[var(--muted)] leading-relaxed">{o.message}</p>}

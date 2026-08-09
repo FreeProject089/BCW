@@ -86,11 +86,19 @@
   --success: #008930; --success-bg: rgba(22,163,74,.12); --success-border: rgba(22,163,74,.30);
   --warning: #bd5b00; --warning-bg: rgba(217,119,6,.13); --warning-border: rgba(217,119,6,.30);
   --error: #dc2626;   --error-bg: rgba(220,38,38,.12);   --error-border: rgba(220,38,38,.30);
+  /* Ink for text sitting ON the solid --error fill, same idea as --on-primary. It has to
+     flip with the scheme: white on the light-mode #dc2626 is 4.85:1 (passes), but on the
+     dark-mode #f87171 it is only 2.77:1 — there the near-black ink is 6.64:1. Measured,
+     not eyeballed. */
+  --on-error: #ffffff;
+  --error-glow: rgba(220,38,38,.40);
 }
 /* Dark: brighter semantic TONES so text/icons keep contrast on dark surfaces
    (placed after :root so it wins in dark mode). The tint bg/border stay the same. */
 [data-theme="dark"] {
   --info: #60a5fa; --success: #4ade80; --warning: #fbbf24; --error: #f87171;
+  --on-error: #17140f;
+  --error-glow: rgba(248,113,113,.35);
 }
 
 * { box-sizing: border-box; }
@@ -179,13 +187,27 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     content: ""; position: absolute; width: 15px; height: 15px; border-radius: 50%;
     border: 2px solid #fff; border-top-color: transparent; animation: btnspin .6s linear infinite;
   }
-  .btn:not(.btn-primary)[aria-busy="true"]::after { border-color: var(--text); border-top-color: transparent; }
+  .btn:not(.btn-primary):not(.btn-danger)[aria-busy="true"]::after { border-color: var(--text); border-top-color: transparent; }
+  .btn-danger[aria-busy="true"]::after { border-color: var(--on-error); border-top-color: transparent; }
   .btn-primary {
     border: 1px solid transparent; color: var(--on-primary);
     background: linear-gradient(120deg, var(--primary), var(--primary-2));
     box-shadow: 0 8px 22px -8px var(--primary-glow);
   }
   .btn-primary:hover { box-shadow: 0 10px 28px -6px var(--primary-glow); filter: brightness(1.05); }
+  /* Destructive actions. This exists because the confirm dialog used to render its
+     destructive button as `.btn-primary` with the background overridden to `--error-bg`
+     — a 12%-opacity tint. That kept two things it should not have: `--on-primary`, the
+     near-BLACK ink meant for the bright orange fill, now sitting on a near-transparent
+     surface (the label was barely legible), and the ORANGE `--primary-glow`, which drew a
+     warm halo around a red button. A solid fill, its own ink, and its own glow. */
+  .btn-danger {
+    border: 1px solid transparent; color: var(--on-error);
+    background: var(--error);
+    box-shadow: 0 8px 22px -8px var(--error-glow);
+  }
+  .btn-danger:hover { box-shadow: 0 10px 28px -6px var(--error-glow); filter: brightness(1.05); }
+  .btn-danger:active { transform: translateY(1px) scale(.985); }
   .btn-ghost { background: transparent; border-color: transparent; color: var(--muted); }
   .btn-ghost:hover { color: var(--text); background: var(--surface-2); }
   .btn-sm { padding: 6px 12px; font-size: 13px; border-radius: var(--r-sm); }
