@@ -4071,8 +4071,10 @@ function AdminEvents() {
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const undo = useUndoableDelete(reload);
   const list = (data?.events || []).filter((e) => !undo.pending.has(e.id));
-  const presetNY = () => setF((s) => ({ ...s, name: 'New Year', kind: 'new_year', countryCode: '', badgeIcon: 'party', titleEn: 'Happy New Year!', titleFr: 'Bonne année !', messageEn: 'Fireworks on us', messageFr: 'Des feux d\'artifice pour vous' }));
-  const presetHoliday = () => setF((s) => ({ ...s, name: 'National day', kind: 'national_holiday', countryCode: s.countryCode || 'FR', badgeIcon: 'flag', titleEn: 'National day', titleFr: 'Fête nationale', messageEn: 'Celebrating with a flag in the sky', messageFr: 'On célèbre avec un drapeau dans le ciel' }));
+  // The copy is the first thing anyone reads, and "Fireworks on us" described the effect
+  // playing behind it rather than saying anything. These greet the reader instead.
+  const presetNY = () => setF((s) => ({ ...s, name: 'New Year', kind: 'new_year', countryCode: '', badgeIcon: 'party', effect: 'fireworks', titleEn: 'Happy New Year!', titleFr: 'Bonne année !', messageEn: 'Thank you for being part of this one. Here is to the next.', messageFr: 'Merci d\'avoir fait partie de cette année. À la prochaine.' }));
+  const presetHoliday = () => setF((s) => ({ ...s, name: 'National day', kind: 'national_holiday', countryCode: s.countryCode || 'FR', badgeIcon: 'flag', effect: 'fireworks', titleEn: 'National day', titleFr: 'Fête nationale', messageEn: 'Look up — the colours are out tonight.', messageFr: 'Levez les yeux — les couleurs sont de sortie ce soir.' }));
   const create = async () => {
     if (!f.name.trim()) return toast.error(t('ev.err.name', 'Name is required.'));
     const body = {
@@ -4114,6 +4116,13 @@ function AdminEvents() {
           <Field label={t('ev.f.kind', 'Kind')}><Dropdown className="w-full" value={f.kind} onChange={(v) => set('kind', v)} options={[{ value: 'custom', label: t('ev.k.custom', 'Custom') }, { value: 'new_year', label: t('ev.k.ny', 'New Year') }, { value: 'national_holiday', label: t('ev.k.holiday', 'National holiday') }]} /></Field>
           {f.kind === 'national_holiday' && <Field label={t('ev.f.country', 'Country code (ISO, e.g. FR, US)')}><Input value={f.countryCode} onChange={(e) => set('countryCode', e.target.value.toUpperCase().slice(0, 2))} placeholder="FR" /></Field>}
           <Field label={t('ev.f.notify', 'Notify users (days before)')}><Input type="number" value={f.notifyDaysBefore} onChange={(e) => set('notifyDaysBefore', e.target.value)} /></Field>
+          <Field label={t('ev.f.effect', 'Fireworks')} hint={t('ev.f.effect.h', 'New Year and national days play them by default — this is how you run one quietly.')}>
+            <Dropdown className="w-full" value={f.effect || ''} onChange={(v) => set('effect', v)} options={[
+              { value: '', label: t('ev.fx.auto', 'Automatic (on for New Year / national day)') },
+              { value: 'fireworks', label: t('ev.fx.on', 'Always on') },
+              { value: 'none', label: t('ev.fx.off', 'Off') },
+            ]} />
+          </Field>
           <Field label={t('ev.f.density', 'Fireworks amount (1–10)')} hint={t('ev.f.density.h', 'How many at once. Lower = calmer / less intrusive.')}><Input type="number" min="1" max="10" value={f.fxDensity} onChange={(e) => set('fxDensity', e.target.value)} /></Field>
           <Field label={t('ev.f.size', 'Fireworks size (1–10)')}><Input type="number" min="1" max="10" value={f.fxSize} onChange={(e) => set('fxSize', e.target.value)} /></Field>
           <Field label={t('ev.f.flagdrops', 'Flag drops (times the flag forms, random)')}><Input type="number" min="0" max="20" value={f.fxFlagDrops} onChange={(e) => set('fxFlagDrops', e.target.value)} /></Field>

@@ -31,7 +31,10 @@ const bodySchema = z.object({
   startsAt: z.string().datetime(),
   endsAt: z.string().datetime(),
   active: z.boolean().optional(),
-  effect: z.enum(['fireworks']).optional(),
+  // 'none' is a real opt-out, not decoration: new_year and national_holiday now imply
+  // fireworks in the client, so without a stored value meaning "no" there would be no
+  // way to run one of those events quietly.
+  effect: z.enum(['fireworks', 'none']).optional(),
   fxDensity: z.number().int().min(1).max(10).optional(),
   fxSize: z.number().int().min(1).max(10).optional(),
   fxFlagDrops: z.number().int().min(0).max(20).optional(),

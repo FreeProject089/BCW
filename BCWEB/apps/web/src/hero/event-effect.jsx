@@ -115,6 +115,20 @@ const NEW_YEAR_PALETTE = [[1, 0.84, 0.3], [1, 1, 0.92], [1, 0.62, 0.12], [0.86, 
 // Small flag image (same CDN the rest of the app uses) — shown in the event badge.
 const flagUrl = (cc) => `https://flagcdn.com/32x24/${String(cc).toLowerCase()}.png`;
 
+// Does this event play fireworks?
+//
+// `effect` is an optional enum whose only value is 'fireworks', and the admin form never
+// set it — so every event created there stored `effect: undefined` and the canvas never
+// ran. A New Year or a national day with no fireworks is not a configuration, it is the
+// feature missing, so those two kinds now imply them and only a `custom` event has to ask.
+// Kept as a check on the LIVE event rather than a fix in the form alone, because events
+// already saved would otherwise stay silent.
+export function wantsFireworks(ev) {
+  if (!ev) return false;
+  if (ev.effect === 'none') return false; // an explicit opt-out still wins
+  return ev.effect === 'fireworks' || ev.kind === 'new_year' || ev.kind === 'national_holiday';
+}
+
 export default function EventEffect() {
   const { t, lang } = useI18n();
   const [ev, setEv] = useState(null);
@@ -151,7 +165,7 @@ export default function EventEffect() {
   useEffect(() => {
     // A preview always plays (bypasses reduce-motion + the live gate); otherwise the
     // live event plays when it's a fireworks effect and motion is allowed.
-    const fx = preview || (ev && ev.effect === 'fireworks' && !reduced && !dismissed ? ev : null);
+    const fx = preview || (ev && wantsFireworks(ev) && !reduced && !dismissed ? ev : null);
     if (!fx) return;
     const el = mount.current; if (!el) return;
     // No WebGL2 → skip the effect silently (no THREE console errors). This is a pure
@@ -192,7 +206,11 @@ export default function EventEffect() {
     let ps = [];
     const rand = (a, b) => a + Math.random() * (b - a);
     const density = Math.max(1, Math.min(10, fx.fxDensity || 5));       // fireworks amount
-    const flagDrops = Math.max(0, Math.min(20, fx.fxFlagDrops ?? 2));   // how many flag formations
+    // Default flag drops. For a national day the flag forming in the sky is the point of
+    // the event, so two over a 15s show is thin — four reads as "it keeps happening,
+    // somewhere new" rather than "it happened once and I looked away". Every drop already
+    // picks its own position and size, so more of them does not mean more of the same.
+    const flagDrops = Math.max(0, Math.min(20, fx.fxFlagDrops ?? (fx.kind === 'national_holiday' ? 4 : 2)));
     // Rockets launch fast enough to burst in the UPPER part of the screen (the "sky"),
     // then explode at their apex — so the show stays overhead and doesn't cover the
     // content the user is reading lower down.
