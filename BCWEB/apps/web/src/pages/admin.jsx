@@ -34,6 +34,22 @@ import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSav
 // actual api.del only fires once the 6s window elapses — Undo means nothing was ever deleted,
 // no email sent, no round-trip. Replaces a confirm modal, which asks BEFORE and can't take it
 // back AFTER. Returns { pending, del }: filter your list by `!pending.has(id)`, and call
+// The background-image for the preview pane.
+//
+// `var(--page-glows)` alone would be wrong: themeCss only emits that property when a glow
+// list is CONFIGURED, and an unresolved var() with no fallback makes background-image
+// `none`. The preview would then show a bare colour for every unconfigured theme while the
+// real page shows three glows — a preview that lies in the default case, which is the case
+// most people look at it in.
+function previewGlowCss(f) {
+  const active = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  const list = Array.isArray(f?.[active]?.glows) ? f[active].glows : DEFAULT_GLOWS(active);
+  if (!list.length) return 'none'; // an explicit empty list IS a flat background
+  return list
+    .map((g) => `radial-gradient(${g.w ?? 55}% ${g.h ?? 55}% at ${g.x ?? 50}% ${g.y ?? 0}%, ${g.color}, transparent ${g.fade ?? 60}%)`)
+    .join(',');
+}
+
 // The shipped glow stack per mode, as data — the starting point when an admin takes the
 // background over. These mirror the fallbacks in index.css; they are not read from it,
 // so if the CSS stack changes these want changing with it.
@@ -8677,10 +8693,36 @@ function AdminSiteTheme() {
           const scoped = { accent: f.accent, accent2: f.accent2, shared: f.shared, [active]: f[active] };
           return themeCss(scoped).replace(/:root,\[data-theme="light"\]|\[data-theme="dark"\]|:root/g, '#st-preview');
         })()}</style>
-        <div id="st-preview" className="rounded-xl border border-[var(--line)] p-4 flex flex-wrap items-center gap-3">
-          <button className="btn btn-primary btn-sm">{t('st.samplebtn', 'Primary button')}</button>
-          <span className="gradient-text text-lg font-semibold">{t('st.sampletext', 'Gradient heading')}</span>
-          <span className="px-2 py-0.5 rounded-md text-xs" style={{ background: 'var(--primary)', color: 'var(--on-primary)' }}>Badge</span>
+        {/* The preview paints the real page background — flat --bg plus the configured
+            glow stack — instead of sitting on the admin's own surface. Editing the
+            background was otherwise the one thing you could not see the result of, which
+            is exactly the case a preview exists for. */}
+        <div id="st-preview" className="rounded-xl border border-[var(--line)] p-4 space-y-3"
+          style={{ background: 'var(--bg)', backgroundImage: previewGlowCss(f), color: 'var(--text)' }}>
+          <div className="flex flex-wrap items-center gap-3">
+            <button className="btn btn-primary btn-sm">{t('st.samplebtn', 'Primary button')}</button>
+            <button className="btn btn-danger btn-sm">{t('st.sampledanger', 'Delete')}</button>
+            <button className="btn btn-ghost btn-sm">{t('st.sampleghost', 'Cancel')}</button>
+            <span className="gradient-text text-lg font-semibold">{t('st.sampletext', 'Gradient heading')}</span>
+            <span className="px-2 py-0.5 rounded-md text-xs" style={{ background: 'var(--primary)', color: 'var(--on-primary)' }}>Badge</span>
+          </div>
+          {/* A surface, so --surface / --line / the text ramp are all on screen at once. */}
+          <div className="rounded-lg p-3 space-y-2" style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}>
+            <div className="font-semibold text-sm">{t('st.samplecard', 'A card on a surface')}</div>
+            <div className="text-sm" style={{ color: 'var(--muted)' }}>{t('st.samplemuted', 'Secondary text, the muted ramp.')}</div>
+            <div className="text-xs" style={{ color: 'var(--faint)' }}>{t('st.samplefaint', 'Faint text — captions and hints.')}</div>
+            <input readOnly value={t('st.sampleinput', 'An input field')}
+              className="w-full rounded-lg px-3 py-1.5 text-sm outline-none"
+              style={{ background: 'var(--bg-solid)', border: '1px solid var(--control-border, var(--line))', color: 'var(--text)' }} />
+            <div className="pt-1" style={{ borderTop: '1px solid var(--line-strong)' }} />
+            <div className="flex flex-wrap gap-1.5">
+              {[['info', t('st.st.info', 'Info')], ['success', t('st.st.success', 'Saved')],
+                ['warning', t('st.st.warning', 'Careful')], ['error', t('st.st.error', 'Failed')]].map(([k, label]) => (
+                <span key={k} className="px-2 py-0.5 rounded-md text-xs font-medium"
+                  style={{ background: `var(--${k}-bg)`, color: `var(--${k})`, border: `1px solid var(--${k}-border)` }}>{label}</span>
+              ))}
+            </div>
+          </div>
         </div>
         <div className={`text-[11px] mt-2 ${ratio >= 4.5 ? 'text-success' : 'text-warning'}`}>
           {ratio >= 4.5
