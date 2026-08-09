@@ -3,6 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema } from '../lib/lib.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } from '../lib/repofingerprint.mjs';
+import { mintAttestation, attestationPublicKeyHex, ATTESTATION_TTL_SECONDS } from '../lib/identity-attestation.mjs';
 import { capacityStatus, capacityFactors, priceCents, termTotalCents, TERM_MONTHS, stripe, settings, ensureCustomer, recomputePoolBytes } from './hosting.mjs';
 
 const SHA = /^[a-f0-9]{40}$|^[a-f0-9]{64}$/i;
@@ -1085,6 +1086,34 @@ export default async function repoRoutes(app) {
     } });
     await notify(p, ownerId, 'hosting_started', `A hosted repo "${repo.name}" was provisioned for you (free host).`);
     return reply.code(201).send({ repo: ser(repo) });
+  });
+
+  // The ed25519 public key a self-hosted repo server needs in order to verify the
+  // attestations below. Public by design — it verifies, it cannot mint.
+  app.get('/repo-identity/public-key', async () => ({
+    publicKey: await attestationPublicKeyHex(),
+    format: 'ed25519-hex',
+    ttlSeconds: ATTESTATION_TTL_SECONDS,
+  }));
+
+  // Mint a short-lived signed statement of who the CALLER is, for them to present to a
+  // self-hosted repo server whose owner has allow/ban lists keyed on accounts.
+  //
+  // Only ever issued for req.user — there is no lookup-by-id form, because that would let
+  // any caller resolve someone else's linked Discord ids. A user learning their own linkage
+  // discloses nothing they did not already know.
+  app.get('/me/repo-identity', { preHandler: requireRole() }, async (req, reply) => {
+    const uid = req.user?.uid;
+    if (!uid) return reply.code(401).send({ error: 'unauthorized' });
+    const p = await db();
+    const idn = (await loadOwnerIdentities(p, [uid])).get(uid) || { creatorIds: [], discordIds: [] };
+    const { token, expiresAt } = await mintAttestation({
+      bcid: userBcId(uid),
+      creatorIds: idn.creatorIds,
+      discordIds: idn.discordIds,
+    });
+    // Sent as a header value by BMM; never logged, and never placed in a URL.
+    return { token, expiresAt };
   });
 
   app.get('/admin/repos', { preHandler: requireCap('manage_repos', 'MOD') }, async () => {
