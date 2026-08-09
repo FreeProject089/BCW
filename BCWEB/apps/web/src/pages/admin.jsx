@@ -8260,7 +8260,15 @@ function AdminFooter() {
     setBusy(true);
     try {
       await api.put('/admin/footer', f);
-      toast.success(t('afoot.saved', 'Footer saved.'));
+      // Say what was actually saved. "Footer saved." was true and useless: a config with
+      // `enabled` off, or with no columns, saves perfectly and changes nothing on the site,
+      // and the toast read the same either way. That is how a footer can look configured
+      // for weeks while every visitor sees the built-in one.
+      toast.success(!f.enabled
+        ? t('afoot.saved.off', 'Saved — but “Use this footer” is off, so visitors still see the built-in one.')
+        : !(f.columns || []).length
+          ? t('afoot.saved.empty', 'Saved — no columns yet, so the built-in columns still show. Use “Start from the built-in footer”.')
+          : t('afoot.saved', 'Footer saved.'));
       reload();
     } catch (x) { toast.error(x.data?.detail || x.data?.error || t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
@@ -8283,6 +8291,25 @@ function AdminFooter() {
         <Button variant="ghost" disabled={busy} onClick={resetToBuiltIn}><RotateCcw size={14} /> {t('afoot.resetbuiltin', 'Reset to default')}</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={14} /> {t('common.save', 'Save')}</>}</Button>
       </div>
+      {/* The two states in which this whole page is decorative. Both are legitimate and
+          neither was visible: `enabled` off means the site ignores the config entirely, and
+          an empty column list means the built-in columns stand. */}
+      {(!f.enabled || !(f.columns || []).length) && (
+        <Card className="p-3 mb-3 flex items-start gap-2.5" style={{ background: 'var(--warning-bg)', borderColor: 'var(--warning-border)' }}>
+          <AlertTriangle size={16} className="text-warning shrink-0 mt-0.5" />
+          <div className="text-sm flex-1">
+            <div className="font-semibold text-warning">{t('afoot.inactive', 'Visitors are seeing the built-in footer')}</div>
+            <div className="text-[var(--muted)] mt-0.5">
+              {!f.enabled
+                ? t('afoot.inactive.off', '“Use this footer” is off — nothing here is applied until you turn it on.')
+                : t('afoot.inactive.empty', 'There are no columns, so the built-in ones stand. Start from the built-in footer and edit it.')}
+            </div>
+          </div>
+          {!f.enabled
+            ? <Button size="sm" variant="primary" onClick={() => setF({ ...f, enabled: true })}>{t('afoot.turnon', 'Turn it on')}</Button>
+            : <Button size="sm" variant="primary" onClick={loadBuiltIn}>{t('afoot.loadbuiltin', 'Start from the built-in footer')}</Button>}
+        </Card>
+      )}
       <p className="text-sm text-[var(--muted)] mb-4">{t('afoot.sub', 'Columns, links, and what appears on phone versus desktop. Turned off, or with no columns, the site keeps its built-in footer — so this can never leave the page without one. Start from the built-in one and edit it, or build your own from scratch.')}</p>
 
       <Card className="p-4 mb-4 flex flex-wrap items-end gap-4">
