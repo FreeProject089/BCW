@@ -52,7 +52,7 @@ function NotificationsPanel() {
         <h2 className="font-semibold flex items-center gap-2"><Bell size={16} /> Notifications {unread > 0 && <Badge tone="primary">{unread}</Badge>}</h2>
         <div className="flex items-center gap-3">
           {unread > 0 && <button className="text-xs text-[var(--primary-2)] flex items-center gap-1" onClick={markAll}><CheckCheck size={13} /> Mark all read</button>}
-          {list.length > 0 && <button className="text-xs text-red-400 flex items-center gap-1" onClick={clearAll}><Trash2 size={13} /> Clear all</button>}
+          {list.length > 0 && <button className="text-xs text-error flex items-center gap-1" onClick={clearAll}><Trash2 size={13} /> Clear all</button>}
         </div>
       </div>
       {loading ? <Loading /> : (list.length ? <div className="space-y-2 max-h-[460px] overflow-auto pr-1">
@@ -67,7 +67,7 @@ function NotificationsPanel() {
               <div className={`text-sm break-words [overflow-wrap:anywhere] ${n.readAt ? 'text-[var(--muted)]' : 'text-[var(--text)]'}`}>{n.body}</div>
             </div>
             {!n.readAt && <span className="w-2 h-2 rounded-full bg-[var(--primary)] mt-1.5 shrink-0" />}
-            <button className="text-[var(--faint)] hover:text-red-400 opacity-0 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); del(n); }}><Trash2 size={13} /></button>
+            <button className="text-[var(--faint)] hover:text-error opacity-0 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); del(n); }}><Trash2 size={13} /></button>
           </Card>); })}
       </div> : <EmptyState icon={Bell} title="All caught up" sub="You have no notifications." />)}
     </div>
@@ -131,7 +131,7 @@ function TwoFactorNudge() {
   if (!user || user.totpEnabled || dismissed) return null;
   const hide = () => { setDismissed(true); try { localStorage.setItem(TWOFA_NUDGE_KEY, '1'); } catch {} };
   return (
-    <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-orange-500/12 to-transparent border-[var(--ring)]">
+    <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-brand to-transparent border-[var(--ring)]">
       <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><ShieldCheck size={18} className="text-[var(--primary-2)]" /></span>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold">{t('twofa.nudge.title', 'Don’t risk losing access to your account')}</div>
@@ -244,7 +244,7 @@ function PaymentResultModal({ result, onClose }) {
       </>}>
       <div className="text-center pt-2 pb-1">
         <PaymentTerminal ok={ok} />
-        <div className={`text-xl font-extrabold mt-3 ${failed ? 'text-red-400' : ''}`}>{ok ? t('dash.pay.ok.t', 'Payment confirmed') : failed ? t('dash.pay.fail.t', 'Payment failed') : t('dash.pay.cancel.t', 'Checkout cancelled')}</div>
+        <div className={`text-xl font-extrabold mt-3 ${failed ? 'text-error' : ''}`}>{ok ? t('dash.pay.ok.t', 'Payment confirmed') : failed ? t('dash.pay.fail.t', 'Payment failed') : t('dash.pay.cancel.t', 'Checkout cancelled')}</div>
         <p className="text-sm text-[var(--muted)] mt-1.5 max-w-xs mx-auto">
           {ok
             ? (kind === 'feature' ? t('dash.pay.feature.m', 'Your repo is now featured on the public listing.') : t('dash.pay.hosting.m', "Your repo is being provisioned — it'll be online shortly."))
@@ -337,10 +337,10 @@ export function Dashboard() {
     && (itemStatus === 'all' || (itemStatus === 'deleting' ? !!it.deleteAt : it.status === itemStatus)));
   const stats = [
     { icon: Package, label: t('dash.items', 'Items'), value: list.length },
-    { icon: CheckCircle2, label: t('dash.published', 'Published'), value: list.filter((i) => i.status === 'PUBLISHED').length, tone: 'text-emerald-400' },
-    { icon: Clock, label: t('dash.pending', 'Pending'), value: list.filter((i) => i.status === 'PENDING').length, tone: 'text-amber-400' },
+    { icon: CheckCircle2, label: t('dash.published', 'Published'), value: list.filter((i) => i.status === 'PUBLISHED').length, tone: 'text-success' },
+    { icon: Clock, label: t('dash.pending', 'Pending'), value: list.filter((i) => i.status === 'PENDING').length, tone: 'text-warning' },
     { icon: Server, label: t('dash.repos', 'Repos'), value: rlist.length },
-    { icon: Star, label: t('dash.featured', 'Featured'), value: rlist.filter((r) => r.featuredUntil && new Date(r.featuredUntil) > new Date()).length, tone: 'text-amber-400' },
+    { icon: Star, label: t('dash.featured', 'Featured'), value: rlist.filter((r) => r.featuredUntil && new Date(r.featuredUntil) > new Date()).length, tone: 'text-warning' },
   ];
   // Quick actions — no "Write a post" here (that lives in the Blog for staff).
   const actions = [
@@ -376,7 +376,7 @@ export function Dashboard() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
               {actions.map((a) => (
                 <button key={a.label} onClick={() => a.onClick ? a.onClick() : nav(a.to)} className="card card-hover p-4 text-left flex items-center gap-2.5">
-                  <span className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500"><a.icon size={16} className="text-white" /></span>
+                  <span className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-brand to-brand-2"><a.icon size={16} className="text-white" /></span>
                   <span className="text-sm font-medium">{a.label}</span>
                 </button>
               ))}
@@ -412,7 +412,7 @@ export function Dashboard() {
                     <div className="text-xs text-[var(--faint)] flex items-center gap-2 flex-wrap">
                       <span>{it.kind} · v{it.version}</span>
                       {it.payloadKey && !it.meta?.download_url && <span className="text-[var(--primary-2)]">· {t('dash.hostedhere', 'hosted here')}</span>}
-                      {v && (v.valid ? <span className="text-emerald-400 flex items-center gap-1"><BadgeCheck size={12} /> {t('dash.verified', 'verified')}</span> : <span className="text-red-400 flex items-center gap-1"><XCircle size={12} /> {t('dash.invalid', 'invalid')}</span>)}
+                      {v && (v.valid ? <span className="text-success flex items-center gap-1"><BadgeCheck size={12} /> {t('dash.verified', 'verified')}</span> : <span className="text-error flex items-center gap-1"><XCircle size={12} /> {t('dash.invalid', 'invalid')}</span>)}
                     </div>
                     {/* Public listing needs admin validation; until then the item is private
                         but the owner can always share its own direct link (like a repo). */}
@@ -427,7 +427,7 @@ export function Dashboard() {
                         </button>
                       );
                     })()}
-                    {it.status === 'SUSPENDED' && <div className="text-[11px] text-red-400 mt-0.5">{t('dash.suspendednote', 'Suspended by an admin — you can’t edit or resubmit it. Contact support to appeal.')}</div>}
+                    {it.status === 'SUSPENDED' && <div className="text-[11px] text-error mt-0.5">{t('dash.suspendednote', 'Suspended by an admin — you can’t edit or resubmit it. Contact support to appeal.')}</div>}
                   </div>
                   {it.deleteAt
                     ? <><Badge tone="red"><Trash2 size={11} /> {t('dash.deletingin', 'Deleting in')} {fmtRemaining(it.deleteAt)}</Badge>
@@ -531,8 +531,8 @@ function ItemEditModal({ open, item, onClose, onDone }) {
     ? <><Button variant="ghost" onClick={onClose}>{t('bill.close', 'Close')}</Button><Button variant="primary" disabled={busy} onClick={cancelDeletion}>{busy ? <Spinner /> : t('ie.canceldel', 'Cancel deletion')}</Button></>
     : <>
         {confirmDel
-          ? <span className="flex items-center gap-2 mr-auto text-sm text-[var(--muted)]">{t('ie.delthis', 'Delete this item?')}<Button size="sm" className="!bg-red-500/15 !text-red-400 !border-red-500/30" disabled={busy} onClick={doDelete}>{busy ? <Spinner /> : t('ie.yesdelete', 'Yes, delete')}</Button><Button size="sm" variant="ghost" onClick={() => setConfirmDel(false)}>{t('ie.no', 'No')}</Button></span>
-          : <button className="mr-auto text-sm text-red-400/80 hover:text-red-400 flex items-center gap-1.5" onClick={() => setConfirmDel(true)}><Trash2 size={14} /> {t('repos.del.ok', 'Delete')}</button>}
+          ? <span className="flex items-center gap-2 mr-auto text-sm text-[var(--muted)]">{t('ie.delthis', 'Delete this item?')}<Button size="sm" className="!bg-error-bg !text-error !border-error-border" disabled={busy} onClick={doDelete}>{busy ? <Spinner /> : t('ie.yesdelete', 'Yes, delete')}</Button><Button size="sm" variant="ghost" onClick={() => setConfirmDel(false)}>{t('ie.no', 'No')}</Button></span>
+          : <button className="mr-auto text-sm text-error hover:text-error flex items-center gap-1.5" onClick={() => setConfirmDel(true)}><Trash2 size={14} /> {t('repos.del.ok', 'Delete')}</button>}
         <Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
         <Button variant="primary" disabled={busy || (!!file && noSubmitSpace)} onClick={save}>{busy ? <Spinner /> : t('ie.savereview', 'Save (send for re-review)')}</Button>
       </>;
@@ -540,14 +540,14 @@ function ItemEditModal({ open, item, onClose, onDone }) {
   return (
     <Modal open={open} onClose={onClose} title={t('ie.title', 'View / edit item')} icon={PenSquare} width="max-w-lg" footer={footer}>
       <div className="flex items-center gap-3 mb-4">
-        <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500/25 to-amber-500/15 border border-[var(--line)]"><I size={20} className="text-[var(--primary-2)]" /></div>
+        <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-2 border border-[var(--line)]"><I size={20} className="text-[var(--primary-2)]" /></div>
         <div className="min-w-0"><div className="font-semibold truncate">{item.name}</div>
           <div className="text-xs text-[var(--faint)] flex items-center gap-2"><Badge tone={statusTone(item.status)}>{item.status}</Badge>{item.kind}
             {(item.payloadKey || item.meta?.download_url) && <button onClick={viewPayload} className="text-[var(--primary-2)] hover:underline flex items-center gap-1"><Download size={11} /> payload</button>}</div></div>
       </div>
 
       {item.deleteAt
-        ? <div className="rounded-lg border border-red-500/30 bg-red-500/8 p-2.5 text-xs text-red-400 flex items-start gap-2 mb-4">
+        ? <div className="rounded-lg border border-error-border bg-error-bg p-2.5 text-xs text-error flex items-start gap-2 mb-4">
             <Trash2 size={13} className="shrink-0 mt-0.5" />
             <span>{t('ie.notice.del1', 'Scheduled for deletion in')} <b>{fmtRemaining(item.deleteAt)}</b>. {t('ie.notice.del2', 'The files are kept until then — cancel below to keep this item.')}</span>
           </div>
@@ -557,7 +557,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
           </div>}
 
       {isPlugin && v && (
-        <div className={`rounded-lg p-2.5 text-xs mb-4 flex items-center gap-2 border ${v.valid ? 'bg-emerald-500/8 border-emerald-500/25 text-emerald-400' : 'bg-red-500/8 border-red-500/25 text-red-400'}`}>
+        <div className={`rounded-lg p-2.5 text-xs mb-4 flex items-center gap-2 border ${v.valid ? 'bg-success-bg border-success-border text-success' : 'bg-error-bg border-error-border text-error'}`}>
           {v.valid ? <BadgeCheck size={14} /> : <XCircle size={14} />}
           <span className="flex-1">{v.valid ? t('ie.pkgok', 'Current package verified — checksums match.') : t('ie.pkgbad', 'Current package invalid: {reason}').replace('{reason}', v.reason)}</span>
           {v.sha256 && <code className="text-[10px] text-[var(--faint)]">{v.sha256.slice(0, 12)}…</code>}
@@ -578,22 +578,22 @@ function ItemEditModal({ open, item, onClose, onDone }) {
           </Field>
           {file && <div className="mt-1.5 text-xs text-[var(--primary-2)] flex items-center gap-1.5"><Upload size={12} /> {file.name} {t('ie.replaces', '— replaces the current file and is re-validated on save.')}</div>}
           {file && noSubmitSpace && (
-            <div className="mt-1.5 text-xs text-red-400 flex items-center gap-1.5"><AlertTriangle size={12} /> {t('sub.nospace', 'Submission storage is full right now — every upload is held for moderation and there is no room left. Try again later, or self-host and paste a URL above instead.')}</div>
+            <div className="mt-1.5 text-xs text-error flex items-center gap-1.5"><AlertTriangle size={12} /> {t('sub.nospace', 'Submission storage is full right now — every upload is held for moderation and there is no room left. Try again later, or self-host and paste a URL above instead.')}</div>
           )}
           {file && quote && !quote.free && quote.monthlyCents > 0 && (
-            <div className="mt-1.5 text-xs text-amber-400/90 flex items-center gap-1.5"><Receipt size={12} /> {t('ie.replacecost', 'This size is billed: {price}/mo — you\'ll be sent to checkout after saving.').replace('{price}', `$${(quote.monthlyCents / 100).toFixed(2)}`)}</div>
+            <div className="mt-1.5 text-xs text-warning flex items-center gap-1.5"><Receipt size={12} /> {t('ie.replacecost', 'This size is billed: {price}/mo — you\'ll be sent to checkout after saving.').replace('{price}', `$${(quote.monthlyCents / 100).toFixed(2)}`)}</div>
           )}
         </div>
       )}
       {ourHosted && item.meta?._hostingSubId && (
-        <div className="mt-3 rounded-lg border border-red-500/25 bg-red-500/8 p-2.5 text-xs text-[var(--muted)] flex items-center gap-2 flex-wrap">
-          <Receipt size={13} className="text-red-400 shrink-0" />
+        <div className="mt-3 rounded-lg border border-error-border bg-error-bg p-2.5 text-xs text-[var(--muted)] flex items-center gap-2 flex-wrap">
+          <Receipt size={13} className="text-error shrink-0" />
           <span className="flex-1">{t('ie.hostactive', 'This file is on a recurring monthly hosting subscription.')}</span>
           {confirmCancelHost
-            ? <span className="flex items-center gap-2"><span className="text-red-400">{t('ie.hostcancelq', 'Cancel and hide this item?')}</span>
-                <Button size="sm" className="!bg-red-500/15 !text-red-400 !border-red-500/30" disabled={busy} onClick={cancelHosting}>{busy ? <Spinner /> : t('ie.yescancel', 'Yes, cancel')}</Button>
+            ? <span className="flex items-center gap-2"><span className="text-error">{t('ie.hostcancelq', 'Cancel and hide this item?')}</span>
+                <Button size="sm" className="!bg-error-bg !text-error !border-error-border" disabled={busy} onClick={cancelHosting}>{busy ? <Spinner /> : t('ie.yescancel', 'Yes, cancel')}</Button>
                 <Button size="sm" variant="ghost" onClick={() => setConfirmCancelHost(false)}>{t('ie.no', 'No')}</Button></span>
-            : <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => setConfirmCancelHost(true)}>{t('ie.cancelhosting', 'Cancel hosting')}</Button>}
+            : <Button size="sm" variant="ghost" className="!text-error" onClick={() => setConfirmCancelHost(true)}>{t('ie.cancelhosting', 'Cancel hosting')}</Button>}
         </div>
       )}
       {isPlugin && !ourHosted && item.meta?.download_url && (

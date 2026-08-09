@@ -150,7 +150,7 @@ function OfficialSubmit({ onBack }) {
             <Input type="file" onChange={(e) => onFile(e.target.files?.[0] || null)} /></Field>
           {file && <div className="text-xs text-[var(--faint)] flex items-center gap-1.5"><Package size={12} /> {file.name} ({(file.size / 1e6).toFixed(1)} MB)</div>}
           {file && file.size > MAX_UPLOAD && (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-2.5 text-xs text-amber-400">
+            <div className="rounded-lg border border-warning-border bg-warning/[0.06] p-2.5 text-xs text-warning">
               {t('sub2.toobig.b', 'This file is over 100MB — direct uploads are capped there. To host a larger file, reach out via the contact page and we’ll arrange it.')} <Link to="/contact" className="underline font-medium">{t('sub2.contact', 'Contact us')}</Link>
             </div>
           )}
@@ -261,7 +261,7 @@ function HostCatalog({ onBack }) {
         {form.mode === 'raw' ? (
           <Field label={t('sub2.raw.file', 'Your catalog.json')} hint={t('sub2.raw.hint', 'The BMM-native feed you exported from BMM (plugins/themes/apps).')}>
             <Input type="file" accept=".json,application/json" onChange={(e) => onRaw(e.target.files?.[0] || null)} />
-            {rawJson && <div className="text-xs text-emerald-400 mt-1 flex items-center gap-1.5"><CheckCircle2 size={12} /> {t('sub2.raw.entries', '{n} entries').replace('{n}', (rawJson.plugins || rawJson.themes || rawJson.apps || []).length)}</div>}
+            {rawJson && <div className="text-xs text-success mt-1 flex items-center gap-1.5"><CheckCircle2 size={12} /> {t('sub2.raw.entries', '{n} entries').replace('{n}', (rawJson.plugins || rawJson.themes || rawJson.apps || []).length)}</div>}
           </Field>
         ) : (
           <Field label={t('sub2.pool', 'Storage pool')} hint={t('sub2.pool.hint', 'A managed catalog draws from a storage pool — the same space your repos use.')}>
@@ -312,7 +312,7 @@ export function Submit() {
               <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.official.d', 'Submit a plugin, theme, app or preset. Free, reviewed by our team. You can bulk-import a whole catalog.json.')}</div>
             </button>
             <button onClick={() => setPath('host')} className="text-left p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition">
-              <div className="w-11 h-11 rounded-xl bg-emerald-500/10 grid place-items-center mb-3"><Server size={20} className="text-emerald-400" /></div>
+              <div className="w-11 h-11 rounded-xl bg-success-bg grid place-items-center mb-3"><Server size={20} className="text-success" /></div>
               <div className="font-semibold">{t('sub2.host', 'Host my own catalog')}</div>
               <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.host.d', 'Publish and manage your own catalog. Free if you self-host the downloads, or paid to host the files with us.')}</div>
             </button>

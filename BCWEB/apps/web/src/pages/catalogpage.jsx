@@ -51,7 +51,7 @@ export default function CommunityCatalogPage() {
   return (
     <div className="max-w-2xl mx-auto">
       <PageHeader icon={Boxes} title={cat.name}
-        subtitle={<>{t('ccp.by', 'by {name}').replace('{name}', cat.owner || '—')} · {cat.itemCount} {t('cc.items', 'items')}{cat.private && <> · <span className="text-amber-400">{t('ccp.private', 'private')}</span></>}</>} />
+        subtitle={<>{t('ccp.by', 'by {name}').replace('{name}', cat.owner || '—')} · {cat.itemCount} {t('cc.items', 'items')}{cat.private && <> · <span className="text-warning">{t('ccp.private', 'private')}</span></>}</>} />
       {cat.description && <p className="text-sm text-[var(--muted)] mb-3">{cat.description}</p>}
       {/* Who hosts this catalog — link to their profile + copy their BC id. */}
       {cat.owner && <div className="flex items-center gap-2 flex-wrap mb-4 text-sm">

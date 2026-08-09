@@ -448,7 +448,7 @@ function AdminCatalogCreator() {
                   <button onClick={() => startEdit(it)} title={t('common.edit', 'Edit')}
                     className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)]"><Pencil size={13} /></button>
                   <button onClick={() => removeEntry(it)} title={t('common.delete', 'Delete')}
-                    className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10"><Trash2 size={13} /></button>
+                    className="p-1.5 rounded-lg text-error hover:bg-error-bg"><Trash2 size={13} /></button>
                 </div>
                 {edit?.id === it.id && (
                   <div className="mt-3 pt-3 border-t border-[var(--line)] grid sm:grid-cols-2 gap-2">
@@ -585,7 +585,7 @@ function AdminPlanUsers() {
       <p className="text-sm text-[var(--muted)] mb-3">{t('pu.desc', "What every customer currently has active: free-tier hosting, paid hosting/boosts, or expired/ended terms. Click a row to see the detail; click the user's name for their full profile.")}</p>
       {mrr && (
         <div className="grid sm:grid-cols-3 gap-3 mb-4">
-          <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><RefreshCw size={12} className="text-emerald-400" /> {t('pu.mrr', 'Monthly recurring revenue')}</div><div className="text-2xl font-bold text-emerald-400 tabular-nums">{mrrMoney(mrr.totalCents)}<span className="text-sm font-normal text-[var(--faint)]">/{t('pu.mo', 'mo')}</span></div></Card>
+          <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><RefreshCw size={12} className="text-success" /> {t('pu.mrr', 'Monthly recurring revenue')}</div><div className="text-2xl font-bold text-success tabular-nums">{mrrMoney(mrr.totalCents)}<span className="text-sm font-normal text-[var(--faint)]">/{t('pu.mo', 'mo')}</span></div></Card>
           <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><TrendingUp size={12} className="text-[var(--primary-2)]" /> {t('pu.arr', 'Annualized (est.)')}</div><div className="text-2xl font-bold tabular-nums">{mrrMoney(mrr.annualCents)}<span className="text-sm font-normal text-[var(--faint)]">/{t('pu.yr', 'yr')}</span></div></Card>
           <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><CreditCard size={12} className="text-[var(--primary-2)]" /> {t('pu.activesubs', 'Active subscriptions')}</div><div className="text-2xl font-bold tabular-nums">{mrr.subCount}</div></Card>
         </div>
@@ -622,7 +622,7 @@ function AdminPlanUsers() {
               </div>
               {tab === 'paying' && (u.totalSpentCents != null || u.mrrCents > 0) && (
                 <div className="text-xs text-right shrink-0">
-                  {u.mrrCents > 0 && <div className="text-sm font-semibold text-emerald-400">{mrrMoney(u.mrrCents)}<span className="text-[var(--faint)] font-normal">/{t('pu.mo', 'mo')}</span></div>}
+                  {u.mrrCents > 0 && <div className="text-sm font-semibold text-success">{mrrMoney(u.mrrCents)}<span className="text-[var(--faint)] font-normal">/{t('pu.mo', 'mo')}</span></div>}
                   {u.totalSpentCents != null && <div className="text-[var(--faint)]">{t('pu.spent', '{n} spent').replace('{n}', mrrMoney(u.totalSpentCents))} · {t('pu.payments', '{n} payment(s)').replace('{n}', u.paymentCount)}</div>}
                 </div>
               )}
@@ -647,7 +647,7 @@ function AdminPlanUsers() {
                   if (a.deleteAt) bits.push(`${t('pu.d.deletes', 'deletes')} ${since(a.deleteAt)}`);
                   return (
                     <div key={i} className="flex items-start gap-2.5 text-sm px-3 py-2 rounded-lg bg-[var(--surface-2)]">
-                      <TypeIcon size={14} className={`shrink-0 mt-0.5 ${a.paid ? 'text-emerald-400' : 'text-[var(--primary-2)]'}`} />
+                      <TypeIcon size={14} className={`shrink-0 mt-0.5 ${a.paid ? 'text-success' : 'text-[var(--primary-2)]'}`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium truncate">{a.name || a.label}</span>
@@ -656,7 +656,7 @@ function AdminPlanUsers() {
                         </div>
                         {bits.length > 0 && <div className="text-xs text-[var(--faint)] mt-0.5">{bits.join(' · ')}</div>}
                         {a.spend && a.spend.spentCents > 0 && (
-                          <div className="text-xs text-emerald-400/90 mt-0.5">{money(a.spend.spentCents, a.spend.currency)} {t('pu.d.acrosspay', 'across {n} payment(s)').replace('{n}', a.spend.count)}{a.spend.lastAt ? ` · ${t('pu.last', 'last')} ${since(a.spend.lastAt)}` : ''}</div>
+                          <div className="text-xs text-success mt-0.5">{money(a.spend.spentCents, a.spend.currency)} {t('pu.d.acrosspay', 'across {n} payment(s)').replace('{n}', a.spend.count)}{a.spend.lastAt ? ` · ${t('pu.last', 'last')} ${since(a.spend.lastAt)}` : ''}</div>
                         )}
                         {a.spend?.invoiceNos?.length > 0 && (
                           <div className="text-[11px] text-[var(--faint)] mt-0.5 flex items-center gap-1.5 flex-wrap"><Receipt size={10} className="shrink-0" /> {t('pu.d.invoices', 'Invoices:')}
@@ -667,7 +667,7 @@ function AdminPlanUsers() {
                           </div>
                         )}
                         {a.type === 'subscription' && a.mrrCents > 0 && (
-                          <div className="text-xs text-emerald-400/90 mt-0.5">≈ {money(a.mrrCents, a.currency)} {t('pu.permo', 'per month')}</div>
+                          <div className="text-xs text-success mt-0.5">≈ {money(a.mrrCents, a.currency)} {t('pu.permo', 'per month')}</div>
                         )}
                       </div>
                     </div>
@@ -693,7 +693,7 @@ function PolicyChipList({ label, items, onAdd, onRemove, placeholder }) {
       <div className="flex gap-1.5"><Input value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} onKeyDown={(e) => e.key === 'Enter' && add()} /><Button size="sm" onClick={add}><Plus size={13} /></Button></div>
       <div className="flex flex-wrap gap-1 mt-1.5">
         {items.length ? items.map((x) => (
-          <span key={x} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px]">{x}<button onClick={() => onRemove(x)} className="text-[var(--faint)] hover:text-red-400"><X size={10} /></button></span>
+          <span key={x} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px]">{x}<button onClick={() => onRemove(x)} className="text-[var(--faint)] hover:text-error"><X size={10} /></button></span>
         )) : <span className="text-[11px] text-[var(--faint)]">{'—'}</span>}
       </div>
     </div>
@@ -736,7 +736,7 @@ function PolicyAccountChips({ label, items, onAdd, onRemove }) {
         {items.length ? items.map((a) => (
           <span key={`${a.type}:${a.id}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px]">
             <Users size={9} className="text-[var(--faint)]" /> {a.type === 'discord' ? 'Discord: ' : ''}{a.label || a.id}
-            <button onClick={() => onRemove(a)} className="text-[var(--faint)] hover:text-red-400"><X size={10} /></button>
+            <button onClick={() => onRemove(a)} className="text-[var(--faint)] hover:text-error"><X size={10} /></button>
           </span>
         )) : <span className="text-[11px] text-[var(--faint)]">{'—'}</span>}
       </div>
@@ -783,13 +783,13 @@ function GlobalAccessPolicyCard() {
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={policy.whitelistOnly} onChange={(e) => setPolicy({ ...policy, whitelistOnly: e.target.checked })} /> {t('gap.wlonly', 'Whitelist-only for ALL repos (forces every hosted repo into whitelist mode, site-wide)')}</label>
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Shield size={12} className="text-emerald-400" /> {t('gap.whitelist', 'Whitelist')}</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Shield size={12} className="text-success" /> {t('gap.whitelist', 'Whitelist')}</div>
           <PolicyChipList label={t('gap.ips', 'IPs')} items={policy.whitelistIps || []} onAdd={(v) => addTo('whitelistIps', v)} onRemove={(v) => rm('whitelistIps', v)} placeholder="203.0.113.4" />
           <PolicyChipList label={t('gap.creatorid', 'Creator ID')} items={policy.whitelistKeys || []} onAdd={(v) => addTo('whitelistKeys', v)} onRemove={(v) => rm('whitelistKeys', v)} placeholder="BMM creator id…" />
           <PolicyAccountChips label={t('gap.accounts', 'Accounts')} items={policy.whitelistAccounts || []} onAdd={(e) => addAccount('whitelistAccounts', e)} onRemove={(e) => rmAccount('whitelistAccounts', e)} />
         </div>
         <div className="space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Ban size={12} className="text-red-400" /> {t('gap.blacklist', 'Blacklist')}</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Ban size={12} className="text-error" /> {t('gap.blacklist', 'Blacklist')}</div>
           <PolicyChipList label={t('gap.ips', 'IPs')} items={policy.bannedIps || []} onAdd={(v) => addTo('bannedIps', v)} onRemove={(v) => rm('bannedIps', v)} placeholder="198.51.100.7" />
           <PolicyChipList label={t('gap.creatorid', 'Creator ID')} items={policy.bannedKeys || []} onAdd={(v) => addTo('bannedKeys', v)} onRemove={(v) => rm('bannedKeys', v)} placeholder="BMM creator id…" />
           <PolicyAccountChips label={t('gap.accounts', 'Accounts')} items={policy.bannedAccounts || []} onAdd={(e) => addAccount('bannedAccounts', e)} onRemove={(e) => rmAccount('bannedAccounts', e)} />
@@ -861,9 +861,9 @@ function AdminSecurity() {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
         <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1">{t('sec.attempts', 'Attempts')}</div><div className="text-xl font-bold tabular-nums">{attempts.length}</div></Card>
-        <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1">{t('sec.failedn', 'Failed')}</div><div className="text-xl font-bold tabular-nums text-red-400">{failedCount}</div></Card>
+        <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1">{t('sec.failedn', 'Failed')}</div><div className="text-xl font-bold tabular-nums text-error">{failedCount}</div></Card>
         <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1">{t('sec.uniqueips', 'Unique IPs')}</div><div className="text-xl font-bold tabular-nums">{uniqueIps}</div></Card>
-        <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1 flex items-center gap-1"><AlertTriangle size={11} className={suspiciousIps.size ? 'text-red-400' : ''} /> {t('sec.suspicious', 'Suspicious IPs')}</div><div className={`text-xl font-bold tabular-nums ${suspiciousIps.size ? 'text-red-400' : ''}`}>{suspiciousIps.size}</div></Card>
+        <Card className="p-3"><div className="text-[var(--faint)] text-xs mb-1 flex items-center gap-1"><AlertTriangle size={11} className={suspiciousIps.size ? 'text-error' : ''} /> {t('sec.suspicious', 'Suspicious IPs')}</div><div className={`text-xl font-bold tabular-nums ${suspiciousIps.size ? 'text-error' : ''}`}>{suspiciousIps.size}</div></Card>
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -897,7 +897,7 @@ function AdminSecurity() {
         <div className="max-h-[65vh] overflow-auto divide-y divide-[var(--line)]">
           {filteredAttempts.map((a) => (
             <div key={a.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-              {a.success ? <CheckCircle2 size={15} className="text-emerald-400 shrink-0" /> : <XCircle size={15} className="text-red-400 shrink-0" />}
+              {a.success ? <CheckCircle2 size={15} className="text-success shrink-0" /> : <XCircle size={15} className="text-error shrink-0" />}
               <div className="flex-1 min-w-0">
                 <div className="truncate"><button onClick={() => setQ(a.email)} className="font-medium hover:text-[var(--primary-2)]">{a.email}</button> {a.user && <span className="text-xs text-[var(--faint)]">· {a.user.displayName} ({a.user.role})</span>} {suspiciousIps.has(a.ip) && <Badge tone="red" className="ml-1">{t('sec.bruteforce', 'Brute-force?')}</Badge>}</div>
                 <div className="text-[11px] text-[var(--faint)] font-mono"><button onClick={() => setQ(a.ip)} className="hover:text-[var(--primary-2)]">{a.ip}</button> {a.reason ? `· ${a.reason}` : ''}</div>
@@ -909,7 +909,7 @@ function AdminSecurity() {
       </Card> : <EmptyState icon={Lock} title={attempts.length ? t('sec.nomatch', 'No matches') : t('sec.none.logins', 'No login attempts in this range')} />)}
       {tab === 'audit' && (
         <Card className="p-3 mb-3 flex items-center gap-3 flex-wrap">
-          <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
+          <ShieldCheck size={16} className="text-success shrink-0" />
           <div className="flex-1 min-w-[180px] text-sm">
             <div className="font-medium">{t('sec.tamper.title', 'Tamper-evident log')}</div>
             <div className="text-[11px] text-[var(--faint)]">{t('sec.tamper.desc', 'Every staff action is HMAC-chained — edits or deletions are detectable. Sensitive actions (file downloads, DB writes, power) are anchored off-DB (catches truncation) and alert SUPERADMINs.')}</div>
@@ -1026,7 +1026,7 @@ function MetricChart({ history }) {
 // spike, so they warn earlier. Used to colour the KPI cards and the health summary.
 const PERF_THRESH = { cpuPct: [75, 90], memPct: [80, 92], diskPct: [85, 95], loadRatio: [1, 1.5] };
 const toneFor = (v, [warn, crit]) => v == null ? '' : v >= crit ? 'crit' : v >= warn ? 'warn' : 'ok';
-const TONE_TEXT = { ok: 'text-emerald-400', warn: 'text-amber-400', crit: 'text-red-400', '': '' };
+const TONE_TEXT = { ok: 'text-success', warn: 'text-warning', crit: 'text-error', '': '' };
 const TONE_STROKE = { ok: '#34d399', warn: '#f59e0b', crit: '#f87171', '': 'var(--primary)' };
 // kbit/s → a readable rate (Mb/s above 1000, else kb/s).
 const fmtKbps = (k) => k == null ? '—' : k >= 1000 ? `${(k / 1000).toFixed(1)} Mb/s` : `${Math.round(k)} kb/s`;
@@ -1111,7 +1111,7 @@ function AdminServerPerf() {
           {health && <Badge tone={health === 'ok' ? 'green' : health === 'warn' ? 'amber' : 'red'}>{health === 'ok' ? <CheckCircle2 size={11} /> : <AlertTriangle size={11} />} {healthLabel}</Badge>}
         </h2>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> {t('sp.auto', 'auto 30s')}</span>
+          <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /> {t('sp.auto', 'auto 30s')}</span>
           <Button size="sm" variant="ghost" disabled={busy} onClick={sampleNow}>{busy ? <Spinner /> : <><RefreshCw size={14} /> {t('sp.samplenow', 'Sample now')}</>}</Button>
         </div>
       </div>
@@ -1197,7 +1197,7 @@ function AdminServerPerf() {
                 {/* Totals summary — live upload actually served + storage used across all repos. */}
                 <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-3">
                   <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-[var(--faint)]">
-                    <span className="flex items-center gap-1.5">{totLive > 0 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}{t('sp.alloc.uplivetot', 'Live upload (total)')}: <b className="text-[var(--text)] tabular-nums">{totLive.toFixed(2)} Mbps</b> <span className="text-[var(--faint)]/70">/ {ra.totalUploadMbps} {t('sp.alloc.reserved', 'reserved')}</span></span>
+                    <span className="flex items-center gap-1.5">{totLive > 0 && <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />}{t('sp.alloc.uplivetot', 'Live upload (total)')}: <b className="text-[var(--text)] tabular-nums">{totLive.toFixed(2)} Mbps</b> <span className="text-[var(--faint)]/70">/ {ra.totalUploadMbps} {t('sp.alloc.reserved', 'reserved')}</span></span>
                     <span>{t('sp.alloc.stotot', 'Storage used (total)')}: <b className="text-[var(--text)] tabular-nums">{fmtBytes(totUsed)} / {fmtBytes(totQuota)}</b></span>
                   </div>
                 </div>
@@ -1229,10 +1229,10 @@ function AdminServerPerf() {
                             {/* Live upload actually served now vs the plan limit (0 = idle). */}
                             <td className="py-2 px-3">
                               <div className="flex items-baseline justify-between gap-2 text-[11px] tabular-nums mb-1">
-                                <span className="flex items-center gap-1">{live > 0 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />}<b className="text-[var(--text)]">{live.toFixed(2)}</b> <span className="text-[var(--faint)]">/ {cap} Mbps</span></span>
+                                <span className="flex items-center gap-1">{live > 0 && <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse shrink-0" />}<b className="text-[var(--text)]">{live.toFixed(2)}</b> <span className="text-[var(--faint)]">/ {cap} Mbps</span></span>
                                 <span className="text-[var(--faint)]">{live <= 0 ? t('sp.alloc.idle', 'idle') : t('sp.alloc.pctused', '{n}%').replace('{n}', upPct.toFixed(0))}</span>
                               </div>
-                              <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${Math.max(live > 0 ? 3 : 0, upPct)}%` }} /></div>
+                              <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full bg-info transition-all" style={{ width: `${Math.max(live > 0 ? 3 : 0, upPct)}%` }} /></div>
                             </td>
                             {/* Storage actually used vs quota. */}
                             <td className="py-2 pl-3 pr-1">
@@ -1494,7 +1494,7 @@ function FileManager() {
                   {!e.isDir && <button onClick={() => downloadEntry(e)} className="text-[var(--faint)] hover:text-[var(--primary-2)]" title="Download"><Download size={12} /></button>}
                   {!e.isDir && <button onClick={() => viewHistory(dir === '.' ? e.name : `${dir}/${e.name}`)} className="text-[var(--faint)] hover:text-[var(--primary-2)]" title="Backup history"><History size={12} /></button>}
                   <button onClick={() => rename(e)} className="text-[var(--faint)] hover:text-[var(--primary-2)]" title="Rename"><PenSquare size={12} /></button>
-                  <button onClick={() => delEntry(e)} className="text-[var(--faint)] hover:text-red-400" title="Delete"><Trash2 size={12} /></button>
+                  <button onClick={() => delEntry(e)} className="text-[var(--faint)] hover:text-error" title="Delete"><Trash2 size={12} /></button>
                 </span>
               </div>
             )) : <div className="text-xs text-[var(--faint)] py-4 text-center">{data?.entries?.length ? t('fm.nomatches', 'No matches.') : t('fm.emptydir', 'Empty directory.')}</div>}
@@ -1716,7 +1716,7 @@ function AdminServerAdvanced() {
 
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><AlertTriangle size={16} className="text-red-400" /> {t('asa.title', 'Advanced server management')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><AlertTriangle size={16} className="text-error" /> {t('asa.title', 'Advanced server management')}</h2>
       <p className="text-sm text-[var(--muted)] mb-3">{t('asa.sub', "Confined to this API container's own filesystem/process — no host or Docker access today. A fuller per-service view (Docker start/stop/restart/logs, host power) needs a docker-compose change (mounting the Docker socket, or a separate privileged power agent) that hasn't been made yet.")}</p>
 
       {!elevateStatus.data?.elevated ? (
@@ -1777,7 +1777,7 @@ function BackupManager() {
       </div>
       {d.maxBytes != null && (
         <div className="mb-3">
-          <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct >= 90 ? 'bg-red-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} style={{ width: `${pct}%` }} /></div>
+          <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct >= 90 ? 'bg-error' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>
           <div className="text-[11px] text-[var(--faint)] mt-1">{fmtBytes(d.totalBytes)} / {fmtBytes(d.maxBytes)} ({Math.round(pct)}%)</div>
         </div>
       )}
@@ -1969,7 +1969,7 @@ function AdminAccess({ isSuperAdmin }) {
             {['ADMIN', 'SUPERADMIN'].includes(picked.role) ? (
               <p className="text-xs text-[var(--muted)]">{t('acc.perms.isadmin', 'Admins already have every permission. Lower the role to USER or MOD to grant specific capabilities instead.')}</p>
             ) : (<>
-              <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.perms.desc', 'Grant this user access to specific admin sections — each unlocks exactly that area of the dashboard and nothing else. Actions are still checked on the server.')} {!picked.totpEnabled && <span className="text-amber-400">{t('acc.perms.no2fa', 'They must enable 2FA before the dashboard will open.')}</span>}</p>
+              <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.perms.desc', 'Grant this user access to specific admin sections — each unlocks exactly that area of the dashboard and nothing else. Actions are still checked on the server.')} {!picked.totpEnabled && <span className="text-warning">{t('acc.perms.no2fa', 'They must enable 2FA before the dashboard will open.')}</span>}</p>
               <div className="space-y-1.5 mb-3">
                 {ADMIN_CAPS.map((c) => {
                   const on = permsSel.includes(c.id);
@@ -2017,7 +2017,7 @@ function AdminAccess({ isSuperAdmin }) {
             ) : (<>
               <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.proj.desc', "Let this user edit a project's page content from the dashboard — one project, several, or all other-projects. They still can't pin, publish or change a project's visibility (that needs the “Manage other projects” capability).")}</p>
               {userProjGrants.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">
-                {userProjGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs pl-2.5 pr-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><Settings2 size={11} className="text-[var(--primary-2)]" /> {projScopeLabel(g)} <button onClick={() => revokeProject(g)} className="opacity-60 hover:opacity-100 hover:text-red-400" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
+                {userProjGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs pl-2.5 pr-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><Settings2 size={11} className="text-[var(--primary-2)]" /> {projScopeLabel(g)} <button onClick={() => revokeProject(g)} className="opacity-60 hover:opacity-100 hover:text-error" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
               </div>}
               <div className="flex flex-wrap items-center gap-2">
                 <Select className="!w-auto" value={pscopeSel} onChange={(e) => setPscopeSel(e.target.value)}>
@@ -2033,7 +2033,7 @@ function AdminAccess({ isSuperAdmin }) {
           {isSuperAdmin && (picked.role === 'ADMIN' || picked.role === 'SUPERADMIN' || picked.canControlServer) && (
             <div className="pt-4 border-t border-[var(--line)]">
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('acc.sc.title', 'Server-control tools')}</div>
-              <p className="text-xs text-[var(--muted)] mb-2">{t('acc.sc.desc', "Grants access to the server dashboard's dangerous actions (DB viewer, restart) — still gated by that user's own 2FA step-up.")} {!picked.totpEnabled && <span className="text-amber-400">{t('acc.sc.no2fa', "This user hasn't enabled 2FA yet, so the tools stay locked either way.")}</span>}</p>
+              <p className="text-xs text-[var(--muted)] mb-2">{t('acc.sc.desc', "Grants access to the server dashboard's dangerous actions (DB viewer, restart) — still gated by that user's own 2FA step-up.")} {!picked.totpEnabled && <span className="text-warning">{t('acc.sc.no2fa', "This user hasn't enabled 2FA yet, so the tools stay locked either way.")}</span>}</p>
               <Button size="sm" variant={picked.canControlServer ? 'default' : 'primary'} disabled={busy} onClick={toggleServerControl}>{busy ? <Spinner /> : (picked.canControlServer ? t('acc.sc.revoke', 'Revoke server-control') : t('acc.sc.grant', 'Grant server-control'))}</Button>
             </div>
           )}
@@ -2049,7 +2049,7 @@ function AdminAccess({ isSuperAdmin }) {
           <div className="pt-4 border-t border-[var(--line)]">
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('acc.blog.title', 'Blog-post access')}</div>
             {userGrants.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">
-              {userGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs pl-2.5 pr-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><PenSquare size={11} className="text-[var(--primary-2)]" /> {scopeLabel(g)} <button onClick={() => revoke(g)} className="opacity-60 hover:opacity-100 hover:text-red-400" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
+              {userGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs pl-2.5 pr-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><PenSquare size={11} className="text-[var(--primary-2)]" /> {scopeLabel(g)} <button onClick={() => revoke(g)} className="opacity-60 hover:opacity-100 hover:text-error" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
             </div>}
             <div className="flex flex-wrap items-center gap-2">
               <Select className="!w-auto" value={scopeSel} onChange={(e) => setScopeSel(e.target.value)}>
@@ -2076,7 +2076,7 @@ function AdminAccess({ isSuperAdmin }) {
               <Avatar user={g.user} size={32} />
               <div className="flex-1 min-w-0"><div className="font-medium truncate">{g.user?.displayName || t('acc.deleted', '(deleted)')}</div><div className="text-xs text-[var(--faint)] truncate">{g.user?.email}</div></div>
               <Badge tone="primary">{projScopeLabel(g)}</Badge>
-              <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => revokeProject(g)}><Trash2 size={13} /></Button>
+              <Button size="sm" variant="ghost" className="!text-error" onClick={() => revokeProject(g)}><Trash2 size={13} /></Button>
             </Card>
           ))}
         </div>
@@ -2091,7 +2091,7 @@ function AdminAccess({ isSuperAdmin }) {
               <Avatar user={g.user} size={32} />
               <div className="flex-1 min-w-0"><div className="font-medium truncate">{g.user?.displayName || t('acc.deleted', '(deleted)')}</div><div className="text-xs text-[var(--faint)] truncate">{g.user?.email}</div></div>
               <Badge tone="primary">{scopeLabel(g)}</Badge>
-              <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => revoke(g)}><Trash2 size={13} /></Button>
+              <Button size="sm" variant="ghost" className="!text-error" onClick={() => revoke(g)}><Trash2 size={13} /></Button>
             </Card>
           ))}
         </div> : <EmptyState icon={PenSquare} title={t('acc.all.none.t', 'No grants yet')} sub={t('acc.all.none.s', "Regular users can't write blog posts until you grant access above.")} />}
@@ -2162,7 +2162,7 @@ function RoleManager({ roles }) {
             </div>
             <span className="text-xs text-[var(--faint)] shrink-0">{t('rm.members', '{n} members').replace('{n}', r.memberCount || 0)}</span>
             <Button size="sm" variant="ghost" onClick={() => open(r)}><PenSquare size={13} /></Button>
-            <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(r)}><Trash2 size={13} /></Button>
+            <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(r)}><Trash2 size={13} /></Button>
           </Card>
         ))}
       </div> : <EmptyState icon={ShieldCheck} title={t('rm.none.t', 'No custom roles yet')} sub={t('rm.none.s', 'Create one to bundle capabilities and hand them out in a click.')} />}
@@ -2278,7 +2278,7 @@ function AdminReviews() {
             <Avatar variant={f.avatar?.variant || 'beam'} seed={f.avatar?.seed || f.author || 'review'} image={f.avatar?.image} colors={f.avatar?.colors} size={56} />
             <div className="flex flex-col gap-1 mt-1.5">
               <button type="button" onClick={pickAvatar} className="text-[11px] text-[var(--primary-2)] hover:underline flex items-center gap-1"><Upload size={11} /> {t('arv.pfp.upload', 'Upload')}</button>
-              {f.avatar?.image && <button type="button" onClick={() => setF((s) => ({ ...s, avatar: null }))} className="text-[11px] text-[var(--faint)] hover:text-red-400">{t('arv.pfp.clear', 'Remove photo')}</button>}
+              {f.avatar?.image && <button type="button" onClick={() => setF((s) => ({ ...s, avatar: null }))} className="text-[11px] text-[var(--faint)] hover:text-error">{t('arv.pfp.clear', 'Remove photo')}</button>}
             </div>
           </div>
           <div className="grid sm:grid-cols-2 gap-3 flex-1 min-w-0">
@@ -2304,12 +2304,12 @@ function AdminReviews() {
           <Card key={rv.id} className="p-4 flex items-start gap-3">
             <Avatar variant={rv.avatar?.variant || 'beam'} seed={rv.avatar?.seed || rv.author} image={rv.avatar?.image} colors={rv.avatar?.colors} size={36} />
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap"><span className="font-medium">{rv.author}</span>{rv.role && <span className="text-xs text-[var(--faint)]">{rv.role}</span>}{rv.rating > 0 && <span className="text-xs text-amber-400 flex items-center gap-0.5"><Star size={11} fill="currentColor" /> {rv.rating}</span>}{!rv.enabled && <Badge>{t('arv.hiddenb', 'hidden')}</Badge>}{rv.bodyFr && <Badge tone="primary">FR</Badge>}</div>
+              <div className="flex items-center gap-2 flex-wrap"><span className="font-medium">{rv.author}</span>{rv.role && <span className="text-xs text-[var(--faint)]">{rv.role}</span>}{rv.rating > 0 && <span className="text-xs text-warning flex items-center gap-0.5"><Star size={11} fill="currentColor" /> {rv.rating}</span>}{!rv.enabled && <Badge>{t('arv.hiddenb', 'hidden')}</Badge>}{rv.bodyFr && <Badge tone="primary">FR</Badge>}</div>
               <p className="text-sm text-[var(--muted)] mt-1 line-clamp-2">{rv.body}</p>
             </div>
             <button onClick={() => toggleEnabled(rv)} title={rv.enabled ? t('arv.hide', 'Hide') : t('arv.show', 'Show')} className="text-[var(--faint)] hover:text-[var(--primary-2)] p-1">{rv.enabled ? <Eye size={16} /> : <EyeOff size={16} />}</button>
             <button onClick={() => edit(rv)} title={t('common.edit', 'Edit')} className="text-[var(--faint)] hover:text-[var(--primary-2)] p-1"><PenSquare size={16} /></button>
-            <button onClick={() => del(rv)} title={t('common.delete', 'Delete')} className="text-[var(--faint)] hover:text-red-400 p-1"><Trash2 size={16} /></button>
+            <button onClick={() => del(rv)} title={t('common.delete', 'Delete')} className="text-[var(--faint)] hover:text-error p-1"><Trash2 size={16} /></button>
           </Card>
         ))}
       </div> : <EmptyState icon={MessageSquare} title={t('arv.none', 'No reviews yet')} sub={t('arv.none.s', 'Add your first testimonial above.')} />}
@@ -2355,7 +2355,7 @@ function AdminAnnouncements() {
             <Field label={t('ann.title', 'Title')}><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={t('ann.title.ph', 'Scheduled maintenance tonight')} /></Field>
             <Field label={t('ann.tone', 'Tone')}><Select value={f.tone} onChange={(e) => setF({ ...f, tone: e.target.value })}><option value="info">{t('ann.tone.info', 'Info')}</option><option value="warning">{t('ann.tone.warning', 'Warning')}</option><option value="success">{t('ann.tone.success', 'Success')}</option></Select></Field>
           </div>
-          <Field label={<span className="flex items-center justify-between w-full">{t('ann.body', 'Body (optional)')} <span className={`text-[10px] tabular-nums ${f.body.length > ANN_BODY_MAX ? 'text-red-400' : 'text-[var(--faint)]'}`}>{f.body.length}/{ANN_BODY_MAX}</span></span>}>
+          <Field label={<span className="flex items-center justify-between w-full">{t('ann.body', 'Body (optional)')} <span className={`text-[10px] tabular-nums ${f.body.length > ANN_BODY_MAX ? 'text-error' : 'text-[var(--faint)]'}`}>{f.body.length}/{ANN_BODY_MAX}</span></span>}>
             <Textarea value={f.body} maxLength={ANN_BODY_MAX} onChange={(e) => setF({ ...f, body: e.target.value.slice(0, ANN_BODY_MAX) })} placeholder={t('ann.body.ph', 'More detail shown after the title…')} />
           </Field>
           <Field label={t('ann.link', 'Link (optional)')}><Input value={f.linkUrl} onChange={(e) => setF({ ...f, linkUrl: e.target.value })} placeholder={t('ann.link.ph', '/blog/my-post or https://example.com')} /></Field>
@@ -2389,7 +2389,7 @@ function AdminAnnouncements() {
               <Badge tone={a.active ? 'green' : ''}>{a.active ? t('ann.active', 'active') : t('ann.inactive', 'inactive')}</Badge>
               <Button size="sm" variant="ghost" onClick={() => toggleBanner(a)} title={t('ann.bannertitle', 'Toggle the site-wide banner for this announcement')}>{a.showBanner ? <Monitor size={13} /> : <MonitorOff size={13} />} {a.showBanner ? t('ann.banneron', 'Banner on') : t('ann.banneroff', 'No banner')}</Button>
               <Button size="sm" variant="ghost" onClick={() => toggleActive(a)}>{a.active ? t('ann.deactivate', 'Deactivate') : t('ann.activate', 'Activate')}</Button>
-              <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(a)}><Trash2 size={13} /></Button>
+              <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(a)}><Trash2 size={13} /></Button>
             </Card>
             );
           })}
@@ -2489,7 +2489,7 @@ function AdminNewsletter() {
       <Card className="p-4 space-y-3">
         <Field label={t('nl.f.subject', 'Subject (email subject line)')}><Input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} placeholder={t('nl.f.subject.ph', 'New on BetterCommunity: …')} maxLength={200} /></Field>
         <Field label={t('nl.f.title', 'Heading (shown inside the email)')}><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={t('nl.f.title.ph', "What's new")} maxLength={200} /></Field>
-        <Field label={<span className="flex items-center justify-between w-full">{t('nl.f.body', 'Message')} <span className={`text-[10px] tabular-nums ${f.body.length > 5000 ? 'text-red-400' : 'text-[var(--faint)]'}`}>{f.body.length}/5000</span></span>}>
+        <Field label={<span className="flex items-center justify-between w-full">{t('nl.f.body', 'Message')} <span className={`text-[10px] tabular-nums ${f.body.length > 5000 ? 'text-error' : 'text-[var(--faint)]'}`}>{f.body.length}/5000</span></span>}>
           <Textarea rows={7} value={f.body} maxLength={5000} onChange={(e) => setF({ ...f, body: e.target.value.slice(0, 5000) })} placeholder={t('nl.f.body.ph', 'Write your update. Line breaks are preserved.')} />
         </Field>
         <Field label={t('nl.f.url', 'Call-to-action link (optional)')} hint={t('nl.f.url.h', 'Adds a “Read on the blog” button pointing here.')}><Input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder="https://bettercommunity.ch/blog/…" /></Field>
@@ -2559,7 +2559,7 @@ function AdminNewsletter() {
                 <span className="flex-1 min-w-0 truncate">{s.email}</span>
                 <Badge tone={s.status === 'active' ? 'green' : s.status === 'pending' ? 'amber' : ''}>{s.status}</Badge>
                 <Badge tone="">{s.locale?.toUpperCase() || 'EN'}</Badge>
-                <button onClick={() => removeSub(s)} title={t('nl.rm.ok', 'Remove')} className="shrink-0 p-1 rounded-md text-[var(--faint)] hover:text-red-400 hover:bg-[var(--surface-2)] transition"><Trash2 size={14} /></button>
+                <button onClick={() => removeSub(s)} title={t('nl.rm.ok', 'Remove')} className="shrink-0 p-1 rounded-md text-[var(--faint)] hover:text-error hover:bg-[var(--surface-2)] transition"><Trash2 size={14} /></button>
               </div>
             ))}
           </div> : <div className="text-sm text-[var(--faint)] text-center py-4">{t('nl.subs.none', 'No subscribers yet.')}</div>}
@@ -2641,7 +2641,7 @@ function AdminFaq() {
             </div>
             <button onClick={() => toggle(it)} title={it.published ? t('faqa.hide', 'Unpublish') : t('faqa.show', 'Publish')} className="p-1.5 text-[var(--faint)] hover:text-[var(--primary-2)]">{it.published ? <Eye size={16} /> : <EyeOff size={16} />}</button>
             <button onClick={() => edit(it)} className="p-1.5 text-[var(--faint)] hover:text-[var(--primary-2)]"><PenSquare size={16} /></button>
-            <button onClick={() => del(it)} className="p-1.5 text-[var(--faint)] hover:text-red-400"><Trash2 size={16} /></button>
+            <button onClick={() => del(it)} className="p-1.5 text-[var(--faint)] hover:text-error"><Trash2 size={16} /></button>
           </Card>
         ))}
       </div> : <EmptyState icon={HelpCircle} title={t('faqa.none', 'No questions yet')} sub={t('faqa.none.s', 'Add your first one above.')} />}
@@ -2733,14 +2733,14 @@ function UserModerationCard({ user, onChange }) {
           </div>
           <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('mod.reasonph', 'Reason — shown to the user and emailed to them…')} rows={2} />
           <div className="flex gap-2">
-            <Button size="sm" variant="primary" className={form.action === 'ban' ? '!bg-red-500 hover:!bg-red-600' : ''} disabled={!!pending} onClick={submit}>{form.action === 'ban' ? t('mod.confirmban', 'Ban account') : t('mod.confirmsusp', 'Suspend account')}</Button>
+            <Button size="sm" variant="primary" className={form.action === 'ban' ? '!bg-error hover:!bg-error' : ''} disabled={!!pending} onClick={submit}>{form.action === 'ban' ? t('mod.confirmban', 'Ban account') : t('mod.confirmsusp', 'Suspend account')}</Button>
             <Button size="sm" variant="ghost" onClick={() => setForm(null)}>{t('su.cancel', 'Cancel')}</Button>
           </div>
         </div>
       ) : (
         <div className="flex gap-2 mt-2">
           <Button size="sm" variant="ghost" onClick={() => { setForm({ action: 'suspend' }); setDur('24h'); }}><Clock size={14} /> {t('mod.suspend', 'Suspend')}</Button>
-          {canBan && <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => { setForm({ action: 'ban' }); setDur('perm'); }}><Ban size={14} /> {t('mod.ban', 'Ban')}</Button>}
+          {canBan && <Button size="sm" variant="ghost" className="!text-error" onClick={() => { setForm({ action: 'ban' }); setDur('perm'); }}><Ban size={14} /> {t('mod.ban', 'Ban')}</Button>}
           {!canBan && <span className="text-[11px] text-[var(--faint)] self-center">{t('mod.suspendonly', 'Mods can suspend, not ban.')}</span>}
         </div>
       )}
@@ -2793,7 +2793,7 @@ function UserTwoFactorCard({ user, onChange }) {
       ) : (
         <div className="mt-2">
           <div className="text-sm text-[var(--muted)]">{t('twofa.reset.desc', 'Lost their authenticator and recovery codes? Reset 2FA so they can sign in with their password and re-enrol. This is logged and the user is emailed.')}</div>
-          <Button size="sm" variant="ghost" className="!text-amber-400 mt-2" disabled={pending} onClick={reset}><KeyRound size={14} /> {t('twofa.reset', 'Reset 2FA')}</Button>
+          <Button size="sm" variant="ghost" className="!text-warning mt-2" disabled={pending} onClick={reset}><KeyRound size={14} /> {t('twofa.reset', 'Reset 2FA')}</Button>
         </div>
       )}
     </div>
@@ -2861,7 +2861,7 @@ function UserDetailModal({ id, onClose }) {
 
           {u.subscriptions?.length > 0 && (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><RefreshCw size={12} /> {t('ud.subs', 'Active subscriptions')} · <span className="text-emerald-400 normal-case">≈ ${(u.mrrCents / 100).toFixed(2)}/{t('pu.mo', 'mo')}</span></div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><RefreshCw size={12} /> {t('ud.subs', 'Active subscriptions')} · <span className="text-success normal-case">≈ ${(u.mrrCents / 100).toFixed(2)}/{t('pu.mo', 'mo')}</span></div>
               <div className="space-y-1">{u.subscriptions.map((s) => {
                 const cur = (s.currency || 'usd').toUpperCase(); const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : '';
                 const amt = sym ? `${sym}${(s.amountCents / 100).toFixed(2)}` : `${(s.amountCents / 100).toFixed(2)} ${cur}`;
@@ -2882,9 +2882,9 @@ function UserDetailModal({ id, onClose }) {
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Receipt size={12} /> {t('ud.payments', 'Payments')} ({u.payments?.length || 0})</div>
             {u.payments?.length ? <div className="space-y-1 max-h-40 overflow-auto pr-1">{u.payments.map((pay) => (
               <div key={pay.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
-                <Receipt size={13} className="text-emerald-400 shrink-0" />
+                <Receipt size={13} className="text-success shrink-0" />
                 <span className="flex-1 truncate">{pay.description}</span>
-                <span className="text-emerald-400 font-medium shrink-0">${(pay.amountCents / 100).toFixed(2)}</span>
+                <span className="text-success font-medium shrink-0">${(pay.amountCents / 100).toFixed(2)}</span>
                 <span className="text-[11px] text-[var(--faint)] shrink-0">{fdate(pay.createdAt)}</span>
               </div>
             ))}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nopayments', 'No payments — free plan only.')}</div>}
@@ -2926,7 +2926,7 @@ function PluginContentModal({ item, onClose }) {
       footer={<><Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>{data?.downloadUrl && <a href={data.downloadUrl} target="_blank" rel="noreferrer"><Button variant="primary"><Download size={15} /> {t('pcm.dlplug', 'Download .bmmplug')}</Button></a>}</>}>
       {loading ? <Loading /> : errMsg ? (
         <div className="flex items-start gap-2.5 text-sm text-[var(--muted)] py-2">
-          <XCircle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+          <XCircle size={18} className="text-warning shrink-0 mt-0.5" />
           <div>{t('pcm.cannotinspect', 'Could not inspect this plugin:')} <b className="text-[var(--text)]">{errMsg}</b>
             <div className="text-xs text-[var(--faint)] mt-1">{t('pcm.nosourcehint', "A plugin with no uploaded file or download URL can't be unzipped. Add a source, then re-validate.")}</div></div>
         </div>
@@ -2943,7 +2943,7 @@ function PluginContentModal({ item, onClose }) {
           <div className="space-y-1 max-h-[38vh] overflow-auto">
             {(data.files || []).map((fl) => (
               <div key={fl.path} className="group flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
-                {fl.ok ? <CheckCircle2 size={14} className="text-emerald-400 shrink-0" /> : <XCircle size={14} className="text-red-400 shrink-0" />}
+                {fl.ok ? <CheckCircle2 size={14} className="text-success shrink-0" /> : <XCircle size={14} className="text-error shrink-0" />}
                 <span className="flex-1 truncate font-mono text-xs">{fl.path}</span>
                 <span className="text-xs text-[var(--faint)]">{kb(fl.size)} KB</span>
                 <button onClick={() => dlFile(fl.path)} title={t('pcm.dlfile', 'Download this file')} className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0"><Download size={13} /></button>
@@ -3119,14 +3119,14 @@ function AdminAssets() {
           {assets.map((a) => (
             <Card key={a.key} className="p-3.5">
               <div className="flex items-center gap-2 flex-wrap mb-2">
-                {a.kind === 'json' ? <FileJson size={15} className="text-sky-400" /> : <Package size={15} className="text-[var(--primary-2)]" />}
+                {a.kind === 'json' ? <FileJson size={15} className="text-info" /> : <Package size={15} className="text-[var(--primary-2)]" />}
                 <span className="font-mono text-sm font-medium">{a.key}</span>
                 {a.label && <span className="text-xs text-[var(--faint)]">{a.label}</span>}
                 <Badge tone="">{a.kind}</Badge>
                 {a.version && <Badge tone="primary">v{a.version}</Badge>}
                 <div className="flex-1" />
                 <button onClick={() => { navigator.clipboard?.writeText(publicUrl(a.key)); toast.success(t('common.copied', 'Copied.')); }} className="text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-1" title={publicUrl(a.key)}><Copy size={11} /> {t('assets.copyurl', 'Copy URL')}</button>
-                <button onClick={() => del(a)} className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10"><Trash2 size={13} /></button>
+                <button onClick={() => del(a)} className="p-1.5 rounded-lg text-error hover:bg-error-bg"><Trash2 size={13} /></button>
               </div>
               {a.kind === 'file' ? (
                 <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -3387,15 +3387,15 @@ function AdminProjects() {
           } catch { toast.error(t('apj.cannotcancel', 'Could not cancel.')); }
         };
         return (
-          <div className={`mb-3 rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5 ${due ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-[var(--primary)]/40 bg-[var(--primary)]/8'}`}>
-            <Clock size={16} className={`shrink-0 mt-0.5 ${due ? 'text-emerald-400' : 'text-[var(--primary-2)]'}`} />
+          <div className={`mb-3 rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5 ${due ? 'border-success-border bg-success-bg' : 'border-[var(--primary)]/40 bg-[var(--primary)]/8'}`}>
+            <Clock size={16} className={`shrink-0 mt-0.5 ${due ? 'text-success' : 'text-[var(--primary-2)]'}`} />
             <div className="flex-1 min-w-0 text-sm">
               <div className="font-medium">{due ? t('apj.scheddue', 'Scheduled update is due') : t('apj.schedpending', 'Scheduled update pending')} <span className="font-normal text-[var(--muted)]">· {when.toLocaleString()}</span></div>
               <div className="text-xs text-[var(--faint)]">{parts.length ? t('apj.willapply', 'Will apply: {p}.').replace('{p}', parts.join(', ')) : t('apj.stagedupdate', 'A staged content update.')}{due ? t('apj.appliesnext', ' It applies on the next public view of the page.') : ''}</div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               <Button size="sm" variant="ghost" onClick={() => { if (nx.config) setText(JSON.stringify(nx.config, null, 2)); setScheduling(true); }} title={t('apj.loadstaged', 'Load the staged content into the editor and reschedule')}><PenSquare size={13} /> {t('sh.editbtn', 'Edit')}</Button>
-              <Button size="sm" variant="ghost" className="!text-red-400" onClick={cancelSchedule}><X size={13} /> {t('su.cancel', 'Cancel')}</Button>
+              <Button size="sm" variant="ghost" className="!text-error" onClick={cancelSchedule}><X size={13} /> {t('su.cancel', 'Cancel')}</Button>
             </div>
           </div>
         );
@@ -3498,7 +3498,7 @@ function Breakdown({ title, rows, iconOf }) {
         {rows.length ? rows.map((r) => (
           <div key={r.label} className="flex items-center gap-3 text-sm">
             <span className="text-[var(--muted)] w-28 shrink-0 flex items-center gap-2 capitalize truncate">{iconOf ? iconOf(r.label) : null}{r.label}</span>
-            <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${(r.count / max) * 100}%` }} /></div>
+            <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${(r.count / max) * 100}%` }} /></div>
             <span className="w-12 text-right font-medium">{Math.round((r.count / tot) * 100)}%</span>
           </div>
         )) : <div className="text-sm text-[var(--faint)]">{t('an.nodata', 'No data yet.')}</div>}
@@ -3570,7 +3570,7 @@ function ChannelIdList({ ids, onChange, placeholder }) {
       {list.length > 0 && <div className="flex flex-wrap gap-1.5">
         {list.map((id) => (
           <span key={id} className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs font-mono">
-            {id}<button onClick={() => onChange(list.filter((x) => x !== id))} className="text-[var(--faint)] hover:text-red-400"><X size={12} /></button>
+            {id}<button onClick={() => onChange(list.filter((x) => x !== id))} className="text-[var(--faint)] hover:text-error"><X size={12} /></button>
           </span>
         ))}
       </div>}
@@ -3649,7 +3649,7 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
           <Button size="sm" onClick={addTag}><Plus size={13} /></Button>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {tags.length ? tags.map((tg) => <span key={tg} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-500">{tg}<button onClick={() => removeTag(tg)} className="hover:text-red-400"><X size={10} /></button></span>) : <span className="text-xs text-[var(--faint)]">{t('sr.none', 'None')}</span>}
+          {tags.length ? tags.map((tg) => <span key={tg} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-warning-bg border border-warning-border text-xs text-warning">{tg}<button onClick={() => removeTag(tg)} className="hover:text-error"><X size={10} /></button></span>) : <span className="text-xs text-[var(--faint)]">{t('sr.none', 'None')}</span>}
         </div>
       </div>
 
@@ -3659,7 +3659,7 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
           {comments.length ? comments.map((c) => (
             <div key={c.id} className="flex items-start gap-2 text-sm bg-[var(--surface-2)] rounded-lg px-3 py-2">
               <div className="flex-1 min-w-0"><span className="font-medium">{c.author?.displayName || '—'}</span> <span className="text-[var(--muted)]">{c.body}</span></div>
-              <button onClick={() => removeComment(c.id)} className="text-[var(--faint)] hover:text-red-400 shrink-0"><X size={12} /></button>
+              <button onClick={() => removeComment(c.id)} className="text-[var(--faint)] hover:text-error shrink-0"><X size={12} /></button>
             </div>
           )) : <div className="text-xs text-[var(--faint)]">{t('sr.nocomments', 'No comments yet.')}</div>}
         </div>
@@ -3679,7 +3679,7 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
           <Button size="sm" variant="ghost" onClick={dlWhole}><Download size={13} /> {t('sr.download', 'Download')}</Button>
         </div>
         {insp && <div className="mt-2 pt-2 border-t border-[var(--line)] text-xs">
-          {insp.loading ? <Loading /> : insp.error ? <p className="text-red-400">{insp.error}</p> : insp.data ? (
+          {insp.loading ? <Loading /> : insp.error ? <p className="text-error">{insp.error}</p> : insp.data ? (
             insp.data.type === 'zip' ? <div className="space-y-1">
               {insp.data.entries.map((e) => (
                 <div key={e.name}>
@@ -3798,13 +3798,13 @@ function AdminKofiGoal() {
       </div>
       {data?.goal && (
         <div className="mb-3">
-          <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${pct}%` }} /></div>
+          <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} /></div>
           <div className="text-xs text-[var(--faint)] mt-1">{t('kg.pct', '{p}% of {a} {c} goal — live on the homepage').replace('{p}', pct).replace('{a}', data.goal.targetAmount).replace('{c}', data.goal.currency)}</div>
         </div>
       )}
       <div className="flex gap-2">
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : data?.goal ? t('kg.update', 'Update goal') : t('kg.publish', 'Publish goal')}</Button>
-        {data?.goal && <Button variant="ghost" className="!text-red-400" onClick={clear}>{t('kg.remove', 'Remove')}</Button>}
+        {data?.goal && <Button variant="ghost" className="!text-error" onClick={clear}>{t('kg.remove', 'Remove')}</Button>}
       </div>
     </Card>
   );
@@ -3881,7 +3881,7 @@ function AdminPromo() {
                 {f.assignedTokens.map((tok) => { const [ty, ...rest] = tok.split(':'); const val = rest.join(':'); return (
                   <span key={tok} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-xs">
                     <span className="text-[10px] font-bold uppercase text-[var(--primary-2)]">{ty}</span><span className="font-mono truncate max-w-[14rem]">{val}</span>
-                    <button type="button" onClick={() => removeToken(tok)} className="text-[var(--faint)] hover:text-red-400"><X size={11} /></button>
+                    <button type="button" onClick={() => removeToken(tok)} className="text-[var(--faint)] hover:text-error"><X size={11} /></button>
                   </span>
                 ); })}
               </div>
@@ -3902,7 +3902,7 @@ function AdminPromo() {
               <button onClick={() => viewReds(c)} className={`text-xs px-2.5 py-1.5 rounded-lg border ${openId === c.id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Users size={12} className="inline mr-1" />{c.redeemedCount}{c.maxRedemptions ? `/${c.maxRedemptions}` : ''} {t('pc.used', 'used')}</button>
               <Button size="sm" variant="ghost" onClick={() => toggleStack(c)} title={t('pc.f.stackable.h', 'Allow this code to be combined with OTHER stackable codes in one cart. Non-stackable codes must be used alone.')}><Layers size={13} /> {c.stackable ? t('pc.unstack', 'Unstack') : t('pc.stack', 'Stack')}</Button>
               <Button size="sm" onClick={() => toggle(c)}>{c.active ? t('pc.disable', 'Disable') : t('pc.enable', 'Enable')}</Button>
-              <Button size="sm" className="!text-red-400" onClick={() => del(c)}><Trash2 size={14} /></Button>
+              <Button size="sm" className="!text-error" onClick={() => del(c)}><Trash2 size={14} /></Button>
             </div>
             {openId === c.id && (
               <div className="mt-3 pt-3 border-t border-[var(--line)]">
@@ -3998,7 +3998,7 @@ function AdminCampaigns() {
                 <div className="text-xs text-[var(--muted)] mt-0.5">{c.kind.replace('_', ' ')} · {c.appliesTo} · {new Date(c.startsAt).toLocaleString()} → {new Date(c.endsAt).toLocaleString()}{(c.badgeMessageFr || c.badgeMessageEn) ? ` · "${c.badgeMessageFr || c.badgeMessageEn}"` : ''}</div>
               </div>
               <Button size="sm" onClick={() => toggle(c)}>{c.active ? t('cmp.disable', 'Disable') : t('cmp.enable', 'Enable')}</Button>
-              <Button size="sm" className="!text-red-400" onClick={() => del(c)}><Trash2 size={14} /></Button>
+              <Button size="sm" className="!text-error" onClick={() => del(c)}><Trash2 size={14} /></Button>
             </div>
           </Card>
         ); })}
@@ -4093,7 +4093,7 @@ function AdminEvents() {
                 <div className="text-xs text-[var(--muted)] mt-0.5">{e.effect} · fx {e.fxDensity}/10 · {e.fxFlagDrops} {t('ev.flags', 'flag drops')} · {new Date(e.startsAt).toLocaleString()} → {new Date(e.endsAt).toLocaleString()}{e.notifyDaysBefore ? ` · ${t('ev.notifd', 'notify {n}d before').replace('{n}', e.notifyDaysBefore)}` : ''}{(e.titleFr || e.titleEn) ? ` · "${e.titleFr || e.titleEn}"` : ''}</div>
               </div>
               <Button size="sm" onClick={() => toggle(e)}>{e.active ? t('ev.disable', 'Disable') : t('ev.enable', 'Enable')}</Button>
-              <Button size="sm" className="!text-red-400" onClick={() => del(e)}><Trash2 size={14} /></Button>
+              <Button size="sm" className="!text-error" onClick={() => del(e)}><Trash2 size={14} /></Button>
             </div>
           </Card>
         ); })}
@@ -4170,7 +4170,7 @@ function AdminOAuthClients() {
               </div>
               {c.confidential && <Button size="sm" variant="ghost" onClick={() => rotate(c)}>{t('oc.rotate', 'Rotate secret')}</Button>}
               <Button size="sm" onClick={() => toggle(c)}>{c.active ? t('oc.disable', 'Disable') : t('oc.enable', 'Enable')}</Button>
-              <Button size="sm" className="!text-red-400" onClick={() => del(c)}><Trash2 size={14} /></Button>
+              <Button size="sm" className="!text-error" onClick={() => del(c)}><Trash2 size={14} /></Button>
             </div>
           </Card>
         ))}
@@ -4198,7 +4198,7 @@ function GatingRules({ rules, onChange }) {
           <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
             <Field label={t('db.gr.roleid', 'Role ID')}><Input value={r.roleId || ''} onChange={(e) => upd(i, { roleId: e.target.value.trim() })} placeholder="123456789012345678" /></Field>
             <Field label={t('db.gr.label', 'Label (for messages)')}><Input value={r.label || ''} onChange={(e) => upd(i, { label: e.target.value })} placeholder={t('db.gr.labelph', 'Verified / Creator…')} /></Field>
-            <Button size="sm" variant="ghost" className="!text-red-400 mb-0.5" onClick={() => rm(i)} title={t('db.gr.remove', 'Remove rule')}><Trash2 size={14} /></Button>
+            <Button size="sm" variant="ghost" className="!text-error mb-0.5" onClick={() => rm(i)} title={t('db.gr.remove', 'Remove rule')}><Trash2 size={14} /></Button>
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <Chk on={r.requireDiscord} onToggle={(v) => upd(i, { requireDiscord: v })}>{t('db.gr.reqdiscord', 'Requires linked Discord')}</Chk>
@@ -4256,7 +4256,7 @@ function BlogRoutes({ routes, onChange, guildList }) {
         const guild = guildList.find((gg) => gg.id === r.guildId);
         return (
           <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
-            <button onClick={() => onChange(routes.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-red-400"><Trash2 size={13} /></button>
+            <button onClick={() => onChange(routes.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error"><Trash2 size={13} /></button>
             <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('db.routes.routen', 'Route {n}').replace('{n}', i + 1)}{guild ? ` · ${guild.name}` : ''}</div>
             <Input value={r.channelId || ''} onChange={(e) => set(i, { channelId: e.target.value })} placeholder={t('db.routes.chanph', 'Channel ID (in any server the bot is in)')} />
             {guildList.length > 0 && (
@@ -4289,7 +4289,7 @@ function BotSwitch({ checked, onChange, disabled }) {
   return (
     <button type="button" role="switch" aria-checked={!!checked} disabled={disabled}
       onClick={() => !disabled && onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0 ${checked ? 'bg-emerald-500' : 'bg-[var(--surface-2)] border border-[var(--line)]'} ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition shrink-0 ${checked ? 'bg-success' : 'bg-[var(--surface-2)] border border-[var(--line)]'} ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
       <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
     </button>
   );
@@ -4303,12 +4303,12 @@ function ServerBubble({ name, icon, sub, active, dot, onClick }) {
     <button onClick={onClick} title={name}
       className={`relative flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left transition shrink-0 w-[180px] ${active ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]/50'}`}>
       {icon ? <img src={icon} alt="" className="w-9 h-9 rounded-full shrink-0" />
-        : <span className="w-9 h-9 rounded-full shrink-0 grid place-items-center text-xs font-bold bg-gradient-to-br from-orange-500 to-amber-500 text-white">{initial}</span>}
+        : <span className="w-9 h-9 rounded-full shrink-0 grid place-items-center text-xs font-bold bg-gradient-to-br from-brand to-brand-2 text-white">{initial}</span>}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate">{name}</div>
         {sub && <div className="text-[10px] text-[var(--faint)] truncate">{sub}</div>}
       </div>
-      {dot && <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" title="Custom config" />}
+      {dot && <span className="w-2 h-2 rounded-full bg-success shrink-0" title="Custom config" />}
     </button>
   );
 }
@@ -4344,7 +4344,7 @@ function BotLogsCard() {
   const [open, setOpen] = useState(false);
   const load = () => api.get('/admin/bot/logs').then((r) => { setLogs(r.logs || []); setAt(r.at); }).catch(() => {});
   useEffect(() => { if (!open) return; load(); const id = setInterval(load, 5000); return () => clearInterval(id); }, [open]);
-  const color = (lv) => lv === 'error' ? 'text-red-400' : lv === 'warn' ? 'text-amber-400' : 'text-[var(--muted)]';
+  const color = (lv) => lv === 'error' ? 'text-error' : lv === 'warn' ? 'text-warning' : 'text-[var(--muted)]';
   return (
     <Card className="p-4 mb-4">
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-left">
@@ -4571,13 +4571,13 @@ function BotGiveawaysCard() {
           {loading ? <Loading /> : giveaways.length ? <div className="space-y-2 pt-1">
             {giveaways.map((g) => (
               <div key={g.id} className="flex items-center gap-3 text-sm rounded-lg bg-[var(--surface-2)] px-3 py-2">
-                <Gift size={14} className={g.status === 'active' ? 'text-emerald-400 shrink-0' : 'text-[var(--faint)] shrink-0'} />
+                <Gift size={14} className={g.status === 'active' ? 'text-success shrink-0' : 'text-[var(--faint)] shrink-0'} />
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{g.prize} {g.hasGift && <Badge tone="primary"><Gift size={9} /> {t('gw.gift', 'gift')}</Badge>} {g.requirements?.creator ? <Badge tone="amber"><Lock size={9} /> {t('gw.badge.creator', 'creator id')}</Badge> : g.requirements?.linked ? <Badge tone="amber"><Lock size={9} /> {t('gw.badge.linked', 'linked')}</Badge> : null}</div>
                   <div className="text-[11px] text-[var(--faint)]">{g.status === 'active' ? t('gw.endsat', 'ends {d}').replace('{d}', new Date(g.endsAt).toLocaleString()) : t('gw.ended', 'ended · {n} winner(s)').replace('{n}', g.winnerIds?.length || 0)} · {t('gw.entries', '{n} entries').replace('{n}', g.entryCount)}</div>
                 </div>
                 {g.status === 'active' && <Button size="sm" variant="ghost" onClick={() => end(g)}>{t('gw.drawbtn', 'Draw now')}</Button>}
-                <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(g)}><Trash2 size={13} /></Button>
+                <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(g)}><Trash2 size={13} /></Button>
               </div>
             ))}
           </div> : <div className="text-xs text-[var(--faint)]">{t('gw.none', 'No giveaways yet.')}</div>}
@@ -4604,17 +4604,17 @@ function PaymentsDiag() {
         {data.lastPaymentAt && <span>{t('db.pay.diag.last', 'last')}: {fdate(data.lastPaymentAt)}</span>}
       </div>
       <div className="flex items-center gap-2 flex-wrap text-[var(--faint)]">
-        <span className={data.stripeKey ? 'text-emerald-400' : 'text-red-400'}>{data.stripeKey ? '✓' : '✗'} {t('db.pay.diag.key', 'Stripe key')}</span>
-        <span className={data.webhookSecret ? 'text-emerald-400' : 'text-red-400'}>{data.webhookSecret ? '✓' : '✗'} {t('db.pay.diag.whsecret', 'Webhook secret')}</span>
+        <span className={data.stripeKey ? 'text-success' : 'text-error'}>{data.stripeKey ? '✓' : '✗'} {t('db.pay.diag.key', 'Stripe key')}</span>
+        <span className={data.webhookSecret ? 'text-success' : 'text-error'}>{data.webhookSecret ? '✓' : '✗'} {t('db.pay.diag.whsecret', 'Webhook secret')}</span>
       </div>
       {!data.webhookSecret && (
-        <div className="flex items-start gap-1.5 text-red-400">
+        <div className="flex items-start gap-1.5 text-error">
           <AlertTriangle size={12} className="shrink-0 mt-0.5" />
           <span>{t('db.pay.diag.nowh', 'STRIPE_WEBHOOK_SECRET is not set — the webhook endpoint returns 503, so no checkout is ever recorded or provisioned (and nothing can be announced). Set it in compose .env.')}</span>
         </div>
       )}
       {data.webhookSecret && data.webhookHint && (
-        <div className="flex items-start gap-1.5 text-amber-400">
+        <div className="flex items-start gap-1.5 text-warning">
           <AlertTriangle size={12} className="shrink-0 mt-0.5" />
           <span>{t('db.pay.diag.hint2', 'No payments recorded yet. Stripe events aren’t reaching the API. Forward them to the API container (port 3000, not Stripe’s sample :4242): stripe listen --forward-to http://localhost:3000/hosting/webhook — and use the printed whsec_… as STRIPE_WEBHOOK_SECRET.')}</span>
         </div>
@@ -4708,7 +4708,7 @@ function AdminBot() {
         <Card className="flex items-center justify-between flex-wrap gap-2 px-4 py-2.5">
           <h2 className="font-semibold flex items-center gap-2 text-base"><DiscordIcon size={18} className="text-[#5865F2]" /> {t('db.title', 'Discord bot')}</h2>
           <div className="flex items-center gap-2.5">
-            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${online ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-[var(--faint)] border-[var(--line)]'}`}><span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-[var(--line-strong)]'}`} /> {online ? t('db.online', 'Online') : t('db.offline', 'Offline')}</span>
+            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${online ? 'text-success border-success-border bg-success-bg' : 'text-[var(--faint)] border-[var(--line)]'}`}><span className={`w-2 h-2 rounded-full ${online ? 'bg-success animate-pulse' : 'bg-[var(--line-strong)]'}`} /> {online ? t('db.online', 'Online') : t('db.offline', 'Offline')}</span>
             <Button size="sm" variant="primary" onClick={save}><CheckCircle2 size={14} /> {t('db.save', 'Save changes')}</Button>
           </div>
         </Card>
@@ -4716,9 +4716,9 @@ function AdminBot() {
 
       {/* connection error (e.g. privileged intents disabled) — actionable message */}
       {data?.error && (
-        <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/[0.07] p-3 flex items-start gap-2.5">
-          <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
-          <div className="min-w-0"><div className="text-sm font-medium text-red-300">{t('db.cantconnect', 'Bot can’t connect')}</div><div className="text-xs text-red-300/90 mt-0.5 break-words">{data.error}</div></div>
+        <div className="mb-4 rounded-xl border border-error-border bg-error/[0.07] p-3 flex items-start gap-2.5">
+          <AlertTriangle size={16} className="text-error shrink-0 mt-0.5" />
+          <div className="min-w-0"><div className="text-sm font-medium text-error">{t('db.cantconnect', 'Bot can’t connect')}</div><div className="text-xs text-error mt-0.5 break-words">{data.error}</div></div>
         </div>
       )}
 
@@ -4726,7 +4726,7 @@ function AdminBot() {
       <Card className="p-4 mb-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <label className="flex items-center gap-3 cursor-pointer">
-            <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${cfg.enabled !== false ? 'bg-emerald-500' : 'bg-[var(--surface-2)] border border-[var(--line)]'}`}>
+            <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${cfg.enabled !== false ? 'bg-success' : 'bg-[var(--surface-2)] border border-[var(--line)]'}`}>
               <input type="checkbox" className="sr-only" checked={cfg.enabled !== false} onChange={(e) => set('enabled', e.target.checked)} />
               <span className={`inline-block h-4 w-4 rounded-full bg-white transition ${cfg.enabled !== false ? 'translate-x-6' : 'translate-x-1'}`} />
             </span>
@@ -4766,11 +4766,11 @@ function AdminBot() {
               <div className="flex gap-2">
                 <Input type="password" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder={data?.hasToken ? t('db.token.new', 'New token…') : t('db.token.ph', 'Bot token…')} onKeyDown={(e) => e.key === 'Enter' && saveToken()} />
                 <Button variant="primary" onClick={saveToken}>{data?.hasToken ? t('db.token.change', 'Change') : t('db.token.settoken', 'Set token')}</Button>
-                {data?.hasToken && <Button className="!text-red-400" onClick={clearToken}>{t('db.token.clear', 'Clear')}</Button>}
+                {data?.hasToken && <Button className="!text-error" onClick={clearToken}>{t('db.token.clear', 'Clear')}</Button>}
               </div>
             </>
           ) : (
-            <p className="text-xs text-amber-400/90 flex items-center gap-1.5"><Bell size={12} /> {t('db.token.needoff', 'Turn the bot off (master switch) and Save to change the token.')}</p>
+            <p className="text-xs text-warning flex items-center gap-1.5"><Bell size={12} /> {t('db.token.needoff', 'Turn the bot off (master switch) and Save to change the token.')}</p>
           )}
           {!online && !data?.hasToken && <div className="text-[11px] text-[var(--muted)] mt-2 flex items-center gap-1.5"><Bell size={12} /> {t('db.token.none', 'No token set — add one (or set DISCORD_TOKEN in compose .env) to bring the bot online.')}</div>}
         </Card>
@@ -4781,7 +4781,7 @@ function AdminBot() {
               <span className="text-xs text-[var(--muted)]">{data.storage.memberCount} {t('db.tracked', 'tracked')}</span></div>
             {(() => { const capMB = cfg.limits?.storageMB || 0; const usedMB = data.storage.usedBytes / (1024 * 1024); const pct = capMB ? Math.min(100, (usedMB / capMB) * 100) : 0; return (
               <>
-                <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-red-500' : 'bg-gradient-to-r from-orange-500 to-amber-500'}`} style={{ width: `${pct}%` }} /></div>
+                <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-error' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>
                 <div className="text-xs text-[var(--faint)] mt-1.5">{usedMB.toFixed(1)} MB {capMB ? t('db.mbcap', '/ {c} MB max').replace('{c}', capMB) : t('db.nocap', '(no cap set)')} {t('db.dbnote', '— oldest inactive members are pruned once over.')}</div>
               </>
             ); })()}
@@ -4860,7 +4860,7 @@ function AdminBot() {
           <span className="truncate">{t('db.scope.editing', 'Editing')} <b className="text-[var(--text)]">{scopeName}</b>{scope ? (isCustomized ? '' : t('db.scope.usingdefaults', ' — currently using the global defaults')) : t('db.scope.appliedto', ' — applied to any server without its own config')}</span>
         </div>
         {scope && (isCustomized
-          ? <Button size="sm" variant="ghost" className="!text-red-400" onClick={resetServer}><Trash2 size={13} /> {t('db.scope.reset', 'Reset to defaults')}</Button>
+          ? <Button size="sm" variant="ghost" className="!text-error" onClick={resetServer}><Trash2 size={13} /> {t('db.scope.reset', 'Reset to defaults')}</Button>
           : <Button size="sm" variant="primary" onClick={customizeServer}><Plus size={13} /> {t('db.scope.customize', 'Customize this server')}</Button>)}
       </div>
 
@@ -4885,7 +4885,7 @@ function AdminBot() {
             {jtcLobbies.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.jtc.nolobbies', 'No lobbies — add one. Joining that voice channel spawns a temp room in its category.')}</div>}
             {jtcLobbies.map((lb, i) => (
               <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
-                <button onClick={() => sset('joinToCreate.lobbies', jtcLobbies.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-red-400"><Trash2 size={13} /></button>
+                <button onClick={() => sset('joinToCreate.lobbies', jtcLobbies.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error"><Trash2 size={13} /></button>
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('db.jtc.lobbyn', 'Lobby {n}').replace('{n}', i + 1)}</div>
                 <Input value={lb.lobbyChannelId || ''} onChange={(e) => sset('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, lobbyChannelId: e.target.value } : x))} placeholder={t('db.jtc.lobbych', 'Lobby voice channel ID')} />
                 <div className="grid grid-cols-2 gap-2">
@@ -4980,7 +4980,7 @@ function AdminBotMembers() {
         <div className="flex rounded-lg border border-[var(--line)] overflow-hidden w-fit mb-3">
           {tabs.map(([v, label, n]) => (
             <button key={v} onClick={() => pickLink(v)} className={`px-3 py-1.5 text-xs flex items-center gap-1.5 ${link === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
-              {v === 'linked' ? <CheckCircle2 size={12} className="text-emerald-400" /> : v === 'unlinked' ? <XCircle size={12} className="text-[var(--faint)]" /> : null}
+              {v === 'linked' ? <CheckCircle2 size={12} className="text-success" /> : v === 'unlinked' ? <XCircle size={12} className="text-[var(--faint)]" /> : null}
               {label}{n != null && <span className="text-[var(--faint)]">{n}</span>}
             </button>
           ))}
@@ -5035,7 +5035,7 @@ function LedgerRow({ row }) {
           {row.count != null && row.usedBytes != null && <span className="text-[var(--faint)]"> · {row.count}</span>}
         </span>
       </div>
-      {hasBar && <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct >= 90 ? 'bg-red-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} style={{ width: `${pct}%` }} /></div>}
+      {hasBar && <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct >= 90 ? 'bg-error' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>}
       {row.note && <div className="text-[10px] text-[var(--faint)] mt-0.5">{row.note}</div>}
     </div>
   );
@@ -5056,7 +5056,7 @@ function AdminStorage() {
   const pendRepos = (d.pending?.repos || []).filter((r) => !pq || r.name?.toLowerCase().includes(pq) || r.owner?.toLowerCase().includes(pq));
   const areas = d.areas || [];
   const total = d.totals?.bytes || 0;
-  const colors = ['bg-orange-500', 'bg-amber-400', 'bg-sky-400', 'bg-red-400'];
+  const colors = ['bg-orange-500', 'bg-warning', 'bg-info', 'bg-error'];
   const AREA_ICON = { repos: Server, catalog: Package, blog: Newspaper, other: AlertTriangle };
   const pending = (d.pending?.items?.length || 0) + (d.pending?.repos?.length || 0);
   return (
@@ -5073,7 +5073,7 @@ function AdminStorage() {
         const tiers = d.tiers || [];
         const grand = d.grandTotalBytes || 0;
         const objTier = tiers.find((x) => x.key === 'object');
-        const TIER_COLOR = { object: 'bg-orange-500', database: 'bg-sky-400', backups: 'bg-violet-400', telemetry: 'bg-emerald-400' };
+        const TIER_COLOR = { object: 'bg-orange-500', database: 'bg-info', backups: 'bg-violet-400', telemetry: 'bg-success' };
         const locBadge = (x) => x.location === 'remote' ? <Badge tone="amber">{t('as.remote', 'remote')}</Badge>
           : x.location === 'local' ? <Badge tone="green">{t('as.local', 'local')}</Badge>
           : x.available === false ? <Badge tone="red">{t('as.offline', 'offline')}</Badge>
@@ -5116,17 +5116,17 @@ function AdminStorage() {
         const pct = cap.usableGB ? Math.min(100, (cap.allocatedGB / cap.usableGB) * 100) : 0;
         const near = pct >= 80;
         return (
-          <Card className={`p-5 mb-4 ${near ? 'border-red-500/40' : ''}`}>
+          <Card className={`p-5 mb-4 ${near ? 'border-error-border' : ''}`}>
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
               <div className="text-sm font-medium flex items-center gap-2"><HardDrive size={15} className="text-[var(--primary-2)]" /> {t('as.totalcap', 'Total capacity')}</div>
               <div className="text-xs text-[var(--muted)]"><b className="text-[var(--text)]">{cap.allocatedGB.toFixed(1)}</b> / {cap.usableGB.toFixed(0)} {t('as.gballocated', 'GB allocated')} <span className="text-[var(--faint)]">· {t('as.totalreserved', 'total {t} GB, {r} reserved').replace('{t}', cap.totalGB).replace('{r}', cap.reservedGB)}</span></div>
             </div>
             <div className="h-3 rounded-full bg-[var(--surface-2)] overflow-hidden">
-              <div className={`h-full transition-all ${near ? 'bg-gradient-to-r from-red-500 to-orange-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} style={{ width: `${pct}%` }} />
+              <div className={`h-full transition-all ${near ? 'bg-gradient-to-r from-red-500 to-brand' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} />
             </div>
-            <div className={`text-xs mt-2 ${near ? 'text-red-400' : 'text-[var(--muted)]'}`}>{t('as.usableallocated', '{p}% of usable capacity allocated · {f} GB free').replace('{p}', Math.round(pct)).replace('{f}', cap.freeGB.toFixed(1))}{near ? t('as.pricesrise', ' — prices rise near the limit.') : ''}</div>
+            <div className={`text-xs mt-2 ${near ? 'text-error' : 'text-[var(--muted)]'}`}>{t('as.usableallocated', '{p}% of usable capacity allocated · {f} GB free').replace('{p}', Math.round(pct)).replace('{f}', cap.freeGB.toFixed(1))}{near ? t('as.pricesrise', ' — prices rise near the limit.') : ''}</div>
             <div className="text-[11px] text-[var(--faint)] mt-1.5">{t('as.hostingquotas', '{h} GB hosting quotas + {s} GB approved submissions').replace('{h}', cap.hostingAllocatedGB?.toFixed(1)).replace('{s}', cap.submissionsPublishedGB?.toFixed(2))}{cap.diskFreeGB != null && <> · {t('as.realdiskfree', 'real disk free:')} <b className="text-[var(--text)]">{cap.diskFreeGB.toFixed(0)} GB</b> / {t('as.gbtotal', '{n} GB total').replace('{n}', cap.diskTotalGB.toFixed(0))}</>}</div>
-            {d.remoteTiers && <div className="text-[11px] text-amber-400/90 mt-1.5">{t('as.caplocnote', 'Object storage and/or telemetry run on another server — those bytes don’t consume this disk; each is metered by its own usage & limit (see Storage locations above).')}</div>}
+            {d.remoteTiers && <div className="text-[11px] text-warning mt-1.5">{t('as.caplocnote', 'Object storage and/or telemetry run on another server — those bytes don’t consume this disk; each is metered by its own usage & limit (see Storage locations above).')}</div>}
           </Card>
         );
       })()}
@@ -5173,15 +5173,15 @@ function AdminStorage() {
 
       <Card className="p-4">
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <div className="text-sm font-medium flex items-center gap-2"><Trash2 size={14} className="text-red-400" /> {t('as.pendingdel', 'Pending deletions (72h grace)')}{pending > 0 && <Badge tone="red">{pending}</Badge>}</div>
+          <div className="text-sm font-medium flex items-center gap-2"><Trash2 size={14} className="text-error" /> {t('as.pendingdel', 'Pending deletions (72h grace)')}{pending > 0 && <Badge tone="red">{pending}</Badge>}</div>
           {pending > 2 && (
             <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
               <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('as.searchnameownerkind', 'Search name, owner or kind…')} value={pendQ} onChange={(e) => setPendQ(e.target.value)} /></div>
           )}
         </div>
         {pending ? ((pendItems.length + pendRepos.length) ? <div className="space-y-1.5 max-h-72 overflow-auto">
-          {pendItems.map((i) => { const I = KIND_ICON[i.kind] || Package; return <div key={i.id} className="flex items-center gap-2 text-sm"><I size={14} className="text-[var(--faint)] shrink-0" /><Badge>{i.kind}</Badge><span className="flex-1 truncate">{i.name}</span><span className="text-xs text-red-400">{t('as.in', 'in')} {fmtRemaining(i.deleteAt)}</span></div>; })}
-          {pendRepos.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm"><Server size={14} className="text-[var(--faint)] shrink-0" /><Badge>{t('as.repo', 'repo')}</Badge><span className="flex-1 truncate">{r.name} <span className="text-[var(--faint)]">· {r.owner}</span></span><span className="text-xs text-red-400">{t('as.in', 'in')} {fmtRemaining(r.deleteAt)}</span><Button size="sm" variant="ghost" onClick={() => cancelRepoDeletion(r)}>{t('su.cancel', 'Cancel')}</Button></div>)}
+          {pendItems.map((i) => { const I = KIND_ICON[i.kind] || Package; return <div key={i.id} className="flex items-center gap-2 text-sm"><I size={14} className="text-[var(--faint)] shrink-0" /><Badge>{i.kind}</Badge><span className="flex-1 truncate">{i.name}</span><span className="text-xs text-error">{t('as.in', 'in')} {fmtRemaining(i.deleteAt)}</span></div>; })}
+          {pendRepos.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm"><Server size={14} className="text-[var(--faint)] shrink-0" /><Badge>{t('as.repo', 'repo')}</Badge><span className="flex-1 truncate">{r.name} <span className="text-[var(--faint)]">· {r.owner}</span></span><span className="text-xs text-error">{t('as.in', 'in')} {fmtRemaining(r.deleteAt)}</span><Button size="sm" variant="ghost" onClick={() => cancelRepoDeletion(r)}>{t('su.cancel', 'Cancel')}</Button></div>)}
         </div> : <div className="text-sm text-[var(--muted)]">{t('as.nopendmatch', 'No pending deletions match your search.')}</div>) : <div className="text-sm text-[var(--muted)]">{t('as.nothingdel', 'Nothing scheduled for deletion.')}</div>}
       </Card>
 
@@ -5276,12 +5276,12 @@ function TrafficChart({ series, gran = 'day', onZoom, compare }) {
           <div className="absolute top-1 text-[11px] px-2.5 py-1.5 rounded-md bg-[var(--bg-solid)] border border-[var(--line)] shadow pointer-events-none whitespace-nowrap"
             style={{ left: `${Math.min(Math.max(hover.px, 90), (wrapRef.current?.clientWidth || W) - 90)}px`, transform: 'translateX(-50%)' }}>
             {cmp && (
-              <div className={`font-semibold flex items-center gap-1 mb-1 pb-1 border-b border-[var(--line)] ${cmp.pct > 0 ? 'text-emerald-400' : cmp.pct < 0 ? 'text-red-400' : 'text-[var(--faint)]'}`}>
+              <div className={`font-semibold flex items-center gap-1 mb-1 pb-1 border-b border-[var(--line)] ${cmp.pct > 0 ? 'text-success' : cmp.pct < 0 ? 'text-error' : 'text-[var(--faint)]'}`}>
                 {cmp.pct > 0 ? <ArrowUpRight size={11} /> : cmp.pct < 0 ? <ArrowUpRight size={11} className="rotate-90" /> : null}
                 {cmp.pct > 0 ? '+' : ''}{cmp.pct}% <span className="font-normal text-[var(--faint)]">vs same hour yesterday</span>
               </div>
             )}
-            <div>{fmtFull(hover.s.day)} <b>{hover.s.count}</b> views · <b className="text-sky-400">{hover.s.visitors || 0}</b> visitors</div>
+            <div>{fmtFull(hover.s.day)} <b>{hover.s.count}</b> views · <b className="text-info">{hover.s.visitors || 0}</b> visitors</div>
             {cmp && <div className="text-[var(--faint)]">{fmtFull(cmp.prevHour)} <b>{cmp.prevCount}</b> views</div>}
           </div>
         );
@@ -5340,7 +5340,7 @@ function GeoPanel({ countries, regions, cities, days, hours }) {
                   <Flag cc={r.country || r.label} />
                   <span className="truncate">{tab === 'countries' ? countryName(r.label) : r.label}{tab === 'cities' && r.region ? <span className="text-[var(--faint)]"> · {r.region}</span> : null}</span>
                 </span>
-                <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${(r.count / max) * 100}%` }} /></div>
+                <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${(r.count / max) * 100}%` }} /></div>
                 <span className="w-12 text-right font-medium">{Math.round((r.count / tot) * 100)}%</span>
               </div>
             ))}
@@ -5359,9 +5359,9 @@ const VITAL_META = {
   TTFB: { label: 'Time to First Byte', unit: 'ms', good: 800, poor: 1800, fmt: (v) => `${Math.round(v)} ms` },
 };
 const vitalRating = (m, v) => v == null ? null : v <= VITAL_META[m].good ? 'good' : v <= VITAL_META[m].poor ? 'ni' : 'poor';
-const vitalColor = (r) => r === 'good' ? 'text-emerald-400' : r === 'ni' ? 'text-amber-400' : r === 'poor' ? 'text-red-400' : 'text-[var(--faint)]';
+const vitalColor = (r) => r === 'good' ? 'text-success' : r === 'ni' ? 'text-warning' : r === 'poor' ? 'text-error' : 'text-[var(--faint)]';
 const RATING_ORDER = { poor: 3, ni: 2, good: 1 };
-const RATING_DOT = { good: 'bg-emerald-400', ni: 'bg-amber-400', poor: 'bg-red-400' };
+const RATING_DOT = { good: 'bg-success', ni: 'bg-warning', poor: 'bg-error' };
 // A page's overall health = its worst-rated metric (one slow metric drags the page).
 const pageRating = (pg) => {
   let worst = null;
@@ -5376,7 +5376,7 @@ const WV_RANGES = [['24h', { hours: 24 }], ['7d', { days: 7 }], ['30d', { days: 
 // Metric value as a tinted rating chip (good / needs-improvement / poor).
 function vitalChip(m, v) {
   const r = vitalRating(m, v);
-  const tint = r === 'good' ? 'bg-emerald-500/12 text-emerald-400' : r === 'ni' ? 'bg-amber-500/12 text-amber-400' : r === 'poor' ? 'bg-red-500/12 text-red-400' : 'text-[var(--faint)]';
+  const tint = r === 'good' ? 'bg-success-bg text-success' : r === 'ni' ? 'bg-warning-bg text-warning' : r === 'poor' ? 'bg-error-bg text-error' : 'text-[var(--faint)]';
   return <span className={`inline-block px-2 py-0.5 rounded-md text-xs tabular-nums ${tint}`}>{v == null ? '—' : VITAL_META[m].fmt(v)}</span>;
 }
 const WV_DIMS = [['pages', 'an.wv.d.pages', 'Pages', Gauge], ['countries', 'an.wv.d.countries', 'Countries', MapPin], ['devices', 'an.wv.d.devices', 'Devices', Monitor], ['browsers', 'an.wv.d.browsers', 'Browsers', Globe2], ['oses', 'an.wv.d.oses', 'OS', Cpu]];
@@ -5535,9 +5535,9 @@ function fakeNick(seed) { const h = hashSeed(seed); return `${NICK_ADJ[h % NICK_
 // human label, connected by a vertical rail so it reads like a session replay.
 const EVENT_META = {
   page:        { Icon: Eye,                tint: 'text-[var(--primary-2)]', dot: 'bg-[var(--primary-2)]', key: 'an.evPage',   fb: 'Viewed' },
-  click:       { Icon: MousePointerClick,  tint: 'text-sky-400',            dot: 'bg-sky-400',            key: 'an.evClick',  fb: 'Clicked' },
-  copy:        { Icon: Copy,               tint: 'text-emerald-400',        dot: 'bg-emerald-400',        key: 'an.evCopy',   fb: 'Copied' },
-  input:       { Icon: PenSquare,          tint: 'text-amber-400',          dot: 'bg-amber-400',          key: 'an.evInput',  fb: 'Edited' },
+  click:       { Icon: MousePointerClick,  tint: 'text-info',            dot: 'bg-info',            key: 'an.evClick',  fb: 'Clicked' },
+  copy:        { Icon: Copy,               tint: 'text-success',        dot: 'bg-success',        key: 'an.evCopy',   fb: 'Copied' },
+  input:       { Icon: PenSquare,          tint: 'text-warning',          dot: 'bg-warning',          key: 'an.evInput',  fb: 'Edited' },
   submit:      { Icon: Send,               tint: 'text-violet-400',         dot: 'bg-violet-400',         key: 'an.evSubmit', fb: 'Submitted' },
   modal_open:  { Icon: PanelTop,           tint: 'text-fuchsia-400',        dot: 'bg-fuchsia-400',        key: 'an.evModal',  fb: 'Opened modal' },
   modal_close: { Icon: X,                  tint: 'text-[var(--faint)]',     dot: 'bg-[var(--faint)]',     key: 'an.evModalX', fb: 'Closed modal' },
@@ -5596,7 +5596,7 @@ function SessionRow({ s }) {
         </div>
         <div className="text-right shrink-0">
           <div className="text-xs flex items-center gap-1.5 justify-end">
-            {s.live && <span className="inline-flex items-center gap-1 text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> {t('an.liveLabel', 'live')}</span>}
+            {s.live && <span className="inline-flex items-center gap-1 text-success"><span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /> {t('an.liveLabel', 'live')}</span>}
             <span className="text-[var(--muted)]">{s.pages} {t('an.pg', 'pg')} · {fmtDur(s.durationSec)}</span>
           </div>
           <div className="text-[11px] text-[var(--faint)]">{t('an.ago', '{n} ago').replace('{n}', fmtAgo(s.end))}</div>
@@ -5636,7 +5636,7 @@ function GeoHoverCard({ info }) {
       {info.cc && <Flag cc={info.cc} />}
       <b>{info.label}</b>
       <span className="text-[var(--muted)]">{info.count} · {info.share}%</span>
-      {info.delta != null && <span className={info.delta > 0 ? 'text-emerald-400' : info.delta < 0 ? 'text-red-400' : 'text-[var(--faint)]'}>{info.delta > 0 ? '▲' : info.delta < 0 ? '▼' : ''}{Math.abs(info.delta)}%</span>}
+      {info.delta != null && <span className={info.delta > 0 ? 'text-success' : info.delta < 0 ? 'text-error' : 'text-[var(--faint)]'}>{info.delta > 0 ? '▲' : info.delta < 0 ? '▼' : ''}{Math.abs(info.delta)}%</span>}
     </div>
   );
 }
@@ -5825,7 +5825,7 @@ function SessionsPanel({ days, hours }) {
       <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-left">
         <Activity size={15} className="text-[var(--primary-2)]" />
         <h2 className="font-semibold flex-1 flex items-center gap-2">{t('an.sess.title', 'Sessions')}
-          {data?.liveCount > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> {data.liveCount} {t('an.liveLabel', 'live')}</span>}
+          {data?.liveCount > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-success"><span className="w-2 h-2 rounded-full bg-success animate-pulse" /> {data.liveCount} {t('an.liveLabel', 'live')}</span>}
         </h2>
         <span className="text-[11px] text-[var(--faint)] mr-1">{t('an.sess.autorefresh', 'auto-refresh 15s')}</span>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${collapsed ? '-rotate-90' : ''}`} />
@@ -5969,11 +5969,11 @@ function AdminGoals() {
                   ? <span className="text-[10px] uppercase tracking-wide text-[var(--faint)] px-1.5 py-1">{t('goal.pending', 'saving…')}</span>
                   : <>
                       <button onClick={() => edit(g)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-[var(--primary-2)] hover:bg-[var(--surface-2)]"><PenSquare size={15} /></button>
-                      <button onClick={() => del(g)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-red-400 hover:bg-[var(--surface-2)]"><Trash2 size={15} /></button>
+                      <button onClick={() => del(g)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-error hover:bg-[var(--surface-2)]"><Trash2 size={15} /></button>
                     </>}
               </div>
             </div>
-            <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-3"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${Math.min(100, g.rate)}%` }} /></div>
+            <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-3"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${Math.min(100, g.rate)}%` }} /></div>
             {g.target != null && <div className="mt-2">
               <div className="flex items-center justify-between text-[11px] text-[var(--faint)] mb-1"><span className="flex items-center gap-1"><Target size={11} /> {t('goal.targetprog', 'Target progress')}</span><span className="tabular-nums font-medium text-[var(--muted)]">{g.completions} / {g.target} ({g.progress ?? 0}%)</span></div>
               <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-sky-500 to-emerald-500" style={{ width: `${g.progress ?? 0}%` }} /></div>
@@ -6010,7 +6010,7 @@ function AdminErrors() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><AlertTriangle size={16} className="text-red-400" /> {t('er.title', 'Errors')} {data?.total ? <Badge tone="red">{data.total}</Badge> : null}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><AlertTriangle size={16} className="text-error" /> {t('er.title', 'Errors')} {data?.total ? <Badge tone="red">{data.total}</Badge> : null}</h2>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
@@ -6021,8 +6021,8 @@ function AdminErrors() {
       </div>
       <p className="text-sm text-[var(--muted)] mb-3">{t('er.sub', 'Server errors (API 5xx) and uncaught JavaScript errors from real visits, grouped by message. Repeated identical server errors collapse to one entry per minute — the occurrence count is per entry, not per request.')}</p>
       {unpersisted.length > 0 && (
-        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5">
-          <div className="font-medium text-red-300 flex items-center gap-2 text-sm"><AlertTriangle size={14} /> {t('er.dbdown.t', '{n} recent server error(s) could not be written to the database').replace('{n}', unpersisted.length)}</div>
+        <div className="mb-4 rounded-lg border border-error-border bg-error-bg px-3 py-2.5">
+          <div className="font-medium text-error flex items-center gap-2 text-sm"><AlertTriangle size={14} /> {t('er.dbdown.t', '{n} recent server error(s) could not be written to the database').replace('{n}', unpersisted.length)}</div>
           <div className="text-xs text-[var(--muted)] mt-1">{t('er.dbdown.s', 'The data layer itself may be failing — which is why these are not in the list below. This tail is kept in memory. Newest:')} <span className="font-mono text-[var(--text)]">{unpersisted[0].path}</span> — {unpersisted[0].message}</div>
         </div>
       )}
@@ -6040,9 +6040,9 @@ function AdminErrors() {
         {errors.map((e, i) => { const isOpen = open === i; return (
           <Card key={i} className="overflow-hidden">
             <button onClick={() => setOpen(isOpen ? null : i)} className="w-full text-left p-4 flex items-start gap-3 hover:bg-[var(--surface-2)]/40 transition">
-              <AlertTriangle size={16} className="text-red-400 mt-0.5 shrink-0" />
+              <AlertTriangle size={16} className="text-error mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm text-red-300 break-words">{e.message}</div>
+                <div className="font-medium text-sm text-error break-words">{e.message}</div>
                 <div className="text-xs text-[var(--faint)] mt-1 flex items-center gap-3 flex-wrap">
                   {/* A server 5xx and a browser exception need very different responses —
                       say which one this is instead of leaving them indistinguishable. */}
@@ -6119,7 +6119,7 @@ function AdminAnalytics() {
     const pct = Math.round(((cur - prev) / prev) * 100);
     if (pct === 0) return <span className="text-[10px] text-[var(--faint)]">0%</span>;
     const up = pct > 0, good = lowerBetter ? !up : up;
-    return <span className={`text-[10px] font-semibold tabular-nums ${good ? 'text-emerald-400' : 'text-red-400'}`} title={t('an.vsprev', 'vs previous period')}>{up ? '▲' : '▼'} {Math.abs(pct)}%</span>;
+    return <span className={`text-[10px] font-semibold tabular-nums ${good ? 'text-success' : 'text-error'}`} title={t('an.vsprev', 'vs previous period')}>{up ? '▲' : '▼'} {Math.abs(pct)}%</span>;
   };
   const kpi = (Icon, val, label, accent, delta, spark, sparkColor) => (
     <Card className="p-4 relative overflow-hidden">
@@ -6135,7 +6135,7 @@ function AdminAnalytics() {
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="font-semibold flex items-center gap-2"><TrendingUp size={16} /> {t('an.title', 'Site analytics')}
-          {data?.live > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 ml-1"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> {data.live} {t('an.live', 'live')}</span>}</h2>
+          {data?.live > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-success ml-1"><span className="w-2 h-2 rounded-full bg-success animate-pulse" /> {data.live} {t('an.live', 'live')}</span>}</h2>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {ranges.map(([d, l]) => <button key={d} onClick={() => pickRange(d)} className={`px-3 py-1.5 text-xs ${activeRange === d ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>)}
@@ -6151,7 +6151,7 @@ function AdminAnalytics() {
         {kpi(Eye, data?.windowed ?? '—', t('an.kpi.pageviews', 'Pageviews'), null, deltaChip(data?.windowed, data?.prev?.pageviews), viewsSpark)}
         {kpi(TrendingUp, data?.viewsPerVisitor ?? '—', t('an.kpi.pps', 'Pages / session'), null, deltaChip(data?.viewsPerVisitor, data?.prev?.viewsPerVisitor), ppsSpark)}
         {kpi(ArrowUpRight, data?.bounceRate != null ? `${data.bounceRate}%` : '—', t('an.kpi.bounce', 'Bounce rate'), null, deltaChip(data?.bounceRate, data?.prev?.bounceRate, true), viewsSpark, '#f59e0b')}
-        {kpi(Zap, data?.live ?? '—', t('an.kpi.live', 'Live (30 min)'), 'text-emerald-400')}
+        {kpi(Zap, data?.live ?? '—', t('an.kpi.live', 'Live (30 min)'), 'text-success')}
       </div>
 
       {/* Sub-tab bar — horizontal-scrolls on narrow screens so it never overflows. */}
@@ -6167,7 +6167,7 @@ function AdminAnalytics() {
             <div className="text-xs font-semibold text-[var(--faint)] uppercase">{gran === 'hour' ? t('an.traffic.hour', 'Traffic per hour · last 24h') : t('an.traffic.day', 'Traffic per day')}</div>
             <div className="flex items-center gap-3 text-[11px] text-[var(--muted)]">
               <span className="hidden sm:flex items-center gap-1 text-[var(--faint)]"><Search size={11} /> {t('an.zoomhint', 'Ctrl + scroll to zoom')}</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-gradient-to-t from-orange-500 to-amber-400" /> {t('an.views', 'Views')}</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-sky-400" /> {t('an.visitors', 'Visitors')}</span></div>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-gradient-to-t from-brand to-brand-2" /> {t('an.views', 'Views')}</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-info" /> {t('an.visitors', 'Visitors')}</span></div>
           </div>
           {loading ? <div className="h-40 grid place-items-center text-[var(--faint)] text-sm"><Spinner /></div> : <TrafficChart series={series} gran={gran} onZoom={onZoom} compare={data?.compare} />}
         </Card>
@@ -6178,7 +6178,7 @@ function AdminAnalytics() {
               {top.length ? top.map((tp) => (
                 <div key={tp.path} className="flex items-center gap-3 text-sm">
                   <span className="text-[var(--muted)] truncate w-28 sm:w-40 shrink-0">{tp.path}</span>
-                  <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${(tp.count / maxTop) * 100}%` }} /></div>
+                  <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${(tp.count / maxTop) * 100}%` }} /></div>
                   <span className="w-10 text-right font-medium">{tp.count}</span>
                 </div>
               )) : <div className="text-sm text-[var(--faint)]">{t('an.nopages', 'No page data yet.')}</div>}
@@ -6331,7 +6331,7 @@ function PageWhitelistEditor({ items, onAdd, onRemove }) {
         {items.length ? items.map((a) => (
           <span key={`${a.type}:${a.id}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px]">
             <Users size={9} className="text-[var(--faint)]" /> {a.type === 'discord' ? 'Discord: ' : a.type === 'creator' ? 'Creator: ' : ''}{a.label || a.id}
-            <button onClick={() => onRemove(a)} className="text-[var(--faint)] hover:text-red-400"><X size={10} /></button>
+            <button onClick={() => onRemove(a)} className="text-[var(--faint)] hover:text-error"><X size={10} /></button>
           </span>
         )) : <span className="text-[11px] text-[var(--faint)]">No entries — nobody can view.</span>}
       </div>
@@ -6402,16 +6402,16 @@ function AnnouncementSection({ value, onChange }) {
 // { kind, message, createdAt }, so "detail" = the human-readable expansion of that.
 // i18n keys per alert kind — resolved in AlertRow (a module const can't call the hook).
 const ALERT_KIND = {
-  cpu: { l: 'sp.al.cpu', lf: 'High CPU', d: 'sp.al.cpu.d', df: 'CPU usage crossed the alert threshold (>90%).', tone: 'text-amber-400' },
-  mem: { l: 'sp.al.mem', lf: 'High memory', d: 'sp.al.mem.d', df: 'Memory usage crossed the alert threshold (>90%).', tone: 'text-amber-400' },
-  disk: { l: 'sp.al.disk', lf: 'Low disk', d: 'sp.al.disk.d', df: 'Disk usage crossed the alert threshold (>90%).', tone: 'text-red-400' },
-  service_down: { l: 'sp.al.svc', lf: 'Service unreachable', d: 'sp.al.svc.d', df: 'A dependency (DB, storage, bot, Stripe…) failed its health check.', tone: 'text-red-400' },
+  cpu: { l: 'sp.al.cpu', lf: 'High CPU', d: 'sp.al.cpu.d', df: 'CPU usage crossed the alert threshold (>90%).', tone: 'text-warning' },
+  mem: { l: 'sp.al.mem', lf: 'High memory', d: 'sp.al.mem.d', df: 'Memory usage crossed the alert threshold (>90%).', tone: 'text-warning' },
+  disk: { l: 'sp.al.disk', lf: 'Low disk', d: 'sp.al.disk.d', df: 'Disk usage crossed the alert threshold (>90%).', tone: 'text-error' },
+  service_down: { l: 'sp.al.svc', lf: 'Service unreachable', d: 'sp.al.svc.d', df: 'A dependency (DB, storage, bot, Stripe…) failed its health check.', tone: 'text-error' },
 };
 function AlertRow({ a }) {
   const { t } = useI18n(); const toast = useToast();
   const [open, setOpen] = useState(false);
   const k = ALERT_KIND[a.kind];
-  const info = k ? { label: t(k.l, k.lf), desc: t(k.d, k.df), tone: k.tone } : { label: a.kind, desc: t('sp.al.generic', 'Threshold alert.'), tone: 'text-red-400' };
+  const info = k ? { label: t(k.l, k.lf), desc: t(k.d, k.df), tone: k.tone } : { label: a.kind, desc: t('sp.al.generic', 'Threshold alert.'), tone: 'text-error' };
   const when = new Date(a.createdAt);
   const ago = (() => { const s = Math.max(0, (Date.now() - when.getTime()) / 1000); if (s < 60) return t('sp.ago.now', 'just now'); if (s < 3600) return t('sp.ago.m', '{n}m ago').replace('{n}', Math.floor(s / 60)); if (s < 86400) return t('sp.ago.h', '{n}h ago').replace('{n}', Math.floor(s / 3600)); return t('sp.ago.d', '{n}d ago').replace('{n}', Math.floor(s / 86400)); })();
   const copy = (e) => { e.stopPropagation(); navigator.clipboard?.writeText(`[${a.kind}] ${a.message} — ${when.toLocaleString()}`); toast.success(t('common.copied', 'Copied.')); };
@@ -6474,7 +6474,7 @@ function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClo
   return (
     <Modal open onClose={onClose} title={title} icon={Clock} width="max-w-lg"
       footer={<>
-        {hasExisting && <Button variant="ghost" className="!text-red-400" disabled={busy} onClick={cancelSchedule}>{t('su.cancelsched', 'Cancel schedule')}</Button>}
+        {hasExisting && <Button variant="ghost" className="!text-error" disabled={busy} onClick={cancelSchedule}>{t('su.cancelsched', 'Cancel schedule')}</Button>}
         <Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('su.schedule', 'Schedule')}</Button>
       </>}>
@@ -6549,7 +6549,7 @@ function AdminShowcase() {
             <div className="flex items-start gap-3">
               {pr.icon
                 ? <div className="grid place-items-center w-10 h-10 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] shrink-0 text-[var(--primary-2)]"><ShowcaseIcon icon={pr.icon} size={24} rounded={6} /></div>
-                : <div className="grid place-items-center w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white font-extrabold text-xs shrink-0">{pr.short}</div>}
+                : <div className="grid place-items-center w-10 h-10 rounded-lg bg-gradient-to-br from-brand to-brand-2 text-white font-extrabold text-xs shrink-0">{pr.short}</div>}
               <div className="flex-1 min-w-0">
                 <div className="font-medium flex items-center gap-2 flex-wrap min-w-0">
                   <span className="truncate min-w-0">{pr.name}</span>
@@ -6765,8 +6765,8 @@ function TelemetryConfigCard() {
     const notcfg = data.error === 'telemetry_not_configured';
     return (
       <Card className="p-4 mb-3">
-        <div className="text-sm font-medium flex items-center gap-2 mb-1"><Gauge size={15} className="text-sky-400" /> {t('tc.title', 'BMM telemetry (live)')}</div>
-        <div className="text-xs text-amber-400/90">{notcfg ? t('tc.notcfg', 'Set TELEMETRY_INTERNAL_URL + TELEMETRY_ADMIN_KEY in the api service env to manage telemetry limits from here.') : t('tc.unreach', 'Telemetry service unreachable right now.')}</div>
+        <div className="text-sm font-medium flex items-center gap-2 mb-1"><Gauge size={15} className="text-info" /> {t('tc.title', 'BMM telemetry (live)')}</div>
+        <div className="text-xs text-warning">{notcfg ? t('tc.notcfg', 'Set TELEMETRY_INTERNAL_URL + TELEMETRY_ADMIN_KEY in the api service env to manage telemetry limits from here.') : t('tc.unreach', 'Telemetry service unreachable right now.')}</div>
       </Card>
     );
   }
@@ -6784,13 +6784,13 @@ function TelemetryConfigCard() {
   return (
     <Card className="p-4 mb-3">
       <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-        <div className="text-sm font-medium flex items-center gap-2"><Gauge size={15} className="text-sky-400" /> {t('tc.title', 'BMM telemetry (live)')}</div>
+        <div className="text-sm font-medium flex items-center gap-2"><Gauge size={15} className="text-info" /> {t('tc.title', 'BMM telemetry (live)')}</div>
         <Button size="sm" variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><CheckCheck size={14} /> {t('tc.apply', 'Apply to telemetry')}</>}</Button>
       </div>
       <p className="text-[11px] text-[var(--faint)] mb-3">{t('tc.sub', 'Edits the telemetry service directly (storage cap, GDPR retention, erase delay) — applied live, no restart. Over-limit data is trimmed immediately on save.')}</p>
       <div className="mb-3">
         <div className="flex items-center justify-between text-xs mb-1"><span className="text-[var(--muted)]">{t('tc.used', 'Used')}</span><span className="tabular-nums font-medium">{usedGB.toFixed(2)}{limitGB > 0 ? ` / ${limitGB} GB` : ` ${t('hs.gbused', 'GB used')}`}</span></div>
-        {limitGB > 0 && <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-red-500' : 'bg-sky-500'}`} style={{ width: `${pct}%` }} /></div>}
+        {limitGB > 0 && <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-error' : 'bg-info'}`} style={{ width: `${pct}%` }} /></div>}
       </div>
       <div className="grid sm:grid-cols-3 gap-3">
         <Field label={t('tc.storage', 'Storage cap (GB)')} hint={t('tc.storage.h', 'Oldest events trimmed when exceeded.')}><Input type="number" min="0.125" step="0.5" value={f.storageGB} onChange={(e) => setF({ ...f, storageGB: e.target.value })} /></Field>
@@ -6851,7 +6851,7 @@ function PvTheme() {
       style={{ background: dark ? 'var(--primary)' : 'color-mix(in srgb, var(--text) 12%, transparent)', borderColor: 'var(--line-strong)' }}>
       <span className="absolute top-1/2 grid place-items-center w-[18px] h-[18px] rounded-full"
         style={{ left: 2, marginTop: -9, transform: dark ? 'translateX(20px)' : 'translateX(0)', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
-        {dark ? <Moon size={11} className="text-[var(--primary)] fill-[var(--primary)]" /> : <Sun size={11} className="text-amber-500" />}
+        {dark ? <Moon size={11} className="text-[var(--primary)] fill-[var(--primary)]" /> : <Sun size={11} className="text-warning" />}
       </span>
     </span>
   );
@@ -7231,7 +7231,7 @@ function AdminNav() {
       <Card className="p-4 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="font-medium text-sm">{t('nav.enable', 'Use this custom navigation')}</div>
-          <div className="text-xs text-[var(--faint)]">{enabled ? t('nav.enable.on', 'The topbar shows your configured items below.') : t('nav.enable.off', 'The topbar shows the built-in navigation.')}{enabled && validCount === 0 && <span className="text-amber-400"> · {t('nav.enable.empty', 'no valid items yet — the built-in nav still shows')}</span>}</div>
+          <div className="text-xs text-[var(--faint)]">{enabled ? t('nav.enable.on', 'The topbar shows your configured items below.') : t('nav.enable.off', 'The topbar shows the built-in navigation.')}{enabled && validCount === 0 && <span className="text-warning"> · {t('nav.enable.empty', 'no valid items yet — the built-in nav still shows')}</span>}</div>
         </div>
         <button type="button" onClick={() => setEnabled((v) => !v)} aria-pressed={enabled} className={`w-11 h-6 rounded-full relative shrink-0 transition ${enabled ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${enabled ? 'left-[22px]' : 'left-0.5'}`} /></button>
       </Card>
@@ -7341,7 +7341,7 @@ function AdminNav() {
               <div className="flex-1" />
               <button className="nav-icon-btn p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] disabled:opacity-30" disabled={i === 0} onClick={() => moveItem(i, -1)} title={t('nav.up', 'Move up')}><ChevronDown size={14} className="rotate-180" /></button>
               <button className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] disabled:opacity-30" disabled={i === items.length - 1} onClick={() => moveItem(i, 1)} title={t('nav.down', 'Move down')}><ChevronDown size={14} /></button>
-              <button className="p-1.5 rounded-lg border border-[var(--line)] text-red-400 hover:bg-red-500/10" onClick={() => removeItem(i)} title={t('nav.remove', 'Remove')}><Trash2 size={14} /></button>
+              <button className="p-1.5 rounded-lg border border-[var(--line)] text-error hover:bg-error-bg" onClick={() => removeItem(i)} title={t('nav.remove', 'Remove')}><Trash2 size={14} /></button>
             </div>
             <div className="grid sm:grid-cols-2 gap-2.5">
               <Field label={t('nav.label.en', 'Label (EN)')}><Input value={it.label} onChange={(e) => patchItem(i, { label: e.target.value })} placeholder="Apps" /></Field>
@@ -7362,7 +7362,7 @@ function AdminNav() {
                     <div className="flex-1" />
                     <button className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] disabled:opacity-30" disabled={j === 0} onClick={() => moveChild(i, j, -1)} title={t('nav.up', 'Move up')}><ChevronDown size={13} className="rotate-180" /></button>
                     <button className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] disabled:opacity-30" disabled={j === it.children.length - 1} onClick={() => moveChild(i, j, 1)} title={t('nav.down', 'Move down')}><ChevronDown size={13} /></button>
-                    <button className="p-1.5 rounded-lg border border-[var(--line)] text-red-400 hover:bg-red-500/10" onClick={() => removeChild(i, j)} title={t('nav.remove', 'Remove')}><Trash2 size={13} /></button>
+                    <button className="p-1.5 rounded-lg border border-[var(--line)] text-error hover:bg-error-bg" onClick={() => removeChild(i, j)} title={t('nav.remove', 'Remove')}><Trash2 size={13} /></button>
                   </div>
                   <div className="grid sm:grid-cols-2 gap-2">
                     <Input value={c.label} onChange={(e) => patchChild(i, j, { label: e.target.value })} placeholder={t('nav.label.en', 'Label (EN)')} />
@@ -7516,7 +7516,7 @@ function OwnerCatalogItems({ catalog, onChange }) {
               <Badge tone="">{it.kind}</Badge><span className="flex-1 min-w-0 truncate">{it.name}</span>
               {it.payloadKey && <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><HardDrive size={11} /> {fmtBytes(it.payloadSize)}</span>}
               <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><Download size={11} /> {it.downloads ?? 0}</span>
-              <button onClick={() => rm(it)} className="text-[var(--faint)] hover:text-red-400"><X size={13} /></button>
+              <button onClick={() => rm(it)} className="text-[var(--faint)] hover:text-error"><X size={13} /></button>
             </div>
           ))}
         </div>}
@@ -7527,7 +7527,7 @@ function OwnerCatalogItems({ catalog, onChange }) {
           <Badge tone="primary" title={t('oc.it.kindfixed', 'This catalog serves one type; every item uses it.')}>{KIND_LABEL[itemKind] || itemKind}</Badge>
           <Input className="flex-1 min-w-[120px]" placeholder={t('sub.name', 'Name')} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
           {!file && <Input className="flex-1 min-w-[160px]" placeholder="https://…/download" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />}
-          {file && <span className="text-xs text-[var(--muted)] flex items-center gap-1 min-w-0"><Upload size={12} /> <span className="truncate max-w-[160px]">{file.name}</span> ({fmtBytes(file.size)}) <button onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="hover:text-red-400"><X size={12} /></button></span>}
+          {file && <span className="text-xs text-[var(--muted)] flex items-center gap-1 min-w-0"><Upload size={12} /> <span className="truncate max-w-[160px]">{file.name}</span> ({fmtBytes(file.size)}) <button onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="hover:text-error"><X size={12} /></button></span>}
           <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
           <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()} title={t('oc.it.upload', 'Upload a file to your pool instead of linking a URL')}><Upload size={13} /> {t('oc.it.uploadbtn', 'Upload')}</Button>
           <Button size="sm" variant="default" onClick={add} disabled={busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {t('oc.additem', 'Add')}</Button>
@@ -7596,7 +7596,7 @@ function AdminCatalogs() {
               <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2.5 flex-wrap mt-0.5">
                 <a href={`/u/${c.ownerId}`} className="flex items-center gap-1 hover:text-[var(--primary)]" title={c.email}><Users size={11} /> {c.owner || t('cc.noname', '—')}{c.ownerRole && c.ownerRole !== 'USER' && <Badge tone={roleTone(c.ownerRole)}>{c.ownerRole}</Badge>}</a>
                 {cr ? <button onClick={() => { navigator.clipboard?.writeText(cr.id); toast.success(t('ccp.copied', 'Copied.')); }} className="font-mono inline-flex items-center gap-1 hover:text-[var(--primary)]" title={t('cc.creatorid', 'Linked BMM creator id')}><Fingerprint size={11} /> {cr.id.slice(0, 12)}… <Copy size={9} /></button>
-                  : <span className="inline-flex items-center gap-1 text-amber-500" title={t('cc.nolink', 'No linked BMM account')}><AlertTriangle size={11} /> {t('cc.nolink', 'no BMM link')}</span>}
+                  : <span className="inline-flex items-center gap-1 text-warning" title={t('cc.nolink', 'No linked BMM account')}><AlertTriangle size={11} /> {t('cc.nolink', 'no BMM link')}</span>}
                 <span>{c.itemCount} {t('cc.items', 'items')} · <Download size={11} className="inline" /> {c.downloads ?? 0}</span>
                 <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline">/c/{c.slug}</a>
               </div>
@@ -7614,7 +7614,7 @@ function AdminCatalogs() {
                   { value: 'suspended', label: t('cc.suspend', 'Suspended'), color: 'var(--error)' },
                 ]} />
               {c.mode === 'managed' && <Button size="sm" variant="ghost" onClick={() => setExamine(c)}><Eye size={13} /> {t('cc.examine', 'Examine')}</Button>}
-              <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(c)}><Trash2 size={13} /></Button>
+              <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(c)}><Trash2 size={13} /></Button>
             </div>
           </Card>
         ); })}
@@ -7654,7 +7654,7 @@ function AdminCatalogExamine({ catalog, onClose }) {
               {it.payloadKey && <><Button size="sm" variant="ghost" onClick={() => doInspect(it)}><FileText size={12} /> {t('cc.ex.inspect', 'Inspect')}</Button><Button size="sm" variant="ghost" onClick={() => dl(it)}><Download size={12} /></Button></>}
             </div>
             {openItem === it.id && <div className="mt-2 pt-2 border-t border-[var(--line)] text-xs">
-              {inspect?.loading ? <Loading /> : inspect?.error ? <p className="text-red-400">{inspect.error}</p> : inspect?.data ? (
+              {inspect?.loading ? <Loading /> : inspect?.error ? <p className="text-error">{inspect.error}</p> : inspect?.data ? (
                 inspect.data.type === 'zip' ? <div className="space-y-1">
                   {inspect.data.entries.map((e) => (
                     <div key={e.name}>
@@ -7722,7 +7722,7 @@ function AdminBadges() {
             </div>
             <Button size="sm" variant="ghost" onClick={() => setHoldersOf(b)}><Users size={13} /> {t('ab.grant', 'Grant')}</Button>
             <Button size="sm" variant="ghost" onClick={() => setEdit({ ...BADGE_BLANK, ...b, trigger: b.trigger || '' })}><PenSquare size={13} /></Button>
-            <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(b)}><Trash2 size={13} /></Button>
+            <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(b)}><Trash2 size={13} /></Button>
           </Card>
         ))}
       </div> : <EmptyState icon={BadgeCheck} title={t('ab.none.t', 'No badges yet')} sub={t('ab.none.s', 'Create your first badge — verified, developer, content creator…')} />}
@@ -7797,7 +7797,7 @@ function AdminBadgeHolders({ badge, onClose }) {
         {holders.map((h) => (
           <div key={h.userId} className="flex items-center gap-2 text-sm py-1.5 px-2 rounded-lg hover:bg-[var(--surface-2)]">
             <span className="flex-1 min-w-0 truncate">{h.displayName} <span className="text-[var(--faint)]">· {h.email}</span></span>
-            <button onClick={() => revoke(h)} className="text-[var(--faint)] hover:text-red-400"><X size={14} /></button>
+            <button onClick={() => revoke(h)} className="text-[var(--faint)] hover:text-error"><X size={14} /></button>
           </div>
         ))}
       </div> : <p className="text-sm text-[var(--faint)] text-center py-6">{t('ab.noholders', 'No one has this badge yet.')}</p>}
@@ -7883,13 +7883,13 @@ function ReportThreadModal({ id, admin, onClose }) {
           {admin && <span className="flex items-center gap-1"><Calendar size={11} /> {new Date(r.createdAt).toLocaleString()}</span>}
           {admin && r.reporter && <span className="flex items-center gap-1"><Users size={12} /> {r.reporter} · {r.reporterEmail} {r.reporterBcId && <button onClick={() => { navigator.clipboard?.writeText(r.reporterBcId); toast.success(t('prof.bcidcopied', 'BC id copied.')); }} className="font-mono hover:text-[var(--primary)] inline-flex items-center gap-1"><Fingerprint size={11} /> {r.reporterBcId} <Copy size={9} /></button>}</span>}
         </div>
-        {own && <div className="text-xs rounded-lg px-3 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center gap-2"><AlertTriangle size={14} /> {t('ar.ownreport', 'You opened this report — reply to it from your dashboard (Reports & contact), not as staff here.')}</div>}
+        {own && <div className="text-xs rounded-lg px-3 py-2 bg-warning-bg border border-warning-border text-warning flex items-center gap-2"><AlertTriangle size={14} /> {t('ar.ownreport', 'You opened this report — reply to it from your dashboard (Reports & contact), not as staff here.')}</div>}
         {admin && !own && <div className="flex flex-wrap gap-2">
           {r.status !== 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus('open')}><RefreshCw size={13} /> {t('ar.reopen', 'Reopen')}</Button>}
           {r.status !== 'archived' && <Button size="sm" variant="ghost" onClick={() => setStatus('archived')}><Archive size={13} /> {t('ar.archive', 'Archive')}</Button>}
           {r.status !== 'closed' && <Button size="sm" variant="ghost" onClick={() => setStatus('closed')}><CheckCircle2 size={13} /> {t('ar.close', 'Close')}</Button>}
           <Button size="sm" variant="ghost" onClick={() => setPeople((v) => !v)}><Users size={13} /> {t('ar.people', 'People')}{r.participants?.length ? ` (${r.participants.length})` : ''}</Button>
-          <Button size="sm" variant="ghost" className="!text-red-400" onClick={del}><Trash2 size={13} /> {t('common.delete', 'Delete')}</Button>
+          <Button size="sm" variant="ghost" className="!text-error" onClick={del}><Trash2 size={13} /> {t('common.delete', 'Delete')}</Button>
         </div>}
         {admin && !own && people && <ReportPeoplePanel report={r} onChange={reload} />}
         {/* The reporter's own controls — shown in the user view, and also to a staff member
@@ -7939,7 +7939,7 @@ function ReportPeoplePanel({ report, onChange }) {
             <div key={p2.userId} className="flex items-center gap-2 text-sm">
               <Badge tone={p2.role === 'staff' ? 'amber' : ''}>{p2.role}</Badge>
               <span className="flex-1 min-w-0 truncate">{p2.name} <span className="text-[var(--faint)] text-xs">· {p2.email}</span></span>
-              <button onClick={() => rmPart(p2)} className="text-[var(--faint)] hover:text-red-400"><X size={13} /></button>
+              <button onClick={() => rmPart(p2)} className="text-[var(--faint)] hover:text-error"><X size={13} /></button>
             </div>
           ))}
         </div>}
@@ -7958,7 +7958,7 @@ function ReportPeoplePanel({ report, onChange }) {
               <span className="flex-1 min-w-0 truncate font-mono">{iv.url}</span>
               <span className="text-[var(--faint)] shrink-0">{iv.maxUses === 0 ? '∞' : `${iv.uses}/${iv.maxUses}`}{iv.targetType !== 'any' ? ` · ${iv.targetType}` : ''}</span>
               <button onClick={() => { navigator.clipboard?.writeText(iv.url); toast.success(t('ccp.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--primary)]"><Copy size={12} /></button>
-              <button onClick={() => rmInvite(iv)} className="text-[var(--faint)] hover:text-red-400"><X size={12} /></button>
+              <button onClick={() => rmInvite(iv)} className="text-[var(--faint)] hover:text-error"><X size={12} /></button>
             </div>
           ))}
         </div>}
@@ -8227,7 +8227,7 @@ function AdminFooter() {
               <div className="flex-1" />
               <button onClick={() => setF({ ...f, columns: move(f.columns, ci, -1) })} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)]" aria-label="up">↑</button>
               <button onClick={() => setF({ ...f, columns: move(f.columns, ci, 1) })} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)]" aria-label="down">↓</button>
-              <button onClick={() => setF({ ...f, columns: f.columns.filter((_, n) => n !== ci) })} className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10"><Trash2 size={13} /></button>
+              <button onClick={() => setF({ ...f, columns: f.columns.filter((_, n) => n !== ci) })} className="p-1.5 rounded-lg text-error hover:bg-error-bg"><Trash2 size={13} /></button>
             </div>
             <div className="space-y-1.5 pl-1">
               {(c.links || []).map((l, li) => (
@@ -8238,7 +8238,7 @@ function AdminFooter() {
                   <Select className="!w-auto !text-xs" value={l.on || 'both'} onChange={(e) => setLink(ci, li, { on: e.target.value })}>{ON_OPTS.map(([v, lb]) => <option key={v} value={v}>{lb}</option>)}</Select>
                   <button onClick={() => setCol(ci, { links: move(c.links, li, -1) })} className="text-[var(--faint)] hover:text-[var(--text)] px-1">↑</button>
                   <button onClick={() => setCol(ci, { links: move(c.links, li, 1) })} className="text-[var(--faint)] hover:text-[var(--text)] px-1">↓</button>
-                  <button onClick={() => setCol(ci, { links: c.links.filter((_, n) => n !== li) })} className="text-red-400 px-1"><Trash2 size={12} /></button>
+                  <button onClick={() => setCol(ci, { links: c.links.filter((_, n) => n !== li) })} className="text-error px-1"><Trash2 size={12} /></button>
                 </div>
               ))}
               <Button size="sm" variant="ghost" onClick={() => setCol(ci, { links: [...(c.links || []), { label: '', to: '/', on: 'both' }] })}><Plus size={13} /> {t('afoot.addlink', 'Add link')}</Button>
@@ -8451,7 +8451,7 @@ function AdminSiteTheme() {
                 ))}
                 {f[scope].bg && f[scope].text && (() => {
                   const r = contrastRatio(f[scope].bg, f[scope].text);
-                  return <span className={`text-[11px] ${r >= 4.5 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  return <span className={`text-[11px] ${r >= 4.5 ? 'text-success' : 'text-warning'}`}>
                     {t('st.textcontrast', 'Text {n}:1').replace('{n}', r.toFixed(2))}{r >= 4.5 ? '' : ` — ${t('st.belowaa', 'below AA')}`}
                   </span>;
                 })()}
@@ -8521,7 +8521,7 @@ function AdminSiteTheme() {
           <span className="gradient-text text-lg font-semibold">{t('st.sampletext', 'Gradient heading')}</span>
           <span className="px-2 py-0.5 rounded-md text-xs" style={{ background: 'var(--primary)', color: 'var(--on-primary)' }}>Badge</span>
         </div>
-        <div className={`text-[11px] mt-2 ${ratio >= 4.5 ? 'text-emerald-400' : 'text-amber-400'}`}>
+        <div className={`text-[11px] mt-2 ${ratio >= 4.5 ? 'text-success' : 'text-warning'}`}>
           {ratio >= 4.5
             ? t('st.contrastok', 'Button text contrast {n}:1 — clears WCAG AA (4.5:1).').replace('{n}', ratio.toFixed(2))
             : t('st.contrastlow', 'Button text contrast {n}:1 — below WCAG AA (4.5:1). The ink already flipped to its best option; this accent is simply hard to write on.').replace('{n}', ratio.toFixed(2))}
@@ -8549,7 +8549,7 @@ function FreePoolBreakdown({ open, onClose }) {
           <div className="text-xs text-[var(--muted)] mb-2">{t('fpb.desc', 'Everything provisioned through the actual $0 Free plan. Admin-provisioned and promo-granted repos are excluded by design.')}</div>
           {data.map((e) => (
             <Card key={e.id} className="p-3 flex items-center gap-3">
-              <span className="grid place-items-center w-8 h-8 rounded-lg bg-emerald-500/10 border border-[var(--line)] shrink-0">{e.type === 'pool' ? <Layers size={14} className="text-emerald-400" /> : <Server size={14} className="text-emerald-400" />}</span>
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-success-bg border border-[var(--line)] shrink-0">{e.type === 'pool' ? <Layers size={14} className="text-success" /> : <Server size={14} className="text-success" />}</span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate">{e.name} {e.type === 'pool' && <span className="text-[11px] text-[var(--faint)]">· {t('fpb.repos', '{n} repo(s)').replace('{n}', e.repoCount)}</span>}</div>
                 <div className="text-xs text-[var(--faint)] truncate">{e.owner} · {e.email}</div>
@@ -8591,14 +8591,14 @@ function TempStorageManager({ open, onClose, onChange }) {
   const fmtAge = (d) => { const days = Math.floor((Date.now() - new Date(d)) / 864e5); return days <= 0 ? t('ts.today', 'today') : t('ts.daysago', '{n}d ago').replace('{n}', days); };
   return (
     <Modal open={open} onClose={onClose} title={t('ts.title', 'Temp storage — submission payloads')} icon={Upload} width="max-w-2xl"
-      footer={rejected.length > 0 ? <Button variant="ghost" className="!text-red-400" disabled={busy === '__all__'} onClick={purgeAllRejected}>{busy === '__all__' ? <Spinner /> : <><Trash2 size={14} /> {t('ts.purgeallbtn', 'Purge all rejected ({n})').replace('{n}', rejected.length)}</>}</Button> : null}>
+      footer={rejected.length > 0 ? <Button variant="ghost" className="!text-error" disabled={busy === '__all__'} onClick={purgeAllRejected}>{busy === '__all__' ? <Spinner /> : <><Trash2 size={14} /> {t('ts.purgeallbtn', 'Purge all rejected ({n})').replace('{n}', rejected.length)}</>}</Button> : null}>
       {data == null ? <Loading /> : items.length === 0 ? (
         <EmptyState icon={CheckCircle2} title={t('ts.empty.t', 'Nothing held')} sub={t('ts.empty.s', 'No submission payloads are occupying the temp margin right now.')} />
       ) : (
         <>
           <div className="flex gap-3 mb-3 text-xs">
-            <span className="flex items-center gap-1.5 text-[var(--muted)]"><span className="w-2.5 h-2.5 rounded-sm bg-amber-400" /> {t('ts.pending', 'Pending')} <b className="text-[var(--text)] tabular-nums">{(data.pendingMB || 0).toFixed(1)} MB</b></span>
-            <span className="flex items-center gap-1.5 text-[var(--muted)]"><span className="w-2.5 h-2.5 rounded-sm bg-red-400/70" /> {t('ts.rejected', 'Rejected (in grace)')} <b className="text-[var(--text)] tabular-nums">{(data.rejectedMB || 0).toFixed(1)} MB</b></span>
+            <span className="flex items-center gap-1.5 text-[var(--muted)]"><span className="w-2.5 h-2.5 rounded-sm bg-warning" /> {t('ts.pending', 'Pending')} <b className="text-[var(--text)] tabular-nums">{(data.pendingMB || 0).toFixed(1)} MB</b></span>
+            <span className="flex items-center gap-1.5 text-[var(--muted)]"><span className="w-2.5 h-2.5 rounded-sm bg-error-bg" /> {t('ts.rejected', 'Rejected (in grace)')} <b className="text-[var(--text)] tabular-nums">{(data.rejectedMB || 0).toFixed(1)} MB</b></span>
           </div>
           <div className="space-y-1.5 max-h-[52vh] overflow-y-auto">
             {items.map((it) => (
@@ -8609,7 +8609,7 @@ function TempStorageManager({ open, onClose, onChange }) {
                   <div className="text-xs text-[var(--faint)] truncate">{it.owner} · {it.status === 'REJECTED' && it.purgeAt ? t('ts.autopurge', 'auto-purge {when}').replace('{when}', fmtAge(it.updatedAt)) : fmtAge(it.updatedAt)}</div>
                 </div>
                 <span className="tabular-nums text-xs font-semibold shrink-0">{(it.sizeMB || 0).toFixed(1)} MB</span>
-                <Button size="sm" variant="ghost" className="!text-red-400" disabled={busy === it.id} onClick={() => purgeOne(it)}>{busy === it.id ? <Spinner /> : <Trash2 size={13} />}</Button>
+                <Button size="sm" variant="ghost" className="!text-error" disabled={busy === it.id} onClick={() => purgeOne(it)}>{busy === it.id ? <Spinner /> : <Trash2 size={13} />}</Button>
               </Card>
             ))}
           </div>
@@ -8711,8 +8711,8 @@ function AdminSettings() {
             {c.freeTierCapEnabled && c.freeTierCapGB > 0 && (
               <div className="mt-3 pt-3 border-t border-[var(--line)]">
                 <button type="button" onClick={() => setFreePoolOpen(true)} className="w-full text-left group" title={t('hs.freepool.view', 'See what fills this pool')}>
-                  <div className="flex items-center justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1.5 group-hover:text-[var(--text)]"><Gift size={12} className="text-emerald-400" /> {t('hs.freepool', 'Free-plan pool (separate)')} <ArrowUpRight size={11} className="opacity-40 group-hover:opacity-100" /></span><span className="tabular-nums font-medium">{(c.freeTierUsedGB || 0).toFixed(1)} / {c.freeTierCapGB} GB</span></div>
-                  <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, ((c.freeTierUsedGB || 0) / c.freeTierCapGB) * 100)}%` }} /></div>
+                  <div className="flex items-center justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1.5 group-hover:text-[var(--text)]"><Gift size={12} className="text-success" /> {t('hs.freepool', 'Free-plan pool (separate)')} <ArrowUpRight size={11} className="opacity-40 group-hover:opacity-100" /></span><span className="tabular-nums font-medium">{(c.freeTierUsedGB || 0).toFixed(1)} / {c.freeTierCapGB} GB</span></div>
+                  <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-success" style={{ width: `${Math.min(100, ((c.freeTierUsedGB || 0) / c.freeTierCapGB) * 100)}%` }} /></div>
                 </button>
               </div>
             )}
@@ -8723,10 +8723,10 @@ function AdminSettings() {
               return (
                 <div className="mt-3 pt-3 border-t border-[var(--line)]">
                   <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="text-[var(--muted)] flex items-center gap-1.5"><Gauge size={12} className="text-sky-400" /> {t('hs.telestore', 'BMM telemetry storage')} {alloc > 0 ? '' : <span className="text-[var(--faint)]">{t('hs.nolimit', '(no limit set)')}</span>}</span>
+                    <span className="text-[var(--muted)] flex items-center gap-1.5"><Gauge size={12} className="text-info" /> {t('hs.telestore', 'BMM telemetry storage')} {alloc > 0 ? '' : <span className="text-[var(--faint)]">{t('hs.nolimit', '(no limit set)')}</span>}</span>
                     <span className="tabular-nums font-medium">{c.telemetryUsedGB.toFixed(2)}{alloc > 0 ? ` / ${alloc} GB` : ` ${t('hs.gbused', 'GB used')}`}</span>
                   </div>
-                  {alloc > 0 && <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-red-500' : 'bg-sky-500'}`} style={{ width: `${pct}%` }} /></div>}
+                  {alloc > 0 && <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-error' : 'bg-info'}`} style={{ width: `${pct}%` }} /></div>}
                 </div>
               );
             })()}
@@ -8744,12 +8744,12 @@ function AdminSettings() {
             <span className="font-semibold tabular-nums">{(c.tempUsedGB ?? 0).toFixed(2)} / {c.tempMarginGB ?? 0} GB</span>
           </div>
           <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden flex">
-            <div className={`h-full ${tempPct > 90 ? 'bg-red-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} style={{ width: `${(c.tempMarginGB ? Math.min(100, ((c.tempPendingGB || 0) / c.tempMarginGB) * 100) : 0)}%` }} title={t('hs.temppending', 'Pending review')} />
-            <div className="h-full bg-red-400/60" style={{ width: `${(c.tempMarginGB ? Math.min(100, ((c.tempRejectedGB || 0) / c.tempMarginGB) * 100) : 0)}%` }} title={t('hs.temprejected', 'Rejected (in grace)')} />
+            <div className={`h-full ${tempPct > 90 ? 'bg-error' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${(c.tempMarginGB ? Math.min(100, ((c.tempPendingGB || 0) / c.tempMarginGB) * 100) : 0)}%` }} title={t('hs.temppending', 'Pending review')} />
+            <div className="h-full bg-error-bg" style={{ width: `${(c.tempMarginGB ? Math.min(100, ((c.tempRejectedGB || 0) / c.tempMarginGB) * 100) : 0)}%` }} title={t('hs.temprejected', 'Rejected (in grace)')} />
           </div>
           <div className="flex items-center justify-between gap-2 mt-1.5 flex-wrap">
             <div className="text-[11px] text-[var(--faint)]">{t('hs.tempnote', 'Submitted files (.bmmplugin, .bmmtheme, app payloads) live here until moderation. When full, new submission uploads are refused.')}
-              {(c.tempRejectedGB || 0) > 0.001 && <span className="text-red-400"> · {t('hs.temprej', '{n} GB held by rejected files in grace').replace('{n}', (c.tempRejectedGB || 0).toFixed(2))}</span>}</div>
+              {(c.tempRejectedGB || 0) > 0.001 && <span className="text-error"> · {t('hs.temprej', '{n} GB held by rejected files in grace').replace('{n}', (c.tempRejectedGB || 0).toFixed(2))}</span>}</div>
             <Button size="sm" variant="ghost" onClick={() => setTempOpen(true)}><Files size={13} /> {t('hs.tempmanage', 'Manage')}</Button>
           </div>
         </Card>
@@ -8791,7 +8791,7 @@ function AdminSettings() {
                     </div>
                   )}
                   <div className="text-[11px] text-[var(--faint)] mt-1.5">{D}</div>
-                  {k === 'hosting.totalCapacityGB' && c?.diskTotalGB != null && <div className="text-[11px] text-amber-400/90 mt-1">{t('hs.realdiskcap', "Real disk: {free} GB free / {total} GB total — can't be set above this.").replace('{free}', c.diskFreeGB.toFixed(0)).replace('{total}', c.diskTotalGB.toFixed(0))}</div>}
+                  {k === 'hosting.totalCapacityGB' && c?.diskTotalGB != null && <div className="text-[11px] text-warning mt-1">{t('hs.realdiskcap', "Real disk: {free} GB free / {total} GB total — can't be set above this.").replace('{free}', c.diskFreeGB.toFixed(0)).replace('{total}', c.diskTotalGB.toFixed(0))}</div>}
                 </Card>
                 );
               })}

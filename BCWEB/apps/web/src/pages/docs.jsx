@@ -469,7 +469,7 @@ function HelpfulWidget({ page, canEdit }) {
     setCounts((c) => ({ ...c, [rating]: c[rating] + 1 }));
     try { const r = await api.post(`/docs/${page.id}/feedback`, { rating }); setCounts({ good: r.helpfulYes, ok: r.helpfulOk, bad: r.helpfulNo }); } catch {}
   };
-  const FACES = [['good', Smile, 'text-emerald-500', 'hover:border-emerald-500 hover:text-emerald-500'], ['ok', Meh, 'text-amber-500', 'hover:border-amber-500 hover:text-amber-500'], ['bad', Frown, 'text-red-500', 'hover:border-red-500 hover:text-red-500']];
+  const FACES = [['good', Smile, 'text-success', 'hover:border-success hover:text-success'], ['ok', Meh, 'text-warning', 'hover:border-warning hover:text-warning'], ['bad', Frown, 'text-error', 'hover:border-error hover:text-error']];
   return (
     <div className="mt-12 pt-6 border-t border-[var(--line)] flex flex-col items-center gap-2.5">
       <span className="text-sm text-[var(--muted)]">{voted ? t('docs.helpful.thanks') : t('docs.helpful')}</span>
@@ -590,16 +590,16 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
   return (
     <Modal open onClose={onClose} title={page ? 'Edit page' : 'New page'} icon={BookOpen} width="max-w-3xl"
       footer={<>
-        {page && <Button variant="ghost" className="!text-red-400 mr-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
+        {page && <Button variant="ghost" className="!text-error mr-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
         {page && <Button variant="ghost" onClick={() => setShowHistory(true)}><History size={15} /> History</Button>}
         {page && <Button variant="ghost" onClick={() => setShowComments(true)}><MessageSquare size={15} /> Comments</Button>}
-        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2" title="Show the comment thread to readers on the published page"><input type="checkbox" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} /> {f.commentsPublic ? <Globe size={13} className="text-emerald-400" /> : <MessageSquare size={13} />} Public comments</label>
+        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2" title="Show the comment thread to readers on the published page"><input type="checkbox" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} /> {f.commentsPublic ? <Globe size={13} className="text-success" /> : <MessageSquare size={13} />} Public comments</label>
         <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2"><input type="checkbox" checked={f.published} onChange={(e) => setF({ ...f, published: e.target.checked })} /> Published</label>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> Save</>}</Button>
       </>}>
       {merge && (
-        <div className={`mb-3 rounded-xl border px-3.5 py-2.5 text-sm flex items-start gap-2.5 ${merge.conflicts > 0 ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'}`}>
+        <div className={`mb-3 rounded-xl border px-3.5 py-2.5 text-sm flex items-start gap-2.5 ${merge.conflicts > 0 ? 'border-warning-border bg-warning-bg text-warning' : 'border-success-border bg-success-bg text-success'}`}>
           <GitMerge size={16} className="shrink-0 mt-0.5" />
           <div className="flex-1">
             {merge.conflicts > 0
@@ -622,7 +622,7 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
       <div className="flex items-center gap-1 mb-2">
         {[['en', 'English (base)'], ['fr', 'Français']].map(([l, label]) => (
           <button key={l} type="button" onClick={() => setTab(l)} className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 border ${tab === l ? 'bg-[var(--surface-2)] border-[var(--line)] font-medium' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <Languages size={13} /> {label}{l === 'fr' && f.bodyFr && <span className="text-[10px] text-emerald-400">✓</span>}
+            <Languages size={13} /> {label}{l === 'fr' && f.bodyFr && <span className="text-[10px] text-success">✓</span>}
           </button>
         ))}
       </div>

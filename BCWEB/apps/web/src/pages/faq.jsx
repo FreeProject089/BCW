@@ -60,7 +60,7 @@ export default function Faq() {
                 {items.map((it) => { const isOpen = open.has(it.id); return (
                   <Card key={it.id} className="overflow-hidden">
                     <button onClick={() => toggle(it.id)} className="w-full flex items-center gap-3 text-left p-4 hover:bg-[var(--surface-2)]/40 transition">
-                      <span className="flex-1 font-medium">{questionOf(it)}{!it.published && <span className="ml-2 text-[10px] uppercase tracking-wide text-amber-400">{t('faq.draft', 'draft')}</span>}</span>
+                      <span className="flex-1 font-medium">{questionOf(it)}{!it.published && <span className="ml-2 text-[10px] uppercase tracking-wide text-warning">{t('faq.draft', 'draft')}</span>}</span>
                       <ChevronDown size={17} className={`text-[var(--faint)] shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {isOpen && <div className="px-4 pb-4 pt-1 border-t border-[var(--line)] text-sm"><Markdown>{answerOf(it) || t('faq.empty', '*No answer yet.*')}</Markdown></div>}

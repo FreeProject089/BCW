@@ -215,11 +215,11 @@ export function JsonEditor({ value, onChange, placeholder, minH = 170 }) {
     }
   };
   return (
-    <div className={`rounded-xl border overflow-hidden transition-colors ${err ? 'border-red-500/40' : 'border-[var(--line)]'}`} style={{ background: 'var(--surface-2)' }}>
+    <div className={`rounded-xl border overflow-hidden transition-colors ${err ? 'border-error-border' : 'border-[var(--line)]'}`} style={{ background: 'var(--surface-2)' }}>
       <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-[var(--line)]">
         <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]"><FileJson size={12} /> JSON</span>
         <div className="flex items-center gap-2.5 text-[10px]">
-          <span className={`flex items-center gap-1 ${err ? 'text-red-400' : 'text-emerald-400'}`}><span className={`w-1.5 h-1.5 rounded-full ${err ? 'bg-red-400' : 'bg-emerald-400'}`} />{err ? 'invalid' : 'valid'}</span>
+          <span className={`flex items-center gap-1 ${err ? 'text-error' : 'text-success'}`}><span className={`w-1.5 h-1.5 rounded-full ${err ? 'bg-error' : 'bg-success'}`} />{err ? 'invalid' : 'valid'}</span>
           <button type="button" onClick={format} className="flex items-center gap-1 text-[var(--muted)] hover:text-[var(--text)]"><Wand2 size={11} /> Format</button>
         </div>
       </div>
@@ -235,7 +235,7 @@ export function JsonEditor({ value, onChange, placeholder, minH = 170 }) {
       <textarea ref={taRef} onScroll={syncScroll} value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} placeholder={placeholder} spellCheck={false}
         className={`${EDITOR_TEXT} relative w-full bg-transparent outline-none resize-y text-transparent caret-[var(--text)]`} style={{ minHeight: minH }} />
       </div>
-      {err && <div className="px-3 py-1.5 text-[10px] text-red-400 border-t border-red-500/20 truncate" title={err}>{err}</div>}
+      {err && <div className="px-3 py-1.5 text-[10px] text-error border-t border-error-border truncate" title={err}>{err}</div>}
     </div>
   );
 }
@@ -321,7 +321,7 @@ export function Installer() {
       <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {feats.map(([I, title, d]) => <Card key={title} className="p-5"><I size={20} className="text-[var(--primary-2)]" /><div className="font-semibold mt-3">{title}</div><div className="text-sm text-[var(--muted)] mt-1">{d}</div></Card>)}
       </section>
-      <Card className="p-8 mt-6 text-center bg-gradient-to-b from-orange-500/10 to-transparent">
+      <Card className="p-8 mt-6 text-center bg-gradient-to-b from-brand to-transparent">
         <Sparkles size={22} className="mx-auto text-[var(--primary-2)]" />
         <div className="font-semibold text-lg mt-2">{t('inst.dev', 'In active development')}</div>
         <p className="text-sm text-[var(--muted)] mt-1 max-w-md mx-auto">{t('inst.dev.d', 'BetterInstaller is being built as a separate Slint-based app. Follow progress on the blog.')}</p>

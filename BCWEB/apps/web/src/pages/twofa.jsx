@@ -246,9 +246,9 @@ export function TwoFactor() {
 
       {/* privacy / security note */}
       <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-4 flex items-start gap-2.5 text-xs text-[var(--muted)]">
-        <ShieldCheck size={15} className="text-emerald-400 shrink-0 mt-0.5" />
+        <ShieldCheck size={15} className="text-success shrink-0 mt-0.5" />
         <div>{t('tfa.note', 'Secrets never leave this browser — codes are computed locally with the Web Crypto API and stored only in this device’s local storage.')} {encrypted
-          ? <span className="text-emerald-400">{t('tfa.note.enc', 'Encrypted at rest.')} <button className="underline" onClick={removePassphrase}>{t('tfa.pass.remove', 'remove')}</button> · <button className="underline" onClick={lockNow}>{t('tfa.lock', 'lock now')}</button></span>
+          ? <span className="text-success">{t('tfa.note.enc', 'Encrypted at rest.')} <button className="underline" onClick={removePassphrase}>{t('tfa.pass.remove', 'remove')}</button> · <button className="underline" onClick={lockNow}>{t('tfa.lock', 'lock now')}</button></span>
           : <button className="underline text-[var(--primary-2)]" onClick={setPassphrase}>{t('tfa.pass.add', 'Add a passphrase to encrypt the vault.')}</button>}</div>
       </div>
 
@@ -256,7 +256,7 @@ export function TwoFactor() {
       <div className="flex flex-wrap gap-2 mb-4">
         <Button variant="primary" onClick={() => setManualOpen((v) => !v)}><KeyRound size={15} /> {t('tfa.addmanual', 'Add by secret')}</Button>
         {scanning
-          ? <Button className="!text-red-400" onClick={stopScan}><X size={15} /> {t('tfa.stopscan', 'Stop camera')}</Button>
+          ? <Button className="!text-error" onClick={stopScan}><X size={15} /> {t('tfa.stopscan', 'Stop camera')}</Button>
           : <Button onClick={startScan}><Camera size={15} /> {t('tfa.scancam', 'Scan QR (camera)')}</Button>}
         <label className="btn cursor-pointer"><QrCode size={15} /> {t('tfa.scanimg', 'Scan QR image')}<input type="file" accept="image/*" className="hidden" onChange={(e) => { scanImage(e.target.files?.[0]); e.target.value = ''; }} /></label>
       </div>
@@ -288,7 +288,7 @@ export function TwoFactor() {
       {showHistory && (
         <Card className="p-4 mb-4">
           <div className="flex items-center justify-between mb-2"><span className="font-medium text-sm flex items-center gap-2"><HistoryIcon size={14} className="text-[var(--primary-2)]" /> {t('tfa.history.title', 'Copied-code history')}</span>
-            {history.length > 0 && <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => commit(accounts, [])}><Trash2 size={13} /> {t('tfa.history.clear', 'Clear')}</Button>}</div>
+            {history.length > 0 && <Button size="sm" variant="ghost" className="!text-error" onClick={() => commit(accounts, [])}><Trash2 size={13} /> {t('tfa.history.clear', 'Clear')}</Button>}</div>
           {history.length ? <div className="max-h-64 overflow-auto divide-y divide-[var(--line)]">
             {history.map((h) => (
               <div key={h.id} className="flex items-center gap-3 py-1.5 text-sm">
@@ -310,16 +310,16 @@ export function TwoFactor() {
                 <div className="font-semibold truncate">{a.issuer || a.label}</div>
                 {a.issuer && a.label && <div className="text-xs text-[var(--faint)] truncate">{a.label}</div>}
               </div>
-              <button onClick={() => del(a)} className="text-[var(--faint)] hover:text-red-400 shrink-0" title={t('tfa.del.ok', 'Remove')}><Trash2 size={14} /></button>
+              <button onClick={() => del(a)} className="text-[var(--faint)] hover:text-error shrink-0" title={t('tfa.del.ok', 'Remove')}><Trash2 size={14} /></button>
             </div>
             <button onClick={() => copyCode(a)} className="mt-3 w-full flex items-center justify-between gap-3 group" title={t('tfa.copyhint', 'Click to copy')}>
               <span className="text-3xl font-bold font-mono tracking-widest tabular-nums text-[var(--text)] group-hover:text-[var(--primary-2)] transition">{code ? code.replace(/(\d{3})(\d+)/, '$1 $2') : '••••••'}</span>
               <span className="flex items-center gap-2 shrink-0">
-                <span className={`text-xs tabular-nums flex items-center gap-1 ${remaining <= 5 ? 'text-red-400' : 'text-[var(--faint)]'}`}><Clock size={12} /> {remaining}s</span>
+                <span className={`text-xs tabular-nums flex items-center gap-1 ${remaining <= 5 ? 'text-error' : 'text-[var(--faint)]'}`}><Clock size={12} /> {remaining}s</span>
                 <Copy size={14} className="text-[var(--faint)] group-hover:text-[var(--primary-2)]" />
               </span>
             </button>
-            <div className="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden mt-2"><div className={`h-full transition-all duration-1000 ease-linear ${remaining <= 5 ? 'bg-red-500' : 'bg-gradient-to-r from-orange-500 to-amber-500'}`} style={{ width: `${pct}%` }} /></div>
+            <div className="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden mt-2"><div className={`h-full transition-all duration-1000 ease-linear ${remaining <= 5 ? 'bg-error' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>
             {/* Backup / recovery codes stored alongside this account. */}
             <details className="mt-2.5 group/bk">
               <summary className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] cursor-pointer flex items-center gap-1.5 select-none list-none"><KeyIcon size={11} /> {t('tfa.bk.title', 'Backup codes')} {(a.backupCodes?.length || 0) > 0 && <span className="text-[var(--primary-2)]">({a.backupCodes.length})</span>}</summary>
@@ -329,7 +329,7 @@ export function TwoFactor() {
                     {a.backupCodes.map((bc) => (
                       <span key={bc} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px] font-mono">
                         <button type="button" onClick={() => { navigator.clipboard?.writeText(bc); toast.success(t('tfa.copied', 'Code copied.')); }} className="hover:text-[var(--primary-2)]">{bc}</button>
-                        <button type="button" onClick={() => removeBackupCode(a, bc)} className="text-[var(--faint)] hover:text-red-400"><X size={9} /></button>
+                        <button type="button" onClick={() => removeBackupCode(a, bc)} className="text-[var(--faint)] hover:text-error"><X size={9} /></button>
                       </span>
                     ))}
                   </div>

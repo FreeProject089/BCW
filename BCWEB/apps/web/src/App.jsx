@@ -316,7 +316,7 @@ function NavNotifications() {
                   <span className="text-[11px] text-[var(--faint)]">{timeAgo(n.createdAt, t('notif.justnow'))}</span>
                 </span>
               </button>
-              <button onClick={() => del(n)} title="Delete" className="shrink-0 text-[var(--faint)] hover:text-red-400 opacity-0 group-hover:opacity-100 transition mt-0.5"><Trash2 size={13} /></button>
+              <button onClick={() => del(n)} title="Delete" className="shrink-0 text-[var(--faint)] hover:text-error opacity-0 group-hover:opacity-100 transition mt-0.5"><Trash2 size={13} /></button>
             </div>
           ); }) : <div className="px-3 py-8 text-center text-sm text-[var(--muted)]">{t('notif.none')}</div>}
           </div>
@@ -810,7 +810,7 @@ function AnnouncementBanner() {
   };
   const visible = announcements.filter((a) => !dismissed.includes(a.id));
   if (!visible.length) return null;
-  const TONE = { info: 'bg-orange-500/10 border-orange-500/25 text-[var(--text)]', warning: 'bg-amber-500/10 border-amber-500/30 text-amber-400', success: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' };
+  const TONE = { info: 'bg-orange-500/10 border-orange-500/25 text-[var(--text)]', warning: 'bg-warning-bg border-warning-border text-warning', success: 'bg-success-bg border-success-border text-success' };
   const TONE_ICON = { info: Info, warning: AlertTriangle, success: CheckCircle2 };
   return (
     <div className="max-w-7xl mx-auto px-2 sm:px-3 pt-2 space-y-2">

@@ -36,7 +36,7 @@ function CommentBody({ c, isReply, ctx }) {
         <span className="text-sm font-medium">{c.author?.name}</span>
         <span className="text-[11px] text-[var(--faint)]">{fmt(c.createdAt)}</span>
         {edited && <button onClick={() => openHistory(c.id)} title="View this comment's edit history" className="text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-0.5 underline decoration-dotted"><History size={10} /> edited</button>}
-        {c.resolved && <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400 flex items-center gap-0.5"><Check size={10} /> resolved</span>}
+        {c.resolved && <span className="text-[10px] font-semibold uppercase tracking-wide text-success flex items-center gap-0.5"><Check size={10} /> resolved</span>}
         {c.participants?.length > 1 && (
           <span className="flex items-center -space-x-1.5 ml-auto" title={`Contributors: ${c.participants.map((u) => u.name).join(', ')}`}>
             {c.participants.slice(0, 5).map((u) => (
@@ -61,8 +61,8 @@ function CommentBody({ c, isReply, ctx }) {
         <div className="ml-8 mt-1 flex items-center gap-3 text-[11px] text-[var(--faint)]">
           {!isReply && <button className="hover:text-[var(--text)] flex items-center gap-1" onClick={() => { setReplyTo(c.id); setReplyBody(''); }}><CornerDownRight size={11} /> Reply</button>}
           <button className="hover:text-[var(--text)] flex items-center gap-1" onClick={() => setEditing({ id: c.id, body: c.body, base: c.body })}><Pencil size={11} /> Edit</button>
-          {!isReply && <button className="hover:text-emerald-400 flex items-center gap-1" onClick={() => toggleResolved(c)}><Check size={11} /> {c.resolved ? 'Unresolve' : 'Resolve'}</button>}
-          <button className="hover:text-red-400 flex items-center gap-1" onClick={() => del(c.id)}><Trash2 size={11} /> Delete</button>
+          {!isReply && <button className="hover:text-success flex items-center gap-1" onClick={() => toggleResolved(c)}><Check size={11} /> {c.resolved ? 'Unresolve' : 'Resolve'}</button>}
+          <button className="hover:text-error flex items-center gap-1" onClick={() => del(c.id)}><Trash2 size={11} /> Delete</button>
         </div>
       )}
       {replyTo === c.id && (
@@ -153,7 +153,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
     <Modal open onClose={onClose} title="Comments" icon={MessageSquare} width="max-w-2xl"
       footer={<>
         <span className="text-xs mr-auto flex items-center gap-1.5 text-[var(--faint)]">
-          {data?.commentsPublic ? <><Globe size={13} className="text-emerald-400" /> Visible to readers</> : <><Lock size={13} /> Editors only</>}
+          {data?.commentsPublic ? <><Globe size={13} className="text-success" /> Visible to readers</> : <><Lock size={13} /> Editors only</>}
         </span>
         <Button variant="ghost" onClick={onClose}>Close</Button>
       </>}>
@@ -186,7 +186,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
                           <CAvatar a={c} />
                           <span className="text-sm font-medium shrink-0">{c.author?.name}</span>
                           <span className="text-[11px] text-[var(--faint)] truncate flex-1 min-w-0">{plainPreview(c.body) || '—'}</span>
-                          {c.resolved && <Check size={11} className="text-emerald-400 shrink-0" />}
+                          {c.resolved && <Check size={11} className="text-success shrink-0" />}
                           {replies.length > 0 && <span className="text-[11px] text-[var(--faint)] shrink-0 flex items-center gap-0.5"><CornerDownRight size={10} /> {replies.length}</span>}
                         </button>
                       ) : (<>
@@ -242,7 +242,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
                     <div className="flex items-center gap-2 text-[11px] text-[var(--faint)] mb-1.5">
                       <Clock size={11} /> {fmtFull(r.createdAt)}
                       {r.editor && <span>· {r.editor}</span>}
-                      {i === 0 && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-emerald-400">current</span>}
+                      {i === 0 && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-success">current</span>}
                     </div>
                     <div className="text-sm comment-md"><Markdown>{r.body || '*(empty)*'}</Markdown></div>
                   </div>

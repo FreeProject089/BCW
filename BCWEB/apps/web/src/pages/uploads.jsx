@@ -139,15 +139,15 @@ export function UploadProvider({ children }) {
                     <div className="flex items-center gap-2 mb-1.5">
                       {uploading ? <Loader2 size={14} className="text-[var(--primary-2)] animate-spin shrink-0" />
                         : j.status === 'cancelled' ? <Ban size={14} className="text-[var(--faint)] shrink-0" />
-                        : j.failed ? <AlertTriangle size={14} className="text-amber-400 shrink-0" />
-                        : <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />}
+                        : j.failed ? <AlertTriangle size={14} className="text-warning shrink-0" />
+                        : <CheckCircle2 size={14} className="text-success shrink-0" />}
                       <span className="text-sm font-medium flex-1 truncate">{j.repoName}</span>
                       {uploading
-                        ? <button onClick={() => cancel(j.id)} className="text-[11px] px-2 py-0.5 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-red-400 hover:border-red-400/50 flex items-center gap-1"><Ban size={11} /> {t('up.cancel', 'Cancel')}</button>
+                        ? <button onClick={() => cancel(j.id)} className="text-[11px] px-2 py-0.5 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-error hover:border-error-border flex items-center gap-1"><Ban size={11} /> {t('up.cancel', 'Cancel')}</button>
                         : <button onClick={() => dismiss(j.id)} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={13} /></button>}
                     </div>
                     <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden">
-                      <div className={`h-full transition-all ${j.status === 'cancelled' ? 'bg-[var(--faint)]' : j.failed ? 'bg-amber-500' : 'bg-gradient-to-r from-orange-500 to-amber-400'}`} style={{ width: `${pct}%` }} />
+                      <div className={`h-full transition-all ${j.status === 'cancelled' ? 'bg-[var(--faint)]' : j.failed ? 'bg-warning' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} />
                     </div>
                     <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--muted)] mt-1">
                       <span className="truncate">
@@ -161,7 +161,7 @@ export function UploadProvider({ children }) {
                         is actionable instead of a mystery. */}
                     {j.failedFiles?.length > 0 && (
                       <details className="mt-1.5">
-                        <summary className="cursor-pointer text-[11px] text-amber-400 hover:text-amber-300 select-none">
+                        <summary className="cursor-pointer text-[11px] text-warning hover:text-warning select-none">
                           {t('up.failedfiles', '{n} failed file(s) — view list').replace('{n}', j.failedFiles.length)}
                         </summary>
                         <div className="mt-1 max-h-36 overflow-auto scroll-thin rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2 space-y-0.5">

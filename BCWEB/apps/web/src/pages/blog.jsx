@@ -116,7 +116,7 @@ export function BlogList() {
               <div key={p.id} className="group relative">
                 <Link to={`/blog/${p.slug}`}><Card hover className="overflow-hidden h-full flex flex-col">
                   {p.cover ? <img src={thumb(p.cover, 512)} alt="" className="w-full h-44 object-cover" />
-                    : <div className="w-full h-44 bg-gradient-to-br from-orange-500/25 to-amber-500/10 grid place-items-center">{p.showcaseProject?.icon ? <img src={p.showcaseProject.icon} alt="" className="w-14 h-14 rounded-xl object-contain opacity-90" /> : p.showcaseProject ? <Sparkles size={40} className="text-[var(--primary-2)] opacity-90" /> : <img src={(TYPE_TAG[p.project?.key] || TYPE_TAG.community).img} alt="" className="w-12 h-12 rounded-xl object-contain opacity-90" />}</div>}
+                    : <div className="w-full h-44 bg-gradient-to-br from-brand to-brand-2 grid place-items-center">{p.showcaseProject?.icon ? <img src={p.showcaseProject.icon} alt="" className="w-14 h-14 rounded-xl object-contain opacity-90" /> : p.showcaseProject ? <Sparkles size={40} className="text-[var(--primary-2)] opacity-90" /> : <img src={(TYPE_TAG[p.project?.key] || TYPE_TAG.community).img} alt="" className="w-12 h-12 rounded-xl object-contain opacity-90" />}</div>}
                   <div className="p-5 flex-1 flex flex-col">
                     <div className="text-xs text-[var(--faint)] flex items-center gap-2">{fmtDate(p.publishedAt)}{!v.translated && <span className="inline-flex items-center gap-1 text-[var(--faint)]"><Languages size={11} /> {t('blog.untranslated', 'not translated')}</span>}</div>
                     <div className="font-bold mt-1.5 text-lg leading-snug">{v.title}</div>
@@ -169,7 +169,7 @@ export function NewsletterSignup() {
             <Button type="submit" variant="primary" disabled={state === 'sending'}>{state === 'sending' ? t('news.sending', 'Subscribing…') : t('news.cta', 'Subscribe')}</Button>
           </form>
         )}
-      {state === 'error' && <p className="mt-3 text-sm text-red-400">{t('news.err', 'Could not subscribe — check the address and try again.')}</p>}
+      {state === 'error' && <p className="mt-3 text-sm text-error">{t('news.err', 'Could not subscribe — check the address and try again.')}</p>}
     </div>
   );
 }
@@ -657,7 +657,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
   return (
     <Modal open onClose={onClose} title={post ? t('be.editpost', 'Edit post') : t('be.writepost', 'Write a post')} icon={PenSquare} width="max-w-3xl"
       footer={<>
-        {post && <Button variant="ghost" className="!text-red-400 mr-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
+        {post && <Button variant="ghost" className="!text-error mr-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
         {post && <Button variant="ghost" onClick={() => setShowHistory(true)}><History size={15} /> History</Button>}
         {post && <Button variant="ghost" onClick={() => setShowComments(true)}><MessageSquare size={15} /> Comments</Button>}
         <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2"><input type="checkbox" checked={f.publish} onChange={(e) => setF({ ...f, publish: e.target.checked })} /> Published</label>
@@ -667,7 +667,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
       {/* Concurrent-edit merge banner (git-style): shown after a colliding save. Clean
           merges just need a re-Save; conflicts open the visual resolver (GitMerge). */}
       {merge && (
-        <div className={`mb-3 rounded-xl border px-3.5 py-2.5 text-sm flex items-start gap-2.5 ${merge.conflicts > 0 ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'}`}>
+        <div className={`mb-3 rounded-xl border px-3.5 py-2.5 text-sm flex items-start gap-2.5 ${merge.conflicts > 0 ? 'border-warning-border bg-warning-bg text-warning' : 'border-success-border bg-success-bg text-success'}`}>
           <GitMerge size={16} className="shrink-0 mt-0.5" />
           <div className="flex-1">
             {merge.conflicts > 0
@@ -682,7 +682,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
       <div className="flex items-center gap-1 mb-3">
         {[['en', 'English (base)'], ['fr', 'Français']].map(([l, label]) => (
           <button key={l} type="button" onClick={() => setTab(l)} className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 border ${tab === l ? 'bg-[var(--surface-2)] border-[var(--line)] font-medium' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <Languages size={13} /> {label}{l === 'fr' && <span className={`text-[10px] ${hasFr ? 'text-emerald-400' : 'text-[var(--faint)]'}`}>{hasFr ? '✓' : '(optionnel)'}</span>}
+            <Languages size={13} /> {label}{l === 'fr' && <span className={`text-[10px] ${hasFr ? 'text-success' : 'text-[var(--faint)]'}`}>{hasFr ? '✓' : '(optionnel)'}</span>}
           </button>
         ))}
       </div>
@@ -758,7 +758,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
           {f.coAuthorEmails.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {f.coAuthorEmails.map((email) => (
-                <span key={email} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--line)]">{email}<button type="button" onClick={() => removeCoAuthor(email)} className="text-[var(--faint)] hover:text-red-400"><X size={11} /></button></span>
+                <span key={email} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--line)]">{email}<button type="button" onClick={() => removeCoAuthor(email)} className="text-[var(--faint)] hover:text-error"><X size={11} /></button></span>
               ))}
             </div>
           )}
@@ -766,14 +766,14 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
               readers see them (read-only) on the published article. */}
           <label className="flex items-start gap-2 mt-3 pt-3 border-t border-[var(--line)] cursor-pointer">
             <input type="checkbox" className="mt-0.5" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} />
-            <span className="text-xs"><span className="font-medium flex items-center gap-1">{f.commentsPublic ? <Globe size={12} className="text-emerald-400" /> : <MessageSquare size={12} />} Comments visible to readers</span>
+            <span className="text-xs"><span className="font-medium flex items-center gap-1">{f.commentsPublic ? <Globe size={12} className="text-success" /> : <MessageSquare size={12} />} Comments visible to readers</span>
               <span className="text-[var(--faint)]">{f.commentsPublic ? 'Readers can read the comment thread (they still can’t post — comments are an editor tool).' : 'Comments stay private to editors (author, co-authors, staff).'}</span></span>
           </label>
           {/* Newsletter announcement — send subscribers an email about this post (once).
               Uses the standard template; the subject/intro can be overridden. Staff only. */}
           {canNewsletter && <div className="mt-3 pt-3 border-t border-[var(--line)]">
             {nlSent ? (
-              <div className="text-xs text-[var(--faint)] flex items-center gap-1.5"><Mail size={12} className="text-emerald-400" /> {t('be.nl.already', 'Newsletter already sent on {d}.').replace('{d}', new Date(nlSent).toLocaleDateString())}</div>
+              <div className="text-xs text-[var(--faint)] flex items-center gap-1.5"><Mail size={12} className="text-success" /> {t('be.nl.already', 'Newsletter already sent on {d}.').replace('{d}', new Date(nlSent).toLocaleDateString())}</div>
             ) : (<>
               <label className={`flex items-start gap-2 ${f.publish ? 'cursor-pointer' : 'opacity-50'}`}>
                 <input type="checkbox" className="mt-0.5" disabled={!f.publish} checked={f.notifyNewsletter && f.publish} onChange={(e) => setF({ ...f, notifyNewsletter: e.target.checked })} />

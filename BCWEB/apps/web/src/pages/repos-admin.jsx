@@ -34,7 +34,7 @@ function RepoIdentifyCard() {
         <Input value={fp} onChange={(e) => setFp(e.target.value)} placeholder="BCR-7K2M-9XQ4" onKeyDown={(e) => e.key === 'Enter' && lookup()} className="font-mono" />
         <Button variant="primary" disabled={busy} onClick={lookup}>{busy ? <Spinner /> : <><Search size={14} /> Identify</>}</Button>
       </div>
-      {err && <div className="text-xs text-red-400 mt-2">{err}</div>}
+      {err && <div className="text-xs text-error mt-2">{err}</div>}
       {res && (
         <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-3 text-sm space-y-1.5">
           <div className="flex items-center gap-2"><GitBranch size={13} className="text-[var(--primary-2)]" /> <span className="font-medium">{res.repo.name}</span> <Badge tone={res.repo.hosted ? 'primary' : ''}>{res.repo.hosted ? 'hosted' : 'listed'}</Badge></div>
@@ -98,7 +98,7 @@ function AdminRepoTraffic() {
                   return (
                     <div key={r.repoId} className="flex items-center gap-2 text-xs">
                       <span className="w-36 truncate font-medium" title={`${r.name} · ${r.owner}`}>{r.name}</span>
-                      <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${Math.max(4, (r.count / max) * 100)}%` }} /></div>
+                      <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${Math.max(4, (r.count / max) * 100)}%` }} /></div>
                       <span className="tabular-nums text-[var(--muted)] w-10 text-right">{r.count}</span>
                     </div>
                   );
@@ -320,7 +320,7 @@ export function AdminRepos() {
                   {r.hosted && (r.subscription?.currentPeriodEnd || r.subscription?.status === 'canceled' || r.subscription?.status === 'expired') && (
                     <div className="text-xs text-[var(--muted)] mt-1.5 flex items-center gap-2 flex-wrap">
                       {r.subscription?.currentPeriodEnd && (
-                        <span className={`flex items-center gap-1 ${new Date(r.subscription.currentPeriodEnd) <= new Date() ? 'text-red-400' : ''}`}>
+                        <span className={`flex items-center gap-1 ${new Date(r.subscription.currentPeriodEnd) <= new Date() ? 'text-error' : ''}`}>
                           <Clock size={11} /> {new Date(r.subscription.currentPeriodEnd) <= new Date() ? 'Expired' : 'Expires'} {new Date(r.subscription.currentPeriodEnd).toLocaleDateString()}
                         </span>
                       )}

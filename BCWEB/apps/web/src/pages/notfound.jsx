@@ -125,7 +125,7 @@ export default function NotFound() {
                 {phase === 'over' && <>
                   <div className="text-xs uppercase tracking-wider text-[var(--faint)]">{t('nf.gameover', 'Game over')}</div>
                   <div className="text-4xl font-black text-[var(--primary)] my-1">{score}</div>
-                  {saved?.improved ? <div className="text-xs text-emerald-400 mb-2 inline-flex items-center gap-1"><Trophy size={12} /> {t('nf.newbest', 'New personal best!')}</div>
+                  {saved?.improved ? <div className="text-xs text-success mb-2 inline-flex items-center gap-1"><Trophy size={12} /> {t('nf.newbest', 'New personal best!')}</div>
                     : user ? <div className="text-xs text-[var(--faint)] mb-2">{t('nf.best', 'Your best: {n}').replace('{n}', best)}</div>
                     : <div className="text-xs text-[var(--faint)] mb-2"><Link to="/auth" className="text-[var(--primary-2)] underline">{t('nf.signin', 'Sign in')}</Link> {t('nf.tosave', 'to save your score')}</div>}
                 </>}
@@ -139,13 +139,13 @@ export default function NotFound() {
         {/* Leaderboard — collapsible (collapsed by default on phones). */}
         <Card className="p-4 w-full md:max-w-xs text-left">
           <button onClick={() => setBoardOpen((v) => !v)} className="w-full text-sm font-semibold flex items-center gap-2 md:cursor-default" aria-expanded={boardOpen}>
-            <Trophy size={15} className="text-amber-400" /> <span className="flex-1 text-left">{t('nf.leaderboard', 'Leaderboard')}</span>
+            <Trophy size={15} className="text-warning" /> <span className="flex-1 text-left">{t('nf.leaderboard', 'Leaderboard')}</span>
             <ChevronDown size={16} className={`md:hidden text-[var(--faint)] transition-transform ${boardOpen ? 'rotate-180' : ''}`} />
           </button>
           {boardOpen && (board.length ? <div className="space-y-1.5 mt-3">
             {board.map((r) => (
               <div key={r.rank} className="flex items-center gap-2.5 text-sm">
-                <span className={`w-5 text-center font-bold tabular-nums ${r.rank <= 3 ? 'text-amber-400' : 'text-[var(--faint)]'}`}>{r.rank}</span>
+                <span className={`w-5 text-center font-bold tabular-nums ${r.rank <= 3 ? 'text-warning' : 'text-[var(--faint)]'}`}>{r.rank}</span>
                 {r.user ? <Avatar user={r.user} size={22} /> : <span className="w-[22px] h-[22px] rounded-full bg-[var(--surface-2)] grid place-items-center"><Gamepad2 size={12} className="text-[var(--faint)]" /></span>}
                 <span className="flex-1 min-w-0 truncate">{r.user?.displayName || t('nf.anon', 'Anonymous')}</span>
                 <span className="font-bold tabular-nums text-[var(--primary-2)]">{r.score}</span>

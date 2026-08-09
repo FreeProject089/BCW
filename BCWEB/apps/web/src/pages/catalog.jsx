@@ -36,7 +36,7 @@ export function Catalog() {
       <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-5 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           {[['', t('cat.allprojects', 'All')], ['bmm', 'BMM'], ['bsm', 'BSM']].map(([pk, l]) => (
-            <button key={pk} onClick={() => { set('project', pk); if (kind) set('kind', ''); }} className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${project === pk ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
+            <button key={pk} onClick={() => { set('project', pk); if (kind) set('kind', ''); }} className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${project === pk ? 'bg-gradient-to-br from-brand to-brand-2 text-white shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
           ))}
           <div className="flex-1" />
           <Select className="!w-auto" value={sort} onChange={(e) => set('sort', e.target.value)}>{SORTS.map(([v, l]) => <option key={v} value={v}>{t(`cat.sort.${v}`, l)}</option>)}</Select>
@@ -106,7 +106,7 @@ function CommunityCatalogsStrip() {
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {cats.map((c) => (
           <Link key={c.id} to={`/c/${c.slug}`}><Card hover className="p-4 h-full">
-            <div className="flex items-center justify-between"><div className="grid place-items-center w-9 h-9 rounded-lg bg-emerald-500/10 border border-[var(--line)]"><Boxes size={17} className="text-emerald-400" /></div><Badge tone="">{c.itemCount} {t('cc.items', 'items')}</Badge></div>
+            <div className="flex items-center justify-between"><div className="grid place-items-center w-9 h-9 rounded-lg bg-success-bg border border-[var(--line)]"><Boxes size={17} className="text-success" /></div><Badge tone="">{c.itemCount} {t('cc.items', 'items')}</Badge></div>
             <div className="font-semibold mt-3">{c.name}</div>
             <div className="text-sm text-[var(--muted)] mt-1 line-clamp-2">{c.description || t('cat.nodesc', 'No description.')}</div>
             <div className="text-xs text-[var(--faint)] mt-3 flex items-center gap-3"><span className="flex items-center gap-1"><Users size={12} /> {c.owner}</span><span className="flex items-center gap-1"><Download size={12} /> {c.downloads ?? 0}</span></div>
@@ -148,23 +148,23 @@ export function ItemDetail() {
   return (
     <div className="max-w-3xl">
       {it.private && (
-        <Card className="p-3.5 mb-5 flex items-center gap-2.5 bg-amber-500/8 border-amber-500/30">
-          <Lock size={17} className="text-amber-400 shrink-0" />
+        <Card className="p-3.5 mb-5 flex items-center gap-2.5 bg-warning-bg border-warning-border">
+          <Lock size={17} className="text-warning shrink-0" />
           <div className="text-sm"><b>{t('item.private.t', 'Private — not listed publicly')}</b> <span className="text-[var(--muted)]">{t('item.private.d', 'This item isn’t in the public catalog yet. Only people with this direct link can see it; it’ll be listed once an admin validates it.')}</span></div>
         </Card>
       )}
       {v && (
-        <Card className={`p-3.5 mb-5 flex items-center gap-2.5 ${v.valid ? 'bg-emerald-500/8' : 'bg-red-500/8 border-red-500/30'}`}>
-          {v.valid ? <BadgeCheck size={18} className="text-emerald-400 shrink-0" /> : <XCircle size={18} className="text-red-400 shrink-0" />}
+        <Card className={`p-3.5 mb-5 flex items-center gap-2.5 ${v.valid ? 'bg-success-bg' : 'bg-error-bg border-error-border'}`}>
+          {v.valid ? <BadgeCheck size={18} className="text-success shrink-0" /> : <XCircle size={18} className="text-error shrink-0" />}
           <div className="flex-1 text-sm">
-            {v.valid ? <><b className="text-emerald-400">{t('item.verified', 'Verified plugin')}</b> {t('item.verified.d', '— package and file checksums match.')}</>
-              : <><b className="text-red-400">{t('item.invalid', 'Invalid checksum')}</b> {t('item.invalid.d', '— this .bmmplug failed integrity checks ({reason}). Installing is not recommended.').replace('{reason}', v.reason)}</>}
+            {v.valid ? <><b className="text-success">{t('item.verified', 'Verified plugin')}</b> {t('item.verified.d', '— package and file checksums match.')}</>
+              : <><b className="text-error">{t('item.invalid', 'Invalid checksum')}</b> {t('item.invalid.d', '— this .bmmplug failed integrity checks ({reason}). Installing is not recommended.').replace('{reason}', v.reason)}</>}
           </div>
           {v.sha256 && <code className="text-[10px] text-[var(--faint)] hidden sm:block">{v.sha256.slice(0, 12)}…</code>}
         </Card>
       )}
       <div className="flex items-start gap-4">
-        <div className="grid place-items-center w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500/25 to-amber-500/15 border border-[var(--line)]"><I size={26} className="text-[var(--primary-2)]" /></div>
+        <div className="grid place-items-center w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-brand-2 border border-[var(--line)]"><I size={26} className="text-[var(--primary-2)]" /></div>
         <div className="flex-1">
           <div className="flex items-center gap-2"><Badge tone="primary">{it.kind}</Badge><Badge>v{it.version}</Badge></div>
           <h1 className="text-2xl font-bold mt-2">{it.name}</h1>
@@ -203,11 +203,11 @@ export function ItemDetail() {
 
       {warn && (
         <Modal open onClose={() => setWarn(false)} title={t('item.warn.title', 'Integrity check failed')} icon={XCircle} width="max-w-md"
-          footer={<><Button variant="ghost" onClick={() => setWarn(false)}>{t('common.cancel', 'Cancel')}</Button><Button className="!bg-red-500/15 !text-red-400 !border-red-500/30" onClick={() => { setWarn(false); doDownload(); }}>{t('item.dlanyway', 'Download anyway')}</Button></>}>
+          footer={<><Button variant="ghost" onClick={() => setWarn(false)}>{t('common.cancel', 'Cancel')}</Button><Button className="!bg-error-bg !text-error !border-error-border" onClick={() => { setWarn(false); doDownload(); }}>{t('item.dlanyway', 'Download anyway')}</Button></>}>
           <div className="flex items-start gap-3">
-            <XCircle size={22} className="text-red-400 shrink-0 mt-0.5" />
+            <XCircle size={22} className="text-error shrink-0 mt-0.5" />
             <div className="text-sm text-[var(--muted)]">
-              {t('item.warn.body1', 'This')} <code>.bmmplug</code> {t('item.warn.body2', 'did not pass validation')} (<b className="text-red-400">{v?.reason}</b>). {t('item.warn.body3', "Its checksums don't match, which means the package may have been altered or corrupted.")}
+              {t('item.warn.body1', 'This')} <code>.bmmplug</code> {t('item.warn.body2', 'did not pass validation')} (<b className="text-error">{v?.reason}</b>). {t('item.warn.body3', "Its checksums don't match, which means the package may have been altered or corrupted.")}
               <div className="mt-2 text-[var(--text)] font-medium">{t('item.warn.rec', 'We strongly recommend not installing it.')}</div>
             </div>
           </div>

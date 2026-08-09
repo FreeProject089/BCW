@@ -158,8 +158,8 @@ export default function Profile() {
             <Field label={t('prof.bio', 'Bio')}><Textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder={t('prof.bio.ph', 'A little about you…')} /></Field>
             <Field label={t('prof.website', 'Website (optional)')}><Input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} placeholder="https://…" /></Field>
             <div className="flex items-center gap-3"><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('prof.saveprofile', 'Save profile')}</Button>
-              {msg === 'saved' && <span className="text-sm text-emerald-400 flex items-center gap-1"><Check size={14} /> {t('prof.saved', 'Saved')}</span>}
-              {msg === 'error' && <span className="text-sm text-red-400">{t('prof.failed', 'Failed')}</span>}</div>
+              {msg === 'saved' && <span className="text-sm text-success flex items-center gap-1"><Check size={14} /> {t('prof.saved', 'Saved')}</span>}
+              {msg === 'error' && <span className="text-sm text-error">{t('prof.failed', 'Failed')}</span>}</div>
           </Card>
 
           {/* Privacy + visibility of the shareable /u/<id> profile. */}
@@ -334,7 +334,7 @@ function ApiTokenCard() {
         {/* Manage actions + secrecy reminder */}
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           <Button size="sm" variant="ghost" disabled={busy} onClick={reset}><RefreshCw size={14} /> {t('prof.token.resetbtn', 'Reset')}</Button>
-          <Button size="sm" variant="ghost" className="!text-red-400" disabled={busy} onClick={revoke}><Trash2 size={14} /> {t('prof.token.revoke', 'Revoke')}</Button>
+          <Button size="sm" variant="ghost" className="!text-error" disabled={busy} onClick={revoke}><Trash2 size={14} /> {t('prof.token.revoke', 'Revoke')}</Button>
           <span className="text-[11px] text-[var(--faint)] flex items-center gap-1 ml-auto"><Lock size={11} /> {t('prof.token.secret', 'Anyone with this token can act as you.')}</span>
         </div>
         {/* Example request */}
@@ -436,7 +436,7 @@ function TwoFactorCard() {
 
       {recoveryCodes ? (
         <div className="mb-1">
-          <div className="text-xs font-semibold text-amber-400 mb-1.5">{t('prof.2fa.recovery', 'Save these recovery codes — each works once if you lose your device. Shown only now.')}</div>
+          <div className="text-xs font-semibold text-warning mb-1.5">{t('prof.2fa.recovery', 'Save these recovery codes — each works once if you lose your device. Shown only now.')}</div>
           <div className="grid grid-cols-2 gap-1.5 font-mono text-xs bg-[var(--surface-2)] rounded-lg p-3">
             {recoveryCodes.map((c) => <div key={c}>{c}</div>)}
           </div>
@@ -463,14 +463,14 @@ function TwoFactorCard() {
               grid stretches it to match the right column when the "From your
               Authenticator" list is expanded (that was the layout blow-out). */}
           <div className="grid sm:grid-cols-2 gap-2 items-start">
-            <Input type="password" value={disablePw} onChange={(e) => { setDisablePw(e.target.value); setDisableErr(null); }} placeholder={t('prof.2fa.pwph', 'Your password')} className={disableErr?.field === 'pw' ? '!border-red-500/50' : ''} />
+            <Input type="password" value={disablePw} onChange={(e) => { setDisablePw(e.target.value); setDisableErr(null); }} placeholder={t('prof.2fa.pwph', 'Your password')} className={disableErr?.field === 'pw' ? '!border-error-border' : ''} />
             <div className="min-w-0">
-              <Input value={disableCode} onChange={(e) => { setDisableCode(e.target.value.replace(/[^0-9A-Za-z-]/g, '').slice(0, 9)); setDisableErr(null); }} placeholder={t('prof.2fa.codeph', 'Current code or recovery code')} className={disableErr?.field === 'code' ? '!border-red-500/50' : ''} />
+              <Input value={disableCode} onChange={(e) => { setDisableCode(e.target.value.replace(/[^0-9A-Za-z-]/g, '').slice(0, 9)); setDisableErr(null); }} placeholder={t('prof.2fa.codeph', 'Current code or recovery code')} className={disableErr?.field === 'code' ? '!border-error-border' : ''} />
               <div className="mt-1"><TotpQuickFill onFill={(c) => { setDisableCode(c); setDisableErr(null); }} /></div>
             </div>
           </div>
-          {disableErr && <div className="text-xs text-red-400">{disableErr.msg}</div>}
-          <Button className="!text-red-400" disabled={busy} onClick={disable}>{busy ? <Spinner /> : t('prof.2fa.disable', 'Disable 2FA')}</Button>
+          {disableErr && <div className="text-xs text-error">{disableErr.msg}</div>}
+          <Button className="!text-error" disabled={busy} onClick={disable}>{busy ? <Spinner /> : t('prof.2fa.disable', 'Disable 2FA')}</Button>
         </div>
       ) : setup ? (
         <div className="space-y-3">
@@ -527,9 +527,9 @@ function CreatorLinks() {
       {links.length > 0 && <div className="space-y-2 mb-3">
         {links.map((l) => (
           <div key={l.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
-            <BadgeCheck size={15} className="text-emerald-400 shrink-0" />
+            <BadgeCheck size={15} className="text-success shrink-0" />
             <div className="flex-1 min-w-0"><div className="font-mono text-xs truncate">{l.creatorId}{l.displayName ? ` · ${l.displayName}` : ''}</div><div className="text-[11px] text-[var(--faint)]">{t('cl.linked', 'linked')} {fdate(l.linkedAt)}{l.locked ? ` · ${t('cl.unlockable', 'unlockable')} ${fdate(l.unlinkableAt)}` : ''}</div></div>
-            {l.locked ? <Lock size={14} className="text-[var(--faint)]" title={t('cl.locked2w', 'Locked for 2 weeks')} /> : <button onClick={() => unlink(l)} className="text-[var(--faint)] hover:text-red-400" title={t('cl.unlink', 'Unlink')}><Trash2 size={14} /></button>}
+            {l.locked ? <Lock size={14} className="text-[var(--faint)]" title={t('cl.locked2w', 'Locked for 2 weeks')} /> : <button onClick={() => unlink(l)} className="text-[var(--faint)] hover:text-error" title={t('cl.unlink', 'Unlink')}><Trash2 size={14} /></button>}
           </div>
         ))}
       </div>}
@@ -537,11 +537,11 @@ function CreatorLinks() {
         <Input value={code} maxLength={9} onChange={(e) => { const s = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 8); setCode(s.length > 4 ? `${s.slice(0, 4)}-${s.slice(4)}` : s); }} placeholder={t('cl.ph', 'Code from BMM (e.g. K7P39QMX)')} onKeyDown={(e) => e.key === 'Enter' && link()} />
         <Button variant="primary" disabled={busy} onClick={link}>{busy ? <Spinner /> : t('cl.link', 'Link')}</Button>
       </div>
-      {msg === 'linked' && <div className="text-sm text-emerald-400 mt-2 flex items-center gap-1"><Check size={14} /> {t('cl.ok', 'Creator id linked.')}</div>}
-      {msg === 'taken' && <div className="text-sm text-red-400 mt-2">{t('cl.taken', 'That creator id is already linked to another account.')}</div>}
-      {msg === 'bad' && <div className="text-sm text-red-400 mt-2">{t('cl.bad', 'Invalid or expired code.')}</div>}
-      {msg === 'locked' && <div className="text-sm text-red-400 mt-2">{t('cl.lockederr', "Locked — can't unlink within 2 weeks of linking.")}</div>}
-      {msg === 'error' && <div className="text-sm text-red-400 mt-2">{t('cl.error', 'Something went wrong.')}</div>}
+      {msg === 'linked' && <div className="text-sm text-success mt-2 flex items-center gap-1"><Check size={14} /> {t('cl.ok', 'Creator id linked.')}</div>}
+      {msg === 'taken' && <div className="text-sm text-error mt-2">{t('cl.taken', 'That creator id is already linked to another account.')}</div>}
+      {msg === 'bad' && <div className="text-sm text-error mt-2">{t('cl.bad', 'Invalid or expired code.')}</div>}
+      {msg === 'locked' && <div className="text-sm text-error mt-2">{t('cl.lockederr', "Locked — can't unlink within 2 weeks of linking.")}</div>}
+      {msg === 'error' && <div className="text-sm text-error mt-2">{t('cl.error', 'Something went wrong.')}</div>}
     </Card>
   );
 }
@@ -571,9 +571,9 @@ function DiscordLinks() {
       {links.length > 0 && <div className="space-y-2 mb-3">
         {links.map((l) => (
           <div key={l.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
-            <BadgeCheck size={15} className="text-emerald-400 shrink-0" />
+            <BadgeCheck size={15} className="text-success shrink-0" />
             <div className="flex-1 min-w-0"><div className="text-xs truncate">{l.username || l.discordId}</div><div className="text-[11px] text-[var(--faint)]">{t('cl.linked', 'linked')} {fdate(l.linkedAt)}</div></div>
-            <button onClick={() => unlink(l)} className="text-[var(--faint)] hover:text-red-400" title={t('cl.unlink', 'Unlink')}><Trash2 size={14} /></button>
+            <button onClick={() => unlink(l)} className="text-[var(--faint)] hover:text-error" title={t('cl.unlink', 'Unlink')}><Trash2 size={14} /></button>
           </div>
         ))}
       </div>}
@@ -581,10 +581,10 @@ function DiscordLinks() {
         <Input value={code} maxLength={9} onChange={(e) => { const s = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 8); setCode(s.length > 4 ? `${s.slice(0, 4)}-${s.slice(4)}` : s); }} placeholder={t('disl.ph', 'Code from /link (e.g. K7P39QMX)')} onKeyDown={(e) => e.key === 'Enter' && link()} />
         <Button variant="primary" disabled={busy} onClick={link}>{busy ? <Spinner /> : t('cl.link', 'Link')}</Button>
       </div>
-      {msg === 'linked' && <div className="text-sm text-emerald-400 mt-2 flex items-center gap-1"><Check size={14} /> {t('disl.ok', 'Discord linked.')}</div>}
-      {msg === 'taken' && <div className="text-sm text-red-400 mt-2">{t('disl.taken', 'That Discord account is already linked.')}</div>}
-      {msg === 'bad' && <div className="text-sm text-red-400 mt-2">{t('cl.bad', 'Invalid or expired code.')}</div>}
-      {msg === 'error' && <div className="text-sm text-red-400 mt-2">{t('cl.error', 'Something went wrong.')}</div>}
+      {msg === 'linked' && <div className="text-sm text-success mt-2 flex items-center gap-1"><Check size={14} /> {t('disl.ok', 'Discord linked.')}</div>}
+      {msg === 'taken' && <div className="text-sm text-error mt-2">{t('disl.taken', 'That Discord account is already linked.')}</div>}
+      {msg === 'bad' && <div className="text-sm text-error mt-2">{t('cl.bad', 'Invalid or expired code.')}</div>}
+      {msg === 'error' && <div className="text-sm text-error mt-2">{t('cl.error', 'Something went wrong.')}</div>}
     </Card>
   );
 }
@@ -643,7 +643,7 @@ function SocialConnections() {
                 {c ? <a href={c.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--faint)] hover:text-[var(--primary)] truncate block">{c.handle}</a>
                   : <div className="text-[11px] text-[var(--faint)]">{t('sc.notlinked', 'Not linked')}</div>}
               </div>
-              {c ? <button onClick={() => disconnect(k)} className="text-[var(--faint)] hover:text-red-400 p-1" title={t('sc.disconnect', 'Disconnect')}><X size={16} /></button>
+              {c ? <button onClick={() => disconnect(k)} className="text-[var(--faint)] hover:text-error p-1" title={t('sc.disconnect', 'Disconnect')}><X size={16} /></button>
                 : kind === 'oauth' ? <Button size="sm" variant="default" onClick={() => { window.location.href = `/api/auth/connect/${k}/start`; }}>{t('sc.connect', 'Connect')}</Button> : null}
             </div>
             {/* Manual Ko-fi entry when not yet linked — a prefixed input (paste a handle or a

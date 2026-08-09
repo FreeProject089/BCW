@@ -28,10 +28,10 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
 
   // A block of code lines with a colored gutter, GitHub-diff style.
   const Lines = ({ lines, tone }) => (
-    <div className={`font-mono text-[12.5px] leading-[1.6] ${tone === 'add' ? 'bg-emerald-500/[0.07]' : tone === 'del' ? 'bg-red-500/[0.07]' : ''}`}>
+    <div className={`font-mono text-[12.5px] leading-[1.6] ${tone === 'add' ? 'bg-success/[0.07]' : tone === 'del' ? 'bg-error/[0.07]' : ''}`}>
       {(lines.length ? lines : ['']).map((ln, k) => (
         <div key={k} className="flex">
-          <span className={`select-none w-6 shrink-0 text-center ${tone === 'add' ? 'text-emerald-500' : tone === 'del' ? 'text-red-500' : 'text-transparent'}`}>{tone === 'add' ? '+' : tone === 'del' ? '−' : ''}</span>
+          <span className={`select-none w-6 shrink-0 text-center ${tone === 'add' ? 'text-success' : tone === 'del' ? 'text-error' : 'text-transparent'}`}>{tone === 'add' ? '+' : tone === 'del' ? '−' : ''}</span>
           <span className="whitespace-pre-wrap break-words flex-1 pr-2">{ln || ' '}</span>
         </div>
       ))}
@@ -43,7 +43,7 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
       footer={<>
         <span className="text-xs mr-auto flex items-center gap-2 flex-wrap" style={{ color: allResolved ? 'var(--success, #10b981)' : 'var(--muted)' }}>
           <span className="flex items-center gap-1.5">{allResolved ? <Check size={14} /> : <GitMerge size={14} />} {resolvedCount}/{conflictIdxs.length} conflict{conflictIdxs.length === 1 ? '' : 's'} resolved</span>
-          <span className="font-mono text-[11px]"><span className="text-emerald-400">+{stat.added}</span> <span className="text-red-400">−{stat.removed}</span> <span className="text-[var(--faint)]">their changes</span></span>
+          <span className="font-mono text-[11px]"><span className="text-success">+{stat.added}</span> <span className="text-error">−{stat.removed}</span> <span className="text-[var(--faint)]">their changes</span></span>
         </span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={!allResolved} onClick={apply}><Check size={14} /> Apply resolution</Button>
@@ -52,8 +52,8 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
       {conflictIdxs.length > 1 && (
         <div className="flex items-center gap-2 mb-3 text-xs">
           <span className="text-[var(--muted)]">Resolve all as:</span>
-          <button onClick={() => acceptAll('mine')} className="px-2 py-1 rounded-md border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10">Yours</button>
-          <button onClick={() => acceptAll('theirs')} className="px-2 py-1 rounded-md border border-sky-500/40 text-sky-400 hover:bg-sky-500/10">Theirs</button>
+          <button onClick={() => acceptAll('mine')} className="px-2 py-1 rounded-md border border-success-border text-success hover:bg-success-bg">Yours</button>
+          <button onClick={() => acceptAll('theirs')} className="px-2 py-1 rounded-md border border-info-border text-info hover:bg-info-bg">Theirs</button>
           <button onClick={() => acceptAll('both')} className="px-2 py-1 rounded-md border border-[var(--line)] text-[var(--muted)] hover:bg-[var(--surface-2)]">Both</button>
         </div>
       )}
@@ -79,10 +79,10 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
           const choice = choices[i];
           return (
             <div key={i} className="bg-[var(--bg-solid)]">
-              <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-amber-500/10 border-b border-amber-500/20">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-500 flex items-center gap-1.5">
+              <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-warning-bg border-b border-warning-border">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-warning flex items-center gap-1.5">
                   <GitMerge size={12} /> Conflict {conflictIdxs.indexOf(i) + 1}
-                  <span className="font-mono normal-case tracking-normal ml-1"><span className="text-emerald-400">+{h.mine.length}</span> <span className="text-red-400">−{h.theirs.length}</span></span>
+                  <span className="font-mono normal-case tracking-normal ml-1"><span className="text-success">+{h.mine.length}</span> <span className="text-error">−{h.theirs.length}</span></span>
                 </span>
                 <div className="flex items-center gap-1.5 text-[11px]">
                   <ChoiceBtn active={choice === 'mine'} onClick={() => pick(i, 'mine')} tone="emerald" icon={UserIcon}>Yours</ChoiceBtn>
@@ -93,8 +93,8 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
                 </div>
               </div>
               {/* Preview reflects the current choice; unresolved shows both stacked. */}
-              {choice === 'mine' ? <div className="ring-1 ring-inset ring-emerald-500/30"><SideHdr tone="emerald" label={labels.mine} /><Lines lines={h.mine} tone="add" /></div>
-                : choice === 'theirs' ? <div className="ring-1 ring-inset ring-sky-500/30"><SideHdr tone="sky" label={labels.theirs} /><Lines lines={h.theirs} tone="add" /></div>
+              {choice === 'mine' ? <div className="ring-1 ring-inset ring-success-border"><SideHdr tone="emerald" label={labels.mine} /><Lines lines={h.mine} tone="add" /></div>
+                : choice === 'theirs' ? <div className="ring-1 ring-inset ring-info-border"><SideHdr tone="sky" label={labels.theirs} /><Lines lines={h.theirs} tone="add" /></div>
                 : choice === 'both' ? <><SideHdr tone="emerald" label={labels.mine} /><Lines lines={h.mine} tone="add" /><SideHdr tone="sky" label={labels.theirs} /><Lines lines={h.theirs} tone="add" /></>
                 : choice === 'theirs-mine' ? <><SideHdr tone="sky" label={labels.theirs} /><Lines lines={h.theirs} tone="add" /><SideHdr tone="emerald" label={labels.mine} /><Lines lines={h.mine} tone="add" /></>
                 : <>
@@ -111,13 +111,13 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
 
 function ChoiceBtn({ active, onClick, tone, icon: Icon, children }) {
   const tones = {
-    emerald: active ? 'bg-emerald-500 text-white border-emerald-500' : 'border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10',
-    sky: active ? 'bg-sky-500 text-white border-sky-500' : 'border-sky-500/40 text-sky-400 hover:bg-sky-500/10',
+    emerald: active ? 'bg-success text-white border-success' : 'border-success-border text-success hover:bg-success-bg',
+    sky: active ? 'bg-info text-white border-info' : 'border-info-border text-info hover:bg-info-bg',
     slate: active ? 'bg-[var(--text)] text-[var(--bg-solid)] border-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:bg-[var(--surface-2)]',
   };
   return <button onClick={onClick} className={`px-2 py-0.5 rounded-md border font-medium flex items-center gap-1 transition ${tones[tone]}`}><Icon size={11} /> {children}</button>;
 }
 function SideHdr({ tone, label }) {
-  const c = tone === 'emerald' ? 'text-emerald-400' : tone === 'sky' ? 'text-sky-400' : 'text-[var(--muted)]';
+  const c = tone === 'emerald' ? 'text-success' : tone === 'sky' ? 'text-info' : 'text-[var(--muted)]';
   return <div className={`px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${c} bg-[var(--surface-2)]/50`}>{label}</div>;
 }

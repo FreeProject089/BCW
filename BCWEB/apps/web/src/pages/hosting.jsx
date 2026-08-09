@@ -40,7 +40,7 @@ function TermSelect({ months, setMonths, termDisc, t }) {
       <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open}
         className={`w-full flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition ${open ? 'border-[var(--primary)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}
         style={open ? { boxShadow: '0 0 0 1px var(--primary)' } : undefined}>
-        <span className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white shrink-0"><Receipt size={16} /></span>
+        <span className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-brand to-brand-2 text-white shrink-0"><Receipt size={16} /></span>
         <span className="flex-1 min-w-0">
           <span className="font-semibold flex items-center gap-2">{label(months)}{months === 12 && <BestTag />}</span>
           <span className="block text-xs text-[var(--muted)] mt-0.5">{disc(months) > 0 ? t('hosting.savepct', 'Save {n}% vs monthly').replace('{n}', disc(months)) : t('hosting.term.note', '· prepaid, min 1 month')}</span>
@@ -55,7 +55,7 @@ function TermSelect({ months, setMonths, termDisc, t }) {
               <span className={`w-2 h-2 rounded-full shrink-0 ${active ? 'bg-[var(--primary)]' : 'bg-[var(--line-strong)]'}`} />
               <span className="flex-1 font-medium">{label(m)}</span>
               {m === 12 && <BestTag />}
-              {d > 0 ? <span className="text-xs font-bold text-emerald-400">−{d}%</span> : <span className="text-[11px] text-[var(--faint)]">{t('hosting.standard', 'standard')}</span>}
+              {d > 0 ? <span className="text-xs font-bold text-success">−{d}%</span> : <span className="text-[11px] text-[var(--faint)]">{t('hosting.standard', 'standard')}</span>}
               {active && <CheckCircle2 size={14} className="text-[var(--primary-2)] shrink-0" />}
             </button>
           ); })}
@@ -96,15 +96,15 @@ function PromoCodeField({ months, onChange }) {
         <Input className="!pl-8" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder={t('hosting.promo.ph', 'Promo code (optional)')} />
         {checking && <Spinner className="absolute right-3 top-1/2 -translate-y-1/2" />}
       </div>
-      {state?.error && <div className="text-xs text-red-400 mt-1 flex items-center gap-1"><XCircle size={12} /> {t('hosting.promo.invalid', 'Invalid or expired code.')}</div>}
+      {state?.error && <div className="text-xs text-error mt-1 flex items-center gap-1"><XCircle size={12} /> {t('hosting.promo.invalid', 'Invalid or expired code.')}</div>}
       {state?.promo && state.promo.kind === 'discount' && !termTooShort && (
-        <div className="text-xs text-emerald-400 mt-1 flex items-center gap-1"><CheckCircle2 size={12} /> {state.promo.percentOff ? t('hosting.promo.pct', '{pct}% off applied').replace('{pct}', state.promo.percentOff) : state.promo.freeMonths ? t('hosting.promo.free', 'First {n} months free').replace('{n}', state.promo.freeMonths) : t('hosting.promo.ok', 'Code applied.')}</div>
+        <div className="text-xs text-success mt-1 flex items-center gap-1"><CheckCircle2 size={12} /> {state.promo.percentOff ? t('hosting.promo.pct', '{pct}% off applied').replace('{pct}', state.promo.percentOff) : state.promo.freeMonths ? t('hosting.promo.free', 'First {n} months free').replace('{n}', state.promo.freeMonths) : t('hosting.promo.ok', 'Code applied.')}</div>
       )}
       {/* Free-hosting / free-boost codes aren't checkout discounts — they redeem
           directly. Surface that with a one-click "Use this code" modal flow. */}
       {state?.promo && state.promo.kind !== 'discount' && (
         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-          <span className="text-xs text-emerald-400 flex items-center gap-1"><Gift size={12} />
+          <span className="text-xs text-success flex items-center gap-1"><Gift size={12} />
             {state.promo.kind === 'free_hosting'
               ? t('hosting.promo.hostcode', 'Free hosting code — {gb} GB repo at no cost.').replace('{gb}', state.promo.storageGB)
               : t('hosting.promo.boostcode', 'Boost code — {d} days featured.').replace('{d}', state.promo.boostDays)}
@@ -112,7 +112,7 @@ function PromoCodeField({ months, onChange }) {
           <Button size="sm" variant="primary" onClick={() => setRedeemOpen(true)}>{t('hosting.promo.use', 'Use this code')}</Button>
         </div>
       )}
-      {termTooShort && <div className="text-xs text-amber-400 mt-1 flex items-center gap-1"><AlertTriangle size={12} /> {t('hosting.promo.minmonths', 'This code needs a {n}+ month term.').replace('{n}', state.promo.minMonths)}</div>}
+      {termTooShort && <div className="text-xs text-warning mt-1 flex items-center gap-1"><AlertTriangle size={12} /> {t('hosting.promo.minmonths', 'This code needs a {n}+ month term.').replace('{n}', state.promo.minMonths)}</div>}
       {redeemOpen && state?.promo && <RedeemPromoModal code={code.trim()} promo={state.promo} onClose={() => setRedeemOpen(false)} />}
     </div>
   );
@@ -148,8 +148,8 @@ function RedeemPromoModal({ code, promo, onClose }) {
     <Modal open onClose={onClose} title={t('hosting.promo.modal', 'Redeem code')} icon={Gift} width="max-w-md"
       footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
         <Button variant="primary" disabled={busy || (isBoost && !repoId)} onClick={apply}>{busy ? <Spinner /> : t('hosting.promo.apply', 'Apply code')}</Button></>}>
-      <div className="flex items-center gap-3 p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06] mb-4">
-        <Gift size={20} className="text-emerald-400 shrink-0" />
+      <div className="flex items-center gap-3 p-3 rounded-xl border border-success-border bg-success/[0.06] mb-4">
+        <Gift size={20} className="text-success shrink-0" />
         <div className="text-sm">
           <div className="font-semibold">{code}</div>
           <div className="text-[var(--muted)]">
@@ -245,10 +245,10 @@ export function Hosting() {
       <PageHeader icon={Rocket} title={t('hosting.title2', 'Hosting storage')} subtitle={t('hosting.sub2', 'Buy a pool of storage and fill it with repos and catalogs — we run it, you manage it.')} />
 
       {soldOut && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/8 p-4 mb-6 flex items-start gap-3">
-          <AlertTriangle size={20} className="text-red-400 shrink-0 mt-0.5" />
+        <div className="rounded-xl border border-error-border bg-error-bg p-4 mb-6 flex items-start gap-3">
+          <AlertTriangle size={20} className="text-error shrink-0 mt-0.5" />
           <div>
-            <div className="font-semibold text-red-400">{t('hosting.soldout', 'No hosting space available right now')}</div>
+            <div className="font-semibold text-error">{t('hosting.soldout', 'No hosting space available right now')}</div>
             <div className="text-sm text-[var(--muted)] mt-0.5">{t('hosting.soldout.d', 'Every plan is sold out until an existing repo frees up space or an admin raises the total capacity. Try again later.')}</div>
           </div>
         </div>
@@ -272,7 +272,7 @@ export function Hosting() {
         {c && (
           <div className="flex items-center gap-3 text-sm mt-4 pt-4 border-t border-[var(--line)]">
             <Gauge size={16} className="text-[var(--primary-2)] shrink-0" />
-            <div className="flex-1"><div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${c.usableGB ? 100 - (c.freeGB / c.usableGB) * 100 : 0}%` }} /></div></div>
+            <div className="flex-1"><div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${c.usableGB ? 100 - (c.freeGB / c.usableGB) * 100 : 0}%` }} /></div></div>
             <span className="text-xs text-[var(--muted)] whitespace-nowrap tabular-nums">{c.freeGB.toFixed(0)} / {c.usableGB.toFixed(0)} GB {t('hosting.free', 'free')}</span>
           </div>
         )}
@@ -290,7 +290,7 @@ export function Hosting() {
         const freeDisabled = soldOut || freeTierSoldOut || (!!c && free.storageGB > c.freeGB);
         const freeTierPct = c?.freeTierCapEnabled && c.freeTierCapGB ? Math.min(100, (c.freeTierUsedGB / c.freeTierCapGB) * 100) : null;
         return (
-          <Card className="p-5 mb-4 bg-emerald-500/[0.05] overflow-hidden relative">
+          <Card className="p-5 mb-4 bg-success/[0.05] overflow-hidden relative">
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shrink-0 shadow-lg shadow-emerald-500/25"><Gift size={22} /></span>
               <div className="flex-1 text-center sm:text-left min-w-0">
@@ -298,16 +298,16 @@ export function Hosting() {
                 <div className="text-sm text-[var(--muted)]">{t('hosting.freeplan.sub', 'Host a small repo at no cost — {gb} GB storage, {mbps} Mbps upload, forever free.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
                 <div className="text-xs text-[var(--faint)] mt-1">{t('hosting.freeplan.note', 'One free repo per account. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
               </div>
-              <Button variant="primary" className="!bg-emerald-600 hover:!bg-emerald-500 !border-transparent shrink-0" disabled={freeDisabled} onClick={() => checkout({ planId: free.id })}>
+              <Button variant="primary" className="!bg-success hover:!bg-success !border-transparent shrink-0" disabled={freeDisabled} onClick={() => checkout({ planId: free.id })}>
                 <Gift size={16} /> {freeTierSoldOut ? t('hosting.freeplan.soldout', 'Free plan sold out') : freeDisabled ? t('hosting.nospace', 'Not enough space') : t('hosting.freeplan.cta', 'Get it free')}</Button>
             </div>
             {freeTierPct != null && (
-              <div className="mt-4 pt-3 border-t border-emerald-500/15">
+              <div className="mt-4 pt-3 border-t border-success-border">
                 <div className="flex items-center justify-between text-xs text-[var(--muted)] mb-1">
                   <span>{t('hosting.freeplan.pool', 'Free-tier pool remaining')}</span>
                   <span className="font-medium tabular-nums">{c.freeTierFreeGB.toFixed(1)} / {c.freeTierCapGB} GB</span>
                 </div>
-                <div className="h-1.5 rounded-full bg-emerald-500/15 overflow-hidden"><div className={`h-full ${freeTierPct > 90 ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${freeTierPct}%` }} /></div>
+                <div className="h-1.5 rounded-full bg-success-bg overflow-hidden"><div className={`h-full ${freeTierPct > 90 ? 'bg-error' : 'bg-success'}`} style={{ width: `${freeTierPct}%` }} /></div>
               </div>
             )}
           </Card>
@@ -365,7 +365,7 @@ export function Hosting() {
       </div>}
 
       {/* Custom plan */}
-      <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-orange-500/10 to-transparent">
+      <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-brand to-transparent">
         <Sliders size={26} className="text-[var(--primary-2)]" />
         <div className="flex-1 text-center sm:text-left"><div className="font-semibold text-lg">{t('hosting.custom.title', 'Need a different size?')}</div>
           <div className="text-sm text-[var(--muted)]">{t('hosting.custom.sub2', 'Build a custom plan — pick your storage and upload speed. Price adapts instantly.')}</div></div>
@@ -402,8 +402,8 @@ function BoostAddCard({ repos, onAdd }) {
   const { data: fp } = useAsync(() => api.get(`/hosting/feature-price?days=${days}`).catch(() => null), [days]);
   const repo = repos.find((r) => r.id === repoId);
   return (
-    <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-amber-500/10 to-transparent">
-      <Rocket size={26} className="text-amber-400 shrink-0" />
+    <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-brand-2 to-transparent">
+      <Rocket size={26} className="text-warning shrink-0" />
       <div className="flex-1 w-full">
         <div className="font-semibold text-lg">{t('cart.boost.title', 'Boost a repo to the top')}</div>
         <div className="text-sm text-[var(--muted)] mb-2">{t('cart.boost.sub', 'Feature one of your repos at the top of the public listing for a set number of days.')}</div>
@@ -470,7 +470,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
   // wrappers, reveal transforms) can turn `fixed` into a clipped absolute — that
   // was making the cart + its button hide under the footer and go un-clickable.
   if (!open) return createPortal((
-    <button onClick={() => setOpen(true)} className="fixed bottom-20 md:bottom-4 right-3 md:right-4 z-[90] flex items-center gap-2 pl-3.5 pr-4 py-3 rounded-2xl text-white font-semibold shadow-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:brightness-105 transition">
+    <button onClick={() => setOpen(true)} className="fixed bottom-20 md:bottom-4 right-3 md:right-4 z-[90] flex items-center gap-2 pl-3.5 pr-4 py-3 rounded-2xl text-white font-semibold shadow-xl bg-gradient-to-r from-brand to-brand-2 hover:brightness-105 transition">
       <span className="relative"><ShoppingCart size={18} /><span className="absolute -top-2 -right-2 grid place-items-center w-4 h-4 rounded-full bg-white text-orange-600 text-[10px] font-bold">{count}</span></span>
       {t('cart.title', 'Cart')}
     </button>
@@ -486,18 +486,18 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
         {cart.map((it) => (
           <div key={it.uid} className="rounded-lg bg-[var(--surface-2)] px-3 py-2">
             <div className="flex items-center gap-2 text-sm">
-              {it.kind === 'boost' ? <Rocket size={14} className="text-amber-400 shrink-0" /> : <HardDrive size={14} className="text-[var(--primary-2)] shrink-0" />}
+              {it.kind === 'boost' ? <Rocket size={14} className="text-warning shrink-0" /> : <HardDrive size={14} className="text-[var(--primary-2)] shrink-0" />}
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{it.kind === 'boost' ? t('cart.boostof', 'Boost "{n}"').replace('{n}', it.repoName || '') : (it.label || it.repoName)}</div>
                 <div className="text-[11px] text-[var(--faint)]">{it.kind === 'boost' ? `${it.days} ${t('cart.days', 'days')} · ${it.autoRenew ? t('cart.recurring', 'recurring') : t('cart.onetime', 'one-time')}` : `${t('hosting.pool', 'Storage pool')} · ${it.months} ${t('hosting.mo', 'mo')}`}</div>
               </div>
-              <button onClick={() => removeItem(it.uid)} className="text-[var(--faint)] hover:text-red-400 shrink-0"><X size={14} /></button>
+              <button onClick={() => removeItem(it.uid)} className="text-[var(--faint)] hover:text-error shrink-0"><X size={14} /></button>
             </div>
             {/* Per-item auto-renew — hosting renews as a subscription after the prepaid
                 term; a boost re-bills every N days. Both cancellable in Billing. */}
             <label className="flex items-center gap-1.5 mt-1.5 text-[11px] text-[var(--muted)] cursor-pointer" title={it.kind === 'boost' ? t('cart.autorenew.hb', 'Keep this repo featured automatically — re-bills every {n} days. Cancel anytime in Billing.').replace('{n}', it.days) : t('cart.autorenew.h', 'Keep this repo online automatically — after the prepaid term it renews as a subscription. Cancel anytime in Billing.')}>
               <input type="checkbox" checked={!!it.autoRenew} onChange={(e) => setItemAutoRenew(it.uid, e.target.checked)} />
-              <RefreshCw size={11} className={it.autoRenew ? 'text-emerald-400' : 'text-[var(--faint)]'} /> {it.kind === 'boost' ? t('cart.autorenew.boost', 'Auto-renew every {n} days').replace('{n}', it.days) : t('cart.autorenew', 'Auto-renew after the prepaid term')}
+              <RefreshCw size={11} className={it.autoRenew ? 'text-success' : 'text-[var(--faint)]'} /> {it.kind === 'boost' ? t('cart.autorenew.boost', 'Auto-renew every {n} days').replace('{n}', it.days) : t('cart.autorenew', 'Auto-renew after the prepaid term')}
             </label>
           </div>
         ))}
@@ -509,18 +509,18 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
             <Button size="sm" onClick={addCode}><Plus size={13} /></Button>
           </div>
           {codes.length > 0 && <div className="flex flex-wrap gap-1.5 mt-2">{codes.map((c) => (
-            <span key={c} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-xs font-mono">{c}<button onClick={() => setCodes((x) => x.filter((k) => k !== c))} className="text-[var(--faint)] hover:text-red-400"><X size={10} /></button></span>
+            <span key={c} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-xs font-mono">{c}<button onClick={() => setCodes((x) => x.filter((k) => k !== c))} className="text-[var(--faint)] hover:text-error"><X size={10} /></button></span>
           ))}</div>}
-          {promoErr && <div className="text-[11px] text-red-400 mt-1.5">{quoteErr === 'promo_not_stackable' ? t('cart.err.stack', 'Those codes can’t be combined — only stackable codes stack.') : quoteErr === 'promo_not_discount' ? t('cart.err.notdiscount', 'Only discount codes apply in the cart.') : t('cart.err.promo', 'A code is invalid or not eligible.')}</div>}
+          {promoErr && <div className="text-[11px] text-error mt-1.5">{quoteErr === 'promo_not_stackable' ? t('cart.err.stack', 'Those codes can’t be combined — only stackable codes stack.') : quoteErr === 'promo_not_discount' ? t('cart.err.notdiscount', 'Only discount codes apply in the cart.') : t('cart.err.promo', 'A code is invalid or not eligible.')}</div>}
         </div>
       </div>
       <div className="border-t border-[var(--line)] p-3 space-y-1.5">
         {quote && (<>
           <div className="flex justify-between text-sm text-[var(--muted)]"><span>{t('cart.subtotal', 'Subtotal')}</span><span className="tabular-nums">{money(quote.subtotalCents)}</span></div>
-          {quote.discountCents > 0 && <div className="flex justify-between text-sm text-emerald-400"><span>{t('cart.discount', 'Discount')}{quote.combinedPct ? ` (−${quote.combinedPct}%)` : ''}</span><span className="tabular-nums">−{money(quote.discountCents)}</span></div>}
+          {quote.discountCents > 0 && <div className="flex justify-between text-sm text-success"><span>{t('cart.discount', 'Discount')}{quote.combinedPct ? ` (−${quote.combinedPct}%)` : ''}</span><span className="tabular-nums">−{money(quote.discountCents)}</span></div>}
           <div className="flex justify-between font-bold text-base pt-1 border-t border-[var(--line)]"><span>{t('cart.total', 'Total')}</span><span className="tabular-nums">{money(quote.totalCents)}</span></div>
         </>)}
-        {quoteErr && !promoErr && <div className="text-[11px] text-amber-400">{quoteErr === 'capacity_full' ? t('hosting.err.capacity', 'No capacity available right now.') : quoteErr === 'over_limit' ? t('cart.err.overlimit', 'A custom plan exceeds the per-repo upload limit.') : t('cart.err.quote', 'Could not price the cart.')}</div>}
+        {quoteErr && !promoErr && <div className="text-[11px] text-warning">{quoteErr === 'capacity_full' ? t('hosting.err.capacity', 'No capacity available right now.') : quoteErr === 'over_limit' ? t('cart.err.overlimit', 'A custom plan exceeds the per-repo upload limit.') : t('cart.err.quote', 'Could not price the cart.')}</div>}
         <label className="flex items-start gap-2 text-[11px] text-[var(--muted)] cursor-pointer">
           <input type="checkbox" className="mt-0.5" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
           <span dangerouslySetInnerHTML={{ __html: t('cart.agree', 'I accept the <a href="/legal/terms" target="_blank" class="text-[var(--primary-2)] underline">Terms</a> and the <a href="/legal/refunds" target="_blank" class="text-[var(--primary-2)] underline">Payments & Refunds</a> policy, and I understand that content I host is my responsibility.') }} />
@@ -592,8 +592,8 @@ function CustomPlanModal({ open, onClose, onCheckout, months = 12, setMonths, te
               <span className={disc > 0 || promo?.percentOff ? 'line-through' : ''}>${(price * months / 100).toFixed(2)}</span>
             </div>
           )}
-          {disc > 0 && <div className="flex items-center justify-between text-xs text-emerald-400"><span>{t('hosting.termdiscount', 'Term discount')}</span><span>−{Math.round(disc * 100)}%</span></div>}
-          {promo?.percentOff && <div className="flex items-center justify-between text-xs text-emerald-400"><span>{t('hosting.promo.label', 'Promo code')} ({promo.code})</span><span>−{promo.percentOff}%</span></div>}
+          {disc > 0 && <div className="flex items-center justify-between text-xs text-success"><span>{t('hosting.termdiscount', 'Term discount')}</span><span>−{Math.round(disc * 100)}%</span></div>}
+          {promo?.percentOff && <div className="flex items-center justify-between text-xs text-success"><span>{t('hosting.promo.label', 'Promo code')} ({promo.code})</span><span>−{promo.percentOff}%</span></div>}
           <div className="flex items-end justify-between pt-1.5">
             <div>
               <span className="text-sm text-[var(--muted)]">{t('hosting.estprice', 'Estimated price')}</span>

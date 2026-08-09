@@ -119,7 +119,7 @@ export function ActionBar({ actions, extra = [], className = '', size = 'sm' }) 
       {shown.map((a) => {
         const btn = (
           <Button key={a.key} size={size} variant={a.variant || 'default'} onClick={a.href ? undefined : a.onClick} disabled={a.disabled}
-            className={`shrink-0 ${a.danger ? '!text-red-400' : ''}`}>
+            className={`shrink-0 ${a.danger ? '!text-error' : ''}`}>
             {a.icon && <a.icon size={14} />} {a.label}
           </Button>
         );
@@ -155,7 +155,7 @@ export function ActionBar({ actions, extra = [], className = '', size = 'sm' }) 
               <div role="menu" className="fixed z-[61] rounded-xl border border-[var(--line-strong)] shadow-xl p-1"
                 style={{ top: pos.top, right: pos.right, minWidth: pos.minWidth, background: 'var(--bg-solid)' }}>
                 {rest.map((a) => {
-                  const cls = `w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 enabled:hover:bg-[var(--surface-2)] disabled:opacity-40 disabled:cursor-not-allowed ${a.danger ? 'text-red-400' : 'text-[var(--text)]'}`;
+                  const cls = `w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 enabled:hover:bg-[var(--surface-2)] disabled:opacity-40 disabled:cursor-not-allowed ${a.danger ? 'text-error' : 'text-[var(--text)]'}`;
                   const body = <>{a.icon && <a.icon size={14} />} {a.label}</>;
                   // A navigating action stays a link once it folds in here too — otherwise
                   // the affordance would vanish at exactly the narrow widths that fold it.
@@ -377,7 +377,7 @@ export function DialogProvider({ children }) {
         title={o.title || 'Confirm'} icon={Icon}
         footer={<>
           {state?.kind !== 'alert' && <Button variant="ghost" onClick={() => close(false)}>{o.cancelLabel || 'Cancel'}</Button>}
-          <Button variant="primary" className={danger ? '!bg-none !bg-red-500/90' : ''}
+          <Button variant="primary" className={danger ? '!bg-none !bg-error-bg' : ''}
             onClick={() => close(state?.kind === 'prompt' ? (value || '') : true)}>{o.okLabel || 'OK'}</Button>
         </>}>
         {o.message && <p className="text-sm text-[var(--muted)] leading-relaxed">{o.message}</p>}

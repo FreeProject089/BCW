@@ -134,7 +134,7 @@ export function ReposPage() {
                         {r.featured && <Badge tone="amber"><Star size={11} /> {t('repos.featured', 'Featured')}</Badge>}
                         <Badge tone="green"><ShieldCheck size={11} /> {t('repos.verified', 'Verified')}</Badge>
                         <button onClick={() => toggleFavorite(r)} title={r.favorited ? t('repos.unfavorite', 'Unfavorite') : t('repos.favorite', 'Favorite')}
-                          className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full border ${r.favorited ? 'border-amber-400/50 text-amber-400 bg-amber-400/10' : 'border-[var(--line)] text-[var(--faint)] hover:text-amber-400'}`}>
+                          className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full border ${r.favorited ? 'border-warning-border text-warning bg-warning-bg' : 'border-[var(--line)] text-[var(--faint)] hover:text-warning'}`}>
                           <Star size={12} fill={r.favorited ? 'currentColor' : 'none'} /> {r.favoriteCount || 0}
                         </button>
                       </div>
@@ -142,7 +142,7 @@ export function ReposPage() {
                     <div className="text-xs text-[var(--faint)] mt-1 flex items-center gap-3 flex-wrap">
                       {r.ownerId ? <Link to={`/u/${r.ownerId}`} className="flex items-center gap-1 hover:text-[var(--primary)]"><Users size={12} /> {r.owner?.displayName}</Link> : <span className="flex items-center gap-1"><Users size={12} /> {r.owner?.displayName}</span>}
                       {r.ownerBcId && <button onClick={() => { navigator.clipboard?.writeText(r.ownerBcId); toast.success(t('repos.bcidcopied', 'Host BC id copied.')); }} title={t('repos.copybcid', 'Copy the host’s BC id')} className="inline-flex items-center gap-1 font-mono hover:text-[var(--primary)]"><Fingerprint size={11} /> {r.ownerBcId} <Copy size={9} className="opacity-60" /></button>}
-                      {r.hosted && <span className={`flex items-center gap-1 ${online ? 'text-emerald-400' : 'text-[var(--faint)]'}`}>{online ? <Wifi size={12} /> : <WifiOff size={12} />} {online ? t('repos.online', 'Online') : t('repos.offline', 'Offline')}</span>}
+                      {r.hosted && <span className={`flex items-center gap-1 ${online ? 'text-success' : 'text-[var(--faint)]'}`}>{online ? <Wifi size={12} /> : <WifiOff size={12} />} {online ? t('repos.online', 'Online') : t('repos.offline', 'Offline')}</span>}
                     </div>
                     {r.description && <p className="text-sm text-[var(--muted)] mt-2 line-clamp-2">{r.description}</p>}
                     {r.tags?.length > 0 && <div className="flex flex-wrap gap-1.5 mt-2">{r.tags.map((tg) => <button key={tg} onClick={() => setTag(tg)}><Badge><Tag size={10} /> {tg}</Badge></button>)}</div>}
@@ -278,7 +278,7 @@ function MyChipList({ label, items, onAdd, onRemove, placeholder }) {
       <div className="flex gap-1.5"><Input value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} onKeyDown={(e) => e.key === 'Enter' && add()} /><Button size="sm" onClick={add}><Plus size={13} /></Button></div>
       <div className="flex flex-wrap gap-1 mt-1.5">
         {items.length ? items.map((x) => (
-          <span key={x} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px]">{x}<button onClick={() => onRemove(x)} className="text-[var(--faint)] hover:text-red-400"><X size={10} /></button></span>
+          <span key={x} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px]">{x}<button onClick={() => onRemove(x)} className="text-[var(--faint)] hover:text-error"><X size={10} /></button></span>
         )) : <span className="text-[11px] text-[var(--faint)]">{'—'}</span>}
       </div>
     </div>
@@ -321,7 +321,7 @@ function MyAccountChips({ label, items, onAdd, onRemove }) {
         {items.length ? items.map((a) => (
           <span key={`${a.type}:${a.id}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px]">
             <Users size={9} className="text-[var(--faint)]" /> {a.type === 'discord' ? 'Discord: ' : ''}{a.label || a.id}
-            <button onClick={() => onRemove(a)} className="text-[var(--faint)] hover:text-red-400"><X size={10} /></button>
+            <button onClick={() => onRemove(a)} className="text-[var(--faint)] hover:text-error"><X size={10} /></button>
           </span>
         )) : <span className="text-[11px] text-[var(--faint)]">{'—'}</span>}
       </div>
@@ -370,13 +370,13 @@ function MyAccessPolicyCard() {
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={policy.whitelistOnly} onChange={(e) => setPolicy({ ...policy, whitelistOnly: e.target.checked })} /> {t('repos.mypolicy.wlonly', 'Whitelist-only for ALL my repos')}</label>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-3">
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Shield size={12} className="text-emerald-400" /> {t('repos.mypolicy.wl', 'Whitelist')}</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Shield size={12} className="text-success" /> {t('repos.mypolicy.wl', 'Whitelist')}</div>
               <MyChipList label="IPs" items={policy.whitelistIps || []} onAdd={(v) => addTo('whitelistIps', v)} onRemove={(v) => rm('whitelistIps', v)} placeholder="203.0.113.4" />
               <MyChipList label="Creator ID" items={policy.whitelistKeys || []} onAdd={(v) => addTo('whitelistKeys', v)} onRemove={(v) => rm('whitelistKeys', v)} placeholder="BMM creator id…" />
               <MyAccountChips label="Accounts" items={policy.whitelistAccounts || []} onAdd={(e) => addAccount('whitelistAccounts', e)} onRemove={(e) => rmAccount('whitelistAccounts', e)} />
             </div>
             <div className="space-y-3">
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Ban size={12} className="text-red-400" /> {t('repos.mypolicy.bl', 'Blacklist')}</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Ban size={12} className="text-error" /> {t('repos.mypolicy.bl', 'Blacklist')}</div>
               <MyChipList label="IPs" items={policy.bannedIps || []} onAdd={(v) => addTo('bannedIps', v)} onRemove={(v) => rm('bannedIps', v)} placeholder="198.51.100.7" />
               <MyChipList label="Creator ID" items={policy.bannedKeys || []} onAdd={(v) => addTo('bannedKeys', v)} onRemove={(v) => rm('bannedKeys', v)} placeholder="BMM creator id…" />
               <MyAccountChips label="Accounts" items={policy.bannedAccounts || []} onAdd={(e) => addAccount('bannedAccounts', e)} onRemove={(e) => rmAccount('bannedAccounts', e)} />
@@ -498,7 +498,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
             {/* Used bar: repos (orange) + catalogs (blue) + free (track). */}
             <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden flex">
               <div className="h-full" style={{ width: `${repoPct}%`, background: accent }} title={`${t('pools.repos', 'Repos')}: ${gb(g.repoBytes)} GB`} />
-              <div className="h-full bg-sky-500" style={{ width: `${catPct}%` }} title={`${t('pools.catalogs', 'Catalogs')}: ${gb(g.catalogBytes)} GB`} />
+              <div className="h-full bg-info" style={{ width: `${catPct}%` }} title={`${t('pools.catalogs', 'Catalogs')}: ${gb(g.catalogBytes)} GB`} />
             </div>
             {(g.repos?.length > 0 || g.catalogs?.length > 0) ? (
               <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -508,8 +508,8 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
                   </Link>
                 ))}
                 {g.catalogs?.map((c) => (
-                  <a key={c.id} href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[11px] rounded-lg px-2 py-1 border border-[var(--line)] bg-[var(--surface-2)] hover:border-sky-500">
-                    <Boxes size={11} className="text-sky-500" /> <span className="truncate max-w-[140px]">{c.name}</span> <span className="text-[var(--faint)]">{gb(c.quotaBytes)}G</span>
+                  <a key={c.id} href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[11px] rounded-lg px-2 py-1 border border-[var(--line)] bg-[var(--surface-2)] hover:border-info">
+                    <Boxes size={11} className="text-info" /> <span className="truncate max-w-[140px]">{c.name}</span> <span className="text-[var(--faint)]">{gb(c.quotaBytes)}G</span>
                   </a>
                 ))}
               </div>
@@ -530,8 +530,8 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
                 {q && typeof q === 'object' && (q.eligible
                   ? <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[var(--muted)]">
                       <span>{t('pools.consol.now', 'Now')}: <b className="text-[var(--text)]">{money(q.currentMonthlyCents)}/mo</b> ({q.subCount} {t('pools.consol.subs', 'subs')})</span>
-                      <span>→ {t('pools.consol.one', 'One {gb}GB plan').replace('{gb}', String(q.sumGB))}: <b className="text-[var(--text)]">{money(q.consolidatedMonthlyCents)}/mo</b>{q.discountPct > 0 && <span className="text-emerald-500"> (−{q.discountPct}%)</span>}</span>
-                      {q.savingCents > 0 && <span className="text-emerald-500 font-medium">{t('pools.consol.save', 'save {v}/mo').replace('{v}', money(q.savingCents))}</span>}
+                      <span>→ {t('pools.consol.one', 'One {gb}GB plan').replace('{gb}', String(q.sumGB))}: <b className="text-[var(--text)]">{money(q.consolidatedMonthlyCents)}/mo</b>{q.discountPct > 0 && <span className="text-success"> (−{q.discountPct}%)</span>}</span>
+                      {q.savingCents > 0 && <span className="text-success font-medium">{t('pools.consol.save', 'save {v}/mo').replace('{v}', money(q.savingCents))}</span>}
                       {q.canExecute
                         ? <div className="w-full mt-1"><Button size="sm" variant="primary" onClick={() => consolidate(g)}><GitMerge size={13} /> {t('pools.consol.do', 'Consolidate to one plan')}</Button></div>
                         : <span className="text-[var(--faint)] w-full">{t('pools.consol.how', 'To consolidate: buy one plan for the whole pool from Hosting, then cancel the smaller subscriptions.')}</span>}
@@ -729,9 +729,9 @@ export function MyRepos() {
           {filteredRepos.map((r) => (
             <Card key={r.id} className="p-4">
               {r.deleteAt && (
-                <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs">
-                  <AlertTriangle size={14} className="text-red-400 shrink-0" />
-                  <span className="flex-1 text-red-300">{t('repos.del.pending', 'Scheduled for deletion — permanently removed with its content on {when}.').replace('{when}', new Date(r.deleteAt).toLocaleString())}</span>
+                <div className="mb-3 flex items-center gap-2 rounded-lg border border-error-border bg-error-bg px-3 py-2 text-xs">
+                  <AlertTriangle size={14} className="text-error shrink-0" />
+                  <span className="flex-1 text-error">{t('repos.del.pending', 'Scheduled for deletion — permanently removed with its content on {when}.').replace('{when}', new Date(r.deleteAt).toLocaleString())}</span>
                   <Button size="sm" variant="primary" onClick={() => undoDelete(r)}><RefreshCw size={12} /> {t('repos.del.undo', 'Undo')}</Button>
                 </div>
               )}
@@ -901,7 +901,7 @@ function RepoManageModal({ repo, onClose, onChanged, initialTab }) {
 
   const chip = (val, onRemove) => (
     <span key={val} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs">
-      {val}<button onClick={onRemove} className="text-[var(--faint)] hover:text-red-400"><X size={12} /></button>
+      {val}<button onClick={onRemove} className="text-[var(--faint)] hover:text-error"><X size={12} /></button>
     </span>
   );
   const tabs = [['access', t('repos.tab.access', 'Access'), ShieldCheck], ['bans', t('repos.tab.bans', 'Bans'), XCircle], ['limits', t('repos.tab.limits', 'Limits'), Zap]];
@@ -1213,7 +1213,7 @@ function SubscriptionRow({ repo, stripeSub, onChanged }) {
         <div className="text-xs text-[var(--faint)]">{gb(repo.storageQuotaBytes)} GB · {(repo.uploadLimitKbps / 1024).toFixed(1)} Mbps</div>
       </div>
       {periodEnd && (
-        <div className={`text-xs text-right shrink-0 ${expired ? 'text-red-400' : soon ? 'text-amber-400' : 'text-[var(--muted)]'}`}>
+        <div className={`text-xs text-right shrink-0 ${expired ? 'text-error' : soon ? 'text-warning' : 'text-[var(--muted)]'}`}>
           <div className="flex items-center gap-1 justify-end"><Clock size={11} /> {expired ? t('bill.expired', 'Expired') : canceling ? t('bill.ah.ends', 'Ends') : hasSub ? t('bill.ah.renews', 'Renews') : t('bill.renewson', 'Renews/expires')}</div>
           <div className="font-medium">{new Date(periodEnd).toLocaleDateString()}</div>
         </div>
@@ -1324,7 +1324,7 @@ export function Billing() {
                   <div className="flex items-center gap-3 px-4 py-3 text-sm">
                     <button onClick={() => setExpandedSub(isOpen ? null : s.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
                       <ChevronDown size={15} className={`shrink-0 text-[var(--faint)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                      {isBoost ? <Rocket size={15} className="text-amber-400 shrink-0" /> : <Server size={15} className="text-[var(--primary-2)] shrink-0" />}
+                      {isBoost ? <Rocket size={15} className="text-warning shrink-0" /> : <Server size={15} className="text-[var(--primary-2)] shrink-0" />}
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">{label}{s.repoName ? <> · <span className="text-[var(--primary-2)]">{s.repoName}</span></> : ''}</div>
                         <div className="text-xs text-[var(--faint)]">{when}</div>
@@ -1437,7 +1437,7 @@ function InvoiceModal({ id, onClose }) {
           {/* Header band */}
           <div className="flex items-start justify-between gap-4 pb-4 mb-4 border-b border-[var(--line)]">
             <div className="flex items-center gap-2.5">
-              <span className="grid place-items-center w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white font-black text-lg shrink-0">B</span>
+              <span className="grid place-items-center w-10 h-10 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white font-black text-lg shrink-0">B</span>
               <div><div className="font-extrabold text-base leading-tight">BetterCommunity</div><div className="text-[11px] text-[var(--faint)]">bettercommunity.ch</div></div>
             </div>
             <div className="text-right">
@@ -1479,7 +1479,7 @@ function InvoiceModal({ id, onClose }) {
 
           {/* Status + legal footer */}
           <div className="flex items-center gap-2 mb-2">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${paid ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-[var(--surface-2)] text-[var(--muted)] border border-[var(--line)]'}`}>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${paid ? 'bg-success-bg text-success border border-success-border' : 'bg-[var(--surface-2)] text-[var(--muted)] border border-[var(--line)]'}`}>
               {paid && <CheckCircle2 size={12} />} {paid ? t('bill.paid', 'PAID') : inv.status}
             </span>
             <span className="text-xs text-[var(--faint)]">{t('bill.paidon', 'Paid on {d}').replace('{d}', new Date(inv.createdAt).toLocaleDateString())}</span>
@@ -1609,15 +1609,15 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
       {/* storage meter */}
       <div className="flex items-center gap-3 text-sm mb-3">
         <HardDrive size={16} className="text-[var(--primary-2)]" />
-        <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${pct}%` }} /></div>
+        <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} /></div>
         <span className="text-[var(--muted)] whitespace-nowrap">{mb(d.used || 0)} / {mb(d.quota || 0)} MB</span>
       </div>
 
       {/* Online status panel — owner self-serve publish. The public URL is auto-managed. */}
       {!admin && d.hosted && (
-        <div className={`rounded-xl border p-3 mb-3 ${d.published ? 'border-emerald-500/40 bg-emerald-500/[0.06]' : 'border-[var(--line)] bg-[var(--surface-2)]'}`}>
+        <div className={`rounded-xl border p-3 mb-3 ${d.published ? 'border-success-border bg-success/[0.06]' : 'border-[var(--line)] bg-[var(--surface-2)]'}`}>
           <div className="flex items-center gap-2.5">
-            {d.published ? <Wifi size={16} className="text-emerald-400 shrink-0" /> : <WifiOff size={16} className="text-[var(--faint)] shrink-0" />}
+            {d.published ? <Wifi size={16} className="text-success shrink-0" /> : <WifiOff size={16} className="text-[var(--faint)] shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold">{d.published ? t('repos.online', 'Online') : t('repos.offline', 'Offline')}</div>
               <div className="text-[11px] text-[var(--faint)]">{t('repos.urlauto', 'Public URL is managed automatically')}</div>
@@ -1634,8 +1634,8 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
               <a href={publicUrl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.feed.open', 'Open')}><ExternalLink size={13} /></a>
             </div>
           )}
-          {!d.published && !hasRepoJson && <div className="mt-2 text-[11px] text-amber-400/90 flex items-center gap-1.5"><AlertTriangle size={12} /> {t('repos.needjsonhint', 'Upload a valid repo.json below, then Go online.')}</div>}
-          {!d.published && hasRepoJson && <div className="mt-2 text-[11px] text-emerald-400/90 flex items-center gap-1.5"><CheckCircle2 size={12} /> {t('repos.readyonline', 'Valid repo.json detected — ready to go online.')}</div>}
+          {!d.published && !hasRepoJson && <div className="mt-2 text-[11px] text-warning flex items-center gap-1.5"><AlertTriangle size={12} /> {t('repos.needjsonhint', 'Upload a valid repo.json below, then Go online.')}</div>}
+          {!d.published && hasRepoJson && <div className="mt-2 text-[11px] text-success flex items-center gap-1.5"><CheckCircle2 size={12} /> {t('repos.readyonline', 'Valid repo.json detected — ready to go online.')}</div>}
         </div>
       )}
 
@@ -1668,7 +1668,7 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
               {f.sha256 && <span className="hidden md:inline text-[10px] text-[var(--faint)] font-mono" title={`SHA-256: ${f.sha256}`}>{f.sha256.slice(0, 10)}…</span>}
               <span className="text-xs text-[var(--faint)]">{fmtSize(f.size)}</span>
               {admin && <button className="text-[var(--faint)] hover:text-[var(--primary-2)]" title={t('repos.download', 'Download')} onClick={() => dl(f)}><Download size={14} /></button>}
-              {!admin && <button className="text-[var(--faint)] hover:text-red-400" onClick={() => del(f)}><Trash2 size={14} /></button>}
+              {!admin && <button className="text-[var(--faint)] hover:text-error" onClick={() => del(f)}><Trash2 size={14} /></button>}
             </div>
           )) : <div className="text-sm text-[var(--faint)] py-2">{t('repos.nofiles', 'No files yet.')}</div>}
         </div>

@@ -85,7 +85,7 @@ function AdminMyoProducts() {
           <Card key={p.id} className="p-3 flex items-center gap-3">
             <div className="flex-1 min-w-0"><div className="font-medium truncate flex items-center gap-2">{p.name} <Badge>{p.kind}</Badge>{!p.active && <Badge tone="amber">{t('amyo.p.hidden', 'hidden')}</Badge>}{p.featured && <Badge tone="primary">{t('amyo.p.featured', 'featured')}</Badge>}</div><div className="text-xs text-[var(--faint)] truncate">{p.basePriceCents > 0 ? `from ${fmtMoney(p.basePriceCents)} · ` : ''}{p.includesSource ? t('myo.src.with', 'source included') : t('myo.src.without', 'no source')}</div></div>
             <Button size="sm" variant="ghost" onClick={() => setEditing(p)}><PenSquare size={13} /></Button>
-            <Button size="sm" variant="ghost" className="!text-red-400" onClick={() => del(p)}><Trash2 size={13} /></Button>
+            <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(p)}><Trash2 size={13} /></Button>
           </Card>
         ))}
       </div> : <EmptyState icon={Package} title={t('amyo.p.none', 'No catalog products')} sub={t('amyo.p.nonesub', 'The 3 base options (bot / app / website) always show; add products to customise them or offer more.')} />}
@@ -129,7 +129,7 @@ function MyoProductModal({ product, onClose, onDone }) {
               <div key={i} className="flex gap-2">
                 <Input className="flex-1" value={o.label} onChange={(e) => setOptions((s) => s.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder={t('amyo.p.optlabel', 'Option')} />
                 <Input className="!w-24" type="number" step="0.01" value={o.price} onChange={(e) => setOptions((s) => s.map((x, j) => j === i ? { ...x, price: e.target.value } : x))} placeholder="+$" />
-                <button onClick={() => setOptions((s) => s.filter((_, j) => j !== i))} className="text-[var(--faint)] hover:text-red-400 px-1"><X size={15} /></button>
+                <button onClick={() => setOptions((s) => s.filter((_, j) => j !== i))} className="text-[var(--faint)] hover:text-error px-1"><X size={15} /></button>
               </div>
             ))}
           </div>

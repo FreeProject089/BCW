@@ -178,7 +178,7 @@ export function Authorize() {
     <div className="max-w-md mx-auto py-12">
       <Card className="p-7">
         <div className="flex items-center gap-3.5 mb-6">
-          <span className="grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white text-xl font-bold shrink-0 shadow-lg shadow-orange-500/25">{(info.clientName || '?').charAt(0).toUpperCase()}</span>
+          <span className="grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-white text-xl font-bold shrink-0 shadow-lg shadow-orange-500/25">{(info.clientName || '?').charAt(0).toUpperCase()}</span>
           <div className="min-w-0">
             <div className="font-bold text-[17px] leading-tight truncate">{info.clientName}</div>
             <div className="text-sm text-[var(--muted)]">{t('oauth.wants', 'wants to access your BetterCommunity account')}</div>
@@ -190,7 +190,7 @@ export function Authorize() {
             <li key={s} className="flex items-center gap-3 px-3.5 py-2.5">
               <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0"><I size={16} /></span>
               <div className="min-w-0"><div className="text-sm font-medium leading-tight">{label}</div>{sub && <div className="text-xs text-[var(--muted)] truncate">{sub}</div>}</div>
-              <CheckCircle2 size={16} className="text-emerald-400 ml-auto shrink-0" />
+              <CheckCircle2 size={16} className="text-success ml-auto shrink-0" />
             </li>
           ); })}
         </ul>

@@ -145,7 +145,7 @@ export function ReportJoin() {
           <Link to={`/auth?next=${encodeURIComponent(location.pathname)}`}><Button variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
         </> : state.loading ? <div className="flex items-center justify-center gap-2 text-[var(--muted)] py-6"><Spinner /> {t('common.loading', 'Loading…')}</div>
           : state.error ? <>
-            <X size={28} className="mx-auto text-red-400 mb-3" />
+            <X size={28} className="mx-auto text-error mb-3" />
             <h1 className="text-lg font-semibold">{t('rj.cant', 'Can’t join')}</h1>
             <p className="text-sm text-[var(--muted)] mt-1">{ERR[state.error] || ERR.invalid_invite}</p>
           </> : <>

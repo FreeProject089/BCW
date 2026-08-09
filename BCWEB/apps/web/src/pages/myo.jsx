@@ -88,7 +88,7 @@ export function MyoPage() {
           ))}
         </div>
         <div className="mt-5 text-xs text-[var(--muted)] flex items-start gap-2.5 border-t border-[var(--line)] pt-4">
-          <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-400" />
+          <AlertTriangle size={15} className="shrink-0 mt-0.5 text-warning" />
           <span>{t('myo.disclaimer', 'The consultation fee pays for expert advice and a quote — it is NOT the price of the product. Building only begins after you approve and pay the separate quote. Some deliverables include source code, some do not — this is always stated on the quote.')}</span>
         </div>
       </Card>
@@ -226,7 +226,7 @@ function IntakeModal({ intake, cfg, onClose }) {
         <Button variant="primary" disabled={busy} onClick={submit}>{busy ? <Spinner /> : <><CreditCard size={15} /> {t('myo.intake.pay', 'Pay {p} & start').replace('{p}', fmtMoney(fee, cfg.currency))}</>}</Button></>}>
       <div className="space-y-3">
         <div className="text-xs text-[var(--faint)] flex items-start gap-2 bg-[var(--surface-2)] rounded-lg p-2.5">
-          <AlertTriangle size={13} className="shrink-0 mt-0.5 text-amber-400" />
+          <AlertTriangle size={13} className="shrink-0 mt-0.5 text-warning" />
           <span>{t('myo.intake.note', "You're paying {p} for a consultation (advice + a quote) about “{name}”. This is not the product price — building starts after you approve the quote.").replace('{p}', fmtMoney(fee, cfg.currency)).replace('{name}', kindMeta(intake.kind)[lang === 'fr' ? 'fr' : 'en'])}</span>
         </div>
         <div className="grid grid-cols-[1fr_130px] gap-3">
@@ -245,7 +245,7 @@ function IntakeModal({ intake, cfg, onClose }) {
         </Field>
         <label className="flex items-center gap-2.5 text-sm cursor-pointer rounded-lg border border-[var(--line)] p-3">
           <input type="checkbox" checked={f.urgent} onChange={(e) => set('urgent', e.target.checked)} />
-          <span className="flex-1"><span className="font-medium flex items-center gap-1.5"><Clock size={13} className="text-amber-400" /> {t('myo.f.urgent', 'Urgent request')}</span>
+          <span className="flex-1"><span className="font-medium flex items-center gap-1.5"><Clock size={13} className="text-warning" /> {t('myo.f.urgent', 'Urgent request')}</span>
             <span className="text-xs text-[var(--faint)]">{t('myo.f.urgentnote', 'Prioritised — a higher consultation fee ({p}).').replace('{p}', fmtMoney(cfg.urgentConsultationCents, cfg.currency))}</span></span>
         </label>
         <div className="text-[11px] text-[var(--faint)] text-center pt-1">
@@ -330,8 +330,8 @@ export function MyoConversation({ id, admin = false }) {
       </Card>
 
       {r.status === 'pending_payment' && !admin && (
-        <Card className="p-4 flex items-center gap-3 border-amber-500/40 bg-amber-500/5">
-          <CreditCard size={18} className="text-amber-400 shrink-0" />
+        <Card className="p-4 flex items-center gap-3 border-warning-border bg-warning-bg">
+          <CreditCard size={18} className="text-warning shrink-0" />
           <div className="flex-1 text-sm">{t('myo.pending', 'This request opens once the consultation fee is paid.')}</div>
           <Button size="sm" variant="primary" onClick={async () => { try { const res = await api.post(`/myo/requests/${id}/pay`, {}); if (res?.checkoutUrl) location.href = res.checkoutUrl; } catch { toast.error(t('myo.e.pay', 'Could not start checkout.')); } }}>{t('myo.payNow', 'Pay now')}</Button>
         </Card>
@@ -385,7 +385,7 @@ function QuoteCard({ q, admin, viewerIsStaff, onPay, onWithdraw, t, cur }) {
   const paid = q.status === 'paid';
   const withdrawn = q.status === 'withdrawn';
   return (
-    <Card className={`p-4 border-2 ${paid ? 'border-green-500/40' : withdrawn ? 'border-[var(--line)] opacity-60' : 'border-[var(--primary)]/40'}`}>
+    <Card className={`p-4 border-2 ${paid ? 'border-success-border' : withdrawn ? 'border-[var(--line)] opacity-60' : 'border-[var(--primary)]/40'}`}>
       <div className="flex items-center gap-2 mb-2"><FileText size={16} className="text-[var(--primary-2)]" /><span className="font-semibold">{q.title || t('myo.quote', 'Quote')}</span>
         {paid && <Badge tone="green"><Check size={10} /> {t('myo.quote.paid', 'paid')}</Badge>}
         {withdrawn && <Badge>{t('myo.quote.withdrawn', 'withdrawn')}</Badge>}
@@ -398,15 +398,15 @@ function QuoteCard({ q, admin, viewerIsStaff, onPay, onWithdraw, t, cur }) {
       </div>
       {q.validUntil && !paid && <div className="text-xs text-[var(--faint)] mb-2">{t('myo.quote.valid', 'Valid until {d}').replace('{d}', new Date(q.validUntil).toLocaleDateString())}</div>}
       {!admin && !viewerIsStaff && q.status === 'sent' && <Button size="sm" variant="primary" className="w-full" onClick={onPay}><CreditCard size={15} /> {t('myo.quote.pay', 'Approve & pay {p}').replace('{p}', fmtMoney(q.totalCents, cur))}</Button>}
-      {admin && q.status === 'sent' && <Button size="sm" variant="ghost" className="!text-red-400" onClick={onWithdraw}><X size={14} /> {t('myo.quote.withdrawbtn', 'Withdraw quote')}</Button>}
+      {admin && q.status === 'sent' && <Button size="sm" variant="ghost" className="!text-error" onClick={onWithdraw}><X size={14} /> {t('myo.quote.withdrawbtn', 'Withdraw quote')}</Button>}
     </Card>
   );
 }
 
 function DeliverableCard({ d, t }) {
   return (
-    <Card className="p-4 border-2 border-green-500/40">
-      <div className="flex items-center gap-2 mb-2"><Package size={16} className="text-green-400" /><span className="font-semibold">{d.title || t('myo.delivery', 'Delivery')}</span>
+    <Card className="p-4 border-2 border-success-border">
+      <div className="flex items-center gap-2 mb-2"><Package size={16} className="text-success" /><span className="font-semibold">{d.title || t('myo.delivery', 'Delivery')}</span>
         <Badge tone={d.includesSource ? 'green' : ''}>{d.includesSource ? t('myo.src.with', 'source included') : t('myo.src.without', 'no source')}</Badge>
       </div>
       {d.note && <p className="text-sm text-[var(--muted)] mb-2 whitespace-pre-wrap">{d.note}</p>}
@@ -469,7 +469,7 @@ function QuoteBuilder({ requestId, onDone }) {
             <div key={i} className="flex gap-2">
               <Input className="flex-1" value={it.label} onChange={(e) => setItems((s) => s.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder={t('myo.qb.itemph', 'Description')} />
               <Input className="!w-28" type="number" step="0.01" value={it.price} onChange={(e) => setItems((s) => s.map((x, j) => j === i ? { ...x, price: e.target.value } : x))} placeholder="0.00" />
-              {items.length > 1 && <button onClick={() => setItems((s) => s.filter((_, j) => j !== i))} className="text-[var(--faint)] hover:text-red-400 px-1"><X size={15} /></button>}
+              {items.length > 1 && <button onClick={() => setItems((s) => s.filter((_, j) => j !== i))} className="text-[var(--faint)] hover:text-error px-1"><X size={15} /></button>}
             </div>
           ))}
         </div>
@@ -515,7 +515,7 @@ function DeliverForm({ requestId, onDone }) {
       <div className="grid sm:grid-cols-2 gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('myo.d.file', 'File')}</div>
-          {file ? <div className="flex items-center gap-2 text-sm"><FileText size={14} /> <span className="truncate flex-1">{file.name}</span><button onClick={() => setFile(null)} className="text-[var(--faint)] hover:text-red-400"><X size={14} /></button></div>
+          {file ? <div className="flex items-center gap-2 text-sm"><FileText size={14} /> <span className="truncate flex-1">{file.name}</span><button onClick={() => setFile(null)} className="text-[var(--faint)] hover:text-error"><X size={14} /></button></div>
             : <label className="btn btn-sm cursor-pointer inline-flex"><input type="file" className="hidden" onChange={pick} />{uploading ? <Spinner /> : <><Download size={13} className="rotate-180" /> {t('myo.d.upload', 'Upload deliverable')}</>}</label>}
         </div>
         <Field label={t('myo.d.link', 'or external link')}><Input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://…" /></Field>

@@ -8,9 +8,9 @@ import { CheckCircle2, Clock, Circle, CalendarDays, ListTodo } from 'lucide-reac
 import { Card } from '../ui/ui.jsx';
 
 const PROG_STATUS = {
-  done: { tone: 'green', icon: CheckCircle2, label: 'Done', color: 'text-emerald-400' },
-  'in-progress': { tone: 'amber', icon: Clock, label: 'In progress', color: 'text-amber-400' },
-  progress: { tone: 'amber', icon: Clock, label: 'In progress', color: 'text-amber-400' },
+  done: { tone: 'green', icon: CheckCircle2, label: 'Done', color: 'text-success' },
+  'in-progress': { tone: 'amber', icon: Clock, label: 'In progress', color: 'text-warning' },
+  progress: { tone: 'amber', icon: Clock, label: 'In progress', color: 'text-warning' },
   planned: { tone: '', icon: Circle, label: 'Planned', color: 'text-[var(--faint)]' },
 };
 // Bilingual value picker: { en, fr } → the active language (fallback en); plain → as-is.
@@ -20,7 +20,7 @@ function Meter({ label, pct }) {
   return (
     <div className="flex-1 min-w-[140px]">
       <div className="flex items-center justify-between mb-1 text-sm"><span className="text-[var(--muted)]">{label}</span><b>{pct}%</b></div>
-      <div className="h-2.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all" style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} /></div>
+      <div className="h-2.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2 transition-all" style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} /></div>
     </div>
   );
 }
@@ -32,7 +32,7 @@ function ProgressItem({ it, lang }) {
       <m.icon size={15} className={`${m.color} shrink-0`} />
       <div className="flex-1 min-w-0 text-sm truncate">{pickLang(it.label ?? it.title, lang)}</div>
       {it.eta && <span className="text-xs text-[var(--faint)] hidden sm:flex items-center gap-1"><CalendarDays size={11} /> {it.eta}</span>}
-      <div className="w-24 sm:w-32 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${pct}%` }} /></div>
+      <div className="w-24 sm:w-32 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} /></div>
       <span className="text-xs text-[var(--muted)] w-9 text-right tabular-nums">{pct}%</span>
     </div>
   );
@@ -72,7 +72,7 @@ export function ProgressTracker({ data, title, lang }) {
               <div className="font-medium">{pickLang(c.name, lang)}</div>
               <span className="text-xs text-[var(--muted)] tabular-nums">{avg(c.items || [])}%</span>
             </div>
-            <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mb-1"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${avg(c.items || [])}%` }} /></div>
+            <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mb-1"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${avg(c.items || [])}%` }} /></div>
             <div className="divide-y divide-[var(--line)]">
               {(c.items || []).map((it, k) => <ProgressItem key={k} it={it} lang={lang} />)}
             </div>

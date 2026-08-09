@@ -305,7 +305,7 @@ export default function ProjectPage() {
       <div className="flex flex-col md:flex-row md:items-center gap-5 mb-8">
         {APP_LOGO[key]
           ? <img src={APP_LOGO[key]} alt="" className="w-16 h-16 rounded-2xl object-contain shrink-0 bg-[var(--surface-2)] border border-[var(--line)] p-1.5" />
-          : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shrink-0"><span className="text-2xl font-extrabold text-white">{c.name?.[0] || 'B'}</span></div>}
+          : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-2xl font-extrabold text-white">{c.name?.[0] || 'B'}</span></div>}
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{c.name}</h1>{c.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{c.version}</Badge></button>}</div>
           <p className="text-[var(--muted)] mt-1">{c.tagline}</p>
@@ -367,7 +367,7 @@ function AppPreview({ pkey, replayUrl }) {
       <div ref={ref} className="rounded-2xl overflow-hidden border border-[var(--line)] mx-auto max-w-3xl transition-transform duration-300"
         style={{ transform: 'perspective(1400px) rotateX(10deg)', transformOrigin: 'center top', background: 'var(--bg-solid)', boxShadow: '0 40px 90px -34px rgba(0,0,0,0.55)' }}>
         <div className="flex items-center gap-2 px-4 py-2.5" style={{ background: '#15171e', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-          <span className="w-3 h-3 rounded-full bg-red-400/70" /><span className="w-3 h-3 rounded-full bg-amber-400/70" /><span className="w-3 h-3 rounded-full bg-emerald-400/70" />
+          <span className="w-3 h-3 rounded-full bg-error-bg" /><span className="w-3 h-3 rounded-full bg-warning-bg" /><span className="w-3 h-3 rounded-full bg-success-bg" />
           <div className="flex-1 mx-3 h-6 rounded-md flex items-center px-3 text-[11px] text-slate-400" style={{ background: '#0d0f15', border: '1px solid rgba(255,255,255,0.06)' }}>{pkey.toUpperCase()} — {pkey === 'bmm' ? 'Mods' : pkey === 'bsm' ? 'Presets' : 'Library'}</div>
         </div>
         <div className="grid grid-cols-[130px_1fr]" style={{ background: '#0d0f15', color: '#e2e6ee', minHeight: 270 }}>
@@ -502,7 +502,7 @@ function MessageTicker({ messages }) {
   return (
     <section>
       <h2 className="font-semibold mb-3 flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('proj.messages')}</h2>
-      <Card className="p-8 text-center relative overflow-hidden bg-gradient-to-br from-orange-500/10 to-transparent min-h-[120px] grid place-items-center">
+      <Card className="p-8 text-center relative overflow-hidden bg-gradient-to-br from-brand to-transparent min-h-[120px] grid place-items-center">
         <p key={i} className="anim-fade text-lg md:text-xl text-[var(--text)] max-w-2xl mx-auto leading-relaxed">“{messages[i].message}”</p>
         {messages.length > 1 && <div className="flex gap-1.5 justify-center mt-5">{messages.map((_, k) => <span key={k} className={`w-1.5 h-1.5 rounded-full ${k === i ? 'bg-[var(--primary)]' : 'bg-[var(--line-strong)]'}`} />)}</div>}
       </Card>
@@ -567,7 +567,7 @@ function Community({ c, communityUrl }) {
               <Card key={i} hover className="p-5 group transition-all duration-200 hover:-translate-y-1">
                 <div className="flex items-center gap-3">
                   {p.pfp ? <img src={p.pfp} alt="" loading="lazy" className="w-12 h-12 rounded-full object-cover border border-[var(--line)] transition-transform duration-200 group-hover:scale-110 group-hover:border-[var(--primary)]" />
-                    : <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 grid place-items-center text-white font-bold transition-transform duration-200 group-hover:scale-110">{(p.name || '?')[0]}</div>}
+                    : <div className="w-12 h-12 rounded-full bg-gradient-to-br from-brand to-brand-2 grid place-items-center text-white font-bold transition-transform duration-200 group-hover:scale-110">{(p.name || '?')[0]}</div>}
                   <div className="min-w-0"><div className="font-semibold truncate group-hover:text-[var(--primary-2)] transition-colors">{p.name}</div><div className="text-xs text-[var(--primary-2)]">{p.role}</div></div>
                 </div>
                 {p.description && <p className="text-sm text-[var(--muted)] mt-3 line-clamp-3">{p.description}</p>}
@@ -594,7 +594,7 @@ function Legal({ c }) {
   if (!docs.length) return <EmptyState icon={ShieldCheck} title="No legal documents" sub="License / ToS / Privacy / README are set in the admin dashboard." />;
   return (
     <div className="max-w-2xl">
-      {l.license && <Card className="p-5 mb-4 flex items-center gap-3 bg-gradient-to-r from-orange-500/10 to-transparent">
+      {l.license && <Card className="p-5 mb-4 flex items-center gap-3 bg-gradient-to-r from-brand to-transparent">
         <ShieldCheck size={20} className="text-[var(--primary-2)]" />
         <div className="flex-1"><div className="font-semibold">Licensed under {l.license}</div><div className="text-xs text-[var(--muted)]">This project is open source.</div></div>
       </Card>}
@@ -630,7 +630,7 @@ export function OtherProjects() {
                   <div className="flex items-center gap-3">
                     {p.icon
                       ? <div className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-1.5 text-[var(--primary-2)]"><ShowcaseIcon icon={p.icon} size={28} rounded={8} /></div>
-                      : <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white font-extrabold text-sm shrink-0">{p.short}</div>}
+                      : <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white font-extrabold text-sm shrink-0">{p.short}</div>}
                     <div className="min-w-0">
                       <div className="font-semibold truncate">{p.isAnnouncing ? (p.announceTitle || p.name) : p.name}</div>
                       {p.isAnnouncing && <div className="text-[11px] text-[var(--primary-2)] flex items-center gap-1"><Clock size={11} /> Coming soon</div>}
@@ -648,7 +648,7 @@ export function OtherProjects() {
 
 function ShowcaseCommunity({ cfg, c, slug }) {
   if (cfg.community?.url) return (
-    <Card className="p-8 text-center bg-gradient-to-br from-orange-500/8 to-transparent">
+    <Card className="p-8 text-center bg-gradient-to-br from-brand to-transparent">
       <Users size={28} className="mx-auto text-[var(--primary-2)] mb-3" />
       <div className="font-semibold mb-1">Community</div>
       <p className="text-sm text-[var(--muted)] mb-4 max-w-md mx-auto">Join the community for this project.</p>
@@ -713,7 +713,7 @@ export function ShowcaseProjectPage() {
       <div className="flex flex-col md:flex-row md:items-center gap-5 mb-8">
         {proj.icon
           ? <div className="grid place-items-center w-16 h-16 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-2 text-[var(--primary-2)]"><ShowcaseIcon icon={proj.icon} size={44} rounded={10} /></div>
-          : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shrink-0"><span className="text-xl font-extrabold text-white">{proj.short}</span></div>}
+          : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-xl font-extrabold text-white">{proj.short}</span></div>}
         <div className="flex-1"><div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{proj.name}</h1>{cfg.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{cfg.version}</Badge></button>}</div>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
         <div className="flex flex-wrap items-start gap-2">
           <DownloadMenu downloads={cfg.downloads} />
@@ -759,7 +759,7 @@ function ProjectBlogTab({ project, page }) {
       {posts.map((p) => { const v = pick(p); return (
         <Link key={p.id} to={`/blog/${p.slug}`}>
           <Card hover className="overflow-hidden h-full flex flex-col">
-            {p.cover ? <img src={thumb(p.cover, 512)} alt="" className="w-full h-40 object-cover" /> : <div className="w-full h-40 bg-gradient-to-br from-orange-500/25 to-amber-500/10 grid place-items-center"><Newspaper size={32} className="text-[var(--primary-2)] opacity-80" /></div>}
+            {p.cover ? <img src={thumb(p.cover, 512)} alt="" className="w-full h-40 object-cover" /> : <div className="w-full h-40 bg-gradient-to-br from-brand to-brand-2 grid place-items-center"><Newspaper size={32} className="text-[var(--primary-2)] opacity-80" /></div>}
             <div className="p-4 flex-1 flex flex-col">
               <div className="text-xs text-[var(--faint)]">{fmt(p.publishedAt)}</div>
               <div className="font-bold mt-1 leading-snug">{v.title}</div>

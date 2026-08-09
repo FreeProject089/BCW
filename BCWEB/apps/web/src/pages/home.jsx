@@ -111,10 +111,10 @@ export function Home() {
   const { t, lang } = useI18n();
   const root = useScrollReveal();
   const products = [
-    { icon: Boxes, logo: 'bmm', name: 'BMM', desc: t('prod.bmm.d'), to: '/p/bmm', tint: 'from-orange-500/20' },
-    { icon: Music2, logo: 'bsm', name: 'BSM', desc: t('prod.bsm.d'), to: '/p/bsm', tint: 'from-amber-500/20' },
-    { icon: Download, logo: 'installer', name: 'BetterInstaller', desc: t('prod.installer.d'), to: '/p/installer', tint: 'from-orange-500/20' },
-    { icon: Rocket, name: 'Hosting', desc: t('prod.hosting.d'), to: '/hosting', tint: 'from-amber-500/20' },
+    { icon: Boxes, logo: 'bmm', name: 'BMM', desc: t('prod.bmm.d'), to: '/p/bmm', tint: 'from-brand' },
+    { icon: Music2, logo: 'bsm', name: 'BSM', desc: t('prod.bsm.d'), to: '/p/bsm', tint: 'from-brand-2' },
+    { icon: Download, logo: 'installer', name: 'BetterInstaller', desc: t('prod.installer.d'), to: '/p/installer', tint: 'from-brand' },
+    { icon: Rocket, name: 'Hosting', desc: t('prod.hosting.d'), to: '/hosting', tint: 'from-brand-2' },
   ];
   return (
     // Generous vertical rhythm on purpose: the scroll is long, so sections (and
@@ -225,7 +225,7 @@ export function Home() {
             <Link key={title} to={to} className="group">
               <Card hover className="p-7 h-full flex flex-col group-hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--line))] transition-colors">
                 <div className="flex items-center justify-between mb-6">
-                  <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-lg shadow-orange-500/25 transition-transform duration-300 group-hover:scale-105">
+                  <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-brand to-brand-2 shadow-lg shadow-orange-500/25 transition-transform duration-300 group-hover:scale-105">
                     <I size={22} className="text-white" />
                   </span>
                   <span aria-hidden className="text-[52px] leading-none font-black text-[var(--line-strong)] select-none pointer-events-none transition-colors group-hover:text-[color-mix(in_srgb,var(--primary)_32%,var(--line-strong))]">{i + 1}</span>
@@ -261,7 +261,7 @@ export function Home() {
                   <Card key={idx} className="w-[340px] max-w-[80vw] shrink-0 mr-5 p-6 flex flex-col" style={{ background: 'var(--bg-solid)' }} aria-hidden={idx >= reviewsData.reviews.length}>
                     {rv.rating > 0 && (
                       <div className="flex items-center gap-0.5 mb-3">
-                        {[1, 2, 3, 4, 5].map((n) => <Star key={n} size={15} className={n <= rv.rating ? 'text-amber-400' : 'text-[var(--line-strong)]'} fill={n <= rv.rating ? 'currentColor' : 'none'} />)}
+                        {[1, 2, 3, 4, 5].map((n) => <Star key={n} size={15} className={n <= rv.rating ? 'text-warning' : 'text-[var(--line-strong)]'} fill={n <= rv.rating ? 'currentColor' : 'none'} />)}
                       </div>
                     )}
                     <p className="text-sm text-[var(--muted)] leading-relaxed flex-1">“{text}”</p>
@@ -294,7 +294,7 @@ export function Home() {
                 <Card hover className="overflow-hidden h-full flex flex-col" style={{ background: 'var(--bg-solid)' }}>
                   <div className="relative overflow-hidden">
                     {featured.cover ? <img src={thumb(featured.cover, 768)} alt="" className="w-full h-56 object-cover transition-transform duration-300 group-hover:scale-105" />
-                      : <div className="w-full h-56 bg-gradient-to-br from-orange-500/25 to-amber-500/10 grid place-items-center"><Newspaper size={34} className="text-[var(--primary-2)]" /></div>}
+                      : <div className="w-full h-56 bg-gradient-to-br from-brand to-brand-2 grid place-items-center"><Newspaper size={34} className="text-[var(--primary-2)]" /></div>}
                     <span className="absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-[var(--bg-solid)]/85 backdrop-blur text-[var(--primary-2)] border border-[var(--line)]">Latest</span>
                   </div>
                   <div className="p-6 flex flex-col flex-1">
@@ -315,7 +315,7 @@ export function Home() {
                   <Link key={p.id} to={`/blog/${p.slug}`} className="group">
                     <Card hover className="p-4 flex gap-4 h-full" style={{ background: 'var(--bg-solid)' }}>
                       {p.cover ? <img src={thumb(p.cover, 256)} alt="" className="w-24 h-24 rounded-lg object-cover shrink-0" />
-                        : <div className="w-24 h-24 rounded-lg bg-gradient-to-br from-orange-500/20 to-amber-500/10 grid place-items-center shrink-0"><Newspaper size={20} className="text-[var(--primary-2)]" /></div>}
+                        : <div className="w-24 h-24 rounded-lg bg-gradient-to-br from-brand to-brand-2 grid place-items-center shrink-0"><Newspaper size={20} className="text-[var(--primary-2)]" /></div>}
                       <div className="min-w-0 flex flex-col flex-1">
                         <Badge tone="primary" className="self-start">{p.project?.name}</Badge>
                         <div className="font-semibold mt-1 leading-snug line-clamp-2 group-hover:text-[var(--primary-2)] transition-colors">{p.title}</div>
@@ -335,7 +335,7 @@ export function Home() {
       {/* CTA / support */}
       <section className="reveal-on-scroll pb-4">
         <Card className="p-10 md:p-14 text-center relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-orange-500/15 via-amber-500/5 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-br from-brand via-brand-2 to-transparent" />
           <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[36rem] h-[36rem] rounded-full opacity-40 pointer-events-none" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 62%)' }} />
           <div className="relative reveal-stagger">
             <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.cta2.title')}</h2>
@@ -376,7 +376,7 @@ function KofiGoalWidget() {
           <p className="text-xs text-[var(--muted)] mb-4">{t('home.kofi.goal.help', 'Help keep the servers running — every tip counts.')}</p>
           {goal && (<>
             <div className="h-3 rounded-full bg-[var(--surface-2)] overflow-hidden">
-              <div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-700" style={{ width: `${pct}%` }} />
+              <div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2 transition-all duration-700" style={{ width: `${pct}%` }} />
             </div>
             <div className="flex items-center justify-between mt-2.5 mb-4 text-sm">
               <span className="font-semibold tabular-nums">{fmtInt(data.totalAmount, lang)} / {fmtInt(goal.targetAmount, lang)} {goal.currency}</span>

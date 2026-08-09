@@ -74,15 +74,15 @@ export function Contact() {
 
       <Card className="overflow-hidden">
         {/* gradient header strip */}
-        <div className="px-6 py-4 border-b border-[var(--line)] bg-gradient-to-r from-orange-500/12 via-amber-500/6 to-transparent flex items-center gap-2.5">
-          <span className="grid place-items-center w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500"><MessageSquare size={16} className="text-white" /></span>
+        <div className="px-6 py-4 border-b border-[var(--line)] bg-gradient-to-r from-brand via-brand-2 to-transparent flex items-center gap-2.5">
+          <span className="grid place-items-center w-9 h-9 rounded-xl bg-gradient-to-br from-brand to-brand-2"><MessageSquare size={16} className="text-white" /></span>
           <div><div className="font-semibold leading-tight">{fr ? 'Envoyer un message' : 'Send a message'}</div>
             <div className="text-xs text-[var(--muted)]">{fr ? 'Reçu directement par l’équipe — réponse par email.' : 'Goes straight to the team — we reply by email.'}</div></div>
         </div>
 
         {sent ? (
           <div className="p-10 text-center">
-            <span className="inline-grid place-items-center w-14 h-14 rounded-2xl bg-emerald-500/15 mb-4"><BadgeCheck size={28} className="text-emerald-400" /></span>
+            <span className="inline-grid place-items-center w-14 h-14 rounded-2xl bg-success-bg mb-4"><BadgeCheck size={28} className="text-success" /></span>
             <div className="text-lg font-semibold">{fr ? 'Message envoyé !' : 'Message sent!'}</div>
             <p className="text-sm text-[var(--muted)] mt-1.5 max-w-sm mx-auto">{fr ? 'Merci — on te répond dès que possible. Pour du temps réel, rejoins le Discord ci-dessus.' : 'Thanks — we’ll get back to you soon. Prefer real-time? Join the Discord above.'}</p>
             <Button className="mt-5" onClick={() => { setSent(false); setMsg({ name: '', email: '', body: '' }); }}>{fr ? 'Envoyer un autre' : 'Send another'}</Button>
@@ -92,12 +92,12 @@ export function Contact() {
             <div className="grid sm:grid-cols-2 gap-4">
               <Field label={fr ? 'Ton nom' : 'Your name'}><Input value={msg.name} onChange={(e) => setMsg({ ...msg, name: e.target.value })} maxLength={100} placeholder={fr ? 'Ton nom ou pseudo' : 'Your name or handle'} /></Field>
               <Field label={fr ? 'Ton email' : 'Your email'} hint={msg.email && !emailOk ? (fr ? 'Email invalide' : 'Invalid email') : undefined}>
-                <Input type="email" value={msg.email} onChange={(e) => setMsg({ ...msg, email: e.target.value })} maxLength={254} placeholder="you@example.com" className={msg.email && !emailOk ? '!border-red-500/40' : ''} /></Field>
+                <Input type="email" value={msg.email} onChange={(e) => setMsg({ ...msg, email: e.target.value })} maxLength={254} placeholder="you@example.com" className={msg.email && !emailOk ? '!border-error-border' : ''} /></Field>
             </div>
             <div className="mt-4">
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">Message <span className="normal-case font-normal text-[var(--faint)]">({fr ? 'markdown supporté' : 'markdown supported'})</span></label>
-                <span className={`text-[11px] ${msg.body.length > 2000 ? 'text-red-400' : 'text-[var(--faint)]'}`}>{msg.body.length}/2000</span>
+                <span className={`text-[11px] ${msg.body.length > 2000 ? 'text-error' : 'text-[var(--faint)]'}`}>{msg.body.length}/2000</span>
               </div>
               <div className="rounded-xl border border-[var(--line)] overflow-hidden focus-within:border-[var(--line-strong)] transition-colors" style={{ background: 'var(--surface-2)' }}>
                 <textarea value={msg.body} onChange={(e) => setMsg({ ...msg, body: e.target.value })} maxLength={2000} rows={6}

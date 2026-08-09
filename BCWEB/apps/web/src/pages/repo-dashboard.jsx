@@ -104,7 +104,7 @@ function Dashboard({ data, reload }) {
       <Card className="p-5 mb-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-start gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500/20 to-amber-500/10 border border-[var(--line)] grid place-items-center shrink-0"><Server size={20} className="text-[var(--primary-2)]" /></div>
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-2 border border-[var(--line)] grid place-items-center shrink-0"><Server size={20} className="text-[var(--primary-2)]" /></div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-bold truncate">{r.name}</h1>
@@ -115,17 +115,17 @@ function Dashboard({ data, reload }) {
               </div>
               <div className="text-xs text-[var(--faint)] mt-1 flex items-center gap-3 flex-wrap">
                 {r.ownerName && <span className="flex items-center gap-1"><Users size={12} /> {r.ownerName}</span>}
-                <span className={`flex items-center gap-1 ${online ? 'text-emerald-400' : 'text-[var(--faint)]'}`}>{online ? <Wifi size={12} /> : <WifiOff size={12} />} {online ? t('repos.online', 'Online') : t('repos.offline', 'Offline')}</span>
-                {r.verified && <span className="flex items-center gap-1 text-emerald-400/90"><CheckCircle2 size={12} /> {t('repos.verified', 'Verified')}</span>}
+                <span className={`flex items-center gap-1 ${online ? 'text-success' : 'text-[var(--faint)]'}`}>{online ? <Wifi size={12} /> : <WifiOff size={12} />} {online ? t('repos.online', 'Online') : t('repos.offline', 'Offline')}</span>
+                {r.verified && <span className="flex items-center gap-1 text-success"><CheckCircle2 size={12} /> {t('repos.verified', 'Verified')}</span>}
                 {r.listed && <span className="flex items-center gap-1"><Eye size={12} /> {t('repos.listed', 'Listed')}</span>}
-                {r.listed && <span className="flex items-center gap-1 text-amber-400"><Star size={12} /> {r.favoriteCount} {r.favoriteCount === 1 ? t('rd.favorite', 'favorite') : t('rd.favorites', 'favorites')}</span>}
+                {r.listed && <span className="flex items-center gap-1 text-warning"><Star size={12} /> {r.favoriteCount} {r.favoriteCount === 1 ? t('rd.favorite', 'favorite') : t('rd.favorites', 'favorites')}</span>}
               </div>
             </div>
           </div>
           {r.hosted && (
             <div className="text-right">
               <div className="text-xs text-[var(--faint)] flex items-center gap-1 justify-end"><HardDrive size={12} /> {mb(r.used)} / {gb(r.storageQuotaBytes) * 1024 >= 1024 ? `${gb(r.storageQuotaBytes)} GB` : `${mb(r.storageQuotaBytes)} MB`}</div>
-              <div className="w-40 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1.5 ml-auto"><div className="h-full bg-gradient-to-r from-orange-500 to-amber-400" style={{ width: `${pct}%` }} /></div>
+              <div className="w-40 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1.5 ml-auto"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} /></div>
               <div className="text-[11px] text-[var(--faint)] mt-1 flex items-center gap-1 justify-end"><Zap size={11} /> {(r.effectiveUploadKbps / 1024).toFixed(1)} Mbps {t('repos.cap', 'cap')}</div>
             </div>
           )}
@@ -200,10 +200,10 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, t, removin
                 <input type="checkbox" className="shrink-0" checked={sel.has(f.id)} onChange={() => toggle(f.id)} disabled={isDeleting} />
                 {f.path === 'repo.json' ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
                 <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
-                {isDeleting ? <span className="flex items-center gap-1.5 text-xs text-red-400 shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
+                {isDeleting ? <span className="flex items-center gap-1.5 text-xs text-error shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
                   <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
                   {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
-                  <button className="text-[var(--faint)] hover:text-red-400 shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>
+                  <button className="text-[var(--faint)] hover:text-error shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>
                 </>}
               </div>
             );
@@ -371,7 +371,7 @@ function FilesTab({ r, reload }) {
         {bulkDeleting > 0 && (
           <div className="absolute inset-0 z-10 grid place-items-center backdrop-blur-[1px]" style={{ background: 'color-mix(in srgb, var(--bg-solid) 62%, transparent)' }}>
             <div className="flex items-center gap-2.5 text-sm text-[var(--text)] rounded-xl border border-[var(--line)] bg-[var(--bg-solid)] px-4 py-2.5 shadow-lg">
-              <Spinner className="!w-4 !h-4 text-red-400" /> {t('rd.deletingn', 'Deleting {n} files…').replace('{n}', bulkDeleting)}
+              <Spinner className="!w-4 !h-4 text-error" /> {t('rd.deletingn', 'Deleting {n} files…').replace('{n}', bulkDeleting)}
             </div>
           </div>
         )}
@@ -394,7 +394,7 @@ function FilesTab({ r, reload }) {
             <button type="button" onClick={() => setView('tree')} className={`px-2.5 py-1.5 text-xs flex items-center gap-1 border-l border-[var(--line)] ${view === 'tree' ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><FolderUp size={12} /> {t('rd.view.tree', 'Tree')}</button>
           </div>
           {sel.size > 0 && <Button size="sm" disabled={zipping} onClick={downloadSelected}>{zipping ? <Spinner /> : <><Download size={12} /> {t('rd.dlsel.btn', 'Download {n}').replace('{n}', sel.size)}</>}</Button>}
-          {!locked && sel.size > 0 && <Button size="sm" onClick={delSelected} className="!text-red-400"><Trash2 size={12} /> {t('rd.delsel.btn', 'Delete {n}').replace('{n}', sel.size)}</Button>}
+          {!locked && sel.size > 0 && <Button size="sm" onClick={delSelected} className="!text-error"><Trash2 size={12} /> {t('rd.delsel.btn', 'Delete {n}').replace('{n}', sel.size)}</Button>}
         </div>
         <div className="max-h-[46vh] overflow-auto">
           {!shown.length ? <div className="text-sm text-[var(--faint)] px-4 py-4">{q.trim() ? t('rd.nomatch', 'No files match.') : t('repos.nofiles', 'No files yet.')}</div>
@@ -409,11 +409,11 @@ function FilesTab({ r, reload }) {
                   <input type="checkbox" className="shrink-0" checked={sel.has(f.id)} onChange={() => toggle(f.id)} disabled={deleting.has(f.id)} />
                   {f.path === 'repo.json' ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
                   <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
-                  {deleting.has(f.id) ? <span className="flex items-center gap-1.5 text-xs text-red-400 shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
+                  {deleting.has(f.id) ? <span className="flex items-center gap-1.5 text-xs text-error shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
                     {f.sha256 && <span className="hidden md:flex items-center gap-1 text-[10px] text-[var(--faint)] font-mono" title={`SHA-256: ${f.sha256}`}><Hash size={10} /> {f.sha256.slice(0, 10)}…</span>}
                     <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
                     {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
-                    {!locked && <button className="text-[var(--faint)] hover:text-red-400 shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>}
+                    {!locked && <button className="text-[var(--faint)] hover:text-error shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>}
                   </>}
                 </div>
               );})}
@@ -475,7 +475,7 @@ function RepoTrafficChart({ series, t }) {
       </div>
       {hover && <div className="absolute top-1 text-[11px] px-2 py-1 rounded-md bg-[var(--bg-solid)] border border-[var(--line)] shadow pointer-events-none whitespace-nowrap"
         style={{ left: `${Math.min(Math.max(hover.px, 70), (wrapRef.current?.clientWidth || W) - 70)}px`, transform: 'translateX(-50%)' }}>
-        {fmtDay(hover.s.day)} — <b className="text-sky-400">{hover.s.connects}</b> {t('rd.conn', 'conn')} · <b style={{ color: 'var(--primary)' }}>{hover.s.downloads}</b> {t('rd.dl', 'dl')}</div>}
+        {fmtDay(hover.s.day)} — <b className="text-info">{hover.s.connects}</b> {t('rd.conn', 'conn')} · <b style={{ color: 'var(--primary)' }}>{hover.s.downloads}</b> {t('rd.dl', 'dl')}</div>}
     </div>
   );
 }
@@ -500,7 +500,7 @@ function UsersTab({ r }) {
       <Card className="p-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Radio size={12} className="text-[var(--primary-2)]" /> {t('rd.traffic.title', 'Traffic — last 7 days')}</span>
-          <span className="flex items-center gap-3 text-[11px] text-[var(--muted)]"><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-sky-400" /> {t('rd.connects', 'Connects')}</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-[var(--primary)]" /> {t('rd.downloads', 'Downloads')}</span></span>
+          <span className="flex items-center gap-3 text-[11px] text-[var(--muted)]"><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-info" /> {t('rd.connects', 'Connects')}</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-[var(--primary)]" /> {t('rd.downloads', 'Downloads')}</span></span>
         </div>
         <RepoTrafficChart series={series} t={t} />
       </Card>
@@ -512,14 +512,14 @@ function UsersTab({ r }) {
         <div className="max-h-[40vh] overflow-auto divide-y divide-[var(--line)]">
           {clients.length ? clients.map((c) => (
             <div key={c.ip + (c.accessKey || '')} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-              <div className={`w-2 h-2 rounded-full shrink-0 ${c.banned ? 'bg-red-500' : (Date.now() - new Date(c.lastSeen) < 6e5 ? 'bg-emerald-400' : 'bg-[var(--line-strong)]')}`} />
+              <div className={`w-2 h-2 rounded-full shrink-0 ${c.banned ? 'bg-error' : (Date.now() - new Date(c.lastSeen) < 6e5 ? 'bg-success' : 'bg-[var(--line-strong)]')}`} />
               <div className="flex-1 min-w-0">
                 <div className="font-mono text-xs flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{c.ip}</span>{c.accessKey && <Badge><Hash size={9} /> {c.accessKey.slice(0, 10)}</Badge>}{c.account && <Badge tone="primary"><Users size={9} /> {c.account.label}</Badge>}{c.banned && <Badge tone="red"><Ban size={9} /> {t('rd.bannedbadge', 'Banned')}</Badge>}</div>
                 <div className="text-[11px] text-[var(--faint)]">{t('rd.lastseen', 'last seen')} {timeAgo(c.lastSeen, t)} · {c.downloads} {t('rd.dl', 'dl')} · {c.connects} {t('rd.conn', 'conn')}</div>
               </div>
               {c.banned
                 ? <button onClick={() => unban(c)} className="text-[11px] px-2 py-1 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]">{t('rd.unban', 'Unban')}</button>
-                : <button onClick={() => ban(c)} className="text-[11px] px-2 py-1 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-red-400 hover:border-red-400/50 flex items-center gap-1"><Ban size={11} /> {t('rd.ban', 'Ban')}</button>}
+                : <button onClick={() => ban(c)} className="text-[11px] px-2 py-1 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-error hover:border-error-border flex items-center gap-1"><Ban size={11} /> {t('rd.ban', 'Ban')}</button>}
             </div>
           )) : <div className="text-sm text-[var(--faint)] px-4 py-6 text-center">{t('rd.noclients', 'No one has synced this repo yet.')}</div>}
         </div>
@@ -531,7 +531,7 @@ function UsersTab({ r }) {
           <div className="max-h-[36vh] overflow-auto divide-y divide-[var(--line)]">
             {events.map((e) => (
               <div key={e.id} className="flex items-center gap-3 px-4 py-2 text-sm">
-                {e.kind === 'download' ? <Download size={13} className="text-[var(--primary-2)] shrink-0" /> : <Radio size={13} className="text-emerald-400 shrink-0" />}
+                {e.kind === 'download' ? <Download size={13} className="text-[var(--primary-2)] shrink-0" /> : <Radio size={13} className="text-success shrink-0" />}
                 <span className="font-mono text-xs text-[var(--muted)] shrink-0">{e.ip}</span>
                 <span className="text-[var(--faint)]">{e.kind === 'download' ? t('rd.downloaded', 'downloaded') : t('rd.connected2', 'connected')}</span>
                 {e.kind === 'download' && <span className="font-mono text-xs truncate flex-1">{e.path}</span>}
@@ -560,12 +560,12 @@ function ActivityTab({ r }) {
   }, [r.id, q, action]);
   const meta = {
     upload: [UploadIcon, 'text-[var(--primary-2)]', t('rd.act.upload', 'uploaded')],
-    delete: [Trash, 'text-red-400', t('rd.act.delete', 'deleted')],
-    publish: [WifiOn, 'text-emerald-400', t('rd.act.publish', 'went online')],
+    delete: [Trash, 'text-error', t('rd.act.delete', 'deleted')],
+    publish: [WifiOn, 'text-success', t('rd.act.publish', 'went online')],
     unpublish: [WifiGone, 'text-[var(--faint)]', t('rd.act.unpublish', 'took offline')],
     settings: [Settings2, 'text-[var(--muted)]', t('rd.act.settings', 'changed settings')],
-    access: [KeyRound, 'text-amber-400', t('rd.act.access', 'changed access')],
-    ban: [Ban, 'text-red-400', t('rd.act.ban', 'banned')],
+    access: [KeyRound, 'text-warning', t('rd.act.access', 'changed access')],
+    ban: [Ban, 'text-error', t('rd.act.ban', 'banned')],
     unban: [Ban, 'text-[var(--faint)]', t('rd.act.unban', 'unbanned')],
   };
   const toolbar = (
@@ -613,7 +613,7 @@ function OnlineTab({ r, reload, publicUrl }) {
   return (
     <Card className="p-5">
       <div className="flex items-center gap-3">
-        {online ? <Wifi size={20} className="text-emerald-400" /> : <WifiOff size={20} className="text-[var(--faint)]" />}
+        {online ? <Wifi size={20} className="text-success" /> : <WifiOff size={20} className="text-[var(--faint)]" />}
         <div className="flex-1">
           <div className="font-semibold">{online ? t('repos.online', 'Online') : t('repos.offline', 'Offline')}</div>
           <div className="text-xs text-[var(--faint)]">{t('repos.urlauto', 'Public URL is managed automatically')}</div>
@@ -630,8 +630,8 @@ function OnlineTab({ r, reload, publicUrl }) {
           <a href={publicUrl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0"><ExternalLink size={14} /></a>
         </div>
       )}
-      {!online && !hasRepoJson && <div className="mt-3 text-xs text-amber-400/90 flex items-center gap-1.5"><AlertTriangle size={13} /> {t('repos.needjsonhint', 'Upload a valid repo.json first, then Go online.')}</div>}
-      {!online && hasRepoJson && <div className="mt-3 text-xs text-emerald-400/90 flex items-center gap-1.5"><CheckCircle2 size={13} /> {t('repos.readyonline', 'Valid repo.json detected — ready to go online.')}</div>}
+      {!online && !hasRepoJson && <div className="mt-3 text-xs text-warning flex items-center gap-1.5"><AlertTriangle size={13} /> {t('repos.needjsonhint', 'Upload a valid repo.json first, then Go online.')}</div>}
+      {!online && hasRepoJson && <div className="mt-3 text-xs text-success flex items-center gap-1.5"><CheckCircle2 size={13} /> {t('repos.readyonline', 'Valid repo.json detected — ready to go online.')}</div>}
     </Card>
   );
 }
@@ -645,7 +645,7 @@ function ChipList({ label, items, onAdd, onRemove, placeholder }) {
       <div className="flex gap-2"><Input value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} onKeyDown={(e) => e.key === 'Enter' && add()} /><Button size="sm" onClick={add}><Plus size={14} /></Button></div>
       <div className="flex flex-wrap gap-1.5 mt-2">
         {items.length ? items.map((x) => (
-          <span key={x} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs">{x}<button onClick={() => onRemove(x)} className="text-[var(--faint)] hover:text-red-400"><X size={12} /></button></span>
+          <span key={x} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs">{x}<button onClick={() => onRemove(x)} className="text-[var(--faint)] hover:text-error"><X size={12} /></button></span>
         )) : <span className="text-xs text-[var(--faint)]">{'—'}</span>}
       </div>
     </div>
@@ -692,7 +692,7 @@ function AccountChipList({ label, items, onAdd, onRemove, placeholder }) {
         {items.length ? items.map((a) => (
           <span key={`${a.type}:${a.id}`} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs">
             <Users size={10} className="text-[var(--faint)]" /> {a.type === 'discord' ? 'Discord: ' : ''}{a.label || a.id}
-            <button onClick={() => onRemove(a)} className="text-[var(--faint)] hover:text-red-400"><X size={12} /></button>
+            <button onClick={() => onRemove(a)} className="text-[var(--faint)] hover:text-error"><X size={12} /></button>
           </span>
         )) : <span className="text-xs text-[var(--faint)]">{'—'}</span>}
       </div>
@@ -792,7 +792,7 @@ function AccessTab({ r, reload }) {
         <div className="flex gap-2">
           <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={hasPassword ? t('rd.changepw', 'New password…') : t('rd.setpw', 'Set a password…')} onKeyDown={(e) => e.key === 'Enter' && setPassword()} />
           <Button variant="primary" disabled={busy} onClick={setPassword}>{busy ? <Spinner /> : (hasPassword ? t('rd.change', 'Change') : t('rd.set', 'Set'))}</Button>
-          {hasPassword && <Button className="!text-red-400" onClick={clearPassword}><X size={14} /> {t('rd.remove', 'Remove')}</Button>}
+          {hasPassword && <Button className="!text-error" onClick={clearPassword}><X size={14} /> {t('rd.remove', 'Remove')}</Button>}
         </div>
       </Card>
       <div className="text-[11px] text-[var(--faint)] flex items-center gap-1.5"><ShieldCheck size={12} /> {t('rd.accessnote', 'You (the owner) and site admins always have full access. Collaborators and password holders can manage files, publishing and settings, but not access or billing.')}</div>

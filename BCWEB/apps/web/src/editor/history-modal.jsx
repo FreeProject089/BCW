@@ -16,11 +16,11 @@ function DiffView({ a, b }) {
   const stat = useMemo(() => lineStat(a || '', b || ''), [a, b]);
   return (
     <div>
-      <div className="text-xs font-mono mb-2"><span className="text-emerald-500">+{stat.added}</span> <span className="text-red-500">−{stat.removed}</span> <span className="text-[var(--faint)]">{t('hm.vsprev', 'vs previous version')}</span></div>
+      <div className="text-xs font-mono mb-2"><span className="text-success">+{stat.added}</span> <span className="text-error">−{stat.removed}</span> <span className="text-[var(--faint)]">{t('hm.vsprev', 'vs previous version')}</span></div>
       <div className="font-mono text-[12.5px] leading-[1.55] rounded-lg border border-[var(--line)] overflow-hidden">
         {rows.map((r, i) => (
-          <div key={i} className={`flex ${r.type === 'add' ? 'bg-emerald-500/[0.09]' : r.type === 'del' ? 'bg-red-500/[0.09]' : ''}`}>
-            <span className={`select-none w-6 shrink-0 text-center ${r.type === 'add' ? 'text-emerald-500' : r.type === 'del' ? 'text-red-500' : 'text-transparent'}`}>{r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</span>
+          <div key={i} className={`flex ${r.type === 'add' ? 'bg-success/[0.09]' : r.type === 'del' ? 'bg-error/[0.09]' : ''}`}>
+            <span className={`select-none w-6 shrink-0 text-center ${r.type === 'add' ? 'text-success' : r.type === 'del' ? 'text-error' : 'text-transparent'}`}>{r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</span>
             <span className="whitespace-pre-wrap break-words flex-1 pr-2">{r.text || ' '}</span>
           </div>
         ))}
@@ -81,7 +81,7 @@ export default function HistoryModal({ base, onClose, onRestore }) {
               <button key={r.id} onClick={() => select(i)}
                 className={`w-full text-left rounded-lg border px-3 py-2 transition ${activeIdx === i ? 'border-[var(--primary)] bg-[var(--primary)]/8' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium">v{r.version}{i === 0 && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-400">{t('hm.latest', 'latest')}</span>}</span>
+                  <span className="text-sm font-medium">v{r.version}{i === 0 && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-success">{t('hm.latest', 'latest')}</span>}</span>
                   <span className="text-[11px] text-[var(--faint)]">{(r.bytes / 1024).toFixed(1)} KB</span>
                 </div>
                 <div className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 mt-1" title={r.editor}>

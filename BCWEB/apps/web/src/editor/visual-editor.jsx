@@ -242,7 +242,7 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
           </div>
           <div className="flex-1 min-w-0"><BlockFields block={b} onChange={(patch) => update(b.id, patch)} /></div>
           <div className="flex flex-col items-center gap-1 self-start pt-1">
-            <button type="button" className="text-[var(--faint)] hover:text-red-400" title="Delete" onClick={() => remove(b.id)}><Trash2 size={15} /></button>
+            <button type="button" className="text-[var(--faint)] hover:text-error" title="Delete" onClick={() => remove(b.id)}><Trash2 size={15} /></button>
             <div className="flex flex-col gap-0.5 mt-1">
               {[['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight]].map(([a, Ico]) => (
                 <button key={a} type="button" title={`Align ${a}`} onClick={() => update(b.id, { align: b.align === a ? undefined : a })}
@@ -347,14 +347,14 @@ function BlockFields({ block: b, onChange }) {
                   <td key={ci}><input value={r[ci] ?? ''} onChange={(e) => setCell(ri, ci, e.target.value)} placeholder={ri === 0 ? 'Header' : ''}
                     className={`w-24 rounded-md border border-[var(--line)] bg-transparent px-1.5 py-1 text-sm outline-none focus:border-[var(--line-strong)] ${ri === 0 ? 'font-semibold' : ''}`} /></td>
                 ))}
-                <td><button type="button" onClick={() => delRow(ri)} title="Delete row" className="text-[var(--faint)] hover:text-red-400 px-0.5"><Minus size={13} /></button></td>
+                <td><button type="button" onClick={() => delRow(ri)} title="Delete row" className="text-[var(--faint)] hover:text-error px-0.5"><Minus size={13} /></button></td>
               </tr>
             ))}
           </tbody></table></div>
           <div className="flex flex-wrap gap-3 text-xs">
             <button type="button" onClick={addRow} className="inline-flex items-center gap-1 text-[var(--muted)] hover:text-[var(--text)]"><Plus size={12} /> Row</button>
             <button type="button" onClick={addCol} className="inline-flex items-center gap-1 text-[var(--muted)] hover:text-[var(--text)]"><Plus size={12} /> Column</button>
-            <button type="button" onClick={delCol} className="inline-flex items-center gap-1 text-[var(--muted)] hover:text-red-400"><Minus size={12} /> Column</button>
+            <button type="button" onClick={delCol} className="inline-flex items-center gap-1 text-[var(--muted)] hover:text-error"><Minus size={12} /> Column</button>
           </div>
         </div>
       );

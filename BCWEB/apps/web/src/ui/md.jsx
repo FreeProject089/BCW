@@ -505,7 +505,7 @@ function DocReplay({ node }) {
           </button>
         )}
         {status === 'loading' && <div className="absolute inset-0 grid place-items-center text-sm text-white/80">{tr('Chargement du replay…', 'Loading replay…')}</div>}
-        {status === 'error' && <div className="absolute inset-0 grid place-items-center text-sm text-red-300 px-4 text-center">{tr('Impossible de charger ce replay.', 'Could not load this replay.')}</div>}
+        {status === 'error' && <div className="absolute inset-0 grid place-items-center text-sm text-error px-4 text-center">{tr('Impossible de charger ce replay.', 'Could not load this replay.')}</div>}
       </div>
       {status === 'ready' && (
         <div className="flex items-center gap-2 px-3 py-2 border-t border-[var(--line)] bg-[var(--surface-2)]">

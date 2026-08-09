@@ -36,7 +36,7 @@ function RepoContents({ id, k }) {
     const needLogin = access?.reason === 'login_required';
     return (
       <Card className="p-4 mt-4">
-        <div className="flex items-center gap-2 mb-1.5 font-medium"><Lock size={16} className="text-amber-400" /> {t('rc.locked.t', 'Downloads are restricted')}</div>
+        <div className="flex items-center gap-2 mb-1.5 font-medium"><Lock size={16} className="text-warning" /> {t('rc.locked.t', 'Downloads are restricted')}</div>
         <p className="text-sm text-[var(--muted)] mb-3">
           {needLogin
             ? t('rc.locked.login', 'This repo only allows people its owner approved. Sign in and we’ll check your account against their list.')
@@ -130,8 +130,8 @@ export default function RepoPublicPage() {
     <div className="max-w-2xl mx-auto">
       <PageHeader icon={Server} title={repo.name}
         subtitle={<>{t('rp.by', 'by {name}').replace('{name}', repo.author || '—')}
-          {repo.verified && <> · <span className="text-emerald-400 inline-flex items-center gap-1"><CheckCircle2 size={12} /> {t('rp.verified', 'verified')}</span></>}
-          {!repo.listed && <> · <span className="text-amber-400">{t('rp.unlisted', 'shared link')}</span></>}</>} />
+          {repo.verified && <> · <span className="text-success inline-flex items-center gap-1"><CheckCircle2 size={12} /> {t('rp.verified', 'verified')}</span></>}
+          {!repo.listed && <> · <span className="text-warning">{t('rp.unlisted', 'shared link')}</span></>}</>} />
       {repo.description && <p className="text-sm text-[var(--muted)] mb-3">{repo.description}</p>}
 
       {repo.tags?.length > 0 && <div className="flex flex-wrap gap-1.5 mb-3">

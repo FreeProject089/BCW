@@ -94,7 +94,7 @@ function Repeatable({ items, onChange, render, add, addLabel, empty }) {
           className={`flex items-start gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2 ${dragIdx === i ? 'opacity-50' : ''}`}>
           <span className="cursor-grab text-[var(--faint)] mt-1.5 shrink-0" title="Drag to reorder"><GripVertical size={14} /></span>
           <div className="flex-1 min-w-0">{render(it, (patch) => onChange(items.map((x, j) => j === i ? { ...x, ...patch } : x)))}</div>
-          <button type="button" onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-[var(--faint)] hover:text-red-400 mt-1.5 shrink-0"><Trash2 size={14} /></button>
+          <button type="button" onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-[var(--faint)] hover:text-error mt-1.5 shrink-0"><Trash2 size={14} /></button>
         </div>
       ))}
       <Button type="button" size="sm" variant="ghost" onClick={() => onChange([...items, add()])}><Plus size={13} /> {addLabel}</Button>

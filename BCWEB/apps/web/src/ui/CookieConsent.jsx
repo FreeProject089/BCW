@@ -35,12 +35,12 @@ export default function CookieConsent() {
         {customise && (
           <div className="mt-4 space-y-2">
             <div className="flex items-start gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
-              <ShieldCheck size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+              <ShieldCheck size={16} className="text-success shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium flex items-center gap-2">{t('cookie.cat.essential', 'Essential')} <span className="text-[10px] uppercase tracking-wide text-emerald-400">{t('cookie.always', 'always on')}</span></div>
+                <div className="text-sm font-medium flex items-center gap-2">{t('cookie.cat.essential', 'Essential')} <span className="text-[10px] uppercase tracking-wide text-success">{t('cookie.always', 'always on')}</span></div>
                 <div className="text-xs text-[var(--faint)] mt-0.5">{t('cookie.cat.essential.d', 'Sign-in session and security. The site can’t work without these.')}</div>
               </div>
-              <span className="w-9 h-5 rounded-full bg-emerald-500/70 relative shrink-0 opacity-70" aria-hidden><span className="absolute top-0.5 left-[18px] w-4 h-4 rounded-full bg-white" /></span>
+              <span className="w-9 h-5 rounded-full bg-success-bg relative shrink-0 opacity-70" aria-hidden><span className="absolute top-0.5 left-[18px] w-4 h-4 rounded-full bg-white" /></span>
             </div>
             <button type="button" onClick={() => setAnalytics((v) => !v)} aria-pressed={analytics} className="w-full text-left flex items-start gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 hover:border-[var(--line-strong)] transition">
               <BarChart3 size={16} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
