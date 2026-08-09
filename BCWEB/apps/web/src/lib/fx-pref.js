@@ -26,14 +26,25 @@ export function fxPref() {
     if (v === 'on' || v === 'off' || v === 'auto') return v;
     // Migrate the old boolean in place so an existing "off" is not quietly turned back on.
     if (localStorage.getItem(LEGACY_OFF) === '1') return 'off';
-  } catch { /* storage unavailable — fall through to auto */ }
-  return 'auto';
+  } catch { /* storage unavailable — fall through to the default */ }
+  // ON by default, not 'auto'.
+  //
+  // 'auto' follows prefers-reduced-motion, which is the accessible default and was the
+  // original choice. In practice it meant the site owner — whose OS has reduced motion on —
+  // saw nothing at every event and reasonably concluded the feature was broken, twice.
+  // The effect is a short, dismissible, purely decorative overlay behind an announcement
+  // that stays readable without it, so the cost of getting this wrong is low in one
+  // direction and high in the other. 'auto' is still one click away in Settings for
+  // anyone who wants the system preference respected.
+  return 'on';
 }
 
 export function setFxPref(v) {
   try {
-    if (v === 'auto') localStorage.removeItem(KEY);
-    else localStorage.setItem(KEY, v);
+    // 'auto' is STORED, not represented by an absent key. It used to be the default, so
+    // removing the key meant it; now the default is 'on', and clearing the key would read
+    // back as 'on' — picking Automatic in Settings would silently not stick.
+    localStorage.setItem(KEY, v === 'auto' || v === 'on' || v === 'off' ? v : 'on');
     localStorage.removeItem(LEGACY_OFF); // the migration is one-way
   } catch { /* nothing we can do; the in-memory state still updates */ }
 }

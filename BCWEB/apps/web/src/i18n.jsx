@@ -1625,6 +1625,8 @@ const DICT = {
     'st.st.error': 'Échec',
     'st.preset.cleared': 'Préréglage appliqué — tes surcharges de tokens ont été vidées pour qu’il s’affiche tel que prévu.',
     'st.saved.pending': 'Thème du site mis à jour pour tout le monde.',
+    'st.undo': 'Rétablir le précédent',
+    'st.restored': 'Thème précédent rétabli.',
     'thm.bg': 'Fond de page',
     'thm.bg.default': 'Disposition des lueurs par défaut.',
     'thm.bg.take': 'Personnaliser',

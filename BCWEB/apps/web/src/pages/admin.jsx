@@ -8307,25 +8307,19 @@ function AdminFooter() {
   const rawNews = f.brand?.newsletter;
   const news = (rawNews && typeof rawNews === 'object') ? rawNews : { on: rawNews !== false };
 
-  // Same deferred commit as the site theme: the footer is visible to every visitor, and a
-  // save that cannot be taken back is how a broken one stays up until someone notices.
-  const save = () => {
-    const body = f;
-    toast.action({
-      tone: 'success', duration: 7000, cancelLabel: t('common.undo', 'Undo'),
-      msg: !body.enabled
-        ? t('afoot.saved.off', 'Saved — but “Use this footer” is off, so visitors still see the built-in one.')
-        : !(body.columns || []).length
-          ? t('afoot.saved.empty', 'Saved — no columns yet, so the built-in columns still show. Use “Start from the built-in footer”.')
-          : t('afoot.saved', 'Footer saved.'),
-      onCommit: () => commitSave(body),
-      onCancel: () => {},
-    });
-  };
+  // Written immediately, for the same reason as the site theme above: with a deferred
+  // commit the toast's × and its Undo are one action, so dismissing the notification threw
+  // the save away. Save means save.
+  const save = () => commitSave(f);
   const commitSave = async (body) => {
     setBusy(true);
     try {
       await api.put('/admin/footer', body);
+      toast.success(!body.enabled
+        ? t('afoot.saved.off', 'Saved — but “Use this footer” is off, so visitors still see the built-in one.')
+        : !(body.columns || []).length
+          ? t('afoot.saved.empty', 'Saved — no columns yet, so the built-in columns still show. Use “Start from the built-in footer”.')
+          : t('afoot.saved', 'Footer saved.'));
       reload();
     } catch (x) { toast.error(x.data?.detail || x.data?.error || t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
@@ -8555,26 +8549,45 @@ function AdminSiteTheme() {
   // and this says whether the result actually clears WCAG's 4.5:1 for body-size text.
   const ratio = contrastRatio(f.accent || '#f97316', ink);
 
-  // Saving the site theme repaints the site FOR EVERY VISITOR, and there was no way back
-  // from a bad one except remembering the previous nine values. Deferred commit: the page
-  // repaints here at once so you can see the result, and the PUT only fires when the undo
-  // window closes — so Undo means the change never reached anyone else at all.
-  const save = () => {
+  // Apply MUST apply.
+  //
+  // This was briefly a deferred commit — the PUT held back for an undo window — which was
+  // the wrong pattern for a button labelled "Apply to the whole site". In that shape the
+  // toast's × and its Undo are the same action, so dismissing the notification silently
+  // rolled the theme back to the previous one and nothing was ever saved. The report was
+  // exactly that: "I apply, and it puts the old choice back."
+  //
+  // Written immediately. Undo is still offered, but as a real second write of the previous
+  // value — so closing the toast leaves the new theme in place, which is what the button
+  // promised.
+  const save = async () => {
     const body = { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '', light: f.light || null, dark: f.dark || null, shared: f.shared || null };
     const previous = data?.theme || null;
-    applySiteTheme(f); // local preview, immediately
-    toast.action({
-      tone: 'success', duration: 7000, cancelLabel: t('common.undo', 'Undo'),
-      msg: t('st.saved.pending', 'Site theme updated for everyone.'),
-      onCommit: async () => {
-        setBusy(true);
-        try { await api.put('/admin/theme', body); reload(); }
-        catch (x) { toast.error(x.data?.error || t('common.failed', 'Failed.')); if (previous) applySiteTheme(previous); }
-        finally { setBusy(false); }
-      },
-      // Nothing was sent, so undoing is purely local: put the form and the page back.
-      onCancel: () => { if (previous) { setF({ light: null, dark: null, shared: null, ...previous }); applySiteTheme(previous); } },
-    });
+    setBusy(true);
+    try {
+      await api.put('/admin/theme', body);
+      applySiteTheme(f);
+      reload();
+      if (previous) {
+        toast.action({
+          tone: 'success', duration: 8000, cancelLabel: t('st.undo', 'Restore the previous one'),
+          msg: t('st.saved', 'Site theme updated for everyone.'),
+          onCommit: () => {},
+          onCancel: async () => {
+            try {
+              await api.put('/admin/theme', previous);
+              setF({ light: null, dark: null, shared: null, ...previous });
+              applySiteTheme(previous);
+              reload();
+              toast.success(t('st.restored', 'Previous theme restored.'));
+            } catch { toast.error(t('common.failed', 'Failed.')); }
+          },
+        });
+      } else {
+        toast.success(t('st.saved', 'Site theme updated for everyone.'));
+      }
+    } catch (x) { toast.error(x.data?.error || t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
   };
   // Picking a preset CLEARS the token bags.
   //
