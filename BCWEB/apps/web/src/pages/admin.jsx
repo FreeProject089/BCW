@@ -8256,19 +8256,25 @@ function AdminFooter() {
   const rawNews = f.brand?.newsletter;
   const news = (rawNews && typeof rawNews === 'object') ? rawNews : { on: rawNews !== false };
 
-  const save = async () => {
+  // Same deferred commit as the site theme: the footer is visible to every visitor, and a
+  // save that cannot be taken back is how a broken one stays up until someone notices.
+  const save = () => {
+    const body = f;
+    toast.action({
+      tone: 'success', duration: 7000, cancelLabel: t('common.undo', 'Undo'),
+      msg: !body.enabled
+        ? t('afoot.saved.off', 'Saved — but “Use this footer” is off, so visitors still see the built-in one.')
+        : !(body.columns || []).length
+          ? t('afoot.saved.empty', 'Saved — no columns yet, so the built-in columns still show. Use “Start from the built-in footer”.')
+          : t('afoot.saved', 'Footer saved.'),
+      onCommit: () => commitSave(body),
+      onCancel: () => {},
+    });
+  };
+  const commitSave = async (body) => {
     setBusy(true);
     try {
-      await api.put('/admin/footer', f);
-      // Say what was actually saved. "Footer saved." was true and useless: a config with
-      // `enabled` off, or with no columns, saves perfectly and changes nothing on the site,
-      // and the toast read the same either way. That is how a footer can look configured
-      // for weeks while every visitor sees the built-in one.
-      toast.success(!f.enabled
-        ? t('afoot.saved.off', 'Saved — but “Use this footer” is off, so visitors still see the built-in one.')
-        : !(f.columns || []).length
-          ? t('afoot.saved.empty', 'Saved — no columns yet, so the built-in columns still show. Use “Start from the built-in footer”.')
-          : t('afoot.saved', 'Footer saved.'));
+      await api.put('/admin/footer', body);
       reload();
     } catch (x) { toast.error(x.data?.detail || x.data?.error || t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
@@ -8491,15 +8497,26 @@ function AdminSiteTheme() {
   // and this says whether the result actually clears WCAG's 4.5:1 for body-size text.
   const ratio = contrastRatio(f.accent || '#f97316', ink);
 
-  const save = async () => {
-    setBusy(true);
-    try {
-      await api.put('/admin/theme', { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '', light: f.light || null, dark: f.dark || null, shared: f.shared || null });
-      applySiteTheme(f); // take effect here immediately rather than on the next reload
-      toast.success(t('st.saved', 'Site theme updated for everyone.'));
-      reload();
-    } catch (x) { toast.error(x.data?.error || t('common.failed', 'Failed.')); }
-    finally { setBusy(false); }
+  // Saving the site theme repaints the site FOR EVERY VISITOR, and there was no way back
+  // from a bad one except remembering the previous nine values. Deferred commit: the page
+  // repaints here at once so you can see the result, and the PUT only fires when the undo
+  // window closes — so Undo means the change never reached anyone else at all.
+  const save = () => {
+    const body = { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '', light: f.light || null, dark: f.dark || null, shared: f.shared || null };
+    const previous = data?.theme || null;
+    applySiteTheme(f); // local preview, immediately
+    toast.action({
+      tone: 'success', duration: 7000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('st.saved.pending', 'Site theme updated for everyone.'),
+      onCommit: async () => {
+        setBusy(true);
+        try { await api.put('/admin/theme', body); reload(); }
+        catch (x) { toast.error(x.data?.error || t('common.failed', 'Failed.')); if (previous) applySiteTheme(previous); }
+        finally { setBusy(false); }
+      },
+      // Nothing was sent, so undoing is purely local: put the form and the page back.
+      onCancel: () => { if (previous) { setF({ light: null, dark: null, shared: null, ...previous }); applySiteTheme(previous); } },
+    });
   };
   // Picking a preset CLEARS the token bags.
   //
