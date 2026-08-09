@@ -40,6 +40,9 @@
   --shadow-lg: 0 18px 48px -16px rgba(30, 20, 5, 0.20);
   --glow-a: rgba(249, 115, 22, 0.14);
   --glow-b: rgba(245, 158, 11, 0.12);
+  /* The third page glow. It used to be written as a literal rgba() inside the light and
+     dark body rules, so it was the one part of the background no theme could reach. */
+  --glow-c: rgba(249, 115, 22, 0.07);
 }
 [data-theme="dark"] {
   color-scheme: dark;
@@ -61,6 +64,7 @@
   --shadow-lg: none;
   --glow-a: rgba(249, 115, 22, 0.16);
   --glow-b: rgba(245, 158, 11, 0.12);
+  --glow-c: rgba(245, 158, 11, 0.07);
 }
 
 /* shared brand + system tokens */
@@ -109,9 +113,10 @@ body {
   color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
   -webkit-font-smoothing: antialiased;
-  background-image:
+  /* The fallback IS the shipped background — an unconfigured site is unchanged. */
+  background-image: var(--page-glows,
     radial-gradient(55rem 55rem at 82% -12%, var(--glow-a), transparent 60%),
-    radial-gradient(46rem 46rem at -8% 8%, var(--glow-b), transparent 58%);
+    radial-gradient(46rem 46rem at -8% 8%, var(--glow-b), transparent 58%));
   background-attachment: fixed;
   transition: background-color .3s ease, color .3s ease;
 }
@@ -489,17 +494,17 @@ html.js-anim .reveal-stagger.reveal-instant > * {
 /* Theme-distinct page atmosphere — light is airy & editorial, dark is deep & rich,
    so each theme feels like its own thing rather than a simple inversion. */
 [data-theme="light"] body {
-  background-image:
+  background-image: var(--page-glows,
     radial-gradient(58rem 42rem at 80% -12%, var(--glow-a), transparent 60%),
     radial-gradient(46rem 40rem at -6% 6%, var(--glow-b), transparent 56%),
-    radial-gradient(90rem 46rem at 50% 118%, rgba(249, 115, 22, 0.07), transparent 62%),
+    radial-gradient(90rem 46rem at 50% 118%, var(--glow-c), transparent 62%)),
     linear-gradient(180deg, #fffdf9 0%, var(--bg) 40%);
 }
 [data-theme="dark"] body {
-  background-image:
+  background-image: var(--page-glows,
     radial-gradient(60rem 52rem at 82% -14%, var(--glow-a), transparent 56%),
     radial-gradient(48rem 46rem at -8% 4%, var(--glow-b), transparent 56%),
-    radial-gradient(130% 90% at 50% 128%, rgba(245, 158, 11, 0.07), transparent 60%);
+    radial-gradient(130% 90% at 50% 128%, var(--glow-c), transparent 60%));
 }
 
 /* markdown (release notes) */

@@ -108,6 +108,9 @@ export const TOKENS = [
   { name: '--glow-b', group: 'effects', scope: 'mode', uses: 3, derived: true,
     label: { en: 'Page glow B', fr: 'Lueur de page B' },
     affects: { en: 'The second radial wash, opposite corner.', fr: 'Le second dégradé radial, coin opposé.' } },
+  { name: '--glow-c', group: 'effects', scope: 'mode', uses: 2, derived: true,
+    label: { en: 'Page glow C', fr: 'Lueur de page C' },
+    affects: { en: 'The third, wide wash along the bottom edge.', fr: 'Le troisième dégradé, large, le long du bas.' } },
 ];
 
 export const TOKENS_BY_NAME = Object.fromEntries(TOKENS.map((t) => [t.name, t]));

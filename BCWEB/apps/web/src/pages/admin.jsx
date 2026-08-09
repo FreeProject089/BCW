@@ -34,6 +34,30 @@ import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSav
 // actual api.del only fires once the 6s window elapses — Undo means nothing was ever deleted,
 // no email sent, no round-trip. Replaces a confirm modal, which asks BEFORE and can't take it
 // back AFTER. Returns { pending, del }: filter your list by `!pending.has(id)`, and call
+// The shipped glow stack per mode, as data — the starting point when an admin takes the
+// background over. These mirror the fallbacks in index.css; they are not read from it,
+// so if the CSS stack changes these want changing with it.
+const DEFAULT_GLOWS = (mode) => (mode === 'light'
+  ? [
+    { color: 'rgba(249,115,22,.14)', w: 58, h: 42, x: 80, y: -12, fade: 60 },
+    { color: 'rgba(245,158,11,.12)', w: 46, h: 40, x: -6, y: 6, fade: 56 },
+    { color: 'rgba(249,115,22,.07)', w: 90, h: 46, x: 50, y: 118, fade: 62 },
+  ]
+  : [
+    { color: 'rgba(249,115,22,.16)', w: 60, h: 52, x: 82, y: -14, fade: 56 },
+    { color: 'rgba(245,158,11,.12)', w: 48, h: 46, x: -8, y: 4, fade: 56 },
+    { color: 'rgba(245,158,11,.07)', w: 130, h: 90, x: 50, y: 128, fade: 60 },
+  ]);
+
+// <input type="color"> only speaks #rrggbb, but a glow is usually an rgba() with the alpha
+// carrying most of the effect. The swatch shows the closest hex so the picker is usable;
+// the text field beside it stays the source of truth for anything with transparency.
+function hexOf(v) {
+  const m = String(v || '').match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
+  if (m) return '#' + m.slice(1, 4).map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+  return /^#[0-9a-f]{6}$/i.test(String(v || '')) ? v : '#f97316';
+}
+
 /* ─────────────────────────  Admin  ───────────────────────── */
 export function Admin() {
   const { user } = useAuth(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
@@ -8555,6 +8579,48 @@ function AdminSiteTheme() {
           </div>
         )}
 
+        {/* Page background. The glow COLOURS were already tokens (--glow-a/b/c); what was
+            not reachable was their geometry — where each spot sits, how big it is, how many
+            there are — because that lived in index.css. This edits the list itself. */}
+        {scope !== 'shared' && f[scope] && (() => {
+          const glows = Array.isArray(f[scope].glows) ? f[scope].glows : null;
+          const setGlows = (v) => setF({ ...f, [scope]: { ...f[scope], glows: v } });
+          const setG = (i, patch) => setGlows(glows.map((g, n) => (n === i ? { ...g, ...patch } : g)));
+          const NUM = [['w', 'W %'], ['h', 'H %'], ['x', 'X %'], ['y', 'Y %'], ['fade', 'Fade %']];
+          return (
+            <div className="mb-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('thm.bg', 'Page background')}</div>
+              {!glows ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-[var(--muted)]">{t('thm.bg.default', 'Using the built-in glow layout.')}</span>
+                  <Button size="sm" variant="ghost" onClick={() => setGlows(DEFAULT_GLOWS(scope))}>{t('thm.bg.take', 'Customise it')}</Button>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {glows.map((g, i) => (
+                    <div key={i} className="flex items-center gap-1.5 flex-wrap">
+                      <input type="color" value={hexOf(g.color)} onChange={(e) => setG(i, { color: e.target.value })}
+                        className="w-8 h-8 rounded border border-[var(--line)] bg-transparent p-0.5 cursor-pointer" />
+                      <Input className="!w-40 !text-xs font-mono" value={g.color || ''} onChange={(e) => setG(i, { color: e.target.value })} placeholder="rgba(249,115,22,.14)" />
+                      {NUM.map(([k, lb]) => (
+                        <label key={k} className="text-[10px] text-[var(--faint)] flex flex-col">
+                          {lb}
+                          <Input className="!w-16 !text-xs" type="number" value={g[k] ?? ''} onChange={(e) => setG(i, { [k]: Number(e.target.value) })} />
+                        </label>
+                      ))}
+                      <button onClick={() => setGlows(glows.filter((_, n) => n !== i))} className="p-1 rounded text-error hover:bg-error-bg self-end mb-1"><Trash2 size={12} /></button>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2 pt-1">
+                    {glows.length < 8 && <Button size="sm" variant="ghost" onClick={() => setGlows([...glows, { color: 'rgba(249,115,22,.10)', w: 50, h: 50, x: 50, y: 50, fade: 60 }])}><Plus size={13} /> {t('thm.bg.add', 'Add a glow')}</Button>}
+                    <Button size="sm" variant="ghost" onClick={() => setGlows(null)}><RotateCcw size={13} /> {t('thm.bg.reset', 'Back to the built-in')}</Button>
+                    {glows.length === 0 && <span className="text-[11px] text-[var(--faint)]">{t('thm.bg.flat', 'No glows — a flat background.')}</span>}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {(scope === 'shared' || f[scope]) && TOKEN_GROUPS.map((g) => {
           const items = TOKENS.filter((tk) => tk.group === g.id && (scope === 'shared' ? tk.scope === 'shared' : tk.scope === 'mode'));
           if (!items.length) return null;

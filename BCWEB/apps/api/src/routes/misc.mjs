@@ -123,14 +123,34 @@ const TOKEN_NAMES = new Set([
   '--text', '--muted', '--faint',
   '--line', '--line-strong', '--control-border',
   '--info', '--success', '--warning', '--error',
-  '--ring', '--primary-glow', '--glow-a', '--glow-b',
+  '--ring', '--primary-glow', '--glow-a', '--glow-b', '--glow-c',
 ]);
 const colour = z.string().max(120).regex(COLOUR);
 // `bg` and `text` are the two inputs the surface set is derived from; every other key must be
 // a known token name.
-const pageColours = z.object({ bg: colour.optional(), text: colour.optional() })
+// One radial "light spot" in the page background. Geometry is numeric and clamped, so a
+// configured background cannot push a gradient somewhere that breaks the layout, and the
+// colour goes through the same COLOUR regex as every token — these end up inside a CSS
+// declaration, and that regex is the thing standing between a stored value and `};`.
+const glowSpot = z.object({
+  color: colour,
+  w: z.number().min(0).max(400).optional().default(55),
+  h: z.number().min(0).max(400).optional().default(55),
+  x: z.number().min(-200).max(300).optional().default(50),
+  y: z.number().min(-200).max(300).optional().default(0),
+  fade: z.number().min(0).max(100).optional().default(60),
+});
+// `bg` and `text` are the two inputs the surface set is derived from; `glows` is the
+// background's spot list; every other key must be a known token name. Note `glows` has to
+// be declared in the SHAPE rather than left to the catchall — catchall demands a colour
+// string, and an array would be rejected.
+const pageColours = z.object({
+  bg: colour.optional(),
+  text: colour.optional(),
+  glows: z.array(glowSpot).max(8).optional(),
+})
   .catchall(colour)
-  .refine((o) => Object.keys(o).every((k) => k === 'bg' || k === 'text' || TOKEN_NAMES.has(k)), {
+  .refine((o) => Object.keys(o).every((k) => k === 'bg' || k === 'text' || k === 'glows' || TOKEN_NAMES.has(k)), {
     message: 'unknown theme token',
   })
   .nullable().optional();

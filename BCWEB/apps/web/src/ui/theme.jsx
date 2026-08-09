@@ -88,6 +88,34 @@ function overrideVars(map) {
 
 /** Build the CSS for a theme. Kept pure so the admin preview and the live site cannot drift —
  *  the preview applies the very same text, scoped to a container. */
+// The page background is a stack of soft radial "light spots" over the flat --bg. They
+// used to be written straight into index.css, which meant their COLOURS were themeable
+// (--glow-a / --glow-b are tokens) but nothing else was: not where they sit, not how big
+// they are, not how many there are — and the dark theme's third spot was a hardcoded
+// rgba() no token could reach at all.
+//
+// Emitting the whole list as one custom property makes the geometry data. `body` reads
+// `var(--page-glows, <the shipped stack>)`, so a site that never configures this renders
+// byte-identically to before and only an explicit list overrides it.
+//
+// A spot is { color, w, h, x, y, fade }: w/h are the ellipse size and x/y its centre, both
+// in %, and `fade` is where the gradient reaches full transparency.
+function glowVars(glows) {
+  if (!Array.isArray(glows)) return '';
+  // An explicit empty list means "no glows" — a flat background — which is a legitimate
+  // choice and must not be confused with "not configured".
+  if (!glows.length) return '--page-glows:none';
+  const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  const parts = glows.slice(0, 8).map((g) => {
+    const color = typeof g.color === 'string' && g.color.trim() ? g.color.trim() : 'transparent';
+    // Rejected outright rather than escaped: these land inside a CSS declaration, and the
+    // only safe answer to a value containing ; } or url( is not to emit it.
+    if (/[;}()<>]/.test(color) && !/^rgba?\([^;<>{}]*\)$/i.test(color)) return null;
+    return `radial-gradient(${num(g.w, 55)}% ${num(g.h, 55)}% at ${num(g.x, 82)}% ${num(g.y, -12)}%, ${color}, transparent ${num(g.fade, 60)}%)`;
+  }).filter(Boolean);
+  return parts.length ? `--page-glows:${parts.join(',')}` : '';
+}
+
 export function themeCss({ accent, accent2, light, dark, shared }) {
   if (!accent) return '';
   const a2 = accent2 || accent;
@@ -121,9 +149,9 @@ export function themeCss({ accent, accent2, light, dark, shared }) {
     const derived = m.bg && m.text ? surfaceVars(m.bg, m.text, lift) : '';
     // `bg`/`text` are the two inputs to the derivation, not tokens themselves — they are
     // already emitted by surfaceVars, so they must not be re-emitted as `--bg`/`--text`.
-    const { bg, text, ...rest } = m;
+    const { bg, text, glows, ...rest } = m;
     const explicit = overrideVars(rest);
-    const body = [derived, explicit].filter(Boolean).join(';');
+    const body = [derived, glowVars(glows), explicit].filter(Boolean).join(';');
     if (body) css += `${sel}{${body}}`;
   }
   return css;
