@@ -330,10 +330,14 @@ export function Hosting() {
                 <span className="absolute rotate-45 text-white text-[9px] font-extrabold tracking-wider text-center py-1 shadow-md" style={{ width: 150, top: 22, right: -40, background: 'linear-gradient(90deg,#f97316,#f59e0b)' }}>{t('hosting.popular2', 'RECOMMENDED')}</span>
               </span>
             )}
-            {/* Uniform tier header — every card looks the same. */}
+            {/* Uniform tier header. The plan's NAME leads it: the card used to show only
+                GB / Mbps / price, so two plans that happen to share those numbers were
+                literally indistinguishable — a wall of identical cards with no way to tell
+                which one you were buying. The name is the only thing that separates them. */}
             <div className="px-5 pt-6 pb-5 border-b border-[var(--line)]">
               <HardDrive size={20} className="mx-auto transition-transform group-hover:scale-110 text-[var(--primary-2)]" />
-              <div className="text-4xl font-extrabold mt-2 leading-none">{pl.storageGB}<span className="text-lg font-semibold text-[var(--muted)]"> GB</span></div>
+              <div className="text-sm font-bold mt-2 leading-tight truncate" title={pl.name}>{pl.name}</div>
+              <div className="text-4xl font-extrabold mt-1 leading-none">{pl.storageGB}<span className="text-lg font-semibold text-[var(--muted)]"> GB</span></div>
               <div className="text-[11px] font-semibold uppercase tracking-wider mt-1 text-[var(--faint)]">{t('hosting.storage', 'Storage')}</div>
             </div>
             {/* body — speed, price, CTA */}
