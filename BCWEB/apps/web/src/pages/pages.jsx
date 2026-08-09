@@ -248,10 +248,58 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
   const [sp, setSp] = useSearchParams();
   const [navOpen, setNavOpen] = useState(false);
   const realTabs = tabs.filter((t) => t.id);
+  // Sections, so a heading can fold the tabs under it. The flat `tabs` array stays the
+  // public shape — callers keep passing `{heading}` markers and know nothing about this.
+  // A leading run with no heading becomes an unnamed section, which is never collapsible:
+  // hiding tabs behind nothing would leave a fold with no label to reopen it.
+  const sections = [];
+  for (const tb of tabs) {
+    if (tb.heading) sections.push({ heading: tb.heading, items: [] });
+    else {
+      if (!sections.length) sections.push({ heading: null, items: [] });
+      sections[sections.length - 1].items.push(tb);
+    }
+  }
+  // Collapsed state is per session and per heading. Kept in sessionStorage rather than
+  // localStorage: folding a section to get through a long list is a working posture, not a
+  // preference you want greeting you in a week with half the admin apparently missing.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return new Set(JSON.parse(sessionStorage.getItem('bcw_sidedash_collapsed') || '[]')); }
+    catch { return new Set(); }
+  });
+  const toggleSection = (heading) => setCollapsed((prev) => {
+    const next = new Set(prev);
+    next.has(heading) ? next.delete(heading) : next.add(heading);
+    try { sessionStorage.setItem('bcw_sidedash_collapsed', JSON.stringify([...next])); } catch { /* private mode */ }
+    return next;
+  });
   const active = sp.get('s') || realTabs[0]?.id;
   const set = (id) => { setSp((p) => { const n = new URLSearchParams(p); n.set('s', id); return n; }, { replace: true }); setNavOpen(false); };
   const current = realTabs.find((t) => t.id === active) || realTabs[0];
   const idx = realTabs.findIndex((t) => t.id === active);
+  // A section, reused by the desktop sidebar and the mobile sheet so the two can never
+  // drift into disagreeing about what is folded.
+  const renderSection = (sec, i, big) => {
+    // Never fold away the section holding the tab you are looking at — the content would
+    // stay on screen with nothing in the nav pointing at it.
+    // A heading with nothing under it would render a fold that opens onto nothing.
+    if (!sec.items.length) return null;
+    const holdsActive = sec.items.some((tb) => tb.id === active);
+    const isFolded = !!sec.heading && collapsed.has(sec.heading) && !holdsActive;
+    return (
+      <div key={sec.heading || `s-${i}`} className="contents">
+        {sec.heading && (
+          <button type="button" onClick={() => toggleSection(sec.heading)} aria-expanded={!isFolded}
+            className="flex items-center gap-1 w-full px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] hover:text-[var(--text)] transition-colors first:pt-1">
+            <ChevronDown size={12} className={`transition-transform duration-200 ${isFolded ? '-rotate-90' : ''}`} />
+            <span className="truncate">{sec.heading}</span>
+            {isFolded && <span className="ml-auto tabular-nums opacity-70">{sec.items.length}</span>}
+          </button>
+        )}
+        {!isFolded && sec.items.map((tb) => renderTab(tb, big))}
+      </div>
+    );
+  };
   // One row renderer, reused by the desktop sidebar and the mobile sheet.
   const renderTab = (tb, big) => (
     <button key={tb.id} onClick={() => set(tb.id)}
@@ -278,9 +326,7 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
         {navOpen && <>
           <div className="fixed inset-0 z-10" onClick={() => setNavOpen(false)} />
           <div className="card absolute left-0 right-0 mt-2 p-2 anim-pop z-20 max-h-[62vh] overflow-y-auto scroll-thin shadow-lg">
-            {tabs.map((tb, i) => tb.heading
-              ? <div key={`h-${i}`} className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] first:pt-1">{tb.heading}</div>
-              : renderTab(tb, true))}
+            {sections.map((sec, i) => renderSection(sec, i, true))}
           </div>
         </>}
       </div>
@@ -289,9 +335,7 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
         {/* Desktop sidebar — a real card panel behind the whole nav (not just the
             active pill) so it feels grounded next to the content cards. */}
         <nav className="hidden md:flex card p-2 flex-col gap-1 md:sticky md:top-20 self-start pb-2">
-          {tabs.map((tb, i) => tb.heading ? (
-            <div key={`h-${i}`} className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] first:pt-1">{tb.heading}</div>
-          ) : renderTab(tb))}
+          {sections.map((sec, i) => renderSection(sec, i, false))}
         </nav>
         <div className="min-w-0">{typeof children === 'function' ? children(current.id) : children}</div>
       </div>
