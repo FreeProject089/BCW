@@ -8501,7 +8501,30 @@ function AdminSiteTheme() {
     } catch (x) { toast.error(x.data?.error || t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
-  const pick = (p) => setF({ ...f, accent: p.accent, accent2: p.accent2, preset: p.id });
+  // Picking a preset CLEARS the token bags.
+  //
+  // A preset carries only accent + accent2 — every surface, line and page glow is derived
+  // from that pair by themeCss. So a preset is already a complete look, but only if nothing
+  // is overriding it. Keeping the bags meant selecting "BetterCommunity / Default" changed
+  // the accent and left every custom token in place: the site kept the previous colours and
+  // stray glows, and saving appeared to "put back the old one". Presets looked half-broken
+  // for the same reason the reset did.
+  //
+  // Clearing silently would throw away real work, so it is undoable: the previous state is
+  // captured and restored if you take it back.
+  const pick = (p) => {
+    const had = !!(f.shared || f.light || f.dark);
+    const prev = { shared: f.shared, light: f.light, dark: f.dark };
+    setF({ ...f, accent: p.accent, accent2: p.accent2, preset: p.id, shared: null, light: null, dark: null });
+    if (had) {
+      toast.action({
+        tone: 'warning', duration: 8000, cancelLabel: t('common.undo', 'Undo'),
+        msg: t('st.preset.cleared', 'Preset applied — your token overrides were cleared so it renders as designed.'),
+        onCommit: () => {},
+        onCancel: () => setF((cur) => ({ ...cur, ...prev })),
+      });
+    }
+  };
 
   // "Back to the built-in theme", and it has to clear the token bags too.
   //

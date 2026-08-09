@@ -1619,6 +1619,7 @@ const DICT = {
     'st.st.success': 'Enregistré',
     'st.st.warning': 'Attention',
     'st.st.error': 'Échec',
+    'st.preset.cleared': 'Préréglage appliqué — tes surcharges de tokens ont été vidées pour qu’il s’affiche tel que prévu.',
     'thm.bg': 'Fond de page',
     'thm.bg.default': 'Disposition des lueurs par défaut.',
     'thm.bg.take': 'Personnaliser',
