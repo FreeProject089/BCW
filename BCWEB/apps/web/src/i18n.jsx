@@ -1633,6 +1633,8 @@ const DICT = {
     'afoot.inactive.off': '« Utiliser ce pied de page » est désactivé — rien ici n’est appliqué tant que tu ne l’actives pas.',
     'afoot.inactive.empty': 'Il n’y a aucune colonne, celles d’origine restent donc affichées. Pars du pied de page intégré et modifie-le.',
     'afoot.turnon': 'Activer',
+    'afoot.icon.bundled': 'Icône de marque intégrée',
+    'afoot.icon.bad': 'Aucune icône lucide de ce nom — elle s’afficherait comme un vide.',
     'afoot.name': 'Nom de la marque',
     'afoot.logo': 'URL du logo',
     'afoot.show': 'Afficher',

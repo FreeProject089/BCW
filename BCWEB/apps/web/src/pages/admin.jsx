@@ -8194,6 +8194,35 @@ const NEWS_FIELDS = [
 ];
 const COPY_PH = '\u00a9 {year} BetterCommunity. ...';
 
+// One social icon, as the footer will actually draw it — or a visible failure.
+// The four bundled brand marks are drawn from a data URL by name; anything else is a
+// lucide icon fetched from the CDN, and that fetch can 404 silently.
+function SocialIconPreview({ icon }) {
+  const { t } = useI18n();
+  const [bad, setBad] = useState(false);
+  const key = String(icon || '').trim().toLowerCase();
+  useEffect(() => { setBad(false); }, [key]);
+  const bundled = ['github', 'discord', 'reddit', 'kofi'].includes(key);
+  if (!key) return <span className="w-7 h-7 shrink-0 rounded-lg border border-dashed border-[var(--line)]" />;
+  if (bundled) {
+    return (
+      <span title={t('afoot.icon.bundled', 'Built-in brand icon')}
+        className="w-7 h-7 shrink-0 grid place-items-center rounded-lg border border-[var(--line)] text-[10px] font-bold uppercase text-[var(--primary-2)]">
+        {key.slice(0, 2)}
+      </span>
+    );
+  }
+  return (
+    <span className={`w-7 h-7 shrink-0 grid place-items-center rounded-lg border ${bad ? 'border-error-border bg-error-bg' : 'border-[var(--line)]'}`}
+      title={bad ? t('afoot.icon.bad', 'No lucide icon with that name — it would render as an empty space.') : key}>
+      {bad
+        ? <AlertTriangle size={13} className="text-error" />
+        : <img src={`https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/${encodeURIComponent(key)}.svg`}
+            alt="" width={15} height={15} onError={() => setBad(true)} />}
+    </span>
+  );
+}
+
 function AdminFooter() {
   const { t, lang } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/admin/footer'), []);
@@ -8353,6 +8382,13 @@ function AdminFooter() {
           : <div className="space-y-1.5">
             {socialList.map((x, i) => (
               <div key={i} className="flex items-center gap-2 flex-wrap">
+                {/* A live preview, because a bad icon name is otherwise INVISIBLE: the
+                    renderer paints lucide icons as a CSS mask, and a mask whose URL 404s
+                    draws nothing at all — an empty circle that looks exactly like a
+                    working one. lucide dropped its brand marks, so `discord` and `reddit`
+                    are 404s while `github` still resolves, which is a trap you cannot
+                    reason your way out of. Now you see it fail while typing. */}
+                <SocialIconPreview icon={x.icon} />
                 <Input className="!w-28 !text-xs" value={x.icon || ''} onChange={(e) => setSocial(i, { icon: e.target.value })} placeholder="github" />
                 <Input className="!w-36 !text-xs" value={x.label || ''} onChange={(e) => setSocial(i, { label: e.target.value })} placeholder={t('afoot.label', 'Label')} />
                 <Input className="!w-72 !text-xs font-mono" value={x.href || ''} onChange={(e) => setSocial(i, { href: e.target.value })} placeholder="https://..." />
