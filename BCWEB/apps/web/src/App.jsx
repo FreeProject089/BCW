@@ -29,6 +29,8 @@ import { NOTIF, NOTIF_FALLBACK } from './ui/notif.js'; // tiny data module — k
 import { Home } from './pages/home.jsx';
 import { Catalog, ItemDetail } from './pages/catalog.jsx';
 import { Auth } from './pages/signin.jsx';
+import { DEFAULT_FOOTER_SOCIALS } from './ui/footer-default.js';
+import { LucideCdnIcon } from './editor/icon-picker.jsx';
 // Lazy: route-split so the initial bundle no longer ships the whole admin back-office,
 // repo tools, editors, etc. — each loads on demand behind the Suspense boundary below.
 const named = (imp, key) => lazy(() => imp().then((m) => ({ default: m[key] })));
@@ -575,6 +577,20 @@ const SOCIAL = [
   { Icon: RedditIcon, href: 'https://www.reddit.com/r/BetterModManager/', label: 'Reddit' },
   { Icon: KofiIcon, href: KOFI, label: 'Ko-fi', kofi: true },
 ];
+// The bundled brand marks, by the key a configured social stores. lucide dropped its brand
+// icons, so these cannot come from the icon picker and have to be resolvable by name.
+const SOCIAL_ICONS = { github: GithubIcon, discord: DiscordIcon, reddit: RedditIcon, kofi: KofiIcon };
+// One social button, from config. A known brand key renders the bundled SVG; anything else
+// is taken as a lucide name so an admin can add a network we never anticipated.
+function FooterSocial({ item }) {
+  const Brand = SOCIAL_ICONS[String(item.icon || '').toLowerCase()];
+  return (
+    <a href={item.href} target={/^https?:/i.test(item.href) ? '_blank' : undefined} rel="noreferrer" title={item.label}
+      className="grid place-items-center w-9 h-9 rounded-xl border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)] transition">
+      {Brand ? <Brand size={16} className={item.icon === 'kofi' ? 'text-orange-400' : ''} /> : <LucideCdnIcon name={item.icon} size={16} />}
+    </a>
+  );
+}
 // A footer link column. On desktop it's always expanded; on phone the title becomes
 // a collapsible accordion header (collapsed by default).
 // Admin-configured footer, fetched once and cached in a module promise like the nav config.
@@ -616,8 +632,11 @@ function FooterCol({ title, links }) {
 }
 // Compact newsletter signup for the footer — mobile-clean (input + button stack /
 // stay side-by-side with min-w-0). Shows a success toast on subscribe (#5).
-function FooterNewsletter() {
+function FooterNewsletter({ cfg }) {
   const { t, lang } = useI18n();
+  // An empty field means "keep following the dictionary", so a site that never edits the
+  // copy still switches language properly. Only a value someone typed wins.
+  const pick = (en, fr, fallback) => ((lang === 'fr' && fr && fr.trim()) ? fr : (en && en.trim()) ? en : fallback);
   const toast = useToast();
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
@@ -634,11 +653,12 @@ function FooterNewsletter() {
   };
   return (
     <form onSubmit={submit} className="mt-6 max-w-xs">
-      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('news.foot', 'Newsletter')}</div>
+      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{pick(cfg?.title, cfg?.titleFr, t('news.foot', 'Newsletter'))}</div>
+      {pick(cfg?.text, cfg?.textFr, '') && <p className="text-xs text-[var(--muted)] mb-2 leading-relaxed">{pick(cfg?.text, cfg?.textFr, '')}</p>}
       <div className="flex gap-2">
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('news.ph', 'you@example.com')}
+        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={pick(cfg?.placeholder, cfg?.placeholderFr, t('news.ph', 'you@example.com'))}
           className="flex-1 min-w-0 rounded-lg border border-[var(--line)] bg-[var(--bg-solid)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]" />
-        <button type="submit" disabled={busy} className="shrink-0 rounded-lg bg-[var(--primary)] text-white px-3.5 py-2 text-sm font-semibold hover:brightness-110 disabled:opacity-50 transition">{busy ? '…' : t('news.cta', 'Subscribe')}</button>
+        <button type="submit" disabled={busy} className="shrink-0 rounded-lg bg-[var(--primary)] text-white px-3.5 py-2 text-sm font-semibold hover:brightness-110 disabled:opacity-50 transition">{busy ? '…' : pick(cfg?.button, cfg?.buttonFr, t('news.cta', 'Subscribe'))}</button>
       </div>
     </form>
   );
@@ -715,26 +735,42 @@ function Footer() {
         .map((l) => [frOr(l.labelFr, l.label), l.to, /^https?:\/\//i.test(l.to)]),
     }))
     .filter((c) => c.links.length);
+  // `socials` accepts three stored shapes, because it started life as a boolean and saved
+  // configs still hold one: absent/true = the built-in row, false = no row, array = itself.
+  // Treating the boolean as "not an array" and rendering nothing would have silently wiped
+  // the social row from every footer already configured.
+  const rawSocials = cfg?.brand?.socials;
+  const socials = Array.isArray(rawSocials) ? rawSocials.filter((x) => x && x.href && x.icon)
+    : rawSocials === false ? []
+    : DEFAULT_FOOTER_SOCIALS;
+  // Same three shapes for the newsletter block.
+  const rawNews = cfg?.brand?.newsletter;
+  const news = (rawNews && typeof rawNews === 'object') ? rawNews : { on: rawNews !== false };
+  const bottom = cfg?.bottom || {};
+  const year = new Date().getFullYear();
+  const bottomText = frOr(bottom.textFr, bottom.text);
   return (
     <footer className="mt-16 md:mt-24 relative clear-both">
       {/* gradient accent line */}
       <div className="h-px bg-gradient-to-r from-transparent via-[var(--primary)]/40 to-transparent" />
-      <div className="max-w-6xl mx-auto px-4 py-14 flex flex-col md:grid md:gap-10"
+      <div className={`max-w-6xl mx-auto px-4 py-14 md:grid md:gap-10 ${cfg?.mobile?.layout === 'grid' ? 'grid grid-cols-2 gap-x-6 gap-y-8' : 'flex flex-col'}`}
         style={{ gridTemplateColumns: `1.4fr repeat(${cols.length || 3}, 1fr)` }}>
-        {/* brand block */}
+        {/* brand block — hidden on a phone when the config says so */}
+        {(!isMobile || cfg?.mobile?.brand !== false) && (
         <div className="mb-4 md:mb-0">
-          <div className="flex items-center gap-2.5 font-extrabold text-lg"><img src="/logo.png" alt="BC" className="w-9 h-9 rounded-xl" /> BetterCommunity</div>
-          <p className="text-sm text-[var(--muted)] mt-3 max-w-xs leading-relaxed">{frOr(cfg?.brand?.taglineFr, cfg?.brand?.tagline) || t('foot.tagline')}</p>
-          <div className={`items-center gap-2 mt-5 ${cfg && cfg.brand?.socials === false ? 'hidden' : 'flex'}`}>
-            {SOCIAL.map((s) => (
-              <a key={s.label} href={s.href} target="_blank" rel="noreferrer" title={s.label}
-                className="grid place-items-center w-9 h-9 rounded-xl border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)] transition">
-                <s.Icon size={16} className={s.kofi ? 'text-orange-400' : ''} />
-              </a>
-            ))}
+          <div className="flex items-center gap-2.5 font-extrabold text-lg">
+            <img src={cfg?.brand?.logo || '/logo.png'} alt="" className="w-9 h-9 rounded-xl object-contain" />
+            {cfg?.brand?.name || 'BetterCommunity'}
           </div>
-          {(!cfg || cfg.brand?.newsletter !== false) && <FooterNewsletter />}
+          <p className="text-sm text-[var(--muted)] mt-3 max-w-xs leading-relaxed">{frOr(cfg?.brand?.taglineFr, cfg?.brand?.tagline) || t('foot.tagline')}</p>
+          {socials.length > 0 && (
+            <div className="flex items-center gap-2 mt-5 flex-wrap">
+              {socials.map((x, i) => <FooterSocial key={`${x.icon}-${i}`} item={x} />)}
+            </div>
+          )}
+          {news.on !== false && <FooterNewsletter cfg={news} />}
         </div>
+        )}
         {cols.length
           ? cols.map((c) => <FooterCol key={c.title} title={c.title} links={c.links} />)
           : <>
@@ -744,10 +780,13 @@ function Footer() {
           </>}
       </div>
       <div className="border-t border-[var(--line)]"><div className="max-w-6xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 text-xs text-[var(--faint)] pb-24 md:pb-5">
-        <span>© {new Date().getFullYear()} BetterCommunity. {t('foot.rights')}</span>
+        {/* {year} is expanded here so "© {year} …" stays right on 1 January without an edit. */}
+        <span>{bottom.copyright === false ? '' : (bottomText
+          ? bottomText.replace(/\{year\}/g, year)
+          : `© ${year} ${cfg?.brand?.name || 'BetterCommunity'}. ${t('foot.rights')}`)}</span>
         <div className="flex items-center gap-4 flex-wrap">
-          <LangSelect />
-          <FooterEgg />
+          {bottom.lang !== false && <LangSelect />}
+          {bottom.egg !== false && <FooterEgg />}
         </div>
       </div></div>
     </footer>

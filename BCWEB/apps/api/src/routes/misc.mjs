@@ -969,14 +969,44 @@ export default async function miscRoutes(app) {
     on: z.enum(['both', 'desktop', 'mobile']).optional().default('both'),
     links: z.array(footLink).max(16).default([]),
   });
+  // A social button. `icon` is either one of the bundled brand marks ('github', 'discord',
+  // 'reddit', 'kofi') or a lucide icon name — the client resolves in that order.
+  const footSocial = z.object({
+    label: z.string().trim().min(1).max(30),
+    href: z.string().trim().min(1).max(300)
+      .refine((v) => v.startsWith('/') || /^https?:\/\//i.test(v), 'must be an internal path or an http(s) URL'),
+    icon: z.string().trim().min(1).max(40),
+  });
+  const footNewsletter = z.object({
+    on: z.boolean().optional().default(true),
+    title: z.string().trim().max(60).optional().default(''),
+    titleFr: z.string().trim().max(60).optional().default(''),
+    text: z.string().trim().max(200).optional().default(''),
+    textFr: z.string().trim().max(200).optional().default(''),
+    placeholder: z.string().trim().max(60).optional().default(''),
+    placeholderFr: z.string().trim().max(60).optional().default(''),
+    button: z.string().trim().max(30).optional().default(''),
+    buttonFr: z.string().trim().max(30).optional().default(''),
+  });
   const footerSchema = z.object({
     enabled: z.boolean(),
     columns: z.array(footColumn).max(6).default([]),
     brand: z.object({
+      // Empty = keep the built-in ("BetterCommunity" / /logo.png), so a site that never
+      // touches these still follows the app rather than freezing a copy of it.
+      name: z.string().trim().max(40).optional().default(''),
+      logo: z.string().trim().max(300).optional()
+        .refine((v) => !v || v.startsWith('/') || /^https?:\/\//i.test(v), 'must be a path or an http(s) URL')
+        .default(''),
       tagline: z.string().trim().max(200).optional().default(''),
       taglineFr: z.string().trim().max(200).optional().default(''),
-      socials: z.boolean().optional().default(true),
-      newsletter: z.boolean().optional().default(true),
+      // `socials` used to be a plain on/off boolean and stored configs still hold one, so
+      // both forms are accepted: `false` hides the row, `true` means "the built-in row",
+      // and an array is the row itself. Rejecting the boolean would have silently emptied
+      // the socials of every footer already saved.
+      socials: z.union([z.boolean(), z.array(footSocial).max(10)]).optional().default(true),
+      // Same story: boolean was "show / hide"; the object adds the copy.
+      newsletter: z.union([z.boolean(), footNewsletter]).optional().default(true),
     }).optional().default({}),
     // Phone layout. The desktop grid is driven by the column count; a phone has to choose
     // between one column per row and a two-up grid, and neither is right for every site.
@@ -986,8 +1016,11 @@ export default async function miscRoutes(app) {
     }).optional().default({}),
     bottom: z.object({
       copyright: z.boolean().optional().default(true),
+      // Supports one token, {year}, expanded at render time.
       text: z.string().trim().max(120).optional().default(''),
       textFr: z.string().trim().max(120).optional().default(''),
+      lang: z.boolean().optional().default(true),
+      egg: z.boolean().optional().default(true),
     }).optional().default({}),
   });
 

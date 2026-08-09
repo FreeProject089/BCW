@@ -13,7 +13,7 @@ import { KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
 import Avatar from '../ui/Avatar.jsx';
 import { THEME_PRESETS } from '../ui/theme-presets.js';
-import { defaultFooterConfig } from '../ui/footer-default.js';
+import { defaultFooterConfig, DEFAULT_FOOTER_SOCIALS } from '../ui/footer-default.js';
 import { TOKENS, TOKEN_GROUPS } from '../ui/theme-tokens.js';
 import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
 import { useAuth } from './auth.jsx';
@@ -8135,6 +8135,16 @@ function AdminNeedsAttention({ data, loading, onReload }) {
 // Same shape as the topbar manager: an optional config that REPLACES the built-in footer only
 // when it is enabled AND has columns. Leave it off and the hardcoded footer stands, so turning
 // this on can never leave the site without one.
+// Copy fields of the footer newsletter box, and the placeholder for the copyright line.
+// Kept out of the component so the JSX stays readable.
+const NEWS_FIELDS = [
+  ['title', 'Title'], ['titleFr', 'Title (FR)'],
+  ['placeholder', 'Input placeholder'], ['placeholderFr', 'Placeholder (FR)'],
+  ['button', 'Button'], ['buttonFr', 'Button (FR)'],
+  ['text', 'Blurb', '!w-72'], ['textFr', 'Blurb (FR)', '!w-72'],
+];
+const COPY_PH = '\u00a9 {year} BetterCommunity. ...';
+
 function AdminFooter() {
   const { t, lang } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/admin/footer'), []);
@@ -8185,6 +8195,17 @@ function AdminFooter() {
   const setCol = (i, patch) => setF({ ...f, columns: f.columns.map((c, n) => (n === i ? { ...c, ...patch } : c)) });
   const setLink = (ci, li, patch) => setCol(ci, { links: f.columns[ci].links.map((l, n) => (n === li ? { ...l, ...patch } : l)) });
   const move = (arr, i, d) => { const a = [...arr]; const j = i + d; if (j < 0 || j >= a.length) return a; [a[i], a[j]] = [a[j], a[i]]; return a; };
+  const setBrand = (patch) => setF({ ...f, brand: { ...f.brand, ...patch } });
+  const setBottom = (patch) => setF({ ...f, bottom: { ...f.bottom, ...patch } });
+  // `socials` and `newsletter` each have THREE stored shapes — absent, a boolean (what the
+  // first version of this config saved), or the value itself. Normalise once here so the
+  // editor never branches on it and never writes back a shape the live footer would not
+  // understand. Dropping the boolean case would blank the socials of every saved footer.
+  const socialsRaw = f.brand?.socials;
+  const socialList = Array.isArray(socialsRaw) ? socialsRaw : (socialsRaw === false ? [] : DEFAULT_FOOTER_SOCIALS);
+  const setSocial = (i, patch) => setBrand({ socials: socialList.map((x, n) => (n === i ? { ...x, ...patch } : x)) });
+  const rawNews = f.brand?.newsletter;
+  const news = (rawNews && typeof rawNews === 'object') ? rawNews : { on: rawNews !== false };
 
   const save = async () => {
     setBusy(true);
@@ -8222,10 +8243,73 @@ function AdminFooter() {
               className={`px-2.5 py-1 rounded-md ${device === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{label}</button>
           ))}
         </div>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.brand?.socials !== false} onChange={(e) => setF({ ...f, brand: { ...f.brand, socials: e.target.checked } })} /> {t('afoot.socials', 'Social icons')}</label>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.brand?.newsletter !== false} onChange={(e) => setF({ ...f, brand: { ...f.brand, newsletter: e.target.checked } })} /> {t('afoot.newsletter', 'Newsletter box')}</label>
-        <Field label={t('afoot.tagline', 'Tagline')}><Input className="!w-56" value={f.brand?.tagline || ''} onChange={(e) => setF({ ...f, brand: { ...f.brand, tagline: e.target.value } })} placeholder={t('afoot.taglineph', 'Empty = the default')} /></Field>
-        <Field label={t('afoot.taglinefr', 'Tagline (FR)')}><Input className="!w-56" value={f.brand?.taglineFr || ''} onChange={(e) => setF({ ...f, brand: { ...f.brand, taglineFr: e.target.value } })} /></Field>
+        <Field label={t('afoot.name', 'Brand name')}><Input className="!w-44" value={f.brand?.name || ''} onChange={(e) => setBrand({ name: e.target.value })} placeholder="BetterCommunity" /></Field>
+        <Field label={t('afoot.logo', 'Logo URL')}><Input className="!w-52 font-mono !text-xs" value={f.brand?.logo || ''} onChange={(e) => setBrand({ logo: e.target.value })} placeholder="/logo.png" /></Field>
+        <Field label={t('afoot.tagline', 'Tagline')}><Input className="!w-56" value={f.brand?.tagline || ''} onChange={(e) => setBrand({ tagline: e.target.value })} placeholder={t('afoot.taglineph', 'Empty = the default')} /></Field>
+        <Field label={t('afoot.taglinefr', 'Tagline (FR)')}><Input className="!w-56" value={f.brand?.taglineFr || ''} onChange={(e) => setBrand({ taglineFr: e.target.value })} /></Field>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.mobile?.brand !== false} onChange={(e) => setF({ ...f, mobile: { ...f.mobile, brand: e.target.checked } })} /> {t('afoot.mobilebrand', 'Brand block on phone')}</label>
+        <Field label={t('afoot.mobilelayout', 'Phone layout')}>
+          <Select className="!w-auto" value={f.mobile?.layout || 'stacked'} onChange={(e) => setF({ ...f, mobile: { ...f.mobile, layout: e.target.value } })}>
+            <option value="stacked">{t('afoot.lay.stacked', 'Stacked')}</option>
+            <option value="grid">{t('afoot.lay.grid', 'Two columns')}</option>
+          </Select>
+        </Field>
+      </Card>
+
+      {/* Social buttons. Stored three ways for back-compat (see the normaliser above). */}
+      <Card className="p-4 mb-4">
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <div className="font-semibold text-sm flex-1">{t('afoot.socials', 'Social icons')}</div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={socialsRaw !== false} onChange={(e) => setBrand({ socials: e.target.checked ? socialList.map((x) => ({ ...x })) : false })} />
+            {t('afoot.show', 'Show')}
+          </label>
+          {socialsRaw !== false && <Button size="sm" variant="ghost" onClick={() => setBrand({ socials: [...socialList, { icon: 'link', label: '', href: '' }] })}><Plus size={13} /> {t('afoot.addsocial', 'Add')}</Button>}
+        </div>
+        {socialsRaw !== false && (socialList.length === 0
+          ? <div className="text-xs text-[var(--faint)]">{t('afoot.nosocial', 'No social buttons.')}</div>
+          : <div className="space-y-1.5">
+            {socialList.map((x, i) => (
+              <div key={i} className="flex items-center gap-2 flex-wrap">
+                <Input className="!w-28 !text-xs" value={x.icon || ''} onChange={(e) => setSocial(i, { icon: e.target.value })} placeholder="github" />
+                <Input className="!w-36 !text-xs" value={x.label || ''} onChange={(e) => setSocial(i, { label: e.target.value })} placeholder={t('afoot.label', 'Label')} />
+                <Input className="!w-72 !text-xs font-mono" value={x.href || ''} onChange={(e) => setSocial(i, { href: e.target.value })} placeholder="https://..." />
+                <button onClick={() => setBrand({ socials: move(socialList, i, -1) })} className="text-[var(--faint)] hover:text-[var(--text)] px-1">&uarr;</button>
+                <button onClick={() => setBrand({ socials: move(socialList, i, 1) })} className="text-[var(--faint)] hover:text-[var(--text)] px-1">&darr;</button>
+                <button onClick={() => setBrand({ socials: socialList.filter((_, n) => n !== i) })} className="p-1 rounded text-error hover:bg-error-bg"><Trash2 size={12} /></button>
+              </div>
+            ))}
+          </div>)}
+        <p className="text-[11px] text-[var(--faint)] mt-2">{t('afoot.iconhint', 'github, discord, reddit, kofi, or any lucide icon name.')}</p>
+      </Card>
+
+      {/* Newsletter copy. Empty field = keep following the translated built-in string. */}
+      <Card className="p-4 mb-4">
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <div className="font-semibold text-sm flex-1">{t('afoot.newsletter', 'Newsletter box')}</div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={news.on !== false} onChange={(e) => setBrand({ newsletter: { ...news, on: e.target.checked } })} />
+            {t('afoot.show', 'Show')}
+          </label>
+        </div>
+        {news.on !== false && <div className="flex flex-wrap gap-3">
+          {NEWS_FIELDS.map(([k, lb, w]) => (
+            <Field key={k} label={t('afoot.news.' + k.toLowerCase(), lb)}>
+              <Input className={(w || '!w-48') + ' !text-xs'} value={news[k] || ''} onChange={(e) => setBrand({ newsletter: { ...news, [k]: e.target.value } })} placeholder={t('afoot.emptydefault', 'Empty = the default')} />
+            </Field>
+          ))}
+        </div>}
+      </Card>
+
+      {/* Bottom bar. */}
+      <Card className="p-4 mb-4 flex flex-wrap items-end gap-4">
+        <div className="font-semibold text-sm w-full">{t('afoot.bottom', 'Bottom bar')}</div>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.bottom?.copyright !== false} onChange={(e) => setBottom({ copyright: e.target.checked })} /> {t('afoot.copyright', 'Copyright line')}</label>
+        <Field label={t('afoot.bottomtext', 'Text')}><Input className="!w-72 !text-xs" value={f.bottom?.text || ''} onChange={(e) => setBottom({ text: e.target.value })} placeholder={COPY_PH} /></Field>
+        <Field label={t('afoot.bottomtextfr', 'Text (FR)')}><Input className="!w-72 !text-xs" value={f.bottom?.textFr || ''} onChange={(e) => setBottom({ textFr: e.target.value })} /></Field>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.bottom?.lang !== false} onChange={(e) => setBottom({ lang: e.target.checked })} /> {t('afoot.langpicker', 'Language picker')}</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.bottom?.egg !== false} onChange={(e) => setBottom({ egg: e.target.checked })} /> {t('afoot.egg', 'Easter egg')}</label>
+        <p className="text-[11px] text-[var(--faint)] w-full">{t('afoot.yeartoken', 'Write {year} in the text and it becomes the current year, so the line stays right on 1 January.')}</p>
       </Card>
 
       <div className="space-y-3">
