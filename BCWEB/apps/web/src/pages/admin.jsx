@@ -4111,11 +4111,35 @@ function AdminEvents() {
           <Button size="sm" onClick={presetNY}><Sparkles size={13} /> {t('ev.preset.ny', 'New Year')}</Button>
           <Button size="sm" onClick={presetHoliday}><Flag size={13} /> {t('ev.preset.holiday', 'National holiday')}</Button>
         </div>
-        <div className="grid sm:grid-cols-2 gap-3">
+        {/* Grouped by intent. This was one flat two-column grid of every field in no
+            particular order — the schedule, the badge copy, the effect tuning and the promo
+            code interleaved — so setting an event up meant hunting for the next field
+            instead of working down a form. */}
+        <div className="mb-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 pb-1 border-b border-[var(--line)]">{t('ev.g.event', 'The event')}</div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Field label={t('ev.f.name', 'Name (internal)')}><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="New Year 2027" /></Field>
           <Field label={t('ev.f.kind', 'Kind')}><Dropdown className="w-full" value={f.kind} onChange={(v) => set('kind', v)} options={[{ value: 'custom', label: t('ev.k.custom', 'Custom') }, { value: 'new_year', label: t('ev.k.ny', 'New Year') }, { value: 'national_holiday', label: t('ev.k.holiday', 'National holiday') }]} /></Field>
           {f.kind === 'national_holiday' && <Field label={t('ev.f.country', 'Country code (ISO, e.g. FR, US)')}><Input value={f.countryCode} onChange={(e) => set('countryCode', e.target.value.toUpperCase().slice(0, 2))} placeholder="FR" /></Field>}
+          <Field label={t('ev.f.start', 'Starts')}><Input type="datetime-local" value={f.startsAt} onChange={(e) => set('startsAt', e.target.value)} /></Field>
+          <Field label={t('ev.f.end', 'Ends')}><Input type="datetime-local" value={f.endsAt} onChange={(e) => set('endsAt', e.target.value)} /></Field>
           <Field label={t('ev.f.notify', 'Notify users (days before)')}><Input type="number" value={f.notifyDaysBefore} onChange={(e) => set('notifyDaysBefore', e.target.value)} /></Field>
+          </div>
+        </div>
+        <div className="mb-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 pb-1 border-b border-[var(--line)]">{t('ev.g.badge', 'Announcement badge')}</div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <Field label={t('ev.f.icon', 'Announcement icon (no emoji)')}><Select value={f.badgeIcon} onChange={(e) => set('badgeIcon', e.target.value)}><option value="sparkles">Sparkles</option><option value="party">Party</option><option value="flag">Flag</option><option value="gift">Gift</option><option value="star">Star</option><option value="rocket">Rocket</option><option value="calendar">Calendar</option><option value="bell">Bell</option></Select></Field>
+          <Field label={t('ev.f.titleen', 'Title (EN)')}><Input value={f.titleEn} onChange={(e) => set('titleEn', e.target.value)} placeholder="Happy New Year!" /></Field>
+          <Field label={t('ev.f.titlefr', 'Title (FR)')}><Input value={f.titleFr} onChange={(e) => set('titleFr', e.target.value)} placeholder="Bonne année !" /></Field>
+          <Field label={t('ev.f.msgen', 'Message (EN)')}><Input value={f.messageEn} onChange={(e) => set('messageEn', e.target.value)} /></Field>
+          <Field label={t('ev.f.msgfr', 'Message (FR)')}><Input value={f.messageFr} onChange={(e) => set('messageFr', e.target.value)} /></Field>
+          <Field label={t('ev.f.link', 'Badge link (path or URL, optional)')} hint={t('ev.f.link.h', 'Where the announcement badge sends the user. e.g. /hosting or https://…')}><Input value={f.linkUrl} onChange={(e) => set('linkUrl', e.target.value)} placeholder="/hosting" /></Field>
+          </div>
+        </div>
+        <div className="mb-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 pb-1 border-b border-[var(--line)]">{t('ev.g.fx', 'Fireworks')}</div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Field label={t('ev.f.effect', 'Fireworks')} hint={t('ev.f.effect.h', 'New Year and national days play them by default — this is how you run one quietly.')}>
             <Dropdown className="w-full" value={f.effect || ''} onChange={(v) => set('effect', v)} options={[
               { value: '', label: t('ev.fx.auto', 'Automatic (on for New Year / national day)') },
@@ -4126,16 +4150,14 @@ function AdminEvents() {
           <Field label={t('ev.f.density', 'Fireworks amount (1–10)')} hint={t('ev.f.density.h', 'How many at once. Lower = calmer / less intrusive.')}><Input type="number" min="1" max="10" value={f.fxDensity} onChange={(e) => set('fxDensity', e.target.value)} /></Field>
           <Field label={t('ev.f.size', 'Fireworks size (1–10)')}><Input type="number" min="1" max="10" value={f.fxSize} onChange={(e) => set('fxSize', e.target.value)} /></Field>
           <Field label={t('ev.f.flagdrops', 'Flag drops (times the flag forms, random)')} hint={t('ev.f.flagdrops.h', 'Each one appears somewhere new. Only one flag is ever in the sky at a time, so a show fits about three — ask for more and the extras wait for the next run.')}><Input type="number" min="0" max="20" value={f.fxFlagDrops} onChange={(e) => set('fxFlagDrops', e.target.value)} /></Field>
-          <Field label={t('ev.f.link', 'Badge link (path or URL, optional)')} hint={t('ev.f.link.h', 'Where the announcement badge sends the user. e.g. /hosting or https://…')}><Input value={f.linkUrl} onChange={(e) => set('linkUrl', e.target.value)} placeholder="/hosting" /></Field>
-          <Field label={t('ev.f.icon', 'Announcement icon (no emoji)')}><Select value={f.badgeIcon} onChange={(e) => set('badgeIcon', e.target.value)}><option value="sparkles">Sparkles</option><option value="party">Party</option><option value="flag">Flag</option><option value="gift">Gift</option><option value="star">Star</option><option value="rocket">Rocket</option><option value="calendar">Calendar</option><option value="bell">Bell</option></Select></Field>
-          <Field label={t('ev.f.start', 'Starts')}><Input type="datetime-local" value={f.startsAt} onChange={(e) => set('startsAt', e.target.value)} /></Field>
-          <Field label={t('ev.f.end', 'Ends')}><Input type="datetime-local" value={f.endsAt} onChange={(e) => set('endsAt', e.target.value)} /></Field>
-          <Field label={t('ev.f.titleen', 'Title (EN)')}><Input value={f.titleEn} onChange={(e) => set('titleEn', e.target.value)} placeholder="Happy New Year!" /></Field>
-          <Field label={t('ev.f.titlefr', 'Title (FR)')}><Input value={f.titleFr} onChange={(e) => set('titleFr', e.target.value)} placeholder="Bonne année !" /></Field>
-          <Field label={t('ev.f.msgen', 'Message (EN)')}><Input value={f.messageEn} onChange={(e) => set('messageEn', e.target.value)} /></Field>
-          <Field label={t('ev.f.msgfr', 'Message (FR)')}><Input value={f.messageFr} onChange={(e) => set('messageFr', e.target.value)} /></Field>
+          </div>
+        </div>
+        <div className="mb-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 pb-1 border-b border-[var(--line)]">{t('ev.g.promo', 'Promotion')}</div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Field label={t('ev.f.promo', 'Event discount % (0 = none)')} hint={t('ev.f.promo.h', 'Creates a site-wide discount + badge for the event window, and (with a code below) an event-only code carrying this %.')}><Input type="number" min="0" max="100" value={f.promoPercent} onChange={(e) => set('promoPercent', e.target.value)} /></Field>
           <Field label={t('ev.f.code', 'Event-only promo code (optional)')} hint={t('ev.f.code.h', 'A code valid ONLY during the event window, broadcast to users in the event notification.')}><Input value={f.eventCode} onChange={(e) => set('eventCode', e.target.value.toUpperCase())} placeholder="NY2027" /></Field>
+          </div>
         </div>
         <div className="flex items-center justify-end gap-2 mt-3">
           <Button variant="ghost" onClick={() => window.dispatchEvent(new CustomEvent('bcw:fx-preview', { detail: { effect: 'fireworks', kind: f.kind, countryCode: (f.countryCode || '').trim().toUpperCase(), fxDensity: Number(f.fxDensity) || 4, fxSize: Number(f.fxSize) || 5, fxFlagDrops: f.fxFlagDrops === '' || f.fxFlagDrops == null ? 2 : Math.max(0, Number(f.fxFlagDrops) || 0) } }))}
