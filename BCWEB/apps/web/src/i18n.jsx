@@ -1752,6 +1752,8 @@ const DICT = {
     'mod.reactivate': 'Réactiver le compte', 'mod.reactivated': 'Compte réactivé.',
     'twofa.title': 'Authentification à deux facteurs', 'twofa.on': 'Activée', 'twofa.off': 'Désactivée',
     'twofa.notenabled': 'Aucune authentification à deux facteurs sur ce compte — rien à réinitialiser.',
+    'twofa.reset.confirm.t': 'Réinitialiser la double authentification de cet utilisateur ?',
+    'twofa.reset.confirm.m': 'Il pourra se connecter avec son seul mot de passe jusqu’à ce qu’il la reconfigure. Action journalisée, et il en est prévenu par e-mail.',
     'twofa.reset': 'Réinitialiser la 2FA', 'twofa.reset.done': '2FA réinitialisée — l’utilisateur peut se connecter avec son mot de passe.',
     'twofa.reset.self': 'Tu ne peux pas réinitialiser ta propre 2FA ici — passe par les Paramètres.',
     'twofa.reset.desc': 'A perdu son application d’authentification et ses codes de secours ? Réinitialise la 2FA pour qu’il puisse se connecter avec son mot de passe et la reconfigurer. Action journalisée et l’utilisateur est prévenu par e-mail.',

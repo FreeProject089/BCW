@@ -2754,7 +2754,7 @@ function UserModerationCard({ user, onChange }) {
 // re-enrol. Same rank rules as moderation, deferred behind an undo window (so "undo" means
 // nothing ever happened), and the API logs it + emails the user as a security event.
 function UserTwoFactorCard({ user, onChange }) {
-  const { t } = useI18n(); const toast = useToast(); const { user: me } = useAuth();
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { user: me } = useAuth();
   const myRank = MOD_RANK[me?.role] ?? 0;
   const targetRank = MOD_RANK[user.role] ?? 0;
   // ADMIN+ only (mirrors requireRole('ADMIN') on the API) — disabling 2FA is a security
@@ -2762,7 +2762,18 @@ function UserTwoFactorCard({ user, onChange }) {
   const canReset = myRank >= MOD_RANK.ADMIN && myRank > targetRank;
   const [pending, setPending] = useState(false);
   const enabled = pending ? false : !!user.totpEnabled;
-  const reset = () => {
+  const reset = async () => {
+    // Ask first. Stripping someone else's second factor is a security DOWNGRADE on an
+    // account that is not yours: it is the one admin action here whose damage lands on
+    // another person, and it was firing on a single click with only a 6s undo window to
+    // catch it. Every other destructive action on this page confirms; this one didn't.
+    const ok = await dialog.confirm({
+      title: t('twofa.reset.confirm.t', 'Reset this user’s two-factor?'),
+      message: t('twofa.reset.confirm.m', 'They will be able to sign in with their password alone until they enrol again. This is logged, and they are emailed about it.'),
+      okLabel: t('twofa.reset', 'Reset 2FA'),
+      danger: true,
+    });
+    if (!ok) return;
     setPending(true);
     toast.action({
       tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
