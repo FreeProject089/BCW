@@ -259,7 +259,7 @@ const NOTIF_LINK = {
 };
 
 function NavNotifications() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
@@ -314,7 +314,7 @@ function NavNotifications() {
                     <span className={`text-[9px] font-semibold uppercase tracking-wider ${m.tone}`}>{m.label}</span>
                     {!n.readAt && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] shrink-0" />}
                   </span>
-                  <span className="text-sm text-[var(--text)] block leading-snug break-words [overflow-wrap:anywhere]">{n.body}</span>
+                  <span className="text-sm text-[var(--text)] block leading-snug break-words [overflow-wrap:anywhere]">{(lang === 'fr' && n.bodyFr) || n.body}</span>
                   <span className="text-[11px] text-[var(--faint)]">{timeAgo(n.createdAt, t('notif.justnow'))}</span>
                 </span>
               </button>

@@ -729,7 +729,16 @@ model Notification {
   user      User      @relation(fields: [userId], references: [id])
   userId    String
   kind      String
+  // English body. The same convention as SiteReview below: one row carries both
+  // languages and the client shows the one matching the active locale.
   body      String
+  // French body. Null for the notifications written from a single string (billing,
+  // moderation); the client falls back to `body`, which is what it always showed.
+  //
+  // Added because the event broadcast had no way to express a per-user language and
+  // shipped ONE row reading "Bientôt / Upcoming: …" to everybody — the only surface in
+  // the app that did that.
+  bodyFr    String?
   readAt    DateTime?
   createdAt DateTime  @default(now())
 }
@@ -1162,7 +1171,12 @@ model PromoCampaign {
   badgeMessageFr String   @default("") // custom announcement (FR)
   badgeColor     String   @default("") // optional accent hex (validated); blank → brand color
   badgeLink      String   @default("") // optional click target: internal "/blog/x" or "https://…" (validated)
-  promoCodeId    String? // optional PromoCode created alongside the campaign
+  // DEAD. Declared, never read, never written — anywhere. An event that mints a code
+  // records it on Event.eventCode and finds it back by `note`, and campaign teardown goes
+  // through Event.campaignId. Kept as a column rather than dropped so no deployed database
+  // needs a destructive migration for a field that has only ever held NULL; do not start
+  // writing to it — add the relation properly if that is ever wanted.
+  promoCodeId    String?
   eventId        String?  @unique // set when the campaign belongs to an Event (Phase 2)
   createdAt      DateTime @default(now())
 

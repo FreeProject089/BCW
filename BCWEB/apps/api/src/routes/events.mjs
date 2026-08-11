@@ -154,21 +154,34 @@ export default async function eventRoutes(app) {
   });
 }
 
-// Notification body for an event (prefer FR then EN; append the event-only code).
-function eventNotifBody(e, pre) {
-  const title = e.titleFr || e.titleEn || e.name;
-  const msg = e.messageFr || e.messageEn || '';
-  const code = e.eventCode ? ` · code ${e.eventCode} (−${e.promoPercent}%, ${'event only'})` : '';
-  return pre
-    ? `Bientôt / Upcoming: ${title}${msg ? ` — ${msg}` : ''}${code}`
-    : `${title}${msg ? ` — ${msg}` : ''}${code}`;
+// One event notification, in one language.
+//
+// This used to produce a single string prefixed literally with "Bientôt / Upcoming: ",
+// preferring the French title and falling back to English — so every reader got a
+// half-translated line, and it was the only surface in the app that did. The row now
+// carries both languages and the client picks, like SiteReview does.
+//
+// It also carried a stray `${'event only'}` — a template interpolation of a constant,
+// left over from an edit, which rendered as the English words in the French line.
+function eventNotifBody(e, pre, fr) {
+  const title = (fr ? e.titleFr : e.titleEn) || e.titleEn || e.titleFr || e.name;
+  const msg = (fr ? e.messageFr : e.messageEn) || '';
+  const code = e.eventCode
+    ? ` · code ${e.eventCode} (−${e.promoPercent}%, ${fr ? 'événement uniquement' : 'event only'})`
+    : '';
+  const head = pre ? (fr ? 'Bientôt : ' : 'Upcoming: ') : '';
+  return `${head}${title}${msg ? ` — ${msg}` : ''}${code}`;
 }
 
 async function broadcastEventNotif(p, e, pre) {
   const users = await p.user.findMany({ select: { id: true } });
   if (!users.length) return;
-  const body = eventNotifBody(e, pre);
-  await p.notification.createMany({ data: users.map((u) => ({ userId: u.id, kind: 'event', body })) }).catch(() => {});
+  // Both bodies are built once, not per user: they do not depend on who receives them.
+  const body = eventNotifBody(e, pre, false);
+  const bodyFr = eventNotifBody(e, pre, true);
+  await p.notification.createMany({
+    data: users.map((u) => ({ userId: u.id, kind: 'event', body, bodyFr })),
+  }).catch(() => {});
 }
 
 // Periodic (called from the sweeper): fire the pre-event notification once
