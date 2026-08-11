@@ -19,6 +19,34 @@ export async function getActiveCampaign(p) {
   });
 }
 
+// Apply the live site-wide campaign to an amount, if one covers this kind of purchase.
+//
+// Extracted because it was open-coded at two checkouts and simply absent from the other
+// nine — so a campaign the admin created as `appliesTo: 'all'`, and a site-wide badge
+// reading "30% off all purchases", discounted repo hosting and boosts and nothing else.
+// A promise made in the badge and kept at two of eleven tills.
+//
+// `scope` is what this purchase counts as: a campaign applies when it targets 'all' or
+// exactly that scope.
+//
+// Returns the amount unchanged and an empty label when no campaign applies, so a caller
+// can use it unconditionally.
+//
+// The floor is Stripe's minimum chargeable amount. A campaign only ever DISCOUNTS — free
+// is what a free-hosting grant code is for — so 100% off must not produce a 0 the payment
+// intent would reject.
+export const CAMPAIGN_MIN_CENTS = 50;
+
+export async function applyCampaign(p, amount, scope) {
+  const camp = await getActiveCampaign(p).catch(() => null);
+  if (!camp || (camp.appliesTo !== 'all' && camp.appliesTo !== scope)) {
+    return { amount, label: '', campaign: null };
+  }
+  const discounted = Math.max(CAMPAIGN_MIN_CENTS, Math.round(amount * (1 - camp.percentOff / 100)));
+  const what = camp.kind === 'black_friday' ? 'Black Friday' : 'sale';
+  return { amount: discounted, label: ` · −${camp.percentOff}% ${what}`, campaign: camp };
+}
+
 // Public shape (no internal fields like `name`/`active` leak to anonymous users).
 function publicCampaign(c) {
   if (!c) return null;

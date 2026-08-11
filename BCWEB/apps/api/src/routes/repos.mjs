@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { applyCampaign } from './campaigns.mjs';
 import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema } from '../lib/lib.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } from '../lib/repofingerprint.mjs';
@@ -429,11 +430,13 @@ export default async function repoRoutes(app) {
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
     const siteUrl = process.env.SITE_URL || 'http://localhost';
+    // Site-wide campaign. A one-time payment, so there is nothing to guard against here.
+    const camp = await applyCampaign(p, total, 'hosting');
     const session = await sk.checkout.sessions.create({
       mode: 'payment', customer,
       line_items: [{ quantity: 1, price_data: {
-        currency: 'usd', unit_amount: total,
-        product_data: { name: `"${repo.name}" upgrade → ${newStorageGB}GB — ${months} month${months > 1 ? 's' : ''}` },
+        currency: 'usd', unit_amount: camp.amount,
+        product_data: { name: `"${repo.name}" upgrade → ${newStorageGB}GB — ${months} month${months > 1 ? 's' : ''}${camp.label}` },
       } }],
       metadata: { type: 'repo_upgrade', userId: req.user.uid, repoId: repo.id, planId: plan.id, months: String(months) },
       success_url: `${siteUrl}/dashboard?hosting=ok`,
@@ -485,9 +488,15 @@ export default async function repoRoutes(app) {
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
     const md = { type: 'repo_renew', kind: 'hosting', userId: req.user.uid, repoId: repo.id, months: String(months) };
+    // A campaign discount is time-boxed, so it must never become a recurring price. Same
+    // rule the pool-purchase checkout already applies: when one is live, auto-renew falls
+    // back to a single payment for this term rather than locking the sale price in
+    // forever. The user still gets the discount; they just re-arm auto-renew afterwards.
+    const camp = await applyCampaign(p, total, 'hosting');
+    const autoRenew = b.data.autoRenew && !camp.campaign;
     // Auto-renew → a real recurring Stripe subscription (charges again each term).
     // One-time → a single payment that also mints a genuine Stripe invoice/receipt.
-    const session = await sk.checkout.sessions.create(b.data.autoRenew ? {
+    const session = await sk.checkout.sessions.create(autoRenew ? {
       mode: 'subscription', customer,
       line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: total, recurring: { interval: 'month', interval_count: months }, product_data: { name: `"${repo.name}" hosting — auto-renews every ${months} month${months > 1 ? 's' : ''}` } } }],
       subscription_data: { metadata: md },
@@ -495,7 +504,7 @@ export default async function repoRoutes(app) {
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     } : {
       mode: 'payment', customer,
-      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: total, product_data: { name: `"${repo.name}" renewal — ${months} month${months > 1 ? 's' : ''}` } } }],
+      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: camp.amount, product_data: { name: `"${repo.name}" renewal — ${months} month${months > 1 ? 's' : ''}${camp.label}` } } }],
       invoice_creation: { enabled: true },
       metadata: md,
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
@@ -547,14 +556,20 @@ export default async function repoRoutes(app) {
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
     const md = { type: 'pool_renew', kind: 'hosting', userId: req.user.uid, groupId: group.id, months: String(months) };
-    const session = await sk.checkout.sessions.create(b.data.autoRenew ? {
+    // A campaign discount is time-boxed, so it must never become a recurring price. Same
+    // rule the pool-purchase checkout already applies: when one is live, auto-renew falls
+    // back to a single payment for this term rather than locking the sale price in
+    // forever. The user still gets the discount; they just re-arm auto-renew afterwards.
+    const camp = await applyCampaign(p, total, 'hosting');
+    const autoRenew = b.data.autoRenew && !camp.campaign;
+    const session = await sk.checkout.sessions.create(autoRenew ? {
       mode: 'subscription', customer,
       line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: total, recurring: { interval: 'month', interval_count: months }, product_data: { name: `Pool "${group.name}" — auto-renews every ${months} month${months > 1 ? 's' : ''}` } } }],
       subscription_data: { metadata: md }, metadata: md,
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     } : {
       mode: 'payment', customer,
-      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: total, product_data: { name: `Pool "${group.name}" renewal — ${months} month${months > 1 ? 's' : ''}` } } }],
+      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: camp.amount, product_data: { name: `Pool "${group.name}" renewal — ${months} month${months > 1 ? 's' : ''}${camp.label}` } } }],
       invoice_creation: { enabled: true }, metadata: md,
       success_url: `${siteUrl}/dashboard?hosting=ok`, cancel_url: `${siteUrl}/dashboard?hosting=cancel`,
     });
@@ -751,6 +766,12 @@ export default async function repoRoutes(app) {
     const siteUrl = (process.env.SITE_URL || 'http://localhost').replace(/\/+$/, '');
     const md = { type: 'pool_consolidate', groupId: g.id, userId: g.ownerId, planId: plan.id,
       cancelSubIds: recurring.map((r) => r.id).join(','), cancelStripeSubIds: recurring.map((r) => r.stripeSubId).join(',') };
+    // NO campaign discount here, on purpose. Consolidation exists to replace several
+    // recurring subscriptions with one recurring subscription, so there is no one-time
+    // branch to fall back to — and discounting the recurring price would carry a
+    // time-boxed sale on for as long as the pool lives. The `no_saving` guard above also
+    // compares against the CURRENT monthly bill, which a temporary discount would
+    // misrepresent.
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription', customer,
       line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: consolidatedMonthlyCents, recurring: { interval: 'month' }, product_data: { name: `Consolidated hosting — ${sumGB}GB pool "${g.name}"` } } }],
