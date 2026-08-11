@@ -305,7 +305,24 @@ function ApiTokenCard() {
   const [busy, setBusy] = useState(false);
   useEffect(() => { api.get('/me/api-token').then((r) => setToken(r.token || null)).catch(() => setToken(null)); }, []);
   const reset = async () => { setBusy(true); try { const r = await api.post('/me/api-token/reset', {}); setToken(r.token); setReveal(true); toast.success(t('prof.token.reset', 'New token generated.')); } catch { toast.error(t('prof.failed', 'Failed.')); } finally { setBusy(false); } };
-  const revoke = async () => { setBusy(true); try { await api.del('/me/api-token'); setToken(null); setReveal(false); toast.success(t('prof.token.revoked', 'Token revoked.')); } catch { toast.error(t('prof.failed', 'Failed.')); } finally { setBusy(false); } };
+  // Deferred like every other destructive action: the token disappears from the card at
+  // once, and the DELETE only fires when the undo window closes. Revoking is irreversible —
+  // a reset mints a different token, so "undo" after the fact is not a thing.
+  const revoke = () => {
+    const prev = token;
+    setToken(null); setReveal(false);
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('prof.token.revoked', 'Token revoked.'),
+      onCommit: async () => {
+        setBusy(true);
+        try { await api.del('/me/api-token'); }
+        catch { toast.error(t('prof.failed', 'Failed.')); setToken(prev); }
+        finally { setBusy(false); }
+      },
+      onCancel: () => { setToken(prev); },
+    });
+  };
   const copy = () => { navigator.clipboard?.writeText(token).then(() => toast.success(t('prof.token.copied', 'Copied.'))).catch(() => {}); };
   const exampleCmd = `curl -H "Authorization: Bearer ${reveal ? token : '<token>'}" ${location.origin}/api/v1/me`;
   const copyExample = () => { navigator.clipboard?.writeText(exampleCmd).then(() => toast.success(t('prof.token.copied', 'Copied.'))).catch(() => {}); };
@@ -501,7 +518,10 @@ function TwoFactorCard() {
 
 // Link BMM creator id(s) to this account via a code BMM generates. 2-week unlink lock.
 function CreatorLinks() {
-  const { t } = useI18n();
+  const { t } = useI18n(); const toast = useToast();
+  // Ids hidden while their undo window is open. Kept apart from `links` so a reload landing
+  // mid-window cannot resurrect a row the user has already dismissed.
+  const [pending, setPending] = useState(() => new Set());
   const [links, setLinks] = useState([]);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -515,17 +535,32 @@ function CreatorLinks() {
     catch (x) { setMsg(x.data?.error === 'already_linked' ? 'taken' : x.data?.error === 'invalid_or_expired' ? 'bad' : 'error'); }
     finally { setBusy(false); }
   };
-  const unlink = async (l) => {
-    try { await api.del(`/me/creator-links/${l.id}`); load(); }
-    catch (x) { setMsg(x.status === 423 ? 'locked' : 'error'); setTimeout(() => setMsg(''), 3000); }
+  const unhide = (id) => setPending((s) => { const n = new Set(s); n.delete(id); return n; });
+  const unlink = (l) => {
+    setPending((s) => new Set(s).add(l.id));
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('cl.unlinked', 'Creator ID unlinked.'),
+      onCommit: async () => {
+        try { await api.del(`/me/creator-links/${l.id}`); load(); }
+        // A 423 is the 2-week lock: the row must come back, or the list would claim an
+        // unlink the server refused.
+        catch (x) { setMsg(x.status === 423 ? 'locked' : 'error'); setTimeout(() => setMsg(''), 3000); }
+        finally { unhide(l.id); }
+      },
+      onCancel: () => unhide(l.id),
+    });
   };
   const fdate = (d) => new Date(d).toLocaleDateString();
+  // A row whose undo window is open is gone from the list already — that IS the undo
+  // affordance. Showing it until the DELETE lands would make Undo look like it did nothing.
+  const visible = links.filter((l) => !pending.has(l.id));
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--primary-2)]" /> {t('cl.title', 'Creator IDs')}</div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('cl.desc', "Link your BMM creator id(s). In BMM, generate a pairing code, then paste it here. One creator id links to one account; linked ids can't be unlinked for 2 weeks.")}</p>
-      {links.length > 0 && <div className="space-y-2 mb-3">
-        {links.map((l) => (
+      {visible.length > 0 && <div className="space-y-2 mb-3">
+        {visible.map((l) => (
           <div key={l.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
             <BadgeCheck size={15} className="text-success shrink-0" />
             <div className="flex-1 min-w-0"><div className="font-mono text-xs truncate">{l.creatorId}{l.displayName ? ` · ${l.displayName}` : ''}</div><div className="text-[11px] text-[var(--faint)]">{t('cl.linked', 'linked')} {fdate(l.linkedAt)}{l.locked ? ` · ${t('cl.unlockable', 'unlockable')} ${fdate(l.unlinkableAt)}` : ''}</div></div>
@@ -548,7 +583,9 @@ function CreatorLinks() {
 
 // Link Discord account(s) to this BCWEB account via a code the bot's /link issues.
 function DiscordLinks() {
-  const { t } = useI18n();
+  const { t } = useI18n(); const toast = useToast();
+  // See CreatorLinks: rows hidden while their undo window is open.
+  const [pending, setPending] = useState(() => new Set());
   const [links, setLinks] = useState([]);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -562,14 +599,30 @@ function DiscordLinks() {
     catch (x) { setMsg(x.data?.error === 'already_linked' ? 'taken' : x.data?.error === 'invalid_or_expired' ? 'bad' : 'error'); }
     finally { setBusy(false); }
   };
-  const unlink = async (l) => { try { await api.del(`/me/discord/links/${l.id}`); load(); } catch { setMsg('error'); setTimeout(() => setMsg(''), 2500); } };
+  const unhide = (id) => setPending((s) => { const n = new Set(s); n.delete(id); return n; });
+  const unlink = (l) => {
+    setPending((s) => new Set(s).add(l.id));
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('dl.unlinked', 'Discord account unlinked.'),
+      onCommit: async () => {
+        try { await api.del(`/me/discord/links/${l.id}`); load(); }
+        catch { setMsg('error'); setTimeout(() => setMsg(''), 2500); }
+        finally { unhide(l.id); }
+      },
+      onCancel: () => unhide(l.id),
+    });
+  };
   const fdate = (d) => new Date(d).toLocaleDateString();
+  // A row whose undo window is open is gone from the list already — that IS the undo
+  // affordance. Showing it until the DELETE lands would make Undo look like it did nothing.
+  const visible = links.filter((l) => !pending.has(l.id));
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2"><DiscordIcon size={15} className="text-[var(--primary-2)]" /> Discord</div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('disl.desc1', 'Link your Discord account. In the server, run')} <code>/link</code> {t('disl.desc2', 'to get a code, then paste it here — it unlocks gated channels and shows your account in the community.')}</p>
-      {links.length > 0 && <div className="space-y-2 mb-3">
-        {links.map((l) => (
+      {visible.length > 0 && <div className="space-y-2 mb-3">
+        {visible.map((l) => (
           <div key={l.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
             <BadgeCheck size={15} className="text-success shrink-0" />
             <div className="flex-1 min-w-0"><div className="text-xs truncate">{l.username || l.discordId}</div><div className="text-[11px] text-[var(--faint)]">{t('cl.linked', 'linked')} {fdate(l.linkedAt)}</div></div>

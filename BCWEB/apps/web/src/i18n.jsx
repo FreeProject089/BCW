@@ -1203,6 +1203,8 @@ const DICT = {
     'prof.role': 'Rôle :', 'prof.membersince': 'Membre depuis',
 
     'cl.title': 'Creator IDs',
+    'cl.unlinked': 'Creator ID délié.',
+    'dl.unlinked': 'Compte Discord délié.',
     'cl.desc': 'Lie ton/tes creator id(s) BMM. Dans BMM, génère un code d’appairage, puis colle-le ici. Un creator id est lié à un seul compte ; les id liés ne peuvent pas être déliés pendant 2 semaines.',
     'cl.linked': 'lié le', 'cl.unlockable': 'déliable le', 'cl.locked2w': 'Verrouillé 2 semaines', 'cl.unlink': 'Délier',
     'cl.ph': 'Code depuis BMM (ex. K7P39QMX)', 'cl.link': 'Lier', 'cl.ok': 'Creator id lié.',
