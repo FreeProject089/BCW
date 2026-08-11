@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import querystring from 'node:querystring';
 import jwt from 'jsonwebtoken';
 import { db, requireRole, optionalAuth } from '../lib/lib.mjs';
-import { jwks, issuer, signRs256, verifyRs256 } from '../lib/oidc.mjs';
+import { jwks, issuer, signRs256, verifyRs256, verifyPkce } from '../lib/oidc.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -159,8 +159,7 @@ export default async function oidcProviderRoutes(app) {
       const code = await p.oAuthCode.findUnique({ where: { code: String(b.code || '') } });
       if (!code || code.clientId !== client.id || code.usedAt || code.expiresAt < new Date() || code.redirectUri !== String(b.redirect_uri || '')) return reply.code(400).send({ error: 'invalid_grant' });
       if (code.codeChallenge) { // PKCE
-        const chal = crypto.createHash('sha256').update(String(b.code_verifier || '')).digest('base64url');
-        if (!b.code_verifier || chal !== code.codeChallenge) return reply.code(400).send({ error: 'invalid_grant' });
+        if (!verifyPkce(code.codeChallenge, b.code_verifier)) return reply.code(400).send({ error: 'invalid_grant' });
       }
       // Single-use: atomically claim the code (loser of a race → invalid_grant).
       const claimed = await p.oAuthCode.updateMany({ where: { code: code.code, usedAt: null }, data: { usedAt: new Date() } });
