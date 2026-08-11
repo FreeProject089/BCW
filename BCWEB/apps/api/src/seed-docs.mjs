@@ -567,7 +567,9 @@ Read endpoints allow 120 requests per minute; key management and writes allow 30
 
 ## The old token
 
-A single \`bmm_\` token per account still works on \`/v1/me\`, \`/v1/me/repos\` and \`PATCH /v1/me\`. It has no scopes and is stored in clear, so it is kept only so existing scripts do not break. **Use a key for anything new**, and revoke the old token once nothing depends on it.`,
+A single \`bmm_\` token per account still works on \`/v1/me\`, \`/v1/me/repos\` and \`PATCH /v1/me\`. It has no scopes and is stored in clear, so it is kept only so existing scripts do not break.
+
+Those responses now carry \`Deprecation: true\` and, where there is one, a \`Link\` header naming the successor — \`/v1/me\` → \`/v1/account\`, \`/v1/me/repos\` → \`/v1/repos\`. **Use a key for anything new**, and revoke the old token once nothing depends on it.`,
   },
 
   // Read from src-tauri/src/api/mod.rs (routes, bearer auth, require_permission filters).

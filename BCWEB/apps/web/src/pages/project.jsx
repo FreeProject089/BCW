@@ -582,6 +582,7 @@ function Community({ c, communityUrl }) {
 }
 
 function Legal({ c }) {
+  const { t } = useI18n();
   const { lang } = useI18n();
   const l = c.legal || {};
   const pick = (en, fr) => (lang === 'fr' && fr) ? fr : en;
@@ -596,7 +597,7 @@ function Legal({ c }) {
     <div className="max-w-2xl">
       {l.license && <Card className="p-5 mb-4 flex items-center gap-3 bg-gradient-to-r from-brand to-transparent">
         <ShieldCheck size={20} className="text-[var(--primary-2)]" />
-        <div className="flex-1"><div className="font-semibold">Licensed under {l.license}</div><div className="text-xs text-[var(--muted)]">This project is open source.</div></div>
+        <div className="flex-1"><div className="font-semibold">{t('proj.licensedUnder', 'Licensed under')} {l.license}</div><div className="text-xs text-[var(--muted)]">{t('proj.openSource', 'This project is open source.')}</div></div>
       </Card>}
       <div className="grid sm:grid-cols-2 gap-3">
         {docs.map((d) => (
@@ -647,11 +648,12 @@ export function OtherProjects() {
 }
 
 function ShowcaseCommunity({ cfg, c, slug }) {
+  const { t } = useI18n();
   if (cfg.community?.url) return (
     <Card className="p-8 text-center">
       <Users size={28} className="mx-auto text-[var(--primary-2)] mb-3" />
       <div className="font-semibold mb-1">Community</div>
-      <p className="text-sm text-[var(--muted)] mb-4 max-w-md mx-auto">Join the community for this project.</p>
+      <p className="text-sm text-[var(--muted)] mb-4 max-w-md mx-auto">{t('proj.joinCommunity', 'Join the community for this project.')}</p>
       <a href={cfg.community.url} target="_blank" rel="noreferrer"><Button variant="primary"><ExternalLink size={15} /> Open community</Button></a>
     </Card>
   );

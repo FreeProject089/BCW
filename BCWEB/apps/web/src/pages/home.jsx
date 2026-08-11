@@ -325,7 +325,7 @@ export function Home() {
                     </Card>
                   </Link>
                 ))}
-                {rest.length === 0 && <Card className="p-6 text-sm text-[var(--muted)] grid place-items-center h-full">More posts coming soon.</Card>}
+                {rest.length === 0 && <Card className="p-6 text-sm text-[var(--muted)] grid place-items-center h-full">{t('home.morePosts', 'More posts coming soon.')}</Card>}
               </div>
             </div>
           );

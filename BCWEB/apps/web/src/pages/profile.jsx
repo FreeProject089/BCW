@@ -419,6 +419,10 @@ function ApiKeysCard() {
   );
 }
 
+// DEPRECATED — the single legacy token. Kept because integrations exist against it; the
+// card says so, because two API cards side by side with neither marked is exactly how a
+// user picks the wrong one.
+//
 // Personal API token: view / copy / reset / revoke your own token, then use it to
 // drive the /v1 account API. The token is shown only to its owner (session-authed).
 function ApiTokenCard() {
@@ -452,8 +456,13 @@ function ApiTokenCard() {
   const masked = token ? token.slice(0, 8) + '•'.repeat(Math.max(6, token.length - 12)) + token.slice(-4) : '';
   return (
     <Card className="p-5">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Terminal size={15} className="text-[var(--primary-2)]" /> {t('prof.token.title', 'API token')}</div>
-      <p className="text-xs text-[var(--muted)] mb-3">{t('prof.token.desc', 'Use this personal token to drive the account API on your behalf. Keep it secret — anyone with it can act as you.')}</p>
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2">
+        <Terminal size={15} className="text-[var(--faint)]" /> {t('prof.token.title', 'API token')}
+        <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--faint)]">
+          {t('prof.token.legacy', 'Legacy')}
+        </span>
+      </div>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('prof.token.desc2', 'The old single token: stored in plain text, no scopes, no expiry. Kept so existing scripts keep working. Use an API key above for anything new, and revoke this once nothing depends on it.')}</p>
       {token === undefined ? <div className="py-2"><Spinner /></div> : token ? (<>
         {/* Framed secret field: the token prefix stays visible; the full value is behind
             a reveal toggle, with reveal + copy inline on the right — reads like a proper

@@ -1,14 +1,40 @@
-// Personal API tokens: a signed-in user manages their own token from the profile
-// (view / reset / revoke), then uses it against the token-authed `/v1/*` account
-// API. Token endpoints are rate-limited per IP (stricter than the global limit) to
-// blunt brute-force enumeration.
+// DEPRECATED. Superseded by api-keys.mjs.
+//
+// One token per account, stored in clear and re-readable from the profile forever, with
+// no scopes and no expiry. Kept only so integrations built against it keep working —
+// nothing new should use it, and `/v1/account` + `/v1/repos` are its replacements.
+//
+// Every response below carries RFC 8594 `Deprecation` and `Link` headers, because a
+// caller who reads only HTTP has no other way to learn this. Two API surfaces sharing
+// `/v1` with neither marked is how a migration quietly becomes permanent.
 import crypto from 'node:crypto';
 import { db, requireRole, tokenAuth } from '../lib/lib.mjs';
 
 const genToken = () => 'bmm_' + crypto.randomBytes(30).toString('base64url'); // ~40 chars
 const RL = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
 
+/** Successor for a given legacy path — sent as a `Link: rel="successor-version"`. */
+const SUCCESSOR = {
+  '/v1/me': '/v1/account',
+  '/v1/me/repos': '/v1/repos',
+};
+
 export default async function apiTokenRoutes(app) {
+  // One hook rather than a header line per route: a route added here later must not be
+  // able to forget the marking.
+  app.addHook('onSend', async (req, reply, payload) => {
+    // routeOptions.url, NOT routerPath: Fastify removed the latter, and reading it here
+    // would leave `undefined?.startsWith(...)` — a guard that always passes silently and
+    // a header that never ships. The fallback keeps this working on either.
+    const route = req.routeOptions?.url ?? req.routerPath;
+    if (!route?.startsWith('/v1/')) return payload;
+    reply.header('Deprecation', 'true');
+    const next = SUCCESSOR[route];
+    if (next) reply.header('Link', `<${next}>; rel="successor-version"`);
+    reply.header('Warning', '299 - "This endpoint is deprecated; use the scoped API keys from your profile."');
+    return payload;
+  });
+
   // ── Owner-managed token (session auth) ──────────────────────────────────────
   app.get('/me/api-token', { preHandler: requireRole() }, async (req) => {
     const p = await db();
