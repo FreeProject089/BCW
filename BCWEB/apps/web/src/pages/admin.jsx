@@ -8567,6 +8567,11 @@ function AdminSiteTheme() {
     try {
       await api.put('/admin/theme', body);
       applySiteTheme(f);
+      // GET /theme is public and cached for 60s, so the tab that just saved would reload
+      // into the OLD palette — the change looked applied until the next navigation, then
+      // silently reverted. `cache: 'reload'` replaces the browser's stored response instead
+      // of merely bypassing it, so the next page load reads the new theme too.
+      try { await fetch('/api/theme', { cache: 'reload', headers: { accept: 'application/json' } }); } catch { /* the palette is already applied in this tab */ }
       reload();
       if (previous) {
         toast.action({
