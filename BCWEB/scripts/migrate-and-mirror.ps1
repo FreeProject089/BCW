@@ -13,6 +13,17 @@
 #      engine DLL open, which kills the mirror copy halfway. Stop it first.
 #
 # Usage, from BCWEB/:   powershell -ExecutionPolicy Bypass -File scripts/migrate-and-mirror.ps1
+#
+# THIS SCRIPT IS FOR THE HOST-DEV WORKFLOW ONLY (npm run dev against a Postgres that
+# publishes localhost:5432). Under Docker Compose it will always refuse: the db service
+# deliberately does NOT publish 5432 to the host, so "Postgres is not reachable" is this
+# deployment telling you you're holding the wrong tool. The Docker path needs none of
+# this — the API image self-migrates at boot (boot-migrate.mjs). There:
+#
+#     docker compose build api web && docker compose up -d api web
+#
+# then read `docker compose logs api` for the "Applying migration" lines. Verified live
+# Aug 12 2026: both pending migrations applied that way, /v1/scopes answering.
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
