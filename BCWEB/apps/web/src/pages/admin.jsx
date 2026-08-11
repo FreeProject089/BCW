@@ -3992,7 +3992,7 @@ function AdminCampaigns() {
   const list = (data?.campaigns || []).filter((c) => !undo.pending.has(c.id));
   // Quick presets the admin can then tweak.
   const presetRandom = () => setF((s) => ({ ...s, name: 'Flash sale', kind: 'flash', percentOff: 10 + Math.floor(Math.random() * 41), appliesTo: 'all', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 2 * 864e5)), badgeMessageEn: 'Flash sale — limited time!', badgeMessageFr: 'Vente flash — durée limitée !' }));
-  const presetBlackFriday = () => setF((s) => ({ ...s, name: 'Black Friday', kind: 'black_friday', percentOff: 30, appliesTo: 'all', badgeMessageEn: 'Black Friday — 30% off all purchases!', badgeMessageFr: 'Black Friday — 30% sur tous les achats !', badgeColor: '#111111' }));
+  const presetBlackFriday = () => setF((s) => ({ ...s, name: 'Black Friday', kind: 'black_friday', percentOff: 30, appliesTo: 'all', badgeMessageEn: 'Black Friday — 30% off!', badgeMessageFr: 'Black Friday — 30% de remise !', badgeColor: '#111111' }));
   const create = async () => {
     if (!f.name.trim()) return toast.error(t('cmp.err.name', 'Name is required.'));
     const body = {
@@ -4026,7 +4026,11 @@ function AdminCampaigns() {
           <Field label={t('cmp.f.name', 'Name (internal)')}><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Black Friday 2026" /></Field>
           <Field label={t('cmp.f.kind', 'Kind')}><Dropdown className="w-full" value={f.kind} onChange={(v) => set('kind', v)} options={[{ value: 'custom', label: t('cmp.k.custom', 'Custom') }, { value: 'black_friday', label: 'Black Friday' }, { value: 'new_year', label: t('cmp.k.ny', 'New Year') }, { value: 'flash', label: t('cmp.k.flash', 'Flash sale') }]} /></Field>
           <Field label={t('cmp.f.pct', '% off')}><Input type="number" value={f.percentOff} onChange={(e) => set('percentOff', e.target.value)} /></Field>
-          <Field label={t('cmp.f.applies', 'Applies to')}><Dropdown className="w-full" value={f.appliesTo} onChange={(v) => set('appliesTo', v)} options={[{ value: 'all', label: t('cmp.a.all', 'All purchases') }, { value: 'hosting', label: t('cmp.a.hosting', 'Hosting only') }, { value: 'boost', label: t('cmp.a.boost', 'Boost only') }]} /></Field>
+          <Field label={t('cmp.f.applies', 'Applies to')}><Dropdown className="w-full" value={f.appliesTo} onChange={(v) => set('appliesTo', v)} options={[{ value: 'all', label: t('cmp.a.all', 'All one-time purchases') }, { value: 'hosting', label: t('cmp.a.hosting', 'Hosting only') }, { value: 'boost', label: t('cmp.a.boost', 'Boost only') }, { value: 'myo', label: t('cmp.a.myo', 'Consultations only') }]} /></Field>
+          {/* Said here rather than discovered at the till. Recurring charges — catalog
+              hosting, pool consolidation — cannot take a percentage off their unit price
+              without the sale outliving the campaign, so they are never discounted. */}
+          <div className="text-[11px] text-[var(--faint)] -mt-1">{t('cmp.a.note', 'One-time payments only. Recurring subscriptions (catalog hosting, consolidated pools) are never discounted — a sale would outlive the campaign.')}</div>
           <Field label={t('cmp.f.start', 'Starts')}><Input type="datetime-local" value={f.startsAt} onChange={(e) => set('startsAt', e.target.value)} /></Field>
           <Field label={t('cmp.f.end', 'Ends')}><Input type="datetime-local" value={f.endsAt} onChange={(e) => set('endsAt', e.target.value)} /></Field>
           <Field label={t('cmp.f.msgen', 'Badge message (EN)')}><Input value={f.badgeMessageEn} onChange={(e) => set('badgeMessageEn', e.target.value)} placeholder="Black Friday — 30% off!" /></Field>

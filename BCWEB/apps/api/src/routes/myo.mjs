@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { publishToThread, streamThread } from '../lib/threadbus.mjs';
 import { db, requireRole, requireCap, hasCap, logAudit, clientIp } from '../lib/lib.mjs';
+import { applyCampaign } from './campaigns.mjs';
 import { stripe, ensureCustomer } from './hosting.mjs';
 
 // ── "Make Your Own" (MYO) ─────────────────────────────────────────────────────────
@@ -244,6 +245,11 @@ async function actorName(p, uid, fallback) {
     try {
       const sk = await stripe();
       const customer = await ensureCustomer(p, sk, req.user.uid);
+      // NO campaign discount. A quote is a price agreed with this customer in the thread
+      // above, not a list price — silently charging less than the figure both sides
+      // accepted would make the agreed total wrong, which is a worse surprise than
+      // missing a sale. An admin who wants a quote discounted writes the discount into
+      // the quote.
       const session = await sk.checkout.sessions.create({
         mode: 'payment', customer,
         line_items: [{ quantity: 1, price_data: { currency: q.currency || 'usd', unit_amount: q.totalCents, product_data: { name: `${q.title || q.request.name} — product build${q.includesSource ? ' (with source code)' : ''}`, description: 'Payment for the agreed product. Work begins once this is paid.' } } }],
@@ -398,11 +404,15 @@ async function actorName(p, uid, fallback) {
 async function consultationCheckout(p, userId, request, cfg) {
   const sk = await stripe();
   const customer = await ensureCustomer(p, sk, userId);
-  const amount = Math.max(50, request.urgent ? cfg.urgentConsultationCents : cfg.consultationCents);
+  const listPrice = Math.max(50, request.urgent ? cfg.urgentConsultationCents : cfg.consultationCents);
+  // The consultation fee is a LIST price, so a site-wide sale applies to it like any
+  // other. (The quote further up is not: see the note there.)
+  const camp = await applyCampaign(p, listPrice, 'myo');
+  const amount = camp.amount;
   const session = await sk.checkout.sessions.create({
     mode: 'payment', customer,
     line_items: [{ quantity: 1, price_data: { currency: cfg.currency || 'usd', unit_amount: amount, product_data: {
-      name: `Consultation — ${request.name}${request.urgent ? ' (urgent)' : ''}`,
+      name: `Consultation — ${request.name}${request.urgent ? ' (urgent)' : ''}${camp.label}`,
       description: 'A paid consultation: expert advice + a quote for building your product. This fee is for the advice only — building the product starts after you approve and pay the separate quote.',
     } } }],
     metadata: { type: 'myo_consultation', requestId: request.id, userId },

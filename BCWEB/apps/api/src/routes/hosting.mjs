@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { statfsSync } from 'node:fs';
 import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPlan, GRANT_PLAN_NAME } from '../lib/lib.mjs';
 import { validatePromo, redeemPromoAtomic } from './promo.mjs';
-import { getActiveCampaign } from './campaigns.mjs';
+import { getActiveCampaign, applyCampaign } from './campaigns.mjs';
 
 const GiB = 1024 ** 3;
 
@@ -683,9 +683,17 @@ export default async function hostingRoutes(app) {
     // If any hosting line opted into auto-renew, save the card off-session so the
     // webhook can start each such repo's subscription (anchored at its prepaid term end).
     const wantsRenew = r.lines.some((l) => l.autoRenew);
+    // Site-wide campaign, per line: the cart is a single one-time payment, so the sale
+    // applies to what is in it and nothing recurs at the discounted price. Resolved once
+    // rather than per line — eleven lines must not be eleven queries, and a campaign that
+    // expired mid-loop would price the cart inconsistently.
+    const campLine = await applyCampaign(p, 0, 'hosting');
+    const camped = (cents) => campLine.campaign
+      ? Math.max(0, Math.round(cents * (1 - campLine.campaign.percentOff / 100)))
+      : cents;
     const session = await sk.checkout.sessions.create({
       mode: 'payment', customer,
-      line_items: r.lines.map((l) => ({ quantity: 1, price_data: { currency: 'usd', unit_amount: Math.max(0, l.finalCents), product_data: { name: `${l.name}${suffix}` } } })).filter((li) => li.price_data.unit_amount > 0),
+      line_items: r.lines.map((l) => ({ quantity: 1, price_data: { currency: 'usd', unit_amount: camped(Math.max(0, l.finalCents)), product_data: { name: `${l.name}${suffix}${campLine.label}` } } })).filter((li) => li.price_data.unit_amount > 0),
       invoice_creation: { enabled: true },
       ...(wantsRenew ? { payment_intent_data: { setup_future_usage: 'off_session' } } : {}),
       metadata: { type: 'cart', cartId: cart.id, userId: req.user.uid },

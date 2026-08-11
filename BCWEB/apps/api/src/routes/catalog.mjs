@@ -374,6 +374,11 @@ export default async function catalogRoutes(app) {
       const sk = await stripe();
       if (!sk) { await p.catalogItem.delete({ where: { id: item.id } }).catch(() => {}); return reply.code(503).send({ error: 'stripe_not_configured' }); }
       const siteUrl = process.env.SITE_URL || 'http://localhost';
+      // NO campaign discount, and it is not an oversight. Catalog hosting is billed as a
+      // recurring subscription with no one-time branch to fall back to, so multiplying
+      // unit_amount would carry a week-long sale for as long as the item is hosted. The
+      // right mechanism for a time-boxed discount on a subscription is a Stripe coupon
+      // with a `duration`, attached via `discounts:` — a separate piece of work.
       const session = await sk.checkout.sessions.create({
         mode: 'subscription',
         line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: hostCents, recurring: { interval: 'month' }, product_data: { name: `Hosting — "${d.name}" (${((d.payloadSize || 0) / 1e6).toFixed(1)} MB)` } } }],
@@ -634,6 +639,11 @@ export default async function catalogRoutes(app) {
       const sk = await stripe();
       if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
       const siteUrl = process.env.SITE_URL || 'http://localhost';
+      // NO campaign discount, and it is not an oversight. Catalog hosting is billed as a
+      // recurring subscription with no one-time branch to fall back to, so multiplying
+      // unit_amount would carry a week-long sale for as long as the item is hosted. The
+      // right mechanism for a time-boxed discount on a subscription is a Stripe coupon
+      // with a `duration`, attached via `discounts:` — a separate piece of work.
       const session = await sk.checkout.sessions.create({
         mode: 'subscription',
         line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: hostCents, recurring: { interval: 'month' }, product_data: { name: `Hosting update — "${item.name}" (${((newPayloadSize || 0) / 1e6).toFixed(1)} MB)` } } }],

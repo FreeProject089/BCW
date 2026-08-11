@@ -62,7 +62,9 @@ const bodySchema = z.object({
   name: z.string().min(1).max(120),
   kind: z.enum(['custom', 'black_friday', 'new_year', 'flash']).optional(),
   percentOff: z.number().int().min(1).max(100),
-  appliesTo: z.enum(['all', 'hosting', 'boost']).optional(),
+  // 'myo' joins the list because the consultation fee now honours campaigns; 'all'
+  // still means all, and is what the admin form labels 'All purchases'.
+  appliesTo: z.enum(['all', 'hosting', 'boost', 'myo']).optional(),
   startsAt: z.string().datetime(),
   endsAt: z.string().datetime(),
   active: z.boolean().optional(),
