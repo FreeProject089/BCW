@@ -238,7 +238,6 @@ export default function Profile() {
           <div className="space-y-4">
           <SectionLabel icon={Terminal}>{t('prof.sec.developer', 'Developer & preferences')}</SectionLabel>
           <ApiKeysCard />
-          <ApiTokenCard />
 
           {/* Device preferences (intro animation, theme, language, translucency,
               cookies) all live on the Settings page now — link there instead of
@@ -415,92 +414,6 @@ function ApiKeysCard() {
         </div>
         {!picked.length && <div className="text-[11px] text-[var(--faint)]">{t('prof.keys.needscope', 'Pick at least one scope — a key with none can do nothing.')}</div>}
       </div>
-    </Card>
-  );
-}
-
-// DEPRECATED — the single legacy token. Kept because integrations exist against it; the
-// card says so, because two API cards side by side with neither marked is exactly how a
-// user picks the wrong one.
-//
-// Personal API token: view / copy / reset / revoke your own token, then use it to
-// drive the /v1 account API. The token is shown only to its owner (session-authed).
-function ApiTokenCard() {
-  const { t } = useI18n(); const toast = useToast();
-  const [token, setToken] = useState(undefined); // undefined = loading, null = none, string = token
-  const [reveal, setReveal] = useState(false);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { api.get('/me/api-token').then((r) => setToken(r.token || null)).catch(() => setToken(null)); }, []);
-  const reset = async () => { setBusy(true); try { const r = await api.post('/me/api-token/reset', {}); setToken(r.token); setReveal(true); toast.success(t('prof.token.reset', 'New token generated.')); } catch { toast.error(t('prof.failed', 'Failed.')); } finally { setBusy(false); } };
-  // Deferred like every other destructive action: the token disappears from the card at
-  // once, and the DELETE only fires when the undo window closes. Revoking is irreversible —
-  // a reset mints a different token, so "undo" after the fact is not a thing.
-  const revoke = () => {
-    const prev = token;
-    setToken(null); setReveal(false);
-    toast.action({
-      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
-      msg: t('prof.token.revoked', 'Token revoked.'),
-      onCommit: async () => {
-        setBusy(true);
-        try { await api.del('/me/api-token'); }
-        catch { toast.error(t('prof.failed', 'Failed.')); setToken(prev); }
-        finally { setBusy(false); }
-      },
-      onCancel: () => { setToken(prev); },
-    });
-  };
-  const copy = () => { navigator.clipboard?.writeText(token).then(() => toast.success(t('prof.token.copied', 'Copied.'))).catch(() => {}); };
-  const exampleCmd = `curl -H "Authorization: Bearer ${reveal ? token : '<token>'}" ${location.origin}/api/v1/me`;
-  const copyExample = () => { navigator.clipboard?.writeText(exampleCmd).then(() => toast.success(t('prof.token.copied', 'Copied.'))).catch(() => {}); };
-  const masked = token ? token.slice(0, 8) + '•'.repeat(Math.max(6, token.length - 12)) + token.slice(-4) : '';
-  return (
-    <Card className="p-5">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2">
-        <Terminal size={15} className="text-[var(--faint)]" /> {t('prof.token.title', 'API token')}
-        <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--faint)]">
-          {t('prof.token.legacy', 'Legacy')}
-        </span>
-      </div>
-      <p className="text-xs text-[var(--muted)] mb-3">{t('prof.token.desc2', 'The old single token: stored in plain text, no scopes, no expiry. Kept so existing scripts keep working. Use an API key above for anything new, and revoke this once nothing depends on it.')}</p>
-      {token === undefined ? <div className="py-2"><Spinner /></div> : token ? (<>
-        {/* Framed secret field: the token prefix stays visible; the full value is behind
-            a reveal toggle, with reveal + copy inline on the right — reads like a proper
-            credential field instead of a wrapping row of buttons. */}
-        <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--line)] bg-[var(--surface)]/40">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><KeyRound size={11} className="text-[var(--primary-2)]" /> {t('prof.token.personal', 'Personal token')}</span>
-            <span className="text-[10px] font-mono text-[var(--faint)]">{token.slice(0, 4)}…{token.slice(-4)}</span>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-2.5">
-            <code className="flex-1 min-w-0 text-xs font-mono break-all">{reveal ? token : masked}</code>
-            <div className="flex items-center gap-0.5 shrink-0">
-              <button onClick={() => setReveal((v) => !v)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface)] transition" title={reveal ? t('prof.token.hide', 'Hide') : t('prof.token.reveal', 'Reveal')} aria-label={reveal ? t('prof.token.hide', 'Hide') : t('prof.token.reveal', 'Reveal')}>{reveal ? <EyeOff size={14} /> : <Eye size={14} />}</button>
-              <button onClick={copy} className="p-1.5 rounded-md text-[var(--faint)] hover:text-[var(--primary-2)] hover:bg-[var(--surface)] transition" title={t('prof.token.copy', 'Copy')} aria-label={t('prof.token.copy', 'Copy')}><Copy size={14} /></button>
-            </div>
-          </div>
-        </div>
-        {/* Manage actions + secrecy reminder */}
-        <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <Button size="sm" variant="ghost" disabled={busy} onClick={reset}><RefreshCw size={14} /> {t('prof.token.resetbtn', 'Reset')}</Button>
-          <Button size="sm" variant="ghost" className="!text-error" disabled={busy} onClick={revoke}><Trash2 size={14} /> {t('prof.token.revoke', 'Revoke')}</Button>
-          <span className="text-[11px] text-[var(--faint)] flex items-center gap-1 ml-auto"><Lock size={11} /> {t('prof.token.secret', 'Anyone with this token can act as you.')}</span>
-        </div>
-        {/* Example request */}
-        <div className="mt-4">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('prof.token.example', 'Example request')}</span>
-            <button onClick={copyExample} className="text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-1 transition"><Copy size={11} /> {t('prof.token.copy', 'Copy')}</button>
-          </div>
-          <code className="block text-[11px] font-mono px-3 py-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] break-all">{exampleCmd}</code>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {['GET /v1/me', 'GET /v1/me/repos', 'PATCH /v1/me'].map((e) => <span key={e} className="text-[10px] font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{e}</span>)}
-          </div>
-          <div className="mt-1.5 text-[11px] text-[var(--faint)]">{t('prof.token.rl2', 'Token endpoints are rate-limited.')}</div>
-        </div>
-      </>) : (
-        <Button size="sm" variant="primary" disabled={busy} onClick={reset}><KeyRound size={14} /> {t('prof.token.generate', 'Generate token')}</Button>
-      )}
     </Card>
   );
 }

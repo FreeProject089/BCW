@@ -86,12 +86,6 @@ model User {
   avatar            Json? // { variant, seed } for the Boring Avatar
   termsAcceptedAt   DateTime? // last time the user accepted the Terms + Payments policy at checkout
   stripeCustomerId  String?   @unique
-  // Legacy personal API token — ONE per account, stored in clear, no scopes, readable
-  // from the profile forever. Superseded by ApiKey (hashed, several, scoped); kept so
-  // existing integrations keep working, and accepted only on the three /v1 endpoints it
-  // always served. Nothing new should read it.
-  apiToken          String?   @unique
-  apiTokenCreatedAt DateTime?
   apiKeys           ApiKey[]
   createdAt         DateTime  @default(now())
 

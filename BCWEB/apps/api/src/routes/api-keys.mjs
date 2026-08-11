@@ -1,9 +1,9 @@
 // The public API: key management (session-authed, from the profile) and the `/v1`
 // endpoints third parties actually call (key-authed, scoped).
 //
-// The old single `User.apiToken` is still honoured by api-tokens.mjs on the three
-// endpoints it always served. Everything here is the replacement: several keys per
-// account, each named and scoped, hashed at rest and shown exactly once.
+// The ONLY credential system. The old single `User.apiToken` (plaintext, unscoped,
+// re-readable forever) was removed before production ever saw it — its routes, its
+// profile card, and its columns are gone, so there is no legacy surface to secure.
 import crypto from 'node:crypto';
 import { db, requireRole, apiAuth, hashApiKey, API_SCOPES } from '../lib/lib.mjs';
 import { buildPublicProfile } from './social.mjs';

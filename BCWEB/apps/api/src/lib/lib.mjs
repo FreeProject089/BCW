@@ -375,23 +375,6 @@ export function requireEditor() {
   };
 }
 
-/** Personal-API-token auth: authenticates by the caller's own API token
- * (Authorization: Bearer <token> or X-API-Token) and sets req.user = { uid, role }
- * like the session guards, so token callers can drive their account endpoints. */
-export function tokenAuth() {
-  return async (req, reply) => {
-    const hdr = req.headers['authorization'];
-    const token = (hdr && /^Bearer\s+(.+)$/i.test(hdr) ? hdr.replace(/^Bearer\s+/i, '') : req.headers['x-api-token'] || '').toString().trim();
-    if (!token || token.length < 20) return reply.code(401).send({ error: 'unauthenticated' });
-    const p = await db();
-    const u = await p.user.findUnique({ where: { apiToken: token }, select: { id: true, role: true } });
-    if (!u) return reply.code(401).send({ error: 'invalid_token' });
-    const lock = await accountLock(u.id);
-    if (lock) return reply.code(403).send(lockBody(lock));
-    req.user = { uid: u.id, role: u.role };
-  };
-}
-
 /** Every scope the public API knows, and what each one lets a key see or do.
  *
  * Deliberately narrow and read-heavy: a key is a credential a user pastes into a script
@@ -422,7 +405,7 @@ function presentedKey(req) {
   const hdr = req.headers['authorization'];
   const raw = hdr && /^Bearer\s+(.+)$/i.test(hdr)
     ? hdr.replace(/^Bearer\s+/i, '')
-    : req.headers['x-api-key'] || req.headers['x-api-token'] || '';
+    : req.headers['x-api-key'] || '';
   return raw.toString().trim();
 }
 
