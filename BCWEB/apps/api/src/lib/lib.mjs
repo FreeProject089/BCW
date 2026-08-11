@@ -392,6 +392,83 @@ export function tokenAuth() {
   };
 }
 
+/** Every scope the public API knows, and what each one lets a key see or do.
+ *
+ * Deliberately narrow and read-heavy: a key is a credential a user pastes into a script
+ * on a machine you do not control, so the default posture is that losing one costs a
+ * consumer their read access and nothing else. Write scopes exist, but nothing that
+ * spends money, changes access control, or deletes anything is reachable by key.
+ */
+export const API_SCOPES = Object.freeze({
+  'account:read':  'Read your account profile.',
+  'account:write': 'Change your display name and bio.',
+  'repos:read':    'List your repos and read their file lists and change history.',
+  'catalog:read':  'Read published catalog items and their change history.',
+});
+
+/** True if the key carries `scope`. A key with no scopes is allowed nothing. */
+function hasScope(key, scope) {
+  return Array.isArray(key.scopes) && key.scopes.includes(scope);
+}
+
+/** SHA-256 of the presented secret — what the ApiKey row stores instead of the secret. */
+export function hashApiKey(secret) {
+  return crypto.createHash('sha256').update(String(secret)).digest('hex');
+}
+
+/** Pull the presented key out of the request, or '' if there is none. */
+function presentedKey(req) {
+  const hdr = req.headers['authorization'];
+  const raw = hdr && /^Bearer\s+(.+)$/i.test(hdr)
+    ? hdr.replace(/^Bearer\s+/i, '')
+    : req.headers['x-api-key'] || req.headers['x-api-token'] || '';
+  return raw.toString().trim();
+}
+
+/** Last-used is written best-effort and never blocks the request. Failing to record
+ * that a key was used must not stop the call it was used for. */
+function touch(p, id, ip) {
+  p.apiKey.update({ where: { id }, data: { lastUsedAt: new Date(), lastUsedIp: ip || null } })
+    .catch(() => {});
+}
+
+/**
+ * Public-API auth. `apiAuth('catalog:read')` authenticates an ApiKey and requires that
+ * scope; the route then sees req.user = { uid, role } and req.apiKey.
+ *
+ * The lookup is by HASH, so the database never holds anything a thief could present.
+ * Expiry and revocation fail closed, and a key whose owner is suspended or banned stops
+ * working at the same moment their session does.
+ */
+export function apiAuth(scope) {
+  return async (req, reply) => {
+    const secret = presentedKey(req);
+    // Short-circuit before touching the database: a real key is 40+ characters.
+    if (!secret || secret.length < 20) {
+      return reply.code(401).send({ error: 'unauthenticated', hint: 'Send Authorization: Bearer <key>' });
+    }
+    const p = await db();
+    const key = await p.apiKey.findUnique({
+      where: { hash: hashApiKey(secret) },
+      select: { id: true, userId: true, scopes: true, revokedAt: true, expiresAt: true, user: { select: { role: true } } },
+    });
+    // One answer for "no such key", "revoked" and "expired": a caller probing keys must
+    // not learn that one of them was ever real.
+    if (!key || key.revokedAt || (key.expiresAt && key.expiresAt <= new Date())) {
+      return reply.code(401).send({ error: 'invalid_key' });
+    }
+    if (scope && !hasScope(key, scope)) {
+      return reply.code(403).send({ error: 'insufficient_scope', required: scope, granted: key.scopes });
+    }
+    const lock = await accountLock(key.userId);
+    if (lock) return reply.code(403).send(lockBody(lock));
+
+    touch(p, key.id, req.ip);
+    req.user = { uid: key.userId, role: key.user?.role };
+    req.apiKey = { id: key.id, scopes: key.scopes };
+  };
+}
+
 /** Soft auth: sets req.user from the session cookie when valid, else null. Never
  * fails — used by "who am I" style endpoints so a logged-out visitor gets a clean
  * 200 { user: null } instead of a noisy 401 in the console. */
@@ -481,6 +558,33 @@ export async function repoLog(p, serverRepoId, actor, action, detail = '') {
       const excess = await p.repoAuditLog.findMany({ where: { serverRepoId }, orderBy: { createdAt: 'desc' }, skip: 1000, take: 500, select: { id: true } }).catch(() => []);
       if (excess.length) await p.repoAuditLog.deleteMany({ where: { id: { in: excess.map((e) => e.id) } } }).catch(() => {});
     }
+  } catch { /* non-fatal */ }
+}
+
+/** Record what happened to a catalog item, for the public change feed.
+ *
+ * Written from the item's own row, but it OUTLIVES that row: the delete grace period
+ * ends, sweeper.mjs drops the CatalogItem, and this entry is then the only evidence the
+ * item ever existed. That is the whole point — a consumer mirroring the catalog needs to
+ * hear about a removal, and a removal is precisely the event that leaves nothing behind
+ * to read.
+ *
+ * Never throws: failing to write history must not fail the action it describes.
+ */
+export async function catalogLog(p, item, action, detail = '') {
+  try {
+    if (!item?.slug) return;
+    await p.catalogAuditLog.create({
+      data: {
+        catalogId: item.id || null,
+        slug: item.slug,
+        kind: item.kind,
+        ownerId: item.ownerId || null,
+        action,
+        version: item.version || null,
+        detail: String(detail || '').slice(0, 300),
+      },
+    });
   } catch { /* non-fatal */ }
 }
 

@@ -86,10 +86,13 @@ model User {
   avatar            Json? // { variant, seed } for the Boring Avatar
   termsAcceptedAt   DateTime? // last time the user accepted the Terms + Payments policy at checkout
   stripeCustomerId  String?   @unique
-  // Personal API token — the user copies it from their profile to drive the API on
-  // their own behalf (tokenAuth in lib.mjs). Resettable/revocable by the owner.
+  // Legacy personal API token — ONE per account, stored in clear, no scopes, readable
+  // from the profile forever. Superseded by ApiKey (hashed, several, scoped); kept so
+  // existing integrations keep working, and accepted only on the three /v1 endpoints it
+  // always served. Nothing new should read it.
   apiToken          String?   @unique
   apiTokenCreatedAt DateTime?
+  apiKeys           ApiKey[]
   createdAt         DateTime  @default(now())
 
   // ── 2FA (TOTP) — see totp.mjs. Recovery codes are argon2 hashes, one-time use. ──
@@ -1899,4 +1902,60 @@ model UserBadge {
 
   @@unique([userId, badgeId])
   @@index([userId])
+}
+
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+// One API key. Several per account, each named, each scoped, each revocable on its
+// own — so a script that only reads a catalog cannot be replayed against the account
+// it was minted from.
+//
+// The secret is NEVER stored. `hash` is its SHA-256 and the key is shown exactly once,
+// at creation; losing it means minting another. The old `User.apiToken` sat in the
+// database in clear and was re-readable from the profile page forever, which made
+// "revoke" the only remedy for a leak nobody could detect (CWE-256, CWE-312).
+model ApiKey {
+  id         String    @id @default(cuid())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  // What the key is for, in the owner's words. Shown in the list; never sent to callers.
+  label      String    @default("")
+  // First few characters of the secret, kept in clear on purpose: it is what the list
+  // shows so the owner can tell two keys apart without being able to use either.
+  prefix     String
+  hash       String    @unique
+  // Empty means "nothing" — a key with no scope authenticates and is allowed nothing.
+  scopes     String[]  @default([])
+  lastUsedAt DateTime?
+  lastUsedIp String?
+  // Optional lifetime. A key past its date fails closed, it is not swept.
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// What happened to a catalog item, and when — the record the item itself cannot keep.
+//
+// A deleted item is really deleted: the grace period ends and sweeper.mjs drops the row,
+// leaving nothing behind. Without a tombstone the change feed could only ever report
+// what still exists, which is the opposite of what a consumer syncing a mirror needs to
+// know. So this table outlives the row it describes: `catalogId` goes null, the slug and
+// kind stay.
+model CatalogAuditLog {
+  id        String      @id @default(cuid())
+  // Null once the item row is gone. The slug is the durable identity.
+  catalogId String?
+  slug      String
+  kind      CatalogKind
+  ownerId   String?
+  // created | updated | published | rejected | hidden | restored | deleted
+  action    String
+  version   String?
+  detail    String      @default("")
+  createdAt DateTime    @default(now())
+
+  @@index([createdAt])
+  @@index([slug, createdAt])
 }

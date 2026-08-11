@@ -237,6 +237,7 @@ export default function Profile() {
 
           <div className="space-y-4">
           <SectionLabel icon={Terminal}>{t('prof.sec.developer', 'Developer & preferences')}</SectionLabel>
+          <ApiKeysCard />
           <ApiTokenCard />
 
           {/* Device preferences (intro animation, theme, language, translucency,
@@ -291,6 +292,128 @@ function AccountInfoCard({ user }) {
             </div>
           </div>
         ))}
+      </div>
+    </Card>
+  );
+}
+
+// API keys: several per account, each named and scoped. The secret is shown ONCE, at
+// creation, and never again — the server only keeps its hash, so there is nothing to
+// re-reveal. That is the whole difference from the legacy single token above, which sat
+// in the database in clear and was re-readable from this page forever.
+function ApiKeysCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const [keys, setKeys] = useState(undefined);      // undefined = loading
+  const [scopes, setScopes] = useState({});
+  const [label, setLabel] = useState('');
+  const [picked, setPicked] = useState([]);
+  const [days, setDays] = useState('');
+  const [fresh, setFresh] = useState(null);          // the one-time secret
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api.get('/me/api-keys')
+    .then((r) => { setKeys(r.keys || []); setScopes(r.scopes || {}); })
+    .catch(() => setKeys([]));
+  useEffect(() => { load(); }, []);
+
+  const toggle = (s) => setPicked((p) => p.includes(s) ? p.filter((x) => x !== s) : [...p, s]);
+
+  const create = async () => {
+    if (!picked.length) return;
+    setBusy(true);
+    try {
+      const r = await api.post('/me/api-keys', { label, scopes: picked, expiresInDays: days ? Number(days) : undefined });
+      setFresh(r.secret);
+      setLabel(''); setPicked([]); setDays('');
+      await load();
+    } catch { toast.error(t('prof.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+
+  // Revoking is irreversible — there is no secret left to restore — so the row goes at
+  // once and the DELETE fires when the undo window closes, like every other destructive
+  // action on this page.
+  const revoke = (k) => {
+    setKeys((ks) => ks.filter((x) => x.id !== k.id));
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      message: t('prof.key.revoked', 'Key revoked.'),
+      onCommit: () => api.del(`/me/api-keys/${k.id}`).catch(() => load()),
+      onCancel: () => load(),
+    });
+  };
+
+  const fmt = (d) => d ? new Date(d).toLocaleDateString() : '—';
+
+  return (
+    <Card className="p-5">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2">
+        <KeyRound size={15} className="text-[var(--primary-2)]" /> {t('prof.keys.title', 'API keys')}
+      </div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">
+        {t('prof.keys.sub', 'Named, scoped keys for the public API. A key is shown once — copy it now, it cannot be shown again.')}
+      </p>
+
+      {fresh && (
+        <div className="mb-4 p-3 rounded-lg border border-[var(--primary-2)] bg-[var(--surface-2)]">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-1.5">
+            {t('prof.keys.once', 'Copy this now — it will not be shown again')}
+          </div>
+          <code className="block text-[11px] font-mono break-all mb-2">{fresh}</code>
+          <div className="flex gap-2">
+            <Button size="sm" variant="primary" onClick={() => { navigator.clipboard?.writeText(fresh); toast.success(t('common.copied', 'Copied.')); }}>
+              <Copy size={13} /> {t('prof.token.copy', 'Copy')}
+            </Button>
+            <Button size="sm" onClick={() => setFresh(null)}>{t('common.done', 'Done')}</Button>
+          </div>
+        </div>
+      )}
+
+      {keys === undefined ? <Spinner /> : keys.length === 0 ? (
+        <div className="text-[12px] text-[var(--faint)] mb-4">{t('prof.keys.none', 'No keys yet.')}</div>
+      ) : (
+        <div className="flex flex-col gap-2 mb-4">
+          {keys.map((k) => (
+            <div key={k.id} className="flex items-center gap-3 min-w-0 p-2.5 rounded-lg border border-[var(--line)]">
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-medium truncate">{k.label || t('prof.keys.unnamed', 'Unnamed key')}</div>
+                <div className="text-[11px] font-mono text-[var(--faint)]">{k.prefix}…</div>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {(k.scopes || []).map((s) => (
+                    <span key={s} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{s}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="text-[11px] text-[var(--faint)] text-right shrink-0">
+                <div>{t('prof.keys.used', 'Used')} {fmt(k.lastUsedAt)}</div>
+                {k.expiresAt && <div>{t('prof.keys.expires', 'Expires')} {fmt(k.expiresAt)}</div>}
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => revoke(k)}><Trash2 size={13} /></Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="pt-3 border-t border-[var(--line)] flex flex-col gap-2">
+        <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('prof.keys.label', 'What is this key for?')} />
+        <div className="flex flex-wrap gap-1.5">
+          {Object.entries(scopes).map(([s, desc]) => (
+            <button
+              key={s} type="button" title={desc} onClick={() => toggle(s)}
+              className={`text-[11px] font-mono px-2 py-1 rounded-md border transition ${picked.includes(s)
+                ? 'border-[var(--primary-2)] text-[var(--primary-2)] bg-[var(--surface-2)]'
+                : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--primary-2)]'}`}
+            >{s}</button>
+          ))}
+        </div>
+        <div className="flex gap-2 items-center">
+          <Input type="number" min="1" max="365" value={days} onChange={(e) => setDays(e.target.value)}
+                 placeholder={t('prof.keys.expiry', 'Expires in days (optional)')} className="max-w-[220px]" />
+          <Button size="sm" variant="primary" disabled={busy || !picked.length} onClick={create}>
+            <KeyRound size={13} /> {t('prof.keys.create', 'Create key')}
+          </Button>
+        </div>
+        {!picked.length && <div className="text-[11px] text-[var(--faint)]">{t('prof.keys.needscope', 'Pick at least one scope — a key with none can do nothing.')}</div>}
       </div>
     </Card>
   );

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
-import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy, catalogLog } from '../lib/lib.mjs';
 import { presignGet, getObject, deleteObject } from '../lib/storage.mjs';
 import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
 import { replyCachedJson } from '../lib/cache.mjs';
@@ -743,6 +743,7 @@ export default async function catalogRoutes(app) {
     // stable identity BMM and any existing deeplink resolve against. Renaming an entry must
     // not break links that already point at it.
     const updated = await p.catalogItem.update({ where: { id: item.id }, data });
+    await catalogLog(p, updated, 'updated');
     return { ok: true, item: { id: updated.id, name: updated.name, version: updated.version, status: updated.status } };
   });
 
@@ -760,6 +761,9 @@ export default async function catalogRoutes(app) {
     await p.catalogItem.update({ where: { id: item.id }, data: {
       deleteAt, status: 'HIDDEN', meta: { ...(item.meta || {}), _prevStatus: item.status },
     } });
+    // Consumers hear about the removal now, not in 72 hours: the item stops being
+    // published the moment it is scheduled, and that is what a mirror has to act on.
+    await catalogLog(p, item, 'hidden', 'delete scheduled');
     return { ok: true, deleteAt };
   });
 
@@ -772,6 +776,7 @@ export default async function catalogRoutes(app) {
     if (!item.deleteAt) return { ok: true }; // nothing scheduled
     const meta = { ...(item.meta || {}) }; const prev = meta._prevStatus || 'PENDING'; delete meta._prevStatus;
     await p.catalogItem.update({ where: { id: item.id }, data: { deleteAt: null, status: prev, meta } });
+    await catalogLog(p, item, 'restored', prev);
     return { ok: true, status: prev };
   });
 
@@ -849,6 +854,7 @@ export default async function catalogRoutes(app) {
       p.submission.update({ where: { id: sub.id }, data: { status: 'PUBLISHED', reviewerId: req.user.uid } }),
       p.catalogItem.update({ where: { id: sub.itemId }, data: { status: 'PUBLISHED' } }),
     ]);
+    await catalogLog(p, sub.item, 'published');
     await notify(p, sub.ownerId, 'submission_approved', `"${sub.item.name}" was approved and is now live.`);
     return { ok: true };
   });
@@ -870,6 +876,7 @@ export default async function catalogRoutes(app) {
       p.submission.update({ where: { id: sub.id }, data: { status: 'REJECTED', reviewerId: req.user.uid, reason: reason.data.reason } }),
       p.catalogItem.update({ where: { id: sub.itemId }, data: { status: 'REJECTED', payloadPurgeAt: purgeAt } }),
     ]);
+    await catalogLog(p, sub.item, 'rejected');
     await notify(p, sub.ownerId, 'submission_rejected', `"${sub.item.name}" was rejected: ${reason.data.reason}`);
     return { ok: true };
   });

@@ -428,6 +428,131 @@ Wrap text in a \`<doc-comment data-comment="…">\` to add a hover note — grea
   },
 
   // ── Reference ─────────────────────────────────────────────────────────────────
+  // Read from apps/api/src/routes/api-keys.mjs. If a scope or an endpoint changes there,
+  // change it here too — this page is the contract third parties read.
+  {
+    slug: 'bcweb-api', category: 'Reference', title: 'BetterCommunity API', icon: 'key', order: 599,
+    body: `::toc[On this page]
+
+# BetterCommunity API
+
+A read-first HTTP API for your own account, your hosted repos and the public catalog. It is what you use to mirror a catalog, watch a repo for changes, or wire BetterCommunity into a script.
+
+This is **not** the same thing as [the plugin API](/docs/api-reference), which runs inside BMM on your own machine.
+
+## Getting a key
+
+Keys are minted from your **profile page**, under *API keys*. Each key has a name, a set of scopes, and an optional expiry.
+
+:::warning[The key is shown once]
+The server stores only a hash of your key, so it genuinely cannot show it to you again. Copy it when you create it. If you lose it, revoke it and mint another — that is the only path.
+:::
+
+You can hold up to 20 live keys. A key cannot create another key: minting requires your browser session, so revoking a leaked key actually ends the problem.
+
+## Authenticating
+
+\`\`\`bash
+curl -H "Authorization: Bearer bck_YOUR_KEY" https://YOUR-HOST/api/v1/account
+\`\`\`
+
+\`X-API-Key\` works too, if a bearer header is awkward in your client.
+
+Failures are deliberately uninformative: a key that never existed, one that was revoked, and one that expired all answer \`401 invalid_key\`. A key that is real but lacks the scope answers \`403 insufficient_scope\` and tells you which scope was needed.
+
+## Scopes
+
+A key is allowed exactly what its scopes say, and a key with no scopes can do nothing.
+
+| Scope | What it opens |
+|---|---|
+| \`account:read\` | Your profile. |
+| \`account:write\` | Your display name and bio. |
+| \`repos:read\` | Your repos, their file lists, their change history. |
+| \`catalog:read\` | Published catalog items and their change history. |
+
+Nothing that spends money, changes access control, or deletes anything is reachable by key. That is on purpose: a key lives in a script on a machine we do not control, so losing one should cost you read access and nothing more.
+
+## Endpoints
+
+### \`GET /api/v1/scopes\`
+
+Every scope and what it means. No key needed — it is how a client discovers what to ask for.
+
+### \`GET /api/v1/account\` · \`account:read\`
+
+\`\`\`json
+{ "user": { "id": "…", "displayName": "…", "bio": "…", "role": "USER", "createdAt": "…" },
+  "scopes": ["account:read"] }
+\`\`\`
+
+### \`PATCH /api/v1/account\` · \`account:write\`
+
+Accepts \`displayName\` (2–60 characters) and \`bio\` (up to 500). Anything else is ignored, and a body with nothing usable answers \`400 nothing_to_update\`.
+
+### \`GET /api/v1/repos\` · \`repos:read\`
+
+Your hosted repos: id, name, status, \`hostPath\`, whether they are published and listed, whether the manifest verified, the content \`sha\`, and storage used against quota.
+
+### \`GET /api/v1/repos/:id/files\` · \`repos:read\`
+
+Every file BetterCommunity holds for that repo — path, size, sha256, content type, last change.
+
+This is the answer to a real gap: a plain web host with directory listing lets BMM discover a repo's files on its own, and BetterCommunity does not serve listings. This endpoint is that listing.
+
+### \`GET /api/v1/repos/:id/changes\` · \`repos:read\`
+
+What happened to the repo's contents, newest first.
+
+\`\`\`json
+{ "retentionDays": 30,
+  "changes": [ { "action": "upload", "path": "mods/foo/data.pak", "at": "2026-08-11T09:12:04.000Z" },
+               { "action": "delete", "path": "mods/old/bad.pak", "at": "2026-08-10T22:40:11.000Z" } ] }
+\`\`\`
+
+\`action\` is one of \`upload\`, \`delete\`, \`publish\`, \`unpublish\`, \`settings\`, \`access\`, \`ban\`, \`unban\`.
+
+:::warning[The history has a horizon]
+Per-repo history is pruned to 30 days and 1000 entries. \`retentionDays\` tells you where the edge is. If you have been away longer than that, re-read the file list — do not read an empty change feed as "nothing changed".
+:::
+
+### \`GET /api/v1/catalog\` · \`catalog:read\`
+
+Published items only. Filter with \`?kind=APP|PLUGIN|THEME|PRESET\`. Items still in review, rejected or hidden are not visible to a key — the review process is not something an API key routes around.
+
+### \`GET /api/v1/catalog/changes\` · \`catalog:read\`
+
+Additions and removals, newest first.
+
+\`\`\`json
+{ "changes": [ { "slug": "my-theme", "kind": "THEME", "action": "published",
+                 "version": "1.2.0", "id": "clx…", "at": "2026-08-11T09:12:04.000Z" },
+               { "slug": "old-plugin", "kind": "PLUGIN", "action": "deleted",
+                 "version": null, "id": null, "at": "2026-08-09T14:02:55.000Z" } ] }
+\`\`\`
+
+\`action\` is one of \`created\`, \`updated\`, \`published\`, \`rejected\`, \`hidden\`, \`restored\`, \`deleted\`.
+
+A deleted item really is deleted — its row is gone — so \`id\` comes back \`null\` and **the slug is the identity to key your mirror on**. This feed is the only place a removal is ever recorded; nothing else survives it.
+
+## Polling
+
+Both change feeds take \`?since=<ISO-8601>\` and return only what is newer, and \`?limit=\` (default 100, max 500).
+
+\`\`\`bash
+curl -H "Authorization: Bearer $KEY" \
+  "https://YOUR-HOST/api/v1/catalog/changes?since=2026-08-01T00:00:00Z&limit=200"
+\`\`\`
+
+A \`since\` value that does not parse is ignored rather than rejected, so a client replaying a bad cursor gets everything back instead of looping on a 400.
+
+Read endpoints allow 120 requests per minute; key management and writes allow 30.
+
+## The old token
+
+A single \`bmm_\` token per account still works on \`/v1/me\`, \`/v1/me/repos\` and \`PATCH /v1/me\`. It has no scopes and is stored in clear, so it is kept only so existing scripts do not break. **Use a key for anything new**, and revoke the old token once nothing depends on it.`,
+  },
+
   // Read from src-tauri/src/api/mod.rs (routes, bearer auth, require_permission filters).
   // If the API changes, re-read that file — do not trust this page over the source.
   {

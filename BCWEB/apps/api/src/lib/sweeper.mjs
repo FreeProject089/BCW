@@ -2,7 +2,7 @@
 // `deleteAt` (a 72h grace window — e.g. a user delete, or a failed hosting payment).
 // Their files are kept until that moment, then this job hard-deletes the rows and
 // their object-storage bytes. Runs periodically from the API process.
-import { db, notify } from './lib.mjs';
+import { db, notify, catalogLog } from './lib.mjs';
 import { resolveRetention } from './retention.mjs';
 import { getRedis } from './redis.mjs';
 
@@ -62,6 +62,10 @@ async function sweepItems(p, log) {
       if (item.payloadKey) await deleteObject(item.payloadKey); // our-hosted payload bytes
       await p.submission.deleteMany({ where: { itemId: item.id } });
       await p.catalogEvent.deleteMany({ where: { itemId: item.id } });
+      // The tombstone is written BEFORE the row goes, and it is the last thing that will
+      // ever say this item existed: `catalogId` is kept for callers that still hold the
+      // old id, but the slug is the durable identity from here on.
+      await catalogLog(p, item, 'deleted');
       await p.catalogItem.delete({ where: { id: item.id } });
     } catch (e) { log.warn({ id: item.id, e: String(e?.message || e) }, 'sweeper: item delete failed'); }
   }
