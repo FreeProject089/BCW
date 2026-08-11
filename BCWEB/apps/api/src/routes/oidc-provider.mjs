@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import querystring from 'node:querystring';
 import jwt from 'jsonwebtoken';
 import { db, requireRole, optionalAuth } from '../lib/lib.mjs';
-import { jwks, issuer, signRs256, verifyRs256, verifyPkce } from '../lib/oidc.mjs';
+import { jwks, issuer, signRs256, verifyRs256, verifyPkce, validateAuthorizeRequest } from '../lib/oidc.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -87,12 +87,9 @@ export default async function oidcProviderRoutes(app) {
     if (!redir || !client.redirectUris.includes(redir)) return reply.code(400).type('text/html').send(errPage('Invalid redirect_uri (not registered for this client).'));
     const state = q.state ? String(q.state) : '';
     const bad = (error) => reply.redirect(backTo(redir, { error, ...(state ? { state } : {}) }));
-    if (q.response_type !== 'code') return bad('unsupported_response_type');
-    const scopes = String(q.scope || '').split(/\s+/).filter(Boolean);
-    if (!scopes.includes('openid') || scopes.some((s) => !client.scopes.includes(s))) return bad('invalid_scope');
-    const challenge = q.code_challenge ? String(q.code_challenge) : '';
-    if (challenge && q.code_challenge_method !== 'S256') return bad('invalid_request');
-    if (!client.confidential && !challenge) return bad('invalid_request'); // public clients MUST use PKCE
+    const check = validateAuthorizeRequest(client, q);
+    if (check.error) return bad(check.error);
+    const { scopes, challenge } = check;
     // Require a BCWEB login; bounce through the SPA login, returning here after.
     if (!req.user?.uid) return reply.redirect(`${issuer()}/auth?next=${encodeURIComponent(req.raw.url)}`);
     // Skip the prompt if this user already consented to (at least) these scopes.

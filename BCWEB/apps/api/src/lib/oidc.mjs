@@ -78,3 +78,38 @@ export function verifyPkce(challenge, verifier) {
   const hashed = crypto.createHash('sha256').update(verifier).digest('base64url');
   return hashed === challenge;
 }
+
+/**
+ * The /authorize front door: everything that can be decided from the request and the
+ * registered client alone, before any state is created.
+ *
+ * Extracted from the route so these five rules can be tested. Each one is load-bearing:
+ *
+ *  · response_type must be `code`. Nothing else is implemented, and silently accepting
+ *    `token` would be an implicit flow nobody wrote.
+ *  · `openid` must be present — without it this is not an OIDC request and no id_token
+ *    would be issued, so the caller would get something other than what it asked for.
+ *  · Every requested scope must be one the client is REGISTERED for. Otherwise any client
+ *    could ask for `repos` and get it, and registration would constrain nothing.
+ *  · A challenge, if sent, must be S256. `plain` makes the challenge equal the verifier,
+ *    so intercepting one gives the other.
+ *  · A public client MUST send a challenge. It cannot hold a secret, so PKCE is the only
+ *    thing standing between an intercepted code and a token.
+ *
+ * Returns `{ error }` with an OAuth error code, or `{ scopes, challenge }`.
+ */
+export function validateAuthorizeRequest(client, q = {}) {
+  if (q.response_type !== 'code') return { error: 'unsupported_response_type' };
+
+  const scopes = String(q.scope || '').split(/\s+/).filter(Boolean);
+  const allowed = Array.isArray(client?.scopes) ? client.scopes : [];
+  if (!scopes.includes('openid') || scopes.some((s) => !allowed.includes(s))) {
+    return { error: 'invalid_scope' };
+  }
+
+  const challenge = q.code_challenge ? String(q.code_challenge) : '';
+  if (challenge && q.code_challenge_method !== 'S256') return { error: 'invalid_request' };
+  if (!client?.confidential && !challenge) return { error: 'invalid_request' };
+
+  return { scopes, challenge };
+}

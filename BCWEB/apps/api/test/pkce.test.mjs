@@ -76,3 +76,67 @@ test('plain PKCE is not supported', () => {
   const verifier = 'a-verifier-used-as-its-own-challenge';
   assert.equal(verifyPkce(verifier, verifier), false);
 });
+
+// ── The /authorize front door ────────────────────────────────────────────────
+//
+// Five rules decided before any state exists. Each has a way of failing that leaves the
+// flow working: a scope granted that was never registered still returns tokens, a public
+// client without PKCE still signs users in. Nothing errors; the guarantee is just gone.
+
+import { validateAuthorizeRequest } from '../src/lib/oidc.mjs';
+
+const confidential = { confidential: true, scopes: ['openid', 'profile', 'email', 'repos'] };
+const publicClient = { confidential: false, scopes: ['openid', 'profile'] };
+const S256 = { code_challenge: 'x'.repeat(43), code_challenge_method: 'S256' };
+
+test('a well-formed request passes and reports what it parsed', () => {
+  const r = validateAuthorizeRequest(confidential, { response_type: 'code', scope: 'openid profile' });
+  assert.equal(r.error, undefined);
+  assert.deepEqual(r.scopes, ['openid', 'profile']);
+  assert.equal(r.challenge, '');
+});
+
+test('only the code flow is accepted', () => {
+  for (const rt of ['token', 'id_token', 'code token', '', undefined]) {
+    const r = validateAuthorizeRequest(confidential, { response_type: rt, scope: 'openid' });
+    assert.equal(r.error, 'unsupported_response_type', `response_type=${rt} was accepted`);
+  }
+});
+
+test('a scope the client is not registered for is refused', () => {
+  // The whole point of registering scopes. Without this, `repos` is available to anyone
+  // who asks for it and registration constrains nothing.
+  const r = validateAuthorizeRequest(publicClient, { response_type: 'code', scope: 'openid repos', ...S256 });
+  assert.equal(r.error, 'invalid_scope');
+  // …and the one it IS registered for still works, so the rule is not just "refuse".
+  assert.equal(validateAuthorizeRequest(publicClient, { response_type: 'code', scope: 'openid profile', ...S256 }).error, undefined);
+});
+
+test('openid is required', () => {
+  const r = validateAuthorizeRequest(confidential, { response_type: 'code', scope: 'profile email' });
+  assert.equal(r.error, 'invalid_scope');
+  assert.equal(validateAuthorizeRequest(confidential, { response_type: 'code', scope: '' }).error, 'invalid_scope');
+});
+
+test('a client with no registered scopes can request nothing', () => {
+  // Includes the shape where `scopes` is missing entirely rather than empty — a client
+  // row written before the column existed must not read as "everything allowed".
+  for (const c of [{ confidential: true, scopes: [] }, { confidential: true }]) {
+    assert.equal(validateAuthorizeRequest(c, { response_type: 'code', scope: 'openid' }).error, 'invalid_scope');
+  }
+});
+
+test('a challenge must be S256', () => {
+  for (const method of ['plain', 'S512', '', undefined]) {
+    const r = validateAuthorizeRequest(confidential, { response_type: 'code', scope: 'openid', code_challenge: 'abc', code_challenge_method: method });
+    assert.equal(r.error, 'invalid_request', `method=${method} was accepted`);
+  }
+});
+
+test('a public client cannot skip PKCE', () => {
+  // It cannot hold a secret, so PKCE is the only thing between an intercepted code and a
+  // token. A confidential client may omit it — it authenticates with its secret instead.
+  assert.equal(validateAuthorizeRequest(publicClient, { response_type: 'code', scope: 'openid' }).error, 'invalid_request');
+  assert.equal(validateAuthorizeRequest(publicClient, { response_type: 'code', scope: 'openid', ...S256 }).error, undefined);
+  assert.equal(validateAuthorizeRequest(confidential, { response_type: 'code', scope: 'openid' }).error, undefined);
+});
