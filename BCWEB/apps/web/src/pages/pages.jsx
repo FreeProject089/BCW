@@ -365,7 +365,7 @@ export function Installer() {
       <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {feats.map(([I, title, d]) => <Card key={title} className="p-5"><I size={20} className="text-[var(--primary-2)]" /><div className="font-semibold mt-3">{title}</div><div className="text-sm text-[var(--muted)] mt-1">{d}</div></Card>)}
       </section>
-      <Card className="p-8 mt-6 text-center bg-gradient-to-b from-brand to-transparent">
+      <Card className="p-8 mt-6 text-center">
         <Sparkles size={22} className="mx-auto text-[var(--primary-2)]" />
         <div className="font-semibold text-lg mt-2">{t('inst.dev', 'In active development')}</div>
         <p className="text-sm text-[var(--muted)] mt-1 max-w-md mx-auto">{t('inst.dev.d', 'BetterInstaller is being built as a separate Slint-based app. Follow progress on the blog.')}</p>

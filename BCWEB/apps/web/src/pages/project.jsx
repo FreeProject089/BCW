@@ -502,7 +502,7 @@ function MessageTicker({ messages }) {
   return (
     <section>
       <h2 className="font-semibold mb-3 flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('proj.messages')}</h2>
-      <Card className="p-8 text-center relative overflow-hidden bg-gradient-to-br from-brand to-transparent min-h-[120px] grid place-items-center">
+      <Card className="p-8 text-center relative overflow-hidden min-h-[120px] grid place-items-center">
         <p key={i} className="anim-fade text-lg md:text-xl text-[var(--text)] max-w-2xl mx-auto leading-relaxed">“{messages[i].message}”</p>
         {messages.length > 1 && <div className="flex gap-1.5 justify-center mt-5">{messages.map((_, k) => <span key={k} className={`w-1.5 h-1.5 rounded-full ${k === i ? 'bg-[var(--primary)]' : 'bg-[var(--line-strong)]'}`} />)}</div>}
       </Card>
@@ -648,7 +648,7 @@ export function OtherProjects() {
 
 function ShowcaseCommunity({ cfg, c, slug }) {
   if (cfg.community?.url) return (
-    <Card className="p-8 text-center bg-gradient-to-br from-brand to-transparent">
+    <Card className="p-8 text-center">
       <Users size={28} className="mx-auto text-[var(--primary-2)] mb-3" />
       <div className="font-semibold mb-1">Community</div>
       <p className="text-sm text-[var(--muted)] mb-4 max-w-md mx-auto">Join the community for this project.</p>
