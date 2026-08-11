@@ -404,6 +404,7 @@ export const API_SCOPES = Object.freeze({
   'account:write': 'Change your display name and bio.',
   'repos:read':    'List your repos and read their file lists and change history.',
   'catalog:read':  'Read published catalog items and their change history.',
+  'users:read':    'Look up public profiles — exactly what a signed-out visitor sees.',
 });
 
 /** True if the key carries `scope`. A key with no scopes is allowed nothing. */

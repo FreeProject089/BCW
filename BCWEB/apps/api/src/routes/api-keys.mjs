@@ -6,6 +6,15 @@
 // account, each named and scoped, hashed at rest and shown exactly once.
 import crypto from 'node:crypto';
 import { db, requireRole, apiAuth, hashApiKey, API_SCOPES } from '../lib/lib.mjs';
+import { buildPublicProfile } from './social.mjs';
+import { findUserIdByBcId } from '../lib/repofingerprint.mjs';
+
+// Only the PREFIXED form (BCU-XXXX-XXXX). repofingerprint's looksLikeBcId also accepts a
+// bare 8-character string, and resolving one costs a scan over every account — it
+// recomputes the fingerprint per user, which is why its own comment calls it
+// "admin-only, infrequent". On a key-authed endpoint that anyone can call, an ordinary
+// 8-letter search term must not trigger that.
+const looksLikeExplicitBcId = (s) => /^bc[uri][-\s]?[a-z0-9]{4}[-\s]?[a-z0-9]{4}$/i.test(String(s || '').trim());
 
 // 32 random bytes, base64url — 43 characters after the prefix.
 const genKey = () => 'bck_' + crypto.randomBytes(32).toString('base64url');
@@ -175,6 +184,58 @@ export default async function apiKeyRoutes(app) {
       retentionDays: 30,
       changes: rows.map((r) => ({ action: r.action, path: r.detail || null, at: r.createdAt })),
     };
+  });
+
+  // ── Users ───────────────────────────────────────────────────────────────────
+  //
+  // A key sees exactly what a signed-out visitor sees, and never more. buildPublicProfile
+  // is called with viewer = null on purpose: it grants staff a look at private profiles,
+  // and a moderator's key must not carry that. Their browser session is where staff
+  // powers live, behind 2FA — a bearer token pasted into a script is not.
+
+  app.get('/v1/users/:id', { preHandler: apiAuth('users:read'), ...RL_READ }, async (req, reply) => {
+    const p = await db();
+    // A BC id (BCR-XXXX-XXXX style) resolves to its account, so a BMM integration holding
+    // only a creator id does not have to know the internal user id.
+    let id = req.params.id;
+    if (looksLikeExplicitBcId(id)) id = (await findUserIdByBcId(p, id)) || id;
+    const r = await buildPublicProfile(p, id, null);
+    if (r.error) return reply.code(r.code).send({ error: r.error });
+    return r;
+  });
+
+  // Name / BC id / repo id / catalog slug, all resolving to the owner — the same search
+  // the site's own user directory runs, minus anything a visitor could not see.
+  app.get('/v1/users', { preHandler: apiAuth('users:read'), ...RL_READ }, async (req) => {
+    const q = String(req.query?.q || '').trim();
+    if (q.length < 2) return { users: [] };
+    const p = await db();
+
+    const ids = new Set();
+    if (looksLikeExplicitBcId(q)) { const uid = await findUserIdByBcId(p, q); if (uid) ids.add(uid); }
+    const [repo, cat] = await Promise.all([
+      p.serverRepo.findUnique({ where: { id: q }, select: { ownerId: true } }).catch(() => null),
+      p.communityCatalog.findFirst({ where: { OR: [{ id: q }, { slug: q }] }, select: { ownerId: true } }).catch(() => null),
+    ]);
+    if (repo?.ownerId) ids.add(repo.ownerId);
+    if (cat?.ownerId) ids.add(cat.ownerId);
+
+    const users = await p.user.findMany({
+      where: {
+        // Public profiles only, and never a banned account — the same two conditions the
+        // profile endpoint enforces, so a search cannot surface what a fetch would refuse.
+        profilePublic: true,
+        status: { not: 'banned' },
+        OR: [
+          { displayName: { contains: q, mode: 'insensitive' } },
+          ...(ids.size ? [{ id: { in: [...ids] } }] : []),
+        ],
+      },
+      select: { id: true, displayName: true, role: true, avatar: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+      take: limitOf(req.query, 25, 100),
+    });
+    return { users };
   });
 
   // ── Catalog ─────────────────────────────────────────────────────────────────

@@ -470,6 +470,7 @@ A key is allowed exactly what its scopes say, and a key with no scopes can do no
 | \`account:write\` | Your display name and bio. |
 | \`repos:read\` | Your repos, their file lists, their change history. |
 | \`catalog:read\` | Published catalog items and their change history. |
+| \`users:read\` | Public profiles — exactly what a signed-out visitor sees. |
 
 Nothing that spends money, changes access control, or deletes anything is reachable by key. That is on purpose: a key lives in a script on a machine we do not control, so losing one should cost you read access and nothing more.
 
@@ -515,6 +516,22 @@ What happened to the repo's contents, newest first.
 :::warning[The history has a horizon]
 Per-repo history is pruned to 30 days and 1000 entries. \`retentionDays\` tells you where the edge is. If you have been away longer than that, re-read the file list — do not read an empty change feed as "nothing changed".
 :::
+
+### \`GET /api/v1/users/:id\` · \`users:read\`
+
+A public profile: display name, avatar, bio, badges, join date, the connections the owner chose to show, and their listed repos and catalogs. Never an email.
+
+\`:id\` accepts an account id or a **BC id** (\`BCU-XXXX-XXXX\`), so a BMM integration holding only a creator id can resolve it without knowing the internal id.
+
+A private profile answers \`403 private_profile\`; a banned or unknown account answers \`404\`.
+
+:::warning[A key is not a staff badge]
+Signed in on the site, a moderator can open a private profile. Through the API, **nobody can** — the profile is built as if for a signed-out visitor, whatever role the key's owner holds. Staff powers live behind a browser session and 2FA; a bearer token pasted into a script is not that.
+:::
+
+### \`GET /api/v1/users?q=\` · \`users:read\`
+
+Search by display name, BC id, repo id, or catalog slug — each of the last three resolving to the owner. Public, non-banned profiles only, so a search can never surface something a direct fetch would refuse. Minimum two characters; \`?limit=\` up to 100.
 
 ### \`GET /api/v1/catalog\` · \`catalog:read\`
 

@@ -54,14 +54,18 @@ export async function grantAutoBadges(p, { event, user }) {
   } catch { /* auto-grant is best-effort */ }
 }
 
-export default async function socialRoutes(app) {
-  // ── Public: a user's shareable profile. No PII — pseudo, avatar, badges, join date,
-  // role, public repos + catalogs, and only the connections the owner opted to show. A
-  // private profile is visible only to its owner and to staff (MOD+). ──
-  app.get('/u/:id', { preHandler: optionalAuth() }, async (req, reply) => {
-    const p = await db();
+// A user's shareable profile. No PII — pseudo, avatar, badges, join date, role, public
+// repos + catalogs, and only the connections the owner opted to show.
+//
+// Exported and shared by the /u/:id page and the public API, deliberately: this function
+// decides who may see a private profile, and two copies of that rule would eventually
+// disagree — in the direction that leaks.
+//
+// `viewer` is { uid, role } or null. Returns { error, code } instead of throwing so both
+// callers answer identically.
+export async function buildPublicProfile(p, id, viewer) {
     const u = await p.user.findUnique({
-      where: { id: req.params.id },
+      where: { id },
       select: {
         id: true, displayName: true, role: true, avatar: true, bio: true, website: true,
         createdAt: true, profilePublic: true, showConnections: true, status: true,
@@ -72,11 +76,10 @@ export default async function socialRoutes(app) {
         socialConnections: { select: { provider: true, handle: true, url: true } },
       },
     });
-    if (!u || u.status === 'banned') return reply.code(404).send({ error: 'not_found' });
-    const viewer = req.user;
+    if (!u || u.status === 'banned') return { error: 'not_found', code: 404 };
     const isSelf = viewer?.uid === u.id;
     const isStaff = STAFF.includes(viewer?.role);
-    if (!u.profilePublic && !isSelf && !isStaff) return reply.code(403).send({ error: 'private_profile' });
+    if (!u.profilePublic && !isSelf && !isStaff) return { error: 'private_profile', code: 403 };
 
     // Public content owned by this user.
     const [repos, catalogs] = await Promise.all([
@@ -108,6 +111,14 @@ export default async function socialRoutes(app) {
         catalogs: catalogs.map((c) => ({ slug: c.slug, name: c.name, downloads: c.downloads, items: c._count.items })),
       },
     };
+}
+
+export default async function socialRoutes(app) {
+  app.get('/u/:id', { preHandler: optionalAuth() }, async (req, reply) => {
+    const p = await db();
+    const r = await buildPublicProfile(p, req.params.id, req.user);
+    if (r.error) return reply.code(r.code).send({ error: r.error });
+    return r;
   });
 
   // Public: search users by display name (public profiles only, unless staff). Returns a
