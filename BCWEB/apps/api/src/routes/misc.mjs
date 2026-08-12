@@ -548,6 +548,21 @@ export default async function miscRoutes(app) {
       payments: { select: { id: true, kind: true, description: true, amountCents: true, currency: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 20 },
     } });
     if (!u) return reply.code(404).send({ error: 'not_found' });
+
+    // API keys, SUPERADMIN only. This endpoint is reachable by a MOD, and a key list
+    // is a map of what an account can be made to do — a different kind of fact from
+    // the moderation history a MOD is here for. Never the `hash`: that IS the
+    // credential, and a list that leaks it hands the account over rather than
+    // describing it. `prefix` is enough to tell two keys apart, which is exactly why
+    // it is the part stored in clear.
+    let apiKeys = null;
+    if (req.user?.role === 'SUPERADMIN') {
+      apiKeys = await p.apiKey.findMany({
+        where: { userId: u.id },
+        select: { id: true, label: true, prefix: true, scopes: true, lastUsedAt: true, expiresAt: true, revokedAt: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
     // The account-level Unique BC id + a per-element BC id on every repo/item, all
     // folded from the same owner identity (creator ids / Discord / Ko-fi).
     const idn = (await loadOwnerIdentities(p, [u.id])).get(u.id) || { creatorIds: [], discordIds: [], kofi: false };
@@ -569,6 +584,10 @@ export default async function miscRoutes(app) {
     return { user: {
       ...u,
       bcId: userBcId(u.id),
+      // null (not []) for a non-SUPERADMIN caller, so the UI can tell "you may not
+      // see this" apart from "this user has no keys" — two very different answers to
+      // show an administrator.
+      apiKeys,
       subscriptions, mrrCents: Math.round(mrrCents),
       serverRepos: u.serverRepos.map((r) => ({ ...r, fingerprint: repoFingerprint({ repoId: r.id, ownerId: u.id, ...idn }) })),
       items: u.items.map((it) => ({ ...it, fingerprint: itemFingerprint({ itemId: it.id, ownerId: u.id, creatorIds: idn.creatorIds }) })),
@@ -578,6 +597,24 @@ export default async function miscRoutes(app) {
   // ── SUPERADMIN only: manage role assignments. A SUPERADMIN can't change their own
   // role here — self-demotion/self-modification only via another SUPERADMIN, so the
   // account can't be accidentally locked out of its own management screen. ──
+  // Revoking someone else's key is a SUPERADMIN action: it takes away access, from an
+  // account that is not yours, without the owner doing anything. Scoped by userId as
+  // well as key id so a mistyped id cannot reach into another account, and idempotent
+  // — revoking an already-revoked key changes nothing and still answers ok, because
+  // the caller's intent is already satisfied.
+  app.post('/admin/users/:id/api-keys/:keyId/revoke', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
+    const p = await db();
+    const r = await p.apiKey.updateMany({
+      where: { id: req.params.keyId, userId: req.params.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    if (!r.count) {
+      const exists = await p.apiKey.findFirst({ where: { id: req.params.keyId, userId: req.params.id }, select: { id: true } });
+      if (!exists) return reply.code(404).send({ error: 'not_found' });
+    }
+    return { ok: true };
+  });
+
   app.put('/admin/users/:id/role', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
     const b = z.object({ role: z.enum(['USER', 'MOD', 'ADMIN', 'SUPERADMIN']) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });

@@ -115,6 +115,36 @@ export default async function apiKeyRoutes(app) {
     return { user, scopes: req.apiKey.scopes };
   });
 
+  // Notifications already existed at GET /me/notifications, but behind requireRole()
+  // — a browser session. A desktop app has no session to present, which is the only
+  // reason BMM could not show them. Same rows, same ownership check, reachable with
+  // a scoped key.
+  //
+  // `since` makes this pollable without re-reading the whole list every few minutes:
+  // the caller sends the newest createdAt it already has and gets only what arrived
+  // after. Without it a poller either re-downloads a hundred rows forever or invents
+  // its own de-duplication, and inventing it per client is how two clients disagree
+  // about what is unread.
+  app.get('/v1/notifications', { preHandler: apiAuth('notifications:read'), ...RL_READ }, async (req) => {
+    const p = await db();
+    const where = { userId: req.user.uid };
+    const since = req.query?.since ? new Date(String(req.query.since)) : null;
+    // An unparseable date must not silently become "everything since 1970" — that is
+    // the shape of a poller that quietly re-sends the user's whole history.
+    if (since && !Number.isNaN(since.getTime())) where.createdAt = { gt: since };
+    const take = Math.min(Math.max(parseInt(req.query?.limit, 10) || 50, 1), 100);
+    const notifications = await p.notification.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take,
+      // bodyFr rides along rather than being resolved here: the server does not know
+      // which language BMM is running in, and picking one would make the row wrong for
+      // a user who switches. The client already has that answer.
+      select: { id: true, kind: true, body: true, bodyFr: true, readAt: true, createdAt: true },
+    });
+    return { notifications };
+  });
+
   app.patch('/v1/account', { preHandler: apiAuth('account:write'), ...RL }, async (req, reply) => {
     const b = req.body || {};
     const data = {};

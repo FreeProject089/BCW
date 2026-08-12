@@ -388,6 +388,7 @@ export const API_SCOPES = Object.freeze({
   'repos:read':    'List your repos and read their file lists and change history.',
   'catalog:read':  'Read published catalog items and their change history.',
   'users:read':    'Look up public profiles — exactly what a signed-out visitor sees.',
+  'notifications:read': 'Read your notifications. This is what lets BMM show them in its notification centre.',
 });
 
 /** True if the key carries `scope`. A key with no scopes is allowed nothing. */
