@@ -30,6 +30,8 @@ export default function Profile() {
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [pwBusy, setPwBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  // The one-time notifications key minted by the link, if the server sent one.
+  const [notifKey, setNotifKey] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -576,7 +578,14 @@ function CreatorLinks() {
   const link = async () => {
     if (!code.trim()) return;
     setBusy(true); setMsg('');
-    try { await api.post('/me/creator-links', { code: code.trim() }); setCode(''); setMsg('linked'); load(); setTimeout(() => setMsg(''), 2500); }
+    try {
+      const r = await api.post('/me/creator-links', { code: code.trim() });
+      setCode(''); setMsg('linked'); load(); setTimeout(() => setMsg(''), 2500);
+      // Shown ONCE. The server keeps only the hash, so this response cannot be
+      // reproduced — if it is not copied now the key is gone and a new one has to be
+      // made by hand. That is why it gets its own panel instead of a toast.
+      if (r?.notifKey) setNotifKey(r.notifKey);
+    }
     catch (x) { setMsg(x.data?.error === 'already_linked' ? 'taken' : x.data?.error === 'invalid_or_expired' ? 'bad' : 'error'); }
     finally { setBusy(false); }
   };
@@ -618,6 +627,20 @@ function CreatorLinks() {
         <Button variant="primary" disabled={busy} onClick={link}>{busy ? <Spinner /> : t('cl.link', 'Link')}</Button>
       </div>
       {msg === 'linked' && <div className="text-sm text-success mt-2 flex items-center gap-1"><Check size={14} /> {t('cl.ok', 'Creator id linked.')}</div>}
+      {/* The one-time notifications key. Deliberately loud and deliberately sticky —
+          it has no dismiss timer, because a secret that scrolls away on its own is a
+          secret the user loses. It disappears when they say they have it. */}
+      {notifKey && (
+        <div className="mt-3 p-3 rounded-xl border border-[var(--primary-2)] bg-[var(--surface-2)] space-y-2">
+          <div className="text-sm font-semibold flex items-center gap-1.5"><KeyRound size={14} /> {t('cl.keyTitle', 'Your BMM notifications key')}</div>
+          <div className="text-xs text-[var(--faint)] leading-relaxed">{t('cl.keyDesc', 'Paste this into BMM under Settings → Identity & API to see your BetterCommunity notifications there. It is shown once and cannot be recovered — only revoked and replaced.')}</div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 min-w-0 truncate text-xs font-mono px-2 py-1.5 rounded-lg bg-[var(--surface-1)]">{notifKey}</code>
+            <Button size="sm" onClick={() => { copyText(notifKey); toast.success(t('cl.keyCopied', 'Key copied.')); }}><Copy size={13} /> {t('common.copy', 'Copy')}</Button>
+          </div>
+          <Button size="sm" variant="ghost" onClick={() => setNotifKey('')}>{t('cl.keyDone', 'I have saved it')}</Button>
+        </div>
+      )}
       {msg === 'taken' && <div className="text-sm text-error mt-2">{t('cl.taken', 'That creator id is already linked to another account.')}</div>}
       {msg === 'bad' && <div className="text-sm text-error mt-2">{t('cl.bad', 'Invalid or expired code.')}</div>}
       {msg === 'locked' && <div className="text-sm text-error mt-2">{t('cl.lockederr', "Locked — can't unlink within 2 weeks of linking.")}</div>}

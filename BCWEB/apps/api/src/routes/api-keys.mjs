@@ -17,9 +17,12 @@ import { findUserIdByBcId } from '../lib/repofingerprint.mjs';
 const looksLikeExplicitBcId = (s) => /^bc[uri][-\s]?[a-z0-9]{4}[-\s]?[a-z0-9]{4}$/i.test(String(s || '').trim());
 
 // 32 random bytes, base64url — 43 characters after the prefix.
-const genKey = () => 'bck_' + crypto.randomBytes(32).toString('base64url');
+// Exported so the account-link flow can mint a key without a second generator.
+// Two implementations of "make a credential" is how one of them quietly ends up
+// with less entropy than the other and nobody notices until it matters.
+export const genKey = () => 'bck_' + crypto.randomBytes(32).toString('base64url');
 // Enough of the secret to tell two keys apart in a list, far too little to use.
-const prefixOf = (k) => k.slice(0, 12);
+export const prefixOf = (k) => k.slice(0, 12);
 
 const RL = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
 // The read endpoints are what a sync script hammers; the limit is per key-holder's IP.

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, notify } from '../lib/lib.mjs';
+import { db, requireRole, notify, hashApiKey } from '../lib/lib.mjs';
+import { genKey, prefixOf } from './api-keys.mjs';
 
 // Human-friendly pairing code (no ambiguous chars): e.g. "K7P3-9QMX".
 function genCode() {
@@ -127,7 +128,45 @@ export default async function linkRoutes(app) {
     } });
     await p.linkCode.delete({ where: { id: pending.id } }).catch(() => {});
     await notify(p, req.user.uid, 'creator_linked', `Creator id "${link.creatorId}" is now linked to your account.`);
-    return { link: { id: link.id, creatorId: link.creatorId, displayName: link.displayName, linkedAt: link.linkedAt, unlinkableAt: link.unlinkableAt, locked: true } };
+
+    // Mint a read-only notifications key and hand it back ONCE, here.
+    //
+    // BMM has to present a credential to read this account's notifications, and the
+    // creator id is not one — it is an identifier the user deliberately hands to repo
+    // owners for whitelisting, so anything it unlocked would be unlocked for them too.
+    // A key is the right shape; making the user go and create one by hand right after
+    // they finished linking is a second chore for the same intent.
+    //
+    // Returned in THIS response on purpose. This route is authenticated and answers
+    // the account owner's own browser session, so the secret goes nowhere the owner is
+    // not already. Passing it through the unauthenticated /link/status poll instead
+    // would have handed it to everyone holding the creator id — precisely the people
+    // it must be kept from.
+    //
+    // Non-fatal: if key creation fails the link still succeeded, and the user can
+    // create a key by hand. Losing an account link over a convenience would be a bad
+    // trade, so this cannot throw out of the handler.
+    let notifKey = null;
+    try {
+      const live = await p.apiKey.count({ where: { userId: req.user.uid, revokedAt: null } });
+      if (live < 20) {
+        const secret = genKey();
+        await p.apiKey.create({ data: {
+          userId: req.user.uid,
+          label: 'BMM notifications',
+          prefix: prefixOf(secret),
+          hash: hashApiKey(secret),
+          scopes: ['notifications:read'],
+        } });
+        notifKey = secret;
+      }
+    } catch { /* the link is what mattered */ }
+
+    return {
+      link: { id: link.id, creatorId: link.creatorId, displayName: link.displayName, linkedAt: link.linkedAt, unlinkableAt: link.unlinkableAt, locked: true },
+      // Shown once and never retrievable again — the hash is all the server keeps.
+      notifKey,
+    };
   });
 
   app.delete('/me/creator-links/:id', { preHandler: requireRole() }, async (req, reply) => {
