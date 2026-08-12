@@ -169,6 +169,34 @@ export default async function linkRoutes(app) {
     };
   });
 
+  // A notifications key for an account that is ALREADY linked.
+  //
+  // Minting one at link time only helps people who link from now on. Everyone already
+  // linked would have had to create a key by hand — or unlink and relink, which the
+  // two-week `unlinkableAt` lock makes impossible anyway. A feature that only works
+  // for new users is half a feature.
+  //
+  // Deliberately not idempotent in the "return the same key" sense: the server keeps
+  // only the hash, so an existing key cannot be shown again. Asking again mints a new
+  // one and the old is left alone — revoking it is the owner's call, and silently
+  // killing a key that something else might be using is not a decision to make on
+  // their behalf.
+  app.post('/me/notifications-key', { preHandler: requireRole(), config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const p = await db();
+    const live = await p.apiKey.count({ where: { userId: req.user.uid, revokedAt: null } });
+    if (live >= 20) return reply.code(409).send({ error: 'too_many_keys', max: 20 });
+    const secret = genKey();
+    await p.apiKey.create({ data: {
+      userId: req.user.uid,
+      label: 'BMM notifications',
+      prefix: prefixOf(secret),
+      hash: hashApiKey(secret),
+      scopes: ['notifications:read'],
+    } });
+    // Shown once; the hash is all that is kept.
+    return { secret };
+  });
+
   app.delete('/me/creator-links/:id', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
     const link = await p.creatorLink.findUnique({ where: { id: req.params.id } });

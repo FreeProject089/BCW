@@ -627,6 +627,25 @@ function CreatorLinks() {
         <Button variant="primary" disabled={busy} onClick={link}>{busy ? <Spinner /> : t('cl.link', 'Link')}</Button>
       </div>
       {msg === 'linked' && <div className="text-sm text-success mt-2 flex items-center gap-1"><Check size={14} /> {t('cl.ok', 'Creator id linked.')}</div>}
+      {/* Already linked? Then the key minted at link time never happened for you, and
+          unlinking to trigger it is blocked for two weeks. One button, same panel. */}
+      {links.length > 0 && !notifKey && (
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          <Button size="sm" variant="ghost" disabled={busy} onClick={async () => {
+            setBusy(true);
+            try {
+              const r = await api.post('/me/notifications-key');
+              if (r?.secret) setNotifKey(r.secret);
+            } catch (x) {
+              toast.error(x?.data?.error === 'too_many_keys'
+                ? t('cl.keyTooMany', 'You already have 20 active keys — revoke one first.')
+                : t('common.failed', 'Failed.'));
+            } finally { setBusy(false); }
+          }}><KeyRound size={13} /> {t('cl.keyMake', 'Get a BMM notifications key')}</Button>
+          <span className="text-xs text-[var(--faint)]">{t('cl.keyMakeHint', 'For BMM to show your notifications. Creates a new read-only key.')}</span>
+        </div>
+      )}
+
       {/* The one-time notifications key. Deliberately loud and deliberately sticky —
           it has no dismiss timer, because a secret that scrolls away on its own is a
           secret the user loses. It disappears when they say they have it. */}
