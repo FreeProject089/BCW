@@ -750,6 +750,13 @@ const DICT = {
     'ud.notfound': 'Introuvable', 'ud.membersince': 'Membre depuis {d}', 'ud.bccopied': 'Id BC unique copié.',
     'ud.bcidtip': 'Id BC unique — recherchable dans la recherche d’utilisateurs', 'ud.creatorids': 'Ids créateur liés',
     'ud.nocreator': 'Aucun id créateur lié.', 'ud.linked': 'lié le {d}', 'ud.nodiscord': 'Aucun Discord lié.',
+    'ud.apikeys': 'Clés d’API', 'ud.nokeys': 'Aucune clé d’API.',
+    'ud.keyNoLabel': 'Clé sans nom', 'ud.keyNoScope': 'aucune portée',
+    'ud.keyRevoked': 'révoquée', 'ud.keyExpired': 'expirée',
+    'ud.keyRevoke': 'Révoquer', 'ud.keyRevoked2': 'Clé révoquée.',
+    'ud.keyRevokeT': 'Révoquer cette clé ?',
+    'ud.keyRevokeB': 'Tout ce qui l’utilise cesse de fonctionner immédiatement. C’est irréversible — le propriétaire devra en créer une nouvelle.',
+    'ud.keyUsed': 'utilisée le {d}', 'ud.keyUnused': 'jamais utilisée',
     'ud.payments': 'Paiements', 'ud.nopayments': 'Aucun paiement — forfait gratuit uniquement.', 'ud.hosted': 'Dépôts hébergés',
     'ud.none': 'Aucun.', 'ud.listed': 'Dépôts listés', 'ud.verified': 'vérifié', 'ud.catalogitems': 'Éléments de catalogue',
 

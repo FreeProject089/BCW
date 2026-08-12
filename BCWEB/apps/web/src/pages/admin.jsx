@@ -314,7 +314,7 @@ const OFFICIAL_CATALOGS = [
 
 // Admin: quickly publish an OFFICIAL catalog entry for BMM or BSM.
 function AdminCatalogCreator() {
-  const toast = useToast(); const { t } = useI18n();
+  const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
   const [f, setF] = useState({ name: '', version: '1.0.0', description: '', tags: '', url: '' });
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -2926,6 +2926,51 @@ function UserDetailModal({ id, onClose }) {
                   </div>
                 );
               })}</div>
+            </div>
+          )}
+
+          {/* API keys. The endpoint returns null for a non-SUPERADMIN caller and [] for a
+              SUPERADMIN looking at an account with none — two different facts, so the
+              section renders only when it is actually allowed to say something. Hiding
+              it for a MOD is better than showing an empty list that reads as "this user
+              has no keys" when the truth is "you may not see them". */}
+          {u.apiKeys && (
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><KeyRound size={12} /> {t('ud.apikeys', 'API keys')} ({u.apiKeys.length})</div>
+              {u.apiKeys.length ? <div className="space-y-1 max-h-52 overflow-auto pr-1">{u.apiKeys.map((k) => {
+                // A key is dead if it was revoked OR its expiry has passed. Showing only
+                // the revoked ones as inactive would leave an expired key looking live,
+                // and an admin would revoke something that already stopped working.
+                const expired = k.expiresAt && new Date(k.expiresAt) < new Date();
+                const dead = !!k.revokedAt || expired;
+                return (
+                  <div key={k.id} className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)] ${dead ? 'opacity-55' : ''}`}>
+                    <KeyRound size={13} className={dead ? 'text-[var(--faint)] shrink-0' : 'text-[var(--primary-2)] shrink-0'} />
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate">{k.label || <span className="text-[var(--faint)]">{t('ud.keyNoLabel', 'Untitled key')}</span>}</div>
+                      {/* The prefix, never the key. It is stored in clear precisely so two
+                          keys can be told apart without either being usable. */}
+                      <div className="text-[11px] text-[var(--faint)] font-mono truncate">{k.prefix}… · {(k.scopes || []).join(', ') || t('ud.keyNoScope', 'no scopes')}</div>
+                    </div>
+                    {k.revokedAt ? <Badge>{t('ud.keyRevoked', 'revoked')}</Badge>
+                      : expired ? <Badge>{t('ud.keyExpired', 'expired')}</Badge>
+                      : <Button size="sm" variant="ghost" onClick={async () => {
+                          if (!await dialog.confirm({
+                            title: t('ud.keyRevokeT', 'Revoke this key?'),
+                            message: t('ud.keyRevokeB', 'Anything using it stops working immediately. This cannot be undone — a new key has to be created by the owner.'),
+                            okLabel: t('ud.keyRevoke', 'Revoke'),
+                            danger: true,
+                          })) return;
+                          try {
+                            await api.post(`/admin/users/${u.id}/api-keys/${k.id}/revoke`);
+                            toast.success(t('ud.keyRevoked2', 'Key revoked.'));
+                            reload();
+                          } catch (e) { toast.error(String(e?.message || e)); }
+                        }}><Ban size={13} /> {t('ud.keyRevoke', 'Revoke')}</Button>}
+                    <span className="text-[11px] text-[var(--faint)] shrink-0">{k.lastUsedAt ? t('ud.keyUsed', 'used {d}').replace('{d}', fdate(k.lastUsedAt)) : t('ud.keyUnused', 'never used')}</span>
+                  </div>
+                );
+              })}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nokeys', 'No API keys.')}</div>}
             </div>
           )}
 
