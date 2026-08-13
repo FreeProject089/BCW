@@ -488,6 +488,81 @@ export default async function hostingContentRoutes(app) {
   // but a consumer that asks for the name it uploaded would have hit a 404 — the alias
   // exists so the two spellings are symmetric end to end, not just on the way in.
   // `repo.json` stays the canonical URL: it is what publish reports and what BMM asks for.
+
+// ── nginx-format directory index ─────────────────────────────────────────────
+// BMM already knows how to walk a plain HTTP file server: "Update from server" parses an
+// nginx autoindex and uses the size and date on each row to skip re-hashing files that
+// have not changed. Hosted repos could not be consumed that way — the only listing we
+// offered was a JSON manifest — so a BCWEB-hosted repo was a second-class citizen next to
+// somebody's own nginx.
+//
+// The FORMAT is the contract, and it is exact (src-tauri/src/commands/repo_autoindex.rs):
+//
+//   * one entry per LINE — the parser takes everything between </a> and the newline as
+//     that row's metadata, so two entries on one line merge into nonsense;
+//   * the href is a SINGLE path segment — anything containing "/" is skipped, and
+//     directories end with "/";
+//   * the size is the LAST bare integer on the line. A directory must therefore show
+//     something that is not a number ("-"), or it would be read as a file of that size;
+//   * the date is `dd-Mon-yyyy HH:MM` in UTC with an English month. Anything else parses
+//     as "unknown", which is safe but forces a full re-hash — the very cost this exists
+//     to avoid.
+//
+// Sizes are exact byte counts on purpose: a human-readable "1.2K" compared against an
+// exact length marks every file as changed, which is worse than offering no size at all.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function nginxDate(d) {
+  const t = new Date(d);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(t.getUTCDate())}-${MONTHS[t.getUTCMonth()]}-${t.getUTCFullYear()} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
+}
+
+/// Immediate children of `prefix` ('' = root), collapsed out of the flat file list.
+function indexEntries(files, prefix) {
+  const dirs = new Map();   // name -> newest mtime among its descendants
+  const out = [];
+  for (const f of files) {
+    if (prefix && !f.path.startsWith(prefix)) continue;
+    const rest = f.path.slice(prefix.length);
+    if (!rest) continue;
+    const slash = rest.indexOf('/');
+    if (slash === -1) {
+      out.push({ name: rest, isDir: false, size: Number(f.size || 0), mtime: f.updatedAt || f.createdAt });
+    } else {
+      // A directory has no date of its own; the newest thing inside it is the honest
+      // answer, and it is what a real filesystem would report.
+      const name = rest.slice(0, slash);
+      const cur = dirs.get(name);
+      const m = f.updatedAt || f.createdAt;
+      if (!cur || new Date(m) > new Date(cur)) dirs.set(name, m);
+    }
+  }
+  for (const [name, mtime] of dirs) out.push({ name, isDir: true, size: null, mtime });
+  // Directories first, then files, each case-insensitively — the order a directory index
+  // is normally read in.
+  out.sort((a, b) => (b.isDir - a.isDir) || a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+  return out;
+}
+
+const htmlEscape = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function renderAutoindex(displayPath, entries) {
+  const rows = [
+    `<html><head><title>Index of ${htmlEscape(displayPath)}</title></head><body>`,
+    `<h1>Index of ${htmlEscape(displayPath)}</h1><hr><pre><a href="../">../</a>`,
+  ];
+  for (const e of entries) {
+    const link = e.isDir ? `${e.name}/` : e.name;
+    // Percent-encode the href (names may contain spaces) but show the readable name.
+    const href = encodeURIComponent(link).replace(/%2F/g, '/');
+    const pad = ' '.repeat(Math.max(1, 52 - link.length));
+    const size = e.isDir ? '-' : String(e.size);
+    rows.push(`<a href="${href}">${htmlEscape(link)}</a>${pad}${nginxDate(e.mtime)} ${size.padStart(19)}`);
+  }
+  rows.push('</pre><hr></body></html>');
+  return rows.join('\n');
+}
+
   const serveManifest = async (req, reply) => {
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { hostPath: `${req.params.owner}/${req.params.repo}` } });
@@ -510,8 +585,25 @@ export default async function hostingContentRoutes(app) {
     if (!repo || !repo.published) return reply.code(404).send({ error: 'not_found' });
     const [globalPolicy, ownerPolicy, identity] = await Promise.all([getGlobalAccessPolicy(p), getUserAccessPolicy(p, repo.ownerId), resolveIdentity(p, req)]);
     if (!sandboxGate(repo, req, reply, [globalPolicy, ownerPolicy], identity)) return; // banned / not whitelisted
-    const file = repo.files.find((f) => f.path === req.params['*']);
-    if (!file) return reply.code(404).send({ error: 'not_found' });
+    // A directory path lists; a file path downloads. The empty path and anything ending
+    // in "/" are directories by definition; a bare name that matches no file but does
+    // prefix some is one too, and gets nginx's own 301 to the trailing-slash form so the
+    // relative hrefs in the listing resolve against the right base.
+    const rel = req.params['*'] || '';
+    const file = repo.files.find((f) => f.path === rel);
+    if (!file) {
+      const prefix = rel === '' || rel.endsWith('/') ? rel : `${rel}/`;
+      const isDir = rel === '' || repo.files.some((f) => f.path.startsWith(prefix));
+      if (!isDir) return reply.code(404).send({ error: 'not_found' });
+      if (rel !== '' && !rel.endsWith('/')) {
+        return reply.redirect(301, `/hosting/${repo.hostPath}/files/${rel}/`);
+      }
+      const entries = indexEntries(repo.files, prefix);
+      const body = renderAutoindex(`/hosting/${repo.hostPath}/files/${prefix}`, entries);
+      logAccess(p, repo.id, req, prefix || '/', 'connect', identity); // walked the listing
+      const ccIdx = repoRestricted(repo, [globalPolicy, ownerPolicy]) ? 'private, no-store' : 'public, max-age=60';
+      return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', ccIdx).send(body);
+    }
     logAccess(p, repo.id, req, file.path, 'download', identity); // consumer downloaded a file
     try {
       const { body } = await getObject(file.key);
