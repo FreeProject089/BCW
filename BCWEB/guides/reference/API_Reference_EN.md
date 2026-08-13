@@ -48,8 +48,8 @@ from the Fastify route modules in `apps/api/src/routes/`.
 | POST | `/me/2fa/enable` | user | Confirm + enable 2FA (returns recovery codes). |
 | POST | `/me/2fa/disable` | user | Disable 2FA (password + code). |
 | GET | `/me/sessions` | user | Signed-in devices for this account. Returns `{ sessions[], currentTracked }`; each entry carries `current`, `ip`, `device`, `browser`, `os`, `country`, `region`, `city`, `createdAt`, `lastSeenAt`. Live rows only, newest activity first, capped at 100. `currentTracked:false` means the caller's own token predates session tracking and so is absent from the list. |
-| DELETE | `/me/sessions/:id` | user | Revoke one device. Scoped by account as well as id, so an id belonging to someone else returns 404 rather than acting. Idempotent. Revoking your own session also clears the cookie and answers `{ ok, self:true }`. |
-| DELETE | `/me/sessions` | user | Revoke every OTHER device, keeping the caller's. Returns `{ ok, revoked }`. |
+| DELETE | `/me/sessions/:id` | user + re-auth | Revoke one device. **Body: `{ password, code }`** — the password is required, and `code` is a TOTP when the account has 2FA; an OAuth-only account with no password and no 2FA passes on the session alone. Scoped by account as well as id, so an id belonging to someone else returns 404 rather than acting. Idempotent. Revoking your own session also clears the cookie and answers `{ ok, self:true }`. Refusals are `403 wrong_password` / `403 bad_code`. |
+| DELETE | `/me/sessions` | user + re-auth | Revoke every OTHER device, keeping the caller's. Same `{ password, code }` body and refusals as above. Returns `{ ok, revoked }`. |
 
 ## 2. OAuth login (`oauth.mjs`)
 | Method | Path | Auth | Purpose |
@@ -229,6 +229,7 @@ and sends are admin-triggered only (no auto-send on publish).
 |---|---|---|---|
 | GET | `/admin/users` · `/admin/users/:id` | admin | User search (id/name/email/creator id/Discord/**BC id**) + detail; both include the account moderation state. |
 | PUT | `/admin/users/:id/role` | superadmin | Reassign role. |
+| DELETE | `/admin/users/:id/sessions/:sid` | superadmin | Sign one of a user's devices out. Scoped by userId as well as session id; idempotent; effective on that device's next request. The list itself comes back from `/admin/users/:id` as `sessions`, which is `null` (not `[]`) for anyone below SUPERADMIN — each row holds the sign-in IP and its approximate location. |
 | POST | `/admin/users/:id/moderate` | admin | **Suspend / ban / reactivate** an account (`action`, optional `durationHours` = temporary else permanent, `reason`). Signs the user out within ~15s, blocks login with the reason + remaining time, emails + notifies them. Staff/self are protected. |
 | GET | `/admin/settings` · PUT `/admin/settings/:key` | admin | Pricing/hosting knobs. |
 | GET | `/admin/storage` · `/admin/billing/users` | admin | Storage: per-area object usage **+ a grand total across all tiers** (object storage, DB, backups, telemetry) each labelled local/remote; + paying/free users. |

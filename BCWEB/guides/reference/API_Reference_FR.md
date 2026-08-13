@@ -51,8 +51,8 @@ les modules de routes Fastify dans `apps/api/src/routes/`.
 | POST | `/me/2fa/enable` | user | Confirmer + activer la 2FA (renvoie les codes de récupération). |
 | POST | `/me/2fa/disable` | user | Désactiver la 2FA (mot de passe + code). |
 | GET | `/me/sessions` | user | Appareils connectés à ce compte. Renvoie `{ sessions[], currentTracked }` ; chaque entrée porte `current`, `ip`, `device`, `browser`, `os`, `country`, `region`, `city`, `createdAt`, `lastSeenAt`. Sessions vivantes uniquement, activité la plus récente d'abord, plafonné à 100. `currentTracked:false` signifie que le jeton de l'appelant est antérieur au suivi des sessions et n'apparaît donc pas dans la liste. |
-| DELETE | `/me/sessions/:id` | user | Révoquer un appareil. Filtré par compte autant que par id : un id appartenant à autrui renvoie 404 au lieu d'agir. Idempotent. Révoquer sa propre session efface aussi le cookie et répond `{ ok, self:true }`. |
-| DELETE | `/me/sessions` | user | Révoquer tous les AUTRES appareils, en gardant celui de l'appelant. Renvoie `{ ok, revoked }`. |
+| DELETE | `/me/sessions/:id` | user + ré-auth | Révoquer un appareil. **Corps : `{ password, code }`** — le mot de passe est requis, et `code` est un TOTP si le compte a la 2FA ; un compte OAuth sans mot de passe ni 2FA passe sur la seule session. Filtré par compte autant que par id : un id appartenant à autrui renvoie 404 au lieu d'agir. Idempotent. Révoquer sa propre session efface aussi le cookie et répond `{ ok, self:true }`. Refus : `403 wrong_password` / `403 bad_code`. |
+| DELETE | `/me/sessions` | user + ré-auth | Révoquer tous les AUTRES appareils, en gardant celui de l'appelant. Même corps `{ password, code }` et mêmes refus que ci-dessus. Renvoie `{ ok, revoked }`. |
 
 ## 2. Connexion OAuth (`oauth.mjs`)
 | Méthode | Chemin | Auth | But |
@@ -235,6 +235,7 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 |---|---|---|---|
 | GET | `/admin/users` · `/admin/users/:id` | admin | Recherche utilisateur (id/nom/e-mail/creator id/Discord/**BC id**) + détail ; les deux incluent l'état de modération du compte. |
 | PUT | `/admin/users/:id/role` | superadmin | Réassigner le rôle. |
+| DELETE | `/admin/users/:id/sessions/:sid` | superadmin | Déconnecter un appareil d'un utilisateur. Filtré par userId autant que par id de session ; idempotent ; effectif à la requête suivante de cet appareil. La liste elle-même revient dans `/admin/users/:id` sous `sessions`, qui vaut `null` (et non `[]`) pour tout rang inférieur à SUPERADMIN — chaque ligne porte l'IP de connexion et sa localisation approximative. |
 | POST | `/admin/users/:id/moderate` | admin | **Suspendre / bannir / réactiver** un compte (`action`, `durationHours` optionnel = temporaire sinon permanent, `reason`). Déconnecte l'utilisateur en ~15s, bloque le login avec la raison + temps restant, e-maile + notifie. Staff/soi-même protégés. |
 | GET | `/admin/settings` · PUT `/admin/settings/:key` | admin | Boutons de prix/hébergement. |
 | GET | `/admin/storage` · `/admin/billing/users` | admin | Stockage : usage objet par zone **+ un total général sur tous les paliers** (stockage objet, BD, backups, télémétrie) chacun étiqueté local/distant ; + utilisateurs payants/gratuits. |
