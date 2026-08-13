@@ -35,10 +35,54 @@ async function logLogin(p, { email, ip, success, reason, userId }) {
   try { await p.loginAttempt.create({ data: { email: String(email || '').slice(0, 160), ip: String(ip || '').slice(0, 64), success, reason: reason || null, userId: userId || null } }); } catch { /* non-fatal */ }
 }
 
+// Passwords that a credential-stuffing list tries in its first few hundred guesses.
+// Eight characters is the floor the schema enforces, and "password" is eight
+// characters — argon2id makes each guess expensive, but not expensive enough to
+// matter when the guess is the first one anybody makes.
+//
+// A blocklist rather than composition rules on purpose. "One uppercase, one digit,
+// one symbol" mostly produces `Password1!`, which is on every list too; refusing the
+// handful of passwords that are actually tried costs a real user nothing, because
+// almost nobody who picks a genuine password lands in this set.
+//
+// Normalised before comparison, so `Passw0rd`, `PASSWORD` and `p@ssword` are all
+// caught by the same entry — leetspeak substitution is not a defence, it is the
+// first thing a cracking list expands.
+const WEAK_PASSWORDS = new Set([
+  'password', 'passwort', 'motdepasse', 'azerty', 'qwerty', 'qwertyuiop', 'azertyuiop',
+  '12345678', '123456789', '1234567890', '11111111', '00000000', '87654321',
+  'iloveyou', 'sunshine', 'princess', 'football', 'baseball', 'superman', 'batman',
+  'welcome', 'letmein', 'monkey', 'dragon', 'master', 'shadow', 'trustno1',
+  'abc12345', 'a1b2c3d4', 'qazwsxedc', 'zaq12wsx', 'admin123', 'root1234',
+  'bettermodsmanager', 'bettercommunity', 'minecraft', 'starwars', 'pokemon',
+]);
+
+function isWeakPassword(pw) {
+  const n = String(pw).toLowerCase()
+    .replace(/[@4]/g, 'a').replace(/[0]/g, 'o').replace(/[1!|]/g, 'l')
+    .replace(/[3]/g, 'e').replace(/[$5]/g, 's').replace(/[7]/g, 't');
+  if (WEAK_PASSWORDS.has(n)) return true;
+  // A single repeated character, and simple runs, whatever the length.
+  if (/^(.)+$/.test(n)) return true;
+  if ('abcdefghijklmnopqrstuvwxyz'.includes(n) || '01234567890'.includes(n)) return true;
+  return false;
+}
+
+// The weak-password rule belongs on the paths that SET a password, never on the one
+// that checks it. zod's .pick() carries a .refine() across, so putting the rule on a
+// shared schema and reusing it for login would refuse the credentials of every
+// existing account whose password happens to be on the list — locking them out of
+// their own account with no way back. Two schemas, and the difference is the point.
 const creds = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(200),
   displayName: z.string().min(2).max(40).optional(),
+});
+
+/** Registration and password reset: the same shape, plus the weak-password refusal. */
+const newCreds = creds.extend({
+  password: z.string().min(8).max(200)
+    .refine((pw) => !isWeakPassword(pw), { message: 'weak_password' }),
 });
 
 // Stricter rate limit on credential endpoints (brute-force protection).
@@ -77,7 +121,7 @@ export default async function authRoutes(app) {
 
   app.post('/auth/register', authLimit, async (req, reply) => {
     if (!powVerify(req.body?.pow)) return reply.code(400).send({ error: 'pow_required' });
-    const parsed = creds.safeParse(req.body);
+    const parsed = newCreds.safeParse(req.body);  // registration: weak passwords refused
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const { email, password, displayName } = parsed.data;
     const p = await db();
@@ -137,7 +181,7 @@ export default async function authRoutes(app) {
 
   // Complete a reset with the token + a new password.
   app.post('/auth/reset/confirm', authLimit, async (req, reply) => {
-    const b = z.object({ token: z.string().min(10).max(200), password: z.string().min(8).max(200) }).safeParse(req.body);
+    const b = z.object({ token: z.string().min(10).max(200), password: z.string().min(8).max(200).refine((pw) => !isWeakPassword(pw), { message: 'weak_password' }) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const pr = await p.passwordReset.findUnique({ where: { tokenHash: sha256(b.data.token) } });
