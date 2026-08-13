@@ -8,7 +8,7 @@ import { Button, useToast, Modal } from './ui/ui.jsx';
 import { Badges, BadgeIcon } from './ui/Badges.jsx';
 import { ThemeToggle } from './ui/theme.jsx';
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
-import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon } from './ui/brand.jsx';
+import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon, APP_LOGO } from './ui/brand.jsx';
 import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
 import { trackPageview, initVitals, initInteractions, initErrors } from './lib/analytics.js';
 import { loadGtmIfConsented } from './lib/gtm.js';
@@ -134,9 +134,21 @@ function deriveDownbar(items) {
 // Real app icon when /icons/<app>.png exists, otherwise any Lucide icon or Simple Icons
 // brand (via IconGlyph). `item.icon` may be a lucide component (hardcoded NAV) or a string
 // name / "simple:<slug>" (admin-configured nav).
+// A project's own logo, inferred from where the item points. The hardcoded NAV carries an
+// explicit `img`, but the topbar is admin-configurable and the DB copy of it only stores
+// an icon NAME — so a configured "Projects" dropdown fell back to a generic Lucide glyph
+// and BMM, BSM and BetterInstaller all lost their branding. Deriving it from `to` fixes
+// every existing config without anyone re-editing it, and a future entry pointing at a
+// project gets its logo for free.
+function projectLogo(to) {
+  const m = /^\/p\/([a-z0-9-]+)/i.exec(String(to || ''));
+  return m ? APP_LOGO[m[1].toLowerCase()] : undefined;
+}
+
 function NavIcon({ item, size = 15 }) {
-  const [ok, setOk] = useState(!!item.img);
-  if (item.img && ok) return <img src={item.img} alt="" width={size + 3} height={size + 3} className="rounded-[4px] object-contain" onError={() => setOk(false)} />;
+  const src = item.img || projectLogo(item.to);
+  const [ok, setOk] = useState(!!src);
+  if (src && ok) return <img src={src} alt="" width={size + 3} height={size + 3} className="rounded-[4px] object-contain" onError={() => setOk(false)} />;
   if (typeof item.icon !== 'string') { const I = item.icon || Boxes; return <I size={size} />; }
   return <IconGlyph name={navIconName(item.icon)} size={size} />;
 }
