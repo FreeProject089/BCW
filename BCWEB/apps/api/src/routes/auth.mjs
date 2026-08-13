@@ -384,6 +384,30 @@ export default async function authRoutes(app) {
     lastSeenAt: row.lastSeenAt,
   });
 
+  // Signing a device out is a security action taken BECAUSE something may be wrong, so it
+  // is re-authenticated rather than trusted to the session cookie: a stolen cookie must not
+  // be able to evict the real owner and keep the account to itself. Password, plus a TOTP
+  // code whenever the account has 2FA — the same pair that protects signing in.
+  //
+  // An OAuth-only account has no password to check (passwordHash is null). It is not let
+  // through on nothing: 2FA still applies when enabled, and when there is neither, the
+  // session cookie is genuinely all the account has, so requiring more would lock the
+  // owner out of a screen that exists to protect them.
+  const reauth = async (p, uid, body) => {
+    const b = z.object({ password: z.string().default(''), code: z.string().default('') }).safeParse(body || {});
+    if (!b.success) return 'invalid_input';
+    const user = await p.user.findUnique({
+      where: { id: uid },
+      select: { passwordHash: true, totpEnabled: true, totpSecret: true },
+    });
+    if (!user) return 'unauthenticated';
+    if (user.passwordHash && !(await argon2.verify(user.passwordHash, b.data.password))) return 'wrong_password';
+    if (user.totpEnabled) {
+      if (!user.totpSecret || !verifyTotp(user.totpSecret, b.data.code.replace(/\s+/g, ''))) return 'bad_code';
+    }
+    return null;
+  };
+
   app.get('/me/sessions', { preHandler: requireRole() }, async (req) => {
     const p = await db();
     const rows = await p.session.findMany({
@@ -409,6 +433,8 @@ export default async function authRoutes(app) {
     const id = String(req.params.id || '');
     if (!id) return reply.code(400).send({ error: 'bad_request' });
     const p = await db();
+    const bad = await reauth(p, req.user.uid, req.body);
+    if (bad) return reply.code(bad === 'unauthenticated' ? 401 : 403).send({ error: bad });
     const r = await p.session.updateMany({
       where: { id, userId: req.user.uid, revokedAt: null },
       data: { revokedAt: new Date() },
@@ -422,8 +448,10 @@ export default async function authRoutes(app) {
 
   // "Sign out everywhere else" — everything except the device asking. Keeping the current
   // one is what makes this safe to press: the user is not locked out by their own click.
-  app.delete('/me/sessions', { preHandler: requireRole() }, async (req) => {
+  app.delete('/me/sessions', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
+    const bad = await reauth(p, req.user.uid, req.body);
+    if (bad) return reply.code(bad === 'unauthenticated' ? 401 : 403).send({ error: bad });
     const r = await p.session.updateMany({
       where: { userId: req.user.uid, revokedAt: null, ...(req.user.sid ? { NOT: { id: req.user.sid } } : {}) },
       data: { revokedAt: new Date() },

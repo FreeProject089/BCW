@@ -2935,6 +2935,38 @@ function UserDetailModal({ id, onClose }) {
               section renders only when it is actually allowed to say something. Hiding
               it for a MOD is better than showing an empty list that reads as "this user
               has no keys" when the truth is "you may not see them". */}
+          {/* Signed-in devices. Present only for a SUPERADMIN — the API returns null
+              otherwise, which is why this is a truthiness check and not `.length`: an
+              empty array means "none", null means "you may not see this". */}
+          {u.sessions && (
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Monitor size={12} /> {t('ud.sessions', 'Signed-in devices')} ({u.sessions.length})</div>
+              {u.sessions.length ? <div className="space-y-1 max-h-52 overflow-auto pr-1">{u.sessions.map((sn) => (
+                <div key={sn.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
+                  <Monitor size={13} className="text-[var(--primary-2)] shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate">{[sn.browser, sn.os].filter(Boolean).join(' · ') || t('ud.sessUnknown', 'Unknown device')}</div>
+                    <div className="text-[11px] text-[var(--faint)] font-mono truncate">
+                      {sn.ip || '—'}{[sn.city, sn.region, sn.country].filter(Boolean).length ? ' · ' + [sn.city, sn.region, sn.country].filter(Boolean).join(', ') : ''}
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-[var(--faint)] shrink-0 text-right">
+                    {new Date(sn.lastSeenAt).toLocaleString()}
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={async () => {
+                    if (!await dialog.confirm({
+                      title: t('ud.sessRevokeT', 'Sign this device out?'),
+                      message: t('ud.sessRevokeB', 'It stops working on its next request. The user is not told, and can simply sign in again — this ends a session, it does not lock the account.'),
+                      okLabel: t('ud.sessRevoke', 'Sign out'),
+                    })) return;
+                    try { await api.del(`/admin/users/${u.id}/sessions/${sn.id}`); toast.success(t('ud.sessRevoked', 'Device signed out.')); reload(); }
+                    catch { toast.error(t('common.failed', 'Failed.')); }
+                  }}><LogOut size={13} /></Button>
+                </div>
+              ))}</div> : <div className="text-[12px] text-[var(--faint)]">{t('ud.sessNone', 'No active sessions.')}</div>}
+            </div>
+          )}
+
           {u.apiKeys && (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><KeyRound size={12} /> {t('ud.apikeys', 'API keys')} ({u.apiKeys.length})</div>

@@ -27,7 +27,10 @@ export const api = {
   post: (p, b) => req('POST', p, b),
   put: (p, b) => req('PUT', p, b),
   patch: (p, b) => req('PATCH', p, b),
-  del: (p) => req('DELETE', p),
+  // DELETE carries a body when the action must be re-authenticated (signing a device out
+  // sends the password / 2FA code). Optional, so every existing caller is unchanged: no
+  // body means no Content-Type and no payload, exactly as before.
+  del: (p, b) => req('DELETE', p, b),
 };
 
 // Upload a payload directly to object storage via a pre-signed PUT, then return

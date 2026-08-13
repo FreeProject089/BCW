@@ -314,6 +314,12 @@ function SessionsCard() {
   const { t } = useI18n(); const toast = useToast();
   const [data, setData] = useState(undefined);      // undefined = loading
   const [busy, setBusy] = useState(false);
+  // What the user asked to revoke, held until they have re-authenticated. `'others'` is
+  // the sign-out-everywhere-else action; anything else is a session id.
+  const [pending, setPending] = useState(null);
+  const [pw, setPw] = useState('');
+  const [code, setCode] = useState('');
+  const [err, setErr] = useState('');
 
   const load = () => api.get('/me/sessions')
     .then((r) => setData({ sessions: r.sessions || [], currentTracked: r.currentTracked }))
@@ -323,25 +329,32 @@ function SessionsCard() {
   // Revoking a device you do not recognise is a security action: it takes effect at once,
   // with no undo window. That is deliberately the opposite of the API-key card below --
   // an undo here would keep a possibly hostile session alive for another six seconds.
-  const revoke = async (sess) => {
-    setBusy(true);
+  // Signing a device out is re-authenticated server-side: a stolen session cookie must not
+  // be able to evict the real owner. The client's job is only to collect the password (and
+  // the TOTP code when 2FA is on) and to say precisely which one the server refused —
+  // "Failed." would leave you retyping a password that was already right.
+  const confirmRevoke = async () => {
+    setBusy(true); setErr('');
+    const body = { password: pw, code };
     try {
-      await api.del('/me/sessions/' + sess.id);
-      toast.success(t('prof.sess.revoked', 'Signed out on that device.'));
+      if (pending === 'others') {
+        const r = await api.del('/me/sessions', body);
+        toast.success(t('prof.sess.revokedOthers', 'Signed out everywhere else.') + (r.revoked ? ' (' + r.revoked + ')' : ''));
+      } else {
+        await api.del('/me/sessions/' + pending, body);
+        toast.success(t('prof.sess.revoked', 'Signed out on that device.'));
+      }
+      setPending(null); setPw(''); setCode('');
       await load();
-    } catch { toast.error(t('prof.failed', 'Failed.')); }
-    finally { setBusy(false); }
+    } catch (x) {
+      const e = x.data?.error;
+      setErr(e === 'wrong_password' ? t('prof.sess.badpw', 'Wrong password.')
+        : e === 'bad_code' ? t('prof.sess.badcode', 'Wrong 2FA code.')
+        : t('prof.failed', 'Failed.'));
+    } finally { setBusy(false); }
   };
 
-  const revokeOthers = async () => {
-    setBusy(true);
-    try {
-      const r = await api.del('/me/sessions');
-      toast.success(t('prof.sess.revokedOthers', 'Signed out everywhere else.') + (r.revoked ? ' (' + r.revoked + ')' : ''));
-      await load();
-    } catch { toast.error(t('prof.failed', 'Failed.')); }
-    finally { setBusy(false); }
-  };
+  const cancelRevoke = () => { setPending(null); setPw(''); setCode(''); setErr(''); };
 
   // Same shape as the other timeAgo helpers here (App.jsx, repo-dashboard.jsx), which
   // this codebase deliberately keeps per-page.
@@ -377,6 +390,34 @@ function SessionsCard() {
         {t('prof.sess.sub', 'Every device currently signed in to this account. If you do not recognise one, sign it out - it stops working straight away.')}
       </p>
 
+      {pending && (
+        <div className="mb-3 p-3 rounded-lg border border-[var(--primary-2)] bg-[var(--surface-2)]">
+          <div className="text-[12px] font-semibold mb-1">
+            {pending === 'others'
+              ? t('prof.sess.confirmOthers', 'Sign out every other device?')
+              : t('prof.sess.confirmOne', 'Sign this device out?')}
+          </div>
+          <p className="text-[11px] text-[var(--muted)] mb-2">
+            {t('prof.sess.confirmWhy', 'Confirm it is you: this is the screen someone would use to lock you out of your own account.')}
+          </p>
+          <div className="flex flex-col gap-2">
+            <Input type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)}
+              placeholder={t('prof.currentpw', 'Current password')} />
+            {/* Only meaningful with 2FA on; harmless and ignored otherwise, and asking is
+                cheaper than reading the account's 2FA state to decide whether to show it. */}
+            <Input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric"
+              placeholder={t('prof.sess.code', '2FA code (if enabled)')} />
+            {err && <span className="text-[11px] text-[var(--error)]">{err}</span>}
+            <div className="flex gap-2">
+              <Button size="sm" variant="primary" disabled={busy} onClick={confirmRevoke}>
+                {t('prof.sess.confirmBtn', 'Sign out')}
+              </Button>
+              <Button size="sm" disabled={busy} onClick={cancelRevoke}>{t('common.cancel', 'Cancel')}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {data === undefined ? <Spinner /> : sessions.length === 0 ? (
         <div className="text-[12px] text-[var(--faint)]">{t('prof.sess.none', 'No active sessions recorded.')}</div>
       ) : (
@@ -408,7 +449,7 @@ function SessionsCard() {
                 <div>{t('prof.sess.since', 'Since')} {new Date(sess.createdAt).toLocaleDateString()}</div>
               </div>
               {!sess.current && (
-                <Button size="sm" variant="ghost" disabled={busy} onClick={() => revoke(sess)} title={t('prof.sess.revoke', 'Sign out this device')}>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setPending(sess.id); setErr(''); }} title={t('prof.sess.revoke', 'Sign out this device')}>
                   <LogOut size={13} />
                 </Button>
               )}
@@ -420,7 +461,7 @@ function SessionsCard() {
       {/* Only worth offering when there is somewhere else to sign out of. */}
       {others > 0 && (
         <div className="pt-3 mt-3 border-t border-[var(--line)]">
-          <Button size="sm" disabled={busy} onClick={revokeOthers}>
+          <Button size="sm" disabled={busy} onClick={() => { setPending('others'); setErr(''); }}>
             <LogOut size={13} /> {t('prof.sess.revokeOthers', 'Sign out everywhere else')}
           </Button>
         </div>

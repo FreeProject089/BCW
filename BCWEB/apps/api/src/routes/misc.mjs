@@ -536,6 +536,23 @@ export default async function miscRoutes(app) {
     };
   });
 
+  // Sign one of a user's devices out. SUPERADMIN only — the same tier that may SEE the
+  // list, since being able to evict someone from their own account is at least as strong
+  // as reading where they signed in from.
+  //
+  // Scoped by userId as well as session id, so a mistyped id can only ever reach the user
+  // being looked at. updateMany makes it idempotent, and the revocation takes effect on
+  // that device's next request (every auth guard checks it), not whenever its token lapses.
+  app.delete('/admin/users/:id/sessions/:sid', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
+    const p = await db();
+    const r = await p.session.updateMany({
+      where: { id: String(req.params.sid || ''), userId: String(req.params.id || ''), revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    if (!r.count) return reply.code(404).send({ error: 'not_found' });
+    return { ok: true };
+  });
+
   app.get('/admin/users/:id', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
     const p = await db();
     const u = await p.user.findUnique({ where: { id: req.params.id }, select: {
@@ -563,6 +580,23 @@ export default async function miscRoutes(app) {
         orderBy: { createdAt: 'desc' },
       });
     }
+    // Signed-in devices, SUPERADMIN only, for the same reason as the API keys above and
+    // a sharper one: each row carries the IP a sign-in came from and the town it resolves
+    // to. That is a person's whereabouts over time, which is a different kind of fact from
+    // the moderation history a MOD is here to read. `null` rather than `[]` when not
+    // permitted, so the UI can say "not permitted" instead of "none".
+    let sessions = null;
+    if (req.user?.role === 'SUPERADMIN') {
+      sessions = await p.session.findMany({
+        where: { userId: u.id, revokedAt: null },
+        select: {
+          id: true, ip: true, device: true, browser: true, os: true,
+          country: true, region: true, city: true, createdAt: true, lastSeenAt: true,
+        },
+        orderBy: { lastSeenAt: 'desc' },
+        take: 100,
+      });
+    }
     // The account-level Unique BC id + a per-element BC id on every repo/item, all
     // folded from the same owner identity (creator ids / Discord / Ko-fi).
     const idn = (await loadOwnerIdentities(p, [u.id])).get(u.id) || { creatorIds: [], discordIds: [], kofi: false };
@@ -587,7 +621,7 @@ export default async function miscRoutes(app) {
       // null (not []) for a non-SUPERADMIN caller, so the UI can tell "you may not
       // see this" apart from "this user has no keys" — two very different answers to
       // show an administrator.
-      apiKeys,
+      apiKeys, sessions,
       subscriptions, mrrCents: Math.round(mrrCents),
       serverRepos: u.serverRepos.map((r) => ({ ...r, fingerprint: repoFingerprint({ repoId: r.id, ownerId: u.id, ...idn }) })),
       items: u.items.map((it) => ({ ...it, fingerprint: itemFingerprint({ itemId: it.id, ownerId: u.id, creatorIds: idn.creatorIds }) })),
