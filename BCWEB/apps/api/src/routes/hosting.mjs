@@ -220,7 +220,10 @@ async function affectedSubscribers(p, planId) {
 
 const money = (c) => `$${((c || 0) / 100).toFixed(2)}`;
 
-async function announcePriceChange(p, plan, fromCents, toCents, at) {
+async function announcePriceChange(p, plan, fromCents, toCents, at, applyToExisting) {
+  // Nobody is affected when the change is for new buyers only — and mailing current
+  // subscribers "your price is changing" when it is not would be worse than silence.
+  if (!applyToExisting) return 0;
   const users = await affectedSubscribers(p, plan.id);
   if (!users.length) return 0;
   const day = at.toISOString().slice(0, 10);
@@ -338,10 +341,14 @@ export default async function hostingRoutes(app) {
     // the new one is staged, and everyone paying for it is told now. Absent → the old
     // behaviour (immediate), which is right for a correction or a new plan nobody holds.
     partial.effectiveAt = z.string().datetime().nullable().optional();
+    // Grandfather or migrate. Defaults to grandfathering, which is what the payment model
+    // does on its own — the flag exists to let an admin deliberately choose otherwise,
+    // not to make the safe case something you have to remember to ask for.
+    partial.applyToExisting = z.boolean().optional();
     const b = z.object(partial).safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const { effectiveAt, ...rest } = b.data;
+    const { effectiveAt, applyToExisting, ...rest } = b.data;
     const data = { ...rest };
     const current = await p.hostingPlan.findUnique({ where: { id: req.params.id } });
     if (!current) return reply.code(404).send({ error: 'not_found' });
@@ -365,12 +372,13 @@ export default async function hostingRoutes(app) {
       data.pendingPriceCents = staged;
       data.pendingPriceAt = at;
       data.pendingNoticeAt = new Date();
-      notified = await announcePriceChange(p, { ...current, ...data }, current.priceMonthlyCents, staged, at);
+      data.pendingApplyExisting = !!applyToExisting;
+      notified = await announcePriceChange(p, { ...current, ...data }, current.priceMonthlyCents, staged, at, !!applyToExisting);
       data.pendingNoticeCount = notified;
     } else if ('priceMonthlyCents' in data) {
       // An immediate price edit cancels any announcement still pending — otherwise the
       // scheduled swap would later overwrite the value just typed, days after the fact.
-      data.pendingPriceCents = null; data.pendingPriceAt = null; data.pendingNoticeAt = null; data.pendingNoticeCount = 0;
+      data.pendingPriceCents = null; data.pendingPriceAt = null; data.pendingNoticeAt = null; data.pendingNoticeCount = 0; data.pendingApplyExisting = false;
     }
 
     const plan = await p.hostingPlan.update({ where: { id: req.params.id }, data }).catch(() => null);
@@ -394,7 +402,7 @@ export default async function hostingRoutes(app) {
     if (cur.pendingPriceCents == null) return reply.code(400).send({ error: 'no_pending_change' });
     const plan = await p.hostingPlan.update({
       where: { id: cur.id },
-      data: { pendingPriceCents: null, pendingPriceAt: null, pendingNoticeAt: null, pendingNoticeCount: 0 },
+      data: { pendingPriceCents: null, pendingPriceAt: null, pendingNoticeAt: null, pendingNoticeCount: 0, pendingApplyExisting: false },
     });
     const told = await announcePriceCancelled(p, cur).catch(() => 0);
     await logAudit(p, req.user.uid, 'hosting.price_cancelled', `${cur.name} (${told} told)`, clientIp(req));

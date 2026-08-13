@@ -23,7 +23,7 @@ import { deleteObject } from './storage.mjs';
 import { sampleAndAlert } from './monitor.mjs';
 import { runEventScheduler } from '../routes/events.mjs';
 import { sweepReports } from '../routes/reports.mjs';
-import { recomputePoolBytes } from '../routes/hosting.mjs';
+import { recomputePoolBytes, stripe } from '../routes/hosting.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
 
 const DAY_MS = 864e5;
@@ -326,21 +326,83 @@ export async function sweepDeadSessions(p, log) {
 export async function sweepScheduledPrices(p, log) {
   const due = await p.hostingPlan.findMany({
     where: { pendingPriceAt: { lte: new Date() }, pendingPriceCents: { not: null } },
-    select: { id: true, name: true, priceMonthlyCents: true, pendingPriceCents: true },
+    select: { id: true, name: true, priceMonthlyCents: true, pendingPriceCents: true, pendingApplyExisting: true },
   });
   let n = 0;
   for (const plan of due) {
+    // Existing subscribers FIRST, then the plan row. If Stripe is unreachable the plan
+    // keeps its pending change and the whole thing is retried in ten minutes — whereas
+    // clearing the staging first would leave the announcement made, the plan repriced,
+    // and the subscriptions silently untouched with nothing left to say they should not
+    // have been.
+    if (plan.pendingApplyExisting) {
+      const moved = await repriceExistingSubscribers(p, plan, log);
+      if (moved === null) { log?.warn?.(`[sweeper] ${plan.name}: could not reprice existing subscribers — leaving the change pending`); continue; }
+      log?.info?.(`[sweeper] ${plan.name}: moved ${moved} existing subscription(s) to the new price`);
+    }
     await p.hostingPlan.update({
       where: { id: plan.id },
       data: {
         priceMonthlyCents: plan.pendingPriceCents,
         pendingPriceCents: null, pendingPriceAt: null, pendingNoticeAt: null, pendingNoticeCount: 0,
+        pendingApplyExisting: false,
       },
     });
     log?.info?.(`[sweeper] ${plan.name}: announced price change applied (${plan.priceMonthlyCents} → ${plan.pendingPriceCents} cents/mo)`);
     n++;
   }
   return n;
+}
+
+/// Move every live subscription on this plan onto the new amount.
+///
+/// Each subscription is pinned to its OWN ad-hoc Price, created at its checkout — that is
+/// why a plan's price never reaches an existing customer by itself, and why raising one
+/// means minting a new Price and swapping the subscription item onto it.
+///
+/// `proration_behavior: 'none'` is the whole promise in one argument: no mid-term
+/// invoice, no credit, no charge today. The new amount simply becomes what the NEXT
+/// renewal bills — which is exactly what the notice email said would happen.
+///
+/// Returns the number moved, or null if Stripe could not be reached at all (the caller
+/// then leaves the change pending rather than half-applying it).
+async function repriceExistingSubscribers(p, plan, log) {
+  let sk;
+  try { sk = await stripe(); } catch { return null; }
+  if (!sk) return null;
+  const subs = await p.subscription.findMany({
+    where: { planId: plan.id, status: 'active', stripeSubId: { not: null } },
+    select: { id: true, stripeSubId: true },
+  });
+  if (!subs.length) return 0;
+  let moved = 0;
+  for (const sub of subs) {
+    try {
+      const live = await sk.subscriptions.retrieve(sub.stripeSubId);
+      const item = live.items?.data?.[0];
+      if (!item) continue;
+      // Keep the cadence the customer actually bought (monthly, or a multi-month term):
+      // repricing must not quietly turn a 6-month term into a monthly one.
+      const rec = item.price?.recurring || { interval: 'month', interval_count: 1 };
+      const months = rec.interval === 'month' ? (rec.interval_count || 1) : 1;
+      const price = await sk.prices.create({
+        currency: item.price?.currency || 'usd',
+        unit_amount: Math.max(50, plan.pendingPriceCents * months),
+        recurring: { interval: rec.interval || 'month', interval_count: rec.interval_count || 1 },
+        product_data: { name: `${plan.name} hosting (auto-renew)` },
+      });
+      await sk.subscriptions.update(sub.stripeSubId, {
+        items: [{ id: item.id, price: price.id }],
+        proration_behavior: 'none',
+      });
+      moved++;
+    } catch (e) {
+      // One customer's subscription failing (deleted in Stripe, card issue, whatever)
+      // must not stop the others — and must not be silent.
+      log?.warn?.(`[sweeper] ${plan.name}: subscription ${sub.stripeSubId} not repriced: ${e?.message}`);
+    }
+  }
+  return moved;
 }
 
 export function startSweeper(app) {

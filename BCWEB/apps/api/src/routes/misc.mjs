@@ -590,6 +590,26 @@ export default async function miscRoutes(app) {
     return { count: await p.user.count({ where }) };
   });
 
+  // Exactly what the send will produce, without sending it.
+  //
+  // Built by calling the same three functions in the same order as the send below, on
+  // purpose: a preview assembled by its own copy of the template is a preview of a
+  // different email, and the first time they drift is the first time somebody trusts it.
+  app.post('/admin/mail/preview', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      subject: z.string().max(200).default(''),
+      body: z.string().max(20000).default(''),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const preheader = String(b.data.body).replace(/[#>*_`|\-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+    return {
+      html: mailShell(b.data.subject || '(no subject)', mdToEmailHtml(b.data.body), undefined, { preheader }),
+      // Shown beside the preview: this is the line an inbox displays next to the subject,
+      // and it is derived rather than typed, so it is worth seeing before sending.
+      preheader,
+    };
+  });
+
   app.post('/admin/mail/send', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
       audience: z.enum(['all', 'hosting', 'verified', 'user']),

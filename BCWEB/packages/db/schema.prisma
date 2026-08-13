@@ -803,6 +803,17 @@ model HostingPlan {
   // announced twice, and so the record of "we did give notice" outlives the mailbox.
   pendingNoticeAt   DateTime?
   pendingNoticeCount Int           @default(0)
+  // Does the announced change touch people who are ALREADY subscribed?
+  //
+  // false (the default, and what happens today whether anyone intended it or not): each
+  // Stripe subscription is pinned to its own ad-hoc Price created at checkout, so a new
+  // plan price only ever reaches NEW buyers. Existing subscribers are grandfathered by
+  // the payment model itself, not by a decision.
+  //
+  // true: on the effective date their Stripe subscription item is moved onto a new Price
+  // with proration_behavior 'none', so the new amount starts at their next renewal and
+  // nobody is charged mid-term. That is the same promise the notice email makes.
+  pendingApplyExisting Boolean     @default(false)
   subscriptions     Subscription[]
 
   @@index([pendingPriceAt])

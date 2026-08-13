@@ -3416,6 +3416,8 @@ function AdminMail() {
   const [body, setBody] = useState('');
   const [count, setCount] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(null);   // { html, preheader }
+  const [wide, setWide] = useState(true);         // desktop vs phone width
 
   // The recipient count is refreshed whenever the audience changes, because the number is
   // the last chance to notice that "everyone" is larger than you pictured.
@@ -3428,6 +3430,19 @@ function AdminMail() {
       .catch(() => { if (alive) setCount(null); });
     return () => { alive = false; };
   }, [audience, planId]);
+
+  // Debounced: the preview is a server round-trip because it must come from the SAME
+  // template the send uses, and re-rendering on every keystroke would be a request per
+  // character for a panel nobody is reading mid-word.
+  useEffect(() => {
+    if (!subject.trim() && !body.trim()) { setPreview(null); return; }
+    const id = setTimeout(() => {
+      api.post('/admin/mail/preview', { subject, body })
+        .then(setPreview)
+        .catch(() => setPreview(null));
+    }, 400);
+    return () => clearTimeout(id);
+  }, [subject, body]);
 
   const send = async (testOnly) => {
     if (!subject.trim() || !body.trim()) return toast.error(t('adm.mail.empty', 'Subject and message are required.'));
@@ -3489,6 +3504,43 @@ function AdminMail() {
               placeholder={t('adm.mail.f.body.ph', 'What changed, when it takes effect, and what they can do about it.')} />
           </Field>
         </div>
+        {/* The preview. In an iframe with `sandbox` and no allow-scripts: the document is
+            a full <html> with its own <head>, so it cannot be dropped into the page, and
+            it is admin-authored HTML that has no business running anything here. srcdoc
+            rather than a blob URL so there is nothing to revoke and nothing to leak. */}
+        {preview && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">
+                <Eye size={12} /> {t('adm.mail.preview', 'Preview')}
+              </span>
+              <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+                <button onClick={() => setWide(true)} className={`px-2 py-1 text-xs ${wide ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><MonitorIcon size={12} /></button>
+                <button onClick={() => setWide(false)} className={`px-2 py-1 text-xs ${!wide ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><Smartphone size={12} /></button>
+              </div>
+            </div>
+            {/* The inbox line, shown as the inbox shows it: subject then preheader. It is
+                derived from the body rather than typed, so it is exactly the part of the
+                email an author never thinks to check. */}
+            <div className="rounded-t-xl border border-[var(--line)] border-b-0 px-3 py-2 bg-[var(--surface-2)]/40">
+              <div className="text-sm font-medium truncate">{subject || t('adm.mail.nosubject', '(no subject)')}</div>
+              <div className="text-xs text-[var(--faint)] truncate">{preview.preheader || '—'}</div>
+            </div>
+            <div className="rounded-b-xl border border-[var(--line)] overflow-hidden bg-white flex justify-center">
+              <iframe
+                title="mail-preview"
+                sandbox=""
+                srcDoc={preview.html}
+                className="w-full"
+                style={{ maxWidth: wide ? '100%' : 380, height: 520, border: 0, display: 'block' }}
+              />
+            </div>
+            <p className="text-[11px] text-[var(--faint)] mt-1">
+              {t('adm.mail.preview.note', 'Rendered by the same template the send uses. Real clients (Gmail, Outlook) strip some CSS — send yourself a test before a broadcast.')}
+            </p>
+          </div>
+        )}
+
         <div className="flex gap-2 mt-4">
           {/* Test first, deliberately the LEFT button: reading your own email is the only
               proof that the markdown, the links and the tone survived. */}
@@ -3516,6 +3568,7 @@ function AdminHostingPlans() {
   // is what makes "give notice" the easy path rather than the conscientious one.
   const in30Days = () => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
   const [effective, setEffective] = useState('');   // '' = apply immediately
+  const [applyExisting, setApplyExisting] = useState(false); // false = grandfather
   // "The price moved" is the trigger for everything below, so it is computed once and in
   // cents — comparing the raw strings would call "500" and "500 " a change.
   const [auto, setAuto] = useState(null);   // what the settings would charge for these specs
@@ -3541,15 +3594,17 @@ function AdminHostingPlans() {
         // itself and mail everybody about nothing.
         const moved = draft.id && Number(body.priceMonthlyCents) !== Number(original?.priceMonthlyCents);
         const r = await api.patch(`/admin/hosting/plans/${draft.id}`,
-          effective && moved ? { ...body, effectiveAt: new Date(`${effective}T00:00:00`).toISOString() } : body);
+          effective && moved ? { ...body, effectiveAt: new Date(`${effective}T00:00:00`).toISOString(), applyToExisting: applyExisting } : body);
         toast.success(effective && moved
-          ? t('adm.plans.scheduled', 'Change scheduled for {d} — {n} subscriber(s) notified.').replace('{d}', effective).replace('{n}', r.notified ?? 0)
+          ? (applyExisting
+            ? t('adm.plans.scheduled', 'Change scheduled for {d} — {n} subscriber(s) notified.').replace('{d}', effective).replace('{n}', r.notified ?? 0)
+            : t('adm.plans.schedulednew', 'Scheduled for {d} — new buyers only, so nobody was emailed.').replace('{d}', effective))
           : t('adm.plans.saved', 'Plan saved.'));
       } else {
         await api.post('/admin/hosting/plans', body);
         toast.success(t('adm.plans.saved', 'Plan saved.'));
       }
-      setDraft(null); setEffective(''); data.reload();
+      setDraft(null); setEffective(''); setApplyExisting(false); data.reload();
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
 
@@ -3644,6 +3699,24 @@ function AdminHostingPlans() {
               <p className="text-xs text-[var(--muted)]">
                 {t('adm.plans.eff.s', 'Pick a date and every current subscriber is emailed now; the price changes on that day and applies from their next renewal. Leave it empty to change the price immediately — right for a correction, wrong for a rise on a plan people are paying for.')}
               </p>
+              {/* Who it hits. Two radio-style choices rather than a checkbox, because
+                  "leave existing customers alone" is a real, deliberate answer and not
+                  simply the absence of the other one. Grandfathering is first and is the
+                  default: it is what the payment model already does, since every Stripe
+                  subscription is pinned to the price it was bought at. */}
+              <div className="grid sm:grid-cols-2 gap-2">
+                {[[false, t('adm.plans.who.new', 'New buyers only'), t('adm.plans.who.new.s', 'Everyone already subscribed keeps the price they signed up at, for as long as they stay. Nobody is emailed — nothing changes for them.')],
+                  [true, t('adm.plans.who.all', 'Existing subscribers too'), t('adm.plans.who.all.s', 'Their Stripe subscription moves to the new amount on that date, starting at their next renewal — never mid-term. Every one of them is emailed now.')]].map(([val, label, sub]) => (
+                  <button key={String(val)} onClick={() => setApplyExisting(val)}
+                    className={`text-left rounded-lg border p-2.5 transition ${applyExisting === val ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                    <div className="text-xs font-semibold flex items-center gap-1.5">
+                      {applyExisting === val ? <Check size={12} className="text-[var(--primary-2)]" /> : <span className="w-3" />}
+                      {label}
+                    </div>
+                    <div className="text-[11px] text-[var(--muted)] mt-0.5">{sub}</div>
+                  </button>
+                ))}
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Input type="date" className="!w-44" value={effective} min={new Date(Date.now() + 864e5).toISOString().slice(0, 10)}
                   onChange={(e) => setEffective(e.target.value)} />
@@ -3682,7 +3755,9 @@ function AdminHostingPlans() {
                 {pl.pendingPriceCents != null && (
                   <div className="text-[11px] text-[var(--primary-2)] flex items-center gap-1.5 mt-0.5">
                     <Calendar size={11} />
-                    {t('adm.plans.pending', '{p}/mo from {d} · {n} notified')
+                    {(pl.pendingApplyExisting
+                      ? t('adm.plans.pending', '{p}/mo from {d} · {n} notified')
+                      : t('adm.plans.pendingnew', '{p}/mo from {d} · new buyers only'))
                       .replace('{p}', money(pl.pendingPriceCents))
                       .replace('{d}', String(pl.pendingPriceAt || '').slice(0, 10))
                       .replace('{n}', String(pl.pendingNoticeCount ?? 0))}
