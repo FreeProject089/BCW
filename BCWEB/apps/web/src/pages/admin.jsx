@@ -1077,6 +1077,64 @@ const fmtKbps = (k) => k == null ? '—' : k >= 1000 ? `${(k / 1000).toFixed(1)}
 // container every ~10 min by the sweeper (monitor.mjs); a per-container/per-service
 // breakdown with restart controls would need Docker-socket access, which is a
 // separate, bigger ask (see the "Advanced server management" tab).
+// The thresholds every alert fires on. They lived only in the database until now, so
+// tuning them meant writing SQL — and a threshold nobody can reach is a threshold nobody
+// tunes, which is how an alert channel becomes noise people mute.
+//
+// The form shows the EFFECTIVE values (stored overrides merged with the defaults), never
+// blank boxes: an empty field would read as "no threshold" when it actually means "the
+// default applies". Reset writes an empty override rather than writing the defaults in,
+// so a later change to a default is picked up instead of being frozen at today's number.
+function AlertThresholds() {
+  const { t } = useI18n(); const toast = useToast();
+  const data = useAsync(() => api.get('/admin/server/thresholds'), []);
+  const [form, setForm] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data.data?.thresholds) setForm(data.data.thresholds); }, [data.data]);
+
+  const FIELDS = [
+    { k: 'cpuPct', label: t('sp.th.cpu', 'CPU %'), hint: t('sp.th.cpu.h', 'Alert above this usage.') },
+    { k: 'memPct', label: t('sp.th.mem', 'Memory %'), hint: t('sp.th.mem.h', 'Alert above this usage.') },
+    { k: 'diskPct', label: t('sp.th.disk', 'Disk %'), hint: t('sp.th.disk.h', 'Alert above this usage.') },
+    { k: 'storagePct', label: t('sp.th.storage', 'Storage pool %'), hint: t('sp.th.storage.h', 'Warn while a hosting pool still has room to act.') },
+    { k: 'vitalsPoorPct', label: t('sp.th.vitals', 'Web Vitals poor %'), hint: t('sp.th.vitals.h', 'Share of "poor" samples on a metric, over the last hour.') },
+    { k: 'vitalsMinSamples', label: t('sp.th.vitalsmin', 'Web Vitals min samples'), hint: t('sp.th.vitalsmin.h', 'Below this, two bad loads would fire it.') },
+    { k: 'errorBurst', label: t('sp.th.errors', 'Error burst'), hint: t('sp.th.errors.h', 'New errors within ten minutes.') },
+  ];
+
+  const save = async () => {
+    setBusy(true);
+    try { const r = await api.put('/admin/server/thresholds', form); setForm(r.thresholds); toast.success(t('sp.th.saved', 'Thresholds saved.')); }
+    catch { toast.error(t('sp.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  const reset = async () => {
+    setBusy(true);
+    try { const r = await api.put('/admin/server/thresholds', {}); setForm(r.thresholds); toast.success(t('sp.th.reset', 'Back to defaults.')); }
+    catch { toast.error(t('sp.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+
+  if (data.loading || !form) return <Loading />;
+  return (
+    <Card className="p-5">
+      <p className="text-xs text-[var(--muted)] mb-3">
+        {t('sp.th.sub', 'What each alert fires on. Leave them alone and the built-in defaults apply.')}
+      </p>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {FIELDS.map((f) => (
+          <Field key={f.k} label={f.label} hint={f.hint}>
+            <Input type="number" min="0" value={form[f.k] ?? ''}
+              onChange={(e) => setForm({ ...form, [f.k]: e.target.value === '' ? '' : Number(e.target.value) })} />
+          </Field>
+        ))}
+      </div>
+      <div className="flex gap-2 mt-4">
+        <Button size="sm" variant="primary" disabled={busy} onClick={save}>{t('common.save', 'Save')}</Button>
+        <Button size="sm" disabled={busy} onClick={reset}>{t('sp.th.resetbtn', 'Reset to defaults')}</Button>
+      </div>
+    </Card>
+  );
+}
+
 function AdminServerPerf() {
   const toast = useToast();
   const { t } = useI18n();
@@ -1359,6 +1417,13 @@ function AdminServerPerf() {
           </>}
         </Card>
       )}
+
+      {/* The thresholds those alerts fire on, right above the alerts themselves — you
+          read the list, then change what produced it. */}
+      <div className="mt-8 pt-6 border-t border-[var(--line)]">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('sp.th.title', 'Alert thresholds')}</h3>
+        <AlertThresholds />
+      </div>
 
       <div className="mt-8 pt-6 border-t border-[var(--line)]">
         <button onClick={() => toggleSec('alerts')} className="w-full flex items-center justify-between text-left mb-2">

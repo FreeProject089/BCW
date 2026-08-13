@@ -131,6 +131,38 @@ export default async function serverPerfRoutes(app) {
     return { enabled: next };
   });
 
+  // ── Alert thresholds ──
+  // Defaults live in monitor.mjs and are what an untouched install uses; this only stores
+  // overrides. Returning the EFFECTIVE values (defaults merged with whatever is stored)
+  // means the form shows what is actually in force rather than blank boxes that imply
+  // "no threshold".
+  const T_KEYS = ['cpuPct', 'memPct', 'diskPct', 'storagePct', 'vitalsPoorPct', 'vitalsMinSamples', 'errorBurst'];
+  const T_DEFAULTS = { cpuPct: 90, memPct: 90, diskPct: 90, storagePct: 85, vitalsPoorPct: 25, vitalsMinSamples: 20, errorBurst: 10 };
+
+  app.get('/admin/server/thresholds', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'alerts.thresholds' } }).catch(() => null);
+    const stored = (row?.value && typeof row.value === 'object') ? row.value : {};
+    const out = { ...T_DEFAULTS };
+    for (const k of T_KEYS) { const n = Number(stored[k]); if (Number.isFinite(n) && n >= 0) out[k] = n; }
+    return { thresholds: out, defaults: T_DEFAULTS };
+  });
+
+  app.put('/admin/server/thresholds', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const shape = {};
+    for (const k of T_KEYS) shape[k] = z.number().min(0).max(100000).optional();
+    const b = z.object(shape).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    // Store only what was sent; an absent key falls back to the default at read time, so
+    // clearing a field returns it to the default rather than pinning it to zero — which
+    // would silently mean "alert on everything".
+    const value = {};
+    for (const k of T_KEYS) if (b.data[k] !== undefined) value[k] = b.data[k];
+    await p.adminSetting.upsert({ where: { key: 'alerts.thresholds' }, create: { key: 'alerts.thresholds', value }, update: { value } });
+    return { ok: true, thresholds: { ...T_DEFAULTS, ...value } };
+  });
+
   app.get('/admin/server/alerts', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
     const take = Math.min(Number(req.query?.take) || 100, 300);

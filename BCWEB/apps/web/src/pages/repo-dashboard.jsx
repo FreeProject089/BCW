@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  Link2 as LinkIcon,
+  Link2 as LinkIcon, Fingerprint,
   Server, GitBranch, ArrowLeft, Wifi, WifiOff, ShieldCheck, HardDrive, Zap, Lock, Copy, ExternalLink,
   FileJson, FileText, Trash2, UploadCloud, FolderUp, Rocket, CheckCircle2, AlertTriangle, KeyRound,
   Users, Mail, Plus, X, Eye, EyeOff, Files, Settings2, Loader2, Globe, History, Hash, Search, ChevronDown,
@@ -181,7 +181,7 @@ function buildFileTree(files) {
   }
   return root;
 }
-function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, copyUrl, t, removing, deleting }) {
+function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, copyUrl, copySha, t, removing, deleting }) {
   const [open, setOpen] = useState(depth < 1);
   const dirs = [...node.dirs.entries()].sort(([a], [b]) => a.localeCompare(b));
   const files = [...node.files].sort((a, b) => a.path.localeCompare(b.path));
@@ -197,7 +197,7 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, copyUrl, t
       )}
       {open && (
         <div>
-          {dirs.map(([seg, sub]) => <TreeNode key={seg} node={sub} name={seg} depth={depth + 1} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} copyUrl={copyUrl} t={t} removing={removing} deleting={deleting} />)}
+          {dirs.map(([seg, sub]) => <TreeNode key={seg} node={sub} name={seg} depth={depth + 1} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} copyUrl={copyUrl} copySha={copySha} t={t} removing={removing} deleting={deleting} />)}
           {files.map((f) => {
             const dl = downloadUrl(f);
             const base = f.path.includes('/') ? f.path.slice(f.path.lastIndexOf('/') + 1) : f.path;
@@ -211,6 +211,10 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, copyUrl, t
                   <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
                   {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
                   {dl && <button className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" onClick={() => copyUrl(dl)} title={t('rd.copyfileurl', 'Copy this file’s download URL')}><LinkIcon size={14} /></button>}
+                  {/* Open rather than download: a manifest, a log or a README is something you want to
+                      LOOK at, and forcing a save for every glance is why people stop checking. */}
+                  {dl && <a href={dl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('rd.openfile', 'Open in a new tab')}><ExternalLink size={14} /></a>}
+                  {f.sha256 && <button className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" onClick={() => copySha(f.sha256)} title={t('rd.copysha', 'Copy the SHA-256 checksum')}><Fingerprint size={14} /></button>}
                   <button className="text-[var(--faint)] hover:text-error shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>
                 </>}
               </div>
@@ -345,6 +349,10 @@ function FilesTab({ r, reload }) {
   // listed publicly is a separate choice, so an unlisted repo still hands out
   // working per-file URLs to the people you give them to.
   const copyUrl = (url) => { copyText(url); toast.success(t('rd.fileurlcopied', 'File URL copied.')); };
+  // The checksum is right there in the row and was previously only readable by eye —
+  // and a sha256 is 64 characters nobody transcribes correctly. Silent when a file
+  // predates hashing rather than copying an empty string that looks like a value.
+  const copySha = (sha) => { if (!sha) return; copyText(sha); toast.success(t('rd.shacopied', 'Checksum copied.')); };
   if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]"><Globe size={16} className="text-[var(--primary-2)] inline mr-2" />{t('rd.selfhost', 'This is a self-hosted (URL) repo — its content lives at its own URL, not here.')}</Card>;
 
   const shown = files
@@ -428,7 +436,7 @@ function FilesTab({ r, reload }) {
         </div>
         <div className="max-h-[46vh] overflow-auto">
           {!shown.length ? <div className="text-sm text-[var(--faint)] px-4 py-4">{q.trim() ? t('rd.nomatch', 'No files match.') : t('repos.nofiles', 'No files yet.')}</div>
-          : view === 'tree' ? <TreeNode node={tree} name={null} depth={0} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} copyUrl={copyUrl} t={t} removing={removing} deleting={deleting} />
+          : view === 'tree' ? <TreeNode node={tree} name={null} depth={0} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} copyUrl={copyUrl} copySha={copySha} t={t} removing={removing} deleting={deleting} />
           : (
             <div className="divide-y divide-[var(--line)]">
               {shown.map((f) => {
@@ -444,6 +452,10 @@ function FilesTab({ r, reload }) {
                     <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
                     {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
                     {dl && <button className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" onClick={() => copyUrl(dl)} title={t('rd.copyfileurl', 'Copy this file’s download URL')}><LinkIcon size={14} /></button>}
+                    {/* Open rather than download: a manifest, a log or a README is something you want to
+                        LOOK at, and forcing a save for every glance is why people stop checking. */}
+                    {dl && <a href={dl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('rd.openfile', 'Open in a new tab')}><ExternalLink size={14} /></a>}
+                    {f.sha256 && <button className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" onClick={() => copySha(f.sha256)} title={t('rd.copysha', 'Copy the SHA-256 checksum')}><Fingerprint size={14} /></button>}
                     {!locked && <button className="text-[var(--faint)] hover:text-error shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>}
                   </>}
                 </div>

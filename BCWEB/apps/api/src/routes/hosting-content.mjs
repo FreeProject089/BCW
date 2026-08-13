@@ -247,7 +247,11 @@ export async function registerRepoFile(p, repo, { path: rawPath, key, size, cont
   } else {
     data.pendingReview = false;
   }
-  if (isManifestPath(path)) {
+  // Only `repo.json` sets the repo's own manifest. An uploaded `manifest.json` is stored
+  // and served like any other file, but it does not become the repo's description —
+  // /manifest.json is the generated one, and letting an upload capture that name would
+  // undo the guarantee.
+  if (path === 'repo.json') {
     // Parse + validate against the CURRENT format — an old/invalid manifest is stored
     // (so the owner can see it) but stays UNVERIFIED, so it won't be listed publicly.
     try { const { body } = await getObject(key); const txt = await streamText(body); const parsed = JSON.parse(txt); data.repoJson = parsed; data.sha = sha256(txt); data.verified = isValidRepoManifest(parsed); }
@@ -271,7 +275,7 @@ export async function removeRepoFile(p, repo, fid, actor) {
   await p.repoFile.deleteMany({ where: { id: fid, serverRepoId: repo.id } });
   await recomputeUsage(p, repo.id);
   const data = { published: false };
-  if (isManifestPath(removed?.path)) { data.verified = false; data.repoJson = null; data.sha = null; }
+  if (removed?.path === 'repo.json') { data.verified = false; data.repoJson = null; data.sha = null; }
   await p.serverRepo.update({ where: { id: repo.id }, data });
   if (actor) await repoLog(p, repo.id, actor, 'delete', removed?.path || fid);
   return { ok: true };
@@ -739,9 +743,19 @@ function generatedManifest(repo, ownerName) {
       include: { files: true, owner: { select: { displayName: true } } },
     });
     if (!repo || !repo.published) return reply.code(404).send({ error: 'not_found' });
-    // Uploaded wins; otherwise build one from the files. Only a repo with neither has
-    // nothing to describe.
-    const manifest = repo.repoJson || (repo.files?.length ? generatedManifest(repo, repo.owner?.displayName) : null);
+    // TWO manifests, and which one you get depends on the NAME you asked for:
+    //
+    //   /repo.json      the owner's, if they uploaded one — else the generated one.
+    //   /manifest.json  ALWAYS the one this server generates from the files it holds.
+    //
+    // The split exists because an uploaded `manifest.json` is just a file in the repo, and
+    // treating it as authoritative let a user's own copy silently replace the server's
+    // view of its own contents. Now the generated manifest has a name nobody can take, so
+    // there is always one URL that describes what is actually stored here, whatever the
+    // owner uploaded. Their file is still served, at its own path under /files/.
+    const wantsGenerated = String(req.raw?.url || '').includes('/manifest.json');
+    const generated = repo.files?.length ? generatedManifest(repo, repo.owner?.displayName) : null;
+    const manifest = wantsGenerated ? generated : (repo.repoJson || generated);
     if (!manifest) return reply.code(404).send({ error: 'not_found' });
     const [globalPolicy, ownerPolicy, identity] = await Promise.all([getGlobalAccessPolicy(p), getUserAccessPolicy(p, repo.ownerId), resolveIdentity(p, req)]);
     if (!sandboxGate(repo, req, reply, [globalPolicy, ownerPolicy], identity)) return; // banned / not whitelisted
