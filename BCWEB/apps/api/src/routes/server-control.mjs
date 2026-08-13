@@ -62,12 +62,23 @@ export default async function serverControlRoutes(app) {
     return { ok: true, expiresInSec: ttl };
   });
 
-  app.get('/server/elevate/status', { preHandler: [requireRole('ADMIN'), requireCanControlServer()] }, async (req) => {
-    try {
-      const claims = jwt.verify(req.cookies?.bcw_elevated, JWT_SECRET);
-      if (claims.purpose === 'server-control' && claims.uid === req.user.uid) return { elevated: true, expiresAt: claims.exp * 1000 };
-    } catch { /* not elevated */ }
-    return { elevated: false };
+  // A STATUS probe, so it answers rather than refuses. It used to sit behind
+  // requireCanControlServer() — the very thing it reports — so anyone without the grant
+  // got a 403 for a perfectly normal state, and the dashboard logged an error every time
+  // it asked. Staff-only is still enforced; the grant is now part of the ANSWER.
+  app.get('/server/elevate/status', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: req.user.uid }, select: { canControlServer: true } });
+    const canControl = !!u?.canControlServer;
+    if (canControl) {
+      try {
+        const claims = jwt.verify(req.cookies?.bcw_elevated, JWT_SECRET);
+        if (claims.purpose === 'server-control' && claims.uid === req.user.uid) {
+          return { elevated: true, canControl, expiresAt: claims.exp * 1000 };
+        }
+      } catch { /* not elevated */ }
+    }
+    return { elevated: false, canControl };
   });
 
   // ── SUPERADMIN: grant/revoke the server-control permission ──

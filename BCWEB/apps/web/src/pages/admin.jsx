@@ -1739,7 +1739,7 @@ function DbViewer() {
 // socket (and, for power, a privileged agent), a docker-compose change with real
 // security implications that hasn't been made.
 function AdminServerAdvanced() {
-  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n(); const { user: me } = useAuth();
   const me2fa = useAsync(() => api.get('/me/2fa'), []);
   const elevateStatus = useAsync(() => api.get('/server/elevate/status').catch(() => ({ elevated: false })), []);
   const [code, setCode] = useState('');
@@ -1753,7 +1753,14 @@ function AdminServerAdvanced() {
   };
 
   if (me2fa.loading || elevateStatus.loading) return <Loading />;
-  if (!me2fa.data?.canControlServer) return <EmptyState icon={AlertTriangle} title={t('asa.notauth', 'Not authorized')} sub={t('asa.notauthsub', 'A SUPERADMIN must grant you server-control access from the Access & permissions tab first.')} />;
+  // Server control is deliberately ORTHOGONAL to the role hierarchy — even a SUPERADMIN
+  // holds it only when it has been granted, so shell/Docker/power access is never ambient.
+  // But telling a SUPERADMIN that "a SUPERADMIN must grant you" is a riddle: they are the
+  // one who can, including to themselves. Say that instead.
+  if (!me2fa.data?.canControlServer) return <EmptyState icon={AlertTriangle} title={t('asa.notauth', 'Not authorized')}
+    sub={me?.role === 'SUPERADMIN'
+      ? t('asa.notauthself', 'Server control is granted separately from your role, so it is never implicit — not even for a SUPERADMIN. Grant it to yourself in the Access & permissions tab.')
+      : t('asa.notauthsub', 'A SUPERADMIN must grant you server-control access from the Access & permissions tab first.')} />;
 
   return (
     <div>
