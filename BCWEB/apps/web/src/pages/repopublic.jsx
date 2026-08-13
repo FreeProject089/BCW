@@ -84,6 +84,15 @@ function RepoContents({ id, k }) {
                 <a href={f.url} download className="flex-none" title={t('rc.dl', 'Download')}>
                   <Button size="sm" variant="ghost"><Download size={13} /></Button>
                 </a>
+                {/* The link to this ONE file — the common case is sending somebody a single
+                    file, not the whole repo. Absolute, because a copied link is going to be
+                    pasted somewhere this page's origin means nothing. Copying it is not a
+                    way around the access gate: the URL is checked per request, so a
+                    restricted repo still refuses whoever opens it. */}
+                <Button size="sm" variant="ghost" className="flex-none" title={t('rc.copyurl', 'Copy this file’s link')}
+                  onClick={() => { navigator.clipboard?.writeText(new URL(f.url, location.origin).href); toast.success(t('rp.copied', 'Copied.')); }}>
+                  <Link2 size={13} />
+                </Button>
               </li>
             ))}
           </ul>

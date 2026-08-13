@@ -354,6 +354,7 @@ const DICT = {
     'prof.sess.confirmOthers': "Déconnecter tous les autres appareils ?",
     'prof.sess.confirmWhy': "Confirme que c'est bien toi : c'est l'écran qu'on utiliserait pour t'exclure de ton propre compte.",
     'prof.sess.confirmBtn': "Déconnecter",
+    'rc.copyurl': "Copier le lien de ce fichier",
     'asa.notauthself': "Le contrôle serveur s'accorde séparément de ton rôle, il n'est donc jamais implicite — pas même pour un SUPERADMIN. Accorde-le-toi dans l'onglet Accès & permissions.",
     'ud.sessions': "Appareils connectés",
     'ud.sessUnknown': "Appareil inconnu",
