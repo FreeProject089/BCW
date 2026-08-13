@@ -421,9 +421,19 @@ export default async function authRoutes(app) {
         country: true, region: true, city: true, createdAt: true, lastSeenAt: true,
       },
     });
+    // WHICH proofs signing a device out will actually require, so the form can ask for
+    // exactly those and nothing else. `reauth` above already skips the password check on
+    // an OAuth-only account (there is no hash to verify) — but the form asked for one
+    // anyway, so a Discord/GitHub user faced a mandatory-looking "Current password" box
+    // they could never fill, on the one screen that exists to evict an intruder.
+    const cred = await p.user.findUnique({ where: { id: req.user.uid }, select: { passwordHash: true, totpEnabled: true } });
     // Sessions issued before this feature carry no row; say so rather than implying the
     // list is exhaustive when the caller's own device is missing from it.
-    return { sessions: rows.map((r) => sessionView(r, req.user.sid)), currentTracked: Boolean(req.user.sid) };
+    return {
+      sessions: rows.map((r) => sessionView(r, req.user.sid)),
+      currentTracked: Boolean(req.user.sid),
+      reauth: { password: !!cred?.passwordHash, totp: !!cred?.totpEnabled },
+    };
   });
 
   // Revoke one device. Scoped by userId as well as id, so a guessed/mistyped id can only

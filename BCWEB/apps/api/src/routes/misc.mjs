@@ -979,6 +979,11 @@ export default async function miscRoutes(app) {
     // if Stripe is down/unset, the report still renders without MRR.
     const mrrByUser = new Map(); // userId -> cents/month
     let siteMrrCents = 0, siteSubCount = 0;
+    // Active Stripe subscriptions with no matching local user — a wiped database, a
+    // shared Stripe account, or a customer whose account was deleted. Reported rather
+    // than dropped in silence: otherwise the figure here is quietly smaller than the one
+    // in the Stripe dashboard and there is nothing on screen to explain the gap.
+    let orphanSubs = 0, orphanMrrCents = 0;
     const monthlyCents = (unit, interval, count) => {
       count = count || 1; unit = unit || 0;
       if (interval === 'year') return unit / (12 * count);
@@ -986,9 +991,11 @@ export default async function miscRoutes(app) {
       if (interval === 'day') return (unit * 30.44) / count;
       return unit / count; // month (or unknown → treat as monthly)
     };
+    let stripeOk = false;
     try {
       const sk = await stripe();
       if (sk) {
+        stripeOk = true;
         const custUsers = await p.user.findMany({ where: { stripeCustomerId: { not: null }, ...(includeStaff ? {} : { role: 'USER' }) }, select: { id: true, stripeCustomerId: true } });
         const userByCust = new Map(custUsers.map((u) => [u.stripeCustomerId, u.id]));
         let starting_after; let guard = 0;
@@ -997,9 +1004,17 @@ export default async function miscRoutes(app) {
           for (const s of pageSubs.data) {
             const price = s.items?.data?.[0]?.price;
             const m = monthlyCents(price?.unit_amount, price?.recurring?.interval, price?.recurring?.interval_count);
-            siteMrrCents += m; siteSubCount += 1;
             const uid = userByCust.get(typeof s.customer === 'string' ? s.customer : s.customer?.id);
-            if (!uid) continue;
+            // Count it ONLY if it belongs to somebody on this site.
+            //
+            // The totals used to be incremented before this lookup, i.e. for every active
+            // subscription in the whole Stripe account. On a shared or previously-seeded
+            // test account that produced the report's worst possible failure: a headline
+            // reading "$35.39/mo · 5 active subscriptions" directly above a list saying
+            // "no paying customers". Both were computed correctly; they were just
+            // answering different questions.
+            if (!uid) { orphanSubs += 1; orphanMrrCents += m; continue; }
+            siteMrrCents += m; siteSubCount += 1;
             mrrByUser.set(uid, (mrrByUser.get(uid) || 0) + m);
             const kind = s.metadata?.kind === 'feature' ? 'boost' : 'hosting';
             bucket(uid).paying.push({
@@ -1014,7 +1029,7 @@ export default async function miscRoutes(app) {
           starting_after = pageSubs.has_more ? pageSubs.data[pageSubs.data.length - 1].id : null;
         } while (starting_after && ++guard < 10);
       }
-    } catch (e) { req.log?.warn?.({ err: e?.message }, 'MRR compute failed'); }
+    } catch (e) { stripeOk = false; req.log?.warn?.({ err: e?.message }, 'MRR compute failed'); }
 
     // Optional search: restrict to users matching name / email / creator id.
     const q = String(req.query?.q || '').trim();
@@ -1041,7 +1056,13 @@ export default async function miscRoutes(app) {
     }
     return {
       tab, hasMore,
-      mrr: { totalCents: Math.round(siteMrrCents), subCount: siteSubCount, annualCents: Math.round(siteMrrCents * 12) },
+      mrr: {
+        totalCents: Math.round(siteMrrCents), subCount: siteSubCount, annualCents: Math.round(siteMrrCents * 12),
+        orphanSubs, orphanMrrCents: Math.round(orphanMrrCents),
+        // Whether Stripe answered at all. Without it the UI cannot tell "nobody is
+        // paying" from "we could not ask", and it would show a confident 0 for both.
+        stripe: stripeOk,
+      },
       users: page.map(([id, v]) => ({ ...(byId[id] || { id, displayName: '(deleted)', email: '' }), active: v[tab], mrrCents: Math.round(mrrByUser.get(id) || 0), ...(spendById[id] || {}) })),
     };
   });

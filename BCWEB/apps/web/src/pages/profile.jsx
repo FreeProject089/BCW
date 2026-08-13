@@ -322,8 +322,11 @@ function SessionsCard() {
   const [err, setErr] = useState('');
 
   const load = () => api.get('/me/sessions')
-    .then((r) => setData({ sessions: r.sessions || [], currentTracked: r.currentTracked }))
-    .catch(() => setData({ sessions: [], currentTracked: true }));
+    // `reauth` says which proofs the server will actually check for this account.
+    // Defaulted to BOTH on a failed/old response: asking for something unnecessary is a
+    // nuisance, while hiding a field the server requires makes the button silently fail.
+    .then((r) => setData({ sessions: r.sessions || [], currentTracked: r.currentTracked, reauth: r.reauth || { password: true, totp: true } }))
+    .catch(() => setData({ sessions: [], currentTracked: true, reauth: { password: true, totp: true } }));
   useEffect(() => { load(); }, []);
 
   // Revoking a device you do not recognise is a security action: it takes effect at once,
@@ -376,6 +379,8 @@ function SessionsCard() {
     : kind === 'tablet' ? <Tablet size={16} /> : <Monitor size={16} />;
 
   const sessions = data?.sessions || [];
+  const needPw = data?.reauth?.password !== false;
+  const needCode = data?.reauth?.totp === true;
   // Current first; the API already sorts the rest by last activity, and a stable sort
   // keeps that order underneath.
   const ordered = [...sessions].sort((x, y) => (y.current ? 1 : 0) - (x.current ? 1 : 0));
@@ -401,12 +406,30 @@ function SessionsCard() {
             {t('prof.sess.confirmWhy', 'Confirm it is you: this is the screen someone would use to lock you out of your own account.')}
           </p>
           <div className="flex flex-col gap-2">
-            <Input type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)}
-              placeholder={t('prof.currentpw', 'Current password')} />
-            {/* Only meaningful with 2FA on; harmless and ignored otherwise, and asking is
-                cheaper than reading the account's 2FA state to decide whether to show it. */}
-            <Input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric"
-              placeholder={t('prof.sess.code', '2FA code (if enabled)')} />
+            {/* Both fields are conditional on what this account HAS. The password box used
+                to be unconditional, so an OAuth-only account (Discord / GitHub — no
+                password hash at all) met a required-looking field it could never fill on
+                the one screen that exists to evict an intruder. The 2FA box was shown to
+                everyone as "(if enabled)", which reads like a demand rather than a note. */}
+            {needPw && (
+              <Input type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)}
+                placeholder={t('prof.currentpw', 'Current password')} />
+            )}
+            {needCode && (
+              <>
+                <Input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" maxLength={6}
+                  placeholder={t('prof.sess.code2', '6-digit code from your authenticator')} />
+                {/* This site has its own authenticator (/2fa). If the code for this very
+                    account is stored in it, take it from there rather than making the
+                    user open a second tab to copy six digits. */}
+                <TotpQuickFill onFill={(c) => setCode(c)} />
+              </>
+            )}
+            {!needPw && !needCode && (
+              <p className="text-[11px] text-[var(--muted)]">
+                {t('prof.sess.noproof', 'This account signs in through a provider and has no second factor, so there is nothing extra to type — just confirm.')}
+              </p>
+            )}
             {err && <span className="text-[11px] text-[var(--error)]">{err}</span>}
             <div className="flex gap-2">
               <Button size="sm" variant="primary" disabled={busy} onClick={confirmRevoke}>

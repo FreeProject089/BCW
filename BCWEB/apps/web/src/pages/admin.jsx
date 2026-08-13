@@ -626,15 +626,45 @@ function AdminPlanUsers() {
   const emptyCopy = [t(`pu.empty.${tab}.t`, ''), t(`pu.empty.${tab}.s`, '')];
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> {t('pu.title', 'Free vs paid')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> {t('pu.title', 'Customers & revenue')}</h2>
       <p className="text-sm text-[var(--muted)] mb-3">{t('pu.desc', "What every customer currently has active: free-tier hosting, paid hosting/boosts, or expired/ended terms. Click a row to see the detail; click the user's name for their full profile.")}</p>
-      {mrr && (
-        <div className="grid sm:grid-cols-3 gap-3 mb-4">
-          <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><RefreshCw size={12} className="text-success" /> {t('pu.mrr', 'Monthly recurring revenue')}</div><div className="text-2xl font-bold text-success tabular-nums">{mrrMoney(mrr.totalCents)}<span className="text-sm font-normal text-[var(--faint)]">/{t('pu.mo', 'mo')}</span></div></Card>
-          <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><TrendingUp size={12} className="text-[var(--primary-2)]" /> {t('pu.arr', 'Annualized (est.)')}</div><div className="text-2xl font-bold tabular-nums">{mrrMoney(mrr.annualCents)}<span className="text-sm font-normal text-[var(--faint)]">/{t('pu.yr', 'yr')}</span></div></Card>
-          <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><CreditCard size={12} className="text-[var(--primary-2)]" /> {t('pu.activesubs', 'Active subscriptions')}</div><div className="text-2xl font-bold tabular-nums">{mrr.subCount}</div></Card>
-        </div>
-      )}
+      {/* The cards render even with nothing to show. They used to be hidden until the
+          request came back with an `mrr` object, so an empty site showed no figures at
+          all — and the honest answer to "how much am I making" on an empty site is a
+          visible 0, not a blank space where a number should be. */}
+      {(() => {
+        const measured = mrr?.stripe !== false;   // undefined = older API, treat as measured
+        const dash = <span className="text-[var(--faint)]">—</span>;
+        const num = (v) => (measured ? v : dash);
+        return (
+          <>
+            <div className="grid sm:grid-cols-3 gap-3 mb-2">
+              <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><RefreshCw size={12} className="text-success" /> {t('pu.mrr', 'Monthly recurring revenue')}</div><div className="text-2xl font-bold text-success tabular-nums">{num(<>{mrrMoney(mrr?.totalCents || 0)}<span className="text-sm font-normal text-[var(--faint)]">/{t('pu.mo', 'mo')}</span></>)}</div></Card>
+              <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><TrendingUp size={12} className="text-[var(--primary-2)]" /> {t('pu.arr', 'Annualized (est.)')}</div><div className="text-2xl font-bold tabular-nums">{num(<>{mrrMoney(mrr?.annualCents || 0)}<span className="text-sm font-normal text-[var(--faint)]">/{t('pu.yr', 'yr')}</span></>)}</div></Card>
+              <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><CreditCard size={12} className="text-[var(--primary-2)]" /> {t('pu.activesubs', 'Active subscriptions')}</div><div className="text-2xl font-bold tabular-nums">{num(mrr?.subCount || 0)}</div></Card>
+            </div>
+            {/* A zero you cannot trust is worse than no number: without this the card
+                reads a confident "$0.00/mo" whether nobody is paying or Stripe simply
+                never answered. */}
+            {!measured && (
+              <div className="text-xs text-warning flex items-center gap-1.5 mb-4">
+                <AlertTriangle size={12} /> {t('pu.nostripe', 'Stripe did not answer — these figures could not be measured.')}
+              </div>
+            )}
+            {/* Subscriptions live in Stripe with no account here — a wiped database, a
+                shared test key, a deleted customer. Named, because otherwise this page
+                is quietly smaller than the Stripe dashboard and nothing explains the gap. */}
+            {measured && mrr?.orphanSubs > 0 && (
+              <div className="text-xs text-[var(--muted)] flex items-start gap-1.5 mb-4">
+                <Info size={12} className="mt-0.5 shrink-0" />
+                <span>{t('pu.orphans', '{n} active subscription(s) in Stripe ({m}/mo) belong to no account here, so they are excluded above.')
+                  .replace('{n}', String(mrr.orphanSubs)).replace('{m}', mrrMoney(mrr.orphanMrrCents))}</span>
+              </div>
+            )}
+            {measured && !mrr?.orphanSubs && <div className="mb-4" />}
+          </>
+        );
+      })()}
       <div className="flex flex-wrap gap-2 items-center mb-3">
         <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
           <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('pu.search', 'Search a customer — name, email, creator id…')} value={q}
@@ -6008,6 +6038,16 @@ function VitalsBreakdownTable({ rows, dim }) {
   );
 }
 
+// Below this many samples a metric gets NO verdict — no colour, no "% good" bar.
+//
+// The panel used to rate whatever it had. Two clicks on a developer's machine became
+// "INP 389 ms · 50% good" in amber, which reads as a finding about the site when it is
+// a finding about the sample: at n=2, "P99" is just the worse of the two, and one slow
+// click is 50%. 20 is the smallest population where a share is worth printing — it is
+// also what the Web-Vitals ALERT threshold already assumes (`vitalsMinSamples`), so the
+// panel was the one place holding itself to a lower standard than the alerting.
+const WV_MIN_SAMPLES = 20;
+
 function WebVitals() {
   const { t } = useI18n();
   const [pct, setPct] = useState('p75');
@@ -6056,17 +6096,26 @@ function WebVitals() {
         <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.wv.none', 'No performance samples yet — collected from real visits (needs analytics consent).')}</div>
       ) : <>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
-          {metrics.map((m) => { const v = m[pct]; const r = vitalRating(m.metric, v);
+          {metrics.map((m) => { const v = m[pct];
+            // The value is still shown — it is the only measurement there is. What is
+            // withheld is the JUDGEMENT drawn from it.
+            const thin = (m.n || 0) < WV_MIN_SAMPLES;
+            const r = thin ? null : vitalRating(m.metric, v);
             const tr = (data?.trend || []).filter((x) => x.metric === m.metric).map((x) => x.p75).filter((x) => x != null);
             const stroke = r === 'good' ? '#34d399' : r === 'ni' ? '#f59e0b' : r === 'poor' ? '#f87171' : 'var(--primary)';
             return (
             <div key={m.metric} className="rounded-xl border border-[var(--line)] p-3 relative overflow-hidden">
               {tr.length > 1 && <Sparkline data={tr} stroke={stroke} className="absolute inset-x-0 bottom-0 h-7 w-full opacity-50 pointer-events-none" />}
               <div className="relative">
-                <div className="text-[11px] text-[var(--muted)] flex items-center gap-1" title={VITAL_META[m.metric].label}>{m.metric}{m.goodShare != null && <span className="ml-auto text-[10px] text-[var(--faint)]">{m.goodShare}% {t('an.wv.good', 'good')}</span>}</div>
+                <div className="text-[11px] text-[var(--muted)] flex items-center gap-1" title={VITAL_META[m.metric].label}>{m.metric}{!thin && m.goodShare != null && <span className="ml-auto text-[10px] text-[var(--faint)]">{m.goodShare}% {t('an.wv.good', 'good')}</span>}</div>
                 <div className={`text-xl font-bold mt-1 ${r ? vitalColor(r) : ''}`}>{v == null ? '—' : VITAL_META[m.metric].fmt(v)}</div>
-                {m.goodShare != null && <div className="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1.5 mb-0.5"><div className="h-full" style={{ width: `${m.goodShare}%`, background: m.goodShare >= 75 ? '#34d399' : m.goodShare >= 50 ? '#f59e0b' : '#f87171' }} /></div>}
-                <div className="text-[10px] text-[var(--faint)]">{m.n} {t('an.wv.samples', 'samples')} · {t('an.wv.goodle', 'good ≤')} {VITAL_META[m.metric].fmt(VITAL_META[m.metric].good)}</div>
+                {!thin && m.goodShare != null && <div className="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1.5 mb-0.5"><div className="h-full" style={{ width: `${m.goodShare}%`, background: m.goodShare >= 75 ? '#34d399' : m.goodShare >= 50 ? '#f59e0b' : '#f87171' }} /></div>}
+                <div className="text-[10px] text-[var(--faint)]">
+                  {m.n} {t('an.wv.samples', 'samples')}
+                  {thin && (m.n || 0) > 0
+                    ? <> · <span className="text-warning">{t('an.wv.thin', 'too few to rate')}</span></>
+                    : <> · {t('an.wv.goodle', 'good ≤')} {VITAL_META[m.metric].fmt(VITAL_META[m.metric].good)}</>}
+                </div>
               </div>
             </div>
           ); })}
