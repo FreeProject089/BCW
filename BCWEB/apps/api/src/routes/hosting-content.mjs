@@ -277,8 +277,13 @@ export async function removeRepoFile(p, repo, fid, actor) {
 }
 
 export async function publishRepo(p, repo, actor) {
-  if (!repo.repoJson) throw new RepoOpError('no_repo_json', 400);
-  if (!isValidRepoManifest(repo.repoJson)) throw new RepoOpError('invalid_manifest', 400); // old/invalid format
+  // An uploaded manifest must still be a VALID one — a stale format silently serving as
+  // truth is worse than none. Without one, the repo publishes on its files alone and the
+  // manifest is generated on read; only an empty repo has nothing to publish.
+  if (repo.repoJson && !isValidRepoManifest(repo.repoJson)) throw new RepoOpError('invalid_manifest', 400);
+  if (!repo.repoJson && !(repo.files || []).some((f) => !isManifestPath(f.path))) {
+    throw new RepoOpError('no_content', 400);
+  }
   const owner = await p.user.findUnique({ where: { id: repo.ownerId }, select: { displayName: true } });
   const base = `${slugify(owner?.displayName || 'user')}/${slugify(repo.name)}`;
   const hostPath = await freeHostPath(p, base, repo.id);
@@ -330,8 +335,9 @@ export default async function hostingContentRoutes(app) {
   });
 
   // ── Owner: publish (go online) / take offline a hosted repo ──
-  // The public URL is auto-managed (owner/repo slug). A valid uploaded repo.json is
-  // required — files are served as bytes only, never executed.
+  // The public URL is auto-managed (owner/repo slug). An uploaded repo.json is OPTIONAL:
+  // without one the manifest is generated from the files on read. Files are served as
+  // bytes only, never executed.
   app.post('/repos/:id/publish', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
     const { repo, err, msg } = await ownHosted(p, req.params.id, req.user);
@@ -397,9 +403,12 @@ export default async function hostingContentRoutes(app) {
   // ── Admin review ──
   app.post('/admin/repos/:id/publish', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
     const p = await db();
-    const repo = await p.serverRepo.findUnique({ where: { id: req.params.id }, include: { owner: { select: { displayName: true } } } });
+    const repo = await p.serverRepo.findUnique({ where: { id: req.params.id }, include: { files: true, owner: { select: { displayName: true } } } });
     if (!repo) return reply.code(404).send({ error: 'not_found' });
-    if (!repo.repoJson) return reply.code(400).send({ error: 'no_repo_json' });
+    // Same rule as the owner path: an uploaded manifest is optional now, content is not.
+    if (!repo.repoJson && !(repo.files || []).some((f) => !isManifestPath(f.path))) {
+      return reply.code(400).send({ error: 'no_content' });
+    }
     const hostPath = `${slugify(repo.owner.displayName)}/${slugify(repo.name)}`;
     await p.serverRepo.update({ where: { id: repo.id }, data: { published: true, pendingReview: false, hostPath, status: 'ONLINE' } });
     await notify(p, repo.ownerId, 'repo_published', `Your hosted repo "${repo.name}" is live at /hosting/${hostPath}/repo.json`);
@@ -563,16 +572,95 @@ function renderAutoindex(displayPath, entries) {
   return rows.join('\n');
 }
 
+
+// ── The manifest builds itself ───────────────────────────────────────────────
+// Publishing used to require the owner to upload a repo.json describing files that this
+// server already has in front of it — every path, every byte count, every sha256, all
+// computed at upload time. That is busywork with a failure mode: forget it, or upload an
+// older format, and publish refuses with `no_repo_json` on a repo whose content is
+// perfectly fine.
+//
+// So it is generated. An UPLOADED manifest still wins wherever one exists — someone who
+// exported from BMM has profile names, mod versions, tags and chunk tables that cannot be
+// recovered from a file listing, and explicit beats inferred every time. The generated one
+// is the floor, not a replacement.
+//
+// Shape follows src-tauri/src/models/repo.rs: each TOP-LEVEL directory becomes one mod,
+// and the files beneath it keep their path relative to that directory. Loose files at the
+// root are collected into one entry named after the repo, so nothing is silently dropped.
+function generatedManifest(repo, ownerName) {
+  const mods = new Map();
+  for (const f of repo.files || []) {
+    // The manifest describes CONTENT; a manifest file is not part of it.
+    if (isManifestPath(f.path)) continue;
+    const slash = f.path.indexOf('/');
+    const modName = slash === -1 ? repo.name : f.path.slice(0, slash);
+    const rel = slash === -1 ? f.path : f.path.slice(slash + 1);
+    if (!mods.has(modName)) mods.set(modName, []);
+    mods.get(modName).push({
+      relative_path: rel,
+      size: Number(f.size || 0),
+      // Computed at upload. Empty when an older row predates hashing — BMM then re-hashes
+      // that one file, which is the correct outcome, and better than a wrong hash.
+      sha256_hash: f.sha256 || '',
+      chunks: null,
+      // Unix seconds. This is what lets a refresh skip a file it already has: without it
+      // the planner reads "unknown" and re-hashes everything, every time.
+      mtime: Math.floor(new Date(f.updatedAt || f.createdAt || Date.now()).getTime() / 1000),
+    });
+  }
+  // No game is recorded anywhere on a hosted repo, so it is DERIVED rather than invented:
+  // the first tag if the owner set one, else the repo's own name. Both are things the
+  // owner actually wrote.
+  const gameName = (repo.tags && repo.tags[0]) || repo.name;
+  return {
+    name: repo.name,
+    description: repo.description || '',
+    author: ownerName || null,
+    version: '1.0',
+    game_name: gameName,
+    created_at: new Date(repo.createdAt || Date.now()).toISOString(),
+    profiles: [{
+      id: repo.id,
+      name: repo.name,
+      game_name: gameName,
+      mods: [...mods].map(([name, files]) => ({
+        id: `${repo.id}:${name}`,
+        name,
+        version: '1.0',
+        author: ownerName || null,
+        description: null,
+        tags: [],
+        files,
+        // Required by BMM's deserializer with no default: a mod without it fails the whole
+        // document, and the repo then looks EMPTY rather than raising anything actionable.
+        // Caught only by round-tripping this output through the real Rust struct.
+        download_links: [],
+      })),
+    }],
+    // Says plainly where this came from, so a reader who wonders why their repo.json has
+    // no tags is not left guessing.
+    generated_by: 'bettercommunity-hosting',
+  };
+}
+
   const serveManifest = async (req, reply) => {
     const p = await db();
-    const repo = await p.serverRepo.findUnique({ where: { hostPath: `${req.params.owner}/${req.params.repo}` } });
-    if (!repo || !repo.published || !repo.repoJson) return reply.code(404).send({ error: 'not_found' });
+    const repo = await p.serverRepo.findUnique({
+      where: { hostPath: `${req.params.owner}/${req.params.repo}` },
+      include: { files: true, owner: { select: { displayName: true } } },
+    });
+    if (!repo || !repo.published) return reply.code(404).send({ error: 'not_found' });
+    // Uploaded wins; otherwise build one from the files. Only a repo with neither has
+    // nothing to describe.
+    const manifest = repo.repoJson || (repo.files?.length ? generatedManifest(repo, repo.owner?.displayName) : null);
+    if (!manifest) return reply.code(404).send({ error: 'not_found' });
     const [globalPolicy, ownerPolicy, identity] = await Promise.all([getGlobalAccessPolicy(p), getUserAccessPolicy(p, repo.ownerId), resolveIdentity(p, req)]);
     if (!sandboxGate(repo, req, reply, [globalPolicy, ownerPolicy], identity)) return; // banned / not whitelisted
     logAccess(p, repo.id, req, 'repo.json', 'connect', identity); // consumer connected / imported the repo
     // no-store when restricted — a shared cache must never serve around the gate.
     const cc = repoRestricted(repo, [globalPolicy, ownerPolicy]) ? 'private, no-store' : 'public, max-age=60';
-    return reply.header('Content-Type', 'application/json').header('Cache-Control', cc).send(repo.repoJson);
+    return reply.header('Content-Type', 'application/json').header('Cache-Control', cc).send(manifest);
   };
   app.get('/hosting/:owner/:repo/repo.json', { preHandler: optionalAuth() }, serveManifest);
   app.get('/hosting/:owner/:repo/manifest.json', { preHandler: optionalAuth() }, serveManifest);

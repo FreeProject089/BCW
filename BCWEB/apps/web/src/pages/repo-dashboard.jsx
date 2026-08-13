@@ -638,7 +638,7 @@ function OnlineTab({ r, reload, publicUrl }) {
   const [busy, setBusy] = useState(false);
   const hasRepoJson = (r.files || []).some((f) => isManifestPath(f.path)) && !!r.repoJson;
   if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]">{t('rd.selfhostonline', 'Self-hosted repos are reached at their own URL — nothing to publish here.')}</Card>;
-  const go = async () => { setBusy(true); try { await api.post(`/repos/${r.id}/dashboard/publish`); toast.success(t('repos.nowonline', 'Online — your repo.json is now public.')); reload(); } catch (x) { toast.error(x.data?.error === 'no_repo_json' ? t('repos.needjson', 'Upload a valid repo.json first.') : t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
+  const go = async () => { setBusy(true); try { await api.post(`/repos/${r.id}/dashboard/publish`); toast.success(t('repos.nowonline', 'Online — your repo.json is now public.')); reload(); } catch (x) { toast.error(x.data?.error === 'no_content' ? t('repos.needfiles', 'Upload at least one file first.') : t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
   const off = async () => { setBusy(true); try { await api.post(`/repos/${r.id}/dashboard/unpublish`); toast.success(t('repos.nowoffline', 'Taken offline.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
   const online = r.published && r.status === 'ONLINE';
   return (

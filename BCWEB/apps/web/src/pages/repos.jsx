@@ -1604,10 +1604,10 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
     } catch { toast.error(t('repos.dlfail', 'Download failed.')); }
   };
   // Owner: go online / take offline (public URL is auto-managed for hosted repos).
-  const goOnline = async () => { setBusy(true); try { await api.post(`/repos/${repo.id}/publish`); toast.success(t('repos.nowonline', 'Online — your repo.json is now public.')); reload(); onChanged?.(); } catch (x) { toast.error(x.data?.error === 'no_repo_json' ? t('repos.needjson', 'Upload a valid repo.json first.') : t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
+  const goOnline = async () => { setBusy(true); try { await api.post(`/repos/${repo.id}/publish`); toast.success(t('repos.nowonline', 'Online — your repo.json is now public.')); reload(); onChanged?.(); } catch (x) { toast.error(x.data?.error === 'no_content' ? t('repos.needfiles', 'Upload at least one file first.') : t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
   const takeOffline = async () => { setBusy(true); try { await api.post(`/repos/${repo.id}/unpublish`); toast.success(t('repos.nowoffline', 'Taken offline.')); reload(); onChanged?.(); } catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
   // Admin: validate & publish / unpublish (moderation gate).
-  const publish = async () => { try { const r = await api.post(`/admin/repos/${repo.id}/publish`); toast.success(t('repos.publishedto', 'Published → /hosting/{p}/repo.json').replace('{p}', r.hostPath)); reload(); onChanged?.(); } catch (x) { toast.error(x.data?.error === 'no_repo_json' ? t('repos.needjson', 'A repo.json must be uploaded first.') : t('repos.failed', 'Failed.')); } };
+  const publish = async () => { try { const r = await api.post(`/admin/repos/${repo.id}/publish`); toast.success(t('repos.publishedto', 'Published → /hosting/{p}/repo.json').replace('{p}', r.hostPath)); reload(); onChanged?.(); } catch (x) { toast.error(x.data?.error === 'no_content' ? t('repos.needfiles', 'Upload at least one file first.') : t('repos.failed', 'Failed.')); } };
   const unpublish = async () => { try { await api.post(`/admin/repos/${repo.id}/unpublish`); reload(); onChanged?.(); } catch {} };
   const copyUrl = () => { navigator.clipboard?.writeText(publicUrl); toast.success(t('repos.copy.ok', 'repo.json link copied.')); };
   return (

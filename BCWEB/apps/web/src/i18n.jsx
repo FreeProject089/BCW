@@ -341,6 +341,7 @@ const DICT = {
     'prof.token.desc': "Utilise ce jeton personnel pour piloter l'API du compte en ton nom. Garde-le secret — quiconque le détient peut agir en ton nom.",
     'prof.token.generate': "Générer un jeton",
     'prof.token.reset': "Nouveau jeton généré.",
+    'repos.needfiles': "Envoie au moins un fichier d'abord.",
     'rd.copybase': "Copier l'URL de base des fichiers hébergés",
     'rd.openmanifest': "Ouvrir le manifeste",
     'rd.copyfileurl': "Copier l'URL de téléchargement de ce fichier",
