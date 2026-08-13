@@ -618,7 +618,10 @@ export default async function miscRoutes(app) {
     }
     if (!recipients.length) return reply.code(400).send({ error: 'no_recipients' });
 
-    const html = mailShell(b.data.subject, mdToEmailHtml(b.data.body));
+    // A preheader taken from the message's own opening line, so the inbox preview shows
+    // what the mail says instead of whatever text the client finds first.
+    const preheader = String(b.data.body).replace(/[#>*_`|\-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+    const html = mailShell(b.data.subject, mdToEmailHtml(b.data.body), undefined, { preheader });
     let sent = 0, failed = 0;
     // The first rejection, kept verbatim. Swallowing it left the admin with "the mail
     // server rejected every message" and nowhere to go — while the server was saying

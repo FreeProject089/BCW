@@ -167,7 +167,7 @@ export function mdToEmailHtml(md) {
 // A <style> block adds a dark variant via prefers-color-scheme for clients that support it
 // (Apple/iOS Mail, Outlook.com…); elsewhere it degrades to light. Optional CTA button (+
 // raw link fallback) and a footer. `cta`: { url, label }.
-export function mailShell(title, bodyHtml, cta) {
+export function mailShell(title, bodyHtml, cta, opts = {}) {
   // Escape the CTA url/label even though callers validate them — they can carry the
   // admin-supplied broadcast link, and this is HTML attribute + text context (CWE-79).
   const url = cta ? escapeHtml(cta.url) : '';
@@ -176,6 +176,18 @@ export function mailShell(title, bodyHtml, cta) {
     ? `<tr><td style="padding-top:26px"><a href="${url}" style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;padding:13px 30px;border-radius:12px;font-weight:700;font-size:15px;box-shadow:0 6px 18px -6px rgba(249,115,22,.5)">${label}</a></td></tr>
        <tr><td class="bc-faint" style="padding-top:18px;color:#918a80;font-size:12px;line-height:1.5">Or paste this link into your browser:<br><a href="${url}" style="color:#c2410c;word-break:break-all;text-decoration:none">${url}</a></td></tr>`
     : '';
+  // The heading is the ONE field a broadcast lets an admin type freely, and it was the
+  // one interpolation here that was not escaped — so a subject containing `&` or `<`
+  // (an ampersand in a plan name is enough) broke the markup of every copy sent.
+  const safeTitle = escapeHtml(title);
+  // A caller may pass plain prose rather than HTML (several do). Wrapping it gives that
+  // text the same paragraph spacing as markdown-rendered bodies instead of a naked run
+  // of text jammed against the heading.
+  const body = /^\s*</.test(String(bodyHtml || '')) ? bodyHtml : `<p style="margin:0 0 14px">${bodyHtml}</p>`;
+  // The inbox preview line. Without one, clients grab whatever text comes first — which
+  // here is the footer's copyright, so every message previewed as "© 2026 BetterCommunity".
+  // Hidden in the body itself: there is no other way to set it.
+  const preheader = escapeHtml(opts.preheader || String(title || ''));
   const style = `<style>
     @media (prefers-color-scheme: dark){
       .bc-bg{background:#0a0907 !important}
@@ -185,8 +197,19 @@ export function mailShell(title, bodyHtml, cta) {
       .bc-faint{color:#8a8278 !important}
       .bc-hr{border-color:#242019 !important}
     }
+    /* Phones: the card's 34px padding eats a third of a 320px screen. */
+    @media (max-width:520px){
+      .bc-card{padding:22px !important;border-radius:16px !important}
+      .bc-bg{padding:18px 10px !important}
+    }
   </style>`;
-  return `${style}<div class="bc-bg" style="margin:0;padding:36px 16px;background:#f4f1ec;font-family:ui-sans-serif,system-ui,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  // A COMPLETE document, not a fragment. The dark-mode and responsive rules were being
+  // emitted as a bare leading <style> with no <html>/<head> around it — which clients are
+  // free to drop or, worse, render as text. <head> is where they look for it, and the
+  // charset meta is what stops a "—" from arriving as mojibake.
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${safeTitle}</title>${style}</head><body style="margin:0;padding:0;background:#f4f1ec">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;height:0;width:0">${preheader}</div>
+<div class="bc-bg" style="margin:0;padding:36px 16px;background:#f4f1ec;font-family:ui-sans-serif,system-ui,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:500px;margin:0 auto">
     <tr><td style="padding:0 4px 20px">
       <table role="presentation" cellpadding="0" cellspacing="0"><tr>
@@ -197,8 +220,8 @@ export function mailShell(title, bodyHtml, cta) {
     <tr><td class="bc-card" style="background:#ffffff;border:1px solid #eae4da;border-radius:20px;padding:34px;box-shadow:0 12px 40px -18px rgba(30,20,5,.18)">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr><td style="border-bottom:3px solid #f97316;width:38px;padding-bottom:16px"></td></tr>
-        <tr><td style="padding-top:16px"><h1 class="bc-title" style="margin:0 0 12px;font-size:22px;color:#1a1714;letter-spacing:-.02em;font-weight:800">${title}</h1></td></tr>
-        <tr><td class="bc-text" style="color:#5d5750;font-size:15px;line-height:1.66">${bodyHtml}</td></tr>
+        <tr><td style="padding-top:16px"><h1 class="bc-title" style="margin:0 0 12px;font-size:22px;color:#1a1714;letter-spacing:-.02em;font-weight:800">${safeTitle}</h1></td></tr>
+        <tr><td class="bc-text" style="color:#5d5750;font-size:15px;line-height:1.66">${body}</td></tr>
         ${btn}
       </table>
     </td></tr>
@@ -206,5 +229,6 @@ export function mailShell(title, bodyHtml, cta) {
       © ${new Date().getFullYear()} BetterCommunity · <a href="${SITE}" style="color:#918a80;text-decoration:none">bettercommunity.ch</a>
     </td></tr>
   </table>
-</div>`;
+</div>
+</body></html>`;
 }
