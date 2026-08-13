@@ -111,10 +111,10 @@ export function Home() {
   const { t, lang } = useI18n();
   const root = useScrollReveal();
   const products = [
-    { icon: Boxes, logo: 'bmm', name: 'BMM', desc: t('prod.bmm.d'), to: '/p/bmm', tint: 'from-brand' },
-    { icon: Music2, logo: 'bsm', name: 'BSM', desc: t('prod.bsm.d'), to: '/p/bsm', tint: 'from-brand-2' },
-    { icon: Download, logo: 'installer', name: 'BetterInstaller', desc: t('prod.installer.d'), to: '/p/installer', tint: 'from-brand' },
-    { icon: Rocket, name: 'Hosting', desc: t('prod.hosting.d'), to: '/hosting', tint: 'from-brand-2' },
+    { icon: Boxes, logo: 'bmm', name: 'BMM', desc: t('prod.bmm.d'), to: '/p/bmm', tint: 'suite-tint-a' },
+    { icon: Music2, logo: 'bsm', name: 'BSM', desc: t('prod.bsm.d'), to: '/p/bsm', tint: 'suite-tint-b' },
+    { icon: Download, logo: 'installer', name: 'BetterInstaller', desc: t('prod.installer.d'), to: '/p/installer', tint: 'suite-tint-a' },
+    { icon: Rocket, name: 'Hosting', desc: t('prod.hosting.d'), to: '/hosting', tint: 'suite-tint-b' },
   ];
   return (
     // Generous vertical rhythm on purpose: the scroll is long, so sections (and
@@ -165,7 +165,7 @@ export function Home() {
         <SectionKicker n="01" label={t('home.k.products', 'The suite')} />
         <div className="reveal-stagger grid md:grid-cols-4 gap-4">
           {products.map((p) => (
-            <Link key={p.name} to={p.to} className="group"><Card hover className={`relative overflow-hidden p-5 h-full bg-gradient-to-b ${p.tint} to-transparent transition-transform duration-300 group-hover:-translate-y-1`}>
+            <Link key={p.name} to={p.to} className="group"><Card hover className={`suite-card ${p.tint} relative overflow-hidden p-5 h-full transition-transform duration-300 group-hover:-translate-y-1`}>
               <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 65%)' }} />
               <div className="relative">
                 <span className="inline-block transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3">

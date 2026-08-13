@@ -787,3 +787,30 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
     background: #ffffff;
     border-color: rgba(42, 26, 6, 0.28);
 }
+
+/* ── "The suite" cards ────────────────────────────────────────────────────────
+   These were `bg-gradient-to-b from-brand to-transparent`: full-saturation brand at
+   the top fading to nothing at the bottom. On a light page that makes the card
+   orange on top and white underneath, with the title and description straddling the
+   two — every line of text crossing a different background than the one above it.
+
+   A tint from the top instead. The card stays a card, the brand still marks it, and
+   the two variants keep alternating along the row. Mixed from the tokens so a theme
+   change carries them — the same call as the blog placeholder, and the opposite of
+   the CTA band, which paints a constant surface of its own. */
+.suite-card { position: relative; }
+.suite-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+}
+.suite-tint-a::before {
+    background: linear-gradient(to bottom,
+        color-mix(in srgb, var(--primary) 15%, transparent), transparent 62%);
+}
+.suite-tint-b::before {
+    background: linear-gradient(to bottom,
+        color-mix(in srgb, var(--primary-2) 15%, transparent), transparent 62%);
+}
