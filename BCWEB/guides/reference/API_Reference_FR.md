@@ -278,8 +278,260 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 
 ---
 
-*Généré depuis `apps/api/src/routes/` (dernier rafraîchissement 2026-07 — inclut la modération
-suspend/ban de compte, la visibilité par lien privé du catalogue + soumissions suspendues, les
-avis du landing, événements/feux d'artifice, niveaux de confiance des repos, l'analytics
-d'interaction first-party, et l'aperçu de stockage multi-paliers). Pour les formes
-requête/réponse, lis le module de route correspondant — chacun est petit et commenté.*
+## 18. Personal API keys & the public v1 API (`api-keys.mjs`)
+Clés nommées et limitées, créées par le propriétaire du compte pour l’API publique. Chaque route `/v1/*` est authentifiée par une clé et refuse tout ce qui sort de ses portées.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/me/api-keys` | user | Lister tes clés (jamais le secret). |
+| POST | `/me/api-keys` | user | Créer une clé — le secret n’est renvoyé qu’une fois. |
+| DELETE | `/me/api-keys/:id` | user | Révoquer une clé. |
+| GET | `/v1/scopes` | — | Catalogue des portées (ce qu’une clé peut recevoir). |
+| GET | `/v1/account` | `account:read` | Le compte propriétaire de la clé. |
+| GET | `/v1/notifications` | `notifications:read` | Notifications depuis un repère (BMM l’interroge). |
+| PATCH | `/v1/account` | `account:write` | Mettre à jour les champs de profil du propriétaire. |
+| GET | `/v1/repos` | `repos:read` | Dépôts visibles par la clé. |
+| GET | `/v1/repos/:id/files` | `repos:read` | Liste des fichiers d’un dépôt. |
+| GET | `/v1/repos/:id/changes` | `repos:read` | Flux de changements incrémental d’un dépôt. |
+| GET | `/v1/users/:id` | `users:read` | Un utilisateur public. |
+| GET | `/v1/users` | `users:read` | Annuaire des utilisateurs. |
+| GET | `/v1/catalog` | `catalog:read` | Flux du catalogue. |
+| GET | `/v1/catalog/changes` | `catalog:read` | Changements incrémentaux du catalogue. |
+
+## 19. Avatars (`avatar.mjs`)
+Rendu d’avatar déterministe à partir de l’id de compte.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/avatar/:id` | — | Image d’avatar rendue pour un compte. |
+
+## 20. Promo campaigns (`campaigns.mjs`)
+Campagnes promotionnelles à l’échelle du site et le badge affiché tant qu’une campagne est active.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/promo/campaign/active` | — | La campagne en cours, s’il y en a une. |
+| GET | `/admin/campaigns` | admin | Lister les campagnes. |
+| POST | `/admin/campaigns` | admin | Créer une campagne. |
+| PATCH | `/admin/campaigns/:id` | admin | Modifier une campagne. |
+| DELETE | `/admin/campaigns/:id` | admin | Supprimer une campagne. |
+
+## 21. Community catalogs (`catalogs.mjs`)
+Catalogues appartenant aux utilisateurs et leurs éléments, le flux public que lit BMM, et la surface de modération.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/c` | — | Index public des catalogues. |
+| GET | `/c/:slug` | — (soft) | Un catalogue public. |
+| POST | `/c/:slug/favorite` | user | Basculer un favori. |
+| GET | `/me/favorites` | user | Tes catalogues favoris. |
+| GET | `/c/:slug/catalog.json` | — (soft) | Flux natif BMM de ce catalogue. |
+| GET | `/c/:slug/items/:islug/dl` | — (soft) | Télécharger un élément (compte un téléchargement). |
+| GET | `/me/catalogs` | user | Tes catalogues. |
+| GET | `/me/catalogs/:id` | user | Un de tes catalogues. |
+| POST | `/me/catalogs` | user | Créer un catalogue. |
+| PATCH | `/me/catalogs/:id` | user | Modifier un catalogue. |
+| POST | `/me/catalogs/:id/rotate-key` | user | Faire tourner la clé de partage privée. |
+| DELETE | `/me/catalogs/:id` | user | Supprimer un catalogue. |
+| POST | `/me/catalogs/:id/items` | user | Ajouter un élément. |
+| PATCH | `/me/catalogs/:id/items/:iid` | user | Modifier un élément. |
+| DELETE | `/me/catalogs/:id/items/:iid` | user | Retirer un élément. |
+| GET | `/admin/catalogs` | `manage_catalogs` / mod | Liste de modération. |
+| POST | `/admin/catalogs/:id/:action` | `manage_catalogs` | Action de modération sur un catalogue. |
+| GET | `/admin/catalogs/:id/items` | `manage_catalogs` / mod | Éléments d’un catalogue en revue. |
+| GET | `/admin/catalogs/:id/items/:itemId/inspect` | `manage_catalogs` / mod | Inspecter le contenu d’un élément. |
+| GET | `/admin/catalogs/:id/items/:itemId/download` | `manage_catalogs` / mod | Télécharger un élément pour revue. |
+
+## 22. Social connections (`connections.mjs`)
+Rattachement de comptes tiers (et Ko-fi) à un profil, distinct de la connexion OAuth.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/auth/connect/providers` | — | Quels fournisseurs de connexion sont configurés. |
+| GET | `/me/connections` | user | Tes comptes liés. |
+| DELETE | `/me/connections/:provider` | user | Délier un fournisseur. |
+| PUT | `/me/connections/kofi` | user | Définir le pseudo Ko-fi. |
+| GET | `/auth/connect/:provider/start` | user | Démarrer la liaison d’un fournisseur. |
+| GET | `/auth/connect/:provider/callback` | — | Retour du fournisseur → lie le compte. |
+
+## 23. Documentation pages (`docs.mjs`)
+La section Docs protégée par rôle : pages, recherche, historique de révisions et commentaires par page.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/docs` | — (soft) | Arborescence des docs visible par l’appelant. |
+| GET | `/docs/search` | — (soft) | Rechercher dans les docs. |
+| GET | `/docs/:slug` | — (soft) | Une page de doc. |
+| POST | `/docs/:id/feedback` | — | Cette page a-t-elle été utile ? |
+| POST | `/docs` | `manage_docs` / admin | Créer une page. |
+| PATCH | `/docs/:id` | `manage_docs` / admin | Modifier une page. |
+| GET | `/docs/:id/history` | — (soft) | Liste des révisions. |
+| GET | `/docs/:id/history/:revId` | — (soft) | Une révision. |
+| GET | `/docs/:id/comments` | — (soft) | Commentaires d’une page. |
+| POST | `/docs/:id/comments` | `manage_docs` / admin | Ajouter un commentaire. |
+| PATCH | `/docs/:id/comments/:cid` | `manage_docs` / admin | Modifier un commentaire. |
+| GET | `/docs/:id/comments/:cid/history` | — (soft) | Historique d’édition d’un commentaire. |
+| DELETE | `/docs/:id/comments/:cid` | `manage_docs` / admin | Supprimer un commentaire. |
+| PATCH | `/docs` | `manage_docs` / admin | Réordonner / mettre à jour en lot. |
+| DELETE | `/docs/:id` | `manage_docs` / admin | Supprimer une page. |
+
+## 24. Site events (`events.mjs`)
+Événements programmés à l’échelle du site auxquels réagit le front.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/events/active` | — | Événements en cours. |
+| GET | `/admin/events` | admin | Lister les événements. |
+| POST | `/admin/events` | admin | Créer un événement. |
+| PATCH | `/admin/events/:id` | admin | Modifier un événement. |
+| DELETE | `/admin/events/:id` | admin | Supprimer un événement. |
+
+## 25. FAQ (`faq.mjs`)
+La FAQ publique et son CRUD d’administration.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/faq` | — (soft) | Entrées publiques de la FAQ. |
+| GET | `/admin/faq` | `manage_faq` | Toutes les entrées, y compris masquées. |
+| POST | `/admin/faq` | `manage_faq` | Créer une entrée. |
+| PATCH | `/admin/faq/:id` | `manage_faq` | Modifier une entrée. |
+| DELETE | `/admin/faq/:id` | `manage_faq` | Supprimer une entrée. |
+
+## 26. 404 game leaderboard (`game.mjs`)
+Scores du jeu « Orb Fall » de la page 404.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| POST | `/game/score` | user | Soumettre un score. |
+| GET | `/game/leaderboard` | — | Meilleurs scores. |
+
+## 27. Make Your Own (paid commissions) (`myo.mjs`)
+Le parcours de commande en deux temps : consultation payante, puis devis. Chaque demande porte un fil de messages, diffusé en SSE.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/myo/products` | — | Produits de commande achetables. |
+| POST | `/myo/requests` | user | Ouvrir une demande (étape consultation). |
+| POST | `/myo/requests/:id/pay` | user | Payer les frais de consultation. |
+| GET | `/myo/requests` | user | Tes demandes. |
+| GET | `/myo/requests/:id` | user | Une demande et son fil. |
+| POST | `/myo/requests/:id/messages` | user | Publier dans le fil. |
+| GET | `/myo/requests/:id/stream` | user | Flux SSE du fil. |
+| POST | `/myo/requests/:id/close` | user | Clore une demande. |
+| POST | `/myo/requests/:id/reopen` | user | Rouvrir une demande. |
+| POST | `/myo/quotes/:id/pay` | user | Payer un devis émis. |
+| GET | `/admin/myo/products` | `manage_myo` | Lister les produits. |
+| POST | `/admin/myo/products` | `manage_myo` | Créer un produit. |
+| PUT | `/admin/myo/products/:id` | `manage_myo` | Modifier un produit. |
+| DELETE | `/admin/myo/products/:id` | `manage_myo` | Supprimer un produit. |
+| GET | `/admin/myo/requests` | `manage_myo` | Toutes les demandes. |
+| POST | `/admin/myo/requests/:id/quotes` | `manage_myo` | Émettre un devis. |
+| POST | `/admin/myo/quotes/:id/withdraw` | `manage_myo` | Retirer un devis. |
+| POST | `/admin/myo/requests/:id/deliverables` | `manage_myo` | Joindre les livrables. |
+| PUT | `/admin/myo/requests/:id/status` | `manage_myo` | Définir le statut de la demande. |
+| GET | `/admin/myo/settings` | `manage_myo` | Réglages MYO. |
+| PUT | `/admin/myo/settings` | `manage_myo` | Mettre à jour les réglages MYO. |
+
+## 28. OAuth2 / OIDC provider (`oidc-provider.mjs`)
+BCWEB en fournisseur d’identité pour d’autres applications, plus le registre des clients côté admin.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/.well-known/openid-configuration` | — | Document de découverte OIDC. |
+| GET | `/.well-known/jwks.json` | — | Clés de signature. |
+| GET | `/oauth2/authorize` | — (soft) | Endpoint d’autorisation. |
+| GET | `/oauth2/consent-info` | — | Ce que le client demande. |
+| POST | `/oauth2/authorize/decision` | — (soft) | Enregistrer la décision de consentement. |
+| POST | `/oauth2/token` | — | Endpoint de jeton. |
+| GET | `/oauth2/userinfo` | — | UserInfo (GET). |
+| POST | `/oauth2/userinfo` | — | UserInfo (POST). |
+| GET | `/oauth2/me/items` | — | Les éléments de catalogue du sujet. |
+| GET | `/oauth2/me/repos` | — | Les dépôts du sujet. |
+| POST | `/oauth2/revoke` | — | Révoquer un jeton. |
+| GET | `/admin/oauth-clients` | admin | Clients enregistrés. |
+| POST | `/admin/oauth-clients` | admin | Enregistrer un client. |
+| PATCH | `/admin/oauth-clients/:id` | admin | Modifier un client. |
+| POST | `/admin/oauth-clients/:id/rotate` | admin | Faire tourner le secret d’un client. |
+| DELETE | `/admin/oauth-clients/:id` | admin | Supprimer un client. |
+
+## 29. Platform assets & update feeds (`platform-assets.mjs`)
+Installateurs et ressources JSON hébergés, et le flux de mise à jour compatible GitHub Releases que les apps interrogent.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/admin/assets` | admin | Lister les ressources de plateforme. |
+| PUT | `/admin/assets/json/:key` | admin | Écrire une ressource JSON (links.json, contributors.json…). |
+| POST | `/admin/assets/presign` | admin | Pré-signer un envoi de fichier. |
+| PUT | `/admin/assets/file/:key` | admin | Enregistrer un fichier envoyé. |
+| DELETE | `/admin/assets/:key` | admin | Supprimer une ressource. |
+| GET | `/updates/:app/latest` | — | Dernière version (compatible GitHub Releases). |
+| GET | `/updates/:app/releases` | — | Liste des versions. |
+| GET | `/assets/:key` | — | Récupérer une ressource hébergée. |
+
+## 30. Reports (`reports.mjs`)
+Signalements déposés par les utilisateurs, avec fil de participants, invitations et file de modération.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/reports/config` | — | Catégories de signalement montrées aux utilisateurs. |
+| POST | `/reports` | user | Déposer un signalement. |
+| GET | `/me/reports` | user | Tes signalements. |
+| GET | `/me/reports/:id` | user | Un de tes signalements. |
+| POST | `/me/reports/:id/messages` | user | Publier dans le fil de ton signalement. |
+| POST | `/me/reports/:id/status` | user | Changer le statut là où tu y es autorisé. |
+| GET | `/me/reports/:id/stream` | user | Flux SSE de ton signalement. |
+| GET | `/admin/reports` | `manage_reports` / mod | File de modération. |
+| GET | `/admin/reports/:id` | `manage_reports` / mod | Un signalement. |
+| POST | `/admin/reports/:id/participants` | `manage_reports` | Ajouter un participant. |
+| DELETE | `/admin/reports/:id/participants/:userId` | `manage_reports` | Retirer un participant. |
+| POST | `/admin/reports/:id/invites` | `manage_reports` | Créer un lien d’invitation. |
+| DELETE | `/admin/reports/:id/invites/:inviteId` | `manage_reports` | Révoquer une invitation. |
+| GET | `/reports/join/:token` | user | Prévisualiser une invitation. |
+| POST | `/reports/join/:token` | user | Accepter une invitation. |
+| POST | `/admin/reports/:id/messages` | `manage_reports` / mod | Répondre en tant qu’équipe. |
+| POST | `/admin/reports/:id/status` | `manage_reports` / mod | Définir le statut. |
+| DELETE | `/admin/reports/:id` | `manage_reports` | Supprimer un signalement. |
+| GET | `/admin/reports/config` | `manage_reports` / mod | Lire la configuration des signalements. |
+| PUT | `/admin/reports/config` | `manage_reports` | Mettre à jour la configuration des signalements. |
+
+## 31. Custom roles & project grants (`roles.mjs`)
+Ensembles de rôles créés par un SUPERADMIN par-dessus l’énumération de rôles, et droits d’édition par projet.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/admin/custom-roles` | superadmin | Lister les rôles personnalisés. |
+| POST | `/admin/custom-roles` | superadmin | Créer un rôle personnalisé. |
+| PUT | `/admin/custom-roles/:id` | superadmin | Modifier un rôle personnalisé. |
+| DELETE | `/admin/custom-roles/:id` | superadmin | Supprimer un rôle personnalisé. |
+| PUT | `/admin/users/:id/custom-roles` | superadmin | Attribuer des rôles personnalisés à un utilisateur. |
+| GET | `/admin/project-permissions` | admin | Lister les droits par projet. |
+| POST | `/admin/project-permissions` | admin | Accorder des droits d’édition sur un projet. |
+| DELETE | `/admin/project-permissions/:id` | admin | Révoquer un droit. |
+
+## 32. Public profiles & badges (`social.mjs`)
+Lecture des profils publics, recherche d’utilisateurs et système de badges.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/u/:id` | — (soft) | Un profil public (respecte son réglage de confidentialité). |
+| GET | `/users/search` | — (soft) | Rechercher des utilisateurs. |
+| GET | `/badges/trigger/:trigger` | — | Badges rattachés à un déclencheur. |
+| POST | `/me/badges/claim` | user | Réclamer un badge réclamable. |
+| GET | `/admin/badges` | admin | Lister les badges. |
+| POST | `/admin/badges` | admin | Créer un badge. |
+| PATCH | `/admin/badges/:id` | admin | Modifier un badge. |
+| DELETE | `/admin/badges/:id` | admin | Supprimer un badge. |
+| GET | `/admin/badges/:id/holders` | admin | Qui détient un badge. |
+| POST | `/admin/badges/:id/grant` | admin | Attribuer un badge. |
+| DELETE | `/admin/badges/:id/holders/:userId` | admin | Retirer un badge. |
+
+## 33. Telemetry access (`telemetry.mjs`)
+L’endpoint de forward-auth appelé par l’edge pour protéger le tableau de bord télémétrie BMM, et qui peut y accéder.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/telemetry/authorize` | — | Sonde de forward-auth appelée par l’edge avant de servir le tableau de bord. |
+| GET | `/admin/telemetry-access/users` | superadmin | Qui peut atteindre le tableau de bord. |
+| PUT | `/admin/telemetry-access/:userId` | superadmin | Accorder ou révoquer l’accès au tableau de bord. |
+
+*Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*

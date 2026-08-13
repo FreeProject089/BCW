@@ -272,8 +272,260 @@ and sends are admin-triggered only (no auto-send on publish).
 
 ---
 
-*Generated from `apps/api/src/routes/` (last refreshed 2026-07 — includes account
-suspend/ban moderation, catalog private-link visibility + suspended submissions, landing
-reviews, events/fireworks, repo trust tiers, first-party interaction analytics, and the
-multi-tier storage overview). For request/response shapes, read the corresponding route module — each is
-small and commented.*
+## 18. Personal API keys & the public v1 API (`api-keys.mjs`)
+Named, scoped keys the account owner mints for the public API. Every `/v1/*` route is authenticated by a key and refuses anything outside its scopes.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/me/api-keys` | user | List your keys (never the secret). |
+| POST | `/me/api-keys` | user | Mint a key — the secret is returned once. |
+| DELETE | `/me/api-keys/:id` | user | Revoke a key. |
+| GET | `/v1/scopes` | — | Scope catalogue (what a key may be granted). |
+| GET | `/v1/account` | `account:read` | The key owner’s account. |
+| GET | `/v1/notifications` | `notifications:read` | Notifications since a watermark (BMM polls this). |
+| PATCH | `/v1/account` | `account:write` | Update the owner’s profile fields. |
+| GET | `/v1/repos` | `repos:read` | Repos visible to the key. |
+| GET | `/v1/repos/:id/files` | `repos:read` | File listing for one repo. |
+| GET | `/v1/repos/:id/changes` | `repos:read` | Incremental change feed for one repo. |
+| GET | `/v1/users/:id` | `users:read` | One public user. |
+| GET | `/v1/users` | `users:read` | User directory. |
+| GET | `/v1/catalog` | `catalog:read` | Catalog feed. |
+| GET | `/v1/catalog/changes` | `catalog:read` | Incremental catalog changes. |
+
+## 19. Avatars (`avatar.mjs`)
+Deterministic avatar rendering by account id.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/avatar/:id` | — | Rendered avatar image for an account. |
+
+## 20. Promo campaigns (`campaigns.mjs`)
+Site-wide promotional campaigns and the badge the front end shows while one is live.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/promo/campaign/active` | — | The live campaign, if any. |
+| GET | `/admin/campaigns` | admin | List campaigns. |
+| POST | `/admin/campaigns` | admin | Create a campaign. |
+| PATCH | `/admin/campaigns/:id` | admin | Edit a campaign. |
+| DELETE | `/admin/campaigns/:id` | admin | Delete a campaign. |
+
+## 21. Community catalogs (`catalogs.mjs`)
+User-owned catalogs and their items, the public feed BMM reads, and the moderation surface.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/c` | — | Public catalog index. |
+| GET | `/c/:slug` | — (soft) | One public catalog. |
+| POST | `/c/:slug/favorite` | user | Toggle a favourite. |
+| GET | `/me/favorites` | user | Your favourited catalogs. |
+| GET | `/c/:slug/catalog.json` | — (soft) | BMM-native feed for this catalog. |
+| GET | `/c/:slug/items/:islug/dl` | — (soft) | Download one item (counts a download). |
+| GET | `/me/catalogs` | user | Catalogs you own. |
+| GET | `/me/catalogs/:id` | user | One of your catalogs. |
+| POST | `/me/catalogs` | user | Create a catalog. |
+| PATCH | `/me/catalogs/:id` | user | Edit a catalog. |
+| POST | `/me/catalogs/:id/rotate-key` | user | Rotate the private share key. |
+| DELETE | `/me/catalogs/:id` | user | Delete a catalog. |
+| POST | `/me/catalogs/:id/items` | user | Add an item. |
+| PATCH | `/me/catalogs/:id/items/:iid` | user | Edit an item. |
+| DELETE | `/me/catalogs/:id/items/:iid` | user | Remove an item. |
+| GET | `/admin/catalogs` | `manage_catalogs` / mod | Moderation list. |
+| POST | `/admin/catalogs/:id/:action` | `manage_catalogs` | Moderation action on a catalog. |
+| GET | `/admin/catalogs/:id/items` | `manage_catalogs` / mod | Items of a catalog under review. |
+| GET | `/admin/catalogs/:id/items/:itemId/inspect` | `manage_catalogs` / mod | Inspect an item’s payload. |
+| GET | `/admin/catalogs/:id/items/:itemId/download` | `manage_catalogs` / mod | Download an item for review. |
+
+## 22. Social connections (`connections.mjs`)
+Linking third-party accounts (and Ko-fi) to a profile, separately from OAuth sign-in.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/auth/connect/providers` | — | Which connection providers are configured. |
+| GET | `/me/connections` | user | Your linked accounts. |
+| DELETE | `/me/connections/:provider` | user | Unlink a provider. |
+| PUT | `/me/connections/kofi` | user | Set the Ko-fi handle. |
+| GET | `/auth/connect/:provider/start` | user | Begin linking a provider. |
+| GET | `/auth/connect/:provider/callback` | — | Provider callback → links the account. |
+
+## 23. Documentation pages (`docs.mjs`)
+The role-gated Docs section: pages, search, revision history and per-page comments.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/docs` | — (soft) | Doc tree visible to the caller. |
+| GET | `/docs/search` | — (soft) | Search the docs. |
+| GET | `/docs/:slug` | — (soft) | One doc page. |
+| POST | `/docs/:id/feedback` | — | Was this page helpful? |
+| POST | `/docs` | `manage_docs` / admin | Create a page. |
+| PATCH | `/docs/:id` | `manage_docs` / admin | Edit a page. |
+| GET | `/docs/:id/history` | — (soft) | Revision list. |
+| GET | `/docs/:id/history/:revId` | — (soft) | One revision. |
+| GET | `/docs/:id/comments` | — (soft) | Comments on a page. |
+| POST | `/docs/:id/comments` | `manage_docs` / admin | Add a comment. |
+| PATCH | `/docs/:id/comments/:cid` | `manage_docs` / admin | Edit a comment. |
+| GET | `/docs/:id/comments/:cid/history` | — (soft) | Comment edit history. |
+| DELETE | `/docs/:id/comments/:cid` | `manage_docs` / admin | Delete a comment. |
+| PATCH | `/docs` | `manage_docs` / admin | Reorder / bulk-update pages. |
+| DELETE | `/docs/:id` | `manage_docs` / admin | Delete a page. |
+
+## 24. Site events (`events.mjs`)
+Scheduled site-wide events the front end reacts to.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/events/active` | — | Events currently running. |
+| GET | `/admin/events` | admin | List events. |
+| POST | `/admin/events` | admin | Create an event. |
+| PATCH | `/admin/events/:id` | admin | Edit an event. |
+| DELETE | `/admin/events/:id` | admin | Delete an event. |
+
+## 25. FAQ (`faq.mjs`)
+The public FAQ and its admin CRUD.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/faq` | — (soft) | Public FAQ entries. |
+| GET | `/admin/faq` | `manage_faq` | All entries, including hidden. |
+| POST | `/admin/faq` | `manage_faq` | Create an entry. |
+| PATCH | `/admin/faq/:id` | `manage_faq` | Edit an entry. |
+| DELETE | `/admin/faq/:id` | `manage_faq` | Delete an entry. |
+
+## 26. 404 game leaderboard (`game.mjs`)
+Scores for the “Orb Fall” game on the 404 page.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/game/score` | user | Submit a score. |
+| GET | `/game/leaderboard` | — | Top scores. |
+
+## 27. Make Your Own (paid commissions) (`myo.mjs`)
+The two-stage commission flow: a paid consultation, then a quote. Requests carry a message thread, streamed over SSE.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/myo/products` | — | Purchasable commission products. |
+| POST | `/myo/requests` | user | Open a request (consultation stage). |
+| POST | `/myo/requests/:id/pay` | user | Pay the consultation fee. |
+| GET | `/myo/requests` | user | Your requests. |
+| GET | `/myo/requests/:id` | user | One request with its thread. |
+| POST | `/myo/requests/:id/messages` | user | Post to the thread. |
+| GET | `/myo/requests/:id/stream` | user | SSE stream of the thread. |
+| POST | `/myo/requests/:id/close` | user | Close a request. |
+| POST | `/myo/requests/:id/reopen` | user | Reopen a request. |
+| POST | `/myo/quotes/:id/pay` | user | Pay an issued quote. |
+| GET | `/admin/myo/products` | `manage_myo` | List products. |
+| POST | `/admin/myo/products` | `manage_myo` | Create a product. |
+| PUT | `/admin/myo/products/:id` | `manage_myo` | Edit a product. |
+| DELETE | `/admin/myo/products/:id` | `manage_myo` | Delete a product. |
+| GET | `/admin/myo/requests` | `manage_myo` | All requests. |
+| POST | `/admin/myo/requests/:id/quotes` | `manage_myo` | Issue a quote. |
+| POST | `/admin/myo/quotes/:id/withdraw` | `manage_myo` | Withdraw a quote. |
+| POST | `/admin/myo/requests/:id/deliverables` | `manage_myo` | Attach deliverables. |
+| PUT | `/admin/myo/requests/:id/status` | `manage_myo` | Set request status. |
+| GET | `/admin/myo/settings` | `manage_myo` | MYO settings. |
+| PUT | `/admin/myo/settings` | `manage_myo` | Update MYO settings. |
+
+## 28. OAuth2 / OIDC provider (`oidc-provider.mjs`)
+BCWEB acting as an identity provider for other applications, plus the admin client registry.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/.well-known/openid-configuration` | — | OIDC discovery document. |
+| GET | `/.well-known/jwks.json` | — | Signing keys. |
+| GET | `/oauth2/authorize` | — (soft) | Authorization endpoint. |
+| GET | `/oauth2/consent-info` | — | What the client is asking for. |
+| POST | `/oauth2/authorize/decision` | — (soft) | Record the user’s consent decision. |
+| POST | `/oauth2/token` | — | Token endpoint. |
+| GET | `/oauth2/userinfo` | — | UserInfo (GET). |
+| POST | `/oauth2/userinfo` | — | UserInfo (POST). |
+| GET | `/oauth2/me/items` | — | The subject’s catalog items. |
+| GET | `/oauth2/me/repos` | — | The subject’s repos. |
+| POST | `/oauth2/revoke` | — | Revoke a token. |
+| GET | `/admin/oauth-clients` | admin | Registered clients. |
+| POST | `/admin/oauth-clients` | admin | Register a client. |
+| PATCH | `/admin/oauth-clients/:id` | admin | Edit a client. |
+| POST | `/admin/oauth-clients/:id/rotate` | admin | Rotate a client secret. |
+| DELETE | `/admin/oauth-clients/:id` | admin | Delete a client. |
+
+## 29. Platform assets & update feeds (`platform-assets.mjs`)
+Hosted installers and JSON assets, and the GitHub-Releases-compatible update feed apps poll.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/admin/assets` | admin | List platform assets. |
+| PUT | `/admin/assets/json/:key` | admin | Write a JSON asset (links.json, contributors.json…). |
+| POST | `/admin/assets/presign` | admin | Presign a file upload. |
+| PUT | `/admin/assets/file/:key` | admin | Register an uploaded file. |
+| DELETE | `/admin/assets/:key` | admin | Delete an asset. |
+| GET | `/updates/:app/latest` | — | Latest release (GitHub-Releases-compatible). |
+| GET | `/updates/:app/releases` | — | Release list. |
+| GET | `/assets/:key` | — | Fetch a hosted asset. |
+
+## 30. Reports (`reports.mjs`)
+User-filed reports with a participant thread, invites, and the moderation queue.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/reports/config` | — | Reporting categories shown to users. |
+| POST | `/reports` | user | File a report. |
+| GET | `/me/reports` | user | Your reports. |
+| GET | `/me/reports/:id` | user | One of your reports. |
+| POST | `/me/reports/:id/messages` | user | Post to your report thread. |
+| POST | `/me/reports/:id/status` | user | Change status where you are allowed to. |
+| GET | `/me/reports/:id/stream` | user | SSE stream of your report. |
+| GET | `/admin/reports` | `manage_reports` / mod | Moderation queue. |
+| GET | `/admin/reports/:id` | `manage_reports` / mod | One report. |
+| POST | `/admin/reports/:id/participants` | `manage_reports` | Add a participant. |
+| DELETE | `/admin/reports/:id/participants/:userId` | `manage_reports` | Remove a participant. |
+| POST | `/admin/reports/:id/invites` | `manage_reports` | Create an invite link. |
+| DELETE | `/admin/reports/:id/invites/:inviteId` | `manage_reports` | Revoke an invite. |
+| GET | `/reports/join/:token` | user | Preview an invite. |
+| POST | `/reports/join/:token` | user | Accept an invite. |
+| POST | `/admin/reports/:id/messages` | `manage_reports` / mod | Reply as staff. |
+| POST | `/admin/reports/:id/status` | `manage_reports` / mod | Set status. |
+| DELETE | `/admin/reports/:id` | `manage_reports` | Delete a report. |
+| GET | `/admin/reports/config` | `manage_reports` / mod | Read the reporting config. |
+| PUT | `/admin/reports/config` | `manage_reports` | Update the reporting config. |
+
+## 31. Custom roles & project grants (`roles.mjs`)
+SUPERADMIN-authored role bundles layered on top of the role enum, and per-project edit grants.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/admin/custom-roles` | superadmin | List custom roles. |
+| POST | `/admin/custom-roles` | superadmin | Create a custom role. |
+| PUT | `/admin/custom-roles/:id` | superadmin | Edit a custom role. |
+| DELETE | `/admin/custom-roles/:id` | superadmin | Delete a custom role. |
+| PUT | `/admin/users/:id/custom-roles` | superadmin | Assign custom roles to a user. |
+| GET | `/admin/project-permissions` | admin | List per-project grants. |
+| POST | `/admin/project-permissions` | admin | Grant project edit rights. |
+| DELETE | `/admin/project-permissions/:id` | admin | Revoke a grant. |
+
+## 32. Public profiles & badges (`social.mjs`)
+Public profile reads, user search, and the badge system.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/u/:id` | — (soft) | A public profile (respects its privacy setting). |
+| GET | `/users/search` | — (soft) | Search users. |
+| GET | `/badges/trigger/:trigger` | — | Badges attached to a trigger. |
+| POST | `/me/badges/claim` | user | Claim a claimable badge. |
+| GET | `/admin/badges` | admin | List badges. |
+| POST | `/admin/badges` | admin | Create a badge. |
+| PATCH | `/admin/badges/:id` | admin | Edit a badge. |
+| DELETE | `/admin/badges/:id` | admin | Delete a badge. |
+| GET | `/admin/badges/:id/holders` | admin | Who holds a badge. |
+| POST | `/admin/badges/:id/grant` | admin | Grant a badge. |
+| DELETE | `/admin/badges/:id/holders/:userId` | admin | Take a badge back. |
+
+## 33. Telemetry access (`telemetry.mjs`)
+The forward-auth endpoint the edge calls to gate the BMM telemetry dashboard, and who may reach it.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/telemetry/authorize` | — | Forward-auth probe the edge calls before serving the dashboard. |
+| GET | `/admin/telemetry-access/users` | superadmin | Who may reach the dashboard. |
+| PUT | `/admin/telemetry-access/:userId` | superadmin | Grant or revoke dashboard access. |
+
+*Generated from `apps/api/src/routes/` (last refreshed 2026-08-13 — sections 18-33 added: every route module that previously had no section at all, plus the signed-in devices endpoints in §1. Paths, methods and the Auth column were extracted from the source rather than written from memory). For request/response shapes, read the corresponding route module — each is small and commented.*
