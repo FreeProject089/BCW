@@ -200,6 +200,102 @@ function netRate() {
 
 // The sweeper's per-tick entry point: sample metrics, persist history, run
 // threshold checks, and fire (debounced) alerts. Never throws.
+
+// ── Thresholds ───────────────────────────────────────────────────────────────
+// Admin-settable, with the previous hardcoded values as defaults so nothing changes for an
+// installation that never touches them. Read per tick rather than cached: the tick is every
+// ten minutes, one settings read is free next to the sampling it accompanies, and a cached
+// copy would mean a threshold change quietly not taking effect until a restart.
+const T_DEFAULTS = {
+  cpuPct: 90,
+  memPct: 90,
+  diskPct: 90,
+  storagePct: 85,      // a hosting pool this full needs action BEFORE it refuses an upload
+  vitalsPoorPct: 25,   // share of "poor" samples on a metric that counts as degraded
+  vitalsMinSamples: 20, // below this, a couple of bad loads would fire on noise
+  errorBurst: 10,      // new errors within the window
+};
+async function thresholds(p) {
+  const row = await p.adminSetting.findUnique({ where: { key: 'alerts.thresholds' } }).catch(() => null);
+  const v = (row?.value && typeof row.value === 'object') ? row.value : {};
+  const out = { ...T_DEFAULTS };
+  for (const k of Object.keys(T_DEFAULTS)) {
+    const n = Number(v[k]);
+    if (Number.isFinite(n) && n >= 0) out[k] = n;
+  }
+  return out;
+}
+
+// ── Web Vitals ───────────────────────────────────────────────────────────────
+// Alerts on the SHARE of poor samples, not on any single bad one: a slow load happens, a
+// quarter of them being slow is a regression. `rating` is what the web-vitals library
+// itself decided, so this reports the browser's verdict rather than re-deriving thresholds
+// that would drift from it.
+async function vitalsAlerts(p, t) {
+  const since = new Date(Date.now() - 60 * 60 * 1000);
+  const rows = await p.webVital.groupBy({
+    by: ['metric', 'rating'],
+    where: { createdAt: { gte: since } },
+    _count: { _all: true },
+  }).catch(() => []);
+  const totals = new Map(); // metric -> { all, poor }
+  for (const r of rows) {
+    const e = totals.get(r.metric) || { all: 0, poor: 0 };
+    e.all += r._count._all;
+    if (r.rating === 'poor') e.poor += r._count._all;
+    totals.set(r.metric, e);
+  }
+  const out = [];
+  for (const [metric, e] of totals) {
+    if (e.all < t.vitalsMinSamples) continue;
+    const pct = (100 * e.poor) / e.all;
+    if (pct >= t.vitalsPoorPct) {
+      out.push({ kind: 'web_vitals', message: `${metric}: ${pct.toFixed(0)}% of the last ${e.all} samples rated "poor" (threshold ${t.vitalsPoorPct}%).` });
+    }
+  }
+  return out;
+}
+
+// ── Hosting storage ──────────────────────────────────────────────────────────
+// A pool that fills up stops accepting uploads, and the owner finds out by failing. This
+// warns while there is still room to act. Reported per pool, so the message names the one
+// that needs attention rather than an aggregate nobody can act on.
+async function storageAlerts(p, t) {
+  const groups = await p.hostingGroup.findMany({ select: { id: true, name: true, poolBytes: true } }).catch(() => []);
+  const out = [];
+  for (const g of groups) {
+    const cap = Number(g.poolBytes || 0);
+    if (cap <= 0) continue;
+    // ServerRepo joins a pool through `groupId`, NOT `hostingGroupId` — that name belongs
+    // to Subscription. The first version used it and Prisma rejected the query, which the
+    // wrapper above would have swallowed: no storage alert would ever have fired, and
+    // nothing anywhere would have said why.
+    const agg = await p.serverRepo.aggregate({ where: { groupId: g.id }, _sum: { storageUsedBytes: true } });
+    const used = Number(agg?._sum?.storageUsedBytes || 0);
+    const pct = (100 * used) / cap;
+    if (pct >= t.storagePct) {
+      out.push({ kind: 'storage', message: `Storage pool "${g.name}" is ${pct.toFixed(0)}% full (${(used / 1e9).toFixed(1)} of ${(cap / 1e9).toFixed(1)} GB).` });
+    }
+  }
+  return out;
+}
+
+// ── Errors ───────────────────────────────────────────────────────────────────
+// A burst, not every error: one exception is a bug report, ten in ten minutes is an
+// incident. Server errors are counted separately from client ones because a 5xx storm and
+// a broken third-party script are different problems with different responses.
+async function errorAlerts(p, t) {
+  const since = new Date(Date.now() - 10 * 60 * 1000);
+  const out = [];
+  for (const source of ['server', 'client']) {
+    const n = await p.errorEvent.count({ where: { source, createdAt: { gte: since } } }).catch(() => 0);
+    if (n >= t.errorBurst) {
+      out.push({ kind: 'errors', message: `${n} new ${source} error(s) in the last 10 minutes (threshold ${t.errorBurst}).` });
+    }
+  }
+  return out;
+}
+
 export async function sampleAndAlert(p, log) {
   try {
     const [cpuPct, deps] = await Promise.all([sampleCpuPct(), checkDependencies(p)]);
@@ -218,10 +314,19 @@ export async function sampleAndAlert(p, log) {
     // the table growing unbounded (one row per ~10 min tick).
     await p.serverMetricSample.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 30 * 864e5) } } });
 
+    const t = await thresholds(p);
     const alerts = [];
-    if (cpuPct > 90) alerts.push(await maybeAlert(p, 'cpu', `CPU usage at ${cpuPct.toFixed(0)}% (>90%).`));
-    if (memPct > 90) alerts.push(await maybeAlert(p, 'mem', `Memory usage at ${memPct.toFixed(0)}% (>90%).`));
-    if (diskPct > 90) alerts.push(await maybeAlert(p, 'disk', `Disk usage at ${diskPct.toFixed(0)}% (>90%).`));
+    if (cpuPct > t.cpuPct) alerts.push(await maybeAlert(p, 'cpu', `CPU usage at ${cpuPct.toFixed(0)}% (>${t.cpuPct}%).`));
+    if (memPct > t.memPct) alerts.push(await maybeAlert(p, 'mem', `Memory usage at ${memPct.toFixed(0)}% (>${t.memPct}%).`));
+    if (diskPct > t.diskPct) alerts.push(await maybeAlert(p, 'disk', `Disk usage at ${diskPct.toFixed(0)}% (>${t.diskPct}%).`));
+    // The non-machine signals. Each returns a list, and each is wrapped: a failure to
+    // COUNT errors must never stop the CPU alert from firing, which is the one that says
+    // the box is about to fall over.
+    for (const fn of [vitalsAlerts, storageAlerts, errorAlerts]) {
+      try {
+        for (const a of await fn(p, t)) alerts.push(await maybeAlert(p, a.kind, a.message));
+      } catch (e) { log?.warn?.({ e: String(e?.message || e) }, `monitor: ${fn.name} failed`); }
+    }
     // Startup grace: right after the stack boots, dependencies (esp. the Discord
     // bot, whose heartbeat is only "fresh" ~2 min after IT starts) haven't had
     // time to report in — alerting immediately was a guaranteed false positive.
