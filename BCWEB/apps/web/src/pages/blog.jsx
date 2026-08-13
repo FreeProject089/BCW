@@ -116,7 +116,7 @@ export function BlogList() {
               <div key={p.id} className="group relative">
                 <Link to={`/blog/${p.slug}`}><Card hover className="overflow-hidden h-full flex flex-col">
                   {p.cover ? <img src={thumb(p.cover, 512)} alt="" className="w-full h-44 object-cover" />
-                    : <div className="w-full h-44 bg-gradient-to-br from-brand to-brand-2 grid place-items-center">{p.showcaseProject?.icon ? <img src={p.showcaseProject.icon} alt="" className="w-14 h-14 rounded-xl object-contain opacity-90" /> : p.showcaseProject ? <Sparkles size={40} className="text-[var(--primary-2)] opacity-90" /> : <img src={(TYPE_TAG[p.project?.key] || TYPE_TAG.community).img} alt="" className="w-12 h-12 rounded-xl object-contain opacity-90" />}</div>}
+                    : <div className="w-full h-44 bg-[var(--surface-2)] border-b border-[var(--line)] grid place-items-center">{p.showcaseProject?.icon ? <img src={p.showcaseProject.icon} alt="" className="w-14 h-14 rounded-xl object-contain opacity-90" /> : p.showcaseProject ? <Sparkles size={40} className="text-[var(--primary-2)] opacity-90" /> : <img src={(TYPE_TAG[p.project?.key] || TYPE_TAG.community).img} alt="" className="w-12 h-12 rounded-xl object-contain opacity-90" />}</div>}
                   <div className="p-5 flex-1 flex flex-col">
                     <div className="text-xs text-[var(--faint)] flex items-center gap-2">{fmtDate(p.publishedAt)}{!v.translated && <span className="inline-flex items-center gap-1 text-[var(--faint)]"><Languages size={11} /> {t('blog.untranslated', 'not translated')}</span>}</div>
                     <div className="font-bold mt-1.5 text-lg leading-snug">{v.title}</div>

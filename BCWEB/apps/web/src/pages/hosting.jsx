@@ -369,7 +369,7 @@ export function Hosting() {
       </div>}
 
       {/* Custom plan */}
-      <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-brand to-transparent">
+      <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-[var(--primary)]/10 to-transparent">
         <Sliders size={26} className="text-[var(--primary-2)]" />
         <div className="flex-1 text-center sm:text-left"><div className="font-semibold text-lg">{t('hosting.custom.title', 'Need a different size?')}</div>
           <div className="text-sm text-[var(--muted)]">{t('hosting.custom.sub2', 'Build a custom plan — pick your storage and upload speed. Price adapts instantly.')}</div></div>
@@ -406,7 +406,7 @@ function BoostAddCard({ repos, onAdd }) {
   const { data: fp } = useAsync(() => api.get(`/hosting/feature-price?days=${days}`).catch(() => null), [days]);
   const repo = repos.find((r) => r.id === repoId);
   return (
-    <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-brand-2 to-transparent">
+    <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-[var(--primary-2)]/10 to-transparent">
       <Rocket size={26} className="text-warning shrink-0" />
       <div className="flex-1 w-full">
         <div className="font-semibold text-lg">{t('cart.boost.title', 'Boost a repo to the top')}</div>
