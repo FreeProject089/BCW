@@ -246,7 +246,7 @@ export async function registerRepoFile(p, repo, { path: rawPath, key, size, cont
   } else {
     data.pendingReview = false;
   }
-  if (path === 'repo.json') {
+  if (isManifestPath(path)) {
     // Parse + validate against the CURRENT format — an old/invalid manifest is stored
     // (so the owner can see it) but stays UNVERIFIED, so it won't be listed publicly.
     try { const { body } = await getObject(key); const txt = await streamText(body); const parsed = JSON.parse(txt); data.repoJson = parsed; data.sha = sha256(txt); data.verified = isValidRepoManifest(parsed); }
@@ -257,12 +257,20 @@ export async function registerRepoFile(p, repo, { path: rawPath, key, size, cont
   return { ok: true, verified: !!data.verified };
 }
 
+// A repo's manifest may be named either way. `repo.json` is the original name and stays
+// the one we advertise; `manifest.json` is accepted because it is what most people reach
+// for, and being told "upload repo.json" after uploading a perfectly good manifest.json
+// is a dead end with no error to explain it. Both parse identically — this is a filename
+// alias, not a second format.
+export const MANIFEST_NAMES = ['repo.json', 'manifest.json'];
+export const isManifestPath = (path) => MANIFEST_NAMES.includes(String(path || '').trim());
+
 export async function removeRepoFile(p, repo, fid, actor) {
   const removed = repo.files.find((f) => f.id === fid);
   await p.repoFile.deleteMany({ where: { id: fid, serverRepoId: repo.id } });
   await recomputeUsage(p, repo.id);
   const data = { published: false };
-  if (removed?.path === 'repo.json') { data.verified = false; data.repoJson = null; data.sha = null; }
+  if (isManifestPath(removed?.path)) { data.verified = false; data.repoJson = null; data.sha = null; }
   await p.serverRepo.update({ where: { id: repo.id }, data });
   if (actor) await repoLog(p, repo.id, actor, 'delete', removed?.path || fid);
   return { ok: true };

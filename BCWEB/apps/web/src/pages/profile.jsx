@@ -31,7 +31,6 @@ export default function Profile() {
   const [pwBusy, setPwBusy] = useState(false);
   const [msg, setMsg] = useState('');
   // The one-time notifications key minted by the link, if the server sent one.
-  const [notifKey, setNotifKey] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -702,6 +701,10 @@ function TwoFactorCard() {
 // Link BMM creator id(s) to this account via a code BMM generates. 2-week unlink lock.
 function CreatorLinks() {
   const { t } = useI18n(); const toast = useToast();
+  // The one-time notifications key minted when a link is created. This state lived in
+  // Profile() while every use of it is here, so CreatorLinks referenced a binding it could
+  // not see and the whole page died with "notifKey is not defined" on render.
+  const [notifKey, setNotifKey] = useState('');
   // Ids hidden while their undo window is open. Kept apart from `links` so a reload landing
   // mid-window cannot resurrect a row the user has already dismissed.
   const [pending, setPending] = useState(() => new Set());

@@ -341,6 +341,8 @@ const DICT = {
     'prof.token.desc': "Utilise ce jeton personnel pour piloter l'API du compte en ton nom. Garde-le secret — quiconque le détient peut agir en ton nom.",
     'prof.token.generate': "Générer un jeton",
     'prof.token.reset': "Nouveau jeton généré.",
+    'rd.copyfileurl': "Copier l'URL de téléchargement de ce fichier",
+    'rd.fileurlcopied': "URL du fichier copiée.",
     // ── Appareils connectés (carte Sessions du profil) ──
     'prof.sess.title': "Appareils connectés",
     'prof.sess.sub': "Tous les appareils actuellement connectés à ce compte. Si tu n'en reconnais pas un, déconnecte-le — l'effet est immédiat.",

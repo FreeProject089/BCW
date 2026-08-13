@@ -14,6 +14,12 @@ import { useUploads } from './uploads.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
 
+// Either spelling is a manifest — the API accepts both (see MANIFEST_NAMES in
+// hosting-content.mjs). Kept as one predicate so the icon, the "ready to publish" check
+// and the API never disagree about what counts.
+const MANIFEST_NAMES = ['repo.json', 'manifest.json'];
+const isManifestPath = (p) => MANIFEST_NAMES.includes(String(p || '').trim());
+
 export function useFetch(fn, deps) {
   const [data, setData] = useState(null); const [loading, setLoading] = useState(true);
   const reload = () => { setLoading(true); fn().then(setData).catch(() => setData(null)).finally(() => setLoading(false)); };
@@ -758,11 +764,14 @@ export function MyRepos() {
                     <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-[var(--info-border)] bg-[var(--info-bg)] px-2.5 py-1.5 text-xs">
                       <RefreshCw size={13} className="text-[var(--info)] shrink-0 animate-spin" />
                       <span className="flex-1 text-[var(--info)]">{t('repos.provisioning.notice', 'Provisioning — open the dashboard, upload your files (including repo.json) and publish to bring it online.')}</span>
-                      <Link to={`/repo/${r.id}`}><Button size="sm" variant="primary"><LayoutDashboard size={12} /> {t('repos.opendash', 'Dashboard')}</Button></Link>
                     </div>
                   )}
                   <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                    {(() => { const st = repoStatusMeta(r, t); return <Badge tone={st.tone}>● {st.label}</Badge>; })()}
+                    {/* While the provisioning notice is up it already says this word, and
+                        says what to do about it — the badge directly beneath was the same
+                        state a second time. Every other status still badges normally. */}
+                    {!(r.status === 'PROVISIONING' && !repoLocked(r) && !r.deleteAt) &&
+                      (() => { const st = repoStatusMeta(r, t); return <Badge tone={st.tone}>● {st.label}</Badge>; })()}
                     <StatusBadges r={r} />{isFeatured(r) && <Badge tone="amber"><Star size={10} /> {t('repos.featureduntil', 'Featured until')} {new Date(r.featuredUntil).toLocaleDateString()}</Badge>}</div>
                   <div className="text-xs text-[var(--faint)] mt-1.5 flex items-center gap-3 flex-wrap font-mono">
                     {r.sha && <span>sha {r.sha.slice(0, 12)}…</span>}
@@ -1572,7 +1581,7 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
   const d = data || {}; const files = d.files || [];
   const mb = (n) => (Number(n) / 1024 / 1024).toFixed(1);
   const pct = d.quota ? Math.min(100, (d.used / d.quota) * 100) : 0;
-  const hasRepoJson = files.some((f) => f.path === 'repo.json') && !!d.repoJson;
+  const hasRepoJson = files.some((f) => isManifestPath(f.path)) && !!d.repoJson;
   const publicUrl = d.hostPath ? `${location.origin}/hosting/${d.hostPath}/repo.json` : '';
   // Uploads run in the global background manager, so they keep going after this
   // modal is closed (a floating dock shows progress + a completion toast).
@@ -1663,7 +1672,7 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
         <div className="space-y-1.5 max-h-[40vh] overflow-auto">
           {files.length ? files.map((f) => (
             <div key={f.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
-              {f.path === 'repo.json' ? <FileJson size={15} className="text-[var(--primary-2)]" /> : <FileText size={15} className="text-[var(--faint)]" />}
+              {isManifestPath(f.path) ? <FileJson size={15} className="text-[var(--primary-2)]" /> : <FileText size={15} className="text-[var(--faint)]" />}
               <span className="flex-1 truncate font-mono text-xs">{f.path}</span>
               {f.sha256 && <span className="hidden md:inline text-[10px] text-[var(--faint)] font-mono" title={`SHA-256: ${f.sha256}`}>{f.sha256.slice(0, 10)}…</span>}
               <span className="text-xs text-[var(--faint)]">{fmtSize(f.size)}</span>

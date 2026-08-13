@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
+  Link2 as LinkIcon,
   Server, GitBranch, ArrowLeft, Wifi, WifiOff, ShieldCheck, HardDrive, Zap, Lock, Copy, ExternalLink,
   FileJson, FileText, Trash2, UploadCloud, FolderUp, Rocket, CheckCircle2, AlertTriangle, KeyRound,
   Users, Mail, Plus, X, Eye, EyeOff, Files, Settings2, Loader2, Globe, History, Hash, Search, ChevronDown,
@@ -12,6 +13,12 @@ import { useToast, useDialog, Button, Card, Badge, Input, Select, Spinner, copyT
 import { useUploads } from './uploads.jsx';
 import { useUndoableSave } from './pages.jsx';
 import { useI18n } from '../i18n.jsx';
+
+// Either spelling is a manifest — the API accepts both (see MANIFEST_NAMES in
+// hosting-content.mjs). Kept as one predicate so the icon, the "ready to publish" check
+// and the API never disagree about what counts.
+const MANIFEST_NAMES = ['repo.json', 'manifest.json'];
+const isManifestPath = (p) => MANIFEST_NAMES.includes(String(p || '').trim());
 
 const gb = (n) => (Number(n) / 1024 ** 3).toFixed(1);
 const mb = (n) => (Number(n) / 1024 / 1024).toFixed(1);
@@ -174,7 +181,7 @@ function buildFileTree(files) {
   }
   return root;
 }
-function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, t, removing, deleting }) {
+function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, copyUrl, t, removing, deleting }) {
   const [open, setOpen] = useState(depth < 1);
   const dirs = [...node.dirs.entries()].sort(([a], [b]) => a.localeCompare(b));
   const files = [...node.files].sort((a, b) => a.path.localeCompare(b.path));
@@ -190,7 +197,7 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, t, removin
       )}
       {open && (
         <div>
-          {dirs.map(([seg, sub]) => <TreeNode key={seg} node={sub} name={seg} depth={depth + 1} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} t={t} removing={removing} deleting={deleting} />)}
+          {dirs.map(([seg, sub]) => <TreeNode key={seg} node={sub} name={seg} depth={depth + 1} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} copyUrl={copyUrl} t={t} removing={removing} deleting={deleting} />)}
           {files.map((f) => {
             const dl = downloadUrl(f);
             const base = f.path.includes('/') ? f.path.slice(f.path.lastIndexOf('/') + 1) : f.path;
@@ -198,11 +205,12 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, t, removin
             return (
               <div key={f.id} className={`flex items-center gap-2.5 px-4 py-2 text-sm ${removing?.has(f.id) ? 'file-row-out' : ''} ${isDeleting ? 'opacity-60' : ''}`} style={{ paddingLeft: `${16 + (name != null ? depth + 1 : depth) * 16}px` }}>
                 <input type="checkbox" className="shrink-0" checked={sel.has(f.id)} onChange={() => toggle(f.id)} disabled={isDeleting} />
-                {f.path === 'repo.json' ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
+                {isManifestPath(f.path) ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
                 <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
                 {isDeleting ? <span className="flex items-center gap-1.5 text-xs text-error shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
                   <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
                   {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
+                  {dl && <button className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" onClick={() => copyUrl(dl)} title={t('rd.copyfileurl', 'Copy this file’s download URL')}><LinkIcon size={14} /></button>}
                   <button className="text-[var(--faint)] hover:text-error shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>
                 </>}
               </div>
@@ -281,7 +289,7 @@ function FilesTab({ r, reload }) {
   const [bulkDeleting, setBulkDeleting] = useState(0);
   const BULK_THRESHOLD = 6;
   const files = (r.files || []).filter((f) => !hidden.has(f.id));
-  const hasRepoJson = files.some((f) => f.path === 'repo.json') && !!r.repoJson;
+  const hasRepoJson = files.some((f) => isManifestPath(f.path)) && !!r.repoJson;
   const totalBytes = files.reduce((a, f) => a + (Number(f.size) || 0), 0);
   const upload = (list) => { if (list.length) enqueue(r.id, r.name, list, { dashboard: true, onDone: reload }); };
   const onDrop = (e) => { e.preventDefault(); setDragOver(false); const fs = [...(e.dataTransfer?.files || [])]; if (fs.length) upload(fs); };
@@ -332,6 +340,11 @@ function FilesTab({ r, reload }) {
     finally { setZipping(false); }
   };
   const downloadUrl = (f) => (r.published && r.hostPath) ? `${location.origin}/hosting/${r.hostPath}/files/${f.path}` : null;
+  // Copying one file's link is the common case — you are sending somebody a single
+  // file, not the whole repo. Available as soon as the repo is PUBLISHED: being
+  // listed publicly is a separate choice, so an unlisted repo still hands out
+  // working per-file URLs to the people you give them to.
+  const copyUrl = (url) => { copyText(url); toast.success(t('rd.fileurlcopied', 'File URL copied.')); };
   if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]"><Globe size={16} className="text-[var(--primary-2)] inline mr-2" />{t('rd.selfhost', 'This is a self-hosted (URL) repo — its content lives at its own URL, not here.')}</Card>;
 
   const shown = files
@@ -398,7 +411,7 @@ function FilesTab({ r, reload }) {
         </div>
         <div className="max-h-[46vh] overflow-auto">
           {!shown.length ? <div className="text-sm text-[var(--faint)] px-4 py-4">{q.trim() ? t('rd.nomatch', 'No files match.') : t('repos.nofiles', 'No files yet.')}</div>
-          : view === 'tree' ? <TreeNode node={tree} name={null} depth={0} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} t={t} removing={removing} deleting={deleting} />
+          : view === 'tree' ? <TreeNode node={tree} name={null} depth={0} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} copyUrl={copyUrl} t={t} removing={removing} deleting={deleting} />
           : (
             <div className="divide-y divide-[var(--line)]">
               {shown.map((f) => {
@@ -407,12 +420,13 @@ function FilesTab({ r, reload }) {
                 return (
                 <div key={f.id} className={`flex items-center gap-2.5 px-4 py-2.5 text-sm ${removing.has(f.id) ? 'file-row-out' : ''} ${deleting.has(f.id) ? 'opacity-60' : ''}`}>
                   <input type="checkbox" className="shrink-0" checked={sel.has(f.id)} onChange={() => toggle(f.id)} disabled={deleting.has(f.id)} />
-                  {f.path === 'repo.json' ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
+                  {isManifestPath(f.path) ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
                   <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
                   {deleting.has(f.id) ? <span className="flex items-center gap-1.5 text-xs text-error shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
                     {f.sha256 && <span className="hidden md:flex items-center gap-1 text-[10px] text-[var(--faint)] font-mono" title={`SHA-256: ${f.sha256}`}><Hash size={10} /> {f.sha256.slice(0, 10)}…</span>}
                     <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
                     {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
+                    {dl && <button className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" onClick={() => copyUrl(dl)} title={t('rd.copyfileurl', 'Copy this file’s download URL')}><LinkIcon size={14} /></button>}
                     {!locked && <button className="text-[var(--faint)] hover:text-error shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>}
                   </>}
                 </div>
@@ -605,7 +619,7 @@ function ActivityTab({ r }) {
 function OnlineTab({ r, reload, publicUrl }) {
   const { t } = useI18n(); const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const hasRepoJson = (r.files || []).some((f) => f.path === 'repo.json') && !!r.repoJson;
+  const hasRepoJson = (r.files || []).some((f) => isManifestPath(f.path)) && !!r.repoJson;
   if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]">{t('rd.selfhostonline', 'Self-hosted repos are reached at their own URL — nothing to publish here.')}</Card>;
   const go = async () => { setBusy(true); try { await api.post(`/repos/${r.id}/dashboard/publish`); toast.success(t('repos.nowonline', 'Online — your repo.json is now public.')); reload(); } catch (x) { toast.error(x.data?.error === 'no_repo_json' ? t('repos.needjson', 'Upload a valid repo.json first.') : t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
   const off = async () => { setBusy(true); try { await api.post(`/repos/${r.id}/dashboard/unpublish`); toast.success(t('repos.nowoffline', 'Taken offline.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
