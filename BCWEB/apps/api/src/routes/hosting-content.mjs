@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import argon2 from 'argon2';
 import { Transform } from 'node:stream';
 import { createHash } from 'node:crypto';
 import archiver from 'archiver';
@@ -338,6 +339,28 @@ export default async function hostingContentRoutes(app) {
   // The public URL is auto-managed (owner/repo slug). An uploaded repo.json is OPTIONAL:
   // without one the manifest is generated from the files on read. Files are served as
   // bytes only, never executed.
+  // ── Owner: the repo's sync password ──
+  // Set one, or send an empty string to remove it. Never returns the password or its hash;
+  // the only readable fact is WHETHER one is set, which is all the UI needs to render.
+  app.put('/repos/:id/sync-password', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ password: z.string().max(200).default('') }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const { repo, err, msg } = await ownHosted(p, req.params.id, req.user);
+    if (err) return reply.code(err).send({ error: msg || (err === 404 ? 'not_found' : 'forbidden') });
+
+    const pw = b.data.password.trim();
+    // Blank means "no password", the same meaning BMM's own mini-server gives it — so
+    // clearing is the natural inverse of setting and needs no separate endpoint.
+    const hash = pw ? await argon2.hash(pw, { type: argon2.argon2id }) : null;
+    await p.serverRepo.update({ where: { id: repo.id }, data: { syncPasswordHash: hash } });
+    // Drop any cached verdicts at once: a password that has just been changed or removed
+    // must not keep working for the rest of the cache window.
+    forgetSyncPassword(repo.id);
+    await repoLog(p, repo.id, await actorLabel(p, req.user), 'settings', pw ? 'sync password set' : 'sync password removed');
+    return { ok: true, hasPassword: !!hash };
+  });
+
   app.post('/repos/:id/publish', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
     const { repo, err, msg } = await ownHosted(p, req.params.id, req.user);
@@ -498,6 +521,71 @@ export default async function hostingContentRoutes(app) {
   // exists so the two spellings are symmetric end to end, not just on the way in.
   // `repo.json` stays the canonical URL: it is what publish reports and what BMM asks for.
 
+
+// ── Repo sync password ───────────────────────────────────────────────────────
+// The client contract is BMM's and predates this: `X-Repo-Password` on EVERY file request
+// (there is no token exchange), plus `?password=` because a browser cannot set a header.
+// Matching it exactly means a password-protected repo hosted here needs no client change.
+// Reference: src-tauri/src/commands/repo_server.rs in the BMM repo.
+//
+// The password is stored as an argon2 hash, so the naive implementation would verify argon2
+// once per file — and a sync is hundreds of files. Argon2 is deliberately slow; that would
+// turn a protected repo into an unusable one and invite someone to "fix" it by storing the
+// password in clear.
+//
+// So the verdict is cached in memory, keyed by the repo and a sha256 of what was presented.
+// The slow hash is paid once per client per window; the hot path is a map lookup. The cache
+// holds only hashes, never the password, and is bounded so a flood of wrong guesses cannot
+// grow it without limit.
+const PW_CACHE_TTL_MS = 5 * 60 * 1000;
+const PW_CACHE_MAX = 500;
+const _pwCache = new Map(); // `${repoId}:${sha256(presented)}` -> { ok, at }
+
+function _pwKey(repoId, presented) {
+  return `${repoId}:${sha256(presented)}`;
+}
+
+/// The password this request presents, header first, query second. Trimmed, because a
+/// trailing newline from a shell pipeline is not a different password.
+function presentedPassword(req) {
+  const h = req.headers?.['x-repo-password'];
+  const q = req.query?.password;
+  const v = (typeof h === 'string' && h) || (typeof q === 'string' && q) || '';
+  return String(v).trim();
+}
+
+/// Does this request satisfy the repo's sync password? True when none is set.
+async function syncPasswordOk(repo, req) {
+  const want = (repo.syncPasswordHash || '').trim();
+  if (!want) return true; // no password on this repo — BMM treats blank the same way
+  const presented = presentedPassword(req);
+  if (!presented) return false;
+
+  const key = _pwKey(repo.id, presented);
+  const hit = _pwCache.get(key);
+  if (hit && Date.now() - hit.at < PW_CACHE_TTL_MS) return hit.ok;
+
+  let ok = false;
+  try { ok = await argon2.verify(want, presented); } catch { ok = false; }
+
+  // Bound the map before inserting. Evicting the oldest INSERTED entry is enough here:
+  // entries are cheap and short-lived, and the alternative (true LRU) buys nothing for a
+  // cache whose whole purpose is to survive one client's burst of file requests.
+  if (_pwCache.size >= PW_CACHE_MAX) {
+    const oldest = _pwCache.keys().next().value;
+    if (oldest !== undefined) _pwCache.delete(oldest);
+  }
+  _pwCache.set(key, { ok, at: Date.now() });
+  return ok;
+}
+
+/// Called when the owner changes or clears the password, so a revoked one stops working at
+/// once instead of lingering for the cache window. Local, not exported: it lives inside the
+/// route registration where `export` is not valid, and the only caller is in this file.
+function forgetSyncPassword(repoId) {
+  for (const k of _pwCache.keys()) if (k.startsWith(`${repoId}:`)) _pwCache.delete(k);
+}
+
 // ── nginx-format directory index ─────────────────────────────────────────────
 // BMM already knows how to walk a plain HTTP file server: "Update from server" parses an
 // nginx autoindex and uses the size and date on each row to skip re-hashing files that
@@ -657,6 +745,9 @@ function generatedManifest(repo, ownerName) {
     if (!manifest) return reply.code(404).send({ error: 'not_found' });
     const [globalPolicy, ownerPolicy, identity] = await Promise.all([getGlobalAccessPolicy(p), getUserAccessPolicy(p, repo.ownerId), resolveIdentity(p, req)]);
     if (!sandboxGate(repo, req, reply, [globalPolicy, ownerPolicy], identity)) return; // banned / not whitelisted
+    // The owner's own password, checked after the access lists: a banned requester should
+    // be told they are banned, not invited to guess a password.
+    if (!(await syncPasswordOk(repo, req))) return reply.code(401).send({ error: 'password_required' });
     logAccess(p, repo.id, req, 'repo.json', 'connect', identity); // consumer connected / imported the repo
     // no-store when restricted — a shared cache must never serve around the gate.
     const cc = repoRestricted(repo, [globalPolicy, ownerPolicy]) ? 'private, no-store' : 'public, max-age=60';
@@ -673,6 +764,9 @@ function generatedManifest(repo, ownerName) {
     if (!repo || !repo.published) return reply.code(404).send({ error: 'not_found' });
     const [globalPolicy, ownerPolicy, identity] = await Promise.all([getGlobalAccessPolicy(p), getUserAccessPolicy(p, repo.ownerId), resolveIdentity(p, req)]);
     if (!sandboxGate(repo, req, reply, [globalPolicy, ownerPolicy], identity)) return; // banned / not whitelisted
+    // The owner's own password, checked after the access lists: a banned requester should
+    // be told they are banned, not invited to guess a password.
+    if (!(await syncPasswordOk(repo, req))) return reply.code(401).send({ error: 'password_required' });
     // A directory path lists; a file path downloads. The empty path and anything ending
     // in "/" are directories by definition; a bare name that matches no file but does
     // prefix some is one too, and gets nginx's own 301 to the trailing-slash form so the

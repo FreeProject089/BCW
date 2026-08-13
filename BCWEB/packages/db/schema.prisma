@@ -822,6 +822,19 @@ model ServerRepo {
   // Unlisted-share link: when set, anyone with /r/<id>?k=<shareKey> can see the repo's
   // public page even though it isn't in the browse list (mirrors CommunityCatalog.shareKey).
   shareKey          String            @default("")
+  /// Optional download password, argon2 hash. Null / empty = no password, matching BMM's
+  /// own mini-server, which treats a blank password as "not required".
+  ///
+  /// The CLIENT contract is fixed and predates this column: BMM sends `X-Repo-Password` on
+  /// EVERY file request (there is no token exchange), and accepts `?password=` too because
+  /// a browser cannot set a header. See repo_server.rs in the BMM repo — matching it means
+  /// a password-protected repo hosted here needs no client change at all.
+  ///
+  /// Stored hashed rather than in clear because it is a user-chosen secret. Verifying
+  /// argon2 on every file of a sync would be crippling, so the hot path is a short-lived
+  /// in-memory verification cache (see hosting-content.mjs); the slow hash is paid once
+  /// per client per window.
+  syncPasswordHash  String?
   // Admin-set classification for the public browser: "community" (default),
   // "official" (maintained by the BMM team — green badge) or "partner" (trusted
   // community members — blue badge). Official/partner float to the top of the list.
