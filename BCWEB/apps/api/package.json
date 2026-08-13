@@ -12,6 +12,7 @@
     "migrate": "prisma migrate deploy --schema ../../packages/db/schema.prisma",
     "test": "node --test test/*.test.mjs",
     "seed:demo": "node src/seed-demo.mjs",
+    "seed:content": "node src/seed-content.mjs",
     "seed:docs": "node src/seed-docs.mjs",
     "seed:faq": "node src/seed-faq.mjs",
     "setup": "node src/setup.mjs",
