@@ -47,6 +47,9 @@ from the Fastify route modules in `apps/api/src/routes/`.
 | POST | `/me/2fa/setup` | user | Begin 2FA (returns QR + secret). |
 | POST | `/me/2fa/enable` | user | Confirm + enable 2FA (returns recovery codes). |
 | POST | `/me/2fa/disable` | user | Disable 2FA (password + code). |
+| GET | `/me/sessions` | user | Signed-in devices for this account. Returns `{ sessions[], currentTracked }`; each entry carries `current`, `ip`, `device`, `browser`, `os`, `country`, `region`, `city`, `createdAt`, `lastSeenAt`. Live rows only, newest activity first, capped at 100. `currentTracked:false` means the caller's own token predates session tracking and so is absent from the list. |
+| DELETE | `/me/sessions/:id` | user | Revoke one device. Scoped by account as well as id, so an id belonging to someone else returns 404 rather than acting. Idempotent. Revoking your own session also clears the cookie and answers `{ ok, self:true }`. |
+| DELETE | `/me/sessions` | user | Revoke every OTHER device, keeping the caller's. Returns `{ ok, revoked }`. |
 
 ## 2. OAuth login (`oauth.mjs`)
 | Method | Path | Auth | Purpose |

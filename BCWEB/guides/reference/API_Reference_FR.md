@@ -50,6 +50,9 @@ les modules de routes Fastify dans `apps/api/src/routes/`.
 | POST | `/me/2fa/setup` | user | Démarrer la 2FA (renvoie QR + secret). |
 | POST | `/me/2fa/enable` | user | Confirmer + activer la 2FA (renvoie les codes de récupération). |
 | POST | `/me/2fa/disable` | user | Désactiver la 2FA (mot de passe + code). |
+| GET | `/me/sessions` | user | Appareils connectés à ce compte. Renvoie `{ sessions[], currentTracked }` ; chaque entrée porte `current`, `ip`, `device`, `browser`, `os`, `country`, `region`, `city`, `createdAt`, `lastSeenAt`. Sessions vivantes uniquement, activité la plus récente d'abord, plafonné à 100. `currentTracked:false` signifie que le jeton de l'appelant est antérieur au suivi des sessions et n'apparaît donc pas dans la liste. |
+| DELETE | `/me/sessions/:id` | user | Révoquer un appareil. Filtré par compte autant que par id : un id appartenant à autrui renvoie 404 au lieu d'agir. Idempotent. Révoquer sa propre session efface aussi le cookie et répond `{ ok, self:true }`. |
+| DELETE | `/me/sessions` | user | Révoquer tous les AUTRES appareils, en gardant celui de l'appelant. Renvoie `{ ok, revoked }`. |
 
 ## 2. Connexion OAuth (`oauth.mjs`)
 | Méthode | Chemin | Auth | But |
