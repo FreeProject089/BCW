@@ -188,15 +188,27 @@ export function mailShell(title, bodyHtml, cta, opts = {}) {
   // here is the footer's copyright, so every message previewed as "© 2026 BetterCommunity".
   // Hidden in the body itself: there is no other way to set it.
   const preheader = escapeHtml(opts.preheader || String(title || ''));
-  const style = `<style>
-    @media (prefers-color-scheme: dark){
+  // The dark palette, and how it is switched on.
+  //
+  // A real send leaves it behind `prefers-color-scheme`, which is the only thing an email
+  // client understands. The PREVIEW needs to show either mode on demand — and inside an
+  // iframe that media query follows the OS, not the admin's toggle — so `scheme` can pin
+  // it: 'dark' emits the same declarations unconditionally, 'light' omits them entirely.
+  // Same rules either way, so what the preview shows is what the client will apply.
+  const darkDecls = `
       .bc-bg{background:#0a0907 !important}
       .bc-card{background:#141210 !important;border-color:#242019 !important}
       .bc-title,.bc-brand{color:#f3efe9 !important}
       .bc-text{color:#a39b8f !important}
       .bc-faint{color:#8a8278 !important}
-      .bc-hr{border-color:#242019 !important}
-    }
+      .bc-hr{border-color:#242019 !important}`;
+  const scheme = opts.scheme === 'dark' || opts.scheme === 'light' ? opts.scheme : 'auto';
+  const darkBlock = scheme === 'light' ? ''
+    : scheme === 'dark' ? darkDecls
+    : `@media (prefers-color-scheme: dark){${darkDecls}
+    }`;
+  const style = `<style>
+    ${darkBlock}
     /* Phones: the card's 34px padding eats a third of a 320px screen. */
     @media (max-width:520px){
       .bc-card{padding:22px !important;border-radius:16px !important}
@@ -207,7 +219,7 @@ export function mailShell(title, bodyHtml, cta, opts = {}) {
   // emitted as a bare leading <style> with no <html>/<head> around it — which clients are
   // free to drop or, worse, render as text. <head> is where they look for it, and the
   // charset meta is what stops a "—" from arriving as mojibake.
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${safeTitle}</title>${style}</head><body style="margin:0;padding:0;background:#f4f1ec">
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="${scheme === 'auto' ? 'light dark' : scheme}"><title>${safeTitle}</title>${style}</head><body style="margin:0;padding:0;background:#f4f1ec">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;height:0;width:0">${preheader}</div>
 <div class="bc-bg" style="margin:0;padding:36px 16px;background:#f4f1ec;font-family:ui-sans-serif,system-ui,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:500px;margin:0 auto">

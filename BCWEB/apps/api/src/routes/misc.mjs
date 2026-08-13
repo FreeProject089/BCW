@@ -578,6 +578,38 @@ export default async function miscRoutes(app) {
       return { id: { in: [...new Set(subs.map((x) => x.userId))] } };
     }
     if (aud === 'verified') return { emailVerified: true };
+    // Anyone who has EVER paid, subscribed or not. The audience for "we are changing how
+    // billing works" — which reaches past customers that `hosting` deliberately excludes.
+    if (aud === 'paid') {
+      const rows = await p.payment.findMany({ where: { status: 'paid' }, select: { userId: true } });
+      return { id: { in: [...new Set(rows.map((x) => x.userId))] } };
+    }
+    // Lapsed: they paid once and have no live subscription now. The one audience you
+    // actually want for a win-back, and the one a naive "all customers" query gets wrong.
+    if (aud === 'lapsed') {
+      const [paid, live] = await Promise.all([
+        p.payment.findMany({ where: { status: 'paid' }, select: { userId: true } }),
+        p.subscription.findMany({ where: { status: 'active' }, select: { userId: true } }),
+      ]);
+      const liveIds = new Set(live.map((x) => x.userId));
+      return { id: { in: [...new Set(paid.map((x) => x.userId))].filter((id) => !liveIds.has(id)) } };
+    }
+    // People hosting something for free — the audience for a capacity or policy change
+    // that only touches the free tier.
+    if (aud === 'freehost') {
+      const repos = await p.serverRepo.findMany({ where: { hosted: true, freePlan: true }, select: { ownerId: true } });
+      return { id: { in: [...new Set(repos.map((x) => x.ownerId))] } };
+    }
+    // Anyone who has published something. Reaches creators without reaching every
+    // account that ever signed up to download.
+    if (aud === 'creators') {
+      const [items, repos] = await Promise.all([
+        p.catalogItem.findMany({ where: { status: 'PUBLISHED' }, select: { ownerId: true } }),
+        p.serverRepo.findMany({ select: { ownerId: true } }),
+      ]);
+      return { id: { in: [...new Set([...items.map((x) => x.ownerId), ...repos.map((x) => x.ownerId)])] } };
+    }
+    if (aud === 'staff') return { role: { in: ['MOD', 'ADMIN', 'SUPERADMIN'] } };
     return null;
   };
 
@@ -599,11 +631,16 @@ export default async function miscRoutes(app) {
     const b = z.object({
       subject: z.string().max(200).default(''),
       body: z.string().max(20000).default(''),
+      // Pin the preview's palette regardless of the admin's own theme — an email is read
+      // in the recipient's client, not in this dashboard.
+      scheme: z.enum(['auto', 'light', 'dark']).default('auto'),
+      cta: z.object({ label: z.string().max(60), url: z.string().max(500) }).nullable().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const preheader = String(b.data.body).replace(/[#>*_`|\-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+    const cta = b.data.cta?.label && /^https?:\/\//i.test(b.data.cta.url || '') ? b.data.cta : undefined;
     return {
-      html: mailShell(b.data.subject || '(no subject)', mdToEmailHtml(b.data.body), undefined, { preheader }),
+      html: mailShell(b.data.subject || '(no subject)', mdToEmailHtml(b.data.body), cta, { preheader, scheme: b.data.scheme }),
       // Shown beside the preview: this is the line an inbox displays next to the subject,
       // and it is derived rather than typed, so it is worth seeing before sending.
       preheader,
@@ -612,12 +649,15 @@ export default async function miscRoutes(app) {
 
   app.post('/admin/mail/send', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
-      audience: z.enum(['all', 'hosting', 'verified', 'user']),
+      audience: z.enum(['all', 'hosting', 'verified', 'paid', 'lapsed', 'freehost', 'creators', 'staff', 'user']),
       planId: z.string().optional(),
       userId: z.string().optional(),
       subject: z.string().min(1).max(200),
       body: z.string().min(1).max(20000),   // markdown
       testOnly: z.boolean().default(false), // send to the sender alone
+      // An optional button. Rendered by the shell exactly as the system emails render
+      // theirs, with the "or paste this link" fallback for clients that strip buttons.
+      cta: z.object({ label: z.string().min(1).max(60), url: z.string().max(500) }).nullable().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     if (!emailEnabled()) return reply.code(503).send({ error: 'email_disabled' });
@@ -641,7 +681,11 @@ export default async function miscRoutes(app) {
     // A preheader taken from the message's own opening line, so the inbox preview shows
     // what the mail says instead of whatever text the client finds first.
     const preheader = String(b.data.body).replace(/[#>*_`|\-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
-    const html = mailShell(b.data.subject, mdToEmailHtml(b.data.body), undefined, { preheader });
+    // http(s) only. The CTA lands in an href, and a `javascript:` there would be a stored
+    // XSS aimed at every recipient at once (CWE-79/601) — the shell escapes it, but a link
+    // that cannot be a web page has no business being offered as one.
+    const cta = b.data.cta?.label && /^https?:\/\//i.test(b.data.cta.url || '') ? b.data.cta : undefined;
+    const html = mailShell(b.data.subject, mdToEmailHtml(b.data.body), cta, { preheader });
     let sent = 0, failed = 0;
     // The first rejection, kept verbatim. Swallowing it left the admin with "the mail
     // server rejected every message" and nowhere to go — while the server was saying

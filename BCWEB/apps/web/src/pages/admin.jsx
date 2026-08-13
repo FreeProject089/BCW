@@ -3407,6 +3407,85 @@ function AdminHistory() {
   );
 }
 
+// Starting points, not finished emails — every one is meant to be edited before it goes.
+// They exist because the blank page is where a broadcast goes wrong: the price-change
+// template says the four things the Payments policy promises, in the order the policy
+// promises them, so nobody has to remember what those are at 11pm.
+const HTTP_URL_RE = /^https?:\/\//i;
+const MAIL_TEMPLATES = [
+  {
+    id: 'price', label: 'Price change', audience: 'hosting',
+    subject: 'A change to your {plan} price',
+    cta: { label: 'Manage your subscription', url: '/dashboard' },
+    body: `Hello,
+
+The monthly price of **{plan}** hosting is changing.
+
+| | Price |
+|---|---|
+| Today | **$X.XX / month** |
+| From {date} | **$Y.YY / month** |
+
+The new price applies from your **next renewal on or after {date}**. It never applies to a period you have already paid for, and never mid-term on a prepaid plan.
+
+If you would rather not continue at the new price, cancel before that renewal — your service runs to the end of the period you have paid.`,
+  },
+  {
+    id: 'maintenance', label: 'Planned maintenance', audience: 'hosting',
+    subject: 'Planned maintenance on {date}',
+    cta: null,
+    body: `Hello,
+
+We will be taking hosting offline for maintenance on **{date}**, starting at **HH:MM UTC**.
+
+Expected downtime is about **X minutes**. Your files and settings are not affected — repositories will simply be unreachable while it runs.
+
+Nothing is required from you.`,
+  },
+  {
+    id: 'incident', label: 'Incident notice', audience: 'all',
+    subject: 'What happened on {date}',
+    cta: null,
+    body: `Hello,
+
+On **{date}** there was a problem with X, lasting about Y.
+
+**What was affected.** …
+
+**What we did.** …
+
+**What we are changing so it does not happen again.** …
+
+Sorry for the disruption.`,
+  },
+  {
+    id: 'feature', label: 'Something new', audience: 'creators',
+    subject: 'New: X',
+    cta: { label: 'Take a look', url: '/' },
+    body: `Hello,
+
+We have added **X**.
+
+- what it does
+- why it might matter to you
+
+It is available now — nothing to enable.`,
+  },
+  {
+    id: 'winback', label: 'Win-back', audience: 'lapsed',
+    subject: 'Your hosting has been idle',
+    cta: { label: 'Start again', url: '/hosting' },
+    body: `Hello,
+
+Your hosting with us ended a while ago, and we wanted to say what has changed since.
+
+- …
+- …
+
+Everything you had is still yours; picking it back up takes a couple of minutes.`,
+  },
+];
+
 function AdminMail() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { user: me } = useAuth();
   const plans = useAsync(() => api.get('/admin/hosting/plans'), []);
@@ -3418,6 +3497,12 @@ function AdminMail() {
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);   // { html, preheader }
   const [wide, setWide] = useState(true);         // desktop vs phone width
+  // Independent of the dashboard's own theme on purpose: the email is read in the
+  // recipient's client, and "how does this look to someone on dark mode" is a question
+  // you have to be able to ask without changing your own settings to find out.
+  const [scheme, setScheme] = useState('light');  // light | dark
+  const [ctaLabel, setCtaLabel] = useState('');
+  const [ctaUrl, setCtaUrl] = useState('');
 
   // The recipient count is refreshed whenever the audience changes, because the number is
   // the last chance to notice that "everyone" is larger than you pictured.
@@ -3437,12 +3522,12 @@ function AdminMail() {
   useEffect(() => {
     if (!subject.trim() && !body.trim()) { setPreview(null); return; }
     const id = setTimeout(() => {
-      api.post('/admin/mail/preview', { subject, body })
+      api.post('/admin/mail/preview', { subject, body, scheme, cta: ctaLabel.trim() && ctaUrl.trim() ? { label: ctaLabel.trim(), url: ctaUrl.trim() } : null })
         .then(setPreview)
         .catch(() => setPreview(null));
     }, 400);
     return () => clearTimeout(id);
-  }, [subject, body]);
+  }, [subject, body, scheme, ctaLabel, ctaUrl]);
 
   const send = async (testOnly) => {
     if (!subject.trim() || !body.trim()) return toast.error(t('adm.mail.empty', 'Subject and message are required.'));
@@ -3455,7 +3540,10 @@ function AdminMail() {
     })) return;
     setBusy(true);
     try {
-      const r = await api.post('/admin/mail/send', { audience, planId: planId || undefined, subject, body, testOnly });
+      const r = await api.post('/admin/mail/send', {
+        audience, planId: planId || undefined, subject, body, testOnly,
+        cta: ctaLabel.trim() && ctaUrl.trim() ? { label: ctaLabel.trim(), url: ctaUrl.trim() } : null,
+      });
       toast.success(testOnly
         ? t('adm.mail.tested2', 'Test sent to {email}.').replace('{email}', me?.email || '')
         : t('adm.mail.sent', 'Sent to {n} recipient(s).').replace('{n}', r.sent) + (r.failed ? ` · ${r.failed} failed` : ''));
@@ -3486,6 +3574,11 @@ function AdminMail() {
               <option value="hosting">{t('adm.mail.aud.hosting', 'Hosting subscribers')}</option>
               <option value="all">{t('adm.mail.aud.all', 'Every account')}</option>
               <option value="verified">{t('adm.mail.aud.verified', 'Verified emails only')}</option>
+              <option value="paid">{t('adm.mail.aud.paid', 'Anyone who has ever paid')}</option>
+              <option value="lapsed">{t('adm.mail.aud.lapsed', 'Lapsed customers (paid before, nothing live now)')}</option>
+              <option value="freehost">{t('adm.mail.aud.freehost', 'Free-tier hosts')}</option>
+              <option value="creators">{t('adm.mail.aud.creators', 'Creators (published a repo or an item)')}</option>
+              <option value="staff">{t('adm.mail.aud.staff', 'Staff only')}</option>
             </Select>
           </Field>
           {audience === 'hosting' && (
@@ -3497,12 +3590,49 @@ function AdminMail() {
             </Field>
           )}
         </div>
+        {/* Templates fill the form and then get out of the way — they set the audience
+            too, because "who is this for" is part of the template rather than a separate
+            decision made afterwards and got wrong. */}
+        <div className="mt-3">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('adm.mail.tpl', 'Start from a template')}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {MAIL_TEMPLATES.map((tpl) => (
+              <button key={tpl.id}
+                onClick={() => {
+                  setSubject(tpl.subject); setBody(tpl.body); setAudience(tpl.audience);
+                  setCtaLabel(tpl.cta?.label || '');
+                  setCtaUrl(tpl.cta ? new URL(tpl.cta.url, window.location.origin).href : '');
+                }}
+                className="px-2.5 py-1 rounded-full text-xs border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition">
+                {t(`adm.mail.tpl.${tpl.id}`, tpl.label)}
+              </button>
+            ))}
+            {(subject || body) && (
+              <button onClick={() => { setSubject(''); setBody(''); setCtaLabel(''); setCtaUrl(''); }}
+                className="px-2.5 py-1 rounded-full text-xs text-[var(--faint)] underline">{t('adm.mail.tpl.clear', 'clear')}</button>
+            )}
+          </div>
+          <p className="text-[11px] text-[var(--faint)] mt-1">{t('adm.mail.tpl.note', 'A starting point, not a finished email — the placeholders are yours to replace.')}</p>
+        </div>
+
         <div className="mt-3 space-y-3">
           <Field label={t('adm.mail.f.subject', 'Subject')}><Input value={subject} onChange={(e) => setSubject(e.target.value)} /></Field>
           <Field label={t('adm.mail.f.body', 'Message (markdown)')}>
             <Textarea rows={10} value={body} onChange={(e) => setBody(e.target.value)}
               placeholder={t('adm.mail.f.body.ph', 'What changed, when it takes effect, and what they can do about it.')} />
           </Field>
+          {/* Optional button. Both halves or neither: a label with no link renders
+              nothing, and a link with no label is not a button. */}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label={t('adm.mail.f.ctalabel', 'Button label (optional)')}>
+              <Input value={ctaLabel} onChange={(e) => setCtaLabel(e.target.value)} maxLength={60}
+                placeholder={t('adm.mail.f.ctalabel.ph', 'e.g. Manage your subscription')} />
+            </Field>
+            <Field label={t('adm.mail.f.ctaurl', 'Button link')}
+              hint={ctaLabel.trim() && !HTTP_URL_RE.test(ctaUrl.trim()) ? t('adm.mail.f.ctaurl.h', 'Needs a full https:// address.') : undefined}>
+              <Input value={ctaUrl} onChange={(e) => setCtaUrl(e.target.value)} maxLength={500} placeholder="https://bettercommunity.ch/…" />
+            </Field>
+          </div>
         </div>
         {/* The preview. In an iframe with `sandbox` and no allow-scripts: the document is
             a full <html> with its own <head>, so it cannot be dropped into the page, and
@@ -3514,9 +3644,20 @@ function AdminMail() {
               <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">
                 <Eye size={12} /> {t('adm.mail.preview', 'Preview')}
               </span>
-              <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
-                <button onClick={() => setWide(true)} className={`px-2 py-1 text-xs ${wide ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><MonitorIcon size={12} /></button>
-                <button onClick={() => setWide(false)} className={`px-2 py-1 text-xs ${!wide ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><Smartphone size={12} /></button>
+              <div className="flex items-center gap-2">
+                {/* Forced SERVER-side, not by a class on the iframe: inside an iframe the
+                    email's own prefers-color-scheme query follows the OS, so a toggle here
+                    could otherwise only ever show whichever mode the admin is already in.
+                    The server emits the same declarations either way, so the preview is
+                    still the real thing. */}
+                <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+                  <button onClick={() => setScheme('light')} className={`px-2 py-1 text-xs ${scheme === 'light' ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`} title={t('adm.mail.light', 'Light')}><Sun size={12} /></button>
+                  <button onClick={() => setScheme('dark')} className={`px-2 py-1 text-xs ${scheme === 'dark' ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`} title={t('adm.mail.dark', 'Dark')}><Moon size={12} /></button>
+                </div>
+                <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+                  <button onClick={() => setWide(true)} className={`px-2 py-1 text-xs ${wide ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><MonitorIcon size={12} /></button>
+                  <button onClick={() => setWide(false)} className={`px-2 py-1 text-xs ${!wide ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><Smartphone size={12} /></button>
+                </div>
               </div>
             </div>
             {/* The inbox line, shown as the inbox shows it: subject then preheader. It is
@@ -3526,7 +3667,9 @@ function AdminMail() {
               <div className="text-sm font-medium truncate">{subject || t('adm.mail.nosubject', '(no subject)')}</div>
               <div className="text-xs text-[var(--faint)] truncate">{preview.preheader || '—'}</div>
             </div>
-            <div className="rounded-b-xl border border-[var(--line)] overflow-hidden bg-white flex justify-center">
+            {/* The backdrop follows the pinned scheme too, or a dark email floats on a
+                white page and reads as broken rather than as dark. */}
+            <div className={`rounded-b-xl border border-[var(--line)] overflow-hidden flex justify-center ${scheme === 'dark' ? 'bg-[#0a0907]' : 'bg-white'}`}>
               <iframe
                 title="mail-preview"
                 sandbox=""
@@ -3557,6 +3700,15 @@ function AdminMail() {
 function AdminHostingPlans() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const data = useAsync(() => api.get('/admin/hosting/plans'), []);
+  // Every write here goes through the undo window the rest of the dashboard uses: the
+  // request is held for six seconds and only then sent, so "undo" means the change never
+  // reached the server at all. That matters more on this tab than most — these rows are
+  // prices, and a mistyped one is visible on the pricing page the moment it lands.
+  //
+  // NOT applied to a SCHEDULED change: that one emails every subscriber as it is created,
+  // and an email cannot be recalled six seconds later. It confirms up front instead, and
+  // the row's own "cancel" is the way back.
+  const undoable = useUndoableSave(() => data.reload());
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState(null);   // the row being edited, or a new one
   const [original, setOriginal] = useState(null); // the same row BEFORE the edit
@@ -3579,6 +3731,12 @@ function AdminHostingPlans() {
     && Number(draft.priceMonthlyCents) !== Number(original.priceMonthlyCents);
 
   const save = async () => {
+    const scheduling = !!(draft?.id && effective && original
+      && draft.priceMonthlyCents !== '' && draft.priceMonthlyCents != null
+      && Number(draft.priceMonthlyCents) !== Number(original.priceMonthlyCents));
+    // A scheduled change sends mail immediately — nothing to undo — so it keeps the
+    // direct path. Everything else is deferred.
+    if (!scheduling) return saveDeferred();
     setBusy(true);
     try {
       const body = {
@@ -3618,18 +3776,39 @@ function AdminHostingPlans() {
     catch { toast.error(t('common.failed', 'Failed.')); }
   };
 
+  // The deferred path: build the request, show the toast, and only fire on commit.
+  const saveDeferred = () => {
+    const body = {
+      name: draft.name, storageGB: Number(draft.storageGB), uploadLimitKbps: Number(draft.uploadLimitKbps),
+      cpuShare: Number(draft.cpuShare), active: !!draft.active,
+      priceMonthlyCents: draft.priceMonthlyCents === '' || draft.priceMonthlyCents == null
+        ? null : Number(draft.priceMonthlyCents),
+    };
+    const id = draft.id;
+    const label = draft.name;
+    setDraft(null); setEffective(''); setApplyExisting(false);
+    undoable(
+      () => (id ? api.patch(`/admin/hosting/plans/${id}`, body) : api.post('/admin/hosting/plans', body)),
+      id ? t('adm.plans.savedundo', 'Saved “{n}”.').replace('{n}', label)
+         : t('adm.plans.createdundo', 'Created “{n}”.').replace('{n}', label),
+    );
+  };
+
   const remove = async (pl) => {
     if (!await dialog.confirm({
       title: t('adm.plans.del.t', 'Delete this plan?'),
       message: t('adm.plans.del.m', 'Only possible while nobody is subscribed to it. To retire a plan people already bought, switch it off instead — that hides it from the pricing page and leaves their terms untouched.'),
       okLabel: t('common.delete', 'Delete'), danger: true,
     })) return;
-    try { await api.del(`/admin/hosting/plans/${pl.id}`); data.reload(); toast.success(t('adm.plans.deleted', 'Plan deleted.')); }
-    catch (x) {
-      toast.error(x.data?.error === 'plan_in_use'
-        ? t('adm.plans.inuse', 'In use by {n} subscription(s) — switch it off instead.').replace('{n}', x.data.subscriptions)
-        : t('common.failed', 'Failed.'));
-    }
+    undoable(
+      () => api.del(`/admin/hosting/plans/${pl.id}`),
+      t('adm.plans.deletedundo', 'Deleted “{n}”.').replace('{n}', pl.name),
+      {
+        errorFor: (x) => (x?.data?.error === 'plan_in_use'
+          ? t('adm.plans.inuse', 'In use by {n} subscription(s) — switch it off instead.').replace('{n}', x.data.subscriptions)
+          : null),
+      },
+    );
   };
 
   // Ask the server what these specs cost, so the placeholder shows the real number instead
