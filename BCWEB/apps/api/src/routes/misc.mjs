@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, clearAccountLockCache, clearUserCache, CAPABILITIES } from '../lib/lib.mjs';
-import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
+import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
+import argon2 from 'argon2';
+import crypto from 'node:crypto';
+import { verifyTotp } from '../lib/totp.mjs';
+// Same one-line helper the auth routes use for reset tokens: the token is mailed, only
+// its hash is stored, so the database never holds anything that grants access.
+const sha256 = (x) => crypto.createHash('sha256').update(x).digest('hex');
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 // Staff seniority for moderation: an actor can only moderate a strictly lower rank.
@@ -550,6 +556,143 @@ export default async function miscRoutes(app) {
       data: { revokedAt: new Date() },
     });
     if (!r.count) return reply.code(404).send({ error: 'not_found' });
+    return { ok: true };
+  });
+
+  // ── Admin mail ───────────────────────────────────────────────────────────────
+  // One place to reach users by email. It exists because the alternative — exporting
+  // addresses and pasting them into a mail client — is how people end up putting a
+  // customer list in the To: field.
+  //
+  // Audiences are QUERIES, not stored lists, so "everyone on a hosting plan" is right at
+  // the moment you press send rather than whenever the list was last exported.
+  const audienceWhere = async (p, aud, planId) => {
+    if (aud === 'all') return {};
+    if (aud === 'hosting') {
+      // Anyone with a live subscription. Through the relation rather than a snapshot, so
+      // a lapsed customer is not mailed about a price they no longer pay.
+      const subs = await p.subscription.findMany({
+        where: { status: 'active', ...(planId ? { planId } : {}) },
+        select: { userId: true },
+      });
+      return { id: { in: [...new Set(subs.map((x) => x.userId))] } };
+    }
+    if (aud === 'verified') return { emailVerified: true };
+    return null;
+  };
+
+  app.get('/admin/mail/audience', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const where = await audienceWhere(p, String(req.query?.audience || 'all'), req.query?.planId || null);
+    if (!where) return reply.code(400).send({ error: 'invalid_audience' });
+    // A COUNT before sending, because the number is the last chance to notice that
+    // "everyone" meant something larger than intended.
+    return { count: await p.user.count({ where }) };
+  });
+
+  app.post('/admin/mail/send', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      audience: z.enum(['all', 'hosting', 'verified', 'user']),
+      planId: z.string().optional(),
+      userId: z.string().optional(),
+      subject: z.string().min(1).max(200),
+      body: z.string().min(1).max(20000),   // markdown
+      testOnly: z.boolean().default(false), // send to the sender alone
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (!emailEnabled()) return reply.code(503).send({ error: 'email_disabled' });
+    const p = await db();
+
+    let recipients;
+    if (b.data.testOnly) {
+      const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { email: true, displayName: true } });
+      recipients = me ? [me] : [];
+    } else if (b.data.audience === 'user') {
+      if (!b.data.userId) return reply.code(400).send({ error: 'invalid_input' });
+      const u = await p.user.findUnique({ where: { id: b.data.userId }, select: { email: true, displayName: true } });
+      recipients = u ? [u] : [];
+    } else {
+      const where = await audienceWhere(p, b.data.audience, b.data.planId || null);
+      if (!where) return reply.code(400).send({ error: 'invalid_audience' });
+      recipients = await p.user.findMany({ where, select: { email: true, displayName: true } });
+    }
+    if (!recipients.length) return reply.code(400).send({ error: 'no_recipients' });
+
+    const html = mailShell(b.data.subject, mdToEmailHtml(b.data.body));
+    let sent = 0, failed = 0;
+    for (const r of recipients) {
+      // ONE message per address. A shared To: or Cc: would publish every customer's email
+      // to every other customer, which is a data breach and not a mailing list.
+      // Per-recipient try/catch, NOT one around the loop. sendMail THROWS when the SMTP
+      // server rejects an address, and a single bad mailbox in a 400-person broadcast
+      // would otherwise abort the run half-way — with no record of who was already
+      // reached, so a retry would double-mail them.
+      try {
+        const ok = await sendMail({ to: r.email, subject: b.data.subject, html, text: b.data.body });
+        if (ok === false) failed++; else sent++;
+      } catch { failed++; }
+    }
+    // Every single message failed — report it as a FAILURE, not as `ok: true, sent: 0`.
+    // A "sent to 0 recipients" toast reads like an empty audience, so a misconfigured SMTP
+    // server would look like a successful broadcast nobody happened to be in.
+    if (sent === 0 && failed > 0) return reply.code(502).send({ error: 'all_failed', failed });
+    if (!b.data.testOnly) {
+      await logAudit(p, req.user.uid, 'mail.send', `"${b.data.subject}" → ${b.data.audience} (${sent} sent, ${failed} failed)`, clientIp(req));
+    }
+    return { ok: true, sent, failed, total: recipients.length };
+  });
+
+  // ── Password recovery, on the user's behalf ──────────────────────────────────
+  // Sends the SAME reset link the forgot-password flow sends. Support can unblock someone
+  // without ever seeing or choosing their password, which is the version of this that
+  // should be reached for first.
+  app.post('/admin/users/:id/password-reset', { preHandler: requireCap('manage_users') }, async (req, reply) => {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, email: true, displayName: true } });
+    if (!u) return reply.code(404).send({ error: 'not_found' });
+    const token = crypto.randomBytes(24).toString('hex');
+    await p.passwordReset.create({ data: { userId: u.id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 3600e3) } });
+    const url = `${SITE_URL}/auth?reset=${token}`;   // the module const: trailing slash already stripped
+    const sent = await sendMail({
+      to: u.email,
+      subject: 'Reset your BetterCommunity password',
+      html: mailShell('Reset your password', `<p>A member of the team started a password reset for your account. The link is valid for one hour.</p><p>If you did not ask for this, you can ignore this email — your current password still works.</p>`, { label: 'Choose a new password', url }),
+      text: `Reset your password: ${url}`,
+    }).catch(() => false);   // an SMTP failure must not 500 away a token already minted
+    await logAudit(p, req.user.uid, 'user.password_reset_sent', `for ${u.displayName} <${u.email}>`, clientIp(req));
+    // The token is returned ONLY when there is no mail backend, matching the public reset
+    // flow — otherwise a dev instance could never test this, and nobody would notice it
+    // was broken until a real user needed it.
+    return { ok: true, emailed: sent !== false, ...(sent === false ? { devUrl: url } : {}) };
+  });
+
+  // Setting a password outright is SUPERADMIN + a fresh TOTP code. It bypasses the owner
+  // entirely, so it is gated harder than anything else here and always audited: knowing
+  // WHO did it is the only control left once the password is known to someone else.
+  app.put('/admin/users/:id/password', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
+    const b = z.object({ password: z.string().min(8).max(200), code: z.string().default('') }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { totpEnabled: true, totpSecret: true } });
+    // 2FA is REQUIRED here, not merely checked when present. An account that can silently
+    // take over any other account must not be reachable by a stolen session cookie alone.
+    if (!me?.totpEnabled || !me.totpSecret) return reply.code(403).send({ error: '2fa_required' });
+    if (!verifyTotp(me.totpSecret, String(b.data.code).replace(/\s+/g, ''))) return reply.code(403).send({ error: 'bad_code' });
+
+    const u = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, email: true, displayName: true } });
+    if (!u) return reply.code(404).send({ error: 'not_found' });
+    await p.user.update({ where: { id: u.id }, data: { passwordHash: await argon2.hash(b.data.password, { type: argon2.argon2id }) } });
+    // Every existing device is signed out: a password changed by someone else must not
+    // leave whoever prompted it still logged in.
+    await p.session.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    await logAudit(p, req.user.uid, 'user.password_set', `for ${u.displayName} <${u.email}>`, clientIp(req));
+    // The owner is TOLD. A silent password change is indistinguishable from a compromise.
+    await sendMail({
+      to: u.email,
+      subject: 'Your BetterCommunity password was changed',
+      html: mailShell('Your password was changed', '<p>An administrator set a new password on your account, and all your signed-in devices were signed out.</p><p>If you did not expect this, reply to this email immediately.</p>'),
+      text: 'An administrator set a new password on your account and signed out all your devices.',
+    }).catch(() => {});
     return { ok: true };
   });
 

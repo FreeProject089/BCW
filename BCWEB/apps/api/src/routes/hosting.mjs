@@ -206,8 +206,20 @@ export default async function hostingRoutes(app) {
     storageGB: z.number().int().min(0).max(100000),
     uploadLimitKbps: z.number().int().min(0).max(10_000_000),
     cpuShare: z.number().min(0).max(64),
-    priceMonthlyCents: z.number().int().min(0).max(10_000_000),
+    // NULLABLE on purpose: leaving the price empty means "whatever Hosting settings say
+    // this costs", so a plan tracks the per-GB/per-Mbps rates instead of freezing a number
+    // that silently stops matching them the next time those rates move.
+    priceMonthlyCents: z.number().int().min(0).max(10_000_000).nullable(),
     active: z.boolean(),
+  };
+
+  // The price Hosting settings computes for a plan's own specs. Same function the public
+  // /hosting/price endpoint and checkout use, so a derived plan cannot drift from what a
+  // custom build of the same size would cost. uploadLimitKbps is stored in kbps and the
+  // formula is priced per Mbps — converting in one place beats three call sites disagreeing.
+  const autoPriceCents = async (p, plan) => {
+    const s = await settings(p);
+    return priceCents(s, Number(plan.storageGB || 0), Number(plan.uploadLimitKbps || 0) / 1024, Number(plan.cpuShare || 0));
   };
 
   app.get('/admin/hosting/plans', { preHandler: requireRole('ADMIN') }, async () => {
@@ -226,8 +238,21 @@ export default async function hostingRoutes(app) {
     const b = z.object(planShape).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const plan = await p.hostingPlan.create({ data: b.data });
-    return { ok: true, plan };
+    const data = { ...b.data };
+    // Empty price → derive it. The column is NOT NULL, so what is stored is the computed
+    // number; `autoPriced` tells the caller it came from the settings rather than from them.
+    const autoPriced = data.priceMonthlyCents == null;
+    if (autoPriced) data.priceMonthlyCents = await autoPriceCents(p, data);
+    const plan = await p.hostingPlan.create({ data });
+    return { ok: true, plan, autoPriced };
+  });
+
+  // What Hosting settings would charge for these specs — so the editor can show the
+  // number BEFORE saving instead of making the admin save to find out.
+  app.get('/admin/hosting/plans/auto-price', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const q = req.query || {};
+    return { priceMonthlyCents: await autoPriceCents(p, { storageGB: q.storageGB, uploadLimitKbps: q.uploadLimitKbps, cpuShare: q.cpuShare }) };
   });
 
   app.patch('/admin/hosting/plans/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
@@ -236,7 +261,15 @@ export default async function hostingRoutes(app) {
     const b = z.object(partial).safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const plan = await p.hostingPlan.update({ where: { id: req.params.id }, data: b.data }).catch(() => null);
+    const data = { ...b.data };
+    if ('priceMonthlyCents' in data && data.priceMonthlyCents == null) {
+      // Explicitly cleared → fall back to the computed price, using the specs as they will
+      // be AFTER this edit rather than as they were before it.
+      const current = await p.hostingPlan.findUnique({ where: { id: req.params.id } });
+      if (!current) return reply.code(404).send({ error: 'not_found' });
+      data.priceMonthlyCents = await autoPriceCents(p, { ...current, ...data });
+    }
+    const plan = await p.hostingPlan.update({ where: { id: req.params.id }, data }).catch(() => null);
     if (!plan) return reply.code(404).send({ error: 'not_found' });
     // Editing a price does NOT reprice anyone: an existing Subscription keeps the terms it
     // was bought under, and Stripe holds its own copy. This changes what NEW buyers see.

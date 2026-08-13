@@ -168,6 +168,7 @@ export function Admin() {
     can('manage_repos') && { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
     can('manage_repos') && { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
     isAdmin && { id: 'plans', label: t('adm.tab.plans', 'Hosting plans'), icon: HardDrive },
+    isAdmin && { id: 'mail', label: t('adm.tab.mail', 'Mail'), icon: Mail },
     isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
 
     { heading: t('adm.h.growth', 'Growth & monetization') },
@@ -275,6 +276,7 @@ export function Admin() {
         {s === 'commcatalogs' && <AdminCatalogs />}
         {s === 'reports' && <AdminReports />}
         {s === 'plans' && <AdminHostingPlans />}
+        {s === 'mail' && <AdminMail />}
         {s === 'hosting' && <AdminFreeHost />}
         {s === 'promotions' && <><AdminCampaigns /><div className="mt-8"><AdminPromo /></div></>}
         {s === 'kofi' && <AdminKofi />}
@@ -2926,9 +2928,96 @@ function UserTwoFactorCard({ user, onChange }) {
   );
 }
 
+// Getting someone back into their account.
+//
+// Two rungs, deliberately unequal. The reset LINK is the one to reach for: it goes to the
+// address on file, and whoever sends it never learns the password — support can unblock a
+// person without becoming able to impersonate them.
+//
+// Setting a password outright is the other rung, and it is SUPERADMIN + a live 2FA code,
+// because it hands one human the keys to another human's account.
+function UserPasswordCard({ user }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { user: me } = useAuth();
+  const myRank = MOD_RANK[me?.role] ?? 0;
+  const targetRank = MOD_RANK[user.role] ?? 0;
+  const canLink = myRank >= MOD_RANK.ADMIN;
+  // Rank-bounded like every other action here: an admin never sets a superadmin's password,
+  // and nobody sets their own from this modal.
+  const canSet = me?.role === 'SUPERADMIN' && myRank > targetRank && me?.id !== user.id;
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [pw, setPw] = useState(''); const [code, setCode] = useState('');
+
+  const sendLink = async () => {
+    if (!await dialog.confirm({
+      title: t('upw.link.t', 'Email a reset link?'),
+      message: t('upw.link.m', 'They get the same one-hour link the forgot-password page sends, at {email}. Their current password keeps working until they use it.').replace('{email}', user.email),
+      okLabel: t('upw.link.ok', 'Send the link'),
+    })) return;
+    setBusy(true);
+    try {
+      const r = await api.post(`/admin/users/${user.id}/password-reset`);
+      // With no mail backend the API hands back the URL instead — otherwise this would be
+      // untestable on a dev instance and its first real use would be its first test.
+      if (r.devUrl) { copyText(r.devUrl); toast.success(t('upw.link.dev', 'No mail backend — the link was copied to your clipboard.')); }
+      else toast.success(t('upw.link.sent', 'Reset link emailed.'));
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+
+  const setPassword = async () => {
+    if (pw.length < 8) return toast.error(t('upw.short', 'At least 8 characters.'));
+    if (!await dialog.confirm({
+      title: t('upw.set.t', 'Set this password?'),
+      message: t('upw.set.m', 'You will know a password that is not yours. Every device they are signed in on is signed out, they are emailed about it, and your name is on the audit entry.'),
+      okLabel: t('upw.set.ok', 'Set it'), danger: true,
+    })) return;
+    setBusy(true);
+    try {
+      await api.put(`/admin/users/${user.id}/password`, { password: pw, code });
+      setPw(''); setCode(''); setOpen(false);
+      toast.success(t('upw.set.done', 'Password set — all their devices were signed out.'));
+    } catch (x) {
+      toast.error(x.data?.error === 'bad_code' ? t('twofa.bad', 'That code is not valid.')
+        : x.data?.error === '2fa_required' ? t('upw.need2fa', 'Enable two-factor on your own account first.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  if (!canLink && !canSet) return null;
+  return (
+    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Lock size={12} /> {t('upw.title', 'Password')}</div>
+      {canLink && (
+        <div className="mt-2">
+          <div className="text-sm text-[var(--muted)]">{t('upw.desc', 'Locked out? Send the reset link — you never see their password, and only they can use it.')}</div>
+          <Button size="sm" variant="ghost" className="mt-2" disabled={busy} onClick={sendLink}><Mail size={14} /> {t('upw.link', 'Email a reset link')}</Button>
+        </div>
+      )}
+      {canSet && (
+        <div className="mt-3 pt-3 border-t border-[var(--line)]">
+          {!open ? (
+            <Button size="sm" variant="ghost" className="!text-warning" onClick={() => setOpen(true)}><KeyRound size={14} /> {t('upw.set', 'Set a password directly')}</Button>
+          ) : (
+            <div className="space-y-2">
+              <div className="text-sm text-[var(--muted)]">{t('upw.set.desc', 'Superadmin only, and it needs a code from your authenticator — a stolen session must not be enough to take over an account.')}</div>
+              <Input type="password" autoComplete="new-password" placeholder={t('upw.new', 'New password')} value={pw} onChange={(e) => setPw(e.target.value)} />
+              <Input inputMode="numeric" placeholder={t('twofa.code', '6-digit code')} value={code} onChange={(e) => setCode(e.target.value)} />
+              <TotpQuickFill onFill={(c) => setCode(c)} />
+              <div className="flex gap-2">
+                <Button size="sm" variant="primary" disabled={busy || pw.length < 8 || !code} onClick={setPassword}>{t('upw.set.ok', 'Set it')}</Button>
+                <Button size="sm" disabled={busy} onClick={() => { setOpen(false); setPw(''); setCode(''); }}>{t('common.cancel', 'Cancel')}</Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UserDetailModal({ id, onClose }) {
   const { data, loading, reload } = useAsync(() => api.get(`/admin/users/${id}`), [id]);
-  const toast = useToast(); const { t } = useI18n();
+  const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
   const u = data?.user;
   const hosted = (u?.serverRepos || []).filter((r) => r.hosted);
   const listed = (u?.serverRepos || []).filter((r) => !r.hosted);
@@ -2966,6 +3055,7 @@ function UserDetailModal({ id, onClose }) {
           <UserModerationCard user={u} onChange={reload} />
 
           <UserTwoFactorCard user={u} onChange={reload} />
+          <UserPasswordCard user={u} />
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><BadgeCheck size={12} /> {t('ud.creatorids', 'Linked creator ids')}</div>
@@ -3169,13 +3259,114 @@ function PluginContentModal({ item, onClose }) {
 // Inactive plans are listed too: hiding a plan is the usual way to retire one, so the
 // editor is exactly where you go looking for it. Each row carries its live subscription
 // count, because that single fact decides whether a plan can be deleted or only retired.
+// Reaching users by email, from inside the tool that knows who they are.
+//
+// It exists because the alternative is exporting addresses into a mail client, which is
+// how a customer list ends up in a To: field. Every message here is sent as ONE email per
+// recipient — nobody learns who else was written to.
+//
+// Audiences are queries evaluated at send time, not saved lists, so "everyone on a hosting
+// plan" means whoever is subscribed when you press the button.
+function AdminMail() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const plans = useAsync(() => api.get('/admin/hosting/plans'), []);
+  const [audience, setAudience] = useState('hosting');
+  const [planId, setPlanId] = useState('');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [count, setCount] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  // The recipient count is refreshed whenever the audience changes, because the number is
+  // the last chance to notice that "everyone" is larger than you pictured.
+  useEffect(() => {
+    if (audience === 'user') { setCount(null); return; }
+    let alive = true;
+    const q = new URLSearchParams({ audience, ...(planId ? { planId } : {}) });
+    api.get(`/admin/mail/audience?${q}`)
+      .then((r) => { if (alive) setCount(r.count); })
+      .catch(() => { if (alive) setCount(null); });
+    return () => { alive = false; };
+  }, [audience, planId]);
+
+  const send = async (testOnly) => {
+    if (!subject.trim() || !body.trim()) return toast.error(t('adm.mail.empty', 'Subject and message are required.'));
+    if (!testOnly && !await dialog.confirm({
+      title: t('adm.mail.confirm.t', 'Send this email?'),
+      // The count is in the CONFIRMATION, not just on the form: it is the number that
+      // matters and the last moment it can be reconsidered.
+      message: t('adm.mail.confirm.m', 'It will be sent to {n} recipient(s), one message each. This cannot be recalled.').replace('{n}', count ?? '?'),
+      okLabel: t('adm.mail.send', 'Send'),
+    })) return;
+    setBusy(true);
+    try {
+      const r = await api.post('/admin/mail/send', { audience, planId: planId || undefined, subject, body, testOnly });
+      toast.success(testOnly
+        ? t('adm.mail.tested', 'Test sent to you.')
+        : t('adm.mail.sent', 'Sent to {n} recipient(s).').replace('{n}', r.sent) + (r.failed ? ` · ${r.failed} failed` : ''));
+    } catch (x) {
+      toast.error(x.data?.error === 'email_disabled' ? t('adm.mail.off', 'No mail backend is configured.')
+        : x.data?.error === 'no_recipients' ? t('adm.mail.norecip', 'That audience is empty.')
+        // Not "sent to 0" — nothing went out, and the mail server is why.
+        : x.data?.error === 'all_failed' ? t('adm.mail.allfailed', 'Nothing was sent — the mail server rejected every message.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-1"><Mail size={15} className="text-[var(--primary-2)]" /> <span className="font-semibold text-sm">{t('adm.mail.title', 'Email users')}</span></div>
+        <p className="text-xs text-[var(--muted)] mb-3">
+          {t('adm.mail.sub', 'One message per recipient — nobody sees who else received it. Markdown is supported.')}
+        </p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label={t('adm.mail.f.audience', 'Audience')} hint={count == null ? undefined : t('adm.mail.f.count', '{n} recipient(s)').replace('{n}', count)}>
+            <Select value={audience} onChange={(e) => setAudience(e.target.value)}>
+              <option value="hosting">{t('adm.mail.aud.hosting', 'Hosting subscribers')}</option>
+              <option value="all">{t('adm.mail.aud.all', 'Every account')}</option>
+              <option value="verified">{t('adm.mail.aud.verified', 'Verified emails only')}</option>
+            </Select>
+          </Field>
+          {audience === 'hosting' && (
+            <Field label={t('adm.mail.f.plan', 'Limit to one plan')} hint={t('adm.mail.f.plan.h', 'Leave on "any" to reach every subscriber.')}>
+              <Select value={planId} onChange={(e) => setPlanId(e.target.value)}>
+                <option value="">{t('adm.mail.anyplan', 'Any plan')}</option>
+                {(plans.data?.plans || []).map((pl) => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
+              </Select>
+            </Field>
+          )}
+        </div>
+        <div className="mt-3 space-y-3">
+          <Field label={t('adm.mail.f.subject', 'Subject')}><Input value={subject} onChange={(e) => setSubject(e.target.value)} /></Field>
+          <Field label={t('adm.mail.f.body', 'Message (markdown)')}>
+            <Textarea rows={10} value={body} onChange={(e) => setBody(e.target.value)}
+              placeholder={t('adm.mail.f.body.ph', 'What changed, when it takes effect, and what they can do about it.')} />
+          </Field>
+        </div>
+        <div className="flex gap-2 mt-4">
+          {/* Test first, deliberately the LEFT button: reading your own email is the only
+              proof that the markdown, the links and the tone survived. */}
+          <Button size="sm" disabled={busy} onClick={() => send(true)}>{t('adm.mail.test', 'Send a test to me')}</Button>
+          <Button size="sm" variant="primary" disabled={busy || !subject.trim() || !body.trim()} onClick={() => send(false)}>
+            {t('adm.mail.send', 'Send')}{count != null ? ` · ${count}` : ''}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function AdminHostingPlans() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const data = useAsync(() => api.get('/admin/hosting/plans'), []);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState(null);   // the row being edited, or a new one
 
-  const blank = { name: '', storageGB: 5, uploadLimitKbps: 1024, cpuShare: 0.25, priceMonthlyCents: 0, active: true };
+  // priceMonthlyCents starts EMPTY, not 0. Empty means "use the Hosting settings rate";
+  // zero would mean "free", and a new plan defaulting to free is the wrong accident.
+  const blank = { name: '', storageGB: 5, uploadLimitKbps: 1024, cpuShare: 0.25, priceMonthlyCents: '', active: true };
+  const [auto, setAuto] = useState(null);   // what the settings would charge for these specs
   const money = (c) => `$${(c / 100).toFixed(2)}`;
   const mbps = (k) => `${(k / 1024).toFixed(1)} Mbps`;
 
@@ -3184,7 +3375,10 @@ function AdminHostingPlans() {
     try {
       const body = {
         name: draft.name, storageGB: Number(draft.storageGB), uploadLimitKbps: Number(draft.uploadLimitKbps),
-        cpuShare: Number(draft.cpuShare), priceMonthlyCents: Number(draft.priceMonthlyCents), active: !!draft.active,
+        cpuShare: Number(draft.cpuShare), active: !!draft.active,
+        // null, not 0 — the server reads null as "derive it from Hosting settings".
+        priceMonthlyCents: draft.priceMonthlyCents === '' || draft.priceMonthlyCents == null
+          ? null : Number(draft.priceMonthlyCents),
       };
       if (draft.id) await api.patch(`/admin/hosting/plans/${draft.id}`, body);
       else await api.post('/admin/hosting/plans', body);
@@ -3206,6 +3400,18 @@ function AdminHostingPlans() {
         : t('common.failed', 'Failed.'));
     }
   };
+
+  // Ask the server what these specs cost, so the placeholder shows the real number instead
+  // of a promise. Re-asked whenever a spec changes, because that is what the price follows.
+  useEffect(() => {
+    if (!draft) { setAuto(null); return; }
+    const q = new URLSearchParams({ storageGB: draft.storageGB || 0, uploadLimitKbps: draft.uploadLimitKbps || 0, cpuShare: draft.cpuShare || 0 });
+    let alive = true;
+    api.get(`/admin/hosting/plans/auto-price?${q}`)
+      .then((r) => { if (alive) setAuto(r.priceMonthlyCents); })
+      .catch(() => { if (alive) setAuto(null); });
+    return () => { alive = false; };
+  }, [draft?.storageGB, draft?.uploadLimitKbps, draft?.cpuShare, !!draft]);
 
   if (data.loading) return <Loading />;
   const plans = data.data?.plans || [];
@@ -3232,7 +3438,16 @@ function AdminHostingPlans() {
             <Field label={t('adm.plans.f.cpu', 'CPU share')}><Input type="number" step="0.05" min="0" value={draft.cpuShare} onChange={(e) => setDraft({ ...draft, cpuShare: e.target.value })} /></Field>
             {/* Cents, not dollars: money in floats is how a $9.99 plan quietly becomes
                 $9.98999. The hint shows what the buyer will read. */}
-            <Field label={t('adm.plans.f.price', 'Price (cents / month)')} hint={money(Number(draft.priceMonthlyCents) || 0)}><Input type="number" min="0" value={draft.priceMonthlyCents} onChange={(e) => setDraft({ ...draft, priceMonthlyCents: e.target.value })} /></Field>
+            <Field
+              label={t('adm.plans.f.price', 'Price (cents / month)')}
+              hint={draft.priceMonthlyCents === '' || draft.priceMonthlyCents == null
+                ? (auto == null ? t('adm.plans.f.priceauto', 'Leave empty to use the Hosting settings rate.') : t('adm.plans.f.priceautoval', 'Empty → {p}/mo from Hosting settings.').replace('{p}', money(auto)))
+                : money(Number(draft.priceMonthlyCents) || 0)}
+            >
+              <Input type="number" min="0" value={draft.priceMonthlyCents ?? ''}
+                placeholder={auto == null ? t('adm.plans.f.priceph', 'auto') : `${t('adm.plans.f.priceph', 'auto')} · ${money(auto)}`}
+                onChange={(e) => setDraft({ ...draft, priceMonthlyCents: e.target.value })} />
+            </Field>
             <Field label={t('adm.plans.f.active', 'Shown on the pricing page')}>
               <Select value={draft.active ? 'yes' : 'no'} onChange={(e) => setDraft({ ...draft, active: e.target.value === 'yes' })}>
                 <option value="yes">{t('common.yes', 'Yes')}</option>
