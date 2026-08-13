@@ -4974,9 +4974,15 @@ function AdminBot() {
           <BlogRoutes routes={blogRoutes} onChange={(r) => set('blog.routes', r)} guildList={guildList} />
         </ModuleCard>
 
-        <ModuleCard icon={AlertTriangle} title={t('db.mod.alerts', 'Server-perf alerts')} desc={t('db.mod.alerts.d', 'Post CPU/RAM/disk/service-down alerts as they fire.')} enabled={!!cfg.alerts?.enabled} onToggle={(v) => set('alerts.enabled', v)}>
-          <Field label={t('db.f.alertch', 'Alerts channel id')} hint={t('db.f.alertch.h', 'Fired thresholds (Server perf tab) are posted here.')}>
+        <ModuleCard icon={AlertTriangle} title={t('db.mod.alerts', 'Alerts')} desc={t('db.mod.alerts.d', 'Post alerts as they fire — performance in one channel, incidents in another.')} enabled={!!cfg.alerts?.enabled} onToggle={(v) => set('alerts.enabled', v)}>
+          <Field label={t('db.f.alertch', 'Performance channel id')} hint={t('db.f.alertch.h', 'CPU, memory, disk, Web Vitals and storage — the "is it slow?" alerts.')}>
             <Input value={g('alerts.channelId')} onChange={(e) => set('alerts.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
+          </Field>
+          {/* Optional on purpose. Left empty, incidents keep going to the performance
+              channel — which is what every existing configuration already does, so adding
+              this field cannot change anyone's setup by being present. */}
+          <Field label={t('db.f.alertch2', 'Incidents channel id (optional)')} hint={t('db.f.alertch2.h', 'A service going unreachable, error bursts, and any future alert type. Leave empty to send everything to the performance channel.')}>
+            <Input value={g('alerts.generalChannelId')} onChange={(e) => set('alerts.generalChannelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
         </ModuleCard>
 

@@ -34,7 +34,10 @@ const DEFAULT_BOT_CONFIG = {
   blog: { enabled: false, channelId: '', routes: [] },
   // Server-perf alerts (CPU/RAM/disk/service-down — see monitor.mjs): when
   // enabled, the bot posts each fired ServerAlertLog to this channel.
-  alerts: { enabled: false, channelId: '' },
+  // `channelId` is the PERF channel and keeps its name: every config already saved uses
+  // it. `generalChannelId` is optional — unset, incidents keep landing in the perf
+  // channel exactly as before, so this default changes nothing for an existing install.
+  alerts: { enabled: false, channelId: '', generalChannelId: '' },
   // Ko-fi tips (see kofi.mjs's webhook → KofiDonation): when enabled, the bot
   // posts each new tip to this channel with the running total.
   kofi: { enabled: false, channelId: '' },
