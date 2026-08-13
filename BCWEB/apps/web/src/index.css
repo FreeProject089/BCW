@@ -719,3 +719,15 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
 .token.keyword, .token.atrule { color: var(--warning); }
 .token.deleted { color: var(--error); }
 .token.null, .token.nil { color: var(--faint); }
+
+/* ── The "Build with the Better* community" band ──────────────────────────────
+   This band paints its own saturated orange gradient, and paints the SAME orange in
+   both themes. Text on it was using --text and --muted, which are the page's
+   foreground tokens: they flip with the theme while the surface underneath does not,
+   so one of the two themes was always wrong. In dark, --muted resolved to a light
+   grey that sank into the orange; in light, to a pale grey doing the same.
+
+   Fixed values are correct here and almost nowhere else: the rule is that a
+   foreground must follow its own background, and this background is a constant. */
+.cta-band-title { color: #2a1a06; }
+.cta-band-sub   { color: rgba(42, 26, 6, 0.78); }

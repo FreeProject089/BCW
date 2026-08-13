@@ -338,8 +338,14 @@ export function Home() {
           <div className="absolute inset-0 bg-gradient-to-br from-brand via-brand-2 to-transparent" />
           <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[36rem] h-[36rem] rounded-full opacity-40 pointer-events-none" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 62%)' }} />
           <div className="relative reveal-stagger">
-            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.cta2.title')}</h2>
-            <p className="text-[var(--muted)] mt-3 max-w-lg mx-auto leading-relaxed">{t('home.cta2.sub')}</p>
+            <h2 className="cta-band-title text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.cta2.title')}</h2>
+            {/* NOT --muted. That token is sized for text on the PAGE background, and this
+                band paints a saturated orange gradient over it — the same orange in both
+                themes. So the page's foreground token is wrong here by construction: in
+                dark it resolves to a light grey that sinks into the orange, in light to a
+                pale grey that does the same. A surface whose colour does not follow the
+                theme needs a foreground that does not either. */}
+            <p className="cta-band-sub mt-3 max-w-lg mx-auto leading-relaxed">{t('home.cta2.sub')}</p>
             <div className="flex flex-wrap gap-3 justify-center mt-7">
               <Link to="/auth"><Button variant="primary" className="!px-6 !py-3">{t('home.cta2.start')} <ArrowRight size={16} /></Button></Link>
               <a href="https://discord.com/invite/CTaaEF9R75" target="_blank" rel="noreferrer"><Button className="!px-6 !py-3"><DiscordIcon size={16} className="text-[#5865F2]" /> {t('home.cta2.discord', 'Join the Discord')}</Button></a>
