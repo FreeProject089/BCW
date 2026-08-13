@@ -35,9 +35,26 @@ async function loadSimple() {
   return _simpleAll;
 }
 
+/** A lucide *component* name to the lucide-static *file* name.
+ *
+ *  They are not the same string, and lowercasing is not the conversion. lucide-react
+ *  exports `Music2`; the CDN file is `music-2.svg`. Just lowercasing gives `music2`,
+ *  which 404s — that is the request in the console.
+ *
+ *  A digit is its own segment, which is the part everyone forgets: Volume2 →
+ *  volume-2, LayoutGrid → layout-grid, Home → home. Already-kebab input passes
+ *  through unchanged, so a config storing either spelling works.
+ */
+export function lucideFileName(name) {
+  return String(name || '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')   // caseBoundary  → case-Boundary
+    .replace(/([a-zA-Z])([0-9])/g, '$1-$2')   // Music2        → Music-2
+    .toLowerCase();
+}
+
 // Lucide preview that inherits currentColor: CSS mask over the CDN svg.
 export function LucideCdnIcon({ name, size = 18, className = '' }) {
-  const url = `https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/${name}.svg`;
+  const url = `https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/${lucideFileName(name)}.svg`;
   return <span aria-hidden className={className} style={{ display: 'inline-block', width: size, height: size, backgroundColor: 'currentColor', WebkitMask: `url(${url}) center / contain no-repeat`, mask: `url(${url}) center / contain no-repeat` }} />;
 }
 
