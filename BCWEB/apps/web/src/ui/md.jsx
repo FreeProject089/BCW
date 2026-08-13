@@ -4,7 +4,30 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkDirective from 'remark-directive';
 import rehypeRaw from 'rehype-raw';
-import rehypeHighlight from 'rehype-highlight';
+// NOT a static import. rehype-highlight drags in highlight.js and a grammar per language
+// — 180kB raw, 55kB gzipped — and a static import put all of it in the ENTRY chunk, so
+// every visitor downloaded a syntax highlighter to read pages that may contain no code.
+// Splitting it into its own chunk was not enough on its own: the entry still imported it
+// statically, so Vite emitted a <link modulepreload> and the browser fetched it anyway.
+//
+// Loaded on first markdown render instead. The document renders immediately WITHOUT
+// highlighting and re-renders with it a moment later — code blocks are styled by CSS
+// either way, so the change is colour appearing, not layout moving.
+let _rehypeHighlight = null;
+let _highlightPromise = null;
+function useRehypeHighlight() {
+  const [, force] = useState(0);
+  useEffect(() => {
+    if (_rehypeHighlight) return;
+    _highlightPromise ??= import('rehype-highlight')
+      .then((m) => { _rehypeHighlight = m.default; })
+      .catch(() => { _rehypeHighlight = false; }); // offline / blocked: plain code, not a crash
+    let alive = true;
+    _highlightPromise.then(() => { if (alive) force((n) => n + 1); });
+    return () => { alive = false; };
+  }, []);
+  return _rehypeHighlight || null;
+}
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
 import { ProgressTracker } from '../hero/progress-tracker.jsx';
@@ -546,6 +569,7 @@ function MdLink({ pageMap, href, children, ...rest }) {
 
 export default function Markdown({ children, className = '', pageMap }) {
   const [zoom, setZoom] = useState(null);
+  const rehypeHighlight = useRehypeHighlight();
   // Click any non-card image to open it full-screen (lightbox).
   const components = {
     ...COMPONENTS,
@@ -559,7 +583,8 @@ export default function Markdown({ children, className = '', pageMap }) {
     <div className={`md-body ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkDirective, remarkDocBlocks]}
-        rehypePlugins={[rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], rehypeIframeAllowlist, [rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], rehypeIframeAllowlist,
+          ...(rehypeHighlight ? [[rehypeHighlight, { detect: true, ignoreMissing: true }]] : [])]}
         components={components}
       >{preprocessMd(children || '')}</ReactMarkdown>
       {/* Portal to body so the fixed overlay escapes any modal's transform/stacking

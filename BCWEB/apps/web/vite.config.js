@@ -25,6 +25,13 @@ export default defineConfig({
     // (a) the main app chunk shrinks and parses faster on first paint, and (b)
     // each vendor lib is cached independently — an app code change no longer
     // busts three.js/rrweb/etc. Previously everything was one 1.67 MB chunk.
+    // Vite adds a <link rel="modulepreload"> for chunks it expects the entry to need.
+    // vendor-highlight is fetched only when a markdown document is rendered, so preloading
+    // it puts the 55kB (gzipped) syntax highlighter back on the first-load path that making
+    // its import dynamic just removed it from. Everything else keeps its preload.
+    modulePreload: {
+      resolveDependencies: (_url, deps) => deps.filter((d) => !d.includes('vendor-highlight')),
+    },
     rollupOptions: {
       output: {
         // Only carve out the heavy, self-contained libraries into their own
@@ -37,6 +44,11 @@ export default defineConfig({
           if (id.includes('rrweb')) return 'vendor-rrweb';
           if (id.includes('jszip')) return 'vendor-jszip';
           if (id.includes('gsap')) return 'vendor-gsap';
+          // highlight.js ships a grammar per language and rehype-highlight pulls the lot in.
+          // It was landing in the ENTRY chunk, so every visitor downloaded a syntax
+          // highlighter to read a page that may contain no code at all. Split out, it is
+          // fetched with the markdown renderer that actually needs it.
+          if (id.includes('highlight.js') || id.includes('lowlight') || id.includes('rehype-highlight')) return 'vendor-highlight';
         },
       },
     },
