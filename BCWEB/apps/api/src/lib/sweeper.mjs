@@ -281,6 +281,39 @@ export async function rollupAnalyticsDaily(p, log) {
   } catch (e) { log?.warn?.({ e: String(e?.message || e) }, 'sweeper: analytics rollup failed'); }
 }
 
+// ── Signed-in devices ────────────────────────────────────────────────────────
+// Session rows are kept after revocation so "signed out from X" stays answerable for a
+// while, but they must not accumulate forever. Two kinds are dead beyond recovery:
+//
+//  - revoked more than 30 days ago — long past the point anyone is auditing it;
+//  - last seen beyond the token's own 7-day lifetime (plus a day of slack), which means
+//    the JWT pointing at the row expired on its own and no request can ever revive it.
+//
+// Live sessions are never touched: `lastSeenAt` is refreshed on use, so an actively used
+// device keeps moving out of the window.
+const SESSION_REVOKED_KEEP_DAYS = 30;
+const SESSION_IDLE_DEAD_DAYS = 8; // 7-day token + 1 day of slack
+export async function sweepDeadSessions(p, log) {
+  const now = Date.now();
+  const revokedBefore = new Date(now - SESSION_REVOKED_KEEP_DAYS * 864e5);
+  const idleBefore = new Date(now - SESSION_IDLE_DEAD_DAYS * 864e5);
+  try {
+    const { count } = await p.session.deleteMany({
+      where: {
+        OR: [
+          { revokedAt: { lt: revokedBefore } },
+          { lastSeenAt: { lt: idleBefore } },
+        ],
+      },
+    });
+    if (count) log?.info(`[sweeper] pruned ${count} dead session row(s)`);
+    return count;
+  } catch (e) {
+    log?.warn({ e: String(e) }, 'session sweep failed');
+    return 0;
+  }
+}
+
 export function startSweeper(app) {
   const run = async () => {
     try {
@@ -294,6 +327,7 @@ export function startSweeper(app) {
         await sweepDiscordActivityCap(p, app.log), await sweepDailyFileBackup(p, app.log),
         await sweepAnalyticsRetention(p, app.log),
       ];
+      await sweepDeadSessions(p, app.log);
       await rollupAnalyticsDaily(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics rollup failed'));
       await sweepReports(p).catch((e) => app.log.warn({ e: String(e) }, 'report sweep failed'));
       await sampleAndAlert(p, app.log);

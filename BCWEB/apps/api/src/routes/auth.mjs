@@ -130,7 +130,7 @@ export default async function authRoutes(app) {
     const user = await p.user.create({ data: { email, passwordHash, displayName: displayName || email.split('@')[0] } });
     grantAutoBadges(p, { event: 'signup', user }).catch(() => {}); // e.g. the 100th-signup badge
     sendVerificationEmail(p, user).catch(() => {}); // fire-and-forget confirmation email
-    return issueSession(reply, user);
+    return issueSession(reply, user, req);
   });
 
   // Confirm an email with the token from the confirmation email.
@@ -247,7 +247,7 @@ export default async function authRoutes(app) {
       return { twoFactorRequired: true, tempToken };
     }
     await logLogin(p, { email: user.email, ip, success: true, reason: 'ok', userId: user.id });
-    return issueSession(reply, user);
+    return issueSession(reply, user, req);
   });
 
   // Step 2 of a 2FA-protected login: a TOTP code (or a one-time recovery code).
@@ -275,7 +275,7 @@ export default async function authRoutes(app) {
     }
     if (usedRecovery) await p.user.update({ where: { id: user.id }, data: { totpRecoveryCodes: user.totpRecoveryCodes.filter((h) => h !== usedRecovery) } });
     await logLogin(p, { email: user.email, ip, success: true, reason: 'ok', userId: user.id });
-    return issueSession(reply, user);
+    return issueSession(reply, user, req);
   });
 
   // ── 2FA enrollment (self-service — an admin can never enable/disable this FOR
@@ -324,6 +324,15 @@ export default async function authRoutes(app) {
   // signs you out of the (separate) BMM telemetry dashboard too.
   app.post('/auth/logout', { preHandler: optionalAuth() }, async (req, reply) => {
     if (req.user?.uid) await (await db()).user.update({ where: { id: req.user.uid }, data: { telemetryEpoch: { increment: 1 } } }).catch(() => {});
+    // Mark THIS device signed out. Clearing the cookie already ends the session for this
+    // browser, but the row would otherwise sit in the user's Sessions panel looking live —
+    // and the panel is precisely where someone checks that a sign-out took.
+    if (req.user?.sid) {
+      await (await db()).session.updateMany({
+        where: { id: req.user.sid, userId: req.user.uid, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }).catch(() => {});
+    }
     clearSession(reply);
     return { ok: true };
   });
@@ -348,6 +357,78 @@ export default async function authRoutes(app) {
     const effectivePermissions = [...new Set([...(user.permissions || []), ...customRoles.flatMap((r) => r.capabilities || [])])];
     const g = await projectGrants(user.id);
     return { user: { ...user, bcId: userBcId(user.id), customRoles, effectivePermissions, projectGrants: { allShowcase: g.allShowcase, showcaseIds: [...g.showcaseIds], projectKeys: [...g.projectKeys] } } };
+  });
+
+  // ── Signed-in devices ────────────────────────────────────────────────────────
+  // The account owner's own view of where their account is logged in. Deliberately
+  // NOT an admin surface: it only ever reads the caller's own rows.
+  //
+  // What is returned is what makes a session recognisable — when it started, when it
+  // was last active, roughly where from, and on what. `current` marks the device asking,
+  // which is the one thing the list must never get wrong.
+  //
+  // The full IP is included because the owner is the one person entitled to see where
+  // their own account was used from; it is the whole point of the screen. It never
+  // leaves this route for anyone else — there is no admin view of it.
+  const sessionView = (row, currentSid) => ({
+    id: row.id,
+    current: row.id === currentSid,
+    ip: row.ip,
+    device: row.device,
+    browser: row.browser,
+    os: row.os,
+    country: row.country,
+    region: row.region,
+    city: row.city,
+    createdAt: row.createdAt,
+    lastSeenAt: row.lastSeenAt,
+  });
+
+  app.get('/me/sessions', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const rows = await p.session.findMany({
+      where: { userId: req.user.uid, revokedAt: null },
+      orderBy: { lastSeenAt: 'desc' },
+      // A bound rather than a page: nobody legitimately has hundreds of live devices, and
+      // an unbounded list here would be the one place a stuffed table hurts the owner.
+      take: 100,
+      select: {
+        id: true, ip: true, device: true, browser: true, os: true,
+        country: true, region: true, city: true, createdAt: true, lastSeenAt: true,
+      },
+    });
+    // Sessions issued before this feature carry no row; say so rather than implying the
+    // list is exhaustive when the caller's own device is missing from it.
+    return { sessions: rows.map((r) => sessionView(r, req.user.sid)), currentTracked: Boolean(req.user.sid) };
+  });
+
+  // Revoke one device. Scoped by userId as well as id, so a guessed/mistyped id can only
+  // ever reach the caller's own sessions; updateMany makes it idempotent (a second call
+  // simply matches nothing).
+  app.delete('/me/sessions/:id', { preHandler: requireRole() }, async (req, reply) => {
+    const id = String(req.params.id || '');
+    if (!id) return reply.code(400).send({ error: 'bad_request' });
+    const p = await db();
+    const r = await p.session.updateMany({
+      where: { id, userId: req.user.uid, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    if (!r.count) return reply.code(404).send({ error: 'not_found' });
+    // Revoking the device you are ON is a sign-out: drop the cookie too, or the browser
+    // keeps sending a token whose session is dead and every call 401s with no explanation.
+    if (id === req.user.sid) clearSession(reply);
+    return { ok: true, self: id === req.user.sid };
+  });
+
+  // "Sign out everywhere else" — everything except the device asking. Keeping the current
+  // one is what makes this safe to press: the user is not locked out by their own click.
+  app.delete('/me/sessions', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const r = await p.session.updateMany({
+      where: { userId: req.user.uid, revokedAt: null, ...(req.user.sid ? { NOT: { id: req.user.sid } } : {}) },
+      data: { revokedAt: new Date() },
+    });
+    return { ok: true, revoked: r.count };
   });
 
   // Update profile (display name, bio, avatar).

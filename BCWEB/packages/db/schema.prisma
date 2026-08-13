@@ -87,6 +87,7 @@ model User {
   termsAcceptedAt   DateTime? // last time the user accepted the Terms + Payments policy at checkout
   stripeCustomerId  String?   @unique
   apiKeys           ApiKey[]
+  sessions          Session[]
   createdAt         DateTime  @default(now())
 
   // ── 2FA (TOTP) — see totp.mjs. Recovery codes are argon2 hashes, one-time use. ──
@@ -1966,4 +1967,38 @@ model CatalogAuditLog {
 
   @@index([createdAt])
   @@index([slug, createdAt])
+}
+
+/// One signed-in device. Auth itself stays stateless (a JWT in the bcw_session cookie),
+/// but the token now carries this row's id as `sid`, which buys two things a bare JWT
+/// cannot give: the account owner can SEE where they are signed in, and can revoke a
+/// single device without rotating anything global.
+///
+/// `revokedAt` is checked on every authenticated request, so revocation takes effect at
+/// once rather than when the 7-day token happens to expire.
+///
+/// The IP is kept because it is the whole point of the panel — recognising a session you
+/// do not know. Geo is resolved once at sign-in and stored denormalized: it must survive
+/// the GeoIP database being updated later, and re-resolving on every read would turn a
+/// list into a batch of lookups.
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip         String?
+  userAgent  String?
+  device     String?
+  browser    String?
+  os         String?
+  country    String?
+  region     String?
+  city       String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  /// Set when the user (or a global sign-out) kills this device. Kept rather than deleted
+  /// so "signed out from X at Y" stays answerable; the sweeper prunes old rows.
+  revokedAt  DateTime?
+
+  @@index([userId, revokedAt])
+  @@index([lastSeenAt])
 }

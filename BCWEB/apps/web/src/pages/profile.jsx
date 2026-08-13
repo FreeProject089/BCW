@@ -10,7 +10,7 @@ import { DiscordIcon, KofiIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint, Youtube, Twitch, Gamepad2, Github, X } from 'lucide-react';
+import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint, Youtube, Twitch, Gamepad2, Github, X, Monitor, Tablet, MapPin, LogOut, Globe } from 'lucide-react';
 import { stagePending, addLocalAccount, attachBackupCodesBySecret } from '../lib/twofa-lib.js';
 import { TotpQuickFill } from './twofa-fill.jsx';
 
@@ -228,6 +228,7 @@ export default function Profile() {
               {msg === 'pwshort' && <span className="text-sm text-[var(--error)]">{t('prof.pwshort', 'Min 8 characters')}</span>}
               {msg === 'pwmismatch' && <span className="text-sm text-[var(--error)]">{t('prof.pwmismatch', "Passwords don't match")}</span>}</div>
           </Card>
+          <SessionsCard />
           </div>
 
           <div className="space-y-4">
@@ -302,6 +303,141 @@ function AccountInfoCard({ user }) {
 // creation, and never again — the server only keeps its hash, so there is nothing to
 // re-reveal. That is the whole difference from the legacy single token above, which sat
 // in the database in clear and was re-readable from this page forever.
+// Where this account is signed in. A session is one account on one device: the row is
+// created at sign-in and ends when it is revoked, the cookie expires, or that device
+// signs out.
+//
+// The question this card answers is "is any of these not me?", so what makes a session
+// recognisable leads: where it is, what it runs on, when it was last used. The current
+// device is pinned first and outlined -- a list where you cannot tell which one you are
+// reading it from invites people to revoke themselves.
+function SessionsCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const [data, setData] = useState(undefined);      // undefined = loading
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api.get('/me/sessions')
+    .then((r) => setData({ sessions: r.sessions || [], currentTracked: r.currentTracked }))
+    .catch(() => setData({ sessions: [], currentTracked: true }));
+  useEffect(() => { load(); }, []);
+
+  // Revoking a device you do not recognise is a security action: it takes effect at once,
+  // with no undo window. That is deliberately the opposite of the API-key card below --
+  // an undo here would keep a possibly hostile session alive for another six seconds.
+  const revoke = async (sess) => {
+    setBusy(true);
+    try {
+      await api.del('/me/sessions/' + sess.id);
+      toast.success(t('prof.sess.revoked', 'Signed out on that device.'));
+      await load();
+    } catch { toast.error(t('prof.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+
+  const revokeOthers = async () => {
+    setBusy(true);
+    try {
+      const r = await api.del('/me/sessions');
+      toast.success(t('prof.sess.revokedOthers', 'Signed out everywhere else.') + (r.revoked ? ' (' + r.revoked + ')' : ''));
+      await load();
+    } catch { toast.error(t('prof.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+
+  // Same shape as the other timeAgo helpers here (App.jsx, repo-dashboard.jsx), which
+  // this codebase deliberately keeps per-page.
+  const ago = (ts) => {
+    const sec = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000);
+    if (sec < 60) return t('prof.sess.now', 'just now');
+    if (sec < 3600) return Math.floor(sec / 60) + 'm';
+    if (sec < 86400) return Math.floor(sec / 3600) + 'h';
+    return Math.floor(sec / 86400) + 'd';
+  };
+  // ISO-3166 alpha-2 -> regional-indicator pair. Empty for anything that is not two
+  // letters, so a missing or odd country never renders as stray glyphs.
+  const flag = (cc) => (/^[A-Za-z]{2}$/.test(cc || '')
+    ? String.fromCodePoint(...[...cc.toUpperCase()].map((c) => 127397 + c.charCodeAt(0)))
+    : '');
+  const place = (sess) => [sess.city, sess.region, sess.country].filter(Boolean).join(', ');
+  const DeviceIcon = ({ kind }) => kind === 'mobile'
+    ? <Smartphone size={16} />
+    : kind === 'tablet' ? <Tablet size={16} /> : <Monitor size={16} />;
+
+  const sessions = data?.sessions || [];
+  // Current first; the API already sorts the rest by last activity, and a stable sort
+  // keeps that order underneath.
+  const ordered = [...sessions].sort((x, y) => (y.current ? 1 : 0) - (x.current ? 1 : 0));
+  const others = sessions.filter((x) => !x.current).length;
+
+  return (
+    <Card className="p-5">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2">
+        <Monitor size={15} className="text-[var(--primary-2)]" /> {t('prof.sess.title', 'Signed-in devices')}
+      </div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">
+        {t('prof.sess.sub', 'Every device currently signed in to this account. If you do not recognise one, sign it out - it stops working straight away.')}
+      </p>
+
+      {data === undefined ? <Spinner /> : sessions.length === 0 ? (
+        <div className="text-[12px] text-[var(--faint)]">{t('prof.sess.none', 'No active sessions recorded.')}</div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {ordered.map((sess) => (
+            <div
+              key={sess.id}
+              className={'flex items-center gap-3 min-w-0 p-2.5 rounded-lg border ' + (sess.current
+                ? 'border-[var(--primary-2)] bg-[var(--surface-2)]'
+                : 'border-[var(--line)]')}
+            >
+              <div className={'shrink-0 ' + (sess.current ? 'text-[var(--primary-2)]' : 'text-[var(--muted)]')}>
+                <DeviceIcon kind={sess.device} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-medium truncate flex items-center gap-2">
+                  <span className="truncate">{[sess.browser, sess.os].filter(Boolean).join(' - ') || t('prof.sess.unknownDevice', 'Unknown device')}</span>
+                  {sess.current && <Badge tone="success" className="shrink-0">{t('prof.sess.thisDevice', 'This device')}</Badge>}
+                </div>
+                <div className="text-[11px] text-[var(--faint)] truncate flex items-center gap-1.5">
+                  {place(sess)
+                    ? <><span aria-hidden="true">{flag(sess.country)}</span><MapPin size={11} /><span className="truncate">{place(sess)}</span></>
+                    : <><Globe size={11} /><span>{t('prof.sess.unknownPlace', 'Location unknown')}</span></>}
+                </div>
+                <div className="text-[11px] font-mono text-[var(--faint)] truncate">{sess.ip || '-'}</div>
+              </div>
+              <div className="text-[11px] text-[var(--faint)] text-right shrink-0">
+                <div>{t('prof.sess.active', 'Active')} {ago(sess.lastSeenAt)}</div>
+                <div>{t('prof.sess.since', 'Since')} {new Date(sess.createdAt).toLocaleDateString()}</div>
+              </div>
+              {!sess.current && (
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => revoke(sess)} title={t('prof.sess.revoke', 'Sign out this device')}>
+                  <LogOut size={13} />
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Only worth offering when there is somewhere else to sign out of. */}
+      {others > 0 && (
+        <div className="pt-3 mt-3 border-t border-[var(--line)]">
+          <Button size="sm" disabled={busy} onClick={revokeOthers}>
+            <LogOut size={13} /> {t('prof.sess.revokeOthers', 'Sign out everywhere else')}
+          </Button>
+        </div>
+      )}
+
+      {/* Said rather than hidden: a session opened before device tracking existed has no
+          row, so the list would otherwise look complete while missing the device reading it. */}
+      {data && data.currentTracked === false && (
+        <p className="text-[11px] text-[var(--faint)] mt-3">
+          {t('prof.sess.legacy', 'This device signed in before device tracking existed, so it is not listed. Sign out and back in to see it here.')}
+        </p>
+      )}
+    </Card>
+  );
+}
+
 function ApiKeysCard() {
   const { t } = useI18n(); const toast = useToast();
   const [keys, setKeys] = useState(undefined);      // undefined = loading

@@ -6,6 +6,11 @@ import path from 'node:path';
 import { z } from 'zod';
 import { userBcId } from './repofingerprint.mjs';
 import { boundedSet } from './boundedmap.mjs';
+// NOTE: clientIp is deliberately NOT imported — this module already exports its own,
+// and the two differ (`req.ip` here vs `req.ip || '0.0.0.0'` there). That split predates
+// this feature; changing either return value would ripple through callers that test it
+// for falsiness, so the local one is used below rather than quietly swapped.
+import { geoOf, parseUA } from './geo.mjs';
 
 // Constant-time string comparison for shared secrets / tokens / signatures
 // (SECURITY_AUDIT: avoid the timing side-channel of `a === b`). Length-safe:
@@ -49,10 +54,72 @@ const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
 const COOKIE_SECURE = /^https:/i.test(process.env.SITE_URL || process.env.SITE_DOMAIN || '');
 const cookieBase = { httpOnly: true, sameSite: 'lax', path: '/', secure: COOKIE_SECURE, ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}) };
 
-export function issueSession(reply, user) {
-  const token = jwt.sign({ uid: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+// Signing in creates a Session row and stamps its id into the token as `sid`. Auth stays
+// stateless in the sense that the JWT still carries the identity; the row exists so the
+// account owner can SEE their signed-in devices and drop one without a global rotation.
+//
+// `req` is optional so a caller that has no request context still gets a working session
+// (it simply lands in the list with unknown origin) — this must never be the thing that
+// stops someone signing in. For the same reason the whole recording step is wrapped: a
+// GeoIP hiccup or a database blip degrades the panel, it does not deny the login.
+export async function issueSession(reply, user, req) {
+  let sid;
+  try {
+    if (req) {
+      const p = await db();
+      const ua = String(req.headers?.['user-agent'] || '').slice(0, 400);
+      const { device, browser, os } = parseUA(ua);
+      const geo = await geoOf(req);
+      const row = await p.session.create({
+        data: {
+          userId: user.id,
+          ip: clientIp(req),
+          userAgent: ua || null,
+          device, browser, os,
+          country: geo?.country || null,
+          region: geo?.region || null,
+          city: geo?.city || null,
+        },
+        select: { id: true },
+      });
+      sid = row.id;
+    }
+  } catch { /* the panel degrades; the login does not fail */ }
+  const token = jwt.sign({ uid: user.id, role: user.role, ...(sid ? { sid } : {}) }, JWT_SECRET, { expiresIn: '7d' });
   reply.setCookie('bcw_session', token, { ...cookieBase, maxAge: 7 * 24 * 3600 });
   return { id: user.id, email: user.email, displayName: user.displayName, role: user.role };
+}
+
+// How stale lastSeenAt may get before a request refreshes it. Every authenticated request
+// already reads the row; without a floor it would also WRITE on every request.
+const SESSION_TOUCH_MS = 5 * 60 * 1000;
+
+/// Is the session behind this token dead? Called by every auth guard, so revoking a device
+/// takes effect on its next request instead of whenever the 7-day token expires.
+///
+/// Tokens issued before this feature carry no `sid`. They stay valid: forcing every
+/// existing user to sign in again is a bigger side effect than the panel is worth. They
+/// simply do not appear in the list until the next sign-in.
+export async function sessionRevoked(claims) {
+  if (!claims?.sid) return false;
+  try {
+    const p = await db();
+    const row = await p.session.findUnique({
+      where: { id: claims.sid },
+      select: { revokedAt: true, lastSeenAt: true, userId: true },
+    });
+    // A row that vanished (or belongs to someone else) is not a session we will honour.
+    if (!row || row.userId !== claims.uid) return true;
+    if (row.revokedAt) return true;
+    if (Date.now() - new Date(row.lastSeenAt).getTime() > SESSION_TOUCH_MS) {
+      p.session.update({ where: { id: claims.sid }, data: { lastSeenAt: new Date() } })
+        .catch(() => { /* a missed touch only ages the "last active" label */ });
+    }
+    return false;
+  } catch {
+    // Database trouble must not lock everyone out of the site.
+    return false;
+  }
 }
 
 export function clearSession(reply) {
@@ -327,6 +394,7 @@ export function requireRole(...roles) {
       const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
       const lock = await accountLock(claims.uid);
       if (lock) return reply.code(403).send(lockBody(lock));
+      if (await sessionRevoked(claims)) return reply.code(401).send({ error: 'session_revoked' });
       // Use the LIVE role (not the possibly-stale JWT), so role changes propagate without
       // requiring the user to re-login.
       const cur = await currentUser(claims.uid);
@@ -347,6 +415,7 @@ export function requireCap(cap, ...alsoRoles) {
       const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
       const lock = await accountLock(claims.uid);
       if (lock) return reply.code(403).send(lockBody(lock));
+      if (await sessionRevoked(claims)) return reply.code(401).send({ error: 'session_revoked' });
       const cur = await currentUser(claims.uid);
       const role = cur.role || claims.role;
       const user = { ...claims, role, perms: cur.perms };
@@ -368,6 +437,7 @@ export function requireEditor() {
       const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
       const lock = await accountLock(claims.uid);
       if (lock) return reply.code(403).send(lockBody(lock));
+      if (await sessionRevoked(claims)) return reply.code(401).send({ error: 'session_revoked' });
       const cur = await currentUser(claims.uid);
       if (!(await ensure2fa(claims.uid, reply))) return;
       req.user = { ...claims, role: cur.role || claims.role, perms: cur.perms };
@@ -461,8 +531,13 @@ export function optionalAuth() {
   return async (req) => {
     try {
       const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
-      // A suspended/banned account reads as logged-out on soft-auth endpoints.
-      req.user = (await accountLock(claims.uid)) ? null : claims;
+      // A suspended/banned account reads as logged-out on soft-auth endpoints, and so
+      // does a revoked device — otherwise "sign out this device" would leave it still
+      // recognised by /me, which is exactly the screen the user checks to confirm it
+      // worked. optionalUid stays a pure token read on purpose: it feeds no-auth ingest
+      // endpoints where a DB round-trip per event is not worth it.
+      const dead = (await accountLock(claims.uid)) || (await sessionRevoked(claims));
+      req.user = dead ? null : claims;
     } catch { req.user = null; }
   };
 }

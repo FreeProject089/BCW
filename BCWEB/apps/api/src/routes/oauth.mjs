@@ -192,7 +192,7 @@ export default async function oauthRoutes(app) {
         }
       }
 
-      issueSession(reply, user);
+      await issueSession(reply, user, req);
       return reply.redirect(`${SITE_URL}/dashboard?oauth=success`);
     } catch (e) {
       req.log.error(e);
