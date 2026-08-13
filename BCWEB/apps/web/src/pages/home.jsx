@@ -335,8 +335,12 @@ export function Home() {
       {/* CTA / support */}
       <section className="reveal-on-scroll pb-4">
         <Card className="p-10 md:p-14 text-center relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-brand via-brand-2 to-transparent" />
-          <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[36rem] h-[36rem] rounded-full opacity-40 pointer-events-none" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 62%)' }} />
+          {/* One flat brand surface. It was two stacked gradients — a to-transparent
+              diagonal plus a 36rem radial bloom — which is why the band faded to
+              near-white at one corner and read as unfinished rather than as a
+              deliberate block. A call to action wants to look like a solid thing you
+              press, not like a background that ran out. */}
+          <div className="cta-band-bg absolute inset-0" />
           <div className="relative reveal-stagger">
             <h2 className="cta-band-title text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.cta2.title')}</h2>
             {/* NOT --muted. That token is sized for text on the PAGE background, and this
@@ -346,7 +350,7 @@ export function Home() {
                 pale grey that does the same. A surface whose colour does not follow the
                 theme needs a foreground that does not either. */}
             <p className="cta-band-sub mt-3 max-w-lg mx-auto leading-relaxed">{t('home.cta2.sub')}</p>
-            <div className="flex flex-wrap gap-3 justify-center mt-7">
+            <div className="cta-band-actions flex flex-wrap gap-3 justify-center mt-7">
               <Link to="/auth"><Button variant="primary" className="!px-6 !py-3">{t('home.cta2.start')} <ArrowRight size={16} /></Button></Link>
               <a href="https://discord.com/invite/CTaaEF9R75" target="_blank" rel="noreferrer"><Button className="!px-6 !py-3"><DiscordIcon size={16} className="text-[#5865F2]" /> {t('home.cta2.discord', 'Join the Discord')}</Button></a>
               <a href="https://ko-fi.com/bettercommunity" target="_blank" rel="noreferrer"><Button className="!px-6 !py-3"><KofiIcon size={16} className="text-orange-400" /> {t('home.cta2.kofi')}</Button></a>
