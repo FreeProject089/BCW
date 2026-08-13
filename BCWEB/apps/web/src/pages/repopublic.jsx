@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { Server, GitBranch, Link2, Copy, ArrowUpRight, ShieldAlert, Fingerprint, Users, Star, CheckCircle2, Tag, Download, Lock, FolderOpen, FileText, LogIn } from 'lucide-react';
+import { Server, GitBranch, Link2, Copy, ArrowUpRight, ShieldAlert, Fingerprint, Users, Star, CheckCircle2, Tag, Download, Lock, FolderOpen, FileText, LogIn, ChevronDown } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, Spinner, EmptyState, StarButton } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
@@ -50,13 +50,83 @@ function RepoContents({ id, k }) {
 
   if (!files.length) return null;
 
-  // Group by top-level folder (mods/, profiles/, …) — that's how a repo is actually laid out.
-  const groups = {};
+  // A real tree, not one level of grouping. The old version split on the FIRST slash and
+  // showed everything below it as a flat list of long paths, so `mods/a/Data/x/y.dds`
+  // read as one unbroken string and two mods with the same inner layout looked identical.
+  //
+  // Directories are derived from the paths themselves — there are no folder rows in the
+  // data, only files that happen to share a prefix, which is also how the hosted index
+  // works.
+  const tree = { dirs: new Map(), files: [] };
   for (const f of files) {
-    const g = f.path.includes('/') ? f.path.split('/')[0] : '/';
-    (groups[g] ||= []).push(f);
+    const parts = f.path.split('/');
+    let node = tree;
+    for (const seg of parts.slice(0, -1)) {
+      if (!node.dirs.has(seg)) node.dirs.set(seg, { dirs: new Map(), files: [] });
+      node = node.dirs.get(seg);
+    }
+    node.files.push({ ...f, name: parts[parts.length - 1] });
   }
-  const label = (g) => (g === '/' ? t('rc.root', 'Root') : g);
+  // Bytes per directory, so a folder says how much it holds without being opened.
+  const sizeOf = (n) => n.files.reduce((a, f) => a + (f.size || 0), 0)
+    + [...n.dirs.values()].reduce((a, d) => a + sizeOf(d), 0);
+  const countOf = (n) => n.files.length + [...n.dirs.values()].reduce((a, d) => a + countOf(d), 0);
+
+  const FileRow = ({ f, depth }) => (
+    <li className="flex items-center gap-2 py-1.5" style={{ paddingLeft: `${depth * 16}px` }}>
+      <FileText size={13} className="text-[var(--faint)] flex-none" />
+      <span className="text-sm truncate min-w-0 flex-1" title={f.path}>{f.name}</span>
+      <span className="text-xs text-[var(--faint)] tabular-nums flex-none">{humanSize(f.size)}</span>
+      {/* A plain link: the browser sends the session cookie, so the gate sees the
+          same identity the listing was computed with. */}
+      <a href={f.url} download className="flex-none" title={t('rc.dl', 'Download')}>
+        <Button size="sm" variant="ghost"><Download size={13} /></Button>
+      </a>
+      {/* The link to this ONE file — the common case is sending somebody a single file,
+          not the whole repo. Absolute, because a copied link is going to be pasted
+          somewhere this page's origin means nothing. Copying it is not a way around the
+          access gate: the URL is checked per request, so a restricted repo still refuses
+          whoever opens it. */}
+      <Button size="sm" variant="ghost" className="flex-none" title={t('rc.copyurl', 'Copy this file’s link')}
+        onClick={() => { navigator.clipboard?.writeText(new URL(f.url, location.origin).href); toast.success(t('rp.copied', 'Copied.')); }}>
+        <Link2 size={13} />
+      </Button>
+    </li>
+  );
+
+  const DirRow = ({ name, node, depth, path }) => {
+    // Open by default: a repo's contents are the reason you are on this page, and a tree
+    // that starts closed makes you click to learn there was nothing to see.
+    const [open, setOpen] = useState(true);
+    return (
+      <>
+        <li className="flex items-center gap-2 py-1.5" style={{ paddingLeft: `${depth * 16}px` }}>
+          <button onClick={() => setOpen(!open)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+            <ChevronDown size={13} className={`text-[var(--faint)] flex-none transition-transform ${open ? '' : '-rotate-90'}`} />
+            <FolderOpen size={13} className="text-[var(--primary-2)] flex-none" />
+            <span className="text-sm truncate min-w-0" title={path}>{name}</span>
+          </button>
+          <span className="text-xs text-[var(--faint)] tabular-nums flex-none">
+            {countOf(node)} · {humanSize(sizeOf(node))}
+          </span>
+        </li>
+        {open && <TreeLevel node={node} depth={depth + 1} path={path} />}
+      </>
+    );
+  };
+
+  // Directories first, then files, each alphabetically — the order a file manager uses,
+  // and the same one the hosted directory index emits.
+  const TreeLevel = ({ node, depth, path }) => (
+    <>
+      {[...node.dirs.entries()]
+        .sort((a, b) => a[0].toLowerCase().localeCompare(b[0].toLowerCase()))
+        .map(([name, sub]) => <DirRow key={`${path}/${name}`} name={name} node={sub} depth={depth} path={`${path}/${name}`} />)}
+      {[...node.files]
+        .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+        .map((f) => <FileRow key={f.path} f={f} depth={depth} />)}
+    </>
+  );
 
   return (
     <Card className="p-4 mt-4">
@@ -70,34 +140,9 @@ function RepoContents({ id, k }) {
       </div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('rc.sub', 'Download a file directly — no BMM needed.')}</p>
 
-      {Object.entries(groups).map(([g, list]) => (
-        <div key={g} className="mb-3 last:mb-0">
-          <div className="text-[11px] uppercase tracking-wide text-[var(--faint)] mb-1">{label(g)}</div>
-          <ul className="divide-y divide-[var(--border)]">
-            {list.map((f) => (
-              <li key={f.path} className="flex items-center gap-2 py-1.5">
-                <FileText size={13} className="text-[var(--faint)] flex-none" />
-                <span className="text-sm truncate min-w-0 flex-1" title={f.path}>{f.path.includes('/') ? f.path.slice(g.length + 1) : f.path}</span>
-                <span className="text-xs text-[var(--faint)] tabular-nums flex-none">{humanSize(f.size)}</span>
-                {/* A plain link: the browser sends the session cookie, so the gate sees the
-                    same identity the listing was computed with. */}
-                <a href={f.url} download className="flex-none" title={t('rc.dl', 'Download')}>
-                  <Button size="sm" variant="ghost"><Download size={13} /></Button>
-                </a>
-                {/* The link to this ONE file — the common case is sending somebody a single
-                    file, not the whole repo. Absolute, because a copied link is going to be
-                    pasted somewhere this page's origin means nothing. Copying it is not a
-                    way around the access gate: the URL is checked per request, so a
-                    restricted repo still refuses whoever opens it. */}
-                <Button size="sm" variant="ghost" className="flex-none" title={t('rc.copyurl', 'Copy this file’s link')}
-                  onClick={() => { navigator.clipboard?.writeText(new URL(f.url, location.origin).href); toast.success(t('rp.copied', 'Copied.')); }}>
-                  <Link2 size={13} />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
+      <ul className="divide-y divide-[var(--border)]">
+        <TreeLevel node={tree} depth={0} path="" />
+      </ul>
       {access.restricted && <p className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><Lock size={10} /> {t('rc.youok', 'This repo is restricted — your account is allowed.')}</p>}
     </Card>
   );
