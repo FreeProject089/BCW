@@ -483,7 +483,12 @@ export default async function hostingContentRoutes(app) {
     };
   });
 
-  app.get('/hosting/:owner/:repo/repo.json', { preHandler: optionalAuth() }, async (req, reply) => {
+  // The manifest is served under BOTH names. Uploading `manifest.json` already works
+  // (the parsed document is stored on the repo row, whichever filename it arrived as),
+  // but a consumer that asks for the name it uploaded would have hit a 404 — the alias
+  // exists so the two spellings are symmetric end to end, not just on the way in.
+  // `repo.json` stays the canonical URL: it is what publish reports and what BMM asks for.
+  const serveManifest = async (req, reply) => {
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { hostPath: `${req.params.owner}/${req.params.repo}` } });
     if (!repo || !repo.published || !repo.repoJson) return reply.code(404).send({ error: 'not_found' });
@@ -493,7 +498,9 @@ export default async function hostingContentRoutes(app) {
     // no-store when restricted — a shared cache must never serve around the gate.
     const cc = repoRestricted(repo, [globalPolicy, ownerPolicy]) ? 'private, no-store' : 'public, max-age=60';
     return reply.header('Content-Type', 'application/json').header('Cache-Control', cc).send(repo.repoJson);
-  });
+  };
+  app.get('/hosting/:owner/:repo/repo.json', { preHandler: optionalAuth() }, serveManifest);
+  app.get('/hosting/:owner/:repo/manifest.json', { preHandler: optionalAuth() }, serveManifest);
 
   // optionalAuth so a browser's session counts as identity here too (see resolveIdentity):
   // BMM sends no cookie and stays anonymous, so its behaviour is unchanged.

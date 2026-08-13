@@ -388,6 +388,23 @@ function FilesTab({ r, reload }) {
             </div>
           </div>
         )}
+        {/* The public base for everything below. The same link lives on the Online tab, but
+            this is the tab you are on when you want it. Shown as soon as the repo is
+            PUBLISHED, not when it is listed: an unlisted repo serves these URLs perfectly
+            well to whoever you hand them to (verified - the file route gates on `published`
+            alone). */}
+        {r.published && r.hostPath && (
+          <div className="px-4 py-2 border-b border-[var(--line)] flex items-center gap-2">
+            <Globe size={13} className="text-[var(--primary-2)] shrink-0" />
+            <code className="text-[11px] text-[var(--muted)] break-all flex-1 min-w-0">{`${location.origin}/hosting/${r.hostPath}/files/`}</code>
+            <button onClick={() => copyUrl(`${location.origin}/hosting/${r.hostPath}/files/`)}
+              title={t('rd.copybase', 'Copy the base URL of the hosted files')}
+              className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0"><LinkIcon size={14} /></button>
+            <a href={`${location.origin}/hosting/${r.hostPath}/repo.json`} target="_blank" rel="noreferrer"
+              title={t('rd.openmanifest', 'Open the manifest')}
+              className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0"><ExternalLink size={14} /></a>
+          </div>
+        )}
         <div className="px-4 py-2.5 border-b border-[var(--line)] flex items-center gap-2.5 flex-wrap">
           <label className="flex items-center gap-1.5 shrink-0 text-xs text-[var(--faint)] cursor-pointer" title={t('rd.selectall', 'Select all')}>
             <input type="checkbox" checked={allSelected} onChange={toggleAll} />
