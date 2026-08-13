@@ -729,8 +729,6 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
 
    Fixed values are correct here and almost nowhere else: the rule is that a
    foreground must follow its own background, and this background is a constant. */
-.cta-band-title { color: #2a1a06; }
-.cta-band-sub   { color: rgba(42, 26, 6, 0.78); }
 
 /* ── "This post has no cover image" ───────────────────────────────────────────
    It was the brand gradient at full saturation: a 224px block that became the
@@ -754,39 +752,10 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
    Two stacked gradients (a to-transparent diagonal + a 36rem radial bloom) left one
    corner nearly white, which read as unfinished rather than deliberate. A call to
    action should look like a solid thing you press. */
-.cta-band-bg {
-    background: linear-gradient(100deg, var(--primary) 0%, var(--primary-2) 100%);
-}
-
-/* Buttons ON the band.
-   `primary` is an orange fill, sized for the page's neutral background — put it on
-   this orange and it disappears into it, which is what the close-up screenshots
-   showed. Everything here is coloured against the BAND, not against the page: the
-   main action becomes a dark solid (maximum contrast on orange, and it now reads as
-   the one thing to press), the secondary pair a translucent white with a hairline. */
-.cta-band-actions .btn-primary,
-.cta-band-actions button {
-    box-shadow: none;
-}
-.cta-band-actions .btn-primary {
-    background: #2a1a06;
-    border-color: #2a1a06;
-    color: #fff7ec;
-}
-.cta-band-actions .btn-primary:hover {
-    background: #17140f;
-    border-color: #17140f;
-}
-.cta-band-actions button:not(.btn-primary),
-.cta-band-actions a:not([class*="btn-primary"]) > button {
-    background: rgba(255, 255, 255, 0.82);
-    border-color: rgba(42, 26, 6, 0.14);
-    color: #2a1a06;
-}
-.cta-band-actions button:not(.btn-primary):hover {
-    background: #ffffff;
-    border-color: rgba(42, 26, 6, 0.28);
-}
+/* The CTA band is a plain surface now, so it needs no palette of its own —
+   and its buttons are the site's ordinary buttons again. The dark "Get started"
+   existed only because an orange primary disappears on an orange band; off the
+   band it just read as a button turning black under the cursor. */
 
 /* ── "The suite" cards ────────────────────────────────────────────────────────
    These were `bg-gradient-to-b from-brand to-transparent`: full-saturation brand at
@@ -798,19 +767,6 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
    the two variants keep alternating along the row. Mixed from the tokens so a theme
    change carries them — the same call as the blog placeholder, and the opposite of
    the CTA band, which paints a constant surface of its own. */
-.suite-card { position: relative; }
-.suite-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    border-radius: inherit;
-}
-.suite-tint-a::before {
-    background: linear-gradient(to bottom,
-        color-mix(in srgb, var(--primary) 15%, transparent), transparent 62%);
-}
-.suite-tint-b::before {
-    background: linear-gradient(to bottom,
-        color-mix(in srgb, var(--primary-2) 15%, transparent), transparent 62%);
-}
+/* The suite cards carry no tint any more: they are ordinary cards, like every
+   other card on the page. The alternating wash singled out one row for no
+   reason a reader could act on. */

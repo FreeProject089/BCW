@@ -111,10 +111,10 @@ export function Home() {
   const { t, lang } = useI18n();
   const root = useScrollReveal();
   const products = [
-    { icon: Boxes, logo: 'bmm', name: 'BMM', desc: t('prod.bmm.d'), to: '/p/bmm', tint: 'suite-tint-a' },
-    { icon: Music2, logo: 'bsm', name: 'BSM', desc: t('prod.bsm.d'), to: '/p/bsm', tint: 'suite-tint-b' },
-    { icon: Download, logo: 'installer', name: 'BetterInstaller', desc: t('prod.installer.d'), to: '/p/installer', tint: 'suite-tint-a' },
-    { icon: Rocket, name: 'Hosting', desc: t('prod.hosting.d'), to: '/hosting', tint: 'suite-tint-b' },
+    { icon: Boxes, logo: 'bmm', name: 'BMM', desc: t('prod.bmm.d'), to: '/p/bmm' },
+    { icon: Music2, logo: 'bsm', name: 'BSM', desc: t('prod.bsm.d'), to: '/p/bsm' },
+    { icon: Download, logo: 'installer', name: 'BetterInstaller', desc: t('prod.installer.d'), to: '/p/installer' },
+    { icon: Rocket, name: 'Hosting', desc: t('prod.hosting.d'), to: '/hosting' },
   ];
   return (
     // Generous vertical rhythm on purpose: the scroll is long, so sections (and
@@ -165,7 +165,7 @@ export function Home() {
         <SectionKicker n="01" label={t('home.k.products', 'The suite')} />
         <div className="reveal-stagger grid md:grid-cols-4 gap-4">
           {products.map((p) => (
-            <Link key={p.name} to={p.to} className="group"><Card hover className={`suite-card ${p.tint} relative overflow-hidden p-5 h-full transition-transform duration-300 group-hover:-translate-y-1`}>
+            <Link key={p.name} to={p.to} className="group"><Card hover className="relative overflow-hidden p-5 h-full transition-transform duration-300 group-hover:-translate-y-1">
               <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 65%)' }} />
               <div className="relative">
                 <span className="inline-block transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3">
@@ -335,22 +335,15 @@ export function Home() {
       {/* CTA / support */}
       <section className="reveal-on-scroll pb-4">
         <Card className="p-10 md:p-14 text-center relative overflow-hidden">
-          {/* One flat brand surface. It was two stacked gradients — a to-transparent
-              diagonal plus a 36rem radial bloom — which is why the band faded to
-              near-white at one corner and read as unfinished rather than as a
-              deliberate block. A call to action wants to look like a solid thing you
-              press, not like a background that ran out. */}
-          <div className="cta-band-bg absolute inset-0" />
+          {/* Plain surface, like every other section. It was a solid orange slab, which
+              made this one block shout over a page that is otherwise white cards on a
+              neutral ground — and forced its own button palette, since an orange
+              primary vanishes on orange. Taking the slab away lets the buttons be the
+              buttons this site uses everywhere else. */}
           <div className="relative reveal-stagger">
-            <h2 className="cta-band-title text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.cta2.title')}</h2>
-            {/* NOT --muted. That token is sized for text on the PAGE background, and this
-                band paints a saturated orange gradient over it — the same orange in both
-                themes. So the page's foreground token is wrong here by construction: in
-                dark it resolves to a light grey that sinks into the orange, in light to a
-                pale grey that does the same. A surface whose colour does not follow the
-                theme needs a foreground that does not either. */}
-            <p className="cta-band-sub mt-3 max-w-lg mx-auto leading-relaxed">{t('home.cta2.sub')}</p>
-            <div className="cta-band-actions flex flex-wrap gap-3 justify-center mt-7">
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.cta2.title')}</h2>
+            <p className="text-[var(--muted)] mt-3 max-w-lg mx-auto leading-relaxed">{t('home.cta2.sub')}</p>
+            <div className="flex flex-wrap gap-3 justify-center mt-7">
               <Link to="/auth"><Button variant="primary" className="!px-6 !py-3">{t('home.cta2.start')} <ArrowRight size={16} /></Button></Link>
               <a href="https://discord.com/invite/CTaaEF9R75" target="_blank" rel="noreferrer"><Button className="!px-6 !py-3"><DiscordIcon size={16} className="text-[#5865F2]" /> {t('home.cta2.discord', 'Join the Discord')}</Button></a>
               <a href="https://ko-fi.com/bettercommunity" target="_blank" rel="noreferrer"><Button className="!px-6 !py-3"><KofiIcon size={16} className="text-orange-400" /> {t('home.cta2.kofi')}</Button></a>

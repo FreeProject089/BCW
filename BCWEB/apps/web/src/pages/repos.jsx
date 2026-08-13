@@ -33,7 +33,13 @@ const fmtSize = (n) => { n = Number(n) || 0; if (n < 1024) return `${n} B`; if (
 // Public repo.json URL: hosted repos serve at /hosting/<hostPath>/repo.json; a listed
 // non-hosted repo exposes its external repo.json (repoUrl).
 function repoJsonUrl(r) {
-  if (r.hosted && r.hostPath && r.published) return `${location.origin}/hosting/${r.hostPath}/repo.json`;
+  // A HOSTED repo has exactly one valid manifest URL, and only once published. It must NOT
+  // fall through to publicUrl: that column holds a provisioning placeholder
+  // (http://localhost/repos/<id>) which has never served anything, so "Copy repo.json link"
+  // handed out a dead link that fails with an EMPTY RESPONSE rather than a 404 — the least
+  // diagnosable failure of the three. Not published yet: no link, and the button hides.
+  if (r.hosted) return (r.hostPath && r.published) ? `${location.origin}/hosting/${r.hostPath}/repo.json` : '';
+  // A non-hosted repo is somebody else's server; its own URL is the only thing we know.
   return r.repoUrl || r.publicUrl || '';
 }
 // Force a real file download (S3 URLs are cross-origin, so the `download` attr alone
