@@ -97,7 +97,10 @@ export default async function repoDashboardRoutes(app) {
       files: r.files.map(fileSer), used: r.files.reduce((a, f) => a + Number(f.size), 0),
       level: req.level,
       // Access config is owner-only (never expose collaborators' emails or the password).
-      access: req.level === 'owner' ? { emails: r.accessEmails || [], hasPassword: !!r.dashPassword } : undefined,
+      // Two DIFFERENT passwords, and conflating them would be a security bug rather than a
+      // wording slip: `hasPassword` is the DASHBOARD one (who may manage this repo),
+      // `hasSyncPassword` is the DOWNLOAD one (who may read its files at all).
+      access: req.level === 'owner' ? { emails: r.accessEmails || [], hasPassword: !!r.dashPassword, hasSyncPassword: !!r.syncPasswordHash } : undefined,
     };
   });
 

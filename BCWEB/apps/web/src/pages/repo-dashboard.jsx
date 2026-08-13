@@ -785,6 +785,12 @@ function AccessTab({ r, reload }) {
   const [emails, setEmails] = useState(r.access?.emails || []);
   const [hasPassword, setHasPassword] = useState(!!r.access?.hasPassword);
   const [pw, setPw] = useState(''); const [busy, setBusy] = useState(false);
+  // The DOWNLOAD password — a different thing from the dashboard one above, and the two are
+  // deliberately never merged: one decides who may MANAGE this repo, the other who may READ
+  // it at all. Naming them apart in the UI matters more than the code saving, because
+  // setting the wrong one silently either locks out your collaborators or opens your files.
+  const [hasSyncPw, setHasSyncPw] = useState(!!r.access?.hasSyncPassword);
+  const [syncPw, setSyncPw] = useState(''); const [syncBusy, setSyncBusy] = useState(false);
   // Fires on every chip add/remove and is optimistic, so it is the clearest place on this page
   // for an undo window: the chips update at once, the PUT waits, and cancelling puts the
   // previous list back rather than leaving the UI ahead of the server.
@@ -807,9 +813,54 @@ function AccessTab({ r, reload }) {
     try { await api.put(`/repos/${r.id}/dashboard/access`, { password: null }); setHasPassword(false); toast.success(t('rd.pwcleared', 'Password removed.')); }
     catch { toast.error(t('repos.failed', 'Failed.')); }
   };
+  const setSyncPassword = async () => {
+    if (syncPw.length < 4) return toast.error(t('rd.pwshort', 'Password too short (min 4).'));
+    setSyncBusy(true);
+    try {
+      await api.put(`/repos/${r.id}/sync-password`, { password: syncPw });
+      setHasSyncPw(true); setSyncPw('');
+      toast.success(t('rd.syncpw.set', 'Download password set.'));
+    } catch { toast.error(t('repos.failed', 'Failed.')); } finally { setSyncBusy(false); }
+  };
+  const clearSyncPassword = async () => {
+    if (!(await dialog.confirm({
+      title: t('rd.syncpw.clear.t', 'Remove the download password'),
+      message: t('rd.syncpw.clear.m', 'The repo becomes readable by anyone your access lists already allow. Continue?'),
+      okLabel: t('rd.remove', 'Remove'), danger: true,
+    }))) return;
+    try {
+      await api.put(`/repos/${r.id}/sync-password`, { password: '' });
+      setHasSyncPw(false);
+      toast.success(t('rd.syncpw.cleared', 'Download password removed.'));
+    } catch { toast.error(t('repos.failed', 'Failed.')); }
+  };
   const validEmail = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
   return (
     <div className="space-y-4">
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-1"><Lock size={15} className="text-[var(--primary-2)]" /> <span className="font-semibold text-sm">{t('rd.syncpw.title', 'Download password')}</span></div>
+        <p className="text-xs text-[var(--muted)] mb-3">
+          {t('rd.syncpw.sub', 'Required to READ this repo — its manifest, its file listing and every file. BMM asks for it when subscribing; a browser can use ?password= instead. This is not the dashboard password below, which decides who may MANAGE the repo.')}
+        </p>
+        {hasSyncPw ? (
+          <div className="flex items-center gap-2">
+            <Badge tone="success">{t('rd.syncpw.on', 'A password is set')}</Badge>
+            {/* The password itself is never sent back — only whether one exists — so there is
+                nothing to reveal here, only to replace or remove. */}
+            <span className="text-[11px] text-[var(--faint)] flex-1">{t('rd.syncpw.note', 'It cannot be shown again. Set a new one to replace it.')}</span>
+            <Button size="sm" onClick={clearSyncPassword} className="!text-error">{t('rd.remove', 'Remove')}</Button>
+          </div>
+        ) : (
+          <p className="text-[11px] text-[var(--faint)] mb-2">{t('rd.syncpw.off', 'No password — anyone your access lists allow can read this repo.')}</p>
+        )}
+        <div className="flex gap-2 mt-2">
+          <Input type="password" autoComplete="new-password" value={syncPw} onChange={(e) => setSyncPw(e.target.value)}
+            placeholder={hasSyncPw ? t('rd.syncpw.new', 'New download password') : t('rd.syncpw.ph', 'Download password')} />
+          <Button size="sm" variant="primary" disabled={syncBusy || !syncPw} onClick={setSyncPassword}>
+            {hasSyncPw ? t('rd.syncpw.replace', 'Replace') : t('rd.syncpw.setbtn', 'Set')}
+          </Button>
+        </div>
+      </Card>
       <Card className="p-4">
         <div className="flex items-center gap-2 mb-1"><Users size={15} className="text-[var(--primary-2)]" /> <span className="font-semibold text-sm">{t('rd.authemails', 'Authorized emails')}</span></div>
         <p className="text-xs text-[var(--muted)] mb-3">{t('rd.authemails.s', 'Logged-in users with these emails can open this dashboard and manage the repo.')}</p>
