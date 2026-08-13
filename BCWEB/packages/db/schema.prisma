@@ -1346,6 +1346,28 @@ model AdminSetting {
 // downloads). `target` is the built-in project key ("bmm") or a showcase ("sc:<id>"). A
 // snapshot is (re)written whenever an admin saves that project's config while its version
 // field is set, so each distinct version keeps its final config.
+// Edit history for a project page's config blob (same idea as BlogRevision/DocRevision).
+//
+// The config lives in an AdminSetting row, which keeps only the CURRENT value — so an
+// edit that broke a page left nothing to compare against and nobody to ask. A snapshot is
+// written on every save: the whole config, who saved it, and when.
+//
+// Distinct from ProjectVersion, which is keyed by the config's own `version` STRING and
+// exists to show visitors what shipped in each release. Two saves inside one version
+// overwrite that row; here they are two entries, because "what changed at 14:02" is a
+// different question from "what does 1.2.0 look like".
+model ProjectConfigRevision {
+  id        String   @id @default(cuid())
+  // 'bmm' | 'bsm' | … for a fixed project, or 'sc:<id>' for a showcase project — the
+  // same target convention ProjectVersion already uses.
+  target    String
+  config    Json
+  editorId  String?
+  createdAt DateTime @default(now())
+
+  @@index([target, createdAt])
+}
+
 model ProjectVersion {
   id        String   @id @default(cuid())
   target    String

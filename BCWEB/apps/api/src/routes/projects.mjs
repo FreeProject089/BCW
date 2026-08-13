@@ -192,7 +192,50 @@ export default async function projectRoutes(app) {
     const k = settingKey(req.params.key);
     await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: b.data.config }, update: { value: b.data.config } });
     await snapshotVersion(p, req.params.key, b.data.config);
+    await snapshotConfigRevision(p, req.params.key, b.data.config, req.user?.uid);
     return { ok: true };
+  });
+
+  // One snapshot per SAVE, capped.
+  //
+  // Different from snapshotVersion below, which is keyed by the config's `version` string
+  // and answers "what shipped in 1.2.0" — two saves inside one version overwrite it. This
+  // answers "what changed at 14:02, and who did it", which is the question you have when
+  // a page suddenly looks wrong.
+  //
+  // Skipped when nothing actually changed: pressing Save twice on an untouched editor
+  // should not fill the history with identical entries.
+  async function snapshotConfigRevision(p, target, config, editorId) {
+    try {
+      const last = await p.projectConfigRevision.findFirst({ where: { target }, orderBy: { createdAt: 'desc' }, select: { config: true } });
+      if (last && JSON.stringify(last.config) === JSON.stringify(config)) return;
+      await p.projectConfigRevision.create({ data: { target, config, editorId: editorId || null } });
+      // Keep the last 50. A page config is edited rarely; an unbounded table here would
+      // be a slow leak nobody ever looks at.
+      const excess = await p.projectConfigRevision.findMany({ where: { target }, orderBy: { createdAt: 'desc' }, skip: 50, select: { id: true } });
+      if (excess.length) await p.projectConfigRevision.deleteMany({ where: { id: { in: excess.map((x) => x.id) } } });
+    } catch { /* history is a convenience; never fail the save for it */ }
+  }
+
+  // The history itself. Read-only, and the config is returned in full so the UI can diff
+  // two entries — a list of timestamps with no content answers nothing.
+  app.get('/admin/projects/:key/history', { preHandler: requireEditor() }, async (req, reply) => {
+    const target = String(req.params.key);
+    if (!KEYS.includes(target) && !target.startsWith('sc:')) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await canEditProject(req.user, target))) return reply.code(403).send({ error: 'forbidden' });
+    const p = await db();
+    const rows = await p.projectConfigRevision.findMany({ where: { target }, orderBy: { createdAt: 'desc' }, take: 50 });
+    const ids = [...new Set(rows.map((r) => r.editorId).filter(Boolean))];
+    const users = ids.length ? await p.user.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, avatar: true } }) : [];
+    const byId = Object.fromEntries(users.map((u) => [u.id, u]));
+    return {
+      revisions: rows.map((r) => ({
+        id: r.id, createdAt: r.createdAt, config: r.config,
+        // A deleted account still has its edits in the list; naming it "(deleted)" is
+        // more honest than dropping the entry or showing a bare id.
+        editor: r.editorId ? (byId[r.editorId] || { id: r.editorId, displayName: '(deleted)' }) : null,
+      })),
+    };
   });
 
   // Record/refresh a project-page snapshot for its current version (powers the version

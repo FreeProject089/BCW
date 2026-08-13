@@ -169,6 +169,7 @@ export function Admin() {
     can('manage_repos') && { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
     isAdmin && { id: 'plans', label: t('adm.tab.plans', 'Hosting plans'), icon: HardDrive },
     isAdmin && { id: 'mail', label: t('adm.tab.mail', 'Mail'), icon: Mail },
+    isAdmin && { id: 'history', label: t('adm.tab.history', 'History'), icon: History },
     isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
 
     { heading: t('adm.h.growth', 'Growth & monetization') },
@@ -277,6 +278,7 @@ export function Admin() {
         {s === 'reports' && <AdminReports />}
         {s === 'plans' && <AdminHostingPlans />}
         {s === 'mail' && <AdminMail />}
+        {s === 'history' && <AdminHistory />}
         {s === 'hosting' && <AdminFreeHost />}
         {s === 'promotions' && <><AdminCampaigns /><div className="mt-8"><AdminPromo /></div></>}
         {s === 'kofi' && <AdminKofi />}
@@ -3297,6 +3299,114 @@ function PluginContentModal({ item, onClose }) {
 //
 // Audiences are queries evaluated at send time, not saved lists, so "everyone on a hosting
 // plan" means whoever is subscribed when you press the button.
+// Everything that happened on the site, in one list.
+//
+// It stores nothing of its own: the endpoint reads the tables that already record each
+// kind of event and merges them. That is why the window is a fixed number of days rather
+// than infinite scrollback — the merge happens in memory, so it is bounded on purpose.
+const HIST_TONE = {
+  staff: 'text-[var(--primary-2)]', repo: 'text-success', catalog: 'text-warning',
+  blog: 'text-[var(--primary)]', docs: 'text-[var(--primary)]', project: 'text-[var(--primary-2)]',
+  payment: 'text-success', auth: 'text-[var(--muted)]',
+};
+const HIST_ICON = {
+  staff: Shield, repo: FolderGit2, catalog: Package, blog: Newspaper,
+  docs: BookOpen, project: Layers, payment: Receipt, auth: KeyRound,
+};
+
+function AdminHistory() {
+  const { t } = useI18n();
+  const [days, setDays] = useState(30);
+  const [sources, setSources] = useState([]);     // [] = all
+  const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState('');
+  const [take, setTake] = useState(60);
+  const query = new URLSearchParams({ days: String(days), take: String(take), ...(sources.length ? { sources: sources.join(',') } : {}), ...(qApplied ? { q: qApplied } : {}) }).toString();
+  const { data, loading } = useAsync(() => api.get(`/admin/history?${query}`), [query]);
+  const entries = data?.entries || [];
+  const all = data?.sources || [];
+  const toggle = (k) => { setTake(60); setSources((v) => (v.includes(k) ? v.filter((x) => x !== k) : [...v, k])); };
+  const when = (at) => new Date(at).toLocaleString();
+
+  return (
+    <div>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><History size={16} className="text-[var(--primary-2)]" /> {t('hist.title', 'Site history')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-3">
+        {t('hist.desc', 'Every recorded event, staff and user alike, merged from the logs the site already keeps — nothing here is stored twice. Filter by source, search any text, or widen the window.')}
+      </p>
+
+      <div className="flex flex-wrap gap-2 items-center mb-3">
+        <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('hist.search', 'Search action, detail, person…')} value={q}
+            onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (setTake(60), setQApplied(q))} /></div>
+        <Button size="sm" variant="primary" onClick={() => { setTake(60); setQApplied(q); }}><Search size={14} /> {t('common.search', 'Search')}</Button>
+        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+          {[7, 30, 90, 365].map((d) => (
+            <button key={d} onClick={() => { setTake(60); setDays(d); }}
+              className={`px-2.5 py-1 text-xs ${days === d ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+              {d >= 365 ? t('hist.1y', '1 y') : `${d} ${t('hist.d', 'd')}`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Source chips. All off = all on, which is the reading people expect from an
+          empty filter and saves a redundant "All" chip. */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {all.map((src) => {
+          const Icon = HIST_ICON[src.key] || Activity; const on = sources.includes(src.key);
+          return (
+            <button key={src.key} onClick={() => toggle(src.key)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+              <Icon size={12} /> {t(`hist.src.${src.key}`, src.label)}
+            </button>
+          );
+        })}
+        {sources.length > 0 && <button onClick={() => setSources([])} className="text-xs text-[var(--faint)] underline px-1">{t('hist.clear', 'clear')}</button>}
+      </div>
+
+      {loading && !entries.length ? <Loading /> : !entries.length ? (
+        <EmptyState icon={History} title={t('hist.none.t', 'Nothing in this window')}
+          sub={t('hist.none.s', 'Try a longer window or fewer filters — the range is a window, not the whole history.')} />
+      ) : (
+        <>
+          <Card className="p-0 overflow-hidden">
+            {entries.map((e, i) => {
+              const Icon = HIST_ICON[e.source] || Activity;
+              return (
+                <div key={`${e.source}-${e.at}-${i}`} className="flex items-start gap-3 px-4 py-2.5 border-b border-[var(--line)] last:border-0">
+                  <Icon size={14} className={`mt-0.5 shrink-0 ${HIST_TONE[e.source] || ''}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-medium">{e.action}</span>
+                      {e.detail && <span className="text-[var(--muted)] break-all">{e.detail}</span>}
+                    </div>
+                    <div className="text-[11px] text-[var(--faint)] flex flex-wrap items-center gap-x-2">
+                      {/* Either a real account (clickable) or the display label the repo
+                          layer recorded — never a bare id pretending to be a name. */}
+                      {e.actor
+                        ? <Link to={`/u/${e.actor.id}`} className="hover:text-[var(--text)] underline decoration-dotted">{e.actor.displayName}</Link>
+                        : e.actorName ? <span>{e.actorName}</span> : <span className="italic">{t('hist.system', 'system')}</span>}
+                      <span>·</span>
+                      <span>{when(e.at)}</span>
+                      {e.ip && <><span>·</span><span className="font-mono">{e.ip}</span></>}
+                      {e.link && <><span>·</span><Link to={e.link} className="hover:text-[var(--text)] underline decoration-dotted">{t('hist.open', 'open')}</Link></>}
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-[var(--faint)] uppercase tracking-wider shrink-0">{e.source}</span>
+                </div>
+              );
+            })}
+          </Card>
+          <div className="flex items-center justify-between mt-3 text-xs text-[var(--faint)]">
+            <span>{t('hist.count', 'Showing {n} of {tot} in the last {d} days').replace('{n}', String(entries.length)).replace('{tot}', String(data?.total ?? 0)).replace('{d}', String(days))}</span>
+            {data?.hasMore && <Button size="sm" variant="ghost" onClick={() => setTake((v) => v + 60)}>{t('hist.more', 'Show more')}</Button>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AdminMail() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { user: me } = useAuth();
   const plans = useAsync(() => api.get('/admin/hosting/plans'), []);
