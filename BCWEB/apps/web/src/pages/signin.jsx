@@ -155,7 +155,9 @@ export function Auth() {
     setBusy(true);
     try {
       if (mode === 'login') {
-        const res = await login(f.email, f.password);
+        // The step callback fires only if the server asks for a proof of work, so
+        // an ordinary sign-in shows nothing extra.
+        const res = await login(f.email, f.password, () => setStep(t('auth.pow.step', 'Verifying — one moment…')));
         if (res?.twoFactorRequired) { setTwoFa({ tempToken: res.tempToken }); return; }
         toast.success(t('auth.welcome.toast')); nav('/dashboard');
       }

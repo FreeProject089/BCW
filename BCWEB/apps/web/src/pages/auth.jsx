@@ -33,8 +33,23 @@ export function AuthProvider({ children }) {
 
   // Returns { twoFactorRequired: true, tempToken } when the account has 2FA
   // enabled — the caller must then call loginWith2fa() to actually get a session.
-  const login = async (email, password) => {
-    const res = await api.post('/auth/login', { email, password });
+  const login = async (email, password, onStep) => {
+    let res;
+    try {
+      res = await api.post('/auth/login', { email, password });
+    } catch (e) {
+      // After a few recent failures on this address the server asks for a proof of
+      // work. It hands back the challenge with the refusal, so the retry costs one
+      // extra round trip and no extra request for the challenge itself.
+      //
+      // Retried ONCE. A loop here would turn a server that always answers
+      // pow_required into a client that mines forever.
+      if (e?.data?.error !== 'pow_required' || !e?.data?.challenge) throw e;
+      onStep?.('pow');
+      const { solvePow } = await import('../lib/pow.js');
+      const pow = await solvePow(async () => ({ challenge: e.data.challenge, difficulty: e.data.difficulty }));
+      res = await api.post('/auth/login', { email, password, pow });
+    }
     if (res?.twoFactorRequired) return res;
     await refresh();
     return res;

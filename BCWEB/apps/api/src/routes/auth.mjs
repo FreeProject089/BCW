@@ -152,6 +152,27 @@ export default async function authRoutes(app) {
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const ip = clientIp(req);
+
+    // Credential stuffing is distributed by definition, so a per-IP rate limit does
+    // not see it: every request comes from a fresh address and each one is under the
+    // quota. Recent failures are counted per EMAIL instead, across every IP, and past
+    // a handful of them the caller must attach a proof of work.
+    //
+    // Deliberately not a lockout. Locking an account after N failures makes the login
+    // form a denial-of-service weapon against its owner — anyone who knows the address
+    // can keep it shut. A proof of work costs the attacker seconds per attempt and
+    // costs the real owner a progress line, and it is never possible to lock someone
+    // out with it.
+    //
+    // Counted on the SUBMITTED address, whether or not it belongs to an account, so
+    // the response cannot be used to tell existing addresses from absent ones.
+    const failWindow = new Date(Date.now() - 15 * 60_000);
+    const recentFails = await p.loginAttempt.count({
+      where: { email: parsed.data.email, success: false, createdAt: { gte: failWindow } },
+    }).catch(() => 0);
+    if (recentFails >= 3 && !powVerify(req.body?.pow)) {
+      return reply.code(429).send({ error: 'pow_required', ...powChallenge() });
+    }
     const user = await p.user.findUnique({ where: { email: parsed.data.email } });
     if (!user?.passwordHash) {
       // OAuth-only account (GitHub/Discord) — no password to check against.
