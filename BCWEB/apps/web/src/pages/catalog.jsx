@@ -164,7 +164,7 @@ export function ItemDetail() {
         </Card>
       )}
       <div className="flex items-start gap-4">
-        <div className="grid place-items-center w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-brand-2 border border-[var(--line)]"><I size={26} className="text-[var(--primary-2)]" /></div>
+        <div className="grid place-items-center w-14 h-14 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)]"><I size={26} className="text-[var(--primary-2)]" /></div>
         <div className="flex-1">
           <div className="flex items-center gap-2"><Badge tone="primary">{it.kind}</Badge><Badge>v{it.version}</Badge></div>
           <h1 className="text-2xl font-bold mt-2">{it.name}</h1>

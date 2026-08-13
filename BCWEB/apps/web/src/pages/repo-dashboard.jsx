@@ -111,7 +111,10 @@ function Dashboard({ data, reload }) {
       <Card className="p-5 mb-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-start gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-2 border border-[var(--line)] grid place-items-center shrink-0"><Server size={20} className="text-[var(--primary-2)]" /></div>
+            {/* Plain surface, not a brand gradient. The icon is --primary-2 and the gradient
+                was made of the same two brand colours, so the glyph sank into its own
+                background — a foreground has to contrast with what is actually behind it. */}
+            <div className="w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] grid place-items-center shrink-0"><Server size={20} className="text-[var(--primary-2)]" /></div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-bold truncate">{r.name}</h1>
@@ -122,7 +125,8 @@ function Dashboard({ data, reload }) {
               </div>
               <div className="text-xs text-[var(--faint)] mt-1 flex items-center gap-3 flex-wrap">
                 {r.ownerName && <span className="flex items-center gap-1"><Users size={12} /> {r.ownerName}</span>}
-                <span className={`flex items-center gap-1 ${online ? 'text-success' : 'text-[var(--faint)]'}`}>{online ? <Wifi size={12} /> : <WifiOff size={12} />} {online ? t('repos.online', 'Online') : t('repos.offline', 'Offline')}</span>
+                {/* Status is the badge above; repeating it here said "Online" twice, 20px
+                    apart, in two different shapes. Verified stays: it is a different fact. */}
                 {r.verified && <span className="flex items-center gap-1 text-success"><CheckCircle2 size={12} /> {t('repos.verified', 'Verified')}</span>}
                 {r.listed && <span className="flex items-center gap-1"><Eye size={12} /> {t('repos.listed', 'Listed')}</span>}
                 {r.listed && <span className="flex items-center gap-1 text-warning"><Star size={12} /> {r.favoriteCount} {r.favoriteCount === 1 ? t('rd.favorite', 'favorite') : t('rd.favorites', 'favorites')}</span>}

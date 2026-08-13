@@ -609,6 +609,22 @@ export function MyRepos() {
       reload();
     } catch (x) { toast.error(x.data?.error === 'repo_suspended' ? t('repos.suspended.short', 'This repo is suspended — contact support.') : x.data?.error || t('repos.failed', 'Failed.')); }
   };
+  // Publishing is what makes a repo READABLE — its manifest, its listing, every file. It
+  // was only reachable from the dashboard's Online tab, two clicks deep, which is why a
+  // repo can sit finished-but-unpublished without anything on this page saying so.
+  const togglePublish = async (r) => {
+    const going = !r.published;
+    try {
+      await api.post(`/repos/${r.id}/${going ? 'publish' : 'unpublish'}`);
+      toast.success(going ? t('repos.nowonline', 'Online — your repo.json is now public.') : t('repos.nowoffline', 'Taken offline.'));
+      load();
+    } catch (x) {
+      toast.error(x.data?.error === 'no_content'
+        ? t('repos.needfiles', 'Upload at least one file first.')
+        : t('repos.failed', 'Failed.'));
+    }
+  };
+
   const toggleList = async (r) => {
     try {
       const res = await api.post(`/repos/${r.id}/list`, { listed: !r.listed });
@@ -808,6 +824,7 @@ export function MyRepos() {
                 <ActionBar
                   actions={[
                     { key: 'dash', label: t('repos.opendash', 'Dashboard'), icon: LayoutDashboard, variant: 'primary', href: `/repo/${r.id}`, onClick: () => navigate(`/repo/${r.id}`) },
+                    ...(r.hosted ? [{ key: 'pub', label: r.published ? t('repos.takeoffline', 'Take offline') : t('repos.goonline', 'Go online'), icon: r.published ? WifiOff : Wifi, disabled: locked, onClick: () => togglePublish(r) }] : []),
                     { key: 'list', label: r.listed ? t('repos.unlist', 'Unlist') : t('repos.listpublicly', 'List publicly'), icon: r.listed ? EyeOff : Eye, disabled: locked, onClick: () => toggleList(r) },
                     { key: 'boost', label: isFeatured(r) ? t('repos.extendboost', 'Extend boost') : t('repos.boost', 'Boost'), icon: Rocket, disabled: locked, onClick: () => setFeaturing(r) },
                   ]}

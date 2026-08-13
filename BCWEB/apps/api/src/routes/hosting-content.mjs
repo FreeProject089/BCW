@@ -628,7 +628,7 @@ function indexEntries(files, prefix) {
     if (!rest) continue;
     const slash = rest.indexOf('/');
     if (slash === -1) {
-      out.push({ name: rest, isDir: false, size: Number(f.size || 0), mtime: f.updatedAt || f.createdAt });
+      out.push({ name: rest, isDir: false, size: Number(f.size || 0), mtime: f.updatedAt || f.createdAt, sha: f.sha256 || null });
     } else {
       // A directory has no date of its own; the newest thing inside it is the honest
       // answer, and it is what a real filesystem would report.
@@ -658,7 +658,16 @@ function renderAutoindex(displayPath, entries) {
     const href = encodeURIComponent(link).replace(/%2F/g, '/');
     const pad = ' '.repeat(Math.max(1, 52 - link.length));
     const size = e.isDir ? '-' : String(e.size);
-    rows.push(`<a href="${href}">${htmlEscape(link)}</a>${pad}${nginxDate(e.mtime)} ${size.padStart(19)}`);
+    // The checksum goes AFTER the size, and that order is the whole safety argument. BMM's
+    // parser walks the line BACKWARDS for the first token that parses as a u64 — a sha256
+    // is 64 hex characters, which overflows u64 and usually contains letters, so it is
+    // skipped and the size is still found. Putting it before the size would have made the
+    // sha the last number on lines where it happened to be all digits.
+    //
+    // nginx itself shows no checksum; this is a superset of its format, kept parseable on
+    // purpose so a client written for a plain file server still reads it.
+    const sha = (!e.isDir && e.sha) ? `  ${e.sha}` : '';
+    rows.push(`<a href="${href}">${htmlEscape(link)}</a>${pad}${nginxDate(e.mtime)} ${size.padStart(19)}${sha}`);
   }
   rows.push('</pre><hr></body></html>');
   return rows.join('\n');

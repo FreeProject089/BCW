@@ -540,7 +540,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
   return (
     <Modal open={open} onClose={onClose} title={t('ie.title', 'View / edit item')} icon={PenSquare} width="max-w-lg" footer={footer}>
       <div className="flex items-center gap-3 mb-4">
-        <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-2 border border-[var(--line)]"><I size={20} className="text-[var(--primary-2)]" /></div>
+        <div className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)]"><I size={20} className="text-[var(--primary-2)]" /></div>
         <div className="min-w-0"><div className="font-semibold truncate">{item.name}</div>
           <div className="text-xs text-[var(--faint)] flex items-center gap-2"><Badge tone={statusTone(item.status)}>{item.status}</Badge>{item.kind}
             {(item.payloadKey || item.meta?.download_url) && <button onClick={viewPayload} className="text-[var(--primary-2)] hover:underline flex items-center gap-1"><Download size={11} /> payload</button>}</div></div>

@@ -567,7 +567,7 @@ function Community({ c, communityUrl }) {
               <Card key={i} hover className="p-5 group transition-all duration-200 hover:-translate-y-1">
                 <div className="flex items-center gap-3">
                   {p.pfp ? <img src={p.pfp} alt="" loading="lazy" className="w-12 h-12 rounded-full object-cover border border-[var(--line)] transition-transform duration-200 group-hover:scale-110 group-hover:border-[var(--primary)]" />
-                    : <div className="w-12 h-12 rounded-full bg-gradient-to-br from-brand to-brand-2 grid place-items-center text-white font-bold transition-transform duration-200 group-hover:scale-110">{(p.name || '?')[0]}</div>}
+                    : <div className="w-12 h-12 rounded-full bg-[var(--surface-2)] border border-[var(--line)] grid place-items-center text-white font-bold transition-transform duration-200 group-hover:scale-110">{(p.name || '?')[0]}</div>}
                   <div className="min-w-0"><div className="font-semibold truncate group-hover:text-[var(--primary-2)] transition-colors">{p.name}</div><div className="text-xs text-[var(--primary-2)]">{p.role}</div></div>
                 </div>
                 {p.description && <p className="text-sm text-[var(--muted)] mt-3 line-clamp-3">{p.description}</p>}
@@ -761,7 +761,7 @@ function ProjectBlogTab({ project, page }) {
       {posts.map((p) => { const v = pick(p); return (
         <Link key={p.id} to={`/blog/${p.slug}`}>
           <Card hover className="overflow-hidden h-full flex flex-col">
-            {p.cover ? <img src={thumb(p.cover, 512)} alt="" className="w-full h-40 object-cover" /> : <div className="w-full h-40 bg-gradient-to-br from-brand to-brand-2 grid place-items-center"><Newspaper size={32} className="text-[var(--primary-2)] opacity-80" /></div>}
+            {p.cover ? <img src={thumb(p.cover, 512)} alt="" className="w-full h-40 object-cover" /> : <div className="w-full h-40 bg-[var(--surface-2)] border border-[var(--line)] grid place-items-center"><Newspaper size={32} className="text-[var(--primary-2)] opacity-80" /></div>}
             <div className="p-4 flex-1 flex flex-col">
               <div className="text-xs text-[var(--faint)]">{fmt(p.publishedAt)}</div>
               <div className="font-bold mt-1 leading-snug">{v.title}</div>
