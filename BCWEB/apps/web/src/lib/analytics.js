@@ -130,11 +130,27 @@ export function initInteractions() {
 const THRESHOLDS = { LCP: [2500, 4000], CLS: [0.1, 0.25], INP: [200, 500], FCP: [1800, 3000], TTFB: [800, 1800] };
 const rate = (m, v) => { const [g, p] = THRESHOLDS[m]; return v <= g ? 'good' : v <= p ? 'needs-improvement' : 'poor'; };
 
+// Above these, the number is not a slow page — it is an outage, a suspended laptop, or a
+// tab restored hours later, and the browser counts that wall-clock time inside the metric.
+// Real examples from this site's own data: a 113s and a 1466s TTFB, both recorded while
+// the API was restarting. Keeping them does not describe a user experience; it drags every
+// percentile and fires "poor" alerts about something no optimisation can fix.
+//
+// Discarded, not clamped: a clamped value still counts as a sample and still says "poor".
+// A sample that measures nothing should not exist.
+const CEILING = { LCP: 60000, FCP: 60000, TTFB: 60000, INP: 60000, CLS: 10 };
+
 export function initVitals() {
   if (getConsent() !== 'all') return;
   if (typeof PerformanceObserver === 'undefined' || window.__bcwVitals) return;
   window.__bcwVitals = true;
   const path = location.pathname + location.search;
+  // A tab that was hidden at any point before the flush had its timers throttled and its
+  // rendering deferred, so LCP and FCP describe when the user came BACK, not how fast the
+  // page was. web.dev's own guidance is to drop those loads rather than report them.
+  // Starting hidden (a background tab opened from a link) counts too.
+  let everHidden = document.visibilityState === 'hidden';
+  addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') everHidden = true; }, { capture: true });
   const vitals = {};        // metric → value (latest/aggregate)
   const set = (m, v) => { vitals[m] = v; };
 
@@ -166,6 +182,10 @@ export function initVitals() {
     flushed = true;
     for (const [metric, value] of Object.entries(vitals)) {
       if (value == null || !isFinite(value)) continue;
+      // INP is an INTERACTION metric — it stays meaningful on a tab that was backgrounded
+      // between interactions, so only the load-time metrics are dropped for that reason.
+      if (everHidden && metric !== 'INP' && metric !== 'CLS') continue;
+      if (value > (CEILING[metric] ?? Infinity)) continue;
       const v = metric === 'CLS' ? Math.round(value * 1000) / 1000 : Math.round(value);
       beacon('/api/analytics/vital', { path, metric, value: v, rating: rate(metric, value) });
     }

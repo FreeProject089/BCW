@@ -67,10 +67,20 @@ export default async function analyticsRoutes(app) {
     const b = z.object({
       path: z.string().max(300),
       metric: z.enum(['LCP', 'CLS', 'INP', 'FCP', 'TTFB']),
-      value: z.number().finite().nonnegative().max(3_600_000),
+      // One hour was the old ceiling, and it let a 1466-SECOND TTFB into the table —
+      // recorded while the API itself was restarting. That is an outage, not a slow page:
+      // it describes nothing a change to this site could improve, while dragging every
+      // percentile and firing "poor" alerts nobody can act on.
+      value: z.number().finite().nonnegative().max(60_000),
       rating: z.enum(['good', 'needs-improvement', 'poor']).optional(),
     }).safeParse(req.body);
+    // The client drops these too, but it is untrusted and older builds keep running for
+    // as long as a tab stays open, so the ceiling is enforced on both ends. Rejected
+    // quietly with 400: a beacon has nobody to report an error to.
     if (!b.success) return reply.code(400).send({ error: 'invalid' });
+    // CLS is unitless (a layout-shift score), so the millisecond ceiling above is
+    // meaningless for it — anything past 10 is already off the "poor" end of the scale.
+    if (b.data.metric === 'CLS' && b.data.value > 10) return reply.code(400).send({ error: 'invalid' });
     const p = await db();
     const { device, browser, os } = parseUA(req.headers['user-agent']);
     const geo = await geoOf(req).catch(() => ({}));
