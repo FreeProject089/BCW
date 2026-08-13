@@ -74,7 +74,7 @@ export function Contact() {
 
       <Card className="overflow-hidden">
         {/* gradient header strip */}
-        <div className="px-6 py-4 border-b border-[var(--line)] bg-gradient-to-r from-brand via-brand-2 to-transparent flex items-center gap-2.5">
+        <div className="px-6 py-4 border-b border-[var(--line)] bg-[var(--surface-2)] flex items-center gap-2.5">
           <span className="grid place-items-center w-9 h-9 rounded-xl bg-gradient-to-br from-brand to-brand-2"><MessageSquare size={16} className="text-white" /></span>
           <div><div className="font-semibold leading-tight">{fr ? 'Envoyer un message' : 'Send a message'}</div>
             <div className="text-xs text-[var(--muted)]">{fr ? 'Reçu directement par l’équipe — réponse par email.' : 'Goes straight to the team — we reply by email.'}</div></div>

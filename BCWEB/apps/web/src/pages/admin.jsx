@@ -167,6 +167,7 @@ export function Admin() {
     { heading: t('adm.h.repos', 'Repos & hosting') },
     can('manage_repos') && { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
     can('manage_repos') && { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
+    isAdmin && { id: 'plans', label: t('adm.tab.plans', 'Hosting plans'), icon: HardDrive },
     isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
 
     { heading: t('adm.h.growth', 'Growth & monetization') },
@@ -273,6 +274,7 @@ export function Admin() {
         {s === 'catalogs' && <AdminCatalogCreator />}
         {s === 'commcatalogs' && <AdminCatalogs />}
         {s === 'reports' && <AdminReports />}
+        {s === 'plans' && <AdminHostingPlans />}
         {s === 'hosting' && <AdminFreeHost />}
         {s === 'promotions' && <><AdminCampaigns /><div className="mt-8"><AdminPromo /></div></>}
         {s === 'kofi' && <AdminKofi />}
@@ -3160,6 +3162,119 @@ function PluginContentModal({ item, onClose }) {
 }
 
 // Admin: provision a hosted repo for free (no Stripe), optionally for another user.
+// The plans the pricing page sells. They were seeded once and only reachable through SQL
+// after that — and a price nobody can change without a database client is a price that
+// never changes.
+//
+// Inactive plans are listed too: hiding a plan is the usual way to retire one, so the
+// editor is exactly where you go looking for it. Each row carries its live subscription
+// count, because that single fact decides whether a plan can be deleted or only retired.
+function AdminHostingPlans() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const data = useAsync(() => api.get('/admin/hosting/plans'), []);
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState(null);   // the row being edited, or a new one
+
+  const blank = { name: '', storageGB: 5, uploadLimitKbps: 1024, cpuShare: 0.25, priceMonthlyCents: 0, active: true };
+  const money = (c) => `$${(c / 100).toFixed(2)}`;
+  const mbps = (k) => `${(k / 1024).toFixed(1)} Mbps`;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const body = {
+        name: draft.name, storageGB: Number(draft.storageGB), uploadLimitKbps: Number(draft.uploadLimitKbps),
+        cpuShare: Number(draft.cpuShare), priceMonthlyCents: Number(draft.priceMonthlyCents), active: !!draft.active,
+      };
+      if (draft.id) await api.patch(`/admin/hosting/plans/${draft.id}`, body);
+      else await api.post('/admin/hosting/plans', body);
+      setDraft(null); data.reload();
+      toast.success(t('adm.plans.saved', 'Plan saved.'));
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+
+  const remove = async (pl) => {
+    if (!await dialog.confirm({
+      title: t('adm.plans.del.t', 'Delete this plan?'),
+      message: t('adm.plans.del.m', 'Only possible while nobody is subscribed to it. To retire a plan people already bought, switch it off instead — that hides it from the pricing page and leaves their terms untouched.'),
+      okLabel: t('common.delete', 'Delete'), danger: true,
+    })) return;
+    try { await api.del(`/admin/hosting/plans/${pl.id}`); data.reload(); toast.success(t('adm.plans.deleted', 'Plan deleted.')); }
+    catch (x) {
+      toast.error(x.data?.error === 'plan_in_use'
+        ? t('adm.plans.inuse', 'In use by {n} subscription(s) — switch it off instead.').replace('{n}', x.data.subscriptions)
+        : t('common.failed', 'Failed.'));
+    }
+  };
+
+  if (data.loading) return <Loading />;
+  const plans = data.data?.plans || [];
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4 flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm">{t('adm.plans.title', 'Hosting plans')}</div>
+          <p className="text-xs text-[var(--muted)]">
+            {t('adm.plans.sub', 'What the pricing page offers. Editing a price never reprices an existing subscription — it changes what new buyers see.')}
+          </p>
+        </div>
+        <Button size="sm" variant="primary" onClick={() => setDraft({ ...blank })}><Plus size={14} /> {t('adm.plans.new', 'New plan')}</Button>
+      </Card>
+
+      {draft && (
+        <Card className="p-4 space-y-3">
+          <div className="text-sm font-semibold">{draft.id ? t('adm.plans.edit', 'Edit plan') : t('adm.plans.new', 'New plan')}</div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <Field label={t('adm.plans.f.name', 'Name')}><Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></Field>
+            <Field label={t('adm.plans.f.storage', 'Storage (GB)')}><Input type="number" min="0" value={draft.storageGB} onChange={(e) => setDraft({ ...draft, storageGB: e.target.value })} /></Field>
+            <Field label={t('adm.plans.f.upload', 'Upload cap (kbps)')} hint={mbps(Number(draft.uploadLimitKbps) || 0)}><Input type="number" min="0" value={draft.uploadLimitKbps} onChange={(e) => setDraft({ ...draft, uploadLimitKbps: e.target.value })} /></Field>
+            <Field label={t('adm.plans.f.cpu', 'CPU share')}><Input type="number" step="0.05" min="0" value={draft.cpuShare} onChange={(e) => setDraft({ ...draft, cpuShare: e.target.value })} /></Field>
+            {/* Cents, not dollars: money in floats is how a $9.99 plan quietly becomes
+                $9.98999. The hint shows what the buyer will read. */}
+            <Field label={t('adm.plans.f.price', 'Price (cents / month)')} hint={money(Number(draft.priceMonthlyCents) || 0)}><Input type="number" min="0" value={draft.priceMonthlyCents} onChange={(e) => setDraft({ ...draft, priceMonthlyCents: e.target.value })} /></Field>
+            <Field label={t('adm.plans.f.active', 'Shown on the pricing page')}>
+              <Select value={draft.active ? 'yes' : 'no'} onChange={(e) => setDraft({ ...draft, active: e.target.value === 'yes' })}>
+                <option value="yes">{t('common.yes', 'Yes')}</option>
+                <option value="no">{t('common.no', 'No')}</option>
+              </Select>
+            </Field>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="primary" disabled={busy || !draft.name} onClick={save}>{t('common.save', 'Save')}</Button>
+            <Button size="sm" disabled={busy} onClick={() => setDraft(null)}>{t('common.cancel', 'Cancel')}</Button>
+          </div>
+        </Card>
+      )}
+
+      {!plans.length ? <EmptyState icon={HardDrive} title={t('adm.plans.none', 'No plans')} sub={t('adm.plans.nonesub', 'Nothing is on sale — the pricing page will be empty.')} /> : (
+        <Card className="p-0 overflow-hidden">
+          {plans.map((pl) => (
+            <div key={pl.id} className={`flex items-center gap-3 px-4 py-3 border-b border-[var(--line)] last:border-0 ${pl.active ? '' : 'opacity-60'}`}>
+              <HardDrive size={15} className="text-[var(--primary-2)] shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium truncate flex items-center gap-2">
+                  {pl.name}
+                  {!pl.active && <Badge>{t('adm.plans.hidden', 'hidden')}</Badge>}
+                  {pl.priceMonthlyCents === 0 && <Badge tone="success">{t('adm.plans.free', 'free')}</Badge>}
+                </div>
+                <div className="text-[11px] text-[var(--faint)] font-mono">
+                  {pl.storageGB} GB · {mbps(pl.uploadLimitKbps)} · CPU {pl.cpuShare} · {money(pl.priceMonthlyCents)}/mo
+                </div>
+              </div>
+              <div className="text-[11px] text-[var(--faint)] shrink-0">
+                {(pl._count?.subscriptions ?? 0)} {t('adm.plans.subs', 'sub(s)')}
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setDraft({ ...pl })}><SettingsIcon size={13} /></Button>
+              <Button size="sm" variant="ghost" className="!text-error" onClick={() => remove(pl)}><Trash2 size={13} /></Button>
+            </div>
+          ))}
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function AdminFreeHost() {
   const toast = useToast(); const { t } = useI18n();
   const plans = useAsync(() => api.get('/hosting/plans'), []);

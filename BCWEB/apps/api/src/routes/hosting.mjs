@@ -198,6 +198,63 @@ export function termTotalCents(monthlyCents, months, priceMult) {
 }
 
 export default async function hostingRoutes(app) {
+  // ── Admin: the hosting plans themselves ──
+  // The catalogue visitors see was seeded once and only reachable through SQL after that.
+  // A price nobody can change without a database client is a price that never changes.
+  const planShape = {
+    name: z.string().min(1).max(60),
+    storageGB: z.number().int().min(0).max(100000),
+    uploadLimitKbps: z.number().int().min(0).max(10_000_000),
+    cpuShare: z.number().min(0).max(64),
+    priceMonthlyCents: z.number().int().min(0).max(10_000_000),
+    active: z.boolean(),
+  };
+
+  app.get('/admin/hosting/plans', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    // INACTIVE ones too — this is the editor, and a hidden plan is exactly what an admin
+    // comes here to find. Each carries its live subscription count, because that is the
+    // one fact that decides whether a plan can be deleted or only retired.
+    const plans = await p.hostingPlan.findMany({
+      orderBy: [{ active: 'desc' }, { storageGB: 'asc' }],
+      include: { _count: { select: { subscriptions: true } } },
+    });
+    return { plans };
+  });
+
+  app.post('/admin/hosting/plans', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object(planShape).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const plan = await p.hostingPlan.create({ data: b.data });
+    return { ok: true, plan };
+  });
+
+  app.patch('/admin/hosting/plans/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const partial = {};
+    for (const [k, v] of Object.entries(planShape)) partial[k] = v.optional();
+    const b = z.object(partial).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const plan = await p.hostingPlan.update({ where: { id: req.params.id }, data: b.data }).catch(() => null);
+    if (!plan) return reply.code(404).send({ error: 'not_found' });
+    // Editing a price does NOT reprice anyone: an existing Subscription keeps the terms it
+    // was bought under, and Stripe holds its own copy. This changes what NEW buyers see.
+    return { ok: true, plan };
+  });
+
+  app.delete('/admin/hosting/plans/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const used = await p.subscription.count({ where: { planId: req.params.id } });
+    // A plan somebody is subscribed to is never deleted — the subscription would lose the
+    // terms it was sold under. Deactivating hides it from the catalogue and keeps history
+    // intact, which is what "remove this plan" almost always means.
+    if (used) return reply.code(409).send({ error: 'plan_in_use', subscriptions: used });
+    const r = await p.hostingPlan.deleteMany({ where: { id: req.params.id } });
+    if (!r.count) return reply.code(404).send({ error: 'not_found' });
+    return { ok: true };
+  });
+
   app.get('/hosting/plans', async () => {
     const p = await db();
     return { plans: await p.hostingPlan.findMany({ where: { active: true }, orderBy: { storageGB: 'asc' } }) };

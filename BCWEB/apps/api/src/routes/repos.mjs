@@ -195,6 +195,12 @@ export default async function repoRoutes(app) {
     // (NS_ERROR_NET_EMPTY_RESPONSE). A hosted-but-unpublished repo has no manifest yet, so
     // null is the honest answer and the page already renders "No manifest yet" for it.
     const repoJson = (r.hosted && r.hostPath && r.published) ? `${origin}/hosting/${r.hostPath}/repo.json` : (r.repoUrl || null);
+    // The SERVER's manifest, generated from the files actually stored — a different
+    // document from the owner's uploaded repo.json, and the one that always describes what
+    // is really here. Only hosted repos have one: an external repo is somebody else's
+    // server and we cannot describe its contents.
+    const manifestJson = (r.hosted && r.hostPath && r.published) ? `${origin}/hosting/${r.hostPath}/manifest.json` : null;
+    const filesBase = (r.hosted && r.hostPath && r.published) ? `${origin}/hosting/${r.hostPath}/files/` : null;
     const idn = (await loadOwnerIdentities(p, [r.ownerId])).get(r.ownerId) || {};
     // Star state for the signed-in viewer (the count was already here) — the page needs both
     // to render the button in the right state instead of only "how many others starred it".
@@ -207,7 +213,7 @@ export default async function repoRoutes(app) {
         hosted: !!r.hosted, status: r.status, category: r.category, verified: r.verified, listed: publicListed,
         author: r.owner?.displayName || null, ownerBcId: userBcId(r.ownerId),
         fingerprint: repoFingerprint({ repoId: r.id, ownerId: r.ownerId, ...idn }),
-        favoriteCount: r._count.favorites, favorited: !!mine, repoJson, createdAt: r.createdAt,
+        favoriteCount: r._count.favorites, favorited: !!mine, repoJson, manifestJson, filesBase, createdAt: r.createdAt,
         // Present only to the owner/staff so they can manage the link; never to visitors.
         ...(isOwner ? { shared: !!r.shareKey } : {}),
       },

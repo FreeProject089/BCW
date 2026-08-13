@@ -164,7 +164,7 @@ export function Legal({ page }) {
       <PageHeader icon={d.icon} title={d.title} subtitle={`${lang === 'fr' ? 'Mis à jour le' : 'Last updated'} ${new Date().toLocaleDateString()}`} />
       <div className="flex flex-wrap gap-2 mb-5"><Link to="/legal"><Button size="sm" variant="default"><FileText size={14} /> {t('legal.all', 'All')}</Button></Link>{tabs.map(([k, l, I]) => <Link key={k} to={`/legal/${k}`}><Button size="sm" variant={k === page ? 'primary' : 'default'}><I size={14} /> {l}</Button></Link>)}</div>
       {/* plain-language summary */}
-      <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-brand to-transparent">
+      <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-[var(--primary)]/10 to-transparent">
         <d.icon size={18} className="text-[var(--primary-2)] mt-0.5 shrink-0" />
         <div className="text-sm text-[var(--muted)]">{summary}</div>
       </Card>

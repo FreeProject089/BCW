@@ -617,7 +617,10 @@ export function MyRepos() {
     try {
       await api.post(`/repos/${r.id}/${going ? 'publish' : 'unpublish'}`);
       toast.success(going ? t('repos.nowonline', 'Online — your repo.json is now public.') : t('repos.nowoffline', 'Taken offline.'));
-      load();
+      // reload(), not load(): this component has no load. The call sat AFTER the await, so
+      // publishing SUCCEEDED and the ReferenceError landed in the catch below — the button
+      // reported "Failed." on an action that had already worked.
+      reload();
     } catch (x) {
       toast.error(x.data?.error === 'no_content'
         ? t('repos.needfiles', 'Upload at least one file first.')

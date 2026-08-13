@@ -595,7 +595,7 @@ function Legal({ c }) {
   if (!docs.length) return <EmptyState icon={ShieldCheck} title="No legal documents" sub="License / ToS / Privacy / README are set in the admin dashboard." />;
   return (
     <div className="max-w-2xl">
-      {l.license && <Card className="p-5 mb-4 flex items-center gap-3 bg-gradient-to-r from-brand to-transparent">
+      {l.license && <Card className="p-5 mb-4 flex items-center gap-3 bg-gradient-to-r from-[var(--primary)]/10 to-transparent">
         <ShieldCheck size={20} className="text-[var(--primary-2)]" />
         <div className="flex-1"><div className="font-semibold">{t('proj.licensedUnder', 'Licensed under')} {l.license}</div><div className="text-xs text-[var(--muted)]">{t('proj.openSource', 'This project is open source.')}</div></div>
       </Card>}

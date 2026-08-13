@@ -131,7 +131,7 @@ function TwoFactorNudge() {
   if (!user || user.totpEnabled || dismissed) return null;
   const hide = () => { setDismissed(true); try { localStorage.setItem(TWOFA_NUDGE_KEY, '1'); } catch {} };
   return (
-    <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-brand to-transparent border-[var(--ring)]">
+    <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-[var(--primary)]/10 to-transparent border-[var(--ring)]">
       <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><ShieldCheck size={18} className="text-[var(--primary-2)]" /></span>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold">{t('twofa.nudge.title', 'Don’t risk losing access to your account')}</div>
