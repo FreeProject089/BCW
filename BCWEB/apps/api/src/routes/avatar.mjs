@@ -24,7 +24,9 @@ export default async function avatarRoutes(app) {
     const p = await db();
     const u = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, displayName: true, avatar: true } });
     const a = (u && u.avatar) || {};
-    if (typeof a === 'object' && a.image) return reply.redirect(302, a.image);
+    // Fastify 5: redirect(url, code). The old (code, url) form answers 500 with
+    // Location: 302 — an uploaded avatar image never resolved.
+    if (typeof a === 'object' && a.image) return reply.redirect(a.image, 302);
     // Same fallbacks as Avatar.jsx's avatarOf().
     const variant = a.variant || 'beam';
     const name = String(a.seed || u?.id || u?.displayName || 'bcw');

@@ -792,7 +792,9 @@ function generatedManifest(repo, ownerName) {
       const isDir = rel === '' || repo.files.some((f) => f.path.startsWith(prefix));
       if (!isDir) return reply.code(404).send({ error: 'not_found' });
       if (rel !== '' && !rel.endsWith('/')) {
-        return reply.redirect(301, `/hosting/${repo.hostPath}/files/${rel}/`);
+        // Fastify 5 signature is redirect(url, code). The v4 form (code, url) does NOT
+        // error — it takes 301 as the URL and answers 500 with Location: .../files/301.
+        return reply.redirect(`/hosting/${repo.hostPath}/files/${rel}/`, 301);
       }
       const entries = indexEntries(repo.files, prefix);
       const body = renderAutoindex(`/hosting/${repo.hostPath}/files/${prefix}`, entries);
@@ -803,8 +805,23 @@ function generatedManifest(repo, ownerName) {
     logAccess(p, repo.id, req, file.path, 'download', identity); // consumer downloaded a file
     try {
       const { body } = await getObject(file.key);
-      // Force a non-executable content type (never serve as HTML/JS).
-      const ct = file.path.endsWith('.json') ? 'application/json' : 'application/octet-stream';
+      // Force a non-executable content type (never serve as HTML/JS), and only THEN decide
+      // whether the browser may render it in place.
+      //
+      // Everything used to be `attachment`, so a manifest, a log or a README could not be
+      // looked at without saving it first — which is why nobody looks. A short allowlist of
+      // text formats is served inline instead. Safe by construction on two counts: the
+      // content type is forced to json or text/plain, neither of which a browser executes,
+      // and the edge sends X-Content-Type-Options: nosniff so it cannot decide the bytes
+      // are really HTML. Anything not on the list keeps downloading, unchanged.
+      const lower = file.path.toLowerCase();
+      const INLINE_TEXT = ['.txt', '.log', '.md', '.cfg', '.ini', '.yml', '.yaml', '.csv'];
+      const isJson = lower.endsWith('.json');
+      const isText = INLINE_TEXT.some((e) => lower.endsWith(e));
+      const ct = isJson ? 'application/json'
+        : isText ? 'text/plain; charset=utf-8'
+        : 'application/octet-stream';
+      const disposition = (isJson || isText) ? 'inline' : 'attachment';
       // CDN/browser caching — ONLY when the repo is truly open to everyone. If ANY
       // per-requester restriction is in play (whitelist mode, or ban entries on the
       // repo/global/owner policies), a shared cache would serve the file around the
@@ -812,7 +829,7 @@ function generatedManifest(repo, ownerName) {
       // responses are marked no-store. Open repos get 5 min + an ETag (sha256):
       // hosted mod files change rarely, and a re-upload propagates within the window.
       const restricted = repoRestricted(repo, [globalPolicy, ownerPolicy]);
-      reply.header('Content-Type', ct).header('Content-Disposition', 'attachment')
+      reply.header('Content-Type', ct).header('Content-Disposition', disposition)
         .header('Cache-Control', restricted ? 'private, no-store' : 'public, max-age=300');
       if (!restricted && file.sha256) reply.header('ETag', `"${file.sha256}"`);
       const cap = effKbps(repo);
