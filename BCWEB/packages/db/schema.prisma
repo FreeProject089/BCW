@@ -150,6 +150,7 @@ model User {
   blogPermissions    BlogPermission[]
   projectPermissions ProjectPermission[]
   myoRequests        MyoRequest[]
+  myoAssigned        MyoRequest[]        @relation("MyoAssignee")
   myoMessages        MyoMessage[]
   submissionComments SubmissionComment[]
   contactMessages    ContactMessage[]
@@ -1641,6 +1642,15 @@ model MyoRequest {
   status            String      @default("pending_payment")
   staffUnread       Boolean     @default(true) // a user message staff hasn't seen
   userUnread        Boolean     @default(false) // a staff message the user hasn't seen
+  // Who on the team owns this one. A queue where everybody sees everything is a queue
+  // where two people answer the same request and nobody answers the next.
+  assignedTo        User?       @relation("MyoAssignee", fields: [assignedToId], references: [id])
+  assignedToId      String?
+  assignedAt        DateTime?
+  // Archived = handled, out of the working queue, still on file. Distinct from `closed`:
+  // a request can be closed and still need invoicing, and a cancelled one still counts as
+  // history. Nothing is ever deleted here — there is money attached to these rows.
+  archivedAt        DateTime?
   lastActivityAt    DateTime    @default(now())
   closedAt          DateTime?
   createdAt         DateTime    @default(now())
@@ -1652,6 +1662,8 @@ model MyoRequest {
   @@index([userId])
   @@index([status])
   @@index([lastActivityAt])
+  @@index([assignedToId])
+  @@index([archivedAt])
 }
 
 // A message in a request's conversation (mirrors ReportMessage). Both the user and staff

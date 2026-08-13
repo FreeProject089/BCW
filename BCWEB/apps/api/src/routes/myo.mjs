@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { publishToThread, streamThread } from '../lib/threadbus.mjs';
-import { db, requireRole, requireCap, hasCap, logAudit, clientIp } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, hasCap, currentUser, logAudit, clientIp } from '../lib/lib.mjs';
 import { applyCampaign } from './campaigns.mjs';
 import { stripe, ensureCustomer } from './hosting.mjs';
 
@@ -28,7 +28,10 @@ const mediaUrlOpt = z.union([z.literal(''), z.string().max(500).regex(/^(https?:
 
 // Consultation fee + toggle, admin-configurable via AdminSetting (scalar JSON values).
 async function myoConfig(p) {
-  const rows = await p.adminSetting.findMany({ where: { key: { in: ['myo.enabled', 'myo.consultationCents', 'myo.urgentConsultationCents', 'myo.currency'] } } });
+  const rows = await p.adminSetting.findMany({ where: { key: { in: [
+    'myo.enabled', 'myo.consultationCents', 'myo.urgentConsultationCents', 'myo.currency',
+    'myo.maxOpenUrgent', 'myo.maxOpen', 'myo.maxOpenPerUser',
+  ] } } });
   const get = (k) => rows.find((r) => r.key === k)?.value;
   const num = (v, d) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : d; };
   return {
@@ -36,7 +39,32 @@ async function myoConfig(p) {
     consultationCents: num(get('myo.consultationCents'), 500),
     urgentConsultationCents: num(get('myo.urgentConsultationCents'), 1000),
     currency: typeof get('myo.currency') === 'string' ? get('myo.currency') : 'usd',
+    // Capacity, not pricing. Commissions are work done by people, and a form that keeps
+    // accepting urgent jobs after the team is full sells a promise nobody can keep.
+    // 0 = no limit everywhere, which is what every existing install has.
+    maxOpenUrgent: num(get('myo.maxOpenUrgent'), 0),
+    maxOpen: num(get('myo.maxOpen'), 0),
+    maxOpenPerUser: num(get('myo.maxOpenPerUser'), 0),
   };
+}
+
+// A request still occupying a slot. Archived is excluded as well as the terminal states:
+// archiving is precisely how staff say "this one is off my plate".
+const OPEN_WHERE = { status: { notIn: ['closed', 'cancelled'] }, archivedAt: null };
+
+/// Who is taking up capacity right now.
+///
+/// The two global counts deliberately require `consultationPaid`, because an unpaid
+/// request is a form someone half-filled — counting it would let anyone hold the last
+/// urgent slot hostage for free. The PER-USER count does the opposite and counts unpaid
+/// ones too, since that is exactly the squatting it exists to stop.
+async function myoLoad(p, userId = null) {
+  const [openTotal, openUrgent, mine] = await Promise.all([
+    p.myoRequest.count({ where: { ...OPEN_WHERE, consultationPaid: true } }),
+    p.myoRequest.count({ where: { ...OPEN_WHERE, consultationPaid: true, urgent: true } }),
+    userId ? p.myoRequest.count({ where: { ...OPEN_WHERE, userId } }) : Promise.resolve(0),
+  ]);
+  return { openTotal, openUrgent, mine };
 }
 
 const ser = {
@@ -50,6 +78,8 @@ const ser = {
     consultationPaid: r.consultationPaid, consultationCents: r.consultationCents, status: r.status,
     staffUnread: r.staffUnread, userUnread: r.userUnread, lastActivityAt: r.lastActivityAt,
     closedAt: r.closedAt, createdAt: r.createdAt,
+    assignedToId: r.assignedToId || null, assignedAt: r.assignedAt || null, archivedAt: r.archivedAt || null,
+    ...(r.assignedTo ? { assignedTo: { id: r.assignedTo.id, displayName: r.assignedTo.displayName, avatar: r.assignedTo.avatar } } : {}),
     ...(withUser && r.user ? { user: { id: r.user.id, displayName: r.user.displayName, email: r.user.email, avatar: r.user.avatar } } : {}),
   }),
 };
@@ -65,6 +95,18 @@ export default async function myoRoutes(app) {
       consultationCents: cfg.consultationCents,
       urgentConsultationCents: cfg.urgentConsultationCents,
       currency: cfg.currency,
+      // Whether the queue can take more right now. Told BEFORE the form is filled in:
+      // discovering the urgent option is unavailable after writing a brief and reaching
+      // the payment step is the version of this that wastes the customer's time.
+      // Nothing here leaks the workload — only whether a door is open.
+      ...(await (async () => {
+        if (!cfg.enabled || (!cfg.maxOpen && !cfg.maxOpenUrgent)) return { urgentAvailable: true, queueFull: false };
+        const load = await myoLoad(p);
+        return {
+          urgentAvailable: !cfg.maxOpenUrgent || load.openUrgent < cfg.maxOpenUrgent,
+          queueFull: !!cfg.maxOpen && load.openTotal >= cfg.maxOpen,
+        };
+      })()),
       products: products.map(ser.product),
     };
   });
@@ -87,6 +129,23 @@ export default async function myoRoutes(app) {
     const p = await db();
     const cfg = await myoConfig(p);
     if (!cfg.enabled) return reply.code(403).send({ error: 'myo_disabled' });
+
+    // Capacity check BEFORE Stripe. Taking the money first and discovering the queue is
+    // full afterwards means a refund, and a refund is a worse experience than a "not right
+    // now" — so the only correct place for this is ahead of the checkout session.
+    const load = await myoLoad(p, req.user.uid);
+    if (cfg.maxOpenPerUser && load.mine >= cfg.maxOpenPerUser) {
+      return reply.code(429).send({ error: 'too_many_own', limit: cfg.maxOpenPerUser });
+    }
+    if (b.data.urgent && cfg.maxOpenUrgent && load.openUrgent >= cfg.maxOpenUrgent) {
+      // Named separately from the general cap so the form can say the useful thing:
+      // a normal-priority request may still be accepted right now.
+      return reply.code(429).send({ error: 'urgent_full', limit: cfg.maxOpenUrgent });
+    }
+    if (cfg.maxOpen && load.openTotal >= cfg.maxOpen) {
+      return reply.code(429).send({ error: 'queue_full', limit: cfg.maxOpen });
+    }
+
     // Snapshot the chosen product's kind (if a catalog product was picked).
     let productId = null, productKind = b.data.productKind;
     if (b.data.productId) {
@@ -308,11 +367,105 @@ async function actorName(p, uid, fallback) {
     const p = await db();
     const status = String(req.query?.status || '').trim();
     const q = String(req.query?.q || '').trim();
+    const assigned = String(req.query?.assigned || '').trim(); // me | unassigned | ''
+    const archived = String(req.query?.archived || '').trim(); // 1 = archived only, else active
     const where = {};
     if (status) where.status = status;
+    // Archived rows are hidden by DEFAULT rather than merely sortable. The point of
+    // archiving is that the queue gets shorter; a filter you have to remember to apply
+    // does not shorten anything.
+    where.archivedAt = archived === '1' ? { not: null } : null;
+    if (assigned === 'me') where.assignedToId = req.user.uid;
+    else if (assigned === 'unassigned') where.assignedToId = null;
     if (q) where.OR = [{ name: { contains: q, mode: 'insensitive' } }, { user: { displayName: { contains: q, mode: 'insensitive' } } }, { user: { email: { contains: q, mode: 'insensitive' } } }];
-    const rows = await p.myoRequest.findMany({ where, orderBy: { lastActivityAt: 'desc' }, take: 100, include: { user: true } });
-    return { requests: rows.map((r) => ser.request(r, { withUser: true })) };
+    const rows = await p.myoRequest.findMany({ where, orderBy: { lastActivityAt: 'desc' }, take: 100, include: { user: true, assignedTo: true } });
+    // The counts the tabs need, computed here so the queue does not have to be fetched
+    // three more times to label its own filters.
+    const [activeCount, archivedCount, mineCount, unassignedCount] = await Promise.all([
+      p.myoRequest.count({ where: { archivedAt: null } }),
+      p.myoRequest.count({ where: { archivedAt: { not: null } } }),
+      p.myoRequest.count({ where: { archivedAt: null, assignedToId: req.user.uid } }),
+      p.myoRequest.count({ where: { archivedAt: null, assignedToId: null } }),
+    ]);
+    const cfg = await myoConfig(p);
+    return {
+      requests: rows.map((r) => ser.request(r, { withUser: true })),
+      counts: { active: activeCount, archived: archivedCount, mine: mineCount, unassigned: unassignedCount },
+      load: await myoLoad(p),
+      limits: { maxOpen: cfg.maxOpen, maxOpenUrgent: cfg.maxOpenUrgent, maxOpenPerUser: cfg.maxOpenPerUser },
+    };
+  });
+
+  // -- Claim / hand over / drop ------------------------------------------------
+  // `userId: null` releases it; any other id hands it to that person, which is how a
+  // request moves between staff without one of them having to drop it first and hope
+  // nobody else grabs it in between.
+  app.put('/admin/myo/requests/:id/assign', { preHandler: requireCap('manage_myo') }, async (req, reply) => {
+    const b = z.object({ userId: z.string().nullable().default(null) }).safeParse(req.body ?? {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    if (b.data.userId) {
+      // Only someone who can actually work the queue may be handed one of its items --
+      // otherwise a request lands on a person who cannot open it.
+      const target = await p.user.findUnique({ where: { id: b.data.userId }, select: { id: true } });
+      if (!target) return reply.code(404).send({ error: 'user_not_found' });
+      // currentUser(), NOT a raw row: hasCap reads `perms`, which is the UNION of the
+      // tier, the individual grants and every assigned CustomRole. A row selecting
+      // `permissions` looks like it works and silently misses anyone whose access comes
+      // from a custom role.
+      if (!hasCap({ ...await currentUser(target.id), uid: target.id }, 'manage_myo')) {
+        return reply.code(400).send({ error: 'not_staff' });
+      }
+    }
+    const r = await p.myoRequest.update({
+      where: { id: req.params.id },
+      data: { assignedToId: b.data.userId, assignedAt: b.data.userId ? new Date() : null },
+      include: { assignedTo: true, user: true },
+    }).catch(() => null);
+    if (!r) return reply.code(404).send({ error: 'not_found' });
+    await logAudit(p, req.user.uid, 'myo.assign', `${r.name} -> ${r.assignedTo?.displayName || 'unassigned'}`, clientIp(req));
+    // No `lastActivityAt` bump and no `userUnread`: who is handling a request is an
+    // internal fact, and nudging the customer's unread badge for it would be noise.
+    return { ok: true, request: ser.request(r, { withUser: true }) };
+  });
+
+  // -- Archive / restore -------------------------------------------------------
+  app.put('/admin/myo/requests/:id/archive', { preHandler: requireCap('manage_myo') }, async (req, reply) => {
+    const b = z.object({ archived: z.boolean().default(true) }).safeParse(req.body ?? {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const cur = await p.myoRequest.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, status: true } });
+    if (!cur) return reply.code(404).send({ error: 'not_found' });
+    // Archiving a LIVE request would hide work in progress from the only view that shows
+    // it. Finish it or cancel it first -- the button is disabled in the UI for the same
+    // reason, and this is the half that actually holds.
+    if (b.data.archived && !['delivered', 'closed', 'cancelled'].includes(cur.status)) {
+      return reply.code(400).send({ error: 'still_active', status: cur.status });
+    }
+    const r = await p.myoRequest.update({ where: { id: cur.id }, data: { archivedAt: b.data.archived ? new Date() : null }, include: { assignedTo: true, user: true } });
+    await logAudit(p, req.user.uid, b.data.archived ? 'myo.archive' : 'myo.unarchive', r.name, clientIp(req));
+    return { ok: true, request: ser.request(r, { withUser: true }) };
+  });
+
+  // Who a request can be handed to.
+  app.get('/admin/myo/staff', { preHandler: requireCap('manage_myo') }, async () => {
+    const p = await db();
+    // Three routes to the capability, so three arms. Skipping the CustomRole arm would
+    // hide exactly the people the custom-role system exists to create.
+    const grantingRoles = await p.customRole.findMany({ where: { capabilities: { has: 'manage_myo' } }, select: { id: true } });
+    const rows = await p.user.findMany({
+      where: {
+        status: 'active',
+        OR: [
+          { role: { in: ['ADMIN', 'SUPERADMIN'] } },
+          { permissions: { has: 'manage_myo' } },
+          ...(grantingRoles.length ? [{ customRoleIds: { hasSome: grantingRoles.map((r) => r.id) } }] : []),
+        ],
+      },
+      select: { id: true, displayName: true, avatar: true },
+      orderBy: { displayName: 'asc' }, take: 200,
+    });
+    return { staff: rows };
   });
 
   // Build + send a quote into a conversation.
@@ -380,7 +533,9 @@ async function actorName(p, uid, fallback) {
   // Fee settings.
   app.get('/admin/myo/settings', { preHandler: requireCap('manage_myo') }, async () => {
     const p = await db();
-    return await myoConfig(p);
+    // The live load ships with the limits. A cap you set without seeing today's number is
+    // a guess, and the usual way to notice you set it too low is a customer complaining.
+    return { ...await myoConfig(p), load: await myoLoad(p) };
   });
   app.put('/admin/myo/settings', { preHandler: requireCap('manage_myo') }, async (req, reply) => {
     const b = z.object({
@@ -388,6 +543,9 @@ async function actorName(p, uid, fallback) {
       consultationCents: z.number().int().min(0).max(100000).optional(),
       urgentConsultationCents: z.number().int().min(0).max(100000).optional(),
       currency: z.string().max(8).optional(),
+      maxOpenUrgent: z.number().int().min(0).max(10000).optional(),
+      maxOpen: z.number().int().min(0).max(10000).optional(),
+      maxOpenPerUser: z.number().int().min(0).max(10000).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -396,7 +554,10 @@ async function actorName(p, uid, fallback) {
     await set('myo.consultationCents', b.data.consultationCents);
     await set('myo.urgentConsultationCents', b.data.urgentConsultationCents);
     await set('myo.currency', b.data.currency);
-    return await myoConfig(p);
+    await set('myo.maxOpenUrgent', b.data.maxOpenUrgent);
+    await set('myo.maxOpen', b.data.maxOpen);
+    await set('myo.maxOpenPerUser', b.data.maxOpenPerUser);
+    return { ...await myoConfig(p), load: await myoLoad(p) };
   });
 }
 

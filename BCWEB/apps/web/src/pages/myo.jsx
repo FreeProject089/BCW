@@ -217,7 +217,20 @@ function IntakeModal({ intake, cfg, onClose }) {
       const res = await api.post('/myo/requests', { productId: intake.productId, productKind: intake.kind, name: f.name.trim(), logo: f.logo.trim() || null, objective: f.objective.trim(), target: f.target, description: f.description.trim(), lang: f.lang, urgent: f.urgent });
       if (res?.checkoutUrl) { window.location.href = res.checkoutUrl; return; }
       toast.error(t('myo.e.pay', 'Could not start checkout.')); setBusy(false);
-    } catch (x) { toast.error(x.data?.error === 'myo_disabled' ? t('myo.off.t', 'Not accepting requests right now') : x.data?.error === 'stripe_unconfigured' ? t('myo.e.stripe', 'Payments are not configured yet.') : t('myo.e.pay', 'Could not start checkout.')); setBusy(false); }
+    } catch (x) {
+      const e = x.data?.error;
+      toast.error(
+        e === 'myo_disabled' ? t('myo.off.t', 'Not accepting requests right now')
+        : e === 'stripe_unconfigured' ? t('myo.e.stripe', 'Payments are not configured yet.')
+        // Three different "full", three different next moves: drop the urgent flag, come
+        // back later, or finish what you already have open. One generic message would
+        // leave the customer guessing which.
+        : e === 'urgent_full' ? t('myo.e.urgentfull', 'Every urgent slot is taken. Untick "urgent" to start now, or try again later.')
+        : e === 'queue_full' ? t('myo.e.queuefull', 'The commission queue is full right now — please try again in a few days.')
+        : e === 'too_many_own' ? t('myo.e.ownfull', 'You already have {n} request(s) open. Finish or close one first.').replace('{n}', x.data?.limit ?? '')
+        : t('myo.e.pay', 'Could not start checkout.'));
+      setBusy(false);
+    }
   };
   const K = kindMeta(intake.kind).icon;
   return (
@@ -243,10 +256,15 @@ function IntakeModal({ intake, cfg, onClose }) {
         <Field label={t('myo.f.desc', 'Describe your product')} hint={`${f.description.length}/2000`}>
           <Textarea rows={5} value={f.description} onChange={(e) => set('description', e.target.value.slice(0, 2000))} placeholder={t('myo.f.descph', 'Features, style, references, deadline, anything useful…')} />
         </Field>
-        <label className="flex items-center gap-2.5 text-sm cursor-pointer rounded-lg border border-[var(--line)] p-3">
-          <input type="checkbox" checked={f.urgent} onChange={(e) => set('urgent', e.target.checked)} />
+        {/* Disabled up front rather than refused at the end. The server says whether an
+            urgent slot is free; finding out after writing a brief is the version of this
+            that wastes the customer's evening. */}
+        <label className={`flex items-center gap-2.5 text-sm rounded-lg border border-[var(--line)] p-3 ${cfg.urgentAvailable === false ? 'opacity-60' : 'cursor-pointer'}`}>
+          <input type="checkbox" checked={f.urgent} disabled={cfg.urgentAvailable === false} onChange={(e) => set('urgent', e.target.checked)} />
           <span className="flex-1"><span className="font-medium flex items-center gap-1.5"><Clock size={13} className="text-warning" /> {t('myo.f.urgent', 'Urgent request')}</span>
-            <span className="text-xs text-[var(--faint)]">{t('myo.f.urgentnote', 'Prioritised — a higher consultation fee ({p}).').replace('{p}', fmtMoney(cfg.urgentConsultationCents, cfg.currency))}</span></span>
+            <span className="text-xs text-[var(--faint)]">{cfg.urgentAvailable === false
+              ? t('myo.f.urgentfull', 'All urgent slots are taken right now — a normal request can still start today.')
+              : t('myo.f.urgentnote', 'Prioritised — a higher consultation fee ({p}).').replace('{p}', fmtMoney(cfg.urgentConsultationCents, cfg.currency))}</span></span>
         </label>
         <div className="text-[11px] text-[var(--faint)] text-center pt-1">
           {t('myo.intake.legalpre', 'By paying you accept our')}{' '}
