@@ -756,6 +756,7 @@ const DICT = {
     'cl.keyTitle': 'Votre clé de notifications BMM',
     'cl.keyDesc': 'Collez-la dans BMM, sous Réglages → Identité & API, pour y voir vos notifications BetterCommunity. Elle n’est affichée qu’une fois et ne peut pas être récupérée — seulement révoquée et remplacée.',
     'cl.keyCopied': 'Clé copiée.', 'cl.keyDone': 'Je l’ai enregistrée',
+    'sd.holdsactive': 'La page où vous êtes se trouve dans cette section',
     'ud.apikeys': 'Clés d’API', 'ud.nokeys': 'Aucune clé d’API.',
     'ud.keyNoLabel': 'Clé sans nom', 'ud.keyNoScope': 'aucune portée',
     'ud.keyRevoked': 'révoquée', 'ud.keyExpired': 'expirée',

@@ -246,6 +246,7 @@ export function JsonEditor({ value, onChange, placeholder, minH = 170 }) {
 // Persists the active tab in the URL (?s=).
 export function SideDash({ title, subtitle, icon, tabs, headerActions, children }) {
   const [sp, setSp] = useSearchParams();
+  const { t: tr } = useI18n();
   const [navOpen, setNavOpen] = useState(false);
   const realTabs = tabs.filter((t) => t.id);
   // Sections, so a heading can fold the tabs under it. The flat `tabs` array stays the
@@ -285,7 +286,14 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
     // A heading with nothing under it would render a fold that opens onto nothing.
     if (!sec.items.length) return null;
     const holdsActive = sec.items.some((tb) => tb.id === active);
-    const isFolded = !!sec.heading && collapsed.has(sec.heading) && !holdsActive;
+    // `&& !holdsActive` used to be here, forcing the section containing the current
+    // page to stay open. The intent was reasonable — never hide where you are — but it
+    // made the fold silently refuse on exactly the section you are most likely to want
+    // out of the way, with the chevron still inviting a click that did nothing.
+    //
+    // Folding it is allowed now, and the header carries a dot when it holds the active
+    // page. That answers "where am I?" without keeping the whole list open to say it.
+    const isFolded = !!sec.heading && collapsed.has(sec.heading);
     return (
       <div key={sec.heading || `s-${i}`} className="contents">
         {sec.heading && (
@@ -293,6 +301,10 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
             className="flex items-center gap-1 w-full px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] hover:text-[var(--text)] transition-colors first:pt-1">
             <ChevronDown size={12} className={`transition-transform duration-200 ${isFolded ? '-rotate-90' : ''}`} />
             <span className="truncate">{sec.heading}</span>
+            {isFolded && holdsActive && (
+              <span className="ml-1 w-1.5 h-1.5 rounded-full bg-[var(--primary)] shrink-0"
+                    title={tr('sd.holdsactive', 'The page you are on is in this section')} />
+            )}
             {isFolded && <span className="ml-auto tabular-nums opacity-70">{sec.items.length}</span>}
           </button>
         )}
