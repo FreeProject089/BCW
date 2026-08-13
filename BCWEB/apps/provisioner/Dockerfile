@@ -1,5 +1,5 @@
 # Build context = BCWEB root (needs packages/db). See docker-compose.
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 RUN apk add --no-cache openssl
 # Full install so the `prisma` CLI is available to generate the client.

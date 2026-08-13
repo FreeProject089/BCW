@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with: { node-version: '22' }
       - run: npm ci
       # no-undef catches bare JSX identifiers used-but-not-imported (the render crashes).
       - run: npm run lint
@@ -51,7 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with: { node-version: '22' }
       # node --check every API module — catches syntax errors (build never runs the API).
       - name: node --check all API modules
         working-directory: .
@@ -75,7 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with: { node-version: '22' }
       - uses: dtolnay/rust-toolchain@stable
         with: { components: 'clippy, rustfmt' }
       - uses: Swatinem/rust-cache@v2

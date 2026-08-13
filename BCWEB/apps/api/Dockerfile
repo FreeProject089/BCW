@@ -14,7 +14,7 @@ COPY native/core ./core
 RUN npx napi build --platform --release
 
 # ── Stage 2: the API runtime ──
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 
 # openssl → Prisma query engine on alpine/musl. fontconfig + DejaVu give @napi-rs/canvas

@@ -3,7 +3,7 @@
 # point, the token can be set/rotated with no container restart).
 # (This used to exit 0 without a token; it hasn't for a while — verified: it logs
 #  "will connect when a token is set" and keeps running.)
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 # Patch OS packages (pulls fixed openssl 3.5.7-r0 etc.) + add runtime deps: fontconfig +
 # a font so @napi-rs/canvas can render the welcome banner text.
