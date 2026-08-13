@@ -731,3 +731,21 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
    foreground must follow its own background, and this background is a constant. */
 .cta-band-title { color: #2a1a06; }
 .cta-band-sub   { color: rgba(42, 26, 6, 0.78); }
+
+/* ── "This post has no cover image" ───────────────────────────────────────────
+   It was the brand gradient at full saturation: a 224px block that became the
+   loudest thing on the page, on the card meant to draw the eye to a HEADLINE. An
+   absence should not out-shout the content it stands in for — it read as something
+   failing to load rather than as a post that simply has no picture.
+
+   A tinted surface with a hairline instead. It still belongs to the brand, it still
+   fills the slot so the card keeps its shape, and it stops competing with the title
+   underneath it. The tint is mixed from --primary, so a theme change carries it. */
+.blog-nocover {
+    background:
+        linear-gradient(135deg,
+            color-mix(in srgb, var(--primary) 12%, transparent),
+            color-mix(in srgb, var(--primary-2) 7%, transparent));
+    border: 1px solid color-mix(in srgb, var(--primary) 16%, transparent);
+    color: color-mix(in srgb, var(--primary) 55%, var(--muted));
+}
