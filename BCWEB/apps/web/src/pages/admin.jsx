@@ -3298,7 +3298,7 @@ function PluginContentModal({ item, onClose }) {
 // Audiences are queries evaluated at send time, not saved lists, so "everyone on a hosting
 // plan" means whoever is subscribed when you press the button.
 function AdminMail() {
-  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { user: me } = useAuth();
   const plans = useAsync(() => api.get('/admin/hosting/plans'), []);
   const [audience, setAudience] = useState('hosting');
   const [planId, setPlanId] = useState('');
@@ -3332,13 +3332,18 @@ function AdminMail() {
     try {
       const r = await api.post('/admin/mail/send', { audience, planId: planId || undefined, subject, body, testOnly });
       toast.success(testOnly
-        ? t('adm.mail.tested', 'Test sent to you.')
+        ? t('adm.mail.tested2', 'Test sent to {email}.').replace('{email}', me?.email || '')
         : t('adm.mail.sent', 'Sent to {n} recipient(s).').replace('{n}', r.sent) + (r.failed ? ` · ${r.failed} failed` : ''));
     } catch (x) {
       toast.error(x.data?.error === 'email_disabled' ? t('adm.mail.off', 'No mail backend is configured.')
         : x.data?.error === 'no_recipients' ? t('adm.mail.norecip', 'That audience is empty.')
         // Not "sent to 0" — nothing went out, and the mail server is why.
-        : x.data?.error === 'all_failed' ? t('adm.mail.allfailed', 'Nothing was sent — the mail server rejected every message.')
+        // The server's own words, not a paraphrase. "Rejected every message" sent the
+        // admin looking at SMTP settings that were fine; the actual line said the
+        // recipient's DOMAIN did not exist — a one-glance fix.
+        : x.data?.error === 'all_failed'
+          ? t('adm.mail.allfailed', 'Nothing was sent — {reason}')
+              .replace('{reason}', x.data?.reason ? `${x.data.email || ''}: ${x.data.reason}` : t('adm.mail.allfailed.generic', 'the mail server rejected every message.'))
         : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
@@ -3392,13 +3397,23 @@ function AdminHostingPlans() {
   const data = useAsync(() => api.get('/admin/hosting/plans'), []);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState(null);   // the row being edited, or a new one
+  const [original, setOriginal] = useState(null); // the same row BEFORE the edit
 
   // priceMonthlyCents starts EMPTY, not 0. Empty means "use the Hosting settings rate";
   // zero would mean "free", and a new plan defaulting to free is the wrong accident.
   const blank = { name: '', storageGB: 5, uploadLimitKbps: 1024, cpuShare: 0.25, priceMonthlyCents: '', active: true };
+  // Default notice period. 30 days is what the Payments policy describes, and a default
+  // is what makes "give notice" the easy path rather than the conscientious one.
+  const in30Days = () => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
+  const [effective, setEffective] = useState('');   // '' = apply immediately
+  // "The price moved" is the trigger for everything below, so it is computed once and in
+  // cents — comparing the raw strings would call "500" and "500 " a change.
   const [auto, setAuto] = useState(null);   // what the settings would charge for these specs
   const money = (c) => `$${(c / 100).toFixed(2)}`;
   const mbps = (k) => `${(k / 1024).toFixed(1)} Mbps`;
+  const priceMoved = !!draft?.id && original != null
+    && draft.priceMonthlyCents !== '' && draft.priceMonthlyCents != null
+    && Number(draft.priceMonthlyCents) !== Number(original.priceMonthlyCents);
 
   const save = async () => {
     setBusy(true);
@@ -3410,11 +3425,32 @@ function AdminHostingPlans() {
         priceMonthlyCents: draft.priceMonthlyCents === '' || draft.priceMonthlyCents == null
           ? null : Number(draft.priceMonthlyCents),
       };
-      if (draft.id) await api.patch(`/admin/hosting/plans/${draft.id}`, body);
-      else await api.post('/admin/hosting/plans', body);
-      setDraft(null); data.reload();
-      toast.success(t('adm.plans.saved', 'Plan saved.'));
+      if (draft.id) {
+        // A date is sent ONLY when it would mean something: an existing plan whose price
+        // actually changed. Sending it otherwise would stage a "change" from a price to
+        // itself and mail everybody about nothing.
+        const moved = draft.id && Number(body.priceMonthlyCents) !== Number(original?.priceMonthlyCents);
+        const r = await api.patch(`/admin/hosting/plans/${draft.id}`,
+          effective && moved ? { ...body, effectiveAt: new Date(`${effective}T00:00:00`).toISOString() } : body);
+        toast.success(effective && moved
+          ? t('adm.plans.scheduled', 'Change scheduled for {d} — {n} subscriber(s) notified.').replace('{d}', effective).replace('{n}', r.notified ?? 0)
+          : t('adm.plans.saved', 'Plan saved.'));
+      } else {
+        await api.post('/admin/hosting/plans', body);
+        toast.success(t('adm.plans.saved', 'Plan saved.'));
+      }
+      setDraft(null); setEffective(''); data.reload();
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+
+  const cancelPending = async (pl) => {
+    if (!await dialog.confirm({
+      title: t('adm.plans.pending.t', 'Cancel the announced change?'),
+      message: t('adm.plans.pending.m', 'The price never moved, so there is nothing to undo — but everyone who was told it would change gets a second email saying it will not.'),
+      okLabel: t('adm.plans.pending.ok', 'Cancel it'),
+    })) return;
+    try { const r = await api.del(`/admin/hosting/plans/${pl.id}/pending-price`); data.reload(); toast.success(t('adm.plans.pending.done', 'Cancelled — {n} told.').replace('{n}', r.notified ?? 0)); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
   };
 
   const remove = async (pl) => {
@@ -3455,7 +3491,7 @@ function AdminHostingPlans() {
             {t('adm.plans.sub', 'What the pricing page offers. Editing a price never reprices an existing subscription — it changes what new buyers see.')}
           </p>
         </div>
-        <Button size="sm" variant="primary" onClick={() => setDraft({ ...blank })}><Plus size={14} /> {t('adm.plans.new', 'New plan')}</Button>
+        <Button size="sm" variant="primary" onClick={() => { setDraft({ ...blank }); setOriginal(null); setEffective(''); }}><Plus size={14} /> {t('adm.plans.new', 'New plan')}</Button>
       </Card>
 
       {draft && (
@@ -3485,9 +3521,34 @@ function AdminHostingPlans() {
               </Select>
             </Field>
           </div>
+
+          {/* Appears only once the price has actually been changed on an EXISTING plan —
+              the only situation where "when does this start" is a real question. A new
+              plan has no subscribers to notify, and a correction to a plan nobody holds
+              should just take effect. */}
+          {priceMoved && (
+            <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 space-y-2">
+              <div className="text-sm font-medium flex items-center gap-2">
+                <Calendar size={14} className="text-[var(--primary-2)]" /> {t('adm.plans.eff.t', 'When does the new price start?')}
+              </div>
+              <p className="text-xs text-[var(--muted)]">
+                {t('adm.plans.eff.s', 'Pick a date and every current subscriber is emailed now; the price changes on that day and applies from their next renewal. Leave it empty to change the price immediately — right for a correction, wrong for a rise on a plan people are paying for.')}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input type="date" className="!w-44" value={effective} min={new Date(Date.now() + 864e5).toISOString().slice(0, 10)}
+                  onChange={(e) => setEffective(e.target.value)} />
+                <Button size="sm" variant={effective ? 'ghost' : 'primary'} onClick={() => setEffective(in30Days())}>
+                  {t('adm.plans.eff.30', '30 days from now')}
+                </Button>
+                {effective
+                  ? <Button size="sm" variant="ghost" onClick={() => setEffective('')}>{t('adm.plans.eff.now', 'Apply immediately instead')}</Button>
+                  : <span className="text-xs text-warning">{t('adm.plans.eff.warn', 'No date: the price changes on save, with nobody told.')}</span>}
+              </div>
+            </div>
+          )}
           <div className="flex gap-2">
             <Button size="sm" variant="primary" disabled={busy || !draft.name} onClick={save}>{t('common.save', 'Save')}</Button>
-            <Button size="sm" disabled={busy} onClick={() => setDraft(null)}>{t('common.cancel', 'Cancel')}</Button>
+            <Button size="sm" disabled={busy} onClick={() => { setDraft(null); setEffective(''); }}>{t('common.cancel', 'Cancel')}</Button>
           </div>
         </Card>
       )}
@@ -3506,11 +3567,25 @@ function AdminHostingPlans() {
                 <div className="text-[11px] text-[var(--faint)] font-mono">
                   {pl.storageGB} GB · {mbps(pl.uploadLimitKbps)} · CPU {pl.cpuShare} · {money(pl.priceMonthlyCents)}/mo
                 </div>
+                {/* A change that has been PROMISED to customers is not an editor detail —
+                    it is a commitment with a date on it, so it belongs on the row. */}
+                {pl.pendingPriceCents != null && (
+                  <div className="text-[11px] text-[var(--primary-2)] flex items-center gap-1.5 mt-0.5">
+                    <Calendar size={11} />
+                    {t('adm.plans.pending', '{p}/mo from {d} · {n} notified')
+                      .replace('{p}', money(pl.pendingPriceCents))
+                      .replace('{d}', String(pl.pendingPriceAt || '').slice(0, 10))
+                      .replace('{n}', String(pl.pendingNoticeCount ?? 0))}
+                    <button className="underline hover:text-[var(--text)]" onClick={() => cancelPending(pl)}>
+                      {t('adm.plans.pending.cancel', 'cancel')}
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="text-[11px] text-[var(--faint)] shrink-0">
                 {(pl._count?.subscriptions ?? 0)} {t('adm.plans.subs', 'sub(s)')}
               </div>
-              <Button size="sm" variant="ghost" onClick={() => setDraft({ ...pl })}><SettingsIcon size={13} /></Button>
+              <Button size="sm" variant="ghost" onClick={() => { setDraft({ ...pl }); setOriginal(pl); setEffective(''); }}><SettingsIcon size={13} /></Button>
               <Button size="sm" variant="ghost" className="!text-error" onClick={() => remove(pl)}><Trash2 size={13} /></Button>
             </div>
           ))}

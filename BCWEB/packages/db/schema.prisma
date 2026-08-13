@@ -790,7 +790,22 @@ model HostingPlan {
   cpuShare          Float          @default(0.25)
   priceMonthlyCents Int
   active            Boolean        @default(true)
+  // A price change that has been ANNOUNCED but is not in force yet.
+  //
+  // The Payments policy promises advance notice and "the new price applies from your
+  // next renewal, never to a period already paid for". Editing priceMonthlyCents
+  // directly cannot keep that promise: it changes the price the instant Save is pressed,
+  // with nobody told. So an increase is staged here, subscribers are emailed at the
+  // moment it is scheduled, and the sweeper swaps it in on the day.
+  pendingPriceCents Int?
+  pendingPriceAt    DateTime?
+  // When the announcement went out, and to how many — so the same change is never
+  // announced twice, and so the record of "we did give notice" outlives the mailbox.
+  pendingNoticeAt   DateTime?
+  pendingNoticeCount Int           @default(0)
   subscriptions     Subscription[]
+
+  @@index([pendingPriceAt])
 }
 
 model ServerRepo {

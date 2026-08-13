@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { statfsSync } from 'node:fs';
-import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPlan, GRANT_PLAN_NAME } from '../lib/lib.mjs';
+import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPlan, GRANT_PLAN_NAME, logAudit, clientIp } from '../lib/lib.mjs';
+import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 import { validatePromo, redeemPromoAtomic } from './promo.mjs';
 import { getActiveCampaign, applyCampaign } from './campaigns.mjs';
 
@@ -197,6 +198,81 @@ export function termTotalCents(monthlyCents, months, priceMult) {
   return Math.round(monthlyCents * months * (1 - (TERM_DISCOUNT[months] ?? 0)) * priceMult);
 }
 
+// ── Telling people their price is going to change ────────────────────────────
+//
+// Who counts as "affected": anyone holding a LIVE subscription to this plan. Not every
+// account, not past customers — the policy commitment is to the people who will actually
+// be billed the new figure.
+//
+// Both a notification (in-app, where they will see it next visit) and an email (where
+// they will see it today). A price change is exactly the case where one channel is not
+// enough: an in-app badge is missed by someone who does not log in for a month, which is
+// the same month the notice period runs.
+async function affectedSubscribers(p, planId) {
+  const subs = await p.subscription.findMany({
+    where: { planId, status: 'active' },
+    select: { userId: true },
+  });
+  const ids = [...new Set(subs.map((x) => x.userId))];
+  if (!ids.length) return [];
+  return p.user.findMany({ where: { id: { in: ids } }, select: { id: true, email: true, displayName: true } });
+}
+
+const money = (c) => `$${((c || 0) / 100).toFixed(2)}`;
+
+async function announcePriceChange(p, plan, fromCents, toCents, at) {
+  const users = await affectedSubscribers(p, plan.id);
+  if (!users.length) return 0;
+  const day = at.toISOString().slice(0, 10);
+  const up = toCents > fromCents;
+  const subject = up
+    ? `Price change for ${plan.name} on ${day}`
+    : `${plan.name} is getting cheaper on ${day}`;
+  // Says the four things the policy promises and nothing else: what it is now, what it
+  // becomes, WHEN, and that cancelling before then is enough to decline it.
+  const body = `
+    <p>The monthly price of <b>${escapeHtml(plan.name)}</b> hosting is changing.</p>
+    <table style="margin:14px 0;font-size:15px">
+      <tr><td style="padding:2px 14px 2px 0;color:#94a3b8">Today</td><td><b>${money(fromCents)}/month</b></td></tr>
+      <tr><td style="padding:2px 14px 2px 0;color:#94a3b8">From ${escapeHtml(day)}</td><td><b>${money(toCents)}/month</b></td></tr>
+    </table>
+    <p>The new price applies from your <b>next renewal on or after ${escapeHtml(day)}</b>. It never applies to a
+       period you have already paid for, and never mid-term on a prepaid plan.</p>
+    <p>If you would rather not continue at the new price, cancel before that renewal — your service runs to the end
+       of the period you have paid. Cancelling is always enough to decline a change.</p>`;
+  let sent = 0;
+  for (const u of users) {
+    // Per-recipient, one message each: a shared To: on a billing notice would publish the
+    // customer list. Failures are counted, never fatal — the in-app notice still lands.
+    try {
+      const ok = await sendMail({ to: u.email, subject, html: mailShell(subject, body), text: `${plan.name}: ${money(fromCents)} → ${money(toCents)}/month from ${day}.` });
+      if (ok !== false) sent++;
+    } catch { /* counted by omission */ }
+    // notify(p, userId, kind, body) — positional, and `kind` is the badge label.
+    await notify(p, u.id, up ? 'A price is going up' : 'A price is going down',
+      `${plan.name}: ${money(fromCents)} → ${money(toCents)} / month from ${day}.`).catch(() => {});
+  }
+  return sent;
+}
+
+async function announcePriceCancelled(p, plan) {
+  const users = await affectedSubscribers(p, plan.id);
+  if (!users.length) return 0;
+  const day = plan.pendingPriceAt ? new Date(plan.pendingPriceAt).toISOString().slice(0, 10) : '';
+  const subject = `${plan.name}: the announced price change is cancelled`;
+  const body = `<p>The change we announced for <b>${escapeHtml(plan.name)}</b>${day ? ` on ${escapeHtml(day)}` : ''} will not happen.
+                Your price stays <b>${money(plan.priceMonthlyCents)}/month</b>. Nothing to do.</p>`;
+  let sent = 0;
+  for (const u of users) {
+    try {
+      const ok = await sendMail({ to: u.email, subject, html: mailShell(subject, body), text: subject });
+      if (ok !== false) sent++;
+    } catch { /* ignore */ }
+    await notify(p, u.id, 'Price change cancelled', `${plan.name} stays at ${money(plan.priceMonthlyCents)} / month.`).catch(() => {});
+  }
+  return sent;
+}
+
 export default async function hostingRoutes(app) {
   // ── Admin: the hosting plans themselves ──
   // The catalogue visitors see was seeded once and only reachable through SQL after that.
@@ -258,22 +334,71 @@ export default async function hostingRoutes(app) {
   app.patch('/admin/hosting/plans/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const partial = {};
     for (const [k, v] of Object.entries(planShape)) partial[k] = v.optional();
+    // `effectiveAt` turns a price edit into a SCHEDULED one: the plan keeps today's price,
+    // the new one is staged, and everyone paying for it is told now. Absent → the old
+    // behaviour (immediate), which is right for a correction or a new plan nobody holds.
+    partial.effectiveAt = z.string().datetime().nullable().optional();
     const b = z.object(partial).safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const data = { ...b.data };
+    const { effectiveAt, ...rest } = b.data;
+    const data = { ...rest };
+    const current = await p.hostingPlan.findUnique({ where: { id: req.params.id } });
+    if (!current) return reply.code(404).send({ error: 'not_found' });
     if ('priceMonthlyCents' in data && data.priceMonthlyCents == null) {
       // Explicitly cleared → fall back to the computed price, using the specs as they will
       // be AFTER this edit rather than as they were before it.
-      const current = await p.hostingPlan.findUnique({ where: { id: req.params.id } });
-      if (!current) return reply.code(404).send({ error: 'not_found' });
       data.priceMonthlyCents = await autoPriceCents(p, { ...current, ...data });
     }
+
+    // ── Scheduled change ────────────────────────────────────────────────────────
+    let notified = 0;
+    const wantsSchedule = effectiveAt && 'priceMonthlyCents' in data
+      && data.priceMonthlyCents !== current.priceMonthlyCents;
+    if (wantsSchedule) {
+      const at = new Date(effectiveAt);
+      if (!(at.getTime() > Date.now())) return reply.code(400).send({ error: 'effective_in_past' });
+      const staged = data.priceMonthlyCents;
+      // The live price is NOT touched. That is the whole point: a price nobody has been
+      // told about must not start applying because an admin pressed Save.
+      delete data.priceMonthlyCents;
+      data.pendingPriceCents = staged;
+      data.pendingPriceAt = at;
+      data.pendingNoticeAt = new Date();
+      notified = await announcePriceChange(p, { ...current, ...data }, current.priceMonthlyCents, staged, at);
+      data.pendingNoticeCount = notified;
+    } else if ('priceMonthlyCents' in data) {
+      // An immediate price edit cancels any announcement still pending — otherwise the
+      // scheduled swap would later overwrite the value just typed, days after the fact.
+      data.pendingPriceCents = null; data.pendingPriceAt = null; data.pendingNoticeAt = null; data.pendingNoticeCount = 0;
+    }
+
     const plan = await p.hostingPlan.update({ where: { id: req.params.id }, data }).catch(() => null);
     if (!plan) return reply.code(404).send({ error: 'not_found' });
+    if (wantsSchedule) {
+      await logAudit(p, req.user.uid, 'hosting.price_scheduled',
+        `${plan.name}: ${(current.priceMonthlyCents / 100).toFixed(2)} → ${(plan.pendingPriceCents / 100).toFixed(2)} on ${plan.pendingPriceAt.toISOString().slice(0, 10)} (${notified} notified)`,
+        clientIp(req));
+    }
     // Editing a price does NOT reprice anyone: an existing Subscription keeps the terms it
     // was bought under, and Stripe holds its own copy. This changes what NEW buyers see.
-    return { ok: true, plan };
+    return { ok: true, plan, notified };
+  });
+
+  // Drop a scheduled change before it lands. The live price never moved, so this is a
+  // plain cancellation — but the people already told deserve to hear that too.
+  app.delete('/admin/hosting/plans/:id/pending-price', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const cur = await p.hostingPlan.findUnique({ where: { id: req.params.id } });
+    if (!cur) return reply.code(404).send({ error: 'not_found' });
+    if (cur.pendingPriceCents == null) return reply.code(400).send({ error: 'no_pending_change' });
+    const plan = await p.hostingPlan.update({
+      where: { id: cur.id },
+      data: { pendingPriceCents: null, pendingPriceAt: null, pendingNoticeAt: null, pendingNoticeCount: 0 },
+    });
+    const told = await announcePriceCancelled(p, cur).catch(() => 0);
+    await logAudit(p, req.user.uid, 'hosting.price_cancelled', `${cur.name} (${told} told)`, clientIp(req));
+    return { ok: true, plan, notified: told };
   });
 
   app.delete('/admin/hosting/plans/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {

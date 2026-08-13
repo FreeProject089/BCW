@@ -314,6 +314,35 @@ export async function sweepDeadSessions(p, log) {
   }
 }
 
+/// Apply price changes whose day has come.
+///
+/// The announcement already went out when the change was scheduled; this is only the
+/// swap. It is idempotent by construction — the pending columns are cleared in the same
+/// update, so a plan can never be repriced twice by two sweeper passes.
+///
+/// Existing subscriptions are deliberately untouched. They keep the terms they were sold
+/// under until their next renewal, which is what both the policy and the announcement
+/// email promise, and Stripe holds its own copy of the price for the current period.
+export async function sweepScheduledPrices(p, log) {
+  const due = await p.hostingPlan.findMany({
+    where: { pendingPriceAt: { lte: new Date() }, pendingPriceCents: { not: null } },
+    select: { id: true, name: true, priceMonthlyCents: true, pendingPriceCents: true },
+  });
+  let n = 0;
+  for (const plan of due) {
+    await p.hostingPlan.update({
+      where: { id: plan.id },
+      data: {
+        priceMonthlyCents: plan.pendingPriceCents,
+        pendingPriceCents: null, pendingPriceAt: null, pendingNoticeAt: null, pendingNoticeCount: 0,
+      },
+    });
+    log?.info?.(`[sweeper] ${plan.name}: announced price change applied (${plan.priceMonthlyCents} → ${plan.pendingPriceCents} cents/mo)`);
+    n++;
+  }
+  return n;
+}
+
 export function startSweeper(app) {
   const run = async () => {
     try {
@@ -328,6 +357,7 @@ export function startSweeper(app) {
         await sweepAnalyticsRetention(p, app.log),
       ];
       await sweepDeadSessions(p, app.log);
+      await sweepScheduledPrices(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'scheduled price sweep failed'));
       await rollupAnalyticsDaily(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics rollup failed'));
       await sweepReports(p).catch((e) => app.log.warn({ e: String(e) }, 'report sweep failed'));
       await sampleAndAlert(p, app.log);

@@ -620,6 +620,14 @@ export default async function miscRoutes(app) {
 
     const html = mailShell(b.data.subject, mdToEmailHtml(b.data.body));
     let sent = 0, failed = 0;
+    // The first rejection, kept verbatim. Swallowing it left the admin with "the mail
+    // server rejected every message" and nowhere to go — while the server was saying
+    // something completely actionable, e.g.
+    //   450 4.1.2 <admin@bettercommunity.local>: Recipient address rejected: Domain not found
+    // which names the problem (a seeded account whose domain does not exist) in one line.
+    // Safe to pass through: this endpoint is admin-only and the text is the SMTP server's
+    // own response about an address the admin can already see.
+    let firstError = null;
     for (const r of recipients) {
       // ONE message per address. A shared To: or Cc: would publish every customer's email
       // to every other customer, which is a data breach and not a mailing list.
@@ -629,17 +637,24 @@ export default async function miscRoutes(app) {
       // reached, so a retry would double-mail them.
       try {
         const ok = await sendMail({ to: r.email, subject: b.data.subject, html, text: b.data.body });
-        if (ok === false) failed++; else sent++;
-      } catch { failed++; }
+        if (ok === false) { failed++; firstError = firstError || { email: r.email, reason: 'email_disabled' }; }
+        else sent++;
+      } catch (e) {
+        failed++;
+        if (!firstError) {
+          firstError = { email: r.email, reason: String(e?.message || e).split(String.fromCharCode(10))[0].slice(0, 300) };
+          req.log?.warn?.({ to: r.email, err: firstError.reason }, 'mail send rejected');
+        }
+      }
     }
     // Every single message failed — report it as a FAILURE, not as `ok: true, sent: 0`.
     // A "sent to 0 recipients" toast reads like an empty audience, so a misconfigured SMTP
     // server would look like a successful broadcast nobody happened to be in.
-    if (sent === 0 && failed > 0) return reply.code(502).send({ error: 'all_failed', failed });
+    if (sent === 0 && failed > 0) return reply.code(502).send({ error: 'all_failed', failed, ...firstError });
     if (!b.data.testOnly) {
       await logAudit(p, req.user.uid, 'mail.send', `"${b.data.subject}" → ${b.data.audience} (${sent} sent, ${failed} failed)`, clientIp(req));
     }
-    return { ok: true, sent, failed, total: recipients.length };
+    return { ok: true, sent, failed, total: recipients.length, ...(failed ? { firstError } : {}) };
   });
 
   // ── Password recovery, on the user's behalf ──────────────────────────────────
