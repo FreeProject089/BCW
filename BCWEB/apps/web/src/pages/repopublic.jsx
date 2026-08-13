@@ -18,7 +18,7 @@ const humanSize = (b) => {
 // without installing BMM first. The API decides who may download (same gate the download
 // itself runs) and hands back `access`; this only renders the verdict it's given.
 function RepoContents({ id, k }) {
-  const { t } = useI18n();
+  const { t } = useI18n(); const toast = useToast();
   const [data, setData] = useState(undefined); // undefined = loading, null = failed
   useEffect(() => {
     api.get(`/r/${encodeURIComponent(id)}/contents${k ? `?k=${encodeURIComponent(k)}` : ''}`)

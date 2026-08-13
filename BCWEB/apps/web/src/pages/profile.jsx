@@ -5,7 +5,7 @@ import { User, Shield, ShieldCheck, Mail, CalendarDays, Shuffle, KeyRound, Check
 import { api, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
-import { useToast, Button, Card, Badge, Input, Textarea, Field, PageHeader, Spinner } from '../ui/ui.jsx';
+import { useToast, Button, Card, Badge, Input, Textarea, Field, PageHeader, Spinner, copyText } from '../ui/ui.jsx';
 import { DiscordIcon, KofiIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
