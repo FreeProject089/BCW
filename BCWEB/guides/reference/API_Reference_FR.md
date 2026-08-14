@@ -298,6 +298,15 @@ Clés nommées et limitées, créées par le propriétaire du compte pour l’AP
 | GET | `/v1/users` | `users:read` | Annuaire des utilisateurs. |
 | GET | `/v1/catalog` | `catalog:read` | Flux du catalogue. |
 | GET | `/v1/catalog/changes` | `catalog:read` | Changements incrémentaux du catalogue. |
+| GET | `/v1/pools` | `pools:read` | Tes pools de stockage : capacité, ce qui y puise, l’abonnement derrière. |
+| GET | `/v1/catalogs` | `catalogs:read` | Les catalogues que tu possèdes — y compris non listés et masqués. |
+| GET | `/v1/catalogs/:id/items` | `catalogs:read` | Les éléments d’un de tes catalogues, quel que soit leur statut. |
+| GET | `/v1/payments` | `payments:read` | Ton historique de paiements. Montants et dates, jamais de données de carte. |
+| GET | `/v1/polls` | `polls:read` | Les sondages qui te sont ouverts, et ta réponse. |
+| POST | `/v1/polls/:id/vote` | `polls:write` | Répondre à un sondage. Remplace la réponse précédente, comme sur le site. |
+| GET | `/v1/transfers` | `transfers:read` | Les transferts de propriété proposés par ou pour toi. En lecture seule volontairement. |
+| POST | `/v1/notifications/:id/read` | `notifications:write` | Marquer une notification comme lue. |
+| POST | `/v1/notifications/read-all` | `notifications:write` | Marquer toutes les notifications non lues comme lues. |
 
 ## 19. Avatars (`avatar.mjs`)
 Rendu d’avatar déterministe à partir de l’id de compte.

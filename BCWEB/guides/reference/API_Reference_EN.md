@@ -292,6 +292,15 @@ Named, scoped keys the account owner mints for the public API. Every `/v1/*` rou
 | GET | `/v1/users` | `users:read` | User directory. |
 | GET | `/v1/catalog` | `catalog:read` | Catalog feed. |
 | GET | `/v1/catalog/changes` | `catalog:read` | Incremental catalog changes. |
+| GET | `/v1/pools` | `pools:read` | Your storage pools: capacity, what draws from them, the subscription behind them. |
+| GET | `/v1/catalogs` | `catalogs:read` | The catalogs you own — including unlisted and hidden ones. |
+| GET | `/v1/catalogs/:id/items` | `catalogs:read` | Items inside one of your catalogs, whatever their status. |
+| GET | `/v1/payments` | `payments:read` | Your own payment history. Amounts and dates, never card data. |
+| GET | `/v1/polls` | `polls:read` | Polls open to you, and how you answered. |
+| POST | `/v1/polls/:id/vote` | `polls:write` | Answer a poll. Replaces a previous answer, like the site. |
+| GET | `/v1/transfers` | `transfers:read` | Ownership transfers offered to or by you. Read-only on purpose. |
+| POST | `/v1/notifications/:id/read` | `notifications:write` | Mark one notification read. |
+| POST | `/v1/notifications/read-all` | `notifications:write` | Mark every unread notification read. |
 
 ## 19. Avatars (`avatar.mjs`)
 Deterministic avatar rendering by account id.

@@ -459,6 +459,13 @@ export const API_SCOPES = Object.freeze({
   'catalog:read':  'Read published catalog items and their change history.',
   'users:read':    'Look up public profiles — exactly what a signed-out visitor sees.',
   'notifications:read': 'Read your notifications. This is what lets BMM show them in its notification centre.',
+  'notifications:write': 'Mark your notifications as read. Read-only clients never need this.',
+  'pools:read':    'List your storage pools: how much space each holds, what is in it, and what it costs.',
+  'catalogs:read': 'List the catalogs you own and the items inside them, including unpublished ones.',
+  'payments:read': 'Read your own payment history and invoices. Amounts and dates, never a card number.',
+  'polls:read':    'Read the polls open to you and how you answered.',
+  'polls:write':   'Answer polls on your behalf.',
+  'transfers:read': 'See ownership transfers offered to or by you.',
 });
 
 /** True if the key carries `scope`. A key with no scopes is allowed nothing. */

@@ -316,6 +316,187 @@ export default async function apiKeyRoutes(app) {
     return { user };
   });
 
+
+  // ── Storage pools ───────────────────────────────────────────────────────────
+  //
+  // A pool is where the storage actually lives; repos and catalogs draw from it. Without
+  // this a client can see a repo is at its quota and has no way to find out why, or what
+  // the quota belongs to.
+
+  app.get('/v1/pools', { preHandler: apiAuth('pools:read'), ...RL_READ }, async (req) => {
+    const p = await db();
+    const pools = await p.hostingGroup.findMany({
+      where: { ownerId: req.user.uid },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, name: true, freePlan: true, poolBytes: true, uploadLimitKbps: true,
+        cpuShare: true, createdAt: true,
+        repos: { select: { id: true, name: true, status: true, storageUsedBytes: true } },
+        catalogs: { select: { id: true, name: true, slug: true, status: true } },
+        subscriptions: { select: { id: true, status: true, currentPeriodEnd: true, plan: { select: { name: true, priceMonthlyCents: true } } }, orderBy: { currentPeriodEnd: 'desc' }, take: 1 },
+      },
+    });
+    // BigInt does not survive JSON.stringify — same rule as /v1/repos.
+    return {
+      pools: pools.map((g) => {
+        const used = g.repos.reduce((n, r) => n + Number(r.storageUsedBytes ?? 0), 0);
+        return {
+          id: g.id, name: g.name, freePlan: g.freePlan,
+          poolBytes: Number(g.poolBytes ?? 0),
+          usedBytes: used,
+          freeBytes: Math.max(0, Number(g.poolBytes ?? 0) - used),
+          uploadLimitKbps: g.uploadLimitKbps, cpuShare: g.cpuShare, createdAt: g.createdAt,
+          repos: g.repos.map((r) => ({ id: r.id, name: r.name, status: r.status, storageUsedBytes: Number(r.storageUsedBytes ?? 0) })),
+          catalogs: g.catalogs,
+          subscription: g.subscriptions[0] || null,
+        };
+      }),
+    };
+  });
+
+  // ── Catalogs you own ────────────────────────────────────────────────────────
+  //
+  // Distinct from `catalog:read`, which reads the PUBLISHED feed anybody can see. This one
+  // is your side of it: your catalogs, including the items still pending or hidden. Two
+  // scopes because they are two different audiences — a public mirror needs the first and
+  // has no business holding the second.
+
+  app.get('/v1/catalogs', { preHandler: apiAuth('catalogs:read'), ...RL_READ }, async (req) => {
+    const p = await db();
+    const cats = await p.communityCatalog.findMany({
+      where: { ownerId: req.user.uid },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, name: true, slug: true, description: true, kinds: true, mode: true,
+        status: true, visibility: true, listed: true, freePlan: true, groupId: true, createdAt: true,
+        _count: { select: { items: true } },
+      },
+    });
+    return { catalogs: cats.map((c) => ({ ...c, itemCount: c._count.items, _count: undefined })) };
+  });
+
+  app.get('/v1/catalogs/:id/items', { preHandler: apiAuth('catalogs:read'), ...RL_READ }, async (req, reply) => {
+    const p = await db();
+    const own = await p.communityCatalog.findFirst({ where: { id: req.params.id, ownerId: req.user.uid }, select: { id: true } });
+    if (!own) return reply.code(404).send({ error: 'not_found' });
+    const items = await p.communityCatalogItem.findMany({
+      where: { catalogId: own.id },
+      orderBy: { createdAt: 'desc' },
+      take: limitOf(req.query, 100, 500),
+    });
+    return { items: items.map((it) => ({ ...it, payloadSize: Number(it.payloadSize ?? 0) })) };
+  });
+
+  // ── Payments ────────────────────────────────────────────────────────────────
+
+  app.get('/v1/payments', { preHandler: apiAuth('payments:read'), ...RL_READ }, async (req) => {
+    const p = await db();
+    const rows = await p.payment.findMany({
+      where: { userId: req.user.uid },
+      orderBy: { createdAt: 'desc' },
+      take: limitOf(req.query, 50, 200),
+      // No Stripe session id: it is an identifier into someone else's system and a key
+      // holder has no use for it that reading their own invoices does not already cover.
+      select: { id: true, kind: true, description: true, amountCents: true, currency: true, status: true, days: true, createdAt: true },
+    });
+    return { payments: rows };
+  });
+
+  // ── Polls ───────────────────────────────────────────────────────────────────
+
+  app.get('/v1/polls', { preHandler: apiAuth('polls:read'), ...RL_READ }, async (req) => {
+    const p = await db();
+    const polls = await p.poll.findMany({
+      where: { status: 'open' },
+      orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
+      take: 50,
+      include: { options: { orderBy: { sort: 'asc' } }, votes: { select: { optionId: true, userId: true, wasLoggedIn: true } } },
+    });
+    const now = Date.now();
+    return {
+      polls: polls
+        .filter((poll) => (!poll.opensAt || new Date(poll.opensAt).getTime() <= now) && (!poll.closesAt || new Date(poll.closesAt).getTime() > now))
+        .map((poll) => {
+          const mine = poll.votes.filter((v) => v.userId === req.user.uid).map((v) => v.optionId);
+          const counted = mine.length > 0 || poll.results === 'always';
+          const tally = new Map(poll.options.map((o) => [o.id, 0]));
+          for (const v of poll.votes) tally.set(v.optionId, (tally.get(v.optionId) || 0) + 1);
+          return {
+            id: poll.id, question: poll.question, description: poll.description,
+            audience: poll.audience, multiple: poll.multiple, maxChoices: poll.maxChoices,
+            closesAt: poll.closesAt, myVotes: mine,
+            // Same rule as the website: the tally is not handed out before you answer.
+            // A client that could read it early would be a way around that.
+            options: poll.options.map((o) => ({ id: o.id, label: o.label, ...(counted ? { votes: tally.get(o.id) || 0 } : {}) })),
+          };
+        }),
+    };
+  });
+
+  app.post('/v1/polls/:id/vote', { preHandler: apiAuth('polls:write'), ...RL }, async (req, reply) => {
+    const ids = Array.isArray(req.body?.optionIds) ? req.body.optionIds.slice(0, 20).map(String) : [];
+    if (!ids.length) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const poll = await p.poll.findUnique({ where: { id: req.params.id }, include: { options: { select: { id: true } } } });
+    if (!poll || poll.status !== 'open') return reply.code(404).send({ error: 'not_found' });
+    const now = Date.now();
+    if ((poll.opensAt && new Date(poll.opensAt).getTime() > now) || (poll.closesAt && new Date(poll.closesAt).getTime() <= now)) {
+      return reply.code(409).send({ error: 'closed' });
+    }
+    const valid = new Set(poll.options.map((o) => o.id));
+    const picks = [...new Set(ids)].filter((id) => valid.has(id));
+    if (!picks.length) return reply.code(400).send({ error: 'invalid_option' });
+    if (!poll.multiple && picks.length > 1) return reply.code(400).send({ error: 'single_choice' });
+    if (poll.maxChoices > 0 && picks.length > poll.maxChoices) return reply.code(400).send({ error: 'too_many', max: poll.maxChoices });
+    // Replaces the previous answer, exactly like the website — one behaviour for one act,
+    // whichever door it came through.
+    await p.pollVote.deleteMany({ where: { pollId: poll.id, userId: req.user.uid } });
+    await p.pollVote.createMany({
+      data: picks.map((optionId) => ({ pollId: poll.id, optionId, userId: req.user.uid, wasLoggedIn: true })),
+      skipDuplicates: true,
+    });
+    return { ok: true, myVotes: picks };
+  });
+
+  // ── Ownership transfers ─────────────────────────────────────────────────────
+  //
+  // Read-only on purpose. Accepting a transfer takes on somebody else's storage bill and
+  // their content's moderation history; that belongs behind a session, not behind a key
+  // that may be sitting in a script's environment.
+
+  app.get('/v1/transfers', { preHandler: apiAuth('transfers:read'), ...RL_READ }, async (req) => {
+    const p = await db();
+    const rows = await p.ownershipTransfer.findMany({
+      where: { OR: [{ fromUserId: req.user.uid }, { toUserId: req.user.uid }] },
+      orderBy: { createdAt: 'desc' }, take: 50,
+      select: { id: true, kind: true, targetId: true, targetName: true, status: true, fromUserId: true, toUserId: true, expiresAt: true, createdAt: true },
+    });
+    return {
+      transfers: rows.map((r) => ({
+        ...r,
+        direction: r.fromUserId === req.user.uid ? 'outgoing' : 'incoming',
+        fromUserId: undefined, toUserId: undefined,
+      })),
+    };
+  });
+
+  // ── Notifications: the write half ───────────────────────────────────────────
+
+  app.post('/v1/notifications/:id/read', { preHandler: apiAuth('notifications:write'), ...RL }, async (req, reply) => {
+    const p = await db();
+    // updateMany with the owner in the WHERE, not findUnique-then-update: it cannot touch
+    // another account's row even for an instant.
+    const r = await p.notification.updateMany({ where: { id: req.params.id, userId: req.user.uid }, data: { readAt: new Date() } });
+    if (!r.count) return reply.code(404).send({ error: 'not_found' });
+    return { ok: true };
+  });
+
+  app.post('/v1/notifications/read-all', { preHandler: apiAuth('notifications:write'), ...RL }, async (req) => {
+    const p = await db();
+    const r = await p.notification.updateMany({ where: { userId: req.user.uid, readAt: null }, data: { readAt: new Date() } });
+    return { ok: true, marked: r.count };
+  });
+
   // ── Repos ───────────────────────────────────────────────────────────────────
 
   app.get('/v1/repos', { preHandler: apiAuth('repos:read'), ...RL_READ }, async (req) => {
