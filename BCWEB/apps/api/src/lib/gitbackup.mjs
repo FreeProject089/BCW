@@ -259,17 +259,30 @@ export async function restoreFromBundle(repoRoot, bundlePath, { applyToDisk = nu
   const { stdout: head } = await git(repoRoot, ['rev-parse', 'HEAD']);
 
   let copied = 0;
+  let extra = [];
   if (applyToDisk) {
     // Same exclusions as the snapshot that produced it — copying .git or node_modules back
     // over a running tree is how a restore becomes an outage.
     const entries = await fs.readdir(repoRoot, { withFileTypes: true });
+    const restored = new Set();
     for (const e of entries) {
       if (SNAPSHOT_EXCLUDE.includes(e.name)) continue;
+      restored.add(e.name);
       await fs.cp(path.join(repoRoot, e.name), path.join(applyToDisk, e.name), { recursive: true, force: true });
       copied++;
     }
+    // What is on disk and NOT in the backup. This is a copy-over, not a wipe-and-replace,
+    // so anything created after the snapshot survives it — which makes the result a merge
+    // rather than the state the backup describes.
+    //
+    // Deleting them instead would be worse than the problem: this directory is the running
+    // application, and a rollback that removes "unknown" paths removes uploads, caches and
+    // anything a later version writes at runtime. So they are REPORTED, and the admin
+    // decides. Silently leaving them is the only genuinely wrong option.
+    const onDisk = await fs.readdir(applyToDisk, { withFileTypes: true }).catch(() => []);
+    extra = onDisk.filter((e) => !SNAPSHOT_EXCLUDE.includes(e.name) && !restored.has(e.name)).map((e) => e.name);
   }
-  return { head: head.trim(), ref: first, copied };
+  return { head: head.trim(), ref: first, copied, extra };
 }
 
 // Recent commits in a backup repo (named backupLog, not repoLog: lib.mjs already

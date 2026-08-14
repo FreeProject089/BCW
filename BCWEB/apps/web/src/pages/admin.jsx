@@ -2012,6 +2012,12 @@ function SnapshotInspector({ id, onClose, onRestored }) {
     try {
       const r = await api.post(`/server/backups/snapshots/${id}/restore`, { confirmToken: 'CONFIRM', applyToDisk: toDisk });
       toast.success(t('snap.restored', 'Rolled back. The previous state was saved as a backup first ({n}).').replace('{n}', r.safetySnapshot?.id || '—'));
+      // Said out loud, because it is the difference between what a rollback sounds like and
+      // what a copy-over does: files created after the backup are still there.
+      if (r.extra?.length) {
+        toast.error(t('snap.extra', '{n} path(s) on disk were not in this backup and were left in place: {l}')
+          .replace('{n}', String(r.extra.length)).replace('{l}', r.extra.slice(0, 6).join(', ')));
+      }
       onRestored(); onClose();
     } catch (x) {
       toast.error(x?.data?.error === 'no_safety_snapshot' ? t('snap.nosafety', 'Could not back up the current state, so nothing was rolled back.')
@@ -2056,6 +2062,9 @@ function SnapshotInspector({ id, onClose, onRestored }) {
               <div className="text-[13px] font-semibold flex items-center gap-1.5"><RotateCcw size={13} /> {t('snap.rollback', 'Roll back to this backup')}</div>
               <p className="text-[11px] text-[var(--muted)]">
                 {t('snap.rollback.s', 'The current state is backed up first and the rollback is refused if that fails — a rollback with no way back is just a hopeful restore. This resets the backup history only.')}
+              </p>
+              <p className="text-[11px] text-[var(--muted)]">
+                {t('snap.rollback.merge', 'Writing to disk copies the backup OVER what is there. Files created since — uploads, caches, anything a later version writes — are not removed, so the result is a merge rather than an exact return to that moment. Whatever is left over is listed afterwards so you can decide about it.')}
               </p>
               {d.meta?.kind === 'files' && (
                 <label className="flex items-start gap-2 text-[11px]">

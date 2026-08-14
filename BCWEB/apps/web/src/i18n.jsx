@@ -2392,6 +2392,8 @@ const DICT = {
     'hist.detail.open': "Tout ce qui a été enregistré sur cette entrée",
     'hist.copy': "Copier",
     'hist.label': "(libellé enregistré, pas un compte)",
+    'snap.extra': "{n} chemin(s) présents sur le disque n’étaient pas dans cette sauvegarde et ont été laissés en place : {l}",
+    'snap.rollback.merge': "L’écriture disque recopie la sauvegarde PAR-DESSUS l’existant. Les fichiers créés depuis — envois, caches, tout ce qu’une version ultérieure écrit — ne sont pas supprimés : le résultat est une fusion, pas un retour exact à cet instant. Ce qui reste est listé ensuite pour que tu décides.",
     'snap.title': "Sauvegardes à un instant T",
     'snap.sub': "Un fichier figé et signé par sauvegarde — prise ici, ou automatiquement une fois par jour. Contrairement à l’historique ci-dessus, elles ne bougent plus une fois faites : c’est ce qui rend une copie hors du serveur utile.",
     'snap.now': "Sauvegarder maintenant",

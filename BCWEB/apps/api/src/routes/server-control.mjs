@@ -820,9 +820,9 @@ export default async function serverControlRoutes(app) {
     }
 
     await logAudit(p, req.user.uid, 'server.backup_restored',
-      `${hit.meta.id} → ${result.head.slice(0, 8)}${applyToDisk ? `, ${result.copied} path(s) written to disk` : ''} (safety ${safety.id})`,
+      `${hit.meta.id} → ${result.head.slice(0, 8)}${applyToDisk ? `, ${result.copied} path(s) written to disk, ${(result.extra || []).length} left in place` : ''} (safety ${safety.id})`,
       clientIp(req));
-    return { ok: true, restored: hit.meta.id, safetySnapshot: safety, head: result.head, wroteToDisk: applyToDisk, paths: result.copied };
+    return { ok: true, restored: hit.meta.id, safetySnapshot: safety, head: result.head, wroteToDisk: applyToDisk, paths: result.copied, extra: result.extra || [] };
   });
 
   app.delete('/server/backups/snapshots/:id', { preHandler: DANGEROUS }, async (req, reply) => {
