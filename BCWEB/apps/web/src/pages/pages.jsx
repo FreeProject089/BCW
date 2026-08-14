@@ -153,7 +153,10 @@ export function useUndoableSave(reload) {
   const toast = useToast(); const { t } = useI18n();
   return (run, msg, opts = {}) => {
     toast.action({
-      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'), msg,
+      // Six seconds by default; a caller whose action reaches other PEOPLE (an email,
+      // a broadcast) can ask for longer, because the moment you want to change your
+      // mind should outlast the moment you realise you should.
+      tone: 'success', duration: opts.duration || 6000, cancelLabel: t('common.undo', 'Undo'), msg,
       onCommit: async () => {
         try { await run(); await reload?.(); }
         catch (x) { toast.error(opts.errorFor?.(x) || x?.data?.detail || x?.data?.error || t('common.failed', 'Failed.')); }

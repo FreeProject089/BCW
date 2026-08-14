@@ -2140,6 +2140,8 @@ const DICT = {
     'hist.ret.keep': "conservé",
     'hist.ret.cfg': "configurable",
     'hist.ret.fixed': "fixe",
+    'adm.plans.schedundo': "Programmation de « {n} » pour le {d}. Les abonnés seront prévenus à la fermeture de cette fenêtre.",
+    'fm.restoredundo': "« {p} » restauré.",
     'bkp.export': "Emporter une copie hors du serveur",
     'bkp.export.s': "Chaque téléchargement est un bundle git contenant tout l’historique — ouvre-le n’importe où avec « git clone », sans rien de ce site. Il est signé, et la signature est enregistrée à côté.",
     'bkp.export.files': "Historique fichiers",

@@ -1517,10 +1517,23 @@ function AdminServerPerf() {
 // normal confirm dialog, then a second dialog that requires literally typing
 // CONFIRM — the same token the backend independently re-checks (server-
 // control.mjs's requireConfirm()), so this isn't just a UI speed bump.
+// Type CONFIRM, THEN press the red button — in that order.
+//
+// It used to be the other way round: the danger button first, then a prompt whose OK was a
+// generic "Continue". So the last gesture before something irreversible happened was an
+// ordinary OK on a text box, which is exactly the click people make without reading. Now
+// the typing is the speed bump and the final, deliberate act is pressing the red button
+// that names what it will do.
 async function doubleConfirm(dialog, { title, message, okLabel = 'Continue' }) {
-  if (!(await dialog.confirm({ title, message, okLabel, danger: true }))) return false;
-  const typed = await dialog.prompt({ title: 'Confirm again', label: `Type CONFIRM to ${okLabel.toLowerCase()}.`, placeholder: 'CONFIRM', okLabel });
-  return typed === 'CONFIRM';
+  const typed = await dialog.prompt({
+    title,
+    message,
+    label: `Type CONFIRM to continue.`,
+    placeholder: 'CONFIRM',
+    okLabel: 'Next',
+  });
+  if (typed !== 'CONFIRM') return false;
+  return dialog.confirm({ title, message, okLabel, danger: true });
 }
 
 function FileManager() {
@@ -1583,11 +1596,12 @@ function FileManager() {
       message: t('fm.undeleteconfirm', 'Write "{p}" back to the server, with the content it had just before it was deleted?').replace('{p}', row.path),
       okLabel: t('fm.restorebtn', 'Restore'),
     }))) return;
-    try {
-      await api.post(`/server/files/backups/${row.hash}/restore`, { path: row.path, confirmToken: 'CONFIRM' });
-      toast.success(t('fm.restored', 'Restored.'));
-      await loadTrash(); load(dir);
-    } catch { toast.error(t('fm.restorefail', 'Failed to restore.')); }
+    // Behind the undo window like the delete it reverses: writing a file onto a live
+    // server is worth the same six seconds of grace as removing one.
+    undoable(
+      async () => { await api.post(`/server/files/backups/${row.hash}/restore`, { path: row.path, confirmToken: 'CONFIRM' }); await loadTrash(); },
+      t('fm.restoredundo', 'Restored “{p}”.').replace('{p}', row.path),
+    );
   };
   const viewHistory = async (full) => {
     try { const r = await api.get(`/server/files/backups?path=${encodeURIComponent(full)}`); setHistory({ path: full, items: r.history }); }
@@ -1595,8 +1609,12 @@ function FileManager() {
   };
   const restoreVersion = async (hash) => {
     if (!(await doubleConfirm(dialog, { title: t('fm.restore', 'Restore this version'), message: t('fm.restoreconfirm', 'Overwrite "{p}" with the version from this backup? The current content is backed up first.').replace('{p}', history.path), okLabel: t('fm.restorebtn', 'Restore') }))) return;
-    try { await api.post(`/server/files/backups/${hash}/restore`, { path: history.path, confirmToken: 'CONFIRM' }); toast.success(t('fm.restored', 'Restored.')); setHistory(null); load(dir); }
-    catch { toast.error(t('fm.restorefail', 'Failed to restore.')); }
+    const path = history.path;
+    setHistory(null);
+    undoable(
+      () => api.post(`/server/files/backups/${hash}/restore`, { path, confirmToken: 'CONFIRM' }),
+      t('fm.restoredundo', 'Restored “{p}”.').replace('{p}', path),
+    );
   };
   const newFolder = async () => {
     const name = await dialog.prompt({ title: t('fm.newfolder', 'New folder'), label: t('fm.foldername', 'Folder name'), placeholder: 'assets' });
@@ -4050,39 +4068,15 @@ function AdminHostingPlans() {
     && Number(draft.priceMonthlyCents) !== Number(original.priceMonthlyCents);
 
   const save = async () => {
-    const scheduling = !!(draft?.id && effective && original
-      && draft.priceMonthlyCents !== '' && draft.priceMonthlyCents != null
-      && Number(draft.priceMonthlyCents) !== Number(original.priceMonthlyCents));
-    // A scheduled change sends mail immediately — nothing to undo — so it keeps the
-    // direct path. Everything else is deferred.
-    if (!scheduling) return saveDeferred();
-    setBusy(true);
-    try {
-      const body = {
-        name: draft.name, storageGB: Number(draft.storageGB), uploadLimitKbps: Number(draft.uploadLimitKbps),
-        cpuShare: Number(draft.cpuShare), active: !!draft.active,
-        // null, not 0 — the server reads null as "derive it from Hosting settings".
-        priceMonthlyCents: draft.priceMonthlyCents === '' || draft.priceMonthlyCents == null
-          ? null : Number(draft.priceMonthlyCents),
-      };
-      if (draft.id) {
-        // A date is sent ONLY when it would mean something: an existing plan whose price
-        // actually changed. Sending it otherwise would stage a "change" from a price to
-        // itself and mail everybody about nothing.
-        const moved = draft.id && Number(body.priceMonthlyCents) !== Number(original?.priceMonthlyCents);
-        const r = await api.patch(`/admin/hosting/plans/${draft.id}`,
-          effective && moved ? { ...body, effectiveAt: new Date(`${effective}T00:00:00`).toISOString(), applyToExisting: applyExisting } : body);
-        toast.success(effective && moved
-          ? (applyExisting
-            ? t('adm.plans.scheduled', 'Change scheduled for {d} — {n} subscriber(s) notified.').replace('{d}', effective).replace('{n}', r.notified ?? 0)
-            : t('adm.plans.schedulednew', 'Scheduled for {d} — new buyers only, so nobody was emailed.').replace('{d}', effective))
-          : t('adm.plans.saved', 'Plan saved.'));
-      } else {
-        await api.post('/admin/hosting/plans', body);
-        toast.success(t('adm.plans.saved', 'Plan saved.'));
-      }
-      setDraft(null); setEffective(''); setApplyExisting(false); data.reload();
-    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+    // EVERYTHING goes through the undo window now, scheduling included.
+    //
+    // It used to take the direct path with a comment explaining why: scheduling emails
+    // every subscriber the moment it is created, and an email cannot be recalled six
+    // seconds later. But that reasoning had it backwards — the fix is not to skip the
+    // window, it is to not send the mail until the window closes. The PATCH is what
+    // triggers the announcement, so deferring the PATCH defers the announcement, and
+    // Cancel means no price was staged and nobody was written to.
+    return saveDeferred();
   };
 
   const cancelPending = async (pl) => {
@@ -4105,11 +4099,39 @@ function AdminHostingPlans() {
     };
     const id = draft.id;
     const label = draft.name;
+    // A date only means something on an EXISTING plan whose price actually moved. Sent
+    // otherwise it would stage a change from a price to itself and mail everyone about
+    // nothing.
+    const moved = !!id && original != null
+      && body.priceMonthlyCents != null
+      && Number(body.priceMonthlyCents) !== Number(original.priceMonthlyCents);
+    const scheduling = !!(effective && moved);
+    const payload = scheduling
+      ? { ...body, effectiveAt: new Date(`${effective}T00:00:00`).toISOString(), applyToExisting: applyExisting }
+      : body;
+    const whenLabel = effective;
+    const toExisting = applyExisting;
     setDraft(null); setEffective(''); setApplyExisting(false);
     undoable(
-      () => (id ? api.patch(`/admin/hosting/plans/${id}`, body) : api.post('/admin/hosting/plans', body)),
-      id ? t('adm.plans.savedundo', 'Saved “{n}”.').replace('{n}', label)
-         : t('adm.plans.createdundo', 'Created “{n}”.').replace('{n}', label),
+      async () => {
+        const r = id ? await api.patch(`/admin/hosting/plans/${id}`, payload) : await api.post('/admin/hosting/plans', payload);
+        // The count of who was actually written to is only known once the request has
+        // run, so it is reported here rather than promised in the toast beforehand.
+        if (scheduling) {
+          toast.success(toExisting
+            ? t('adm.plans.scheduled', 'Change scheduled for {d} — {n} subscriber(s) notified.').replace('{d}', whenLabel).replace('{n}', r?.notified ?? 0)
+            : t('adm.plans.schedulednew', 'Scheduled for {d} — new buyers only, so nobody was emailed.').replace('{d}', whenLabel));
+        }
+      },
+      scheduling
+        // Says what is about to happen, including that mail has NOT gone out yet — the
+        // reason Cancel is still meaningful at this point.
+        ? t('adm.plans.schedundo', 'Scheduling “{n}” for {d}. Subscribers are emailed when this window closes.').replace('{n}', label).replace('{d}', whenLabel)
+        : id ? t('adm.plans.savedundo', 'Saved “{n}”.').replace('{n}', label)
+             : t('adm.plans.createdundo', 'Created “{n}”.').replace('{n}', label),
+      // Longer than the usual six seconds: this one sends mail to real people, and the
+      // moment to change your mind should outlast the moment you notice you should.
+      { duration: 12000 },
     );
   };
 

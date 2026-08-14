@@ -440,7 +440,8 @@ export function ToastProvider({ children }) {
     error: (msg, opts) => push({ tone: 'error', msg, ...opts }),
     info: (msg, opts) => push({ tone: 'info', msg, ...opts }),
     // Optimistic action with an undo window: the toast counts down; on expiry onCommit
-    // fires (do the real work), or the user cancels (× / Undo) → onCancel restores state.
+    // fires (do the real work), or the user presses Cancel → onCancel restores state.
+    // Pressing × does NOT cancel — it commits immediately, skipping the rest of the wait.
     //
     // Settings → "Instant actions" turns the window off. Then there is nothing to undo, so
     // the deferred work runs straight away and the toast degrades to a plain confirmation —
@@ -468,10 +469,18 @@ export function ToastProvider({ children }) {
               {/* tone-tinted, spring-in icon chip: an explicit success / error / info cue */}
               <span className={`toast-icon-in grid place-items-center w-7 h-7 rounded-lg shrink-0 ${t.tone === 'success' ? 'burst' : ''}`} style={{ background: `color-mix(in srgb, ${tone} 18%, transparent)`, color: tone }}><I size={16} /></span>
               <div className="text-sm flex-1 min-w-0 break-words leading-snug">{t.msg}</div>
-              {/* Gmail-style: a done statement + one clear Cancel button (which restores the
-                  previous state). The × does the same, so nothing is ambiguous. */}
+              {/* Two controls, two DIFFERENT meanings — they used to share one.
+                  Cancel undoes: the deferred work never runs and the previous state is
+                  restored. That is the whole point of the window.
+                  × dismisses: it skips the remaining wait and commits NOW. It used to
+                  cancel as well, which made closing a notification quietly revert the work
+                  you had just done — the one gesture everybody makes to tidy their screen
+                  was the one that undid their action, with nothing on screen to say so. */}
               {t.action && <button onClick={() => finalize(t.id, 'cancel')} className="shrink-0 flex items-center gap-1 text-[13px] font-bold rounded-lg px-2.5 py-1.5 transition hover:bg-[color-mix(in_srgb,var(--text)_10%,transparent)]" style={{ color: tone }}><Undo2 size={13} /> {t.cancelLabel || 'Cancel'}</button>}
-              <button onClick={() => finalize(t.id, t.action ? 'cancel' : 'commit')} aria-label={t.action ? 'Cancel' : 'Dismiss'} className="shrink-0 -mr-0.5 p-1 rounded-lg text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition"><X size={14} /></button>
+              <button onClick={() => finalize(t.id, 'commit')}
+                aria-label={t.action ? 'Apply now and dismiss' : 'Dismiss'}
+                title={t.action ? 'Apply now' : undefined}
+                className="shrink-0 -mr-0.5 p-1 rounded-lg text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition"><X size={14} /></button>
               {/* countdown bar — for action toasts this is the undo window before commit */}
               <span className="absolute left-0 bottom-0 h-[3px] rounded-full toast-progress" style={{ background: tone, animationDuration: `${t.duration}ms` }} />
             </div>); })}
