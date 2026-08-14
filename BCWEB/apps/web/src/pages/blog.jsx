@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   Newspaper, PenSquare, ImagePlus, Youtube, Link2, Video, Bold, Heading, List, Eye,
@@ -490,12 +491,22 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
             <button type="button" onClick={() => setBadgePick(true)} className="btn btn-sm" title="Insert a badge (classic, preset or custom)"><TagIcon size={14} /> Badges</button>
             <div className="relative">
               <button ref={blocksBtnRef} type="button" onClick={openBlocks} className="btn btn-sm" title="Insert a content block (callout, tabs, cards…)"><BlocksIcon size={14} /> Blocks <ChevronDown size={12} /></button>
-              {blocksOpen && <>
+              {/* Portalled to <body>, and that is the whole fix.
+                  `position: fixed` does NOT resolve against the viewport when an ancestor
+                  carries a transform — and `.modal-card` has `.anim-pop`, whose
+                  `animation-fill-mode: both` leaves `transform: scale(1)` applied forever
+                  after the animation ends. So the modal became the containing block: the
+                  viewport coordinates computed above landed inside it, and its
+                  `overflow-hidden` (there for the rounded corners) clipped what was left —
+                  which is why the menu was invisible at normal size and merely misplaced
+                  once a smaller window moved the modal under the coordinates.
+                  ActionBar's overflow menu portals for the same reason; this now matches. */}
+              {blocksOpen && createPortal(<>
                 <div className="fixed inset-0 z-[60]" onClick={() => setBlocksOpen(false)} />
                 <div className="fixed z-[61] w-52 rounded-xl border border-[var(--line-strong)] shadow-xl py-1 overflow-auto" style={{ background: 'var(--bg-solid)', top: blocksPos.top, left: blocksPos.left, maxHeight: blocksPos.maxH || 288 }}>
                   {BLOCKS.map((bl) => <button key={bl.label} type="button" onClick={() => bl.onPick ? bl.onPick() : insertBlock(bl.snip)} className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-[var(--surface-2)]"><bl.icon size={14} className="text-[var(--muted)]" /> {bl.label}</button>)}
                 </div>
-              </>}
+              </>, document.body)}
             </div>
           </>}
         </>}
