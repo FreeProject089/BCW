@@ -102,6 +102,25 @@ function snippetFor(lang, { method, path, body, sandbox, write }) {
   ].join('\n');
 }
 
+
+// GET reads, POST/PATCH write, DELETE removes — three tones, because the difference
+// between them is the whole reason to look before clicking Send. Never colour alone: the
+// method is spelled out in the chip.
+const METHOD_TONE = {
+  GET: 'var(--primary-2)',
+  POST: 'var(--warning)',
+  PATCH: 'var(--warning)',
+  DELETE: 'var(--error)',
+};
+function MethodChip({ m }) {
+  return (
+    <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0"
+      style={{ color: METHOD_TONE[m] || 'var(--muted)', background: 'color-mix(in srgb, currentColor 14%, transparent)' }}>
+      {m}
+    </span>
+  );
+}
+
 export function ApiConsole() {
   const { t } = useI18n(); const toast = useToast();
   const [key, setKey] = useState('');
@@ -111,6 +130,7 @@ export function ApiConsole() {
   const [res, setRes] = useState(null);
   const [busy, setBusy] = useState(false);
   const [lang, setLang] = useState('curl');
+  const [q, setQ] = useState('');
 
   const ep = ENDPOINTS[idx];
 
@@ -159,17 +179,45 @@ export function ApiConsole() {
 
       <div className="space-y-2">
         <Field label={t('dev.console.pick', 'Endpoint')}>
-          <Select value={String(idx)} onChange={(e) => pick(Number(e.target.value))}>
-            {[...new Set(ENDPOINTS.map((e) => e.g))].map((group) => (
-              <optgroup key={group} label={group}>
-                {ENDPOINTS.map((e, i) => (e.g === group
-                  ? <option key={e.m + e.p} value={i}>{e.m} {e.p} — {epDesc(t, e)}</option>
-                  : null))}
-              </optgroup>
-            ))}
-          </Select>
+          {/* A filter over 21 endpoints. A dropdown makes you read all of them to find one;
+              typing "repo" is how anybody actually looks for a route. Matches the path, the
+              description and the scope, because people search for all three. */}
+          <Input className="mb-2" value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder={t('dev.console.filter', 'Filter — path, description or scope')} />
+          <div className="rounded-lg border border-[var(--line)] max-h-64 overflow-auto divide-y divide-[var(--line)]">
+            {(() => {
+              const needle = q.trim().toLowerCase();
+              const rows = ENDPOINTS
+                .map((e, i) => ({ e, i }))
+                .filter(({ e }) => !needle
+                  || e.p.toLowerCase().includes(needle)
+                  || String(e.scope || '').toLowerCase().includes(needle)
+                  || epDesc(t, e).toLowerCase().includes(needle));
+              if (!rows.length) {
+                return <div className="p-3 text-[12px] text-[var(--muted)]">{t('dev.console.nomatch', 'Nothing matches that.')}</div>;
+              }
+              return rows.map(({ e, i }) => (
+                <button key={e.m + e.p} type="button" onClick={() => pick(i)}
+                  className={`w-full text-left px-2.5 py-2 flex items-start gap-2 hover:bg-[var(--surface-2)] ${i === idx ? 'bg-[var(--surface-2)]' : ''}`}>
+                  <MethodChip m={e.m} />
+                  <span className="min-w-0 flex-1">
+                    <span className="font-mono text-[12px] break-all">{e.p}</span>
+                    <span className="block text-[11px] text-[var(--muted)]">{epDesc(t, e)}</span>
+                  </span>
+                  {/* The scope sits ON the row rather than in a note below the picker: it is
+                      a property of the endpoint, and reading it after choosing is reading it
+                      too late. */}
+                  <span className="text-[10px] text-[var(--faint)] font-mono shrink-0 mt-0.5">
+                    {e.scope || t('dev.console.public', 'public')}
+                  </span>
+                </button>
+              ));
+            })()}
+          </div>
         </Field>
         <div className="text-[11px] text-[var(--faint)]">
+          <MethodChip m={ep.m} /> <span className="font-mono">{ep.p}</span>
+          {' — '}
           {ep.scope
             ? t('dev.console.needs', 'Needs the {s} scope.').replace('{s}', ep.scope)
             : t('dev.console.noauth', 'Public — no key required.')}
