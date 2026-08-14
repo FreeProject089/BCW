@@ -6,6 +6,7 @@
 // (DATABASE_URL); skips cleanly without one, like the other integration tests.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { track, cleanupFixtures } from './helpers/fixtures.mjs';
 
 const RUN = !!process.env.DATABASE_URL;
 const skip = RUN ? false : 'set DATABASE_URL to a throwaway Postgres (see CI) to run webhook tests';
@@ -30,7 +31,7 @@ before(async () => {
   const Stripe = (await import('stripe')).default;
   stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 });
-after(async () => { if (RUN) { await app?.close(); await p?.$disconnect?.(); } });
+after(async () => { if (RUN) { await cleanupFixtures(p); await app?.close(); await p?.$disconnect?.(); } });
 
 // POST a signed event and return the Fastify response.
 async function post(event) {
@@ -42,7 +43,7 @@ async function post(event) {
 
 async function scaffold({ poolBytes = 0n } = {}) {
   const uid = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const user = await p.user.create({ data: { email: `wh-${uid}@test.local`, displayName: 'W' } });
+  const user = track('user', await p.user.create({ data: { email: `wh-${uid}@test.local`, displayName: 'W' } }));
   const plan = await p.hostingPlan.create({ data: { name: 'W', storageGB: 5, uploadLimitKbps: 1000, priceMonthlyCents: 500 } });
   const group = await p.hostingGroup.create({ data: { ownerId: user.id, name: 'pool', poolBytes } });
   return { uid, user, plan, group };

@@ -6,6 +6,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { metaForPath, renderOgHtml } from '../src/routes/og.mjs';
+import { track, cleanupFixtures } from './helpers/fixtures.mjs';
 
 const FALLBACK_TITLE = 'BetterCommunity — The home for all Better* projects';
 
@@ -31,10 +32,10 @@ const RUN = !!process.env.DATABASE_URL;
 const skip = RUN ? false : 'set DATABASE_URL to a throwaway Postgres (see CI) to run OG dynamic-page tests';
 let p;
 before(async () => { if (RUN) p = await (await import('../src/lib/lib.mjs')).db(); });
-after(async () => { if (RUN) await p?.$disconnect?.(); });
+after(async () => { if (RUN) { await cleanupFixtures(p); await p?.$disconnect?.(); } });
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const mkUser = (pub) => p.user.create({ data: { email: `og-${uid()}@test.local`, displayName: `OG User ${uid()}`, profilePublic: pub } });
+const mkUser = async (pub) => track('user', await p.user.create({ data: { email: `og-${uid()}@test.local`, displayName: `OG User ${uid()}`, profilePublic: pub } }));
 
 test('public profile unfurls with the display name; private one falls back (no leak)', { skip }, async () => {
   const pub = await mkUser(true);

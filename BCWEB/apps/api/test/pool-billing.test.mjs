@@ -5,6 +5,7 @@
 // pricing tests on a machine with no DB). CI provisions a Postgres service for them.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { track, cleanupFixtures } from './helpers/fixtures.mjs';
 
 const RUN = !!process.env.DATABASE_URL;
 const skip = RUN ? false : 'set DATABASE_URL to a throwaway Postgres (see CI) to run pool-billing tests';
@@ -18,13 +19,13 @@ before(async () => {
   p = await lib.db();
   ({ recomputePoolBytes } = await import('../src/routes/hosting.mjs'));
 });
-after(async () => { if (RUN) await p?.$disconnect?.(); });
+after(async () => { if (RUN) { await cleanupFixtures(p); await p?.$disconnect?.(); } });
 
 // Fresh owner + plan + pool per test (unique email/slug so tests don't collide).
 async function scaffold({ poolBytes = 0n } = {}) {
   const uid = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const user = await p.user.create({ data: { email: `t-${uid}@test.local`, displayName: 'Test' } });
-  const plan = await p.hostingPlan.create({ data: { name: 'Test', storageGB: 5, uploadLimitKbps: 1000, priceMonthlyCents: 500 } });
+  const user = track('user', await p.user.create({ data: { email: `t-${uid}@test.local`, displayName: 'Test' } }));
+  const plan = track('hostingPlan', await p.hostingPlan.create({ data: { name: 'Test', storageGB: 5, uploadLimitKbps: 1000, priceMonthlyCents: 500 } }));
   const group = await p.hostingGroup.create({ data: { ownerId: user.id, name: 'pool', poolBytes } });
   return { uid, user, plan, group };
 }
