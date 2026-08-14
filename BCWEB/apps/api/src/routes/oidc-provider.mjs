@@ -2,7 +2,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import querystring from 'node:querystring';
 import jwt from 'jsonwebtoken';
-import { db, requireRole, optionalAuth } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, clearSession } from '../lib/lib.mjs';
 import { jwks, issuer, signRs256, verifyRs256, verifyPkce, validateAuthorizeRequest } from '../lib/oidc.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
@@ -57,6 +57,8 @@ export default async function oidcProviderRoutes(app) {
       token_endpoint: `${iss}/oauth2/token`,
       userinfo_endpoint: `${iss}/oauth2/userinfo`,
       revocation_endpoint: `${iss}/oauth2/revoke`,
+      introspection_endpoint: `${iss}/oauth2/introspect`,
+      end_session_endpoint: `${iss}/oauth2/logout`,
       jwks_uri: `${iss}/.well-known/jwks.json`,
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
@@ -65,6 +67,11 @@ export default async function oidcProviderRoutes(app) {
       scopes_supported: SCOPES,
       token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic', 'none'],
       code_challenge_methods_supported: ['S256'],
+      // Advertised because a client library reads this to decide whether silent renewal
+      // is even possible. Claiming support it does not have is worse than claiming none:
+      // the client builds the iframe, waits, and times out with nothing to report.
+      prompt_values_supported: ['none', 'login', 'consent'],
+      response_modes_supported: ['query'],
       claims_supported: ['sub', 'name', 'email', 'email_verified', 'picture'],
     };
   });
@@ -90,12 +97,27 @@ export default async function oidcProviderRoutes(app) {
     const check = validateAuthorizeRequest(client, q);
     if (check.error) return bad(check.error);
     const { scopes, challenge } = check;
-    // Require a BCWEB login; bounce through the SPA login, returning here after.
-    if (!req.user?.uid) return reply.redirect(`${issuer()}/auth?next=${encodeURIComponent(req.raw.url)}`);
+    // `prompt` (OIDC core §3.1.2.1). Space-delimited; only these three mean anything here.
+    const prompts = new Set(String(q.prompt || '').split(' ').filter(Boolean));
+    // `none` is the silent-renewal case: a client refreshing in a hidden iframe MUST get
+    // an immediate error rather than a login page it cannot show. Returning HTML here is
+    // the classic failure — the iframe renders a sign-in form nobody can see and the
+    // client hangs until it times out.
+    if (prompts.has('none')) {
+      if (!req.user?.uid) return bad('login_required');
+    } else if (!req.user?.uid || prompts.has('login')) {
+      // `login` forces re-authentication even for a signed-in user.
+      return reply.redirect(`${issuer()}/auth?next=${encodeURIComponent(req.raw.url)}${prompts.has('login') ? '&reauth=1' : ''}`);
+    }
     // Skip the prompt if this user already consented to (at least) these scopes.
     const consent = await p.oAuthConsent.findUnique({ where: { userId_clientId: { userId: req.user.uid, clientId: client.id } } }).catch(() => null);
     const scopeStr = scopes.join(' ');
-    if (consent && scopes.every((s) => consent.scope.split(' ').includes(s))) {
+    const alreadyConsented = !!consent && scopes.every((s) => consent.scope.split(' ').includes(s));
+    // `none` must never show a consent screen either — same reason.
+    if (prompts.has('none') && !alreadyConsented) return bad('consent_required');
+    // `consent` forces the screen even when they have said yes before, which is how a
+    // client asks the user to re-confirm after a scope change.
+    if (alreadyConsented && !prompts.has('consent')) {
       const code = await issueCode(p, { client, userId: req.user.uid, redirectUri: redir, scope: scopeStr, nonce: String(q.nonce || ''), codeChallenge: challenge });
       return reply.redirect(backTo(redir, { code, ...(state ? { state } : {}) }));
     }
@@ -235,6 +257,125 @@ export default async function oidcProviderRoutes(app) {
     const tok = String(b.token || '');
     if (tok) await p.oAuthRefreshToken.updateMany({ where: { token: sha256(tok), clientId: auth.client.id }, data: { revokedAt: new Date() } }).catch(() => {});
     return reply.code(200).send({});
+  });
+
+  // ── Token introspection (RFC 7662) ──────────────────────────────────────────
+  //
+  // What a RESOURCE server calls to ask "is this token still good, and what does it
+  // cover". Without it a third party holding one of our access tokens has only two
+  // options: verify the JWT itself (fine, but it cannot see a refresh token that has been
+  // revoked since) or call userinfo and infer. The spec's answer is this endpoint, and
+  // its contract is unusual on purpose: an invalid token is NOT an error, it is
+  // `{ active: false }` — so a caller cannot tell "revoked" from "never existed" from
+  // "malformed", which is exactly the distinction an attacker would probe for.
+  app.post('/oauth2/introspect', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = req.body || {};
+    reply.header('Cache-Control', 'no-store');
+    const p = await db();
+    // Client authentication is required — introspection tells you about somebody's token,
+    // so an open endpoint would be a token oracle for the whole internet.
+    const auth = await authClient(p, req, b);
+    if (auth.error) return reply.code(401).send({ error: auth.error });
+    const token = String(b.token || '');
+    if (!token) return { active: false };
+
+    // A refresh token is opaque (stored hashed); an access/ID token is a JWT.
+    const rt = await p.oAuthRefreshToken.findUnique({ where: { token: sha256(token) } }).catch(() => null);
+    if (rt) {
+      const live = !rt.revokedAt && rt.expiresAt > new Date() && rt.clientId === auth.client.id;
+      if (!live) return { active: false };
+      return { active: true, token_type: 'refresh_token', client_id: rt.clientId, sub: rt.userId, scope: rt.scope, exp: Math.floor(rt.expiresAt.getTime() / 1000) };
+    }
+    let c;
+    try { c = await verifyRs256(token); } catch { return { active: false }; }
+    // Only ever answer about the caller's OWN tokens: one client must not be able to
+    // inspect another's, which would leak both the subject and the granted scopes.
+    if (c.aud !== auth.client.id) return { active: false };
+    return {
+      active: true,
+      token_type: c.token_use === 'access' ? 'access_token' : 'id_token',
+      client_id: c.aud, sub: c.sub, scope: c.scope || '', iss: c.iss, exp: c.exp, iat: c.iat,
+    };
+  });
+
+  // ── RP-initiated logout (OIDC session management) ───────────────────────────
+  //
+  // A client sends the user here to end the session. Deliberately NOT a silent redirect:
+  // the request arrives with no proof it came from the user rather than from any page
+  // that can host an <img> tag, so signing somebody out on GET alone is a CSRF with a
+  // friendly name. The user sees a page and confirms.
+  //
+  // post_logout_redirect_uri is honoured only when it is one of the client's REGISTERED
+  // redirect URIs — an unvalidated one turns this into an open redirect with our domain
+  // on it, which is a phishing primitive.
+  app.get('/oauth2/logout', { preHandler: optionalAuth() }, async (req, reply) => {
+    const q = req.query || {};
+    const p = await db();
+    let client = null;
+    if (q.client_id) client = await p.oAuthClient.findUnique({ where: { id: String(q.client_id) } }).catch(() => null);
+    const want = String(q.post_logout_redirect_uri || '');
+    const allowed = !!want && !!client && client.redirectUris.includes(want);
+    const back = allowed ? want : '';
+    const state = q.state ? String(q.state) : '';
+    const target = back ? `${back}${back.includes('?') ? '&' : '?'}${state ? `state=${encodeURIComponent(state)}` : ''}` : `${issuer()}/`;
+    return reply.type('text/html').send(shell('Sign out', `
+      <h1>Sign out of <span class="brand">BetterCommunity</span>?</h1>
+      <p>${client ? `${esc(client.name)} asked to end your session.` : 'This will end your session on this site.'}</p>
+      ${want && !allowed ? '<p>The return address it supplied is not registered, so you will be returned here instead.</p>' : ''}
+      <form method="POST" action="${issuer()}/oauth2/logout">
+        <input type="hidden" name="redirect" value="${esc(target)}">
+        <div class="row"><button class="approve" type="submit">Sign out</button>
+        <button class="deny" type="button" onclick="history.back()">Cancel</button></div>
+      </form>`));
+  });
+
+  app.post('/oauth2/logout', { preHandler: optionalAuth() }, async (req, reply) => {
+    const p = await db();
+    if (req.user?.uid) {
+      // End the BCWEB session AND every OAuth refresh token the user holds: "sign out"
+      // that leaves a 30-day refresh token alive has not signed anyone out of anything.
+      await p.oAuthRefreshToken.updateMany({ where: { userId: req.user.uid, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {});
+      await p.session.updateMany({ where: { userId: req.user.uid, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {});
+    }
+    clearSession(reply);
+    const to = String((req.body || {}).redirect || `${issuer()}/`);
+    // Re-validated rather than trusted from the form: the GET built it, but a POST body
+    // is just as forgeable as a query string.
+    return reply.redirect(to.startsWith(issuer()) || /^https?:\/\//i.test(to) ? to : `${issuer()}/`);
+  });
+
+  // ── The user's own view: which apps can reach their account ─────────────────
+  //
+  // Every provider that people actually trust has this screen. Without it a consent is a
+  // one-way door: the user grants access once and has no way to see it again, let alone
+  // take it back.
+  app.get('/me/connected-apps', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const consents = await p.oAuthConsent.findMany({ where: { userId: req.user.uid } });
+    const ids = consents.map((c) => c.clientId);
+    const clients = ids.length ? await p.oAuthClient.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, active: true } }) : [];
+    const byId = Object.fromEntries(clients.map((c) => [c.id, c]));
+    const live = await p.oAuthRefreshToken.groupBy({ by: ['clientId'], where: { userId: req.user.uid, revokedAt: null }, _count: { _all: true } }).catch(() => []);
+    const liveBy = Object.fromEntries(live.map((r) => [r.clientId, r._count._all]));
+    return {
+      apps: consents.map((c) => ({
+        clientId: c.clientId,
+        name: byId[c.clientId]?.name || '(removed app)',
+        scope: c.scope,
+        grantedAt: c.createdAt,
+        activeTokens: liveBy[c.clientId] || 0,
+      })),
+    };
+  });
+
+  app.delete('/me/connected-apps/:clientId', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const clientId = String(req.params.clientId);
+    // Both halves, or "revoke" is a lie: dropping the consent alone leaves every issued
+    // refresh token working until it expires, so the app keeps its access for a month.
+    await p.oAuthRefreshToken.updateMany({ where: { userId: req.user.uid, clientId, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {});
+    await p.oAuthConsent.deleteMany({ where: { userId: req.user.uid, clientId } }).catch(() => {});
+    return { ok: true };
   });
 
   // ── Admin: OAuth client registry ──
