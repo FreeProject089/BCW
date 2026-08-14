@@ -76,6 +76,15 @@ function emitManagedFeed(catalog, items, kind, priv) {
       id: it.slug, name: it.name, description: it.description || '', author: catalog.owner?.displayName || '', version: it.version, url: dl(it), tags: it.tags || [],
     })).filter((x) => x.url) };
   }
+  if (kind === 'PRESET') {
+    // Same shape as the platform feed — one document type, whoever publishes it.
+    return { version: '1.0', name: title, presets: rows.map((it) => ({
+      id: it.slug, name: it.name, description: it.description || '',
+      author: catalog.owner?.displayName || '', version: it.version,
+      download_url: dl(it), tags: it.tags || [],
+      tasks: Number.isFinite(it.meta?.tasks) ? it.meta.tasks : undefined,
+    })).filter((x) => x.download_url) };
+  }
   return { version: '1.0', name: title, description: catalog.description || '', apps: rows.map((it) => ({
     id: it.slug, title: it.name, description: it.description || '', md_link: it.meta?.md_link || null,
     category: it.meta?.category || 'other', price: it.meta?.price || 'free', tags: it.tags || [], version: it.version, requirements: it.meta?.requirements || null,
@@ -88,7 +97,7 @@ function emitManagedFeed(catalog, items, kind, priv) {
 // validated on save), narrowed to the requested kind's top-level array when possible.
 function emitRawFeed(catalog, kind) {
   const raw = catalog.rawJson || {};
-  const key = kind === 'PLUGIN' ? 'plugins' : kind === 'THEME' ? 'themes' : 'apps';
+  const key = kind === 'PLUGIN' ? 'plugins' : kind === 'THEME' ? 'themes' : kind === 'PRESET' ? 'presets' : 'apps';
   return { version: raw.version || '1.0', name: raw.name || catalog.name, [key]: Array.isArray(raw[key]) ? raw[key] : [] };
 }
 
@@ -99,6 +108,7 @@ const rawFeedSchema = z.object({
   plugins: z.array(z.record(z.any())).max(2000).optional(),
   themes: z.array(z.record(z.any())).max(2000).optional(),
   apps: z.array(z.record(z.any())).max(2000).optional(),
+  presets: z.array(z.record(z.any())).max(2000).optional(),
 }).passthrough();
 
 // Access config the owner can set: whitelist (ips/keys/accounts) + a bans sub-object.
@@ -112,7 +122,7 @@ const accessSchema = accessList.extend({ bans: accessList.optional() });
 // lives in its rawJson feed, and the item-create route refuses anything that isn't `managed`
 // — so its `items` relation is structurally empty. Counting it reported "0 items" for a raw
 // catalog holding fifty plugins, on the public browse page and its own dashboard alike.
-const RAW_FEED_ARRAYS = ['plugins', 'themes', 'apps'];
+const RAW_FEED_ARRAYS = ['plugins', 'themes', 'apps', 'presets'];
 const rawFeedCount = (j) => (j && typeof j === 'object' && !Array.isArray(j)
   ? RAW_FEED_ARRAYS.reduce((n, k) => n + (Array.isArray(j[k]) ? j[k].length : 0), 0)
   : 0);
@@ -283,7 +293,7 @@ export default async function communityCatalogRoutes(app) {
 
       const official = (scope === 'community') ? [] : projects.flatMap((pr) => {
         const key = String(pr.key).toLowerCase();
-        return ['APP', 'PLUGIN', 'THEME'].filter((k) => populated.has(`${pr.id}:${k}`)).map((k) => ({
+        return ['APP', 'PLUGIN', 'THEME', 'PRESET'].filter((k) => populated.has(`${pr.id}:${k}`)).map((k) => ({
           type: k.toLowerCase(),
           app: key,
           official: true,

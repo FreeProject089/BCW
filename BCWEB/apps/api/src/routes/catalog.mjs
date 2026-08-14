@@ -311,6 +311,23 @@ export default async function catalogRoutes(app) {
           id: it.slug, name: it.name, description: it.description || '', author: it.owner?.displayName || '', version: it.version, url: dlUrl(it), tags: it.tags || [],
         })).filter((x) => x.url) };
       }
+      // Scheduled-task presets. A preset IS a .bmmpa — the file BMM already exports and
+      // imports — so the feed points at one rather than describing its contents: a client
+      // that had to reconstruct tasks from JSON here would be a second parser to keep in
+      // step with the first, and the first one already exists.
+      //
+      // Without this branch PRESET fell through to the `apps` case below and emitted an
+      // app catalog, which a client would read as zero presets and one broken feed.
+      if (kind === 'PRESET') {
+        return { version: '1.0', name: title, presets: items.map((it) => ({
+          id: it.slug, name: it.name, description: it.description || '',
+          author: it.owner?.displayName || '', version: it.version,
+          download_url: dlUrl(it) || '', tags: it.tags || [],
+          // How many automations are inside, when the publisher said. Shown so somebody can
+          // tell a single task from a bundle of twenty before downloading either.
+          tasks: Number.isFinite(it.meta?.tasks) ? it.meta.tasks : undefined,
+        })).filter((x) => x.download_url) };
+      }
       // Every public community catalog on the platform, as URLs BMM will follow.
       //
       // `community_imports` is BMM's own field (models/app_catalog.rs: AppCatalog), not
