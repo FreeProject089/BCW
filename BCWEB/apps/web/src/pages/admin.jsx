@@ -2223,34 +2223,78 @@ function SnapshotInspector({ id, onClose, onRestored }) {
 
   const d = data || {};
   return (
-    <Modal open onClose={onClose} title={t('snap.inspect', 'Inspect this backup')} icon={Archive} width="max-w-lg">
+    <Modal open onClose={onClose} title={t('snap.inspect', 'Inspect this backup')} icon={Archive} width="max-w-xl">
       {loading ? <Loading /> : (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={d.valid ? 'green' : 'red'}>{d.valid ? t('snap.valid', 'git accepts it') : t('snap.notvalid', 'will not open')}</Badge>
-            {/* Two separate checks, shown separately: git verifies the file is a coherent
-                bundle, the digest verifies it is OUR file. A valid bundle that is not the
-                one we wrote passes the first and fails the second. */}
-            <Badge tone={d.digestMatches ? 'green' : 'amber'}>{d.digestMatches ? t('snap.digestok', 'digest matches') : t('snap.digestbad', 'digest differs')}</Badge>
-            <Badge tone={d.signature?.present ? 'green' : ''}>{d.signature?.present ? t('snap.signed', 'signed') : t('snap.unsigned', 'unsigned')}</Badge>
-            <span className="text-[11px] text-[var(--faint)] ml-auto">{fmtBytes(d.meta?.bytes || 0)}</span>
+        <div className="space-y-4">
+          {/* One verdict, in a sentence, before the detail. The three checks were four badges
+              of jargon in a row — a reader had to know what a digest is, and to work out for
+              themselves whether the combination meant "safe to restore". */}
+          <div className={`rounded-xl border p-3 ${d.valid && d.digestMatches ? 'border-success/40 bg-success/5' : d.valid ? 'border-warning/40 bg-warning/5' : 'border-error/40 bg-error/5'}`}>
+            <div className="flex items-center gap-2 text-[14px] font-semibold">
+              {d.valid && d.digestMatches ? <CheckCircle2 size={16} className="text-success" />
+                : d.valid ? <AlertTriangle size={16} className="text-warning" />
+                  : <XCircle size={16} className="text-error" />}
+              {d.valid && d.digestMatches ? t('snap.v.ok', 'This backup is intact and is the file we wrote.')
+                : d.valid ? t('snap.v.warn', 'This backup opens, but it is not the file we wrote.')
+                  : t('snap.v.bad', 'This backup will not open.')}
+            </div>
+            <p className="text-[12px] text-[var(--muted)] mt-1">
+              {d.valid && d.digestMatches ? t('snap.v.ok.s', 'Both checks passed, so a rollback will use exactly what was captured.')
+                : d.valid ? t('snap.v.warn.s', 'Git reads it, but its fingerprint does not match the one recorded when it was made — it has been altered or replaced since. Do not roll back to it without knowing why.')
+                  : t('snap.v.bad.s', 'Git cannot read it as a bundle, so there is nothing to restore from. Keep an older backup instead.')}
+            </p>
           </div>
 
-          {d.verify && <pre className="text-[10px] font-mono whitespace-pre-wrap text-[var(--muted)] bg-[var(--surface-2)] rounded p-2 max-h-24 overflow-auto">{d.verify}</pre>}
-
-          <div>
-            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('snap.contents', 'What it contains')}</div>
-            <div className="max-h-48 overflow-y-auto divide-y divide-[var(--line)] rounded border border-[var(--line)]">
-              {(d.commits || []).map((c) => (
-                <div key={c.hash} className="px-2 py-1 flex items-baseline gap-2 text-[11px]">
-                  <code className="font-mono text-[var(--faint)]">{c.hash.slice(0, 8)}</code>
-                  <span className="truncate flex-1">{c.message}</span>
-                  <span className="text-[10px] text-[var(--faint)]">{new Date(c.at).toLocaleDateString()}</span>
+          {/* The two checks, each said in a full sentence rather than a word. They answer
+              different questions and a reader who conflates them draws the wrong conclusion. */}
+          <div className="grid sm:grid-cols-2 gap-2">
+            {[
+              [d.valid, t('snap.c.readable', 'Git can read it'), t('snap.c.readable.s', 'The file is a coherent bundle.')],
+              [d.digestMatches, t('snap.c.ours', 'It is our file'), t('snap.c.ours.s', 'Its fingerprint matches what we recorded when it was written.')],
+              [d.signature?.present, t('snap.c.signed', 'Signed'), t('snap.c.signed.s', 'Carries a signature that can be checked independently.')],
+            ].map(([ok, label, desc]) => (
+              <div key={label} className="flex items-start gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 px-2.5 py-2">
+                {ok ? <CheckCircle2 size={14} className="text-success shrink-0 mt-0.5" /> : <XCircle size={14} className="text-[var(--faint)] shrink-0 mt-0.5" />}
+                <div className="min-w-0">
+                  <div className="text-[12px] font-medium">{label}</div>
+                  <div className="text-[11px] text-[var(--muted)]">{desc}</div>
                 </div>
-              ))}
-              {!(d.commits || []).length && <div className="px-2 py-2 text-[11px] text-[var(--faint)]">{t('snap.nocommits', 'Nothing readable in it.')}</div>}
+              </div>
+            ))}
+            <div className="flex items-start gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 px-2.5 py-2">
+              <Archive size={14} className="text-[var(--faint)] shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="text-[12px] font-medium">{fmtBytes(d.meta?.bytes || 0)}</div>
+                <div className="text-[11px] text-[var(--muted)]">{t('snap.c.size', 'On disk')}</div>
+              </div>
             </div>
           </div>
+
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">
+              {t('snap.contents', 'What it contains')}
+              {(d.commits || []).length > 0 && <span className="normal-case tracking-normal text-[var(--muted)]"> · {t('snap.ncommits', '{n} entries').replace('{n}', String(d.commits.length))}</span>}
+            </div>
+            <div className="max-h-56 overflow-y-auto divide-y divide-[var(--line)] rounded-lg border border-[var(--line)]">
+              {(d.commits || []).map((c) => (
+                <div key={c.hash} className="px-2.5 py-1.5 flex items-baseline gap-2 text-[12px]">
+                  <code className="font-mono text-[10px] text-[var(--faint)] shrink-0">{c.hash.slice(0, 8)}</code>
+                  <span className="truncate flex-1">{c.message}</span>
+                  <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(c.at).toLocaleDateString()}</span>
+                </div>
+              ))}
+              {!(d.commits || []).length && <div className="px-2.5 py-2 text-[12px] text-[var(--faint)]">{t('snap.nocommits', 'Nothing readable in it.')}</div>}
+            </div>
+          </div>
+
+          {/* The raw git output, folded away. It is what you want when a check failed and
+              noise the rest of the time. */}
+          {d.verify && (
+            <details className="rounded-lg border border-[var(--line)]">
+              <summary className="px-2.5 py-1.5 text-[11px] text-[var(--muted)] cursor-pointer select-none">{t('snap.raw', 'Raw output from git')}</summary>
+              <pre className="text-[10px] font-mono whitespace-pre-wrap text-[var(--muted)] bg-[var(--surface-2)] p-2 max-h-40 overflow-auto">{d.verify}</pre>
+            </details>
+          )}
 
           {d.valid && (
             <div className="rounded-lg border border-warning/40 bg-warning/5 p-3 space-y-2">
