@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { requireRole, requireCap } from '../lib/lib.mjs';
 import { inspectBmmpa } from '../lib/bmmpa.mjs';
+import { inspectAny } from '../lib/bmm-formats.mjs';
 import { safeFetch } from '../lib/net.mjs';
 
 // What a BMM-native catalog feed has to look like. Written here rather than imported from the
@@ -110,6 +111,28 @@ export default async function devtoolRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const report = inspectBmmpa(b.data.doc);
     if (!report.ok) return reply.code(400).send({ error: 'unreadable', detail: report.error });
+    return report;
+  });
+
+  // Inspect ANY BMM document — automations, mod lists, session replays, navbar configs.
+  //
+  // The queue had one button, for .bmmpa. Everything else a person can submit or attach
+  // arrived as a blob a moderator could only judge by its filename, which is a guess
+  // rather than a decision.
+  //
+  // Same shape as the .bmmpa route and for the same reasons: the parsed value in the
+  // body, never a URL — a tool for inspecting untrusted content must not become a way to
+  // make the server fetch untrusted content. Nothing is executed, fetched or written.
+  app.post('/admin/inspect', {
+    preHandler: requireCap('manage_catalogs', 'MOD'),
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    bodyLimit: 8 * 1024 * 1024,
+  }, async (req, reply) => {
+    const b = z.object({ doc: z.any() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const report = inspectAny(b.data.doc);
+    // 200 with ok:false, not a 4xx: "this is not a format I know" is an ANSWER about the
+    // file, and the body carries the keys it did find so the caller can say what it saw.
     return report;
   });
 

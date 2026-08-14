@@ -6509,7 +6509,7 @@ function BmmpaInspector() {
     try { doc = JSON.parse(text); }
     catch { return toast.error(t('bmi.badjson', 'That is not valid JSON — paste the whole .bmmpa file.')); }
     setBusy(true); setRep(null);
-    try { setRep(await api.post('/admin/bmmpa/inspect', { doc })); }
+    try { setRep(await api.post('/admin/inspect', { doc })); }
     catch (x) { toast.error(x?.data?.detail || t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
@@ -6517,18 +6517,18 @@ function BmmpaInspector() {
   if (!open) {
     return (
       <Button size="sm" className="mb-3" onClick={() => setOpen(true)}>
-        <FileJson size={14} /> {t('bmi.open', 'Inspect a .bmmpa')}
+        <FileJson size={14} /> {t('bmi.openAny', 'Inspect a BMM file')}
       </Button>
     );
   }
   return (
     <Card className="p-4 mb-4">
       <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="text-sm font-semibold flex items-center gap-2"><FileJson size={15} className="text-[var(--primary-2)]" /> {t('bmi.title', 'Inspect a .bmmpa')}</div>
+        <div className="text-sm font-semibold flex items-center gap-2"><FileJson size={15} className="text-[var(--primary-2)]" /> {t('bmi.titleAny', 'Inspect a BMM file')}</div>
         <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setRep(null); setText(''); }}>{t('common.close', 'Close')}</Button>
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-2">
-        {t('bmi.sub', 'Paste the file. It is read, never run — nothing is imported and nothing is fetched.')}
+        {t('bmi.subAny', 'Paste any BMM file — automation, mod list, session replay, navbar config. It is read, never run: nothing is imported and nothing is fetched.')}
       </p>
       <Textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder='{"magic":"BMMPA","version":1,"tasks":[…]}' />
       <div className="flex gap-2 mt-2">
@@ -6537,30 +6537,73 @@ function BmmpaInspector() {
 
       {rep && (
         <div className="mt-3">
+          {/* Not a format we know. The keys it DID see are in the message, because the next
+              question is always "then what is this", and a refusal that does not say makes
+              somebody open the file in a text editor to answer it. */}
+          {rep.ok === false && (
+            <div className="text-[12px] rounded-lg border border-[var(--warning)] text-[var(--warning)] p-2.5 mb-2">
+              <div className="break-all">{rep.error}</div>
+              {rep.hint && <div className="text-[var(--muted)] mt-1">{rep.hint}</div>}
+            </div>
+          )}
+
+          {/* Everything that is not an automation: mod lists, replays, navbar configs. One
+              renderer, because every reader returns the same summary shape — a per-format
+              panel would be four screens to keep consistent instead of one. */}
+          {rep.ok && rep.format && rep.format !== 'bmmpa' && (
+            <div className="rounded-lg border border-[var(--line)] p-2.5 mb-2">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <b className="text-[13px]">{rep.title}</b>
+                <span className="text-[11px] text-[var(--primary-2)]">{rep.format}</span>
+              </div>
+              <div className="mt-1.5 flex flex-col gap-0.5">
+                {(rep.summary || []).map((r, i) => (
+                  <div key={i} className={`text-[12px] break-all ${r.tone === 'warn' ? 'text-[var(--warning)]' : ''}`}>
+                    <span className="text-[var(--faint)] mr-1.5">{r.label}</span>{r.value}
+                  </div>
+                ))}
+              </div>
+              {(rep.detail || []).length > 0 && (
+                <details className="mt-2">
+                  <summary className="text-[12px] cursor-pointer text-[var(--primary-2)]">{t('bmi.entries', 'Entries')} ({rep.detail.length})</summary>
+                  <div className="mt-1.5 flex flex-col gap-0.5 max-h-64 overflow-auto">
+                    {rep.detail.map((d, i) => (
+                      <div key={i} className="text-[11px] break-all">
+                        <span className="mr-1.5">{d.name}</span>
+                        <span className="text-[var(--muted)]">{d.note}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
+
           {/* The verdict first. The question is "can I approve this", and an answer under a
               step list is an answer nobody reads. */}
-          <div className={`text-[12px] rounded-lg border p-2.5 mb-2 ${rep.needsReview ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
-            {rep.needsReview
+          {rep.format === 'bmmpa' && (<>
+          <div className={`text-[12px] rounded-lg border p-2.5 mb-2 ${rep.bmmpa.needsReview ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+            {rep.bmmpa.needsReview
               ? t('bmi.review', 'This file grants itself permissions or reaches outside BMM. Read it before approving.')
               : t('bmi.clean', 'Nothing here asks for a permission or touches anything outside BMM.')}
           </div>
           {/* What else is in the file, and what it names but does not carry. Both belong
               above the tasks: "12 automations" means something different when three of
               them call a fourth that is not here. */}
-          {(rep.includes?.launchpacks > 0 || rep.includes?.modpacks > 0) && (
+          {(rep.bmmpa.includes?.launchpacks > 0 || rep.bmmpa.includes?.modpacks > 0) && (
             <div className="text-[11px] text-[var(--muted)] mb-2">
               {t('bmi.alsoCarries', 'Also in this file:')}{' '}
-              {[rep.includes.launchpacks && `${rep.includes.launchpacks} ${t('bmi.launchpacks', 'launch pack(s)')}`,
-                rep.includes.modpacks && `${rep.includes.modpacks} ${t('bmi.modpacks', 'modpack(s)')}`].filter(Boolean).join(' · ')}
+              {[rep.bmmpa.includes.launchpacks && `${rep.bmmpa.includes.launchpacks} ${t('bmi.launchpacks', 'launch pack(s)')}`,
+                rep.bmmpa.includes.modpacks && `${rep.bmmpa.includes.modpacks} ${t('bmi.modpacks', 'modpack(s)')}`].filter(Boolean).join(' · ')}
             </div>
           )}
-          {rep.unresolved?.length > 0 && (
+          {rep.bmmpa.unresolved?.length > 0 && (
             <div className="text-[12px] text-[var(--warning)] rounded-lg border border-[var(--warning)] p-2 mb-2 break-all">
-              {t('bmi.unresolved', 'Names {n} thing(s) it does not include — these import cleanly and fail on the user\'s machine:').replace('{n}', String(rep.unresolved.length))}{' '}
-              {rep.unresolved.slice(0, 8).map((u) => `${u.kind}:${u.id}`).join('  ·  ')}
+              {t('bmi.unresolved', 'Names {n} thing(s) it does not include — these import cleanly and fail on the user\'s machine:').replace('{n}', String(rep.bmmpa.unresolved.length))}{' '}
+              {rep.bmmpa.unresolved.slice(0, 8).map((u) => `${u.kind}:${u.id}`).join('  ·  ')}
             </div>
           )}
-          {rep.tasks.map((tk, i) => (
+          {rep.bmmpa.tasks.map((tk, i) => (
             <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 mb-2">
               <div className="flex items-baseline gap-2 flex-wrap">
                 <b className="text-[13px]">{tk.name}</b>
@@ -6588,6 +6631,7 @@ function BmmpaInspector() {
               )}
             </div>
           ))}
+          </>)}
         </div>
       )}
     </Card>
