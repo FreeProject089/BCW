@@ -826,6 +826,204 @@ BMM déduit *qui appelle* du token lui-même, jamais d'un en-tête qu'un appelan
 
 Teste n'importe quel endpoint depuis **Plugins → API** dans l'app. Ce testeur utilise le token admin : il voit donc tout — mauvais endroit pour vérifier les *permissions* d'un plugin ; pour ça, sers-toi du token du plugin.`,
   },
+
+  // ── Filling out the thin categories ───────────────────────────────────────────
+  // Hosting, Authoring and Developers each had exactly one page, which reads as a
+  // section somebody abandoned. Each of these was written from the code, not from
+  // memory: the sandbox rules from lib/lib.mjs (apiAuth), the pool lifecycle from
+  // lib/sweeper.mjs, the post fields from schema.prisma.
+  {
+    slug: 'sandbox', category: 'Developers', title: 'Trying the API safely', icon: 'flask-conical', order: 701,
+    body: `::toc[On this page]
+
+# Trying the API without breaking anything
+
+Every write in the public API can be run as a **rehearsal**: authenticated for real,
+scope-checked for real, and then nothing is written. It exists so that learning the API
+never costs you your own data.
+
+## The console
+
+**/dev → Try a call.** Pick an endpoint, paste a key, send it. You get the real status code
+and the real body — refusals included, which are the half worth reading.
+
+The sandbox switch is **on by default for writes** and cannot be turned on for reads (see
+below). Your key stays in the browser; it is sent to the API and nowhere else.
+
+## Doing it yourself
+
+Add one header:
+
+\`\`\`
+X-BCW-Sandbox: 1
+\`\`\`
+
+A simulated call answers \`200\` with a body that says what it would have done:
+
+\`\`\`json
+{
+  "sandbox": true,
+  "method": "PATCH",
+  "path": "/v1/account",
+  "scope": "account:write",
+  "note": "Sandbox: authentication and scope were checked, and nothing was written."
+}
+\`\`\`
+
+## What is still real
+
+Everything except the write:
+
+| Checked | Still happens in the sandbox |
+|---|---|
+| Is the key real, unrevoked, unexpired? | Yes — a bad key gets \`401 invalid_key\` |
+| Does it carry the scope? | Yes — \`403 insufficient_scope\`, naming what it lacks |
+| Is the account suspended or banned? | Yes — \`403\`, with \`status\` |
+| Rate limits | Yes |
+| Recorded for the owner's usage view | Yes, as a sandbox call |
+
+:::tip[Why the checks stay]
+A console that skipped them would teach you an API that does not exist — you would write
+your integration against a permissive fiction and meet the real rules in production.
+:::
+
+## What it will not do
+
+- **A \`GET\` is never simulated.** A read changes nothing by definition, so there is nothing
+  to rehearse, and answering you with invented data would make the console worse than
+  useless for the one thing it is for. The header is ignored on reads.
+- **It does not count as usage.** Sandbox calls are tallied apart from real traffic, so
+  exploring never inflates the figures on your keys.
+
+## Reading a refusal
+
+| Body | What went wrong |
+|---|---|
+| \`{"error":"unauthenticated"}\` | No \`Authorization: Bearer <key>\` header |
+| \`{"error":"invalid_key"}\` | Unknown, revoked or expired — one answer for all three, on purpose |
+| \`{"error":"insufficient_scope","required":"…","granted":[…]}\` | The key is fine, the scope is missing |
+| \`{"error":"account_suspended"}\` | The account behind the key is under sanction |
+
+:::warning[A 403 is a result, not a failure]
+If the sandbox refuses you for a missing scope, that is the answer: your integration would
+have been refused too. Add the scope to the key rather than working around it.
+:::
+`,
+  },
+  {
+    slug: 'storage-pools', category: 'Hosting', title: 'Storage pools', icon: 'hard-drive', order: 401,
+    body: `::toc[On this page]
+
+# Storage pools
+
+Hosting is bought as a **pool of space**, not as a repo. You buy the space first and decide
+afterwards what goes in it: server repos, catalog items, or nothing yet.
+
+## Why a pool and not a repo
+
+Because a repo is a decision you should be able to change. A pool can hold several repos and
+several catalogs at once, they share its space, and moving content between them costs
+nothing. A purchase that came bolted to one repo forced you to buy again the day you wanted
+a second.
+
+:::tip[Nothing is reserved]
+A new pool starts empty. The whole of it is available to whatever you put in first.
+:::
+
+## What counts against the space
+
+Everything stored: the files in each repo, and the payload of each catalog item hosted in
+the pool. The figure on the pool page is recomputed from its contents, not accumulated —
+so deleting something gives the space back immediately, with no bookkeeping to wait for.
+
+## When a term ends
+
+A subscription has a term. Before it runs out you get **one warning** — one per term, not a
+daily reminder.
+
+If it ends without renewal:
+
+1. The subscription is marked expired and the pool shrinks by that subscription's share.
+2. Anything now over the remaining space is **suspended**: repos stop serving, catalog items
+   stop being listed.
+3. A **72-hour grace window** opens before anything is deleted.
+
+Renewing inside the window restores every repo and catalog in the pool and clears the
+warning — the content was suspended, never thrown away.
+
+:::warning[A pool with several subscriptions shrinks, it does not stop]
+If a pool is fed by more than one subscription and only one ends, the pool simply loses that
+subscription's share and keeps everything that still fits online. Only the content that no
+longer fits is suspended.
+:::
+
+## The free tier
+
+Every account can claim one free repo and one free catalog item. The claim is remembered per
+account, so unlinking and relinking does not hand out a second one.
+
+## Ownership
+
+A pool belongs to an account. Transferring a repo to somebody else moves it out of your pool
+and into theirs — the space follows the content, and both pools are recomputed.
+`,
+  },
+  {
+    slug: 'blog-posts', category: 'Authoring', title: 'Writing a blog post', icon: 'newspaper', order: 501,
+    body: `::toc[On this page]
+
+# Writing a blog post
+
+The blog editor takes the same blocks as the documentation — callouts, cards, keyboard keys,
+badges, a table of contents. If you have written a doc page you already know the syntax; see
+**Documentation blocks**. What follows is what a post has that a doc page does not.
+
+## The parts of a post
+
+| Field | What it is for |
+|---|---|
+| Title & excerpt | The excerpt is the card text in listings. Write it; a truncated first paragraph reads like a mistake. |
+| Cover | Shown on the card, and at the top of the article unless you switch that off — useful when your first block is already an image. |
+| Body | Markdown plus the block toolkit. |
+
+## Both languages
+
+Title, excerpt and body each have a French counterpart. A missing French body falls back to
+the English one silently — the reader sees no warning, so an untranslated post looks
+finished. Fill both, or accept that half your readers get the other language.
+
+## Co-authors
+
+A post has one author and any number of **co-authors**. They are credited on the article and
+can edit it. Add them before publishing: credit added afterwards is credit nobody saw.
+
+## Reactions
+
+Reactions are **off by default**. Switch them on and choose up to three emoji — one reaction
+per reader per post. Three is a deliberate limit: a wall of emoji measures nothing.
+
+## Publishing
+
+A post is a draft until it has a publication date. Publishing does two things beyond making
+it visible:
+
+- It can **announce the post to the newsletter**, once. A post that was already announced is
+  never announced again, so editing and re-publishing does not re-mail your subscribers.
+- It starts the **edit history**. Every subsequent save is kept, within the retention the
+  administrators set, and you can compare or restore any of them.
+
+:::warning[Announcing is one-way]
+There is no unsend. Check the excerpt and the French version before you publish, because
+that is the text that leaves.
+:::
+
+## Where a post appears
+
+A post can be attached to a project or to a showcase project, which decides where it is
+listed. Home-page news is a separate switch — being published does not put a post on the
+front page unless it is meant to be there.
+`,
+  },
 ];
 
 const run = async () => {

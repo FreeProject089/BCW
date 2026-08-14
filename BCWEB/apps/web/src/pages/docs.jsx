@@ -221,10 +221,10 @@ export default function Docs() {
               {/* Breadcrumb: Docs › Category › Subcategory › page title. */}
               <nav className="flex items-center gap-1.5 text-xs text-[var(--faint)] mb-3 flex-wrap">
                 <Link to="/docs" className="hover:text-[var(--primary-2)] transition">{t('docs.title', 'Docs')}</Link>
-                {(page.category || '').split('/').map((s) => s.trim()).filter(Boolean).map((c, i) => <span key={i} className="inline-flex items-center gap-1.5"><ChevronRight size={11} className="opacity-60" /> {c}</span>)}
+                {(catOf(page) || '').split('/').map((s) => s.trim()).filter(Boolean).map((c, i) => <span key={i} className="inline-flex items-center gap-1.5"><ChevronRight size={11} className="opacity-60" /> {c}</span>)}
                 <ChevronRight size={11} className="opacity-60" /> <span className="text-[var(--muted)] font-medium truncate max-w-[220px]">{titleOf(page)}</span>
               </nav>
-              <h1 className="text-2xl md:text-3xl font-extrabold mb-1">{page.title}</h1>
+              <h1 className="text-2xl md:text-3xl font-extrabold mb-1">{titleOf(page)}</h1>
               <div className="flex items-center flex-wrap gap-x-3 gap-y-1.5 text-xs text-[var(--faint)] mb-6">
                 <button onClick={() => setReaderHistory(true)} title={t('docs.history.hint', 'View edit history')} className="inline-flex items-center gap-1 hover:text-[var(--primary-2)] transition">{t('docs.updated')} {new Date(page.updatedAt).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US')} <History size={11} className="opacity-60" /></button>
                 {contributors.length > 0 && <span className="inline-flex items-center gap-1.5">·

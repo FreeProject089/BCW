@@ -584,4 +584,206 @@ Entoure un texte d'un \`<doc-comment data-comment="…">\` pour ajouter une note
     category: 'Référence',
     title: "Référence de l'API plugins",
   },
+  'sandbox': {
+    title: 'Essayer l’API sans rien casser',
+    category: 'Développeurs',
+    body: `::toc[Sur cette page]
+
+# Essayer l’API sans rien casser
+
+Toute écriture de l’API publique peut être lancée en **répétition** : authentifiée pour de
+vrai, scope vérifié pour de vrai, puis rien n’est écrit. Le but : apprendre l’API ne doit
+jamais te coûter tes propres données.
+
+## La console
+
+**/dev → Tester un appel.** Choisis un endpoint, colle une clé, envoie. Tu reçois le vrai
+code de statut et le vrai corps de réponse — refus compris, qui sont la moitié intéressante.
+
+Le bac à sable est **actif par défaut pour les écritures** et ne peut pas être activé pour
+les lectures (voir plus bas). Ta clé reste dans le navigateur ; elle part vers l’API et
+nulle part ailleurs.
+
+## À la main
+
+Un seul en-tête :
+
+\`\`\`
+X-BCW-Sandbox: 1
+\`\`\`
+
+Un appel simulé répond \`200\` avec un corps qui dit ce qu’il aurait fait :
+
+\`\`\`json
+{
+  "sandbox": true,
+  "method": "PATCH",
+  "path": "/v1/account",
+  "scope": "account:write",
+  "note": "Sandbox: authentication and scope were checked, and nothing was written."
+}
+\`\`\`
+
+## Ce qui reste réel
+
+Tout, sauf l’écriture :
+
+| Vérifié | Toujours actif en bac à sable |
+|---|---|
+| La clé est-elle réelle, non révoquée, non expirée ? | Oui — une mauvaise clé reçoit \`401 invalid_key\` |
+| Porte-t-elle le scope ? | Oui — \`403 insufficient_scope\`, en nommant ce qui manque |
+| Le compte est-il suspendu ou banni ? | Oui — \`403\`, avec \`status\` |
+| Limites de débit | Oui |
+| Enregistré dans la vue d’usage du propriétaire | Oui, en tant qu’appel bac à sable |
+
+:::tip[Pourquoi les contrôles restent]
+Une console qui les sauterait t’apprendrait une API qui n’existe pas : tu écrirais ton
+intégration contre une fiction permissive et découvrirais les vraies règles en production.
+:::
+
+## Ce qu’il ne fera pas
+
+- **Un \`GET\` n’est jamais simulé.** Une lecture ne change rien par définition : il n’y a
+  rien à répéter, et te répondre avec des données inventées rendrait la console pire
+  qu’inutile pour ce à quoi elle sert. L’en-tête est ignoré sur les lectures.
+- **Ça ne compte pas comme usage.** Les appels bac à sable sont comptés à part du trafic
+  réel : explorer ne gonfle jamais les chiffres de tes clés.
+
+## Lire un refus
+
+| Corps | Ce qui ne va pas |
+|---|---|
+| \`{"error":"unauthenticated"}\` | Pas d’en-tête \`Authorization: Bearer <clé>\` |
+| \`{"error":"invalid_key"}\` | Inconnue, révoquée ou expirée — une seule réponse pour les trois, volontairement |
+| \`{"error":"insufficient_scope","required":"…","granted":[…]}\` | La clé est bonne, le scope manque |
+| \`{"error":"account_suspended"}\` | Le compte derrière la clé est sous sanction |
+
+:::warning[Un 403 est un résultat, pas un échec]
+Si le bac à sable te refuse pour un scope manquant, c’est la réponse : ton intégration
+aurait été refusée aussi. Ajoute le scope à la clé plutôt que de le contourner.
+:::
+`,
+  },
+  'storage-pools': {
+    title: 'Pools de stockage',
+    category: 'Hébergement',
+    body: `::toc[Sur cette page]
+
+# Pools de stockage
+
+L’hébergement s’achète sous forme de **pool d’espace**, pas de dépôt. Tu achètes l’espace
+d’abord et tu décides ensuite de ce que tu y mets : des dépôts serveur, des éléments de
+catalogue, ou rien pour l’instant.
+
+## Pourquoi un pool et pas un dépôt
+
+Parce qu’un dépôt est une décision qu’on doit pouvoir changer. Un pool peut contenir
+plusieurs dépôts et plusieurs catalogues à la fois, ils se partagent son espace, et déplacer
+du contenu entre eux ne coûte rien. Un achat soudé à un seul dépôt t’obligeait à racheter le
+jour où tu en voulais un deuxième.
+
+:::tip[Rien n’est réservé]
+Un nouveau pool démarre vide. Sa totalité est disponible pour ce que tu y mets en premier.
+:::
+
+## Ce qui consomme l’espace
+
+Tout ce qui est stocké : les fichiers de chaque dépôt, et le contenu de chaque élément de
+catalogue hébergé dans le pool. Le chiffre affiché est **recalculé** à partir du contenu, pas
+accumulé — supprimer quelque chose rend donc l’espace immédiatement, sans comptabilité à
+attendre.
+
+## Quand un terme se termine
+
+Un abonnement a un terme. Avant qu’il n’arrive à échéance tu reçois **un avertissement** —
+un par terme, pas un rappel quotidien.
+
+S’il se termine sans renouvellement :
+
+1. L’abonnement passe en expiré et le pool rétrécit de la part de cet abonnement.
+2. Tout ce qui dépasse l’espace restant est **suspendu** : les dépôts cessent de servir, les
+   éléments de catalogue cessent d’être listés.
+3. Une fenêtre de grâce de **72 heures** s’ouvre avant toute suppression.
+
+Renouveler dans la fenêtre restaure tous les dépôts et catalogues du pool et efface
+l’avertissement — le contenu était suspendu, jamais jeté.
+
+:::warning[Un pool à plusieurs abonnements rétrécit, il ne s’arrête pas]
+Si un pool est alimenté par plusieurs abonnements et qu’un seul se termine, le pool perd
+simplement la part de cet abonnement et garde en ligne tout ce qui tient encore. Seul le
+contenu qui ne rentre plus est suspendu.
+:::
+
+## L’offre gratuite
+
+Chaque compte peut réclamer un dépôt gratuit et un élément de catalogue gratuit. La
+réclamation est mémorisée par compte : délier puis relier n’en redonne pas un deuxième.
+
+## Propriété
+
+Un pool appartient à un compte. Transférer un dépôt à quelqu’un d’autre le sort de ton pool
+pour le mettre dans le sien — l’espace suit le contenu, et les deux pools sont recalculés.
+`,
+  },
+  'blog-posts': {
+    title: 'Écrire un article de blog',
+    category: 'Rédaction',
+    body: `::toc[Sur cette page]
+
+# Écrire un article de blog
+
+L’éditeur de blog accepte les mêmes blocs que la documentation — encadrés, cartes, touches
+clavier, badges, sommaire. Si tu as écrit une page de doc, tu connais déjà la syntaxe : voir
+**Blocs de documentation**. Ce qui suit, c’est ce qu’un article a en plus.
+
+## Les morceaux d’un article
+
+| Champ | À quoi il sert |
+|---|---|
+| Titre & accroche | L’accroche est le texte de la carte dans les listes. Écris-la : un premier paragraphe tronqué se lit comme une erreur. |
+| Couverture | Affichée sur la carte, et en haut de l’article sauf si tu le désactives — utile quand ton premier bloc est déjà une image. |
+| Corps | Du Markdown, plus la boîte à outils de blocs. |
+
+## Les deux langues
+
+Titre, accroche et corps ont chacun leur version française. Un corps français manquant
+retombe silencieusement sur l’anglais — le lecteur ne voit aucun avertissement, donc un
+article non traduit a l’air terminé. Remplis les deux, ou accepte que la moitié de tes
+lecteurs reçoive l’autre langue.
+
+## Co-auteurs
+
+Un article a un auteur et autant de **co-auteurs** que nécessaire. Ils sont crédités sur
+l’article et peuvent le modifier. Ajoute-les avant publication : un crédit ajouté après coup
+est un crédit que personne n’a vu.
+
+## Réactions
+
+Les réactions sont **désactivées par défaut**. Active-les et choisis jusqu’à trois emoji —
+une réaction par lecteur et par article. Trois est une limite voulue : un mur d’emoji ne
+mesure rien.
+
+## Publier
+
+Un article est un brouillon tant qu’il n’a pas de date de publication. Publier fait deux
+choses au-delà de le rendre visible :
+
+- Cela peut **annoncer l’article à la newsletter**, une seule fois. Un article déjà annoncé
+  ne l’est jamais deux fois : modifier puis republier ne renvoie pas de mail à tes abonnés.
+- Cela démarre l’**historique des modifications**. Chaque enregistrement suivant est
+  conservé, dans la limite de rétention fixée par les administrateurs, et tu peux comparer
+  ou restaurer n’importe lequel.
+
+:::warning[Une annonce ne se rattrape pas]
+Il n’y a pas d’annulation d’envoi. Vérifie l’accroche et la version française avant de
+publier, parce que c’est ce texte-là qui part.
+:::
+
+## Où apparaît un article
+
+Un article peut être rattaché à un projet ou à un projet vitrine, ce qui décide de l’endroit
+où il est listé. Les actualités de la page d’accueil sont un réglage séparé : être publié ne
+met pas un article en une s’il n’a rien à y faire.
+`,
+  },
 };
