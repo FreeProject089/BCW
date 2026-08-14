@@ -1289,6 +1289,36 @@ model OAuthClient {
 // nothing persisted right up until the salt is rotated or the algorithm changed, at which
 // point every user of every pairwise client becomes a brand-new person with an empty
 // account and no way back. A row is boring and cannot drift.
+// Handing a repository or a catalog item to somebody else.
+//
+// A request, never an act: the recipient inherits storage they will be billed for, content
+// they become answerable for, and abuse reports that follow the object rather than the
+// person. Pushing that onto an account without asking is how you make somebody the owner
+// of a problem they have never seen.
+//
+// The row survives its own resolution — an accepted transfer is the record of who used to
+// own something, which is exactly the question asked after a takedown.
+model OwnershipTransfer {
+  id          String    @id @default(cuid())
+  kind        String    // 'repo' | 'catalog'
+  targetId    String    // ServerRepo.id or CatalogItem.id
+  targetName  String    // snapshot: the object may be renamed or gone by the time this is read
+  fromUserId  String
+  toUserId    String
+  // pending → accepted | declined | cancelled | expired
+  status      String    @default("pending")
+  message     String    @default("")
+  createdAt   DateTime  @default(now())
+  respondedAt DateTime?
+  // Requests do not hang around forever: an unanswered one becomes noise in both
+  // inboxes, and consent that old is not consent to today's object.
+  expiresAt   DateTime
+
+  @@index([toUserId, status])
+  @@index([fromUserId, status])
+  @@index([kind, targetId, status])
+}
+
 model OAuthPairwiseSub {
   sub       String   @id
   userId    String
