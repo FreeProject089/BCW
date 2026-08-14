@@ -752,7 +752,11 @@ export default async function serverControlRoutes(app) {
    *  a generic failure: "does not look like a v2/v3 bundle" tells the admin they uploaded
    *  the wrong file, which no wording of ours would.
    */
-  app.post('/server/backups/snapshots/import', { preHandler: DANGEROUS }, async (req, reply) => {
+  // bodyLimit, or the route's own size check is unreachable: Fastify's default is 1 MiB and
+  // it refuses the request before any handler runs — which is exactly what happened, a 413
+  // on every real backup while the code below politely allowed 256 MB. base64 inflates by
+  // 4/3, so the envelope has to be bigger than the file it carries.
+  app.post('/server/backups/snapshots/import', { preHandler: DANGEROUS, bodyLimit: 96 * 1024 * 1024 }, async (req, reply) => {
     const b = z.object({
       kind: z.enum(['files', 'db']),
       note: z.string().max(200).default(''),
@@ -765,7 +769,10 @@ export default async function serverControlRoutes(app) {
     let bytes;
     try { bytes = Buffer.from(b.data.data, 'base64'); } catch { return reply.code(400).send({ error: 'invalid_input' }); }
     if (!bytes.length) return reply.code(400).send({ error: 'invalid_input' });
-    if (bytes.length > 256 * 1024 * 1024) return reply.code(413).send({ error: 'too_large' });
+    // Kept BELOW the bodyLimit above so the two agree: a file that squeezes through the
+    // envelope must not then be refused here for a different reason with a different number.
+    const MAX_IMPORT = 64 * 1024 * 1024;
+    if (bytes.length > MAX_IMPORT) return reply.code(413).send({ error: 'too_large', maxBytes: MAX_IMPORT });
 
     const report = await inspectBundle(bytes);
     if (!report.valid) return reply.code(400).send({ error: 'invalid_bundle', detail: report.error || report.verify });
