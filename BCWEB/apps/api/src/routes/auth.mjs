@@ -256,7 +256,10 @@ export default async function authRoutes(app) {
     // Account moderation gate: a suspended/banned account can't sign in — it gets the
     // reason + remaining time (permanent → contact support). An expired temporary lock
     // auto-lifts here, so the user regains access without any admin action.
-    if (user.status && user.status !== 'active') {
+    // A BAN refuses the sign-in. A suspension does not: it freezes the services, and
+    // somebody who cannot sign in cannot read why they were suspended, appeal it, or get
+    // their invoices — which turns a service sanction into an account lockout by accident.
+    if (user.status === 'banned') {
       const until = user.moderationUntil ? new Date(user.moderationUntil) : null;
       if (!until || until.getTime() > Date.now()) {
         await logLogin(p, { email: user.email, ip, success: false, reason: `account_${user.status}`, userId: user.id });

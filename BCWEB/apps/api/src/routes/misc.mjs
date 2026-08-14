@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, clearAccountLockCache, clearUserCache, CAPABILITIES } from '../lib/lib.mjs';
+import { suspendOwned, restoreOwned, cancelSubscriptions } from './closure.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
@@ -937,8 +938,14 @@ export default async function miscRoutes(app) {
     if (req.user.role === 'MOD' && b.data.action === 'ban') return reply.code(403).send({ error: 'mod_cannot_ban' });
 
     if (b.data.action === 'reactivate') {
-      await p.user.update({ where: { id: target.id }, data: { status: 'active', moderationUntil: null, moderationReason: null, moderatedAt: new Date(), moderatedById: req.user.uid } });
+      // Put their content back where it was BEFORE we froze it — a repo that was OFFLINE
+      // returns to OFFLINE. Subscriptions are NOT resurrected: they were cancelled at
+      // Stripe, and re-creating a payment agreement on somebody's behalf is not ours to do.
+      const frozen = await p.user.findUnique({ where: { id: target.id }, select: { moderationSuspendState: true } });
+      const restored = await restoreOwned(p, target.id, frozen?.moderationSuspendState);
+      await p.user.update({ where: { id: target.id }, data: { status: 'active', moderationUntil: null, moderationReason: null, moderatedAt: new Date(), moderatedById: req.user.uid, moderationSuspendState: null } });
       clearAccountLockCache(target.id);
+      await notify(p, target.id, 'account', `Your account is active again. ${restored.repos + restored.catalogs + restored.items} item(s) were restored to the state they were in. Any subscription that was cancelled has to be taken out again.`).catch(() => {});
       await logAudit(p, req.user.uid, 'user.reactivate', `${target.displayName} (${target.email})`, clientIp(req));
       await notify(p, target.id, 'account', 'Your account has been reactivated — welcome back.').catch(() => {});
       if (emailEnabled()) sendMail({ to: target.email, subject: 'Your BetterCommunity account has been reactivated',
@@ -958,14 +965,28 @@ export default async function miscRoutes(app) {
     // cannot see failing. The token endpoint re-checks the account on every refresh as well;
     // this is the half that acts immediately instead of at the next renewal.
     await p.oAuthRefreshToken.updateMany({ where: { userId: target.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {});
+
+    // A sanction has to reach the SERVICE, not just the login. Both a suspension and a ban
+    // stop the account's content being served and end its subscriptions; the difference is
+    // that a suspension leaves the person able to sign in — to read why, to appeal, to get
+    // their invoices — while a ban does not.
+    //
+    // Content is suspended, never deleted: the sanction may be temporary or reversed, and a
+    // moderator undoing their own decision must find everything where it was. Subscriptions
+    // ARE cancelled outright, because billing somebody you have locked out is the one
+    // failure nobody forgives — and because a paused subscription that silently resumes
+    // months later is worse than asking them to subscribe again.
+    const frozenState = await suspendOwned(p, target.id);
+    await p.user.update({ where: { id: target.id }, data: { moderationSuspendState: frozenState } }).catch(() => {});
+    const cancelledSubs = await cancelSubscriptions(p, target.id, req.log);
     const label = status === 'banned' ? 'banned' : 'suspended';
     const dur = until ? `until ${until.toLocaleString('en-US', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' })} UTC` : 'permanently';
     await logAudit(p, req.user.uid, `user.${status}`, `${target.displayName} (${target.email}) ${until ? `until ${until.toISOString()}` : 'permanently'}${reason ? ` — ${reason}` : ''}`, clientIp(req));
-    await notify(p, target.id, 'account', `Your account has been ${label} ${dur}.${reason ? ` Reason: ${reason}` : ''}`).catch(() => {});
+    await notify(p, target.id, 'account', `Your account has been ${label} ${dur}.${reason ? ` Reason: ${reason}` : ''} Your repositories and catalogs are suspended and any subscription has been cancelled.${status === 'suspended' ? ' You can still sign in to read this and contact us.' : ''}`).catch(() => {});
     if (emailEnabled()) sendMail({ to: target.email, subject: `Your BetterCommunity account has been ${label}`,
       html: mailShell(`Account ${label}`, `<p>Hi ${escapeHtml(target.displayName)},</p><p>Your account has been <b>${label}</b> ${dur}.</p>${reason ? `<p style="margin-top:12px"><b>Reason:</b><br>${escapeHtml(reason)}</p>` : ''}${until ? '' : '<p style="margin-top:12px">If you believe this was a mistake, you can appeal by contacting support.</p>'}`, until ? null : { url: `${SITE_URL}/contact?ref=appeal`, label: 'Contact support' }),
       text: `Your BetterCommunity account has been ${label} ${dur}.${reason ? ` Reason: ${reason}` : ''}${until ? '' : ` Appeal: ${SITE_URL}/contact`}` }).catch(() => {});
-    return { ok: true, status, until: until ? until.toISOString() : null };
+    return { ok: true, status, until: until ? until.toISOString() : null, cancelledSubs, frozen: { repos: Object.keys(frozenState.repos || {}).length, catalogs: Object.keys(frozenState.catalogs || {}).length, items: Object.keys(frozenState.items || {}).length } };
   });
 
   // ── Admin: reset a user's 2FA (lost-authenticator recovery) ───────────────────

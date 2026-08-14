@@ -360,10 +360,25 @@ export async function canEditProject(user, projectKey) {
   const g = await projectGrants(user?.uid);
   return g.projectKeys.has(projectKey);
 }
-export async function accountLock(uid) {
+/** Is this account locked, and for what?
+ *
+ *  Two different questions hid behind one answer, and conflating them made a suspension
+ *  identical to a ban:
+ *
+ *  · `service`  — may this account's SERVICES run? No for both suspended and banned. This
+ *                 is API keys, OIDC grants, hosted content.
+ *  · `signin`   — may the person reach the website at all? No only for a ban. A suspension
+ *                 has to leave the door open: somebody who cannot sign in cannot read why
+ *                 they were suspended, cannot appeal it, and cannot download their invoices.
+ */
+export async function accountLock(uid, scope = 'service') {
   if (!uid) return null;
+  // Filtered on the way out, not on the way in: the cache holds the ACCOUNT's state and one
+  // entry has to answer both questions, or a suspended user would populate it under one
+  // scope and get the wrong answer under the other.
+  const forScope = (st) => (!st ? null : (scope === 'signin' && st.status !== 'banned') ? null : st);
   const hit = _modCache.get(uid);
-  if (hit && Date.now() - hit.at < MOD_TTL) return hit.state;
+  if (hit && Date.now() - hit.at < MOD_TTL) return forScope(hit.state);
   let state = null;
   try {
     const p = await db();
@@ -374,7 +389,7 @@ export async function accountLock(uid) {
     }
   } catch { state = null; }
   boundedSet(_modCache, uid, { at: Date.now(), state }, UID_CACHE_MAX, MOD_TTL);
-  return state;
+  return forScope(state);
 }
 // 403 body a locked account gets — the client turns this into the "you're suspended/
 // banned" screen (reason + countdown, or a support link when permanent).
@@ -392,7 +407,7 @@ export function requireRole(...roles) {
   return async (req, reply) => {
     try {
       const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
-      const lock = await accountLock(claims.uid);
+      const lock = await accountLock(claims.uid, 'signin');
       if (lock) return reply.code(403).send(lockBody(lock));
       if (await sessionRevoked(claims)) return reply.code(401).send({ error: 'session_revoked' });
       // Use the LIVE role (not the possibly-stale JWT), so role changes propagate without
@@ -413,7 +428,7 @@ export function requireCap(cap, ...alsoRoles) {
   return async (req, reply) => {
     try {
       const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
-      const lock = await accountLock(claims.uid);
+      const lock = await accountLock(claims.uid, 'signin');
       if (lock) return reply.code(403).send(lockBody(lock));
       if (await sessionRevoked(claims)) return reply.code(401).send({ error: 'session_revoked' });
       const cur = await currentUser(claims.uid);
@@ -435,7 +450,7 @@ export function requireEditor() {
   return async (req, reply) => {
     try {
       const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
-      const lock = await accountLock(claims.uid);
+      const lock = await accountLock(claims.uid, 'signin');
       if (lock) return reply.code(403).send(lockBody(lock));
       if (await sessionRevoked(claims)) return reply.code(401).send({ error: 'session_revoked' });
       const cur = await currentUser(claims.uid);
@@ -546,7 +561,7 @@ export function optionalAuth() {
       // recognised by /me, which is exactly the screen the user checks to confirm it
       // worked. optionalUid stays a pure token read on purpose: it feeds no-auth ingest
       // endpoints where a DB round-trip per event is not worth it.
-      const dead = (await accountLock(claims.uid)) || (await sessionRevoked(claims));
+      const dead = (await accountLock(claims.uid, 'signin')) || (await sessionRevoked(claims));
       req.user = dead ? null : claims;
     } catch { req.user = null; }
   };

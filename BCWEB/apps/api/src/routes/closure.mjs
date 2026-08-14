@@ -59,6 +59,28 @@ async function closureBlockers(p, userId) {
 }
 
 
+/** End every subscription this account holds, at Stripe and here.
+ *
+ *  Shared by the closure teardown and by moderation, because they want the same thing for
+ *  the same reason: an account that cannot use the service must stop being charged for it.
+ *  Billing somebody you have locked out is the one failure mode nobody forgives.
+ *
+ *  Stripe failures are logged, not fatal: a subscription we could not reach is a billing
+ *  problem to chase by hand, and it must not stop the rest of the sanction landing.
+ */
+export async function cancelSubscriptions(p, userId, log) {
+  const subs = await p.subscription.findMany({ where: { userId }, select: { id: true, stripeSubId: true } }).catch(() => []);
+  for (const sub of subs) {
+    if (!sub.stripeSubId) continue;
+    try {
+      const { stripe } = await import('./hosting.mjs');
+      const sk = await stripe();
+      if (sk) await sk.subscriptions.cancel(sub.stripeSubId);
+    } catch (e) { log?.warn?.(`could not cancel ${sub.stripeSubId}: ${String(e?.message || e)}`); }
+  }
+  return (await p.subscription.deleteMany({ where: { userId } }).catch(() => ({ count: 0 }))).count;
+}
+
 /** Suspend everything this account serves, remembering what each thing was.
  *
  *  A pending closure should stop the account SERVING without destroying anything: the grace
@@ -70,7 +92,7 @@ async function closureBlockers(p, userId) {
  *  Returns the snapshot to store on the user. Anything already suspended is recorded as it
  *  is, so cancelling leaves it suspended rather than quietly publishing it.
  */
-async function suspendOwned(p, userId) {
+export async function suspendOwned(p, userId) {
   const [repos, catalogs, items] = await Promise.all([
     p.serverRepo.findMany({ where: { ownerId: userId }, select: { id: true, status: true } }).catch(() => []),
     p.communityCatalog.findMany({ where: { ownerId: userId }, select: { id: true, status: true, listed: true } }).catch(() => []),
@@ -98,7 +120,7 @@ async function suspendOwned(p, userId) {
  *  value. Anything not in the snapshot — created during the grace period — is left alone:
  *  we never suspended it, so we have no business changing it now.
  */
-async function restoreOwned(p, userId, state) {
+export async function restoreOwned(p, userId, state) {
   if (!state || typeof state !== 'object') return { repos: 0, catalogs: 0, items: 0 };
   const out = { repos: 0, catalogs: 0, items: 0 };
   for (const [id, status] of Object.entries(state.repos || {})) {
@@ -414,17 +436,7 @@ export default async function closureRoutes(app) {
 async function tearDownOwned(p, userId, log) {
   const out = { subscriptions: 0, repos: 0, catalogs: 0, items: 0, pools: 0 };
 
-  const subs = await p.subscription.findMany({ where: { userId }, select: { id: true, stripeSubId: true } }).catch(() => []);
-  for (const sub of subs) {
-    if (sub.stripeSubId) {
-      try {
-        const { stripe } = await import('./hosting.mjs');
-        const sk = await stripe();
-        if (sk) await sk.subscriptions.cancel(sub.stripeSubId);
-      } catch (e) { log?.warn?.(`[sweeper] could not cancel ${sub.stripeSubId}: ${String(e?.message || e)}`); }
-    }
-  }
-  out.subscriptions = (await p.subscription.deleteMany({ where: { userId } }).catch(() => ({ count: 0 }))).count;
+  out.subscriptions = await cancelSubscriptions(p, userId, log);
 
   // Hosted bytes go with the rows. Object storage is not covered by any database cascade,
   // so it is deleted explicitly or it stays on disk paying for nobody.

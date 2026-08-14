@@ -168,6 +168,10 @@ model User {
   // state was written down, so it is, here, as { repos: {id: status}, catalogs: {id: {...}},
   // items: {id: status} }.
   closureSuspendState Json?
+  // The same snapshot, for a MODERATION suspension. Separate from the closure one because
+  // the two can overlap — an account can be suspended and then closed — and one field would
+  // let the second event overwrite the first's memory of the original state.
+  moderationSuspendState Json?
   // SHA-256 of the email the account had before anonymisation.
   //
   // Closing erases the address, which is the point — but it also erases the only link
