@@ -2235,6 +2235,7 @@ const DICT = {
     'ud.cl.outranked': "Ce compte est au-dessus du tien.",
     'ud.cl.pendingerr': "Une fermeture est déjà planifiée.",
     'ud.cl.self': "Ferme ton propre compte depuis ton profil.",
+    'tr.err.free': "Il est sur l’offre gratuite, et le gratuit c’est un par compte — la personne qui le recevrait ne pourrait pas le garder sans consommer un droit gratuit qu’elle n’a jamais demandé. Supprime-le et laisse-la créer le sien.",
     'sso.title': "SSO",
     'sso.tab.clients': "Applications",
     'sso.tab.people': "Personnes",

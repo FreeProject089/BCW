@@ -180,6 +180,7 @@ export async function startOwnershipTransfer({ dialog, toast, t, api, kind, targ
       : e === 'self_transfer' ? t('tr.err.self', 'That is your own address.')
       : e === 'already_pending' ? t('tr.err.pending', 'There is already an offer open for this one.')
       : e === 'active_subscription' ? t('tr.err.sub', 'It has an active hosting subscription. That has to be cancelled or moved first.')
+      : e === 'free_plan' ? t('tr.err.free', 'It is on the free plan, and the free tier is one per account — the person receiving it could not hold it without spending a free claim they never made. Delete it and let them create their own.')
       : e === 'recipient_unavailable' ? t('tr.err.unavail', 'That account cannot receive transfers right now.')
       : t('common.failed', 'Failed.'));
     return false;

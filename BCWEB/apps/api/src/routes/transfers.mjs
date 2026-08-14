@@ -37,10 +37,16 @@ async function ownedTarget(p, kind, id, userId) {
  *  alternative is a silent double-bind discovered on the next invoice. */
 async function transferBlocker(p, kind, target) {
   if (kind !== 'repo') return null;
-  const repo = await p.serverRepo.findUnique({ where: { id: target.id }, select: { hosted: true, hostingGroupId: true } });
+  const repo = await p.serverRepo.findUnique({ where: { id: target.id }, select: { hosted: true, groupId: true, freePlan: true } });
+  // A free-plan repo is not transferable, and cannot be: the free tier is one per ACCOUNT
+  // (FreeTierClaim), so handing one over either gives the recipient a second free repo or
+  // silently spends a free claim they never made. Both are wrong, and the second is the
+  // kind of wrong nobody notices until they try to claim the tier they still thought they
+  // had. Deleting it and letting them claim their own is the honest path.
+  if (repo?.freePlan) return 'free_plan';
   if (!repo?.hosted) return null;
   const sub = await p.subscription.findFirst({
-    where: { status: 'active', OR: [{ serverRepoId: target.id }, ...(repo.hostingGroupId ? [{ hostingGroupId: repo.hostingGroupId }] : [])] },
+    where: { status: 'active', OR: [{ serverRepoId: target.id }, ...(repo.groupId ? [{ hostingGroupId: repo.groupId }] : [])] },
     select: { id: true },
   });
   return sub ? 'active_subscription' : null;
