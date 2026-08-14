@@ -6428,13 +6428,82 @@ function AdminSso() {
 // plugged into this platform, on whose behalf"), and a third top-level tab for one table
 // is how the admin nav got crowded enough to need reorganising in the first place.
 function AdminWebhooks() {
-  const { t } = useI18n();
-  const { data, loading } = useAsync(() => api.get('/admin/webhooks'), []);
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/webhooks'), []);
+  const events = useAsync(() => api.get('/v1/webhook-events'), []);
+  const [form, setForm] = useState(null);
+  const [secret, setSecret] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  // Creates through /me/webhooks — the endpoint that already exists — so the webhook is
+  // owned by the admin making it. Deliberately NOT a new "create on someone's behalf"
+  // route: that is a privilege nobody has today, and it would need a target user, a
+  // notification to them, and an answer to who owns the secret. This is the same
+  // self-serve creation, surfaced where an admin is already looking.
+  const create = async () => {
+    const picked = form.events;
+    if (!/^https?:\/\//i.test(form.url.trim())) return toast.error(t('sso.wh.badurl', 'Enter an http(s) address.'));
+    if (!picked.length) return toast.error(t('sso.wh.noev', 'Pick at least one event — one with none never fires.'));
+    setBusy(true);
+    try {
+      const r = await api.post('/me/webhooks', { url: form.url.trim(), label: form.label.trim(), events: picked });
+      setSecret(r.secret); setForm(null); reload();
+    } catch (x) {
+      toast.error(x?.data?.error === 'https_required' ? t('sso.wh.https', 'https is required, except on localhost.')
+        : x?.data?.error === 'too_many' ? t('sso.wh.toomany', 'You already have the maximum number of webhooks.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
   if (loading) return <Spinner />;
   const rows = data?.endpoints || [];
   const q = data?.queue || {};
+  const evList = Object.entries(events.data?.events || {});
   return (
     <div>
+      {secret && (
+        <div className="rounded-lg border border-[var(--primary)] bg-[var(--primary)]/5 p-3 mb-3">
+          {/* Shown once by the API and never retrievable — so it gets its own panel rather
+              than a toast that scrolls away while you look for somewhere to paste it. */}
+          <div className="text-[12px] font-semibold text-[var(--primary-2)] mb-1.5">{t('sso.wh.secret', 'Copy the signing secret now — it is shown once and never again.')}</div>
+          <div className="flex items-center gap-2 text-[12px]">
+            <code className="font-mono break-all flex-1">{secret}</code>
+            <Button size="sm" variant="ghost" onClick={() => { copyText(secret); toast.success(t('common.copied', 'Copied.')); }}><Copy size={13} /></Button>
+          </div>
+          <Button size="sm" className="mt-2" onClick={() => setSecret(null)}>{t('dev.secret.done', 'I have saved it')}</Button>
+        </div>
+      )}
+
+      {form ? (
+        <div className="rounded-lg border border-[var(--line)] p-3 space-y-2.5 mb-3">
+          <Field label={t('sso.wh.url', 'Where to send it')} hint={t('sso.wh.url.h', 'https only, except http://localhost while you are developing. The payload is signed, and sending a signed payload in clear undoes the point of signing it.')}>
+            <Input value={form.url} onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))} placeholder="https://example.com/hooks/bcweb" />
+          </Field>
+          <Field label={t('sso.wh.label', 'Label')} hint={t('sso.wh.label.h', 'For you — it appears in this list and nowhere else.')}>
+            <Input value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} placeholder={t('sso.wh.label.ph', 'Deploy notifier')} />
+          </Field>
+          <Field label={t('sso.wh.events', 'What to send')}>
+            <div className="space-y-1 max-h-56 overflow-y-auto">
+              {evList.length === 0 && <div className="text-[11px] text-[var(--muted)]">{t('common.loading', 'Loading…')}</div>}
+              {evList.map(([ev, desc]) => (
+                <label key={ev} className="flex items-start gap-2 text-[12px]">
+                  <input type="checkbox" className="mt-0.5" checked={form.events.includes(ev)}
+                    onChange={(e) => setForm((f) => ({ ...f, events: e.target.checked ? [...f.events, ev] : f.events.filter((x) => x !== ev) }))} />
+                  <span><code className="font-mono text-[var(--primary-2)]">{ev}</code>{desc ? <> — <span className="text-[var(--muted)]">{String(desc)}</span></> : null}</span>
+                </label>
+              ))}
+            </div>
+          </Field>
+          <div className="flex gap-2">
+            <Button size="sm" variant="primary" disabled={busy} onClick={create}>{busy ? <Spinner /> : t('sso.wh.create', 'Create it')}</Button>
+            <Button size="sm" onClick={() => setForm(null)}>{t('common.cancel', 'Cancel')}</Button>
+          </div>
+        </div>
+      ) : (
+        <Button size="sm" className="mb-3" onClick={() => setForm({ url: '', label: '', events: [] })}>
+          <Plus size={13} /> {t('sso.wh.new', 'New webhook')}
+        </Button>
+      )}
       {/* The queue first: a backlog or a week of failures is a platform problem, while the
           table below is a list of other people's problems. */}
       <div className="flex flex-wrap gap-2 mb-3">

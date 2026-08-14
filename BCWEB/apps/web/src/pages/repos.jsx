@@ -669,8 +669,8 @@ export function MyRepos() {
   // thing, is the only shape where dismissing reliably does nothing.
   const delNow = async (r) => {
     const typed = await dialog.prompt({
-      title: t('repos.delnow.title', 'Delete repo immediately'),
-      message: t('repos.delnow.msg', '"{name}" and all its content are destroyed right now. There is no 72-hour window and no undo — this cannot be reversed.').replace('{name}', r.name),
+      title: t('repos.delnow.title', 'Delete without the 72-hour wait'),
+      message: t('repos.delnow.msg', '"{name}" and all its content are destroyed as soon as the undo window closes. There is no 72-hour grace period afterwards — nothing can be restored.').replace('{name}', r.name),
       label: t('repos.del.confirm.l2', 'To confirm, type the repo name: {name}').replace('{name}', r.name),
       placeholder: r.name, okLabel: t('repos.delnow.ok', 'Delete permanently'), danger: true,
     });
@@ -678,11 +678,20 @@ export function MyRepos() {
     // Checked here for a decent message, and again on the server — this one is the only
     // check that matters, since the client can be bypassed entirely.
     if (String(typed).trim() !== r.name) return toast.error(t('repos.del.mismatch', "Name didn't match — deletion cancelled."));
-    try {
-      await api.del(`/repos/${r.id}`, { immediate: true, confirm: String(typed).trim() });
-      toast.success(t('repos.delnow.done', '"{name}" has been permanently deleted.').replace('{name}', r.name));
-      reload();
-    } catch { toast.error(t('repos.failed', 'Failed.')); }
+    // The request is DEFERRED behind the undo toast, not fired and then apologised for.
+    // "No wait" means skipping the 72-hour window, not losing the few seconds everything
+    // else in this app gives you to change your mind — and here the undo is real rather
+    // than compensating, because nothing has been destroyed yet when you press it.
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('repos.delnow.pending', 'Deleting "{name}" — permanently.').replace('{name}', r.name),
+      onCommit: async () => {
+        try {
+          await api.del(`/repos/${r.id}`, { immediate: true, confirm: r.name });
+          reload();
+        } catch { toast.error(t('repos.failed', 'Failed.')); reload(); }
+      },
+    });
   };
   const undoDelete = async (r) => {
     try { await api.post(`/me/repos/${r.id}/delete/cancel`); toast.success(t('repos.del.undone', 'Deletion cancelled — your repo is restored.')); reload(); }
@@ -877,7 +886,7 @@ export function MyRepos() {
                     !locked && { key: 'del', label: t('repos.delete', 'Delete repo'), icon: Trash2, danger: true, onClick: () => del(r) },
                     // Listed after the reversible one, deliberately: the safe action is
                     // the one the hand reaches first.
-                    !locked && { key: 'delnow', label: t('repos.deletenow', 'Delete now (no undo)'), icon: Trash2, danger: true, onClick: () => delNow(r) },
+                    !locked && { key: 'delnow', label: t('repos.deletenow', 'Delete (no wait)'), icon: Trash2, danger: true, onClick: () => delNow(r) },
                   ].filter(Boolean)}
                 />
               </div>
