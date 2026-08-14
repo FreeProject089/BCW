@@ -6,6 +6,7 @@
 // profile card, and its columns are gone, so there is no legacy surface to secure.
 import crypto from 'node:crypto';
 import { db, requireRole, requireCap, apiAuth, hashApiKey, API_SCOPES, logAudit, clientIp, notify } from '../lib/lib.mjs';
+import { verifyTotp } from '../lib/totp.mjs';
 import { buildPublicProfile } from './social.mjs';
 import { findUserIdByBcId } from '../lib/repofingerprint.mjs';
 
@@ -48,6 +49,22 @@ const sinceOf = (q) => {
 };
 
 export default async function apiKeyRoutes(app) {
+  /** Ask for the second factor when the account has one.
+   *
+   *  Returns null when the caller may proceed, or {code, body} to send back. Accounts
+   *  WITHOUT 2FA are not blocked: this protects people who chose the protection, it does not
+   *  force everybody to choose it before they can use the API.
+   */
+  async function require2fa(req) {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: req.user.uid }, select: { totpEnabled: true, totpSecret: true } });
+    if (!u?.totpEnabled) return null;
+    const code = String(req.body?.totp || '').trim();
+    if (!code) return { code: 401, body: { error: 'totp_required' } };
+    if (!verifyTotp(u.totpSecret, code)) return { code: 401, body: { error: 'totp_invalid' } };
+    return null;
+  }
+
   // ════════════════ Admin: what the public API is being used for (manage_api) ════
   //
   // Two datasets, on purpose (see lib/apiusage.mjs): ApiUsageDay is the exact count and is
@@ -220,6 +237,8 @@ export default async function apiKeyRoutes(app) {
   });
 
   app.post('/me/api-keys', { preHandler: requireRole(), ...RL }, async (req, reply) => {
+    const gate = await require2fa(req);
+    if (gate) return reply.code(gate.code).send(gate.body);
     const b = req.body || {};
     const label = typeof b.label === 'string' ? b.label.trim().slice(0, 60) : '';
     const known = Object.keys(API_SCOPES);
@@ -250,12 +269,20 @@ export default async function apiKeyRoutes(app) {
   });
 
   app.delete('/me/api-keys/:id', { preHandler: requireRole() }, async (req, reply) => {
+    // A key is a credential, so removing one is protected exactly like minting one. Without
+    // this, a stolen session could quietly delete the key an integration runs on — an outage
+    // with no trace of who caused it.
+    const gate = await require2fa(req);
+    if (gate) return reply.code(gate.code).send(gate.body);
     const p = await db();
     // Scoped to the owner: an id from another account matches nothing.
-    const r = await p.apiKey.updateMany({
-      where: { id: req.params.id, userId: req.user.uid, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    //
+    // A real DELETE, not a revoke. "Delete" that left the row behind meant a key you had
+    // removed still sat in your list as a tombstone, and there was no way to actually get
+    // rid of it. The usage history survives regardless — ApiUsageDay and ApiRequest hold
+    // keyId with ON DELETE SET NULL, so last quarter's numbers keep adding up while the
+    // credential itself is gone.
+    const r = await p.apiKey.deleteMany({ where: { id: req.params.id, userId: req.user.uid } });
     if (!r.count) return reply.code(404).send({ error: 'not_found' });
     return reply.code(204).send();
   });
@@ -456,6 +483,28 @@ export default async function apiKeyRoutes(app) {
       skipDuplicates: true,
     });
     return { ok: true, myVotes: picks };
+  });
+
+  // ── Favourites ──────────────────────────────────────────────────────────────
+
+  app.get('/v1/favorites', { preHandler: apiAuth('favorites:read'), ...RL_READ }, async (req) => {
+    const p = await db();
+    const [repos, catalogs] = await Promise.all([
+      p.repoFavorite.findMany({
+        where: { userId: req.user.uid }, orderBy: { createdAt: 'desc' }, take: 200,
+        include: { repo: { select: { id: true, name: true, listed: true, verified: true, status: true } } },
+      }),
+      p.catalogFavorite.findMany({
+        where: { userId: req.user.uid }, orderBy: { createdAt: 'desc' }, take: 200,
+        include: { catalog: { select: { id: true, name: true, slug: true, kinds: true, status: true } } },
+      }),
+    ]);
+    // A favourite whose target was deleted is dropped rather than returned as a null: a
+    // client iterating this should not have to defend against half a row.
+    return {
+      repos: repos.filter((f) => f.repo).map((f) => ({ ...f.repo, favoritedAt: f.createdAt })),
+      catalogs: catalogs.filter((f) => f.catalog).map((f) => ({ ...f.catalog, favoritedAt: f.createdAt })),
+    };
   });
 
   // ── Ownership transfers ─────────────────────────────────────────────────────

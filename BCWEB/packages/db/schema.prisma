@@ -2225,6 +2225,10 @@ model ApiRequest {
   status Int
   ms     Int      @default(0)
   ip     String?
+  // A call made from the developer console's sandbox: authenticated and scope-checked, but
+  // it wrote nothing. Kept apart from real traffic so somebody exploring the API does not
+  // appear in the usage figures as a customer hammering it.
+  sandbox Boolean @default(false)
   at     DateTime @default(now())
 
   @@index([at])

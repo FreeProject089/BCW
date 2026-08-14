@@ -27,13 +27,14 @@ export const apiUsageConfig = () => ({ ...cfg });
 const dayKey = (d) => d.toISOString().slice(0, 10);
 
 /** Record one authenticated API call. Never throws, never awaits anything. */
-export function recordApiCall({ keyId, userId, method, path, status, ms, ip }) {
+export function recordApiCall({ keyId, userId, method, path, status, ms, ip, sandbox }) {
   try {
     const day = dayKey(new Date());
     const k = `${keyId || ''}|${userId || ''}|${day}`;
     const row = counts.get(k) || { keyId: keyId || null, userId: userId || '', day, count: 0, errors: 0 };
-    row.count += 1;
-    if (status >= 400) row.errors += 1;
+    // Sandbox calls are NOT counted in the per-day usage: that number answers "how much is
+    // this key really being used", and a demo click is not use.
+    if (!sandbox) { row.count += 1; if (status >= 400) row.errors += 1; }
     counts.set(k, row);
 
     // Errors are always sampled, whatever the rate. The rate exists to keep the volume of
@@ -53,6 +54,9 @@ export function recordApiCall({ keyId, userId, method, path, status, ms, ip }) {
           status: Number(status) || 0,
           ms: Math.round(Number(ms) || 0),
           ip: ip || null,
+          // Kept apart from real traffic: somebody exploring the console should not show up
+          // in the usage figures as a customer hammering the API.
+          sandbox: !!sandbox,
         });
       }
     }

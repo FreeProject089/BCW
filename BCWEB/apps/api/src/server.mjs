@@ -168,7 +168,7 @@ app.addHook('onResponse', (req, reply, done) => {
     recordApiCall({
       // req.apiKey.userId, not req.user — on a scope refusal there is no req.user, and that
       // is exactly the call worth attributing.
-      keyId: req.apiKey.id, userId: req.apiKey.userId || req.user?.uid,
+      keyId: req.apiKey.id, userId: req.apiKey.userId || req.user?.uid, sandbox: !!req.sandbox,
       method: req.method, path: req.routeOptions?.url || req.url,
       status: reply.statusCode, ms: reply.elapsedTime, ip: req.ip,
     });

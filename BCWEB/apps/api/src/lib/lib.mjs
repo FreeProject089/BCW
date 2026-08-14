@@ -481,6 +481,7 @@ export const API_SCOPES = Object.freeze({
   'polls:read':    'Read the polls open to you and how you answered.',
   'polls:write':   'Answer polls on your behalf.',
   'transfers:read': 'See ownership transfers offered to or by you.',
+  'favorites:read': 'List the repositories and catalogs you starred.',
 });
 
 /** True if the key carries `scope`. A key with no scopes is allowed nothing. */
@@ -546,6 +547,26 @@ export function apiAuth(scope) {
 
     touch(p, key.id, req.ip);
     req.user = { uid: key.userId, role: key.user?.role };
+
+    // Sandbox: a call that changes nothing.
+    //
+    // Placed HERE rather than in a global hook because this is the one guard every /v1 route
+    // shares, and by this point the key is authenticated — so a sandbox call is still counted
+    // against it and still refused if the scope is missing. A console that skipped those
+    // checks would be teaching people an API that does not exist.
+    //
+    // Only writes are simulated. A GET changes nothing by definition, and showing somebody
+    // fabricated data would make the console worse than useless for the thing it is for.
+    if (req.method !== 'GET' && String(req.headers['x-bcw-sandbox'] || '') === '1') {
+      req.sandbox = true;
+      return reply.code(200).send({
+        sandbox: true,
+        method: req.method,
+        path: req.routeOptions?.url || req.url,
+        scope: scope || null,
+        note: 'Sandbox: authentication and scope were checked, and nothing was written. Send the same request without the X-BCW-Sandbox header to do it for real.',
+      });
+    }
   };
 }
 
