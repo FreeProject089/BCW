@@ -783,6 +783,10 @@ export default async function miscRoutes(app) {
     const u = await p.user.findUnique({ where: { id: req.params.id }, select: {
       id: true, displayName: true, email: true, role: true, permissions: true, avatar: true, bio: true, createdAt: true, stripeCustomerId: true,
       status: true, moderationUntil: true, moderationReason: true, moderatedAt: true, totpEnabled: true,
+      // A pending closure changes what every other action on this screen means — banning
+      // an account that is deleting itself in nine days, or chasing a payment from one, is
+      // work nobody needed to do.
+      closureRequestedAt: true, closureScheduledFor: true, closedAt: true, closureReason: true, closureBy: true,
       serverRepos: { select: { id: true, name: true, hosted: true, status: true, listed: true, verified: true }, orderBy: { createdAt: 'desc' } },
       items: { select: { id: true, name: true, slug: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' } },
       creatorLinks: { select: { creatorId: true, displayName: true, linkedAt: true, unlinkableAt: true } },

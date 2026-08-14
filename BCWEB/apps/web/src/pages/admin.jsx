@@ -3561,6 +3561,99 @@ function UserExtras({ userId }) {
   );
 }
 
+// The closure state of an account, and the button that starts one.
+//
+// Placed at the TOP of the details, above the profile: a pending closure changes what
+// every other action on this screen means. Banning an account that deletes itself in nine
+// days, or chasing a payment from one, is work nobody needed to do.
+function ClosureBanner({ user, onChanged }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState(null); // { reason, days }
+
+  const day = (d) => new Date(d).toLocaleDateString();
+
+  const start = async () => {
+    if (!form.reason.trim() || form.reason.trim().length < 3) return toast.error(t('ud.cl.needreason', 'Say why — it goes in the email they receive.'));
+    if (!await dialog.confirm({
+      title: t('ud.cl.start.t', 'Schedule this account for closure?'),
+      // Naming what the person on the other end gets, because that is the part an admin
+      // cannot see afterwards and the part they are actually deciding.
+      message: t('ud.cl.start.m', 'They are emailed the reason, the date, and a link to contact us — not a one-click undo, since a closure staff decided is not one they can reverse themselves. Nothing is deleted until {d}; you can call it off until then.')
+        .replace('{d}', day(Date.now() + (Number(form.days) || 30) * 864e5)),
+      okLabel: t('ud.cl.start.ok', 'Schedule it'), danger: true,
+    })) return;
+    setBusy(true);
+    try {
+      await api.post(`/admin/users/${user.id}/closure`, { reason: form.reason.trim(), days: Number(form.days) || 30 });
+      toast.success(t('ud.cl.started', 'Scheduled — they have been told.'));
+      setForm(null); onChanged();
+    } catch (x) {
+      toast.error(x?.data?.error === 'cannot_moderate_higher' ? t('ud.cl.outranked', 'That account outranks yours.')
+        : x?.data?.error === 'already_pending' ? t('ud.cl.pendingerr', 'A closure is already scheduled.')
+        : x?.data?.error === 'self' ? t('ud.cl.self', 'Close your own account from your profile.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  const callOff = async () => {
+    setBusy(true);
+    try { await api.del(`/admin/users/${user.id}/closure`); toast.success(t('ud.cl.calledoff', 'Called off.')); onChanged(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+
+  if (user.closedAt) {
+    return (
+      <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/60 p-3 text-[13px]">
+        <div className="font-semibold flex items-center gap-2"><Ban size={14} /> {t('ud.cl.closed', 'This account is closed.')}</div>
+        <p className="text-[12px] text-[var(--muted)] mt-1">
+          {t('ud.cl.closed.s', 'Closed on {d}. Everything personal was erased; the payment and moderation records below were kept on purpose.').replace('{d}', day(user.closedAt))}
+        </p>
+      </div>
+    );
+  }
+
+  if (user.closureScheduledFor) {
+    const staff = !!user.closureBy;
+    return (
+      <div className="rounded-xl border border-warning bg-warning/10 p-3">
+        <div className="text-[13px] font-semibold flex items-center gap-2">
+          <AlertTriangle size={14} className="text-warning" />
+          {t('ud.cl.pending', 'Closing on {d}').replace('{d}', day(user.closureScheduledFor))}
+        </div>
+        <p className="text-[12px] text-[var(--muted)] mt-1">
+          {staff
+            ? t('ud.cl.pending.staff', 'Scheduled by staff. Reason given: “{r}”.').replace('{r}', user.closureReason || '—')
+            : t('ud.cl.pending.self', 'They asked for it themselves, and can cancel it with the link in their email until that date.')}
+        </p>
+        <Button size="sm" className="mt-2" disabled={busy} onClick={callOff}>{busy ? <Spinner /> : t('ud.cl.calloff', 'Call it off')}</Button>
+      </div>
+    );
+  }
+
+  return form ? (
+    <div className="rounded-xl border border-[var(--line)] p-3 space-y-2">
+      <div className="text-[13px] font-semibold">{t('ud.cl.start.t', 'Schedule this account for closure?')}</div>
+      <Field label={t('ud.cl.reason', 'Reason (they read this)')}>
+        <Textarea rows={2} value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
+          placeholder={t('ud.cl.reason.ph', 'Repeated spam in community catalogs')} />
+      </Field>
+      <div className="flex items-end gap-2">
+        <Field label={t('ud.cl.days', 'Days of notice')}>
+          <Input className="w-24" type="number" min="0" max="365" value={form.days} onChange={(e) => setForm((f) => ({ ...f, days: e.target.value }))} />
+        </Field>
+        <Button size="sm" variant="primary" disabled={busy} onClick={start}>{busy ? <Spinner /> : t('ud.cl.start.ok', 'Schedule it')}</Button>
+        <Button size="sm" onClick={() => setForm(null)}>{t('common.cancel', 'Cancel')}</Button>
+      </div>
+    </div>
+  ) : (
+    <button onClick={() => setForm({ reason: '', days: 30 })}
+      className="text-[11px] text-[var(--faint)] hover:text-[var(--error)] transition">
+      {t('ud.cl.open', 'Schedule this account for closure…')}
+    </button>
+  );
+}
+
 function UserDetailModal({ id, onClose }) {
   const { data, loading, reload } = useAsync(() => api.get(`/admin/users/${id}`), [id]);
   const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
@@ -3580,6 +3673,14 @@ function UserDetailModal({ id, onClose }) {
       footer={<Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>}>
       {loading ? <Loading /> : !u ? <EmptyState icon={XCircle} title={t('ud.notfound', 'Not found')} /> : (
         <div className="space-y-5">
+          <ClosureBanner user={u} onChanged={reload} />
+          {u.priorUserId && (
+            <div className="text-[12px] text-[var(--muted)] flex items-center gap-1.5">
+              <RotateCcw size={12} />
+              {/* Not a footnote: it is the reason a "new" account can arrive already banned. */}
+              {t('ud.prior', 'This account came back to an address that had been closed — its record was carried over.')}
+            </div>
+          )}
           <div className="flex items-center gap-4">
             <Avatar user={u} size={64} />
             <div className="min-w-0">

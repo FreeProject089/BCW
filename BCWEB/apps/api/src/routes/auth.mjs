@@ -2,7 +2,8 @@ import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
-import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache, projectGrants } from '../lib/lib.mjs';
+import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache, projectGrants, logAudit } from '../lib/lib.mjs';
+import { emailHash } from './closure.mjs';
 import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '../lib/totp.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
 import { grantAutoBadges } from './social.mjs';
@@ -127,7 +128,32 @@ export default async function authRoutes(app) {
     const p = await db();
     if (await p.user.findUnique({ where: { email } })) return reply.code(409).send({ error: 'email_taken' });
     const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
-    const user = await p.user.create({ data: { email, passwordHash, displayName: displayName || email.split('@')[0] } });
+
+    // Coming back to an address that used to have an account here.
+    //
+    // Closing anonymises the row, so the old address is gone — but its SHA-256 was kept
+    // precisely for this moment. The new account is linked to the old one, which does two
+    // things at once: a returning member keeps the history they earned, and somebody who
+    // closed their account to escape a moderation record does not get a clean one. Ban
+    // state is inherited for exactly that reason; anything else would make "delete my
+    // account" the fastest way to undo a ban.
+    const prior = await p.user.findFirst({
+      where: { closedEmailHash: emailHash(email), closedAt: { not: null } },
+      orderBy: { closedAt: 'desc' },
+      select: { id: true, status: true, moderationReason: true, moderationUntil: true },
+    });
+    const carried = prior && prior.status && prior.status !== 'active'
+      ? { status: prior.status, moderationReason: prior.moderationReason, moderationUntil: prior.moderationUntil }
+      : {};
+
+    const user = await p.user.create({ data: {
+      email, passwordHash, displayName: displayName || email.split('@')[0],
+      ...(prior ? { priorUserId: prior.id } : {}),
+      ...carried,
+    } });
+    if (prior) {
+      await logAudit(p, user.id, 'account.returned', `linked to closed account ${prior.id}${carried.status ? ` (carried ${carried.status})` : ''}`, clientIp(req)).catch(() => {});
+    }
     grantAutoBadges(p, { event: 'signup', user }).catch(() => {}); // e.g. the 100th-signup badge
     sendVerificationEmail(p, user).catch(() => {}); // fire-and-forget confirmation email
     return issueSession(reply, user, req);

@@ -488,6 +488,13 @@ function CloseAccountCard() {
             {t('acl.ready', 'Nothing is in the way. Closing takes {n} days, during which one click brings it all back. Your invoices and moderation records are kept either way — they are records about transactions, not about your profile.')
               .replace('{n}', String(data.graceDays))}
           </p>
+          {/* Said before the button, not in the confirmation: the two facts people get
+              wrong are that the grace period ends for good, and that coming back with the
+              same address is not a fresh start. Both are easier to accept than to discover. */}
+          <p className="text-[13px] text-[var(--muted)] mt-2">
+            {t('acl.final', 'After those {n} days it cannot be undone — there is no restore, and support cannot bring the account back. If you later sign up again with this same email address, we recognise it and reattach your history, including any moderation record; a different address starts genuinely fresh.')
+              .replace('{n}', String(data.graceDays))}
+          </p>
           <Button className="mt-3" disabled={busy} onClick={request}>{busy ? <Spinner /> : t('acl.start', 'Close my account…')}</Button>
         </>
       )}

@@ -143,6 +143,23 @@ model User {
   // on, and "log in first to stop your account being deleted" is a trap.
   closureToken        String?   @unique
   closedAt            DateTime?
+  // Set when STAFF scheduled the closure rather than the account holder. Both fields are
+  // null on a self-request, which is how the two are told apart everywhere else.
+  closureReason       String?
+  closureBy           String?
+  // SHA-256 of the email the account had before anonymisation.
+  //
+  // Closing erases the address, which is the point — but it also erases the only link
+  // between a closed account and the person who comes back. Without this, someone banned
+  // for cause could close, re-register with the same address, and arrive with a clean
+  // record; and someone returning in good faith would lose the history they earned. The
+  // hash matches without storing the address: it can confirm "this is the same mailbox",
+  // and it cannot be read back into one.
+  closedEmailHash     String?
+  // The closed account this one was recognised as coming back to.
+  priorUser           User?     @relation("AccountReturn", fields: [priorUserId], references: [id], onDelete: SetNull)
+  priorUserId         String?
+  returnedAccounts    User[]    @relation("AccountReturn")
   profilePublic    Boolean   @default(true) // false = only the owner + staff (mod+) can view
   // Which linked connections to surface on the profile, e.g. ["github","discord","website"].
   // Empty = show none. The owner opts each in explicitly.
@@ -182,6 +199,8 @@ model User {
   docComments        DocComment[]
 
   @@index([status])
+  @@index([closedEmailHash])
+  @@index([priorUserId])
 }
 
 // A GitHub/Discord identity linked to a website account — powers "Continue with

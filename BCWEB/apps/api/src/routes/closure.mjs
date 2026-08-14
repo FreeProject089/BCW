@@ -16,10 +16,17 @@
 //    content is a burden handed to whoever inherits the support ticket.
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, logAudit, clientIp, clearSession } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, logAudit, clientIp, clearSession, notify } from '../lib/lib.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 
 const GRACE_DAYS = 30;
+// Mirrors misc.mjs, where the same ladder governs suspending and banning. Duplicated
+// rather than exported across route modules: both copies are three words long, and a
+// closure route importing a moderation route to borrow a constant is a worse coupling
+// than the repetition.
+const MOD_RANK = { USER: 0, MOD: 1, ADMIN: 2, SUPERADMIN: 3 };
+/** SHA-256 of a normalised address — the only form of it a closed account keeps. */
+export const emailHash = (email) => crypto.createHash('sha256').update(String(email || '').trim().toLowerCase()).digest('hex');
 const SITE = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 const money = (c, cur) => `${((c || 0) / 100).toFixed(2)} ${String(cur || 'usd').toUpperCase()}`;
 
@@ -173,6 +180,90 @@ export default async function closureRoutes(app) {
     return { ok: true };
   });
 
+
+  // ── Staff-initiated closure ─────────────────────────────────────────────────
+  //
+  // Same machinery as a self-request — same grace, same sweeper, same blockers — because a
+  // closure that behaved differently depending on who pressed the button would be a second
+  // deletion path, and the second one is always the one with the bug.
+  //
+  // What differs is the email. Somebody who did not ask for this needs three things the
+  // self-service notice does not carry: WHY, WHO decided, and a way to argue. The cancel
+  // link is deliberately NOT in it — an account closed by staff is not one the account
+  // holder can un-close with a click, or moderation would be a suggestion. They get the
+  // contact page instead, and a human decides.
+  app.post('/admin/users/:id/closure', { preHandler: requireCap('manage_users') }, async (req, reply) => {
+    const b = z.object({
+      reason: z.string().min(3).max(1000),
+      days: z.number().int().min(0).max(365).optional(),
+    }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: 'A reason is required.' });
+
+    const p = await db();
+    const target = await p.user.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, email: true, displayName: true, role: true, closureScheduledFor: true, closedAt: true },
+    });
+    if (!target) return reply.code(404).send({ error: 'not_found' });
+    if (target.closedAt) return reply.code(409).send({ error: 'already_closed' });
+    if (target.closureScheduledFor) return reply.code(409).send({ error: 'already_pending' });
+    if (target.id === req.user.uid) return reply.code(400).send({ error: 'self', detail: 'Close your own account from your profile.' });
+    // The same rank rule that governs suspending and banning, with the same error code —
+    // an admin must not be able to delete the account of someone senior to them.
+    if (MOD_RANK[req.user.role] <= MOD_RANK[target.role ?? 'USER']) return reply.code(403).send({ error: 'cannot_moderate_higher' });
+
+    const days = b.data.days ?? GRACE_DAYS;
+    const when = new Date(Date.now() + days * 86400_000);
+    const token = crypto.randomBytes(32).toString('hex');
+    const blockers = await closureBlockers(p, target.id);
+
+    await p.user.update({
+      where: { id: target.id },
+      data: {
+        closureRequestedAt: new Date(), closureScheduledFor: when, closureToken: token,
+        closureReason: b.data.reason.trim(), closureBy: req.user.uid,
+      },
+    });
+    await logAudit(p, req.user.uid, 'account.closure_staff', `${target.email} in ${days}d — ${b.data.reason.trim().slice(0, 120)}`, clientIp(req));
+
+    const day = when.toISOString().slice(0, 10);
+    const subject = 'Your BetterCommunity account is scheduled for closure';
+    const html = mailShell(subject, `
+      <p>Your account <b>${escapeHtml(target.email)}</b> has been scheduled for closure by our team.</p>
+      <table style="margin:14px 0;font-size:15px">
+        <tr><td style="padding:2px 14px 2px 0;color:#94a3b8">Reason</td><td><b>${escapeHtml(b.data.reason.trim())}</b></td></tr>
+        <tr><td style="padding:2px 14px 2px 0;color:#94a3b8">Closes on</td><td><b>${escapeHtml(day)}</b></td></tr>
+      </table>
+      <p>Until that date nothing has been deleted. Your invoices and the records we are required to keep
+         are retained either way; everything personal on the account is removed when it closes.</p>
+      <p>If you believe this is a mistake, tell us before ${escapeHtml(day)} — a person reads it.</p>
+      <p style="margin:22px 0"><a href="${escapeHtml(SITE)}/contact"
+         style="background:#6366f1;color:#fff;padding:11px 20px;border-radius:9px;text-decoration:none;font-weight:600">Contact us</a></p>`);
+    let mailed = false;
+    try { mailed = (await sendMail({ to: target.email, subject, html, text: `Your account closes on ${day}. Reason: ${b.data.reason.trim()}` })) !== false; }
+    catch { /* the closure stands; the notice is best-effort and the in-app one still lands */ }
+    await notify(p, target.id, 'Account closure scheduled', `Your account is scheduled to close on ${day}. Reason: ${b.data.reason.trim()}`).catch(() => {});
+
+    return { ok: true, scheduledFor: when, days, mailed, blockers };
+  });
+
+  /** Call it off. Staff-side counterpart, and the only way back from a staff closure. */
+  app.delete('/admin/users/:id/closure', { preHandler: requireCap('manage_users') }, async (req, reply) => {
+    const p = await db();
+    const target = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, email: true, role: true, closureScheduledFor: true, closedAt: true } });
+    if (!target) return reply.code(404).send({ error: 'not_found' });
+    if (target.closedAt) return reply.code(409).send({ error: 'already_closed' });
+    if (!target.closureScheduledFor) return reply.code(409).send({ error: 'not_pending' });
+    if (MOD_RANK[req.user.role] <= MOD_RANK[target.role ?? 'USER']) return reply.code(403).send({ error: 'cannot_moderate_higher' });
+    await p.user.update({
+      where: { id: target.id },
+      data: { closureRequestedAt: null, closureScheduledFor: null, closureReason: null, closureBy: null },
+    });
+    await logAudit(p, req.user.uid, 'account.closure_staff_cancelled', target.email, clientIp(req));
+    await notify(p, target.id, 'Account closure called off', 'The closure scheduled for your account has been cancelled. Nothing was deleted.').catch(() => {});
+    return { ok: true };
+  });
+
   // ── The survey ──────────────────────────────────────────────────────────────
   // Optional, always. Asked after the decision is already recorded so it can never be the
   // thing standing between someone and leaving — a form in that position stops being a
@@ -230,6 +321,9 @@ export async function sweepAccountClosures(p, log) {
     await p.user.update({
       where: { id: u.id },
       data: {
+        // The hash goes in as the address goes out, in the same write. Recorded here and
+        // not at request time so that a cancelled closure leaves nothing behind.
+        closedEmailHash: emailHash(u.email),
         email: `closed+${u.id}@account.invalid`,
         displayName: 'Closed account',
         passwordHash: null,
