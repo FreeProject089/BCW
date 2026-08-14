@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FileJson, Activity, ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FlaskConical } from 'lucide-react';
+import { FileJson, Activity, ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FlaskConical , Link2 as LinkIcon, ShieldCheck, Copy } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { Card, Button, Input, Textarea, Badge, Field, Spinner, EmptyState, useToast } from '../ui/ui.jsx';
+import { Card, Button, Input, Textarea, Badge, Field, Spinner, EmptyState, useToast , Select } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
 import { ApiConsole } from './dev.jsx';
 
@@ -145,6 +145,124 @@ function CallLog() {
   );
 }
 
+/**
+ * Build a bmm:// deeplink without hand-encoding a URL.
+ *
+ * Every integration that sends someone into BMM does it with one of these, and getting it
+ * wrong is silent: a deeplink with an unencoded `&` in its url parameter loses everything
+ * after it, opens BMM, and adds half a source. Nothing reports that — the app did what the
+ * link said.
+ *
+ * Entirely client-side. It builds a string; there is nothing to send anywhere.
+ */
+function DeeplinkBuilder() {
+  const { t } = useI18n(); const toast = useToast();
+  const [action, setAction] = useState('catalog/app/add-source');
+  const [value, setValue] = useState('');
+
+  // Only the actions BMM actually registers. A builder that offers a deeplink the app
+  // does not handle produces a link that opens BMM and does nothing, which is worse than
+  // no builder: it looks like the app is broken.
+  const ACTIONS = [
+    ['catalog/app/add-source', t('dvt.dl.app', 'Add an app catalogue as a source'), 'url'],
+    ['catalog/plugin/add-source', t('dvt.dl.plugin', 'Add a plugin catalogue'), 'url'],
+    ['catalog/theme/add-source', t('dvt.dl.theme', 'Add a theme catalogue'), 'url'],
+    ['docs/open', t('dvt.dl.docs', 'Open a documentation page'), 'article'],
+  ];
+  const spec = ACTIONS.find((a) => a[0] === action) || ACTIONS[0];
+  const param = spec[2];
+  const link = `bmm://${action}?${param}=${encodeURIComponent(value)}`;
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-center gap-2 mb-1 font-medium">
+        <LinkIcon size={16} className="text-[var(--primary-2)]" /> {t('dvt.dl.title', 'Build a bmm:// link')}
+      </div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">
+        {t('dvt.dl.sub', 'An unencoded & in the address loses everything after it — BMM opens and adds half a source, and nothing reports it. This encodes for you.')}
+      </p>
+      <Select value={action} onChange={(e) => setAction(e.target.value)} className="mb-2">
+        {ACTIONS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+      </Select>
+      <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder={param === 'url' ? 'https://example.com/catalog.json' : 'catalog-index'} />
+      <div className="mt-3 p-2 rounded-lg text-[11px] break-all" style={{ background: 'var(--bg-solid)', border: '1px solid var(--line)' }}>
+        {link}
+      </div>
+      <div className="flex gap-2 mt-2">
+        <Button size="sm" variant="ghost" disabled={!value.trim()}
+          onClick={() => { navigator.clipboard?.writeText(link); toast.success(t('dvt.dl.copied', 'Link copied.')); }}>
+          <Copy size={13} /> {t('dvt.dl.copy', 'Copy')}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Check a webhook signature, without the secret leaving the browser.
+ *
+ * "Why is my endpoint rejecting this" is the most common webhook question and the hardest
+ * to answer from logs: the payload has to be byte-identical, and a body that was parsed and
+ * re-serialised no longer is. Computing the expected value beside the received one turns a
+ * guess into a comparison.
+ *
+ * Web Crypto in the page. The secret is never sent to us — which matters, because a tool
+ * that asked you to paste a signing secret into a server would be teaching a bad habit
+ * regardless of what that server promised to do with it.
+ */
+function SignatureChecker() {
+  const { t } = useI18n();
+  const [secret, setSecret] = useState('');
+  const [payload, setPayload] = useState('');
+  const [ts, setTs] = useState('');
+  const [received, setReceived] = useState('');
+  const [computed, setComputed] = useState(null);
+
+  const compute = async () => {
+    try {
+      const enc = new TextEncoder();
+      const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      // `${timestamp}.${body}` — the exact string signWebhook builds. The timestamp is
+      // INSIDE the signed value on purpose: signing the body alone would let anyone who
+      // saw one delivery replay it for ever. Computing it the other way would have made
+      // this tool disagree with the server every single time and blame the developer.
+      const signed = `${ts}.${payload}`;
+      const sig = await crypto.subtle.sign('HMAC', key, enc.encode(signed));
+      setComputed([...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join(''));
+    } catch { setComputed(null); }
+  };
+
+  // Compared case-insensitively and with any `sha256=` prefix stripped, because both forms
+  // are in the wild and a mismatch on formatting reads as a mismatch on the signature.
+  const norm = (x) => String(x || '').trim().toLowerCase().replace(/^sha256=/, '');
+  const verdict = computed && received ? (norm(computed) === norm(received)) : null;
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-center gap-2 mb-1 font-medium">
+        <ShieldCheck size={16} className="text-[var(--primary-2)]" /> {t('dvt.sig.title', 'Check a webhook signature')}
+      </div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">
+        {t('dvt.sig.sub', 'HMAC-SHA256 over `timestamp.body`, computed in your browser — the secret is never sent to us. Paste the RAW body: one that was parsed and re-serialised will not match.')}
+      </p>
+      <Input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={t('dvt.sig.secret', 'signing secret')} className="mb-2" />
+      <Input value={ts} onChange={(e) => setTs(e.target.value)} placeholder={t('dvt.sig.ts', 'timestamp from the X-BCW-Timestamp header')} className="mb-2" />
+      <Textarea rows={4} value={payload} onChange={(e) => setPayload(e.target.value)} placeholder={t('dvt.sig.body', 'raw request body')} />
+      <Input value={received} onChange={(e) => setReceived(e.target.value)} placeholder={t('dvt.sig.received', 'signature you received (optional)')} className="mt-2" />
+      <div className="flex gap-2 mt-2 items-center flex-wrap">
+        <Button size="sm" variant="primary" disabled={!secret || !payload || !ts} onClick={compute}>{t('dvt.sig.go', 'Compute')}</Button>
+        {verdict === true && <Badge tone="green">{t('dvt.sig.match', 'matches')}</Badge>}
+        {verdict === false && <Badge tone="red">{t('dvt.sig.nomatch', 'does not match')}</Badge>}
+      </div>
+      {computed && (
+        <div className="mt-2 p-2 rounded-lg text-[11px] break-all" style={{ background: 'var(--bg-solid)', border: '1px solid var(--line)' }}>
+          {computed}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function DevTools() {
   const { t } = useI18n();
   const { user, loading } = useAuth();
@@ -160,7 +278,7 @@ export default function DevTools() {
     );
   }
   return (
-    <div className="max-w-3xl mx-auto py-8 space-y-4">
+    <div className="max-w-6xl mx-auto py-8 space-y-4">
       <Link to="/dev" className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><ArrowLeft size={13} /> {t('devc.back', 'Developer area')}</Link>
       <div>
         <h1 className="text-2xl font-bold">{t('dvt.title', 'Tools')}</h1>
@@ -173,12 +291,17 @@ export default function DevTools() {
           structure under it — nothing to anchor to, nothing to scan, and no way to get
           back to a tool you had scrolled past. Real anchors also mean a link to a
           specific tool can be shared, which is what people do with a page like this. */}
-      <nav className="flex flex-wrap gap-1.5" aria-label={t('dvt.jump', 'Jump to a tool')}>
+      {/* Sticky: these are tall tools, and a jump bar you have to scroll back up to reach
+          is one you use once. */}
+      <nav className="flex flex-wrap gap-1.5 sticky top-16 z-10 py-2" style={{ background: 'var(--bg)' }}
+        aria-label={t('dvt.jump', 'Jump to a tool')}>
         {[
           // The same keys the cards themselves use, so a link can never say one thing and
           // the section it lands on another.
           ['try', t('dev.console.title', 'Try a call')],
           ['validate', t('dvt.val', 'Check a catalog feed')],
+          ['deeplink', t('dvt.dl.title', 'Build a bmm:// link')],
+          ['signature', t('dvt.sig.title', 'Check a webhook signature')],
           ['calls', t('dvt.calls', 'What your keys did')],
         ].map(([id, label]) => (
           <a key={id} href={`#${id}`}
@@ -192,9 +315,16 @@ export default function DevTools() {
           with /dev, and an id baked into it would appear twice on any page rendering both.
           scroll-mt keeps a jumped-to section clear of the sticky header instead of landing
           under it. */}
-      <section id="try" className="scroll-mt-20"><ApiConsole /></section>
-      <section id="validate" className="scroll-mt-20"><Validator /></section>
-      <section id="calls" className="scroll-mt-20"><CallLog /></section>
+      {/* Two columns from lg up. These are independent tools, not steps in an order, so
+          stacking them in one narrow column on a wide screen wasted the width and made
+          the page four scrolls long. The call log stays full width: it is a table. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <section id="try" className="scroll-mt-24"><ApiConsole /></section>
+        <section id="validate" className="scroll-mt-24"><Validator /></section>
+        <section id="deeplink" className="scroll-mt-24"><DeeplinkBuilder /></section>
+        <section id="signature" className="scroll-mt-24"><SignatureChecker /></section>
+      </div>
+      <section id="calls" className="scroll-mt-24"><CallLog /></section>
     </div>
   );
 }
