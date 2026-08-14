@@ -580,21 +580,31 @@ html.js-anim .reveal-stagger.reveal-instant > * {
 .md-body .doc-step { position: relative; display: flex; gap: 14px; }
 .md-body .doc-steps-v > .doc-step { padding-bottom: 1.1em; }
 .md-body .doc-steps-v > .doc-step:last-child { padding-bottom: 0; }
+.md-body .doc-steps { --step: var(--primary); }
 .md-body .doc-step-marker {
   flex: 0 0 28px; width: 28px; height: 28px; border-radius: 999px;
   display: grid; place-items: center; font-size: 13px; font-weight: 700; line-height: 1;
-  background: var(--primary); color: #fff; position: relative; z-index: 1; margin: 0;
+  background: var(--step, var(--primary)); color: #fff; position: relative; z-index: 1; margin: 0;
 }
-/* The rail. On the marker, not between steps, so it cannot drift out of alignment when a
-   step grows — and hidden on the last one, where it would point at nothing. */
-.md-body .doc-steps-v > .doc-step:not(:last-child) .doc-step-marker::after {
-  content: ''; position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
-  width: 2px; height: calc(100% + 1.1em - 30px); background: var(--line-strong);
+/* The rail, drawn on the STEP rather than on the marker.
+   It was on the marker, where `height: 100%` resolves against the marker's own 28px — so it
+   rendered as a stub under each circle instead of reaching the next one, however tall the
+   step was. On `.doc-step` (already position:relative) 100% is the step, which is the
+   distance it actually has to cover. Hidden on the last step, where it would point at
+   nothing. */
+.md-body .doc-steps-v > .doc-step:not(:last-child)::before {
+  content: ''; position: absolute; left: 13px; top: 32px; bottom: -2px;
+  width: 2px; border-radius: 2px;
+  background: color-mix(in srgb, var(--step, var(--primary)) 35%, var(--line-strong));
+}
+.md-body .doc-steps-v > .doc-step.doc-step-done:not(:last-child)::before {
+  background: color-mix(in srgb, var(--success) 55%, var(--line-strong));
 }
 .md-body .doc-step-body { min-width: 0; flex: 1; }
 .md-body .doc-step-title { font-weight: 650; margin: 3px 0 .4em; display: flex; align-items: center; gap: 7px; }
 .md-body .doc-step-body > :last-child { margin-bottom: 0; }
 .md-body .doc-step-done .doc-step-marker { background: var(--success); }
+.md-body .doc-steps-h > .doc-step::before { display: none; }
 .md-body .doc-steps-h { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 6px; }
 .md-body .doc-steps-h > .doc-step { flex: 0 0 min(280px, 78vw); flex-direction: column; }
 .md-body .doc-steps-h > .doc-step .doc-step-marker { margin-bottom: 8px; }

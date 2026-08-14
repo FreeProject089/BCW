@@ -486,8 +486,8 @@ partage en le collant.
 
 ## Un preset entier
 
-Voici un fichier complet et valide. Copie-le, change les noms, et tu as quelque chose de
-publiable.
+Voici un fichier complet et valide — vérifié contre le schéma qui accepte les envois.
+Copie-le, change les noms, et tu as quelque chose de publiable.
 
 \`\`\`json
 {
@@ -496,11 +496,11 @@ publiable.
   "color": "#c2410c",
   "UpdateNumber": 4,
   "date": "2026-08-14",
-  "assetPaths": {
-    "ambience/rain_light": { "gain": -3.5, "pitch": 1.0 },
-    "ambience/fire_crackle": { "gain": 2.0, "pitch": 0.96 },
-    "ui/click": { "gain": -6.0 }
-  }
+  "assetPaths": [
+    "ambience/rain_light",
+    "ambience/fire_crackle",
+    "ui/click"
+  ]
 }
 \`\`\`
 
@@ -508,35 +508,36 @@ publiable.
 
 | Champ | Requis | Ce qu'il fait |
 |---|---|---|
-| \`name\` | oui | Ce que les gens voient dans le catalogue et dans BSM. |
-| \`version\` | oui | Comparée numériquement : \`1.10.0\` est plus récent que \`1.9.0\`. |
-| \`assetPaths\` | oui | La carte de ce que le preset change — voir plus bas. |
-| \`color\` | non | Couleur d'accent sur la carte du catalogue. Une chaîne hexadécimale. |
-| \`UpdateNumber\` | non | Ton propre compteur de révision, affiché à côté de la version. |
-| \`date\` | non | Date de publication, \`AAAA-MM-JJ\`. |
+| \`name\` | oui | Ce que les gens voient dans le catalogue et dans BSM. 1 à 120 caractères. |
+| \`version\` | oui | Jusqu'à 24 caractères. Comparée numériquement : \`1.10.0\` est plus récent que \`1.9.0\`. |
+| \`assetPaths\` | oui | La liste des assets que le preset pilote — voir plus bas. |
+| \`color\` | non | Couleur d'accent. 3 à 8 caractères hexadécimaux ; le \`#\` est facultatif. |
+| \`UpdateNumber\` | non | Un nombre. Ton propre compteur de révision, affiché à côté de la version. |
+| \`date\` | non | Texte libre, jusqu'à 40 caractères. \`AAAA-MM-JJ\` est la convention. |
 
-:::warning[assetPaths, c'est le preset]
-Tout le reste est de l'étiquetage. Un \`assetPaths\` vide se publie très bien et ne change rien
-une fois installé — c'est la panne que personne ne signale, parce qu'elle a l'air d'avoir
-marché.
+:::tip[Les clés en plus sont conservées]
+Le validateur laisse passer tout ce qu'il ne reconnaît pas, donc un champ que BSM ajoutera
+plus tard ne rendra pas tes presets existants invalides. Ne compte pas sur nous pour lui
+donner un sens, cela dit — seuls les champs ci-dessus sont lus ici.
 :::
 
 ## Ce qui va dans assetPaths
 
-Les clés sont des chemins d'assets tels que BSM les connaît ; les valeurs disent quoi en faire.
-
-| Clé | Type | Sens |
-|---|---|---|
-| \`gain\` | nombre | Changement de volume en dB. Négatif = plus discret. |
-| \`pitch\` | nombre | Vitesse de lecture. \`1.0\` = inchangé. |
-| \`mute\` | booléen | Le fait taire, quoi que dise le gain. |
+**Un tableau de chaînes.** Chacune est un chemin d'asset tel que BSM le connaît — jusqu'à 300
+caractères, jusqu'à 10 000 entrées. C'est la liste de ce que le preset touche, pas une carte
+de réglages : les valeurs vivent dans BSM, ce fichier nomme les cibles.
 
 \`\`\`json
-"assetPaths": {
-  "weather/thunder_far": { "gain": -12.0 },
-  "weather/thunder_near": { "mute": true }
-}
+"assetPaths": [
+  "weather/thunder_far",
+  "weather/thunder_near"
+]
 \`\`\`
+
+:::warning[assetPaths, c'est le preset]
+Tout le reste est de l'étiquetage. Un tableau vide se publie très bien et ne pilote rien une
+fois installé — c'est la panne que personne ne signale, parce qu'elle a l'air d'avoir marché.
+:::
 
 ## Le publier
 

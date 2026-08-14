@@ -240,7 +240,10 @@ function remarkDocBlocks() {
         const kind = String(attrs.type || attrs.marker || '1').toLowerCase();
         const start = Math.max(1, parseInt(attrs.start, 10) || 1);
         const vertical = String(attrs.orientation || attrs.dir || 'vertical') !== 'horizontal';
-        setEl('div', ['doc-steps', vertical ? 'doc-steps-v' : 'doc-steps-h']);
+        // One colour drives the marker and the rail, so they cannot drift apart. Set on the
+        // block for all of it, or on a single step to pick that one out.
+        const stepProps = attrs.color ? { style: `--step:${attrs.color}` } : {};
+        setEl('div', ['doc-steps', vertical ? 'doc-steps-v' : 'doc-steps-h'], stepProps);
         if (labelText || attrs.title) {
           node.children.unshift({ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-steps-title'] } },
             children: [{ type: 'text', value: labelText || attrs.title }] });
@@ -260,7 +263,7 @@ function remarkDocBlocks() {
         // half a component is worse than a plain paragraph.
         const marker = node.data?.stepMarker || attrs.marker || '•';
         const done = attrs.done === 'true' || attrs.status === 'done';
-        setEl('div', ['doc-step', ...(done ? ['doc-step-done'] : [])]);
+        setEl('div', ['doc-step', ...(done ? ['doc-step-done'] : [])], attrs.color ? { style: `--step:${attrs.color}` } : {});
         const head = [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-step-marker'], 'aria-hidden': 'true' } },
           children: [{ type: 'text', value: String(marker) }] }];
         const title = labelText || attrs.title;

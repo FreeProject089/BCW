@@ -51,11 +51,11 @@ function NotificationsPanel() {
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold flex items-center gap-2"><Bell size={16} /> Notifications {unread > 0 && <Badge tone="primary">{unread}</Badge>}</h2>
         <div className="flex items-center gap-3">
-          {unread > 0 && <button className="text-xs flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-[var(--primary-2)] hover:border-[var(--ring)] transition" onClick={markAll}><CheckCheck size={13} /> Mark all read</button>}
-          {list.length > 0 && <button className="text-xs flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-error hover:border-error/50 transition" onClick={clearAll}><Trash2 size={13} /> Clear all</button>}
+          {unread > 0 && <button className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] text-[var(--primary-2)] hover:border-[var(--primary)] transition shadow-sm" style={{ background: 'var(--bg-solid)' }} onClick={markAll}><CheckCheck size={13} /> Mark all read</button>}
+          {list.length > 0 && <button className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] text-error hover:border-error transition shadow-sm" style={{ background: 'var(--bg-solid)' }} onClick={clearAll}><Trash2 size={13} /> Clear all</button>}
           {/* The way out to the centre, which is the only place the per-category switches
               live. This card can mark and delete; it cannot say "stop sending me this". */}
-          <Link to="/notifications" className="text-xs flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/30 text-[var(--primary-2)] hover:bg-[var(--primary)]/20 transition">
+          <Link to="/notifications" className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--primary)] text-white hover:opacity-90 transition shadow-sm" style={{ background: 'var(--primary)' }}>
             <Sliders size={13} /> Notification centre
           </Link>
         </div>

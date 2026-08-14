@@ -92,7 +92,7 @@ const DEFAULT_ITEMS = [
 // Icons an admin can pick for a configured nav item — a curated, safe whitelist
 // (only these render; an unknown name falls back to Boxes). Keys are the values
 // stored in the nav config; keep them stable.
-const NAV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell, Code2 };
+const NAV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell, Code: Code2 };
 
 // Built-in topbar utility elements, split by their responsive cluster (see Topbar).
 // Admins reorder/hide WITHIN a cluster; the keys are the config identifiers — keep stable.

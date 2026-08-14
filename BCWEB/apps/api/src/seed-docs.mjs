@@ -336,7 +336,8 @@ its metadata lives inside the file, which is why a preset can be shared by pasti
 
 ## A whole preset
 
-This is a complete, valid file. Copy it, change the names, and you have something publishable.
+This is a complete, valid file — checked against the schema that accepts uploads. Copy it,
+change the names, and you have something publishable.
 
 \`\`\`json
 {
@@ -345,11 +346,11 @@ This is a complete, valid file. Copy it, change the names, and you have somethin
   "color": "#c2410c",
   "UpdateNumber": 4,
   "date": "2026-08-14",
-  "assetPaths": {
-    "ambience/rain_light": { "gain": -3.5, "pitch": 1.0 },
-    "ambience/fire_crackle": { "gain": 2.0, "pitch": 0.96 },
-    "ui/click": { "gain": -6.0 }
-  }
+  "assetPaths": [
+    "ambience/rain_light",
+    "ambience/fire_crackle",
+    "ui/click"
+  ]
 }
 \`\`\`
 
@@ -357,34 +358,36 @@ This is a complete, valid file. Copy it, change the names, and you have somethin
 
 | Field | Required | What it does |
 |---|---|---|
-| \`name\` | yes | What people see in the catalog and in BSM. |
-| \`version\` | yes | Compared numerically, so \`1.10.0\` is newer than \`1.9.0\`. |
-| \`assetPaths\` | yes | The map of what the preset changes — see below. |
-| \`color\` | no | Accent colour on the catalog card. A hex string. |
-| \`UpdateNumber\` | no | Your own revision counter, shown beside the version. |
-| \`date\` | no | Publish date, \`YYYY-MM-DD\`. |
+| \`name\` | yes | What people see in the catalog and in BSM. 1–120 characters. |
+| \`version\` | yes | Up to 24 characters. Compared numerically, so \`1.10.0\` is newer than \`1.9.0\`. |
+| \`assetPaths\` | yes | The list of assets the preset drives — see below. |
+| \`color\` | no | Accent colour. 3 to 8 hex characters; the \`#\` is optional. |
+| \`UpdateNumber\` | no | A number. Your own revision counter, shown beside the version. |
+| \`date\` | no | Free text, up to 40 characters. \`YYYY-MM-DD\` is the convention. |
 
-:::warning[assetPaths is the preset]
-Everything else is labelling. An empty \`assetPaths\` publishes fine and changes nothing when
-installed, which is the one failure nobody reports — it looks like it worked.
+:::tip[Extra keys are kept]
+The validator passes anything it does not recognise straight through, so a field BSM adds
+later will not make your existing presets invalid. Do not rely on us for its meaning, though
+— only the fields above are read here.
 :::
 
 ## What goes in assetPaths
 
-Keys are asset paths as BSM knows them; values are what to do with that asset.
-
-| Key | Type | Meaning |
-|---|---|---|
-| \`gain\` | number | Volume change in dB. Negative is quieter. |
-| \`pitch\` | number | Playback rate. \`1.0\` is unchanged. |
-| \`mute\` | boolean | Silences it, whatever the gain says. |
+**An array of strings.** Each one is an asset path as BSM knows it — up to 300 characters, up
+to 10 000 entries. It is a list of what the preset touches, not a map of settings: the values
+live in BSM, this file names the targets.
 
 \`\`\`json
-"assetPaths": {
-  "weather/thunder_far": { "gain": -12.0 },
-  "weather/thunder_near": { "mute": true }
-}
+"assetPaths": [
+  "weather/thunder_far",
+  "weather/thunder_near"
+]
 \`\`\`
+
+:::warning[assetPaths is the preset]
+Everything else is labelling. An empty array publishes fine and drives nothing when installed,
+which is the one failure nobody reports — it looks like it worked.
+:::
 
 ## Publishing one
 

@@ -9093,7 +9093,7 @@ function TelemetryConfigCard() {
 
 // Icon names an admin may attach to a nav item — must mirror NAV_ICONS in App.jsx
 // (an unknown name harmlessly falls back to the Boxes icon at render time).
-const NAV_ICON_CHOICES = ['Boxes', 'Music2', 'Newspaper', 'Server', 'Rocket', 'Shield', 'Download', 'Sparkles', 'Mail', 'Home', 'BookOpen', 'LayoutGrid', 'Info', 'Bell', 'Code2'];
+const NAV_ICON_CHOICES = ['Boxes', 'Music2', 'Newspaper', 'Server', 'Rocket', 'Shield', 'Download', 'Sparkles', 'Mail', 'Home', 'BookOpen', 'LayoutGrid', 'Info', 'Bell', 'Code'];
 // A ready-to-edit starting point mirroring the built-in topbar, so an admin isn't
 // staring at a blank editor. Uses plain labels + icon names (both languages).
 // Mirrors the site's real built-in NAV (App.jsx) so "Reset to default" restores exactly
@@ -9108,7 +9108,7 @@ const DEFAULT_NAV_SEED = [
   ] },
   { type: 'link', label: 'Blog', labelFr: 'Blog', to: '/blog', icon: 'Newspaper', children: [] },
   { type: 'link', label: 'Docs', labelFr: 'Docs', to: '/docs', icon: 'BookOpen', children: [] },
-  { type: 'link', label: 'Developers', labelFr: 'Développeurs', to: '/dev', icon: 'Code2', children: [] },
+  { type: 'link', label: 'Developers', labelFr: 'Développeurs', to: '/dev', icon: 'Code', children: [] },
   { type: 'link', label: 'Server repos', labelFr: 'Dépôts serveur', to: '/repos', icon: 'Server', children: [] },
   { type: 'link', label: 'Hosting', labelFr: 'Hébergement', to: '/hosting', icon: 'Rocket', children: [] },
 ];
