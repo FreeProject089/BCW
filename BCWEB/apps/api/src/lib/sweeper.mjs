@@ -2,7 +2,8 @@
 // `deleteAt` (a 72h grace window — e.g. a user delete, or a failed hosting payment).
 // Their files are kept until that moment, then this job hard-deletes the rows and
 // their object-storage bytes. Runs periodically from the API process.
-import { db, notify, catalogLog } from './lib.mjs';
+import { db, notify, catalogLog, clearAccountLockCache } from './lib.mjs';
+import { sendMail, mailShell, emailEnabled } from './mail.mjs';
 import { resolveRetention } from './retention.mjs';
 import { getRedis } from './redis.mjs';
 
@@ -28,6 +29,9 @@ import { sweepAccountClosures } from '../routes/closure.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
 import { createSnapshot, pruneSnapshots } from './snapshots.mjs';
 import { pruneApiRequests } from './apiusage.mjs';
+
+const SITE_URL = process.env.SITE_URL || 'http://localhost:5176';
+const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 import { signBytes } from './signing.mjs';
 
 const DAY_MS = 864e5;
@@ -181,6 +185,61 @@ async function sweepExpiredSubscriptions(p, log) {
 // pruning the least-recently-active rows first. The bot itself never touches
 // storage directly — it just POSTs activity over HTTP, so this stays cheap and
 // keeps the table bounded regardless of server size.
+/** End suspensions whose clock ran out.
+ *
+ *  Until now this only happened at the next sign-in, which is the wrong moment twice over: a
+ *  person who does not come back keeps their repos offline for ever, and the ones they were
+ *  serving to are punished for a sanction that ended. So the clock is checked here, the
+ *  content is put back where it was, and the person is told — including which subscriptions
+ *  were cancelled while they were out, because the offer to take them out again is the whole
+ *  point of having cancelled only the ones that were expiring anyway.
+ */
+async function sweepEndedSuspensions(p, log) {
+  const now = new Date();
+  const due = await p.user.findMany({
+    where: { status: 'suspended', moderationUntil: { not: null, lte: now } },
+    select: { id: true, email: true, displayName: true, moderationSuspendState: true },
+    take: 50,
+  }).catch(() => []);
+  let ended = 0;
+  for (const u of due) {
+    try {
+      const { restoreOwned } = await import('../routes/closure.mjs');
+      const restored = await restoreOwned(p, u.id, u.moderationSuspendState);
+      await p.user.update({ where: { id: u.id }, data: { status: 'active', moderationUntil: null, moderationReason: null, moderationSuspendState: null } });
+      clearAccountLockCache(u.id);
+
+      const open = await p.sanction.findFirst({
+        where: { userId: u.id, kind: 'suspension', status: 'active' }, orderBy: { issuedAt: 'desc' },
+      }).catch(() => null);
+      if (open) await p.sanction.update({ where: { id: open.id }, data: { status: 'expired' } }).catch(() => {});
+
+      const cancelled = Array.isArray(open?.meta?.cancelledSubs) ? open.meta.cancelledSubs : [];
+      const back = restored.repos + restored.catalogs + restored.items;
+      await notify(p, u.id, 'account_sanction',
+        `Your suspension has ended${open ? ` (${open.code})` : ''}. ${back} item(s) are back the way they were.`
+        + (cancelled.length ? ` ${cancelled.length} subscription(s) were cancelled while you were out — you can take them out again from Billing.` : ''))
+        .catch(() => {});
+
+      if (emailEnabled()) {
+        const rows = cancelled.map((c) => `<li>${escapeHtml(c.planName || 'Hosting')}${c.priceCents ? ` — ${(c.priceCents / 100).toFixed(2)}/month` : ''}</li>`).join('');
+        await sendMail({
+          to: u.email, subject: open ? `[${open.code}] Your suspension has ended` : 'Your suspension has ended',
+          html: mailShell('Your suspension has ended', `
+            <p>Hi ${escapeHtml(u.displayName || '')},</p>
+            <p>Your account is active again and ${back} item(s) have been put back exactly as they were.</p>
+            ${cancelled.length ? `<p style="margin-top:12px">These subscriptions were cancelled while you were suspended, because their term ended before the suspension did:</p><ul>${rows}</ul><p>Nothing was taken out again on your behalf — you decide.</p>` : ''}`,
+            cancelled.length ? { url: `${SITE_URL}/dashboard?s=billing`, label: 'Take them out again' } : { url: `${SITE_URL}/dashboard`, label: 'Open your dashboard' }),
+          text: `Your suspension has ended. ${back} item(s) restored.${cancelled.length ? ` ${cancelled.length} subscription(s) can be taken out again: ${SITE_URL}/dashboard?s=billing` : ''}`,
+        }).catch(() => {});
+      }
+      ended++;
+    } catch (e) { log?.warn?.({ e: String(e?.message || e) }, 'ending a suspension failed'); }
+  }
+  if (ended) log?.info?.({ ended }, 'sweeper: suspensions ended');
+  return ended;
+}
+
 async function sweepDiscordActivityCap(p, log) {
   try {
     const row = await p.adminSetting.findUnique({ where: { key: 'bot.config' } });
@@ -431,6 +490,7 @@ export function startSweeper(app) {
         await sweepCommunityCatalogs(p, app.log), await sweepRejectedPayloads(p, app.log),
         await sweepExpiredSubscriptions(p, app.log), await sweepExpiryWarnings(p, app.log),
         await sweepDiscordActivityCap(p, app.log), await sweepDailyFileBackup(p, app.log),
+        await sweepEndedSuspensions(p, app.log),
         await sweepAnalyticsRetention(p, app.log),
       ];
       await sweepDeadSessions(p, app.log);

@@ -23,6 +23,7 @@
 //    state is written down when the closure is scheduled: a repo that was OFFLINE comes back
 //    OFFLINE, not ONLINE. A grace period that deleted first would not be a grace period.
 import { z } from 'zod';
+import { issueSanction } from '../lib/sanctions.mjs';
 import crypto from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, clientIp, clearSession, notify } from '../lib/lib.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
@@ -338,6 +339,20 @@ export default async function closureRoutes(app) {
     });
     await logAudit(p, req.user.uid, 'account.closure_staff', `${target.email} in ${days}d, ${cancellable ? 'cancellable' : 'FINAL'} — ${b.data.reason.trim().slice(0, 120)}`, clientIp(req));
 
+    // The paperwork, created before the notice so the mail can quote its reference. A staff
+    // closure is the one sanction the person cannot call off themselves — which is exactly
+    // why it needs somewhere to be argued with. issueSanction also sends its own notice; the
+    // closure-specific mail below stays because it carries the timetable and what happens to
+    // the content, which a generic notice cannot.
+    const sanction = await issueSanction(p, {
+      userId: target.id, kind: 'closure', reason: b.data.reason.trim(),
+      request: cancellable
+        ? 'If this is wrong, contest it before the closing date and we can call it off.'
+        : 'This closure cannot be called off from your side, but you can contest it and a person will read it.',
+      issuedById: req.user.uid, expiresAt: when, log: req.log,
+      meta: { cancellable, days },
+    }).catch(() => null);
+
     const day = when.toISOString().slice(0, 10);
     const subject = 'Your BetterCommunity account is scheduled for closure';
     const html = mailShell(subject, `
@@ -353,17 +368,17 @@ export default async function closureRoutes(app) {
          subscription is cancelled and all of it is deleted for good. Nothing is transferred to anyone else. If you
          want to keep any of it, move it to another account before that date${cancellable ? ', or ask us to call this off — everything comes back exactly as it was' : ''}.</p>` : ''}
       <p>${cancellable
-        ? `If you want to keep the account, reply or use the contact page before ${escapeHtml(day)} and we can stop it.`
-        : `This closure is final and cannot be called off from your side.`} If you believe this is a mistake,
-         tell us before ${escapeHtml(day)} — a person reads it.</p>
-      <p style="margin:22px 0"><a href="${escapeHtml(SITE)}/contact"
-         style="background:#6366f1;color:#fff;padding:11px 20px;border-radius:9px;text-decoration:none;font-weight:600">Contact us</a></p>`);
+        ? `If you want to keep the account, contest it before ${escapeHtml(day)} and we can stop it.`
+        : `This closure is final and cannot be called off from your side — but you can still contest it, and a person reads every contest.`}</p>
+      ${sanction ? `<p style="margin-top:12px"><b>Reference:</b> <code>${escapeHtml(sanction.code)}</code> — quote it in anything you send us.</p>` : ''}
+      <p style="margin:22px 0"><a href="${escapeHtml(SITE)}${sanction ? `/sanctions/${escapeHtml(sanction.code)}` : '/contact'}"
+         style="background:#6366f1;color:#fff;padding:11px 20px;border-radius:9px;text-decoration:none;font-weight:600">${sanction ? 'Read it and contest' : 'Contact us'}</a></p>`);
     let mailed = false;
     try { mailed = (await sendMail({ to: target.email, subject, html, text: `Your account closes on ${day}. Reason: ${b.data.reason.trim()}` })) !== false; }
     catch { /* the closure stands; the notice is best-effort and the in-app one still lands */ }
-    await notify(p, target.id, 'Account closure scheduled', `Your account is scheduled to close on ${day}. Reason: ${b.data.reason.trim()}`).catch(() => {});
+    await notify(p, target.id, 'account_closure', `Your account is scheduled to close on ${day}${sanction ? ` (${sanction.code})` : ''}. Reason: ${b.data.reason.trim()}`).catch(() => {});
 
-    return { ok: true, scheduledFor: when, days, mailed, blockers };
+    return { ok: true, scheduledFor: when, days, mailed, blockers, sanction: sanction?.code || null };
   });
 
   /** Call it off. Staff-side counterpart, and the only way back from a staff closure. */
@@ -379,6 +394,10 @@ export default async function closureRoutes(app) {
       where: { id: target.id },
       data: { closureRequestedAt: null, closureScheduledFor: null, closureReason: null, closureBy: null, closureSuspendState: null },
     });
+    await p.sanction.updateMany({
+      where: { userId: target.id, kind: 'closure', status: 'active' },
+      data: { status: 'lifted', liftedAt: new Date(), liftedById: req.user.uid, liftReason: 'Closure called off by staff.' },
+    }).catch(() => {});
     await logAudit(p, req.user.uid, 'account.closure_staff_cancelled', target.email, clientIp(req));
     await notify(p, target.id, 'Account closure called off', 'The closure scheduled for your account has been cancelled. Nothing was deleted, and everything is back the way it was.').catch(() => {});
     return { ok: true, restored };

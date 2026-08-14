@@ -232,6 +232,11 @@ model User {
   @@index([status])
   @@index([closedEmailHash])
   @@index([priorUserId])
+  // Moderation paperwork. `sanctions` is what landed ON them; `sanctionsIssued` is what
+  // they handed out as staff — two different questions, and conflating them in one
+  // relation would make both unanswerable.
+  sanctions        Sanction[] @relation("SanctionTarget")
+  sanctionsIssued  Sanction[] @relation("SanctionIssuer")
 }
 
 // A GitHub/Discord identity linked to a website account — powers "Continue with
@@ -1131,6 +1136,76 @@ model ServerMetricSample {
 
 // A fired threshold alert (CPU/RAM/disk/service-down) — the persistent form of
 // what also gets pushed to Discord + surfaced live in the admin dashboard.
+/// One moderation decision, with a reference you can quote.
+///
+/// Before this, a sanction was a handful of columns on User (status/moderationUntil/
+/// moderationReason) — which meant only ONE could exist, nothing could be said about a repo
+/// or a catalog item, and a person told "your account was suspended" had no number to put in
+/// a reply. A record with a `code` is what turns moderation into something you can appeal
+/// against: both sides are talking about the same decision.
+///
+/// The account columns on User stay: they are the fast path every request reads. This is the
+/// history and the paperwork, not the lock itself.
+model Sanction {
+  id          String    @id @default(cuid())
+  /// SNC-XXXX-XXXX. Quoted in the e-mail, searchable in the admin, given by the user when
+  /// they contest. Unique so it can be looked up directly.
+  code        String    @unique
+  /// warning · suspension · ban · closure · takedown
+  kind        String
+  /// account · content — what the decision is really about, which decides what lifting it does.
+  scope       String    @default("account")
+
+  /// The person answerable for it, ALWAYS set — including for a content sanction, because a
+  /// repo cannot read its e-mail.
+  user        User      @relation("SanctionTarget", fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+
+  /// For a content sanction: repo · catalog · item, its id, and its name at the time.
+  /// The name is denormalised on purpose — the row may be deleted, the record must survive it.
+  targetType  String?
+  targetId    String?
+  targetName  String?
+  /// Other content caught by the same decision (ids), so one takedown can name several items
+  /// instead of becoming five unrelated records.
+  relatedIds  String[]  @default([])
+
+  reason      String
+  /// What the person is being asked to do about it, if anything. A warning with no request
+  /// is just an insult with a reference number.
+  request     String?
+  requiresAction Boolean @default(false)
+
+  issuedBy    User?     @relation("SanctionIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
+  issuedById  String?
+  issuedAt    DateTime  @default(now())
+  expiresAt   DateTime?
+
+  /// active · lifted · expired
+  status      String    @default("active")
+  liftedAt    DateTime?
+  liftedById  String?
+  liftReason  String?
+
+  /// The contest. An admin closure cannot be cancelled by the person it lands on — but it can
+  /// be argued with, and an argument nobody can file is not a right.
+  contestedAt        DateTime?
+  contestBody        String?
+  /// upheld · overturned
+  contestOutcome     String?
+  contestAnswer      String?
+  contestAnsweredAt  DateTime?
+  contestAnsweredById String?
+
+  /// Whatever the decision needs to remember — chiefly the subscriptions it cancelled, so the
+  /// offer to take them out again can name them when the suspension ends.
+  meta        Json?
+
+  @@index([userId, issuedAt])
+  @@index([status, expiresAt])
+  @@index([targetType, targetId])
+}
+
 model ServerAlertLog {
   id        String   @id @default(cuid())
   kind      String

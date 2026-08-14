@@ -18,6 +18,7 @@ import { powVerify } from './auth.mjs';
 import { FILES_BACKUP_ROOT, DB_BACKUP_ROOT, repoSizeBytes } from '../lib/gitbackup.mjs';
 import { userBcId, itemFingerprint, repoFingerprint, loadOwnerIdentities, looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
 import { telemetryDb } from './server-control.mjs';
+import { issueSanction, splitSubscriptionsByTerm, cancelSubscriptionList } from '../lib/sanctions.mjs';
 
 // The real client IP as observed by our trusted proxy (Caddy appends it last).
 function clientIp(req) {
@@ -998,6 +999,12 @@ export default async function miscRoutes(app) {
       await p.user.update({ where: { id: target.id }, data: { status: 'active', moderationUntil: null, moderationReason: null, moderatedAt: new Date(), moderatedById: req.user.uid, moderationSuspendState: null } });
       clearAccountLockCache(target.id);
       await notify(p, target.id, 'account', `Your account is active again. ${restored.repos + restored.catalogs + restored.items} item(s) were restored to the state they were in. Any subscription that was cancelled has to be taken out again.`).catch(() => {});
+      // Close whatever is still open against the account, so its history reads as ended
+      // rather than as a sanction that simply stopped being enforced.
+      await p.sanction.updateMany({
+        where: { userId: target.id, scope: 'account', status: 'active', kind: { in: ['suspension', 'ban'] } },
+        data: { status: 'lifted', liftedAt: new Date(), liftedById: req.user.uid, liftReason: 'Account reactivated by staff.' },
+      }).catch(() => {});
       await logAudit(p, req.user.uid, 'user.reactivate', `${target.displayName} (${target.email})`, clientIp(req));
       await notify(p, target.id, 'account', 'Your account has been reactivated — welcome back.').catch(() => {});
       if (emailEnabled()) sendMail({ to: target.email, subject: 'Your BetterCommunity account has been reactivated',
@@ -1030,15 +1037,33 @@ export default async function miscRoutes(app) {
     // months later is worse than asking them to subscribe again.
     const frozenState = await suspendOwned(p, target.id);
     await p.user.update({ where: { id: target.id }, data: { moderationSuspendState: frozenState } }).catch(() => {});
-    const cancelledSubs = await cancelSubscriptions(p, target.id, req.log);
+    // Only the terms that would run out DURING the suspension are cancelled. A term that
+    // outlives it is left alone: the person comes back to what they already paid for, and we
+    // have not taken a decision on their behalf that they would then have to undo. A
+    // permanent sanction has no "after", so it cancels everything.
+    const subs = await p.subscription.findMany({
+      where: { userId: target.id },
+      select: { id: true, stripeSubId: true, planId: true, hostingGroupId: true, serverRepoId: true,
+        currentPeriodEnd: true, plan: { select: { name: true, priceMonthlyCents: true } } },
+    }).catch(() => []);
+    const { cancel, keep } = splitSubscriptionsByTerm(subs, until);
+    const cancelledList = await cancelSubscriptionList(p, cancel, req.log);
+    const cancelledSubs = cancelledList.length;
     const label = status === 'banned' ? 'banned' : 'suspended';
     const dur = until ? `until ${until.toLocaleString('en-US', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' })} UTC` : 'permanently';
+    // The paperwork. issueSanction writes the row AND sends the notice from it, so the
+    // reference in the person's inbox and the reference in the admin are the same string by
+    // construction rather than by care.
+    const sanction = await issueSanction(p, {
+      userId: target.id, kind: status === 'banned' ? 'ban' : 'suspension',
+      reason: reason || 'No reason given.', issuedById: req.user.uid, expiresAt: until, log: req.log,
+      meta: { cancelledSubs: cancelledList, keptSubs: keep.map((k) => ({ id: k.id, planName: k.plan?.name || null, currentPeriodEnd: k.currentPeriodEnd })) },
+    });
     await logAudit(p, req.user.uid, `user.${status}`, `${target.displayName} (${target.email}) ${until ? `until ${until.toISOString()}` : 'permanently'}${reason ? ` — ${reason}` : ''}`, clientIp(req));
-    await notify(p, target.id, 'account', `Your account has been ${label} ${dur}.${reason ? ` Reason: ${reason}` : ''} Your repositories and catalogs are suspended and any subscription has been cancelled.${status === 'suspended' ? ' You can still sign in to read this and contact us.' : ''}`).catch(() => {});
-    if (emailEnabled()) sendMail({ to: target.email, subject: `Your BetterCommunity account has been ${label}`,
-      html: mailShell(`Account ${label}`, `<p>Hi ${escapeHtml(target.displayName)},</p><p>Your account has been <b>${label}</b> ${dur}.</p>${reason ? `<p style="margin-top:12px"><b>Reason:</b><br>${escapeHtml(reason)}</p>` : ''}${until ? '' : '<p style="margin-top:12px">If you believe this was a mistake, you can appeal by contacting support.</p>'}`, until ? null : { url: `${SITE_URL}/contact?ref=appeal`, label: 'Contact support' }),
-      text: `Your BetterCommunity account has been ${label} ${dur}.${reason ? ` Reason: ${reason}` : ''}${until ? '' : ` Appeal: ${SITE_URL}/contact`}` }).catch(() => {});
-    return { ok: true, status, until: until ? until.toISOString() : null, cancelledSubs, frozen: { repos: Object.keys(frozenState.repos || {}).length, catalogs: Object.keys(frozenState.catalogs || {}).length, items: Object.keys(frozenState.items || {}).length } };
+    await notify(p, target.id, 'account_sanction', `Your account has been ${label} ${dur} (${sanction.code}).${reason ? ` Reason: ${reason}` : ''} Your repositories and catalogs are suspended.${cancelledSubs ? ` ${cancelledSubs} subscription(s) ending before then were cancelled.` : ''}${keep.length ? ` ${keep.length} kept — their term outlasts the suspension.` : ''}${status === 'suspended' ? ' You can still sign in to read this and contest it.' : ''}`).catch(() => {});
+    return { ok: true, status, sanction: sanction.code, until: until ? until.toISOString() : null,
+      cancelledSubs, keptSubs: keep.length,
+      frozen: { repos: Object.keys(frozenState.repos || {}).length, catalogs: Object.keys(frozenState.catalogs || {}).length, items: Object.keys(frozenState.items || {}).length } };
   });
 
   // ── Admin: reset a user's 2FA (lost-authenticator recovery) ───────────────────
