@@ -142,65 +142,108 @@ export function Admin() {
   useEffect(() => { const id = setInterval(() => pendingReload.current?.(), 60_000); return () => clearInterval(id); }, []);
   const pc = pending.data?.counts || {};
   const [review, setReview] = useState(null);
+  // The nav, grouped.
+  //
+  // Forty-five rows at one level meant "Errors" and "Site theme" looked equally important and
+  // neither could be found. A tab may now carry `sub`, which SideDash renders as one sidebar
+  // row plus a sub-tab strip above the content — so the sidebar answers "what kind of thing
+  // am I doing" and the strip answers "which one".
+  //
+  // Leaf ids are untouched on purpose: every deep link, every badge target and every
+  // `s === 'x'` branch below keeps working. This moves rows in the nav, not pages.
+  //
+  // Headings say what the section is FOR rather than naming a noun-pile: a moderator scanning
+  // for where to answer a report is helped more by "Waiting on you" than by "Moderation".
   const raw = [
-    { heading: t('adm.h.moderation', 'Moderation') },
+    { heading: t('adm.h.queues', 'Waiting on you') },
     isMod && { id: 'needs', label: t('adm.tab.needs', 'Needs attention'), icon: BellIcon, badge: pending.data?.total || undefined },
-    isMod && { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: Inbox, badge: queue.length || undefined },
-    isMod && { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
-    isMod && { id: 'sanctions', label: t('adm.tab.sanctions', 'Sanctions'), icon: Gavel, badge: pc.contests || undefined },
+    isMod && { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: Inbox,
+      sub: [
+        { id: 'moderation', label: t('adm.tab.submissions', 'Submissions'), icon: Inbox, badge: queue.length || undefined },
+        can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: AlertTriangle, badge: pc.reports || undefined },
+        { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
+        { id: 'sanctions', label: t('adm.tab.sanctions', 'Sanctions'), icon: Gavel, badge: pc.contests || undefined },
+      ].filter(Boolean) },
 
-    { heading: t('adm.h.users', 'Users & access') },
-    can('manage_users') && { id: 'users', label: t('adm.tab.users', 'Users'), icon: Users },
-    can('manage_users') && { id: 'planusers', label: t('adm.tab.planusers', 'Free vs paid'), icon: Receipt },
-    isAdmin && { id: 'access', label: t('adm.tab.access', 'Access & permissions'), icon: Shield },
-    isAdmin && { id: 'security', label: t('adm.tab.security', 'Security log'), icon: Lock },
+    { heading: t('adm.h.people', 'People') },
+    can('manage_users') && { id: 'users', label: t('adm.tab.users', 'Accounts'), icon: Users,
+      sub: [
+        { id: 'users', label: t('adm.tab.users2', 'All accounts'), icon: Users },
+        { id: 'planusers', label: t('adm.tab.planusers', 'Free vs paid'), icon: Receipt },
+        isAdmin && { id: 'access', label: t('adm.tab.access', 'Roles & permissions'), icon: Shield },
+        isAdmin && { id: 'security', label: t('adm.tab.security', 'Security log'), icon: Lock },
+      ].filter(Boolean) },
 
-    { heading: t('adm.h.content', 'Content') },
-    isAdmin && { id: 'catalogs', label: t('adm.tab.catalogs', 'Catalogs'), icon: Boxes },
-    canProjectsTab && { id: 'projects', label: t('adm.tab.projects', 'Projects'), icon: Settings2 },
-    isAdmin && { id: 'assets', label: t('adm.tab.assets', 'Downloads & assets'), icon: Download },
-    canShowcaseTab && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
-    isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: MessageSquare },
-    can('manage_announcements') && { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
+    { heading: t('adm.h.content', 'What the site shows') },
+    canProjectsTab && { id: 'projects', label: t('adm.tab.projects', 'Projects'), icon: Settings2,
+      sub: [
+        { id: 'projects', label: t('adm.tab.projects2', 'Better* projects'), icon: Settings2 },
+        // "Other projects" had a tab of its own next to Projects, which read as a separate
+        // subsystem rather than as the second kind of project it is.
+        canShowcaseTab && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
+      ].filter(Boolean) },
+    isAdmin && { id: 'catalogs', label: t('adm.tab.catalogs', 'Catalogs'), icon: Boxes,
+      sub: [
+        { id: 'catalogs', label: t('adm.tab.catalogs2', 'Official'), icon: Boxes },
+        can('manage_catalogs') && { id: 'commcatalogs', label: t('adm.tab.commcatalogs', 'Community'), icon: Layers },
+        { id: 'assets', label: t('adm.tab.assets', 'Downloads & assets'), icon: Download },
+      ].filter(Boolean) },
+    can('manage_announcements') && { id: 'announcements', label: t('adm.tab.editorial', 'Writing & notices'), icon: Newspaper,
+      sub: [
+        { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
+        can('manage_faq') && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
+        can('manage_newsletter') && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
+        isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: MessageSquare },
+        can('manage_polls') && { id: 'polls', label: t('adm.tab.polls', 'Polls'), icon: BarChart3 },
+      ].filter(Boolean) },
     isAdmin && { id: 'badges', label: t('adm.tab.badges', 'Badges'), icon: BadgeCheck },
-    can('manage_newsletter') && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
-    can('manage_faq') && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
-    can('manage_polls') && { id: 'polls', label: t('adm.tab.polls', 'Polls'), icon: BarChart3 },
-    can('manage_catalogs') && { id: 'commcatalogs', label: t('adm.tab.commcatalogs', 'Community catalogs'), icon: Layers },
-    can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: Inbox, badge: pc.reports || undefined },
 
-    { heading: t('adm.h.repos', 'Repos & hosting') },
-    can('manage_repos') && { id: 'repos', label: t('adm.tab.repos', 'Server repos'), icon: Server },
-    can('manage_repos') && { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
-    isAdmin && { id: 'plans', label: t('adm.tab.plans', 'Hosting plans'), icon: HardDrive },
-    isAdmin && { id: 'mail', label: t('adm.tab.mail', 'Mail'), icon: Mail },
-    isAdmin && { id: 'history', label: t('adm.tab.history', 'History'), icon: History },
-    isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
+    { heading: t('adm.h.repos', 'Hosting') },
+    can('manage_repos') && { id: 'repos', label: t('adm.tab.repos', 'Repos & pools'), icon: Server,
+      sub: [
+        { id: 'repos', label: t('adm.tab.repos2', 'Server repos'), icon: Server },
+        { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
+        isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
+      ].filter(Boolean) },
+    isAdmin && { id: 'plans', label: t('adm.tab.plans', 'Plans & billing'), icon: CreditCard,
+      sub: [
+        { id: 'plans', label: t('adm.tab.plans2', 'Hosting plans'), icon: HardDrive },
+        { id: 'history', label: t('adm.tab.history', 'Site history'), icon: History },
+        { id: 'mail', label: t('adm.tab.mail', 'Mail'), icon: Mail },
+      ] },
 
-    { heading: t('adm.h.growth', 'Growth & monetization') },
+    { heading: t('adm.h.growth', 'Growth & money') },
     can('manage_promotions') && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
-    isAdmin && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon },
     can('manage_events') && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
     can('manage_myo') && { id: 'myo', label: t('adm.tab.myo', 'Commissions'), icon: Wand2, badge: pc.myo || undefined },
+    isAdmin && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon },
 
     { heading: t('adm.h.integrations', 'Integrations') },
     isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
     can('manage_api') && { id: 'api', label: t('adm.tab.api', 'Public API'), icon: KeyRound },
-
     isAdmin && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: MessageSquare },
 
-    { heading: t('adm.h.serverdata', 'Server & data') },
-    isAdmin && { id: 'serverperf', label: t('adm.tab.serverperf', 'Server perf'), icon: Cpu, badge: pc.alerts || undefined },
-    isAdmin && { id: 'serveradv', label: t('adm.tab.serveradv', 'Advanced server'), icon: AlertTriangle },
-    isAdmin && { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
-    can('manage_analytics') && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp },
-    can('manage_analytics') && { id: 'errors', label: t('adm.tab.errors', 'Errors'), icon: AlertTriangle },
-    can('manage_analytics') && { id: 'goals', label: t('adm.tab.goals', 'Goals'), icon: Target },
+    { heading: t('adm.h.serverdata', 'The machine') },
+    isAdmin && { id: 'serverperf', label: t('adm.tab.server', 'Server'), icon: Cpu,
+      sub: [
+        { id: 'serverperf', label: t('adm.tab.serverperf2', 'Performance'), icon: Cpu, badge: pc.alerts || undefined },
+        { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
+        { id: 'serveradv', label: t('adm.tab.serveradv', 'Advanced'), icon: AlertTriangle },
+      ] },
+    can('manage_analytics') && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp,
+      sub: [
+        { id: 'analytics', label: t('adm.tab.analytics2', 'Traffic'), icon: TrendingUp },
+        { id: 'goals', label: t('adm.tab.goals', 'Goals'), icon: Target },
+        { id: 'errors', label: t('adm.tab.errors', 'Errors'), icon: AlertTriangle },
+      ] },
 
-    { heading: t('adm.h.settings', 'Settings') },
-    isAdmin && { id: 'navui', label: t('adm.tab.navui', 'Topbar navigation'), icon: Navigation },
-    isAdmin && { id: 'footer', label: t('adm.tab.footer', 'Footer'), icon: PanelTop },
+    { heading: t('adm.h.settings', 'How it looks & behaves') },
     isAdmin && { id: 'settings', label: t('adm.tab.settings', 'Settings'), icon: Sliders },
+    isAdmin && { id: 'navui', label: t('adm.tab.chrome', 'Navigation & footer'), icon: Navigation,
+      sub: [
+        { id: 'navui', label: t('adm.tab.navui2', 'Topbar'), icon: Navigation },
+        { id: 'footer', label: t('adm.tab.footer', 'Footer'), icon: PanelTop },
+      ] },
     // Site theme changes what EVERY visitor sees, so it sits a tier above the per-project
     // settings an ADMIN manages.
     isSuperAdmin && { id: 'sitetheme', label: t('adm.tab.sitetheme', 'Site theme'), icon: Palette },

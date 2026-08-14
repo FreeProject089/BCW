@@ -289,7 +289,18 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
   const [sp, setSp] = useSearchParams();
   const { t: tr } = useI18n();
   const [navOpen, setNavOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  // A tab may carry `sub: [{ id, label, icon?, badge? }]`. The sidebar shows ONE entry for
+  // it; the sub-tabs appear as a row above the content. This is what stops a long dashboard
+  // from being a wall of forty-five equal-looking rows where "Errors" and "Site theme" sit at
+  // the same level of importance.
+  //
+  // The URL keeps addressing the leaf (`?s=errors`), not `parent.child`: every existing link,
+  // bookmark and badge target keeps working, and the parent is derived from the leaf instead
+  // of encoded next to it.
   const realTabs = tabs.filter((t) => t.id);
+  const leafOf = (tb) => (tb.sub?.length ? tb.sub : [tb]);
+  const allLeaves = realTabs.flatMap((tb) => leafOf(tb).map((lf) => ({ ...lf, parent: tb })));
   // Sections, so a heading can fold the tabs under it. The flat `tabs` array stays the
   // public shape — callers keep passing `{heading}` markers and know nothing about this.
   // A leading run with no heading becomes an unnamed section, which is never collapsible:
@@ -315,9 +326,14 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
     try { sessionStorage.setItem('bcw_sidedash_collapsed', JSON.stringify([...next])); } catch { /* private mode */ }
     return next;
   });
-  const active = sp.get('s') || realTabs[0]?.id;
-  const set = (id) => { setSp((p) => { const n = new URLSearchParams(p); n.set('s', id); return n; }, { replace: true }); setNavOpen(false); };
-  const current = realTabs.find((t) => t.id === active) || realTabs[0];
+  const wanted = sp.get('s') || allLeaves[0]?.id;
+  const set = (id) => { setSp((p) => { const n = new URLSearchParams(p); n.set('s', id); return n; }, { replace: true }); setNavOpen(false); setQuery(''); };
+  // The leaf the URL asks for; falling back to the first one rather than to nothing, so a
+  // stale bookmark lands somewhere real instead of on an empty pane.
+  const leaf = allLeaves.find((l) => l.id === wanted) || allLeaves[0];
+  const current = leaf?.parent || realTabs[0];
+  const active = current?.id;
+  const activeLeaf = leaf?.id;
   const idx = realTabs.findIndex((t) => t.id === active);
   // A section, reused by the desktop sidebar and the mobile sheet so the two can never
   // drift into disagreeing about what is folded.
@@ -355,12 +371,24 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
   };
   // One row renderer, reused by the desktop sidebar and the mobile sheet.
   const renderTab = (tb, big) => (
-    <button key={tb.id} onClick={() => set(tb.id)}
+    <button key={tb.id} onClick={() => set(leafOf(tb)[0].id)}
       className={`flex items-center gap-2.5 px-3 ${big ? 'py-2.5' : 'py-2'} rounded-xl text-sm text-left w-full whitespace-nowrap transition-colors press ${active === tb.id ? 'bg-[var(--surface-2)] text-[var(--text)] border border-[var(--line)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border border-transparent'}`}>
       <tb.icon size={16} className={`shrink-0 ${active === tb.id ? 'text-[var(--primary-2)]' : ''}`} /> <span className="min-w-0 truncate">{tb.label}</span>
-      {tb.badge ? <Badge tone="primary" className="ml-auto shrink-0">{tb.badge}</Badge> : null}
+      {(() => {
+        const n = (tb.badge || 0) + leafOf(tb).reduce((a, lf) => a + (lf === tb ? 0 : (lf.badge || 0)), 0);
+        return n ? <Badge tone="primary" className="ml-auto shrink-0">{n}</Badge> : null;
+      })()}
     </button>
   );
+  // Search over every leaf, by label AND by the parent's label, so "server" finds the
+  // sub-tabs under Server without them having to repeat the word. Deliberately not fuzzy:
+  // an admin types the beginning of a word they know exists, and a fuzzy match that surfaces
+  // "Storage" for "goals" is worse than no match.
+  const q = query.trim().toLowerCase();
+  const hits = q
+    ? allLeaves.filter((lf) => `${lf.label} ${lf.parent.label}`.toLowerCase().includes(q)).slice(0, 8)
+    : [];
+
   return (
     <div>
       <PageHeader icon={icon} title={title} subtitle={subtitle} actions={headerActions} />
@@ -388,9 +416,48 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
         {/* Desktop sidebar — a real card panel behind the whole nav (not just the
             active pill) so it feels grounded next to the content cards. */}
         <nav className="hidden md:flex card p-2 flex-col gap-1 md:sticky md:top-20 self-start pb-2">
-          {sections.map((sec, i) => renderSection(sec, i, false))}
+          {/* Jump straight to a page instead of hunting the list. Shown only when there are
+              enough tabs for hunting to be the problem — on a five-tab dashboard a search box
+              is one more thing to read. */}
+          {allLeaves.length > 8 && (
+            <div className="relative px-1 pt-1 pb-1.5">
+              <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && hits[0]) set(hits[0].id); if (e.key === 'Escape') setQuery(''); }}
+                placeholder={tr('sd.search', 'Jump to…')} aria-label={tr('sd.search', 'Jump to…')}
+                className="w-full pl-7 pr-2 py-1.5 rounded-lg text-[13px] bg-[var(--surface-2)] border border-[var(--line)] outline-none focus:border-[var(--ring)]" />
+              {q && (
+                <div className="mt-1 space-y-0.5">
+                  {hits.length ? hits.map((lf) => (
+                    <button key={lf.id} onClick={() => set(lf.id)}
+                      className="w-full text-left px-2 py-1.5 rounded-lg text-[13px] hover:bg-[var(--surface-2)] flex items-center gap-2">
+                      <lf.parent.icon size={13} className="text-[var(--faint)] shrink-0" />
+                      <span className="truncate">{lf.label}</span>
+                      {lf.parent.label !== lf.label && <span className="text-[10px] text-[var(--faint)] truncate ml-auto">{lf.parent.label}</span>}
+                    </button>
+                  )) : <div className="px-2 py-1.5 text-[12px] text-[var(--faint)]">{tr('sd.nohit', 'Nothing by that name.')}</div>}
+                </div>
+              )}
+            </div>
+          )}
+          {!q && sections.map((sec, i) => renderSection(sec, i, false))}
         </nav>
-        <div className="min-w-0">{typeof children === 'function' ? children(current.id) : children}</div>
+        <div className="min-w-0">
+          {/* Sub-tabs. Only when the current tab has them — a single-item row would be a
+              label pretending to be a control. */}
+          {current?.sub?.length > 1 && (
+            <div className="inline-flex flex-wrap rounded-[12px] bg-[var(--surface-2)] p-0.5 mb-4">
+              {current.sub.map((lf) => (
+                <button key={lf.id} onClick={() => set(lf.id)}
+                  className={`px-3 py-1.5 rounded-[10px] text-sm flex items-center gap-1.5 ${activeLeaf === lf.id ? 'bg-[var(--bg-solid)] font-medium shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                  {lf.icon && <lf.icon size={13} />} {lf.label}
+                  {lf.badge ? <Badge tone="primary">{lf.badge}</Badge> : null}
+                </button>
+              ))}
+            </div>
+          )}
+          {typeof children === 'function' ? children(activeLeaf) : children}
+        </div>
       </div>
     </div>
   );
