@@ -159,6 +159,15 @@ model User {
   // side effect of who pressed the button. When false no cancel token is minted at all —
   // an unusable link in an email is worse than no link.
   closureCancellable  Boolean   @default(true)
+  // What everything this account owns looked like BEFORE the closure suspended it.
+  //
+  // During the grace period nothing is deleted — repos, catalogs and items are suspended, so
+  // the account stops serving content while it is on its way out but nothing is lost if it
+  // changes its mind. Restoring then has to put each one back where it WAS: a repo that was
+  // OFFLINE must return to OFFLINE, not to ONLINE. That is only possible if the previous
+  // state was written down, so it is, here, as { repos: {id: status}, catalogs: {id: {...}},
+  // items: {id: status} }.
+  closureSuspendState Json?
   // SHA-256 of the email the account had before anonymisation.
   //
   // Closing erases the address, which is the point — but it also erases the only link

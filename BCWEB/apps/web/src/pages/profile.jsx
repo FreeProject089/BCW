@@ -445,7 +445,7 @@ function CloseAccountCard() {
       {data.pending ? (
         <>
           <p className="text-[13px] text-[var(--muted)] mt-1">
-            {t('acl.pending', 'Scheduled to close on {d}. Nothing has been deleted — cancel any time before then, here or with the link in your email.')
+            {t('acl.pending', 'Scheduled to close on {d}. Your repositories, catalogs and items are suspended in the meantime — nothing is deleted, and cancelling puts every one of them back exactly as it was. Cancel any time before then, here or with the link in your email.')
               .replace('{d}', new Date(data.scheduledFor).toLocaleDateString())}
           </p>
           <Button className="mt-3" variant="primary" disabled={busy} onClick={cancel}>{busy ? <Spinner /> : t('acl.keep', 'Keep my account')}</Button>

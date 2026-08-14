@@ -11,9 +11,17 @@
 //    DELETE would take with it. The row stays and everything personal is scrubbed, so an
 //    invoice still points at something without still pointing at somebody.
 //
-// 3. You cannot leave a mess behind. Anything still owned — a repository, a catalog item,
-//    a live subscription — blocks the request, with the list of what and where. Orphaned
-//    content is a burden handed to whoever inherits the support ticket.
+// 3. You cannot leave a mess behind — if you asked for this yourself. Anything still owned
+//    blocks a SELF request, with the list of what and where, because the owner can go and
+//    deal with it. A closure staff decided cannot be held hostage by the same list, or an
+//    account would become unclosable by acquiring a repo; it tears the content down at the
+//    end instead.
+//
+// 4. Pending is SUSPENDED, not deleted. For the whole grace period the account stops
+//    serving — repos, catalogs and items are suspended — and nothing is destroyed until the
+//    date arrives. Cancelling restores each one to the state it was IN, which is why that
+//    state is written down when the closure is scheduled: a repo that was OFFLINE comes back
+//    OFFLINE, not ONLINE. A grace period that deleted first would not be a grace period.
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, clientIp, clearSession, notify } from '../lib/lib.mjs';
@@ -47,6 +55,66 @@ async function closureBlockers(p, userId) {
   if (pools) out.push({ kind: 'pool', count: pools, where: '/dashboard#billing' });
   if (repos) out.push({ kind: 'repo', count: repos, where: '/repos' });
   if (items) out.push({ kind: 'item', count: items, where: '/dashboard#items' });
+  return out;
+}
+
+
+/** Suspend everything this account serves, remembering what each thing was.
+ *
+ *  A pending closure should stop the account SERVING without destroying anything: the grace
+ *  month exists so a decision can be taken back, and it cannot be taken back if the content
+ *  is already gone. So repos, catalogs and items are suspended, and their previous state is
+ *  written down — because "restore" means putting each one back where it was, not setting
+ *  them all to the same optimistic value. A repo that was OFFLINE returns to OFFLINE.
+ *
+ *  Returns the snapshot to store on the user. Anything already suspended is recorded as it
+ *  is, so cancelling leaves it suspended rather than quietly publishing it.
+ */
+async function suspendOwned(p, userId) {
+  const [repos, catalogs, items] = await Promise.all([
+    p.serverRepo.findMany({ where: { ownerId: userId }, select: { id: true, status: true } }).catch(() => []),
+    p.communityCatalog.findMany({ where: { ownerId: userId }, select: { id: true, status: true, listed: true } }).catch(() => []),
+    p.catalogItem.findMany({ where: { ownerId: userId }, select: { id: true, status: true } }).catch(() => []),
+  ]);
+  const state = {
+    repos: Object.fromEntries(repos.map((r) => [r.id, r.status])),
+    // `listed` travels with the status: suspending a catalog unlists it, and restoring the
+    // status while leaving it unlisted would put it back in a state it was never in.
+    catalogs: Object.fromEntries(catalogs.map((c) => [c.id, { status: c.status, listed: c.listed }])),
+    items: Object.fromEntries(items.map((i) => [i.id, i.status])),
+    at: new Date().toISOString(),
+  };
+  await Promise.all([
+    p.serverRepo.updateMany({ where: { ownerId: userId }, data: { status: 'SUSPENDED' } }).catch(() => {}),
+    p.communityCatalog.updateMany({ where: { ownerId: userId }, data: { status: 'SUSPENDED', listed: false } }).catch(() => {}),
+    p.catalogItem.updateMany({ where: { ownerId: userId }, data: { status: 'SUSPENDED' } }).catch(() => {}),
+  ]);
+  return state;
+}
+
+/** Put everything back exactly as `suspendOwned` found it.
+ *
+ *  Row by row rather than one updateMany, because each row goes back to its OWN previous
+ *  value. Anything not in the snapshot — created during the grace period — is left alone:
+ *  we never suspended it, so we have no business changing it now.
+ */
+async function restoreOwned(p, userId, state) {
+  if (!state || typeof state !== 'object') return { repos: 0, catalogs: 0, items: 0 };
+  const out = { repos: 0, catalogs: 0, items: 0 };
+  for (const [id, status] of Object.entries(state.repos || {})) {
+    // updateMany with the owner in the WHERE: a row that changed hands during the grace
+    // period must not be rewritten from a stale snapshot.
+    const r = await p.serverRepo.updateMany({ where: { id, ownerId: userId }, data: { status } }).catch(() => ({ count: 0 }));
+    out.repos += r.count;
+  }
+  for (const [id, prev] of Object.entries(state.catalogs || {})) {
+    const r = await p.communityCatalog.updateMany({ where: { id, ownerId: userId }, data: { status: prev.status, listed: prev.listed } }).catch(() => ({ count: 0 }));
+    out.catalogs += r.count;
+  }
+  for (const [id, status] of Object.entries(state.items || {})) {
+    const r = await p.catalogItem.updateMany({ where: { id, ownerId: userId }, data: { status } }).catch(() => ({ count: 0 }));
+    out.items += r.count;
+  }
   return out;
 }
 
@@ -87,7 +155,10 @@ export default async function closureRoutes(app) {
 
     const token = crypto.randomBytes(24).toString('base64url');
     const when = new Date(Date.now() + GRACE_DAYS * 864e5);
-    await p.user.update({ where: { id: me.id }, data: { closureRequestedAt: new Date(), closureScheduledFor: when, closureToken: token } });
+    // Suspended, not deleted: the grace month is only a grace month if what it protects is
+    // still there at the end of it.
+    const suspended = await suspendOwned(p, me.id);
+    await p.user.update({ where: { id: me.id }, data: { closureRequestedAt: new Date(), closureScheduledFor: when, closureToken: token, closureSuspendState: suspended } });
 
     // Any offer they had out is withdrawn: an account on its way out should not be able to
     // hand somebody something a month from now.
@@ -151,7 +222,7 @@ export default async function closureRoutes(app) {
     const token = String(req.query?.token || req.body?.token || '');
     if (!token) return reply.code(400).send({ error: 'missing_token' });
     const p = await db();
-    const u = await p.user.findUnique({ where: { closureToken: token }, select: { id: true, closureScheduledFor: true, closureCancellable: true } });
+    const u = await p.user.findUnique({ where: { closureToken: token }, select: { id: true, closureScheduledFor: true, closureCancellable: true, closureSuspendState: true } });
     // An unknown token is an error, and has to be — the common way to get one is an email
     // client that cut the link in half, and telling that reader "your account is safe" is
     // the single worst thing this endpoint could say. It would be true of nobody's account.
@@ -165,7 +236,8 @@ export default async function closureRoutes(app) {
     // Note the token is NOT cleared. That is what makes "cancelled" and "never existed"
     // distinguishable at all; it grants nothing once there is no closure to cancel, and
     // requesting a closure again mints a fresh one.
-    await p.user.update({ where: { id: u.id }, data: { closureRequestedAt: null, closureScheduledFor: null } });
+    await restoreOwned(p, u.id, u.closureSuspendState);
+    await p.user.update({ where: { id: u.id }, data: { closureRequestedAt: null, closureScheduledFor: null, closureSuspendState: null } });
     await logAudit(p, u.id, 'account.closure_cancelled', 'via emailed link', clientIp(req));
     return { ok: true, cancelled: true, userId: u.id };
   };
@@ -175,12 +247,13 @@ export default async function closureRoutes(app) {
   // The signed-in route, for someone who is simply on the site.
   app.post('/me/closure/cancel', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
-    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { closureScheduledFor: true, closureCancellable: true } });
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { closureScheduledFor: true, closureCancellable: true, closureSuspendState: true } });
     if (!me?.closureScheduledFor) return reply.code(409).send({ error: 'not_pending' });
     if (me.closureCancellable === false) return reply.code(403).send({ error: 'not_cancellable' });
     // Token kept here too, so a link cancelled from the site still answers honestly when the
     // same person later clicks the one in their inbox.
-    await p.user.update({ where: { id: req.user.uid }, data: { closureRequestedAt: null, closureScheduledFor: null } });
+    await restoreOwned(p, req.user.uid, me.closureSuspendState);
+    await p.user.update({ where: { id: req.user.uid }, data: { closureRequestedAt: null, closureScheduledFor: null, closureSuspendState: null } });
     await logAudit(p, req.user.uid, 'account.closure_cancelled', 'from the site', clientIp(req));
     return { ok: true };
   });
@@ -231,12 +304,14 @@ export default async function closureRoutes(app) {
     // owns is torn down at closure instead — see sweepAccountClosures.
     const blockers = await closureBlockers(p, target.id);
 
+    const suspended = await suspendOwned(p, target.id);
     await p.user.update({
       where: { id: target.id },
       data: {
         closureRequestedAt: new Date(), closureScheduledFor: when, closureToken: token,
         closureReason: b.data.reason.trim(), closureBy: req.user.uid,
         closureCancellable: cancellable,
+        closureSuspendState: suspended,
       },
     });
     await logAudit(p, req.user.uid, 'account.closure_staff', `${target.email} in ${days}d, ${cancellable ? 'cancellable' : 'FINAL'} — ${b.data.reason.trim().slice(0, 120)}`, clientIp(req));
@@ -251,10 +326,10 @@ export default async function closureRoutes(app) {
       </table>
       <p>Until that date nothing has been deleted. Your invoices and the records we are required to keep
          are retained either way; everything personal on the account is removed when it closes.</p>
-      ${blockers.length ? `<p><b>What happens to what the account holds.</b> On ${escapeHtml(day)} any active
-         subscription is cancelled and anything still hosted under this account — repositories, catalogs and
-         their storage — is deleted. Nothing is transferred to anyone else. If you want to keep any of it,
-         move it to another account before that date.</p>` : ''}
+      ${blockers.length ? `<p><b>What happens to what the account holds.</b> Your repositories, catalogs and items
+         are <b>suspended now</b> — they stop being served, and nothing is deleted. On ${escapeHtml(day)} any active
+         subscription is cancelled and all of it is deleted for good. Nothing is transferred to anyone else. If you
+         want to keep any of it, move it to another account before that date${cancellable ? ', or ask us to call this off — everything comes back exactly as it was' : ''}.</p>` : ''}
       <p>${cancellable
         ? `If you want to keep the account, reply or use the contact page before ${escapeHtml(day)} and we can stop it.`
         : `This closure is final and cannot be called off from your side.`} If you believe this is a mistake,
@@ -272,18 +347,19 @@ export default async function closureRoutes(app) {
   /** Call it off. Staff-side counterpart, and the only way back from a staff closure. */
   app.delete('/admin/users/:id/closure', { preHandler: requireCap('manage_users') }, async (req, reply) => {
     const p = await db();
-    const target = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, email: true, role: true, closureScheduledFor: true, closedAt: true } });
+    const target = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, email: true, role: true, closureScheduledFor: true, closedAt: true, closureSuspendState: true } });
     if (!target) return reply.code(404).send({ error: 'not_found' });
     if (target.closedAt) return reply.code(409).send({ error: 'already_closed' });
     if (!target.closureScheduledFor) return reply.code(409).send({ error: 'not_pending' });
     if (MOD_RANK[req.user.role] <= MOD_RANK[target.role ?? 'USER']) return reply.code(403).send({ error: 'cannot_moderate_higher' });
+    const restored = await restoreOwned(p, target.id, target.closureSuspendState);
     await p.user.update({
       where: { id: target.id },
-      data: { closureRequestedAt: null, closureScheduledFor: null, closureReason: null, closureBy: null },
+      data: { closureRequestedAt: null, closureScheduledFor: null, closureReason: null, closureBy: null, closureSuspendState: null },
     });
     await logAudit(p, req.user.uid, 'account.closure_staff_cancelled', target.email, clientIp(req));
-    await notify(p, target.id, 'Account closure called off', 'The closure scheduled for your account has been cancelled. Nothing was deleted.').catch(() => {});
-    return { ok: true };
+    await notify(p, target.id, 'Account closure called off', 'The closure scheduled for your account has been cancelled. Nothing was deleted, and everything is back the way it was.').catch(() => {});
+    return { ok: true, restored };
   });
 
   // ── The survey ──────────────────────────────────────────────────────────────

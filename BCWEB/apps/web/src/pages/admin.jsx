@@ -3779,7 +3779,7 @@ function ClosureBanner({ user, onChanged }) {
         ))}
       </div>
       <p className="text-[11px] text-warning">
-        {t('ud.cl.teardown', 'Either way, on the date: subscriptions cancelled, repositories and catalogs deleted with their storage, pools removed. Nothing is transferred — if any of it should survive, move it to another account first.')}
+        {t('ud.cl.teardown', 'Scheduling it suspends their repositories, catalogs and items immediately — nothing is deleted, and calling it off puts each one back in the state it was in. On the date: subscriptions cancelled, everything deleted with its storage, pools removed. Nothing is transferred — if any of it should survive, move it to another account first.')}
       </p>
       <div className="flex items-end gap-2">
         <Field label={t('ud.cl.days', 'Days of notice')}>
