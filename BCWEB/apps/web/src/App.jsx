@@ -41,6 +41,7 @@ const ClosureCancel = lazy(() => import('./pages/closure.jsx'));
 const PollsPage = lazy(() => import('./pages/polls.jsx'));
 const DevHub = lazy(() => import('./pages/dev.jsx'));
 const DevConfig = lazy(() => import('./pages/dev-config.jsx'));
+const NotificationCentre = lazy(() => import('./pages/notifications.jsx'));
 const Admin = named(() => import('./pages/admin.jsx'), 'Admin');
 const Dashboard = named(() => import('./pages/dashboard.jsx'), 'Dashboard');
 const ReposPage = named(() => import('./pages/repos.jsx'), 'ReposPage');
@@ -295,6 +296,19 @@ function NavNotifications() {
     document.addEventListener('mousedown', onDoc); return () => document.removeEventListener('mousedown', onDoc);
   }, []);
   const unread = items.filter((n) => !n.readAt).length;
+  // Staff queues count towards the SAME badge. A moderator standing on the blog page has no
+  // other signal that a report came in — the queue counters only exist inside the admin
+  // dashboard, which is exactly where they are not needed. 403 for a non-staff account, so
+  // the failure is the answer and no role check is needed here.
+  const [pending, setPending] = useState(0);
+  useEffect(() => {
+    let live = true;
+    const poll = () => api.get('/admin/pending').then((r) => { if (live) setPending(r?.total || 0); }).catch(() => { if (live) setPending(0); });
+    poll();
+    const id = setInterval(poll, 60_000);
+    return () => { live = false; clearInterval(id); };
+  }, []);
+  const badge = unread + pending;
   const markOne = async (n) => { if (n.readAt) return; readIds.current.add(n.id); setItems((s) => s.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x))); try { await api.post(`/me/notifications/${n.id}/read`); } catch {} };
   // Click = mark read + go to the relevant page (if the kind maps to one).
   const openNotif = (n) => { markOne(n); const to = NOTIF_LINK[n.kind]; if (to) { setOpen(false); nav(to); } };
@@ -308,7 +322,7 @@ function NavNotifications() {
     <div className="relative" ref={ref}>
       <button className="nav-link !px-2 relative" onClick={() => { setOpen((o) => !o); if (!open) load(); }} title={t('nav.notifications')} aria-label={t('nav.notifications')}>
         <Bell size={16} />
-        {unread > 0 && <span className="absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-white text-[9px] font-bold grid place-items-center">{unread > 9 ? '9+' : unread}</span>}
+        {badge > 0 && <span className="absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-white text-[9px] font-bold grid place-items-center">{badge > 9 ? '9+' : badge}</span>}
       </button>
       {open && (
         <div className="fixed left-2 right-2 top-16 w-auto sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[21rem] flex flex-col max-h-[26rem] rounded-xl border border-[var(--line-strong)] z-[60] anim-fade overflow-hidden"
@@ -338,7 +352,13 @@ function NavNotifications() {
             </div>
           ); }) : <div className="px-3 py-8 text-center text-sm text-[var(--muted)]">{t('notif.none')}</div>}
           </div>
-          <Link to="/dashboard?s=overview" onClick={() => setOpen(false)} className="block text-center text-xs text-[var(--muted)] hover:text-[var(--text)] py-2 border-t border-[var(--line)] shrink-0" style={{ background: 'var(--bg-solid)' }}>{t('notif.open')}</Link>
+          {pending > 0 && (
+            <Link to="/notifications" onClick={() => setOpen(false)} className="flex items-center gap-2 px-3 py-2 border-t border-[var(--line)] shrink-0 text-xs hover:bg-[var(--surface-2)]" style={{ background: 'var(--bg-solid)' }}>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-semibold">{pending}</span>
+              <span className="text-[var(--text)]">{t('notif.staff.badge', 'waiting in your moderation queues')}</span>
+            </Link>
+          )}
+          <Link to="/notifications" onClick={() => setOpen(false)} className="block text-center text-xs text-[var(--muted)] hover:text-[var(--text)] py-2 border-t border-[var(--line)] shrink-0" style={{ background: 'var(--bg-solid)' }}>{t('notif.centre', 'Notification centre')}</Link>
         </div>
       )}
     </div>
@@ -1004,6 +1024,7 @@ export default function App() {
               an account, and the two things that do (an app, a key) say so themselves. */}
           <Route path="/dev" element={<DevHub />} />
           <Route path="/dev/config" element={<DevConfig />} />
+          <Route path="/notifications" element={<NotificationCentre />} />
               <Route path="/authorize" element={<Authorize />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/contact" element={<Contact />} />

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, clearAccountLockCache, clearUserCache, CAPABILITIES } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES } from '../lib/lib.mjs';
 import { suspendOwned, restoreOwned, cancelSubscriptions } from './closure.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
 import argon2 from 'argon2';
@@ -148,7 +148,11 @@ export default async function miscRoutes(app) {
       for (const row of r.rows) items.push({ ...row, queue: r.key, to: r.to });
     }
     items.sort((a, b) => new Date(b.at) - new Date(a.at));
-    return { counts, items: items.slice(0, 12), total: results.reduce((a, r) => a + (r.n || 0), 0) };
+    // `queues` carries the destination alongside the count, so a caller outside the admin
+    // dashboard (the notification centre) can link to the right tab without re-deriving the
+    // mapping — that duplication is how the topbar preview drifted from the real topbar.
+    const queues = results.map((r) => ({ key: r.key, to: r.to, n: r.n }));
+    return { counts, queues, items: items.slice(0, 12), total: results.reduce((a, r) => a + (r.n || 0), 0) };
   });
 
   app.get('/stats', async () => {
@@ -379,6 +383,39 @@ export default async function miscRoutes(app) {
   });
 
   // ── Notifications ──
+  // What this account wants to hear about, and what it has muted.
+  //
+  // Returns the whole catalogue rather than only the stored overrides, so the screen does not
+  // have to keep its own copy of the category list — one of the two would drift, and it
+  // would be the one nobody edits.
+  app.get('/me/notification-prefs', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: req.user.uid }, select: { notifPrefs: true } });
+    const prefs = u?.notifPrefs || {};
+    return {
+      categories: Object.entries(NOTIF_CATEGORIES).map(([key, def]) => ({
+        key, label: def.label, locked: !!def.locked,
+        enabled: def.locked ? true : prefs[key] !== false,
+      })),
+    };
+  });
+
+  app.put('/me/notification-prefs', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ category: z.string().min(1).max(40), enabled: z.boolean() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const def = NOTIF_CATEGORIES[b.data.category];
+    if (!def) return reply.code(404).send({ error: 'unknown_category' });
+    // A locked category refuses rather than pretending to save: a switch that silently does
+    // nothing is worse than one that is not there.
+    if (def.locked) return reply.code(409).send({ error: 'category_locked', detail: 'Account and security notices cannot be switched off.' });
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: req.user.uid }, select: { notifPrefs: true } });
+    const prefs = { ...(u?.notifPrefs || {}) };
+    if (b.data.enabled) delete prefs[b.data.category]; else prefs[b.data.category] = false;
+    await p.user.update({ where: { id: req.user.uid }, data: { notifPrefs: prefs } });
+    return { ok: true, category: b.data.category, enabled: b.data.enabled };
+  });
+
   app.get('/me/notifications', { preHandler: requireRole() }, async (req) => {
     const p = await db();
     return { notifications: await p.notification.findMany({ where: { userId: req.user.uid }, orderBy: { createdAt: 'desc' }, take: 100 }) };

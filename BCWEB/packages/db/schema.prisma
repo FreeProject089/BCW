@@ -172,6 +172,12 @@ model User {
   // the two can overlap — an account can be suspended and then closed — and one field would
   // let the second event overwrite the first's memory of the original state.
   moderationSuspendState Json?
+  // Which notification CATEGORIES this account has switched off, as { category: false }.
+  //
+  // Absent means enabled, so a new category starts on for everybody and nobody has to opt
+  // in to being told about their own things. Stored as JSON rather than a table because it
+  // is a handful of booleans read on every notify() — one row read instead of a join.
+  notifPrefs        Json?
   // SHA-256 of the email the account had before anonymisation.
   //
   // Closing erases the address, which is the point — but it also erases the only link

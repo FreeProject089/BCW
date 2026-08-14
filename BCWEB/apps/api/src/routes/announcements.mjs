@@ -1,13 +1,11 @@
 import { z } from 'zod';
-import { db, requireRole } from '../lib/lib.mjs';
+import { db, requireRole, notifyAll } from '../lib/lib.mjs';
 
 // Push a Notification to every user in one bulk insert — used both by the
 // announcement broadcast and the standalone "notify everyone" admin action.
 async function broadcastNotification(p, kind, body) {
-  const users = await p.user.findMany({ select: { id: true } });
-  if (!users.length) return 0;
-  await p.notification.createMany({ data: users.map((u) => ({ userId: u.id, kind, body })) });
-  return users.length;
+  // Skips accounts that muted the category — see notifyAll.
+  return notifyAll(p, kind, body);
 }
 
 const announcementSchema = z.object({

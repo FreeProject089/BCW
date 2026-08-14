@@ -648,9 +648,74 @@ export async function grantPlan(p) {
   } });
 }
 
-/** Persist a notification (used by moderation to tell the owner). */
-export async function notify(p, userId, kind, body) {
-  try { await p.notification.create({ data: { userId, kind, body } }); } catch { /* non-fatal */ }
+/** The categories a person can switch off, and which kinds belong to each.
+ *
+ *  Grouped rather than per-kind because there are thirty-odd kinds and a settings screen
+ *  with thirty switches is one nobody reads. The mapping is by prefix where the kinds are
+ *  slugs, with an explicit list for the ones that are not.
+ */
+export const NOTIF_CATEGORIES = {
+  hosting: { match: (k) => /^hosting_|^feature_/.test(k), label: 'Hosting & billing' },
+  repos: { match: (k) => /^repo_/.test(k), label: 'Your repositories' },
+  catalog: { match: (k) => /^catalog_|^submission_/.test(k), label: 'Your catalog items' },
+  reports: { match: (k) => /^report_/.test(k), label: 'Reports & support replies' },
+  myo: { match: (k) => /^myo_/.test(k), label: 'Commissions' },
+  promos: { match: (k) => /^promo_|^kofi_/.test(k), label: 'Promotions & rewards' },
+  // Broadcasts: an event or a site-wide announcement goes to EVERY account, which makes it
+  // the category people most want a switch for. It is only mutable because nothing
+  // account-critical is ever sent this way — those carry their own kind and land in
+  // `security` below.
+  broadcasts: { match: (k) => /^event$|^announce/.test(k), label: 'Site news & events' },
+  // Not switchable, and deliberately so: these are the ones you would most regret muting —
+  // a ban, a revoked key, an app losing access, a closure. An account that can silence its
+  // own security notices is one that finds out too late.
+  security: { match: () => true, label: 'Account & security', locked: true },
+};
+
+/** Which category a kind belongs to. Falls through to `security`, which cannot be muted —
+ *  so an unrecognised kind is always delivered rather than silently dropped. */
+export function notifCategory(kind) {
+  const k = String(kind || '');
+  for (const [name, def] of Object.entries(NOTIF_CATEGORIES)) {
+    if (name !== 'security' && def.match(k)) return name;
+  }
+  return 'security';
+}
+
+/** Persist a notification, unless the account switched its category off.
+ *
+ *  Filtered at WRITE rather than at read: a notification you asked not to receive should not
+ *  exist, not sit hidden waiting for you to change your mind. The trade is that switching a
+ *  category back on shows nothing retrospectively, which is the honest behaviour for
+ *  something you told us not to send.
+ */
+export async function notify(p, userId, kind, body, bodyFr) {
+  try {
+    const cat = notifCategory(kind);
+    if (!NOTIF_CATEGORIES[cat]?.locked) {
+      const u = await p.user.findUnique({ where: { id: userId }, select: { notifPrefs: true } });
+      if (u?.notifPrefs && u.notifPrefs[cat] === false) return;
+    }
+    await p.notification.create({ data: { userId, kind, body, ...(bodyFr ? { bodyFr } : {}) } });
+  } catch { /* non-fatal */ }
+}
+
+/** Broadcast to every account, minus the ones that muted the category.
+ *
+ *  Exists because the bulk senders (announcements, events) used `createMany` over the whole
+ *  user table and so were the only writers a preference could not reach — the switch would
+ *  have been decorative for exactly the notifications that arrive unasked.
+ */
+export async function notifyAll(p, kind, body, bodyFr) {
+  const cat = notifCategory(kind);
+  const locked = !!NOTIF_CATEGORIES[cat]?.locked;
+  const users = await p.user.findMany({ select: { id: true, notifPrefs: true } });
+  const targets = locked ? users : users.filter((u) => !(u.notifPrefs && u.notifPrefs[cat] === false));
+  if (!targets.length) return 0;
+  await p.notification.createMany({
+    data: targets.map((u) => ({ userId: u.id, kind, body, ...(bodyFr ? { bodyFr } : {}) })),
+  });
+  return targets.length;
 }
 
 /** Append a per-repo audit entry. `actor` is a display label, not auth material.

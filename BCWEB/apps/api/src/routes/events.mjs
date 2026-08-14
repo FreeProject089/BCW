@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole } from '../lib/lib.mjs';
+import { db, requireRole, notifyAll } from '../lib/lib.mjs';
 
 // The event that is live RIGHT NOW (active + within its window). One at a time; if
 // several somehow overlap, the most recently started wins. Exported for the effect
@@ -174,14 +174,11 @@ function eventNotifBody(e, pre, fr) {
 }
 
 async function broadcastEventNotif(p, e, pre) {
-  const users = await p.user.findMany({ select: { id: true } });
-  if (!users.length) return;
   // Both bodies are built once, not per user: they do not depend on who receives them.
+  // notifyAll drops the accounts that muted "Site news & events".
   const body = eventNotifBody(e, pre, false);
   const bodyFr = eventNotifBody(e, pre, true);
-  await p.notification.createMany({
-    data: users.map((u) => ({ userId: u.id, kind: 'event', body, bodyFr })),
-  }).catch(() => {});
+  await notifyAll(p, 'event', body, bodyFr).catch(() => {});
 }
 
 // Periodic (called from the sweeper): fire the pre-event notification once
