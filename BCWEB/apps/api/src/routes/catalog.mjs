@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { emitWebhook } from '../lib/webhooks.mjs';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
-import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy, catalogLog } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy, catalogLog, logAudit } from '../lib/lib.mjs';
+import { issueSanction } from '../lib/sanctions.mjs';
 import { presignGet, getObject, deleteObject } from '../lib/storage.mjs';
 import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
 import { replyCachedJson } from '../lib/cache.mjs';
@@ -862,6 +863,33 @@ export default async function catalogRoutes(app) {
     return { ok: true };
   });
 
+  // Lift any open takedown against an item, because the decision behind it has been
+  // reversed. Approving or rejecting a SUSPENDED submission un-suspends the item, and a
+  // sanction left open after that would keep telling the owner their content is down,
+  // keep sitting in the contest queue, and keep counting against them — for a lock that
+  // no longer exists. One helper, called from both, so the two cannot drift.
+  //
+  // Best-effort by design: the moderator's decision has already been applied and is the
+  // part that matters. A failure here is logged, never thrown.
+  async function liftItemTakedowns(p, req, itemId, why) {
+    try {
+      const open = await p.sanction.findMany({
+        where: { targetType: 'item', targetId: itemId, kind: 'takedown', status: 'active' },
+        select: { id: true, code: true, userId: true },
+      });
+      for (const s of open) {
+        await p.sanction.update({
+          where: { id: s.id },
+          data: { status: 'lifted', liftedAt: new Date(), liftedById: req.user.uid, liftReason: why },
+        });
+        await notify(p, s.userId, 'account_sanction', `${s.code} has been lifted. ${why}`).catch(() => {});
+        await logAudit(p, req.user.uid, 'sanction.lift', `${s.code} — ${why}`, req.ip);
+      }
+    } catch (e) {
+      req.log?.error?.({ e: String(e?.message || e), itemId }, 'lift takedown failed');
+    }
+  }
+
   app.post('/mod/submissions/:id/approve', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
     const p = await db();
     const sub = await p.submission.findUnique({ where: { id: req.params.id }, include: { item: true } });
@@ -870,6 +898,7 @@ export default async function catalogRoutes(app) {
       p.submission.update({ where: { id: sub.id }, data: { status: 'PUBLISHED', reviewerId: req.user.uid } }),
       p.catalogItem.update({ where: { id: sub.itemId }, data: { status: 'PUBLISHED' } }),
     ]);
+    await liftItemTakedowns(p, req, sub.itemId, 'The submission was approved.');
     await catalogLog(p, sub.item, 'published');
     await notify(p, sub.ownerId, 'submission_approved', `"${sub.item.name}" was approved and is now live.`);
     // Queued, never awaited on the caller's behalf: approving a submission must not wait on
@@ -897,6 +926,9 @@ export default async function catalogRoutes(app) {
       p.submission.update({ where: { id: sub.id }, data: { status: 'REJECTED', reviewerId: req.user.uid, reason: reason.data.reason } }),
       p.catalogItem.update({ where: { id: sub.itemId }, data: { status: 'REJECTED', payloadPurgeAt: purgeAt } }),
     ]);
+    // Rejected is not suspended: the owner may fix and resubmit, so the lock the takedown
+    // recorded is over even though the item is not live.
+    await liftItemTakedowns(p, req, sub.itemId, 'The suspension was replaced by a rejection — you can fix and resubmit.');
     await catalogLog(p, sub.item, 'rejected');
     await notify(p, sub.ownerId, 'submission_rejected', `"${sub.item.name}" was rejected: ${reason.data.reason}`);
     return { ok: true };
@@ -958,7 +990,34 @@ export default async function catalogRoutes(app) {
       p.submission.update({ where: { id: sub.id }, data: { status: 'SUSPENDED', reviewerId: req.user.uid, reason: reason.data.reason } }),
       p.catalogItem.update({ where: { id: sub.itemId }, data: { status: 'SUSPENDED' } }),
     ]);
-    await notify(p, sub.ownerId, 'submission_suspended', `"${sub.item.name}" was suspended: ${reason.data.reason}. You can't resubmit it — contact support to appeal.`);
-    return { ok: true };
+    // A suspension is a moderation decision, so it gets a sanction record like every other
+    // one. Without it this was the only lock in the product with no code, no e-mail
+    // carrying the reason, and no way to contest — while the notification below told the
+    // owner to "contact support to appeal", which was a promise nothing implemented.
+    //
+    // `takedown` / scope 'content': the item is gone from public, the account is untouched.
+    // Same shape as POST /admin/sanctions/content, so both land in one list and the
+    // contest flow works identically whichever screen the moderator used.
+    let sanction = null;
+    try {
+      sanction = await issueSanction(p, {
+        userId: sub.ownerId, kind: 'takedown', scope: 'content',
+        reason: reason.data.reason,
+        targetType: 'item', targetId: sub.itemId, targetName: sub.item.name,
+        issuedById: req.user.uid, log: req.log,
+      });
+      await logAudit(p, req.user.uid, 'content.takedown', `item ${sub.item.name} (${sanction.code}) — ${reason.data.reason}`, req.ip);
+    } catch (e) {
+      // The suspension itself already committed above, and it is the part that protects
+      // people. Losing the paperwork must not roll that back or 500 the moderator — but it
+      // must be visible, not swallowed, or the sanction list quietly stops being complete.
+      req.log?.error?.({ e: String(e?.message || e), sub: sub.id }, 'suspend: sanction record failed');
+    }
+
+    await notify(p, sub.ownerId, 'submission_suspended',
+      sanction
+        ? `"${sub.item.name}" was suspended: ${reason.data.reason}. Reference ${sanction.code} — you can contest it from your account.`
+        : `"${sub.item.name}" was suspended: ${reason.data.reason}. You can't resubmit it — contact support to appeal.`);
+    return { ok: true, sanction: sanction ? { code: sanction.code } : null };
   });
 }
