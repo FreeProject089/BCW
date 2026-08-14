@@ -45,7 +45,13 @@ export default function CommunityCatalogPage() {
   // so offering a button per kind PRESENT would show buttons that 404 on a legacy multi-kind
   // row. Trust the catalog's own kind, and fall back to kindsPresent only if it has none.
   const own = String(cat.kind || '').toUpperCase();
-  const kinds = (own ? [own] : (cat.kindsPresent || [])).filter((kk) => kk && kk !== 'PRESET'); // presets aren't BMM add-source
+  // Presets are INCLUDED. They used to be filtered out with "presets aren't BMM
+  // add-source", which was true then: there is no bmm://catalog/preset/add-source, only
+  // app, plugin and theme. But BMM now follows preset catalogues from the scheduler by
+  // pasting the address, so excluding the kind left those pages with no way to copy the
+  // one thing a visitor came for. The install button is what does not apply — not the feed.
+  const kinds = (own ? [own] : (cat.kindsPresent || [])).filter(Boolean);
+  const DEEPLINKABLE = new Set(['APP', 'PLUGIN', 'THEME']);
   const contents = cat.items || [];
 
   return (
@@ -74,7 +80,11 @@ export default function CommunityCatalogPage() {
               <Card key={kind} className="p-4">
                 <div className="flex items-center gap-2 mb-2 font-medium"><Icon size={16} className="text-[var(--primary-2)]" /> {t('ccp.kind.' + kind.toLowerCase(), kind)}</div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <a href={deeplink(kind)}><Button size="sm" variant="primary"><Download size={14} /> {t('ccp.addbmm', 'Add to BMM')}</Button></a>
+                  {DEEPLINKABLE.has(kind)
+                    ? <a href={deeplink(kind)}><Button size="sm" variant="primary"><Download size={14} /> {t('ccp.addbmm', 'Add to BMM')}</Button></a>
+                    : <span className="text-[11px] text-[var(--muted)]">
+                        {t('ccp.pastein', 'Copy the address and paste it in BMM → Scheduler → From a catalogue.')}
+                      </span>}
                   <Button size="sm" variant="ghost" onClick={() => copy(feedUrl(kind))}><Copy size={13} /> {t('ccp.copyurl', 'Copy feed URL')}</Button>
                   <a href={feedUrl(kind)} target="_blank" rel="noreferrer" className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1"><ArrowUpRight size={12} /> {t('ccp.view', 'View feed')}</a>
                 </div>

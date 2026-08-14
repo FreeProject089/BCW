@@ -1470,6 +1470,7 @@ const DICT = {
     'us.sub2': 'Cherche des membres par nom — ou colle un BC id, un id de repo ou de catalogue pour trouver son propriétaire.',
     'us.ph2': 'Nom, BC-XXXX-XXXX, id de repo ou de catalogue…',
     'prof.bcidcopied': 'BC id copié.', 'prof.bcidcopy': 'Ton identifiant BetterCommunity unique — clique pour copier',
+    'ccp.pastein': "Copiez l’adresse et collez-la dans BMM → Planificateur → Depuis un catalogue.",
     'ccp.hostedby': 'Hébergé par', 'ccp.copybcid': 'Copier le BC id de l’hôte',
     'repos.bcidcopied': 'BC id de l’hôte copié.', 'repos.copybcid': 'Copier le BC id de l’hôte',
     // Footer easter-egg

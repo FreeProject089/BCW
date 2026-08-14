@@ -13,7 +13,7 @@ import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Drop
 import { startOwnershipTransfer } from './pages.jsx';
 import { useUploads } from './uploads.jsx';
 import { useI18n } from '../i18n.jsx';
-import FeedLink from '../ui/feed-link.jsx';
+import FeedLink, { FeedMenu } from '../ui/feed-link.jsx';
 import { useAuth } from './auth.jsx';
 
 // Either spelling is a manifest — the API accepts both (see MANIFEST_NAMES in
@@ -96,8 +96,14 @@ export function ReposPage() {
   return (
     <div>
       <PageHeader icon={Server} title={t('repos.title', 'Server Repos')} subtitle={t('repos.sub', 'Verified community repositories — featured ones first.')}
-        actions={<FeedLink path="/api/repos.json" label={t('repos.feed', 'This list as JSON')}
-          hint={t('repos.feed.h', 'Every listed, verified repo as a JSON feed — the same list, for a script or another client.')} />} />
+        actions={<div className="flex items-center gap-2 flex-wrap">
+          <FeedLink path="/api/repos.json" label={t('repos.feed', 'This list as JSON')}
+            hint={t('repos.feed.h', 'Every listed, verified repo as a JSON feed — the same list, for a script or another client.')} />
+          {/* Beside it, never instead of it: /repos.json is THIS list, fixed and
+              parameterless, while the index is the standing address that keeps being
+              right as repo catalogues are published. Two different questions. */}
+          <FeedMenu kind="repo" />
+        </div>} />
 
       {/* search + filters */}
       <div className="flex flex-col sm:flex-row gap-2 mb-3">
