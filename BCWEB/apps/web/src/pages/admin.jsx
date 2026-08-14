@@ -4239,8 +4239,10 @@ function AdminHistory() {
           <Card className="p-0 overflow-hidden">
             {entries.map((e, i) => {
               const Icon = HIST_ICON[e.source] || Activity;
+              const key = `${e.source}-${e.at}-${i}`;
               return (
-                <div key={`${e.source}-${e.at}-${i}`} className="flex items-start gap-3 px-4 py-2.5 border-b border-[var(--line)] last:border-0">
+                <div key={key} className="border-b border-[var(--line)] last:border-0">
+                <div className="flex items-start gap-3 px-4 py-2.5">
                   <Icon size={14} className={`mt-0.5 shrink-0 ${HIST_TONE[e.source] || ''}`} />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm flex flex-wrap items-baseline gap-x-2">
@@ -4260,9 +4262,46 @@ function AdminHistory() {
                     </div>
                   </div>
                   <button onClick={() => setOpen(open === `${e.source}-${e.at}-${i}` ? null : `${e.source}-${e.at}-${i}`)}
-                    className="text-[10px] text-[var(--faint)] uppercase tracking-wider shrink-0 hover:text-[var(--text)]">
+                    className="text-[10px] text-[var(--faint)] uppercase tracking-wider shrink-0 hover:text-[var(--text)]"
+                    title={t('hist.detail.open', 'Everything recorded about this entry')}>
                     {e.source}
                   </button>
+                </div>
+
+                {/* The whole row, unabridged. The list shows what fits; this shows what was
+                    recorded — ids included, because "settings" with no repo id is a fact you
+                    cannot follow up, and copying an id out of here is how the next step
+                    (User search, the repo page) actually starts. */}
+                {open === key && (
+                  <div className="px-4 pb-3 -mt-1">
+                    <div className="rounded-lg bg-[var(--surface-2)]/60 border border-[var(--line)] p-3 space-y-2">
+                      {e.detail && <div className="text-[12px] break-all whitespace-pre-wrap">{e.detail}</div>}
+                      <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1">
+                        {[
+                          ['when', new Date(e.at).toLocaleString()],
+                          ['source', e.source],
+                          ['action', e.action],
+                          ...(e.actor ? [
+                            ['who', `${e.actor.displayName} · ${e.actor.email || ''}`],
+                            ['role', e.actor.role || '—'],
+                            ['account id', e.actor.id],
+                            ...(e.actor.status && e.actor.status !== 'active' ? [['account status', e.actor.status]] : []),
+                          ] : e.actorName ? [['who', `${e.actorName} ${t('hist.label', '(recorded label, not an account)')}`]] : [['who', t('hist.system', 'system')]]),
+                          ...(e.ip ? [['ip', e.ip]] : []),
+                          ...Object.entries(e.meta || {}).filter(([, v]) => v !== null && v !== undefined && v !== '').map(([k, v]) => [k, String(v)]),
+                        ].map(([k, v]) => (
+                          <div key={k} className="flex items-baseline gap-2 min-w-0">
+                            <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] w-24 shrink-0">{k}</span>
+                            <button onClick={() => { copyText(String(v)); toast.success(t('common.copied', 'Copied.')); }}
+                              className="text-[12px] font-mono break-all text-left hover:text-[var(--primary-2)] min-w-0"
+                              title={t('hist.copy', 'Copy')}>{String(v)}</button>
+                          </div>
+                        ))}
+                      </div>
+                      {e.link && <Link to={e.link} className="inline-block text-[12px] text-[var(--primary-2)] hover:underline">{t('hist.open', 'open')}</Link>}
+                    </div>
+                  </div>
+                )}
                 </div>
               );
             })}

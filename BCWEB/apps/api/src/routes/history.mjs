@@ -108,38 +108,38 @@ export default async function historyRoutes(app) {
 
     const jobs = [];
     if (on('staff')) jobs.push(p.auditLogEntry.findMany({ where: { createdAt: { gte: since }, ...(actorId ? { actorId } : {}) }, orderBy: { createdAt: 'desc' }, take: CAP })
-      .then((rows) => { for (const r of rows) { userIds.add(r.actorId); out.push({ at: r.createdAt, source: 'staff', action: r.action, detail: r.detail, actorId: r.actorId, ip: r.ip || '' }); } }));
+      .then((rows) => { for (const r of rows) { userIds.add(r.actorId); out.push({ at: r.createdAt, source: 'staff', action: r.action, detail: r.detail, actorId: r.actorId, ip: r.ip || '', meta: { entryId: r.id, hash: r.hash || null, prevHash: r.prevHash || null } }); } }));
 
     if (on('repo')) jobs.push(p.repoAuditLog.findMany({ where: { createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: CAP, include: { repo: { select: { id: true, name: true } } } })
       // `actor` here is a display label the repo layer wrote, not a user id — so it is
       // passed through as `actorName` and never looked up.
-      .then((rows) => { for (const r of rows) out.push({ at: r.createdAt, source: 'repo', action: r.action, detail: [r.repo?.name, r.detail].filter(Boolean).join(' — '), actorName: r.actor, link: r.repo ? `/r/${r.repo.id}` : null }); }));
+      .then((rows) => { for (const r of rows) out.push({ at: r.createdAt, source: 'repo', action: r.action, detail: [r.repo?.name, r.detail].filter(Boolean).join(' — '), actorName: r.actor, link: r.repo ? `/r/${r.repo.id}` : null, meta: { entryId: r.id, repoId: r.serverRepoId, repoName: r.repo?.name || null } }); }));
 
     if (on('catalog')) jobs.push(p.catalogAuditLog.findMany({ where: { createdAt: { gte: since }, ...(actorId ? { ownerId: actorId } : {}) }, orderBy: { createdAt: 'desc' }, take: CAP })
-      .then((rows) => { for (const r of rows) { if (r.ownerId) userIds.add(r.ownerId); out.push({ at: r.createdAt, source: 'catalog', action: r.action, detail: [r.slug, r.version, r.detail].filter(Boolean).join(' · '), actorId: r.ownerId || null, link: `/item/${r.slug}` }); } }));
+      .then((rows) => { for (const r of rows) { if (r.ownerId) userIds.add(r.ownerId); out.push({ at: r.createdAt, source: 'catalog', action: r.action, detail: [r.slug, r.version, r.detail].filter(Boolean).join(' · '), actorId: r.ownerId || null, link: `/item/${r.slug}`, meta: { entryId: r.id, itemId: r.catalogId, slug: r.slug, kind: r.kind, version: r.version || null } }); } }));
 
     if (on('blog')) jobs.push(p.blogRevision.findMany({ where: { createdAt: { gte: since }, ...(actorId ? { editorId: actorId } : {}) }, orderBy: { createdAt: 'desc' }, take: CAP, include: { post: { select: { slug: true } } } })
-      .then((rows) => { for (const r of rows) { if (r.editorId) userIds.add(r.editorId); out.push({ at: r.createdAt, source: 'blog', action: `edit v${r.version}`, detail: r.title, actorId: r.editorId, link: r.post ? `/blog/${r.post.slug}` : null }); } }));
+      .then((rows) => { for (const r of rows) { if (r.editorId) userIds.add(r.editorId); out.push({ at: r.createdAt, source: 'blog', action: `edit v${r.version}`, detail: r.title, actorId: r.editorId, link: r.post ? `/blog/${r.post.slug}` : null, meta: { entryId: r.id, postId: r.postId, slug: r.post?.slug || null, version: r.version } }); } }));
 
     if (on('docs')) jobs.push(p.docRevision.findMany({ where: { createdAt: { gte: since }, ...(actorId ? { editorId: actorId } : {}) }, orderBy: { createdAt: 'desc' }, take: CAP, include: { page: { select: { slug: true } } } })
-      .then((rows) => { for (const r of rows) { if (r.editorId) userIds.add(r.editorId); out.push({ at: r.createdAt, source: 'docs', action: `edit v${r.version}`, detail: r.title, actorId: r.editorId, link: r.page ? `/docs/${r.page.slug}` : null }); } }));
+      .then((rows) => { for (const r of rows) { if (r.editorId) userIds.add(r.editorId); out.push({ at: r.createdAt, source: 'docs', action: `edit v${r.version}`, detail: r.title, actorId: r.editorId, link: r.page ? `/docs/${r.page.slug}` : null, meta: { entryId: r.id, pageId: r.pageId, slug: r.page?.slug || null, version: r.version } }); } }));
 
     if (on('project')) jobs.push(p.projectConfigRevision.findMany({ where: { createdAt: { gte: since }, ...(actorId ? { editorId: actorId } : {}) }, orderBy: { createdAt: 'desc' }, take: CAP })
-      .then((rows) => { for (const r of rows) { if (r.editorId) userIds.add(r.editorId); out.push({ at: r.createdAt, source: 'project', action: 'config saved', detail: r.target, actorId: r.editorId }); } }));
+      .then((rows) => { for (const r of rows) { if (r.editorId) userIds.add(r.editorId); out.push({ at: r.createdAt, source: 'project', action: 'config saved', detail: r.target, actorId: r.editorId, meta: { entryId: r.id, target: r.target } }); } }));
 
     if (on('payment')) jobs.push(p.payment.findMany({ where: { createdAt: { gte: since }, ...(actorId ? { userId: actorId } : {}) }, orderBy: { createdAt: 'desc' }, take: CAP })
-      .then((rows) => { for (const r of rows) { userIds.add(r.userId); out.push({ at: r.createdAt, source: 'payment', action: String(r.kind).toLowerCase(), detail: `${money(r.amountCents, r.currency)} — ${r.description || ''}`.trim(), actorId: r.userId }); } }));
+      .then((rows) => { for (const r of rows) { userIds.add(r.userId); out.push({ at: r.createdAt, source: 'payment', action: String(r.kind).toLowerCase(), detail: `${money(r.amountCents, r.currency)} — ${r.description || ''}`.trim(), actorId: r.userId, meta: { entryId: r.id, amountCents: r.amountCents, currency: r.currency, status: r.status, repoId: r.serverRepoId || null, poolId: r.hostingGroupId || null } }); } }));
 
     if (on('auth')) jobs.push(p.loginAttempt.findMany({ where: { createdAt: { gte: since }, ...(actorId ? { userId: actorId } : {}) }, orderBy: { createdAt: 'desc' }, take: CAP })
       // Failures included on purpose: "who tried and failed" is the half of a sign-in log
       // that matters when something is wrong.
-      .then((rows) => { for (const r of rows) { if (r.userId) userIds.add(r.userId); out.push({ at: r.createdAt, source: 'auth', action: r.success ? 'sign-in' : `failed (${r.reason || 'unknown'})`, detail: r.email || '', actorId: r.userId || null, ip: r.ip || '' }); } }));
+      .then((rows) => { for (const r of rows) { if (r.userId) userIds.add(r.userId); out.push({ at: r.createdAt, source: 'auth', action: r.success ? 'sign-in' : `failed (${r.reason || 'unknown'})`, detail: r.email || '', actorId: r.userId || null, ip: r.ip || '', meta: { entryId: r.id, email: r.email, success: r.success, reason: r.reason || null } }); } }));
 
     await Promise.all(jobs);
 
     // One lookup for every actor across every source.
     const users = userIds.size
-      ? await p.user.findMany({ where: { id: { in: [...userIds] } }, select: { id: true, displayName: true, email: true, avatar: true, role: true } })
+      ? await p.user.findMany({ where: { id: { in: [...userIds] } }, select: { id: true, displayName: true, email: true, avatar: true, role: true, status: true, createdAt: true } })
       : [];
     const byId = Object.fromEntries(users.map((u) => [u.id, u]));
 
