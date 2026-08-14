@@ -119,6 +119,20 @@ const rawFeedCount = (j) => (j && typeof j === 'object' && !Array.isArray(j)
 // Needs `mode`, and either `_count.items` (managed) or `rawJson` (raw) — every caller uses
 // `include`, which returns all scalars, so rawJson is already there; the one caller with an
 // explicit `select` asks for it too.
+// A stable fingerprint of what a catalog currently serves, for the index.
+//
+// Content-derived, not updatedAt: a row touched for an unrelated reason (a view counter,
+// a rename) must not look like new content to a client deciding whether to re-download,
+// and content that really changed must not look unchanged. Built from the identity and
+// version of each entry, sorted, so two servers holding the same catalog agree.
+export function catalogFingerprint(c) {
+  const parts = c.mode === 'raw'
+    ? RAW_FEED_ARRAYS.flatMap((k) => (Array.isArray(c.rawJson?.[k]) ? c.rawJson[k] : [])
+      .map((x) => `${x?.id || x?.slug || x?.name || ''}@${x?.version || ''}`))
+    : (c.items || []).map((it) => `${it.slug}@${it.version || ''}`);
+  return crypto.createHash('sha256').update(parts.sort().join('\n')).digest('hex');
+}
+
 export const catalogItemCount = (c) => (c.mode === 'raw' ? rawFeedCount(c.rawJson) : (c._count?.items ?? 0));
 
 // A catalog serves exactly ONE kind, and that is not a UI preference — it is what makes the
@@ -183,67 +197,145 @@ export default async function communityCatalogRoutes(app) {
     return { catalogs: rows.map((c) => ({ ...ser(c), owner: c.owner?.displayName })) };
   });
 
-  // ── Public: ONE url that lists every public catalog, of every type ──
+  // ── Public: the catalog index — one url that lists catalogs of every type ──
   //
   // The gap this fills: BMM configures one fixed URL per type (links.json has
-  // `apps_catalog` and `plugin_catalog`), and `community_imports` — the only chaining
-  // mechanism it has — lives on AppCatalog, so it can only ever bring in more APP
-  // catalogs. There is no way to hand BMM a single URL and have it pick up app, plugin,
-  // theme and preset catalogs together. This is the feed for that, and the reader is the
-  // BMM-side half still to write.
+  // `apps_catalog` and `plugin_catalog`), and `community_imports` — the only chaining it
+  // has — lives on AppCatalog, so it can only ever bring in more APP catalogs. There was
+  // no way to hand a client a single URL and have it pick up app, plugin, theme, preset
+  // and repo catalogs together.
   //
-  // Deliberately a NEW document rather than an extension of catalog.json: that one is an
-  // AppCatalog and BMM deserialises it into a struct with an `apps` field. Adding
-  // mixed-type entries there would either be ignored or break the parse, depending on how
-  // strictly a given version reads it.
+  // A NEW document rather than an extension of catalog.json: that one is an AppCatalog
+  // and BMM deserialises it into a struct with an `apps` field, so mixed-type entries
+  // there would be ignored or break the parse depending on the version reading it.
   //
-  // Every entry carries its `type` explicitly. A reader must not have to fetch a catalog
-  // to discover what it is — that would mean N requests before knowing which subsystem
-  // any of them belongs to, on a cold start, over somebody's connection.
+  // Three scopes off ONE generator rather than three endpoints:
+  //     /catalogs.json                 everything
+  //     /catalogs.json?scope=official  what BetterCommunity itself publishes
+  //     /catalogs.json?scope=community what people published
+  //     /catalogs.json?app=bmm         only what is for that app (combines with scope)
+  // Distinct URLs somebody can paste, one code path that builds them. Three copies would
+  // be three things to keep in step, and the one that drifted would be the one nobody
+  // opened.
+  //
+  // Every entry states its `type` AND its `app`, because a reader must not have to fetch
+  // a catalog to find out what it is or whether it is even for them — that is N requests
+  // before knowing which subsystem any of them belongs to, on a cold start, on somebody
+  // else's connection. `app` is omitted when the catalog has not been told which one it
+  // is for: a guess there means silently hiding a catalog that was fine.
   app.get('/catalogs.json', async (req, reply) => {
     const p = await db();
-    return replyCachedJson(req, reply, 'catalogs.json', 60_000, async () => {
-      const rows = await p.communityCatalog.findMany({
-        where: { status: 'ACTIVE', listed: true, visibility: 'public' },
+    const scope = ['official', 'community', 'all'].includes(String(req.query?.scope || '').toLowerCase())
+      ? String(req.query.scope).toLowerCase() : 'all';
+    const appKey = String(req.query?.app || '').trim().toLowerCase().slice(0, 24);
+    const typeQ = String(req.query?.type || '').trim().toLowerCase().slice(0, 16);
+
+    return replyCachedJson(req, reply, `catalogs.json:${scope}:${appKey}:${typeQ}`, 60_000, async () => {
+      const project = appKey ? await p.project.findUnique({ where: { key: appKey } }).catch(() => null) : null;
+      // An app filter naming a project that does not exist returns nothing rather than
+      // everything. Falling back to "all" would hand a client the whole platform when it
+      // asked for one app, which is the opposite of what it wanted.
+      const unknownApp = !!appKey && !project;
+
+      const community = (scope === 'official' || unknownApp) ? [] : await p.communityCatalog.findMany({
+        where: {
+          status: 'ACTIVE', listed: true, visibility: 'public',
+          ...(project ? { projectId: project.id } : {}),
+        },
         orderBy: [{ featuredUntil: 'desc' }, { downloads: 'desc' }], take: 200,
-        include: { owner: { select: { displayName: true } }, _count: { select: { items: true } } },
+        include: {
+          owner: { select: { displayName: true } },
+          project: { select: { key: true } },
+          _count: { select: { items: true } },
+          // Loaded because catalogFingerprint hashes them. Without this it would hash an
+          // empty list and hand every managed catalog the SAME fingerprint — a value that
+          // never changes is worse than no value, because a client would trust it and stop
+          // re-fetching. Two columns per item, behind a 60s cache.
+          items: { select: { slug: true, version: true } },
+        },
       });
-      // The platform's own per-type feeds first: they are the ones a fresh install most
-      // wants, and a reader that stops early still gets something useful.
-      const projectKey = 'bmm';
-      const official = ['APP', 'PLUGIN', 'THEME'].map((k) => ({
-        type: k.toLowerCase(),
-        name: `BetterCommunity ${k.toLowerCase()} catalog`,
-        description: `Everything published on BetterCommunity for ${projectKey.toUpperCase()}, as a ${k.toLowerCase()} catalog.`,
-        url: `${SITE_URL}/api/catalog.json?project=${projectKey}&kind=${k}`,
-        owner: 'BetterCommunity',
-        official: true,
-      }));
+
+      // What BetterCommunity itself publishes: one feed per type, per project. Built from
+      // the projects that actually exist rather than a hardcoded list, so a new Better*
+      // app appears here without anyone remembering this file.
+      const projects = unknownApp ? []
+        : project ? [project]
+        : await p.project.findMany({ select: { id: true, key: true } }).catch(() => []);
+
+      // Which (project, kind) pairs actually have something published.
+      //
+      // Generating a feed for every project × every kind produced fifteen entries, most of
+      // them empty — including plugin and theme catalogs for `community` and
+      // `developers`, which are blog spaces rather than applications. An index whose
+      // entries mostly lead nowhere teaches people to ignore it.
+      //
+      // Derived from the data rather than a hardcoded list of "real" apps: a new Better*
+      // product appears here the moment it has content, and one that never gets any never
+      // clutters the index. Nothing to remember, nothing to keep in step.
+      const populated = new Set(
+        (await p.catalogItem.groupBy({
+          by: ['projectId', 'kind'],
+          where: { status: 'PUBLISHED', ...(project ? { projectId: project.id } : {}) },
+        }).catch(() => [])).map((g) => `${g.projectId}:${g.kind}`),
+      );
+
+      const official = (scope === 'community') ? [] : projects.flatMap((pr) => {
+        const key = String(pr.key).toLowerCase();
+        return ['APP', 'PLUGIN', 'THEME'].filter((k) => populated.has(`${pr.id}:${k}`)).map((k) => ({
+          type: k.toLowerCase(),
+          app: key,
+          official: true,
+          name: `BetterCommunity ${key.toUpperCase()} ${k.toLowerCase()} catalog`,
+          description: `Everything published on BetterCommunity for ${key.toUpperCase()}, as a ${k.toLowerCase()} catalog.`,
+          url: `${SITE_URL}/api/catalog.json?project=${key}&kind=${k}`,
+          owner: 'BetterCommunity',
+        }));
+      });
+
+      const entries = [
+        ...official,
+        ...community.map((c) => ({
+          type: catalogKind(c).toLowerCase(),
+          // Omitted, never guessed, when the catalog has not been told which app it is for.
+          ...(c.project?.key ? { app: String(c.project.key).toLowerCase() } : {}),
+          official: false,
+          name: c.name,
+          description: c.description || '',
+          // The plain per-catalog URL, with no ?kind=: that endpoint defaults to the
+          // catalog's own kind, and an explicit kind that disagrees is a 404 there.
+          url: `${SITE_URL}/api/c/${c.slug}/catalog.json`,
+          owner: c.owner?.displayName || '',
+          // catalogItemCount, not _count.items: a `raw` catalog keeps its contents in
+          // rawJson and its items relation is structurally empty, so counting the relation
+          // reports 0 for a catalog holding fifty plugins.
+          items: catalogItemCount(c),
+          updatedAt: c.updatedAt,
+          // A fingerprint of what the catalog currently serves, so a client can tell
+          // "unchanged" from "fetched again" without downloading it. Derived from the
+          // content, not from updatedAt: a row touched for an unrelated reason must not
+          // look like new content, and content that really changed must not look stale.
+          sha256: catalogFingerprint(c),
+        })),
+      ];
+
+      // Sorted, because an index is read by people as well as parsed: official first,
+      // then by app, then by type, then by name. Stable regardless of what the database
+      // felt like returning.
+      const TYPE_ORDER = ['app', 'plugin', 'theme', 'preset', 'repo'];
+      entries.sort((a, b) => (Number(b.official) - Number(a.official))
+        || String(a.app || 'zzz').localeCompare(String(b.app || 'zzz'))
+        || (TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type))
+        || String(a.name).localeCompare(String(b.name)));
+
       return {
         version: '1.0',
+        kind: 'catalog-index',
+        scope,
+        ...(appKey ? { app: appKey } : {}),
         name: 'BetterCommunity catalog index',
-        description: 'Every public catalog on BetterCommunity, with its type. Point a client at this one URL instead of collecting them by hand.',
-        catalogs: [
-          ...official,
-          ...rows.map((c) => ({
-            type: catalogKind(c).toLowerCase(),
-            name: c.name,
-            description: c.description || '',
-            // The plain per-catalog URL, with no ?kind=: that endpoint defaults to the
-            // catalog's own kind, and an explicit kind that disagrees is a 404 there.
-            url: `${SITE_URL}/api/c/${c.slug}/catalog.json`,
-            owner: c.owner?.displayName || '',
-            // catalogItemCount, not _count.items: a `raw` catalog keeps its contents in
-            // rawJson and its items relation is structurally empty, so counting the
-            // relation reports 0 for a catalog holding fifty plugins. That exact bug is
-            // documented above this file's helper — worth using rather than repeating.
-            items: catalogItemCount(c),
-            // Never true for a community catalog. Stated rather than omitted so a reader
-            // does not have to treat "absent" as "unknown" — though a client should still
-            // decide trust from the URL it fetched, not from what the JSON claims.
-            official: false,
-          })),
-        ],
+        description: 'Every public catalog on BetterCommunity, with its type and which app it is for. Point a client at this one URL instead of collecting them by hand.',
+        generatedAt: new Date().toISOString(),
+        catalogs: typeQ ? entries.filter((e) => e.type === typeQ) : entries,
       };
     });
   });

@@ -382,6 +382,7 @@ model Project {
   showBlogTab    Boolean       @default(false)
   posts          BlogPost[]
   items          CatalogItem[]
+  catalogs       CommunityCatalog[]
 
   // Same visibility gate as ShowcaseProject (see there for the full comment) —
   // applies to every fixed project EXCEPT 'community', which is always public
@@ -711,6 +712,14 @@ model CommunityCatalog {
   slug              String                 @unique
   description       String                 @default("")
   kinds             String[]               @default([]) // app/plugin/theme/preset sub-feeds exposed
+  // Which Better* app this catalog is for. Same optional Project relation CatalogItem
+  // uses, rather than a free-text key: a client that must ignore catalogs meant for
+  // another app needs an answer it can trust, and a typed relation cannot drift into
+  // "BMM" / "bmm" / "Bmm" the way a string column does.
+  // Nullable: catalogs created before this existed have no answer, and guessing one
+  // would be worse than saying so — the feed omits the app rather than inventing it.
+  project           Project?               @relation(fields: [projectId], references: [id])
+  projectId         String?
   mode              String                 @default("managed") // "managed" | "raw"
   rawJson           Json? // mode raw: the uploaded BMM-native feed (validated on save)
   status            String                 @default("ACTIVE") // ACTIVE | SUSPENDED (admin) | HIDDEN (unpaid)
