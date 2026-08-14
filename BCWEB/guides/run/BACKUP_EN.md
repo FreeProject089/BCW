@@ -92,6 +92,49 @@ docker run --rm -v bcweb_audit-anchor:/data -v /var/backups/bcweb:/backup alpine
 Keep the DB and audit-anchor from the **same** backup run so the audit HMAC chain still
 verifies (`/admin/security` → verify chain).
 
+## The in-app backups are a different thing
+
+"Advanced server management → Backup storage" has its own backup tools, and they do **not**
+replace anything above. Confusing the two is the dangerous mistake, so plainly:
+
+| | `infra/backup/backup.sh` | In-app snapshots |
+|---|---|---|
+| Postgres data (accounts, repos, catalogs, payments) | **Yes** | **No** |
+| MinIO objects (uploaded files, hosted repo bytes) | **Yes** | **No** |
+| Edit history of files touched through the file manager | No | **Yes** |
+| Edit history of DB rows touched through the DB viewer | No | **Yes** |
+| Survives losing the machine | Yes, once copied off-site | Only if downloaded |
+
+An in-app snapshot is a **git bundle of that edit history**, frozen with its size, a
+sha256, and an Ed25519 signature. It answers "put that file back". It does not answer "the
+server is gone" — that is what the script above is for.
+
+### Taking, keeping, reading
+
+- **Back up now** takes one immediately (files, DB rows, or both). The file history is
+  refreshed first, so the snapshot includes changes made moments earlier.
+- **Keep N** rotates per kind — ten daily file snapshots cannot evict every DB snapshot
+  from a shared budget. `0` disables rotation entirely and means it: nothing is deleted.
+- The daily sweeper takes one and rotates too, so the retention is a policy rather than a
+  reminder to press a button.
+- **Inspect** runs `git bundle verify` and lists the tip commits, and separately checks the
+  recorded sha256 against the file on disk. The two answer different questions: git says
+  the file is a coherent bundle, the digest says it is the file *we* wrote.
+- **Import** accepts a `.bundle` taken off this box or from another server. It is verified
+  before it is stored, so the list never holds something that cannot be restored.
+
+### Rolling back
+
+Only from the inspector, and only after typing `CONFIRM`. A safety snapshot of the current
+state is taken first and the rollback is **refused** if that fails — a rollback with no way
+back is a restore performed hopefully.
+
+Ticking "also write these files over the live application directory" is the irreversible
+half. It copies the restored tree **over** what is there; it does not remove files created
+since, because that directory is the running application and deleting unknown paths deletes
+uploads and caches. Anything left over is listed afterwards, so the result is a merge you
+can see rather than a rollback you assumed.
+
 ## Verify your backups
 
 A backup you've never restored is a hope, not a plan. Periodically: spin up a throwaway

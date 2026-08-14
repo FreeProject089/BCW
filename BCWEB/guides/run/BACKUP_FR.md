@@ -88,6 +88,53 @@ docker run --rm -v bcweb_audit-anchor:/data -v /var/backups/bcweb:/backup alpine
 Garde la base et l'ancre d'audit de la **même** exécution pour que la chaîne HMAC se
 vérifie encore (`/admin/security` → vérifier la chaîne).
 
+## Les sauvegardes dans l’app sont autre chose
+
+« Gestion serveur avancée → Stockage des sauvegardes » a ses propres outils, et ils ne
+remplacent **rien** de ce qui précède. Confondre les deux est l’erreur dangereuse, donc
+clairement :
+
+| | `infra/backup/backup.sh` | Snapshots dans l’app |
+|---|---|---|
+| Données Postgres (comptes, dépôts, catalogues, paiements) | **Oui** | **Non** |
+| Objets MinIO (fichiers envoyés, octets des dépôts hébergés) | **Oui** | **Non** |
+| Historique d’édition des fichiers touchés via le gestionnaire | Non | **Oui** |
+| Historique d’édition des lignes touchées via le visualiseur BDD | Non | **Oui** |
+| Survit à la perte de la machine | Oui, une fois copié hors site | Seulement si téléchargé |
+
+Un snapshot applicatif est un **bundle git de cet historique d’édition**, figé avec sa
+taille, un sha256 et une signature Ed25519. Il répond à « remets ce fichier ». Il ne répond
+pas à « le serveur a disparu » — c’est le rôle du script ci-dessus.
+
+### Prendre, conserver, lire
+
+- **Sauvegarder maintenant** en prend une tout de suite (fichiers, lignes BDD, ou les deux).
+  L’historique fichiers est rafraîchi d’abord, donc le snapshot inclut ce qui vient d’être
+  modifié.
+- **Garder N** fait la rotation par type — dix snapshots fichiers quotidiens ne peuvent pas
+  évincer tous les snapshots BDD d’un budget commun. `0` désactive la rotation, et le veut
+  dire : rien n’est supprimé.
+- Le balayage quotidien en prend un et fait la rotation aussi : la rétention est une règle,
+  pas un pense-bête pour appuyer sur un bouton.
+- **Examiner** lance `git bundle verify` et liste les commits de tête, puis vérifie
+  séparément le sha256 enregistré contre le fichier sur disque. Les deux répondent à des
+  questions différentes : git dit que le fichier est un bundle cohérent, l’empreinte dit que
+  c’est bien *notre* fichier.
+- **Importer** accepte un `.bundle` sorti de cette machine ou venu d’un autre serveur. Il est
+  vérifié avant d’être stocké : la liste ne contient jamais quelque chose d’irrestaurable.
+
+### Revenir en arrière
+
+Uniquement depuis l’examen, et seulement après avoir tapé `CONFIRM`. Une sauvegarde de
+sécurité de l’état actuel est prise d’abord et le retour arrière est **refusé** si elle
+échoue — un rollback sans retour possible est une restauration pleine d’espoir.
+
+Cocher « écrire aussi ces fichiers par-dessus le dossier de l’application » est la moitié
+irréversible. Cela recopie l’arbre restauré **par-dessus** l’existant ; cela ne supprime pas
+les fichiers créés depuis, parce que ce dossier est l’application en service et qu’effacer
+les chemins inconnus effacerait les envois et les caches. Ce qui reste est listé ensuite :
+le résultat est une fusion que tu vois, pas un rollback que tu supposes.
+
 ## Vérifie tes sauvegardes
 
 Une sauvegarde jamais restaurée est un espoir, pas un plan. Régulièrement : restaure le

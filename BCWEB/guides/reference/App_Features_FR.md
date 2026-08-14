@@ -18,6 +18,22 @@
   rapide vers les Réglages.
 - **Unique BC id** — chaque compte a un id de support stable `BC-XXXX-XXXX`.
 
+- **Fermer ton compte** — planifiée à 30 jours et annulable pendant tout ce mois, depuis un
+  lien qui fonctionne déconnecté (celui qui arrête une suppression est souvent sur un
+  téléphone où il ne s’est jamais connecté). Le mail emporte toutes tes factures : après, il
+  n’y a plus de compte pour aller les chercher. Ce qui se produit au terme est une
+  anonymisation, pas une suppression de ligne : factures et dossier de modération survivent,
+  tout ce qui est personnel est effacé. Un hachage à sens unique de l’adresse est conservé
+  pour que t’inscrire à nouveau avec elle rattache ton historique — y compris un éventuel
+  dossier de modération. Une autre adresse repart vraiment de zéro.
+- **Transferts de propriété** — passe un dépôt ou un élément de catalogue à quelqu’un par
+  e-mail. La personne peut refuser, rien ne bouge avant qu’elle accepte, et l’offre expire en
+  14 jours. Un dépôt hébergé avec un abonnement actif est refusé, un dépôt en offre gratuite
+  aussi : le gratuit c’est un par compte, donc le céder consommerait un droit que la personne
+  n’a jamais demandé.
+- **Sondages** — réponds sur `/polls`. Changer d’avis remplace ta réponse au lieu d’être
+  refusé, et tu peux la retirer entièrement.
+
 ## Parcourir & catalogue
 - **Catalogue** d'apps / plugins / thèmes / presets — barre de filtres nette : switcher de
   projet (Tous / BMM / BSM), tri, recherche, pills de type à icônes. Une bande **Catalogues
@@ -139,6 +155,32 @@
   les lectures du DB viewer sont journalisées et les tables d'audit protégées.
 - **Bot & analytics**, **Réglages** (leviers de prix, plafonds d'hébergement, limites
   free-tier).
+- **Sondages** (`manage_polls`) — pose une question, choisis qui peut répondre (membres
+  seulement, une voix chacun et c’est exact ; ou tout le monde, dédoublonné par une
+  empreinte d’appareil propre au sondage) et quand le décompte devient visible (après avoir
+  répondu par défaut — un total affiché avant oriente la réponse). Les options se figent dès
+  qu’une réponse existe : les modifier après laisse un décompte qui tombe juste et ne veut
+  plus rien dire. Chaque résultat est reporté séparé connectés / anonymes, et la part
+  anonyme est présentée comme une estimation : deux personnes derrière une même box comptent
+  pour une, une personne sur deux appareils compte double.
+- **API publique** (`manage_api`) — à quoi sert chaque clé. Deux jeux de données tenus à
+  part volontairement : un COMPTEUR quotidien d’appels et d’erreurs, exact et conservé, et
+  un ÉCHANTILLON de courte durée d’appels individuels pour expliquer un incident. La liste
+  d’appels le dit en tête, là où l’on se mettrait sinon à compter les lignes. Révoquer une
+  clé prévient son propriétaire : une clé qui meurt sans explication, c’est un ticket de
+  support qui part d’une fausse piste.
+- **SSO — Personnes** — à côté du registre des applications, qui a réellement autorisé quoi :
+  la personne, l’application, le nombre de sessions actives, et un bouton pour couper.
+  Couper révoque les jetons dans le même geste (retirer le consentement seul laisse
+  l’application fonctionner jusqu’à leur expiration) et prévient la personne, pour que la
+  redemande d’autorisation ne passe pas pour un bug de cette application. Les deux moitiés du
+  mot « SSO » sont étiquetées et jamais fondues : se connecter ICI avec GitHub, contre se
+  connecter à une application externe avec ce compte.
+- **Fermeture de compte, côté équipe** — la fiche utilisateur s’ouvre sur l’état de
+  fermeture, parce qu’une fermeture en cours change le sens de toutes les autres actions de
+  cet écran. L’équipe peut en planifier une avec un motif obligatoire ; la personne reçoit le
+  motif, la date et un lien pour nous contacter — pas un bouton d’annulation, car une
+  fermeture décidée par l’équipe ne s’annule pas de son côté.
 
 ## Aspect & ressenti
 - **Orbe héro Three.js** — se construit à partir de ses éclats à l'intro, spirale au

@@ -13,6 +13,19 @@
 - **Profile** — avatar (generated), bio, change password, hidden-by-default Personal
   info, link BMM **creator ids** and **Discord**, quick link to Settings.
 - **Unique BC id** — every account has a stable `BC-XXXX-XXXX` support id.
+- **Closing your account** — scheduled 30 days out and reversible for that whole month,
+  from a link that works signed out (whoever is stopping a deletion may be on a phone they
+  never signed in on). The email carries every invoice, because afterwards there is no
+  account to fetch them from. What happens at the end is anonymisation, not a row delete:
+  invoices and moderation records survive, everything personal is scrubbed. A one-way hash
+  of the address is kept so that signing up again with it reattaches your history —
+  including any moderation record. A different address starts genuinely fresh.
+- **Ownership transfers** — hand a repository or catalog item to someone else by email.
+  They can refuse, nothing moves until they accept, and it expires in 14 days. A hosted
+  repo with a live subscription is refused, and so is a free-plan repo: the free tier is
+  one per account, so handing one over would spend a free claim the recipient never made.
+- **Polls** — answer at `/polls`. Changing your mind replaces your answer rather than
+  being refused, and you can withdraw it entirely.
 
 ## Browse & catalog
 - **Catalog** of apps / plugins / themes / presets — a clean filter bar with a project
@@ -131,6 +144,31 @@
   (per-session Boring-avatar + geo) whose timeline interleaves pageviews with **in-page
   interactions** (which button was clicked / field edited / modal opened — labels only,
   never values; consent-gated). **Settings** (pricing knobs, hosting caps, free-tier limits).
+- **Polls** (`manage_polls`) — ask a question, pick who may answer (members only, one
+  vote each and exact; or everybody, deduplicated by a per-poll device fingerprint), and
+  when the tally becomes visible (after answering by default — a running total shown
+  beforehand steers the answer). Options freeze once somebody has answered: editing them
+  later leaves a tally that still adds up and no longer means anything. Every result is
+  reported split signed-in / anonymous, and the anonymous half is labelled an estimate,
+  because two people behind one router count once and one person on two devices counts
+  twice.
+- **Public API** (`manage_api`) — what each key is being used for. Two datasets, kept
+  apart on purpose: a per-day COUNT of calls and errors that is exact and kept, and a
+  short-lived SAMPLE of individual calls for explaining an incident. The call list says so
+  on its face, in the place someone would otherwise start counting rows. Revoking a key
+  notifies its owner, because a key going dead unexplained is a support ticket that starts
+  from the wrong theory.
+- **SSO — People** — beside the client registry, who actually granted what: the person,
+  the app, how many live sessions, and a button to cut it. Cutting revokes the refresh
+  tokens in the same breath (a consent dropped alone leaves the app working until its
+  tokens expire) and tells the person, so their next re-prompt does not read as a bug in
+  that app. The two halves of "SSO" are labelled and never merged: signing in HERE with
+  GitHub, versus signing in to an outside app with this account.
+- **Account closure, staff side** — user details opens with the closure state, because a
+  pending closure changes what every other action on that screen means. Staff can schedule
+  one with a required reason; the person is emailed the reason, the date and a link to
+  contact us — not a one-click undo, since a closure staff decided is not one the holder
+  reverses themselves.
 
 ## Look & feel
 - **Three.js hero orb** — builds itself from shards on intro, spirals as you scroll
