@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { KeyRound, Shield, Copy, Trash2, Plus, RefreshCw, Eye, EyeOff, ArrowLeft, Lock } from 'lucide-react';
+import { KeyRound, Shield, Copy, Trash2, Plus, RefreshCw, Eye, EyeOff, ArrowLeft, Lock, FlaskConical } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Textarea, Badge, Field, Spinner, useToast, useDialog, copyText } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
+import WebhooksPanel from './dev-webhooks.jsx';
 
 // /dev/config — the credentials, in one place.
 //
@@ -85,6 +86,7 @@ function ApiKeysPanel() {
       const r = await api.post('/me/api-keys', {
         label: form.label.trim(), scopes: form.picked,
         expiresInDays: form.days ? Number(form.days) : undefined,
+        testMode: !!form.testMode,
         totp: form.totp || undefined,
       });
       setFresh(r.secret); setForm(null); await load();
@@ -155,6 +157,7 @@ function ApiKeysPanel() {
                   {!k.revokedAt && k.expiresAt && new Date(k.expiresAt) < new Date() && <Badge tone="amber">{t('devc.expired', 'expired')}</Badge>}
                 </div>
                 <ScopeChips scopes={k.scopes} descriptions={scopes} />
+                {k.testMode && <div className="mt-1"><Badge tone="amber"><FlaskConical size={10} /> {t('devc.testkey', 'test key — writes are simulated')}</Badge></div>}
                 <div className="text-[11px] text-[var(--faint)]">
                   {k.lastUsedAt ? t('devc.used', 'last used {d}').replace('{d}', new Date(k.lastUsedAt).toLocaleString()) : t('devc.never', 'never used')}
                 </div>
@@ -184,6 +187,16 @@ function ApiKeysPanel() {
           <Field label={t('devc.expiry', 'Expires in (days, optional)')}>
             <Input className="w-28" type="number" min="1" value={form.days} onChange={(e) => setForm((f) => ({ ...f, days: e.target.value }))} />
           </Field>
+          {/* Chosen once, here, instead of correctly on every request. The sandbox header
+              works and is documented — but it is opt-in per call, and the one time you forget
+              it you have written to your real account. */}
+          <label className="flex items-start gap-2 text-[12px] rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-2.5">
+            <input type="checkbox" className="mt-0.5" checked={!!form.testMode} onChange={(e) => setForm((f) => ({ ...f, testMode: e.target.checked }))} />
+            <span>
+              <b className="flex items-center gap-1.5"><FlaskConical size={12} /> {t('devc.test', 'Make it a test key')}</b>
+              <span className="text-[var(--muted)]">{t('devc.test.h', 'Every write it makes is simulated, with no header to remember. Reads are real. This cannot be changed afterwards — a key whose meaning could change under a running script is worse than two keys.')}</span>
+            </span>
+          </label>
           <TotpField value={form.totp} onChange={(v) => setForm((f) => ({ ...f, totp: v }))} />
           <div className="flex gap-2">
             <Button size="sm" variant="primary" disabled={busy} onClick={create}>{busy ? <Spinner /> : t('devc.create', 'Create the key')}</Button>
@@ -349,6 +362,9 @@ export default function DevConfig() {
       <div className="space-y-4">
         <ApiKeysPanel />
         <OAuthAppsPanel />
+      {/* Third credential kind on this page, and the only one that is a promise we make
+          OUTWARDS: a key and an app let somebody in, a webhook is us calling them. */}
+      <WebhooksPanel />
       </div>
     </div>
   );

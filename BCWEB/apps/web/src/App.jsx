@@ -43,6 +43,7 @@ const DevHub = lazy(() => import('./pages/dev.jsx'));
 const DevConfig = lazy(() => import('./pages/dev-config.jsx'));
 const NotificationCentre = lazy(() => import('./pages/notifications.jsx'));
 const SanctionPage = lazy(() => import('./pages/sanction.jsx'));
+const DevTools = lazy(() => import('./pages/dev-tools.jsx'));
 const Admin = named(() => import('./pages/admin.jsx'), 'Admin');
 const Dashboard = named(() => import('./pages/dashboard.jsx'), 'Dashboard');
 const ReposPage = named(() => import('./pages/repos.jsx'), 'ReposPage');
@@ -1072,6 +1073,7 @@ export default function App() {
           {/* Every moderation e-mail has been linking here. It did not exist — the notice
               went out with a "read it and contest" button that landed on the 404 page. */}
           <Route path="/sanctions/:code" element={<SanctionPage />} />
+          <Route path="/dev/tools" element={<DevTools />} />
               <Route path="/authorize" element={<Authorize />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/contact" element={<Contact />} />

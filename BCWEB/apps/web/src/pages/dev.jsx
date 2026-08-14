@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Code2, Shield, KeyRound, BookOpen, Send, Newspaper, Copy, Sliders, FlaskConical, ArrowRight } from 'lucide-react';
+import { Code2, Shield, KeyRound, BookOpen, Send, Newspaper, Copy, Sliders, FlaskConical, ArrowRight, FileJson } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Select, Textarea, Badge, Field, Spinner, useToast, copyText } from '../ui/ui.jsx';
@@ -32,6 +32,53 @@ const ENDPOINTS = [
   { m: 'PATCH', p: '/v1/account', scope: 'account:write', d: 'Change your display name or bio', write: true, body: '{\n  "displayName": "New name"\n}' },
 ];
 
+// The same call, as code you can paste into a project.
+//
+// The gap this closes is the one where people give up: "it worked in the console" and "it
+// works in my code" are separated by an hour of guessing at header names. The key is NEVER
+// interpolated — the snippet reads it from the environment, because a snippet with a live
+// credential in it is a snippet that ends up in a commit.
+const LANGS = ['curl', 'fetch', 'python'];
+
+function snippetFor(lang, { method, path, body, sandbox, write }) {
+  const url = `https://bettercommunity.app/api${path}`;
+  const hdr = [['Authorization', 'Bearer $BCW_KEY']];
+  if (body) hdr.push(['Content-Type', 'application/json']);
+  if (write && sandbox) hdr.push(['X-BCW-Sandbox', '1']);
+
+  if (lang === 'curl') {
+    return [
+      `curl -X ${method} '${url}' \\`,
+      ...hdr.map(([k, v]) => `  -H '${k}: ${v}' \\`),
+      body ? `  -d '${body}'` : '  -i',
+    ].join('\n');
+  }
+  if (lang === 'fetch') {
+    return [
+      `const res = await fetch('${url}', {`,
+      `  method: '${method}',`,
+      '  headers: {',
+      ...hdr.map(([k, v]) => `    '${k}': ${v.includes('$BCW_KEY') ? '`Bearer ${process.env.BCW_KEY}`' : `'${v}'`},`),
+      '  },',
+      ...(body ? [`  body: JSON.stringify(${body}),`] : []),
+      '});',
+      'console.log(res.status, await res.json());',
+    ].join('\n');
+  }
+  return [
+    'import os, requests',
+    '',
+    `res = requests.${method.toLowerCase()}(`,
+    `    "${url}",`,
+    '    headers={',
+    ...hdr.map(([k, v]) => `        "${k}": ${v.includes('$BCW_KEY') ? 'f"Bearer {os.environ[\'BCW_KEY\']}"' : `"${v}"`},`),
+    '    },',
+    ...(body ? [`    json=${body},`] : []),
+    ')',
+    'print(res.status_code, res.json())',
+  ].join('\n');
+}
+
 function ApiConsole() {
   const { t } = useI18n(); const toast = useToast();
   const [key, setKey] = useState('');
@@ -40,6 +87,7 @@ function ApiConsole() {
   const [sandbox, setSandbox] = useState(true);
   const [res, setRes] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [lang, setLang] = useState('curl');
 
   const ep = ENDPOINTS[idx];
 
@@ -123,6 +171,24 @@ function ApiConsole() {
         )}
 
         <Button variant="primary" disabled={busy} onClick={send}>{busy ? <Spinner /> : t('dev.console.send', 'Send')}</Button>
+
+        {/* The same call as code. "It worked in the console" and "it works in my code" are
+            separated by an hour of guessing at header names, and that hour is where people
+            give up. */}
+        <div className="pt-3 mt-1 border-t border-[var(--line)]">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Code2 size={12} /> {t('dev.snip', 'The same call, in code')}</span>
+            <div className="inline-flex rounded-[10px] bg-[var(--surface-2)] p-0.5 ml-auto">
+              {LANGS.map((l) => (
+                <button key={l} onClick={() => setLang(l)}
+                  className={`px-2 py-0.5 rounded-[8px] text-[11px] ${lang === l ? 'bg-[var(--bg-solid)] font-medium' : 'text-[var(--muted)]'}`}>{l}</button>
+              ))}
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => { copyText(snippetFor(lang, { method: ep.m, path: ep.p, body: ep.write ? body : '', sandbox, write: ep.write })); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
+          </div>
+          <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-[var(--surface-2)] rounded-lg p-3 max-h-52 overflow-auto">{snippetFor(lang, { method: ep.m, path: ep.p, body: ep.write ? body : '', sandbox, write: ep.write })}</pre>
+          <p className="text-[11px] text-[var(--muted)] mt-1">{t('dev.snip.h', 'The key is read from BCW_KEY in your environment — a snippet with a live credential in it is a snippet that ends up in a commit.')}</p>
+        </div>
       </div>
 
       {res && (
@@ -193,8 +259,12 @@ export default function DevHub() {
       </Card>
 
       <div className="grid sm:grid-cols-3 gap-4">
+        <Tool icon={FileJson} title={t('dev.hub.tools', 'Tools')} to="/dev/tools" cta={t('dev.hub.open', 'Open')}>
+          {t('dev.hub.tools.s', 'Check a catalog feed before you publish it, and see what your keys have actually been doing — refusals included.')}
+        </Tool>
+
         <Tool icon={Sliders} title={t('dev.hub.config', 'Credentials')} to="/dev/config" cta={t('dev.hub.open', 'Open')}>
-          {t('dev.hub.config.s', 'Your API keys and your registered apps, in one place. Creating or deleting a key asks for your 2FA code when you have it.')}
+          {t('dev.hub.config.s', 'Your API keys, your registered apps and your webhooks. Creating or deleting a key asks for your 2FA code when you have it.')}
         </Tool>
         <Tool icon={Shield} title={t('dev.hub.sso', 'Sign in with BetterCommunity')} to="/docs/sso" cta={t('dev.hub.ssodoc', 'Read the guide')}>
           {t('dev.hub.sso.s', 'Standard OpenID Connect. Register an app, point your library at the discovery document, and you are done — there is no SDK of ours to install.')}
