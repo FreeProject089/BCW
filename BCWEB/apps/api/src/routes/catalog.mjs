@@ -1040,10 +1040,13 @@ export default async function catalogRoutes(app) {
       req.log?.error?.({ e: String(e?.message || e), sub: sub.id }, 'suspend: sanction record failed');
     }
 
+    // Moderators end a reason with a full stop about half the time, and the template added
+    // another — "Probe reason.." showed up the first time this ran against real data.
+    const why = reason.data.reason.trim().replace(/[.!?]+$/, '');
     await notify(p, sub.ownerId, 'submission_suspended',
       sanction
-        ? `"${sub.item.name}" was suspended: ${reason.data.reason}. Reference ${sanction.code} — you can contest it from your account.`
-        : `"${sub.item.name}" was suspended: ${reason.data.reason}. You can't resubmit it — contact support to appeal.`);
+        ? `"${sub.item.name}" was suspended: ${why}. Reference ${sanction.code} — you can contest it from your account.`
+        : `"${sub.item.name}" was suspended: ${why}. You can't resubmit it — contact support to appeal.`);
     return { ok: true, sanction: sanction ? { code: sanction.code } : null };
   });
 }
