@@ -1531,6 +1531,8 @@ function FileManager() {
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState('');
   const [history, setHistory] = useState(null); // { path, items } for the backup-history modal
+  const [trash, setTrash] = useState(null);     // deleted-but-restorable files, or null while closed
+  const undoable = useUndoableSave(() => load(dir));
 
   const load = (d) => api.get(`/server/files?path=${encodeURIComponent(d)}`).then((r) => { setData(r); setDir(r.path); setQ(''); }).catch(() => toast.error(t('fm.listfail', 'Failed to list.')));
   useEffect(() => { load('.'); /* eslint-disable-next-line */ }, []);
@@ -1551,10 +1553,41 @@ function FileManager() {
     try { await api.put('/server/files/write', { path: editing.path, content: editing.content, confirmToken: 'CONFIRM' }); toast.success(t('fm.savedbackup', 'Saved — a backup of the previous version was kept.')); setEditing(null); }
     catch { toast.error(t('fm.savefail', 'Failed to save.')); } finally { setBusy(false); }
   };
+  // Deleting is the one action here worth two safety nets, because it is the one whose
+  // damage is invisible: the file simply stops being in the list.
+  //
+  //   1. A six-second undo window, during which the request has not been sent at all.
+  //   2. If it does commit, the file is still in the backup repo and now appears under
+  //      "Recently deleted" below — which is the half that was missing. Restore has always
+  //      existed, but it needed a path to ask about, and a deleted file has no row to
+  //      click on. You could only recover a file whose exact path you still remembered.
+  //
+  // Saving an edit keeps its immediate semantics on purpose (see saveFile above): there
+  // the version history is the way back, and a six-second "maybe" is worse than a yes.
   const delEntry = async (e) => {
     const full = dir === '.' ? e.name : `${dir}/${e.name}`;
-    if (!(await doubleConfirm(dialog, { title: t('fm.del', 'Delete'), message: t('fm.delconfirm', 'Delete "{p}"? A backup is kept, but it won\'t reappear in the file manager until restored.').replace('{p}', full), okLabel: t('fm.del', 'Delete') }))) return;
-    try { await api.del(`/server/files?path=${encodeURIComponent(full)}&confirmToken=CONFIRM`); toast.success(t('common.deleted', 'Deleted.')); load(dir); } catch { toast.error(t('common.failed', 'Failed.')); }
+    if (!(await doubleConfirm(dialog, { title: t('fm.del', 'Delete'), message: t('fm.delconfirm2', 'Delete "{p}"? A backup is kept and it can be restored from "Recently deleted".').replace('{p}', full), okLabel: t('fm.del', 'Delete') }))) return;
+    undoable(
+      () => api.del(`/server/files?path=${encodeURIComponent(full)}&confirmToken=CONFIRM`),
+      t('fm.deletedundo', 'Deleted “{p}”.').replace('{p}', full),
+    );
+  };
+
+  const loadTrash = async () => {
+    try { const r = await api.get('/server/files/deleted'); setTrash(r.deleted || []); }
+    catch { toast.error(t('fm.trashfail', 'Failed to list deleted files.')); }
+  };
+  const restoreDeleted = async (row) => {
+    if (!(await doubleConfirm(dialog, {
+      title: t('fm.undelete', 'Restore this file'),
+      message: t('fm.undeleteconfirm', 'Write "{p}" back to the server, with the content it had just before it was deleted?').replace('{p}', row.path),
+      okLabel: t('fm.restorebtn', 'Restore'),
+    }))) return;
+    try {
+      await api.post(`/server/files/backups/${row.hash}/restore`, { path: row.path, confirmToken: 'CONFIRM' });
+      toast.success(t('fm.restored', 'Restored.'));
+      await loadTrash(); load(dir);
+    } catch { toast.error(t('fm.restorefail', 'Failed to restore.')); }
   };
   const viewHistory = async (full) => {
     try { const r = await api.get(`/server/files/backups?path=${encodeURIComponent(full)}`); setHistory({ path: full, items: r.history }); }
@@ -1610,6 +1643,10 @@ function FileManager() {
         <div className="flex-1" />
         <Button size="sm" onClick={newFolder}><Plus size={12} /> {t('fm.folder', 'Folder')}</Button>
         <Button size="sm" onClick={newFile}><Plus size={12} /> {t('fm.file', 'File')}</Button>
+        {/* The way back to something you cannot browse to. */}
+        <Button size="sm" variant={trash ? 'primary' : 'ghost'} onClick={() => (trash ? setTrash(null) : loadTrash())}>
+          <RotateCcw size={12} /> {t('fm.trash', 'Recently deleted')}
+        </Button>
         {dir !== '.' && <Button size="sm" onClick={up}>{t('fm.up', 'Up')}</Button>}
       </div>
       {editing ? (
@@ -1620,6 +1657,43 @@ function FileManager() {
           </div>
           <textarea value={editing.content} onChange={(e) => setEditing({ ...editing, content: e.target.value })} className="w-full h-64 font-mono text-xs bg-[var(--surface-2)] rounded-lg p-3 outline-none" spellCheck={false} />
           <div className="flex gap-2 mt-2"><Button variant="primary" disabled={busy} onClick={saveFile}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button><Button onClick={() => setEditing(null)}>{t('su.cancel', 'Cancel')}</Button></div>
+        </div>
+      ) : trash ? (
+        /* The deleted list REPLACES the browser rather than sitting beside it: it answers
+           a different question ("what did I lose"), and mixing the two invites restoring a
+           file into whichever directory you happen to be standing in. */
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="text-xs text-[var(--muted)]">
+              {t('fm.trash.desc', 'Files deleted through this manager that are still gone. Restoring writes back the content it had just before the delete.')}
+            </div>
+            <Button size="sm" onClick={() => setTrash(null)}>{t('common.close', 'Close')}</Button>
+          </div>
+          {!trash.length ? (
+            <EmptyState icon={RotateCcw} title={t('fm.trash.none.t', 'Nothing deleted')} sub={t('fm.trash.none.s', 'Files removed here would be listed for restoring.')} />
+          ) : (
+            <div className="divide-y divide-[var(--line)]">
+              {trash.map((row) => (
+                <div key={`${row.path}-${row.hash}`} className="flex items-center gap-3 py-2">
+                  <FileText size={14} className="text-[var(--faint)] shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-mono truncate">{row.path}</div>
+                    <div className="text-[11px] text-[var(--faint)]">
+                      {t('fm.trash.when', 'deleted {d}').replace('{d}', new Date(row.at).toLocaleString())} · {row.hash.slice(0, 8)}
+                    </div>
+                  </div>
+                  {/* Download before restoring — sometimes you want the content back
+                      without putting the file back onto a live server. */}
+                  <a href={`/api/server/files/backups/${row.hash}/download?path=${encodeURIComponent(row.path)}`} download>
+                    <Button size="sm" variant="ghost"><Download size={13} /></Button>
+                  </a>
+                  <Button size="sm" variant="primary" onClick={() => restoreDeleted(row)}>
+                    <RotateCcw size={13} /> {t('fm.restorebtn', 'Restore')}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -1650,6 +1724,12 @@ function FileManager() {
               {history.items.map((h) => (
                 <div key={h.hash} className="flex items-center gap-2.5 py-2 text-sm">
                   <div className="flex-1 min-w-0"><div className="truncate">{h.message}</div><div className="text-[11px] text-[var(--faint)]">{new Date(h.at).toLocaleString()} · <code className="font-mono">{h.hash.slice(0, 8)}</code></div></div>
+                  {/* Download the version instead of restoring it — the safe half of
+                      "what did this file look like before", with nothing written to the
+                      live server. */}
+                  <a href={`/api/server/files/backups/${h.hash}/download?path=${encodeURIComponent(history.path)}`} download title={t('common.download', 'Download')}>
+                    <Button size="sm" variant="ghost"><Download size={13} /></Button>
+                  </a>
                   <Button size="sm" onClick={() => restoreVersion(h.hash)}>{t('fm.restorebtn', 'Restore')}</Button>
                 </div>
               ))}

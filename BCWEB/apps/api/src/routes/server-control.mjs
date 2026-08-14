@@ -7,7 +7,7 @@ import fsSync from 'node:fs';
 import pg from 'pg';
 import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual, readAnchors } from '../lib/lib.mjs';
 import { verifyTotp } from '../lib/totp.mjs';
-import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo } from '../lib/gitbackup.mjs';
+import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles } from '../lib/gitbackup.mjs';
 
 // A lightweight "type to confirm" server-side check — the frontend already
 // makes the admin confirm twice (a dialog, then typing this exact word), but
@@ -216,6 +216,28 @@ export default async function serverControlRoutes(app) {
     const rel = req.query?.path;
     if (!safePath(rel)) return reply.code(400).send({ error: 'bad_path' });
     return { history: await fileHistory(FILES_BACKUP_ROOT, rel) };
+  });
+
+  // Files deleted through the manager that are still gone — the list you cannot reach by
+  // browsing, because browsing only shows what exists.
+  app.get('/server/files/deleted', { preHandler: DANGEROUS }, async () => {
+    return { deleted: await deletedFiles(FILES_BACKUP_ROOT, FILES_ROOT) };
+  });
+
+  // Download any backed-up version as a file, rather than only being able to read it in
+  // the browser. Useful precisely when the thing you want back is not text.
+  app.get('/server/files/backups/:hash/download', { preHandler: DANGEROUS }, async (req, reply) => {
+    const rel = req.query?.path;
+    if (!safePath(rel)) return reply.code(400).send({ error: 'bad_path' });
+    let content;
+    try { content = await fileAtCommit(FILES_BACKUP_ROOT, req.params.hash, rel); }
+    catch { return reply.code(404).send({ error: 'not_found' }); }
+    // The basename only, and quoted: a path is attacker-adjacent input and a raw one in
+    // this header is how a filename escapes into the response (CWE-79/113).
+    const name = String(rel).split('/').pop().replace(/[^\w.\-]/g, '_');
+    reply.header('Content-Type', 'application/octet-stream');
+    reply.header('Content-Disposition', `attachment; filename="${name}.${req.params.hash.slice(0, 8)}"`);
+    return reply.send(content);
   });
 
   app.get('/server/files/backups/:hash', { preHandler: DANGEROUS }, async (req, reply) => {

@@ -108,6 +108,48 @@ export async function fileHistory(repoRoot, relPath, take = 30) {
   } catch { return []; }
 }
 
+// Files that were deleted through the manager and are still gone.
+//
+// The backup repo does NOT mirror the deletion — backupFile is called with the content as
+// it was JUST BEFORE the delete, so the file lives on in git while vanishing from disk.
+// That is what makes restoring possible at all, and also why a deleted file is invisible:
+// it is absent from the only listing anyone looks at, so the one moment you need its
+// history is the one moment you cannot navigate to it.
+//
+// Found by commit MESSAGE rather than by walking the tree: `backupFile` writes
+// "<uid> deleted <path>" on a delete, and matching that is exact and cheap. Walking every
+// tracked path and stat-ing it would also work and would cost a syscall per file in a
+// repo that the daily tree snapshot fills with the entire application.
+//
+// Each candidate is then checked against the real root: a path that has since been
+// re-created (restored, or simply written again) is no longer deleted and must not be
+// offered for restore.
+export async function deletedFiles(repoRoot, filesRoot, take = 200) {
+  try {
+    await fs.access(path.join(repoRoot, '.git'));
+  } catch { return []; }
+  let stdout;
+  try { ({ stdout } = await git(repoRoot, ['log', `-${take}`, '--format=%H|%ct|%s'])); }
+  catch { return []; }
+  const seen = new Set();
+  const out = [];
+  for (const line of stdout.trim().split(String.fromCharCode(10)).filter(Boolean)) {
+    const [hash, ts, ...rest] = line.split('|');
+    const subject = rest.join('|');
+    const m = /^(\S+) deleted (.+)$/.exec(subject);
+    if (!m) continue;
+    const [, by, rel] = m;
+    // Only the most recent deletion of a given path matters; older ones are superseded.
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    let stillGone = false;
+    try { await fs.access(safeJoin(filesRoot, rel)); } catch { stillGone = true; }
+    if (!stillGone) continue;
+    out.push({ path: rel, hash, by, at: new Date(Number(ts) * 1000).toISOString() });
+  }
+  return out;
+}
+
 // The file's content exactly as it was at a given commit. `hash` must be a plain
 // git object id (hex) and `relPath` must stay inside the repo — both are validated
 // before being composed into the `git show <hash>:<path>` argument.
