@@ -7,7 +7,7 @@ import fsSync from 'node:fs';
 import pg from 'pg';
 import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual, readAnchors } from '../lib/lib.mjs';
 import { verifyTotp } from '../lib/totp.mjs';
-import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles } from '../lib/gitbackup.mjs';
+import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles, bundleRepo, backupLog } from '../lib/gitbackup.mjs';
 
 // A lightweight "type to confirm" server-side check — the frontend already
 // makes the admin confirm twice (a dialog, then typing this exact word), but
@@ -575,6 +575,81 @@ export default async function serverControlRoutes(app) {
   // it just compacts via `git gc` and, if still over, stops taking NEW
   // snapshots (checked in sampleAndAlert-style fashion is overkill here; the
   // sweeper's daily snapshot checks this directly, see sweeper.mjs). ──
+  // ── Signing key for exported backups ────────────────────────────────────────
+  //
+  // Ed25519, generated once and kept in AdminSetting. A signature matters here only if it
+  // can be checked WITHOUT the thing that produced it — so this is a real asymmetric
+  // signature with a published public key, not an HMAC. An HMAC would need the secret to
+  // verify, which means asking the same server that made the backup whether the backup is
+  // genuine; that answers nothing if the server is what you are worried about.
+  //
+  // The private key never leaves this function. The public key is offered freely — that is
+  // the point of it — along with the exact openssl command to check a downloaded file.
+  const BACKUP_KEY = 'backup.signingKey';
+  async function backupSigningKey(p) {
+    const row = await p.adminSetting.findUnique({ where: { key: BACKUP_KEY } });
+    if (row?.value?.privateKey && row?.value?.publicKey) return row.value;
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+    const value = {
+      privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }),
+      publicKey: publicKey.export({ type: 'spki', format: 'pem' }),
+      createdAt: new Date().toISOString(),
+    };
+    await p.adminSetting.upsert({ where: { key: BACKUP_KEY }, create: { key: BACKUP_KEY, value }, update: { value } });
+    return value;
+  }
+
+  app.get('/server/backups/pubkey', { preHandler: DANGEROUS }, async () => {
+    const p = await db();
+    const { publicKey, createdAt } = await backupSigningKey(p);
+    return {
+      publicKey, createdAt, algorithm: 'Ed25519',
+      // Written out because a signature nobody knows how to check is decoration. These
+      // two commands need nothing from this site but the file and the key.
+      verify: [
+        'printf %s "<X-Backup-Signature header>" | base64 -d > backup.sig',
+        'openssl pkeyutl -verify -pubin -inkey backup.pub -rawin -in <the .bundle> -sigfile backup.sig',
+      ],
+    };
+  });
+
+  // What is actually inside the backups — not just how many bytes they take.
+  app.get('/server/backups/list', { preHandler: DANGEROUS }, async () => {
+    const [files, dbRows] = await Promise.all([backupLog(FILES_BACKUP_ROOT), backupLog(DB_BACKUP_ROOT)]);
+    return { files, db: dbRows };
+  });
+
+  // Download one repo's ENTIRE history as a git bundle, signed.
+  //
+  // Held in memory rather than streamed because the signature covers the whole artefact:
+  // signing a stream would mean either buffering it anyway or emitting a signature the
+  // client cannot check until the download has finished. The size cap is what keeps that
+  // honest — past it, the answer is `git gc` (or a smaller retention), not a 2 GB buffer.
+  app.get('/server/backups/export', { preHandler: DANGEROUS }, async (req, reply) => {
+    const which = req.query?.repo === 'db' ? 'db' : 'files';
+    const root = which === 'db' ? DB_BACKUP_ROOT : FILES_BACKUP_ROOT;
+    let bundle;
+    try { bundle = await bundleRepo(root); }
+    catch { return reply.code(404).send({ error: 'no_backups', detail: 'Nothing has been backed up yet.' }); }
+    const MAX = 256 * 1024 * 1024;
+    if (bundle.bytes.length > MAX) return reply.code(413).send({ error: 'too_large', bytes: bundle.bytes.length, maxBytes: MAX });
+    const p = await db();
+    const { privateKey } = await backupSigningKey(p);
+    // Ed25519 signs the message directly — no digest argument, which is why the verify
+    // command above uses -rawin.
+    const sig = crypto.sign(null, bundle.bytes, crypto.createPrivateKey(privateKey)).toString('base64');
+    await logAudit(p, req.user.uid, 'server.backup_export', `${which} (${bundle.bytes.length} bytes)`, clientIp(req));
+    const stamp = new Date().toISOString().slice(0, 10);
+    reply.header('Content-Type', 'application/octet-stream');
+    reply.header('Content-Disposition', `attachment; filename="bcweb-${which}-backup-${stamp}.bundle"`);
+    reply.header('X-Backup-Signature', sig);
+    reply.header('X-Backup-Signature-Alg', 'Ed25519');
+    // Exposed explicitly or a browser fetch cannot read them — the signature would be
+    // present on the wire and invisible to the page that needs it.
+    reply.header('Access-Control-Expose-Headers', 'X-Backup-Signature, X-Backup-Signature-Alg');
+    return reply.send(bundle.bytes);
+  });
+
   app.get('/server/backups/usage', { preHandler: DANGEROUS }, async () => {
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } });

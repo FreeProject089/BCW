@@ -10,6 +10,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { dirScan } from './native.mjs';
 
 const execFileP = promisify(execFile);
@@ -158,6 +159,44 @@ export async function fileAtCommit(repoRoot, hash, relPath) {
   safeJoin(repoRoot, relPath); // reject `../` traversal in the tree path
   const { stdout } = await git(repoRoot, ['show', `${hash}:${relPath}`]);
   return stdout;
+}
+
+// The whole repo as ONE file, history included.
+//
+// `git bundle` rather than a tar of the directory: a bundle is a single artefact that
+// `git clone` accepts directly, so an admin who downloads one can open it years later
+// with a tool they already have, on a machine that knows nothing about this application.
+// A tar of `.git` would technically work and would be worse — it is only openable by
+// someone who knows it is a git repo in disguise.
+//
+// `--all` covers every ref, so the download is the complete history rather than one
+// branch's view of it.
+export async function bundleRepo(repoRoot) {
+  await fs.access(path.join(repoRoot, '.git')); // throws → caller answers 404
+  const out = path.join(os.tmpdir(), `bcw-backup-${Date.now()}-${Math.random().toString(36).slice(2)}.bundle`);
+  try {
+    await git(repoRoot, ['bundle', 'create', out, '--all']);
+    return { file: out, bytes: await fs.readFile(out) };
+  } finally {
+    // The temp file is read into memory and then dropped: leaving bundles behind in
+    // /tmp would quietly become a second, unmanaged copy of every backup on the box.
+    await fs.rm(out, { force: true }).catch(() => {});
+  }
+}
+
+// Recent commits in a backup repo (named backupLog, not repoLog: lib.mjs already
+// exports a repoLog for per-repository audit entries, and two different "repo logs"
+// imported into one file is a bug waiting for a tired afternoon) — what is actually stored, rather than only how many
+// bytes it takes. A size with no contents is a number you cannot act on.
+export async function backupLog(repoRoot, take = 50) {
+  try {
+    await fs.access(path.join(repoRoot, '.git'));
+    const { stdout } = await git(repoRoot, ['log', `-${take}`, '--format=%H|%ct|%s']);
+    return stdout.trim().split(String.fromCharCode(10)).filter(Boolean).map((line) => {
+      const [hash, ts, ...rest] = line.split('|');
+      return { hash, at: new Date(Number(ts) * 1000).toISOString(), message: rest.join('|') };
+    });
+  } catch { return []; }
 }
 
 // Recursive on-disk size of the backup repo (incl. .git — that's real disk usage too), for

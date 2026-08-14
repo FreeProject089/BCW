@@ -1993,6 +1993,46 @@ function BackupManager() {
     setGcBusy(true);
     try { await api.post('/server/backups/gc'); toast.success(t('bkp.compacted', 'Compacted.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } finally { setGcBusy(false); }
   };
+
+  // Downloaded through fetch rather than a plain <a download>, because the signature
+  // travels in a RESPONSE HEADER — a link would save the file and throw the one thing
+  // that makes it verifiable straight in the bin.
+  const [exporting, setExporting] = useState('');
+  const exportRepo = async (which) => {
+    setExporting(which);
+    try {
+      const res = await fetch(`/api/server/backups/export?repo=${which}`, { credentials: 'include' });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw Object.assign(new Error('export'), { data: j });
+      }
+      const sig = res.headers.get('X-Backup-Signature') || '';
+      const blob = await res.blob();
+      const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || `${which}.bundle`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+      URL.revokeObjectURL(url);
+      // The signature is saved beside the bundle automatically. Asking the admin to copy
+      // a base64 blob out of a toast is how a signature ends up unchecked forever.
+      if (sig) {
+        const sigUrl = URL.createObjectURL(new Blob([sig], { type: 'text/plain' }));
+        const b = document.createElement('a'); b.href = sigUrl; b.download = `${name}.sig.b64`; b.click();
+        URL.revokeObjectURL(sigUrl);
+      }
+      toast.success(t('bkp.exported', 'Downloaded {n} — the signature was saved next to it.').replace('{n}', name));
+    } catch (x) {
+      toast.error(x?.data?.error === 'no_backups' ? t('bkp.nobackups', 'Nothing has been backed up yet.')
+        : x?.data?.error === 'too_large' ? t('bkp.toobig', 'Too large to export in one file — compact the backups first.')
+        : t('common.failed', 'Failed.'));
+    } finally { setExporting(''); }
+  };
+
+  const [contents, setContents] = useState(null);   // { files: [...], db: [...] }
+  const [pubkey, setPubkey] = useState(null);
+  const openContents = async () => {
+    try { setContents(await api.get('/server/backups/list')); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+  };
   if (loading) return <Loading />;
   const d = data || {};
   const pct = d.maxBytes ? Math.min(100, (d.totalBytes / d.maxBytes) * 100) : 0;
@@ -2016,6 +2056,68 @@ function BackupManager() {
         <Button disabled={gcBusy} onClick={runGc} title={t('bkp.compacttip', 'Runs git gc on the backup repos to reclaim space from old/loose objects. Non-destructive: NO history is deleted — every version can still be restored.')}>{gcBusy ? <Spinner /> : t('bkp.compact', 'Compact backups')}</Button>
       </div>
       <p className="text-[11px] text-[var(--faint)] mt-2" dangerouslySetInnerHTML={{ __html: t('bkp.note', '<b>Compact backups</b> reclaims disk space by garbage-collecting the backup git repos (loose/duplicate objects). It never deletes history — every past version stays restorable.') }} />
+
+      {/* Getting the backups OFF the box. A backup that only exists on the machine it
+          protects is not a backup of that machine. */}
+      <div className="mt-4 pt-3 border-t border-[var(--line)]">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5">
+          <Download size={12} /> {t('bkp.export', 'Take a copy off the server')}
+        </div>
+        <p className="text-[11px] text-[var(--muted)] mb-2">
+          {t('bkp.export.s', 'Each download is a git bundle containing the full history — open it anywhere with “git clone”, no part of this site required. It is signed, and the signature is saved beside it.')}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" disabled={!!exporting} onClick={() => exportRepo('files')}>
+            {exporting === 'files' ? <Spinner /> : <Download size={13} />} {t('bkp.export.files', 'File history')}
+          </Button>
+          <Button size="sm" disabled={!!exporting} onClick={() => exportRepo('db')}>
+            {exporting === 'db' ? <Spinner /> : <Download size={13} />} {t('bkp.export.db', 'DB row history')}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => (contents ? setContents(null) : openContents())}>
+            <Eye size={13} /> {contents ? t('common.close', 'Close') : t('bkp.contents', "What's in them")}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={async () => {
+            if (pubkey) return setPubkey(null);
+            try { setPubkey(await api.get('/server/backups/pubkey')); } catch { toast.error(t('common.failed', 'Failed.')); }
+          }}>
+            <KeyRound size={13} /> {pubkey ? t('common.close', 'Close') : t('bkp.verify', 'How to verify')}
+          </Button>
+        </div>
+
+        {pubkey && (
+          <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+            <p className="text-[11px] text-[var(--muted)] mb-2">
+              {t('bkp.verify.s', 'Signed with Ed25519. The key below is public on purpose — checking a backup must not require asking the server that produced it, which is precisely the thing you would be doubting.')}
+            </p>
+            <div className="flex items-center gap-2 mb-2">
+              <code className="flex-1 min-w-0 truncate text-[10px] font-mono px-2 py-1.5 rounded bg-[var(--bg-solid)]">{pubkey.publicKey.split('\n')[1]}…</code>
+              <Button size="sm" variant="ghost" onClick={() => { copyText(pubkey.publicKey); toast.success(t('common.copied', 'Copied.')); }}><Copy size={13} /></Button>
+            </div>
+            <pre className="text-[10px] font-mono whitespace-pre-wrap text-[var(--faint)]">{(pubkey.verify || []).join('\n')}</pre>
+          </div>
+        )}
+
+        {contents && (
+          <div className="mt-3 rounded-lg border border-[var(--line)] max-h-64 overflow-y-auto">
+            {['files', 'db'].map((k) => (
+              <div key={k}>
+                <div className="px-3 py-1.5 text-[11px] uppercase tracking-wider text-[var(--faint)] bg-[var(--surface-2)]/60 sticky top-0">
+                  {k === 'files' ? t('bkp.filehist', 'File history') : t('bkp.dbhist', 'DB row history')} · {(contents[k] || []).length}
+                </div>
+                {!(contents[k] || []).length
+                  ? <div className="px-3 py-2 text-[11px] text-[var(--faint)]">{t('bkp.empty', 'Nothing recorded yet.')}</div>
+                  : contents[k].map((c) => (
+                    <div key={c.hash} className="px-3 py-1.5 border-t border-[var(--line)] flex items-baseline gap-2">
+                      <code className="text-[10px] font-mono text-[var(--faint)] shrink-0">{c.hash.slice(0, 8)}</code>
+                      <span className="text-xs truncate flex-1">{c.message}</span>
+                      <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(c.at).toLocaleString()}</span>
+                    </div>
+                  ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </Card>
   );
 }
