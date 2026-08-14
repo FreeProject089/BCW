@@ -311,7 +311,33 @@ export default async function catalogRoutes(app) {
           id: it.slug, name: it.name, description: it.description || '', author: it.owner?.displayName || '', version: it.version, url: dlUrl(it), tags: it.tags || [],
         })).filter((x) => x.url) };
       }
-      return { version: '1.0', name: title, description: `Community app catalog from BetterCommunity (${projectKey.toUpperCase()}).`, apps: items.map((it) => ({
+      // Every public community catalog on the platform, as URLs BMM will follow.
+      //
+      // `community_imports` is BMM's own field (models/app_catalog.rs: AppCatalog), not
+      // something invented here — it already loads each URL listed and merges the result,
+      // which is exactly the "one catalog listing all the catalogs" this feed was missing.
+      // Nothing needed adding to BMM; it needed the field to be populated.
+      //
+      // community_imports and NOT partner_catalogs, deliberately. BMM only honours
+      // partner_catalogs from the official catalog and grants a Partner badge to whatever
+      // it names, so publishing user-submitted catalogs there would let anyone who gets a
+      // catalog listed inherit a trust marker. Trust in BMM comes from the source URL and
+      // is stamped by apply_trust regardless of what the JSON claims — this keeps that
+      // true rather than working around it.
+      //
+      // Capped, because this is one field in a cached response and a thousand URLs here is
+      // a thousand fetches on somebody's machine at startup.
+      const communityUrls = kind === 'APP'
+        ? await p.communityCatalog.findMany({
+          where: { status: 'ACTIVE', listed: true, visibility: 'public' },
+          orderBy: [{ featuredUntil: 'desc' }, { downloads: 'desc' }], take: 60,
+          select: { slug: true },
+        }).then((rows) => rows.map((c) => `${origin}/api/c/${c.slug}/catalog.json`)).catch(() => [])
+        : [];
+
+      return { version: '1.0', name: title, description: `Community app catalog from BetterCommunity (${projectKey.toUpperCase()}).`,
+        ...(communityUrls.length ? { community_imports: communityUrls } : {}),
+        apps: items.map((it) => ({
         id: it.slug, title: it.name, description: it.description || '', md_link: it.meta?.md_link || null,
         category: it.meta?.category || 'other', price: it.meta?.price || 'free', tags: it.tags || [], version: it.version, requirements: it.meta?.requirements || null,
         images: it.meta?.images || (it.meta?.thumb ? { thumb: it.meta.thumb } : undefined),
