@@ -407,6 +407,31 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
     ? allLeaves.filter((lf) => `${lf.label} ${lf.parent.label}`.toLowerCase().includes(q)).slice(0, 8)
     : [];
 
+  // One search box, rendered in the desktop sidebar AND in the phone sheet. Defined once
+  // because a shortcut that exists on the desktop and not on the phone is a shortcut people
+  // learn and then lose — and two copies would drift the moment either is touched.
+  const searchBox = allLeaves.length > 8 ? (
+    <div className="relative px-1 pt-1 pb-1.5">
+                  <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
+                  <input value={query} onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && hits[0]) set(hits[0].id); if (e.key === 'Escape') setQuery(''); }}
+                    placeholder={tr('sd.search', 'Jump to…')} aria-label={tr('sd.search', 'Jump to…')}
+                    className="w-full pl-7 pr-2 py-1.5 rounded-lg text-[13px] bg-[var(--surface-2)] border border-[var(--line)] outline-none focus:border-[var(--ring)]" />
+                  {q && (
+                    <div className="mt-1 space-y-0.5">
+                      {hits.length ? hits.map((lf) => (
+                        <button key={lf.id} onClick={() => set(lf.id)}
+                          className="w-full text-left px-2 py-1.5 rounded-lg text-[13px] hover:bg-[var(--surface-2)] flex items-center gap-2">
+                          <lf.parent.icon size={13} className="text-[var(--faint)] shrink-0" />
+                          <span className="truncate">{lf.label}</span>
+                          {lf.parent.label !== lf.label && <span className="text-[10px] text-[var(--faint)] truncate ml-auto">{lf.parent.label}</span>}
+                        </button>
+                      )) : <div className="px-2 py-1.5 text-[12px] text-[var(--faint)]">{tr('sd.nohit', 'Nothing by that name.')}</div>}
+                    </div>
+                  )}
+                </div>
+  ) : null;
+
   return (
     <div>
       <PageHeader icon={icon} title={title} subtitle={subtitle} actions={headerActions} />
@@ -425,7 +450,8 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
         {navOpen && <>
           <div className="fixed inset-0 z-10" onClick={() => setNavOpen(false)} />
           <div className="card absolute left-0 right-0 mt-2 p-2 anim-pop z-20 max-h-[62vh] overflow-y-auto scroll-thin shadow-lg">
-            {sections.map((sec, i) => renderSection(sec, i, true))}
+            {searchBox}
+            {!q && sections.map((sec, i) => renderSection(sec, i, true))}
           </div>
         </>}
       </div>
@@ -437,27 +463,7 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
           {/* Jump straight to a page instead of hunting the list. Shown only when there are
               enough tabs for hunting to be the problem — on a five-tab dashboard a search box
               is one more thing to read. */}
-          {allLeaves.length > 8 && (
-            <div className="relative px-1 pt-1 pb-1.5">
-              <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && hits[0]) set(hits[0].id); if (e.key === 'Escape') setQuery(''); }}
-                placeholder={tr('sd.search', 'Jump to…')} aria-label={tr('sd.search', 'Jump to…')}
-                className="w-full pl-7 pr-2 py-1.5 rounded-lg text-[13px] bg-[var(--surface-2)] border border-[var(--line)] outline-none focus:border-[var(--ring)]" />
-              {q && (
-                <div className="mt-1 space-y-0.5">
-                  {hits.length ? hits.map((lf) => (
-                    <button key={lf.id} onClick={() => set(lf.id)}
-                      className="w-full text-left px-2 py-1.5 rounded-lg text-[13px] hover:bg-[var(--surface-2)] flex items-center gap-2">
-                      <lf.parent.icon size={13} className="text-[var(--faint)] shrink-0" />
-                      <span className="truncate">{lf.label}</span>
-                      {lf.parent.label !== lf.label && <span className="text-[10px] text-[var(--faint)] truncate ml-auto">{lf.parent.label}</span>}
-                    </button>
-                  )) : <div className="px-2 py-1.5 text-[12px] text-[var(--faint)]">{tr('sd.nohit', 'Nothing by that name.')}</div>}
-                </div>
-              )}
-            </div>
-          )}
+          {searchBox}
           {!q && sections.map((sec, i) => renderSection(sec, i, false))}
         </nav>
         <div className="min-w-0">

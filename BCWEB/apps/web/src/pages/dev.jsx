@@ -17,20 +17,34 @@ import { useAuth } from './auth.jsx';
 // path. Kept in step with the API by hand — a dropdown listing a route that does not exist
 // is worse than a free-text box, so each entry here was checked against the router.
 const ENDPOINTS = [
-  { m: 'GET', p: '/v1/account', scope: 'account:read', d: 'Who the key belongs to' },
-  { m: 'GET', p: '/v1/repos', scope: 'repos:read', d: 'Your Server-Repos' },
-  { m: 'GET', p: '/v1/pools', scope: 'pools:read', d: 'Storage pools and what draws from them' },
-  { m: 'GET', p: '/v1/catalogs', scope: 'catalogs:read', d: 'Catalogs you own, hidden ones included' },
-  { m: 'GET', p: '/v1/catalog', scope: 'catalog:read', d: 'The published catalog feed' },
-  { m: 'GET', p: '/v1/favorites', scope: 'favorites:read', d: 'Repos and catalogs you starred' },
-  { m: 'GET', p: '/v1/payments', scope: 'payments:read', d: 'Your invoices' },
-  { m: 'GET', p: '/v1/polls', scope: 'polls:read', d: 'Polls open to you' },
-  { m: 'GET', p: '/v1/transfers', scope: 'transfers:read', d: 'Ownership transfers in either direction' },
-  { m: 'GET', p: '/v1/notifications', scope: 'notifications:read', d: 'Your notifications' },
-  { m: 'GET', p: '/v1/users', scope: 'users:read', d: 'The public user directory' },
-  { m: 'GET', p: '/v1/scopes', scope: null, d: 'The scope catalogue (no key needed)' },
-  { m: 'POST', p: '/v1/notifications/read-all', scope: 'notifications:write', d: 'Mark everything read', write: true },
-  { m: 'PATCH', p: '/v1/account', scope: 'account:write', d: 'Change your display name or bio', write: true, body: '{\n  "displayName": "New name"\n}' },
+  // Public
+  { m: 'GET', p: '/v1/scopes', scope: null, g: 'Public', d: 'Every scope and what it unlocks — no key needed' },
+  { m: 'GET', p: '/v1/webhook-events', scope: null, g: 'Public', d: 'Every event you can subscribe a webhook to' },
+  { m: 'GET', p: '/v1/catalog', scope: 'catalog:read', g: 'Public', d: 'The published catalog feed' },
+  { m: 'GET', p: '/v1/catalog/changes', scope: 'catalog:read', g: 'Public', d: 'What changed in the feed, for syncing' },
+  { m: 'GET', p: '/v1/users', scope: 'users:read', g: 'Public', d: 'The public member directory' },
+  { m: 'GET', p: '/v1/users/me', scope: 'users:read', g: 'Public', d: 'One public profile — swap `me` for any id' },
+
+  // You
+  { m: 'GET', p: '/v1/account', scope: 'account:read', g: 'Your account', d: 'Who the key belongs to' },
+  { m: 'PATCH', p: '/v1/account', scope: 'account:write', g: 'Your account', d: 'Change your display name or bio', write: true, body: '{\n  "displayName": "New name"\n}' },
+  { m: 'GET', p: '/v1/notifications', scope: 'notifications:read', g: 'Your account', d: 'Your notifications' },
+  { m: 'POST', p: '/v1/notifications/read-all', scope: 'notifications:write', g: 'Your account', d: 'Mark everything read', write: true },
+  { m: 'GET', p: '/v1/favorites', scope: 'favorites:read', g: 'Your account', d: 'Repos and catalogs you starred' },
+  { m: 'GET', p: '/v1/payments', scope: 'payments:read', g: 'Your account', d: 'Your invoices — amounts and dates, never a card number' },
+  { m: 'GET', p: '/v1/transfers', scope: 'transfers:read', g: 'Your account', d: 'Ownership transfers in either direction' },
+
+  // Your content
+  { m: 'GET', p: '/v1/repos', scope: 'repos:read', g: 'Your content', d: 'Your Server-Repos' },
+  { m: 'GET', p: '/v1/repos/ID/files', scope: 'repos:read', g: 'Your content', d: 'One repo\u2019s file list — replace ID' },
+  { m: 'GET', p: '/v1/repos/ID/changes', scope: 'repos:read', g: 'Your content', d: 'What changed in a repo — replace ID' },
+  { m: 'GET', p: '/v1/catalogs', scope: 'catalogs:read', g: 'Your content', d: 'Catalogs you own, unpublished ones included' },
+  { m: 'GET', p: '/v1/catalogs/ID/items', scope: 'catalogs:read', g: 'Your content', d: 'What is inside one — replace ID' },
+  { m: 'GET', p: '/v1/pools', scope: 'pools:read', g: 'Your content', d: 'Storage pools and what draws from them' },
+
+  // Polls
+  { m: 'GET', p: '/v1/polls', scope: 'polls:read', g: 'Polls', d: 'Polls open to you, and how you answered' },
+  { m: 'POST', p: '/v1/polls/ID/vote', scope: 'polls:write', g: 'Polls', d: 'Answer one — replace ID', write: true, body: '{\n  "optionId": "…"\n}' },
 ];
 
 // The same call, as code you can paste into a project.
@@ -138,8 +152,12 @@ function ApiConsole() {
       <div className="space-y-2">
         <Field label={t('dev.console.pick', 'Endpoint')}>
           <Select value={String(idx)} onChange={(e) => pick(Number(e.target.value))}>
-            {ENDPOINTS.map((e, i) => (
-              <option key={e.m + e.p} value={i}>{e.m} {e.p} — {e.d}</option>
+            {[...new Set(ENDPOINTS.map((e) => e.g))].map((group) => (
+              <optgroup key={group} label={group}>
+                {ENDPOINTS.map((e, i) => (e.g === group
+                  ? <option key={e.m + e.p} value={i}>{e.m} {e.p} — {e.d}</option>
+                  : null))}
+              </optgroup>
             ))}
           </Select>
         </Field>
@@ -238,31 +256,52 @@ export default function DevHub() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto py-8">
-      <div className="flex items-center gap-3 mb-2">
-        <span className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg shadow-orange-500/20"><Code2 size={22} /></span>
-        <div>
-          <h1 className="text-2xl font-bold leading-tight">{t('dev.hub.title', 'Developers')}</h1>
-          <p className="text-sm text-[var(--muted)]">{t('dev.hub.sub', 'Build against BetterCommunity: sign people in with their account, or read their data with their permission.')}</p>
+    <div className="max-w-5xl mx-auto py-8 sm:py-12">
+      {/* The hero says what you can build, not what we have built. A developer landing that
+          opens with a feature list is a brochure; the question people arrive with is "can I
+          do the thing I came to do, and how long will it take". */}
+      <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-12">
+        <span className="inline-grid place-items-center w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg shadow-orange-500/25 mb-4"><Code2 size={26} /></span>
+        <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">
+          {t('dev.hub.h1a', 'Build on')} <span className="gradient-text">BetterCommunity</span>
+        </h1>
+        <p className="text-[var(--muted)] mt-3 text-base sm:text-lg">
+          {t('dev.hub.h1b', 'Sign people in with their account, read their content with their permission, and get told when it changes. A REST API, OpenID Connect, and webhooks — no SDK to install.')}
+        </p>
+        <div className="flex flex-wrap gap-2 justify-center mt-6">
+          <Link to="/dev/config"><Button variant="primary"><KeyRound size={15} /> {t('dev.hub.start', 'Get a key')}</Button></Link>
+          <Link to="/docs/bcweb-api"><Button><BookOpen size={15} /> {t('dev.hub.ref', 'API reference')}</Button></Link>
         </div>
+        {/* Said once, at the top, because it is the number that decides whether somebody
+            starts today or bookmarks the page. */}
+        <p className="text-[12px] text-[var(--faint)] mt-4">
+          {t('dev.hub.time', 'A key takes about a minute. Nothing here needs approval.')}
+        </p>
       </div>
 
-      {/* The two jobs, stated before the tools — picking the wrong one is the mistake that
-          costs a day, and it is not obvious from the names. */}
-      <Card className="p-4 mb-5 bg-gradient-to-r from-[var(--primary)]/10 to-transparent">
-        <div className="grid sm:grid-cols-2 gap-4 text-[12px]">
-          <div>
-            <div className="font-semibold text-[13px] mb-0.5">{t('dev.hub.jobkey', 'Your program acts as YOU')}</div>
-            <span className="text-[var(--muted)]">{t('dev.hub.jobkey.s', 'A script, a sync job, a bot you run. Use an API key: scoped, personal, nobody else’s consent involved.')}</span>
+      {/* The two jobs, before the tools — picking the wrong one is the mistake that costs a
+          day, and it is not obvious from the names. */}
+      <div className="grid sm:grid-cols-2 gap-4 mb-8">
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-1"><KeyRound size={16} className="text-[var(--primary-2)]" />
+            <span className="font-semibold text-[15px]">{t('dev.hub.jobkey', 'Your program acts as YOU')}</span></div>
+          <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobkey.s', 'A script, a sync job, a bot you run. Use an API key: scoped, personal, nobody else’s consent involved.')}</p>
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {['API keys', 'Test keys', 'Webhooks'].map((x) => <span key={x} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{x}</span>)}
           </div>
-          <div>
-            <div className="font-semibold text-[13px] mb-0.5">{t('dev.hub.jobsso', 'Your app acts for OTHER people')}</div>
-            <span className="text-[var(--muted)]">{t('dev.hub.jobsso.s', 'Anything with its own users. Use Sign in with BetterCommunity: they authorise it, and you never touch their password.')}</span>
+        </Card>
+        <Card className="p-5">
+          <div className="flex items-center gap-2 mb-1"><Shield size={16} className="text-[var(--primary-2)]" />
+            <span className="font-semibold text-[15px]">{t('dev.hub.jobsso', 'Your app acts for OTHER people')}</span></div>
+          <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobsso.s', 'Anything with its own users. Use Sign in with BetterCommunity: they authorise it, and you never touch their password.')}</p>
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {['OpenID Connect', 'PKCE', 'URL generator'].map((x) => <span key={x} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{x}</span>)}
           </div>
-        </div>
-      </Card>
+        </Card>
+      </div>
 
-      <div className="grid sm:grid-cols-3 gap-4">
+      <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('dev.hub.toolsh', 'Everything here')}</h2>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Tool icon={FileJson} title={t('dev.hub.tools', 'Tools')} to="/dev/tools" cta={t('dev.hub.open', 'Open')}>
           {t('dev.hub.tools.s', 'Check a catalog feed before you publish it, and see what your keys have actually been doing — refusals included.')}
         </Tool>
