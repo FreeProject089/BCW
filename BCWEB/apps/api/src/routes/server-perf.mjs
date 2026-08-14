@@ -177,6 +177,44 @@ export default async function serverPerfRoutes(app) {
     return await sampleAndAlert(p, app.log);
   });
 
+  // Acknowledge alerts. Without an id it acknowledges everything currently unacknowledged,
+  // which is the honest meaning of the button ("I have seen these") — acknowledging is not
+  // resolving, and nothing about the underlying condition changes.
+  app.post('/admin/server/alerts/ack', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const id = typeof req.body?.id === 'string' ? req.body.id : null;
+    const where = id ? { id, ackAt: null } : { ackAt: null };
+    const r = await p.serverAlertLog.updateMany({ where, data: { ackAt: new Date(), ackById: req.user.uid } });
+    return { ok: true, acknowledged: r.count };
+  });
+
+  // Outage history. Open outages come back with endedAt null rather than being hidden, so
+  // "still down" and "was down for 4 minutes" are the same list.
+  app.get('/admin/server/outages', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const take = Math.min(Number(req.query?.take) || 50, 200);
+    const days = Math.min(Number(req.query?.days) || 30, 90);
+    const rows = await p.serviceOutage.findMany({
+      where: { startedAt: { gte: new Date(Date.now() - days * 864e5) } },
+      orderBy: { startedAt: 'desc' }, take,
+    });
+    const outages = rows.map((o) => ({
+      id: o.id, dep: o.dep, label: DEP_LABELS[o.dep] || o.dep, cause: o.cause,
+      startedAt: o.startedAt, endedAt: o.endedAt,
+      seconds: Math.max(0, Math.round(((o.endedAt || new Date()).getTime() - o.startedAt.getTime()) / 1000)),
+      ongoing: !o.endedAt,
+    }));
+    // Availability over the window, per dependency — the number a status page would show.
+    const windowSec = days * 86400;
+    const byDep = {};
+    for (const o of outages) byDep[o.dep] = (byDep[o.dep] || 0) + o.seconds;
+    const uptime = Object.entries(byDep).map(([dep, sec]) => ({
+      dep, label: DEP_LABELS[dep] || dep, downSeconds: sec,
+      pct: Math.max(0, Math.round((1 - sec / windowSec) * 10000) / 100),
+    })).sort((a, b) => b.downSeconds - a.downSeconds);
+    return { outages, uptime, days };
+  });
+
   // ── Bot polling (same shape as /bot/blog/unannounced) ──
   app.get('/bot/alerts/unannounced', async (req, reply) => {
     if (!botAuth(req, reply)) return;

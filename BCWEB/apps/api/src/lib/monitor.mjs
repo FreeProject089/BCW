@@ -296,6 +296,23 @@ async function errorAlerts(p, t) {
   return out;
 }
 
+/** Open an outage the first tick a dependency fails, close it the first tick it answers.
+ *
+ *  Idempotent by construction: "the open outage for this dep" is a unique-enough query that
+ *  a repeated failing tick extends the existing row rather than creating a second one.
+ */
+export async function recordOutages(p, deps, inGrace) {
+  for (const [dep, ok] of Object.entries(deps)) {
+    if (ok === null || ok === undefined) continue; // not configured — not an outage
+    const open = await p.serviceOutage.findFirst({ where: { dep, endedAt: null }, orderBy: { startedAt: 'desc' } });
+    if (ok === false) {
+      if (!open && !inGrace) await p.serviceOutage.create({ data: { dep, cause: `${DEP_LABELS[dep] || dep} is unreachable.` } });
+    } else if (open) {
+      await p.serviceOutage.update({ where: { id: open.id }, data: { endedAt: new Date() } });
+    }
+  }
+}
+
 export async function sampleAndAlert(p, log) {
   try {
     const [cpuPct, deps] = await Promise.all([sampleCpuPct(), checkDependencies(p)]);
@@ -334,6 +351,12 @@ export async function sampleAndAlert(p, log) {
     for (const [key, ok] of Object.entries(deps)) {
       if (ok === false && !inGrace) alerts.push(await maybeAlert(p, 'service_down', `${DEP_LABELS[key] || key} is unreachable.`));
     }
+    // Outage history is kept separately from the alert log, because they answer different
+    // questions: the log says "it broke" (once per debounce window), this says "it was down
+    // from X to Y". Only recorded outside the grace window on the way DOWN — a dependency
+    // that comes back is always closed, even if the outage was opened before a restart.
+    try { await recordOutages(p, deps, inGrace); }
+    catch (e) { log?.warn?.({ e: String(e?.message || e) }, 'monitor: outage bookkeeping failed'); }
     const fired = alerts.filter(Boolean);
 
     // Also notify every SUPERADMIN in-app so an alert isn't only visible to

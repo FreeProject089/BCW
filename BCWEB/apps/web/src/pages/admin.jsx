@@ -188,7 +188,7 @@ export function Admin() {
     isAdmin && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: MessageSquare },
 
     { heading: t('adm.h.serverdata', 'Server & data') },
-    isAdmin && { id: 'serverperf', label: t('adm.tab.serverperf', 'Server perf'), icon: Cpu },
+    isAdmin && { id: 'serverperf', label: t('adm.tab.serverperf', 'Server perf'), icon: Cpu, badge: pc.alerts || undefined },
     isAdmin && { id: 'serveradv', label: t('adm.tab.serveradv', 'Advanced server'), icon: AlertTriangle },
     isAdmin && { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
     can('manage_analytics') && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp },
@@ -1183,6 +1183,7 @@ function AdminServerPerf() {
   const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/server/metrics'), []);
   const alerts = useAsync(() => api.get('/admin/server/alerts'), []);
+  const outages = useAsync(() => api.get('/admin/server/outages'), []);
   const depsCfg = useAsync(() => api.get('/admin/server/deps-config'), []);
   const [busy, setBusy] = useState(false);
   const [configuring, setConfiguring] = useState(false);
@@ -1190,7 +1191,7 @@ function AdminServerPerf() {
   // Live network rate: diff the cumulative rx/tx byte counters between two 30s refreshes.
   const netPrevRef = useRef(null);
   const [liveNet, setLiveNet] = useState({ rx: null, tx: null });
-  const [sec, setSec] = useState({ alloc: true, downtime: true, alerts: true, vitals: true }); // collapsible sections
+  const [sec, setSec] = useState({ alloc: true, downtime: true, alerts: true, outages: true, vitals: true }); // collapsible sections
   const toggleSec = (k) => setSec((s) => ({ ...s, [k]: !s[k] }));
   useEffect(() => {
     const cur = data?.net; if (!cur) return;
@@ -1207,6 +1208,12 @@ function AdminServerPerf() {
   const sampleNow = async () => {
     setBusy(true);
     try { await api.post('/admin/server/sample-now'); toast.success(t('sp.sampled', 'Sampled.')); reload(); alerts.reload(); } catch { toast.error(t('sp.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  // Acknowledging is not resolving: it clears the tab badge and says a human has read the
+  // alert. Nothing about the underlying condition changes, and the row stays in the list.
+  const ackAll = async () => {
+    try { await api.post('/admin/server/alerts/ack'); alerts.reload(); toast.success(t('sp.al.acked', 'Marked as seen.')); }
+    catch { toast.error(t('sp.failed', 'Failed.')); }
   };
   const toggleDep = async (key, on) => {
     setDepsBusy(true);
@@ -1495,11 +1502,58 @@ function AdminServerPerf() {
             const ok = await copyText(log);
             ok ? toast.success(t('common.copied', 'Copied.')) : toast.error(t('sp.al.copyfail', 'Could not copy — select the alerts manually.'));
           };
+          const unacked = list.filter((a) => !a.ackAt).length;
           return (<>
-            <div className="flex justify-end mb-1.5"><Button size="sm" variant="ghost" onClick={copyAll}><Copy size={12} /> {t('sp.al.copyall', 'Copy all')}</Button></div>
+            <div className="flex justify-end gap-2 mb-1.5">
+              {unacked > 0 && (
+                <Button size="sm" variant="ghost" onClick={ackAll} title={t('sp.al.ack.h', 'Clears the badge on this tab. The condition itself is unchanged.')}>
+                  <CheckCircle2 size={12} /> {t('sp.al.ack', 'Mark {n} as seen').replace('{n}', String(unacked))}
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={copyAll}><Copy size={12} /> {t('sp.al.copyall', 'Copy all')}</Button>
+            </div>
             <div className="space-y-1.5 max-h-96 overflow-auto pr-1 -mr-1">
               {groups.map((g) => <AlertRow key={g.id} a={g} />)}
             </div>
+          </>);
+        })())}
+      </div>
+
+      <div className="mt-8 pt-6 border-t border-[var(--line)]">
+        <button onClick={() => toggleSec('outages')} className="w-full flex items-center justify-between text-left mb-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">
+            {t('sp.out.title', 'Outage history')}
+            {(outages.data?.outages || []).some((o) => o.ongoing) && <span className="text-error normal-case tracking-normal">· {t('sp.out.ongoing', 'one is ongoing')}</span>}
+          </h3>
+          <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.outages ? '' : '-rotate-90'}`} />
+        </button>
+        {sec.outages && (outages.loading ? <Loading /> : (() => {
+          const list = outages.data?.outages || [];
+          if (!list.length) return <EmptyState icon={CheckCircle2} title={t('sp.out.none', 'No outage recorded')} sub={t('sp.out.nonesub', 'Nothing has been unreachable in the last 30 days. An outage is opened the first tick a dependency fails and closed the tick it answers again.')} />;
+          const dur = (sec_) => (sec_ < 90 ? `${sec_}s` : sec_ < 5400 ? `${Math.round(sec_ / 60)} min` : `${(sec_ / 3600).toFixed(1)} h`);
+          return (<>
+            {(outages.data?.uptime || []).length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {outages.data.uptime.map((u) => (
+                  <span key={u.dep} className="text-[11px] px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]">
+                    {u.label} · <b>{u.pct}%</b> <span className="text-[var(--faint)]">({dur(u.downSeconds)} {t('sp.out.down', 'down')})</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="space-y-1.5 max-h-80 overflow-auto pr-1 -mr-1">
+              {list.map((o) => (
+                <div key={o.id} className="flex items-start gap-2.5 px-3 py-2 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]">
+                  <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${o.ongoing ? 'bg-error' : 'bg-[var(--faint)]'}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px]">{o.label} · <span className={o.ongoing ? 'text-error' : 'text-[var(--muted)]'}>{o.ongoing ? t('sp.out.still', 'still down, {d} so far').replace('{d}', dur(o.seconds)) : dur(o.seconds)}</span></div>
+                    {o.cause && <div className="text-[11px] text-[var(--muted)] break-words">{o.cause}</div>}
+                    <div className="text-[11px] text-[var(--faint)]">{new Date(o.startedAt).toLocaleString()}{o.endedAt ? ` → ${new Date(o.endedAt).toLocaleTimeString()}` : ''}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-[var(--muted)] mt-2">{t('sp.out.s', 'Windows when a dependency was unreachable, measured by the same 10-minute check that raises the alerts — so a shorter blip between two ticks is not visible here.')}</p>
           </>);
         })())}
       </div>

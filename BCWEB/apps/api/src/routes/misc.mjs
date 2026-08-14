@@ -95,6 +95,21 @@ const PENDING_QUEUES = [
       select: { id: true, name: true, status: true, lastActivityAt: true },
     }).then((rows) => rows.map((r) => ({ id: r.id, title: r.name, sub: r.status, at: r.lastActivityAt }))),
   },
+  {
+    // Not a human queue but the same question — "is something waiting for me?" — and the
+    // one nobody was being told about: a server alert only existed inside the perf tab, so
+    // you found it by opening the tab you had no reason to open.
+    //
+    // `manage_server` is deliberately NOT in CAPABILITIES: no bundle can grant it, so hasCap
+    // passes for ADMIN/SUPERADMIN only — the same audience as requireRole('ADMIN') on the
+    // perf routes it links to.
+    key: 'alerts', cap: 'manage_server', to: '/admin?s=serverperf',
+    count: (p) => p.serverAlertLog.count({ where: { ackAt: null } }),
+    recent: (p) => p.serverAlertLog.findMany({
+      where: { ackAt: null }, orderBy: { createdAt: 'desc' }, take: 5,
+      select: { id: true, kind: true, message: true, createdAt: true },
+    }).then((rows) => rows.map((r) => ({ id: r.id, title: r.message, sub: r.kind, at: r.createdAt }))),
+  },
 ];
 
 import { footerSchema, pageColours, THEME_KEY, HEX, THEME_DEFAULTS } from '../lib/config-schemas.mjs';

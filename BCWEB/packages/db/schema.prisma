@@ -1136,9 +1136,31 @@ model ServerAlertLog {
   kind      String
   message   String
   announced Boolean  @default(false) // has the Discord bot posted this one yet?
+  // Acknowledgement is what turns a log into a queue: the "Server perf" tab badges the
+  // count of alerts nobody has looked at yet. Without it the badge would show a 30-day
+  // history for ever and be ignored within a week.
+  ackAt     DateTime?
+  ackById   String?
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+  @@index([ackAt])
+}
+
+/// One row per period a dependency was unreachable — opened the first tick it fails and
+/// closed the first tick it answers again. The alert log says "storage is unreachable"
+/// once per debounce window; this says *for how long*, which is the question actually
+/// asked after the fact. `cause` keeps the message that opened it, so an outage carries
+/// its reason rather than just its shape.
+model ServiceOutage {
+  id        String    @id @default(cuid())
+  dep       String
+  cause     String?
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  @@index([dep, startedAt])
+  @@index([endedAt])
 }
 
 model Subscription {
