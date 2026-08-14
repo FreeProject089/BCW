@@ -173,12 +173,46 @@ export default async function miscRoutes(app) {
       counts[r.key] = r.n;
       for (const row of r.rows) items.push({ ...row, queue: r.key, to: r.to });
     }
-    items.sort((a, b) => new Date(b.at) - new Date(a.at));
+    // Rows somebody already dealt with drop out of the LIST. The counts above are untouched:
+    // the work still exists, and a count that quietly followed this list would stop being the
+    // number staff trust.
+    const dismissed = await p.pendingDismissal.findMany({
+      where: { OR: items.map((it) => ({ queue: it.queue, itemId: String(it.id) })) },
+      select: { queue: true, itemId: true, mode: true },
+    }).catch(() => []);
+    const hidden = new Set(dismissed.map((d) => `${d.queue}::${d.itemId}`));
+    const visible = items.filter((it) => !hidden.has(`${it.queue}::${it.id}`));
+    visible.sort((a, b) => new Date(b.at) - new Date(a.at));
     // `queues` carries the destination alongside the count, so a caller outside the admin
     // dashboard (the notification centre) can link to the right tab without re-deriving the
     // mapping — that duplication is how the topbar preview drifted from the real topbar.
     const queues = results.map((r) => ({ key: r.key, to: r.to, n: r.n }));
-    return { counts, queues, items: items.slice(0, 12), total: results.reduce((a, r) => a + (r.n || 0), 0) };
+    return { counts, queues, items: visible.slice(0, 12), dismissed: hidden.size, total: results.reduce((a, r) => a + (r.n || 0), 0) };
+  });
+
+  // Clear a row out of the list — "handled" or "archived", which differ only in what the
+  // person meant, and that is worth keeping: "I dealt with this" and "I am not going to" are
+  // different admissions. Upsert, so two moderators clicking at once is not an error.
+  app.post('/admin/pending/dismiss', { preHandler: requireCap('manage_users', 'MOD', 'ADMIN', 'SUPERADMIN') }, async (req, reply) => {
+    const b = z.object({
+      queue: z.string().min(1).max(40),
+      itemId: z.string().min(1).max(80),
+      mode: z.enum(['handled', 'archived']).default('handled'),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const where = { queue_itemId: { queue: b.data.queue, itemId: b.data.itemId } };
+    const data = { mode: b.data.mode, byId: req.user.uid, at: new Date() };
+    await p.pendingDismissal.upsert({ where, create: { ...b.data, byId: req.user.uid }, update: data });
+    return { ok: true };
+  });
+
+  // Undo. The row comes back exactly where it was, because nothing about it changed — which
+  // is the whole reason this list is allowed to have a delete button at all.
+  app.delete('/admin/pending/dismiss/:queue/:itemId', { preHandler: requireCap('manage_users', 'MOD', 'ADMIN', 'SUPERADMIN') }, async (req) => {
+    const p = await db();
+    const r = await p.pendingDismissal.deleteMany({ where: { queue: String(req.params.queue), itemId: String(req.params.itemId) } });
+    return { ok: true, restored: r.count };
   });
 
   app.get('/stats', async () => {

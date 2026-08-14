@@ -237,6 +237,7 @@ model User {
   // relation would make both unanswerable.
   sanctions        Sanction[] @relation("SanctionTarget")
   sanctionsIssued  Sanction[] @relation("SanctionIssuer")
+  pendingDismissals PendingDismissal[]
 }
 
 // A GitHub/Discord identity linked to a website account — powers "Continue with
@@ -1204,6 +1205,30 @@ model Sanction {
   @@index([userId, issuedAt])
   @@index([status, expiresAt])
   @@index([targetType, targetId])
+}
+
+/// A row somebody has dealt with, or does not want to look at, in the "Needs attention" list.
+///
+/// It hides the row from THAT list and nothing else. The queue counts stay truthful, because
+/// the work still exists: a submission that is still PENDING is still pending whether or not
+/// a moderator ticked it off here. A dismissal that silently decremented the count would turn
+/// the one number staff trust into a to-do list anybody could edit.
+///
+/// Shared, not per-person: two moderators working the same list should not each have to
+/// dismiss the same handled item. Who did it is recorded so the other one can ask.
+model PendingDismissal {
+  id      String   @id @default(cuid())
+  queue   String
+  itemId  String
+  /// handled · archived — the difference is only what the person meant, and it is worth
+  /// keeping: "I dealt with this" and "I am not going to" are different admissions.
+  mode    String   @default("handled")
+  by      User?    @relation(fields: [byId], references: [id], onDelete: SetNull)
+  byId    String?
+  at      DateTime @default(now())
+
+  @@unique([queue, itemId])
+  @@index([at])
 }
 
 model ServerAlertLog {

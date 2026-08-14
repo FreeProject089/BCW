@@ -10339,9 +10339,31 @@ const NEEDS_QUEUES = [
 ];
 
 function AdminNeedsAttention({ data, loading, onReload }) {
-  const { t } = useI18n();
+  const { t } = useI18n(); const toast = useToast();
   const counts = data?.counts || {};
-  const items = data?.items || [];
+  // Rows on their way out are gone from the list already — that IS the undo affordance.
+  // Keeping them visible until the request lands would make Undo look like it did nothing.
+  const [pendingOut, setPendingOut] = useState(() => new Set());
+  const items = (data?.items || []).filter((it) => !pendingOut.has(`${it.queue}::${it.id}`));
+
+  // The house undo window: the row leaves now, the write happens when the toast expires, and
+  // cancelling puts it back without ever having touched the server.
+  const dismiss = (it, mode) => {
+    const key = `${it.queue}::${it.id}`;
+    setPendingOut((s) => new Set(s).add(key));
+    toast.action({
+      tone: 'success', cancelLabel: t('common.undo', 'Undo'),
+      msg: mode === 'handled'
+        ? t('nq.handled', 'Marked as dealt with.')
+        : t('nq.archived', 'Archived — it stays in its queue.'),
+      onCommit: async () => {
+        try { await api.post('/admin/pending/dismiss', { queue: it.queue, itemId: String(it.id), mode }); onReload?.(); }
+        catch { toast.error(t('common.failed', 'Failed.')); }
+        finally { setPendingOut((s) => { const n = new Set(s); n.delete(key); return n; }); }
+      },
+      onCancel: () => setPendingOut((s) => { const n = new Set(s); n.delete(key); return n; }),
+    });
+  };
   // Only the queues this account can act on come back from the server.
   const shown = NEEDS_QUEUES.filter((q) => q.key in counts);
 
@@ -10371,18 +10393,30 @@ function AdminNeedsAttention({ data, loading, onReload }) {
           </div>
 
           {items.length === 0 ? (
-            <EmptyState icon={CheckCircle2} title={t('nq.clear.t', 'Nothing waiting')} sub={t('nq.clear.s', 'Every queue you can act on is empty.')} />
+            <EmptyState icon={CheckCircle2} title={t('nq.clear.t', 'Nothing waiting')}
+              sub={data?.dismissed ? t('nq.clear.s2', 'Everything left has been ticked off this list. The queues themselves still hold {n} item(s) — clearing a row here never closes the work.').replace('{n}', String(data.total || 0)) : t('nq.clear.s', 'Every queue you can act on is empty.')} />
           ) : (
             <Card className="divide-y divide-[var(--line)] overflow-hidden">
               {items.map((it) => (
-                <Link key={`${it.queue}-${it.id}`} to={it.to} className="flex items-start gap-3 p-3 hover:bg-[var(--surface-2)]">
-                  <Badge tone="">{NEEDS_QUEUES.find((q) => q.key === it.queue)?.chip(t) || it.queue}</Badge>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{it.title}</div>
-                    {it.sub && <div className="text-xs text-[var(--muted)] truncate">{it.sub}</div>}
-                  </div>
+                <div key={`${it.queue}-${it.id}`} className="flex items-start gap-3 p-3 hover:bg-[var(--surface-2)] group">
+                  <Link to={it.to} className="flex items-start gap-3 min-w-0 flex-1">
+                    <Badge tone="">{NEEDS_QUEUES.find((q) => q.key === it.queue)?.chip(t) || it.queue}</Badge>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{it.title}</div>
+                      {it.sub && <div className="text-xs text-[var(--muted)] truncate">{it.sub}</div>}
+                    </div>
+                  </Link>
                   <span className="text-[11px] text-[var(--faint)] shrink-0">{fmtAgo(it.at)}</span>
-                </Link>
+                  {/* Clearing a row out of THIS list. The queue count above does not move,
+                      because the work has not — that number is the one staff trust, and a
+                      to-do list anybody can tick off is not a count. */}
+                  <span className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+                    <button onClick={() => dismiss(it, 'handled')} title={t('nq.handled.h', 'Dealt with — take it off this list')}
+                      className="text-[var(--faint)] hover:text-success"><CheckCircle2 size={14} /></button>
+                    <button onClick={() => dismiss(it, 'archived')} title={t('nq.archived.h', 'Not going to act on it — take it off this list')}
+                      className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Archive size={14} /></button>
+                  </span>
+                </div>
               ))}
             </Card>
           )}
