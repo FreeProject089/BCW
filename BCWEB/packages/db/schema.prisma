@@ -128,6 +128,19 @@ model User {
   // ── Public profile ──────────────────────────────────────────────────────────
   // A shareable /u/<id> page shows only the pseudo, avatar, badges, join date, role,
   // and PUBLIC repos/catalogs — no email or other PII. The owner controls visibility.
+  // ── Account closure ──────────────────────────────────────────────────────
+  // Closing is a REQUEST with a month of grace, not an act. What finally happens is
+  // anonymisation, never a row delete: twenty-nine tables point at a user, and the ones
+  // that matter most — payments, the audit chain — are exactly the ones that must survive
+  // for as long as the law says. So the row stays and everything personal is scrubbed off
+  // it, which keeps every invoice attached to something without keeping a person.
+  closureRequestedAt  DateTime?
+  closureScheduledFor DateTime?
+  // The cancel link. Random, and usable for as long as the closure is pending — someone
+  // changing their mind may be doing it from an email on a device they are not signed in
+  // on, and "log in first to stop your account being deleted" is a trap.
+  closureToken        String?   @unique
+  closedAt            DateTime?
   profilePublic    Boolean   @default(true) // false = only the owner + staff (mod+) can view
   // Which linked connections to surface on the profile, e.g. ["github","discord","website"].
   // Empty = show none. The owner opts each in explicitly.
@@ -1298,6 +1311,26 @@ model OAuthClient {
 //
 // The row survives its own resolution — an accepted transfer is the record of who used to
 // own something, which is exactly the question asked after a takedown.
+// Why somebody left, or why they stayed.
+//
+// Deliberately its own table rather than a column on User: the answer must outlive the
+// anonymisation it describes, and it is about the DECISION, not the person — so it holds
+// no identity beyond the fact that some account gave it.
+model AccountClosureSurvey {
+  id        String   @id @default(cuid())
+  // Kept so a support conversation can be matched to an answer while the account still
+  // exists; it points at a row that will have been scrubbed by the time most of these are
+  // read, which is the intended amount of identifiability.
+  userId    String
+  // 'closed' = they went through with it. 'cancelled' = they came back.
+  outcome   String
+  reason    String   @default("")
+  comment   String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([outcome, createdAt])
+}
+
 model OwnershipTransfer {
   id          String    @id @default(cuid())
   kind        String    // 'repo' | 'catalog'

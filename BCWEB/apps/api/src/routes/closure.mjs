@@ -1,0 +1,253 @@
+// Closing an account.
+//
+// Three rules shape this file.
+//
+// 1. Nothing happens today. A closure is scheduled a month out, and the cancel link works
+//    for that whole month — the point of a grace period is that it survives regret, and
+//    regret usually arrives after the anger that caused the click.
+//
+// 2. Closing is ANONYMISATION, not deletion. Twenty-nine tables reference a user, and the
+//    ones that must legally outlive them (payments, the audit chain) are the ones a real
+//    DELETE would take with it. The row stays and everything personal is scrubbed, so an
+//    invoice still points at something without still pointing at somebody.
+//
+// 3. You cannot leave a mess behind. Anything still owned — a repository, a catalog item,
+//    a live subscription — blocks the request, with the list of what and where. Orphaned
+//    content is a burden handed to whoever inherits the support ticket.
+import { z } from 'zod';
+import crypto from 'node:crypto';
+import { db, requireRole, logAudit, clientIp, clearSession } from '../lib/lib.mjs';
+import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
+
+const GRACE_DAYS = 30;
+const SITE = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
+const money = (c, cur) => `${((c || 0) / 100).toFixed(2)} ${String(cur || 'usd').toUpperCase()}`;
+
+/** Everything standing between this account and closure. Empty array = good to go. */
+async function closureBlockers(p, userId) {
+  const [subs, repos, items, pools] = await Promise.all([
+    p.subscription.count({ where: { userId, status: 'active' } }),
+    p.serverRepo.count({ where: { ownerId: userId } }),
+    p.catalogItem.count({ where: { ownerId: userId } }),
+    p.hostingGroup.count({ where: { ownerId: userId } }).catch(() => 0),
+  ]);
+  const out = [];
+  // Ordered by what has to be dealt with FIRST: you cannot transfer a repo whose
+  // subscription is still live, so telling someone about the repo before the subscription
+  // sends them round a loop.
+  if (subs) out.push({ kind: 'subscription', count: subs, where: '/dashboard#billing' });
+  if (pools) out.push({ kind: 'pool', count: pools, where: '/dashboard#billing' });
+  if (repos) out.push({ kind: 'repo', count: repos, where: '/repos' });
+  if (items) out.push({ kind: 'item', count: items, where: '/dashboard#items' });
+  return out;
+}
+
+export default async function closureRoutes(app) {
+  // What is in the way, and what the account is carrying. Read-only: a screen that offers
+  // to close an account should be able to say why it cannot before anyone presses
+  // anything.
+  app.get('/me/closure', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const me = await p.user.findUnique({
+      where: { id: req.user.uid },
+      select: { closureRequestedAt: true, closureScheduledFor: true, email: true },
+    });
+    const [blockers, invoices] = await Promise.all([
+      closureBlockers(p, req.user.uid),
+      p.payment.count({ where: { userId: req.user.uid } }),
+    ]);
+    return {
+      pending: !!me?.closureScheduledFor,
+      requestedAt: me?.closureRequestedAt || null,
+      scheduledFor: me?.closureScheduledFor || null,
+      graceDays: GRACE_DAYS,
+      blockers,
+      invoiceCount: invoices,
+      email: me?.email || '',
+    };
+  });
+
+  // ── Request closure ─────────────────────────────────────────────────────────
+  app.post('/me/closure', { preHandler: requireRole(), config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const p = await db();
+    const me = await p.user.findUnique({ where: { id: req.user.uid } });
+    if (!me) return reply.code(404).send({ error: 'not_found' });
+    if (me.closureScheduledFor) return reply.code(409).send({ error: 'already_pending', scheduledFor: me.closureScheduledFor });
+
+    const blockers = await closureBlockers(p, me.id);
+    if (blockers.length) return reply.code(409).send({ error: 'has_blockers', blockers });
+
+    const token = crypto.randomBytes(24).toString('base64url');
+    const when = new Date(Date.now() + GRACE_DAYS * 864e5);
+    await p.user.update({ where: { id: me.id }, data: { closureRequestedAt: new Date(), closureScheduledFor: when, closureToken: token } });
+
+    // Any offer they had out is withdrawn: an account on its way out should not be able to
+    // hand somebody something a month from now.
+    await p.ownershipTransfer.updateMany({ where: { fromUserId: me.id, status: 'pending' }, data: { status: 'cancelled', respondedAt: new Date() } }).catch(() => {});
+
+    // Their invoices travel WITH the notice. After the account is gone they will have no
+    // way to fetch them, and "download them before you go" is advice nobody reads in time.
+    const payments = await p.payment.findMany({ where: { userId: me.id }, orderBy: { createdAt: 'desc' }, take: 200 });
+    const invoiceRows = payments.length
+      ? `<table role="presentation" style="border-collapse:collapse;width:100%;font-size:13px;margin:8px 0 16px">
+           <thead><tr>
+             <th style="text-align:left;padding:6px 10px;border-bottom:2px solid #eae4da">Date</th>
+             <th style="text-align:left;padding:6px 10px;border-bottom:2px solid #eae4da">What</th>
+             <th style="text-align:right;padding:6px 10px;border-bottom:2px solid #eae4da">Amount</th>
+           </tr></thead><tbody>
+           ${payments.map((x) => `<tr>
+             <td style="padding:6px 10px;border-bottom:1px solid #f0ece4">${x.createdAt.toISOString().slice(0, 10)}</td>
+             <td style="padding:6px 10px;border-bottom:1px solid #f0ece4">${escapeHtml(x.description || x.kind)}</td>
+             <td style="padding:6px 10px;border-bottom:1px solid #f0ece4;text-align:right">${money(x.amountCents, x.currency)}</td>
+           </tr>`).join('')}
+           </tbody></table>`
+      : '<p>You have no payments on record.</p>';
+
+    const cancelUrl = `${SITE}/account/closure/cancel?token=${token}`;
+    const day = when.toISOString().slice(0, 10);
+    const subject = 'Your BetterCommunity account will close on ' + day;
+    await sendMail({
+      to: me.email,
+      subject,
+      html: mailShell('Your account is scheduled to close', `
+        <p>We have scheduled <b>${escapeHtml(me.displayName || me.email)}</b> for closure on <b>${escapeHtml(day)}</b>.</p>
+        <p><b>You have ${GRACE_DAYS} days to change your mind.</b> Until that date, nothing is
+           deleted and the button below puts everything back exactly as it was — you do not
+           even need to be signed in to use it.</p>
+        <h2 style="font-size:16px;margin:22px 0 4px">Your payment history</h2>
+        <p style="margin:0 0 6px">Keep this email: after the account closes we can no longer
+           show these to you, though we keep our own copies for as long as the law requires.</p>
+        ${invoiceRows}
+        <h2 style="font-size:16px;margin:22px 0 4px">What closing does</h2>
+        <p>Your name, email and profile are erased. Your payment records and moderation
+           history are kept — they are legal records about transactions, not about your
+           profile, and they stay whether or not you have an account.</p>`,
+      { label: 'Keep my account', url: cancelUrl }),
+      text: `Your account closes on ${day}. Changed your mind? ${cancelUrl}`,
+    }).catch(() => {});
+
+    await logAudit(p, me.id, 'account.closure_requested', `scheduled for ${day}`, clientIp(req));
+    return { ok: true, scheduledFor: when, graceDays: GRACE_DAYS };
+  });
+
+  // ── Cancel ──────────────────────────────────────────────────────────────────
+  // By TOKEN and without a session on purpose: the person stopping this may be reading the
+  // email on a phone they have never signed in on, and a login wall in front of "stop
+  // deleting my account" is the worst possible place for one. The token is single-purpose,
+  // random, and only ever un-does something.
+  //
+  // Idempotent: opening the link twice, or after cancelling, says "your account is active"
+  // rather than erroring. A link that works once and then looks broken is a link people
+  // panic about.
+  const cancelByToken = async (req, reply) => {
+    const token = String(req.query?.token || req.body?.token || '');
+    if (!token) return reply.code(400).send({ error: 'missing_token' });
+    const p = await db();
+    const u = await p.user.findUnique({ where: { closureToken: token }, select: { id: true, closureScheduledFor: true } });
+    if (!u) {
+      // Also covers "already cancelled", since cancelling clears the token. Reported as a
+      // success state rather than a 404: the outcome the reader cares about is that the
+      // account is not closing, and that is true either way.
+      return { ok: true, alreadyActive: true };
+    }
+    await p.user.update({ where: { id: u.id }, data: { closureRequestedAt: null, closureScheduledFor: null, closureToken: null } });
+    await logAudit(p, u.id, 'account.closure_cancelled', 'via emailed link', clientIp(req));
+    return { ok: true, cancelled: true, userId: u.id };
+  };
+  app.get('/account/closure/cancel', { config: { rateLimit: { max: 30, timeWindow: '10 minutes' } } }, cancelByToken);
+  app.post('/account/closure/cancel', { config: { rateLimit: { max: 30, timeWindow: '10 minutes' } } }, cancelByToken);
+
+  // The signed-in route, for someone who is simply on the site.
+  app.post('/me/closure/cancel', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { closureScheduledFor: true } });
+    if (!me?.closureScheduledFor) return reply.code(409).send({ error: 'not_pending' });
+    await p.user.update({ where: { id: req.user.uid }, data: { closureRequestedAt: null, closureScheduledFor: null, closureToken: null } });
+    await logAudit(p, req.user.uid, 'account.closure_cancelled', 'from the site', clientIp(req));
+    return { ok: true };
+  });
+
+  // ── The survey ──────────────────────────────────────────────────────────────
+  // Optional, always. Asked after the decision is already recorded so it can never be the
+  // thing standing between someone and leaving — a form in that position stops being a
+  // question and becomes an obstacle.
+  app.post('/me/closure/survey', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({
+      outcome: z.enum(['closed', 'cancelled']),
+      reason: z.string().max(120).default(''),
+      comment: z.string().max(2000).default(''),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    await p.accountClosureSurvey.create({ data: { userId: req.user.uid, outcome: b.data.outcome, reason: b.data.reason, comment: b.data.comment } });
+    return { ok: true };
+  });
+
+  // Staff view of the answers.
+  app.get('/admin/closure-surveys', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const days = Math.min(365, Math.max(1, Number(req.query?.days) || 90));
+    const since = new Date(Date.now() - days * 864e5);
+    const rows = await p.accountClosureSurvey.findMany({ where: { createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 500 });
+    const byReason = {};
+    for (const r of rows) { const k = `${r.outcome}:${r.reason || 'unspecified'}`; byReason[k] = (byReason[k] || 0) + 1; }
+    return {
+      total: rows.length,
+      closed: rows.filter((r) => r.outcome === 'closed').length,
+      cancelled: rows.filter((r) => r.outcome === 'cancelled').length,
+      byReason,
+      recent: rows.slice(0, 100).map((r) => ({ outcome: r.outcome, reason: r.reason, comment: r.comment, createdAt: r.createdAt })),
+    };
+  });
+}
+
+/// Close the accounts whose month is up.
+///
+/// Anonymisation in place, for the reason at the top of this file. Exported for the
+/// sweeper, and written so running it twice is harmless: `closedAt` is the guard, and the
+/// scrubbed values do not depend on the ones being replaced.
+export async function sweepAccountClosures(p, log) {
+  const due = await p.user.findMany({
+    where: { closureScheduledFor: { lte: new Date() }, closedAt: null },
+    select: { id: true, email: true },
+  });
+  let n = 0;
+  for (const u of due) {
+    // A blocker acquired since the request — they bought hosting during the grace month —
+    // stops the closure rather than orphaning it. Silently deleting the owner of a live
+    // subscription is how a paid repo ends up with nobody able to cancel it.
+    const blockers = await closureBlockers(p, u.id);
+    if (blockers.length) {
+      log?.warn?.(`[sweeper] closure of ${u.id} held: ${blockers.map((b) => `${b.count} ${b.kind}`).join(', ')}`);
+      continue;
+    }
+    await p.user.update({
+      where: { id: u.id },
+      data: {
+        email: `closed+${u.id}@account.invalid`,
+        displayName: 'Closed account',
+        passwordHash: null,
+        bio: '', website: null, avatar: null,
+        totpSecret: null, totpEnabled: false, totpRecoveryCodes: [],
+        emailVerified: false, profilePublic: false,
+        stripeCustomerId: null,
+        closureToken: null, closedAt: new Date(),
+      },
+    });
+    // Everything that could still let somebody in, or let something in on their behalf.
+    await Promise.all([
+      p.session.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {}),
+      p.oAuthRefreshToken.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {}),
+      p.oAuthConsent.deleteMany({ where: { userId: u.id } }).catch(() => {}),
+      p.apiKey.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {}),
+      p.oAuthPairwiseSub.deleteMany({ where: { userId: u.id } }).catch(() => {}),
+      p.creatorLink.deleteMany({ where: { userId: u.id } }).catch(() => {}),
+      p.discordLink.deleteMany({ where: { userId: u.id } }).catch(() => {}),
+      p.socialConnection.deleteMany({ where: { userId: u.id } }).catch(() => {}),
+      p.oAuthAccount.deleteMany({ where: { userId: u.id } }).catch(() => {}),
+    ]);
+    log?.info?.(`[sweeper] account ${u.id} closed and anonymised`);
+    n++;
+  }
+  return n;
+}

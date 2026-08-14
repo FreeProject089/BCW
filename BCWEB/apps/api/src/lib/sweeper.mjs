@@ -24,6 +24,7 @@ import { sampleAndAlert } from './monitor.mjs';
 import { runEventScheduler } from '../routes/events.mjs';
 import { sweepReports } from '../routes/reports.mjs';
 import { recomputePoolBytes, stripe } from '../routes/hosting.mjs';
+import { sweepAccountClosures } from '../routes/closure.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
 
 const DAY_MS = 864e5;
@@ -420,6 +421,7 @@ export function startSweeper(app) {
       ];
       await sweepDeadSessions(p, app.log);
       await sweepScheduledPrices(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'scheduled price sweep failed'));
+      await sweepAccountClosures(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'account closure sweep failed'));
       await rollupAnalyticsDaily(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics rollup failed'));
       await sweepReports(p).catch((e) => app.log.warn({ e: String(e) }, 'report sweep failed'));
       await sampleAndAlert(p, app.log);
