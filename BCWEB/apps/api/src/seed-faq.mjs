@@ -166,6 +166,31 @@ const FAQ = [
     answerFr: 'Tu reçois un avertissement par terme avant l\'échéance. S\'il se termine sans renouvellement, le pool rétrécit de la part de cet abonnement et ce qui ne rentre plus est **suspendu** — les dépôts cessent de servir, les éléments de catalogue de s\'afficher — avec **72 heures** avant toute suppression. Renouveler dans cette fenêtre restaure tout. Si le pool est alimenté par plusieurs abonnements et qu\'un seul se termine, tout ce qui tient encore reste en ligne.',
   },
 
+  {
+    category: 'Developers', order: 330,
+    categoryFr: 'Développeurs',
+    question: 'How do I get told when something changes, without polling?',
+    questionFr: 'Comment être prévenu d\'un changement sans interroger en boucle ?',
+    answer: 'Register a webhook at **/dev/config**. Pick the events, keep the signing secret you are shown once, and answer 2xx within ten seconds. Every delivery is signed — HMAC-SHA256 over `timestamp + "." + body` — and you should reject anything whose timestamp is more than a few minutes old, or somebody who saw one delivery can replay it at you for ever. Failed deliveries retry from one minute to ten hours, and any of them can be replayed by hand once your receiver is fixed.',
+    answerFr: 'Enregistre un webhook sur **/dev/config**. Choisis les événements, garde la clé de signature affichée une seule fois, et réponds 2xx en moins de dix secondes. Chaque livraison est signée — HMAC-SHA256 sur `timestamp + "." + corps` — et tu devrais rejeter tout horodatage vieux de plus de quelques minutes, sinon quiconque a vu une livraison peut te la rejouer indéfiniment. Les échecs sont réessayés d\'une minute à dix heures, et chacun peut être rejoué à la main une fois ton récepteur réparé.',
+  },
+  {
+    category: 'Developers', order: 340,
+    categoryFr: 'Développeurs',
+    question: 'How do I test writes without touching my real data?',
+    questionFr: 'Comment tester des écritures sans toucher à mes vraies données ?',
+    answer: 'Two ways. Send `X-BCW-Sandbox: 1` on the call, or — better — tick **test key** when you create the key: every write it makes is simulated, with no header to remember. The header is opt-in per request, and the once you forget it you have written to your real account. Test mode is fixed at creation and never toggled, so a key your script is holding cannot change meaning underneath it.',
+    answerFr: 'Deux façons. Envoie `X-BCW-Sandbox: 1` sur l\'appel, ou — mieux — coche **clé de test** à la création : toutes ses écritures sont simulées, sans aucun en-tête à retenir. L\'en-tête est opt-in par requête, et la fois où tu l\'oublies tu as écrit dans ton vrai compte. Le mode test est fixé à la création et jamais modifiable : une clé que ton script tient déjà ne peut pas changer de sens sous lui.',
+  },
+  {
+    category: 'Your account', order: 240,
+    categoryFr: 'Ton compte',
+    question: 'What happens at the end of a suspension?',
+    questionFr: 'Que se passe-t-il à la fin d\'une suspension ?',
+    answer: 'Your account goes active on its own, and your content comes back **the way it was** — a repo that was offline before the sanction returns offline, not online. You get an e-mail and a notification quoting the reference. Subscriptions are the one thing not restored: the ones cancelled were cancelled at the payment provider, and taking one out again on your behalf is not ours to do — the e-mail lists them with a link to Billing so it is one click. The same applies to a ban with an end date.',
+    answerFr: 'Ton compte redevient actif tout seul, et ton contenu revient **tel qu\'il était** — un dépôt qui était hors ligne avant la sanction revient hors ligne, pas en ligne. Tu reçois un e-mail et une notification citant la référence. Les abonnements sont la seule chose non restaurée : ceux qui ont été annulés l\'ont été chez le prestataire de paiement, et en reprendre un à ta place ne nous appartient pas — le mail les liste avec un lien vers la facturation, donc c\'est un clic. Idem pour un bannissement avec date de fin.',
+  },
+
 ];
 
 // A stable slug from the question so re-runs upsert instead of duplicating. FaqItem has no

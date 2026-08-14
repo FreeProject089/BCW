@@ -474,30 +474,95 @@ Exporte un thème depuis l'**[éditeur de thèmes](/docs/themes)** de l'app — 
   },
 
   'preset-catalog': {
-    category: 'BetterCommunity',
     title: 'Catalogue de presets (BSM)',
-    body: `# Catalogue de presets · BSM
+    category: 'BetterCommunity',
+    body: `::toc[Sur cette page]
 
-Un preset BSM est **un seul fichier JSON** — pas de ZIP, pas de manifeste séparé. Ses métadonnées vivent dans le fichier.
+# Catalogue de presets · BSM
+
+Un preset BSM est **un seul fichier JSON**. Pas de ZIP, pas de manifeste séparé, aucune
+arborescence — ses métadonnées vivent dans le fichier, et c'est pour ça qu'un preset se
+partage en le collant.
+
+## Un preset entier
+
+Voici un fichier complet et valide. Copie-le, change les noms, et tu as quelque chose de
+publiable.
+
+\`\`\`json
+{
+  "name": "Warm Cabin",
+  "version": "1.2.0",
+  "color": "#c2410c",
+  "UpdateNumber": 4,
+  "date": "2026-08-14",
+  "assetPaths": {
+    "ambience/rain_light": { "gain": -3.5, "pitch": 1.0 },
+    "ambience/fire_crackle": { "gain": 2.0, "pitch": 0.96 },
+    "ui/click": { "gain": -6.0 }
+  }
+}
+\`\`\`
 
 ## Les champs
 
-| Champ | Obligatoire | Sens |
+| Champ | Requis | Ce qu'il fait |
 |---|---|---|
-| \`name\` | oui | Nom du preset. |
-| \`version\` | oui | Version sémantique. |
-| \`assetPaths\` | oui | Les chemins d'assets que le preset pilote. |
-| \`color\` | non | Couleur d'accent. |
-| \`UpdateNumber\` | non | Compteur de révision. |
-| \`date\` | non | Date de publication. |
+| \`name\` | oui | Ce que les gens voient dans le catalogue et dans BSM. |
+| \`version\` | oui | Comparée numériquement : \`1.10.0\` est plus récent que \`1.9.0\`. |
+| \`assetPaths\` | oui | La carte de ce que le preset change — voir plus bas. |
+| \`color\` | non | Couleur d'accent sur la carte du catalogue. Une chaîne hexadécimale. |
+| \`UpdateNumber\` | non | Ton propre compteur de révision, affiché à côté de la version. |
+| \`date\` | non | Date de publication, \`AAAA-MM-JJ\`. |
 
-:::tip[Publier]
-Propose via **Tableau de bord → Proposer du contenu** (Projet **BSM**, Type **Preset**). Sur le catalogue, on peut télécharger, télécharger en multi-sélection, et trier par *populaire (tout temps / mois)*, *plus récent* ou *plus vu* — chaque téléchargement compte dans tes statistiques.
+:::warning[assetPaths, c'est le preset]
+Tout le reste est de l'étiquetage. Un \`assetPaths\` vide se publie très bien et ne change rien
+une fois installé — c'est la panne que personne ne signale, parce qu'elle a l'air d'avoir
+marché.
 :::
 
-:::card{title="Utiliser les presets" href=/docs/presets icon=sliders}
-Installer et exporter des presets dans BMM.
-:::`,
+## Ce qui va dans assetPaths
+
+Les clés sont des chemins d'assets tels que BSM les connaît ; les valeurs disent quoi en faire.
+
+| Clé | Type | Sens |
+|---|---|---|
+| \`gain\` | nombre | Changement de volume en dB. Négatif = plus discret. |
+| \`pitch\` | nombre | Vitesse de lecture. \`1.0\` = inchangé. |
+| \`mute\` | booléen | Le fait taire, quoi que dise le gain. |
+
+\`\`\`json
+"assetPaths": {
+  "weather/thunder_far": { "gain": -12.0 },
+  "weather/thunder_near": { "mute": true }
+}
+\`\`\`
+
+## Le publier
+
+::::steps[D'un fichier à une fiche]{type=1}
+:::step[Exporte-le depuis BSM]
+Ton preset est déjà un fichier — BSM l'écrit. Ouvre-le dans un éditeur de texte si tu veux
+vérifier le nom et la version avant qu'il parte.
+:::
+:::step[Soumets-le]
+**Tableau de bord → Proposer du contenu**, projet **BSM**, type **Preset**. Joins le \`.json\`.
+:::
+:::step[Attends un humain]
+Chaque soumission est relue. Tu reçois une notification dans les deux cas, et un refus dit
+pourquoi.
+:::
+:::step[Regarde les chiffres]
+Téléchargements et vues arrivent sur ton tableau de bord. Le tri du catalogue se fait par
+populaire (tout temps ou mois), récent, ou le plus vu — donc un preset sur lequel les gens
+reviennent continue de remonter.
+:::
+::::
+
+:::card{title="Utiliser les presets dans BMM" href=/docs/presets icon=sliders}
+Installer, exporter, passer de l'un à l'autre.
+:::
+`,
   },
 
   // ── Hébergement ─────────────────────────────────────────────────────────────
@@ -784,6 +849,99 @@ publier, parce que c’est ce texte-là qui part.
 Un article peut être rattaché à un projet ou à un projet vitrine, ce qui décide de l’endroit
 où il est listé. Les actualités de la page d’accueil sont un réglage séparé : être publié ne
 met pas un article en une s’il n’a rien à y faire.
+`,
+  },
+  'webhooks': {
+    title: 'Webhooks',
+    category: 'Développeurs',
+    body: `::toc[Sur cette page]
+
+# Webhooks
+
+Arrête de demander. Enregistre une adresse et on l'appelle quand il arrive quelque chose à ce
+qui t'appartient.
+
+## Pourquoi plutôt que du polling
+
+Une intégration sans webhooks interroge \`/v1/catalogs\` toutes les minutes au cas où un élément
+aurait été publié. C'est du gâchis des deux côtés et toujours en retard d'une minute. Un
+webhook, c'est la même information, au moment où elle devient vraie.
+
+## En mettre un en place
+
+::::steps[De rien à une livraison]{type=1}
+:::step[Ajoute l'endpoint]
+**/dev/config → Webhooks → Ajouter.** L'URL doit être en \`https\` (localhost est accepté
+pendant le développement). Ne coche que les événements sur lesquels tu vas agir.
+:::
+:::step[Garde la clé de signature]
+Elle est affichée une seule fois, comme une clé API. On la conserve pour signer ; on ne peut
+pas te la remontrer. Une clé perdue se renouvelle, jamais ne se récupère.
+:::
+:::step[Vérifie ce qui arrive]
+Chaque livraison porte \`X-BCW-Signature: v1=…\`, \`X-BCW-Timestamp\` et \`X-BCW-Event\`. Calcule
+un HMAC-SHA256 sur \`timestamp + "." + corps\` avec ta clé, et compare.
+
+:::danger[Vérifie aussi l'horodatage]
+Une signature seule permet à quiconque a vu une livraison de te la rejouer indéfiniment.
+Rejette tout \`X-BCW-Timestamp\` vieux de plus de quelques minutes.
+:::
+:::
+:::step[Réponds 2xx, vite]
+Tout le reste compte comme un échec. Dix secondes au maximum — mets le vrai travail en file et
+réponds. Un récepteur qui traite en ligne est un récepteur qui expire sous la charge.
+:::
+::::
+
+## Vérifier, en code
+
+\`\`\`javascript
+import crypto from 'node:crypto';
+
+export function verify(req, rawBody, secret) {
+  const ts = req.headers['x-bcw-timestamp'];
+  const sig = String(req.headers['x-bcw-signature'] || '').replace(/^v1=/, '');
+  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false; // fenêtre anti-rejeu
+  const mine = crypto.createHmac('sha256', secret).update(\`\${ts}.\${rawBody}\`).digest('hex');
+  // Temps constant : un === normal livre la réponse un caractère à la fois.
+  return crypto.timingSafeEqual(Buffer.from(mine), Buffer.from(sig));
+}
+\`\`\`
+
+:::warning[Signe le corps BRUT]
+Pas l'objet parsé puis re-sérialisé. L'ordre des clés et les espaces changent, la signature ne
+correspond plus, et la cause est invisible.
+:::
+
+## Ce qu'on envoie
+
+\`\`\`json
+{
+  "event": "catalog.item.published",
+  "at": "2026-08-14T09:12:44.019Z",
+  "data": { "id": "cl…", "slug": "warm-cabin", "name": "Warm Cabin", "kind": "preset" }
+}
+\`\`\`
+
+Les événements de téléchargement portent un \`count\` : ils sont fusionnés en une livraison par
+sujet et par minute, parce qu'un webhook par téléchargement sur un élément populaire serait un
+déni de service qu'on infligerait à ton serveur.
+
+## Quand ça se passe mal
+
+- **Les tentatives** s'espacent d'une minute à dix heures, sur six essais.
+- **Vingt échecs d'affilée** désactivent l'endpoint et te préviennent. Répare le récepteur,
+  réactive-le — le compteur repart de zéro, donc une mauvaise livraison ensuite ne le
+  redésactive pas.
+- **Une URL refusée** (adresse privée, mauvais schéma) n'est pas réessayée du tout. Elle serait
+  refusée à l'identique à chaque fois.
+- **Chaque tentative est conservée 30 jours**, avec le contenu et la réponse, et chacune peut
+  être rejouée — le même contenu, ce qui est exactement l'intérêt après avoir réparé un
+  récepteur qui était tombé.
+
+:::card{title="En configurer un" href=/dev/config icon=webhook}
+Endpoints, clés et journal de livraison.
+:::
 `,
   },
 };

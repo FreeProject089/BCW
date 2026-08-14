@@ -327,28 +327,88 @@ Export a theme from the in-app **[Theme Editor](/docs/themes)** — it writes a 
   },
   {
     slug: 'preset-catalog', category: 'BetterCommunity', title: 'Preset catalog (BSM)', icon: 'sliders', order: 305,
-    body: `# Preset catalog · BSM
+    body: `::toc[On this page]
 
-A BSM preset is a **single JSON file** — no ZIP, no separate manifest. Its metadata lives inside the file.
+# Preset catalog · BSM
 
-## Fields
+A BSM preset is a **single JSON file**. No ZIP, no separate manifest, no folder structure —
+its metadata lives inside the file, which is why a preset can be shared by pasting it.
 
-| Field | Required | Meaning |
+## A whole preset
+
+This is a complete, valid file. Copy it, change the names, and you have something publishable.
+
+\`\`\`json
+{
+  "name": "Warm Cabin",
+  "version": "1.2.0",
+  "color": "#c2410c",
+  "UpdateNumber": 4,
+  "date": "2026-08-14",
+  "assetPaths": {
+    "ambience/rain_light": { "gain": -3.5, "pitch": 1.0 },
+    "ambience/fire_crackle": { "gain": 2.0, "pitch": 0.96 },
+    "ui/click": { "gain": -6.0 }
+  }
+}
+\`\`\`
+
+## The fields
+
+| Field | Required | What it does |
 |---|---|---|
-| \`name\` | yes | Preset name. |
-| \`version\` | yes | Semantic version. |
-| \`assetPaths\` | yes | The asset paths the preset drives. |
-| \`color\` | no | Accent colour. |
-| \`UpdateNumber\` | no | Revision counter. |
-| \`date\` | no | Publish date. |
+| \`name\` | yes | What people see in the catalog and in BSM. |
+| \`version\` | yes | Compared numerically, so \`1.10.0\` is newer than \`1.9.0\`. |
+| \`assetPaths\` | yes | The map of what the preset changes — see below. |
+| \`color\` | no | Accent colour on the catalog card. A hex string. |
+| \`UpdateNumber\` | no | Your own revision counter, shown beside the version. |
+| \`date\` | no | Publish date, \`YYYY-MM-DD\`. |
 
-:::tip[Publishing]
-Submit via **Dashboard → Submit content** (Project **BSM**, Type **Preset**). On the catalog, users can download, multi-select download, and sort by *popular (all-time / month)*, *newest* or *most viewed* — every download counts toward your stats.
+:::warning[assetPaths is the preset]
+Everything else is labelling. An empty \`assetPaths\` publishes fine and changes nothing when
+installed, which is the one failure nobody reports — it looks like it worked.
 :::
 
-:::card{title="Using presets" href=/docs/presets icon=sliders}
-Install and export presets in BMM.
-:::`,
+## What goes in assetPaths
+
+Keys are asset paths as BSM knows them; values are what to do with that asset.
+
+| Key | Type | Meaning |
+|---|---|---|
+| \`gain\` | number | Volume change in dB. Negative is quieter. |
+| \`pitch\` | number | Playback rate. \`1.0\` is unchanged. |
+| \`mute\` | boolean | Silences it, whatever the gain says. |
+
+\`\`\`json
+"assetPaths": {
+  "weather/thunder_far": { "gain": -12.0 },
+  "weather/thunder_near": { "mute": true }
+}
+\`\`\`
+
+## Publishing one
+
+::::steps[From a file to a listing]{type=1}
+:::step[Export it from BSM]
+Your preset is already a file — BSM writes it. Open it in a text editor if you want to check
+the name and version before it goes out.
+:::
+:::step[Submit it]
+**Dashboard → Submit content**, project **BSM**, type **Preset**. Attach the \`.json\`.
+:::
+:::step[Wait for a human]
+Every submission is reviewed. You get a notification either way, and a rejection says why.
+:::
+:::step[Watch the numbers]
+Downloads and views land on your dashboard. Sorting on the catalog is by popular (all-time or
+month), newest, or most viewed — so a preset that people keep coming back to keeps surfacing.
+:::
+::::
+
+:::card{title="Using presets in BMM" href=/docs/presets icon=sliders}
+Installing, exporting and switching between them.
+:::
+`,
   },
 
   // ── Hosting ─────────────────────────────────────────────────────────────────
@@ -1022,6 +1082,97 @@ that is the text that leaves.
 A post can be attached to a project or to a showcase project, which decides where it is
 listed. Home-page news is a separate switch — being published does not put a post on the
 front page unless it is meant to be there.
+`,
+  },
+  {
+    slug: 'webhooks', category: 'Developers', title: 'Webhooks', icon: 'webhook', order: 702,
+    body: `::toc[On this page]
+
+# Webhooks
+
+Stop asking. Register an address and we call it when something happens to what you own.
+
+## Why this instead of polling
+
+An integration without webhooks asks \`/v1/catalogs\` every minute in case an item was
+published. That is wasted on both sides and always up to a minute late. A webhook is the same
+information, at the moment it becomes true.
+
+## Setting one up
+
+::::steps[From nothing to a delivery]{type=1}
+:::step[Add the endpoint]
+**/dev/config → Webhooks → Add.** The URL must be \`https\` (localhost is allowed while you
+build). Tick only the events you will act on.
+:::
+:::step[Keep the signing secret]
+It is shown once, like an API key. We keep it to sign with; we cannot show it to you again.
+Lost one is rotated, never recovered.
+:::
+:::step[Verify what arrives]
+Every delivery carries \`X-BCW-Signature: v1=…\`, \`X-BCW-Timestamp\` and \`X-BCW-Event\`. Compute
+HMAC-SHA256 over \`timestamp + "." + body\` with your secret and compare.
+
+:::danger[Check the timestamp too]
+A signature alone lets anyone who ever saw one delivery replay it at you for ever. Reject
+anything whose \`X-BCW-Timestamp\` is more than a few minutes old.
+:::
+:::
+:::step[Answer 2xx, quickly]
+Anything else counts as a failure. Take ten seconds at most — queue the real work and reply.
+A receiver doing its processing inline is a receiver that times out under load.
+:::
+::::
+
+## Verifying, in code
+
+\`\`\`javascript
+import crypto from 'node:crypto';
+
+export function verify(req, rawBody, secret) {
+  const ts = req.headers['x-bcw-timestamp'];
+  const sig = String(req.headers['x-bcw-signature'] || '').replace(/^v1=/, '');
+  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false; // replay window
+  const mine = crypto.createHmac('sha256', secret).update(\`\${ts}.\${rawBody}\`).digest('hex');
+  // Constant-time: a normal === leaks the answer one character at a time.
+  return crypto.timingSafeEqual(Buffer.from(mine), Buffer.from(sig));
+}
+\`\`\`
+
+:::warning[Sign the RAW body]
+Not the parsed-and-re-stringified object. Key order and whitespace change, the signature does
+not match, and the cause is invisible.
+:::
+
+## What we send
+
+\`\`\`json
+{
+  "event": "catalog.item.published",
+  "at": "2026-08-14T09:12:44.019Z",
+  "data": { "id": "cl…", "slug": "warm-cabin", "name": "Warm Cabin", "kind": "preset" }
+}
+\`\`\`
+
+Download events carry a \`count\`: they are coalesced to one delivery per subject per minute,
+because a webhook per download on a popular item is a denial of service we would be
+performing on your server.
+
+## When it goes wrong
+
+- **Retries** back off from one minute to ten hours over six attempts.
+- **Twenty consecutive failures** switch the endpoint off and notify you. Fix the receiver,
+  turn it back on — the failure count resets, so one bad delivery afterwards does not switch
+  it off again.
+- **A refused URL** (private address, bad scheme) is not retried at all. It would be refused
+  identically every time.
+- **Every attempt is kept for 30 days**, with the payload and the response, and any of them
+  can be replayed — the same payload, which is what makes it useful after fixing a receiver
+  that was down.
+
+:::card{title="Set one up" href=/dev/config icon=webhook}
+Endpoints, secrets and the delivery log.
+:::
 `,
   },
 ];
