@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Gavel, Search, RefreshCw, Send, Undo2, Scale, AlertTriangle, Ban, Clock, FileText, ExternalLink } from 'lucide-react';
+import { Gavel, Search, RefreshCw, Send, Undo2, Scale, AlertTriangle, Ban, Clock, FileText, ExternalLink,
+  Pencil, Archive, ArchiveRestore, RotateCcw, Paperclip, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -18,10 +19,108 @@ const KIND_TONE = { warning: 'amber', suspension: 'amber', ban: 'red', closure: 
 const KIND_ICON = { warning: AlertTriangle, suspension: Clock, ban: Ban, closure: FileText, takedown: Scale };
 
 const fmt = (d) => (d ? new Date(d).toLocaleString() : '—');
+const fmtBytes = (n) => (!n ? '' : n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+
+/**
+ * Evidence attached to a decision: screenshots, recordings, files, links.
+ *
+ * Staff-only, and the API enforces that — nothing here is reachable from the page the person
+ * sanctioned sees, because a report's evidence routinely names whoever filed it.
+ *
+ * Files are never linked directly. The server holds the storage key and hands out a short
+ * signed URL on request, so the staff check runs on every fetch rather than once when this
+ * page was built.
+ */
+function Evidence({ s, onChanged }) {
+  const { t } = useI18n(); const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkName, setLinkName] = useState('');
+
+  const addLink = async () => {
+    const url = linkUrl.trim();
+    // Checked here as well as on the server. The server is the one that matters — this only
+    // saves a round trip and gives the reason in the right place.
+    if (!/^https?:\/\//i.test(url)) { toast.error(t('sanc.ev.badurl', 'Links must start with http:// or https://')); return; }
+    setBusy(true);
+    try {
+      await api.post(`/admin/sanctions/${s.id}/evidence`, { kind: 'link', name: linkName.trim() || url.slice(0, 80), url });
+      setLinkUrl(''); setLinkName(''); onChanged?.();
+    } catch (e) { toast.error(String(e?.message || e)); } finally { setBusy(false); }
+  };
+
+  const upload = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const { url, storageKey } = await api.post(`/admin/sanctions/${s.id}/evidence/presign`, {
+        filename: file.name, contentType: file.type || 'application/octet-stream',
+      });
+      const put = await fetch(url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } });
+      // Recording the row only after the PUT succeeded. The other order leaves a row
+      // pointing at an object that was never stored, which reads as "evidence exists" to
+      // the next moderator and 404s when they click it.
+      if (!put.ok) throw new Error(`upload failed (${put.status})`);
+      const kind = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file';
+      await api.post(`/admin/sanctions/${s.id}/evidence`, {
+        kind, name: file.name, storageKey, mime: file.type || undefined, bytes: file.size,
+      });
+      onChanged?.();
+    } catch (e) { toast.error(String(e?.message || e)); } finally { setBusy(false); }
+  };
+
+  const open = async (a) => {
+    if (a.url) { window.open(a.url, '_blank', 'noopener,noreferrer'); return; }
+    try {
+      const { url } = await api.get(`/admin/sanctions/${s.id}/evidence/${a.id}`);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e) { toast.error(String(e?.message || e)); }
+  };
+
+  const remove = async (a) => {
+    try { await api.del(`/admin/sanctions/${s.id}/evidence/${a.id}`); onChanged?.(); }
+    catch (e) { toast.error(String(e?.message || e)); }
+  };
+
+  return (
+    <Card className="p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
+        {t('sanc.ev.title', 'Evidence')} <span className="normal-case font-normal">— {t('sanc.ev.staff', 'staff only; never shown to the person')}</span>
+      </div>
+      {s.attachments?.length > 0 ? (
+        <ul className="space-y-1 mb-2">
+          {s.attachments.map((a) => (
+            <li key={a.id} className="flex items-center gap-2 text-[12px] min-w-0">
+              <Badge tone="">{a.kind}</Badge>
+              <button className="underline truncate text-left min-w-0" onClick={() => open(a)}>{a.name}</button>
+              {a.bytes > 0 && <span className="text-[var(--faint)] shrink-0">{fmtBytes(a.bytes)}</span>}
+              {a.note && <span className="text-[var(--faint)] truncate">— {a.note}</span>}
+              <button className="ml-auto shrink-0 text-[var(--faint)] hover:text-[var(--danger)]" title={t('common.delete', 'Delete')} onClick={() => remove(a)}>
+                <Trash2 size={12} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : <div className="text-[12px] text-[var(--faint)] mb-2">{t('sanc.ev.none', 'Nothing attached.')}</div>}
+
+      <div className="flex flex-wrap gap-2 items-center">
+        <label className="inline-flex">
+          <input type="file" className="hidden" disabled={busy} onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+          <span className={`px-3 py-1.5 rounded-lg text-[12px] border border-[var(--line)] cursor-pointer ${busy ? 'opacity-50' : 'hover:border-[var(--line-strong)]'}`}>
+            <Paperclip size={12} className="inline mr-1" />{t('sanc.ev.upload', 'Attach a file')}
+          </span>
+        </label>
+        <Input className="flex-1 min-w-[180px]" placeholder="https://…" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} />
+        <Input className="w-[150px]" placeholder={t('sanc.ev.label', 'label (optional)')} value={linkName} onChange={(e) => setLinkName(e.target.value)} />
+        <Button size="sm" variant="ghost" disabled={busy || !linkUrl.trim()} onClick={addLink}>{t('sanc.ev.addlink', 'Add link')}</Button>
+      </div>
+    </Card>
+  );
+}
 
 /** One row. Deliberately dense: this list is read by somebody scanning for a pattern, not
  *  reading one decision — the detail lives behind the row, not in it. */
-function Row({ s, onLift, onResend, onAnswer }) {
+function Row({ s, onLift, onResend, onAnswer, onEdit, onArchive, onReapply, onChanged }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const Icon = KIND_ICON[s.kind] || Gavel;
@@ -86,8 +185,42 @@ function Row({ s, onLift, onResend, onAnswer }) {
             </Card>
           )}
 
+          {/* What was changed after the fact, and by whom. Shown rather than kept in the
+              database, because the reason here is quoted in the notice the person received:
+              a moderator reading this row needs to know whether the wording in front of
+              them is the wording that was sent. */}
+          {s.edits?.length > 0 && (
+            <details className="text-[11px] text-[var(--faint)]">
+              <summary className="cursor-pointer">{t('sanc.edits', '{n} later change(s)').replace('{n}', String(s.edits.length))}</summary>
+              <ul className="mt-1 space-y-0.5">
+                {s.edits.map((e, i) => (
+                  <li key={i} className="break-words">
+                    {fmt(e.at)} · <b>{e.field}</b>: <span className="line-through opacity-70">{String(e.from ?? '—')}</span> → {String(e.to ?? '—')}
+                    {e.note ? ` (${e.note})` : ''}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          <Evidence s={s} onChanged={onChanged} />
+
           <div className="flex flex-wrap gap-2 pt-1">
             {s.status === 'active' && <Button size="sm" variant="ghost" onClick={() => onLift(s)}><Undo2 size={12} /> {t('sanc.lift', 'Lift')}</Button>}
+            {/* Reinstating an overturned decision is refused by the API — the button is
+                hidden here too, so it is not offered and then taken away. */}
+            {s.status !== 'active' && s.contestOutcome !== 'overturned' && (
+              <Button size="sm" variant="ghost" onClick={() => onReapply(s)}><RotateCcw size={12} /> {t('sanc.reapply', 'Put back in force')}</Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => onEdit(s)}><Pencil size={12} /> {t('common.edit', 'Edit')}</Button>
+            {/* Archiving needs the case to be settled. Offering it on an active sanction and
+                answering 409 teaches people the button is broken; saying why is better. */}
+            {s.archivedAt
+              ? <Button size="sm" variant="ghost" onClick={() => onArchive(s, false)}><ArchiveRestore size={12} /> {t('sanc.unarchive', 'Take out of the archive')}</Button>
+              : <Button size="sm" variant="ghost" disabled={s.status === 'active' || (s.contestedAt && !s.contestOutcome)}
+                  title={s.status === 'active' ? t('sanc.arch.why', 'Still in force — lift it first.')
+                       : (s.contestedAt && !s.contestOutcome) ? t('sanc.arch.why2', 'Somebody is waiting for an answer to their contest.') : ''}
+                  onClick={() => onArchive(s, true)}><Archive size={12} /> {t('sanc.archive', 'Archive')}</Button>}
             <Button size="sm" variant="ghost" onClick={() => onResend(s)}><Send size={12} /> {t('sanc.resend', 'Re-send the notice')}</Button>
             {s.user && <Link to={`/admin?s=users&u=${s.user.id}`}><Button size="sm" variant="ghost"><ExternalLink size={12} /> {t('sanc.openuser', 'Open the account')}</Button></Link>}
           </div>
@@ -109,6 +242,47 @@ export function AdminSanctions() {
   );
 
   const list = data?.sanctions || [];
+
+  // Editing asks for the new wording, then says what it is about to do with it. The person
+  // is notified, and the change is recorded against the code they were given — neither is
+  // obvious from a text box, so the dialog says both.
+  const edit = async (s) => {
+    const reason = await dialog.prompt({
+      title: t('sanc.edit.t', 'Edit {c}').replace('{c}', s.code),
+      message: t('sanc.edit.m', 'The person is told it changed, and the change is recorded against this code with the old wording beside the new. They were sent the current wording — if it was wrong, this is how it is corrected rather than quietly overwritten.'),
+      label: t('sanc.edit.l', 'Reason (they see this)'),
+      okLabel: t('common.save', 'Save'),
+      defaultValue: s.reason,
+      multiline: true,
+    });
+    if (reason == null) return;
+    try {
+      const r = await api.patch(`/admin/sanctions/${s.id}`, { reason });
+      toast.success(r?.unchanged ? t('sanc.edit.same', 'Nothing changed.') : t('sanc.edit.ok', 'Updated.'));
+      reload();
+    } catch (e) { toast.error(String(e?.message || e)); }
+  };
+
+  const reapply = async (s) => {
+    const reason = await dialog.prompt({
+      title: t('sanc.re.t', 'Put {c} back in force?').replace('{c}', s.code),
+      message: t('sanc.re.m', 'The same code comes back into force — not a new one, so the notice they already hold still matches. The lift stays in the record. For a takedown, the content is hidden again in the same action.'),
+      label: t('sanc.re.l', 'Why (they see this)'),
+      okLabel: t('sanc.reapply', 'Put back in force'),
+    });
+    if (reason == null) return;
+    try { await api.post(`/admin/sanctions/${s.id}/reapply`, { reason: reason || undefined }); toast.success(t('sanc.re.ok', 'Back in force.')); reload(); }
+    catch (e) { toast.error(String(e?.message || e)); }
+  };
+
+  const archive = async (s, archived) => {
+    try {
+      await api.post(`/admin/sanctions/${s.id}/archive`, { archived });
+      // Named for what it is: nothing was deleted, and it is one filter away.
+      toast.success(archived ? t('sanc.arch.ok', 'Filed away — find it again under “archived”.') : t('sanc.unarch.ok', 'Back in the list.'));
+      reload();
+    } catch (e) { toast.error(String(e?.message || e)); }
+  };
 
   const lift = async (s) => {
     const reason = await dialog.prompt({
@@ -164,6 +338,8 @@ export function AdminSanctions() {
             <option value="active">{t('sanc.s.active', 'active')}</option>
             <option value="contested">{t('sanc.contested', 'contested')}</option>
             <option value="lifted">{t('sanc.s.lifted', 'lifted')}</option>
+            {/* Archived rows are out of every other view. Reachable, never deleted. */}
+            <option value="archived">{t('sanc.s.archived', 'archived')}</option>
             <option value="expired">{t('sanc.s.expired', 'expired')}</option>
           </Select>
           <Select className="w-auto" value={kind} onChange={(e) => setKind(e.target.value)}>
@@ -181,7 +357,8 @@ export function AdminSanctions() {
           sub={t('sanc.none.s', 'No decision matches this filter. With no filter at all, an empty list means nobody has been sanctioned yet.')} />
       ) : (
         <Card className="p-0 overflow-hidden">
-          {list.map((s) => <Row key={s.id} s={s} onLift={lift} onResend={resend} onAnswer={answer} />)}
+          {list.map((s) => <Row key={s.id} s={s} onLift={lift} onResend={resend} onAnswer={answer}
+            onEdit={edit} onArchive={archive} onReapply={reapply} onChanged={reload} />)}
         </Card>
       )}
       {data?.total > list.length && (

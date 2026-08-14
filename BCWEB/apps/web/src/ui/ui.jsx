@@ -391,6 +391,14 @@ export function DialogProvider({ children }) {
                 {reveal ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
+          ) : o.multiline ? (
+            // Some prompts ask for prose, not a value: a sanction reason is several
+            // sentences and is quoted verbatim in the e-mail the person receives. Typing
+            // that into a one-line box invites the short, blunt version. Enter inserts a
+            // newline here rather than submitting — the opposite of the single-line case,
+            // and the reason the two are separate branches.
+            <Textarea ref={inputRef} rows={o.rows || 4} value={value} placeholder={o.placeholder}
+              onChange={(e) => setValue(e.target.value)} />
           ) : (
             <Input ref={inputRef} type={o.type || 'text'} value={value} placeholder={o.placeholder} onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && close(value || '')} />
