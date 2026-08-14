@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyRound, Search, Activity, AlertTriangle, Ban, Sliders, RefreshCw } from 'lucide-react';
+import { KeyRound, Search, Activity, AlertTriangle, Ban, Sliders, RefreshCw, FlaskConical } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Select, Badge, Field, EmptyState, Spinner, useToast, useDialog } from '../ui/ui.jsx';
@@ -16,27 +16,75 @@ import { useAsync, Loading } from './pages.jsx';
 const fmtMs = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${Math.round(n)}ms`);
 const statusTone = (s) => (s >= 500 ? 'red' : s >= 400 ? 'amber' : s === 0 ? '' : 'green');
 
-/** Calls per day. Deliberately a bar per day and nothing else — no smoothing, no second
- *  axis. The question it answers is "is something hammering us", which a shape answers. */
+/** Calls per day: succeeded / refused / sandbox, stacked, on one scale.
+ *
+ *  One axis on purpose — three counts of the same thing (calls) belong on the same scale,
+ *  and a second axis would invent a relationship between them. The bar answers "is
+ *  something hammering us" by its height and "how much of it went wrong" by its bands.
+ *
+ *  Sandbox sits in its own band rather than being left out of the picture: a day where
+ *  three people explored the API and nobody used it reads as an empty chart otherwise,
+ *  which is the opposite of what happened. It is drawn recessive, because it is not
+ *  traffic — nothing was written and nobody was served.
+ */
 function UsageBars({ series }) {
   const { t } = useI18n();
-  const max = Math.max(1, ...series.map((d) => d.count));
+  const [hover, setHover] = useState(null);
+  const tot = (d) => d.count + d.sandbox;
+  const max = Math.max(1, ...series.map(tot));
+  // A grid of three lines with a stated maximum, so a bar can be read as a number instead
+  // of only compared to its neighbours.
+  const ticks = [max, Math.round(max / 2), 0];
+  const fmt = (n) => (n >= 10000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+  const h = hover !== null ? series[hover] : null;
+
   return (
-    <div className="flex items-end gap-[2px] h-24 mt-2">
-      {series.map((d) => {
-        const h = (d.count / max) * 100;
-        const errH = d.count ? (d.errors / d.count) * h : 0;
-        return (
-          <div key={d.day} className="flex-1 min-w-0 flex flex-col justify-end h-full group relative"
-            title={`${d.day} · ${d.count} ${t('aapi.calls', 'calls')}${d.errors ? ` · ${d.errors} ${t('aapi.errs', 'errors')}` : ''}`}>
-            {/* Errors stacked at the top of the same bar rather than a separate series:
-                the useful reading is "how much of today went wrong", not two lines to
-                mentally divide. */}
-            <div className="w-full rounded-t-[3px] bg-warning" style={{ height: `${errH}%` }} />
-            <div className="w-full rounded-b-[3px] bg-[var(--primary-2)]" style={{ height: `${Math.max(h - errH, d.count ? 2 : 0)}%` }} />
+    <div className="mt-3">
+      <div className="flex gap-2">
+        <div className="flex flex-col justify-between h-24 text-[10px] text-[var(--faint)] tabular-nums shrink-0 w-8 text-right">
+          {ticks.map((n, i) => <span key={i}>{fmt(n)}</span>)}
+        </div>
+        <div className="relative flex-1 min-w-0 h-24">
+          {ticks.map((n, i) => (
+            <div key={i} className="absolute left-0 right-0 border-t border-[var(--line)]"
+              style={{ top: `${(i / (ticks.length - 1)) * 100}%` }} />
+          ))}
+          <div className="absolute inset-0 flex items-end gap-[2px]">
+            {series.map((d, i) => {
+              const total = tot(d);
+              const pct = (n) => (n / max) * 100;
+              return (
+                <div key={d.day} className="flex-1 min-w-0 flex flex-col justify-end h-full cursor-default"
+                  onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover((x) => (x === i ? null : x))}>
+                  <div className="w-full rounded-t-[3px]" style={{ height: `${pct(d.sandbox)}%`, background: 'var(--line-strong)' }} />
+                  <div className="w-full bg-warning" style={{ height: `${pct(d.errors)}%` }} />
+                  <div className={`w-full ${d.sandbox || d.errors ? '' : 'rounded-t-[3px]'} rounded-b-[3px] bg-[var(--primary-2)]`}
+                    style={{ height: `${Math.max(pct(d.count - d.errors), total ? 2 : 0)}%` }} />
+                </div>
+              );
+            })}
           </div>
-        );
-      })}
+        </div>
+      </div>
+      {/* Legend, always — three bands cannot be told apart by shape. The hovered day
+          replaces it rather than floating over the bars, so nothing is ever covered by
+          the thing explaining it. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px] pl-10 min-h-[18px]">
+        {h ? (
+          <>
+            <span className="font-medium tabular-nums">{h.day}</span>
+            <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-[2px] bg-[var(--primary-2)]" />{h.count - h.errors} {t('aapi.l.ok', 'served')}</span>
+            <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-[2px] bg-warning" />{h.errors} {t('aapi.l.err', 'refused or failed')}</span>
+            <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-[2px]" style={{ background: 'var(--line-strong)' }} />{h.sandbox} {t('aapi.l.sandbox', 'sandbox')}</span>
+          </>
+        ) : (
+          <>
+            <span className="flex items-center gap-1 text-[var(--muted)]"><i className="w-2 h-2 rounded-[2px] bg-[var(--primary-2)]" />{t('aapi.l.ok', 'served')}</span>
+            <span className="flex items-center gap-1 text-[var(--muted)]"><i className="w-2 h-2 rounded-[2px] bg-warning" />{t('aapi.l.err', 'refused or failed')}</span>
+            <span className="flex items-center gap-1 text-[var(--muted)]"><i className="w-2 h-2 rounded-[2px]" style={{ background: 'var(--line-strong)' }} />{t('aapi.l.sandbox', 'sandbox — nothing was written')}</span>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -48,6 +96,95 @@ function Stat({ label, value, sub, tone }) {
       <div className={`text-xl font-bold tabular-nums ${tone === 'warn' ? 'text-warning' : ''}`}>{value}</div>
       {sub && <div className="text-[11px] text-[var(--faint)]">{sub}</div>}
     </div>
+  );
+}
+
+/** What people trying the API in /dev actually did.
+ *
+ *  Its own view rather than a filter on the call log, because it answers a different
+ *  question: not "what did this key do to us" but "is the console any good" - which
+ *  endpoints people reach for first, and which of those refused them. A sandbox 403 is not
+ *  an incident; it is the documentation failing, and it is the most useful row here.
+ */
+function SandboxView() {
+  const { t } = useI18n();
+  const [hours, setHours] = useState(24 * 7);
+  const { data, loading } = useAsync(() => api.get(`/admin/api/sandbox?hours=${hours}`), [hours]);
+  if (loading && !data) return <Loading />;
+  const d = data || {};
+  const rows = d.recent || [];
+
+  return (
+    <>
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+          <div className="text-sm font-semibold flex items-center gap-2"><FlaskConical size={14} className="text-[var(--primary-2)]" /> {t('aapi.sb.title', 'Developer sandbox')}</div>
+          <Select className="w-auto" value={String(hours)} onChange={(e) => setHours(Number(e.target.value))}>
+            {[24, 24 * 7, 24 * 30].map((n) => <option key={n} value={n}>{n === 24 ? t('aapi.sb.24h', 'Last 24 hours') : t('aapi.sb.days', 'Last {n} days').replace('{n}', String(n / 24))}</option>)}
+          </Select>
+        </div>
+        <p className="text-[11px] text-[var(--muted)]">
+          {t('aapi.sb.s', 'Calls made from the console at /dev with the sandbox on: authenticated and scope-checked, then nothing was written. They are never counted as usage. This list comes from the sample, so at a sample rate below 1 it is a share of what happened - refusals are always kept.')}
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3 pt-3 border-t border-[var(--line)]">
+          <Stat label={t('aapi.sb.calls', 'Sandbox calls')} value={(d.calls || 0).toLocaleString()} />
+          <Stat label={t('aapi.sb.refused', 'Refused')} value={(d.refused || 0).toLocaleString()}
+            sub={t('aapi.sb.refused.s', 'a missing scope, usually')} tone={d.calls && d.refused / d.calls > 0.4 ? 'warn' : undefined} />
+          <Stat label={t('aapi.sb.people', 'People')} value={String((d.explorers || []).length)}
+            sub={d.sampleRate < 1 ? t('aapi.sb.rate', 'sample rate {r}').replace('{r}', String(d.sampleRate)) : undefined} />
+        </div>
+      </Card>
+
+      <Card className="p-4 mt-4">
+        <div className="text-sm font-semibold mb-2">{t('aapi.sb.endpoints', 'What they tried')}</div>
+        {!(d.endpoints || []).length ? (
+          <EmptyState icon={FlaskConical} title={t('aapi.sb.none', 'Nobody has used the sandbox yet.')}
+            sub={t('aapi.sb.none.s', 'The console lives at /dev. When somebody tries a call there, the endpoint they picked and whether it refused them shows up here.')} />
+        ) : (
+          <div className="space-y-1">
+            {d.endpoints.map((e) => (
+              <div key={e.endpoint} className="flex items-center gap-2 text-[13px] py-1 border-b border-[var(--line)] last:border-0">
+                <code className="font-mono text-[12px] min-w-0 flex-1 truncate">{e.endpoint}</code>
+                {e.refused > 0 && <Badge tone="amber">{t('aapi.sb.nrefused', '{n} refused').replace('{n}', String(e.refused))}</Badge>}
+                <span className="tabular-nums text-[var(--muted)]">{e.calls}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {(d.explorers || []).length > 0 && (
+        <Card className="p-4 mt-4">
+          <div className="text-sm font-semibold mb-2">{t('aapi.sb.who', 'Who is exploring')}</div>
+          <div className="space-y-1">
+            {d.explorers.map((e) => (
+              <div key={e.userId} className="flex items-center gap-2 text-[13px] py-1 border-b border-[var(--line)] last:border-0">
+                <span className="min-w-0 flex-1 truncate">{e.user?.displayName || e.user?.email || e.userId}</span>
+                <span className="text-[11px] text-[var(--faint)]">{t('aapi.sb.nend', '{n} endpoints').replace('{n}', String(e.endpoints))}</span>
+                {e.refused > 0 && <Badge tone="amber">{e.refused}</Badge>}
+                <span className="tabular-nums text-[var(--muted)]">{e.calls}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {rows.length > 0 && (
+        <Card className="p-4 mt-4">
+          <div className="text-sm font-semibold mb-2">{t('aapi.sb.recent', 'Most recent')}</div>
+          <div className="space-y-0.5 max-h-80 overflow-auto">
+            {rows.map((r) => (
+              <div key={r.id} className="flex items-center gap-2 text-[12px] py-1">
+                <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                <code className="font-mono min-w-0 flex-1 truncate">{r.method} {r.path}</code>
+                <span className="text-[var(--faint)] tabular-nums">{fmtMs(r.ms)}</span>
+                <span className="text-[var(--faint)]">{new Date(r.at).toLocaleTimeString()}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </>
   );
 }
 
@@ -84,7 +221,7 @@ export function AdminApi() {
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2 mr-2"><KeyRound size={16} className="text-[var(--primary-2)]" /> {t('aapi.title', 'Public API')}</h2>
         <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
-          {[['overview', t('aapi.tab.overview', 'Usage')], ['keys', t('aapi.tab.keys', 'Keys')], ['requests', t('aapi.tab.requests', 'Calls')], ['settings', t('aapi.tab.settings', 'Recording')]].map(([k, l]) => (
+          {[['overview', t('aapi.tab.overview', 'Usage')], ['keys', t('aapi.tab.keys', 'Keys')], ['requests', t('aapi.tab.requests', 'Calls')], ['sandbox', t('aapi.tab.sandbox', 'Sandbox')], ['settings', t('aapi.tab.settings', 'Recording')]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)}
               className={`px-3 py-1.5 rounded-[10px] text-sm ${view === k ? 'bg-[var(--bg-solid)] font-medium shadow-sm' : 'text-[var(--muted)]'}`}>{l}</button>
           ))}
@@ -110,8 +247,8 @@ export function AdminApi() {
               <Stat label={t('aapi.errors', 'Refused or failed')} value={(d.errors || 0).toLocaleString()}
                 sub={`${Math.round((d.errorRate || 0) * 100)}%`} tone={d.errorRate > 0.25 ? 'warn' : undefined} />
               <Stat label={t('aapi.keys', 'Keys')} value={`${d.activeKeyCount || 0}`} sub={t('aapi.ofn', 'of {n} ever created').replace('{n}', String(d.keyCount || 0))} />
-              <Stat label={t('aapi.samples', 'Calls in the sample')} value={(d.sampleCount || 0).toLocaleString()}
-                sub={t('aapi.keptdays', 'kept {n} days').replace('{n}', String(d.config?.retentionDays ?? 7))} />
+              <Stat label={t('aapi.sandbox', 'Sandbox calls')} value={(d.sandbox || 0).toLocaleString()}
+                sub={t('aapi.sandbox.s', 'people trying the API')} />
             </div>
           </Card>
 
@@ -139,6 +276,8 @@ export function AdminApi() {
 
       {view === 'keys' && <KeysTable onRevoke={revoke} />}
       {view === 'requests' && <RequestsTable />}
+
+      {view === 'sandbox' && <SandboxView />}
 
       {view === 'settings' && (
         <Card className="p-4">

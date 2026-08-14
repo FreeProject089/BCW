@@ -2227,6 +2227,11 @@ model ApiUsageDay {
   day    DateTime @db.Date
   count  Int      @default(0)
   errors Int      @default(0)
+  // Sandbox calls are counted here but never added to `count`: the daily figure answers
+  // "how much is this key really being used", and a console click is not use. Kept so the
+  // usage chart can show exploration as its own band rather than as nothing at all —
+  // "nobody is calling us" and "three people are learning the API" look identical otherwise.
+  sandbox Int     @default(0)
 
   @@unique([keyId, day])
   @@index([userId, day])

@@ -9,6 +9,7 @@ import { db, requireRole, requireCap, apiAuth, hashApiKey, API_SCOPES, logAudit,
 import { verifyTotp } from '../lib/totp.mjs';
 import { buildPublicProfile } from './social.mjs';
 import { findUserIdByBcId } from '../lib/repofingerprint.mjs';
+import { apiUsageConfig } from '../lib/apiusage.mjs';
 
 // Only the PREFIXED form (BCU-XXXX-XXXX). repofingerprint's looksLikeBcId also accepts a
 // bare 8-character string, and resolving one costs a scan over every account — it
@@ -97,12 +98,12 @@ export default async function apiKeyRoutes(app) {
       p.apiRequest.count(),
     ]);
 
-    const byDay = new Map(dayList(days).map((d) => [d, { day: d, count: 0, errors: 0 }]));
+    const byDay = new Map(dayList(days).map((d) => [d, { day: d, count: 0, errors: 0, sandbox: 0 }]));
     const byKey = new Map();
     for (const u of usage) {
       const d = u.day.toISOString().slice(0, 10);
       const slot = byDay.get(d);
-      if (slot) { slot.count += u.count; slot.errors += u.errors; }
+      if (slot) { slot.count += u.count; slot.errors += u.errors; slot.sandbox += u.sandbox || 0; }
       const k = u.keyId || 'deleted';
       const agg = byKey.get(k) || { keyId: u.keyId, count: 0, errors: 0, lastDay: null };
       agg.count += u.count; agg.errors += u.errors;
@@ -124,8 +125,9 @@ export default async function apiKeyRoutes(app) {
 
     const total = [...byDay.values()].reduce((n, d) => n + d.count, 0);
     const errors = [...byDay.values()].reduce((n, d) => n + d.errors, 0);
+    const sandbox = [...byDay.values()].reduce((n, d) => n + d.sandbox, 0);
     return {
-      days, series: [...byDay.values()], total, errors,
+      days, series: [...byDay.values()], total, errors, sandbox,
       // Named errorRate, not "health": it is the share of calls that answered 4xx/5xx, and a
       // client hammering a 404 is not the server being unwell.
       errorRate: total ? errors / total : 0,
@@ -134,6 +136,55 @@ export default async function apiKeyRoutes(app) {
       activeKeyCount: keys.filter((k) => !k.revokedAt && (!k.expiresAt || k.expiresAt > new Date())).length,
       sampleCount,
       config: { sampleRate: Number(cfgRow?.value?.sampleRate ?? 1), retentionDays: Number(cfgRow?.value?.retentionDays ?? 7) },
+    };
+  });
+
+  // Who is exploring the API, and what they tried.
+  //
+  // A separate view rather than a filter on the request log, because the questions are
+  // different: the log asks "what did this key do to us", this asks "is the console any
+  // good" — which endpoints people reach for first, and which of those refused them. A
+  // sandbox 403 is not an incident, it is documentation failing.
+  app.get('/admin/api/sandbox', { preHandler: requireCap('manage_api') }, async (req) => {
+    const p = await db();
+    const hours = Math.min(24 * 30, Math.max(1, parseInt(req.query?.hours, 10) || 24 * 7));
+    const since = new Date(Date.now() - hours * 3600_000);
+    const rows = await p.apiRequest.findMany({
+      where: { sandbox: true, at: { gte: since } }, orderBy: { at: 'desc' }, take: 500,
+      select: { id: true, userId: true, keyId: true, method: true, path: true, status: true, ms: true, at: true },
+    });
+
+    const byPath = new Map();
+    const byUser = new Map();
+    for (const r of rows) {
+      const pk = `${r.method} ${r.path}`;
+      const a = byPath.get(pk) || { endpoint: pk, calls: 0, refused: 0, lastAt: r.at };
+      a.calls += 1; if (r.status >= 400) a.refused += 1;
+      byPath.set(pk, a);
+      if (r.userId) {
+        const u = byUser.get(r.userId) || { userId: r.userId, calls: 0, refused: 0, lastAt: r.at, endpoints: new Set() };
+        u.calls += 1; if (r.status >= 400) u.refused += 1;
+        u.endpoints.add(pk);
+        byUser.set(r.userId, u);
+      }
+    }
+    // Names are resolved in one query rather than per row.
+    const users = byUser.size
+      ? await p.user.findMany({ where: { id: { in: [...byUser.keys()] } }, select: { id: true, displayName: true, email: true } })
+      : [];
+    const nameById = new Map(users.map((u) => [u.id, u]));
+
+    return {
+      hours,
+      // The sample rate applies here too: say so rather than let a count be read as exact.
+      sampleRate: apiUsageConfig().sampleRate,
+      calls: rows.length,
+      refused: rows.filter((r) => r.status >= 400).length,
+      explorers: [...byUser.values()]
+        .map((u) => ({ ...u, endpoints: u.endpoints.size, user: nameById.get(u.userId) || null }))
+        .sort((a, b) => b.calls - a.calls).slice(0, 20),
+      endpoints: [...byPath.values()].sort((a, b) => b.calls - a.calls).slice(0, 20),
+      recent: rows.slice(0, 40),
     };
   });
 

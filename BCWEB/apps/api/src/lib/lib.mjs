@@ -539,6 +539,12 @@ export function apiAuth(scope) {
     // caused it. A key repeatedly asking for a scope it does not hold is precisely what an
     // admin needs to see, and it is the one call that would otherwise be invisible.
     req.apiKey = { id: key.id, scopes: key.scopes, userId: key.userId };
+    // Flagged as a sandbox call BEFORE the scope check, not after it. A console request that
+    // is refused for a missing scope is still a console request: recorded the other way round
+    // it landed in the real error rate (an experiment reading as an incident) and never
+    // appeared in the sandbox view — which exists precisely to show which endpoints turn
+    // people away. The simulated ANSWER still comes after every check, further down.
+    if (req.method !== 'GET' && String(req.headers['x-bcw-sandbox'] || '') === '1') req.sandbox = true;
     if (scope && !hasScope(key, scope)) {
       return reply.code(403).send({ error: 'insufficient_scope', required: scope, granted: key.scopes });
     }
@@ -557,8 +563,7 @@ export function apiAuth(scope) {
     //
     // Only writes are simulated. A GET changes nothing by definition, and showing somebody
     // fabricated data would make the console worse than useless for the thing it is for.
-    if (req.method !== 'GET' && String(req.headers['x-bcw-sandbox'] || '') === '1') {
-      req.sandbox = true;
+    if (req.sandbox) {
       return reply.code(200).send({
         sandbox: true,
         method: req.method,

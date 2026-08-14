@@ -31,10 +31,12 @@ export function recordApiCall({ keyId, userId, method, path, status, ms, ip, san
   try {
     const day = dayKey(new Date());
     const k = `${keyId || ''}|${userId || ''}|${day}`;
-    const row = counts.get(k) || { keyId: keyId || null, userId: userId || '', day, count: 0, errors: 0 };
+    const row = counts.get(k) || { keyId: keyId || null, userId: userId || '', day, count: 0, errors: 0, sandbox: 0 };
     // Sandbox calls are NOT counted in the per-day usage: that number answers "how much is
-    // this key really being used", and a demo click is not use.
-    if (!sandbox) { row.count += 1; if (status >= 400) row.errors += 1; }
+    // this key really being used", and a demo click is not use. They get their own tally so
+    // the chart can still show that somebody is learning the API rather than showing zero.
+    if (sandbox) row.sandbox += 1;
+    else { row.count += 1; if (status >= 400) row.errors += 1; }
     counts.set(k, row);
 
     // Errors are always sampled, whatever the rate. The rate exists to keep the volume of
@@ -96,8 +98,8 @@ export async function flushApiUsage() {
     // once: whoever loses the race increments instead of overwriting.
     await p.apiUsageDay.upsert({
       where: { keyId_day: { keyId: c.keyId, day: new Date(`${c.day}T00:00:00.000Z`) } },
-      create: { keyId: c.keyId, userId: c.userId, day: new Date(`${c.day}T00:00:00.000Z`), count: c.count, errors: c.errors },
-      update: { count: { increment: c.count }, errors: { increment: c.errors } },
+      create: { keyId: c.keyId, userId: c.userId, day: new Date(`${c.day}T00:00:00.000Z`), count: c.count, errors: c.errors, sandbox: c.sandbox },
+      update: { count: { increment: c.count }, errors: { increment: c.errors }, sandbox: { increment: c.sandbox } },
     }).catch(() => {});
   }
   if (pendingSamples.length) await p.apiRequest.createMany({ data: pendingSamples }).catch(() => {});
