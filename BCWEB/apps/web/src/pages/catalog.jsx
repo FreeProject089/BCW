@@ -7,7 +7,7 @@ import { Button, Card, Badge, Input, Select, PageHeader, EmptyState, Modal, useT
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import FeedLink from '../ui/feed-link.jsx';
-import { useAsync, Loading, KIND_ICON, KIND_LABEL } from './pages.jsx';
+import { useAsync, Loading, KIND_ICON, kindLabel } from './pages.jsx';
 
 /* ─────────────────────────  Catalog  ───────────────────────── */
 const SORTS = [['recent', 'Newest'], ['popular', 'Most popular'], ['month', 'Popular this month'], ['views', 'Most viewed']];
@@ -53,11 +53,14 @@ export function Catalog() {
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
             <Input className="!pl-9" placeholder={t('cat.search', 'Search mods, plugins, themes & presets…')} defaultValue={q} onKeyDown={(e) => e.key === 'Enter' && set('q', e.target.value)} />
           </div>
-          {/* Kinds are project-scoped: presets are a BSM thing; BMM has apps/plugins/themes. */}
+          {/* Kinds are project-scoped. PRESET is BOTH a BSM audio preset and a BMM scheduler
+              automation — one enum value, two meanings, separated by the project. The comment
+              here used to say presets were "a BSM thing", which is how BMM ended up unable to
+              browse its own. kindLabel() is what keeps the word honest on screen. */}
           <div className="flex gap-1.5 flex-wrap">
-            {(project === 'bsm' ? ['', 'PRESET'] : project === 'bmm' ? ['', 'APP', 'PLUGIN', 'THEME'] : ['', 'APP', 'PLUGIN', 'THEME', 'PRESET']).map((k) => {
+            {(project === 'bsm' ? ['', 'PRESET'] : ['', 'APP', 'PLUGIN', 'THEME', 'PRESET']).map((k) => {
               const I = k ? (KIND_ICON[k] || Package) : Package;
-              return <button key={k} onClick={() => set('kind', k)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${kind === k ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary-2)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}><I size={14} /> {k ? (KIND_LABEL[k] || k) : t('cat.all', 'All')}</button>;
+              return <button key={k} onClick={() => set('kind', k)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${kind === k ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary-2)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}><I size={14} /> {k ? kindLabel(k, project) : t('cat.all', 'All')}</button>;
             })}
           </div>
         </div>

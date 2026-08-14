@@ -237,6 +237,7 @@ model User {
   // relation would make both unanswerable.
   sanctions        Sanction[] @relation("SanctionTarget")
   sanctionsIssued  Sanction[] @relation("SanctionIssuer")
+  sanctionEvidence SanctionAttachment[] @relation("SanctionAttachmentAuthor")
   pendingDismissals PendingDismissal[]
   webhooks         WebhookEndpoint[]
 }
@@ -747,6 +748,11 @@ model CommunityCatalog {
   @@index([ownerId])
   @@index([status, listed])
   @@index([deleteAt])
+  /// Declared late. The 20260814380000_catalog_project migration created this index in raw
+  /// SQL without adding it here, so the schema and the migration history disagreed — and
+  /// the next `migrate diff` proposed DROPPING it, because a diff believes the schema. It
+  /// backs the `?app=` filter on the catalogue feeds, which is the query it was added for.
+  @@index([projectId])
 }
 
 // One item in a "managed" community catalog (payloads on our storage). Raw catalogs
@@ -1222,10 +1228,62 @@ model Sanction {
   /// offer to take them out again can name them when the suspension ends.
   meta        Json?
 
+  /// Filed away, not deleted. A sanction is a record of a decision about a person, so it must
+  /// never be removable — but a moderation list that shows every settled case from three years
+  /// ago is a list nobody reads, and an unread list is how an open contest gets missed.
+  /// Archiving hides a row from the default view and changes nothing else. An ACTIVE sanction
+  /// cannot be archived: that would take a decision still in force out of sight.
+  archivedAt   DateTime?
+  archivedById String?
+
+  /// Every edit, oldest first: { at, byId, field, from, to }. A sanction's reason is quoted in
+  /// the e-mail the person received and in any contest they file, so changing it silently
+  /// would leave them holding a document that no longer matches the record. Editable, but not
+  /// quietly.
+  edits        Json?
+
+  attachments  SanctionAttachment[]
+
   @@index([userId, issuedAt])
   @@index([status, expiresAt])
   @@index([targetType, targetId])
   @@index([reportId])
+  @@index([archivedAt])
+}
+
+/// Evidence attached to a sanction: a screenshot, a recording, a link, a file.
+///
+/// A separate table rather than a Json array on Sanction, because these are uploaded objects
+/// with a lifetime — deleting one has to delete the stored blob, and a row makes that an
+/// ordinary cascade instead of something the application has to remember.
+///
+/// Staff-only. Nothing here is served to the person the sanction is about: a report's evidence
+/// routinely names the account that filed it, and handing that over on request would make
+/// reporting unsafe. Whether a redacted subset should reach a contest is a policy question, and
+/// the honest default is to answer it deliberately rather than by leaving the field public.
+model SanctionAttachment {
+  id         String   @id @default(cuid())
+  sanction   Sanction @relation(fields: [sanctionId], references: [id], onDelete: Cascade)
+  sanctionId String
+
+  /// image · video · file · link
+  kind       String
+  /// For an uploaded object: its key in storage. Null for a link.
+  storageKey String?
+  /// For a link: the address. Null for an upload.
+  url        String?
+  /// Original filename, or the label a moderator gave the link.
+  name       String
+  mime       String?
+  bytes      Int      @default(0)
+  /// Why this is here. Evidence with no note is evidence the next moderator has to re-derive.
+  note       String?
+
+  addedBy    User?    @relation("SanctionAttachmentAuthor", fields: [addedById], references: [id], onDelete: SetNull)
+  addedById  String?
+  createdAt  DateTime @default(now())
+
+  @@index([sanctionId, createdAt])
 }
 
 /// A row somebody has dealt with, or does not want to look at, in the "Needs attention" list.

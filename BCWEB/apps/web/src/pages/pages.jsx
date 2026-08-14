@@ -104,6 +104,21 @@ export function useElementWidth(fallback = 760) {
 }
 export const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson };
 export const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset' };
+
+/**
+ * A kind's name, for a project.
+ *
+ * PRESET is two different things wearing one enum value. For BSM it is an audio preset;
+ * for BMM it is a scheduler automation — a `.bmmpa` file that can run scripts. They share
+ * `kind=PRESET` and are told apart by the project, which is fine for storage and actively
+ * misleading on screen: "Preset" on a BMM page reads as a harmless settings bundle, which
+ * is the wrong intuition about a file that asks for permission to run PowerShell.
+ *
+ * Use this anywhere a kind is shown to a person. KIND_LABEL stays for the project-agnostic
+ * places (an admin table spanning every project has no single right answer).
+ */
+export const kindLabel = (kind, project) =>
+  (kind === 'PRESET' && project === 'bmm') ? 'Automation' : (KIND_LABEL[kind] || kind);
 export const statusTone = (s) => s === 'PUBLISHED' ? 'green' : (s === 'REJECTED' || s === 'SUSPENDED') ? 'red' : 'amber';
 export const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> Loading…</div>;
 

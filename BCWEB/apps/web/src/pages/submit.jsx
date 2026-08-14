@@ -6,9 +6,15 @@ import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
 import { api, uploadPayload } from '../lib/api.js';
+import { kindLabel } from './pages.jsx';
 
-const KINDS = { bmm: ['APP', 'PLUGIN', 'THEME'], bsm: ['PRESET'] };
-const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset' };
+// BMM publishes automations as PRESET too — the same enum value BSM uses for an audio
+// preset, told apart by the project. Leaving it out of this list meant a BMM user had no
+// way to submit one at all, while BMM itself has read preset catalogs for a while.
+const KINDS = { bmm: ['APP', 'PLUGIN', 'THEME', 'PRESET'], bsm: ['PRESET'] };
+// A local copy of the kind labels used to live here, which meant a BMM submission was
+// offered as "Preset" — the BSM word for a settings bundle — for a file that can ask to
+// run PowerShell. kindLabel() is project-aware and shared, so the two screens cannot drift.
 const MAX_UPLOAD = 100 * 1024 * 1024; // 100MB — larger files go through the contact page
 
 // Minimal JSON textarea (mirrors the dashboard's editor) — used for the "advanced" panel.
@@ -126,7 +132,7 @@ function OfficialSubmit({ onBack }) {
             {bulk.entries.map((e, i) => (
               <label key={i} className="flex items-center gap-3 p-2.5 rounded-xl border border-[var(--line)] cursor-pointer">
                 <input type="checkbox" checked={e._skip !== true} onChange={(ev) => setBulk((b) => ({ entries: b.entries.map((x, j) => j === i ? { ...x, _skip: !ev.target.checked } : x) }))} />
-                <Badge tone="">{KIND_LABEL[e.kind]}</Badge>
+                <Badge tone="">{kindLabel(e.kind, projectKey)}</Badge>
                 <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{e.name}</div><div className="text-xs text-[var(--faint)] truncate">{e.meta.download_url || t('sub2.nourl', 'no download URL — will be skipped')}</div></div>
               </label>
             ))}
@@ -141,7 +147,7 @@ function OfficialSubmit({ onBack }) {
         <Card className="p-5 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label={t('sub.project', 'Project')}><Select value={projectKey} onChange={(e) => setProjectKey(e.target.value)}><option value="bmm">BMM</option><option value="bsm">BSM</option></Select></Field>
-            <Field label={t('sub.type', 'Type')}><Select value={kind} onChange={(e) => setKind(e.target.value)}>{kinds.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</Select></Field>
+            <Field label={t('sub.type', 'Type')}><Select value={kind} onChange={(e) => setKind(e.target.value)}>{kinds.map((k) => <option key={k} value={k}>{kindLabel(k, projectKey)}</option>)}</Select></Field>
             <Field label={t('sub.name', 'Name')}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
             <Field label={t('sub.version', 'Version')}><Input value={form.version} onChange={(e) => setForm({ ...form, version: e.target.value })} /></Field>
           </div>

@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { db, requireRole, requireCap, logAudit, notify, hasCap } from '../lib/lib.mjs';
 import { issueSanction, mailSanction, serSanctionForUser, KINDS, TARGET_TYPES } from '../lib/sanctions.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
+import { presignPut, presignGet, deleteObject } from '../lib/storage.mjs';
 
 const SITE_URL = process.env.SITE_URL || 'http://localhost:5176';
 const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -65,6 +66,18 @@ const serForStaff = (s) => ({
   user: s.user ? { id: s.user.id, displayName: s.user.displayName, email: s.user.email } : null,
   issuedBy: s.issuedBy ? { id: s.issuedBy.id, displayName: s.issuedBy.displayName } : null,
   meta: s.meta || null,
+  // An allowlist, not a spread — a field missing here is a field the client never sees,
+  // with a 200 and no error to suggest why.
+  archivedAt: s.archivedAt || null,
+  edits: Array.isArray(s.edits) ? s.edits : [],
+  attachments: (s.attachments || []).map((a) => ({
+    id: a.id, kind: a.kind, name: a.name, url: a.url, mime: a.mime, bytes: a.bytes,
+    note: a.note, createdAt: a.createdAt,
+    // The storage key is deliberately NOT sent. Clients fetch through the download route,
+    // which re-checks the caller is staff; handing out the key would make the object
+    // reachable by anyone who learned it.
+    hasFile: !!a.storageKey,
+  })),
 });
 
 export default async function sanctionRoutes(app) {
@@ -114,7 +127,12 @@ export default async function sanctionRoutes(app) {
     const scope = String(req.query?.scope || '').trim();
     const where = {};
     if (status === 'contested') { where.contestedAt = { not: null }; where.contestOutcome = null; }
+    else if (status === 'archived') where.archivedAt = { not: null };
     else if (status) where.status = status;
+    // Archived rows are OUT of every other view unless asked for by name. A settled case
+    // from three years ago in the default list is why nobody reads the list, and an unread
+    // list is how an open contest gets missed. Nothing is deleted — 'archived' brings it back.
+    if (status !== 'archived') where.archivedAt = null;
     if (kind) where.kind = kind;
     if (scope) where.scope = scope;
     if (q) {
@@ -129,7 +147,13 @@ export default async function sanctionRoutes(app) {
     const [rows, total, openContests] = await Promise.all([
       p.sanction.findMany({
         where, orderBy: { issuedAt: 'desc' }, take: Math.min(Number(req.query?.take) || 50, 200),
-        include: { user: { select: { id: true, displayName: true, email: true } }, issuedBy: { select: { id: true, displayName: true } } },
+        include: {
+          user: { select: { id: true, displayName: true, email: true } },
+          issuedBy: { select: { id: true, displayName: true } },
+          // Loaded, or serForStaff reports every sanction as having no evidence — the same
+          // shape of bug as catalogFingerprint hashing a relation the query never fetched.
+          attachments: { orderBy: { createdAt: 'asc' } },
+        },
       }),
       p.sanction.count({ where }),
       p.sanction.count({ where: { contestedAt: { not: null }, contestOutcome: null } }),
@@ -206,6 +230,223 @@ export default async function sanctionRoutes(app) {
     await notify(p, s.userId, 'account_sanction', `${s.code} has been lifted.${b.data.reason ? ` ${b.data.reason}` : ''}`).catch(() => {});
     await logAudit(p, req.user.uid, 'sanction.lift', `${s.code}${b.data.reason ? ` — ${b.data.reason}` : ''}`, req.ip);
     return { ok: true, sanction: serForStaff({ ...updated, user: null, issuedBy: null }) };
+  });
+
+  // Edit a sanction. Recorded, never silent.
+  //
+  // The reason is quoted in the e-mail the person received and in any contest they filed, so
+  // changing it without a trace leaves them holding a document that no longer matches the
+  // record — and leaves the next moderator unable to tell whether the wording they are
+  // reading is the wording that was sent. Every change appends to `edits`.
+  app.patch('/admin/sanctions/:id', { preHandler: requireCap('manage_users', 'ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      reason: z.string().trim().min(1).max(4000).optional(),
+      request: z.string().trim().max(4000).nullable().optional(),
+      requiresAction: z.boolean().optional(),
+      expiresAt: z.string().datetime().nullable().optional(),
+    }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+
+    const p = await db();
+    const s = await p.sanction.findUnique({ where: { id: req.params.id } });
+    if (!s) return reply.code(404).send({ error: 'not_found' });
+
+    const at = new Date().toISOString();
+    const edits = Array.isArray(s.edits) ? [...s.edits] : [];
+    const data = {};
+    for (const field of ['reason', 'request', 'requiresAction', 'expiresAt']) {
+      if (b.data[field] === undefined) continue;
+      const to = field === 'expiresAt' && b.data[field] ? new Date(b.data[field]) : b.data[field];
+      const from = s[field];
+      // Compared as strings so a Date and its ISO form do not read as a change every time
+      // somebody opens the editor and saves without touching anything.
+      if (String(from ?? '') === String(to ?? '')) continue;
+      data[field] = to;
+      edits.push({ at, byId: req.user.uid, field, from: from ?? null, to: to ?? null });
+    }
+    if (!Object.keys(data).length) return { ok: true, unchanged: true, sanction: serForStaff({ ...s, user: null, issuedBy: null }) };
+
+    data.edits = edits;
+    const updated = await p.sanction.update({
+      where: { id: s.id }, data,
+      include: { attachments: true },
+    });
+    // The person is told. An edited decision they are not told about is a different
+    // decision they are still expected to comply with.
+    await notify(p, s.userId, 'account_sanction', `${s.code} has been updated.`).catch(() => {});
+    await logAudit(p, req.user.uid, 'sanction.edit', `${s.code} — ${Object.keys(data).filter((k) => k !== 'edits').join(', ')}`, req.ip);
+    return { ok: true, sanction: serForStaff({ ...updated, user: null, issuedBy: null }) };
+  });
+
+  // Put a lifted or expired sanction back in force.
+  //
+  // A new row would be the wrong shape: the person already has an e-mail quoting this code,
+  // and a second code for the same decision means two records to reconcile when they contest.
+  // Reinstating keeps one history — the lift stays in `edits`, so "was lifted, then reapplied"
+  // is readable rather than erased.
+  app.post('/admin/sanctions/:id/reapply', { preHandler: requireCap('manage_users', 'ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      reason: z.string().trim().max(1000).optional(),
+      expiresAt: z.string().datetime().nullable().optional(),
+    }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+
+    const p = await db();
+    const s = await p.sanction.findUnique({ where: { id: req.params.id } });
+    if (!s) return reply.code(404).send({ error: 'not_found' });
+    if (s.status === 'active') return reply.code(409).send({ error: 'already_active' });
+    // An overturned contest means somebody decided this was wrong. Re-imposing it silently
+    // through the same button would undo a ruling without answering it; that needs a new
+    // decision, with its own reason, not a reinstatement of the old one.
+    if (s.contestOutcome === 'overturned') return reply.code(409).send({ error: 'contest_overturned' });
+
+    const edits = Array.isArray(s.edits) ? [...s.edits] : [];
+    edits.push({
+      at: new Date().toISOString(), byId: req.user.uid, field: 'status',
+      from: s.status, to: 'active', note: b.data.reason || null,
+    });
+
+    // Content takedowns hid something when they were imposed. Reapplying has to hide it
+    // again, or the record says "in force" while the content is public.
+    if (s.scope === 'content' && s.kind === 'takedown' && s.targetType && s.targetId) {
+      const def = CONTENT[s.targetType];
+      if (def) {
+        await def.model(p).update({ where: { id: s.targetId }, data: def.down }).catch(() => {});
+        if (s.relatedIds?.length) await def.model(p).updateMany({ where: { id: { in: s.relatedIds } }, data: def.down }).catch(() => {});
+      }
+    }
+
+    const updated = await p.sanction.update({
+      where: { id: s.id },
+      data: {
+        status: 'active', liftedAt: null, liftedById: null, liftReason: null,
+        expiresAt: b.data.expiresAt === undefined ? s.expiresAt : (b.data.expiresAt ? new Date(b.data.expiresAt) : null),
+        archivedAt: null, archivedById: null,   // back in force is not "filed away"
+        edits,
+      },
+      include: { attachments: true },
+    });
+    await notify(p, s.userId, 'account_sanction', `${s.code} is in force again.${b.data.reason ? ` ${b.data.reason}` : ''}`).catch(() => {});
+    await logAudit(p, req.user.uid, 'sanction.reapply', `${s.code}${b.data.reason ? ` — ${b.data.reason}` : ''}`, req.ip);
+    return { ok: true, sanction: serForStaff({ ...updated, user: null, issuedBy: null }) };
+  });
+
+  // File it away, or take it back out. Never delete: a sanction is the record of a decision
+  // made about a person, and a record that can be removed is not a record.
+  app.post('/admin/sanctions/:id/archive', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
+    const b = z.object({ archived: z.boolean() }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const s = await p.sanction.findUnique({ where: { id: req.params.id } });
+    if (!s) return reply.code(404).send({ error: 'not_found' });
+    // Refused for an active one. Archiving is "this is settled, stop showing it to me", and
+    // a decision still in force is not settled — filing it away is how it stops being
+    // reviewed while it is still doing something.
+    if (b.data.archived && s.status === 'active') return reply.code(409).send({ error: 'still_active' });
+    // An unanswered contest is somebody waiting for a reply. Hiding it is how they never get one.
+    if (b.data.archived && s.contestedAt && !s.contestOutcome) return reply.code(409).send({ error: 'contest_open' });
+
+    const updated = await p.sanction.update({
+      where: { id: s.id },
+      data: b.data.archived
+        ? { archivedAt: new Date(), archivedById: req.user.uid }
+        : { archivedAt: null, archivedById: null },
+      include: { attachments: true },
+    });
+    await logAudit(p, req.user.uid, b.data.archived ? 'sanction.archive' : 'sanction.unarchive', s.code, req.ip);
+    return { ok: true, sanction: serForStaff({ ...updated, user: null, issuedBy: null }) };
+  });
+
+  // ── Evidence ───────────────────────────────────────────────────────────────────
+  //
+  // Staff-only, in both directions. A report's evidence routinely names the account that
+  // filed it, so serving this to the person the sanction is about would make reporting
+  // unsafe. None of these routes are reachable from /me/sanctions.
+
+  // Presign a direct upload. The key is minted HERE, under a fixed prefix, so a client can
+  // never aim the PUT at another part of the bucket.
+  app.post('/admin/sanctions/:id/evidence/presign', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
+    const b = z.object({
+      filename: z.string().min(1).max(200),
+      contentType: z.string().max(120).optional(),
+    }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const s = await p.sanction.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!s) return reply.code(404).send({ error: 'not_found' });
+    const safeName = b.data.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storageKey = `sanctions/${s.id}/${Date.now()}-${safeName}`;
+    const url = await presignPut(storageKey, b.data.contentType || 'application/octet-stream');
+    return { url, storageKey };
+  });
+
+  // Record an attachment: either a completed upload, or a link.
+  app.post('/admin/sanctions/:id/evidence', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
+    const b = z.object({
+      kind: z.enum(['image', 'video', 'file', 'link']),
+      name: z.string().trim().min(1).max(200),
+      note: z.string().trim().max(2000).optional(),
+      url: z.string().trim().max(2000).optional(),
+      storageKey: z.string().max(300).optional(),
+      mime: z.string().max(120).optional(),
+      bytes: z.number().int().nonnegative().max(2 * 1024 ** 3).optional(),
+    }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const d = b.data;
+
+    // Exactly one of the two. A row with both is ambiguous about where the bytes are, and a
+    // row with neither is an attachment that attaches nothing.
+    if (d.kind === 'link') {
+      if (!d.url || d.storageKey) return reply.code(400).send({ error: 'link_needs_url' });
+      // http(s) only. A `javascript:` or `data:` value here would be rendered as a link on a
+      // staff page, which is a stored-XSS delivery route aimed squarely at moderators.
+      if (!/^https?:\/\//i.test(d.url)) return reply.code(400).send({ error: 'bad_url_scheme' });
+    } else {
+      if (!d.storageKey || d.url) return reply.code(400).send({ error: 'file_needs_key' });
+      // Confined to this sanction's own prefix. Without it, a moderator could attach — and
+      // therefore download through the staff route below — any object in the bucket by
+      // naming its key (CWE-22).
+      if (!d.storageKey.startsWith(`sanctions/${req.params.id}/`) || d.storageKey.includes('..')) {
+        return reply.code(400).send({ error: 'bad_storage_key' });
+      }
+    }
+
+    const p = await db();
+    const s = await p.sanction.findUnique({ where: { id: req.params.id }, select: { id: true, code: true } });
+    if (!s) return reply.code(404).send({ error: 'not_found' });
+    const row = await p.sanctionAttachment.create({
+      data: {
+        sanctionId: s.id, kind: d.kind, name: d.name, note: d.note || null,
+        url: d.kind === 'link' ? d.url : null,
+        storageKey: d.kind === 'link' ? null : d.storageKey,
+        mime: d.mime || null, bytes: d.bytes || 0, addedById: req.user.uid,
+      },
+    });
+    await logAudit(p, req.user.uid, 'sanction.evidence.add', `${s.code} — ${d.kind} ${d.name}`, req.ip);
+    return { ok: true, attachment: { id: row.id, kind: row.kind, name: row.name, url: row.url, mime: row.mime, bytes: row.bytes, note: row.note, createdAt: row.createdAt, hasFile: !!row.storageKey } };
+  });
+
+  // Download one. Goes through the API rather than handing out the storage key, so the
+  // staff check happens on every fetch instead of once when the page was built.
+  app.get('/admin/sanctions/:id/evidence/:aid', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
+    const p = await db();
+    const a = await p.sanctionAttachment.findUnique({ where: { id: req.params.aid } });
+    if (!a || a.sanctionId !== req.params.id) return reply.code(404).send({ error: 'not_found' });
+    if (!a.storageKey) return reply.code(409).send({ error: 'is_a_link', url: a.url });
+    const url = await presignGet(a.storageKey, 120);
+    return { url };
+  });
+
+  app.delete('/admin/sanctions/:id/evidence/:aid', { preHandler: requireCap('manage_users', 'ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const a = await p.sanctionAttachment.findUnique({ where: { id: req.params.aid }, include: { sanction: { select: { code: true } } } });
+    if (!a || a.sanctionId !== req.params.id) return reply.code(404).send({ error: 'not_found' });
+    // The blob goes with the row. A stored object nothing references is one nobody will ever
+    // find to delete, and this bucket holds evidence about real people.
+    if (a.storageKey) await deleteObject(a.storageKey).catch(() => {});
+    await p.sanctionAttachment.delete({ where: { id: a.id } });
+    await logAudit(p, req.user.uid, 'sanction.evidence.remove', `${a.sanction?.code || a.sanctionId} — ${a.name}`, req.ip);
+    return { ok: true };
   });
 
   // Answer a contest. Overturning lifts it in the same breath — an answer that says "you were
