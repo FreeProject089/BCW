@@ -6,7 +6,7 @@ import {
 import { Button, Card, Badge, Input, Select, PageHeader, EmptyState, Modal, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import FeedLink from '../ui/feed-link.jsx';
+import FeedLink, { FeedMenu } from '../ui/feed-link.jsx';
 import { useAsync, Loading, KIND_ICON, kindLabel } from './pages.jsx';
 
 /* ─────────────────────────  Catalog  ───────────────────────── */
@@ -36,8 +36,13 @@ export function Catalog() {
   return (
     <div>
       <PageHeader icon={Package} title={`${t('cat.title', 'Catalog')}${project ? ` · ${project.toUpperCase()}` : ''}`} subtitle={t('cat.sub', 'Community apps, plugins, themes and presets.')}
-        actions={<FeedLink path={feedPath} label={t('cat.feed', 'This list as JSON')}
-          hint={t('cat.feed.h', 'The exact list you are looking at, as the feed BMM reads. Copy it into BMM → add a source.')} />} />
+        actions={<div className="flex items-center gap-2 flex-wrap">
+          <FeedLink path={feedPath} label={t('cat.feed', 'This list as JSON')}
+            hint={t('cat.feed.h', 'The exact list you are looking at, as the feed BMM reads. Copy it into BMM → add a source.')} />
+          {/* Beside it, not instead of it: one is this list, the other is the standing
+              address that keeps being right when new catalogues appear. */}
+          <FeedMenu project={project} kind={kind} />
+        </div>} />
       {/* Filter bar: project switcher · search · kind pills · sort — grouped into one
           tidy card instead of a loose flex row. */}
       <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-5 space-y-3">
