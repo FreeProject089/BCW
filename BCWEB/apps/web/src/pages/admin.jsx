@@ -1224,6 +1224,51 @@ function AdminServerPerf() {
   };
   // Only blank to a spinner on the FIRST load — during the 30s background refresh keep
   // showing the current data (otherwise the whole tab flashes empty every 30s).
+  // The two histories, merged into one list.
+  //
+  // They come from different places and mean different things — a gap in our own samples is
+  // the server itself being gone, a ServiceOutage row is one dependency refusing — but to
+  // whoever was turned away they are the same event, so they are read as one list and the
+  // row says which kind it is. Sorted newest first, because the question is almost always
+  // "what just happened".
+  const fmtDur = (sec) => (sec < 90 ? `${Math.round(sec)}s` : sec < 5400 ? `${Math.round(sec / 60)} min` : `${(sec / 3600).toFixed(1)} h`);
+  const mergedOutages = useMemo(() => {
+    const dt = data?.downtime || [];
+    const dep = (outages.data?.outages || []).map((o) => ({
+      key: `d-${o.id}`, source: 'dep', label: o.label, cause: o.cause,
+      startedAt: o.startedAt, endedAt: o.endedAt, seconds: o.seconds, ongoing: o.ongoing,
+    }));
+    const srv = dt.map((d, i) => ({
+      key: `s-${i}-${d.from}`, source: 'server',
+      label: t('sp.out.server', 'The server'),
+      cause: t('sp.out.server.cause', 'No sample was recorded for this period — the process was down or restarting.'),
+      startedAt: d.from, endedAt: d.to, seconds: (d.minutes || 0) * 60, ongoing: false,
+    }));
+    return [...dep, ...srv].sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
+  }, [outages.data, data?.downtime, t]);
+
+  // Availability per source over the same window the outages were fetched for. The server's
+  // own row is computed from the same gaps, so the two numbers are comparable.
+  const uptimeRows = useMemo(() => {
+    const days = outages.data?.days || 30;
+    const windowSec = days * 86400;
+    const rows = (outages.data?.uptime || []).map((u) => ({ key: u.dep, label: u.label, pct: u.pct, downSeconds: u.downSeconds }));
+    const srvDown = (data?.downtime || []).reduce((n, d) => n + (d.minutes || 0) * 60, 0);
+    if (srvDown) {
+      rows.push({
+        key: '__server', label: t('sp.out.server', 'The server'),
+        downSeconds: srvDown, pct: Math.max(0, Math.round((1 - srvDown / windowSec) * 10000) / 100),
+      });
+    }
+    return rows.sort((a, b) => b.downSeconds - a.downSeconds);
+  }, [outages.data, data?.downtime, t]);
+
+  const outageLine = (o) => `${o.label} — ${fmtDur(o.seconds)} — ${new Date(o.startedAt).toLocaleString()}${o.endedAt ? ` → ${new Date(o.endedAt).toLocaleString()}` : ' → still down'}${o.cause ? ` — ${o.cause}` : ''}`;
+  const copyOutages = async () => {
+    const ok = await copyText([`BetterCommunity outage history`, `exported: ${new Date().toISOString()}`, '', ...mergedOutages.map(outageLine)].join('\n'));
+    ok ? toast.success(t('common.copied', 'Copied.')) : toast.error(t('sp.al.copyfail', 'Could not copy — select the rows manually.'));
+  };
+
   if (loading && !data) return <Loading />;
   const latest = data?.latest;
   const deps = data?.deps || {};
@@ -1435,41 +1480,6 @@ function AdminServerPerf() {
         </Card>
       </div>
 
-      {downtime.length > 0 && (
-        <Card className="p-4 mb-4">
-          <button onClick={() => toggleSec('downtime')} className="w-full flex items-center justify-between text-left mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><AlertTriangle size={11} /> {t('sp.downtime', 'Downtime history')} <span className="text-[var(--muted)] normal-case tracking-normal">· {downtime.length}</span></span>
-            <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.downtime ? '' : '-rotate-90'}`} />
-          </button>
-          {sec.downtime && <>
-          <div className="flex items-start justify-between gap-2 mb-3">
-            <p className="text-[11px] text-[var(--faint)]">{t('sp.downtime.note', 'Periods where the server stopped reporting — i.e. it was most likely down or restarting.')}</p>
-            <Button size="sm" variant="ghost" className="shrink-0" onClick={() => { navigator.clipboard?.writeText(downtime.map((d) => `${new Date(d.from).toLocaleString()} → ${new Date(d.to).toLocaleString()} (${d.minutes} min)`).join('\n')); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /> {t('sp.al.copyall', 'Copy all')}</Button>
-          </div>
-          <div className="space-y-2">
-            {downtime.map((d, i) => {
-              const dur = d.minutes >= 90 ? `${(d.minutes / 60).toFixed(1)} h` : `~${d.minutes} min`;
-              const from = new Date(d.from); const to = new Date(d.to);
-              const sameDay = from.toDateString() === to.toDateString();
-              const time = (x) => x.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-              const day = (x) => x.toLocaleDateString([], { day: 'numeric', month: 'short' });
-              return (
-                <div key={i} className="flex items-center gap-3 text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 group">
-                  <Badge tone={d.minutes >= 60 ? 'red' : 'amber'} className="shrink-0 tabular-nums">{dur}</Badge>
-                  <span className="text-[var(--muted)] min-w-0 flex-1 truncate">
-                    {sameDay
-                      ? <>{day(from)} · <span className="tabular-nums">{time(from)} → {time(to)}</span></>
-                      : <span className="tabular-nums">{day(from)} {time(from)} → {day(to)} {time(to)}</span>}
-                  </span>
-                  <span className="text-[11px] text-[var(--faint)] shrink-0 tabular-nums hidden sm:inline">{d.minutes} min · {from.getFullYear()}</span>
-                  <button onClick={() => { navigator.clipboard?.writeText(`${from.toLocaleString()} → ${to.toLocaleString()} (${d.minutes} min)`); toast.success(t('common.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0 opacity-0 group-hover:opacity-100 transition" title={t('common.copy', 'Copy')}><Copy size={12} /></button>
-                </div>
-              );
-            })}
-          </div>
-          </>}
-        </Card>
-      )}
 
       {/* The thresholds those alerts fire on, right above the alerts themselves — you
           read the list, then change what produced it. */}
@@ -1522,44 +1532,82 @@ function AdminServerPerf() {
         })())}
       </div>
 
-      <div className="mt-8 pt-6 border-t border-[var(--line)]">
+      {/* One outage history, not two.
+          There were two sections answering "when was it broken", from different sources and
+          disagreeing about what an outage even is: the gaps in our own sampling (the server
+          itself was down or restarting) and the periods a dependency was unreachable. Both
+          are outages to whoever was refused, so they are one list — with the source named on
+          each row, because "the database was unreachable for 8 minutes" and "the whole
+          process was gone for 10 hours" call for very different reactions.
+          A Card, like everything else on this page: a bare div ignores the translucent-
+          surfaces setting and reads as loose text rather than as a panel. */}
+      <Card className="p-4 mt-4">
         <button onClick={() => toggleSec('outages')} className="w-full flex items-center justify-between text-left mb-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">
-            {t('sp.out.title', 'Outage history')}
-            {(outages.data?.outages || []).some((o) => o.ongoing) && <span className="text-error normal-case tracking-normal">· {t('sp.out.ongoing', 'one is ongoing')}</span>}
-          </h3>
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">
+            <AlertTriangle size={11} /> {t('sp.out.title', 'Outage history')}
+            {mergedOutages.length > 0 && <span className="text-[var(--muted)] normal-case tracking-normal">· {mergedOutages.length}</span>}
+            {mergedOutages.some((o) => o.ongoing) && <span className="text-error normal-case tracking-normal">· {t('sp.out.ongoing', 'one is ongoing')}</span>}
+          </span>
           <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.outages ? '' : '-rotate-90'}`} />
         </button>
-        {sec.outages && (outages.loading ? <Loading /> : (() => {
-          const list = outages.data?.outages || [];
-          if (!list.length) return <EmptyState icon={CheckCircle2} title={t('sp.out.none', 'No outage recorded')} sub={t('sp.out.nonesub', 'Nothing has been unreachable in the last 30 days. An outage is opened the first tick a dependency fails and closed the tick it answers again.')} />;
-          const dur = (sec_) => (sec_ < 90 ? `${sec_}s` : sec_ < 5400 ? `${Math.round(sec_ / 60)} min` : `${(sec_ / 3600).toFixed(1)} h`);
-          return (<>
-            {(outages.data?.uptime || []).length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {outages.data.uptime.map((u) => (
-                  <span key={u.dep} className="text-[11px] px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]">
-                    {u.label} · <b>{u.pct}%</b> <span className="text-[var(--faint)]">({dur(u.downSeconds)} {t('sp.out.down', 'down')})</span>
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className="space-y-1.5 max-h-80 overflow-auto pr-1 -mr-1">
-              {list.map((o) => (
-                <div key={o.id} className="flex items-start gap-2.5 px-3 py-2 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]">
-                  <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${o.ongoing ? 'bg-error' : 'bg-[var(--faint)]'}`} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[13px]">{o.label} · <span className={o.ongoing ? 'text-error' : 'text-[var(--muted)]'}>{o.ongoing ? t('sp.out.still', 'still down, {d} so far').replace('{d}', dur(o.seconds)) : dur(o.seconds)}</span></div>
-                    {o.cause && <div className="text-[11px] text-[var(--muted)] break-words">{o.cause}</div>}
-                    <div className="text-[11px] text-[var(--faint)]">{new Date(o.startedAt).toLocaleString()}{o.endedAt ? ` → ${new Date(o.endedAt).toLocaleTimeString()}` : ''}</div>
-                  </div>
-                </div>
+        {sec.outages && (outages.loading && !outages.data ? <Loading /> : !mergedOutages.length ? (
+          <EmptyState icon={CheckCircle2} title={t('sp.out.none', 'No outage recorded')}
+            sub={t('sp.out.nonesub2', 'Nothing has been unreachable, and the server has not stopped reporting, in the window kept. Both are measured by the same 10-minute check that raises the alerts — anything shorter than one interval is invisible to it.')} />
+        ) : (<>
+          {/* Availability per source, including the server itself. A percentage without the
+              time behind it is a number you cannot argue with, so both are shown. */}
+          {uptimeRows.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {uptimeRows.map((u) => (
+                <span key={u.key} className="text-[11px] px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]">
+                  {u.label} · <b className={u.pct < 99 ? 'text-warning' : ''}>{u.pct}%</b>{' '}
+                  <span className="text-[var(--faint)]">({fmtDur(u.downSeconds)} {t('sp.out.down', 'down')})</span>
+                </span>
               ))}
             </div>
-            <p className="text-[11px] text-[var(--muted)] mt-2">{t('sp.out.s', 'Windows when a dependency was unreachable, measured by the same 10-minute check that raises the alerts — so a shorter blip between two ticks is not visible here.')}</p>
-          </>);
-        })())}
-      </div>
+          )}
+
+          <div className="flex justify-end mb-1.5">
+            <Button size="sm" variant="ghost" onClick={copyOutages}><Copy size={12} /> {t('sp.al.copyall', 'Copy all')}</Button>
+          </div>
+
+          <div className="space-y-1.5 max-h-96 overflow-auto pr-1 -mr-1">
+            {mergedOutages.map((o) => {
+              const from = new Date(o.startedAt);
+              const to = o.endedAt ? new Date(o.endedAt) : null;
+              const sameDay = to && from.toDateString() === to.toDateString();
+              const time = (x) => x.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const day = (x) => x.toLocaleDateString([], { day: 'numeric', month: 'short' });
+              return (
+                <div key={o.key} className="flex items-start gap-3 text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 group">
+                  <Badge tone={o.ongoing ? 'red' : o.seconds >= 3600 ? 'red' : 'amber'} className="shrink-0 tabular-nums mt-0.5">{fmtDur(o.seconds)}</Badge>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-medium">{o.label}</span>
+                      {/* The source, said plainly: one of these means the box fell over. */}
+                      <span className="text-[10px] uppercase tracking-wider text-[var(--faint)]">
+                        {o.source === 'server' ? t('sp.out.src.server', 'stopped reporting') : t('sp.out.src.dep', 'unreachable')}
+                      </span>
+                      {o.ongoing && <span className="text-[10px] uppercase tracking-wider text-error">{t('sp.out.stillnow', 'still down')}</span>}
+                    </div>
+                    {o.cause && <div className="text-[11px] text-[var(--muted)] break-words">{o.cause}</div>}
+                    <div className="text-[11px] text-[var(--faint)] tabular-nums">
+                      {sameDay
+                        ? <>{day(from)} · {time(from)} → {time(to)}</>
+                        : to ? <>{day(from)} {time(from)} → {day(to)} {time(to)}</> : <>{day(from)} {time(from)} → …</>}
+                      {' · '}{from.getFullYear()}
+                    </div>
+                  </div>
+                  <button onClick={() => { copyText(outageLine(o)); toast.success(t('common.copied', 'Copied.')); }}
+                    className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0 opacity-0 group-hover:opacity-100 transition mt-0.5"
+                    title={t('common.copy', 'Copy')}><Copy size={12} /></button>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-[var(--muted)] mt-2">{t('sp.out.s2', 'A dependency outage is measured by the 10-minute dependency check; a “stopped reporting” one is a gap in our own samples, which is what being down looks like from the inside. Neither can see an incident shorter than one interval.')}</p>
+        </>))}
+      </Card>
 
       {/* Real-user Web Vitals — moved here from the Site-analytics tab so all
           performance (server-side + client-side) lives on one Server-perf tab.
