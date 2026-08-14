@@ -289,7 +289,7 @@ export function Admin() {
         {s === 'kofi' && <AdminKofi />}
         {s === 'events' && <AdminEvents />}
         {s === 'myo' && <AdminMyo />}
-        {s === 'sso' && <AdminOAuthClients />}
+        {s === 'sso' && <AdminSso />}
         {s === 'api' && <AdminApi />}
         {s === 'polls' && <AdminPolls />}
         {s === 'storage' && <AdminStorage />}
@@ -3393,6 +3393,174 @@ function UserPasswordCard({ user }) {
   );
 }
 
+// Everything else we hold about one account, loaded only when asked for.
+//
+// Lazy per panel, and each one tolerates its own 403: the four datasets belong to four
+// different capabilities (manage_api, manage_polls, ADMIN for SSO and history), and a
+// moderator with none of them should get a clear "not yours to see" rather than a modal
+// that fails to open. The alternative — gating the whole panel on ADMIN — would hide the
+// three panels a moderator IS allowed to read.
+function UserExtras({ userId }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [tab, setTab] = useState('');
+  const [cache, setCache] = useState({}); // tab -> { data } | { denied: true } | { error: true }
+  const [busy, setBusy] = useState(false);
+
+  const URLS = {
+    sso: `/admin/sso/users/${userId}`,
+    api: `/admin/api/users/${userId}`,
+    polls: `/admin/polls/users/${userId}`,
+    // `sources` empty = every source. Passing a word like "all" matches no key and
+    // silently returns an empty history, which reads as "this person did nothing".
+    history: `/admin/history?days=365&take=60&skip=0&sources=&actorId=${encodeURIComponent(userId)}`,
+  };
+
+  const open = async (k) => {
+    setTab(tab === k ? '' : k);
+    if (cache[k] || tab === k) return;
+    setBusy(true);
+    try {
+      const data = await api.get(URLS[k]);
+      setCache((c) => ({ ...c, [k]: { data } }));
+    } catch (x) {
+      const denied = x?.status === 403 || x?.data?.error === 'missing_permission';
+      setCache((c) => ({ ...c, [k]: denied ? { denied: true } : { error: true } }));
+    } finally { setBusy(false); }
+  };
+
+  const revokeGrant = async (g) => {
+    if (!await dialog.confirm({
+      title: t('ud.sso.revoke.t', 'Cut this connection?'),
+      message: t('ud.sso.revoke.m', '“{n}” loses its access immediately, and its live sessions for this account are revoked too. Signing in there again will ask this person for permission afresh — they are notified, so an unexplained re-prompt does not read as a bug in that app.').replace('{n}', g.client.name),
+      okLabel: t('ud.sso.revoke.ok', 'Cut it'), danger: true,
+    })) return;
+    try {
+      await api.del(`/admin/sso/grants/${userId}/${g.clientId}`);
+      toast.success(t('ud.sso.revoked', 'Connection removed.'));
+      // Refetched rather than patched locally: the token count is the server's answer, and
+      // a panel that says "0 live" because we decremented it is a panel that can be wrong.
+      const fresh = await api.get(URLS.sso);
+      setCache((c) => ({ ...c, sso: { data: fresh } }));
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+
+  const state = cache[tab];
+  const TABS = [
+    ['sso', t('ud.x.sso', 'SSO'), Shield],
+    ['api', t('ud.x.api', 'API usage'), KeyRound],
+    ['polls', t('ud.x.polls', 'Polls'), BarChart3],
+    ['history', t('ud.x.history', 'History'), History],
+  ];
+
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5">
+        <Layers size={12} /> {t('ud.x.more', 'Everything else')}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {TABS.map(([k, label, Icon]) => (
+          <Button key={k} size="sm" variant={tab === k ? 'primary' : 'ghost'} onClick={() => open(k)}>
+            <Icon size={13} /> {label}
+          </Button>
+        ))}
+      </div>
+
+      {tab && (
+        <div className="mt-2 rounded-lg border border-[var(--line)] p-3">
+          {busy && !state ? <Spinner />
+            : state?.denied ? <div className="text-[12px] text-[var(--muted)]">{t('ud.x.denied', 'Your role does not include this one.')}</div>
+            : state?.error ? <div className="text-[12px] text-[var(--muted)]">{t('common.failed', 'Failed.')}</div>
+            : !state ? null
+            : tab === 'sso' ? (
+              <>
+                {/* The two halves are labelled, because they point in opposite directions:
+                    one is how this person signs in HERE, the other is what they signed in TO
+                    with this account. Merging them is how somebody revokes the wrong thing. */}
+                <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('ud.sso.in', 'Signs in here with')}</div>
+                {(state.data.signInLinks || []).length || state.data.discord ? (
+                  <div className="space-y-1 mb-3">
+                    {(state.data.signInLinks || []).map((l) => (
+                      <div key={l.provider + l.providerAccountId} className="flex items-center gap-2 text-[13px] px-2 py-1 rounded bg-[var(--surface-2)]">
+                        <span className="capitalize">{l.provider}</span>
+                        <span className="text-[var(--muted)] truncate flex-1">{l.username || l.providerAccountId}</span>
+                        <span className="text-[10px] text-[var(--faint)]">{new Date(l.linkedAt).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                    {state.data.discord && (
+                      <div className="flex items-center gap-2 text-[13px] px-2 py-1 rounded bg-[var(--surface-2)]">
+                        <span>Discord</span>
+                        <span className="text-[var(--muted)] truncate flex-1">{state.data.discord.username || state.data.discord.discordId}</span>
+                        <span className="text-[10px] text-[var(--faint)]">{new Date(state.data.discord.linkedAt).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : <div className="text-[12px] text-[var(--faint)] mb-3">{t('ud.sso.noin', 'Password only — no social sign-in linked.')}</div>}
+
+                <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('ud.sso.out', 'Apps this account signs in to')}</div>
+                {(state.data.grants || []).length ? (
+                  <div className="space-y-1">
+                    {state.data.grants.map((g) => (
+                      <div key={g.clientId} className="flex items-center gap-2 text-[13px] px-2 py-1 rounded bg-[var(--surface-2)]">
+                        <span className="truncate flex-1">
+                          {g.client.name}
+                          <span className="text-[10px] text-[var(--faint)] ml-1.5">{g.scope}</span>
+                        </span>
+                        {g.activeTokens > 0 && <Badge tone="green">{t('ud.sso.live', '{n} live').replace('{n}', String(g.activeTokens))}</Badge>}
+                        <Button size="sm" variant="ghost" onClick={() => revokeGrant(g)} title={t('ud.sso.revoke.ok', 'Cut it')}><Ban size={12} className="text-[var(--error)]" /></Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : <div className="text-[12px] text-[var(--faint)]">{t('ud.sso.noout', 'Has not signed in to any app with this account.')}</div>}
+              </>
+            ) : tab === 'api' ? (
+              <>
+                <div className="text-[13px] mb-2">
+                  {t('ud.api.total', '{n} calls recorded, across {k} key(s).')
+                    .replace('{n}', String(state.data.totalCalls || 0)).replace('{k}', String((state.data.keys || []).length))}
+                </div>
+                {(state.data.usage || []).length ? (
+                  <div className="space-y-0.5 max-h-40 overflow-y-auto">
+                    {state.data.usage.map((d) => (
+                      <div key={d.day} className="flex items-center gap-2 text-[12px]">
+                        <span className="text-[var(--faint)] w-20 shrink-0">{d.day}</span>
+                        <span className="tabular-nums flex-1">{d.count}</span>
+                        {d.errors > 0 && <span className="text-warning tabular-nums text-[11px]">{d.errors} {t('aapi.errs', 'errors')}</span>}
+                      </div>
+                    ))}
+                  </div>
+                ) : <div className="text-[12px] text-[var(--faint)]">{t('ud.api.none', 'No API call recorded for this account.')}</div>}
+              </>
+            ) : tab === 'polls' ? (
+              (state.data.votes || []).length ? (
+                <div className="space-y-1 max-h-52 overflow-y-auto">
+                  {state.data.votes.map((v) => (
+                    <div key={v.id} className="text-[12px] flex items-center gap-2">
+                      <span className="truncate flex-1">{v.poll.question}</span>
+                      <span className="text-[var(--muted)] truncate shrink-0">{v.option.label}</span>
+                      <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(v.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : <div className="text-[12px] text-[var(--faint)]">{t('ud.polls.none', 'Has not answered any poll.')}</div>
+            ) : (
+              (state.data.entries || []).length ? (
+                <div className="space-y-1 max-h-60 overflow-y-auto">
+                  {state.data.entries.map((e, i) => (
+                    <div key={i} className="text-[12px] flex items-center gap-2">
+                      <Badge>{e.source}</Badge>
+                      <span className="truncate flex-1">{e.action}{e.detail ? ` · ${e.detail}` : ''}</span>
+                      <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(e.at).toLocaleDateString()}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : <div className="text-[12px] text-[var(--faint)]">{t('ud.hist.none', 'Nothing recorded in the last year.')}</div>
+            )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UserDetailModal({ id, onClose }) {
   const { data, loading, reload } = useAsync(() => api.get(`/admin/users/${id}`), [id]);
   const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
@@ -3408,7 +3576,7 @@ function UserDetailModal({ id, onClose }) {
     </button>
   ) : null;
   return (
-    <Modal open onClose={onClose} title={t('ud.title', 'User details')} icon={Users} width="max-w-lg"
+    <Modal open onClose={onClose} title={t('ud.title', 'User details')} icon={Users} width="max-w-2xl"
       footer={<Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>}>
       {loading ? <Loading /> : !u ? <EmptyState icon={XCircle} title={t('ud.notfound', 'Not found')} /> : (
         <div className="space-y-5">
@@ -3577,6 +3745,8 @@ function UserDetailModal({ id, onClose }) {
             {u.items.length ? <div className="space-y-1 max-h-40 overflow-auto pr-1">{u.items.map((it) => { const I = KIND_ICON[it.kind] || Package; return <div key={it.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><I size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{it.name}</span><BcChip code={it.fingerprint} /><Badge tone={statusTone(it.status)}>{it.status}</Badge></div>; })}</div>
               : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
           </div>
+
+          <UserExtras userId={u.id} />
         </div>
       )}
     </Modal>
@@ -5626,6 +5796,85 @@ function AdminEvents() {
 
 // Admin: OAuth/OIDC clients — register a service to "Sign in with BetterCommunity".
 // BCWEB is the identity provider; discovery lives at /.well-known/openid-configuration.
+// The SSO tab, in two halves.
+//
+// "Clients" is the registry — who may ask us to sign people in. "People" is the
+// consequence — who actually said yes, and to what. The registry alone answers none of the
+// questions that come up in practice ("is anyone still using this app?", "cut this person's
+// access"), which is why the second half exists.
+function AdminSso() {
+  const { t } = useI18n();
+  const [view, setView] = useState('clients');
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <h2 className="font-semibold flex items-center gap-2 mr-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('sso.title', 'SSO')}</h2>
+        <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
+          {[['clients', t('sso.tab.clients', 'Apps')], ['people', t('sso.tab.people', 'People')]].map(([k, l]) => (
+            <button key={k} onClick={() => setView(k)}
+              className={`px-3 py-1.5 rounded-[10px] text-sm ${view === k ? 'bg-[var(--bg-solid)] font-medium shadow-sm' : 'text-[var(--muted)]'}`}>{l}</button>
+          ))}
+        </div>
+      </div>
+      {view === 'clients' ? <AdminOAuthClients /> : <AdminSsoPeople />}
+    </div>
+  );
+}
+
+// Who granted what, to which app. One row per (person, app).
+function AdminSsoPeople() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [q, setQ] = useState('');
+  const [term, setTerm] = useState('');
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/sso/grants?q=${encodeURIComponent(term)}`), [term]);
+  const grants = data?.grants || [];
+
+  const revoke = async (g) => {
+    if (!await dialog.confirm({
+      title: t('ud.sso.revoke.t', 'Cut this connection?'),
+      message: t('ud.sso.revoke.m', '“{n}” loses its access immediately, and its live sessions for this account are revoked too. Signing in there again will ask this person for permission afresh — they are notified, so an unexplained re-prompt does not read as a bug in that app.').replace('{n}', g.client.name),
+      okLabel: t('ud.sso.revoke.ok', 'Cut it'), danger: true,
+    })) return;
+    try { await api.del(`/admin/sso/grants/${g.userId}/${g.clientId}`); toast.success(t('ud.sso.revoked', 'Connection removed.')); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+
+  return (
+    <Card className="p-4">
+      <p className="text-[12px] text-[var(--muted)] mb-3">
+        {t('sso.people.sub', 'Every permission someone has given an app to sign them in with their BetterCommunity account. Cutting one revokes its live sessions too — a consent removed on its own would leave the app working until its tokens expired.')}
+      </p>
+      <form className="flex gap-2 mb-3" onSubmit={(e) => { e.preventDefault(); setTerm(q.trim()); }}>
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('sso.people.search', 'Person or app…')} />
+        <Button type="submit"><Search size={14} /></Button>
+      </form>
+      {loading ? <Spinner /> : !grants.length ? (
+        <EmptyState icon={Shield} title={t('sso.people.none', 'Nobody has connected an app yet.')}
+          sub={t('sso.people.none.s', 'Rows appear here the first time someone signs in to an outside app with their account.')} />
+      ) : (
+        <div className="divide-y divide-[var(--line)]">
+          {grants.map((g) => (
+            <div key={`${g.userId}|${g.clientId}`} className="py-2 flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm truncate">
+                  {g.user ? g.user.displayName : t('sso.people.gone', '(deleted account)')}
+                  <span className="text-[var(--faint)]"> → </span>
+                  <span className={g.client.active ? '' : 'text-[var(--faint)] line-through'}>{g.client.name}</span>
+                </div>
+                <div className="text-[11px] text-[var(--faint)] truncate">
+                  {g.user?.email} · {g.scope} · {t('sso.people.granted', 'granted {d}').replace('{d}', new Date(g.grantedAt).toLocaleDateString())}
+                </div>
+              </div>
+              {g.activeTokens > 0 && <Badge tone="green">{t('ud.sso.live', '{n} live').replace('{n}', String(g.activeTokens))}</Badge>}
+              <Button size="sm" variant="ghost" onClick={() => revoke(g)} title={t('ud.sso.revoke.ok', 'Cut it')}><Ban size={13} className="text-[var(--error)]" /></Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function AdminOAuthClients() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/oauth-clients'), []);

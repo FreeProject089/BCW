@@ -2,7 +2,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import querystring from 'node:querystring';
 import jwt from 'jsonwebtoken';
-import { db, requireRole, optionalAuth, clearSession } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, clearSession, logAudit, clientIp, notify } from '../lib/lib.mjs';
 import { jwks, issuer, signRs256, verifyRs256, verifyPkce, validateAuthorizeRequest } from '../lib/oidc.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
@@ -464,6 +464,112 @@ export default async function oidcProviderRoutes(app) {
     await p.oAuthRefreshToken.updateMany({ where: { userId: req.user.uid, clientId, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {});
     await p.oAuthConsent.deleteMany({ where: { userId: req.user.uid, clientId } }).catch(() => {});
     return { ok: true };
+  });
+
+
+  // ── Admin: who is connected to what ─────────────────────────────────────────
+  //
+  // Two different things live under the word "SSO" and this endpoint keeps them apart,
+  // because conflating them is the easy mistake and it points the wrong way:
+  //
+  //   · SIGN-IN LINKS (OAuthAccount) — the user signs in to US with GitHub or Discord.
+  //     We are the client. Removing one costs the user a way in.
+  //   · GRANTS (OAuthConsent + refresh tokens) — an outside app signs its users in with
+  //     US. We are the identity provider. Revoking one cuts that app's access.
+  //
+  // Same screen, never the same list.
+
+  app.get('/admin/sso/grants', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const q = String(req.query?.q || '').trim();
+    const clientId = String(req.query?.clientId || '').trim();
+
+    const consents = await p.oAuthConsent.findMany({
+      where: clientId ? { clientId } : {},
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+    const userIds = [...new Set(consents.map((c) => c.userId))];
+    const clientIds = [...new Set(consents.map((c) => c.clientId))];
+    const [users, clients, live] = await Promise.all([
+      userIds.length ? p.user.findMany({ where: { id: { in: userIds } }, select: { id: true, displayName: true, email: true } }) : [],
+      clientIds.length ? p.oAuthClient.findMany({ where: { id: { in: clientIds } }, select: { id: true, name: true, active: true } }) : [],
+      p.oAuthRefreshToken.groupBy({ by: ['clientId', 'userId'], where: { revokedAt: null, expiresAt: { gt: new Date() } }, _count: { _all: true } }).catch(() => []),
+    ]);
+    const uBy = Object.fromEntries(users.map((u) => [u.id, u]));
+    const cBy = Object.fromEntries(clients.map((c) => [c.id, c]));
+    const liveBy = Object.fromEntries(live.map((r) => [`${r.userId}|${r.clientId}`, r._count._all]));
+
+    const rows = consents.map((c) => ({
+      userId: c.userId, clientId: c.clientId, scope: c.scope, grantedAt: c.createdAt,
+      user: uBy[c.userId] || null,
+      // A grant whose client has been deleted still exists and still needs to be visible:
+      // it is the row somebody has to clean up, and hiding it is how it never gets cleaned.
+      client: cBy[c.clientId] || { id: c.clientId, name: '(removed app)', active: false },
+      activeTokens: liveBy[`${c.userId}|${c.clientId}`] || 0,
+    }));
+
+    const needle = q.toLowerCase();
+    return {
+      grants: q ? rows.filter((r) => `${r.user?.displayName || ''} ${r.user?.email || ''} ${r.client.name}`.toLowerCase().includes(needle)) : rows,
+      total: rows.length,
+    };
+  });
+
+  /** Cut one person's grant to one app. */
+  app.delete('/admin/sso/grants/:userId/:clientId', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const { userId, clientId } = req.params;
+    // Both halves, same reason as the self-service route: dropping the consent alone leaves
+    // every issued refresh token working until it expires, so "revoked" would mean "still
+    // has access for a month".
+    const tokens = await p.oAuthRefreshToken.updateMany({ where: { userId, clientId, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => ({ count: 0 }));
+    await p.oAuthConsent.deleteMany({ where: { userId, clientId } }).catch(() => {});
+    const client = await p.oAuthClient.findUnique({ where: { id: clientId }, select: { name: true } });
+    await logAudit(p, req.user.uid, 'sso.grant_revoked', `${clientId} for user ${userId}`, clientIp(req));
+    // The user is told: their next sign-in to that app will ask for consent again, and an
+    // unexplained re-prompt reads as a bug in the app, not as a staff action here.
+    await notify(p, userId, 'sso_revoked', `Your connection to “${client?.name || clientId}” was removed by staff. Signing in there again will ask for your permission afresh.`);
+    return { ok: true, tokensRevoked: tokens.count };
+  });
+
+  /** Everything SSO about ONE user — for the admin User details panel. */
+  app.get('/admin/sso/users/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const userId = req.params.id;
+    const [links, discord, consents, tokens] = await Promise.all([
+      p.oAuthAccount.findMany({ where: { userId }, select: { provider: true, username: true, providerAccountId: true, linkedAt: true } }),
+      p.discordLink.findUnique({ where: { userId } }).catch(() => null),
+      p.oAuthConsent.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } }),
+      p.oAuthRefreshToken.findMany({ where: { userId }, select: { clientId: true, revokedAt: true, expiresAt: true, createdAt: true } }),
+    ]);
+    const clientIds = [...new Set(consents.map((c) => c.clientId))];
+    const clients = clientIds.length ? await p.oAuthClient.findMany({ where: { id: { in: clientIds } }, select: { id: true, name: true, active: true, subjectType: true } }) : [];
+    const cBy = Object.fromEntries(clients.map((c) => [c.id, c]));
+    const now = Date.now();
+    return {
+      // We are the client here.
+      signInLinks: links,
+      discord: discord ? { discordId: discord.discordId, username: discord.username, linkedAt: discord.linkedAt } : null,
+      // We are the identity provider here.
+      grants: consents.map((c) => ({
+        clientId: c.clientId, scope: c.scope, grantedAt: c.createdAt,
+        client: cBy[c.clientId] || { id: c.clientId, name: '(removed app)', active: false },
+        activeTokens: tokens.filter((tk) => tk.clientId === c.clientId && !tk.revokedAt && new Date(tk.expiresAt).getTime() > now).length,
+      })),
+    };
+  });
+
+  /** Per-client rollup for the SSO tab: how many people, how many live sessions. */
+  app.get('/admin/sso/clients/stats', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const [byClient, liveByClient] = await Promise.all([
+      p.oAuthConsent.groupBy({ by: ['clientId'], _count: { _all: true } }).catch(() => []),
+      p.oAuthRefreshToken.groupBy({ by: ['clientId'], where: { revokedAt: null, expiresAt: { gt: new Date() } }, _count: { _all: true } }).catch(() => []),
+    ]);
+    const users = Object.fromEntries(byClient.map((r) => [r.clientId, r._count._all]));
+    const live = Object.fromEntries(liveByClient.map((r) => [r.clientId, r._count._all]));
+    return { users, live };
   });
 
   // ── Admin: OAuth client registry ──
