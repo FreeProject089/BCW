@@ -6428,6 +6428,45 @@ function AdminSso() {
 // than in its own tab: an OAuth app and a webhook are the same question ("what is
 // plugged into this platform, on whose behalf"), and a third top-level tab for one table
 // is how the admin nav got crowded enough to need reorganising in the first place.
+/**
+ * One step and everything under it.
+ *
+ * The panel used to say "12 steps" and list the risky verbs, which answers "should I be
+ * nervous" and not "what does this actually do" — and the second question is the one a
+ * moderator has when the answer to the first is "a bit".
+ *
+ * Indentation carries the shape, because the shape IS the meaning: three actions in a row
+ * and three inside a hundred-iteration loop are the same list and very different files.
+ */
+function BmmpaStep({ node, depth = 0, t }) {
+  const params = node.params ? Object.entries(node.params) : [];
+  return (
+    <>
+      <div className="border-l-2 border-[var(--line)] pl-2 py-0.5" style={{ marginLeft: depth * 14 }}>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[12px]">{node.type || node.kind}</span>
+          {/* A glyph, not colour alone: a faint red word is easy to skim past on a light
+              theme, and this is the thing not to skim. */}
+          {node.note && <span className="text-[10px] font-bold text-[var(--danger)] border border-[var(--danger)] rounded px-1">!</span>}
+          {node.refId && (node.refName
+            ? <span className="text-[11px] text-[var(--muted)]">→ {node.refName}</span>
+            : <span className="text-[11px] text-[var(--warning)]">→ {t('bmi.notIncluded', 'not in this file')}: <code>{node.refId}</code></span>)}
+        </div>
+        {params.length > 0 && (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+            {params.map(([k, v]) => (
+              <span key={k} className="text-[10px] text-[var(--muted)] break-all">
+                <span className="text-[var(--faint)] mr-1">{k}</span>{v}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      {(node.children || []).map((c, i) => <BmmpaStep key={i} node={c} depth={depth + 1} t={t} />)}
+    </>
+  );
+}
+
 // Read a submitted BMM automation (.bmmpa) without running it.
 //
 // A preset arrives as a file whose contents nobody can see. The only way to know what it
@@ -6505,6 +6544,22 @@ function BmmpaInspector() {
               ? t('bmi.review', 'This file grants itself permissions or reaches outside BMM. Read it before approving.')
               : t('bmi.clean', 'Nothing here asks for a permission or touches anything outside BMM.')}
           </div>
+          {/* What else is in the file, and what it names but does not carry. Both belong
+              above the tasks: "12 automations" means something different when three of
+              them call a fourth that is not here. */}
+          {(rep.includes?.launchpacks > 0 || rep.includes?.modpacks > 0) && (
+            <div className="text-[11px] text-[var(--muted)] mb-2">
+              {t('bmi.alsoCarries', 'Also in this file:')}{' '}
+              {[rep.includes.launchpacks && `${rep.includes.launchpacks} ${t('bmi.launchpacks', 'launch pack(s)')}`,
+                rep.includes.modpacks && `${rep.includes.modpacks} ${t('bmi.modpacks', 'modpack(s)')}`].filter(Boolean).join(' · ')}
+            </div>
+          )}
+          {rep.unresolved?.length > 0 && (
+            <div className="text-[12px] text-[var(--warning)] rounded-lg border border-[var(--warning)] p-2 mb-2 break-all">
+              {t('bmi.unresolved', 'Names {n} thing(s) it does not include — these import cleanly and fail on the user\'s machine:').replace('{n}', String(rep.unresolved.length))}{' '}
+              {rep.unresolved.slice(0, 8).map((u) => `${u.kind}:${u.id}`).join('  ·  ')}
+            </div>
+          )}
           {rep.tasks.map((tk, i) => (
             <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 mb-2">
               <div className="flex items-baseline gap-2 flex-wrap">
@@ -6523,6 +6578,14 @@ function BmmpaInspector() {
                   <pre className="mt-1.5 p-2 rounded-lg text-[11px] overflow-auto max-h-64 whitespace-pre" style={{ background: 'var(--bg-solid)', border: '1px solid var(--line)' }}>{sc.code}</pre>
                 </details>
               ))}
+              {tk.steps?.length > 0 && (
+                <details className="mt-2" open>
+                  <summary className="text-[12px] cursor-pointer text-[var(--primary-2)]">{t('bmi.tree', 'Every step, in order')}</summary>
+                  <div className="mt-1.5 flex flex-col gap-0.5">
+                    {tk.steps.map((n, j) => <BmmpaStep key={j} node={n} depth={0} t={t} />)}
+                  </div>
+                </details>
+              )}
             </div>
           ))}
         </div>
