@@ -162,10 +162,39 @@ export default function DevTools() {
   return (
     <div className="max-w-3xl mx-auto py-8 space-y-4">
       <Link to="/dev" className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><ArrowLeft size={13} /> {t('devc.back', 'Developer area')}</Link>
-      <h1 className="text-2xl font-bold">{t('dvt.title', 'Tools')}</h1>
-      <ApiConsole />
-      <Validator />
-      <CallLog />
+      <div>
+        <h1 className="text-2xl font-bold">{t('dvt.title', 'Tools')}</h1>
+        <p className="text-[13px] text-[var(--muted)] mt-1">
+          {t('dvt.sub', 'Three things you would otherwise write yourself: make a real call, check a feed before publishing it, and see what your keys have been doing.')}
+        </p>
+      </div>
+
+      {/* Jump links. The page is three tall tools stacked, and it was one h1 with no
+          structure under it — nothing to anchor to, nothing to scan, and no way to get
+          back to a tool you had scrolled past. Real anchors also mean a link to a
+          specific tool can be shared, which is what people do with a page like this. */}
+      <nav className="flex flex-wrap gap-1.5" aria-label={t('dvt.jump', 'Jump to a tool')}>
+        {[
+          // The same keys the cards themselves use, so a link can never say one thing and
+          // the section it lands on another.
+          ['try', t('dev.console.title', 'Try a call')],
+          ['validate', t('dvt.val', 'Check a catalog feed')],
+          ['calls', t('dvt.calls', 'What your keys did')],
+        ].map(([id, label]) => (
+          <a key={id} href={`#${id}`}
+             className="text-xs px-2.5 py-1 rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition">
+            {label}
+          </a>
+        ))}
+      </nav>
+
+      {/* Wrapped here rather than given ids inside the components: ApiConsole is shared
+          with /dev, and an id baked into it would appear twice on any page rendering both.
+          scroll-mt keeps a jumped-to section clear of the sticky header instead of landing
+          under it. */}
+      <section id="try" className="scroll-mt-20"><ApiConsole /></section>
+      <section id="validate" className="scroll-mt-20"><Validator /></section>
+      <section id="calls" className="scroll-mt-20"><CallLog /></section>
     </div>
   );
 }

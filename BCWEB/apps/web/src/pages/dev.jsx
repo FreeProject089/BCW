@@ -16,6 +16,14 @@ import { useAuth } from './auth.jsx';
 // Every endpoint the console can call, so the field is a choice rather than a guess at a
 // path. Kept in step with the API by hand — a dropdown listing a route that does not exist
 // is worse than a free-text box, so each entry here was checked against the router.
+// An endpoint's description, translated. The key is derived from method+path rather than
+// stored beside each row: 21 hand-written keys is 21 chances to typo one, and a wrong key
+// falls back to the English silently — which is the exact bug this is fixing.
+export function epDesc(t, e) {
+  const slug = e.p.replace(/^\/v1\//, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+  return t(`dev.ep.${e.m.toLowerCase()}-${slug}`, e.d);
+}
+
 const ENDPOINTS = [
   // Public
   { m: 'GET', p: '/v1/scopes', scope: null, g: 'Public', d: 'Every scope and what it unlocks — no key needed' },
@@ -155,7 +163,7 @@ export function ApiConsole() {
             {[...new Set(ENDPOINTS.map((e) => e.g))].map((group) => (
               <optgroup key={group} label={group}>
                 {ENDPOINTS.map((e, i) => (e.g === group
-                  ? <option key={e.m + e.p} value={i}>{e.m} {e.p} — {e.d}</option>
+                  ? <option key={e.m + e.p} value={i}>{e.m} {e.p} — {epDesc(t, e)}</option>
                   : null))}
               </optgroup>
             ))}
