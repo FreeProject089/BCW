@@ -87,6 +87,8 @@ model User {
   termsAcceptedAt   DateTime? // last time the user accepted the Terms + Payments policy at checkout
   stripeCustomerId  String?   @unique
   apiKeys           ApiKey[]
+  polls             Poll[]     @relation("PollAuthor")
+  pollVotes         PollVote[] @relation("PollVoter")
   sessions          Session[]
   createdAt         DateTime  @default(now())
 
@@ -2160,6 +2162,86 @@ model ApiRequest {
   @@index([at])
   @@index([userId, at])
   @@index([keyId, at])
+}
+
+
+// Polls — a question, some options, and an honest count.
+//
+// `audience` decides who may answer: 'users' (signed in, one vote each, exact) or 'all'
+// (anybody, deduplicated by a device fingerprint). Both are offered because both are
+// wanted, and the difference between them is a difference in what the number MEANS: the
+// signed-in tally is exact, the open one is an estimate that both over- and under-counts
+// (two people behind one router look like one; the same person on a phone looks like two).
+// Every count is therefore stored and reported split by `wasLoggedIn`, never merged into a
+// single reassuring total.
+model Poll {
+  id          String   @id @default(cuid())
+  question    String
+  description String   @default("")
+  // 'users' | 'all'
+  audience    String   @default("users")
+  // More than one option allowed? maxChoices caps it (0 = no cap).
+  multiple    Boolean  @default(false)
+  maxChoices  Int      @default(0)
+  // 'draft' | 'open' | 'closed'. Draft is invisible; closed keeps its results.
+  status      String   @default("draft")
+  opensAt     DateTime?
+  closesAt    DateTime?
+  // 'always' | 'after_vote' | 'staff' — when a voter may see the tally. after_vote is the
+  // default because showing a running total before someone answers steers the answer.
+  results     String   @default("after_vote")
+  // Shown on the site's poll page, and optionally pinned to the home page.
+  pinned      Boolean  @default(false)
+  createdBy   User?    @relation("PollAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  options     PollOption[]
+  votes       PollVote[]
+
+  @@index([status, pinned])
+}
+
+model PollOption {
+  id     String     @id @default(cuid())
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  pollId String
+  label  String
+  sort   Int        @default(0)
+  votes  PollVote[]
+
+  @@index([pollId, sort])
+}
+
+// One row per (voter, option). Multi-choice polls therefore produce several rows for one
+// person, which is what makes "62% of voters picked A" computable separately from "A got
+// 62% of the ticks" — two different numbers that a single counter would conflate.
+//
+// voterKey is a per-poll device fingerprint for anonymous voters, and NOT the daily
+// analytics visitor hash: that one rotates at midnight, which would quietly let everybody
+// vote again every day.
+model PollVote {
+  id          String     @id @default(cuid())
+  poll        Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  pollId      String
+  option      PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  optionId    String
+  user        User?      @relation("PollVoter", fields: [userId], references: [id], onDelete: SetNull)
+  userId      String?
+  voterKey    String?
+  // Kept even after userId is cleared (account closure anonymises the user, and the answer
+  // still counted). Without it a closed account would silently move its vote into the
+  // anonymous column and change a published result.
+  wasLoggedIn Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+
+  // NULLs are distinct in Postgres, so these two constraints coexist: one bites for signed
+  // -in voters, the other for anonymous ones.
+  @@unique([pollId, userId, optionId])
+  @@unique([pollId, voterKey, optionId])
+  @@index([pollId, createdAt])
+  @@index([userId])
 }
 
 // What happened to a catalog item, and when — the record the item itself cannot keep.

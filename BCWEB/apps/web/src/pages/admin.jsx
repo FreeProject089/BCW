@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -30,6 +30,7 @@ import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 import { AdminMyo } from './admin-myo.jsx';
 import { AdminApi } from './admin-api.jsx';
+import { AdminPolls } from './admin-polls.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash, useThreadStream } from './pages.jsx';
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
@@ -162,6 +163,7 @@ export function Admin() {
     isAdmin && { id: 'badges', label: t('adm.tab.badges', 'Badges'), icon: BadgeCheck },
     can('manage_newsletter') && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
     can('manage_faq') && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
+    can('manage_polls') && { id: 'polls', label: t('adm.tab.polls', 'Polls'), icon: BarChart3 },
     can('manage_catalogs') && { id: 'commcatalogs', label: t('adm.tab.commcatalogs', 'Community catalogs'), icon: Layers },
     can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: Inbox, badge: pc.reports || undefined },
 
@@ -182,6 +184,7 @@ export function Admin() {
     { heading: t('adm.h.integrations', 'Integrations') },
     isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
     can('manage_api') && { id: 'api', label: t('adm.tab.api', 'Public API'), icon: KeyRound },
+
     isAdmin && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: MessageSquare },
 
     { heading: t('adm.h.serverdata', 'Server & data') },
@@ -288,6 +291,7 @@ export function Admin() {
         {s === 'myo' && <AdminMyo />}
         {s === 'sso' && <AdminOAuthClients />}
         {s === 'api' && <AdminApi />}
+        {s === 'polls' && <AdminPolls />}
         {s === 'storage' && <AdminStorage />}
         {s === 'bot' && <AdminBot />}
         {s === 'analytics' && <AdminAnalytics />}
@@ -2303,6 +2307,7 @@ const ADMIN_CAPS = [
   { id: 'manage_events', cat: 'growth', icon: Sparkles, label: 'Manage events', labelFr: 'Gérer les événements', desc: 'Site events (fireworks, themed presentations).', descFr: 'Événements du site (feux d’artifice, présentations thématiques).' },
   { id: 'manage_myo', cat: 'growth', icon: Wand2, label: 'Manage commissions', labelFr: 'Gérer les commandes', desc: 'Handle "Make Your Own" requests, quotes, delivery + the catalog.', descFr: 'Gérer les demandes « Make Your Own », devis, livraisons + le catalogue.' },
   { id: 'manage_api', cat: 'growth', icon: KeyRound, label: 'Manage the public API', labelFr: 'Gérer l’API publique', desc: 'See API usage per key, the sampled call log, and revoke keys.', descFr: 'Voir l’usage de l’API par clé, l’échantillon d’appels, et révoquer des clés.' },
+  { id: 'manage_polls', cat: 'content', icon: BarChart3, label: 'Manage polls', labelFr: 'Gérer les sondages', desc: 'Create polls, read the results and who answered.', descFr: 'Créer des sondages, lire les résultats et qui a répondu.' },
   { id: 'manage_analytics', cat: 'insight', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, errors and goals.', descFr: 'Analyses, erreurs et objectifs.' },
   { id: 'manage_repos', cat: 'ops', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
 ];

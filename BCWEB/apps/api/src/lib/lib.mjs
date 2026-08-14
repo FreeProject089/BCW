@@ -280,7 +280,7 @@ export const CAPABILITIES = [
   // Growth elements
   'manage_events', 'manage_promotions',
   // Services
-  'manage_myo', 'manage_api',
+  'manage_myo', 'manage_api', 'manage_polls',
 ];
 // Default capabilities a MOD holds without explicit grants.
 const MOD_DEFAULT_CAPS = ['manage_users'];
