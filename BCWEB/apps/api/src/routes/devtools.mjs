@@ -7,6 +7,10 @@ import { z } from 'zod';
 import { requireRole, requireCap } from '../lib/lib.mjs';
 import { inspectBmmpa } from '../lib/bmmpa.mjs';
 import { inspectAny } from '../lib/bmm-formats.mjs';
+import { buildRbacMap } from '../lib/rbac-map.mjs';
+import fsp from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import nodePath from 'node:path';
 import { safeFetch } from '../lib/net.mjs';
 
 // What a BMM-native catalog feed has to look like. Written here rather than imported from the
@@ -112,6 +116,38 @@ export default async function devtoolRoutes(app) {
     const report = inspectBmmpa(b.data.doc);
     if (!report.ok) return reply.code(400).send({ error: 'unreadable', detail: report.error });
     return report;
+  });
+
+  // Which guard protects which route, read from the route files themselves.
+  //
+  // Read at request time rather than at boot: this is looked at rarely and the files are
+  // a megabyte, so holding the parse in memory for the lifetime of the process would cost
+  // more than it saves.
+  //
+  // ADMIN, not a capability. It reports where the holes are, which is the one map you
+  // would want first if you were looking for one — and there is no capability that means
+  // "may see the security posture", so the blunt check is the honest one.
+  app.get('/admin/rbac-map', {
+    preHandler: requireRole('ADMIN'),
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    // Resolved from this module rather than from cwd: the API is started from different
+    // directories in dev and in the container, and a relative path silently reads nothing.
+    const dir = nodePath.join(nodePath.dirname(fileURLToPath(import.meta.url)));
+    let files = [];
+    try {
+      const names = (await fsp.readdir(dir)).filter((f) => f.endsWith('.mjs'));
+      files = await Promise.all(names.map(async (name) => ({
+        name, src: await fsp.readFile(nodePath.join(dir, name), 'utf8'),
+      })));
+    } catch (e) {
+      return reply.code(500).send({ error: 'unreadable', detail: String(e).slice(0, 200) });
+    }
+    const map = buildRbacMap(files);
+    // A map built from zero files would report zero problems, which is the most
+    // dangerous possible answer from a tool like this.
+    if (!map.total) return reply.code(500).send({ error: 'parsed_nothing', files: files.length });
+    return map;
   });
 
   // Inspect ANY BMM document — automations, mod lists, session replays, navbar configs.

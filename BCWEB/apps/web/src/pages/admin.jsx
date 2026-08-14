@@ -262,6 +262,7 @@ export function Admin() {
         {s === 'moderation' && <div>
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
           <BmmpaInspector />
+          <RbacMap />
           <div className="flex flex-wrap gap-2 mb-3">
             <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
               <Input className="!pl-9" placeholder={t('mod.search.ph', 'Search by item name, author or email…')} value={modQ} onChange={(e) => setModQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setModQApplied(modQ)} /></div>
@@ -6475,6 +6476,84 @@ function BmmpaStep({ node, depth = 0, t }) {
 //
 // Paste rather than upload, deliberately: the file is already on the moderator's machine,
 // and an upload endpoint for arbitrary JSON is a thing to secure for no gain here.
+/**
+ * Which guard protects which route.
+ *
+ * The map is built on the server by reading the route files, so it cannot drift from the
+ * code the way a written document does — there is nothing to keep in sync.
+ *
+ * The number that matters is `suspicious`: an /admin or /me route with no guard and no
+ * entry in the public-by-design list. Everything else is context for reading it.
+ */
+function RbacMap() {
+  const { t } = useI18n();
+  const [rep, setRep] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const run = async () => {
+    setBusy(true);
+    try { setRep(await api.get('/admin/rbac-map')); }
+    catch (e) { setRep({ error: String(e?.message || e) }); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Card className="p-4 mb-3">
+      <button className="w-full flex items-center gap-2 text-left" onClick={() => { setOpen((o) => !o); if (!rep) run(); }}>
+        <ShieldCheck size={15} className="text-[var(--primary-2)]" />
+        <span className="text-sm font-semibold">{t('rbac.title', 'Which guard protects which route')}</span>
+        {rep?.total && <span className="text-[11px] text-[var(--muted)] ml-auto">{rep.total}</span>}
+      </button>
+      {open && (
+        <div className="mt-3">
+          {busy && <Spinner />}
+          {rep?.error && <div className="text-[12px] text-[var(--danger)]">{rep.error}</div>}
+          {rep?.total > 0 && (<>
+            {/* The verdict first: this is a security screen, and an answer under three
+                tables is an answer nobody reads. */}
+            <div className={`text-[12px] rounded-lg border p-2.5 mb-3 ${rep.suspicious?.length ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+              {rep.suspicious?.length
+                ? t('rbac.bad', '{n} admin/me route(s) with no guard — read each one before assuming it is wrong, some are public on purpose.').replace('{n}', String(rep.suspicious.length))
+                : t('rbac.ok', 'Every /admin and /me route carries a guard, or is listed as public on purpose.')}
+            </div>
+            {rep.suspicious?.length > 0 && (
+              <ul className="mb-3 space-y-0.5">
+                {rep.suspicious.map((x, i) => (
+                  <li key={i} className="text-[12px] break-all"><code>{x.route}</code> <span className="text-[var(--faint)]">{x.file}</span></li>
+                ))}
+              </ul>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rbac.caps', 'By capability')}</div>
+                {(rep.byCapability || []).map((c) => (
+                  <div key={c.capability} className="text-[12px] flex gap-2">
+                    <span className="text-[var(--muted)] w-8 text-right">{c.paths.length}</span>
+                    <code>{c.capability}</code>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rbac.roles', 'By role')}</div>
+                {(rep.byRole || []).map((r) => (
+                  <div key={r.role} className="text-[12px] flex gap-2">
+                    <span className="text-[var(--muted)] w-8 text-right">{r.paths.length}</span>
+                    <code>{r.role}</code>
+                  </div>
+                ))}
+                <div className="text-[11px] text-[var(--faint)] mt-2">
+                  {t('rbac.unguarded', '{n} route(s) with no guard at all — mostly public feeds and auth.').replace('{n}', String(rep.unguarded?.length ?? 0))}
+                </div>
+              </div>
+            </div>
+          </>)}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function BmmpaInspector() {
   const { t } = useI18n(); const toast = useToast();
   // The API returns codes; the words are ours. An unknown code falls back to itself rather
