@@ -33,6 +33,17 @@ export function setUndoDisabled(off) {
   try { localStorage.setItem(UNDO_OFF_KEY, off ? '1' : '0'); } catch { /* ignore */ }
 }
 
+// Ask before signing out. OFF by default: a confirmation nobody asked for is friction on a
+// path people take deliberately. It exists because the button is an icon in the topbar, one
+// mis-click from the profile — and on an account with 2FA, getting back in is not one click.
+export const LOGOUT_CONFIRM_KEY = 'bcw_logout_confirm';
+export function getLogoutConfirm() {
+  try { return localStorage.getItem(LOGOUT_CONFIRM_KEY) === '1'; } catch { return false; }
+}
+export function setLogoutConfirm(on) {
+  try { localStorage.setItem(LOGOUT_CONFIRM_KEY, on ? '1' : '0'); } catch { /* ignore */ }
+}
+
 export function getGlassPrefs() {
   let on = false, pct = 85;
   try {

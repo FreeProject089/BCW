@@ -4,7 +4,7 @@ import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from
 import { Code2, Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
-import { Button, useToast, Modal } from './ui/ui.jsx';
+import { Button, useToast, Modal, useDialog } from './ui/ui.jsx';
 import { Badges, BadgeIcon } from './ui/Badges.jsx';
 import { ThemeToggle } from './ui/theme.jsx';
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
@@ -12,7 +12,7 @@ import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon, APP_LOGO } from './ui/br
 import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
 import { trackPageview, initVitals, initInteractions, initErrors } from './lib/analytics.js';
 import { loadGtmIfConsented } from './lib/gtm.js';
-import { getOrbTransitionPref } from './lib/prefs.js';
+import { getOrbTransitionPref, getLogoutConfirm } from './lib/prefs.js';
 import { canAdmin, effectiveCaps, hasProjectGrant, utilAllowed } from './lib/roles.js';
 import { readLayout, navAlignClass } from './lib/navLayout.js';
 import CookieConsent from './ui/CookieConsent.jsx';
@@ -419,8 +419,20 @@ const BOTTOM = [
 ];
 
 function Nav() {
-  const { user, logout } = useAuth();
+  const { user, logout: rawLogout } = useAuth();
   const { t, lang } = useI18n();
+  const dialog = useDialog();
+  // One wrapper for every sign-out control on this bar. Two call sites (the icon and the
+  // phone sheet) would otherwise honour the setting separately, and the one that forgot
+  // would be the one people use.
+  const logout = async () => {
+    if (getLogoutConfirm() && !(await dialog.confirm({
+      title: t('nav.signout.t', 'Sign out?'),
+      message: t('nav.signout.m', 'You will need to sign in again — including your second factor if you use one.'),
+      okLabel: t('nav.signout', 'Sign out'), danger: true,
+    }))) return;
+    rawLogout();
+  };
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   const segNavRef = useRef(null);

@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Sliders, Sparkles, Users, Undo2 } from 'lucide-react';
+import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Sliders, Sparkles, Users, Undo2, LogOut } from 'lucide-react';
 import { Button, Card, PageHeader, Select, Spinner, useToast } from '../ui/ui.jsx';
 import { fxPref, setFxPref, prefersReducedMotion } from '../lib/fx-pref.js';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
 import { useAuth } from './auth.jsx';
 import { api } from '../lib/api.js';
-import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref, getUndoDisabled, setUndoDisabled } from '../lib/prefs.js';
+import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref, getUndoDisabled, setUndoDisabled, getLogoutConfirm, setLogoutConfirm } from '../lib/prefs.js';
 import { getConsent, setConsent } from '../lib/analytics.js';
 import { SKIP_KEY } from '../ui/IntroContext.jsx';
 
@@ -26,6 +26,7 @@ export function Settings() {
   const [orbTransition, setOrbTransition] = useState(() => getOrbTransitionPref());
   const [fx, setFxState] = useState(() => fxPref());
   const [undoOff, setUndoOff] = useState(() => getUndoDisabled());
+  const [logoutConfirm, setLogoutConfirmState] = useState(() => getLogoutConfirm());
 
   const setFx = (v) => { setFxState(v); setFxPref(v); };
   const setIntro = (skip) => { setSkipIntro(skip); try { skip ? localStorage.setItem(SKIP_KEY, '1') : localStorage.removeItem(SKIP_KEY); } catch {} };
@@ -96,6 +97,9 @@ export function Settings() {
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1.5"><Undo2 size={13} /> {t('set.behaviour', 'Actions')}</div>
         <Row icon={Undo2} title={t('set.undo', 'Undo window')} desc={t('set.undo.d', 'Saving, publishing and deleting wait a few seconds behind an “Undo” toast, so a mistake costs nothing. Turn this off to apply every action immediately.')}>
           <Switch on={!undoOff} onChange={(v) => setUndo(!v)} />
+        </Row>
+        <Row icon={LogOut} title={t('set.logoutconfirm', 'Ask before signing out')} desc={t('set.logoutconfirm.d', 'The sign-out button is an icon in the topbar, one mis-click from your profile — and with 2FA on, getting back in is not one click.')}>
+          <Switch on={logoutConfirm} onChange={(v) => { setLogoutConfirmState(v); setLogoutConfirm(v); }} />
         </Row>
       </Card>
 

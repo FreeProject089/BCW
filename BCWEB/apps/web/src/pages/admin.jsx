@@ -1237,6 +1237,7 @@ function AdminServerPerf() {
   const netPrevRef = useRef(null);
   const [liveNet, setLiveNet] = useState({ rx: null, tx: null });
   const [sec, setSec] = useState({ alloc: true, downtime: true, alerts: true, outages: true, vitals: true }); // collapsible sections
+  const [outageOpen, setOutageOpen] = useState(null);
   const toggleSec = (k) => setSec((s) => ({ ...s, [k]: !s[k] }));
   useEffect(() => {
     const cur = data?.net; if (!cur) return;
@@ -1633,7 +1634,9 @@ function AdminServerPerf() {
               const time = (x) => x.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               const day = (x) => x.toLocaleDateString([], { day: 'numeric', month: 'short' });
               return (
-                <div key={o.key} className="flex items-start gap-3 text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 group">
+                <div key={o.key} role="button" tabIndex={0} onClick={() => setOutageOpen(o)}
+                  onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setOutageOpen(o); } }}
+                  className="flex items-start gap-3 text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 group cursor-pointer hover:border-[var(--ring)] transition-colors">
                   <Badge tone={o.ongoing ? 'red' : o.seconds >= 3600 ? 'red' : 'amber'} className="shrink-0 tabular-nums mt-0.5">{fmtDur(o.seconds)}</Badge>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -1652,13 +1655,46 @@ function AdminServerPerf() {
                       {' · '}{from.getFullYear()}
                     </div>
                   </div>
-                  <button onClick={() => { copyText(outageLine(o)); toast.success(t('common.copied', 'Copied.')); }}
+                  <button onClick={(ev) => { ev.stopPropagation(); copyText(outageLine(o)); toast.success(t('common.copied', 'Copied.')); }}
                     className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0 opacity-0 group-hover:opacity-100 transition mt-0.5"
                     title={t('common.copy', 'Copy')}><Copy size={12} /></button>
                 </div>
               );
             })}
           </div>
+          {outageOpen && (
+            <Modal open onClose={() => setOutageOpen(null)} width="max-w-lg" icon={AlertTriangle}
+              title={`${outageOpen.label} · ${fmtDur(outageOpen.seconds)}`}>
+              <div className="space-y-3 text-[13px]">
+                {outageOpen.cause && <div className="rounded-lg bg-[var(--surface-2)] border border-[var(--line)] p-3 break-words">{outageOpen.cause}</div>}
+                <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
+                  {[
+                    [t('sp.out.d.what', 'What'), outageOpen.label],
+                    [t('sp.out.d.kind', 'Kind'), outageOpen.source === 'server' ? t('sp.out.src.server', 'stopped reporting') : t('sp.out.src.dep', 'unreachable')],
+                    [t('sp.out.d.from', 'Started'), new Date(outageOpen.startedAt).toLocaleString()],
+                    [t('sp.out.d.to', 'Ended'), outageOpen.endedAt ? new Date(outageOpen.endedAt).toLocaleString() : t('sp.out.stillnow', 'still down')],
+                    [t('sp.out.d.dur', 'Duration'), fmtDur(outageOpen.seconds)],
+                  ].map(([k, v]) => (
+                    <div key={k} className="flex items-baseline gap-2 min-w-0">
+                      <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] w-20 shrink-0">{k}</span>
+                      <span className="break-words min-w-0">{v}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* The measurement itself, said here rather than in a footnote: whether a
+                    gap is real or just shorter than the check is the first question anybody
+                    asks of an outage record. */}
+                <p className="text-[11px] text-[var(--muted)]">
+                  {outageOpen.source === 'server'
+                    ? t('sp.out.d.srvnote', 'Measured as a gap in our own samples: the process recorded nothing for this period, which is what being down looks like from the inside.')
+                    : t('sp.out.d.depnote', 'Measured by the dependency check that runs every ten minutes. An incident shorter than one interval is invisible to it.')}
+                </p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => { copyText(outageLine(outageOpen)); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /> {t('common.copy', 'Copy')}</Button>
+                </div>
+              </div>
+            </Modal>
+          )}
           <p className="text-[11px] text-[var(--muted)] mt-2">{t('sp.out.s2', 'A dependency outage is measured by the 10-minute dependency check; a “stopped reporting” one is a gap in our own samples, which is what being down looks like from the inside. Neither can see an incident shorter than one interval.')}</p>
         </>))}
       </Card>
@@ -6296,6 +6332,25 @@ function AdminEvents() {
 // consequence — who actually said yes, and to what. The registry alone answers none of the
 // questions that come up in practice ("is anyone still using this app?", "cut this person's
 // access"), which is why the second half exists.
+// What each scope unlocks, in the words a consent screen would use — the tooltip on the
+// picker. A scope name is precise and says nothing to somebody deciding whether to grant it.
+const SSO_SCOPE_HELP = {
+  openid: 'Sign-in / identity (required)',
+  profile: 'Display name and avatar',
+  email: 'E-mail address',
+  items: 'Their catalog items',
+  repos: 'Their hosted Server-Repos',
+  pools: 'Their storage pools',
+  catalogs: 'The catalogs they own, unpublished included',
+  payments: 'Invoices — amounts and dates, never a card number',
+  polls: 'Polls open to them and how they answered',
+  favorites: 'Repos and catalogs they starred',
+  transfers: 'Ownership transfers offered to or by them',
+  notifications: 'Read their notifications (read-only)',
+  badges: 'Badges they have earned',
+  stats: 'Download and view counts for what they own, aggregated',
+};
+
 function AdminSso() {
   const { t } = useI18n();
   const [view, setView] = useState('clients');
@@ -6373,6 +6428,15 @@ function AdminOAuthClients() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/oauth-clients'), []);
   const [f, setF] = useState({ name: '', confidential: true, redirectUris: '', scopes: ['openid', 'profile', 'email'] });
+  // From the provider's own discovery document rather than a copy. The list here was five
+  // names while the provider serves fourteen — so nine scopes could not be granted from this
+  // screen, and nothing said so.
+  const [ssoScopes, setSsoScopes] = useState(['openid', 'profile', 'email']);
+  useEffect(() => {
+    fetch('/api/.well-known/openid-configuration').then((r) => r.json())
+      .then((d) => { if (Array.isArray(d?.scopes_supported) && d.scopes_supported.length) setSsoScopes(d.scopes_supported); })
+      .catch(() => { /* keep the safe default */ });
+  }, []);
   const [created, setCreated] = useState(null); // { id, secret } — shown once
   const undo = useUndoableDelete(reload);
   const list = (data?.clients || []).filter((c) => !undo.pending.has(c.id));
@@ -6415,9 +6479,9 @@ function AdminOAuthClients() {
         <div className="mt-3">
           <div className="text-sm text-[var(--muted)] mb-1.5">{t('oc.f.scopes', 'Scopes')}</div>
           <div className="flex flex-wrap gap-x-4 gap-y-2">
-            {['openid', 'profile', 'email', 'items', 'repos'].map((s) => (
-              <label key={s} className="flex items-center gap-1.5 text-sm cursor-pointer" title={{ openid: 'Sign-in / identity (required)', profile: 'Display name & avatar', email: 'Email address', items: 'Read the user\'s catalog items', repos: 'Read the user\'s hosted Server-Repos' }[s]}>
-                <input type="checkbox" checked={f.scopes.includes(s)} disabled={s === 'openid'} onChange={() => toggleScope(s)} /> {s}
+            {ssoScopes.map((sc) => (
+              <label key={sc} className="flex items-center gap-1.5 text-sm cursor-pointer" title={SSO_SCOPE_HELP[sc] || sc}>
+                <input type="checkbox" checked={f.scopes.includes(sc)} disabled={sc === 'openid'} onChange={() => toggleScope(sc)} /> {sc}
               </label>
             ))}
           </div>

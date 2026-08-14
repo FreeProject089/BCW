@@ -220,6 +220,26 @@ function ApiKeysPanel() {
 
 // Registering an app is unchanged in substance — it moved here from the profile, where it
 // sat between an avatar picker and a theme selector.
+// What each OIDC scope actually unlocks, in the words a consent screen would use. Shown as
+// the chip tooltip: a scope name is precise and says nothing to somebody deciding whether to
+// tick it.
+const SCOPE_HELP = {
+  openid: 'Required. Identifies the person — without it there is no sign-in, only an access token.',
+  profile: 'Display name, avatar and public profile fields.',
+  email: 'The e-mail address on the account.',
+  items: 'The catalog items they own.',
+  repos: 'Their Server-Repos.',
+  pools: 'Their storage pools and what draws from them.',
+  catalogs: 'The catalogs they own, unpublished ones included.',
+  payments: 'Their invoices — amounts and dates, never a card number.',
+  polls: 'Polls open to them and how they answered.',
+  favorites: 'The repos and catalogs they starred.',
+  transfers: 'Ownership transfers offered to or by them.',
+  notifications: 'Read their notifications. Read-only: an app can see what they were told, never mark it read.',
+  badges: 'The badges they have earned.',
+  stats: 'Download and view counts for what they own. Aggregated — never who did the downloading.',
+};
+
 function OAuthAppsPanel() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [data, setData] = useState(null);
@@ -310,7 +330,8 @@ function OAuthAppsPanel() {
                     {!c.confidential && <Badge>{t('dev.publicclient', 'public client (PKCE)')}</Badge>}
                   </div>
                   <div className="text-[11px] text-[var(--faint)] font-mono truncate">{c.id}</div>
-                  <div className="text-[11px] text-[var(--faint)] truncate">{(c.scopes || []).join(' ')} · {t('dev.users', '{n} connected').replace('{n}', String(c.users || 0))}</div>
+                  <div className="text-[11px] text-[var(--faint)]">{t('dev.users', '{n} connected').replace('{n}', String(c.users || 0))}</div>
+                  <ScopeChips scopes={c.scopes} descriptions={SCOPE_HELP} />
                 </div>
                 {c.confidential && <Button size="sm" variant="ghost" onClick={() => rotate(c)} title={t('dev.rotate.ok', 'Rotate')}><RefreshCw size={13} /></Button>}
                 <Button size="sm" variant="ghost" onClick={() => remove(c)} title={t('common.delete', 'Delete')}><Trash2 size={13} className="text-[var(--error)]" /></Button>
