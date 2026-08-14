@@ -18,6 +18,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, clientIp, clearSession, notify } from '../lib/lib.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
+import { deleteObject } from '../lib/storage.mjs';
 
 const GRACE_DAYS = 30;
 // Mirrors misc.mjs, where the same ladder governs suspending and banning. Duplicated
@@ -150,11 +151,14 @@ export default async function closureRoutes(app) {
     const token = String(req.query?.token || req.body?.token || '');
     if (!token) return reply.code(400).send({ error: 'missing_token' });
     const p = await db();
-    const u = await p.user.findUnique({ where: { closureToken: token }, select: { id: true, closureScheduledFor: true } });
+    const u = await p.user.findUnique({ where: { closureToken: token }, select: { id: true, closureScheduledFor: true, closureCancellable: true } });
     // An unknown token is an error, and has to be — the common way to get one is an email
     // client that cut the link in half, and telling that reader "your account is safe" is
     // the single worst thing this endpoint could say. It would be true of nobody's account.
     if (!u) return reply.code(404).send({ error: 'invalid_token' });
+    // Belt and braces: a final closure mints no token, so this should be unreachable —
+    // but a token that outlived a change of mind must not become a way around the decision.
+    if (u.closureCancellable === false) return reply.code(403).send({ error: 'not_cancellable' });
     // Already cancelled: the token is deliberately kept alive below, so this branch is
     // reachable and means what it says. Same link, third click, same reassuring answer.
     if (!u.closureScheduledFor) return { ok: true, alreadyActive: true };
@@ -171,8 +175,9 @@ export default async function closureRoutes(app) {
   // The signed-in route, for someone who is simply on the site.
   app.post('/me/closure/cancel', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
-    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { closureScheduledFor: true } });
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { closureScheduledFor: true, closureCancellable: true } });
     if (!me?.closureScheduledFor) return reply.code(409).send({ error: 'not_pending' });
+    if (me.closureCancellable === false) return reply.code(403).send({ error: 'not_cancellable' });
     // Token kept here too, so a link cancelled from the site still answers honestly when the
     // same person later clicks the one in their inbox.
     await p.user.update({ where: { id: req.user.uid }, data: { closureRequestedAt: null, closureScheduledFor: null } });
@@ -196,6 +201,9 @@ export default async function closureRoutes(app) {
     const b = z.object({
       reason: z.string().min(3).max(1000),
       days: z.number().int().min(0).max(365).optional(),
+      // Default TRUE: the reversible closure is the one that cannot go badly wrong, so it
+      // is what you get when nobody made a choice.
+      cancellable: z.boolean().optional(),
     }).safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: 'A reason is required.' });
 
@@ -213,8 +221,14 @@ export default async function closureRoutes(app) {
     if (MOD_RANK[req.user.role] <= MOD_RANK[target.role ?? 'USER']) return reply.code(403).send({ error: 'cannot_moderate_higher' });
 
     const days = b.data.days ?? GRACE_DAYS;
+    const cancellable = b.data.cancellable !== false;
     const when = new Date(Date.now() + days * 86400_000);
-    const token = crypto.randomBytes(32).toString('hex');
+    // No token when they cannot cancel: a link that exists and refuses is worse than none.
+    const token = cancellable ? crypto.randomBytes(32).toString('hex') : null;
+    // Reported, NOT enforced. A self-request is blocked by what the account still owns
+    // because the owner can go and deal with it; a staff closure cannot be held hostage by
+    // the same list, or an account would become unclosable by acquiring a repo. What it
+    // owns is torn down at closure instead — see sweepAccountClosures.
     const blockers = await closureBlockers(p, target.id);
 
     await p.user.update({
@@ -222,9 +236,10 @@ export default async function closureRoutes(app) {
       data: {
         closureRequestedAt: new Date(), closureScheduledFor: when, closureToken: token,
         closureReason: b.data.reason.trim(), closureBy: req.user.uid,
+        closureCancellable: cancellable,
       },
     });
-    await logAudit(p, req.user.uid, 'account.closure_staff', `${target.email} in ${days}d — ${b.data.reason.trim().slice(0, 120)}`, clientIp(req));
+    await logAudit(p, req.user.uid, 'account.closure_staff', `${target.email} in ${days}d, ${cancellable ? 'cancellable' : 'FINAL'} — ${b.data.reason.trim().slice(0, 120)}`, clientIp(req));
 
     const day = when.toISOString().slice(0, 10);
     const subject = 'Your BetterCommunity account is scheduled for closure';
@@ -236,7 +251,14 @@ export default async function closureRoutes(app) {
       </table>
       <p>Until that date nothing has been deleted. Your invoices and the records we are required to keep
          are retained either way; everything personal on the account is removed when it closes.</p>
-      <p>If you believe this is a mistake, tell us before ${escapeHtml(day)} — a person reads it.</p>
+      ${blockers.length ? `<p><b>What happens to what the account holds.</b> On ${escapeHtml(day)} any active
+         subscription is cancelled and anything still hosted under this account — repositories, catalogs and
+         their storage — is deleted. Nothing is transferred to anyone else. If you want to keep any of it,
+         move it to another account before that date.</p>` : ''}
+      <p>${cancellable
+        ? `If you want to keep the account, reply or use the contact page before ${escapeHtml(day)} and we can stop it.`
+        : `This closure is final and cannot be called off from your side.`} If you believe this is a mistake,
+         tell us before ${escapeHtml(day)} — a person reads it.</p>
       <p style="margin:22px 0"><a href="${escapeHtml(SITE)}/contact"
          style="background:#6366f1;color:#fff;padding:11px 20px;border-radius:9px;text-decoration:none;font-weight:600">Contact us</a></p>`);
     let mailed = false;
@@ -303,10 +325,58 @@ export default async function closureRoutes(app) {
 /// Anonymisation in place, for the reason at the top of this file. Exported for the
 /// sweeper, and written so running it twice is harmless: `closedAt` is the guard, and the
 /// scrubbed values do not depend on the ones being replaced.
+/** Cancel and delete everything a staff-closed account still holds.
+ *
+ *  Only ever called for a closure STAFF scheduled. Ordered so nothing is left paying for
+ *  something that no longer exists: subscriptions first, then the content, then the pools
+ *  the content drew from.
+ *
+ *  Stripe is cancelled best-effort and its failure does not stop the rest — a subscription
+ *  we could not reach is a billing problem to chase, not a reason to leave the account and
+ *  its content standing after the date the person was given.
+ */
+async function tearDownOwned(p, userId, log) {
+  const out = { subscriptions: 0, repos: 0, catalogs: 0, items: 0, pools: 0 };
+
+  const subs = await p.subscription.findMany({ where: { userId }, select: { id: true, stripeSubId: true } }).catch(() => []);
+  for (const sub of subs) {
+    if (sub.stripeSubId) {
+      try {
+        const { stripe } = await import('./hosting.mjs');
+        const sk = await stripe();
+        if (sk) await sk.subscriptions.cancel(sub.stripeSubId);
+      } catch (e) { log?.warn?.(`[sweeper] could not cancel ${sub.stripeSubId}: ${String(e?.message || e)}`); }
+    }
+  }
+  out.subscriptions = (await p.subscription.deleteMany({ where: { userId } }).catch(() => ({ count: 0 }))).count;
+
+  // Hosted bytes go with the rows. Object storage is not covered by any database cascade,
+  // so it is deleted explicitly or it stays on disk paying for nobody.
+  const repos = await p.serverRepo.findMany({ where: { ownerId: userId }, select: { id: true, files: { select: { key: true } } } }).catch(() => []);
+  for (const r of repos) {
+    for (const f of r.files) { try { await deleteObject(f.key); } catch { /* already gone */ } }
+  }
+  out.repos = (await p.serverRepo.deleteMany({ where: { ownerId: userId } }).catch(() => ({ count: 0 }))).count;
+
+  const cats = await p.communityCatalog.findMany({ where: { ownerId: userId }, select: { id: true, items: { select: { payloadKey: true } } } }).catch(() => []);
+  for (const c of cats) {
+    for (const it of c.items) { if (it.payloadKey) { try { await deleteObject(it.payloadKey); } catch { /* already gone */ } } }
+  }
+  out.catalogs = (await p.communityCatalog.deleteMany({ where: { ownerId: userId } }).catch(() => ({ count: 0 }))).count;
+
+  const items = await p.catalogItem.findMany({ where: { ownerId: userId }, select: { id: true, payloadKey: true } }).catch(() => []);
+  for (const it of items) { if (it.payloadKey) { try { await deleteObject(it.payloadKey); } catch { /* already gone */ } } }
+  out.items = (await p.catalogItem.deleteMany({ where: { ownerId: userId } }).catch(() => ({ count: 0 }))).count;
+
+  // Last: a pool only means something while something draws from it.
+  out.pools = (await p.hostingGroup.deleteMany({ where: { ownerId: userId } }).catch(() => ({ count: 0 }))).count;
+  return out;
+}
+
 export async function sweepAccountClosures(p, log) {
   const due = await p.user.findMany({
     where: { closureScheduledFor: { lte: new Date() }, closedAt: null },
-    select: { id: true, email: true },
+    select: { id: true, email: true, closureBy: true },
   });
   let n = 0;
   for (const u of due) {
@@ -315,8 +385,18 @@ export async function sweepAccountClosures(p, log) {
     // subscription is how a paid repo ends up with nobody able to cancel it.
     const blockers = await closureBlockers(p, u.id);
     if (blockers.length) {
-      log?.warn?.(`[sweeper] closure of ${u.id} held: ${blockers.map((b) => `${b.count} ${b.kind}`).join(', ')}`);
-      continue;
+      if (!u.closureBy) {
+        // A closure THEY asked for: held rather than forced. They were told what was in the
+        // way and can still deal with it; silently deleting the owner of a live subscription
+        // is how a paid repo ends up with nobody able to cancel it.
+        log?.warn?.(`[sweeper] closure of ${u.id} held: ${blockers.map((b) => `${b.count} ${b.kind}`).join(', ')}`);
+        continue;
+      }
+      // A closure STAFF decided cannot be blocked by what the account owns, or an account
+      // would become unclosable by acquiring a repo. Everything goes, and nothing is
+      // transferred — the email said so on the day it was scheduled.
+      const torn = await tearDownOwned(p, u.id, log);
+      log?.info?.({ ...torn }, `[sweeper] staff closure of ${u.id}: tore down what it owned`);
     }
     await p.user.update({
       where: { id: u.id },

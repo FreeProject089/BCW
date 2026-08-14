@@ -3694,7 +3694,7 @@ function UserExtras({ userId }) {
 function ClosureBanner({ user, onChanged }) {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState(null); // { reason, days }
+  const [form, setForm] = useState(null); // { reason, days, cancellable }
 
   const day = (d) => new Date(d).toLocaleDateString();
 
@@ -3704,13 +3704,15 @@ function ClosureBanner({ user, onChanged }) {
       title: t('ud.cl.start.t', 'Schedule this account for closure?'),
       // Naming what the person on the other end gets, because that is the part an admin
       // cannot see afterwards and the part they are actually deciding.
-      message: t('ud.cl.start.m', 'They are emailed the reason, the date, and a link to contact us — not a one-click undo, since a closure staff decided is not one they can reverse themselves. Nothing is deleted until {d}; you can call it off until then.')
+      message: (form.cancellable === false
+        ? t('ud.cl.start.m.final', 'FINAL: they cannot call this off — no cancel link is sent, only the reason, the date and a way to contact us. On {d} any active subscription is cancelled and everything hosted under the account — repositories, catalogs, their storage — is deleted. Nothing is transferred to anyone. You can still call it off yourself until then.')
+        : t('ud.cl.start.m', 'They are emailed the reason, the date, and a link to call it off themselves. On {d} any active subscription is cancelled and everything hosted under the account — repositories, catalogs, their storage — is deleted. Nothing is transferred to anyone.'))
         .replace('{d}', day(Date.now() + (Number(form.days) || 30) * 864e5)),
       okLabel: t('ud.cl.start.ok', 'Schedule it'), danger: true,
     })) return;
     setBusy(true);
     try {
-      await api.post(`/admin/users/${user.id}/closure`, { reason: form.reason.trim(), days: Number(form.days) || 30 });
+      await api.post(`/admin/users/${user.id}/closure`, { reason: form.reason.trim(), days: Number(form.days) || 30, cancellable: form.cancellable !== false });
       toast.success(t('ud.cl.started', 'Scheduled — they have been told.'));
       setForm(null); onChanged();
     } catch (x) {
@@ -3748,7 +3750,7 @@ function ClosureBanner({ user, onChanged }) {
         </div>
         <p className="text-[12px] text-[var(--muted)] mt-1">
           {staff
-            ? t('ud.cl.pending.staff', 'Scheduled by staff. Reason given: “{r}”.').replace('{r}', user.closureReason || '—')
+            ? `${t('ud.cl.pending.staff', 'Scheduled by staff. Reason given: “{r}”.').replace('{r}', user.closureReason || '—')} ${user.closureCancellable === false ? t('ud.cl.pending.final', 'Final — the account cannot call it off.') : t('ud.cl.pending.soft', 'They can call it off with the link in their email.')}`
             : t('ud.cl.pending.self', 'They asked for it themselves, and can cancel it with the link in their email until that date.')}
         </p>
         <Button size="sm" className="mt-2" disabled={busy} onClick={callOff}>{busy ? <Spinner /> : t('ud.cl.calloff', 'Call it off')}</Button>
@@ -3763,6 +3765,22 @@ function ClosureBanner({ user, onChanged }) {
         <Textarea rows={2} value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
           placeholder={t('ud.cl.reason.ph', 'Repeated spam in community catalogs')} />
       </Field>
+      {/* Two named outcomes rather than a checkbox: "can they undo it" is the decision, and
+          the reversible one is first and default because it is the one that cannot go badly
+          wrong. */}
+      <div className="grid sm:grid-cols-2 gap-2">
+        {[[true, t('ud.cl.mode.soft', 'They can call it off'), t('ud.cl.mode.soft.s', 'The email carries a cancel link. Use this when the account should probably go, but you might be wrong.')],
+          [false, t('ud.cl.mode.final', 'Final'), t('ud.cl.mode.final.s', 'No cancel link is sent and the account cannot stop it. You can still call it off from here until the date.')]].map(([val, label, sub]) => (
+          <button key={String(val)} onClick={() => setForm((f) => ({ ...f, cancellable: val }))}
+            className={`text-left rounded-lg border p-2.5 transition ${(form.cancellable !== false) === val ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+            <div className="text-xs font-semibold">{label}</div>
+            <div className="text-[11px] text-[var(--muted)] mt-0.5">{sub}</div>
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] text-warning">
+        {t('ud.cl.teardown', 'Either way, on the date: subscriptions cancelled, repositories and catalogs deleted with their storage, pools removed. Nothing is transferred — if any of it should survive, move it to another account first.')}
+      </p>
       <div className="flex items-end gap-2">
         <Field label={t('ud.cl.days', 'Days of notice')}>
           <Input className="w-24" type="number" min="0" max="365" value={form.days} onChange={(e) => setForm((f) => ({ ...f, days: e.target.value }))} />
@@ -3772,7 +3790,7 @@ function ClosureBanner({ user, onChanged }) {
       </div>
     </div>
   ) : (
-    <button onClick={() => setForm({ reason: '', days: 30 })}
+    <button onClick={() => setForm({ reason: '', days: 30, cancellable: true })}
       className="text-[11px] text-[var(--faint)] hover:text-[var(--error)] transition">
       {t('ud.cl.open', 'Schedule this account for closure…')}
     </button>

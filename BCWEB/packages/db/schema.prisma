@@ -148,6 +148,12 @@ model User {
   // null on a self-request, which is how the two are told apart everywhere else.
   closureReason       String?
   closureBy           String?
+  // Can the account holder call this off? True for anything they asked for themselves.
+  // Staff choose: a closure meant as a sanction that the target can undo with one click is
+  // not a sanction, and one they CANNOT undo needs to be a deliberate choice rather than a
+  // side effect of who pressed the button. When false no cancel token is minted at all —
+  // an unusable link in an email is worse than no link.
+  closureCancellable  Boolean   @default(true)
   // SHA-256 of the email the account had before anonymisation.
   //
   // Closing erases the address, which is the point — but it also erases the only link

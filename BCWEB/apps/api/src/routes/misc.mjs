@@ -787,6 +787,7 @@ export default async function miscRoutes(app) {
       // an account that is deleting itself in nine days, or chasing a payment from one, is
       // work nobody needed to do.
       closureRequestedAt: true, closureScheduledFor: true, closedAt: true, closureReason: true, closureBy: true,
+      closureCancellable: true,
       serverRepos: { select: { id: true, name: true, hosted: true, status: true, listed: true, verified: true }, orderBy: { createdAt: 'desc' } },
       items: { select: { id: true, name: true, slug: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' } },
       creatorLinks: { select: { creatorId: true, displayName: true, linkedAt: true, unlinkableAt: true } },
