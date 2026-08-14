@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Sliders, Sparkles, Users, Undo2 } from 'lucide-react';
+import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Sliders, Sparkles, Users, Undo2 } from 'lucide-react';
 import { Button, Card, PageHeader, Select, Spinner, useToast } from '../ui/ui.jsx';
 import { fxPref, setFxPref, prefersReducedMotion } from '../lib/fx-pref.js';
 import { useI18n } from '../i18n.jsx';
@@ -193,10 +193,31 @@ export function Authorize() {
         <div className="flex items-center gap-3.5 mb-6">
           <span className="grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-white text-xl font-bold shrink-0 shadow-lg shadow-orange-500/25">{(info.clientName || '?').charAt(0).toUpperCase()}</span>
           <div className="min-w-0">
-            <div className="font-bold text-[17px] leading-tight truncate">{info.clientName}</div>
+            <div className="font-bold text-[17px] leading-tight truncate flex items-center gap-1.5">
+              {info.clientName}
+              {info.verified && <BadgeCheck size={15} className="text-[var(--success)] shrink-0" title={t('oauth.verified', 'Reviewed by BetterCommunity')} />}
+            </div>
             <div className="text-sm text-[var(--muted)]">{t('oauth.wants', 'wants to access your BetterCommunity account')}</div>
           </div>
         </div>
+
+        {/* Who is asking. Anyone can register an app and type any name into the form, so the
+            screen says where this one came from rather than letting the name speak for
+            itself — that is the single question a consent screen exists to answer. */}
+        {!info.firstParty && (
+          <div className={`rounded-lg border p-3 mb-5 text-[12px] ${info.verified ? 'border-[var(--line)] bg-[var(--surface-2)]/50' : 'border-warning/50 bg-warning/10'}`}>
+            {info.verified
+              ? t('oauth.thirdparty.ok', 'A third-party app, reviewed by us. {who} registered it.').replace('{who}', info.ownerName || t('oauth.someone', 'A member'))
+              : t('oauth.thirdparty.new', 'A third-party app registered by {who}, and NOT reviewed by us. Anyone can register an app under any name — only continue if you know what this is.').replace('{who}', info.ownerName || t('oauth.someone', 'A member'))}
+            {info.description && <div className="mt-1 text-[var(--muted)]">{info.description}</div>}
+            {info.homepageUrl && (
+              // rel=noreferrer as well as noopener: the referrer would tell an unreviewed
+              // third party which account was looking at its consent screen.
+              <a href={info.homepageUrl} target="_blank" rel="noopener noreferrer nofollow"
+                 className="mt-1 inline-block text-[var(--primary-2)] hover:underline break-all">{info.homepageUrl}</a>
+            )}
+          </div>
+        )}
         <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('oauth.willaccess', 'It will be able to access')}</div>
         <ul className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)] mb-4 overflow-hidden">
           {(info.scopes || []).map((s) => { const [I, label, sub] = SCOPE_META[s] || [CheckCircle2, s, '']; return (

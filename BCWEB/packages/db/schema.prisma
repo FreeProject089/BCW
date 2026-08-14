@@ -88,6 +88,7 @@ model User {
   stripeCustomerId  String?   @unique
   apiKeys           ApiKey[]
   polls             Poll[]     @relation("PollAuthor")
+  oauthClients      OAuthClient[] @relation("OAuthClientOwner")
   pollVotes         PollVote[] @relation("PollVoter")
   sessions          Session[]
   createdAt         DateTime  @default(now())
@@ -1314,7 +1315,20 @@ model OAuthClient {
   // re-identifies every one of its users as a stranger — accounts get orphaned, not
   // merged. It is a choice made when a client is created, not a switch to flip later.
   subjectType  String   @default("public")
+  // Self-service registration. Null = created by staff, which is what every client was
+  // before the developer page existed.
+  owner        User?    @relation("OAuthClientOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId      String?
+  // Reviewed by staff. An unverified client works exactly the same — refusing to sign
+  // people in until a human looks would make registration pointless — but the consent
+  // screen says so, because "which app is this, really" is the one question a consent
+  // screen exists to answer and anyone can type any name.
+  verified     Boolean  @default(false)
+  description  String   @default("")
+  homepageUrl  String?
   createdAt    DateTime @default(now())
+
+  @@index([ownerId])
 }
 
 // The stored mapping behind a pairwise `sub`.

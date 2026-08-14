@@ -210,7 +210,20 @@ export default async function oidcProviderRoutes(app) {
     const p = await db();
     const client = await p.oAuthClient.findUnique({ where: { id: c.clientId } });
     if (!client) return reply.code(404).send({ error: 'not_found' });
-    return { clientName: client.name, scopes: c.scope.split(' ') };
+    // Everything the screen needs to answer "which app is this, really" — the question it
+    // exists for. An unverified client is not blocked; it is labelled, and its owner is
+    // named, so the decision is made with the same facts we have.
+    const owner = client.ownerId
+      ? await p.user.findUnique({ where: { id: client.ownerId }, select: { displayName: true } }).catch(() => null)
+      : null;
+    return {
+      clientName: client.name, scopes: c.scope.split(' '),
+      verified: client.verified,
+      description: client.description || '',
+      homepageUrl: client.homepageUrl || null,
+      ownerName: owner?.displayName || null,
+      firstParty: !client.ownerId,
+    };
   });
 
   // Consent decision (POST from the consent page).
@@ -572,12 +585,165 @@ export default async function oidcProviderRoutes(app) {
     return { users, live };
   });
 
+
+  // ── Self-service client registration ────────────────────────────────────────
+  //
+  // Anyone signed in can register an app. What that does NOT mean: dynamic registration
+  // (RFC 7591) is still off — an unauthenticated endpoint that mints client_ids is a spam
+  // surface with no owner to hold responsible. Every client here belongs to an account.
+  //
+  // The redirect_uri policy is the security of this whole feature. An authorization code
+  // is delivered to whatever URI the client registers, so a loose policy is not a
+  // convenience, it is a way to have codes delivered somewhere else.
+
+  const MAX_CLIENTS_PER_USER = 5;
+
+  /** https everywhere, plus loopback for local development, and nothing clever. */
+  function badRedirect(uri) {
+    let u;
+    try { u = new URL(uri); } catch { return 'not a URL'; }
+    if (u.hash) return 'must not contain a #fragment';
+    if (u.username || u.password) return 'must not contain credentials';
+    const loopback = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]';
+    if (u.protocol === 'http:' && !loopback) return 'must be https (http is only allowed on localhost)';
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return 'must be an http(s) URL';
+    // A wildcard host would let anyone who can register a subdomain receive the codes.
+    if (u.hostname.includes('*')) return 'must not use a wildcard host';
+    return null;
+  }
+
+  const publicClientView = (c) => ({
+    id: c.id, name: c.name, description: c.description, homepageUrl: c.homepageUrl,
+    confidential: c.confidential, redirectUris: c.redirectUris, scopes: c.scopes,
+    active: c.active, verified: c.verified, subjectType: c.subjectType, createdAt: c.createdAt,
+  });
+
+  app.get('/me/oauth-clients', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const clients = await p.oAuthClient.findMany({ where: { ownerId: req.user.uid }, orderBy: { createdAt: 'desc' } });
+    // How many people have actually connected each one — the number an app author wants,
+    // and the one that makes an abandoned registration obvious.
+    const consents = clients.length
+      ? await p.oAuthConsent.groupBy({ by: ['clientId'], where: { clientId: { in: clients.map((c) => c.id) } }, _count: { _all: true } }).catch(() => [])
+      : [];
+    const users = Object.fromEntries(consents.map((r) => [r.clientId, r._count._all]));
+    return {
+      clients: clients.map((c) => ({ ...publicClientView(c), users: users[c.id] || 0 })),
+      max: MAX_CLIENTS_PER_USER,
+      scopes: SCOPES,
+    };
+  });
+
+  app.post('/me/oauth-clients', { preHandler: requireRole(), config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const b = z.object({
+      name: z.string().min(2).max(120),
+      description: z.string().max(300).default(''),
+      homepageUrl: z.string().url().max(300).optional().or(z.literal('')),
+      confidential: z.boolean().optional(),
+      redirectUris: z.array(z.string().max(500)).min(1).max(10),
+      scopes: z.array(z.enum(['openid', 'profile', 'email', 'items', 'repos'])).optional(),
+      subjectType: z.enum(['public', 'pairwise']).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const d = b.data;
+
+    for (const uri of d.redirectUris) {
+      const why = badRedirect(uri);
+      // The reason is returned, not swallowed: "invalid redirect URI" with no explanation
+      // is how somebody spends twenty minutes on a missing s in https.
+      if (why) return reply.code(400).send({ error: 'bad_redirect_uri', uri, detail: why });
+    }
+
+    const p = await db();
+    const mine = await p.oAuthClient.count({ where: { ownerId: req.user.uid } });
+    if (mine >= MAX_CLIENTS_PER_USER) return reply.code(409).send({ error: 'too_many', max: MAX_CLIENTS_PER_USER });
+
+    const confidential = d.confidential !== false;
+    const secret = confidential ? crypto.randomBytes(32).toString('base64url') : '';
+    const c = await p.oAuthClient.create({ data: {
+      name: d.name.trim(), description: d.description.trim(), homepageUrl: d.homepageUrl || null,
+      confidential, secretHash: secret ? sha256(secret) : '',
+      redirectUris: d.redirectUris, scopes: d.scopes?.length ? d.scopes : SCOPES,
+      subjectType: d.subjectType || 'public',
+      ownerId: req.user.uid, verified: false,
+    } });
+    await logAudit(p, req.user.uid, 'oauth.client_registered', `${c.name} (${c.id})`, clientIp(req));
+    return reply.code(201).send({ client: publicClientView(c), clientSecret: secret || null });
+  });
+
+  /** Edit your own client. Not the subject type: changing it re-identifies every user of
+   *  the client at once, orphaning their accounts instead of migrating them. */
+  app.patch('/me/oauth-clients/:id', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({
+      name: z.string().min(2).max(120).optional(),
+      description: z.string().max(300).optional(),
+      homepageUrl: z.string().url().max(300).optional().or(z.literal('')),
+      redirectUris: z.array(z.string().max(500)).min(1).max(10).optional(),
+      scopes: z.array(z.enum(['openid', 'profile', 'email', 'items', 'repos'])).optional(),
+      active: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    for (const uri of b.data.redirectUris || []) {
+      const why = badRedirect(uri);
+      if (why) return reply.code(400).send({ error: 'bad_redirect_uri', uri, detail: why });
+    }
+    const p = await db();
+    const own = await p.oAuthClient.findFirst({ where: { id: req.params.id, ownerId: req.user.uid }, select: { id: true, verified: true, name: true, redirectUris: true } });
+    if (!own) return reply.code(404).send({ error: 'not_found' });
+
+    const data = {};
+    for (const k of ['name', 'description', 'redirectUris', 'scopes', 'active']) if (b.data[k] !== undefined) data[k] = b.data[k];
+    if (b.data.homepageUrl !== undefined) data.homepageUrl = b.data.homepageUrl || null;
+    if (!Object.keys(data).length) return reply.code(400).send({ error: 'nothing_to_update' });
+
+    // Editing what the consent screen vouches for drops the verification. A review that
+    // survived a rename and a change of redirect target would be a review of nothing.
+    const identityChanged = ('name' in data) || ('redirectUris' in data);
+    if (identityChanged && own.verified) data.verified = false;
+
+    const c = await p.oAuthClient.update({ where: { id: own.id }, data });
+    return { ok: true, client: publicClientView(c), verificationLost: !!(identityChanged && own.verified) };
+  });
+
+  app.post('/me/oauth-clients/:id/rotate', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const own = await p.oAuthClient.findFirst({ where: { id: req.params.id, ownerId: req.user.uid }, select: { id: true, confidential: true } });
+    if (!own) return reply.code(404).send({ error: 'not_found' });
+    if (!own.confidential) return reply.code(400).send({ error: 'public_client' });
+    const secret = crypto.randomBytes(32).toString('base64url');
+    await p.oAuthClient.update({ where: { id: own.id }, data: { secretHash: sha256(secret) } });
+    await logAudit(p, req.user.uid, 'oauth.client_secret_rotated', own.id, clientIp(req));
+    return { clientSecret: secret };
+  });
+
+  app.delete('/me/oauth-clients/:id', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const own = await p.oAuthClient.findFirst({ where: { id: req.params.id, ownerId: req.user.uid }, select: { id: true, name: true } });
+    if (!own) return reply.code(404).send({ error: 'not_found' });
+    // Everything issued in this client's name goes with it. Leaving live refresh tokens
+    // behind would mean an app the owner deleted keeps its access until they expire.
+    await p.oAuthRefreshToken.updateMany({ where: { clientId: own.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {});
+    await p.oAuthConsent.deleteMany({ where: { clientId: own.id } }).catch(() => {});
+    await p.oAuthClient.delete({ where: { id: own.id } });
+    await logAudit(p, req.user.uid, 'oauth.client_deleted', `${own.name} (${own.id})`, clientIp(req));
+    return { ok: true };
+  });
+
   // ── Admin: OAuth client registry ──
   app.get('/admin/oauth-clients', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
     const clients = await p.oAuthClient.findMany({ orderBy: { createdAt: 'desc' } });
     // Never return secretHash.
-    return { clients: clients.map((c) => ({ id: c.id, name: c.name, confidential: c.confidential, redirectUris: c.redirectUris, scopes: c.scopes, active: c.active, createdAt: c.createdAt })) };
+    const ownerIds = [...new Set(clients.map((c) => c.ownerId).filter(Boolean))];
+    const owners = ownerIds.length ? await p.user.findMany({ where: { id: { in: ownerIds } }, select: { id: true, displayName: true, email: true } }) : [];
+    const byId = Object.fromEntries(owners.map((u) => [u.id, u]));
+    // Never return secretHash.
+    return { clients: clients.map((c) => ({
+      id: c.id, name: c.name, description: c.description, homepageUrl: c.homepageUrl,
+      confidential: c.confidential, redirectUris: c.redirectUris, scopes: c.scopes,
+      active: c.active, verified: c.verified, createdAt: c.createdAt,
+      owner: c.ownerId ? (byId[c.ownerId] || { id: c.ownerId, displayName: '(deleted)' }) : null,
+    })) };
   });
 
   app.post('/admin/oauth-clients', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
@@ -613,10 +779,13 @@ export default async function oidcProviderRoutes(app) {
       active: z.boolean().optional(),
       redirectUris: z.array(z.string().url()).min(1).max(20).optional(),
       scopes: z.array(z.enum(['openid', 'profile', 'email', 'items', 'repos'])).optional(),
+      // Staff vouching for a self-registered app. It changes what the consent screen says,
+      // not whether the client works.
+      verified: z.boolean().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const data = {};
-    for (const k of ['active', 'redirectUris', 'scopes']) if (b.data[k] !== undefined) data[k] = b.data[k];
+    for (const k of ['active', 'redirectUris', 'scopes', 'verified']) if (b.data[k] !== undefined) data[k] = b.data[k];
     if (!Object.keys(data).length) return reply.code(400).send({ error: 'nothing_to_update' });
     const p = await db();
     const c = await p.oAuthClient.update({ where: { id: req.params.id }, data }).catch(() => null);

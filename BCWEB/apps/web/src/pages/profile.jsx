@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import BoringAvatar from 'boring-avatars';
 import QRCode from 'qrcode';
-import { User, Shield, ShieldCheck, Mail, CalendarDays, Shuffle, KeyRound, Check, Palette, Sparkles, ImagePlus, Trash2, FileArchive, Link2, BadgeCheck, Lock, Download, Eye, EyeOff, Settings as SettingsIcon, ArrowRight } from 'lucide-react';
+import { User, Shield, ShieldCheck, Mail, CalendarDays, Shuffle, KeyRound, Check, Palette, Sparkles, ImagePlus, Trash2, FileArchive, Link2, BadgeCheck, Lock, Download, Eye, EyeOff, Settings as SettingsIcon, ArrowRight, Plus } from 'lucide-react';
 import { api, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -241,6 +241,7 @@ export default function Profile() {
           <div className="space-y-4">
           <SectionLabel icon={Terminal}>{t('prof.sec.developer', 'Developer & preferences')}</SectionLabel>
           <ApiKeysCard />
+          <DevAppsCard />
           <CloseAccountCard />
 
           {/* Device preferences (intro animation, theme, language, translucency,
@@ -735,6 +736,186 @@ function SessionsCard() {
         <p className="text-[11px] text-[var(--faint)] mt-3">
           {t('prof.sess.legacy', 'This device signed in before device tracking existed, so it is not listed. Sign out and back in to see it here.')}
         </p>
+      )}
+    </Card>
+  );
+}
+
+// Your own OAuth apps — "Sign in with BetterCommunity" for anybody who wants it.
+//
+// The secret is shown exactly once, at creation and after a rotation. Everything else here
+// is editable, and editing the NAME or the redirect URIs drops the staff review, which the
+// card says before you do it rather than after: a review that survived a change of name and
+// callback would be a review of nothing.
+const OAUTH_SCOPE_HINTS = {
+  openid: 'Confirm who they are (always required)',
+  profile: 'Display name and avatar',
+  email: 'Email address',
+  items: 'Read their catalog items',
+  repos: 'Read the Server-Repos they own',
+};
+
+function DevAppsCard() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [data, setData] = useState(null);
+  const reload = () => api.get('/me/oauth-clients').then(setData).catch(() => setData(null));
+  useEffect(() => { reload(); }, []);
+  const [form, setForm] = useState(null);
+  const [secret, setSecret] = useState(null); // { id, value } — shown once
+  const [busy, setBusy] = useState(false);
+
+  const clients = data?.clients || [];
+  const atMax = clients.length >= (data?.max ?? 5);
+
+  const blank = () => ({ name: '', description: '', homepageUrl: '', redirectUris: '', confidential: true, scopes: ['openid', 'profile', 'email'] });
+
+  const create = async () => {
+    const uris = form.redirectUris.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
+    if (form.name.trim().length < 2) return toast.error(t('dev.needname', 'Give the app a name — people see it on the consent screen.'));
+    if (!uris.length) return toast.error(t('dev.needuri', 'Add at least one redirect URI.'));
+    setBusy(true);
+    try {
+      const r = await api.post('/me/oauth-clients', {
+        name: form.name.trim(), description: form.description.trim(), homepageUrl: form.homepageUrl.trim(),
+        confidential: form.confidential, redirectUris: uris, scopes: form.scopes,
+      });
+      setSecret({ id: r.client.id, value: r.clientSecret });
+      setForm(null); reload();
+    } catch (x) {
+      // The server's reason, verbatim: "must be https (http is only allowed on localhost)"
+      // saves the twenty minutes that "invalid redirect URI" costs.
+      toast.error(x?.data?.error === 'bad_redirect_uri' ? `${x.data.uri} — ${x.data.detail}`
+        : x?.data?.error === 'too_many' ? t('dev.toomany', 'You already have {n} apps, which is the limit.').replace('{n}', String(x.data.max))
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  const rotate = async (c) => {
+    if (!await dialog.confirm({
+      title: t('dev.rotate.t', 'Issue a new secret?'),
+      message: t('dev.rotate.m', 'The current one stops working immediately, so anything using it signs people in no longer until you deploy the new one.'),
+      okLabel: t('dev.rotate.ok', 'Rotate'), danger: true,
+    })) return;
+    try { const r = await api.post(`/me/oauth-clients/${c.id}/rotate`); setSecret({ id: c.id, value: r.clientSecret }); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+
+  const remove = async (c) => {
+    if (!await dialog.confirm({
+      title: t('dev.del.t', 'Delete this app?'),
+      message: t('dev.del.m', 'Everyone who connected it is disconnected and its live sessions are revoked — {n} account(s) today. The client id cannot be reused.').replace('{n}', String(c.users || 0)),
+      okLabel: t('common.delete', 'Delete'), danger: true,
+    })) return;
+    try { await api.del(`/me/oauth-clients/${c.id}`); toast.success(t('common.deleted', 'Deleted.')); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+
+  const toggleActive = async (c) => {
+    try { await api.patch(`/me/oauth-clients/${c.id}`, { active: !c.active }); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+
+  if (!data) return null;
+
+  return (
+    <Card className="p-5">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2">
+        <Shield size={15} className="text-[var(--primary-2)]" /> {t('dev.title', 'Sign in with BetterCommunity')}
+      </div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">
+        {t('dev.sub', 'Register an app and let people sign in to it with their BetterCommunity account. Everything is discoverable at /.well-known/openid-configuration — standard OpenID Connect, no SDK of ours required.')}
+      </p>
+
+      {secret && (
+        <div className="rounded-lg border border-[var(--primary)] bg-[var(--primary)]/5 p-3 mb-3">
+          <div className="text-[12px] font-semibold text-[var(--primary-2)] mb-1.5">{t('dev.secret.t', 'Copy the secret now — it is shown once and never again.')}</div>
+          <div className="flex items-center gap-2 text-[12px] mb-1">
+            <span className="text-[var(--muted)] w-20 shrink-0">client_id</span>
+            <code className="font-mono break-all flex-1">{secret.id}</code>
+            <Button size="sm" variant="ghost" onClick={() => { copyText(secret.id); toast.success(t('common.copied', 'Copied.')); }}><Copy size={13} /></Button>
+          </div>
+          <div className="flex items-center gap-2 text-[12px]">
+            <span className="text-[var(--muted)] w-20 shrink-0">client_secret</span>
+            <code className="font-mono break-all flex-1">{secret.value}</code>
+            <Button size="sm" variant="ghost" onClick={() => { copyText(secret.value); toast.success(t('common.copied', 'Copied.')); }}><Copy size={13} /></Button>
+          </div>
+          <Button size="sm" className="mt-2" onClick={() => setSecret(null)}>{t('dev.secret.done', 'I have saved it')}</Button>
+        </div>
+      )}
+
+      {clients.length > 0 && (
+        <div className="divide-y divide-[var(--line)] mb-3">
+          {clients.map((c) => (
+            <div key={c.id} className="py-2.5">
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-medium flex items-center gap-1.5 flex-wrap">
+                    <span className={c.active ? '' : 'text-[var(--faint)]'}>{c.name}</span>
+                    {c.verified
+                      ? <Badge tone="green">{t('dev.verified', 'reviewed')}</Badge>
+                      : <Badge tone="amber">{t('dev.unverified', 'not reviewed')}</Badge>}
+                    {!c.active && <Badge>{t('dev.off', 'off')}</Badge>}
+                    {!c.confidential && <Badge>{t('dev.publicclient', 'public client (PKCE)')}</Badge>}
+                  </div>
+                  <div className="text-[11px] text-[var(--faint)] font-mono truncate">{c.id}</div>
+                  <div className="text-[11px] text-[var(--faint)] truncate">
+                    {(c.scopes || []).join(' ')} · {t('dev.users', '{n} connected').replace('{n}', String(c.users || 0))}
+                  </div>
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => toggleActive(c)} title={c.active ? t('dev.disable', 'Turn off') : t('dev.enable', 'Turn on')}>
+                  {c.active ? <EyeOff size={13} /> : <Eye size={13} />}
+                </Button>
+                {c.confidential && <Button size="sm" variant="ghost" onClick={() => rotate(c)} title={t('dev.rotate.ok', 'Rotate')}><RefreshCw size={13} /></Button>}
+                <Button size="sm" variant="ghost" onClick={() => remove(c)} title={t('common.delete', 'Delete')}><Trash2 size={13} className="text-[var(--error)]" /></Button>
+              </div>
+              <div className="text-[11px] text-[var(--faint)] mt-0.5 break-all">{(c.redirectUris || []).join('  ·  ')}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {form ? (
+        <div className="rounded-lg border border-[var(--line)] p-3 space-y-2.5">
+          <Field label={t('dev.name', 'App name')} hint={t('dev.name.h', 'Shown on the consent screen. Changing it later drops the staff review.')}>
+            <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="My Mod Launcher" />
+          </Field>
+          <Field label={t('dev.desc', 'One line about it (optional)')}>
+            <Input value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+          </Field>
+          <Field label={t('dev.home', 'Homepage (optional)')}>
+            <Input value={form.homepageUrl} onChange={(e) => setForm((f) => ({ ...f, homepageUrl: e.target.value }))} placeholder="https://…" />
+          </Field>
+          <Field label={t('dev.uris', 'Redirect URIs')}
+            hint={t('dev.uris.h', 'One per line, matched exactly. https only — except http://localhost for development. This is where the authorization code is delivered, so it is the one field worth double-checking.')}>
+            <Textarea rows={3} value={form.redirectUris} onChange={(e) => setForm((f) => ({ ...f, redirectUris: e.target.value }))} placeholder={'https://myapp.example.com/callback\nhttp://localhost:5173/callback'} />
+          </Field>
+          <Field label={t('dev.scopes', 'What it may read')}>
+            <div className="space-y-1">
+              {Object.entries(OAUTH_SCOPE_HINTS).map(([sc, hint]) => (
+                <label key={sc} className="flex items-start gap-2 text-[12px]">
+                  <input type="checkbox" className="mt-0.5" checked={form.scopes.includes(sc)} disabled={sc === 'openid'}
+                    onChange={(e) => setForm((f) => ({ ...f, scopes: e.target.checked ? [...f.scopes, sc] : f.scopes.filter((x) => x !== sc) }))} />
+                  <span><code className="font-mono">{sc}</code> — {t(`dev.scope.${sc}`, hint)}</span>
+                </label>
+              ))}
+            </div>
+          </Field>
+          <label className="flex items-start gap-2 text-[12px]">
+            <input type="checkbox" className="mt-0.5" checked={!form.confidential}
+              onChange={(e) => setForm((f) => ({ ...f, confidential: !e.target.checked }))} />
+            {/* Named for what it is: a client that cannot keep a secret must not be given
+                one, and PKCE is what replaces it. */}
+            <span>{t('dev.public.h', 'This app runs where users can read its code (a mobile app, a desktop app, a single-page site). No secret is issued and PKCE is required.')}</span>
+          </label>
+          <div className="flex gap-2">
+            <Button size="sm" variant="primary" disabled={busy} onClick={create}>{busy ? <Spinner /> : t('dev.create', 'Register it')}</Button>
+            <Button size="sm" onClick={() => setForm(null)}>{t('common.cancel', 'Cancel')}</Button>
+          </div>
+        </div>
+      ) : (
+        <Button size="sm" disabled={atMax} onClick={() => setForm(blank())}>
+          <Plus size={13} /> {atMax ? t('dev.atmax', 'Limit of {n} apps reached').replace('{n}', String(data?.max ?? 5)) : t('dev.new', 'Register an app')}
+        </Button>
       )}
     </Card>
   );
