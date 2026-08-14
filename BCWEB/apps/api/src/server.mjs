@@ -55,7 +55,7 @@ import socialRoutes from './routes/social.mjs';
 import reportRoutes from './routes/reports.mjs';
 import connectionRoutes from './routes/connections.mjs';
 import { recordRequest } from './lib/monitor.mjs';
-import { recordApiCall, flushApiUsage } from './lib/apiusage.mjs';
+import { registerApiUsageHook, flushApiUsage } from './lib/apiusage.mjs';
 import { installAbuseGuards } from './lib/abuse.mjs';
 
 // Fail-safe: never boot in production with the insecure default JWT secret — that
@@ -162,19 +162,11 @@ app.get('/ready', PROBE_OPTS, async (req, reply) => {
 // flushes + persists this on each sweeper tick). Cheap: just two subtractions.
 app.addHook('onResponse', (req, reply, done) => {
   recordRequest(reply.elapsedTime, reply.statusCode, req.url, reply.getHeader('content-length'));
-  // Only calls that authenticated with an API key. Session traffic is the site itself and
-  // belongs in analytics, not in a table an admin reads to answer "what is this key doing".
-  if (req.apiKey) {
-    recordApiCall({
-      // req.apiKey.userId, not req.user — on a scope refusal there is no req.user, and that
-      // is exactly the call worth attributing.
-      keyId: req.apiKey.id, userId: req.apiKey.userId || req.user?.uid, sandbox: !!req.sandbox,
-      method: req.method, path: req.routeOptions?.url || req.url,
-      status: reply.statusCode, ms: reply.elapsedTime, ip: req.ip,
-    });
-  }
   done();
 });
+// The API-key half of the same job, defined next to the recorder so the tests can register
+// the identical rule (see lib/apiusage.mjs).
+registerApiUsageHook(app);
 
 await app.register(authRoutes);
 await app.register(catalogRoutes);

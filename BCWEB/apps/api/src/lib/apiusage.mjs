@@ -66,6 +66,30 @@ export function recordApiCall({ keyId, userId, method, path, status, ms, ip, san
   } catch { /* statistics must never break a request */ }
 }
 
+/** Attach the recorder to a Fastify instance.
+ *
+ *  Lives here rather than inline in server.mjs so a test harness can register the SAME rule.
+ *  The rule is the interesting part — which calls count, and who they are attributed to — and
+ *  a second copy of it in the tests would be a copy that agrees with itself while disagreeing
+ *  with production.
+ */
+export function registerApiUsageHook(app) {
+  app.addHook('onResponse', (req, reply, done) => {
+    // Only calls that authenticated with an API key. Session traffic is the site itself and
+    // belongs in analytics, not in a table an admin reads to answer "what is this key doing".
+    if (req.apiKey) {
+      recordApiCall({
+        // req.apiKey.userId, not req.user — on a scope refusal there is no req.user, and that
+        // is exactly the call worth attributing.
+        keyId: req.apiKey.id, userId: req.apiKey.userId || req.user?.uid, sandbox: !!req.sandbox,
+        method: req.method, path: req.routeOptions?.url || req.url,
+        status: reply.statusCode, ms: reply.elapsedTime, ip: req.ip,
+      });
+    }
+    done();
+  });
+}
+
 function schedule() {
   if (timer) return;
   timer = setTimeout(() => { timer = null; flushApiUsage().catch(() => {}); }, FLUSH_MS);
