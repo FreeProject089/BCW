@@ -149,6 +149,43 @@ export function useUndoableToggle(reload) {
 //
 // Use `opts.onSettled` for the busy flag: it fires on BOTH paths, so a spinner can't be left
 // spinning when the user cancels. `opts.errorFor(x)` maps a server error to a message.
+
+/** Ask who should get a repository or a catalog item, and send the offer.
+ *
+ *  One helper rather than a dialog per screen: the wording that matters — that this is an
+ *  offer, that they can refuse, that they inherit the storage — has to be identical
+ *  wherever it is triggered, and two copies of it drift the first time one is edited.
+ *
+ *  Returns true when an offer was actually sent, so the caller can refresh its list.
+ */
+export async function startOwnershipTransfer({ dialog, toast, t, api, kind, targetId, targetName }) {
+  const what = kind === 'repo' ? t('tr.repo', 'repository') : t('tr.item', 'catalog item');
+  const email = await dialog.prompt({
+    title: t('tr.start.t', 'Transfer ownership'),
+    message: t('tr.start.m', 'Who should receive the {what} “{n}”? They get an offer they can refuse — nothing moves until they accept, and if they do, its content and storage become theirs.')
+      .replace('{what}', what).replace('{n}', targetName),
+    label: t('tr.start.l', 'Their account email'),
+    placeholder: 'name@example.com',
+    okLabel: t('tr.start.ok', 'Send the offer'),
+  });
+  if (!email || !email.includes('@')) return false;
+  try {
+    await api.post('/me/transfers', { kind, targetId, toEmail: email.trim() });
+    toast.success(t('tr.start.sent', 'Offer sent to {e}. It expires in 14 days.').replace('{e}', email.trim()));
+    return true;
+  } catch (x) {
+    const e = x.data?.error;
+    toast.error(
+      e === 'no_such_user' ? t('tr.err.nouser', 'No account uses that address. They need to sign up first.')
+      : e === 'self_transfer' ? t('tr.err.self', 'That is your own address.')
+      : e === 'already_pending' ? t('tr.err.pending', 'There is already an offer open for this one.')
+      : e === 'active_subscription' ? t('tr.err.sub', 'It has an active hosting subscription. That has to be cancelled or moved first.')
+      : e === 'recipient_unavailable' ? t('tr.err.unavail', 'That account cannot receive transfers right now.')
+      : t('common.failed', 'Failed.'));
+    return false;
+  }
+}
+
 export function useUndoableSave(reload) {
   const toast = useToast(); const { t } = useI18n();
   return (run, msg, opts = {}) => {

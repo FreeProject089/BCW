@@ -5,7 +5,7 @@ import { User, Shield, ShieldCheck, Mail, CalendarDays, Shuffle, KeyRound, Check
 import { api, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
-import { useToast, Button, Card, Badge, Input, Textarea, Field, PageHeader, Spinner, copyText } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Field, PageHeader, Spinner, copyText } from '../ui/ui.jsx';
 import { DiscordIcon, KofiIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
@@ -228,6 +228,7 @@ export default function Profile() {
               {msg === 'pwmismatch' && <span className="text-sm text-[var(--error)]">{t('prof.pwmismatch', "Passwords don't match")}</span>}</div>
           </Card>
           <SessionsCard />
+          <TransfersCard />
           </div>
 
           <div className="space-y-4">
@@ -264,6 +265,111 @@ export default function Profile() {
 // Read-only account facts, shown at the TOP of the profile (name / email / role /
 // member since). Email is masked by default with a one-tap reveal so it's safe to have
 // on screen while sharing.
+// Ownership transfers, both directions in one card.
+//
+// Incoming first and unmissable: an offer sitting unanswered is somebody else waiting, and
+// it expires. Outgoing is below, mostly so you can take one back.
+//
+// Nothing here is optimistic. Accepting moves real ownership on the server, and showing it
+// as done before the server agrees would mean a refresh could take it away again — the one
+// place a hopeful UI turns into "did that work or not?".
+function TransfersCard() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState('');
+
+  const load = () => api.get('/me/transfers').then(setData).catch(() => setData({ incoming: [], outgoing: [] }));
+  useEffect(() => { load(); }, []);
+
+  const ERRORS = (e) => ({
+    expired: t('tr.err.expired', 'That offer has expired.'),
+    not_pending: t('tr.err.gone', 'That offer is no longer open.'),
+    no_longer_owned: t('tr.err.notowned', 'The sender no longer owns it — the offer has been withdrawn.'),
+    active_subscription: t('tr.err.sub', 'It has an active hosting subscription. That has to be cancelled or moved first.'),
+  }[e] || t('prof.failed', 'Failed.'));
+
+  const act = async (tr, kind) => {
+    if (kind === 'accept') {
+      const what = tr.kind === 'repo' ? t('tr.repo', 'repository') : t('tr.item', 'catalog item');
+      if (!await dialog.confirm({
+        title: t('tr.accept.t', 'Take ownership?'),
+        message: t('tr.accept.m', 'The {what} “{n}” becomes yours: its content, its storage, and anything reported about it. {who} loses access to it.')
+          .replace('{what}', what).replace('{n}', tr.targetName).replace('{who}', tr.counterparty.displayName),
+        okLabel: t('tr.accept', 'Accept'),
+      })) return;
+    }
+    setBusy(tr.id);
+    try {
+      await api.post(`/me/transfers/${tr.id}/${kind === 'accept' ? 'accept' : 'decline'}`);
+      toast.success(kind === 'accept' ? t('tr.accepted', 'It is yours.') : t('tr.declined', 'Declined.'));
+      await load();
+    } catch (x) { toast.error(ERRORS(x.data?.error)); await load(); }
+    finally { setBusy(''); }
+  };
+
+  const incoming = (data?.incoming || []).filter((x) => x.status === 'pending');
+  const outgoing = (data?.outgoing || []).filter((x) => x.status === 'pending');
+  const past = [...(data?.incoming || []), ...(data?.outgoing || [])]
+    .filter((x) => x.status !== 'pending').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6);
+
+  // Hidden entirely when there is nothing to show: an empty card on a profile is furniture.
+  if (!data || (!incoming.length && !outgoing.length && !past.length)) return null;
+
+  const days = (iso) => Math.max(0, Math.ceil((new Date(iso) - Date.now()) / 864e5));
+
+  return (
+    <Card className="p-5" id="transfers">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2">
+        <ArrowRight size={15} className="text-[var(--primary-2)]" /> {t('tr.title', 'Ownership transfers')}
+      </div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">
+        {t('tr.sub', 'Nothing moves until it is accepted. Taking something on means taking on its storage and whatever is reported about it.')}
+      </p>
+
+      {incoming.map((tr) => (
+        <div key={tr.id} className="rounded-lg border border-[var(--primary-2)] bg-[var(--surface-2)]/40 p-3 mb-2">
+          <div className="text-[13px]">
+            {t('tr.offered', '{who} offers you the {what} “{n}”.')
+              .replace('{who}', tr.counterparty.displayName)
+              .replace('{what}', tr.kind === 'repo' ? t('tr.repo', 'repository') : t('tr.item', 'catalog item'))
+              .replace('{n}', tr.targetName)}
+          </div>
+          {tr.message && <p className="text-[12px] text-[var(--muted)] mt-1 pl-2 border-l-2 border-[var(--line)]">{tr.message}</p>}
+          <div className="text-[11px] text-[var(--faint)] mt-1">{t('tr.expires', 'Expires in {n} day(s)').replace('{n}', String(days(tr.expiresAt)))}</div>
+          <div className="flex gap-2 mt-2">
+            <Button size="sm" variant="primary" disabled={busy === tr.id} onClick={() => act(tr, 'accept')}>{t('tr.accept', 'Accept')}</Button>
+            <Button size="sm" disabled={busy === tr.id} onClick={() => act(tr, 'decline')}>{t('tr.decline', 'Decline')}</Button>
+          </div>
+        </div>
+      ))}
+
+      {outgoing.map((tr) => (
+        <div key={tr.id} className="flex items-center gap-3 py-2 border-t border-[var(--line)] text-[13px]">
+          <div className="min-w-0 flex-1">
+            <div className="truncate">{t('tr.sent', 'You offered “{n}” to {who}').replace('{n}', tr.targetName).replace('{who}', tr.counterparty.displayName)}</div>
+            <div className="text-[11px] text-[var(--faint)]">{t('tr.await', 'Waiting — expires in {n} day(s)').replace('{n}', String(days(tr.expiresAt)))}</div>
+          </div>
+          <Button size="sm" variant="ghost" disabled={busy === tr.id} onClick={() => act(tr, 'decline')}>{t('tr.cancel', 'Take back')}</Button>
+        </div>
+      ))}
+
+      {past.length > 0 && (
+        <details className="mt-2">
+          <summary className="text-[11px] text-[var(--faint)] cursor-pointer select-none">{t('tr.past', 'Earlier transfers')}</summary>
+          <div className="mt-1">
+            {past.map((tr) => (
+              <div key={tr.id} className="flex items-center gap-2 py-1 text-[12px] text-[var(--muted)]">
+                <span className="truncate flex-1">{tr.targetName}</span>
+                <span className="text-[11px] text-[var(--faint)]">{t(`tr.st.${tr.status}`, tr.status)}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </Card>
+  );
+}
+
 function AccountInfoCard({ user }) {
   const { t } = useI18n();
   const [showEmail, setShowEmail] = useState(false);

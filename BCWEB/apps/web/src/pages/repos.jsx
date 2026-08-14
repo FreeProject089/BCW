@@ -4,12 +4,13 @@ import {
   Server, GitBranch, Star, Plus, Pencil, Trash2, UploadCloud, Eye, EyeOff, CheckCircle2,
   XCircle, Clock, ShieldCheck, ExternalLink, Tag, Users, HardDrive, Settings2, Receipt, Printer, Rocket,
   Files, FileText, FileJson, FolderUp, CreditCard, Search, X, Wifi, WifiOff, Zap, Lock, Download, Copy, RefreshCw, AlertTriangle, LayoutDashboard, MoreHorizontal, Ticket,
-  Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake, Boxes, GitMerge, Link2,
+  Ban, Globe, Shield, ChevronDown, Fingerprint, Info, Sliders, Cpu, Check, BadgeCheck, Handshake, Boxes, GitMerge, Link2, ArrowRight,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ReportButton } from '../ui/report.jsx';
 import { api, uploadRepoFile } from '../lib/api.js';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, ActionBar } from '../ui/ui.jsx';
+import { startOwnershipTransfer } from './pages.jsx';
 import { useUploads } from './uploads.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -835,6 +836,10 @@ export function MyRepos() {
                     repoJsonUrl(r) && { key: 'copy', label: t('repos.copylink', 'Copy repo.json link'), icon: Copy, onClick: () => { navigator.clipboard?.writeText(repoJsonUrl(r)); toast.success(t('repos.copy.ok', 'repo.json link copied.')); } },
                     { key: 'share', label: t('repos.sharelink', 'Copy public share link'), icon: Link2, onClick: () => shareRepo(r) },
                     r.hosted && !locked && { key: 'files', label: t('repos.quickfiles', 'Quick files'), icon: Files, onClick: () => setManaging(r) },
+                    // In the overflow, not the main bar: handing a repo away is rare and
+                    // irreversible-ish, and it has no business sitting next to "Boost".
+                    !locked && { key: 'transfer', label: t('repos.transfer', 'Transfer ownership…'), icon: ArrowRight,
+                      onClick: async () => { if (await startOwnershipTransfer({ dialog, toast, t, api, kind: 'repo', targetId: r.id, targetName: r.name })) reload(); } },
                     r.hosted && !locked && { key: 'plan', label: t('repos.upgradeplan', 'Upgrade storage / plan'), icon: HardDrive, onClick: () => { setSandboxTab('limits'); setSandbox(r); } },
                     r.hosted && !locked && { key: 'sandbox', label: t('repos.sandbox', 'Sandbox settings'), icon: ShieldCheck, onClick: () => { setSandboxTab('access'); setSandbox(r); } },
                     !r.hosted && !locked && { key: 'push', label: t('repos.push', 'Push'), icon: UploadCloud, onClick: () => push(r) },
