@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
+import { signBytes, publicVerifyInfo } from '../lib/signing.mjs';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
@@ -575,42 +576,12 @@ export default async function serverControlRoutes(app) {
   // it just compacts via `git gc` and, if still over, stops taking NEW
   // snapshots (checked in sampleAndAlert-style fashion is overkill here; the
   // sweeper's daily snapshot checks this directly, see sweeper.mjs). ──
-  // ── Signing key for exported backups ────────────────────────────────────────
-  //
-  // Ed25519, generated once and kept in AdminSetting. A signature matters here only if it
-  // can be checked WITHOUT the thing that produced it — so this is a real asymmetric
-  // signature with a published public key, not an HMAC. An HMAC would need the secret to
-  // verify, which means asking the same server that made the backup whether the backup is
-  // genuine; that answers nothing if the server is what you are worried about.
-  //
-  // The private key never leaves this function. The public key is offered freely — that is
-  // the point of it — along with the exact openssl command to check a downloaded file.
-  const BACKUP_KEY = 'backup.signingKey';
-  async function backupSigningKey(p) {
-    const row = await p.adminSetting.findUnique({ where: { key: BACKUP_KEY } });
-    if (row?.value?.privateKey && row?.value?.publicKey) return row.value;
-    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
-    const value = {
-      privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }),
-      publicKey: publicKey.export({ type: 'spki', format: 'pem' }),
-      createdAt: new Date().toISOString(),
-    };
-    await p.adminSetting.upsert({ where: { key: BACKUP_KEY }, create: { key: BACKUP_KEY, value }, update: { value } });
-    return value;
-  }
+  // The signing identity is shared with the history export (lib/signing.mjs) — one key,
+  // one public key to publish, one thing for an admin to check against.
 
   app.get('/server/backups/pubkey', { preHandler: DANGEROUS }, async () => {
     const p = await db();
-    const { publicKey, createdAt } = await backupSigningKey(p);
-    return {
-      publicKey, createdAt, algorithm: 'Ed25519',
-      // Written out because a signature nobody knows how to check is decoration. These
-      // two commands need nothing from this site but the file and the key.
-      verify: [
-        'printf %s "<X-Backup-Signature header>" | base64 -d > backup.sig',
-        'openssl pkeyutl -verify -pubin -inkey backup.pub -rawin -in <the .bundle> -sigfile backup.sig',
-      ],
-    };
+    return publicVerifyInfo(p);
   });
 
   // What is actually inside the backups — not just how many bytes they take.
@@ -634,10 +605,7 @@ export default async function serverControlRoutes(app) {
     const MAX = 256 * 1024 * 1024;
     if (bundle.bytes.length > MAX) return reply.code(413).send({ error: 'too_large', bytes: bundle.bytes.length, maxBytes: MAX });
     const p = await db();
-    const { privateKey } = await backupSigningKey(p);
-    // Ed25519 signs the message directly — no digest argument, which is why the verify
-    // command above uses -rawin.
-    const sig = crypto.sign(null, bundle.bytes, crypto.createPrivateKey(privateKey)).toString('base64');
+    const sig = await signBytes(bundle.bytes, p);
     await logAudit(p, req.user.uid, 'server.backup_export', `${which} (${bundle.bytes.length} bytes)`, clientIp(req));
     const stamp = new Date().toISOString().slice(0, 10);
     reply.header('Content-Type', 'application/octet-stream');

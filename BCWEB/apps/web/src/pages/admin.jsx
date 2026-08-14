@@ -3497,17 +3497,65 @@ const HIST_ICON = {
 };
 
 function AdminHistory() {
-  const { t } = useI18n();
+  const { t } = useI18n(); const toast = useToast();
   const [days, setDays] = useState(30);
   const [sources, setSources] = useState([]);     // [] = all
   const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState('');
   const [take, setTake] = useState(60);
+  const [open, setOpen] = useState(null);        // expanded row key
+  const [panel, setPanel] = useState('');        // '' | 'retention' | 'verify'
+  const [retention, setRetention] = useState(null);
+  const [imported, setImported] = useState(null); // a verified (or rejected) export file
+  const [busy, setBusy] = useState(false);
   const query = new URLSearchParams({ days: String(days), take: String(take), ...(sources.length ? { sources: sources.join(',') } : {}), ...(qApplied ? { q: qApplied } : {}) }).toString();
   const { data, loading } = useAsync(() => api.get(`/admin/history?${query}`), [query]);
   const entries = data?.entries || [];
   const all = data?.sources || [];
   const toggle = (k) => { setTake(60); setSources((v) => (v.includes(k) ? v.filter((x) => x !== k) : [...v, k])); };
   const when = (at) => new Date(at).toLocaleString();
+
+  // Downloaded through fetch, like the backup bundle and for the same reason: the
+  // signature is a response header, and a plain link would save the file while discarding
+  // the only thing that lets anyone check it later.
+  const exportHistory = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/history/export?${new URLSearchParams({ days: String(days), ...(sources.length ? { sources: sources.join(',') } : {}), ...(qApplied ? { q: qApplied } : {}) })}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('export');
+      const sig = res.headers.get('X-History-Signature') || '';
+      const text = await res.text();
+      const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'history.json';
+      const dl = (blob, fname) => { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = fname; a.click(); URL.revokeObjectURL(u); };
+      dl(new Blob([text], { type: 'application/json' }), name);
+      if (sig) dl(new Blob([sig], { type: 'text/plain' }), `${name}.sig.b64`);
+      toast.success(t('hist.exported', 'Downloaded {n} — the signature was saved next to it.').replace('{n}', name));
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+
+  // Verification happens HERE, in the browser, with the published public key — the file
+  // is never uploaded. An import that has to be sent back to the server to be read is not
+  // an independent check of anything: it asks the thing you are auditing whether its own
+  // record is genuine.
+  const verifyFile = async (jsonFile, sigFile) => {
+    setBusy(true);
+    try {
+      const [bytes, sigB64] = await Promise.all([jsonFile.arrayBuffer(), sigFile ? sigFile.text() : Promise.resolve('')]);
+      const { publicKey } = await api.get('/admin/history/pubkey');
+      let valid = null;
+      if (sigB64.trim()) {
+        // Web Crypto wants raw key material, so the PEM's base64 body is decoded out of it.
+        const der = Uint8Array.from(atob(publicKey.replace(/-----[^-]+-----|\s/g, '')), (c) => c.charCodeAt(0));
+        const key = await crypto.subtle.importKey('spki', der, { name: 'Ed25519' }, false, ['verify']);
+        const sig = Uint8Array.from(atob(sigB64.trim()), (c) => c.charCodeAt(0));
+        valid = await crypto.subtle.verify({ name: 'Ed25519' }, key, sig, bytes);
+      }
+      const doc = JSON.parse(new TextDecoder().decode(bytes));
+      setImported({ doc, valid, name: jsonFile.name });
+    } catch (e) {
+      toast.error(t('hist.import.bad', 'Could not read that file — is it a history export?'));
+      setImported(null);
+    } finally { setBusy(false); }
+  };
 
   return (
     <div>
@@ -3529,7 +3577,93 @@ function AdminHistory() {
             </button>
           ))}
         </div>
+        <Button size="sm" disabled={busy} onClick={exportHistory}><Download size={13} /> {t('hist.export', 'Export')}</Button>
+        <Button size="sm" variant={panel === 'verify' ? 'primary' : 'ghost'} onClick={() => setPanel(panel === 'verify' ? '' : 'verify')}>
+          <ShieldCheck size={13} /> {t('hist.verify', 'Open an export')}
+        </Button>
+        <Button size="sm" variant={panel === 'retention' ? 'primary' : 'ghost'} onClick={async () => {
+          if (panel === 'retention') return setPanel('');
+          if (!retention) { try { setRetention(await api.get('/admin/history/retention')); } catch { toast.error(t('common.failed', 'Failed.')); return; } }
+          setPanel('retention');
+        }}>
+          <Clock size={13} /> {t('hist.retention', 'How long is this kept?')}
+        </Button>
       </div>
+
+      {/* Reading an export back. It is verified in the browser against the published
+          public key and displayed READ-ONLY — never merged into the live history, which
+          would corrupt the very record it is supposed to document. */}
+      {panel === 'verify' && (
+        <Card className="p-3 mb-3">
+          <div className="text-xs text-[var(--muted)] mb-2">
+            {t('hist.verify.s', 'Pick an exported .json and its .sig.b64. The file is checked here, in your browser, against the published key — it is never uploaded, and nothing is written back into the history.')}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="btn btn-sm cursor-pointer">
+              <Upload size={13} /> {t('hist.verify.pick', 'Choose export + signature')}
+              <input type="file" multiple accept=".json,.b64,text/plain,application/json" className="hidden"
+                onChange={(e) => {
+                  const files = [...(e.target.files || [])];
+                  const json = files.find((f) => f.name.endsWith('.json'));
+                  const sig = files.find((f) => f.name.endsWith('.b64') || f.name.endsWith('.sig'));
+                  if (json) verifyFile(json, sig);
+                  e.target.value = '';
+                }} />
+            </label>
+            {imported && <Button size="sm" variant="ghost" onClick={() => setImported(null)}>{t('common.close', 'Close')}</Button>}
+          </div>
+          {imported && (
+            <div className="mt-3">
+              <div className={`text-xs font-semibold flex items-center gap-1.5 ${imported.valid === true ? 'text-success' : imported.valid === false ? 'text-error' : 'text-warning'}`}>
+                {imported.valid === true ? <><ShieldCheck size={13} /> {t('hist.sig.ok', 'Signature valid — this file is exactly what the server produced.')}</>
+                  : imported.valid === false ? <><AlertTriangle size={13} /> {t('hist.sig.bad', 'Signature does NOT match. Treat the contents as unverified.')}</>
+                  : <><AlertTriangle size={13} /> {t('hist.sig.none', 'No signature file given — contents shown unverified.')}</>}
+              </div>
+              <div className="text-[11px] text-[var(--faint)] mt-1">
+                {imported.name} · {t('hist.imported.meta', 'exported {d} · {n} entries{tr}')
+                  .replace('{d}', new Date(imported.doc.exportedAt).toLocaleString())
+                  .replace('{n}', String(imported.doc.count ?? (imported.doc.entries || []).length))
+                  .replace('{tr}', imported.doc.truncated ? ` · ${t('hist.truncated', 'truncated')}` : '')}
+              </div>
+              <div className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-[var(--line)]">
+                {(imported.doc.entries || []).map((e, i) => (
+                  <div key={i} className="px-3 py-1.5 border-b border-[var(--line)] last:border-0 flex items-baseline gap-2 text-xs">
+                    <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] w-16 shrink-0">{e.source}</span>
+                    <span className="font-medium shrink-0">{e.action}</span>
+                    <span className="text-[var(--muted)] truncate flex-1">{e.detail}</span>
+                    <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(e.at).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Retention, told honestly: this view keeps nothing, so it reports the window each
+          SOURCE actually has and names who owns it. A single slider here would either do
+          nothing or delete another subsystem's data behind its back. */}
+      {panel === 'retention' && retention && (
+        <Card className="p-3 mb-3">
+          <div className="text-xs text-[var(--muted)] mb-2">
+            {t('hist.retention.s', 'This view stores nothing of its own — every row is kept for as long as the subsystem that records it keeps it. Change a window where it lives.')}
+          </div>
+          <div className="divide-y divide-[var(--line)]">
+            {retention.sources.map((r) => (
+              <div key={r.source} className="flex items-center gap-3 py-1.5 text-xs">
+                <span className="w-24 shrink-0 font-medium">{t(`hist.src.${r.source}`, r.source)}</span>
+                <span className="w-28 shrink-0 tabular-nums">
+                  {r.days > 0 ? t('hist.ret.days', '{n} days').replace('{n}', String(r.days)) : t('hist.ret.keep', 'kept')}
+                </span>
+                <span className="text-[var(--faint)] truncate flex-1">{r.where}</span>
+                {r.configurable
+                  ? <Badge tone="primary">{t('hist.ret.cfg', 'configurable')}</Badge>
+                  : <Badge>{t('hist.ret.fixed', 'fixed')}</Badge>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Source chips. All off = all on, which is the reading people expect from an
           empty filter and saves a redundant "All" chip. */}
@@ -3574,7 +3708,10 @@ function AdminHistory() {
                       {e.link && <><span>·</span><Link to={e.link} className="hover:text-[var(--text)] underline decoration-dotted">{t('hist.open', 'open')}</Link></>}
                     </div>
                   </div>
-                  <span className="text-[10px] text-[var(--faint)] uppercase tracking-wider shrink-0">{e.source}</span>
+                  <button onClick={() => setOpen(open === `${e.source}-${e.at}-${i}` ? null : `${e.source}-${e.at}-${i}`)}
+                    className="text-[10px] text-[var(--faint)] uppercase tracking-wider shrink-0 hover:text-[var(--text)]">
+                    {e.source}
+                  </button>
                 </div>
               );
             })}
