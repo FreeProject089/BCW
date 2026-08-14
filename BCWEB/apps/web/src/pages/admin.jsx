@@ -6409,13 +6409,78 @@ function AdminSso() {
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2 mr-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('sso.title', 'SSO')}</h2>
         <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
-          {[['clients', t('sso.tab.clients', 'Apps')], ['people', t('sso.tab.people', 'People')]].map(([k, l]) => (
+          {[['clients', t('sso.tab.clients', 'Apps')], ['people', t('sso.tab.people', 'People')], ['webhooks', t('sso.tab.webhooks', 'Webhooks')]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)}
               className={`px-3 py-1.5 rounded-[10px] text-sm ${view === k ? 'bg-[var(--bg-solid)] font-medium shadow-sm' : 'text-[var(--muted)]'}`}>{l}</button>
           ))}
         </div>
       </div>
-      {view === 'clients' ? <AdminOAuthClients /> : <AdminSsoPeople />}
+      {view === 'clients' ? <AdminOAuthClients /> : view === 'people' ? <AdminSsoPeople /> : <AdminWebhooks />}
+    </div>
+  );
+}
+
+// Every webhook on the platform, and the state of the delivery queue.
+//
+// GET /admin/webhooks has existed since webhooks shipped and nothing called it — the
+// data was collected, ordered worst-first, and shown to nobody. It belongs here rather
+// than in its own tab: an OAuth app and a webhook are the same question ("what is
+// plugged into this platform, on whose behalf"), and a third top-level tab for one table
+// is how the admin nav got crowded enough to need reorganising in the first place.
+function AdminWebhooks() {
+  const { t } = useI18n();
+  const { data, loading } = useAsync(() => api.get('/admin/webhooks'), []);
+  if (loading) return <Spinner />;
+  const rows = data?.endpoints || [];
+  const q = data?.queue || {};
+  return (
+    <div>
+      {/* The queue first: a backlog or a week of failures is a platform problem, while the
+          table below is a list of other people's problems. */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {[
+          [t('sso.wh.endpoints', 'Endpoints'), rows.length, false],
+          [t('sso.wh.pending', 'Queued'), q.pending ?? 0, false],
+          [t('sso.wh.failed', 'Failed (7 days)'), q.failedLast7d ?? 0, (q.failedLast7d || 0) > 0],
+        ].map(([label, value, warn]) => (
+          <div key={label} className="rounded-[12px] border border-[var(--line)] px-3 py-2 min-w-[120px]"
+               style={{ background: 'var(--surface-1)' }}>
+            <div className="text-[11px] text-[var(--muted)]">{label}</div>
+            <div className={`text-[18px] font-semibold ${warn ? 'text-[var(--warning)]' : ''}`}>{value}</div>
+          </div>
+        ))}
+      </div>
+      {!rows.length ? (
+        <EmptyState icon={Rss} title={t('sso.wh.none', 'No webhooks yet')}
+                    sub={t('sso.wh.none.s', 'Developers create these from /dev/config. They appear here as soon as one exists.')} />
+      ) : (
+        <div className="divide-y divide-[var(--line)]">
+          {rows.map((e) => (
+            <div key={e.id} className="py-2.5 flex items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-medium flex items-center gap-1.5 flex-wrap">
+                  <span className={e.enabled ? '' : 'text-[var(--faint)]'}>{e.label || t('sso.wh.unlabelled', '(no label)')}</span>
+                  {!e.enabled && <Badge tone="red">{t('sso.wh.off', 'disabled')}</Badge>}
+                  {/* Ordered failures-first by the API, so the ones worth acting on are at
+                      the top; the badge says why they are there. */}
+                  {e.failures > 0 && <Badge tone="amber">{t('sso.wh.fails', '{n} failures').replace('{n}', String(e.failures))}</Badge>}
+                </div>
+                <div className="text-[11px] text-[var(--faint)] font-mono break-all">{e.url}</div>
+                <div className="text-[11px] text-[var(--muted)] mt-0.5">
+                  {(e.events || []).join(' · ') || t('sso.wh.noevents', 'no events — it will never fire')}
+                </div>
+                {e.disabledReason && <div className="text-[11px] text-error mt-0.5">{e.disabledReason}</div>}
+              </div>
+              <div className="text-right shrink-0 text-[11px] text-[var(--muted)]">
+                <div>{e.user?.displayName || e.user?.email || '—'}</div>
+                <div className="text-[var(--faint)]">
+                  {e.lastAt ? `${t('sso.wh.last', 'last')} ${new Date(e.lastAt).toLocaleDateString()}${e.lastStatus ? ` · ${e.lastStatus}` : ''}` : t('sso.wh.never', 'never fired')}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
