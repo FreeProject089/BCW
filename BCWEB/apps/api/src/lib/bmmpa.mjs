@@ -28,6 +28,35 @@ const REACHING_ACTIONS = new Set([
   'file.open', 'folder.open', 'open.url', 'restart', 'task.run',
 ]);
 
+/** Actions that name another thing by id, and what kind. Must match BMM's copy —
+ *  check-inspector-parity compares the two. */
+const REF_ACTIONS = {
+  'task.run': 'task',
+  'launchpack.run': 'launchpack',
+  'modpack.enable': 'modpack',
+  'modpack.disable': 'modpack',
+  'profile.activate': 'profile',
+};
+
+/**
+ * Parameters as short strings, for the moderation view.
+ *
+ * A summary saying "Run custom command" and nothing else asks a moderator to trust a
+ * verb. WHICH program, with which arguments, against which URL, is the decision. Bodies
+ * are skipped because they have their own section with a 20 KB cap: repeating a forty-line
+ * script inside a tree row makes the tree unreadable for the file that most needs reading.
+ */
+function flattenParams(p) {
+  const out = {};
+  for (const [k, v] of Object.entries(p || {})) {
+    if (k === 'code' || v === undefined || v === null || v === '') continue;
+    const str = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    if (!str) continue;
+    out[k] = str.length > 300 ? str.slice(0, 300) + "…" : str;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 const asArray = (v) => (Array.isArray(v) ? v : []);
 
 function describeTrigger(t) {
@@ -76,6 +105,9 @@ function walkSteps(steps, out, depth = 0) {
         const args = Array.isArray(p.args) ? p.args.map((a) => String(a)) : [];
         out.scripts.push({ engine: 'command', code: [p.program.trim(), ...args].join(' ').slice(0, 20_000) });
       }
+      node.params = flattenParams(p);
+      const refKind = REF_ACTIONS[type];
+      if (refKind && p.id) { node.refKind = refKind; node.refId = String(p.id); }
       for (const k of ['program', 'url', 'path', 'name', 'exePath']) {
         const v = p[k];
         if (typeof v === 'string' && v.trim() && out.targets.length < 100 && !out.targets.includes(v.trim())) {
@@ -129,11 +161,41 @@ export function inspectBmmpa(doc) {
     return s;
   });
 
+  // Resolved after every task is read: a task may call one declared later in the file,
+  // and a backwards-only resolver would report half the references as missing — wrong
+  // rather than absent, which is the worse of the two for somebody deciding to approve.
+  const taskNames = new Map(tasks.slice(0, 500).map((tk) => [String(tk?.id ?? ''), String(tk?.name ?? '(unnamed)')]));
+  const included = {
+    launchpack: new Set(asArray(doc.includes?.launchpacks).map((x) => String(x?.id ?? ''))),
+    modpack: new Set(asArray(doc.includes?.modpacks).map((x) => String(x?.id ?? x?.name ?? ''))),
+  };
+  const unresolved = [];
+  const resolve = (nodes) => {
+    for (const n of nodes) {
+      if (n.refId && n.refKind) {
+        const name = n.refKind === 'task'
+          ? (taskNames.get(n.refId) ?? null)
+          : (included[n.refKind]?.has(n.refId) ? n.refId : null);
+        n.refName = name;
+        // A profile is machine-specific and never travels in a .bmmpa, so an unresolved
+        // profile reference is normal rather than a gap worth flagging.
+        if (name === null && n.refKind !== 'profile') unresolved.push({ kind: n.refKind, id: n.refId });
+      }
+      resolve(n.children);
+    }
+  };
+  for (const tk of out) resolve(tk.steps);
+
   return {
     ok: true,
     version: typeof doc.version === 'number' ? doc.version : undefined,
     exported: typeof doc.exported === 'string' ? doc.exported : undefined,
     tasks: out,
+    includes: {
+      launchpacks: asArray(doc.includes?.launchpacks).length,
+      modpacks: asArray(doc.includes?.modpacks).length,
+    },
+    unresolved,
     needsReview: out.some((t) => t.perms.length > 0 || t.reaching.length > 0),
   };
 }
