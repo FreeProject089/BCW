@@ -66,6 +66,16 @@ function walkSteps(steps, out, depth = 0) {
         // Capped: a moderator needs to read the script, not receive a megabyte of it.
         out.scripts.push({ engine: String(p.engine || 'powershell'), code: p.code.slice(0, 20_000) });
       }
+      // Commands belong here beside scripts, and must stay in step with BMM's copy of this
+      // reader (frontend/src/features/settings/bmmpa-inspect.ts) — check-inspector-parity
+      // fails the build if they drift. `custom.command` running `powershell -Enc <base64>`
+      // is a script by any measure that matters to a moderator; listing only `custom.script`
+      // would wave the same payload through for spelling itself differently. Joined into one
+      // line because that is what will run — arguments listed apart read as harmless nouns.
+      if (type === 'custom.command' && typeof p.program === 'string' && p.program.trim()) {
+        const args = Array.isArray(p.args) ? p.args.map((a) => String(a)) : [];
+        out.scripts.push({ engine: 'command', code: [p.program.trim(), ...args].join(' ').slice(0, 20_000) });
+      }
       for (const k of ['program', 'url', 'path', 'name', 'exePath']) {
         const v = p[k];
         if (typeof v === 'string' && v.trim() && out.targets.length < 100 && !out.targets.includes(v.trim())) {
