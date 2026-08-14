@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "lint": "eslint src",
     "i18n:check": "node scripts/i18n-check.mjs --strict",
-    "budget": "node scripts/bundle-budget.mjs"
+    "budget": "node scripts/bundle-budget.mjs",
+    "i18n:untranslated": "node scripts/i18n-untranslated.mjs"
   },
   "dependencies": {
     "boring-avatars": "^1.11.2",
