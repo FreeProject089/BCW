@@ -326,6 +326,75 @@ Export a theme from the in-app **[Theme Editor](/docs/themes)** — it writes a 
 :::`,
   },
   {
+    slug: 'catalog-index', category: 'BetterCommunity', title: 'Catalogue index', icon: 'list', order: 306,
+    body: `::toc[On this page]
+
+# Catalogue index
+
+A catalog lists things to install. An **index** lists catalogs.
+
+Without one, following you means somebody collecting a URL for your apps, another for your
+plugins, another for your themes, and pasting each into a different screen in BMM. An index
+is one address that brings in all of them — and keeps working when you publish a new one.
+
+## What we publish
+
+One generator, several addresses. \`scope\`, \`app\` and \`type\` combine.
+
+\`\`\`
+/api/catalogs.json                     everything
+/api/catalogs.json?scope=official      only ours
+/api/catalogs.json?scope=community     only published by people
+/api/catalogs.json?app=bmm             only for BMM
+/api/catalogs.json?type=plugin         only plugin catalogs
+\`\`\`
+
+:::note
+A feed is listed only when something is actually published in it. An index entry leading to
+an empty document teaches people to stop trusting the index.
+:::
+
+## Telling us which app yours is for
+
+A catalog you publish here can say which Better\\* product it is for, on its card in
+**Dashboard → Catalogs**. It matters more than it looks:
+
+- BMM keeps an entry marked \`bmm\`, and drops one marked \`bsm\`.
+- An entry marked with **nothing** is kept by everyone. "Nobody said" is not "not for you",
+  and every catalog published before this field existed is in that state.
+
+So leaving it unset is safe, and setting it wrongly is not — a catalog labelled for the
+wrong product is invisible to the people it was made for.
+
+## Publishing your own index
+
+Serve JSON at a stable https address. No account and no registration: an index is read by
+its shape, not by who hosts it.
+
+\`\`\`json
+{
+  "version": "1.0",
+  "kind": "catalog-index",
+  "name": "My community catalogs",
+  "catalogs": [
+    { "type": "plugin", "app": "bmm", "name": "Our plugins", "url": "https://example.com/plugins.json" }
+  ]
+}
+\`\`\`
+
+Only \`catalogs\` is required, and inside it only \`type\` and \`url\`.
+
+:::warning
+\`official\` is **ignored** wherever it appears. A client decides trust from the address a
+catalog was fetched from, never from what the catalog says about itself — an index able to
+grant that badge would be a way around the rule rather than part of it.
+:::
+
+Full field list, including \`repo\` and \`preset\` catalogs:
+[the catalogue index format guide](/docs/app-catalog).
+`,
+  },
+  {
     slug: 'preset-catalog', category: 'BetterCommunity', title: 'Preset catalog (BSM)', icon: 'sliders', order: 305,
     body: `::toc[On this page]
 

@@ -12,6 +12,77 @@
 // and every category heading stayed English for a French reader even on the three pages that
 // did have a French body.
 export const DOCS_FR = {
+  'catalog-index': {
+    title: 'Index de catalogues',
+    category: 'BetterCommunity',
+    body: `::toc[Sur cette page]
+
+# Index de catalogues
+
+Un catalogue liste des choses à installer. Un **index** liste des catalogues.
+
+Sans lui, vous suivre oblige quelqu'un à récupérer une URL pour vos applis, une autre pour
+vos plugins, une autre pour vos thèmes, et à coller chacune dans un écran différent de BMM.
+Un index est une seule adresse qui les amène toutes — et qui continue de marcher quand vous
+en publiez une nouvelle.
+
+## Ce que nous publions
+
+Un seul générateur, plusieurs adresses. \`scope\`, \`app\` et \`type\` se combinent.
+
+\`\`\`
+/api/catalogs.json                     tout
+/api/catalogs.json?scope=official      seulement les nôtres
+/api/catalogs.json?scope=community     seulement ceux publiés par des gens
+/api/catalogs.json?app=bmm             seulement pour BMM
+/api/catalogs.json?type=plugin         seulement les catalogues de plugins
+\`\`\`
+
+:::note
+Un flux n'est listé que si quelque chose y est réellement publié. Une entrée d'index menant
+à un document vide apprend aux gens à ne plus faire confiance à l'index.
+:::
+
+## Dire pour quelle app est le vôtre
+
+Un catalogue que vous publiez ici peut indiquer pour quel produit Better\\* il est, sur sa
+carte dans **Tableau de bord → Catalogues**. Cela compte plus qu'il n'y paraît :
+
+- BMM garde une entrée marquée \`bmm\` et écarte une entrée marquée \`bsm\`.
+- Une entrée marquée **de rien** est gardée par tout le monde. « Personne ne l'a dit » n'est
+  pas « pas pour vous », et tout catalogue publié avant l'existence de ce champ est dans cet
+  état.
+
+Ne rien mettre est donc sans risque ; mettre la mauvaise valeur ne l'est pas — un catalogue
+étiqueté pour le mauvais produit est invisible pour ceux à qui il était destiné.
+
+## Publier votre propre index
+
+Servez du JSON à une adresse https stable. Ni compte ni inscription : un index se reconnaît
+à sa forme, pas à qui l'héberge.
+
+\`\`\`json
+{
+  "version": "1.0",
+  "kind": "catalog-index",
+  "name": "Mes catalogues communautaires",
+  "catalogs": [
+    { "type": "plugin", "app": "bmm", "name": "Nos plugins", "url": "https://example.com/plugins.json" }
+  ]
+}
+\`\`\`
+
+Seul \`catalogs\` est obligatoire, et à l'intérieur seuls \`type\` et \`url\`.
+
+:::warning
+\`official\` est **ignoré** partout où il apparaît. Un client décide de la confiance d'après
+l'adresse depuis laquelle un catalogue a été récupéré, jamais d'après ce que le catalogue
+dit de lui-même — un index capable d'accorder ce badge serait un contournement de la règle,
+pas une partie d'elle.
+:::
+`,
+  },
+
   'sso': {
     title: 'Se connecter avec BetterCommunity',
     category: 'Développeurs',
