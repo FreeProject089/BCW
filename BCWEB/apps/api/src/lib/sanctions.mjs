@@ -57,7 +57,7 @@ const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&a
 export async function issueSanction(p, {
   userId, kind, scope = 'account', reason, request = null, requiresAction = false,
   targetType = null, targetId = null, targetName = null, relatedIds = [],
-  issuedById = null, expiresAt = null, meta = null, log = null,
+  issuedById = null, expiresAt = null, meta = null, reportId = null, log = null,
 }) {
   const code = await newSanctionCode(p);
   const s = await p.sanction.create({
@@ -65,7 +65,7 @@ export async function issueSanction(p, {
       code, kind, scope, userId, reason: String(reason || '').trim() || 'No reason given.',
       request, requiresAction: !!requiresAction || !!request,
       targetType, targetId, targetName, relatedIds,
-      issuedById, expiresAt, meta,
+      issuedById, expiresAt, meta, reportId,
     },
   });
   await mailSanction(p, s).catch((e) => log?.warn?.(`sanction mail failed: ${String(e?.message || e)}`));

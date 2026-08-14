@@ -1199,6 +1199,12 @@ model Sanction {
   contestAnsweredAt  DateTime?
   contestAnsweredById String?
 
+  /// The report this came out of, when it came out of one. A decision with no cause recorded
+  /// is a decision nobody can review later — and without it the next moderator re-reads a
+  /// case that was already handled.
+  report      Report?   @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  reportId    String?
+
   /// Whatever the decision needs to remember — chiefly the subscriptions it cancelled, so the
   /// offer to take them out again can name them when the suspension ends.
   meta        Json?
@@ -1206,6 +1212,7 @@ model Sanction {
   @@index([userId, issuedAt])
   @@index([status, expiresAt])
   @@index([targetType, targetId])
+  @@index([reportId])
 }
 
 /// A row somebody has dealt with, or does not want to look at, in the "Needs attention" list.
@@ -1857,6 +1864,7 @@ model Report {
   messages       ReportMessage[]
   participants   ReportParticipant[]
   invites        ReportInvite[]
+  sanctions      Sanction[]
 
   @@index([reporterId])
   @@index([status])

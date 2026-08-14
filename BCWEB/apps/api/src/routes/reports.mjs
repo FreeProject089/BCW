@@ -221,7 +221,7 @@ export default async function reportRoutes(app) {
 
   app.get('/admin/reports/:id', { preHandler: requireCap('manage_reports', 'MOD') }, async (req, reply) => {
     const p = await db();
-    const r = await p.report.findUnique({ where: { id: req.params.id }, include: { reporter: { select: { id: true, displayName: true, email: true } }, messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true } } } }, participants: { include: { user: { select: { id: true, displayName: true, email: true } } } }, invites: { orderBy: { createdAt: 'desc' } } } });
+    const r = await p.report.findUnique({ where: { id: req.params.id }, include: { reporter: { select: { id: true, displayName: true, email: true } }, messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true } } } }, participants: { include: { user: { select: { id: true, displayName: true, email: true } } } }, invites: { orderBy: { createdAt: 'desc' } }, sanctions: { orderBy: { issuedAt: 'desc' }, select: { id: true, code: true, kind: true, status: true, reason: true, issuedAt: true } } } });
     if (!r) return reply.code(404).send({ error: 'not_found' });
     if (r.staffUnread) await p.report.update({ where: { id: r.id }, data: { staffUnread: false } });
     return { report: {
@@ -229,6 +229,9 @@ export default async function reportRoutes(app) {
       messages: r.messages.map(msgPublic),
       participants: r.participants.map((x) => ({ userId: x.userId, name: x.user?.displayName, email: x.user?.email, bcId: userBcId(x.userId), role: x.role })),
       invites: r.invites.map((iv) => ({ id: iv.id, token: iv.token, url: `${SITE_URL}/reports/join/${iv.token}`, maxUses: iv.maxUses, uses: iv.uses, targetType: iv.targetType, targetValue: iv.targetValue, expiresAt: iv.expiresAt })),
+      // What came of it. Without this the next moderator opens a handled case and starts
+      // from nothing, which is how the same complaint gets acted on twice.
+      sanctions: r.sanctions,
     } };
   });
 
@@ -340,6 +343,68 @@ export default async function reportRoutes(app) {
     mailReport(p, r.reporter?.email, 'Reply to your report', 'A staff member replied to your report.', r.id);
     publishToThread('report', r.id, { type: 'message', message: msgPublic({ ...m, author: null }) });
     return { message: msgPublic({ ...m, author: null }) };
+  });
+
+  // Act on a report, from the report.
+  //
+  // The decision and the complaint that caused it were two records that had never met: a
+  // sanction carried no reason for existing, the report showed nothing so the next moderator
+  // re-read a case already handled, and the person who reported it was told nothing — which
+  // is how a report queue teaches people that reporting is pointless.
+  //
+  // The report's own target is used rather than one supplied in the body: a moderator acting
+  // on report #7 means the thing report #7 is about, and letting the caller name a different
+  // target would make the link a decoration.
+  app.post('/admin/reports/:id/sanction', { preHandler: requireCap('manage_reports', 'MOD') }, async (req, reply) => {
+    const b = z.object({
+      kind: z.enum(['warning', 'takedown']),
+      reason: z.string().trim().min(3).max(1000),
+      request: z.string().trim().max(2000).optional(),
+      // Whether to tell the reporter that something was done. On by default: the whole point
+      // of closing the loop. Off exists because naming an action to the reporter is sometimes
+      // exactly what the reported person should not have handed to them.
+      tellReporter: z.boolean().default(true),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+
+    const p = await db();
+    const r = await p.report.findUnique({ where: { id: req.params.id }, include: { reporter: { select: { email: true } } } });
+    if (!r) return reply.code(404).send({ error: 'not_found' });
+    if (r.reporterId === req.user.uid) return reply.code(403).send({ error: 'own_report' });
+    if (!['repo', 'catalog', 'item'].includes(r.targetType) || !r.targetId) {
+      // A report about a person or about nothing in particular is not a content decision, and
+      // guessing which account it means from a free-text label is how the wrong person gets
+      // sanctioned. Those go through the account screen, where the target is unambiguous.
+      return reply.code(400).send({ error: 'not_content', detail: 'This report is not about a repo, catalog or item — sanction the account from its own screen.' });
+    }
+
+    const out = await app.inject({
+      method: 'POST', url: '/admin/sanctions/content',
+      headers: { cookie: req.headers.cookie || '' },
+      payload: { targetType: r.targetType, targetId: r.targetId, kind: b.data.kind, reason: b.data.reason, request: b.data.request },
+    });
+    if (out.statusCode !== 200) return reply.code(out.statusCode).send(out.json());
+    const sanction = out.json().sanction;
+
+    await p.sanction.update({ where: { id: sanction.id }, data: { reportId: r.id } }).catch(() => {});
+
+    // The thread gets a line, so the record of what happened lives with the complaint rather
+    // than only in a moderation log the reporter cannot see.
+    const note = b.data.kind === 'takedown'
+      ? 'Staff reviewed this and took the content down.'
+      : 'Staff reviewed this and issued a warning.';
+    if (b.data.tellReporter) {
+      const m = await p.reportMessage.create({ data: { reportId: r.id, authorId: req.user.uid, staff: true, body: note, images: [] } });
+      await p.report.update({ where: { id: r.id }, data: { userUnread: true, lastActivityAt: new Date() } });
+      notify(p, r.reporterId, 'report_reply', note).catch(() => {});
+      mailReport(p, r.reporter?.email, 'Your report was acted on', note, r.id);
+      publishToThread('report', r.id, { type: 'message', message: msgPublic({ ...m, author: null }) });
+    }
+    // Handled, not deleted: archiving starts the same countdown as any other resolution, and
+    // the thread stays readable for as long as that lasts.
+    await p.report.update({ where: { id: r.id }, data: { status: 'archived', archivedAt: new Date(), staffUnread: false } }).catch(() => {});
+
+    return { ok: true, sanction: { id: sanction.id, code: sanction.code, kind: sanction.kind } };
   });
 
   app.post('/admin/reports/:id/status', { preHandler: requireCap('manage_reports', 'MOD') }, async (req, reply) => {
