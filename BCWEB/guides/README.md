@@ -30,6 +30,7 @@ guides/
 | **Host a repo or a catalog** (pools, billing, access) | Host guide | [EN](use/HOST_GUIDE_EN.md) | [FR](use/HOST_GUIDE_FR.md) |
 | **See every feature** | App features | [EN](reference/App_Features_EN.md) | [FR](reference/App_Features_FR.md) |
 | **Call the API** | API reference | [EN](reference/API_Reference_EN.md) | [FR](reference/API_Reference_FR.md) |
+| **Sign users in with BetterCommunity** (OIDC — not public yet) | OIDC provider | [EN](reference/OIDC_PROVIDER_EN.md) | [FR](reference/OIDC_PROVIDER_FR.md) |
 | **Understand the design** (subsystems, decisions, roadmap) | Architecture | [EN](reference/ARCHITECTURE_EN.md) | [FR](reference/ARCHITECTURE_FR.md) |
 | **Work on the code** (from-scratch dev deep-dive) | Technical analysis | [EN](reference/Technical_Analysis_EN.md) | [FR](reference/Technical_Analysis_FR.md) |
 | **Add a project to the showcase** | Other projects | [EN](reference/OTHER_PROJECTS_GUIDE_EN.md) | [FR](reference/OTHER_PROJECTS_GUIDE_FR.md) |
