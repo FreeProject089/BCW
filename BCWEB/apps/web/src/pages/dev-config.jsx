@@ -263,7 +263,12 @@ function OAuthAppsPanel() {
     try {
       const r = await api.post('/me/oauth-clients', {
         name: form.name.trim(), description: form.description.trim(), homepageUrl: form.homepageUrl.trim(),
-        confidential: form.confidential, redirectUris: uris, scopes: form.scopes,
+        confidential: form.confidential, redirectUris: uris,
+        // openid guaranteed here as well as disabled in the UI. Without it the server
+        // issues an access token and no id_token, so "Sign in with BetterCommunity"
+        // silently stops being a sign-in — and an empty array would fall through to the
+        // API's "no scopes given" branch, which grants every scope there is.
+        scopes: Array.from(new Set(['openid', ...form.scopes])),
       });
       setSecret({ id: r.client.id, value: r.clientSecret }); setForm(null); load();
     } catch (x) {
@@ -349,6 +354,43 @@ function OAuthAppsPanel() {
           </Field>
           <Field label={t('dev.uris', 'Redirect URIs')} hint={t('dev.uris.h', 'One per line, matched exactly. https only — except http://localhost for development. This is where the authorization code is delivered, so it is the one field worth double-checking.')}>
             <Textarea rows={3} value={form.redirectUris} onChange={(e) => setForm((f) => ({ ...f, redirectUris: e.target.value }))} placeholder={'https://myapp.example.com/callback\nhttp://localhost:5173/callback'} />
+          </Field>
+          {/* The scopes are what the consent screen will ask its users to agree to, and they
+              were not choosable here — every app registered through this page got exactly
+              openid + profile + email, whatever it actually needed, with no way to ask for
+              more short of an admin editing the row.
+
+              The list comes from the discovery document (data.scopes), not a copy: this is
+              the same source /.well-known/openid-configuration publishes, so a scope added
+              to the API appears here without anyone remembering to add it twice. */}
+          <Field label={t('dev.scopes', 'What the app may ask for')}
+                 hint={t('dev.scopes.h', 'Users see this list on the consent screen and can refuse. Ask for the least you need — a long list is the most common reason people cancel a sign-in.')}>
+            <div className="space-y-1 max-h-56 overflow-y-auto">
+              {(data.scopes || []).map((sc) => {
+                // `openid` is what makes this a sign-in rather than a bare access token, so
+                // it is shown as fixed rather than silently re-added after being unticked.
+                const fixed = sc === 'openid';
+                return (
+                  <label key={sc} className="flex items-start gap-2 text-[12px]">
+                    <input type="checkbox" className="mt-0.5" disabled={fixed}
+                      checked={fixed || form.scopes.includes(sc)}
+                      onChange={(e) => setForm((f) => ({
+                        ...f,
+                        scopes: e.target.checked ? [...f.scopes, sc] : f.scopes.filter((x) => x !== sc),
+                      }))} />
+                    <span>
+                      <code className="font-mono text-[var(--primary-2)]">{sc}</code>
+                      {fixed && <span className="text-[var(--faint)]"> ({t('dev.scopes.req', 'required')})</span>}
+                      {/* The FR dictionary already carried per-scope descriptions, written
+                          for a picker that was never built — five of them, with nine
+                          missing. Completed rather than ignored: a half-translated list is
+                          worse than an English one, because it reads as a bug. */}
+                      {SCOPE_HELP[sc] && <> — <span className="text-[var(--muted)]">{t(`dev.scope.${sc}`, SCOPE_HELP[sc])}</span></>}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
           </Field>
           <label className="flex items-start gap-2 text-[12px]">
             <input type="checkbox" className="mt-0.5" checked={!form.confidential} onChange={(e) => setForm((f) => ({ ...f, confidential: !e.target.checked }))} />
