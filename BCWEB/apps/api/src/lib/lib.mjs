@@ -671,6 +671,14 @@ export const NOTIF_CATEGORIES = {
   // account-critical is ever sent this way — those carry their own kind and land in
   // `security` below.
   broadcasts: { match: (k) => /^event$|^announce/.test(k), label: 'Site news & events' },
+  // The rest of what the platform actually sends. Each one existed as a kind already and was
+  // silently falling through to the locked security category, which meant it could not be
+  // switched off — a newsletter confirmation is not a security notice.
+  social: { match: (k) => /^badge_|^follow|^profile_|^reaction/.test(k), label: 'Badges, follows & reactions' },
+  transfers: { match: (k) => /^transfer_|^ownership/.test(k), label: 'Ownership transfers' },
+  polls: { match: (k) => /^poll_/.test(k), label: 'Polls & surveys' },
+  blog: { match: (k) => /^blog_|^docs_|^comment/.test(k), label: 'Comments & replies on your writing' },
+  newsletter: { match: (k) => /^newsletter/.test(k), label: 'Newsletter' },
   // Not switchable, and deliberately so: these are the ones you would most regret muting —
   // a ban, a revoked key, an app losing access, a closure. An account that can silence its
   // own security notices is one that finds out too late.

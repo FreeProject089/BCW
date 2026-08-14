@@ -25,7 +25,41 @@ function TotpField({ value, onChange, label }) {
     <Field label={label || t('devc.totp', 'Your 2FA code')} hint={t('devc.totp.h', 'Asked because this creates or destroys a credential.')}>
       <Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} className="w-32"
         value={value} onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" />
+      {/* Where the six digits come from. Obvious to whoever set 2FA up months ago, not at
+          all obvious at the moment a dialog demands one — and BetterCommunity has its own
+          authenticator, which people forget they are already carrying. */}
+      <div className="text-[11px] text-[var(--muted)] mt-1">
+        {t('devc.totp.where', 'From your authenticator app — or from the')}{' '}
+        <Link to="/2fa" className="text-[var(--primary-2)] hover:underline">{t('devc.totp.own', 'BetterCommunity authenticator')}</Link>
+        {t('devc.totp.where2', ', if that is where you keep this account.')}
+      </div>
     </Field>
+  );
+}
+
+/** A key's permissions, as chips rather than a truncated comma list.
+ *
+ *  The scope strings themselves are the contract with the API, so they are what is shown;
+ *  the human sentence is the tooltip. Chips also make "this key can do four things" readable
+ *  without counting commas, which is the question actually being asked when you look at a
+ *  list of keys.
+ */
+function ScopeChips({ scopes, descriptions = {}, max = 6 }) {
+  const { t } = useI18n();
+  const list = Array.isArray(scopes) ? scopes : [];
+  if (!list.length) return <div className="text-[11px] text-error mt-1">{t('devc.noscope', 'no scope — this key can do nothing')}</div>;
+  const shown = list.slice(0, max);
+  const rest = list.length - shown.length;
+  return (
+    <div className="flex flex-wrap items-center gap-1 mt-1">
+      {shown.map((s) => (
+        <span key={s} title={descriptions[s] || s}
+          className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">
+          {s}
+        </span>
+      ))}
+      {rest > 0 && <span className="text-[10px] text-[var(--faint)]" title={list.slice(max).join(', ')}>+{rest}</span>}
+    </div>
   );
 }
 
@@ -70,6 +104,7 @@ function ApiKeysPanel() {
           title: t('devc.del.t', 'Delete this key?'),
           message: t('devc.del.m', 'Anything using “{n}” stops working the moment this is gone, and it cannot be restored — a new key would have to be created and deployed. Its usage history is kept.').replace('{n}', k.label || t('devc.untitled', 'Untitled key')),
           label: t('devc.totp', 'Your 2FA code'), placeholder: '123456',
+          hint: t('devc.del.totp', 'Six digits from your authenticator app, or from the BetterCommunity authenticator at /2fa.'),
           okLabel: t('common.delete', 'Delete'), danger: true,
         })
       : (await dialog.confirm({
@@ -119,7 +154,7 @@ function ApiKeysPanel() {
                   {k.revokedAt && <Badge tone="red">{t('devc.revoked', 'revoked')}</Badge>}
                   {!k.revokedAt && k.expiresAt && new Date(k.expiresAt) < new Date() && <Badge tone="amber">{t('devc.expired', 'expired')}</Badge>}
                 </div>
-                <div className="text-[11px] text-[var(--faint)] truncate">{(k.scopes || []).join('  ') || t('devc.noscope', 'no scope')}</div>
+                <ScopeChips scopes={k.scopes} descriptions={scopes} />
                 <div className="text-[11px] text-[var(--faint)]">
                   {k.lastUsedAt ? t('devc.used', 'last used {d}').replace('{d}', new Date(k.lastUsedAt).toLocaleString()) : t('devc.never', 'never used')}
                 </div>

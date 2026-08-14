@@ -89,6 +89,24 @@ function UsageBars({ series }) {
   );
 }
 
+/** The same chips as /dev/config: scope strings, because they are the contract, sized so a
+ *  key with eight permissions does not become a truncated sentence. */
+function ScopeChips({ scopes, max = 8 }) {
+  const { t } = useI18n();
+  const list = Array.isArray(scopes) ? scopes : [];
+  if (!list.length) return <span className="text-[10px] text-error">{t('aapi.noscope', 'no scope')}</span>;
+  const shown = list.slice(0, max);
+  const rest = list.length - shown.length;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1 align-middle">
+      {shown.map((s) => (
+        <span key={s} className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{s}</span>
+      ))}
+      {rest > 0 && <span className="text-[10px] text-[var(--faint)]" title={list.slice(max).join(', ')}>+{rest}</span>}
+    </span>
+  );
+}
+
 function Stat({ label, value, sub, tone }) {
   return (
     <div>
@@ -332,11 +350,15 @@ function KeysTable({ onRevoke }) {
                   {!k.revokedAt && k.expiresAt && new Date(k.expiresAt) < new Date() && <Badge tone="amber">{t('aapi.expired', 'expired')}</Badge>}
                 </div>
                 <div className="text-[11px] text-[var(--faint)] truncate">
-                  {k.user?.displayName} · {k.user?.email} · {(k.scopes || []).join(', ') || t('aapi.noscope', 'no scope')}
+                  {k.user?.displayName} · {k.user?.email}
                 </div>
                 <div className="text-[11px] text-[var(--faint)]">
                   {k.lastUsedAt ? t('aapi.lastused', 'last used {d}').replace('{d}', new Date(k.lastUsedAt).toLocaleString()) : t('aapi.never', 'never used')}
                 </div>
+                {/* What it may do, on its own line: a key's permissions are the reason to
+                    look at it at all, and they were losing a fight for space with the
+                    owner's e-mail. */}
+                <div className="mt-1"><ScopeChips scopes={k.scopes} /></div>
               </div>
               <div className="text-right shrink-0">
                 <div className="text-sm font-semibold tabular-nums">{(k.calls || 0).toLocaleString()}</div>

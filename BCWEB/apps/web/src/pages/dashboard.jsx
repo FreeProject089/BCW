@@ -1,7 +1,7 @@
 import { useEffect, useState, lazy } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users,
+  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { api, uploadPayload } from '../lib/api.js';
@@ -53,6 +53,11 @@ function NotificationsPanel() {
         <div className="flex items-center gap-3">
           {unread > 0 && <button className="text-xs text-[var(--primary-2)] flex items-center gap-1" onClick={markAll}><CheckCheck size={13} /> Mark all read</button>}
           {list.length > 0 && <button className="text-xs text-error flex items-center gap-1" onClick={clearAll}><Trash2 size={13} /> Clear all</button>}
+          {/* The way out to the centre, which is the only place the per-category switches
+              live. This card can mark and delete; it cannot say "stop sending me this". */}
+          <Link to="/notifications" className="text-xs text-[var(--primary-2)] flex items-center gap-1 hover:underline">
+            <Sliders size={13} /> Notification centre
+          </Link>
         </div>
       </div>
       {loading ? <Loading /> : (list.length ? <div className="space-y-2 max-h-[460px] overflow-auto pr-1">

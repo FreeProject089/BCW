@@ -395,6 +395,10 @@ export function DialogProvider({ children }) {
             <Input ref={inputRef} type={o.type || 'text'} value={value} placeholder={o.placeholder} onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && close(value || '')} />
           )}
+          {/* A prompt asks for something the caller knows the shape of; `hint` is where it
+              says WHERE to get it. Without it a dialog demanding six digits is a dead end
+              for anyone who does not already know which app they set up. */}
+          {o.hint && <div className="text-[11px] text-[var(--muted)] mt-1.5">{o.hint}</div>}
         </div>}
       </Modal>
     </DialogCtx.Provider>

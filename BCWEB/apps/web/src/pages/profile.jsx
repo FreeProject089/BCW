@@ -100,7 +100,7 @@ export default function Profile() {
           <div><Badge tone={user.role === 'SUPERADMIN' ? 'red' : user.role === 'ADMIN' ? 'amber' : 'primary'} className="mt-1">{user.role}</Badge></div>
 
           {/* custom photo */}
-          <div className="grid grid-cols-2 gap-1.5 mt-4">
+          <div className="flex flex-wrap justify-center gap-1.5 mt-4">
             <Button size="sm" disabled={uploading} onClick={pickPhoto}>{uploading ? <Spinner /> : <><ImagePlus size={14} /> {avatar.image ? t('prof.change', 'Change') : t('prof.uploadphoto', 'Upload photo')}</>}</Button>
             <Button size="sm" variant="ghost" disabled={!avatar.image} onClick={removePhoto}><Trash2 size={14} /> {t('prof.remove', 'Remove')}</Button>
           </div>
@@ -967,7 +967,7 @@ function CreatorLinks() {
   const visible = links.filter((l) => !pending.has(l.id));
   return (
     <Card className="p-5">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--primary-2)]" /> {t('acl.title', 'Creator IDs')}</div>
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--primary-2)]" /> {t('cid.title', 'Creator IDs')}</div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('cl.desc', "Link your BMM creator id(s). In BMM, generate a pairing code, then paste it here. One creator id links to one account; linked ids can't be unlinked for 2 weeks.")}</p>
       {visible.length > 0 && <div className="space-y-2 mb-3">
         {visible.map((l) => (
