@@ -261,6 +261,7 @@ export function Admin() {
       {(s) => (<>
         {s === 'moderation' && <div>
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
+          <BmmpaInspector />
           <div className="flex flex-wrap gap-2 mb-3">
             <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
               <Input className="!pl-9" placeholder={t('mod.search.ph', 'Search by item name, author or email…')} value={modQ} onChange={(e) => setModQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setModQApplied(modQ)} /></div>
@@ -6427,6 +6428,109 @@ function AdminSso() {
 // than in its own tab: an OAuth app and a webhook are the same question ("what is
 // plugged into this platform, on whose behalf"), and a third top-level tab for one table
 // is how the admin nav got crowded enough to need reorganising in the first place.
+// Read a submitted BMM automation (.bmmpa) without running it.
+//
+// A preset arrives as a file whose contents nobody can see. The only way to know what it
+// did was to import it into a real BMM — the commitment, made by the person deciding
+// whether to allow it. This shows what it would do, from the document alone.
+//
+// Paste rather than upload, deliberately: the file is already on the moderator's machine,
+// and an upload endpoint for arbitrary JSON is a thing to secure for no gain here.
+function BmmpaInspector() {
+  const { t } = useI18n(); const toast = useToast();
+  // The API returns codes; the words are ours. An unknown code falls back to itself rather
+  // than to a blank — a moderator seeing "app.frobnicate" learns something, a moderator
+  // seeing nothing does not.
+  const PERM = {
+    command: t('bmi.p.command', 'Runs external programs'),
+    script: t('bmi.p.script', 'Runs scripts (PowerShell / CMD / Bash / Python)'),
+    deeplink: t('bmi.p.deeplink', 'Fires bmm:// deeplinks'),
+    stopProcess: t('bmi.p.stop', 'Stops running programs'),
+  };
+  const REACH = {
+    'custom.command': t('bmi.r.command', 'Runs an external program'),
+    'custom.script': t('bmi.r.script', 'Runs a script'),
+    'app.stop': t('bmi.r.stop', 'Stops a program'),
+    'app.launch': t('bmi.r.launch', 'Launches an app'),
+    'file.open': t('bmi.r.file', 'Opens a file or program'),
+    'folder.open': t('bmi.r.folder', 'Opens a folder'),
+    'open.url': t('bmi.r.url', 'Opens a URL'),
+    restart: t('bmi.r.restart', 'Restarts BMM'),
+    'task.run': t('bmi.r.task', 'Runs another scheduled task'),
+  };
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [rep, setRep] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    let doc;
+    // Parsed here first so a typo is answered instantly and locally, and so the server is
+    // never asked to make sense of something that is not JSON at all.
+    try { doc = JSON.parse(text); }
+    catch { return toast.error(t('bmi.badjson', 'That is not valid JSON — paste the whole .bmmpa file.')); }
+    setBusy(true); setRep(null);
+    try { setRep(await api.post('/admin/bmmpa/inspect', { doc })); }
+    catch (x) { toast.error(x?.data?.detail || t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+
+  if (!open) {
+    return (
+      <Button size="sm" className="mb-3" onClick={() => setOpen(true)}>
+        <FileJson size={14} /> {t('bmi.open', 'Inspect a .bmmpa')}
+      </Button>
+    );
+  }
+  return (
+    <Card className="p-4 mb-4">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="text-sm font-semibold flex items-center gap-2"><FileJson size={15} className="text-[var(--primary-2)]" /> {t('bmi.title', 'Inspect a .bmmpa')}</div>
+        <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setRep(null); setText(''); }}>{t('common.close', 'Close')}</Button>
+      </div>
+      <p className="text-[12px] text-[var(--muted)] mb-2">
+        {t('bmi.sub', 'Paste the file. It is read, never run — nothing is imported and nothing is fetched.')}
+      </p>
+      <Textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder='{"magic":"BMMPA","version":1,"tasks":[…]}' />
+      <div className="flex gap-2 mt-2">
+        <Button size="sm" variant="primary" disabled={busy || !text.trim()} onClick={run}>{busy ? <Spinner /> : t('bmi.read', 'Read it')}</Button>
+      </div>
+
+      {rep && (
+        <div className="mt-3">
+          {/* The verdict first. The question is "can I approve this", and an answer under a
+              step list is an answer nobody reads. */}
+          <div className={`text-[12px] rounded-lg border p-2.5 mb-2 ${rep.needsReview ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+            {rep.needsReview
+              ? t('bmi.review', 'This file grants itself permissions or reaches outside BMM. Read it before approving.')
+              : t('bmi.clean', 'Nothing here asks for a permission or touches anything outside BMM.')}
+          </div>
+          {rep.tasks.map((tk, i) => (
+            <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 mb-2">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <b className="text-[13px]">{tk.name}</b>
+                <span className="text-[11px] text-[var(--primary-2)]">{tk.trigger}</span>
+                <span className="text-[11px] text-[var(--muted)] ml-auto">{tk.stepCount} {t('bmi.steps', 'steps')}</span>
+              </div>
+              {tk.description && <div className="text-[12px] text-[var(--muted)] mt-1">{tk.description}</div>}
+              {tk.perms.length > 0 && <div className="text-[12px] text-[var(--warning)] mt-1.5"><b>{t('bmi.asks', 'Grants itself:')}</b> {tk.perms.map((k) => PERM[k] || k).join(' · ')}</div>}
+              {tk.reaching.length > 0 && <div className="text-[12px] text-[var(--warning)] mt-1"><b>{t('bmi.reaches', 'Reaches outside BMM:')}</b> {tk.reaching.map((k) => REACH[k] || k).join(' · ')}</div>}
+              {tk.targets.length > 0 && <div className="text-[11px] text-[var(--muted)] mt-1 break-all"><b>{t('bmi.names', 'Names:')}</b> {tk.targets.join('  ·  ')}</div>}
+              {tk.scripts.map((sc, j) => (
+                <details key={j} className="mt-2">
+                  <summary className="text-[12px] cursor-pointer text-[var(--primary-2)]">{t('bmi.script', 'Script')} — {sc.engine}</summary>
+                  {/* whitespace-pre and its own scroll: reflowed code is code you cannot judge. */}
+                  <pre className="mt-1.5 p-2 rounded-lg text-[11px] overflow-auto max-h-64 whitespace-pre" style={{ background: 'var(--bg-solid)', border: '1px solid var(--line)' }}>{sc.code}</pre>
+                </details>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function AdminWebhooks() {
   const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/admin/webhooks'), []);

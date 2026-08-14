@@ -4,7 +4,8 @@
 // whether a feed was well-formed was to publish it and watch BMM refuse — a loop with a
 // human, a deploy and somebody else's app in it.
 import { z } from 'zod';
-import { requireRole } from '../lib/lib.mjs';
+import { requireRole, requireCap } from '../lib/lib.mjs';
+import { inspectBmmpa } from '../lib/bmmpa.mjs';
 import { safeFetch } from '../lib/net.mjs';
 
 // What a BMM-native catalog feed has to look like. Written here rather than imported from the
@@ -84,6 +85,34 @@ export function validateFeed(doc) {
 }
 
 export default async function devtoolRoutes(app) {
+  // Read a submitted BMM automation file without running it.
+  //
+  // The moderation problem this solves: somebody submits a .bmmpa and the only way to know
+  // what is in it is to import it into a real BMM — which is the commitment, made by the
+  // person who is supposed to be deciding whether to allow it. This answers from the
+  // document alone: what it would do, what permissions it grants itself, what it reaches
+  // outside BMM, and the full text of any script it carries.
+  //
+  // Takes the parsed JSON in the body rather than a URL or an upload. Nothing is fetched
+  // and nothing is written: a tool for inspecting untrusted content must not become a way
+  // to make the server retrieve untrusted content.
+  //
+  // manage_catalogs, because this is for reviewing submissions — the same audience that
+  // approves the catalog items these arrive as.
+  app.post('/admin/bmmpa/inspect', {
+    preHandler: requireCap('manage_catalogs', 'MOD'),
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    // A .bmmpa is JSON of unbounded shape, so it is parsed as a raw value rather than
+    // described field by field. The size cap is what keeps that safe.
+    bodyLimit: 2 * 1024 * 1024,
+  }, async (req, reply) => {
+    const b = z.object({ doc: z.any() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const report = inspectBmmpa(b.data.doc);
+    if (!report.ok) return reply.code(400).send({ error: 'unreadable', detail: report.error });
+    return report;
+  });
+
   // Paste or point. Signed in, because it makes an outbound request on the caller's behalf —
   // anonymous would make this a URL prober with our IP on it.
   app.post('/dev/validate-feed', {
