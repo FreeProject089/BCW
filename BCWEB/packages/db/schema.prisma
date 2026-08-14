@@ -1241,6 +1241,13 @@ model PromoCampaign {
   badgeMessageFr String   @default("") // custom announcement (FR)
   badgeColor     String   @default("") // optional accent hex (validated); blank → brand color
   badgeLink      String   @default("") // optional click target: internal "/blog/x" or "https://…" (validated)
+  // The Stripe coupon that carries this campaign onto SUBSCRIPTION checkouts.
+  //
+  // A one-time charge can simply be multiplied; a subscription cannot — a discounted
+  // unit_amount would bill the sale price every month for as long as the item is hosted.
+  // Stripe's coupon with `duration: 'once'` is the mechanism that ends when the sale does.
+  // Created lazily on the first subscription checkout during the campaign and reused after.
+  stripeCouponId String?
   // DEAD. Declared, never read, never written — anywhere. An event that mints a code
   // records it on Event.eventCode and finds it back by `note`, and campaign teardown goes
   // through Event.campaignId. Kept as a column rather than dropped so no deployed database

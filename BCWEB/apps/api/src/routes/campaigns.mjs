@@ -47,6 +47,37 @@ export async function applyCampaign(p, amount, scope) {
   return { amount: discounted, label: ` · −${camp.percentOff}% ${what}`, campaign: camp };
 }
 
+/** The Stripe coupon that puts an active campaign on a SUBSCRIPTION checkout.
+ *
+ *  `duration: 'once'` on purpose: it discounts the first invoice and nothing after it. A
+ *  repeating or forever coupon would keep charging the sale price months after the campaign
+ *  ended, which is the exact bug that kept catalog hosting out of campaigns until now.
+ *
+ *  Created on first use and remembered, so a busy sale does not mint a coupon per checkout.
+ *  Returns null on any failure — a discount that cannot be created must never be the reason
+ *  somebody cannot pay.
+ */
+export async function campaignCoupon(p, sk, scope) {
+  try {
+    const camp = await getActiveCampaign(p).catch(() => null);
+    if (!camp || (camp.appliesTo !== 'all' && camp.appliesTo !== scope)) return null;
+    if (camp.stripeCouponId) {
+      // Confirm it still exists: a coupon deleted in the Stripe dashboard would otherwise
+      // fail every checkout with an id we keep sending.
+      const known = await sk.coupons.retrieve(camp.stripeCouponId).catch(() => null);
+      if (known && !known.deleted) return { id: known.id, campaign: camp };
+    }
+    const made = await sk.coupons.create({
+      percent_off: camp.percentOff,
+      duration: 'once',
+      name: `${camp.name} (−${camp.percentOff}%)`.slice(0, 40),
+      metadata: { campaignId: camp.id },
+    });
+    await p.promoCampaign.update({ where: { id: camp.id }, data: { stripeCouponId: made.id } }).catch(() => {});
+    return { id: made.id, campaign: camp };
+  } catch { return null; }
+}
+
 // Public shape (no internal fields like `name`/`active` leak to anonymous users).
 function publicCampaign(c) {
   if (!c) return null;
