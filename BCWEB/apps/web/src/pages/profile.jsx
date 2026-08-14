@@ -9,13 +9,22 @@ import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Fiel
 import { DiscordIcon, KofiIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint, Youtube, Twitch, Gamepad2, Github, X, Monitor, Tablet, MapPin, LogOut, Globe } from 'lucide-react';
 import { stagePending, addLocalAccount, attachBackupCodesBySecret } from '../lib/twofa-lib.js';
 import { TotpQuickFill } from './twofa-fill.jsx';
 
 // A small section heading used to group the profile cards into clear zones
 // (Public profile / Security / Connections / Account) instead of one flat stack.
+// The four things people come here to do. Kept out of the component so the strip is one
+// readable line and the labels stay next to each other rather than scattered through JSX.
+const PROFILE_TABS = [
+  ['account', User, (t) => t('prof.tab.account', 'Account')],
+  ['security', ShieldCheck, (t) => t('prof.tab.security', 'Security')],
+  ['links', Link2, (t) => t('prof.tab.links', 'Connections')],
+  ['more', Terminal, (t) => t('prof.tab.more', 'Developer & more')],
+];
+
 function SectionLabel({ icon: Ico, children }) {
   return <div className="flex items-center gap-2 mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--faint)]"><Ico size={13} className="text-[var(--primary-2)]" /> {children}</div>;
 }
@@ -23,6 +32,13 @@ function SectionLabel({ icon: Ico, children }) {
 export default function Profile() {
   const { user, refresh } = useAuth();
   const { t } = useI18n(); const toast = useToast();
+  // The tab lives in the URL, so "your security settings" can be a link and Back does what
+  // the tabs make you expect. An unknown value falls back to Account rather than to a blank
+  // pane — a stale link should land somewhere real.
+  const [sp, setSp] = useSearchParams();
+  const wanted = sp.get('tab');
+  const tab = PROFILE_TABS.some(([id]) => id === wanted) ? wanted : 'account';
+  const setTab = (id) => setSp((p) => { const n = new URLSearchParams(p); n.set('tab', id); return n; }, { replace: true });
   const [form, setForm] = useState({ displayName: '', bio: '', profilePublic: true, showConnections: [], website: '' });
   const [avatar, setAvatar] = useState({ variant: 'beam', seed: '', colors: PALETTES.orange, image: null });
   const [uploading, setUploading] = useState(false);
@@ -142,17 +158,34 @@ export default function Profile() {
           <Button size="sm" variant="ghost" className="w-full mt-3" onClick={exportZip}><FileArchive size={14} /> {t('prof.exportavatars', 'Export avatars (.zip)')}</Button>
         </Card>
 
-        {/* details + password — grouped into labelled sections */}
-        <div className="min-w-0 space-y-7">
+        {/* Four tabs, not eleven stacked cards.
+            Everything here is something you came to do exactly one of — change your name,
+            turn on 2FA, link Discord, close the account. Stacking all of it meant scrolling
+            past ten things you were not there for, every time. The tab lives in the URL so a
+            link to "your security settings" is a link, and so the browser Back button works
+            the way the tabs make you expect. */}
+        <div className="min-w-0">
+          <div className="inline-flex flex-wrap rounded-[12px] bg-[var(--surface-2)] p-0.5 mb-5">
+            {PROFILE_TABS.map(([id, icon, label]) => {
+              const Ico = icon;
+              return (
+                <button key={id} onClick={() => setTab(id)}
+                  className={`px-3 py-1.5 rounded-[10px] text-sm flex items-center gap-1.5 ${tab === id ? 'bg-[var(--bg-solid)] font-medium shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                  <Ico size={13} /> {label(t)}
+                </button>
+              );
+            })}
+          </div>
+          <div className="space-y-7">
           {/* Account facts lead the page (name / email / role / member since) — the
               most-referenced info, so it sits at the top instead of buried in a
               collapsible at the bottom. */}
-          <div>
+          {tab === 'account' && <div>
           <SectionLabel icon={User}>{t('prof.sec.account2', 'Account')}</SectionLabel>
           <AccountInfoCard user={user} />
-          </div>
+          </div>}
 
-          <div>
+          {tab === 'account' && <div>
           <SectionLabel icon={Sparkles}>{t('prof.sec.public', 'Public profile')}</SectionLabel>
           <Card className="p-5 space-y-3">
             <Field label={t('prof.dispname', 'Display name')}><Input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} /></Field>
@@ -168,7 +201,7 @@ export default function Profile() {
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <div className="text-sm font-semibold flex items-center gap-2"><Eye size={15} className="text-[var(--primary-2)]" /> {t('prof.visibility', 'Profile visibility')}</div>
-                <p className="text-xs text-[var(--muted)] mt-0.5">{t('prof.visibility.d', 'A public profile is a shareable page showing your name, badges, join date and public repos/catalogs — never your email. Private = only you and the team can view it.')}</p>
+                <p className="text-xs text-[var(--muted)] mt-0.5">{t('prof.visibility.d', 'Public shows your name, badges, join date and public repos — never your email. Private: only you and staff.')}</p>
               </div>
               <div className="flex items-center gap-2">
                 <Link to={`/u/${user.id}`}><Button size="sm" variant="ghost"><ArrowRight size={14} /> {t('prof.viewpublic', 'View')}</Button></Link>
@@ -206,9 +239,9 @@ export default function Profile() {
               ))}
             </div>
           </Card>}
-          </div>
+          </div>}
 
-          <div className="space-y-4">
+          {tab === 'security' && <div className="space-y-4">
           <SectionLabel icon={ShieldCheck}>{t('prof.sec.security', 'Security')}</SectionLabel>
           {/* 2FA leads Security — it now gates repo creation and server-control access, so
               it's the most important thing to set up. Password change sits below it. */}
@@ -229,16 +262,16 @@ export default function Profile() {
           </Card>
           <SessionsCard />
           <TransfersCard />
-          </div>
+          </div>}
 
-          <div className="space-y-4">
+          {tab === 'links' && <div className="space-y-4">
           <SectionLabel icon={Link2}>{t('prof.sec.connections', 'Connections')}</SectionLabel>
           <CreatorLinks />
           <DiscordLinks />
           <SocialConnections />
-          </div>
+          </div>}
 
-          <div className="space-y-4">
+          {tab === 'more' && <div className="space-y-4">
           <SectionLabel icon={Terminal}>{t('prof.sec.developer', 'Developer & preferences')}</SectionLabel>
           {/* The credentials moved to /dev/config. A page you open to change your display
               name is not where you go to rotate a key a deployment runs on, and keeping a
@@ -259,6 +292,7 @@ export default function Profile() {
               <ArrowRight size={16} className="text-[var(--faint)] group-hover:text-[var(--primary-2)] group-hover:translate-x-0.5 transition shrink-0" />
             </Card>
           </Link>
+          </div>}
           </div>
         </div>
       </div>
@@ -634,7 +668,7 @@ function SessionsCard() {
         <Monitor size={15} className="text-[var(--primary-2)]" /> {t('prof.sess.title', 'Signed-in devices')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
-        {t('prof.sess.sub', 'Every device currently signed in to this account. If you do not recognise one, sign it out - it stops working straight away.')}
+        {t('prof.sess.sub', 'Do not recognise one? Sign it out — it stops working immediately.')}
       </p>
 
       {pending && (
@@ -765,7 +799,7 @@ function DevPointerCard() {
         <KeyRound size={15} className="text-[var(--primary-2)]" /> {t('prof.dev.title', 'API keys & apps')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
-        {t('prof.dev.s', 'Your API keys and the apps you registered live in the developer area now, beside the console that tests them.')}
+        {t('prof.dev.s', 'Your API keys and registered apps live in the developer area, beside the console that tests them.')}
       </p>
       <Link to="/dev/config"><Button size="sm" variant="primary">{t('prof.dev.go', 'Open /dev/config')} <ArrowRight size={13} /></Button></Link>
     </Card>
@@ -890,7 +924,7 @@ function TwoFactorCard() {
         </div>
       ) : setup ? (
         <div className="space-y-3">
-          <p className="text-xs text-[var(--muted)]">{t('prof.2fa.scan', 'Scan this in your authenticator app (Google Authenticator, Authy, …) — or enter the key manually — then confirm with the code it shows:')}</p>
+          <p className="text-xs text-[var(--muted)]">{t('prof.2fa.scan', 'Scan it in your authenticator app, or type the key, then confirm with the code it shows:')}</p>
           {qrDataUrl && <img src={qrDataUrl} alt="2FA QR code" width={160} height={160} className="rounded-lg border border-[var(--line)] bg-white p-1.5" />}
           <div className="text-xs font-mono bg-[var(--surface-2)] rounded-lg p-3 break-all">{setup.secret}</div>
           {/* One-click: drop this account into the local BCWEB Authenticator (/2fa) so
