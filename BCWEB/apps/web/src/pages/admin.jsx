@@ -1995,6 +1995,91 @@ function AdminServerAdvanced() {
 }
 
 
+// What is actually inside a backup, and the only place a rollback can be started.
+//
+// The rollback lives HERE rather than next to the row because it should not be reachable
+// without having looked: the two facts that decide whether a restore is safe — is the file
+// intact, and is it the backup you think it is — are both on this screen.
+function SnapshotInspector({ id, onClose, onRestored }) {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading } = useAsync(() => api.get(`/server/backups/snapshots/${id}/inspect`), [id]);
+  const [confirm, setConfirm] = useState('');
+  const [toDisk, setToDisk] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const restore = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post(`/server/backups/snapshots/${id}/restore`, { confirmToken: 'CONFIRM', applyToDisk: toDisk });
+      toast.success(t('snap.restored', 'Rolled back. The previous state was saved as a backup first ({n}).').replace('{n}', r.safetySnapshot?.id || '—'));
+      onRestored(); onClose();
+    } catch (x) {
+      toast.error(x?.data?.error === 'no_safety_snapshot' ? t('snap.nosafety', 'Could not back up the current state, so nothing was rolled back.')
+        : x?.data?.error === 'invalid_bundle' ? t('snap.invalid', 'This backup does not verify — it will not be restored.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  const d = data || {};
+  return (
+    <Modal open onClose={onClose} title={t('snap.inspect', 'Inspect this backup')} icon={Archive} width="max-w-lg">
+      {loading ? <Loading /> : (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={d.valid ? 'green' : 'red'}>{d.valid ? t('snap.valid', 'git accepts it') : t('snap.notvalid', 'will not open')}</Badge>
+            {/* Two separate checks, shown separately: git verifies the file is a coherent
+                bundle, the digest verifies it is OUR file. A valid bundle that is not the
+                one we wrote passes the first and fails the second. */}
+            <Badge tone={d.digestMatches ? 'green' : 'amber'}>{d.digestMatches ? t('snap.digestok', 'digest matches') : t('snap.digestbad', 'digest differs')}</Badge>
+            <Badge tone={d.signature?.present ? 'green' : ''}>{d.signature?.present ? t('snap.signed', 'signed') : t('snap.unsigned', 'unsigned')}</Badge>
+            <span className="text-[11px] text-[var(--faint)] ml-auto">{fmtBytes(d.meta?.bytes || 0)}</span>
+          </div>
+
+          {d.verify && <pre className="text-[10px] font-mono whitespace-pre-wrap text-[var(--muted)] bg-[var(--surface-2)] rounded p-2 max-h-24 overflow-auto">{d.verify}</pre>}
+
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('snap.contents', 'What it contains')}</div>
+            <div className="max-h-48 overflow-y-auto divide-y divide-[var(--line)] rounded border border-[var(--line)]">
+              {(d.commits || []).map((c) => (
+                <div key={c.hash} className="px-2 py-1 flex items-baseline gap-2 text-[11px]">
+                  <code className="font-mono text-[var(--faint)]">{c.hash.slice(0, 8)}</code>
+                  <span className="truncate flex-1">{c.message}</span>
+                  <span className="text-[10px] text-[var(--faint)]">{new Date(c.at).toLocaleDateString()}</span>
+                </div>
+              ))}
+              {!(d.commits || []).length && <div className="px-2 py-2 text-[11px] text-[var(--faint)]">{t('snap.nocommits', 'Nothing readable in it.')}</div>}
+            </div>
+          </div>
+
+          {d.valid && (
+            <div className="rounded-lg border border-warning/40 bg-warning/5 p-3 space-y-2">
+              <div className="text-[13px] font-semibold flex items-center gap-1.5"><RotateCcw size={13} /> {t('snap.rollback', 'Roll back to this backup')}</div>
+              <p className="text-[11px] text-[var(--muted)]">
+                {t('snap.rollback.s', 'The current state is backed up first and the rollback is refused if that fails — a rollback with no way back is just a hopeful restore. This resets the backup history only.')}
+              </p>
+              {d.meta?.kind === 'files' && (
+                <label className="flex items-start gap-2 text-[11px]">
+                  <input type="checkbox" checked={toDisk} onChange={(e) => setToDisk(e.target.checked)} className="mt-0.5" />
+                  {/* Separate from the rollback because it is the irreversible half: resetting
+                      history can be undone from the safety snapshot, overwriting the live tree
+                      cannot. */}
+                  <span>{t('snap.rollback.disk', 'Also write these files over the live application directory. This changes what the server is running and cannot be undone by another rollback.')}</span>
+                </label>
+              )}
+              <div className="flex items-center gap-2">
+                <Input className="!w-40" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="CONFIRM" />
+                <Button size="sm" variant="danger" disabled={busy || confirm !== 'CONFIRM'} onClick={restore}>
+                  {busy ? <Spinner /> : t('snap.rollback.ok', 'Roll back')}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // Snapshots: the backups an admin can actually take, hold and throw away.
 //
 // Kept visually apart from the history above because they answer a different question.
@@ -2004,8 +2089,30 @@ function SnapshotsPanel({ onChanged }) {
   const { data, loading, reload } = useAsync(() => api.get('/server/backups/snapshots'), []);
   const [busy, setBusy] = useState('');
   const [keep, setKeep] = useState('');
+  const [inspecting, setInspecting] = useState(null);
 
   const snaps = data?.snapshots || [];
+
+  // Import reads the file in the browser and posts it base64. The bundles this produces are
+  // megabytes; the endpoint verifies before storing, so a wrong file is refused with git's
+  // own words rather than landing in the list as something that cannot be restored.
+  const importFile = async (file, kind) => {
+    if (!file) return;
+    setBusy('import');
+    try {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      let bin = '';
+      for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode(...buf.subarray(i, i + 8192));
+      const r = await api.post('/server/backups/snapshots/import', { kind, note: file.name.slice(0, 120), data: btoa(bin) });
+      toast.success(t('snap.imported', 'Imported — it verified, and is in the list.'));
+      reload(); onChanged?.();
+      setInspecting(r.snapshot.id);
+    } catch (x) {
+      toast.error(x?.data?.error === 'invalid_bundle' ? t('snap.badimport', 'That file is not a backup git will open: {d}').replace('{d}', String(x.data.detail || '').split('\n')[0].slice(0, 120))
+        : x?.data?.error === 'too_large' ? t('bkp.toobig', 'Too large to export in one file — compact the backups first.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(''); }
+  };
   const keepNow = data?.keep ?? 10;
 
   const take = async (kind) => {
@@ -2092,6 +2199,12 @@ function SnapshotsPanel({ onChanged }) {
         </Button>
         <Button size="sm" disabled={!!busy} onClick={() => take('files')}>{t('snap.files', 'Files only')}</Button>
         <Button size="sm" disabled={!!busy} onClick={() => take('db')}>{t('snap.db', 'DB rows only')}</Button>
+        <label className="inline-flex">
+          <input type="file" accept=".bundle" className="hidden" onChange={(e) => { importFile(e.target.files?.[0], 'files'); e.target.value = ''; }} />
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-sm border border-[var(--line)] cursor-pointer hover:bg-[var(--surface-2)] ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
+            {busy === 'import' ? <Spinner /> : <UploadIcon size={13} />} {t('snap.import', 'Import a backup')}
+          </span>
+        </label>
         <div className="flex items-center gap-1.5 ml-auto">
           <span className="text-[11px] text-[var(--muted)]">{t('snap.keeplabel', 'Keep')}</span>
           <Input className="w-20" type="number" min="0" value={keep} onChange={(e) => setKeep(e.target.value)} placeholder={String(keepNow)} />
@@ -2120,11 +2233,14 @@ function SnapshotsPanel({ onChanged }) {
                   {!snap.signature && <span className="text-warning"> · {t('snap.unsigned', 'unsigned')}</span>}
                 </div>
               </div>
+              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => setInspecting(snap.id)} title={t('snap.inspect', 'Inspect this backup')}><Eye size={13} /></Button>
               <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => download(snap)} title={t('common.download', 'Download')}><Download size={13} /></Button>
               <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => remove(snap)} title={t('common.delete', 'Delete')}><Trash2 size={13} className="text-[var(--error)]" /></Button>
             </div>
           ))}
       </div>
+
+      {inspecting && <SnapshotInspector id={inspecting} onClose={() => setInspecting(null)} onRestored={() => { reload(); onChanged?.(); }} />}
     </div>
   );
 }

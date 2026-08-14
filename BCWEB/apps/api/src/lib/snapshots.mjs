@@ -78,6 +78,40 @@ export async function createSnapshot(kind, { by = '', note = '', sign = null } =
   return meta;
 }
 
+
+/** Where a snapshot's bundle lives. Exported so a restore can hand the PATH to git rather
+ *  than re-writing megabytes through a temp file it already has on disk. */
+export function snapshotPath(id) {
+  if (!validSnapshotId(id)) throw new Error('bad_id');
+  return path.join(SNAPSHOT_ROOT, `${id}.bundle`);
+}
+
+/** Store a bundle that came from somewhere else.
+ *
+ *  Identical on disk to one we produced — same id shape, same sidecar — because a restore
+ *  should not care where a backup came from. `by` records who brought it in, and the note
+ *  defaults to saying it was imported, which is the one fact the file itself cannot carry.
+ */
+export async function importSnapshot(kind, bytes, { by = '', note = '', sign = null } = {}) {
+  if (!SNAPSHOT_KINDS.includes(kind)) throw new Error('bad_kind');
+  await fs.mkdir(SNAPSHOT_ROOT, { recursive: true });
+  const id = `${kind}-${stamp(new Date())}-${crypto.randomBytes(4).toString('hex')}`;
+  await fs.writeFile(path.join(SNAPSHOT_ROOT, `${id}.bundle`), bytes);
+  const meta = {
+    id, kind, bytes: bytes.length,
+    sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
+    // Signed on arrival, which vouches for "this server holds this file", NOT for where it
+    // came from. The sidecar says imported so the two are never confused.
+    signature: sign ? await sign(bytes).catch(() => null) : null,
+    signatureAlg: 'Ed25519',
+    createdAt: new Date().toISOString(),
+    by, note: String(note || 'imported').slice(0, 200),
+    imported: true,
+  };
+  await fs.writeFile(path.join(SNAPSHOT_ROOT, `${id}.json`), JSON.stringify(meta, null, 2));
+  return meta;
+}
+
 export async function snapshotBytes(id) {
   if (!validSnapshotId(id)) return null;
   const meta = await readMeta(id);

@@ -184,6 +184,94 @@ export async function bundleRepo(repoRoot) {
   }
 }
 
+
+// ── Reading a bundle back ────────────────────────────────────────────────────
+
+/** What is inside a bundle, and whether git will accept it.
+ *
+ *  `git bundle verify` is the real check and it is not a formality: a bundle is a pack
+ *  file with a prerequisite list, and one that is truncated, corrupted, or made against a
+ *  history this repo does not have will fail here rather than half-way through a restore.
+ *  Verifying BEFORE anything is written is what makes "import" safe to offer at all.
+ */
+export async function inspectBundle(bytes) {
+  const tmp = path.join(os.tmpdir(), `bcw-inspect-${Date.now()}-${Math.random().toString(36).slice(2)}.bundle`);
+  const work = `${tmp}.d`;
+  try {
+    await fs.writeFile(tmp, bytes);
+    await fs.mkdir(work, { recursive: true });
+    // An empty repo to verify against: `git bundle verify` needs to run inside one, and a
+    // fresh one has no history, so a self-contained bundle (--all from a full repo) checks
+    // out while an incremental one honestly reports its missing prerequisites.
+    await execFileP('git', ['init', '-q', work]);
+    let heads = [];
+    try {
+      const { stdout } = await execFileP('git', ['bundle', 'list-heads', tmp], { cwd: work, maxBuffer: 8 * 1024 * 1024 });
+      heads = stdout.trim().split(String.fromCharCode(10)).filter(Boolean).map((l) => {
+        const [sha, ...ref] = l.split(/\s+/);
+        return { sha, ref: ref.join(' ') };
+      });
+    } catch (e) {
+      return { valid: false, error: String(e?.stderr || e?.message || e).slice(0, 400), heads: [], commits: [] };
+    }
+    let verifyOut = '';
+    let valid = true;
+    try {
+      const r = await execFileP('git', ['bundle', 'verify', tmp], { cwd: work, maxBuffer: 8 * 1024 * 1024 });
+      verifyOut = `${r.stdout}${r.stderr || ''}`.trim();
+    } catch (e) {
+      valid = false;
+      verifyOut = String(e?.stderr || e?.message || e).slice(0, 400);
+    }
+    // The tip commits, so a human can recognise WHICH backup this is before restoring it.
+    let commits = [];
+    if (valid) {
+      try {
+        await execFileP('git', ['fetch', '-q', tmp, '+refs/*:refs/bundle/*'], { cwd: work, maxBuffer: 32 * 1024 * 1024 });
+        const { stdout } = await execFileP('git', ['log', '-25', '--format=%H|%ct|%s', '--all'], { cwd: work, maxBuffer: 8 * 1024 * 1024 });
+        commits = stdout.trim().split(String.fromCharCode(10)).filter(Boolean).map((line) => {
+          const [hash, ts, ...rest] = line.split('|');
+          return { hash, at: new Date(Number(ts) * 1000).toISOString(), message: rest.join('|') };
+        });
+      } catch { /* verified but unreadable: report it as verified with no log rather than failing */ }
+    }
+    return { valid, verify: verifyOut, heads, commits, bytes: bytes.length };
+  } finally {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    await fs.rm(work, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** Replace a backup repo's history with a bundle's, and optionally the files with it.
+ *
+ *  The repo is reset to the bundle's tip. `applyToDisk` additionally copies that tree over
+ *  the live source directory — which is the part that actually changes what the server is
+ *  running, and the reason it is a separate, explicit flag rather than part of "restore".
+ *  Restoring history is reversible; overwriting /app is not.
+ */
+export async function restoreFromBundle(repoRoot, bundlePath, { applyToDisk = null } = {}) {
+  await ensureRepo(repoRoot);
+  await git(repoRoot, ['fetch', '-q', bundlePath, '+refs/heads/*:refs/restored/*']);
+  const { stdout: refs } = await git(repoRoot, ['for-each-ref', '--format=%(refname)', 'refs/restored/']);
+  const first = refs.trim().split(String.fromCharCode(10)).filter(Boolean)[0];
+  if (!first) throw new Error('bundle_has_no_branch');
+  await git(repoRoot, ['reset', '--hard', first]);
+  const { stdout: head } = await git(repoRoot, ['rev-parse', 'HEAD']);
+
+  let copied = 0;
+  if (applyToDisk) {
+    // Same exclusions as the snapshot that produced it — copying .git or node_modules back
+    // over a running tree is how a restore becomes an outage.
+    const entries = await fs.readdir(repoRoot, { withFileTypes: true });
+    for (const e of entries) {
+      if (SNAPSHOT_EXCLUDE.includes(e.name)) continue;
+      await fs.cp(path.join(repoRoot, e.name), path.join(applyToDisk, e.name), { recursive: true, force: true });
+      copied++;
+    }
+  }
+  return { head: head.trim(), ref: first, copied };
+}
+
 // Recent commits in a backup repo (named backupLog, not repoLog: lib.mjs already
 // exports a repoLog for per-repository audit entries, and two different "repo logs"
 // imported into one file is a bug waiting for a tired afternoon) — what is actually stored, rather than only how many

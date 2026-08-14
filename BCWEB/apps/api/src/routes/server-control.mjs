@@ -8,8 +8,8 @@ import fsSync from 'node:fs';
 import pg from 'pg';
 import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual, readAnchors } from '../lib/lib.mjs';
 import { verifyTotp } from '../lib/totp.mjs';
-import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles, bundleRepo, backupLog, snapshotTree } from '../lib/gitbackup.mjs';
-import { createSnapshot, listSnapshots, snapshotBytes, deleteSnapshot, pruneSnapshots, validSnapshotId, SNAPSHOT_KINDS } from '../lib/snapshots.mjs';
+import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles, bundleRepo, backupLog, snapshotTree, inspectBundle, restoreFromBundle } from '../lib/gitbackup.mjs';
+import { createSnapshot, listSnapshots, snapshotBytes, deleteSnapshot, pruneSnapshots, validSnapshotId, SNAPSHOT_KINDS, importSnapshot, snapshotPath } from '../lib/snapshots.mjs';
 
 // A lightweight "type to confirm" server-side check — the frontend already
 // makes the admin confirm twice (a dialog, then typing this exact word), but
@@ -720,6 +720,109 @@ export default async function serverControlRoutes(app) {
     reply.header('X-Backup-Sha256', hit.meta.sha256);
     reply.header('Access-Control-Expose-Headers', 'X-Backup-Signature, X-Backup-Signature-Alg, X-Backup-Sha256');
     return reply.send(hit.bytes);
+  });
+
+
+  /** What is inside a stored snapshot, and whether git still accepts it.
+   *
+   *  Both halves matter and they answer different questions: `verify` says the file is
+   *  intact, the commit list says WHICH backup this is. A restore offered without either
+   *  is a button that asks you to guess.
+   */
+  app.get('/server/backups/snapshots/:id/inspect', { preHandler: DANGEROUS }, async (req, reply) => {
+    const hit = await snapshotBytes(req.params.id);
+    if (!hit) return reply.code(404).send({ error: 'not_found' });
+    const report = await inspectBundle(hit.bytes);
+    // The digest recorded when it was written, checked against the file as it is now. This
+    // is the half `git bundle verify` cannot do: git will happily accept a valid bundle
+    // that is not the one we wrote.
+    const sha256 = crypto.createHash('sha256').update(hit.bytes).digest('hex');
+    return {
+      ...report,
+      meta: hit.meta,
+      digestMatches: sha256 === hit.meta.sha256,
+      signature: hit.meta.signature ? { present: true, alg: hit.meta.signatureAlg || 'Ed25519' } : { present: false },
+    };
+  });
+
+  /** Import a bundle from somewhere else — a copy taken off the box, or another server.
+   *
+   *  Verified BEFORE it is stored, so the snapshot list never contains something that
+   *  cannot be restored. An unverifiable file is refused with git's own reason rather than
+   *  a generic failure: "does not look like a v2/v3 bundle" tells the admin they uploaded
+   *  the wrong file, which no wording of ours would.
+   */
+  app.post('/server/backups/snapshots/import', { preHandler: DANGEROUS }, async (req, reply) => {
+    const b = z.object({
+      kind: z.enum(['files', 'db']),
+      note: z.string().max(200).default(''),
+      // base64 rather than multipart: the bundles this produces are megabytes, the endpoint
+      // is behind the elevated-admin gate, and adding a file-upload parser to this module
+      // for one route is a bigger surface than the encoding costs.
+      data: z.string().min(32),
+    }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    let bytes;
+    try { bytes = Buffer.from(b.data.data, 'base64'); } catch { return reply.code(400).send({ error: 'invalid_input' }); }
+    if (!bytes.length) return reply.code(400).send({ error: 'invalid_input' });
+    if (bytes.length > 256 * 1024 * 1024) return reply.code(413).send({ error: 'too_large' });
+
+    const report = await inspectBundle(bytes);
+    if (!report.valid) return reply.code(400).send({ error: 'invalid_bundle', detail: report.error || report.verify });
+
+    const p = await db();
+    const meta = await importSnapshot(b.data.kind, bytes, {
+      by: req.user.uid,
+      note: b.data.note || 'imported',
+      sign: (bts) => signBytes(bts, p),
+    });
+    await logAudit(p, req.user.uid, 'server.backup_imported', `${meta.id} (${meta.bytes} bytes)`, clientIp(req));
+    return { ok: true, snapshot: meta, report };
+  });
+
+  /** Roll back to a snapshot.
+   *
+   *  A safety snapshot of the CURRENT state is taken first, and the rollback is refused if
+   *  that fails. The whole value of a rollback is that it is not a one-way door, and a
+   *  rollback with no way back is just a restore performed hopefully.
+   *
+   *  `applyToDisk` is separate from the rollback itself. Resetting the backup repo is
+   *  reversible; copying that tree over the live source directory is not, and it changes
+   *  what the server is running. Both need the typed CONFIRM.
+   */
+  app.post('/server/backups/snapshots/:id/restore', { preHandler: DANGEROUS }, async (req, reply) => {
+    if (!requireConfirm(req.body)) return reply.code(400).send({ error: 'confirm_required' });
+    const hit = await snapshotBytes(req.params.id);
+    if (!hit) return reply.code(404).send({ error: 'not_found' });
+
+    const report = await inspectBundle(hit.bytes);
+    if (!report.valid) return reply.code(400).send({ error: 'invalid_bundle', detail: report.verify });
+
+    const p = await db();
+    const kind = hit.meta.kind;
+    const root = kind === 'db' ? DB_BACKUP_ROOT : FILES_BACKUP_ROOT;
+
+    // The safety copy. Not best-effort: if this cannot be written there is no way back and
+    // the rollback does not happen.
+    let safety = null;
+    try {
+      safety = await createSnapshot(kind, { by: req.user.uid, note: `before restoring ${hit.meta.id}`, sign: (bts) => signBytes(bts, p) });
+    } catch (e) {
+      return reply.code(409).send({ error: 'no_safety_snapshot', detail: 'Could not back up the current state, so nothing was rolled back.' });
+    }
+
+    const applyToDisk = req.body?.applyToDisk === true && kind === 'files';
+    let result;
+    try {
+      result = await restoreFromBundle(root, snapshotPath(hit.meta.id), { applyToDisk: applyToDisk ? FILES_ROOT : null });
+    } catch (e) {
+      return reply.code(500).send({ error: 'restore_failed', detail: String(e?.message || e).slice(0, 300), safetySnapshot: safety.id });
+    }
+
+    await logAudit(p, req.user.uid, 'server.backup_restored',
+      `${hit.meta.id} → ${result.head.slice(0, 8)}${applyToDisk ? `, ${result.copied} path(s) written to disk` : ''} (safety ${safety.id})`,
+      clientIp(req));
+    return { ok: true, restored: hit.meta.id, safetySnapshot: safety, head: result.head, wroteToDisk: applyToDisk, paths: result.copied };
   });
 
   app.delete('/server/backups/snapshots/:id', { preHandler: DANGEROUS }, async (req, reply) => {
