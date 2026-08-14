@@ -187,7 +187,19 @@ export default async function miscRoutes(app) {
       where: { OR: items.map((it) => ({ queue: it.queue, itemId: String(it.id) })) },
       select: { queue: true, itemId: true, mode: true },
     }).catch(() => []);
-    const hidden = new Set(dismissed.map((d) => `${d.queue}::${d.itemId}`));
+    // A queue that owns a `handle` resolves in its own model, so a PendingDismissal for it
+    // is stale by construction — and stale in the worst direction: it would hide the row
+    // from this list while the count, which reads the model, still includes it. The badge
+    // would say 1 and the list would show nothing.
+    //
+    // Found on a live database: 10 dismissals for the alerts queue, left from before
+    // alerts resolved via ackAt. None currently hides an unacked alert, which is luck
+    // rather than design. Ignoring them here fixes every install without a data migration,
+    // and stays correct if one is written later.
+    const ownsResolution = new Set(PENDING_QUEUES.filter((q) => q.handle).map((q) => q.key));
+    const hidden = new Set(
+      dismissed.filter((d) => !ownsResolution.has(d.queue)).map((d) => `${d.queue}::${d.itemId}`),
+    );
     const visible = items.filter((it) => !hidden.has(`${it.queue}::${it.id}`));
     visible.sort((a, b) => new Date(b.at) - new Date(a.at));
     // `queues` carries the destination alongside the count, so a caller outside the admin
