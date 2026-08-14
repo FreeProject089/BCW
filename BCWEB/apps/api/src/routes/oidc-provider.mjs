@@ -15,22 +15,72 @@ const parseBasicAuth = (h) => {
   const m = /^Basic\s+(.+)$/i.exec(h || ''); if (!m) return null;
   try { const [id, secret] = Buffer.from(m[1], 'base64').toString('utf8').split(':'); return { id, secret }; } catch { return null; }
 };
-async function issueCode(p, { client, userId, redirectUri, scope, nonce, codeChallenge }) {
+async function issueCode(p, { client, userId, redirectUri, scope, nonce, codeChallenge, authTime }) {
   const code = crypto.randomBytes(32).toString('base64url');
-  await p.oAuthCode.create({ data: { code, clientId: client.id, userId, redirectUri, scope, nonce: nonce || '', codeChallenge: codeChallenge || '', expiresAt: new Date(Date.now() + 5 * 60000) } });
+  await p.oAuthCode.create({ data: { code, clientId: client.id, userId, redirectUri, scope, nonce: nonce || '', codeChallenge: codeChallenge || '', authTime: authTime || null, expiresAt: new Date(Date.now() + 5 * 60000) } });
   return code;
 }
 // Mint the token set for a user+client+scope (shared by the code and refresh grants).
 // The refresh token is opaque; only its sha256 is stored (rotated on each refresh).
-async function mintTokens(p, { client, user, scope, nonce }) {
+// The `sub` this client should see for this user.
+//
+// 'public' hands out the BetterCommunity user id — the same string every client gets, so
+// two of them comparing their user tables can tell they have the same person. 'pairwise'
+// hands out an opaque id unique to the client, which is the only way to stop that.
+//
+// The pairwise value is stored on first use and reused forever after: it IS the user's
+// identity at that client, so regenerating it would not "rotate a token", it would make
+// them a stranger with an empty account.
+async function subjectFor(p, client, userId) {
+  if (client.subjectType !== 'pairwise') return userId;
+  const existing = await p.oAuthPairwiseSub.findUnique({ where: { userId_clientId: { userId, clientId: client.id } } }).catch(() => null);
+  if (existing) return existing.sub;
+  const sub = `p_${crypto.randomBytes(24).toString('base64url')}`;
+  try {
+    await p.oAuthPairwiseSub.create({ data: { sub, userId, clientId: client.id } });
+    return sub;
+  } catch {
+    // Lost a race with a concurrent first login — read the winner rather than minting a
+    // second identity for the same person.
+    const again = await p.oAuthPairwiseSub.findUnique({ where: { userId_clientId: { userId, clientId: client.id } } }).catch(() => null);
+    return again?.sub || userId;
+  }
+}
+
+// The reverse: turn whatever is in a token's `sub` back into a real user id. Every place
+// that reads `sub` must go through this, or a pairwise client's tokens resolve to nobody.
+async function userIdFromSub(p, sub) {
+  if (!sub) return null;
+  if (!String(sub).startsWith('p_')) return sub;
+  const row = await p.oAuthPairwiseSub.findUnique({ where: { sub: String(sub) } }).catch(() => null);
+  return row?.userId || null;
+}
+
+// `at_hash` (OIDC core §3.1.3.6): left half of SHA-256 over the access token, base64url.
+// Lets a client prove the ID token and the access token were issued together, instead of
+// trusting that whatever arrived alongside belongs to it. Strict validators warn without it.
+const halfHash = (value) => {
+  const d = crypto.createHash('sha256').update(String(value)).digest();
+  return d.subarray(0, d.length / 2).toString('base64url');
+};
+
+async function mintTokens(p, { client, user, scope, nonce, authTime }) {
   const scopes = scope.split(' ');
-  const idClaims = { sub: user.id, aud: client.id };
+  const sub = await subjectFor(p, client, user.id);
+  const idClaims = { sub, aud: client.id };
   if (nonce) idClaims.nonce = nonce;
+  // When the user actually authenticated. Required whenever the client asked for it, and
+  // the only thing that makes `max_age` verifiable at the other end.
+  if (authTime) idClaims.auth_time = authTime;
   if (scopes.includes('profile')) idClaims.name = user.displayName || '';
   if (scopes.includes('email')) { idClaims.email = user.email || ''; idClaims.email_verified = true; }
+  const access_token = await signRs256({ sub, aud: client.id, scope, token_use: 'access' }, 3600);
+  // Signed AFTER the access token, since at_hash is computed over it.
+  idClaims.at_hash = halfHash(access_token);
   const id_token = await signRs256(idClaims, 3600);
-  const access_token = await signRs256({ sub: user.id, aud: client.id, scope, token_use: 'access' }, 3600);
   const refresh = crypto.randomBytes(32).toString('base64url');
+  // The refresh row keeps the REAL user id: it is our own bookkeeping, and storing the
+  // pairwise alias here would mean resolving it on every refresh for no benefit.
   await p.oAuthRefreshToken.create({ data: { token: sha256(refresh), clientId: client.id, userId: user.id, scope, expiresAt: new Date(Date.now() + 30 * 864e5) } });
   return { access_token, token_type: 'Bearer', expires_in: 3600, id_token, refresh_token: refresh, scope };
 }
@@ -62,7 +112,7 @@ export default async function oidcProviderRoutes(app) {
       jwks_uri: `${iss}/.well-known/jwks.json`,
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
-      subject_types_supported: ['public'],
+      subject_types_supported: ['public', 'pairwise'],
       id_token_signing_alg_values_supported: ['RS256'],
       scopes_supported: SCOPES,
       token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic', 'none'],
@@ -72,7 +122,11 @@ export default async function oidcProviderRoutes(app) {
       // the client builds the iframe, waits, and times out with nothing to report.
       prompt_values_supported: ['none', 'login', 'consent'],
       response_modes_supported: ['query'],
-      claims_supported: ['sub', 'name', 'email', 'email_verified', 'picture'],
+      claims_supported: ['sub', 'name', 'email', 'email_verified', 'picture', 'auth_time', 'at_hash', 'nonce'],
+      // Advertised so a client library knows it may ask. Claiming it and ignoring it is
+      // the failure mode that looks like success until an RP validates auth_time.
+      request_parameter_supported: false,
+      claims_parameter_supported: false,
     };
   });
   app.get('/.well-known/jwks.json', { config: { rateLimit: false } }, async () => jwks());
@@ -109,6 +163,27 @@ export default async function oidcProviderRoutes(app) {
       // `login` forces re-authentication even for a signed-in user.
       return reply.redirect(`${issuer()}/auth?next=${encodeURIComponent(req.raw.url)}${prompts.has('login') ? '&reauth=1' : ''}`);
     }
+    // `max_age` (OIDC core §3.1.2.1): the client will not accept an authentication older
+    // than N seconds. Honoured against the CURRENT session's start, and it forces a fresh
+    // login rather than silently issuing a token the client is about to reject — a
+    // provider that ignores max_age looks fine right up to the moment the RP validates
+    // auth_time and rejects everything.
+    const maxAge = Number(q.max_age);
+    let authTime = null;
+    if (req.user?.sid) {
+      const sess = await p.session.findUnique({ where: { id: req.user.sid }, select: { createdAt: true } }).catch(() => null);
+      if (sess) authTime = Math.floor(sess.createdAt.getTime() / 1000);
+    }
+    if (Number.isFinite(maxAge) && maxAge >= 0) {
+      const tooOld = !authTime || (Date.now() / 1000 - authTime) > maxAge;
+      if (tooOld) {
+        // With prompt=none there is no way to re-authenticate, so say so instead of
+        // sending an iframe somewhere it cannot go.
+        if (prompts.has('none')) return bad('login_required');
+        return reply.redirect(`${issuer()}/auth?next=${encodeURIComponent(req.raw.url)}&reauth=1`);
+      }
+    }
+
     // Skip the prompt if this user already consented to (at least) these scopes.
     const consent = await p.oAuthConsent.findUnique({ where: { userId_clientId: { userId: req.user.uid, clientId: client.id } } }).catch(() => null);
     const scopeStr = scopes.join(' ');
@@ -118,10 +193,10 @@ export default async function oidcProviderRoutes(app) {
     // `consent` forces the screen even when they have said yes before, which is how a
     // client asks the user to re-confirm after a scope change.
     if (alreadyConsented && !prompts.has('consent')) {
-      const code = await issueCode(p, { client, userId: req.user.uid, redirectUri: redir, scope: scopeStr, nonce: String(q.nonce || ''), codeChallenge: challenge });
+      const code = await issueCode(p, { client, userId: req.user.uid, redirectUri: redir, scope: scopeStr, nonce: String(q.nonce || ''), codeChallenge: challenge, authTime });
       return reply.redirect(backTo(redir, { code, ...(state ? { state } : {}) }));
     }
-    const reqToken = jwt.sign({ purpose: 'oauth-consent', uid: req.user.uid, clientId: client.id, redirectUri: redir, scope: scopeStr, state, nonce: String(q.nonce || ''), codeChallenge: challenge }, JWT_SECRET, { expiresIn: 600 });
+    const reqToken = jwt.sign({ purpose: 'oauth-consent', uid: req.user.uid, clientId: client.id, redirectUri: redir, scope: scopeStr, state, nonce: String(q.nonce || ''), codeChallenge: challenge, authTime }, JWT_SECRET, { expiresIn: 600 });
     // Hand off to the branded SPA consent screen; the signed reqToken carries the
     // validated request so the decision endpoint can trust it.
     return reply.redirect(`${issuer()}/authorize?rt=${encodeURIComponent(reqToken)}`);
@@ -150,7 +225,7 @@ export default async function oidcProviderRoutes(app) {
     const client = await p.oAuthClient.findUnique({ where: { id: c.clientId } });
     if (!client || !client.active) return reply.code(400).type('text/html').send(errPage('Client no longer available.'));
     await p.oAuthConsent.upsert({ where: { userId_clientId: { userId: c.uid, clientId: client.id } }, create: { userId: c.uid, clientId: client.id, scope: c.scope }, update: { scope: c.scope } });
-    const code = await issueCode(p, { client, userId: c.uid, redirectUri: redir, scope: c.scope, nonce: c.nonce, codeChallenge: c.codeChallenge });
+    const code = await issueCode(p, { client, userId: c.uid, redirectUri: redir, scope: c.scope, nonce: c.nonce, codeChallenge: c.codeChallenge, authTime: c.authTime });
     return reply.redirect(backTo(redir, { code, ...(state ? { state } : {}) }));
   });
 
@@ -185,7 +260,7 @@ export default async function oidcProviderRoutes(app) {
       if (claimed.count === 0) return reply.code(400).send({ error: 'invalid_grant' });
       const user = await p.user.findUnique({ where: { id: code.userId }, select: { id: true, displayName: true, email: true } });
       if (!user) return reply.code(400).send({ error: 'invalid_grant' });
-      return mintTokens(p, { client, user, scope: code.scope, nonce: code.nonce });
+      return mintTokens(p, { client, user, scope: code.scope, nonce: code.nonce, authTime: code.authTime || null });
     }
 
     if (b.grant_type === 'refresh_token') {
@@ -216,10 +291,15 @@ export default async function oidcProviderRoutes(app) {
     try { claims = await verifyRs256(m[1]); } catch { reply.header('WWW-Authenticate', 'Bearer error="invalid_token"'); return reply.code(401).send({ error: 'invalid_token' }); }
     if (claims.token_use !== 'access') return reply.code(401).send({ error: 'invalid_token' });
     const p = await db();
-    const user = await p.user.findUnique({ where: { id: claims.sub }, select: { id: true, displayName: true, email: true } });
+    // A pairwise `sub` is an alias, not a user id — look the real one up before touching
+    // the user table, or every pairwise client's userinfo call 401s for no visible reason.
+    const uid = await userIdFromSub(p, claims.sub);
+    const user = uid ? await p.user.findUnique({ where: { id: uid }, select: { id: true, displayName: true, email: true } }) : null;
     if (!user) return reply.code(401).send({ error: 'invalid_token' });
     const scopes = String(claims.scope || '').split(' ');
-    const out = { sub: user.id };
+    // Echo the sub the CLIENT knows, never the internal id: handing back the real one
+    // would undo the whole point of pairwise in the one response clients read most.
+    const out = { sub: claims.sub };
     if (scopes.includes('profile')) out.name = user.displayName || '';
     if (scopes.includes('email')) { out.email = user.email || ''; out.email_verified = true; }
     return out;
@@ -235,16 +315,20 @@ export default async function oidcProviderRoutes(app) {
     let c; try { c = await verifyRs256(m[1]); } catch { return reply.code(401).send({ error: 'invalid_token' }); }
     if (c.token_use !== 'access') return reply.code(401).send({ error: 'invalid_token' });
     if (scope && !String(c.scope || '').split(' ').includes(scope)) return reply.code(403).send({ error: 'insufficient_scope', scope });
-    req.oauthUser = { sub: c.sub, scope: c.scope };
+    const uid = await userIdFromSub(await db(), c.sub);
+    if (!uid) return reply.code(401).send({ error: 'invalid_token' });
+    // `sub` stays as the client knows it; `userId` is what our own queries need. Keeping
+    // both under distinct names is what stops a pairwise alias being used as a foreign key.
+    req.oauthUser = { sub: c.sub, userId: uid, scope: c.scope };
   };
   app.get('/oauth2/me/items', { preHandler: oauthBearer('items') }, async (req) => {
     const p = await db();
-    const items = await p.catalogItem.findMany({ where: { ownerId: req.oauthUser.sub }, select: { id: true, name: true, slug: true, kind: true, status: true }, orderBy: { createdAt: 'desc' }, take: 200 });
+    const items = await p.catalogItem.findMany({ where: { ownerId: req.oauthUser.userId }, select: { id: true, name: true, slug: true, kind: true, status: true }, orderBy: { createdAt: 'desc' }, take: 200 });
     return { items };
   });
   app.get('/oauth2/me/repos', { preHandler: oauthBearer('repos') }, async (req) => {
     const p = await db();
-    const repos = await p.serverRepo.findMany({ where: { ownerId: req.oauthUser.sub }, select: { id: true, name: true, hosted: true, listed: true, status: true, publicUrl: true }, orderBy: { createdAt: 'desc' }, take: 200 });
+    const repos = await p.serverRepo.findMany({ where: { ownerId: req.oauthUser.userId }, select: { id: true, name: true, hosted: true, listed: true, status: true, publicUrl: true }, orderBy: { createdAt: 'desc' }, take: 200 });
     return { repos };
   });
 
@@ -284,7 +368,11 @@ export default async function oidcProviderRoutes(app) {
     if (rt) {
       const live = !rt.revokedAt && rt.expiresAt > new Date() && rt.clientId === auth.client.id;
       if (!live) return { active: false };
-      return { active: true, token_type: 'refresh_token', client_id: rt.clientId, sub: rt.userId, scope: rt.scope, exp: Math.floor(rt.expiresAt.getTime() / 1000) };
+      // The refresh row stores the real user id, so the pairwise alias has to be put back
+      // on the way out — a client must never learn the internal id through introspection.
+      const client = auth.client;
+      const sub = await subjectFor(p, client, rt.userId);
+      return { active: true, token_type: 'refresh_token', client_id: rt.clientId, sub, scope: rt.scope, exp: Math.floor(rt.expiresAt.getTime() / 1000) };
     }
     let c;
     try { c = await verifyRs256(token); } catch { return { active: false }; }
@@ -392,6 +480,10 @@ export default async function oidcProviderRoutes(app) {
       confidential: z.boolean().optional(),
       redirectUris: z.array(z.string().url()).min(1).max(20),
       scopes: z.array(z.enum(['openid', 'profile', 'email', 'items', 'repos'])).optional(),
+      // Chosen at creation and never changed: switching an existing client to pairwise
+      // re-identifies every one of its users at once, orphaning their accounts rather
+      // than migrating them.
+      subjectType: z.enum(['public', 'pairwise']).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const d = b.data;
@@ -402,6 +494,7 @@ export default async function oidcProviderRoutes(app) {
     const c = await p.oAuthClient.create({ data: {
       name: d.name, confidential, secretHash: secret ? sha256(secret) : '',
       redirectUris: d.redirectUris, scopes: d.scopes?.length ? d.scopes : SCOPES,
+      subjectType: d.subjectType || 'public',
     } });
     return reply.code(201).send({
       client: { id: c.id, name: c.name, confidential: c.confidential, redirectUris: c.redirectUris, scopes: c.scopes, active: c.active },

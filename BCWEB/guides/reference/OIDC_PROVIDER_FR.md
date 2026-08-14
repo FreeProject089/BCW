@@ -26,6 +26,8 @@ Tout ce qui suit est ce que ce document annonce déjà. C'est écrit noir sur bl
 | ID token | RS256, à vérifier contre `/.well-known/jwks.json` |
 | Scopes | `openid`, `profile`, `email`, plus `items` et `repos` pour nos ressources |
 | `prompt` | `none`, `login`, `consent` |
+| `max_age` | honoré ; les ID tokens portent `auth_time` |
+| Sujets | `public` ou `pairwise`, par client |
 | Auth client | `client_secret_post`, `client_secret_basic`, ou `none` pour un client public |
 | Endpoints | authorize · token · userinfo · introspect · revoke · fin de session |
 
@@ -131,12 +133,22 @@ Manques connus, pour que personne n'ait à les redécouvrir :
 
 - **Pas d'enregistrement dynamique de clients** (RFC 7591). Les clients sont créés par un
   administrateur.
-- **Pas de `at_hash` / `c_hash`** dans l'ID token. Optionnel dans la spec ; les validateurs
-  stricts peuvent avertir.
-- **Pas de `max_age` / `auth_time`** : un client ne peut pas exiger une authentification
-  récente.
+- **Pas de `c_hash`**. `at_hash` est émis ; `c_hash` ne concerne que les flux hybrides, que
+  nous ne supportons pas.
 - **Pas de notification de déconnexion** (front-channel ni back-channel) — la déconnexion
-  termine la session ici, mais ne prévient aucun autre client.
-- **Pas d'identifiants de sujet par paire** : `sub` est l'identifiant utilisateur
-  BetterCommunity et vaut la même chose pour tous les clients, ce qui permet à deux clients
-  de recouper leurs utilisateurs.
+  termine la session ici, mais ne prévient aucun autre client. Volontairement non
+  implémenté : impossible à tester sans un vrai client, et un canal de notification non
+  testé vaut moins qu'une absence documentée.
+
+### Sujets par paire (pairwise)
+
+`subject_type` se choisit à la création du client :
+
+- **`public`** (par défaut) — `sub` est l'identifiant utilisateur BetterCommunity. Tous les
+  clients voient la même valeur, donc deux d'entre eux peuvent recouper leurs utilisateurs.
+- **`pairwise`** — `sub` est un identifiant opaque `p_…` propre à ton client. Stable pour
+  toujours pour cet utilisateur, et inexploitable par quiconque d'autre.
+
+Choisis `pairwise` sauf raison contraire. C'est irréversible : basculer un client existant
+ré-identifierait tous ses utilisateurs d'un coup, ce qui abandonne leurs comptes au lieu de
+les migrer.

@@ -25,6 +25,8 @@ Everything below is what that document already tells a client. It is written out
 | ID token | RS256, verify against `/.well-known/jwks.json` |
 | Scopes | `openid`, `profile`, `email`, plus `items` and `repos` for our own resources |
 | `prompt` | `none`, `login`, `consent` |
+| `max_age` | honoured; ID tokens carry `auth_time` |
+| Subjects | `public` or `pairwise`, per client |
 | Client auth | `client_secret_post`, `client_secret_basic`, or `none` for public clients |
 | Endpoints | authorize · token · userinfo · introspect · revoke · end-session |
 
@@ -123,10 +125,22 @@ mind", not as an error to retry.
 Known gaps, so nobody has to rediscover them:
 
 - **No dynamic client registration** (RFC 7591). Clients are created by an admin.
-- **No `at_hash` / `c_hash`** in the ID token. Optional in the spec; strict validators may
-  warn.
-- **No `max_age` / `auth_time`**, so a client cannot demand a recent authentication.
+- **No `c_hash`**. `at_hash` is issued; `c_hash` only applies to hybrid flows, which we do
+  not support.
 - **No front-channel or back-channel logout notifications** — logout ends the session
-  here, but does not push anything to other clients.
-- **No pairwise subject identifiers**: `sub` is the BetterCommunity user id and is the
-  same value for every client.
+  here, but does not push anything to other clients. Deliberately not built: it cannot be
+  tested without a real relying party, and an untested notification channel is worse than
+  a documented absence.
+
+### Pairwise subjects
+
+`subject_type` is chosen when the client is created:
+
+- **`public`** (default) — `sub` is the BetterCommunity user id. Every client sees the same
+  value, so two of them comparing notes can tell they have the same person.
+- **`pairwise`** — `sub` is an opaque `p_…` id unique to your client. Stable forever for
+  that user, and useless to anyone else.
+
+Pick `pairwise` unless you have a reason not to. It cannot be changed afterwards: flipping
+an existing client would re-identify all of its users at once, which orphans their accounts
+rather than migrating them.

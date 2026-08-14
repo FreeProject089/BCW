@@ -1272,7 +1272,31 @@ model OAuthClient {
   redirectUris String[] @default([])
   scopes       String[] @default(["openid", "profile", "email"])
   active       Boolean  @default(true)
+  // 'public'  → `sub` is the BetterCommunity user id, the same value every client sees.
+  // 'pairwise'→ `sub` is an opaque id unique to THIS client, so two clients comparing
+  //             notes cannot tell they are looking at the same person.
+  //
+  // Default stays 'public' because changing an existing client's subject type silently
+  // re-identifies every one of its users as a stranger — accounts get orphaned, not
+  // merged. It is a choice made when a client is created, not a switch to flip later.
+  subjectType  String   @default("public")
   createdAt    DateTime @default(now())
+}
+
+// The stored mapping behind a pairwise `sub`.
+//
+// Stored rather than derived. A computed sub (hash of client + user + a server salt) needs
+// nothing persisted right up until the salt is rotated or the algorithm changed, at which
+// point every user of every pairwise client becomes a brand-new person with an empty
+// account and no way back. A row is boring and cannot drift.
+model OAuthPairwiseSub {
+  sub       String   @id
+  userId    String
+  clientId  String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, clientId])
+  @@index([clientId])
 }
 
 model OAuthCode {
@@ -1283,6 +1307,10 @@ model OAuthCode {
   scope         String
   nonce         String    @default("")
   codeChallenge String    @default("") // PKCE S256 challenge
+  // When the user authenticated, as unix seconds — carried from /authorize so the ID
+  // token minted at /token can state auth_time. Without it, a client that sent max_age
+  // gets a token with nothing to check that claim against and rejects it.
+  authTime      Int?
   expiresAt     DateTime
   usedAt        DateTime?
   createdAt     DateTime  @default(now())
