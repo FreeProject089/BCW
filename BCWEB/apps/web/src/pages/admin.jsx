@@ -156,7 +156,13 @@ export function Admin() {
   // for where to answer a report is helped more by "Waiting on you" than by "Moderation".
   const raw = [
     { heading: t('adm.h.queues', 'Waiting on you') },
-    isMod && { id: 'needs', label: t('adm.tab.needs', 'Needs attention'), icon: BellIcon, badge: pending.data?.total || undefined },
+    // No badge, deliberately. This tab is a DIGEST of the six queues below, and every one of
+    // them carries its own badge (Submissions, Reports, Messages, Sanctions, Commissions,
+    // Performance). Summing them here counted every waiting item a second time — the sidebar
+    // read 12 when six things were waiting, and the arithmetic got worse the more queues were
+    // added. The numbers belong on the tabs where the work is actually done; this tab answers
+    // "what is waiting", not "how much".
+    isMod && { id: 'needs', label: t('adm.tab.needs', 'Needs attention'), icon: BellIcon },
     isMod && { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: Inbox,
       sub: [
         { id: 'moderation', label: t('adm.tab.submissions', 'Submissions'), icon: Inbox, badge: queue.length || undefined },

@@ -115,6 +115,13 @@ const PENDING_QUEUES = [
     // passes for ADMIN/SUPERADMIN only — the same audience as requireRole('ADMIN') on the
     // perf routes it links to.
     key: 'alerts', cap: 'manage_server', to: '/admin?s=serverperf',
+    // Marking an alert handled HERE acknowledges the alert itself, rather than writing a
+    // dismissal beside it. The two lists are one piece of work: without this, "mark as
+    // handled" in the digest hid the row and left the Performance badge at 6, so the button
+    // appeared to do nothing and staff learned to ignore it. Acking is what "handled" means
+    // for an alert — unlike a report, there is no further action the word could refer to.
+    handle: (p, id, uid) => p.serverAlertLog.updateMany({ where: { id, ackAt: null }, data: { ackAt: new Date(), ackById: uid } }),
+    unhandle: (p, id) => p.serverAlertLog.updateMany({ where: { id }, data: { ackAt: null, ackById: null } }),
     count: (p) => p.serverAlertLog.count({ where: { ackAt: null } }),
     recent: (p) => p.serverAlertLog.findMany({
       where: { ackAt: null }, orderBy: { createdAt: 'desc' }, take: 5,
@@ -201,6 +208,16 @@ export default async function miscRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    // A queue that owns a real notion of "done" resolves it there instead. Otherwise the
+    // digest and the queue's own screen keep two separate opinions about the same item, and
+    // the one you did not click stays stuck — which is exactly how a 6 survived being
+    // handled six times.
+    const q = PENDING_QUEUES.find((x) => x.key === b.data.queue);
+    if (q?.handle) {
+      if (!hasCap(req.user, q.cap)) return reply.code(403).send({ error: 'forbidden' });
+      await q.handle(p, b.data.itemId, req.user.uid);
+      return { ok: true, resolved: true };
+    }
     const where = { queue_itemId: { queue: b.data.queue, itemId: b.data.itemId } };
     const data = { mode: b.data.mode, byId: req.user.uid, at: new Date() };
     await p.pendingDismissal.upsert({ where, create: { ...b.data, byId: req.user.uid }, update: data });
@@ -211,7 +228,17 @@ export default async function miscRoutes(app) {
   // is the whole reason this list is allowed to have a delete button at all.
   app.delete('/admin/pending/dismiss/:queue/:itemId', { preHandler: requireCap('manage_users', 'MOD', 'ADMIN', 'SUPERADMIN') }, async (req) => {
     const p = await db();
-    const r = await p.pendingDismissal.deleteMany({ where: { queue: String(req.params.queue), itemId: String(req.params.itemId) } });
+    const queue = String(req.params.queue);
+    // Undo has to reach wherever the "handled" actually landed. A queue that resolves in its
+    // own model left no dismissal row to delete, so undo would have reported success and
+    // restored nothing — the one outcome an undo button must never produce.
+    const q = PENDING_QUEUES.find((x) => x.key === queue);
+    if (q?.unhandle) {
+      if (!hasCap(req.user, q.cap)) return reply.code(403).send({ error: 'forbidden' });
+      const n = await q.unhandle(p, String(req.params.itemId));
+      return { ok: true, restored: n?.count ?? 0 };
+    }
+    const r = await p.pendingDismissal.deleteMany({ where: { queue, itemId: String(req.params.itemId) } });
     return { ok: true, restored: r.count };
   });
 
