@@ -27,6 +27,7 @@ import { recomputePoolBytes, stripe } from '../routes/hosting.mjs';
 import { sweepAccountClosures } from '../routes/closure.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
 import { createSnapshot, pruneSnapshots } from './snapshots.mjs';
+import { pruneApiRequests } from './apiusage.mjs';
 import { signBytes } from './signing.mjs';
 
 const DAY_MS = 864e5;
@@ -437,6 +438,7 @@ export function startSweeper(app) {
       await sweepAccountClosures(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'account closure sweep failed'));
       await rollupAnalyticsDaily(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics rollup failed'));
       await sweepReports(p).catch((e) => app.log.warn({ e: String(e) }, 'report sweep failed'));
+      await pruneApiRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'api request prune failed'));
       await sampleAndAlert(p, app.log);
       await runEventScheduler(p).catch((e) => app.log.warn({ e: String(e) }, 'event scheduler failed'));
       if (items || repos || cats || rejPayloads || expired || warned || pruned || backedUp || analytics) app.log.info(`[sweeper] hard-deleted ${items} item(s), ${repos} repo(s), ${cats} catalog(s) · purged ${rejPayloads} rejected payload(s) · suspended ${expired} expired term(s) · warned ${warned} · pruned ${pruned} old Discord member row(s) · aged out ${analytics} analytics row(s)${backedUp ? ' · took daily file backup snapshot' : ''}`);

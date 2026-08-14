@@ -5,7 +5,7 @@
 // re-readable forever) was removed before production ever saw it — its routes, its
 // profile card, and its columns are gone, so there is no legacy surface to secure.
 import crypto from 'node:crypto';
-import { db, requireRole, apiAuth, hashApiKey, API_SCOPES } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, apiAuth, hashApiKey, API_SCOPES, logAudit, clientIp, notify } from '../lib/lib.mjs';
 import { buildPublicProfile } from './social.mjs';
 import { findUserIdByBcId } from '../lib/repofingerprint.mjs';
 
@@ -48,6 +48,161 @@ const sinceOf = (q) => {
 };
 
 export default async function apiKeyRoutes(app) {
+  // ════════════════ Admin: what the public API is being used for (manage_api) ════
+  //
+  // Two datasets, on purpose (see lib/apiusage.mjs): ApiUsageDay is the exact count and is
+  // kept; ApiRequest is a short-lived SAMPLE of individual calls. Anything reported here
+  // says which of the two it came from, because a graph drawn from a sample and a graph
+  // drawn from a count are not the same graph and only one of them can be trusted for
+  // "how many".
+
+  const dayList = (days) => {
+    const out = [];
+    const d = new Date(); d.setUTCHours(0, 0, 0, 0);
+    for (let i = days - 1; i >= 0; i--) out.push(new Date(d.getTime() - i * 86400000).toISOString().slice(0, 10));
+    return out;
+  };
+
+  app.get('/admin/api/overview', { preHandler: requireCap('manage_api') }, async (req) => {
+    const p = await db();
+    const days = Math.min(90, Math.max(1, parseInt(req.query?.days, 10) || 30));
+    const since = new Date(Date.now() - days * 86400000);
+    since.setUTCHours(0, 0, 0, 0);
+
+    const [usage, keys, cfgRow, sampleCount] = await Promise.all([
+      p.apiUsageDay.findMany({ where: { day: { gte: since } }, orderBy: { day: 'asc' } }),
+      p.apiKey.findMany({
+        select: { id: true, label: true, prefix: true, scopes: true, revokedAt: true, expiresAt: true, lastUsedAt: true, createdAt: true,
+          user: { select: { id: true, displayName: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+      p.adminSetting.findUnique({ where: { key: 'api.usage' } }),
+      p.apiRequest.count(),
+    ]);
+
+    const byDay = new Map(dayList(days).map((d) => [d, { day: d, count: 0, errors: 0 }]));
+    const byKey = new Map();
+    for (const u of usage) {
+      const d = u.day.toISOString().slice(0, 10);
+      const slot = byDay.get(d);
+      if (slot) { slot.count += u.count; slot.errors += u.errors; }
+      const k = u.keyId || 'deleted';
+      const agg = byKey.get(k) || { keyId: u.keyId, count: 0, errors: 0, lastDay: null };
+      agg.count += u.count; agg.errors += u.errors;
+      if (!agg.lastDay || d > agg.lastDay) agg.lastDay = d;
+      byKey.set(k, agg);
+    }
+
+    const keyById = new Map(keys.map((k) => [k.id, k]));
+    const top = [...byKey.values()]
+      .map((a) => ({
+        ...a,
+        // A key that has been deleted still owns its history — naming it "(deleted key)"
+        // rather than hiding the row keeps the totals adding up.
+        label: keyById.get(a.keyId)?.label || (a.keyId ? '' : '(deleted key)'),
+        prefix: keyById.get(a.keyId)?.prefix || '',
+        owner: keyById.get(a.keyId)?.user || null,
+      }))
+      .sort((x, y) => y.count - x.count).slice(0, 20);
+
+    const total = [...byDay.values()].reduce((n, d) => n + d.count, 0);
+    const errors = [...byDay.values()].reduce((n, d) => n + d.errors, 0);
+    return {
+      days, series: [...byDay.values()], total, errors,
+      // Named errorRate, not "health": it is the share of calls that answered 4xx/5xx, and a
+      // client hammering a 404 is not the server being unwell.
+      errorRate: total ? errors / total : 0,
+      top,
+      keyCount: keys.length,
+      activeKeyCount: keys.filter((k) => !k.revokedAt && (!k.expiresAt || k.expiresAt > new Date())).length,
+      sampleCount,
+      config: { sampleRate: Number(cfgRow?.value?.sampleRate ?? 1), retentionDays: Number(cfgRow?.value?.retentionDays ?? 7) },
+    };
+  });
+
+  app.get('/admin/api/keys', { preHandler: requireCap('manage_api') }, async (req) => {
+    const p = await db();
+    const q = String(req.query?.q || '').trim();
+    const where = q ? { OR: [
+      { label: { contains: q, mode: 'insensitive' } },
+      { prefix: { contains: q, mode: 'insensitive' } },
+      { user: { email: { contains: q, mode: 'insensitive' } } },
+      { user: { displayName: { contains: q, mode: 'insensitive' } } },
+    ] } : {};
+    const keys = await p.apiKey.findMany({
+      where, orderBy: { createdAt: 'desc' }, take: 200,
+      select: { id: true, label: true, prefix: true, scopes: true, lastUsedAt: true, lastUsedIp: true,
+        expiresAt: true, revokedAt: true, createdAt: true,
+        user: { select: { id: true, displayName: true, email: true } } },
+    });
+    // One grouped query rather than a count per key: this list is 200 rows on a busy site.
+    const totals = await p.apiUsageDay.groupBy({
+      by: ['keyId'], where: { keyId: { in: keys.map((k) => k.id) } },
+      _sum: { count: true, errors: true },
+    });
+    const tot = new Map(totals.map((t) => [t.keyId, t._sum]));
+    return { keys: keys.map((k) => ({ ...k, calls: tot.get(k.id)?.count || 0, errors: tot.get(k.id)?.errors || 0 })) };
+  });
+
+  /** The sampled call log. Filterable, because "recent calls" on a busy key is noise. */
+  app.get('/admin/api/requests', { preHandler: requireCap('manage_api') }, async (req) => {
+    const p = await db();
+    const where = {};
+    if (req.query?.keyId) where.keyId = String(req.query.keyId);
+    if (req.query?.userId) where.userId = String(req.query.userId);
+    if (req.query?.status === 'errors') where.status = { gte: 400 };
+    else if (req.query?.status) where.status = parseInt(req.query.status, 10) || 0;
+    if (req.query?.path) where.path = { contains: String(req.query.path).slice(0, 200), mode: 'insensitive' };
+    const take = limitOf(req.query, 100, 500);
+    const [rows, total] = await Promise.all([
+      p.apiRequest.findMany({ where, orderBy: { at: 'desc' }, take,
+        include: { key: { select: { label: true, prefix: true, user: { select: { id: true, displayName: true } } } } } }),
+      p.apiRequest.count({ where }),
+    ]);
+    return { requests: rows, total, sampled: true };
+  });
+
+  app.put('/admin/api/config', { preHandler: requireCap('manage_api') }, async (req, reply) => {
+    const rate = Number(req.body?.sampleRate);
+    const retention = parseInt(req.body?.retentionDays, 10);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 1) return reply.code(400).send({ error: 'invalid_input' });
+    if (!Number.isFinite(retention) || retention < 1 || retention > 90) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const value = { sampleRate: rate, retentionDays: retention };
+    await p.adminSetting.upsert({ where: { key: 'api.usage' }, create: { key: 'api.usage', value }, update: { value } });
+    await logAudit(p, req.user.uid, 'api.config', `sample ${Math.round(rate * 100)}%, keep ${retention}d`, clientIp(req));
+    return { ok: true, ...value };
+  });
+
+  /** Revoke someone else's key. Staff-side counterpart of DELETE /me/api-keys/:id. */
+  app.post('/admin/api/keys/:id/revoke', { preHandler: requireCap('manage_api') }, async (req, reply) => {
+    const p = await db();
+    const key = await p.apiKey.findUnique({ where: { id: req.params.id }, select: { id: true, label: true, revokedAt: true, userId: true } });
+    if (!key) return reply.code(404).send({ error: 'not_found' });
+    if (key.revokedAt) return { ok: true, alreadyRevoked: true };
+    await p.apiKey.update({ where: { id: key.id }, data: { revokedAt: new Date() } });
+    await logAudit(p, req.user.uid, 'api.key_revoked', `${key.label || key.id} (owner ${key.userId})`, clientIp(req));
+    // The owner is told. A key going dead without explanation is a support ticket, and one
+    // that starts from the wrong theory.
+    await notify(p, key.userId, 'api_key_revoked', `“${key.label || 'Untitled key'}” was revoked by staff. Create a new key from your profile if you still need one.`);
+    return { ok: true };
+  });
+
+  /** Everything the API knows about one user's keys — used by the admin User details. */
+  app.get('/admin/api/users/:id', { preHandler: requireCap('manage_api') }, async (req) => {
+    const p = await db();
+    const [keys, usage, recent] = await Promise.all([
+      p.apiKey.findMany({ where: { userId: req.params.id }, orderBy: { createdAt: 'desc' },
+        select: { id: true, label: true, prefix: true, scopes: true, lastUsedAt: true, expiresAt: true, revokedAt: true, createdAt: true } }),
+      p.apiUsageDay.findMany({ where: { userId: req.params.id }, orderBy: { day: 'desc' }, take: 60 }),
+      p.apiRequest.findMany({ where: { userId: req.params.id }, orderBy: { at: 'desc' }, take: 25 }),
+    ]);
+    return {
+      keys, usage: usage.map((u) => ({ day: u.day.toISOString().slice(0, 10), count: u.count, errors: u.errors })),
+      recent, totalCalls: usage.reduce((n, u) => n + u.count, 0),
+    };
+  });
+
   // ── Key management (session auth — a key can never mint another key) ─────────
   //
   // Deliberate: if a leaked key could create keys, revoking the leaked one would not

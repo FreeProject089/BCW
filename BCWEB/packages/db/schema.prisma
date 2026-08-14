@@ -2106,7 +2106,60 @@ model ApiKey {
   revokedAt  DateTime?
   createdAt  DateTime  @default(now())
 
+  usageDays  ApiUsageDay[]
+  requests   ApiRequest[]
+
   @@index([userId, createdAt])
+}
+
+// How much a key was used, per day. The count, and nothing else.
+//
+// Separate from ApiRequest below because the two answer different questions and only one
+// of them can be answered by a sample. "Did this key make 12 calls or 12 000?" has to be
+// exact and has to stay true for months; "what did call number 300 look like?" is a
+// forensic question with a short shelf life. One row per key per day stays small enough to
+// keep indefinitely, which is what makes a usage graph honest.
+model ApiUsageDay {
+  id     String   @id @default(cuid())
+  key    ApiKey?  @relation(fields: [keyId], references: [id], onDelete: SetNull)
+  keyId  String?
+  // Denormalised so the history survives the key: an admin looking at last quarter's usage
+  // should not lose it because somebody tidied up a token.
+  userId String
+  day    DateTime @db.Date
+  count  Int      @default(0)
+  errors Int      @default(0)
+
+  @@unique([keyId, day])
+  @@index([userId, day])
+  @@index([day])
+}
+
+// A SAMPLE of individual API calls — method, path, status, duration.
+//
+// Sampled and short-lived on purpose. Every call kept forever would be a second, unbounded
+// copy of the access log inside the primary database, and the value of an individual line
+// decays in days. Retention and sample rate are admin settings (api.sampleRate,
+// api.retentionDays); the sweeper prunes.
+//
+// The path is stored WITHOUT its query string. Private share links carry their secret in
+// the query (?k=…), and a table of URLs an admin can read is exactly where that must not
+// end up (CWE-532).
+model ApiRequest {
+  id     String   @id @default(cuid())
+  key    ApiKey?  @relation(fields: [keyId], references: [id], onDelete: SetNull)
+  keyId  String?
+  userId String?
+  method String
+  path   String
+  status Int
+  ms     Int      @default(0)
+  ip     String?
+  at     DateTime @default(now())
+
+  @@index([at])
+  @@index([userId, at])
+  @@index([keyId, at])
 }
 
 // What happened to a catalog item, and when — the record the item itself cannot keep.

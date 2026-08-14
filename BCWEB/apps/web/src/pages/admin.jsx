@@ -29,6 +29,7 @@ import { MarkdownEditor } from './blog.jsx';
 import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 import { AdminMyo } from './admin-myo.jsx';
+import { AdminApi } from './admin-api.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash, useThreadStream } from './pages.jsx';
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
@@ -180,6 +181,7 @@ export function Admin() {
 
     { heading: t('adm.h.integrations', 'Integrations') },
     isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
+    can('manage_api') && { id: 'api', label: t('adm.tab.api', 'Public API'), icon: KeyRound },
     isAdmin && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: MessageSquare },
 
     { heading: t('adm.h.serverdata', 'Server & data') },
@@ -285,6 +287,7 @@ export function Admin() {
         {s === 'events' && <AdminEvents />}
         {s === 'myo' && <AdminMyo />}
         {s === 'sso' && <AdminOAuthClients />}
+        {s === 'api' && <AdminApi />}
         {s === 'storage' && <AdminStorage />}
         {s === 'bot' && <AdminBot />}
         {s === 'analytics' && <AdminAnalytics />}
@@ -2299,6 +2302,7 @@ const ADMIN_CAPS = [
   { id: 'manage_promotions', cat: 'growth', icon: Megaphone, label: 'Manage promotions', labelFr: 'Gérer les promotions', desc: 'Promo campaigns, discount & hosting codes.', descFr: 'Campagnes promo, codes de réduction et d’hébergement.' },
   { id: 'manage_events', cat: 'growth', icon: Sparkles, label: 'Manage events', labelFr: 'Gérer les événements', desc: 'Site events (fireworks, themed presentations).', descFr: 'Événements du site (feux d’artifice, présentations thématiques).' },
   { id: 'manage_myo', cat: 'growth', icon: Wand2, label: 'Manage commissions', labelFr: 'Gérer les commandes', desc: 'Handle "Make Your Own" requests, quotes, delivery + the catalog.', descFr: 'Gérer les demandes « Make Your Own », devis, livraisons + le catalogue.' },
+  { id: 'manage_api', cat: 'growth', icon: KeyRound, label: 'Manage the public API', labelFr: 'Gérer l’API publique', desc: 'See API usage per key, the sampled call log, and revoke keys.', descFr: 'Voir l’usage de l’API par clé, l’échantillon d’appels, et révoquer des clés.' },
   { id: 'manage_analytics', cat: 'insight', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, errors and goals.', descFr: 'Analyses, erreurs et objectifs.' },
   { id: 'manage_repos', cat: 'ops', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
 ];

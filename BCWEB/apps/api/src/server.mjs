@@ -54,6 +54,7 @@ import socialRoutes from './routes/social.mjs';
 import reportRoutes from './routes/reports.mjs';
 import connectionRoutes from './routes/connections.mjs';
 import { recordRequest } from './lib/monitor.mjs';
+import { recordApiCall, flushApiUsage } from './lib/apiusage.mjs';
 import { installAbuseGuards } from './lib/abuse.mjs';
 
 // Fail-safe: never boot in production with the insecure default JWT secret — that
@@ -160,6 +161,17 @@ app.get('/ready', PROBE_OPTS, async (req, reply) => {
 // flushes + persists this on each sweeper tick). Cheap: just two subtractions.
 app.addHook('onResponse', (req, reply, done) => {
   recordRequest(reply.elapsedTime, reply.statusCode, req.url, reply.getHeader('content-length'));
+  // Only calls that authenticated with an API key. Session traffic is the site itself and
+  // belongs in analytics, not in a table an admin reads to answer "what is this key doing".
+  if (req.apiKey) {
+    recordApiCall({
+      // req.apiKey.userId, not req.user — on a scope refusal there is no req.user, and that
+      // is exactly the call worth attributing.
+      keyId: req.apiKey.id, userId: req.apiKey.userId || req.user?.uid,
+      method: req.method, path: req.routeOptions?.url || req.url,
+      status: reply.statusCode, ms: reply.elapsedTime, ip: req.ip,
+    });
+  }
   done();
 });
 
@@ -270,6 +282,9 @@ async function shutdown(signal) {
   try {
     clearInterval(repoRecheckTimer);
     await app.close();                      // stops the listener, awaits open requests
+    // After close, so the last requests are counted: the flush is buffered work, and the
+    // whole point of draining is that those calls really happened.
+    try { await flushApiUsage(); } catch { /* statistics are not worth blocking an exit */ }
     try { await (await db()).$disconnect(); } catch { /* already gone */ }
     try { await getRedis()?.quit(); } catch { /* already gone */ }
     clearTimeout(hard);

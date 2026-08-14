@@ -280,7 +280,7 @@ export const CAPABILITIES = [
   // Growth elements
   'manage_events', 'manage_promotions',
   // Services
-  'manage_myo',
+  'manage_myo', 'manage_api',
 ];
 // Default capabilities a MOD holds without explicit grants.
 const MOD_DEFAULT_CAPS = ['manage_users'];
@@ -512,6 +512,10 @@ export function apiAuth(scope) {
     if (!key || key.revokedAt || (key.expiresAt && key.expiresAt <= new Date())) {
       return reply.code(401).send({ error: 'invalid_key' });
     }
+    // Attributed BEFORE the scope check, so a refusal is still recorded against the key that
+    // caused it. A key repeatedly asking for a scope it does not hold is precisely what an
+    // admin needs to see, and it is the one call that would otherwise be invisible.
+    req.apiKey = { id: key.id, scopes: key.scopes, userId: key.userId };
     if (scope && !hasScope(key, scope)) {
       return reply.code(403).send({ error: 'insufficient_scope', required: scope, granted: key.scopes });
     }
@@ -520,7 +524,6 @@ export function apiAuth(scope) {
 
     touch(p, key.id, req.ip);
     req.user = { uid: key.userId, role: key.user?.role };
-    req.apiKey = { id: key.id, scopes: key.scopes };
   };
 }
 
