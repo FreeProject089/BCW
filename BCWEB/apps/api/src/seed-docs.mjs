@@ -651,6 +651,11 @@ Three behaviours to expect, because they are deliberate:
 - Refresh tokens **rotate**: each refresh returns a new one and revokes the old. Presenting
   a revoked refresh token fails — that is reuse detection, and it means somebody has a copy
   of your token.
+- A refresh may ask for a **narrower** scope (RFC 6749 §6) and gets it; asking for a wider
+  one is refused with \`invalid_scope\`.
+- The account is re-checked on **every** refresh. If it has been suspended, banned or
+  closed, the refresh fails with \`invalid_grant\` and the whole token family is revoked —
+  an app cannot outlive the account that authorised it.
 - \`prompt=none\` never shows a screen. It answers \`login_required\` or \`consent_required\`
   instead, which is what makes it usable in a hidden iframe.
 

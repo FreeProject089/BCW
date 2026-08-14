@@ -952,6 +952,12 @@ export default async function miscRoutes(app) {
     const reason = b.data.reason || null;
     await p.user.update({ where: { id: target.id }, data: { status, moderationUntil: until, moderationReason: reason, moderatedAt: new Date(), moderatedById: req.user.uid } });
     clearAccountLockCache(target.id);
+    // Cut the OIDC grants too, not just the sessions. Every app they signed into with this
+    // account holds a refresh token that renews itself for as long as the app keeps asking,
+    // so a ban that only ends sessions leaves those apps working — moderation the moderator
+    // cannot see failing. The token endpoint re-checks the account on every refresh as well;
+    // this is the half that acts immediately instead of at the next renewal.
+    await p.oAuthRefreshToken.updateMany({ where: { userId: target.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {});
     const label = status === 'banned' ? 'banned' : 'suspended';
     const dur = until ? `until ${until.toLocaleString('en-US', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' })} UTC` : 'permanently';
     await logAudit(p, req.user.uid, `user.${status}`, `${target.displayName} (${target.email}) ${until ? `until ${until.toISOString()}` : 'permanently'}${reason ? ` — ${reason}` : ''}`, clientIp(req));

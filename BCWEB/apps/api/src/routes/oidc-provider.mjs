@@ -2,7 +2,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import querystring from 'node:querystring';
 import jwt from 'jsonwebtoken';
-import { db, requireRole, optionalAuth, clearSession, logAudit, clientIp, notify } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, clearSession, logAudit, clientIp, notify, safeEqual } from '../lib/lib.mjs';
 import { jwks, issuer, signRs256, verifyRs256, verifyPkce, validateAuthorizeRequest } from '../lib/oidc.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
@@ -252,7 +252,10 @@ export default async function oidcProviderRoutes(app) {
     const clientSecret = b.client_secret || basic?.secret || '';
     const client = clientId ? await p.oAuthClient.findUnique({ where: { id: clientId } }) : null;
     if (!client || !client.active) return { error: 'invalid_client' };
-    if (client.confidential && (!clientSecret || sha256(String(clientSecret)) !== client.secretHash)) return { error: 'invalid_client' };
+    // safeEqual, not `!==`: this compares a SECRET, and `!==` on strings returns as soon as
+    // two bytes differ, which leaks how much of a guess was right. It is also the rule this
+    // repo already wrote down for itself and then broke here.
+    if (client.confidential && (!clientSecret || !safeEqual(sha256(String(clientSecret)), client.secretHash))) return { error: 'invalid_client' };
     return { client };
   }
 
@@ -262,7 +265,12 @@ export default async function oidcProviderRoutes(app) {
     reply.header('Cache-Control', 'no-store');
     const p = await db();
     const auth = await authClient(p, req, b);
-    if (auth.error) return reply.code(401).send({ error: auth.error });
+    if (auth.error) {
+      // RFC 6749 §5.2: a 401 answering Basic credentials must say so, or a client that
+      // authenticated the wrong way has no idea which way was expected.
+      if (/^Basic\s/i.test(req.headers['authorization'] || '')) reply.header('WWW-Authenticate', 'Basic realm="oauth2"');
+      return reply.code(401).send({ error: auth.error });
+    }
     const client = auth.client;
 
     if (b.grant_type === 'authorization_code') {
@@ -291,9 +299,32 @@ export default async function oidcProviderRoutes(app) {
       if (rt.expiresAt < new Date()) return reply.code(400).send({ error: 'invalid_grant' });
       // Rotate: revoke the presented token before issuing a fresh set.
       await p.oAuthRefreshToken.update({ where: { token: rt.token }, data: { revokedAt: new Date() } });
-      const user = await p.user.findUnique({ where: { id: rt.userId }, select: { id: true, displayName: true, email: true } });
+      const user = await p.user.findUnique({ where: { id: rt.userId }, select: { id: true, displayName: true, email: true, status: true, closedAt: true, closureScheduledFor: true } });
       if (!user) return reply.code(400).send({ error: 'invalid_grant' });
-      return mintTokens(p, { client, user, scope: rt.scope });
+
+      // The account is re-checked on every refresh, and this is the point of the whole
+      // change: an access token lives an hour, but a refresh token renews itself for as long
+      // as the client keeps asking. Without this, banning somebody ended their SESSIONS and
+      // left every app they had connected signed in indefinitely — moderation that the
+      // moderator could not see failing.
+      if (user.closedAt || (user.status && user.status !== 'active')) {
+        await p.oAuthRefreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {});
+        return reply.code(400).send({ error: 'invalid_grant', error_description: 'The account is no longer active.' });
+      }
+
+      // RFC 6749 §6: a refresh MAY narrow the scope, never widen it. Ignoring the parameter
+      // handed back more than the client asked for, which is the wrong direction to be
+      // generous in — a client dropping a scope is trying to hold less.
+      let scope = rt.scope;
+      if (b.scope != null && String(b.scope).trim()) {
+        const had = new Set(rt.scope.split(' ').filter(Boolean));
+        const want = String(b.scope).trim().split(/\s+/);
+        if (want.some((x) => !had.has(x))) {
+          return reply.code(400).send({ error: 'invalid_scope', error_description: 'A refresh cannot ask for more than was granted.' });
+        }
+        scope = want.join(' ');
+      }
+      return mintTokens(p, { client, user, scope });
     }
 
     return reply.code(400).send({ error: 'unsupported_grant_type' });
@@ -405,7 +436,12 @@ export default async function oidcProviderRoutes(app) {
     const b = req.body || {};
     const p = await db();
     const auth = await authClient(p, req, b);
-    if (auth.error) return reply.code(401).send({ error: auth.error });
+    if (auth.error) {
+      // RFC 6749 §5.2: a 401 answering Basic credentials must say so, or a client that
+      // authenticated the wrong way has no idea which way was expected.
+      if (/^Basic\s/i.test(req.headers['authorization'] || '')) reply.header('WWW-Authenticate', 'Basic realm="oauth2"');
+      return reply.code(401).send({ error: auth.error });
+    }
     const tok = String(b.token || '');
     if (tok) await p.oAuthRefreshToken.updateMany({ where: { token: sha256(tok), clientId: auth.client.id }, data: { revokedAt: new Date() } }).catch(() => {});
     return reply.code(200).send({});
@@ -427,7 +463,12 @@ export default async function oidcProviderRoutes(app) {
     // Client authentication is required — introspection tells you about somebody's token,
     // so an open endpoint would be a token oracle for the whole internet.
     const auth = await authClient(p, req, b);
-    if (auth.error) return reply.code(401).send({ error: auth.error });
+    if (auth.error) {
+      // RFC 6749 §5.2: a 401 answering Basic credentials must say so, or a client that
+      // authenticated the wrong way has no idea which way was expected.
+      if (/^Basic\s/i.test(req.headers['authorization'] || '')) reply.header('WWW-Authenticate', 'Basic realm="oauth2"');
+      return reply.code(401).send({ error: auth.error });
+    }
     const token = String(b.token || '');
     if (!token) return { active: false };
 

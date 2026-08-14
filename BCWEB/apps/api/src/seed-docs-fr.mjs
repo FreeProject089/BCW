@@ -94,6 +94,11 @@ Trois comportements à attendre, parce qu’ils sont voulus :
 - Les refresh tokens **tournent** : chaque rafraîchissement en renvoie un nouveau et révoque
   l’ancien. Présenter un refresh token révoqué échoue — c’est la détection de réutilisation,
   et ça veut dire que quelqu’un a une copie de ton jeton.
+- Un rafraîchissement peut demander un scope **plus étroit** (RFC 6749 §6) et l’obtient ;
+  en demander un plus large est refusé avec \`invalid_scope\`.
+- Le compte est revérifié à **chaque** rafraîchissement. S’il a été suspendu, banni ou
+  fermé, le rafraîchissement échoue en \`invalid_grant\` et toute la famille de jetons est
+  révoquée — une application ne peut pas survivre au compte qui l’a autorisée.
 - \`prompt=none\` n’affiche jamais d’écran. Il répond \`login_required\` ou \`consent_required\`,
   ce qui le rend utilisable dans une iframe cachée.
 
