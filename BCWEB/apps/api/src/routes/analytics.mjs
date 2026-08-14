@@ -73,6 +73,9 @@ export default async function analyticsRoutes(app) {
       // percentile and firing "poor" alerts nobody can act on.
       value: z.number().finite().nonnegative().max(60_000),
       rating: z.enum(['good', 'needs-improvement', 'poor']).optional(),
+      // INP only: which element the slowest interaction landed on. Bounded, and identity
+      // only — the client sends a tag plus an aria-label or name, never a field's value.
+      label: z.string().max(80).optional(),
     }).safeParse(req.body);
     // The client drops these too, but it is untrusted and older builds keep running for
     // as long as a tab stays open, so the ceiling is enforced on both ends. Rejected
@@ -84,7 +87,7 @@ export default async function analyticsRoutes(app) {
     const p = await db();
     const { device, browser, os } = parseUA(req.headers['user-agent']);
     const geo = await geoOf(req).catch(() => ({}));
-    await p.webVital.create({ data: { path: b.data.path, metric: b.data.metric, value: b.data.value, rating: b.data.rating || null, visitor: visitorHash(req), device, browser, os, country: geo?.country || null } }).catch(() => {});
+    await p.webVital.create({ data: { path: b.data.path, metric: b.data.metric, value: b.data.value, rating: b.data.rating || null, label: b.data.label || null, visitor: visitorHash(req), device, browser, os, country: geo?.country || null } }).catch(() => {});
     return reply.code(204).send();
   });
 

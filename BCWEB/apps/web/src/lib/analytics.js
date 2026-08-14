@@ -140,6 +140,22 @@ const rate = (m, v) => { const [g, p] = THRESHOLDS[m]; return v <= g ? 'good' : 
 // A sample that measures nothing should not exist.
 const CEILING = { LCP: 60000, FCP: 60000, TTFB: 60000, INP: 60000, CLS: 10 };
 
+/** A short, human name for the element an interaction landed on.
+ *
+ *  Identity only: an aria-label, a button's text, a tag and role. Never a field's VALUE —
+ *  the whole point of this table is that it can be read by staff who have no business
+ *  seeing what somebody typed.
+ */
+function labelOfNode(el) {
+  try {
+    if (!el || el.nodeType !== 1) return null;
+    const t = el.tagName.toLowerCase();
+    const name = el.getAttribute?.('aria-label')
+      || (t === 'input' || t === 'textarea' || t === 'select' ? (el.getAttribute('name') || el.getAttribute('placeholder') || '') : (el.textContent || '').trim());
+    return `${t}${name ? `: ${String(name).replace(/\s+/g, ' ').slice(0, 60)}` : ''}`;
+  } catch { return null; }
+}
+
 export function initVitals() {
   if (getConsent() !== 'all') return;
   if (typeof PerformanceObserver === 'undefined' || window.__bcwVitals) return;
@@ -152,6 +168,7 @@ export function initVitals() {
   let everHidden = document.visibilityState === 'hidden';
   addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') everHidden = true; }, { capture: true });
   const vitals = {};        // metric → value (latest/aggregate)
+  let inpTarget = null;     // what the worst interaction landed on
   const set = (m, v) => { vitals[m] = v; };
 
   // TTFB from the navigation entry (responseStart relative to activation start).
@@ -172,9 +189,31 @@ export function initVitals() {
   // CLS: sum layout shifts (excluding those right after input), session-window-lite.
   let cls = 0;
   obs('layout-shift', (l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) cls += e.value; set('CLS', cls); });
-  // INP-lite: worst interaction latency across event durations over threshold.
+  // INP, grouped by INTERACTION rather than by event.
+  //
+  // The old version took the longest single `event` entry, which is not what INP measures
+  // and reliably overstates it. One tap emits pointerdown, pointerup and click as separate
+  // entries covering overlapping time, so the same interaction was counted three times and
+  // the worst slice won. Worse, entries with `interactionId === 0` are not interactions at
+  // all — they are events the browser did not attribute to a user gesture — and web.dev
+  // excludes them for exactly that reason.
+  //
+  // So: group by interactionId, take the longest duration WITHIN each interaction (that is
+  // the interaction's latency), then report the worst interaction on the page.
+  const interactions = new Map(); // interactionId → { dur, target }
   let inp = 0;
-  obs('event', (l) => { for (const e of l.getEntries()) if (e.duration > inp) inp = e.duration; if (inp) set('INP', inp); }, { durationThreshold: 40 });
+  obs('event', (l) => {
+    for (const e of l.getEntries()) {
+      if (!e.interactionId) continue;
+      const cur = interactions.get(e.interactionId);
+      if (!cur || e.duration > cur.dur) {
+        interactions.set(e.interactionId, { dur: e.duration, target: cur?.target || labelOfNode(e.target) });
+      }
+    }
+    let worst = null;
+    for (const v of interactions.values()) if (!worst || v.dur > worst.dur) worst = v;
+    if (worst) { inp = worst.dur; set('INP', inp); inpTarget = worst.target; }
+  }, { durationThreshold: 40 });
 
   let flushed = false;
   const flush = () => {
@@ -187,7 +226,10 @@ export function initVitals() {
       if (everHidden && metric !== 'INP' && metric !== 'CLS') continue;
       if (value > (CEILING[metric] ?? Infinity)) continue;
       const v = metric === 'CLS' ? Math.round(value * 1000) / 1000 : Math.round(value);
-      beacon('/api/analytics/vital', { path, metric, value: v, rating: rate(metric, value) });
+      // The label rides along only for INP, because it is the only metric where "which
+      // element" is the actionable half. An INP figure with nothing to point at is a number
+      // you can watch and cannot fix.
+      beacon('/api/analytics/vital', { path, metric, value: v, rating: rate(metric, value), ...(metric === 'INP' && inpTarget ? { label: inpTarget } : {}) });
     }
   };
   // Flush once when the page is hidden or being unloaded (the reliable end-of-life signal).

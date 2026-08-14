@@ -1927,6 +1927,10 @@ model WebVital {
   metric    String // LCP | CLS | INP | FCP | TTFB
   value     Float
   rating    String? // good | needs-improvement | poor (as reported by web-vitals)
+  // INP only: the element the slowest interaction landed on ("button: Save"). Identity,
+  // never a field's value — this table is read by staff, and an INP number with nothing to
+  // point at is something you can watch and cannot fix.
+  label     String?
   visitor   String?
   device    String? // mobile | tablet | desktop
   browser   String? // Chrome | Firefox | Safari | Edge | … (for per-page breakdowns)
