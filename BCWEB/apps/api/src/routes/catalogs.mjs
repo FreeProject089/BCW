@@ -8,6 +8,7 @@ import {
 } from '../lib/lib.mjs';
 import { presignGet, deleteObject, getObject } from '../lib/storage.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
+import { replyCachedJson } from '../lib/cache.mjs';
 
 // Read an object-storage stream fully into a Buffer (bounded by the payload's stored size).
 async function readObject(key) {
@@ -180,6 +181,71 @@ export default async function communityCatalogRoutes(app) {
       include: { owner: { select: { displayName: true } }, _count: { select: { items: true } } },
     });
     return { catalogs: rows.map((c) => ({ ...ser(c), owner: c.owner?.displayName })) };
+  });
+
+  // ── Public: ONE url that lists every public catalog, of every type ──
+  //
+  // The gap this fills: BMM configures one fixed URL per type (links.json has
+  // `apps_catalog` and `plugin_catalog`), and `community_imports` — the only chaining
+  // mechanism it has — lives on AppCatalog, so it can only ever bring in more APP
+  // catalogs. There is no way to hand BMM a single URL and have it pick up app, plugin,
+  // theme and preset catalogs together. This is the feed for that, and the reader is the
+  // BMM-side half still to write.
+  //
+  // Deliberately a NEW document rather than an extension of catalog.json: that one is an
+  // AppCatalog and BMM deserialises it into a struct with an `apps` field. Adding
+  // mixed-type entries there would either be ignored or break the parse, depending on how
+  // strictly a given version reads it.
+  //
+  // Every entry carries its `type` explicitly. A reader must not have to fetch a catalog
+  // to discover what it is — that would mean N requests before knowing which subsystem
+  // any of them belongs to, on a cold start, over somebody's connection.
+  app.get('/catalogs.json', async (req, reply) => {
+    const p = await db();
+    return replyCachedJson(req, reply, 'catalogs.json', 60_000, async () => {
+      const rows = await p.communityCatalog.findMany({
+        where: { status: 'ACTIVE', listed: true, visibility: 'public' },
+        orderBy: [{ featuredUntil: 'desc' }, { downloads: 'desc' }], take: 200,
+        include: { owner: { select: { displayName: true } }, _count: { select: { items: true } } },
+      });
+      // The platform's own per-type feeds first: they are the ones a fresh install most
+      // wants, and a reader that stops early still gets something useful.
+      const projectKey = 'bmm';
+      const official = ['APP', 'PLUGIN', 'THEME'].map((k) => ({
+        type: k.toLowerCase(),
+        name: `BetterCommunity ${k.toLowerCase()} catalog`,
+        description: `Everything published on BetterCommunity for ${projectKey.toUpperCase()}, as a ${k.toLowerCase()} catalog.`,
+        url: `${SITE_URL}/api/catalog.json?project=${projectKey}&kind=${k}`,
+        owner: 'BetterCommunity',
+        official: true,
+      }));
+      return {
+        version: '1.0',
+        name: 'BetterCommunity catalog index',
+        description: 'Every public catalog on BetterCommunity, with its type. Point a client at this one URL instead of collecting them by hand.',
+        catalogs: [
+          ...official,
+          ...rows.map((c) => ({
+            type: catalogKind(c).toLowerCase(),
+            name: c.name,
+            description: c.description || '',
+            // The plain per-catalog URL, with no ?kind=: that endpoint defaults to the
+            // catalog's own kind, and an explicit kind that disagrees is a 404 there.
+            url: `${SITE_URL}/api/c/${c.slug}/catalog.json`,
+            owner: c.owner?.displayName || '',
+            // catalogItemCount, not _count.items: a `raw` catalog keeps its contents in
+            // rawJson and its items relation is structurally empty, so counting the
+            // relation reports 0 for a catalog holding fifty plugins. That exact bug is
+            // documented above this file's helper — worth using rather than repeating.
+            items: catalogItemCount(c),
+            // Never true for a community catalog. Stated rather than omitted so a reader
+            // does not have to treat "absent" as "unknown" — though a client should still
+            // decide trust from the URL it fetched, not from what the JSON claims.
+            official: false,
+          })),
+        ],
+      };
+    });
   });
 
   // ── Public: a community catalog's metadata (for its /c/:slug page) ──
