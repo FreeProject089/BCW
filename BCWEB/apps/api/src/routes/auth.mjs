@@ -374,7 +374,7 @@ export default async function authRoutes(app) {
     return { ok: true };
   });
 
-  const profileSelect = { id: true, email: true, displayName: true, role: true, permissions: true, customRoleIds: true, emailVerified: true, bio: true, avatar: true, createdAt: true, totpEnabled: true, profilePublic: true, showConnections: true, website: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } } }, oauthAccounts: { select: { provider: true } }, socialConnections: { select: { provider: true } }, _count: { select: { discordLinks: true, creatorLinks: true } } };
+  const profileSelect = { id: true, email: true, displayName: true, role: true, permissions: true, customRoleIds: true, emailVerified: true, bio: true, avatar: true, createdAt: true, totpEnabled: true, profilePublic: true, showConnections: true, website: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } } }, oauthAccounts: { select: { provider: true } }, socialConnections: { select: { provider: true } }, _count: { select: { discordLinks: true, creatorLinks: true } }, status: true, moderationUntil: true, moderationReason: true };
 
   // Soft-authed "who am I": logged-out visitors get 200 { user: null } instead of a
   // noisy 401 in the console. The app boots this on every load.
@@ -383,6 +383,17 @@ export default async function authRoutes(app) {
     const p = await db();
     const user = await p.user.findUnique({ where: { id: req.user.uid }, select: profileSelect });
     if (!user) return { user: null };
+    // The open decision, so the app can say so instead of letting the person discover it by
+    // watching their repos go offline. The code is the point: it is what the e-mail quoted
+    // and what a contest is filed against.
+    if (user.status && user.status !== 'active') {
+      const open = await p.sanction.findFirst({
+        where: { userId: user.id, status: 'active', kind: { in: ['suspension', 'ban', 'closure'] } },
+        orderBy: { issuedAt: 'desc' },
+        select: { code: true, kind: true, reason: true, expiresAt: true, contestedAt: true },
+      }).catch(() => null);
+      user.sanction = open;
+    }
     // Resolve the assigned custom roles + per-project grants so the client can gate the
     // dashboard off EFFECTIVE capabilities (tier ∪ individual ∪ role bundles), not just the
     // raw `permissions` column. `permissions` stays the individual grants (what the Access

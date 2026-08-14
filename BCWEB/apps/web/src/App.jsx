@@ -42,6 +42,7 @@ const PollsPage = lazy(() => import('./pages/polls.jsx'));
 const DevHub = lazy(() => import('./pages/dev.jsx'));
 const DevConfig = lazy(() => import('./pages/dev-config.jsx'));
 const NotificationCentre = lazy(() => import('./pages/notifications.jsx'));
+const SanctionPage = lazy(() => import('./pages/sanction.jsx'));
 const Admin = named(() => import('./pages/admin.jsx'), 'Admin');
 const Dashboard = named(() => import('./pages/dashboard.jsx'), 'Dashboard');
 const ReposPage = named(() => import('./pages/repos.jsx'), 'ReposPage');
@@ -259,6 +260,48 @@ function timeAgo(d, justnow) {
   const m = Math.floor(s / 60); if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60); if (h < 24) return `${h}h`;
   return `${Math.floor(h / 24)}d`;
+}
+
+/** "Your account is suspended", said by the app rather than discovered by watching things fail.
+ *
+ *  Until now the only signals were an e-mail and a notification. Once you were signed in,
+ *  nothing on screen said so — you found out when your API key answered 403 and your repos
+ *  stopped serving, which reads like an outage rather than a decision. It carries the
+ *  reference, because that is what a contest is filed against.
+ *
+ *  Not dismissible: this is not news, it is the state the account is in.
+ */
+function SanctionBanner() {
+  const { user } = useAuth();
+  const { t } = useI18n();
+  const s = user?.sanction;
+  if (!user || !user.status || user.status === 'active') return null;
+  const banned = user.status === 'banned';
+  const until = user.moderationUntil ? new Date(user.moderationUntil) : (s?.expiresAt ? new Date(s.expiresAt) : null);
+  return (
+    <div className="relative z-20 w-full" style={{ background: banned ? 'var(--error)' : 'var(--warning)' }}>
+      <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-start gap-2.5 text-white text-[13px]">
+        <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <span className="font-semibold">
+            {banned ? t('lockb.banned', 'Your account is banned.') : t('lockb.susp', 'Your account is suspended.')}
+          </span>{' '}
+          <span className="opacity-90">
+            {until
+              ? t('lockb.until', 'Until {d}.').replace('{d}', until.toLocaleString())
+              : t('lockb.noend', 'No end date has been set.')}
+            {' '}{t('lockb.what', 'Your repos and catalog items are offline while it lasts.')}
+            {(s?.reason || user.moderationReason) ? ` ${t('lockb.reason', 'Reason')}: ${s?.reason || user.moderationReason}` : ''}
+          </span>
+        </div>
+        {s?.code && (
+          <Link to={`/sanctions/${s.code}`} className="shrink-0 underline underline-offset-2 font-medium whitespace-nowrap">
+            {s.contestedAt ? t('lockb.open', 'Open {c}').replace('{c}', s.code) : t('lockb.contest', 'Read it & contest')}
+          </Link>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Global notifications bell — visible on every page in the topbar when signed in.
@@ -987,6 +1030,7 @@ export default function App() {
           {/* relative z-10: keep the page content (and any in-page overlays like the
               mobile dashboard nav sheet) stacked ABOVE the footer, which follows in the
               DOM and would otherwise paint over an open dropdown on short pages. */}
+          <SanctionBanner />
           <main ref={mainRef} id="main-content" tabIndex={-1} className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-10 anim-fade">
             <Suspense fallback={<div className="flex justify-center py-20 text-[var(--muted)]"><span className="anim-fade">…</span></div>}>
             <Routes>
@@ -1025,6 +1069,9 @@ export default function App() {
           <Route path="/dev" element={<DevHub />} />
           <Route path="/dev/config" element={<DevConfig />} />
           <Route path="/notifications" element={<NotificationCentre />} />
+          {/* Every moderation e-mail has been linking here. It did not exist — the notice
+              went out with a "read it and contest" button that landed on the 404 page. */}
+          <Route path="/sanctions/:code" element={<SanctionPage />} />
               <Route path="/authorize" element={<Authorize />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/contact" element={<Contact />} />
