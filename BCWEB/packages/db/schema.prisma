@@ -924,7 +924,11 @@ model ServerRepo {
   links             Json? // { discord, website, changelog } shown on the listing
   repoUrl           String? // source URL for a non-hosted, listed repo
   sha               String? // current content SHA (integrity of last verified content)
-  listed            Boolean           @default(false) // owner wants it in the public list
+  // Listed by default — you opt OUT. The common case is a repo made for people to use;
+  // the old opt-in meant it stayed invisible until the owner found a menu item they had no
+  // reason to look for. repos.json still also requires `verified`, so a moderator check is
+  // unchanged. Existing rows keep whatever they had (see the migration).
+  listed            Boolean           @default(true)
   verified          Boolean           @default(false) // content checked by a mod/admin
   pendingReview     Boolean           @default(false) // a change is awaiting verification
   // Unlisted-share link: when set, anyone with /r/<id>?k=<shareKey> can see the repo's

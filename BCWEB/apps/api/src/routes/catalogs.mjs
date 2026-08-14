@@ -294,8 +294,33 @@ export default async function communityCatalogRoutes(app) {
         }));
       });
 
+      // Server-Repos, as one more thing the index can point at.
+      //
+      // They are a catalog in every sense that matters here — a published list of things a
+      // client fetches — and leaving them out meant a client pointed at the index still had
+      // to be told about repos.json separately, which is the collecting-by-hand this exists
+      // to end. Type `repo`, app `bmm`: Server-Repos are a BMM concept, so a client
+      // filtering by app gets the right answer without a special case.
+      //
+      // Offered only when at least one repo would actually appear in it, the same rule the
+      // official feeds follow — an index entry that leads to an empty document teaches
+      // people to stop trusting the index.
+      const repoCount = (scope === 'community' || (appKey && appKey !== 'bmm')) ? 0
+        : await p.serverRepo.count({ where: { listed: true, verified: true, pendingReview: false } }).catch(() => 0);
+      const repoEntry = repoCount > 0 ? [{
+        type: 'repo',
+        app: 'bmm',
+        official: true,
+        name: 'BetterCommunity Server-Repos',
+        description: 'Every verified, publicly listed Server-Repo on BetterCommunity.',
+        url: `${SITE_URL}/api/repos.json`,
+        owner: 'BetterCommunity',
+        items: repoCount,
+      }] : [];
+
       const entries = [
         ...official,
+        ...repoEntry,
         ...community.map((c) => ({
           type: catalogKind(c).toLowerCase(),
           // Omitted, never guessed, when the catalog has not been told which app it is for.

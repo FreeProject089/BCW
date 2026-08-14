@@ -1,0 +1,17 @@
+-- A new Server-Repo is listed by default; you opt OUT rather than in.
+--
+-- The old default meant a repo somebody set up, verified and left running was invisible in
+-- the public list and absent from repos.json until they found a menu item they had no
+-- reason to look for. The common case — "I made this for people to use" — needed an extra
+-- step, and the rare case did not.
+--
+-- Existing rows are NOT touched. `listed` is stored per row, so changing the column
+-- default only affects repos created from here on: an owner who deliberately unlisted
+-- theirs keeps that decision, and one who simply never opted in is not opted in
+-- retroactively. Flipping stored values would publish repos on somebody's behalf, which is
+-- not a default change but a disclosure.
+--
+-- The safety net stays where it was: repos.json also requires `verified` (a moderator has
+-- checked the content) and `pendingReview = false`, so this changes what an owner has to
+-- ask for, not who reviews it.
+ALTER TABLE "ServerRepo" ALTER COLUMN "listed" SET DEFAULT true;
