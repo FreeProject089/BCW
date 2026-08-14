@@ -399,6 +399,10 @@ export function DialogProvider({ children }) {
               says WHERE to get it. Without it a dialog demanding six digits is a dead end
               for anyone who does not already know which app they set up. */}
           {o.hint && <div className="text-[11px] text-[var(--muted)] mt-1.5">{o.hint}</div>}
+          {/* Anything the caller wants under the input, with the setter handed to it — a 2FA
+              prompt is useless without the picker that fills it, and the picker cannot reach
+              this component's state from outside. */}
+          {typeof o.below === 'function' ? o.below(setValue) : o.below}
         </div>}
       </Modal>
     </DialogCtx.Provider>

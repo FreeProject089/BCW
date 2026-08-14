@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -171,7 +171,10 @@ export function Admin() {
         { id: 'users', label: t('adm.tab.users2', 'All accounts'), icon: Users },
         { id: 'planusers', label: t('adm.tab.planusers', 'Free vs paid'), icon: Receipt },
         isAdmin && { id: 'access', label: t('adm.tab.access', 'Roles & permissions'), icon: Shield },
+        // The two "who did what" screens, together: the audit chain and the whole-site
+        // history read the same way and were two sections apart.
         isAdmin && { id: 'security', label: t('adm.tab.security', 'Security log'), icon: Lock },
+        isAdmin && { id: 'history', label: t('adm.tab.history', 'Site history'), icon: History },
       ].filter(Boolean) },
 
     { heading: t('adm.h.content', 'What the site shows') },
@@ -193,6 +196,7 @@ export function Admin() {
         { id: 'announcements', label: t('adm.tab.announcements', 'Announcements'), icon: BellIcon },
         can('manage_faq') && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
         can('manage_newsletter') && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
+        isAdmin && { id: 'mail', label: t('adm.tab.mail', 'Mail delivery'), icon: Send },
         isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: MessageSquare },
         can('manage_polls') && { id: 'polls', label: t('adm.tab.polls', 'Polls'), icon: BarChart3 },
       ].filter(Boolean) },
@@ -205,12 +209,7 @@ export function Admin() {
         { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
         isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
       ].filter(Boolean) },
-    isAdmin && { id: 'plans', label: t('adm.tab.plans', 'Plans & billing'), icon: CreditCard,
-      sub: [
-        { id: 'plans', label: t('adm.tab.plans2', 'Hosting plans'), icon: HardDrive },
-        { id: 'history', label: t('adm.tab.history', 'Site history'), icon: History },
-        { id: 'mail', label: t('adm.tab.mail', 'Mail'), icon: Mail },
-      ] },
+    isAdmin && { id: 'plans', label: t('adm.tab.plans2', 'Hosting plans'), icon: CreditCard },
 
     { heading: t('adm.h.growth', 'Growth & money') },
     can('manage_promotions') && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
@@ -1257,9 +1256,21 @@ function AdminServerPerf() {
   };
   // Acknowledging is not resolving: it clears the tab badge and says a human has read the
   // alert. Nothing about the underlying condition changes, and the row stays in the list.
-  const ackAll = async () => {
-    try { await api.post('/admin/server/alerts/ack'); alerts.reload(); toast.success(t('sp.al.acked', 'Marked as seen.')); }
-    catch { toast.error(t('sp.failed', 'Failed.')); }
+  const [ackPending, setAckPending] = useState(false);
+  const ackAll = () => {
+    // The same undo window as everything else on this site that cannot be un-clicked. The
+    // badge clears now — that IS the undo affordance — and the write happens when the toast
+    // expires, so cancelling never touched the server.
+    setAckPending(true);
+    toast.action({
+      tone: 'success', cancelLabel: t('common.undo', 'Undo'), msg: t('sp.al.acked', 'Marked as seen.'),
+      onCommit: async () => {
+        try { await api.post('/admin/server/alerts/ack'); alerts.reload(); }
+        catch { toast.error(t('sp.failed', 'Failed.')); }
+        finally { setAckPending(false); }
+      },
+      onCancel: () => setAckPending(false),
+    });
   };
   const toggleDep = async (key, on) => {
     setDepsBusy(true);
@@ -1558,7 +1569,7 @@ function AdminServerPerf() {
             const ok = await copyText(log);
             ok ? toast.success(t('common.copied', 'Copied.')) : toast.error(t('sp.al.copyfail', 'Could not copy — select the alerts manually.'));
           };
-          const unacked = list.filter((a) => !a.ackAt).length;
+          const unacked = ackPending ? 0 : list.filter((a) => !a.ackAt).length;
           return (<>
             <div className="flex justify-end gap-2 mb-1.5">
               {unacked > 0 && (
@@ -5143,7 +5154,13 @@ function AdminFreeHost() {
   );
 }
 
-const PROJ_META = { community: { icon: Package, name: 'Community' }, bmm: { icon: Boxes, name: 'BMM' }, bsm: { icon: Music2, name: 'BSM' }, installer: { icon: Download, name: 'Installer' } };
+// The rail's own key list (allKeys, below) gained 'developers' and this table did not, so
+// selecting that project read PROJ_META['developers'] → undefined → `M.icon` threw and the
+// whole tab rendered as the error boundary.
+const PROJ_META = { community: { icon: Package, name: 'Community' }, bmm: { icon: Boxes, name: 'BMM' }, bsm: { icon: Music2, name: 'BSM' }, installer: { icon: Download, name: 'Installer' }, developers: { icon: Code2, name: 'Developers' } };
+// …and a fallback, because a hardcoded table that has to cover a list maintained somewhere
+// else will fall behind it again. Missing metadata should cost a generic icon, not the page.
+const projMeta = (key) => PROJ_META[key] || { icon: Package, name: key };
 // Admin: host platform assets — app installers (BMM/BSM/BI), auto-update manifests, and the
 // JSON configs (links.json / contributors.json) served at stable /api/assets/<key> URLs the
 // apps point at (BCWEB-first, GitHub + local as fallbacks).
@@ -5385,7 +5402,7 @@ function AdminProjects() {
     // Parsed once, up front: the text area stays editable during the window and this must
     // write what was on screen at click time. Same for the project name in the message.
     const cfg = JSON.parse(text);
-    const label = isShowcase ? activeShow?.name : PROJ_META[active].name;
+    const label = isShowcase ? activeShow?.name : projMeta(active).name;
     undoSaveCfg(() => putConfig(cfg),
       t('ap.saved', '{name} saved.').replace('{name}', label),
       { errorFor: (x) => x.data?.error || t('common.savefail', 'Save failed.') });
@@ -5393,7 +5410,7 @@ function AdminProjects() {
   const hint = (label, val) => <div><div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{label}</div><code className="text-[11px] text-[var(--muted)]">{val}</code></div>;
   const taRef = useRef(null); const gutRef = useRef(null); const ovRef = useRef(null);
   const lineCount = (text.match(/\n/g) || []).length + 1;
-  const M = isShowcase ? { icon: Sparkles, name: activeShow?.name || 'Project' } : PROJ_META[active];
+  const M = isShowcase ? { icon: Sparkles, name: activeShow?.name || 'Project' } : projMeta(active);
   // Per-blog toggle: this project/page's posts always show on /blog, but only
   // surface in the home page's unified "Latest news" when this is on.
   const showOnHomeNews = isShowcase ? (activeShow?.showOnHomeNews !== false) : (data?.homeNews?.[active] !== false);
@@ -5448,11 +5465,11 @@ function AdminProjects() {
           <div ref={railRef} className="seg-rail !flex-wrap gap-2 p-2 rounded-2xl mb-4">
             {/* Hidden nowrap copy — the source of truth for the natural (unwrapped) width. */}
             <div ref={railMeasureRef} aria-hidden className="absolute -z-10 opacity-0 pointer-events-none flex gap-2 whitespace-nowrap" style={{ left: -9999, top: -9999 }}>
-              {keys.map((k) => <span key={k} className={chip(false)}><AppLogo pkey={k} size={16} fallback={PROJ_META[k].icon} /> {PROJ_META[k].name}</span>)}
+              {keys.map((k) => <span key={k} className={chip(false)}><AppLogo pkey={k} size={16} fallback={projMeta(k).icon} /> {projMeta(k).name}</span>)}
               {showcase.length > 0 && <span className="px-1.5" />}
               {showcase.map((s) => <span key={s.id} className={chip(false)}>{scIcon(s)} <span className="max-w-[160px]">{s.name}</span></span>)}
             </div>
-            {keys.map((k) => { const Pm = PROJ_META[k]; return (
+            {keys.map((k) => { const Pm = projMeta(k); return (
               <button key={k} onClick={() => setActive(k)} className={chip(active === k)}>
                 <AppLogo pkey={k} size={16} fallback={Pm.icon} /> {Pm.name}
               </button>); })}

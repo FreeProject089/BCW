@@ -5,6 +5,7 @@ import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Textarea, Badge, Field, Spinner, useToast, useDialog, copyText } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
+import { TotpQuickFill } from './twofa-fill.jsx';
 import WebhooksPanel from './dev-webhooks.jsx';
 
 // /dev/config — the credentials, in one place.
@@ -26,6 +27,7 @@ function TotpField({ value, onChange, label }) {
     <Field label={label || t('devc.totp', 'Your 2FA code')} hint={t('devc.totp.h', 'Asked because this creates or destroys a credential.')}>
       <Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} className="w-32"
         value={value} onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" />
+      <TotpQuickFill onFill={onChange} className="mt-1.5" />
       {/* Where the six digits come from. Obvious to whoever set 2FA up months ago, not at
           all obvious at the moment a dialog demands one — and BetterCommunity has its own
           authenticator, which people forget they are already carrying. */}
@@ -107,6 +109,9 @@ function ApiKeysPanel() {
           message: t('devc.del.m', 'Anything using “{n}” stops working the moment this is gone, and it cannot be restored — a new key would have to be created and deployed. Its usage history is kept.').replace('{n}', k.label || t('devc.untitled', 'Untitled key')),
           label: t('devc.totp', 'Your 2FA code'), placeholder: '123456',
           hint: t('devc.del.totp', 'Six digits from your authenticator app, or from the BetterCommunity authenticator at /2fa.'),
+          // The picker, in the dialog. Telling somebody the code lives in an authenticator
+          // they already have, and then making them go and read it, is half an answer.
+          below: (setValue) => <TotpQuickFill onFill={(code) => setValue(code)} className="mt-2" />,
           okLabel: t('common.delete', 'Delete'), danger: true,
         })
       : (await dialog.confirm({

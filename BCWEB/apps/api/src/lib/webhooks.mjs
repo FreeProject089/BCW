@@ -27,7 +27,23 @@ export const WEBHOOK_EVENTS = Object.freeze({
   'subscription.expiring': 'A subscription of yours is about to end.',
   'sanction.issued': 'A moderation decision was recorded against you or your content.',
   'transfer.offered': 'Somebody offered you ownership of a repo or catalog.',
+
+  // Numbers, not just state changes. The first version only reported that something HAPPENED,
+  // which covers half of why anyone integrates: the other half is keeping a dashboard, a
+  // Discord bot or a spreadsheet current without polling for counters that change constantly.
+  'item.downloaded': 'Somebody downloaded one of your catalog items.',
+  'item.milestone': 'One of your items passed a round number of downloads.',
+  'repo.downloaded': 'A file was fetched from one of your repos.',
+  'stats.daily': 'A once-a-day summary: downloads, views and storage across everything you own.',
+  'review.posted': 'Somebody reviewed or rated one of your items.',
+  'catalog.item.submitted': 'A submission landed in a catalog you manage.',
+  'pool.storage.changed': 'The used space in one of your pools changed materially.',
 });
+
+// Events that can fire many times a minute are coalesced rather than sent one by one: a
+// per-download webhook on a popular item would be a denial of service we perform on our own
+// subscriber. One delivery per item per minute, carrying the count.
+export const COALESCED = { 'item.downloaded': 60_000, 'repo.downloaded': 60_000, 'pool.storage.changed': 300_000 };
 
 const MAX_ATTEMPTS = 6;
 // 1 min, 5, 25, 2h, 10h — capped. Long enough for somebody to notice and fix a receiver over
@@ -54,6 +70,26 @@ export function signWebhook(secret, timestamp, body) {
 export async function emitWebhook(p, userId, event, data) {
   try {
     if (!WEBHOOK_EVENTS[event]) return 0;
+    // Coalesce the hot ones. A pending delivery for the same event and the same subject gets
+    // its count bumped instead of a second row — the receiver gets "14 downloads in the last
+    // minute", which is what a dashboard wanted anyway, and we do not hammer them.
+    const window = COALESCED[event];
+    if (window) {
+      const key = data?.id || data?.slug || '';
+      const since = new Date(Date.now() - window);
+      const open = await p.webhookDelivery.findFirst({
+        where: { event, status: 'pending', createdAt: { gte: since }, endpoint: { userId } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (open && (open.payload?.data?.id || open.payload?.data?.slug || '') === key) {
+        await p.webhookDelivery.update({
+          where: { id: open.id },
+          data: { payload: { ...open.payload, data: { ...open.payload.data, ...data, count: (open.payload.data?.count || 1) + 1 } } },
+        });
+        return 0;
+      }
+      data = { ...data, count: 1 };
+    }
     const endpoints = await p.webhookEndpoint.findMany({
       where: { userId, enabled: true, events: { has: event } },
       select: { id: true },
