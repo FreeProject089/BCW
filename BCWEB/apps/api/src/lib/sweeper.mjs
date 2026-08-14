@@ -195,11 +195,14 @@ async function sweepExpiredSubscriptions(p, log) {
  *  were cancelled while they were out, because the offer to take them out again is the whole
  *  point of having cancelled only the ones that were expiring anyway.
  */
-async function sweepEndedSuspensions(p, log) {
+export async function sweepEndedSuspensions(p, log) {
   const now = new Date();
+  // Both statuses. A timed BAN was never swept — only 'suspended' was looked at — so a ban
+  // with an end date ran out on paper while the repos and catalogs it froze stayed offline
+  // for ever, and nobody was told. A sanction that ends has to end for the content too.
   const due = await p.user.findMany({
-    where: { status: 'suspended', moderationUntil: { not: null, lte: now } },
-    select: { id: true, email: true, displayName: true, moderationSuspendState: true },
+    where: { status: { in: ['suspended', 'banned'] }, moderationUntil: { not: null, lte: now } },
+    select: { id: true, email: true, displayName: true, status: true, moderationSuspendState: true },
     take: 50,
   }).catch(() => []);
   let ended = 0;
@@ -211,33 +214,34 @@ async function sweepEndedSuspensions(p, log) {
       clearAccountLockCache(u.id);
 
       const open = await p.sanction.findFirst({
-        where: { userId: u.id, kind: 'suspension', status: 'active' }, orderBy: { issuedAt: 'desc' },
+        where: { userId: u.id, kind: { in: ['suspension', 'ban'] }, status: 'active' }, orderBy: { issuedAt: 'desc' },
       }).catch(() => null);
       if (open) await p.sanction.update({ where: { id: open.id }, data: { status: 'expired' } }).catch(() => {});
 
       const cancelled = Array.isArray(open?.meta?.cancelledSubs) ? open.meta.cancelledSubs : [];
       const back = restored.repos + restored.catalogs + restored.items;
+      const word = u.status === 'banned' ? 'ban' : 'suspension';
       await notify(p, u.id, 'account_sanction',
-        `Your suspension has ended${open ? ` (${open.code})` : ''}. ${back} item(s) are back the way they were.`
+        `Your ${word} has ended${open ? ` (${open.code})` : ''}. ${back} item(s) are back the way they were.`
         + (cancelled.length ? ` ${cancelled.length} subscription(s) were cancelled while you were out — you can take them out again from Billing.` : ''))
         .catch(() => {});
 
       if (emailEnabled()) {
         const rows = cancelled.map((c) => `<li>${escapeHtml(c.planName || 'Hosting')}${c.priceCents ? ` — ${(c.priceCents / 100).toFixed(2)}/month` : ''}</li>`).join('');
         await sendMail({
-          to: u.email, subject: open ? `[${open.code}] Your suspension has ended` : 'Your suspension has ended',
-          html: mailShell('Your suspension has ended', `
+          to: u.email, subject: open ? `[${open.code}] Your ${word} has ended` : `Your ${word} has ended`,
+          html: mailShell(`Your ${word} has ended`, `
             <p>Hi ${escapeHtml(u.displayName || '')},</p>
             <p>Your account is active again and ${back} item(s) have been put back exactly as they were.</p>
             ${cancelled.length ? `<p style="margin-top:12px">These subscriptions were cancelled while you were suspended, because their term ended before the suspension did:</p><ul>${rows}</ul><p>Nothing was taken out again on your behalf — you decide.</p>` : ''}`,
             cancelled.length ? { url: `${SITE_URL}/dashboard?s=billing`, label: 'Take them out again' } : { url: `${SITE_URL}/dashboard`, label: 'Open your dashboard' }),
-          text: `Your suspension has ended. ${back} item(s) restored.${cancelled.length ? ` ${cancelled.length} subscription(s) can be taken out again: ${SITE_URL}/dashboard?s=billing` : ''}`,
+          text: `Your ${word} has ended. ${back} item(s) restored.${cancelled.length ? ` ${cancelled.length} subscription(s) can be taken out again: ${SITE_URL}/dashboard?s=billing` : ''}`,
         }).catch(() => {});
       }
       ended++;
     } catch (e) { log?.warn?.({ e: String(e?.message || e) }, 'ending a suspension failed'); }
   }
-  if (ended) log?.info?.({ ended }, 'sweeper: suspensions ended');
+  if (ended) log?.info?.({ ended }, 'sweeper: locks ended');
   return ended;
 }
 

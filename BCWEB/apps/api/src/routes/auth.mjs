@@ -243,7 +243,7 @@ export default async function authRoutes(app) {
     if (recentFails >= 3 && !powVerify(req.body?.pow)) {
       return reply.code(429).send({ error: 'pow_required', ...powChallenge() });
     }
-    const user = await p.user.findUnique({ where: { email: parsed.data.email } });
+    let user = await p.user.findUnique({ where: { email: parsed.data.email } });
     if (!user?.passwordHash) {
       // OAuth-only account (GitHub/Discord) — no password to check against.
       await logLogin(p, { email: parsed.data.email, ip, success: false, reason: user ? 'oauth_only' : 'bad_password', userId: user?.id });
@@ -265,8 +265,16 @@ export default async function authRoutes(app) {
         await logLogin(p, { email: user.email, ip, success: false, reason: `account_${user.status}`, userId: user.id });
         return reply.code(403).send({ error: `account_${user.status}`, status: user.status, reason: user.moderationReason || null, until: until ? until.toISOString() : null, permanent: !until });
       }
-      await p.user.update({ where: { id: user.id }, data: { status: 'active', moderationUntil: null, moderationReason: null } }).catch(() => {});
+      // Was: flip the status and carry on — which handed back the account and left every
+      // repo, catalog and item it had frozen suspended, with no notice. The sweeper's
+      // end-of-lock routine is the one that restores, closes the sanction and writes to the
+      // person; calling it here just means somebody who signs in the minute their ban ends
+      // does not wait for the next tick.
+      const { sweepEndedSuspensions } = await import('../lib/sweeper.mjs');
+      await sweepEndedSuspensions(p, req.log).catch(() => {});
       clearAccountLockCache(user.id);
+      // Re-read: the routine has just changed the row this handler is holding.
+      user = await p.user.findUnique({ where: { id: user.id } }) || user;
     }
     if (user.totpEnabled) {
       // Password verified, but the session isn't issued yet — a short-lived token
