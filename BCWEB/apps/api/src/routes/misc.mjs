@@ -97,6 +97,16 @@ const PENDING_QUEUES = [
     }).then((rows) => rows.map((r) => ({ id: r.id, title: r.name, sub: r.status, at: r.lastActivityAt }))),
   },
   {
+    // A contested sanction is somebody asking to be heard, and the answer is owed. It sat
+    // nowhere until now: the sanction screen had to be opened to discover one existed.
+    key: 'contests', cap: 'manage_users', to: '/admin?s=sanctions',
+    count: (p) => p.sanction.count({ where: { contestedAt: { not: null }, contestOutcome: null } }),
+    recent: (p) => p.sanction.findMany({
+      where: { contestedAt: { not: null }, contestOutcome: null }, orderBy: { contestedAt: 'desc' }, take: 5,
+      select: { id: true, code: true, kind: true, contestedAt: true },
+    }).then((rows) => rows.map((r) => ({ id: r.id, title: `${r.code} — contested`, sub: r.kind, at: r.contestedAt }))),
+  },
+  {
     // Not a human queue but the same question — "is something waiting for me?" — and the
     // one nobody was being told about: a server alert only existed inside the perf tab, so
     // you found it by opening the tab you had no reason to open.
