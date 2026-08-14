@@ -4224,6 +4224,10 @@ const HIST_ICON = {
 
 function AdminHistory() {
   const { t } = useI18n(); const toast = useToast();
+  // The rank is read here rather than passed in: the server enforces it anyway (403), and a
+  // prop threaded through for a single input is a prop that drifts from the guard.
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'SUPERADMIN';
   const [days, setDays] = useState(30);
   const [sources, setSources] = useState([]);     // [] = all
   const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState('');
@@ -4239,6 +4243,16 @@ function AdminHistory() {
   const all = data?.sources || [];
   const toggle = (k) => { setTake(60); setSources((v) => (v.includes(k) ? v.filter((x) => x !== k) : [...v, k])); };
   const when = (at) => new Date(at).toLocaleString();
+  const saveRetention = async (source, raw) => {
+    const n = Math.max(0, Math.min(3650, Math.round(Number(raw) || 0)));
+    try {
+      await api.put('/admin/history/retention', { source, days: n });
+      setRetention(await api.get('/admin/history/retention'));
+      toast.success(n === 0 ? t('hist.ret.kept', 'Kept until something else removes it.') : t('hist.ret.saved', 'Kept for {n} days.').replace('{n}', String(n)));
+    } catch (x) {
+      toast.error(x?.status === 403 ? t('hist.ret.rank', 'Only a superadmin can change a retention window.') : t('common.failed', 'Failed.'));
+    }
+  };
 
   // Downloaded through fetch, like the backup bundle and for the same reason: the
   // signature is a response header, and a plain link would save the file while discarding
@@ -4382,7 +4396,19 @@ function AdminHistory() {
                   {r.days > 0 ? t('hist.ret.days', '{n} days').replace('{n}', String(r.days)) : t('hist.ret.keep', 'kept')}
                 </span>
                 <span className="text-[var(--faint)] truncate flex-1">{r.where}</span>
-                {r.configurable
+                {/* Editable in place, for a SUPERADMIN, and only where a setting genuinely
+                    owns the window. Writing goes to THAT setting — there is still no
+                    "history retention" of our own that could disagree with analytics or with
+                    the audit chain. Shortening one destroys evidence, so the people most
+                    likely to want it are the ones being audited: hence the rank. */}
+                {r.configurable && isSuperAdmin ? (
+                  <span className="flex items-center gap-1 shrink-0">
+                    <Input type="number" min="0" max="3650" defaultValue={r.days} className="!w-20 !py-1 !text-xs"
+                      onKeyDown={(ev) => { if (ev.key === 'Enter') saveRetention(r.source, ev.target.value); }}
+                      onBlur={(ev) => { if (Number(ev.target.value) !== r.days) saveRetention(r.source, ev.target.value); }} />
+                    <span className="text-[10px] text-[var(--faint)]">{t('hist.ret.d', 'days · 0 = keep')}</span>
+                  </span>
+                ) : r.configurable
                   ? <Badge tone="primary">{t('hist.ret.cfg', 'configurable')}</Badge>
                   : <Badge>{t('hist.ret.fixed', 'fixed')}</Badge>}
               </div>
@@ -4417,7 +4443,14 @@ function AdminHistory() {
               const key = `${e.source}-${e.at}-${i}`;
               return (
                 <div key={key} className="border-b border-[var(--line)] last:border-0">
-                <div className="flex items-start gap-3 px-4 py-2.5">
+                {/* The row is the control. The detail used to hide behind a 10px lowercase
+                    source label at the far right — a target nobody finds, opening a fold that
+                    pushed the rest of the list down. Clicking the row is what everyone tries
+                    first, and a modal leaves the list where it was. Links inside stop the
+                    click, so "open the account" still means that. */}
+                <div role="button" tabIndex={0} onClick={() => setOpen(key)}
+                  onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setOpen(key); } }}
+                  className="flex items-start gap-3 px-4 py-2.5 cursor-pointer hover:bg-[var(--surface-2)] transition-colors">
                   <Icon size={14} className={`mt-0.5 shrink-0 ${HIST_TONE[e.source] || ''}`} />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm flex flex-wrap items-baseline gap-x-2">
@@ -4436,21 +4469,19 @@ function AdminHistory() {
                       {e.link && <><span>·</span><Link to={e.link} className="hover:text-[var(--text)] underline decoration-dotted">{t('hist.open', 'open')}</Link></>}
                     </div>
                   </div>
-                  <button onClick={() => setOpen(open === `${e.source}-${e.at}-${i}` ? null : `${e.source}-${e.at}-${i}`)}
-                    className="text-[10px] text-[var(--faint)] uppercase tracking-wider shrink-0 hover:text-[var(--text)]"
-                    title={t('hist.detail.open', 'Everything recorded about this entry')}>
-                    {e.source}
-                  </button>
+                  <span className="text-[10px] text-[var(--faint)] uppercase tracking-wider shrink-0">{e.source}</span>
                 </div>
 
-                {/* The whole row, unabridged. The list shows what fits; this shows what was
-                    recorded — ids included, because "settings" with no repo id is a fact you
-                    cannot follow up, and copying an id out of here is how the next step
-                    (User search, the repo page) actually starts. */}
+                {/* The whole row, unabridged, in a modal. The list shows what fits; this
+                    shows what was recorded — ids included, because "settings" with no repo id
+                    is a fact you cannot follow up, and copying an id out of here is how the
+                    next step (User search, the repo page) actually starts. */}
                 {open === key && (
-                  <div className="px-4 pb-3 -mt-1">
-                    <div className="rounded-lg bg-[var(--surface-2)]/60 border border-[var(--line)] p-3 space-y-2">
-                      {e.detail && <div className="text-[12px] break-all whitespace-pre-wrap">{e.detail}</div>}
+                  <Modal open onClose={() => setOpen(null)} width="max-w-xl"
+                    icon={HIST_ICON[e.source] || Activity}
+                    title={e.action}>
+                    <div className="space-y-3">
+                      {e.detail && <div className="text-[13px] break-all whitespace-pre-wrap">{e.detail}</div>}
                       <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1">
                         {[
                           ['when', new Date(e.at).toLocaleString()],
@@ -4475,7 +4506,7 @@ function AdminHistory() {
                       </div>
                       {e.link && <Link to={e.link} className="inline-block text-[12px] text-[var(--primary-2)] hover:underline">{t('hist.open', 'open')}</Link>}
                     </div>
-                  </div>
+                  </Modal>
                 )}
                 </div>
               );

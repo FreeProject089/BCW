@@ -12,7 +12,7 @@
 // window is bounded by `days`) and it is the reason the endpoint takes a `days` window
 // rather than offering unbounded scrollback.
 import { z } from 'zod';
-import { db, requireRole } from '../lib/lib.mjs';
+import { db, requireRole, logAudit, repoLogDays, clearRepoLogDaysCache } from '../lib/lib.mjs';
 import { signBytes, publicVerifyInfo } from '../lib/signing.mjs';
 import { resolveRetention, RETENTION_DEFAULTS } from '../lib/retention.mjs';
 
@@ -50,16 +50,48 @@ export default async function historyRoutes(app) {
   // shorten what another subsystem keeps, or start deleting another subsystem's data
   // behind its back. So this reports each source's REAL window and says who owns it,
   // and the two that are genuinely configurable are edited where they already live.
-  const RETENTION_SOURCES = (analytics, auditMaxDays) => ([
+  const RETENTION_SOURCES = (analytics, auditMaxDays, repoDays) => ([
     { source: 'staff', days: auditMaxDays || 0, owner: 'audit.maxDays', where: 'Security log', configurable: true },
     { source: 'auth', days: analytics.loginDays, owner: 'analytics.retention.loginDays', where: 'Analytics → retention', configurable: true },
-    { source: 'repo', days: 30, owner: 'code', where: 'lib.mjs (repoLog)', configurable: false },
+    { source: 'repo', days: repoDays, owner: 'history.repoDays', where: 'here', configurable: true },
     { source: 'catalog', days: 0, owner: 'none', where: '—', configurable: false },
     { source: 'blog', days: 0, owner: 'blog history caps', where: 'Blog settings', configurable: false },
     { source: 'docs', days: 0, owner: 'doc history caps', where: 'Docs settings', configurable: false },
     { source: 'project', days: 0, owner: 'last 50 per project', where: 'code', configurable: false },
     { source: 'payment', days: 0, owner: 'never deleted', where: '—', configurable: false },
   ]);
+
+  // Change a window — SUPERADMIN only, because shortening one destroys evidence and the
+  // people most likely to want that are the ones being audited.
+  //
+  // Each source writes to the setting that ALREADY owns it, which is what keeps this honest:
+  // there is still no "history retention" of our own that could disagree with analytics or
+  // with the audit chain. A source with no owner (payments, project history) refuses rather
+  // than pretending to save.
+  app.put('/admin/history/retention', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
+    const b = z.object({
+      source: z.enum(['staff', 'auth', 'repo']),
+      // 0 = keep until something else removes it. Capped at ten years: a window nobody will
+      // live to see expire is a way of saying "for ever" without admitting it.
+      days: z.number().int().min(0).max(3650),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const { source, days } = b.data;
+
+    if (source === 'staff') {
+      await p.adminSetting.upsert({ where: { key: 'audit.maxDays' }, create: { key: 'audit.maxDays', value: { maxDays: days } }, update: { value: { maxDays: days } } });
+    } else if (source === 'auth') {
+      const cur = await p.adminSetting.findUnique({ where: { key: 'analytics.retention' } });
+      const value = { ...resolveRetention(cur?.value), loginDays: days };
+      await p.adminSetting.upsert({ where: { key: 'analytics.retention' }, create: { key: 'analytics.retention', value }, update: { value } });
+    } else {
+      await p.adminSetting.upsert({ where: { key: 'history.repoDays' }, create: { key: 'history.repoDays', value: { days } }, update: { value: { days } } });
+      clearRepoLogDaysCache();
+    }
+    await logAudit(p, req.user.uid, 'history.retention', `${source} → ${days === 0 ? 'kept' : `${days} days`}`, req.ip);
+    return { ok: true, source, days };
+  });
 
   app.get('/admin/history/retention', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
@@ -69,8 +101,9 @@ export default async function historyRoutes(app) {
     ]);
     const analytics = resolveRetention(an?.value);
     const auditMaxDays = Number(au?.value?.maxDays ?? au?.value ?? 0) || 0;
+    const repoDays = await repoLogDays(p);
     return {
-      sources: RETENTION_SOURCES(analytics, auditMaxDays),
+      sources: RETENTION_SOURCES(analytics, auditMaxDays, repoDays),
       defaults: RETENTION_DEFAULTS,
       // Said explicitly so the tab can explain itself rather than implying it owns any
       // of this. 0 means "kept until something else removes it", not "kept one day".
