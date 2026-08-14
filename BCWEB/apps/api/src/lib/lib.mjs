@@ -528,7 +528,7 @@ export function apiAuth(scope) {
     const p = await db();
     const key = await p.apiKey.findUnique({
       where: { hash: hashApiKey(secret) },
-      select: { id: true, userId: true, scopes: true, revokedAt: true, expiresAt: true, user: { select: { role: true } } },
+      select: { id: true, userId: true, scopes: true, revokedAt: true, expiresAt: true, testMode: true, user: { select: { role: true } } },
     });
     // One answer for "no such key", "revoked" and "expired": a caller probing keys must
     // not learn that one of them was ever real.
@@ -544,7 +544,9 @@ export function apiAuth(scope) {
     // it landed in the real error rate (an experiment reading as an incident) and never
     // appeared in the sandbox view — which exists precisely to show which endpoints turn
     // people away. The simulated ANSWER still comes after every check, further down.
-    if (req.method !== 'GET' && String(req.headers['x-bcw-sandbox'] || '') === '1') req.sandbox = true;
+    // Either the caller asked for a rehearsal on this request, or the key itself can only
+    // ever rehearse. The second is the one that survives being forgotten.
+    if (req.method !== 'GET' && (key.testMode || String(req.headers['x-bcw-sandbox'] || '') === '1')) req.sandbox = true;
     if (scope && !hasScope(key, scope)) {
       return reply.code(403).send({ error: 'insufficient_scope', required: scope, granted: key.scopes });
     }
@@ -569,7 +571,10 @@ export function apiAuth(scope) {
         method: req.method,
         path: req.routeOptions?.url || req.url,
         scope: scope || null,
-        note: 'Sandbox: authentication and scope were checked, and nothing was written. Send the same request without the X-BCW-Sandbox header to do it for real.',
+        testKey: !!key.testMode,
+        note: key.testMode
+          ? 'Sandbox: this is a test key, so its writes are always simulated. Use a normal key to do it for real.'
+          : 'Sandbox: authentication and scope were checked, and nothing was written. Send the same request without the X-BCW-Sandbox header to do it for real.',
       });
     }
   };

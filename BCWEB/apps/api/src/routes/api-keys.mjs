@@ -32,7 +32,7 @@ const RL_READ = { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } };
 
 /** What the owner sees about their own keys. Never includes anything usable. */
 const keyView = {
-  id: true, label: true, prefix: true, scopes: true,
+  id: true, label: true, prefix: true, scopes: true, testMode: true,
   lastUsedAt: true, expiresAt: true, revokedAt: true, createdAt: true,
 };
 
@@ -277,6 +277,42 @@ export default async function apiKeyRoutes(app) {
   // end the intrusion. Minting requires the browser session, and therefore 2FA when
   // the account has it.
 
+  // What YOUR keys have been doing. The admin has had this view since the beginning; the
+  // person who owns the key has been the one flying blind — which is backwards, since they
+  // are the one who can fix a 403.
+  //
+  // Reads the same sample the admin reads, filtered to the caller, and says so: at a sample
+  // rate below 1 this is a share of what happened, and a count presented as exact would get
+  // quoted.
+  app.get('/me/api-calls', { preHandler: requireRole(), ...RL_READ }, async (req) => {
+    const p = await db();
+    const hours = Math.min(24 * 30, Math.max(1, parseInt(req.query?.hours, 10) || 24));
+    const since = new Date(Date.now() - hours * 3600_000);
+    const keys = await p.apiKey.findMany({ where: { userId: req.user.uid }, select: { id: true, label: true, prefix: true, testMode: true } });
+    const byId = new Map(keys.map((k) => [k.id, k]));
+    const rows = await p.apiRequest.findMany({
+      where: { userId: req.user.uid, at: { gte: since } },
+      orderBy: { at: 'desc' }, take: 200,
+      select: { id: true, keyId: true, method: true, path: true, status: true, ms: true, sandbox: true, at: true },
+    });
+    const usage = await p.apiUsageDay.findMany({
+      where: { userId: req.user.uid, day: { gte: new Date(Date.now() - 30 * 86400_000) } },
+      orderBy: { day: 'asc' },
+      select: { day: true, count: true, errors: true, sandbox: true },
+    });
+    return {
+      hours,
+      sampleRate: apiUsageConfig().sampleRate,
+      // Exact, unlike the call list: these come from the per-day counters.
+      totals: usage.reduce((a, u) => ({ count: a.count + u.count, errors: a.errors + u.errors, sandbox: a.sandbox + (u.sandbox || 0) }), { count: 0, errors: 0, sandbox: 0 }),
+      series: usage.map((u) => ({ day: u.day.toISOString().slice(0, 10), count: u.count, errors: u.errors, sandbox: u.sandbox || 0 })),
+      calls: rows.map((r) => ({
+        ...r,
+        key: byId.get(r.keyId) ? { label: byId.get(r.keyId).label, prefix: byId.get(r.keyId).prefix, testMode: byId.get(r.keyId).testMode } : null,
+      })),
+    };
+  });
+
   app.get('/me/api-keys', { preHandler: requireRole() }, async (req) => {
     const p = await db();
     const keys = await p.apiKey.findMany({
@@ -311,7 +347,9 @@ export default async function apiKeyRoutes(app) {
 
     const secret = genKey();
     const row = await p.apiKey.create({
-      data: { userId: req.user.uid, label, prefix: prefixOf(secret), hash: hashApiKey(secret), scopes, expiresAt },
+      // testMode is fixed at creation and never toggled afterwards: a key that could become
+      // live would be a key somebody's script is holding while its meaning changes underneath.
+      data: { userId: req.user.uid, label, prefix: prefixOf(secret), hash: hashApiKey(secret), scopes, expiresAt, testMode: b.testMode === true },
       select: keyView,
     });
     // The only time the secret is ever sent. It is not stored, so this response cannot

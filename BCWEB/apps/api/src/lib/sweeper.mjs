@@ -29,6 +29,7 @@ import { sweepAccountClosures } from '../routes/closure.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
 import { createSnapshot, pruneSnapshots } from './snapshots.mjs';
 import { pruneApiRequests } from './apiusage.mjs';
+import { runWebhookQueue } from './webhooks.mjs';
 
 const SITE_URL = process.env.SITE_URL || 'http://localhost:5176';
 const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -491,6 +492,7 @@ export function startSweeper(app) {
         await sweepExpiredSubscriptions(p, app.log), await sweepExpiryWarnings(p, app.log),
         await sweepDiscordActivityCap(p, app.log), await sweepDailyFileBackup(p, app.log),
         await sweepEndedSuspensions(p, app.log),
+        await runWebhookQueue(p, app.log),
         await sweepAnalyticsRetention(p, app.log),
       ];
       await sweepDeadSessions(p, app.log);

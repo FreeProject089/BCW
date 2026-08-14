@@ -238,6 +238,7 @@ model User {
   sanctions        Sanction[] @relation("SanctionTarget")
   sanctionsIssued  Sanction[] @relation("SanctionIssuer")
   pendingDismissals PendingDismissal[]
+  webhooks         WebhookEndpoint[]
 }
 
 // A GitHub/Discord identity linked to a website account — powers "Continue with
@@ -1229,6 +1230,60 @@ model PendingDismissal {
 
   @@unique([queue, itemId])
   @@index([at])
+}
+
+/// An address to tell when something happens, so a developer stops asking.
+///
+/// Every integration built against this API so far has to poll: ask /v1/catalogs every
+/// minute in case an item was published. That is wasted on both sides and always late by up
+/// to a minute. A webhook inverts it — we call them.
+model WebhookEndpoint {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  url       String
+  /// Which events this address wants. Empty means none — the same rule as scopes on a key:
+  /// a subscription to nothing is silence, not a wildcard.
+  events    String[] @default([])
+  /// Shared with the receiver once, at creation. Every delivery is signed with it, so the
+  /// receiver can tell our call from anybody who learned the URL.
+  secret    String
+  enabled   Boolean  @default(true)
+  label     String   @default("")
+  /// Consecutive failures. A dead address is disabled rather than retried for ever, and the
+  /// owner is told — an endpoint quietly retried for a month is a bill nobody agreed to.
+  failures  Int      @default(0)
+  disabledReason String?
+  lastAt    DateTime?
+  lastStatus Int?
+  createdAt DateTime @default(now())
+
+  deliveries WebhookDelivery[]
+
+  @@index([userId])
+  @@index([enabled])
+}
+
+/// One attempt to deliver one event. Kept so "you never called me" has an answer, and so a
+/// failed delivery can be replayed once the receiver is fixed.
+model WebhookDelivery {
+  id         String   @id @default(cuid())
+  endpoint   WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  endpointId String
+  event      String
+  payload    Json
+  /// pending · ok · failed
+  status     String   @default("pending")
+  httpStatus Int?
+  error      String?
+  attempts   Int      @default(0)
+  /// When the next attempt is due. Null once it succeeded or was given up on.
+  nextAt     DateTime?
+  createdAt  DateTime @default(now())
+  deliveredAt DateTime?
+
+  @@index([endpointId, createdAt])
+  @@index([status, nextAt])
 }
 
 model ServerAlertLog {
@@ -2299,6 +2354,13 @@ model ApiKey {
   scopes     String[]  @default([])
   lastUsedAt DateTime?
   lastUsedIp String?
+  // A test key: every write it makes is simulated, with no header to remember.
+  //
+  // The sandbox header works and is documented, but it is opt-in per request, which means the
+  // one time you forget it you have written to your real account. A key that cannot write is
+  // the same protection made structural — you choose it once, when you create the key,
+  // instead of correctly every time.
+  testMode   Boolean   @default(false)
   // Optional lifetime. A key past its date fails closed, it is not swept.
   expiresAt  DateTime?
   revokedAt  DateTime?

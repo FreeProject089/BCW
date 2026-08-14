@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { emitWebhook } from '../lib/webhooks.mjs';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
 import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy, catalogLog } from '../lib/lib.mjs';
@@ -871,6 +872,11 @@ export default async function catalogRoutes(app) {
     ]);
     await catalogLog(p, sub.item, 'published');
     await notify(p, sub.ownerId, 'submission_approved', `"${sub.item.name}" was approved and is now live.`);
+    // Queued, never awaited on the caller's behalf: approving a submission must not wait on
+    // somebody's slow server, nor fail because their certificate expired.
+    emitWebhook(p, sub.ownerId, 'catalog.item.published', {
+      id: sub.item.id, slug: sub.item.slug, name: sub.item.name, kind: sub.item.kind,
+    }).catch(() => {});
     return { ok: true };
   });
 

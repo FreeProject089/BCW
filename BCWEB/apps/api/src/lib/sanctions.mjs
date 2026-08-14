@@ -69,6 +69,13 @@ export async function issueSanction(p, {
     },
   });
   await mailSanction(p, s).catch((e) => log?.warn?.(`sanction mail failed: ${String(e?.message || e)}`));
+  // Deliberately without the reason: a webhook payload lands in somebody's logging pipeline,
+  // and the moderation reason is between us and them, not between us and their log host.
+  const { emitWebhook } = await import('./webhooks.mjs');
+  emitWebhook(p, s.userId, 'sanction.issued', {
+    code: s.code, kind: s.kind, scope: s.scope, targetType: s.targetType, targetName: s.targetName,
+    expiresAt: s.expiresAt, requiresAction: s.requiresAction,
+  }).catch(() => {});
   return s;
 }
 
