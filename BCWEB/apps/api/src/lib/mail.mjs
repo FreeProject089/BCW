@@ -77,6 +77,45 @@ const MAIL_CALLOUT = { tip: '#16a34a', note: '#2563eb', info: '#2563eb', hint: '
 
 // Render one BetterCommunity container directive to email HTML. Inner content is rendered
 // recursively so nested blocks (cards inside :::cards, etc.) work.
+// Same alphabets as the web renderer (ui/md.jsx). Duplicated deliberately and kept small:
+// the API cannot import from the web bundle, and a shared package for four lines would be a
+// build dependency between two apps that otherwise share none. If one changes, change both —
+// which is why they are this short.
+const MAIL_ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'xi', 'xii'];
+function mailStepMarker(kind, n) {
+  if (kind === 'a' || kind === 'alpha') return n <= 26 ? String.fromCharCode(64 + n) : String(n);
+  if (kind === 'i' || kind === 'roman') return MAIL_ROMAN[n - 1] || String(n);
+  if (kind === 'dot' || kind === 'none' || kind === 'bullet') return '\u2022';
+  return String(n);
+}
+
+/** Split a block's lines into its DIRECT children of the given names, keeping anything else
+ *  as already-rendered html. Needed because the mail renderer works on lines rather than on a
+ *  tree, so "which step am I in" has to be answered by counting colons. */
+function splitDirectChildren(lines, names) {
+  const out = []; let plain = [];
+  const flush = () => { if (plain.length) { const h = renderBlocks(plain); if (h.trim()) out.push({ directive: false, html: h }); plain = []; } };
+  for (let i = 0; i < lines.length; i++) {
+    const open = lines[i].match(/^(:{3,})([a-zA-Z][\w-]*)\s*(\[[^\]]*\])?\s*(\{[^}]*\})?\s*$/);
+    if (open && names.includes(open[2].toLowerCase())) {
+      const n = open[1].length;
+      const closeRe = new RegExp(`^:{${n},}\\s*$`); const openRe = new RegExp(`^:{${n},}[a-zA-Z]`);
+      const inner = []; let depth = 1; let j = i + 1;
+      for (; j < lines.length; j++) {
+        if (closeRe.test(lines[j])) { depth--; if (depth === 0) break; inner.push(lines[j]); }
+        else { if (openRe.test(lines[j])) depth++; inner.push(lines[j]); }
+      }
+      flush();
+      out.push({ directive: true, label: open[3] ? open[3].slice(1, -1) : '', attrs: mdAttrs(open[4] || ''), html: renderBlocks(inner) });
+      i = j;
+      continue;
+    }
+    plain.push(lines[i]);
+  }
+  flush();
+  return out;
+}
+
 function renderDirective(name, label, attrs, innerLines) {
   const body = renderBlocks(innerLines);
   if (name === 'card' || name === 'ref') {
@@ -88,8 +127,45 @@ function renderDirective(name, label, attrs, innerLines) {
   if (name === 'details' || name === 'collapse') return `<div style="border:1px solid #eae4da;border-radius:12px;padding:14px 16px;margin:0 0 14px"><div style="font-weight:700;margin-bottom:8px">${inlineMd(label || attrs.title || 'Details')}</div>${body}</div>`;
   if (name === 'file') { const href = safeUrl(attrs.href || attrs.url); return `<div style="border:1px solid #eae4da;border-radius:12px;padding:12px 16px;margin:0 0 14px"><a href="${href}" style="color:#c2410c;font-weight:600;text-decoration:none">&#x2913; ${inlineMd(label || attrs.name || 'Download')}</a>${attrs.size ? ` <span style="color:#918a80;font-size:12px">(${escapeHtml(attrs.size)})</span>` : ''}</div>`; }
   if (name === 'center' || name === 'left' || name === 'right') return `<div style="text-align:${name};margin:0 0 14px">${body}</div>`;
-  // Grid/step wrappers: email can't do real columns — stack the children.
-  if (['cards', 'columns', 'steps', 'column', 'step'].includes(name)) return body;
+  // Steps keep their numbers. They were in the flatten list below, which meant the children
+  // rendered and the markers disappeared — a procedure arriving as three unrelated
+  // paragraphs. A table with a marker cell, because e-mail has no counters and no flexbox.
+  if (name === 'steps') {
+    const kind = String(attrs.type || attrs.marker || '1').toLowerCase();
+    let n = Math.max(1, parseInt(attrs.start, 10) || 1);
+    const rows = splitDirectChildren(innerLines, ['step', 'stage']).map((child) => {
+      if (!child.directive) return child.html;
+      const marker = mailStepMarker(kind, n++);
+      const title = child.label || child.attrs.title || '';
+      return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 12px"><tr>
+        <td width="34" valign="top" style="width:34px;padding:0 12px 0 0">
+          <div style="width:26px;height:26px;line-height:26px;text-align:center;border-radius:999px;background:#f97316;color:#ffffff;font-weight:700;font-size:13px">${escapeHtml(marker)}</div>
+        </td>
+        <td valign="top">${title ? `<div style="font-weight:700;margin:2px 0 6px">${inlineMd(title)}</div>` : ''}${child.html}</td>
+      </tr></table>`;
+    });
+    const heading = label || attrs.title;
+    return `${heading ? `<div style="font-weight:700;margin:0 0 10px">${inlineMd(heading)}</div>` : ''}${rows.join('')}`;
+  }
+  // A roadmap is a live tracker on the web and cannot be one here, so the e-mail gets the
+  // phases as a plain list rather than an empty box pretending something failed to load.
+  if (name === 'roadmap' || name === 'progress') {
+    const code = innerLines.join('\n').match(/```json\s*([\s\S]*?)```/);
+    let items = [];
+    try {
+      const doc = code ? JSON.parse(code[1]) : null;
+      items = (doc?.categories || []).flatMap((c) => [{ head: c.name }, ...(c.items || []).map((it) => ({ label: it.label, status: it.status, percent: it.percent }))]);
+    } catch { /* an unreadable block is not worth breaking the mail over */ }
+    const heading = label || attrs.title || 'Roadmap';
+    if (!items.length) return `<div style="border:1px solid #eae4da;border-radius:12px;padding:14px 16px;margin:0 0 14px"><div style="font-weight:700">${inlineMd(heading)}</div><div style="color:#918a80;font-size:13px">See it on the site.</div></div>`;
+    const MARK = { done: '&#x2713;', progress: '&#x2192;', planned: '&#x25CB;' };
+    const li = items.map((it) => (it.head
+      ? `<div style="font-weight:700;margin:10px 0 4px">${inlineMd(it.head)}</div>`
+      : `<div style="margin:2px 0;color:#3f3a34">${MARK[it.status] || '&#x25CB;'} ${inlineMd(String(it.label || ''))}${it.percent != null ? ` <span style="color:#918a80">(${Number(it.percent)}%)</span>` : ''}</div>`)).join('');
+    return `<div style="border:1px solid #eae4da;border-radius:12px;padding:14px 16px;margin:0 0 14px"><div style="font-weight:700;margin-bottom:4px">${inlineMd(heading)}</div>${li}</div>`;
+  }
+  // Grid wrappers: email can't do real columns — stack the children.
+  if (['cards', 'columns', 'column', 'step'].includes(name)) return body;
   // Everything else → a callout box (tip/note/warning/danger/info/success/custom…).
   const color = safeColor(attrs.color) || MAIL_CALLOUT[name] || '#2563eb';
   const title = label || attrs.title || '';

@@ -567,6 +567,43 @@ html.js-anim .reveal-stagger.reveal-instant > * {
 .md-body .doc-details > :not(.doc-details-summary) { padding: 0 16px; }
 .md-body .doc-details > :last-child { padding-bottom: 12px; }
 /* Cards */
+/* ── Steps ──────────────────────────────────────────────────────────────────────
+   A numbered procedure. Vertical is the default and the one that survives a phone: the
+   marker column is fixed, the body wraps, and the connecting line is drawn on the marker
+   rather than between elements so a step of any height stays joined to the next.
+
+   Horizontal is opt-in and scrolls rather than squashing — four steps crammed into 320px
+   are four things nobody can read. Below 640px it falls back to vertical, because a
+   horizontal track on a phone is a horizontal scrollbar people do not notice. */
+.md-body .doc-steps { margin: 1.2em 0; }
+.md-body .doc-steps-title { font-weight: 700; margin-bottom: .7em; }
+.md-body .doc-step { position: relative; display: flex; gap: 14px; }
+.md-body .doc-steps-v > .doc-step { padding-bottom: 1.1em; }
+.md-body .doc-steps-v > .doc-step:last-child { padding-bottom: 0; }
+.md-body .doc-step-marker {
+  flex: 0 0 28px; width: 28px; height: 28px; border-radius: 999px;
+  display: grid; place-items: center; font-size: 13px; font-weight: 700; line-height: 1;
+  background: var(--primary); color: #fff; position: relative; z-index: 1; margin: 0;
+}
+/* The rail. On the marker, not between steps, so it cannot drift out of alignment when a
+   step grows — and hidden on the last one, where it would point at nothing. */
+.md-body .doc-steps-v > .doc-step:not(:last-child) .doc-step-marker::after {
+  content: ''; position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
+  width: 2px; height: calc(100% + 1.1em - 30px); background: var(--line-strong);
+}
+.md-body .doc-step-body { min-width: 0; flex: 1; }
+.md-body .doc-step-title { font-weight: 650; margin: 3px 0 .4em; display: flex; align-items: center; gap: 7px; }
+.md-body .doc-step-body > :last-child { margin-bottom: 0; }
+.md-body .doc-step-done .doc-step-marker { background: var(--success); }
+.md-body .doc-steps-h { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 6px; }
+.md-body .doc-steps-h > .doc-step { flex: 0 0 min(280px, 78vw); flex-direction: column; }
+.md-body .doc-steps-h > .doc-step .doc-step-marker { margin-bottom: 8px; }
+@media (max-width: 640px) {
+  .md-body .doc-steps-h { display: block; overflow: visible; }
+  .md-body .doc-steps-h > .doc-step { flex-direction: row; padding-bottom: 1.1em; }
+  .md-body .doc-steps-h > .doc-step .doc-step-marker { margin-bottom: 0; }
+}
+
 .md-body .doc-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin: 1.1em 0; }
 .md-body .doc-card { --card-accent: var(--primary); display: block; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
   background: var(--surface-2); text-decoration: none; color: inherit; transition: transform .15s, border-color .15s, box-shadow .15s; }

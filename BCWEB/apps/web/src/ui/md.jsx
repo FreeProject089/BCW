@@ -56,7 +56,7 @@ const SANITIZE_SCHEMA = {
     'doc-icon': ['className', 'dataName'],
     'doc-kbd': ['className', 'dataKeys'],
     'doc-comment': ['className', 'dataComment', 'dataLink', 'dataImg', 'dataVideo'],
-    'doc-roadmap': ['className', 'dataSrc', 'dataJson', 'dataTitle'],
+    'doc-roadmap': ['className', 'dataSrc', 'dataJson', 'dataTitle', 'dataOrientation'],
     'doc-replay': ['className', 'dataSrc', 'dataTitle', 'dataAutoplay', 'dataLoop'],
   },
 };
@@ -166,6 +166,18 @@ export function preprocessMd(md) {
 }
 
 // remark transform: directives → styled hast elements, heading anchors, ::toc.
+// Step markers. Four alphabets, because a procedure, a set of options and a list of phases
+// are not the same shape and reusing "1." for all three is how a document stops being
+// scannable. Anything past the alphabet falls back to the number rather than wrapping round
+// to A again, which would silently duplicate a marker.
+const ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'xi', 'xii'];
+function stepMarker(kind, n) {
+  if (kind === 'a' || kind === 'alpha') return n <= 26 ? String.fromCharCode(64 + n) : String(n);
+  if (kind === 'i' || kind === 'roman') return ROMAN[n - 1] || String(n);
+  if (kind === 'dot' || kind === 'none' || kind === 'bullet') return '\u2022';
+  return String(n);
+}
+
 function remarkDocBlocks() {
   return (tree) => {
     const headings = [];
@@ -217,6 +229,49 @@ function remarkDocBlocks() {
         if (title) head.push({ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-card-title'] } },
           children: [...(attrs.icon ? [iconNode(String(attrs.icon).toLowerCase())] : []), { type: 'text', value: title }] });
         node.children = [...media, { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-card-body'] } }, children: [...head, ...node.children] }];
+      } else if (name === 'steps') {
+        // A numbered sequence. `type` picks the marker alphabet — 1/2/3, A/B/C, i/ii/iii or
+        // a plain dot — and `start` offsets it, so a procedure split across two blocks can
+        // carry on counting instead of restarting at one.
+        //
+        // Numbering is done HERE rather than in CSS counters: the same tree is rendered to
+        // e-mail HTML, where counters do not exist, and one source of numbers means the web
+        // and the e-mail can never disagree about which step is which.
+        const kind = String(attrs.type || attrs.marker || '1').toLowerCase();
+        const start = Math.max(1, parseInt(attrs.start, 10) || 1);
+        const vertical = String(attrs.orientation || attrs.dir || 'vertical') !== 'horizontal';
+        setEl('div', ['doc-steps', vertical ? 'doc-steps-v' : 'doc-steps-h']);
+        if (labelText || attrs.title) {
+          node.children.unshift({ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-steps-title'] } },
+            children: [{ type: 'text', value: labelText || attrs.title }] });
+        }
+        // Stamp each child step with its marker. Only direct `step` children are counted, so
+        // a stray paragraph between two steps does not consume a number.
+        let n = start;
+        for (const child of node.children) {
+          if (child.type === 'containerDirective' && (child.name === 'step' || child.name === 'stage')) {
+            child.data = child.data || {};
+            child.data.stepMarker = stepMarker(kind, n);
+            n += 1;
+          }
+        }
+      } else if (name === 'step' || name === 'stage') {
+        // A step outside a `steps` block still renders — it just numbers itself, because
+        // half a component is worse than a plain paragraph.
+        const marker = node.data?.stepMarker || attrs.marker || '•';
+        const done = attrs.done === 'true' || attrs.status === 'done';
+        setEl('div', ['doc-step', ...(done ? ['doc-step-done'] : [])]);
+        const head = [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-step-marker'], 'aria-hidden': 'true' } },
+          children: [{ type: 'text', value: String(marker) }] }];
+        const title = labelText || attrs.title;
+        const body = [
+          ...(title ? [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-step-title'] } },
+            children: [...(attrs.icon ? [iconNode(String(attrs.icon).toLowerCase())] : []), { type: 'text', value: title }] }] : []),
+          // The step's own children are untouched, which is the whole point: anything the
+          // parser understands elsewhere works inside a step, including another directive.
+          ...node.children,
+        ];
+        node.children = [...head, { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-step-body'] } }, children: body }];
       } else if (name === 'columns' || name === 'row') {
         setEl('div', ['doc-columns']);
       } else if (name === 'column' || name === 'col') {
@@ -254,10 +309,14 @@ function remarkDocBlocks() {
         // Both render the same customisable tracker (categories, %, meters, ETA).
         const code = (node.children || []).find((c) => c.type === 'code');
         const inlineJson = code ? String(code.value || '') : '';
+        // `orientation=horizontal` lays the phases along a track instead of down a column.
+        // An option on the block that exists rather than a second roadmap directive: two
+        // roadmaps would be two things to keep in step, and the data is identical.
         setEl('doc-roadmap', ['doc-roadmap'], {
           'data-src': attrs.src || attrs.href || '',
           'data-json': inlineJson,
           'data-title': labelText || attrs.title || '',
+          'data-orientation': String(attrs.orientation || attrs.dir || 'vertical') === 'horizontal' ? 'horizontal' : 'vertical',
         });
         node.children = [];
       } else if (name === 'replay' || name === 'bmmreplay') {
