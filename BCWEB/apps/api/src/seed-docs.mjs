@@ -572,6 +572,133 @@ Those responses now carry \`Deprecation: true\` and, where there is one, a \`Lin
   // Read from src-tauri/src/api/mod.rs (routes, bearer auth, require_permission filters).
   // If the API changes, re-read that file — do not trust this page over the source.
   {
+    slug: 'sso', category: 'Developers', title: 'Sign in with BetterCommunity', icon: 'shield', order: 700,
+    body: `::toc[On this page]
+
+# Sign in with BetterCommunity
+
+Let people sign in to **your** app with their BetterCommunity account. This is plain
+**OpenID Connect** — if your language has an OIDC library, you already have a client, and
+there is no SDK of ours to install.
+
+## Register your app
+
+Profile → **Sign in with BetterCommunity** → *Register an app*. You get a \`client_id\`, and
+a \`client_secret\` **shown once** — it is stored only as a hash, so a lost secret is rotated,
+never recovered.
+
+Two things worth getting right at registration:
+
+- **Redirect URIs are matched exactly.** They are where the authorization code is delivered,
+  so the rules are strict: \`https\` only, except \`http://localhost\` for development; no
+  \`#fragment\`, no embedded credentials, no wildcard host. A refusal tells you which rule
+  you hit.
+- **Public or confidential.** If your app runs where users can read its code — a mobile
+  app, a desktop app, a single-page site — tick *public client*. No secret is issued and
+  **PKCE is required**, which is the correct trade: a secret shipped inside an app is not
+  a secret.
+
+Your app starts **unverified**. It works exactly the same; what differs is that the consent
+screen tells people it has not been reviewed and who registered it. Anyone can type any
+name into a registration form, and that screen exists to answer "which app is this,
+really".
+
+## Discovery
+
+Everything else follows from one document:
+
+\`\`\`
+GET /.well-known/openid-configuration
+\`\`\`
+
+It advertises the authorization, token, userinfo, revocation and end-session endpoints, the
+JWKS URL, and the scopes we support. Point your library at it rather than hard-coding paths.
+
+## The flow
+
+Authorization code with PKCE:
+
+\`\`\`
+GET /oauth2/authorize
+  ?response_type=code
+  &client_id=<your id>
+  &redirect_uri=<one you registered>
+  &scope=openid profile email
+  &state=<random, checked on return>
+  &code_challenge=<S256 of your verifier>
+  &code_challenge_method=S256
+\`\`\`
+
+The person signs in (or is already signed in), sees what you are asking for, and comes back
+to your redirect URI with \`code\` and \`state\`. Exchange it:
+
+\`\`\`
+POST /oauth2/token
+  grant_type=authorization_code
+  code=<the code>
+  redirect_uri=<the same one>
+  client_id=<your id>
+  code_verifier=<your verifier>          # public clients
+  client_secret=<your secret>            # confidential clients
+\`\`\`
+
+You get an \`id_token\` (RS256, verify it against the JWKS), an \`access_token\`, and a
+\`refresh_token\`.
+
+Three behaviours to expect, because they are deliberate:
+
+- A code is **single-use**. Replaying one fails with \`invalid_grant\`.
+- Refresh tokens **rotate**: each refresh returns a new one and revokes the old. Presenting
+  a revoked refresh token fails — that is reuse detection, and it means somebody has a copy
+  of your token.
+- \`prompt=none\` never shows a screen. It answers \`login_required\` or \`consent_required\`
+  instead, which is what makes it usable in a hidden iframe.
+
+## Scopes
+
+| Scope | What it gives you |
+|---|---|
+| \`openid\` | Required. The \`id_token\` and the \`sub\` claim. |
+| \`profile\` | \`name\` and \`picture\`. |
+| \`email\` | \`email\` and \`email_verified\`. |
+| \`items\` | \`GET /oauth2/me/items\` — their catalog items. |
+| \`repos\` | \`GET /oauth2/me/repos\` — the Server-Repos they own. |
+| \`pools\` | \`GET /oauth2/me/pools\` — their storage pools and usage. |
+| \`catalogs\` | \`GET /oauth2/me/catalogs\` — the catalogs they own. |
+| \`payments\` | \`GET /oauth2/me/payments\` — their own invoices. Amounts and dates, never card data. |
+| \`polls\` | \`GET /oauth2/me/polls\` — how they answered polls. |
+
+Ask for what you use. Every extra scope is a line on the consent screen that somebody has
+to decide about.
+
+## Subject types
+
+Chosen at registration and **never changeable**:
+
+- **public** — \`sub\` is the BetterCommunity user id, the same value every client sees.
+- **pairwise** — \`sub\` is opaque and unique to your client, so two clients comparing notes
+  cannot tell they are looking at the same person.
+
+It cannot be switched later because changing it re-identifies every one of your users at
+once: their accounts would be orphaned, not migrated.
+
+## Signing out
+
+\`GET /oauth2/logout\` (RP-initiated logout) ends the BetterCommunity session and returns to
+your \`post_logout_redirect_uri\` when it is registered.
+
+## Not this: API keys
+
+If your program acts as **you** — a script, a sync job, a bot you run — you want an
+[API key](/docs/api-reference) instead. Keys are personal and scoped, and they need nobody's
+consent because they act for one person: you. SSO is for apps that act on behalf of *other*
+people.
+
+Try either from the [developer hub](/dev), which sends a real call with a real key and shows
+you the real answer, refusals included.
+`,
+  },
+  {
     slug: 'api-reference', category: 'Reference', title: 'Plugin API reference', icon: 'plug', order: 600,
     body: `::toc[On this page]
 

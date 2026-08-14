@@ -12,6 +12,137 @@
 // and every category heading stayed English for a French reader even on the three pages that
 // did have a French body.
 export const DOCS_FR = {
+  'sso': {
+    title: 'Se connecter avec BetterCommunity',
+    category: 'Développeurs',
+    body: `::toc[Sur cette page]
+
+# Se connecter avec BetterCommunity
+
+Laisse les gens se connecter à **ton** application avec leur compte BetterCommunity. C’est
+de l’**OpenID Connect** standard : si ton langage a une bibliothèque OIDC, tu as déjà un
+client, et il n’y a aucun SDK maison à installer.
+
+## Enregistrer ton application
+
+Profil → **Se connecter avec BetterCommunity** → *Enregistrer une application*. Tu obtiens
+un \`client_id\` et un \`client_secret\` **montré une seule fois** — il n’est stocké que sous
+forme de hachage, donc un secret perdu se renouvelle, il ne se retrouve pas.
+
+Deux choses à ne pas rater à l’enregistrement :
+
+- **Les URIs de redirection sont comparées à l’identique.** C’est là qu’est livré le code
+  d’autorisation, donc les règles sont strictes : \`https\` uniquement, sauf
+  \`http://localhost\` en développement ; pas de \`#fragment\`, pas d’identifiants intégrés,
+  pas de joker dans l’hôte. Un refus te dit quelle règle a été touchée.
+- **Public ou confidentiel.** Si ton application tourne là où les utilisateurs peuvent lire
+  son code (mobile, bureau, site en une page), coche *client public*. Aucun secret n’est
+  délivré et **PKCE devient obligatoire** — c’est le bon échange : un secret embarqué dans
+  une application n’est pas un secret.
+
+Ton application démarre **non vérifiée**. Elle fonctionne exactement pareil ; ce qui change,
+c’est que l’écran de consentement indique qu’elle n’a pas été relue et qui l’a enregistrée.
+N’importe qui peut taper n’importe quel nom dans un formulaire, et cet écran existe
+précisément pour répondre à « c’est quoi, cette application, vraiment ».
+
+## Découverte
+
+Tout le reste découle d’un seul document :
+
+\`\`\`
+GET /.well-known/openid-configuration
+\`\`\`
+
+Il annonce les endpoints d’autorisation, de token, userinfo, révocation et fin de session,
+l’URL du JWKS et les scopes supportés. Pointe ta bibliothèque dessus plutôt que d’écrire les
+chemins en dur.
+
+## Le flux
+
+Code d’autorisation avec PKCE :
+
+\`\`\`
+GET /oauth2/authorize
+  ?response_type=code
+  &client_id=<ton id>
+  &redirect_uri=<une que tu as enregistrée>
+  &scope=openid profile email
+  &state=<aléatoire, vérifié au retour>
+  &code_challenge=<S256 de ton verifier>
+  &code_challenge_method=S256
+\`\`\`
+
+La personne se connecte (ou l’est déjà), voit ce que tu demandes, et revient sur ton URI de
+redirection avec \`code\` et \`state\`. Échange-le :
+
+\`\`\`
+POST /oauth2/token
+  grant_type=authorization_code
+  code=<le code>
+  redirect_uri=<la même>
+  client_id=<ton id>
+  code_verifier=<ton verifier>           # clients publics
+  client_secret=<ton secret>             # clients confidentiels
+\`\`\`
+
+Tu reçois un \`id_token\` (RS256, vérifie-le contre le JWKS), un \`access_token\` et un
+\`refresh_token\`.
+
+Trois comportements à attendre, parce qu’ils sont voulus :
+
+- Un code est **à usage unique**. Le rejouer échoue en \`invalid_grant\`.
+- Les refresh tokens **tournent** : chaque rafraîchissement en renvoie un nouveau et révoque
+  l’ancien. Présenter un refresh token révoqué échoue — c’est la détection de réutilisation,
+  et ça veut dire que quelqu’un a une copie de ton jeton.
+- \`prompt=none\` n’affiche jamais d’écran. Il répond \`login_required\` ou \`consent_required\`,
+  ce qui le rend utilisable dans une iframe cachée.
+
+## Scopes
+
+| Scope | Ce que ça te donne |
+|---|---|
+| \`openid\` | Obligatoire. L’\`id_token\` et le claim \`sub\`. |
+| \`profile\` | \`name\` et \`picture\`. |
+| \`email\` | \`email\` et \`email_verified\`. |
+| \`items\` | \`GET /oauth2/me/items\` — leurs éléments de catalogue. |
+| \`repos\` | \`GET /oauth2/me/repos\` — les Server-Repos qu’ils possèdent. |
+| \`pools\` | \`GET /oauth2/me/pools\` — leurs pools de stockage et l’usage. |
+| \`catalogs\` | \`GET /oauth2/me/catalogs\` — les catalogues qu’ils possèdent. |
+| \`payments\` | \`GET /oauth2/me/payments\` — leurs propres factures. Montants et dates, jamais de données de carte. |
+| \`polls\` | \`GET /oauth2/me/polls\` — leurs réponses aux sondages. |
+
+Demande ce que tu utilises. Chaque scope en trop est une ligne de plus sur laquelle
+quelqu’un doit se prononcer.
+
+## Types de sujet
+
+Choisi à l’enregistrement et **jamais modifiable** :
+
+- **public** — \`sub\` est l’id utilisateur BetterCommunity, la même valeur pour tous les
+  clients.
+- **pairwise** — \`sub\` est opaque et propre à ton client : deux clients qui compareraient
+  leurs notes ne peuvent pas savoir qu’il s’agit de la même personne.
+
+Impossible d’en changer ensuite : ça ré-identifierait tous tes utilisateurs d’un coup, leurs
+comptes seraient orphelins et non migrés.
+
+## Se déconnecter
+
+\`GET /oauth2/logout\` (déconnexion initiée par le client) termine la session BetterCommunity
+et revient sur ton \`post_logout_redirect_uri\` s’il est enregistré.
+
+## Pas ça : les clés API
+
+Si ton programme agit en **ton** nom — un script, une synchro, un bot que tu fais tourner —
+c’est une [clé API](/docs/api-reference) qu’il te faut. Les clés sont personnelles et
+scopées, et elles n’ont besoin du consentement de personne puisqu’elles agissent pour une
+seule personne : toi. Le SSO est pour les applications qui agissent au nom des *autres*.
+
+Essaie l’un ou l’autre depuis le [hub développeurs](/dev) : il envoie un vrai appel avec une
+vraie clé et te montre la vraie réponse, refus compris.
+`,
+  },
+
   // ── Premiers pas ────────────────────────────────────────────────────────────
   'introduction': {
     category: 'Premiers pas',

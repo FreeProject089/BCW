@@ -28,6 +28,11 @@ enum ProjectKey {
   bmm
   bsm
   installer
+  // The developer blog. A ProjectKey rather than a new "category" concept: a blog space
+  // already carries everything this needs — its own page, a home-news toggle, per-space
+  // permissions, the visibility gate — and a parallel taxonomy would have to grow all of
+  // that again, differently.
+  developers
 }
 
 enum CatalogKind {

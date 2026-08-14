@@ -13,7 +13,7 @@ const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
 // cache key — each distinct key pins a whole feed payload in the L1 map — nor silently widen
 // the query to every project (an unknown key made findUnique throw, the catch swallow it, and
 // the projectId filter drop off, so `?project=junk` returned EVERY project's items).
-const PROJECT_KEYS = ['community', 'bmm', 'bsm', 'installer'];
+const PROJECT_KEYS = ['community', 'bmm', 'bsm', 'installer', 'developers'];
 // Zip entries whose text is safe to preview inline during moderation review.
 const INSPECT_TEXT_EXT = /\.(json|txt|md|css|js|mjs|cjs|ts|lua|cfg|ini|yml|yaml|xml|toml|csv|log|sh)$/i;
 const INSPECT_TEXT_MAX = 256 * 1024;

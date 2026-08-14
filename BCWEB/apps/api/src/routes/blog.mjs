@@ -26,7 +26,7 @@ async function notifyNewsletterOfPost(p, post, opts, allowed) {
 // handler (kept out of the schema itself via .refine() so `.partial()` still
 // works for PATCH — ZodEffects, which .refine() produces, has no .partial()).
 const postSchema = z.object({
-  projectKey: z.enum(['community', 'bmm', 'bsm', 'installer']).optional(),
+  projectKey: z.enum(['community', 'bmm', 'bsm', 'installer', 'developers']).optional(),
   showcaseSlug: z.string().max(80).optional(),
   title: z.string().min(2).max(160),
   excerpt: z.string().max(2000).default(''),
@@ -507,7 +507,7 @@ export default async function blogRoutes(app) {
 
   const grantSchema = z.object({
     userId: z.string().min(1),
-    projectKey: z.enum(['community', 'bmm', 'bsm', 'installer']).optional().nullable(),
+    projectKey: z.enum(['community', 'bmm', 'bsm', 'installer', 'developers']).optional().nullable(),
     showcaseSlug: z.string().max(80).optional().nullable(),
   });
   app.post('/admin/blog-permissions', { preHandler: requireRole('ADMIN') }, async (req, reply) => {

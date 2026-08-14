@@ -5135,7 +5135,7 @@ function AdminProjects() {
   // already scope their lists to the granted projects.
   const canMngProjects = !!adminMeta.data?.canManage;
   const canMngShowcase = !!show.data?.canManage;
-  const allKeys = ['community', 'bmm', 'bsm', 'installer'];
+  const allKeys = ['community', 'bmm', 'bsm', 'installer', 'developers'];
   const keys = canMngProjects ? allKeys : allKeys.filter((k) => (adminMeta.data?.projects || []).some((p) => p.key === k));
   const isShowcase = active.startsWith('sc:');
   const activeManageable = isShowcase ? canMngShowcase : canMngProjects;
@@ -6283,7 +6283,7 @@ function GatingRules({ rules, onChange }) {
 
 // Blog "sources" a route can subscribe to — mirrors the source keys the API tags
 // each post with (project key, or 'showcase' for Other-projects pages, or '*'=all).
-const BLOG_SOURCES = [['*', 'All blogs'], ['bmm', 'BMM'], ['bsm', 'BSM'], ['community', 'Community'], ['installer', 'Installer'], ['showcase', 'Other projects']];
+const BLOG_SOURCES = [['*', 'All blogs'], ['bmm', 'BMM'], ['bsm', 'BSM'], ['community', 'Community'], ['installer', 'Installer'], ['developers', 'Developers'], ['showcase', 'Other projects']];
 
 // Per-route editor for blog announcements: each route = a channel (in any server)
 // + which blogs to post there. A channel id is globally unique, so routing works

@@ -7,7 +7,10 @@ import { jwks, issuer, signRs256, verifyRs256, verifyPkce, validateAuthorizeRequ
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
-const SCOPES = ['openid', 'profile', 'email', 'items', 'repos'];
+// Every scope here unlocks a resource below. A scope with nothing behind it is a promise
+// the provider does not keep, and it survives review because it reads perfectly well in a
+// consent screen.
+const SCOPES = ['openid', 'profile', 'email', 'items', 'repos', 'pools', 'catalogs', 'payments', 'polls'];
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sep = (u) => (u.includes('?') ? '&' : '?');
 const backTo = (redir, params) => `${redir}${sep(redir)}${new URLSearchParams(params).toString()}`;
@@ -313,7 +316,13 @@ export default async function oidcProviderRoutes(app) {
     // Echo the sub the CLIENT knows, never the internal id: handing back the real one
     // would undo the whole point of pairwise in the one response clients read most.
     const out = { sub: claims.sub };
-    if (scopes.includes('profile')) out.name = user.displayName || '';
+    if (scopes.includes('profile')) {
+      out.name = user.displayName || '';
+      // `picture` has been in claims_supported since this provider shipped and was never
+      // returned — a client following our own discovery document asked for a claim it could
+      // not get. The avatar endpoint renders for any account id, so there is always one.
+      out.picture = `${issuer()}/api/avatar/${user.id}`;
+    }
     if (scopes.includes('email')) { out.email = user.email || ''; out.email_verified = true; }
     return out;
   };
@@ -343,6 +352,52 @@ export default async function oidcProviderRoutes(app) {
     const p = await db();
     const repos = await p.serverRepo.findMany({ where: { ownerId: req.oauthUser.userId }, select: { id: true, name: true, hosted: true, listed: true, status: true, publicUrl: true }, orderBy: { createdAt: 'desc' }, take: 200 });
     return { repos };
+  });
+
+  app.get('/oauth2/me/pools', { preHandler: oauthBearer('pools') }, async (req) => {
+    const p = await db();
+    const pools = await p.hostingGroup.findMany({
+      where: { ownerId: req.oauthUser.userId },
+      select: { id: true, name: true, freePlan: true, poolBytes: true, createdAt: true, repos: { select: { storageUsedBytes: true } } },
+      orderBy: { createdAt: 'desc' }, take: 100,
+    });
+    // BigInt does not survive JSON.stringify.
+    return { pools: pools.map((g) => {
+      const used = g.repos.reduce((n, r) => n + Number(r.storageUsedBytes ?? 0), 0);
+      return { id: g.id, name: g.name, freePlan: g.freePlan, poolBytes: Number(g.poolBytes ?? 0), usedBytes: used, createdAt: g.createdAt };
+    }) };
+  });
+
+  app.get('/oauth2/me/catalogs', { preHandler: oauthBearer('catalogs') }, async (req) => {
+    const p = await db();
+    const catalogs = await p.communityCatalog.findMany({
+      where: { ownerId: req.oauthUser.userId },
+      select: { id: true, name: true, slug: true, kinds: true, status: true, visibility: true, listed: true, createdAt: true },
+      orderBy: { createdAt: 'desc' }, take: 200,
+    });
+    return { catalogs };
+  });
+
+  app.get('/oauth2/me/payments', { preHandler: oauthBearer('payments') }, async (req) => {
+    const p = await db();
+    // No Stripe session id: it identifies a record in somebody else's system and reading
+    // your own invoices does not need it.
+    const payments = await p.payment.findMany({
+      where: { userId: req.oauthUser.userId },
+      select: { id: true, kind: true, description: true, amountCents: true, currency: true, status: true, createdAt: true },
+      orderBy: { createdAt: 'desc' }, take: 200,
+    });
+    return { payments };
+  });
+
+  app.get('/oauth2/me/polls', { preHandler: oauthBearer('polls') }, async (req) => {
+    const p = await db();
+    const votes = await p.pollVote.findMany({
+      where: { userId: req.oauthUser.userId },
+      orderBy: { createdAt: 'desc' }, take: 100,
+      include: { option: { select: { label: true } }, poll: { select: { id: true, question: true, status: true } } },
+    });
+    return { votes: votes.map((v) => ({ pollId: v.poll.id, question: v.poll.question, status: v.poll.status, option: v.option.label, at: v.createdAt })) };
   });
 
   // ── Revocation (RFC 7009) — revokes a refresh token; always 200 for a valid client. ──
@@ -641,7 +696,7 @@ export default async function oidcProviderRoutes(app) {
       homepageUrl: z.string().url().max(300).optional().or(z.literal('')),
       confidential: z.boolean().optional(),
       redirectUris: z.array(z.string().max(500)).min(1).max(10),
-      scopes: z.array(z.enum(['openid', 'profile', 'email', 'items', 'repos'])).optional(),
+      scopes: z.array(z.enum(SCOPES)).optional(),
       subjectType: z.enum(['public', 'pairwise']).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -679,7 +734,7 @@ export default async function oidcProviderRoutes(app) {
       description: z.string().max(300).optional(),
       homepageUrl: z.string().url().max(300).optional().or(z.literal('')),
       redirectUris: z.array(z.string().max(500)).min(1).max(10).optional(),
-      scopes: z.array(z.enum(['openid', 'profile', 'email', 'items', 'repos'])).optional(),
+      scopes: z.array(z.enum(SCOPES)).optional(),
       active: z.boolean().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -751,7 +806,7 @@ export default async function oidcProviderRoutes(app) {
       name: z.string().min(1).max(120),
       confidential: z.boolean().optional(),
       redirectUris: z.array(z.string().url()).min(1).max(20),
-      scopes: z.array(z.enum(['openid', 'profile', 'email', 'items', 'repos'])).optional(),
+      scopes: z.array(z.enum(SCOPES)).optional(),
       // Chosen at creation and never changed: switching an existing client to pairwise
       // re-identifies every one of its users at once, orphaning their accounts rather
       // than migrating them.
@@ -778,7 +833,7 @@ export default async function oidcProviderRoutes(app) {
     const b = z.object({
       active: z.boolean().optional(),
       redirectUris: z.array(z.string().url()).min(1).max(20).optional(),
-      scopes: z.array(z.enum(['openid', 'profile', 'email', 'items', 'repos'])).optional(),
+      scopes: z.array(z.enum(SCOPES)).optional(),
       // Staff vouching for a self-registered app. It changes what the consent screen says,
       // not whether the client works.
       verified: z.boolean().optional(),

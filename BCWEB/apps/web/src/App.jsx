@@ -39,6 +39,7 @@ const named = (imp, key) => lazy(() => imp().then((m) => ({ default: m[key] })))
 const Hero3D = lazy(() => import('./hero/Hero3D.jsx'));
 const ClosureCancel = lazy(() => import('./pages/closure.jsx'));
 const PollsPage = lazy(() => import('./pages/polls.jsx'));
+const DevHub = lazy(() => import('./pages/dev.jsx'));
 const Admin = named(() => import('./pages/admin.jsx'), 'Admin');
 const Dashboard = named(() => import('./pages/dashboard.jsx'), 'Dashboard');
 const ReposPage = named(() => import('./pages/repos.jsx'), 'ReposPage');
@@ -998,6 +999,9 @@ export default function App() {
           {/* Open to visitors: a poll whose audience is "everyone" has to be reachable
               without an account, and one for members says so on the card itself. */}
           <Route path="/polls" element={<PollsPage />} />
+          {/* Open to visitors: reading how to build against the site should not require
+              an account, and the two things that do (an app, a key) say so themselves. */}
+          <Route path="/dev" element={<DevHub />} />
               <Route path="/authorize" element={<Authorize />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/contact" element={<Contact />} />
