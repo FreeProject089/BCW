@@ -10,7 +10,8 @@ const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 // Every scope here unlocks a resource below. A scope with nothing behind it is a promise
 // the provider does not keep, and it survives review because it reads perfectly well in a
 // consent screen.
-const SCOPES = ['openid', 'profile', 'email', 'items', 'repos', 'pools', 'catalogs', 'payments', 'polls'];
+const SCOPES = ['openid', 'profile', 'email', 'items', 'repos', 'pools', 'catalogs', 'payments', 'polls',
+  'favorites', 'transfers', 'notifications', 'badges', 'stats'];
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sep = (u) => (u.includes('?') ? '&' : '?');
 const backTo = (redir, params) => `${redir}${sep(redir)}${new URLSearchParams(params).toString()}`;
@@ -419,6 +420,66 @@ export default async function oidcProviderRoutes(app) {
       orderBy: { createdAt: 'desc' }, take: 200,
     });
     return { payments };
+  });
+
+  // Starred repos and catalogs. The most-asked-for read after the profile itself: it is what
+  // a launcher or a companion app needs to show "your stuff" without asking you to pick again.
+  app.get('/oauth2/me/favorites', { preHandler: oauthBearer('favorites') }, async (req) => {
+    const p = await db();
+    const [repos, catalogs] = await Promise.all([
+      p.repoFavorite.findMany({ where: { userId: req.oauthUser.userId }, select: { serverRepoId: true, createdAt: true } }).catch(() => []),
+      p.catalogFavorite.findMany({ where: { userId: req.oauthUser.userId }, select: { catalogId: true, createdAt: true } }).catch(() => []),
+    ]);
+    return { repos, catalogs };
+  });
+
+  app.get('/oauth2/me/transfers', { preHandler: oauthBearer('transfers') }, async (req) => {
+    const p = await db();
+    const rows = await p.ownershipTransfer.findMany({
+      where: { OR: [{ fromUserId: req.oauthUser.userId }, { toUserId: req.oauthUser.userId }] },
+      orderBy: { createdAt: 'desc' }, take: 50,
+      select: { id: true, kind: true, status: true, createdAt: true, respondedAt: true },
+    }).catch(() => []);
+    return { transfers: rows };
+  });
+
+  // Read-only on purpose: an app may see what you were told, never mark it read on your
+  // behalf. Writing needs an API key, which acts as YOU rather than for you.
+  app.get('/oauth2/me/notifications', { preHandler: oauthBearer('notifications') }, async (req) => {
+    const p = await db();
+    const rows = await p.notification.findMany({
+      where: { userId: req.oauthUser.userId }, orderBy: { createdAt: 'desc' }, take: 50,
+      select: { id: true, kind: true, body: true, readAt: true, createdAt: true },
+    }).catch(() => []);
+    return { notifications: rows };
+  });
+
+  app.get('/oauth2/me/badges', { preHandler: oauthBearer('badges') }, async (req) => {
+    const p = await db();
+    const rows = await p.userBadge.findMany({
+      where: { userId: req.oauthUser.userId },
+      select: { grantedAt: true, badge: { select: { slug: true, name: true, color: true, icon: true } } },
+    }).catch(() => []);
+    return { badges: rows.map((b) => ({ ...b.badge, grantedAt: b.grantedAt })) };
+  });
+
+  // The numbers behind what they own. Aggregated, never per-visitor: a scope that handed over
+  // who downloaded what would be handing over somebody else's behaviour, not the grantor's.
+  app.get('/oauth2/me/stats', { preHandler: oauthBearer('stats') }, async (req) => {
+    const p = await db();
+    // Repos carry no download counter of their own — only catalog items and catalogs do — so
+    // this reports what exists rather than inventing a zero that would read as "nobody came".
+    const [items, catalogs] = await Promise.all([
+      p.catalogItem.findMany({ where: { ownerId: req.oauthUser.userId }, select: { id: true, slug: true, name: true, downloads: true, views: true } }).catch(() => []),
+      p.communityCatalog.findMany({ where: { ownerId: req.oauthUser.userId }, select: { id: true, name: true, downloads: true, views: true } }).catch(() => []),
+    ]);
+    return {
+      items, catalogs,
+      totals: {
+        downloads: items.reduce((a, i) => a + (i.downloads || 0), 0) + catalogs.reduce((a, c) => a + (c.downloads || 0), 0),
+        views: items.reduce((a, i) => a + (i.views || 0), 0) + catalogs.reduce((a, c) => a + (c.views || 0), 0),
+      },
+    };
   });
 
   app.get('/oauth2/me/polls', { preHandler: oauthBearer('polls') }, async (req) => {

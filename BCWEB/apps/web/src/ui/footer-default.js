@@ -30,6 +30,7 @@ export const DEFAULT_FOOTER_COLUMNS = [
       { key: 'foot.about', label: 'About', to: '/legal/about' },
       { key: null, label: 'Blog', to: '/blog' },
       { key: 'nav.docs', label: 'Docs', to: '/docs' },
+      { key: 'nav.dev', label: 'Developers', to: '/dev' },
       { key: 'faq.title', label: 'FAQ', to: '/faq' },
       { key: 'nav.repos', label: 'Repos', to: '/repos' },
       { key: 'foot.members', label: 'Members', to: '/users' },

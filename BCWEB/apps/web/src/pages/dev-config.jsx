@@ -7,6 +7,7 @@ import { Card, Button, Input, Textarea, Badge, Field, Spinner, useToast, useDial
 import { useAuth } from './auth.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
 import WebhooksPanel from './dev-webhooks.jsx';
+import OAuthUrlBuilder from './dev-oauth-url.jsx';
 
 // /dev/config — the credentials, in one place.
 //
@@ -292,6 +293,10 @@ function OAuthAppsPanel() {
           <Button size="sm" className="mt-2" onClick={() => setSecret(null)}>{t('dev.secret.done', 'I have saved it')}</Button>
         </div>
       )}
+
+      {/* The generator reads this panel's own client list — building it a second fetch would
+          be a second answer to "what apps do I have". */}
+      {clients.length > 0 && <div className="mt-4"><OAuthUrlBuilder clients={clients} scopes={data.scopes || []} /></div>}
 
       {clients.length > 0 && (
         <div className="divide-y divide-[var(--line)] mb-3">

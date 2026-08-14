@@ -2,6 +2,9 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-bash';
+import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-python';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload,
@@ -237,6 +240,21 @@ export function highlightJson(src) {
   const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   try {
     if (Prism?.languages?.json) return Prism.highlight(src, Prism.languages.json, 'json');
+  } catch { /* fall through to plain text */ }
+  return esc(src);
+}
+
+/** The same treatment for the other languages the snippet generator emits.
+ *
+ *  Same safety note as highlightJson: Prism escapes what it tokenises, and the fallback
+ *  escapes explicitly, so the result is safe for dangerouslySetInnerHTML even though the
+ *  source contains whatever the user typed into the request body.
+ */
+export function highlightCode(src, lang) {
+  const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const g = { curl: 'bash', bash: 'bash', fetch: 'javascript', js: 'javascript', javascript: 'javascript', python: 'python', json: 'json' }[lang] || lang;
+  try {
+    if (Prism?.languages?.[g]) return Prism.highlight(src, Prism.languages[g], g);
   } catch { /* fall through to plain text */ }
   return esc(src);
 }

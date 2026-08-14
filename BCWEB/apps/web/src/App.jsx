@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
+import { Code2, Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
 import { Button, useToast, Modal } from './ui/ui.jsx';
@@ -84,6 +84,7 @@ const DEFAULT_ITEMS = [
   ] },
   { type: 'link', to: '/blog', k: 'nav.blog', icon: Newspaper },
   { type: 'link', to: '/docs', k: 'nav.docs', icon: BookOpen },
+  { type: 'link', to: '/dev', k: 'nav.dev', icon: Code2 },
   { type: 'link', to: '/repos', k: 'nav.repos', icon: Server },
   { type: 'link', to: '/hosting', k: 'nav.hosting', icon: Rocket },
 ];
@@ -91,7 +92,7 @@ const DEFAULT_ITEMS = [
 // Icons an admin can pick for a configured nav item — a curated, safe whitelist
 // (only these render; an unknown name falls back to Boxes). Keys are the values
 // stored in the nav config; keep them stable.
-const NAV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell };
+const NAV_ICONS = { Boxes, Music2, Newspaper, Server, Rocket, Shield, Download, Sparkles, Mail, Home: HomeIcon, BookOpen, LayoutGrid, Info, Bell, Code2 };
 
 // Built-in topbar utility elements, split by their responsive cluster (see Topbar).
 // Admins reorder/hide WITHIN a cluster; the keys are the config identifiers — keep stable.
