@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   GripVertical, Trash2, Plus, Heading as HeadingIcon, Type, TagIcon, LayoutGrid, ImagePlus,
   Code2, Quote, Minus, ChevronDown, ChevronUp, Table as TableIcon, X, FileDown, ListOrdered,
-  AlignLeft, AlignCenter, AlignRight, Tags as TagsIcon,
+  AlignLeft, AlignCenter, AlignRight, Tags as TagsIcon, Milestone, Columns2,
 } from 'lucide-react';
 import { Input, Select } from '../ui/ui.jsx';
 import IconPicker from './icon-picker.jsx';
@@ -45,6 +45,10 @@ const BLOCK_TYPES = [
   { type: 'tags', label: 'Tags', icon: TagsIcon },
   { type: 'file', label: 'File', icon: FileDown },
   { type: 'collapsible', label: 'Collapsible', icon: ChevronDown },
+  { type: 'steps', label: 'Steps', icon: ListOrdered },
+  { type: 'roadmap', label: 'Roadmap', icon: Milestone },
+  { type: 'columns', label: 'Columns', icon: Columns2 },
+  { type: 'align', label: 'Align', icon: AlignCenter },
   { type: 'divider', label: 'Divider', icon: Minus },
 ];
 const CALLOUT_KINDS = ['note', 'tip', 'success', 'warning', 'danger', 'callout'];
@@ -61,6 +65,10 @@ function blank(type) {
     case 'table': return { id: uid(), type, rows: [['Column 1', 'Column 2'], ['', '']] };
     case 'tags': return { id: uid(), type, tags: [{ text: 'New', color: '#16a34a' }, { text: 'Beta', color: '#2563eb' }] };
     case 'file': return { id: uid(), type, name: 'example.zip', href: '', size: '' };
+    case 'steps': return { id: uid(), type, title: 'How it works', marker: '1', color: '', orientation: 'vertical', steps: [{ title: 'First', text: 'What to do.' }, { title: 'Second', text: 'And then this.' }] };
+    case 'roadmap': return { id: uid(), type, title: 'Roadmap', orientation: 'vertical', json: '{\n  "categories": [\n    { "name": "v1.0", "items": [\n      { "label": "Core", "status": "done" },\n      { "label": "Docs", "status": "progress", "percent": 40 }\n    ] }\n  ]\n}' };
+    case 'columns': return { id: uid(), type, left: 'Left column.', right: 'Right column.' };
+    case 'align': return { id: uid(), type, align: 'center', text: 'Centered content.' };
     case 'divider': return { id: uid(), type };
     default: return { id: uid(), type: 'text', text: '' };
   }
@@ -189,6 +197,23 @@ function blockMd(b) {
       case 'code': return `\`\`\`${b.lang || ''}\n${b.code || ''}\n\`\`\``;
       case 'quote': return (b.text || '').split('\n').map((l) => `> ${l}`).join('\n');
       case 'collapsible': return `:::details[${b.summary || 'Details'}]\n${b.text || ''}\n:::`;
+      case 'steps': {
+        // Four colons outside, three inside — remark-directive matches by colon count, so a
+        // `:::` within a `:::` closes the parent. Writing it correctly here is what stops the
+        // visual editor producing markdown its own preview cannot render.
+        const a = [];
+        if (b.marker && b.marker !== '1') a.push(`type=${b.marker}`);
+        if (b.color) a.push(`color="${b.color}"`);
+        if (b.orientation === 'horizontal') a.push('orientation=horizontal');
+        const inner = (b.steps || []).map((st) => `:::step[${st.title || ''}]\n${st.text || ''}\n:::`).join('\n');
+        return `::::steps${b.title ? `[${b.title}]` : ''}${a.length ? `{${a.join(' ')}}` : ''}\n${inner}\n::::`;
+      }
+      case 'roadmap': {
+        const a = b.orientation === 'horizontal' ? '{orientation=horizontal}' : '';
+        return `:::roadmap${b.title ? `[${b.title}]` : ''}${a}\n\`\`\`json\n${b.json || '{}'}\n\`\`\`\n:::`;
+      }
+      case 'columns': return `::::columns\n:::column\n${b.left || ''}\n:::\n:::column\n${b.right || ''}\n:::\n::::`;
+      case 'align': return `:::${b.align || 'center'}\n${b.text || ''}\n:::`;
       case 'file': {
         const a = [];
         if (b.href) a.push(`href="${b.href}"`);
@@ -327,6 +352,60 @@ function BlockFields({ block: b, onChange }) {
       <div className="space-y-2">
         <Input value={b.summary} onChange={(e) => onChange({ summary: e.target.value })} placeholder="Summary (click-to-expand label)" className="!py-1.5 !text-sm" />
         <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder="Hidden content (markdown)…" />
+      </div>
+    );
+    case 'steps': {
+      const steps = b.steps?.length ? b.steps : [{ title: '', text: '' }];
+      const setStep = (i, patch) => onChange({ steps: steps.map((st, j) => (i === j ? { ...st, ...patch } : st)) });
+      return (
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Input value={b.title} onChange={(e) => onChange({ title: e.target.value })} placeholder="Block title (optional)" className="!py-1.5 !text-sm flex-1 min-w-[140px]" />
+            <select value={b.marker || '1'} onChange={(e) => onChange({ marker: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
+              <option value="1">1, 2, 3</option><option value="a">A, B, C</option><option value="i">i, ii, iii</option><option value="dot">•</option>
+            </select>
+            <select value={b.orientation || 'vertical'} onChange={(e) => onChange({ orientation: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
+              <option value="vertical">Vertical</option><option value="horizontal">Horizontal</option>
+            </select>
+            <input type="color" value={b.color || '#f97316'} onChange={(e) => onChange({ color: e.target.value })} title="Marker colour" className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5" />
+          </div>
+          {steps.map((st, i) => (
+            <div key={i} className="rounded-lg border border-[var(--line)] p-2 space-y-1.5">
+              <div className="flex gap-2">
+                <Input value={st.title} onChange={(e) => setStep(i, { title: e.target.value })} placeholder={`Step ${i + 1} title`} className="!py-1.5 !text-sm" />
+                <button type="button" className="btn btn-sm" title="Remove" onClick={() => onChange({ steps: steps.filter((_, j) => j !== i) })}><Minus size={13} /></button>
+              </div>
+              <textarea className={ta} rows={2} value={st.text} onChange={(e) => setStep(i, { text: e.target.value })} placeholder="Step body (markdown, callouts, code…)" />
+            </div>
+          ))}
+          <button type="button" className="btn btn-sm" onClick={() => onChange({ steps: [...steps, { title: '', text: '' }] })}>+ Step</button>
+        </div>
+      );
+    }
+    case 'roadmap': return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-2">
+          <Input value={b.title} onChange={(e) => onChange({ title: e.target.value })} placeholder="Roadmap title" className="!py-1.5 !text-sm flex-1 min-w-[140px]" />
+          <select value={b.orientation || 'vertical'} onChange={(e) => onChange({ orientation: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
+            <option value="vertical">Vertical</option><option value="horizontal">Horizontal</option>
+          </select>
+        </div>
+        <textarea className={`${ta} font-mono`} rows={7} value={b.json} onChange={(e) => onChange({ json: e.target.value })} placeholder='{"categories":[…]}' spellCheck={false} />
+        <div className="text-[11px] text-[var(--muted)]">Statuses: <code>done</code> · <code>progress</code> · <code>planned</code>. Optional <code>percent</code>, <code>eta</code>.</div>
+      </div>
+    );
+    case 'columns': return (
+      <div className="grid sm:grid-cols-2 gap-2">
+        <textarea className={ta} rows={3} value={b.left} onChange={(e) => onChange({ left: e.target.value })} placeholder="Left column (markdown)…" />
+        <textarea className={ta} rows={3} value={b.right} onChange={(e) => onChange({ right: e.target.value })} placeholder="Right column (markdown)…" />
+      </div>
+    );
+    case 'align': return (
+      <div className="space-y-2">
+        <select value={b.align || 'center'} onChange={(e) => onChange({ align: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
+          <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+        </select>
+        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder="Content (markdown)…" />
       </div>
     );
     case 'table': {

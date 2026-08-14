@@ -5,6 +5,7 @@ import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Textarea, Badge, Field, Spinner, EmptyState, useToast } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
+import { ApiConsole } from './dev.jsx';
 
 // /dev/tools — the two things a developer wants that are not "call an endpoint".
 //
@@ -162,6 +163,7 @@ export default function DevTools() {
     <div className="max-w-3xl mx-auto py-8 space-y-4">
       <Link to="/dev" className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><ArrowLeft size={13} /> {t('devc.back', 'Developer area')}</Link>
       <h1 className="text-2xl font-bold">{t('dvt.title', 'Tools')}</h1>
+      <ApiConsole />
       <Validator />
       <CallLog />
     </div>

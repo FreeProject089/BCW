@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   Newspaper, PenSquare, ImagePlus, Youtube, Link2, Video, Bold, Heading, List, Eye,
   Trash2, Pencil, ArrowLeft, CalendarDays, User as UserIcon, Plus, X, Tag as TagIcon, HelpCircle, Languages, Sparkles,
-  Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge, History, MessageSquare, Globe,
+  Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Milestone, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge, History, MessageSquare, Globe,
   Table, Quote, Minus, AlignLeft, AlignRight, Mail, PlayCircle,
 } from 'lucide-react';
 import { api, uploadBlogImage, uploadReplay } from '../lib/api.js';
@@ -389,7 +389,21 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
   const openBlocks = () => {
     if (blocksOpen) { setBlocksOpen(false); return; }
     const r = blocksBtnRef.current?.getBoundingClientRect();
-    if (r) setBlocksPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 224) });
+    if (r) {
+      // It was always placed BELOW the button. In a long editor the toolbar sits low on the
+      // screen, so the menu opened past the bottom of the viewport — present, focusable,
+      // and invisible. Flip above when there is not enough room below, and clamp the height
+      // to whatever side it lands on so it scrolls instead of running off.
+      const MENU = 288; // max-h-72
+      const below = window.innerHeight - r.bottom - 12;
+      const above = r.top - 12;
+      const flip = below < 200 && above > below;
+      setBlocksPos({
+        top: flip ? Math.max(8, r.top - Math.min(MENU, above) - 4) : r.bottom + 4,
+        left: Math.max(8, Math.min(r.left, window.innerWidth - 224)),
+        maxH: Math.max(160, Math.min(MENU, flip ? above : below)),
+      });
+    }
     setBlocksOpen(true);
   };
   const [iconPick, setIconPick] = useState(false);
@@ -423,6 +437,12 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
       i.click();
     } },
     { icon: PlayCircle, label: t('be.replay.url', 'Session replay (from URL)'), snip: '\n:::replay{src="https://example.com/session.bmmreplay" title="What happens here"}\n:::\n' },
+    // Four colons on the outside, three inside: remark-directive matches by colon count, so
+    // a `:::` inside a `:::` closes the parent. Anybody inserting this snippet gets the
+    // nesting right without having to know that.
+    { icon: ListOrdered, label: 'Steps', snip: '\n::::steps[How it works]{type=1}\n:::step[First]\nWhat to do. Supports **markdown**, callouts, code — anything.\n:::\n:::step[Second]\nAnd so on.\n:::\n::::\n' },
+    { icon: ListOrdered, label: 'Steps (lettered)', snip: '\n::::steps[Options]{type=a color="#7c3aed"}\n:::step[Option A]\nOne way.\n:::\n:::step[Option B]\nAnother.\n:::\n::::\n' },
+    { icon: Milestone, label: 'Roadmap', snip: '\n:::roadmap[Roadmap]{orientation=vertical}\n```json\n{"categories":[{"name":"v1.0","items":[{"label":"Core","status":"done"},{"label":"Docs","status":"progress","percent":40},{"label":"Polish","status":"planned"}]}]}\n```\n:::\n' },
     { icon: Quote, label: 'Quote', snip: '\n> A blockquote — supports **markdown**.\n' },
     { icon: Minus, label: 'Divider', snip: '\n---\n' },
     { icon: AlignCenter, label: 'Align (center)', snip: '\n:::center\nCentered content — text or an ![image](url).\n:::\n' },
@@ -472,7 +492,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
               <button ref={blocksBtnRef} type="button" onClick={openBlocks} className="btn btn-sm" title="Insert a content block (callout, tabs, cards…)"><BlocksIcon size={14} /> Blocks <ChevronDown size={12} /></button>
               {blocksOpen && <>
                 <div className="fixed inset-0 z-[60]" onClick={() => setBlocksOpen(false)} />
-                <div className="fixed z-[61] w-52 rounded-xl border border-[var(--line-strong)] shadow-xl py-1 max-h-72 overflow-auto" style={{ background: 'var(--bg-solid)', top: blocksPos.top, left: blocksPos.left }}>
+                <div className="fixed z-[61] w-52 rounded-xl border border-[var(--line-strong)] shadow-xl py-1 overflow-auto" style={{ background: 'var(--bg-solid)', top: blocksPos.top, left: blocksPos.left, maxHeight: blocksPos.maxH || 288 }}>
                   {BLOCKS.map((bl) => <button key={bl.label} type="button" onClick={() => bl.onPick ? bl.onPick() : insertBlock(bl.snip)} className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-[var(--surface-2)]"><bl.icon size={14} className="text-[var(--muted)]" /> {bl.label}</button>)}
                 </div>
               </>}

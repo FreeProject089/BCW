@@ -2816,6 +2816,7 @@ const DICT = {
     'home.dev.f2': "Connexion (OIDC)",
     'home.dev.f3': "Webhooks",
     'home.dev.f4': "Bac à sable",
+    'dev.hub.tools.s2': "Teste n’importe quel appel contre la vraie API, vérifie un flux de catalogue avant de le publier, et vois ce que tes clés ont fait — refus compris.",
     'snap.title': "Sauvegardes à un instant T",
     'snap.sub': "Un fichier figé et signé par sauvegarde — prise ici, ou automatiquement une fois par jour. Contrairement à l’historique ci-dessus, elles ne bougent plus une fois faites : c’est ce qui rend une copie hors du serveur utile.",
     'snap.now': "Sauvegarder maintenant",

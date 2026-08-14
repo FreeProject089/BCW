@@ -94,7 +94,7 @@ function snippetFor(lang, { method, path, body, sandbox, write }) {
   ].join('\n');
 }
 
-function ApiConsole() {
+export function ApiConsole() {
   const { t } = useI18n(); const toast = useToast();
   const [key, setKey] = useState('');
   const [idx, setIdx] = useState(0);
@@ -303,7 +303,7 @@ export default function DevHub() {
       <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('dev.hub.toolsh', 'Everything here')}</h2>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Tool icon={FileJson} title={t('dev.hub.tools', 'Tools')} to="/dev/tools" cta={t('dev.hub.open', 'Open')}>
-          {t('dev.hub.tools.s', 'Check a catalog feed before you publish it, and see what your keys have actually been doing — refusals included.')}
+          {t('dev.hub.tools.s2', 'Try any call against the real API, check a catalog feed before you publish it, and see what your keys have been doing — refusals included.')}
         </Tool>
 
         <Tool icon={Sliders} title={t('dev.hub.config', 'Credentials')} to="/dev/config" cta={t('dev.hub.open', 'Open')}>
@@ -334,7 +334,7 @@ export default function DevHub() {
         )}
       </Card>
 
-      <div className="mt-4"><ApiConsole /></div>
+
 
       {!user && (
         <p className="text-[11px] text-[var(--muted)] mt-4">
