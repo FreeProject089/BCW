@@ -11,7 +11,11 @@ import { safeFetch } from '../lib/net.mjs';
 // reader because the reader is forgiving on purpose — it has to keep working against feeds
 // published years ago — and a validator that is as forgiving as the reader tells you nothing.
 // The rule: the reader accepts it, this says whether you MEANT it.
-const KINDS = ['app', 'plugin', 'theme', 'preset'];
+// The array names a feed may use. Presets are NOT one of them: BetterCommunity publishes
+// them under `apps` (see KIND_FEED on the catalog page and the catalog.json renderer, which
+// only ever emits apps/plugins/themes), so accepting a `presets` array here would validate a
+// shape no reader looks at.
+const KINDS = ['app', 'plugin', 'theme'];
 
 const add = (out, level, path, message, hint) => out.push({ level, path, message, hint });
 
@@ -50,7 +54,11 @@ export function validateFeed(doc) {
   }
   const known = KINDS.filter((k) => Array.isArray(doc[`${k}s`]));
   if (!known.length) {
-    add(out, 'error', '', 'No entries found.', `Expected at least one of: ${KINDS.map((k) => `${k}s`).join(', ')} — each an array.`);
+    const hasPresets = Array.isArray(doc.presets);
+    add(out, 'error', '', 'No entries found.',
+      hasPresets
+        ? 'Found a `presets` array — BetterCommunity publishes presets inside `apps`, and nothing reads `presets`. Rename it.'
+        : `Expected at least one of: ${KINDS.map((k) => `${k}s`).join(', ')} — each an array.`);
   }
   for (const k of KINDS) {
     const arr = doc[`${k}s`];

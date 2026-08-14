@@ -6,6 +6,7 @@ import {
 import { Button, Card, Badge, Input, Select, PageHeader, EmptyState, Modal, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
+import FeedLink from '../ui/feed-link.jsx';
 import { useAsync, Loading, KIND_ICON, KIND_LABEL } from './pages.jsx';
 
 /* ─────────────────────────  Catalog  ───────────────────────── */
@@ -28,9 +29,15 @@ export function Catalog() {
       toast.success(t('cat.downloading', 'Downloading {n} preset(s)…').replace('{n}', files.length)); setSel(new Set());
     } catch { toast.error(t('cat.dlfail', 'Download failed.')); }
   };
+  // The feed for what is ON SCREEN, filters included — a link to the unfiltered feed beside a
+  // filtered list is a link to something else. `project` and `kind` default the way the
+  // endpoint defaults, so an empty filter still produces a URL that works.
+  const feedPath = `/api/catalog.json?${new URLSearchParams({ project: project || 'bmm', kind: (kind || 'APP').toUpperCase() })}`;
   return (
     <div>
-      <PageHeader icon={Package} title={`${t('cat.title', 'Catalog')}${project ? ` · ${project.toUpperCase()}` : ''}`} subtitle={t('cat.sub', 'Community apps, plugins, themes and presets.')} />
+      <PageHeader icon={Package} title={`${t('cat.title', 'Catalog')}${project ? ` · ${project.toUpperCase()}` : ''}`} subtitle={t('cat.sub', 'Community apps, plugins, themes and presets.')}
+        actions={<FeedLink path={feedPath} label={t('cat.feed', 'This list as JSON')}
+          hint={t('cat.feed.h', 'The exact list you are looking at, as the feed BMM reads. Copy it into BMM → add a source.')} />} />
       {/* Filter bar: project switcher · search · kind pills · sort — grouped into one
           tidy card instead of a loose flex row. */}
       <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-5 space-y-3">

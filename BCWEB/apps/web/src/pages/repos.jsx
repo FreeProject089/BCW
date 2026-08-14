@@ -13,6 +13,7 @@ import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Drop
 import { startOwnershipTransfer } from './pages.jsx';
 import { useUploads } from './uploads.jsx';
 import { useI18n } from '../i18n.jsx';
+import FeedLink from '../ui/feed-link.jsx';
 import { useAuth } from './auth.jsx';
 
 // Either spelling is a manifest — the API accepts both (see MANIFEST_NAMES in
@@ -60,7 +61,7 @@ export function ReposPage() {
   const { data, loading, reload } = useFetch(() => api.get('/repos'), []);
   const repos = data?.repos || [];
   const copyJson = (r) => { const u = repoJsonUrl(r); if (!u) return toast.error(t('repos.copy.none', 'No repo.json URL.')); navigator.clipboard?.writeText(u); toast.success(t('repos.copy.ok', 'repo.json link copied.')); };
-  const feedUrl = `${location.origin}/repos.json`;
+
   // Keep the public listing live — statuses refresh automatically.
   useEffect(() => { const id = setInterval(reload, 60_000); return () => clearInterval(id); /* eslint-disable-next-line */ }, []);
   const [q, setQ] = useState('');
@@ -94,7 +95,9 @@ export function ReposPage() {
 
   return (
     <div>
-      <PageHeader icon={Server} title={t('repos.title', 'Server Repos')} subtitle={t('repos.sub', 'Verified community repositories — featured ones first.')} />
+      <PageHeader icon={Server} title={t('repos.title', 'Server Repos')} subtitle={t('repos.sub', 'Verified community repositories — featured ones first.')}
+        actions={<FeedLink path="/api/repos.json" label={t('repos.feed', 'This list as JSON')}
+          hint={t('repos.feed.h', 'Every listed, verified repo as a JSON feed — the same list, for a script or another client.')} />} />
 
       {/* search + filters */}
       <div className="flex flex-col sm:flex-row gap-2 mb-3">
