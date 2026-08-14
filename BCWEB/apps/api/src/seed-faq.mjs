@@ -99,6 +99,73 @@ const FAQ = [
     answer: 'Yes — point BMM at your own self-hosted repo URL and it works the same, with no hosting fee. Our hosting exists for when you want a stable managed URL and access controls (whitelist, bans, upload limits) without running a server yourself.',
     answerFr: 'Oui — pointe BMM vers l\'URL de ton propre dépôt auto-hébergé et ça marche pareil, sans frais. Notre hébergement existe pour quand tu veux une URL managée stable et des contrôles d\'accès (whitelist, bans, limites d\'upload) sans gérer de serveur toi-même.',
   },
+  // ── Your account ──
+  {
+    category: 'Your account', order: 200,
+    categoryFr: 'Ton compte',
+    question: 'My account was suspended — what can I still do?',
+    questionFr: 'Mon compte est suspendu — que puis-je encore faire ?',
+    answer: 'You can still **sign in**, read your account, see the reason and the end date, download your invoices and cancel a subscription. What stops is the **service**: your API keys are refused, your hosted repos and catalog items are taken offline, and paid subscriptions are cancelled. The distinction is deliberate — being unable to sign in would also mean being unable to find out why, or to stop paying.',
+    answerFr: 'Tu peux toujours **te connecter**, consulter ton compte, voir le motif et la date de fin, télécharger tes factures et résilier un abonnement. Ce qui s\'arrête, c\'est le **service** : tes clés API sont refusées, tes dépôts et éléments de catalogue hébergés sont retirés, et les abonnements payants sont annulés. La distinction est voulue : ne plus pouvoir se connecter, ce serait aussi ne plus pouvoir savoir pourquoi, ni arrêter de payer.',
+  },
+  {
+    category: 'Your account', order: 210,
+    categoryFr: 'Ton compte',
+    question: 'And if I am banned?',
+    questionFr: 'Et si je suis banni ?',
+    answer: 'Everything stops, including access to the account. No new session is issued and any session already open stops working — a ban that only blocked the login form would leave whoever was already signed in exactly where they were. Subscriptions are cancelled and hosted content goes offline. A ban has no end date unless one was set.',
+    answerFr: 'Tout s\'arrête, y compris l\'accès au compte. Aucune nouvelle session n\'est délivrée et toute session déjà ouverte cesse de fonctionner — un ban qui ne bloquerait que le formulaire de connexion laisserait la personne déjà connectée exactement là où elle était. Les abonnements sont annulés et le contenu hébergé passe hors ligne. Un ban n\'a pas de date de fin, sauf si une a été fixée.',
+  },
+  {
+    category: 'Your account', order: 220,
+    categoryFr: 'Ton compte',
+    question: 'How do I close my account, and can I change my mind?',
+    questionFr: 'Comment fermer mon compte, et puis-je revenir en arrière ?',
+    answer: 'Profile → close the account. You get **30 days** to change your mind, and a single link that cancels the whole thing. During those 30 days your content is **suspended, not deleted** — a grace month is only a grace month if what it protects is still there at the end of it. Any pending ownership transfer you had offered is withdrawn, and your invoices are e-mailed to you with the notice, because "download them before you go" is advice nobody reads in time.',
+    answerFr: 'Profil → fermer le compte. Tu as **30 jours** pour changer d\'avis, et un seul lien qui annule tout. Pendant ces 30 jours ton contenu est **suspendu, pas supprimé** — un mois de grâce n\'en est un que si ce qu\'il protège est encore là à la fin. Tout transfert de propriété que tu avais proposé est retiré, et tes factures te sont envoyées par mail avec l\'avis, parce que « télécharge-les avant de partir » est un conseil que personne ne lit à temps.',
+  },
+  {
+    category: 'Your account', order: 230,
+    categoryFr: 'Ton compte',
+    question: 'Can I stop getting certain notifications?',
+    questionFr: 'Puis-je ne plus recevoir certaines notifications ?',
+    answer: 'Yes — **/notifications** has a switch per category: hosting & billing, your repos, your catalog items, reports & support, commissions, promotions, site news & events. Switching one off stops those notifications being **created**, not merely hidden, so turning it back on shows nothing from the meantime. One category cannot be switched off: account & security. An account able to silence its own ban notice finds out too late.',
+    answerFr: 'Oui — **/notifications** propose un interrupteur par catégorie : hébergement & facturation, tes dépôts, tes éléments de catalogue, signalements & support, commandes sur mesure, promotions, actualités & événements. En couper une empêche ces notifications d\'être **créées**, pas seulement de s\'afficher : les rallumer ne fait donc rien réapparaître. Une catégorie ne se coupe pas : compte & sécurité. Un compte capable de faire taire son propre avis de bannissement l\'apprend trop tard.',
+  },
+  // ── Developers ──
+  {
+    category: 'Developers', order: 300,
+    categoryFr: 'Développeurs',
+    question: 'Do I need an API key or "Sign in with BetterCommunity"?',
+    questionFr: 'Me faut-il une clé API ou « Se connecter avec BetterCommunity » ?',
+    answer: 'It depends who your program acts as. A **key** acts as *you* and needs nobody\'s permission — which is why it can only ever reach your own data. Use it for a script, a sync job, a bot you run. **Sign in with BetterCommunity** is for anything with its own users: they authorise it, and you never touch their password. Both live at **/dev**.',
+    answerFr: 'Ça dépend de qui ton programme agit au nom. Une **clé** agit en *ton* nom et n\'a besoin de la permission de personne — c\'est pourquoi elle ne peut atteindre que tes propres données. À utiliser pour un script, une synchro, un bot que tu fais tourner. **Se connecter avec BetterCommunity** sert à tout ce qui a ses propres utilisateurs : ce sont eux qui autorisent, et tu ne touches jamais à leur mot de passe. Les deux sont sur **/dev**.',
+  },
+  {
+    category: 'Developers', order: 310,
+    categoryFr: 'Développeurs',
+    question: 'Can I try a call without changing anything?',
+    questionFr: 'Puis-je essayer un appel sans rien modifier ?',
+    answer: 'Yes. Send `X-BCW-Sandbox: 1` on a write — or use the console at **/dev**, where it is on by default. Your key is authenticated and the scope is checked for real, then nothing is written. Reads are never simulated: a `GET` changes nothing anyway, and answering with invented data would make the console useless for what it is for.',
+    answerFr: 'Oui. Envoie `X-BCW-Sandbox: 1` sur une écriture — ou utilise la console de **/dev**, où c\'est actif par défaut. Ta clé est authentifiée et le scope vérifié pour de vrai, puis rien n\'est écrit. Les lectures ne sont jamais simulées : un `GET` ne change rien de toute façon, et répondre avec des données inventées rendrait la console inutile pour ce à quoi elle sert.',
+  },
+  {
+    category: 'Developers', order: 320,
+    categoryFr: 'Développeurs',
+    question: 'My key stopped working — why?',
+    questionFr: 'Ma clé ne marche plus — pourquoi ?',
+    answer: 'Read the body. `insufficient_scope` means the key is fine but lacks that permission — it tells you which one. `invalid_key` is the single answer for unknown, revoked *and* expired, on purpose: someone probing keys must not learn that one of them was ever real. `account_suspended` means the account behind the key is under sanction, not the key. And a deleted key is really deleted — there is no un-deleting it, only minting a new one.',
+    answerFr: 'Lis le corps de la réponse. `insufficient_scope` : la clé est bonne mais n\'a pas cette permission — il te dit laquelle. `invalid_key` est la réponse unique pour inconnue, révoquée *et* expirée, volontairement : quelqu\'un qui teste des clés ne doit pas apprendre que l\'une d\'elles a existé. `account_suspended` veut dire que le compte derrière la clé est sous sanction, pas la clé. Et une clé supprimée l\'est vraiment : on n\'annule pas, on en crée une nouvelle.',
+  },
+  {
+    category: 'Publishing & hosting', order: 330,
+    categoryFr: 'Publier et héberger',
+    question: 'What happens to my content when a hosting term ends?',
+    questionFr: 'Qu\'arrive-t-il à mon contenu à la fin d\'un terme d\'hébergement ?',
+    answer: 'You get one warning per term before it runs out. If it ends without renewal, the pool shrinks by that subscription\'s share and whatever no longer fits is **suspended** — repos stop serving, catalog items stop being listed — with a **72-hour** window before anything is deleted. Renewing inside the window restores all of it. If the pool is fed by several subscriptions and only one ends, everything that still fits stays online.',
+    answerFr: 'Tu reçois un avertissement par terme avant l\'échéance. S\'il se termine sans renouvellement, le pool rétrécit de la part de cet abonnement et ce qui ne rentre plus est **suspendu** — les dépôts cessent de servir, les éléments de catalogue de s\'afficher — avec **72 heures** avant toute suppression. Renouveler dans cette fenêtre restaure tout. Si le pool est alimenté par plusieurs abonnements et qu\'un seul se termine, tout ce qui tient encore reste en ligne.',
+  },
+
 ];
 
 // A stable slug from the question so re-runs upsert instead of duplicating. FaqItem has no
