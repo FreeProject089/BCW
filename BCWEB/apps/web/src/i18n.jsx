@@ -2142,6 +2142,7 @@ const DICT = {
     'hist.ret.fixed': "fixe",
     'adm.plans.schedundo': "Programmation de « {n} » pour le {d}. Les abonnés seront prévenus à la fermeture de cette fenêtre.",
     'fm.restoredundo': "« {p} » restauré.",
+    'ie.transfer': "Transférer…",
     'tr.title': "Transferts de propriété",
     'tr.sub': "Rien ne bouge tant que ce n’est pas accepté. Reprendre quelque chose, c’est reprendre son stockage et ce qui pourra être signalé à son sujet.",
     'tr.repo': "dépôt", 'tr.item': "élément du catalogue",

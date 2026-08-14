@@ -24,7 +24,7 @@ import { MyRepos, Billing } from './repos.jsx';
 const OwnerCatalogs = lazy(() => import('./admin.jsx').then((m) => ({ default: m.OwnerCatalogs })));
 const MyReports = lazy(() => import('./admin.jsx').then((m) => ({ default: m.MyReports })));
 import { KofiIcon } from '../ui/brand.jsx';
-import { useAsync, Loading, statusTone, KIND_ICON, fmtRemaining, JsonEditor, SideDash } from './pages.jsx';
+import { useAsync, Loading, statusTone, KIND_ICON, fmtRemaining, JsonEditor, SideDash, startOwnershipTransfer } from './pages.jsx';
 
 /* ─────────────────────────  Dashboard  ───────────────────────── */
 const SUBMIT_INIT = { projectKey: 'bmm', kind: 'PLUGIN', name: '', description: '', version: '1.0.0', meta: '{}' };
@@ -458,7 +458,7 @@ export function Dashboard() {
 // For our-hosted plugins the .bmmplug can be replaced; the new package is re-verified
 // (checksums recomputed) before the change can go live again.
 function ItemEditModal({ open, item, onClose, onDone }) {
-  const toast = useToast(); const { t } = useI18n();
+  const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
   const [form, setForm] = useState(null);
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -532,7 +532,15 @@ function ItemEditModal({ open, item, onClose, onDone }) {
     : <>
         {confirmDel
           ? <span className="flex items-center gap-2 mr-auto text-sm text-[var(--muted)]">{t('ie.delthis', 'Delete this item?')}<Button size="sm" className="!bg-error-bg !text-error !border-error-border" disabled={busy} onClick={doDelete}>{busy ? <Spinner /> : t('ie.yesdelete', 'Yes, delete')}</Button><Button size="sm" variant="ghost" onClick={() => setConfirmDel(false)}>{t('ie.no', 'No')}</Button></span>
-          : <button className="mr-auto text-sm text-error hover:text-error flex items-center gap-1.5" onClick={() => setConfirmDel(true)}><Trash2 size={14} /> {t('repos.del.ok', 'Delete')}</button>}
+          : <>
+              <button className="mr-auto text-sm text-error hover:text-error flex items-center gap-1.5" onClick={() => setConfirmDel(true)}><Trash2 size={14} /> {t('repos.del.ok', 'Delete')}</button>
+              {/* Beside Delete rather than beside Save: both are ways of ceasing to own
+                  this, and neither belongs next to an edit you might still be making. */}
+              <button className="text-sm text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"
+                onClick={async () => { if (await startOwnershipTransfer({ dialog, toast, t, api, kind: 'catalog', targetId: item.id, targetName: item.name })) { onClose(); onDone(); } }}>
+                <ArrowRight size={14} /> {t('ie.transfer', 'Transfer…')}
+              </button>
+            </>}
         <Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
         <Button variant="primary" disabled={busy || (!!file && noSubmitSpace)} onClick={save}>{busy ? <Spinner /> : t('ie.savereview', 'Save (send for re-review)')}</Button>
       </>;
