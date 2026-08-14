@@ -381,7 +381,7 @@ export async function sweepScheduledPrices(p, log) {
 ///
 /// Returns the number moved, or null if Stripe could not be reached at all (the caller
 /// then leaves the change pending rather than half-applying it).
-async function repriceExistingSubscribers(p, plan, log) {
+export async function repriceExistingSubscribers(p, plan, log) {
   let sk;
   try { sk = await stripe(); } catch { return null; }
   if (!sk) return null;

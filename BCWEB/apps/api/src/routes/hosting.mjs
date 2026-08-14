@@ -220,7 +220,7 @@ async function affectedSubscribers(p, planId) {
 
 const money = (c) => `$${((c || 0) / 100).toFixed(2)}`;
 
-async function announcePriceChange(p, plan, fromCents, toCents, at, applyToExisting) {
+async function announcePriceChange(p, plan, fromCents, toCents, at, applyToExisting, applyNow = false) {
   // Nobody is affected when the change is for new buyers only — and mailing current
   // subscribers "your price is changing" when it is not would be worse than silence.
   if (!applyToExisting) return 0;
@@ -228,18 +228,21 @@ async function announcePriceChange(p, plan, fromCents, toCents, at, applyToExist
   if (!users.length) return 0;
   const day = at.toISOString().slice(0, 10);
   const up = toCents > fromCents;
-  const subject = up
-    ? `Price change for ${plan.name} on ${day}`
-    : `${plan.name} is getting cheaper on ${day}`;
+  // An immediate change must not be described as happening "on" a day that has already
+  // passed — the reader would go looking for a warning they never got. It says what is
+  // true instead: it is in force, and it reaches them at their next renewal.
+  const subject = applyNow
+    ? (up ? `Price change for ${plan.name}` : `${plan.name} is getting cheaper`)
+    : (up ? `Price change for ${plan.name} on ${day}` : `${plan.name} is getting cheaper on ${day}`);
   // Says the four things the policy promises and nothing else: what it is now, what it
   // becomes, WHEN, and that cancelling before then is enough to decline it.
   const body = `
     <p>The monthly price of <b>${escapeHtml(plan.name)}</b> hosting is changing.</p>
     <table style="margin:14px 0;font-size:15px">
       <tr><td style="padding:2px 14px 2px 0;color:#94a3b8">Today</td><td><b>${money(fromCents)}/month</b></td></tr>
-      <tr><td style="padding:2px 14px 2px 0;color:#94a3b8">From ${escapeHtml(day)}</td><td><b>${money(toCents)}/month</b></td></tr>
+      <tr><td style="padding:2px 14px 2px 0;color:#94a3b8">${applyNow ? 'Now' : `From ${escapeHtml(day)}`}</td><td><b>${money(toCents)}/month</b></td></tr>
     </table>
-    <p>The new price applies from your <b>next renewal on or after ${escapeHtml(day)}</b>. It never applies to a
+    <p>The new price applies from your <b>next renewal${applyNow ? '' : ` on or after ${escapeHtml(day)}`}</b>. It never applies to a
        period you have already paid for, and never mid-term on a prepaid plan.</p>
     <p>If you would rather not continue at the new price, cancel before that renewal — your service runs to the end
        of the period you have paid. Cancelling is always enough to decline a change.</p>`;
@@ -248,12 +251,12 @@ async function announcePriceChange(p, plan, fromCents, toCents, at, applyToExist
     // Per-recipient, one message each: a shared To: on a billing notice would publish the
     // customer list. Failures are counted, never fatal — the in-app notice still lands.
     try {
-      const ok = await sendMail({ to: u.email, subject, html: mailShell(subject, body), text: `${plan.name}: ${money(fromCents)} → ${money(toCents)}/month from ${day}.` });
+      const ok = await sendMail({ to: u.email, subject, html: mailShell(subject, body), text: `${plan.name}: ${money(fromCents)} → ${money(toCents)}/month ${applyNow ? 'from your next renewal' : `from ${day}`}.` });
       if (ok !== false) sent++;
     } catch { /* counted by omission */ }
     // notify(p, userId, kind, body) — positional, and `kind` is the badge label.
     await notify(p, u.id, up ? 'A price is going up' : 'A price is going down',
-      `${plan.name}: ${money(fromCents)} → ${money(toCents)} / month from ${day}.`).catch(() => {});
+      `${plan.name}: ${money(fromCents)} → ${money(toCents)} / month ${applyNow ? 'from your next renewal' : `from ${day}`}.`).catch(() => {});
   }
   return sent;
 }
@@ -360,11 +363,25 @@ export default async function hostingRoutes(app) {
 
     // ── Scheduled change ────────────────────────────────────────────────────────
     let notified = 0;
+    // An announcement already out there is a promise to real people. Overwriting it — with
+    // an immediate edit, or with a different scheduled one — has to tell them, or they are
+    // left waiting for a rise that will never arrive at the price they were quoted. The
+    // explicit "cancel the pending change" button already does this; doing it here too
+    // means the promise is kept whichever way the change is undone.
+    let cancelNotified = 0;
+    // pendingApplyExisting, not pendingNoticeCount: the count is emails DELIVERED, so with
+    // SMTP down a change that was announced to everybody (in-app notices and all) would look
+    // like it had never been announced, and superseding it would say nothing.
+    const hadAnnouncement = current.pendingPriceCents != null && current.pendingApplyExisting;
     const wantsSchedule = effectiveAt && 'priceMonthlyCents' in data
       && data.priceMonthlyCents !== current.priceMonthlyCents;
+    // "Today" is a date like any other, and an admin who picks it means it. A date that has
+    // already passed applies NOW rather than 400-ing: the alternative is an admin retyping
+    // the same intention until the clock agrees with them, and there is no reading of "put
+    // this price in force on a day that has been and gone" other than "put it in force".
+    const applyNow = wantsSchedule && new Date(effectiveAt).getTime() <= Date.now();
     if (wantsSchedule) {
       const at = new Date(effectiveAt);
-      if (!(at.getTime() > Date.now())) return reply.code(400).send({ error: 'effective_in_past' });
       const staged = data.priceMonthlyCents;
       // The live price is NOT touched. That is the whole point: a price nobody has been
       // told about must not start applying because an admin pressed Save.
@@ -373,24 +390,62 @@ export default async function hostingRoutes(app) {
       data.pendingPriceAt = at;
       data.pendingNoticeAt = new Date();
       data.pendingApplyExisting = !!applyToExisting;
-      notified = await announcePriceChange(p, { ...current, ...data }, current.priceMonthlyCents, staged, at, !!applyToExisting);
+      notified = await announcePriceChange(p, { ...current, ...data }, current.priceMonthlyCents, staged, at, !!applyToExisting, applyNow);
       data.pendingNoticeCount = notified;
     } else if ('priceMonthlyCents' in data) {
       // An immediate price edit cancels any announcement still pending — otherwise the
       // scheduled swap would later overwrite the value just typed, days after the fact.
       data.pendingPriceCents = null; data.pendingPriceAt = null; data.pendingNoticeAt = null; data.pendingNoticeCount = 0; data.pendingApplyExisting = false;
     }
+    // Gated on whether the replacement ADDRESSES them, not on how many emails got through.
+    // `notified` is a delivery count: with SMTP down it is 0 even though everyone was
+    // written to, and keying off it would send "the change is cancelled" right after
+    // announcing the change — contradicting ourselves precisely when mail is already flaky.
+    const announcedReplacement = wantsSchedule && !!applyToExisting;
+    if (hadAnnouncement && !announcedReplacement) cancelNotified = await announcePriceCancelled(p, current);
 
-    const plan = await p.hostingPlan.update({ where: { id: req.params.id }, data }).catch(() => null);
+    let plan = await p.hostingPlan.update({ where: { id: req.params.id }, data }).catch(() => null);
     if (!plan) return reply.code(404).send({ error: 'not_found' });
+
+    // Effective today → do the swap here instead of waiting for a sweeper tick, through the
+    // same helper the scheduled path uses. Existing subscribers move FIRST: if Stripe is
+    // unreachable the staging survives and the sweeper retries, whereas swapping the plan
+    // first would leave the announcement sent, the price changed, and the subscriptions
+    // silently on the old amount with nothing left to say they should not be.
+    let repriced = 0;
+    if (applyNow) {
+      let ok = true;
+      if (plan.pendingApplyExisting) {
+        // Imported here, not at the top: sweeper.mjs already imports THIS module, and a
+        // static cycle between the two is a load-order bug waiting for the day somebody
+        // reorders the registrations in server.mjs.
+        const { repriceExistingSubscribers } = await import('../lib/sweeper.mjs');
+        const moved = await repriceExistingSubscribers(p, plan, req.log);
+        if (moved === null) ok = false; else repriced = moved;
+      }
+      if (ok) {
+        plan = await p.hostingPlan.update({
+          where: { id: plan.id },
+          data: {
+            priceMonthlyCents: plan.pendingPriceCents,
+            pendingPriceCents: null, pendingPriceAt: null, pendingNoticeAt: null,
+            pendingNoticeCount: 0, pendingApplyExisting: false,
+          },
+        });
+      }
+    }
+
     if (wantsSchedule) {
-      await logAudit(p, req.user.uid, 'hosting.price_scheduled',
-        `${plan.name}: ${(current.priceMonthlyCents / 100).toFixed(2)} → ${(plan.pendingPriceCents / 100).toFixed(2)} on ${plan.pendingPriceAt.toISOString().slice(0, 10)} (${notified} notified)`,
+      await logAudit(p, req.user.uid, applyNow ? 'hosting.price_changed' : 'hosting.price_scheduled',
+        applyNow
+          ? `${plan.name}: ${(current.priceMonthlyCents / 100).toFixed(2)} → ${(plan.priceMonthlyCents / 100).toFixed(2)} effective now (${notified} notified, ${repriced} subscription(s) moved)`
+          : `${plan.name}: ${(current.priceMonthlyCents / 100).toFixed(2)} → ${(plan.pendingPriceCents / 100).toFixed(2)} on ${plan.pendingPriceAt.toISOString().slice(0, 10)} (${notified} notified)`,
         clientIp(req));
     }
-    // Editing a price does NOT reprice anyone: an existing Subscription keeps the terms it
-    // was bought under, and Stripe holds its own copy. This changes what NEW buyers see.
-    return { ok: true, plan, notified };
+    // Without applyToExisting an edit still reprices nobody: an existing Subscription keeps
+    // the terms it was bought under and Stripe holds its own copy, so the change reaches new
+    // buyers only. `repriced` is how many were deliberately moved.
+    return { ok: true, plan, notified, appliedNow: applyNow, repriced, cancelNotified };
   });
 
   // Drop a scheduled change before it lands. The live price never moved, so this is a

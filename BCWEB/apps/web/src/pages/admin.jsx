@@ -4372,7 +4372,10 @@ function AdminHostingPlans() {
   // Default notice period. 30 days is what the Payments policy describes, and a default
   // is what makes "give notice" the easy path rather than the conscientious one.
   const in30Days = () => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
-  const [effective, setEffective] = useState('');   // '' = apply immediately
+  // Local date, not toISOString(): the ISO form is UTC, so west of Greenwich "today"
+  // renders as yesterday and the field would open on a date its own `min` rejects.
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const [effective, setEffective] = useState('');   // '' = change the price with nobody told
   const [applyExisting, setApplyExisting] = useState(false); // false = grandfather
   // "The price moved" is the trigger for everything below, so it is computed once and in
   // cents — comparing the raw strings would call "500" and "500 " a change.
@@ -4554,15 +4557,27 @@ function AdminHostingPlans() {
                 ))}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Input type="date" className="!w-44" value={effective} min={new Date(Date.now() + 864e5).toISOString().slice(0, 10)}
+                {/* min is TODAY, not tomorrow. "Now" is a legitimate answer — a correction,
+                    or a rise the customers have already been told about elsewhere — and
+                    forbidding it only pushed admins onto the empty-date path, which is the
+                    one that tells nobody. */}
+                <Input type="date" className="!w-44" value={effective} min={today()}
                   onChange={(e) => setEffective(e.target.value)} />
-                <Button size="sm" variant={effective ? 'ghost' : 'primary'} onClick={() => setEffective(in30Days())}>
+                <Button size="sm" variant={effective === today() ? 'primary' : 'ghost'} onClick={() => setEffective(today())}>
+                  {t('adm.plans.eff.today', 'Today')}
+                </Button>
+                <Button size="sm" variant={effective && effective !== today() ? 'primary' : 'ghost'} onClick={() => setEffective(in30Days())}>
                   {t('adm.plans.eff.30', '30 days from now')}
                 </Button>
-                {effective
-                  ? <Button size="sm" variant="ghost" onClick={() => setEffective('')}>{t('adm.plans.eff.now', 'Apply immediately instead')}</Button>
-                  : <span className="text-xs text-warning">{t('adm.plans.eff.warn', 'No date: the price changes on save, with nobody told.')}</span>}
+                {!effective && <span className="text-xs text-warning">{t('adm.plans.eff.warn', 'No date: the price changes on save, with nobody told.')}</span>}
               </div>
+              {effective === today() && (
+                <p className="text-xs text-[var(--muted)]">
+                  {applyExisting
+                    ? t('adm.plans.eff.todaymsg.all', 'Saving puts the new price in force straight away. Everyone subscribed moves to it at their NEXT renewal — never mid-term — and is emailed now.')
+                    : t('adm.plans.eff.todaymsg.new', 'Saving puts the new price in force straight away, for new buyers. Everyone already subscribed keeps what they pay, and nobody is emailed.')}
+                </p>
+              )}
             </div>
           )}
           <div className="flex gap-2">
@@ -4606,7 +4621,7 @@ function AdminHostingPlans() {
               <div className="text-[11px] text-[var(--faint)] shrink-0">
                 {(pl._count?.subscriptions ?? 0)} {t('adm.plans.subs', 'sub(s)')}
               </div>
-              <Button size="sm" variant="ghost" onClick={() => { setDraft({ ...pl }); setOriginal(pl); setEffective(''); }}><SettingsIcon size={13} /></Button>
+              <Button size="sm" variant="ghost" onClick={() => { setDraft({ ...pl }); setOriginal(pl); setEffective(today()); }}><SettingsIcon size={13} /></Button>
               <Button size="sm" variant="ghost" className="!text-error" onClick={() => remove(pl)}><Trash2 size={13} /></Button>
             </div>
           ))}
