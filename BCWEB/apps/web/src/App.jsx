@@ -856,7 +856,7 @@ function Footer() {
           ? cols.map((c) => <FooterCol key={c.title} title={c.title} links={c.links} />)
           : <>
         <FooterCol title={t('foot.products')} links={[['BetterModsManager', '/p/bmm'], ['BetterSoundMaker', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting'], [t('myo.badge', 'Make Your Own'), '/myo']]} />
-        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/legal/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('faq.title', 'FAQ'), '/faq'], [t('nav.repos'), '/repos'], [t('foot.members', 'Members'), '/users'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
+        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/legal/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('nav.dev', 'Developers'), '/dev'], [t('faq.title', 'FAQ'), '/faq'], [t('nav.repos'), '/repos'], [t('foot.members', 'Members'), '/users'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
         <FooterCol title={t('foot.legal')} links={[[t('legal.all', 'All'), '/legal'], [t('foot.privacy'), '/legal/privacy'], [t('foot.terms'), '/legal/terms'], [t('foot.cookies'), '/legal/cookies'], [t('foot.refunds', 'Payments & Refunds'), '/legal/refunds']]} />
           </>}
       </div>

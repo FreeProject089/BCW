@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Boxes, Music2, Server, Rocket, Download, ArrowRight, Upload, CheckCircle2, Package, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2,
+  Boxes, Music2, Server, Rocket, Download, ArrowRight, Upload, CheckCircle2, Package, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, KeyRound, Shield, Webhook, FlaskConical,
 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -236,6 +236,43 @@ export function Home() {
               </Card>
             </Link>
           ))}
+        </div>
+      </section>
+
+      {/* Developers.
+          A band, not a fifth product card: building on the platform is not another thing to
+          download, and putting it in that row would say it is. It sits here because the
+          person who has read this far is the one who might. */}
+      <section>
+        <div className="reveal-on-scroll">
+          <Card className="p-8 sm:p-10 relative overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none opacity-[0.07]"
+              style={{ background: 'radial-gradient(60% 120% at 85% 0%, var(--primary) 0%, transparent 70%)' }} />
+            <div className="relative grid lg:grid-cols-[1.3fr_1fr] gap-8 items-center">
+              <div>
+                <div className="inline-flex items-center gap-2 badge badge-primary mb-4"><Code2 size={13} /> {t('home.dev.k', 'For developers')}</div>
+                <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{t('home.dev.t', 'Build on BetterCommunity')}</h3>
+                <p className="text-[var(--muted)] mt-3 leading-relaxed">
+                  {t('home.dev.d', 'Sign people in with their BetterCommunity account, read their content with their permission, and get told when it changes. A REST API, OpenID Connect and webhooks — no SDK to install, and a key takes about a minute.')}
+                </p>
+                <div className="flex flex-wrap gap-2 mt-6">
+                  <Link to="/dev"><Button variant="primary" className="!px-5 !py-2.5"><Code2 size={15} /> {t('home.dev.cta', 'Open the developer area')}</Button></Link>
+                  <Link to="/docs/bcweb-api"><Button className="!px-5 !py-2.5">{t('home.dev.cta2', 'API reference')}</Button></Link>
+                </div>
+              </div>
+              {/* The four things you get, named. A list of nouns beats a paragraph here: the
+                  reader is scanning for one word that matches what they came to do. */}
+              <div className="grid grid-cols-2 gap-3">
+                {[[KeyRound, t('home.dev.f1', 'API keys')], [Shield, t('home.dev.f2', 'Sign-in (OIDC)')],
+                  [Webhook, t('home.dev.f3', 'Webhooks')], [FlaskConical, t('home.dev.f4', 'Sandbox')]].map(([I, label]) => (
+                  <div key={label} className="flex items-center gap-2.5 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-3.5 py-3">
+                    <I size={16} className="text-[var(--primary-2)] shrink-0" />
+                    <span className="text-[13px] font-medium min-w-0 truncate">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
         </div>
       </section>
 
