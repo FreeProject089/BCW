@@ -26,6 +26,8 @@ import { sweepReports } from '../routes/reports.mjs';
 import { recomputePoolBytes, stripe } from '../routes/hosting.mjs';
 import { sweepAccountClosures } from '../routes/closure.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
+import { createSnapshot, pruneSnapshots } from './snapshots.mjs';
+import { signBytes } from './signing.mjs';
 
 const DAY_MS = 864e5;
 
@@ -51,6 +53,17 @@ async function sweepDailyFileBackup(p, log) {
       }
     }
     await snapshotTree(FILES_BACKUP_ROOT, FILES_ROOT, 'daily snapshot');
+    // Freeze today's history into a keepable artefact, then rotate. Doing this here and not
+    // only behind the admin button is the difference between a retention policy and a
+    // suggestion: nobody presses a button every day, and the day they would have is the day
+    // the box is already on fire.
+    const keep = limitRow?.value?.keep ?? 10;
+    await createSnapshot('files', { by: 'sweeper', note: 'daily snapshot', sign: (bytes) => signBytes(bytes, p) })
+      .then(() => pruneSnapshots(keep))
+      .then((removed) => { if (removed.length) log.info({ removed: removed.length }, 'sweeper: rotated old snapshots'); })
+      // A snapshot that cannot be written must not lose the day's history commit, which is
+      // already safely in the repo above.
+      .catch((e) => log.warn({ e: String(e?.message || e) }, 'sweeper: snapshot archive failed (history still committed)'));
     await p.adminSetting.upsert({ where: { key }, create: { key, value: { at: new Date().toISOString() } }, update: { value: { at: new Date().toISOString() } } });
     return true;
   } catch (e) { log.warn({ e: String(e?.message || e) }, 'sweeper: daily file backup failed'); return false; }

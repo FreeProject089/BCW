@@ -8,7 +8,8 @@ import fsSync from 'node:fs';
 import pg from 'pg';
 import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual, readAnchors } from '../lib/lib.mjs';
 import { verifyTotp } from '../lib/totp.mjs';
-import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles, bundleRepo, backupLog } from '../lib/gitbackup.mjs';
+import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles, bundleRepo, backupLog, snapshotTree } from '../lib/gitbackup.mjs';
+import { createSnapshot, listSnapshots, snapshotBytes, deleteSnapshot, pruneSnapshots, validSnapshotId, SNAPSHOT_KINDS } from '../lib/snapshots.mjs';
 
 // A lightweight "type to confirm" server-side check — the frontend already
 // makes the admin confirm twice (a dialog, then typing this exact word), but
@@ -17,6 +18,10 @@ import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory,
 function requireConfirm(body) {
   return body?.confirmToken === 'CONFIRM';
 }
+
+// Snapshots kept per kind before the oldest is rotated out. Ten because it has to be a
+// number and this one spans a fortnight of daily runs; 0 disables rotation entirely.
+const DEFAULT_KEEP = 10;
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const DANGEROUS = [requireRole('ADMIN'), requireCanControlServer(), requireElevated()];
@@ -621,16 +626,108 @@ export default async function serverControlRoutes(app) {
   app.get('/server/backups/usage', { preHandler: DANGEROUS }, async () => {
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } });
-    const [filesBytes, dbBytes] = await Promise.all([repoSizeBytes(FILES_BACKUP_ROOT), repoSizeBytes(DB_BACKUP_ROOT)]);
-    return { filesBytes, dbBytes, totalBytes: filesBytes + dbBytes, maxBytes: row?.value?.maxBytes ?? null };
+    const [filesBytes, dbBytes, snaps] = await Promise.all([repoSizeBytes(FILES_BACKUP_ROOT), repoSizeBytes(DB_BACKUP_ROOT), listSnapshots()]);
+    // Snapshots count towards the total because they sit on the same disk. A usage figure
+    // that ignores half of what it wrote is the reason a box runs out of space.
+    const snapshotBytesTotal = snaps.reduce((n, s) => n + (s.bytes || 0), 0);
+    return {
+      filesBytes, dbBytes, snapshotBytes: snapshotBytesTotal, snapshotCount: snaps.length,
+      totalBytes: filesBytes + dbBytes + snapshotBytesTotal,
+      maxBytes: row?.value?.maxBytes ?? null,
+      keep: row?.value?.keep ?? DEFAULT_KEEP,
+    };
   });
 
   app.put('/server/backups/limit', { preHandler: DANGEROUS }, async (req, reply) => {
-    const b = z.object({ maxBytes: z.number().int().min(0).nullable() }).safeParse(req.body);
+    const b = z.object({
+      maxBytes: z.number().int().min(0).nullable(),
+      // How many snapshots to keep per kind before the oldest is overwritten. Optional so
+      // an older client that only knows about maxBytes does not silently reset it to
+      // something — an omitted field must never mean "turn off my rotation".
+      keep: z.number().int().min(0).max(365).optional(),
+    }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    await p.adminSetting.upsert({ where: { key: 'backup.maxBytes' }, create: { key: 'backup.maxBytes', value: { maxBytes: b.data.maxBytes } }, update: { value: { maxBytes: b.data.maxBytes } } });
-    await logAudit(p, req.user.uid, 'server.backup_limit', `set to ${b.data.maxBytes ?? 'unlimited'} bytes`, clientIp(req));
+    const prev = (await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } }))?.value || {};
+    const value = { maxBytes: b.data.maxBytes, keep: b.data.keep ?? prev.keep ?? DEFAULT_KEEP };
+    await p.adminSetting.upsert({ where: { key: 'backup.maxBytes' }, create: { key: 'backup.maxBytes', value }, update: { value } });
+    await logAudit(p, req.user.uid, 'server.backup_limit', `size ${b.data.maxBytes ?? 'unlimited'} bytes, keep ${value.keep || 'all'}`, clientIp(req));
+    // Lowering the count is an instruction about what to hold, so it takes effect now
+    // rather than at the next snapshot — otherwise "keep 3" leaves twelve on disk until
+    // someone happens to press the button.
+    const removed = await pruneSnapshots(value.keep);
+    return { ok: true, removed };
+  });
+
+  // ── Snapshots: the backups you can hold ─────────────────────────────────────
+  // See lib/snapshots.mjs for why these exist alongside the git history rather than
+  // instead of it.
+
+  app.get('/server/backups/snapshots', { preHandler: DANGEROUS }, async () => {
+    const p = await db();
+    const cfg = (await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } }))?.value || {};
+    return { snapshots: await listSnapshots(), keep: cfg.keep ?? DEFAULT_KEEP };
+  });
+
+  app.post('/server/backups/snapshots', { preHandler: DANGEROUS }, async (req, reply) => {
+    const b = z.object({
+      kind: z.enum(['files', 'db', 'both']).default('both'),
+      note: z.string().max(200).default(''),
+    }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const kinds = b.data.kind === 'both' ? SNAPSHOT_KINDS : [b.data.kind];
+
+    // Refresh the file history first, so a manual snapshot captures the tree as it is right
+    // now. Without this, pressing "back up now" would archive whatever the last daily run
+    // saw — the one moment somebody presses that button is usually just after a change they
+    // want covered.
+    if (kinds.includes('files')) {
+      await snapshotTree(FILES_BACKUP_ROOT, FILES_ROOT, `manual snapshot by ${req.user.uid}`).catch((e) => req.log?.warn?.({ e: String(e) }, 'pre-snapshot tree refresh failed (continuing)'));
+    }
+
+    const made = [];
+    const skipped = [];
+    for (const kind of kinds) {
+      try {
+        made.push(await createSnapshot(kind, { by: req.user.uid, note: b.data.note, sign: (bytes) => signBytes(bytes, p) }));
+      } catch {
+        // Nothing has ever been backed up for this kind — a real state on a fresh box, and
+        // not a reason to fail the half that did work.
+        skipped.push(kind);
+      }
+    }
+    if (!made.length) return reply.code(404).send({ error: 'no_backups', detail: 'Nothing has been backed up yet.', skipped });
+
+    const cfg = (await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } }))?.value || {};
+    const rotated = await pruneSnapshots(cfg.keep ?? DEFAULT_KEEP);
+    await logAudit(p, req.user.uid, 'server.backup_snapshot', `${made.map((m) => m.kind).join('+')}${rotated.length ? `, rotated ${rotated.length}` : ''}`, clientIp(req));
+    return { ok: true, made, skipped, rotated };
+  });
+
+  app.get('/server/backups/snapshots/:id/download', { preHandler: DANGEROUS }, async (req, reply) => {
+    const hit = await snapshotBytes(req.params.id);
+    if (!hit) return reply.code(404).send({ error: 'not_found' });
+    const p = await db();
+    await logAudit(p, req.user.uid, 'server.backup_export', `snapshot ${hit.meta.id} (${hit.meta.bytes} bytes)`, clientIp(req));
+    reply.header('Content-Type', 'application/octet-stream');
+    reply.header('Content-Disposition', `attachment; filename="bcweb-${hit.meta.id}.bundle"`);
+    // The signature made when the snapshot was taken, not a fresh one: it is the artefact
+    // on disk that is being vouched for, and re-signing on the way out would hide a file
+    // that had been tampered with since.
+    if (hit.meta.signature) reply.header('X-Backup-Signature', hit.meta.signature);
+    reply.header('X-Backup-Signature-Alg', 'Ed25519');
+    reply.header('X-Backup-Sha256', hit.meta.sha256);
+    reply.header('Access-Control-Expose-Headers', 'X-Backup-Signature, X-Backup-Signature-Alg, X-Backup-Sha256');
+    return reply.send(hit.bytes);
+  });
+
+  app.delete('/server/backups/snapshots/:id', { preHandler: DANGEROUS }, async (req, reply) => {
+    if (!validSnapshotId(req.params.id)) return reply.code(400).send({ error: 'invalid_input' });
+    if (!requireConfirm(req.body)) return reply.code(400).send({ error: 'confirm_required' });
+    if (!(await deleteSnapshot(req.params.id))) return reply.code(404).send({ error: 'not_found' });
+    const p = await db();
+    await logAudit(p, req.user.uid, 'server.backup_delete', req.params.id, clientIp(req));
     return { ok: true };
   });
 

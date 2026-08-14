@@ -1987,6 +1987,141 @@ function AdminServerAdvanced() {
   );
 }
 
+
+// Snapshots: the backups an admin can actually take, hold and throw away.
+//
+// Kept visually apart from the history above because they answer a different question.
+// The history answers "put that file back"; a snapshot answers "the server is gone".
+function SnapshotsPanel({ onChanged }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { data, loading, reload } = useAsync(() => api.get('/server/backups/snapshots'), []);
+  const [busy, setBusy] = useState('');
+  const [keep, setKeep] = useState('');
+
+  const snaps = data?.snapshots || [];
+  const keepNow = data?.keep ?? 10;
+
+  const take = async (kind) => {
+    setBusy('new');
+    try {
+      const r = await api.post('/server/backups/snapshots', { kind });
+      // The rotation is reported, never silent. A backup routine that quietly deletes is
+      // the reason people distrust backup routines.
+      toast.success(r.rotated?.length
+        ? t('snap.made.rot', 'Backup taken — {n} older one(s) rotated out.').replace('{n}', String(r.rotated.length))
+        : t('snap.made', 'Backup taken.'));
+      reload(); onChanged?.();
+    } catch (x) {
+      toast.error(x?.data?.error === 'no_backups' ? t('bkp.nobackups', 'Nothing has been backed up yet.') : t('common.failed', 'Failed.'));
+    } finally { setBusy(''); }
+  };
+
+  const saveKeep = async () => {
+    const n = keep.trim() === '' ? keepNow : Math.max(0, Math.round(Number(keep)));
+    if (!Number.isFinite(n)) return;
+    if (n > 0 && n < snaps.filter((x) => x.kind === 'files').length) {
+      // Naming the number that will be deleted, because "Save" on a settings row is not a
+      // place anyone expects to lose backups.
+      if (!await dialog.confirm({
+        title: t('snap.keep.t', 'Delete older backups now?'),
+        message: t('snap.keep.m', 'Keeping {n} means the older ones are removed immediately, not at the next backup.').replace('{n}', String(n)),
+        okLabel: t('snap.keep.ok', 'Keep {n} and rotate').replace('{n}', String(n)),
+        danger: true,
+      })) return;
+    }
+    setBusy('keep');
+    try {
+      const r = await api.put('/server/backups/limit', { maxBytes: data?.maxBytes ?? null, keep: n });
+      toast.success(r.removed?.length ? t('snap.rotated', '{n} removed.').replace('{n}', String(r.removed.length)) : t('common.saved', 'Saved.'));
+      setKeep(''); reload(); onChanged?.();
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
+  };
+
+  // Same reason as the history export: the signature travels in a response header, so a
+  // plain <a download> would save the file and bin the thing that makes it checkable.
+  const download = async (snap) => {
+    setBusy(snap.id);
+    try {
+      const res = await fetch(`/api/server/backups/snapshots/${snap.id}/download`, { credentials: 'include' });
+      if (!res.ok) throw new Error('dl');
+      const sig = res.headers.get('X-Backup-Signature') || '';
+      const blob = await res.blob();
+      const name = `bcweb-${snap.id}.bundle`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+      URL.revokeObjectURL(url);
+      if (sig) {
+        const su = URL.createObjectURL(new Blob([sig], { type: 'text/plain' }));
+        const b = document.createElement('a'); b.href = su; b.download = `${name}.sig.b64`; b.click();
+        URL.revokeObjectURL(su);
+      }
+      toast.success(t('bkp.exported', 'Downloaded {n} — the signature was saved next to it.').replace('{n}', name));
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
+  };
+
+  const remove = async (snap) => {
+    if (!await dialog.confirm({
+      title: t('snap.del.t', 'Delete this backup?'),
+      message: t('snap.del.m', 'It is removed from the disk for good. Anything already downloaded is unaffected.'),
+      okLabel: t('common.delete', 'Delete'), danger: true,
+    })) return;
+    setBusy(snap.id);
+    try { await api.del(`/server/backups/snapshots/${snap.id}`, { confirmToken: 'CONFIRM' }); toast.success(t('common.deleted', 'Deleted.')); reload(); onChanged?.(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
+  };
+
+  return (
+    <div className="mt-4 pt-3 border-t border-[var(--line)]">
+      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5">
+        <Archive size={12} /> {t('snap.title', 'Point-in-time backups')}
+      </div>
+      <p className="text-[11px] text-[var(--muted)] mb-2">
+        {t('snap.sub', 'One frozen, signed file per backup — taken here, or automatically once a day. Unlike the history above these never change after they are made, which is what makes one worth copying off the box.')}
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="primary" disabled={!!busy} onClick={() => take('both')}>
+          {busy === 'new' ? <Spinner /> : <Archive size={13} />} {t('snap.now', 'Back up now')}
+        </Button>
+        <Button size="sm" disabled={!!busy} onClick={() => take('files')}>{t('snap.files', 'Files only')}</Button>
+        <Button size="sm" disabled={!!busy} onClick={() => take('db')}>{t('snap.db', 'DB rows only')}</Button>
+        <div className="flex items-center gap-1.5 ml-auto">
+          <span className="text-[11px] text-[var(--muted)]">{t('snap.keeplabel', 'Keep')}</span>
+          <Input className="w-20" type="number" min="0" value={keep} onChange={(e) => setKeep(e.target.value)} placeholder={String(keepNow)} />
+          <Button size="sm" disabled={!!busy} onClick={saveKeep}>{busy === 'keep' ? <Spinner /> : t('common.save', 'Save')}</Button>
+        </div>
+      </div>
+      <p className="text-[11px] text-[var(--faint)] mt-1.5">
+        {keepNow > 0
+          ? t('snap.keep.on', 'Keeping the {n} most recent of each kind — older ones are overwritten as new ones are taken.').replace('{n}', String(keepNow))
+          : t('snap.keep.off', 'Rotation is off: backups are kept until you delete them, and nothing watches the disk for you.')}
+      </p>
+
+      <div className="mt-3 rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] max-h-72 overflow-y-auto">
+        {loading ? <div className="p-3"><Spinner /></div>
+          : !snaps.length ? <div className="px-3 py-3 text-[11px] text-[var(--faint)]">{t('snap.none', 'No backup taken yet.')}</div>
+          : snaps.map((snap) => (
+            <div key={snap.id} className="px-3 py-2 flex items-center gap-2">
+              <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-[var(--surface-2)]">
+                {snap.kind === 'db' ? t('bkp.dbhist', 'DB row history') : t('bkp.filehist', 'File history')}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs truncate">{new Date(snap.createdAt).toLocaleString()} · {fmtBytes(snap.bytes || 0)}</div>
+                <div className="text-[10px] text-[var(--faint)] truncate">
+                  {snap.note || (snap.by === 'sweeper' ? t('snap.auto', 'automatic daily') : t('snap.manual', 'taken by hand'))}
+                  {' · '}<code className="font-mono">{String(snap.sha256 || '').slice(0, 12)}</code>
+                  {!snap.signature && <span className="text-warning"> · {t('snap.unsigned', 'unsigned')}</span>}
+                </div>
+              </div>
+              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => download(snap)} title={t('common.download', 'Download')}><Download size={13} /></Button>
+              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => remove(snap)} title={t('common.delete', 'Delete')}><Trash2 size={13} className="text-[var(--error)]" /></Button>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
 // Backups here are git-based history for edits made through the File manager
 // and DB viewer above (see gitbackup.mjs) — NOT a full disaster-recovery
 // backup of the whole app. Size shown here is also mirrored in the admin
@@ -2136,6 +2271,8 @@ function BackupManager() {
           </div>
         )}
       </div>
+
+      <SnapshotsPanel onChanged={reload} />
     </Card>
   );
 }
