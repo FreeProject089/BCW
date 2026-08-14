@@ -144,13 +144,17 @@ export default async function closureRoutes(app) {
     if (!token) return reply.code(400).send({ error: 'missing_token' });
     const p = await db();
     const u = await p.user.findUnique({ where: { closureToken: token }, select: { id: true, closureScheduledFor: true } });
-    if (!u) {
-      // Also covers "already cancelled", since cancelling clears the token. Reported as a
-      // success state rather than a 404: the outcome the reader cares about is that the
-      // account is not closing, and that is true either way.
-      return { ok: true, alreadyActive: true };
-    }
-    await p.user.update({ where: { id: u.id }, data: { closureRequestedAt: null, closureScheduledFor: null, closureToken: null } });
+    // An unknown token is an error, and has to be — the common way to get one is an email
+    // client that cut the link in half, and telling that reader "your account is safe" is
+    // the single worst thing this endpoint could say. It would be true of nobody's account.
+    if (!u) return reply.code(404).send({ error: 'invalid_token' });
+    // Already cancelled: the token is deliberately kept alive below, so this branch is
+    // reachable and means what it says. Same link, third click, same reassuring answer.
+    if (!u.closureScheduledFor) return { ok: true, alreadyActive: true };
+    // Note the token is NOT cleared. That is what makes "cancelled" and "never existed"
+    // distinguishable at all; it grants nothing once there is no closure to cancel, and
+    // requesting a closure again mints a fresh one.
+    await p.user.update({ where: { id: u.id }, data: { closureRequestedAt: null, closureScheduledFor: null } });
     await logAudit(p, u.id, 'account.closure_cancelled', 'via emailed link', clientIp(req));
     return { ok: true, cancelled: true, userId: u.id };
   };
@@ -162,7 +166,9 @@ export default async function closureRoutes(app) {
     const p = await db();
     const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { closureScheduledFor: true } });
     if (!me?.closureScheduledFor) return reply.code(409).send({ error: 'not_pending' });
-    await p.user.update({ where: { id: req.user.uid }, data: { closureRequestedAt: null, closureScheduledFor: null, closureToken: null } });
+    // Token kept here too, so a link cancelled from the site still answers honestly when the
+    // same person later clicks the one in their inbox.
+    await p.user.update({ where: { id: req.user.uid }, data: { closureRequestedAt: null, closureScheduledFor: null } });
     await logAudit(p, req.user.uid, 'account.closure_cancelled', 'from the site', clientIp(req));
     return { ok: true };
   });

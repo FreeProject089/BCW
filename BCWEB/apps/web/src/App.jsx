@@ -37,6 +37,7 @@ const named = (imp, key) => lazy(() => imp().then((m) => ({ default: m[key] })))
 // The hero orb pulls in three.js (~460 KB) — lazy-load it so it never blocks first paint
 // (it's a decorative backdrop; a null fallback means it just fades in once loaded).
 const Hero3D = lazy(() => import('./hero/Hero3D.jsx'));
+const ClosureCancel = lazy(() => import('./pages/closure.jsx'));
 const Admin = named(() => import('./pages/admin.jsx'), 'Admin');
 const Dashboard = named(() => import('./pages/dashboard.jsx'), 'Dashboard');
 const ReposPage = named(() => import('./pages/repos.jsx'), 'ReposPage');
@@ -990,6 +991,9 @@ export default function App() {
               <Route path="/u/:id" element={<PublicProfile />} />
               <Route path="/reports/join/:token" element={<ReportJoin />} />
               <Route path="/auth" element={<Auth />} />
+              {/* No auth guard, deliberately: this is the page that STOPS a deletion,
+                  and the person clicking it may not be signed in anywhere. */}
+              <Route path="/account/closure/cancel" element={<ClosureCancel />} />
               <Route path="/authorize" element={<Authorize />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/contact" element={<Contact />} />

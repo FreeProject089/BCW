@@ -5,7 +5,7 @@ import { User, Shield, ShieldCheck, Mail, CalendarDays, Shuffle, KeyRound, Check
 import { api, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Field, PageHeader, Spinner, copyText } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, Spinner, copyText } from '../ui/ui.jsx';
 import { DiscordIcon, KofiIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
@@ -241,6 +241,7 @@ export default function Profile() {
           <div className="space-y-4">
           <SectionLabel icon={Terminal}>{t('prof.sec.developer', 'Developer & preferences')}</SectionLabel>
           <ApiKeysCard />
+          <CloseAccountCard />
 
           {/* Device preferences (intro animation, theme, language, translucency,
               cookies) all live on the Settings page now — link there instead of
@@ -365,6 +366,130 @@ function TransfersCard() {
             ))}
           </div>
         </details>
+      )}
+    </Card>
+  );
+}
+
+// Closing the account.
+//
+// Last card on the page and quiet about it — this is not a thing to stumble into. But it
+// is genuinely reachable: an account you cannot leave is a worse thing to have than a
+// delete button placed slightly too prominently.
+//
+// The blockers are the substance. "You still own three things" is useless; what is needed
+// is what they are and where to deal with them, which is why the API returns a page per
+// blocker and this only has to link there.
+const CLOSURE_REASONS = ['not_using', 'too_expensive', 'missing_feature', 'privacy', 'moved_elsewhere', 'other'];
+
+function CloseAccountCard() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [survey, setSurvey] = useState(null); // { reason, comment } once closure is requested
+
+  const load = () => api.get('/me/closure').then(setData).catch(() => setData(null));
+  useEffect(() => { load(); }, []);
+  if (!data) return null;
+
+  const label = (b) => ({
+    subscription: t('acl.b.sub', '{n} active subscription(s)'),
+    pool: t('acl.b.pool', '{n} storage pool(s)'),
+    repo: t('acl.b.repo', '{n} repository(ies) you own'),
+    item: t('acl.b.item', '{n} catalog item(s) you own'),
+  }[b.kind] || b.kind).replace('{n}', String(b.count));
+
+  const request = async () => {
+    if (!await dialog.confirm({
+      title: t('acl.req.t', 'Close this account?'),
+      message: t('acl.req.m', 'It closes in {n} days, not today. Until then nothing is deleted and one click puts it back — we email you the link, along with every invoice you have, because afterwards there is no account to fetch them from.').replace('{n}', String(data.graceDays)),
+      okLabel: t('acl.req.ok', 'Schedule the closure'),
+      danger: true,
+    })) return;
+    setBusy(true);
+    try {
+      const r = await api.post('/me/closure');
+      toast.success(t('acl.req.done', 'Scheduled. Check your email — the cancel link is in it.'));
+      await load();
+      // Asked only now, once it is already scheduled: a form standing between somebody
+      // and leaving stops being a question and becomes an obstacle.
+      setSurvey({ reason: '', comment: '' });
+      return r;
+    } catch (x) {
+      if (x.data?.error === 'has_blockers') { toast.error(t('acl.req.blocked', 'Some things still belong to this account.')); await load(); }
+      else toast.error(t('prof.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  const cancel = async () => {
+    setBusy(true);
+    try { await api.post('/me/closure/cancel'); toast.success(t('acl.kept', 'Closure cancelled — your account stays.')); setSurvey(null); await load(); }
+    catch { toast.error(t('prof.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+
+  const sendSurvey = async () => {
+    try { await api.post('/me/closure/survey', { outcome: 'closed', reason: survey.reason, comment: survey.comment }); }
+    catch { /* an unanswered survey must never look like a failed closure */ }
+    setSurvey(null);
+    toast.success(t('acl.survey.thanks', 'Thank you — that is genuinely useful.'));
+  };
+
+  return (
+    <Card className="p-5">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2">
+        <Trash2 size={15} className="text-[var(--error)]" /> {t('acl.title', 'Close my account')}
+      </div>
+
+      {data.pending ? (
+        <>
+          <p className="text-[13px] text-[var(--muted)] mt-1">
+            {t('acl.pending', 'Scheduled to close on {d}. Nothing has been deleted — cancel any time before then, here or with the link in your email.')
+              .replace('{d}', new Date(data.scheduledFor).toLocaleDateString())}
+          </p>
+          <Button className="mt-3" variant="primary" disabled={busy} onClick={cancel}>{busy ? <Spinner /> : t('acl.keep', 'Keep my account')}</Button>
+
+          {survey && (
+            <div className="mt-4 pt-3 border-t border-[var(--line)] space-y-3">
+              <p className="text-[13px] text-[var(--muted)]">{t('acl.survey.s2', 'Before you go — what pushed you to this? Optional, and it changes nothing about the closure.')}</p>
+              <Field label={t('acl.survey.reason', 'Main reason')}>
+                <Select value={survey.reason} onChange={(e) => setSurvey((v) => ({ ...v, reason: e.target.value }))}>
+                  <option value="">{t('acl.survey.pick', 'Prefer not to say')}</option>
+                  {CLOSURE_REASONS.map((r) => <option key={r} value={r}>{t(`acl.reason.${r}`, r)}</option>)}
+                </Select>
+              </Field>
+              <Field label={t('acl.survey.more', 'Anything else (optional)')}>
+                <Textarea rows={3} value={survey.comment} onChange={(e) => setSurvey((v) => ({ ...v, comment: e.target.value }))} />
+              </Field>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={sendSurvey}>{t('acl.survey.send', 'Send')}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setSurvey(null)}>{t('acl.survey.skip', 'Skip')}</Button>
+              </div>
+            </div>
+          )}
+        </>
+      ) : data.blockers.length ? (
+        <>
+          <p className="text-[13px] text-[var(--muted)] mt-1">
+            {t('acl.blocked', 'These still belong to this account. Transfer them to someone else or delete them, then closing becomes available.')}
+          </p>
+          <div className="mt-2 space-y-1">
+            {data.blockers.map((b) => (
+              <div key={b.kind} className="flex items-center gap-2 text-[13px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
+                <span className="flex-1">{label(b)}</span>
+                <Link to={b.where} className="text-[var(--primary-2)] hover:underline text-xs">{t('acl.goto', 'Go there')}</Link>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-[13px] text-[var(--muted)] mt-1">
+            {t('acl.ready', 'Nothing is in the way. Closing takes {n} days, during which one click brings it all back. Your invoices and moderation records are kept either way — they are records about transactions, not about your profile.')
+              .replace('{n}', String(data.graceDays))}
+          </p>
+          <Button className="mt-3" disabled={busy} onClick={request}>{busy ? <Spinner /> : t('acl.start', 'Close my account…')}</Button>
+        </>
       )}
     </Card>
   );
@@ -920,7 +1045,7 @@ function CreatorLinks() {
   const visible = links.filter((l) => !pending.has(l.id));
   return (
     <Card className="p-5">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--primary-2)]" /> {t('cl.title', 'Creator IDs')}</div>
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--primary-2)]" /> {t('acl.title', 'Creator IDs')}</div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('cl.desc', "Link your BMM creator id(s). In BMM, generate a pairing code, then paste it here. One creator id links to one account; linked ids can't be unlinked for 2 weeks.")}</p>
       {visible.length > 0 && <div className="space-y-2 mb-3">
         {visible.map((l) => (
