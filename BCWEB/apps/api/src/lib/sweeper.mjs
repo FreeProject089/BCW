@@ -123,13 +123,23 @@ async function sweepCommunityCatalogs(p, log) {
   return due.length;
 }
 
+// The actual destruction, in one place.
+//
+// Exported because the owner can also choose to skip the 72h wait, and that path must
+// destroy exactly what the sweeper destroys. A second copy in the route would be a second
+// thing to remember when a repo grows a new kind of attached row — and the copy that
+// forgot would leave orphaned bytes nobody is billed for and nobody can find.
+export async function purgeRepo(p, repo) {
+  for (const f of repo.files) await deleteObject(f.key); // hosted bytes
+  await p.subscription.deleteMany({ where: { serverRepoId: repo.id } });
+  await p.serverRepo.delete({ where: { id: repo.id } }); // RepoFile rows cascade
+}
+
 async function sweepRepos(p, log) {
   const due = await p.serverRepo.findMany({ where: { deleteAt: { lte: new Date() } }, include: { files: true }, take: 20 });
   for (const repo of due) {
     try {
-      for (const f of repo.files) await deleteObject(f.key); // hosted bytes
-      await p.subscription.deleteMany({ where: { serverRepoId: repo.id } });
-      await p.serverRepo.delete({ where: { id: repo.id } }); // RepoFile rows cascade
+      await purgeRepo(p, repo);
     } catch (e) { log.warn({ id: repo.id, e: String(e?.message || e) }, 'sweeper: repo delete failed'); }
   }
   return due.length;

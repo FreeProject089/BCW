@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { applyCampaign } from './campaigns.mjs';
-import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema, logAudit } from '../lib/lib.mjs';
+import { purgeRepo } from '../lib/sweeper.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } from '../lib/repofingerprint.mjs';
 import { mintAttestation, attestationPublicKeyHex, ATTESTATION_TTL_SECONDS } from '../lib/identity-attestation.mjs';
@@ -1049,6 +1050,33 @@ export default async function repoRoutes(app) {
     const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
     if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     if (repo.ownerId !== req.user.uid) return reply.code(403).send({ error: 'owner_only' });
+
+    // Skipping the grace window: destroy now instead of scheduling.
+    //
+    // Gated on typing the repo's exact name, not a boolean. A flag is something a UI can
+    // set by accident and something a stray client can send by default; typing the name
+    // cannot happen without meaning to, and it is the only confirmation proportionate to
+    // an action with no undo — the 72h window IS the undo everywhere else.
+    //
+    // Compared after trimming only. Not case-insensitively: two repos differing in case
+    // are two different repos, and this is the last checkpoint before the bytes go.
+    const body = z.object({ immediate: z.boolean().optional(), confirm: z.string().max(200).optional() })
+      .safeParse(req.body || {});
+    if (!body.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (body.data.immediate) {
+      if ((body.data.confirm || '').trim() !== repo.name) {
+        return reply.code(400).send({ error: 'confirm_mismatch', detail: 'Type the repository name exactly to delete it immediately.' });
+      }
+      // Re-read WITH files: ownRepoMutable does not include them, and purgeRepo needs the
+      // keys to delete the stored bytes. Without this the row would go and the objects
+      // would stay, billed to nobody and reachable by no one.
+      const full = await p.serverRepo.findUnique({ where: { id: repo.id }, include: { files: true } });
+      if (!full) return reply.code(404).send({ error: 'not_found' });
+      await purgeRepo(p, full);
+      await logAudit(p, req.user.uid, 'repo.delete.immediate', `${repo.name} (${repo.id}) — grace window skipped by owner`);
+      return { ok: true, deleted: true };
+    }
+
     const deleteAt = new Date(Date.now() + 72 * 3600 * 1000);
     await p.serverRepo.update({ where: { id: repo.id }, data: { deleteAt, status: repo.hosted ? 'SUSPENDED' : repo.status } });
     return { ok: true, deleteAt };

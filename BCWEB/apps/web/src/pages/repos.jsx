@@ -661,6 +661,29 @@ export function MyRepos() {
     try { await api.del(`/repos/${r.id}`); toast.success(t('repos.deleted72', 'Scheduled for deletion in 72h — undo from the repo card anytime before then.')); reload(); }
     catch { toast.error(t('repos.failed', 'Failed.')); }
   };
+  // Skip the 72h window and destroy it now.
+  //
+  // A separate action rather than an option inside the delete dialog. The dialog's cancel
+  // returns the same `false` as pressing Escape, so making cancel mean "schedule instead"
+  // would turn a dismissed dialog into a scheduled deletion. Two actions, each doing one
+  // thing, is the only shape where dismissing reliably does nothing.
+  const delNow = async (r) => {
+    const typed = await dialog.prompt({
+      title: t('repos.delnow.title', 'Delete repo immediately'),
+      message: t('repos.delnow.msg', '"{name}" and all its content are destroyed right now. There is no 72-hour window and no undo — this cannot be reversed.').replace('{name}', r.name),
+      label: t('repos.del.confirm.l2', 'To confirm, type the repo name: {name}').replace('{name}', r.name),
+      placeholder: r.name, okLabel: t('repos.delnow.ok', 'Delete permanently'), danger: true,
+    });
+    if (typed === false) return;
+    // Checked here for a decent message, and again on the server — this one is the only
+    // check that matters, since the client can be bypassed entirely.
+    if (String(typed).trim() !== r.name) return toast.error(t('repos.del.mismatch', "Name didn't match — deletion cancelled."));
+    try {
+      await api.del(`/repos/${r.id}`, { immediate: true, confirm: String(typed).trim() });
+      toast.success(t('repos.delnow.done', '"{name}" has been permanently deleted.').replace('{name}', r.name));
+      reload();
+    } catch { toast.error(t('repos.failed', 'Failed.')); }
+  };
   const undoDelete = async (r) => {
     try { await api.post(`/me/repos/${r.id}/delete/cancel`); toast.success(t('repos.del.undone', 'Deletion cancelled — your repo is restored.')); reload(); }
     catch { toast.error(t('repos.failed', 'Failed.')); }
@@ -852,6 +875,9 @@ export function MyRepos() {
                     r.hosted && !locked && { key: 'movecontent', label: t('repos.movecontent', 'Move content to…'), icon: GitMerge, onClick: () => moveContent(r) },
                     !locked && { key: 'edit', label: t('repos.editdetails', 'Edit details'), icon: Pencil, onClick: () => setEditing(r) },
                     !locked && { key: 'del', label: t('repos.delete', 'Delete repo'), icon: Trash2, danger: true, onClick: () => del(r) },
+                    // Listed after the reversible one, deliberately: the safe action is
+                    // the one the hand reaches first.
+                    !locked && { key: 'delnow', label: t('repos.deletenow', 'Delete now (no undo)'), icon: Trash2, danger: true, onClick: () => delNow(r) },
                   ].filter(Boolean)}
                 />
               </div>
