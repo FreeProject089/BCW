@@ -180,7 +180,9 @@ const ser = (c) => ({
   kind: catalogKind(c), kinds: c.kinds, mode: c.mode,
   status: c.status, visibility: c.visibility, listed: c.listed, shareKey: c.shareKey,
   groupId: c.groupId, storageQuotaBytes: Number(c.storageQuotaBytes || 0n), storageUsedBytes: Number(c.storageUsedBytes || 0n),
-  views: c.views, downloads: c.downloads, itemCount: catalogItemCount(c), createdAt: c.createdAt, updatedAt: c.updatedAt,
+  views: c.views, downloads: c.downloads, itemCount: catalogItemCount(c),
+  // Null when nobody has said — the UI shows "not specified" rather than picking one.
+  app: c.project?.key ?? null, createdAt: c.createdAt, updatedAt: c.updatedAt,
 });
 
 export default async function communityCatalogRoutes(app) {
@@ -192,7 +194,7 @@ export default async function communityCatalogRoutes(app) {
     if (q) where.OR = [{ name: { contains: q, mode: 'insensitive' } }, { description: { contains: q, mode: 'insensitive' } }];
     const rows = await p.communityCatalog.findMany({
       where, orderBy: [{ featuredUntil: 'desc' }, { downloads: 'desc' }], take: 60,
-      include: { owner: { select: { displayName: true } }, _count: { select: { items: true } } },
+      include: { owner: { select: { displayName: true } }, project: { select: { key: true } }, _count: { select: { items: true } } },
     });
     return { catalogs: rows.map((c) => ({ ...ser(c), owner: c.owner?.displayName })) };
   });
@@ -466,13 +468,13 @@ export default async function communityCatalogRoutes(app) {
   // ── Owner: my catalogs ──
   app.get('/me/catalogs', { preHandler: requireRole() }, async (req) => {
     const p = await db();
-    const rows = await p.communityCatalog.findMany({ where: { ownerId: req.user.uid }, orderBy: { createdAt: 'desc' }, include: { _count: { select: { items: true } } } });
+    const rows = await p.communityCatalog.findMany({ where: { ownerId: req.user.uid }, orderBy: { createdAt: 'desc' }, include: { project: { select: { key: true } }, _count: { select: { items: true } } } });
     return { catalogs: rows.map(ser) };
   });
 
   app.get('/me/catalogs/:id', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
-    const c = await p.communityCatalog.findUnique({ where: { id: req.params.id }, include: { items: true, _count: { select: { items: true } } } });
+    const c = await p.communityCatalog.findUnique({ where: { id: req.params.id }, include: { items: true, project: { select: { key: true } }, _count: { select: { items: true } } } });
     if (!c || (c.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role))) return reply.code(404).send({ error: 'not_found' });
     return { catalog: { ...ser(c), access: c.access || {}, rawJson: c.rawJson || null, items: c.items } };
   });
@@ -544,6 +546,11 @@ export default async function communityCatalogRoutes(app) {
       listed: z.boolean().optional(),
       access: accessSchema.optional(),
       rawJson: rawFeedSchema.optional(),
+      // Which Better* app this catalog is for. '' clears it back to "not specified",
+      // which has to stay reachable: a catalog set to the wrong app would otherwise be
+      // permanently mislabelled, and mislabelled is worse than unlabelled — a client
+      // filtering by app silently drops it.
+      app: z.union([z.enum(['bmm', 'bsm', 'installer', 'community', 'developers']), z.literal('')]).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     if ((b.data.kinds?.length || 0) > 1) return reply.code(400).send({ error: 'mixed_kinds' });
@@ -551,6 +558,18 @@ export default async function communityCatalogRoutes(app) {
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
     if (!c || (c.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role))) return reply.code(404).send({ error: 'not_found' });
     const data = { ...b.data };
+    // 'app' is the API's word; the column is a Project relation. Resolved to an id here so
+    // an unknown key is a clean 400 rather than a foreign-key error from Prisma.
+    if (data.app !== undefined) {
+      const key = data.app;
+      delete data.app;
+      if (key === '') data.projectId = null;
+      else {
+        const pr = await p.project.findUnique({ where: { key }, select: { id: true } }).catch(() => null);
+        if (!pr) return reply.code(400).send({ error: 'unknown_app' });
+        data.projectId = pr.id;
+      }
+    }
     // `kind` is the API's word for it; the column is `kinds`. Map it and drop the alias —
     // Prisma rejects an unknown field, so leaving it in would fail the whole PATCH.
     // An empty `kinds: []` means "unchanged", not "clear it" — a bare [] must not become the

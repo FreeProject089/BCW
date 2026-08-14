@@ -9993,6 +9993,19 @@ export function OwnerCatalogs() {
               <label className="flex items-center gap-1.5 text-[var(--muted)]">{t('oc.visibility', 'Visibility')}
                 <Select className="!w-auto" value={c.visibility} onChange={(e) => patch(c, { visibility: e.target.value })}><option value="public">{t('sub2.public', 'Public')}</option><option value="private">{t('sub2.private', 'Private')}</option></Select></label>
               {c.visibility === 'public' && <label className="flex items-center gap-1.5 text-[var(--muted)] cursor-pointer"><input type="checkbox" checked={c.listed} onChange={(e) => patch(c, { listed: e.target.checked })} /> {t('oc.listed', 'Listed publicly')}</label>}
+              {/* Which app this catalog is for. Without it the catalog index cannot say,
+                  and a client filtering by app has to choose between dropping it and
+                  taking everything — so an unset catalog reaches fewer people than a
+                  labelled one, not more. "Not specified" stays selectable: a catalog set
+                  to the wrong app is worse than an unlabelled one, and would otherwise be
+                  permanently mislabelled. */}
+              <label className="flex items-center gap-1.5 text-[var(--muted)]">
+                {t('oc.forapp', 'For')}
+                <Select className="!w-auto" value={c.app || ''} onChange={(e) => patch(c, { app: e.target.value })}>
+                  <option value="">{t('oc.forapp.none', 'Not specified')}</option>
+                  {['bmm', 'bsm', 'installer'].map((k) => <option key={k} value={k}>{k.toUpperCase()}</option>)}
+                </Select>
+              </label>
               {c.visibility === 'private' && <Button size="sm" variant="ghost" onClick={() => rotate(c)}><RefreshCw size={12} /> {t('oc.sharelink', 'Copy share link')}</Button>}
             </div>
             {openId === c.id && <OwnerCatalogItems catalog={c} onChange={reload} />}

@@ -275,6 +275,8 @@ const DICT = {
     'oauth.signedin': "Connecté en tant que {name}",
     'oauth.wants': "souhaite accéder à ton compte BetterCommunity",
     'oauth.willaccess': "Il pourra accéder à",
+    'oc.forapp': 'Pour',
+    'oc.forapp.none': 'Non précisé',
     'oc.conf': "confidentiel",
     'oc.create': "Créer le client",
     'oc.created': "Client prêt — copie le secret maintenant, il n'est affiché qu'une seule fois.",
