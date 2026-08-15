@@ -17,7 +17,9 @@ const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&a
 // A content sanction has to reach the content, and the content already knows how to be
 // suspended. One entry per type so a takedown cannot invent a state the rest of the app has
 // never heard of.
-const CONTENT = {
+// Exported so a test can check each status against its own model's vocabulary. Two of the
+// three columns are plain Strings, so a wrong value is accepted by Postgres in silence.
+export const CONTENT_TARGETS = {
   repo: {
     model: (p) => p.serverRepo,
     owner: 'ownerId',
@@ -33,7 +35,13 @@ const CONTENT = {
     owner: 'ownerId',
     name: (c) => c.name,
     down: { status: 'SUSPENDED', listed: false },
-    up: { status: 'PUBLISHED', listed: true },
+    // ACTIVE, not PUBLISHED. A catalog's status is a plain string with exactly three values
+    // — ACTIVE | SUSPENDED | HIDDEN — and `isServable` is `status === 'ACTIVE'`. Lifting a
+    // takedown used to write PUBLISHED, which is the ITEM vocabulary (an enum that really
+    // does have PUBLISHED). Nothing rejected it, because the column is a String: the
+    // moderator saw the sanction lifted, the owner saw a catalog that still served nothing,
+    // and no error was raised anywhere.
+    up: { status: 'ACTIVE', listed: true },
   },
   item: {
     model: (p) => p.catalogItem,
@@ -47,7 +55,7 @@ const CONTENT = {
 /** Load a piece of content and who answers for it. Returns null when it does not exist, so a
  *  staff member cannot use a takedown form to discover which ids are real. */
 async function loadTarget(p, type, id) {
-  const def = CONTENT[type];
+  const def = CONTENT_TARGETS[type];
   if (!def) return null;
   const row = await def.model(p).findUnique({ where: { id }, select: { id: true, name: true, [def.owner]: true } }).catch(() => null);
   if (!row) return null;
@@ -221,7 +229,7 @@ export default async function sanctionRoutes(app) {
     if (s.status !== 'active') return reply.code(409).send({ error: 'not_active', status: s.status });
 
     if (s.scope === 'content' && s.kind === 'takedown' && s.targetType && s.targetId) {
-      const def = CONTENT[s.targetType];
+      const def = CONTENT_TARGETS[s.targetType];
       if (def) {
         await def.model(p).update({ where: { id: s.targetId }, data: def.up }).catch(() => {});
         if (s.relatedIds?.length) await def.model(p).updateMany({ where: { id: { in: s.relatedIds } }, data: def.up }).catch(() => {});
@@ -321,7 +329,7 @@ export default async function sanctionRoutes(app) {
     // Content takedowns hid something when they were imposed. Reapplying has to hide it
     // again, or the record says "in force" while the content is public.
     if (s.scope === 'content' && s.kind === 'takedown' && s.targetType && s.targetId) {
-      const def = CONTENT[s.targetType];
+      const def = CONTENT_TARGETS[s.targetType];
       if (def) {
         await def.model(p).update({ where: { id: s.targetId }, data: def.down }).catch(() => {});
         if (s.relatedIds?.length) await def.model(p).updateMany({ where: { id: { in: s.relatedIds } }, data: def.down }).catch(() => {});
@@ -481,7 +489,7 @@ export default async function sanctionRoutes(app) {
     if (b.data.outcome === 'overturned' && s.status === 'active') {
       Object.assign(data, { status: 'lifted', liftedAt: new Date(), liftedById: req.user.uid, liftReason: 'Contest upheld.' });
       if (s.scope === 'content' && s.targetType && s.targetId) {
-        const def = CONTENT[s.targetType];
+        const def = CONTENT_TARGETS[s.targetType];
         if (def) await def.model(p).update({ where: { id: s.targetId }, data: def.up }).catch(() => {});
       }
     }
