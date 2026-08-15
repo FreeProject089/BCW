@@ -30,7 +30,7 @@ import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 import { AdminMyo } from './admin-myo.jsx';
 import { AdminApi } from './admin-api.jsx';
-import { AdminSanctions, ContentSanctionForm } from './admin-sanctions.jsx';
+import { AdminSanctions, ContentSanctionForm, Evidence } from './admin-sanctions.jsx';
 import { AdminPolls } from './admin-polls.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash, useThreadStream } from './pages.jsx';
 
@@ -4154,6 +4154,60 @@ function DataRequestPanel({ user }) {
   );
 }
 
+
+/**
+ * This account's sanctions, on the account's own screen.
+ *
+ * They were only reachable from the Sanctions tab, which meant attaching a file or a link to
+ * a ban required leaving the person you were looking at, searching for the row, and trusting
+ * you had found the right one. The decision and the person belong on the same screen.
+ *
+ * Read-only apart from evidence: lifting, editing and answering a contest stay on the
+ * Sanctions page, where the surrounding context lives. Adding a screenshot to a case you are
+ * already reading is the one action that genuinely belongs here.
+ */
+function UserSanctions({ userId }) {
+  const { t } = useI18n();
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/sanctions?userId=${encodeURIComponent(userId)}`), [userId]);
+  const rows = data?.sanctions || [];
+
+  if (loading) return <Card className="p-4 mb-3"><Spinner /></Card>;
+  if (!rows.length) return null; // a clean account needs no empty box
+
+  return (
+    <Card className="p-4 mb-3">
+      <div className="text-sm font-semibold flex items-center gap-2 mb-1">
+        <Gavel size={15} className="text-[var(--primary-2)]" /> {t('usanc.title', 'Sanctions')}
+        <span className="text-[11px] text-[var(--muted)] ml-auto">{rows.length}</span>
+      </div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">
+        {t('usanc.sub', 'Lifting, editing and answering a contest stay on the Sanctions page. Evidence can be added here.')}
+      </p>
+      <div className="space-y-3">
+        {rows.map((sn) => (
+          <div key={sn.id} className="rounded-lg border border-[var(--line)] p-2.5">
+            <div className="flex flex-wrap items-center gap-2 text-[12px]">
+              <code>{sn.code}</code>
+              <Badge tone={sn.status === 'active' ? 'red' : ''}>{sn.kind}</Badge>
+              {sn.scope === 'content' && sn.targetName && <span className="text-[var(--faint)]">{sn.targetName}</span>}
+              <span className="text-[var(--faint)] ml-auto">{new Date(sn.issuedAt).toLocaleDateString()}</span>
+            </div>
+            <div className="text-[12px] mt-1">{sn.reason}</div>
+            {/* Staff-only, and labelled as such on screen — the reason above is what the
+                person received, this is not. */}
+            {sn.internalNote && (
+              <div className="text-[11px] text-[var(--faint)] mt-1">
+                <b>{t('usanc.note', 'Internal note')}:</b> {sn.internalNote}
+              </div>
+            )}
+            <div className="mt-2"><Evidence s={sn} onChanged={reload} /></div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function UserDetailModal({ id, onClose }) {
   const { data, loading, reload } = useAsync(() => api.get(`/admin/users/${id}`), [id]);
   const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
@@ -4280,6 +4334,7 @@ function UserDetailModal({ id, onClose }) {
 
           {/* Answering an access or erasure request from the account it is about, rather
               than from a separate screen where the person is a row in a list. */}
+          <UserSanctions userId={u.id} />
           <DataRequestPanel user={u} />
 
           {u.apiKeys && (

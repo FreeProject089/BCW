@@ -143,6 +143,11 @@ export default async function sanctionRoutes(app) {
     // from three years ago in the default list is why nobody reads the list, and an unread
     // list is how an open contest gets missed. Nothing is deleted — 'archived' brings it back.
     if (status !== 'archived') where.archivedAt = null;
+    // Exact, not a search. The user detail screen asks for ONE account's sanctions, and
+    // matching by e-mail text would also return a different account whose address happens
+    // to contain the same substring — on a screen whose whole purpose is one person.
+    const userId = String(req.query?.userId || '').trim();
+    if (userId) where.userId = userId;
     if (kind) where.kind = kind;
     if (scope) where.scope = scope;
     if (q) {

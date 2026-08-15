@@ -31,7 +31,9 @@ const fmtBytes = (n) => (!n ? '' : n > 1048576 ? `${(n / 1048576).toFixed(1)} MB
  * signed URL on request, so the staff check runs on every fetch rather than once when this
  * page was built.
  */
-function Evidence({ s, onChanged }) {
+// Exported so the user detail screen can attach evidence to a sanction without sending
+// somebody to the Sanctions tab to find the row again.
+export function Evidence({ s, onChanged }) {
   const { t } = useI18n(); const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
