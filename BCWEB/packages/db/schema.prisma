@@ -1934,8 +1934,18 @@ model Report {
   targetType     String // "user" | "repo" | "catalog" | "item" | "general"
   targetId       String          @default("") // the reported entity's id ("" for general)
   targetLabel    String          @default("") // denormalized name for the admin list
-  reporter       User            @relation("ReportReporter", fields: [reporterId], references: [id])
-  reporterId     String
+  /// NULLABLE so a report can outlive the person who filed it.
+  ///
+  /// A report is about somebody ELSE'S content. When its author asks to be erased, deleting
+  /// the report would remove moderation history about other people because the reporter left,
+  /// and keeping the link would leave a pointer to an account that was told it was gone.
+  /// Anonymising is the only option that costs neither: the decision and its thread survive,
+  /// and nothing points back.
+  ///
+  /// Every read already tolerates it — canAccessReport compares ids, and the archive mail is
+  /// guarded by `r.reporter?.email` — so this changes what CAN happen, not what does.
+  reporter       User?           @relation("ReportReporter", fields: [reporterId], references: [id])
+  reporterId     String?
   reason         String          @default("") // short category chosen by the reporter
   status         String          @default("open") // open | archived | closed
   staffUnread    Boolean         @default(true) // a new reporter message staff hasn't seen
