@@ -58,6 +58,8 @@ async function loadTarget(p, type, id) {
 const serForStaff = (s) => ({
   id: s.id, code: s.code, kind: s.kind, scope: s.scope, status: s.status,
   reason: s.reason, request: s.request, requiresAction: s.requiresAction,
+  // Staff only. serSanctionForUser is a separate allowlist and must never gain this.
+  internalNote: s.internalNote || null,
   targetType: s.targetType, targetId: s.targetId, targetName: s.targetName, relatedIds: s.relatedIds,
   issuedAt: s.issuedAt, expiresAt: s.expiresAt,
   liftedAt: s.liftedAt, liftReason: s.liftReason,
@@ -170,6 +172,7 @@ export default async function sanctionRoutes(app) {
       targetId: z.string().min(1),
       kind: z.enum(['warning', 'takedown']),
       reason: z.string().trim().min(3).max(1000),
+      internalNote: z.string().trim().max(4000).optional(),
       request: z.string().trim().max(2000).optional(),
       // Other items caught by the same decision, so one takedown names them all instead of
       // becoming five unrelated records the person has to piece together.
@@ -198,6 +201,7 @@ export default async function sanctionRoutes(app) {
       targetType: b.data.targetType, targetId: t.id, targetName: t.name,
       relatedIds: b.data.relatedIds || [],
       issuedById: req.user.uid,
+      internalNote: b.data.internalNote || null,
       expiresAt: b.data.expiresAt ? new Date(b.data.expiresAt) : null,
       log: req.log,
     });
@@ -241,6 +245,7 @@ export default async function sanctionRoutes(app) {
   app.patch('/admin/sanctions/:id', { preHandler: requireCap('manage_users', 'ADMIN') }, async (req, reply) => {
     const b = z.object({
       reason: z.string().trim().min(1).max(4000).optional(),
+      internalNote: z.string().trim().max(4000).optional(),
       request: z.string().trim().max(4000).nullable().optional(),
       requiresAction: z.boolean().optional(),
       expiresAt: z.string().datetime().nullable().optional(),
@@ -254,7 +259,9 @@ export default async function sanctionRoutes(app) {
     const at = new Date().toISOString();
     const edits = Array.isArray(s.edits) ? [...s.edits] : [];
     const data = {};
-    for (const field of ['reason', 'request', 'requiresAction', 'expiresAt']) {
+    // internalNote is in this list, not just in the zod schema above. A field that is
+    // validated and then not iterated here is accepted with a 200 and silently dropped.
+    for (const field of ['reason', 'internalNote', 'request', 'requiresAction', 'expiresAt']) {
       if (b.data[field] === undefined) continue;
       const to = field === 'expiresAt' && b.data[field] ? new Date(b.data[field]) : b.data[field];
       const from = s[field];
@@ -271,9 +278,14 @@ export default async function sanctionRoutes(app) {
       where: { id: s.id }, data,
       include: { attachments: true },
     });
-    // The person is told. An edited decision they are not told about is a different
-    // decision they are still expected to comply with.
-    await notify(p, s.userId, 'account_sanction', `${s.code} has been updated.`).catch(() => {});
+    // The person is told — but only when something they can SEE changed. An edited decision
+    // they are not told about is a different decision they are still expected to comply with;
+    // a staff note they are not allowed to read is neither, and mailing "your sanction has
+    // been updated" about it tells them staff are discussing them and nothing else.
+    const visibleChanged = Object.keys(data).some((k) => k !== 'edits' && k !== 'internalNote');
+    if (visibleChanged) {
+      await notify(p, s.userId, 'account_sanction', `${s.code} has been updated.`).catch(() => {});
+    }
     await logAudit(p, req.user.uid, 'sanction.edit', `${s.code} — ${Object.keys(data).filter((k) => k !== 'edits').join(', ')}`, req.ip);
     return { ok: true, sanction: serForStaff({ ...updated, user: null, issuedBy: null }) };
   });

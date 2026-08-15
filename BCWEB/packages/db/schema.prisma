@@ -1224,6 +1224,18 @@ model Sanction {
   report      Report?   @relation(fields: [reportId], references: [id], onDelete: SetNull)
   reportId    String?
 
+  /// STAFF ONLY. Never sent, never quoted, never shown to the person it is about.
+  ///
+  /// `reason` is the opposite: it goes in the e-mail and comes back in any contest, so it has
+  /// to be something you are willing to defend to the person reading it. That left nowhere to
+  /// put "third account from this IP, see SNC-4821" — context the next moderator needs and the
+  /// subject must not read. Without a field for it, that context either goes in `reason`
+  /// (where it is disclosed) or nowhere (where it is lost).
+  ///
+  /// It is still a record about a person: it appears in a data-access request as staff-held
+  /// data, and it is covered by the same edit history as the rest.
+  internalNote String?
+
   /// Whatever the decision needs to remember — chiefly the subscriptions it cancelled, so the
   /// offer to take them out again can name them when the suspension ends.
   meta        Json?
