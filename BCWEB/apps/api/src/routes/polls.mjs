@@ -59,7 +59,18 @@ function publicPoll(poll, { myVotes = [], showResults = false } = {}) {
 
 /** May this viewer see the tally? */
 const canSeeResults = (poll, voted) =>
-  poll.results === 'always' || (poll.results === 'after_vote' && voted) || !openNow(poll);
+  // 'staff' first, and it wins outright. The clause below reads "a poll nobody can answer any
+  // more may as well show its result", which is right for always/after_vote and was a LEAK
+  // here: results:'staff' means the owner marked the numbers private, and !openNow is true for
+  // a closed poll, a scheduled one before it opens, and any poll past closesAt. So a staff-only
+  // tally became public to everyone simply by waiting for the poll to close. It was private
+  // while open, which is exactly why nobody would notice.
+  //
+  // The same rule, stated once and tested, lives in lib/poll-view.mjs (maySeeResults) for the
+  // multi-question reader. This one stays minimal on purpose — it is a fix, not a refactor of
+  // a path that serves real polls.
+  poll.results !== 'staff' &&
+  (poll.results === 'always' || (poll.results === 'after_vote' && voted) || !openNow(poll));
 
 export default async function pollRoutes(app) {
   // ── Public ──────────────────────────────────────────────────────────────────
