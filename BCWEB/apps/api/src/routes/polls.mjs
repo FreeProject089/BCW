@@ -10,6 +10,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireRole, requireCap, optionalAuth, logAudit } from '../lib/lib.mjs';
 import { clientIp } from '../lib/geo.mjs';
+import { pollStats } from '../lib/poll-stats.mjs';
 
 /** Per-poll device fingerprint for anonymous voters.
  *
@@ -262,6 +263,16 @@ export default async function pollRoutes(app) {
     });
     if (!poll) return reply.code(404).send({ error: 'not_found' });
 
+    // The counting lives in poll-stats.mjs, where it is tested and mutation-checked, and the
+    // richer numbers it produces ride along beside the ones this route already returned.
+    // `stats.counts.voters` and this route's `voters` are the same idea computed twice —
+    // kept because the shape below is what the admin screen already reads, and quietly
+    // changing it would break that screen to save a few lines.
+    //
+    // The library adds what could not be answered here: turnout over time, picks per voter,
+    // days since the last vote, and whether the lead is big enough to mean anything.
+    const stats = pollStats(poll, poll.options, poll.votes, new Date());
+
     // Distinct voters, not ticks: on a multi-choice poll one person can be several rows.
     const voterOf = (v) => (v.userId ? `u:${v.userId}` : `a:${v.voterKey}`);
     const voters = new Set(poll.votes.map(voterOf));
@@ -300,6 +311,11 @@ export default async function pollRoutes(app) {
       recent: poll.votes.filter((v) => v.user).slice(0, 100).map((v) => ({
         at: v.createdAt, option: v.option.label, user: v.user,
       })),
+      // Added beside the existing shape, never replacing it: turnout per day, picks per
+      // voter, days since the last vote, and whether the lead is large enough to be called
+      // one. `lead.decided` is false under 20 voters or inside a 5% margin — a 3-1 split is
+      // a room, not a sample.
+      stats,
     };
   });
 
