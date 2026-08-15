@@ -4,6 +4,8 @@ import { suspendOwned, restoreOwned, cancelSubscriptions } from './closure.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
+import { Prisma } from '@prisma/client';
+import { exportUser } from '../lib/user-export.mjs';
 import { verifyTotp } from '../lib/totp.mjs';
 // Same one-line helper the auth routes use for reset tokens: the token is mailed, only
 // its hash is stored, so the database never holds anything that grants access.
@@ -937,6 +939,70 @@ export default async function miscRoutes(app) {
       text: 'An administrator set a new password on your account and signed out all your devices.',
     }).catch(() => {});
     return { ok: true };
+  });
+
+  // Everything held about one person, as a file.
+  //
+  // ADMIN rather than MOD, and audited on every call. This is the single request on the
+  // platform that returns one person's whole record in one response: a moderator needs to
+  // read a case, not to take a copy of somebody's life here. The audit line is the record
+  // that it happened, which is the only thing that makes the capability reviewable.
+  //
+  // Producing it does NOT mark the request handled. Somebody still has to look at the file
+  // and send it, and a queue that empties itself when a button is pressed stops being a
+  // record of what was actually delivered.
+  app.get('/admin/users/:id/export', { preHandler: requireCap('manage_users', 'ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const doc = await exportUser(p, req.params.id, Prisma.dmmf, new Date().toISOString());
+    if (!doc) return reply.code(404).send({ error: 'not_found' });
+    await logAudit(p, req.user.uid, 'user.data_export', `${doc.subject.email} (${Object.keys(doc.data).length} tables)`, req.ip).catch(() => {});
+    // Sent as a download rather than rendered: it is a deliverable, and the filename is
+    // what somebody attaches to a reply.
+    reply.header('Content-Disposition', `attachment; filename="bettercommunity-data-${doc.subject.id}.json"`);
+    return doc;
+  });
+
+  // Mail it to the ADDRESS ON THE ACCOUNT, and nowhere else.
+  //
+  // Not to an address in the request, and not to the address the contact message came from.
+  // A subject access request is the one message where "reply to whoever asked" is the
+  // vulnerability: anybody can write asking for somebody else's data, and the only address
+  // we know belongs to the account is the one on it. If the person has lost access to it,
+  // that is an identity problem to solve first, not a delivery option.
+  app.post('/admin/users/:id/export/send', { preHandler: requireCap('manage_users', 'ADMIN') }, async (req, reply) => {
+    if (!emailEnabled()) return reply.code(503).send({ error: 'email_disabled' });
+    const p = await db();
+    const doc = await exportUser(p, req.params.id, Prisma.dmmf, new Date().toISOString());
+    if (!doc) return reply.code(404).send({ error: 'not_found' });
+
+    const json = JSON.stringify(doc, null, 2);
+    const partial = doc.couldNotRead.length;
+    const body = [
+      `Hello ${doc.subject.displayName || ''},`.trim(),
+      '',
+      'Attached is a copy of the personal data BetterCommunity holds about your account, as of the date on this message.',
+      '',
+      'A few things worth saying plainly:',
+      '',
+      '- Records where you acted on somebody else’s content appear as a reference — the date and the fact that it was you — rather than in full. Sending them whole would disclose another person’s data to you.',
+      '- Credentials (your password hash, two-factor secret, any tokens) are not included. They are not what this request is for, and putting them in an e-mail would create a risk that does not currently exist.',
+      '- The file lists every place we looked, not only the places that held something, so you can see the difference between "nothing" and "not checked".',
+      partial
+        ? `- ${partial} table(s) could not be read while producing this file. They are named inside it under couldNotRead, and we are looking at why.`
+        : '',
+      '',
+      'If something looks wrong or missing, reply to this message and say which part.',
+    ].filter((l) => l !== '').join('\n');
+
+    await sendMail({
+      to: doc.subject.email,
+      subject: 'Your BetterCommunity data',
+      html: mailShell({ title: 'Your data', body: mdToEmailHtml(body) }),
+      text: body,
+      attachments: [{ filename: `bettercommunity-data-${doc.subject.id}.json`, content: json, contentType: 'application/json' }],
+    });
+    await logAudit(p, req.user.uid, 'user.data_export_sent', `${doc.subject.email} (${Math.round(json.length / 1024)} KB)`, req.ip).catch(() => {});
+    return { ok: true, to: doc.subject.email, bytes: json.length, tables: Object.keys(doc.data).length, couldNotRead: doc.couldNotRead.length };
   });
 
   app.get('/admin/users/:id', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {

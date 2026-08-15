@@ -29,10 +29,13 @@ export function emailEnabled() {
   return process.env.EMAIL_ENABLED === 'true' && !!process.env.SMTP_HOST;
 }
 
-export async function sendMail({ to, subject, html, text, headers }) {
+export async function sendMail({ to, subject, html, text, headers, attachments }) {
   if (!emailEnabled()) return false;
   const from = process.env.SMTP_FROM || 'BetterCommunity <no-reply@localhost>';
-  await tx().sendMail({ from, to, subject, html, text, headers });
+  // `attachments` is forwarded explicitly. This function destructures its argument, so a
+  // caller passing something it does not name gets it SILENTLY DROPPED — a data-export mail
+  // would have gone out with no data in it and nothing would have failed.
+  await tx().sendMail({ from, to, subject, html, text, headers, attachments });
   return true;
 }
 
