@@ -1,7 +1,20 @@
 # Reverse proxy. SITE_DOMAIN drives the scheme:
 #   local dev → http://localhost  (plain HTTP on :80)
 #   production → your-domain.com   (Caddy auto-provisions HTTPS)
-{$SITE_DOMAIN:http://localhost} {
+#
+# TUNNEL_DOMAIN is a SECOND address on this same block, for showing a local stack to somebody
+# who is not on this machine (infra/tunnel.mjs). Listed here rather than duplicated as its own
+# block because everything below — headers, CSP, every route — must be identical, or the
+# tunnel would be testing a different site than the one you run.
+#
+# It is REQUIRED, and the way it fails is quiet. Caddy matches sites by Host: a request
+# arriving as `something.trycloudflare.com` does not match `localhost`, and Caddy answers
+# 200 WITH AN EMPTY BODY. Not a 404 — an empty success. Measured: Host localhost returns
+# 1044 bytes on `/`, any other host returns 0. So the tunnel connects, the page loads, and
+# nothing is there.
+#
+# The default is a hostname nobody can request, so this costs nothing when no tunnel is up.
+{$SITE_DOMAIN:http://localhost}, {$TUNNEL_DOMAIN:http://tunnel.invalid} {
 	encode gzip zstd
 
 	# ── Security headers ──

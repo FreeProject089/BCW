@@ -274,6 +274,8 @@ services:
         condition: service_started
     environment:
       SITE_DOMAIN: ${SITE_DOMAIN:-http://localhost:5176}
+      # Set by infra/tunnel.mjs while a tunnel is up; an unreachable default otherwise.
+      TUNNEL_DOMAIN: ${TUNNEL_DOMAIN:-http://tunnel.invalid}
       TELEMETRY_DOMAIN: ${TELEMETRY_DOMAIN:-http://telemetry.localhost}
     volumes:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
