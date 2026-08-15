@@ -4044,6 +4044,116 @@ function ClosureBanner({ user, onChanged }) {
   );
 }
 
+
+/**
+ * Answering a data request, from the account it is about.
+ *
+ * Three actions with very different weights, deliberately not styled alike: a download is
+ * reversible, an e-mail leaves the building, and an erasure cannot be undone.
+ *
+ * The erasure button PREVIEWS. There is no commit here at all — the plan reports what it
+ * would do, and one relation currently blocks it outright. A one-click irreversible deletion
+ * of a person's account, sitting on the same row as a download button, is an accident waiting
+ * for a tired afternoon.
+ */
+function DataRequestPanel({ user }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [busy, setBusy] = useState('');
+  const [preview, setPreview] = useState(null);
+
+  const download = async () => {
+    setBusy('download');
+    try {
+      const doc = await api.get(`/admin/users/${user.id}/export`);
+      const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `bettercommunity-data-${user.id}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      const missed = doc.couldNotRead?.length || 0;
+      if (missed) toast.error(t('gdpr.partial', '{n} table(s) could not be read — see couldNotRead in the file.').replace('{n}', String(missed)));
+      else toast.success(t('gdpr.built', 'Built from {n} table(s).').replace('{n}', String(Object.keys(doc.data || {}).length)));
+    } catch (x) { toast.error(x?.data?.error || t('common.failed', 'Failed.')); }
+    finally { setBusy(''); }
+  };
+
+  const send = async () => {
+    // Confirmed, and the confirmation names the address — because the address is the whole
+    // safety property. It goes to the account, never to whoever wrote in asking.
+    const ok = await dialog.confirm({
+      title: t('gdpr.send.t', 'Send their data by e-mail?'),
+      message: t('gdpr.send.m', 'This mails a copy of everything held about this account to {e} — the address ON the account, not the one that asked. Make sure the request really came from its owner.').replace('{e}', user.email),
+      okLabel: t('gdpr.send.ok', 'Send it'),
+    });
+    if (!ok) return;
+    setBusy('send');
+    try {
+      const r = await api.post(`/admin/users/${user.id}/export/send`, {});
+      toast.success(t('gdpr.sent', 'Sent to {e} ({kb} KB, {n} tables).').replace('{e}', r.to).replace('{kb}', String(Math.round(r.bytes / 1024))).replace('{n}', String(r.tables)));
+    } catch (x) {
+      toast.error(x?.data?.error === 'email_disabled' ? t('gdpr.nomail', 'E-mail is not configured on this instance.') : (x?.data?.error || t('common.failed', 'Failed.')));
+    } finally { setBusy(''); }
+  };
+
+  const previewErase = async () => {
+    setBusy('erase');
+    try { setPreview(await api.get(`/admin/users/${user.id}/erase/preview`)); }
+    catch (x) { toast.error(x?.data?.error || t('common.failed', 'Failed.')); }
+    finally { setBusy(''); }
+  };
+
+  return (
+    <Card className="p-4 mb-3">
+      <div className="text-sm font-semibold flex items-center gap-2 mb-1">
+        <FileText size={15} className="text-[var(--primary-2)]" /> {t('gdpr.title', 'Data requests')}
+      </div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">
+        {t('gdpr.sub', 'Everything held about this account, assembled from the schema itself rather than a list — so a table added later is included without anybody remembering to add it.')}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" disabled={!!busy} onClick={download}>
+          {busy === 'download' ? <Spinner /> : <Download size={14} />} {t('gdpr.download', 'Download the file')}
+        </Button>
+        <Button size="sm" variant="primary" disabled={!!busy} onClick={send}>
+          {busy === 'send' ? <Spinner /> : <Send size={14} />} {t('gdpr.email', 'E-mail it to them')}
+        </Button>
+        <Button size="sm" variant="ghost" disabled={!!busy} onClick={previewErase}>
+          {busy === 'erase' ? <Spinner /> : <Trash2 size={14} />} {t('gdpr.preview', 'Preview an erasure')}
+        </Button>
+      </div>
+
+      {preview && (
+        <div className="mt-3 text-[12px]">
+          {preview.ok === false ? (
+            <div className="rounded-lg border border-[var(--danger)] text-[var(--danger)] p-2.5">
+              <div className="font-semibold mb-1">{t('gdpr.blocked', 'This account cannot be erased yet.')}</div>
+              {(preview.blocked || []).map((b, i) => (
+                <div key={i} className="break-all"><code>{b.model}.{b.fk}</code> — {b.reason}</div>
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="rounded-lg border border-[var(--line)] text-[var(--muted)] p-2.5 mb-2">
+                {t('gdpr.plan', '{d} row(s) would be deleted, {x} unlinked, {k} kept. Nothing has been changed — this is a preview.')
+                  .replace('{d}', String(preview.totals?.deleted ?? 0))
+                  .replace('{x}', String(preview.totals?.detached ?? 0))
+                  .replace('{k}', String(preview.totals?.kept ?? 0))}
+              </div>
+              {Object.entries(preview.keptBecause || {}).map(([m, why]) => (
+                <div key={m} className="flex gap-2 py-0.5">
+                  <code className="shrink-0">{m}</code>
+                  <span className="text-[var(--faint)]">{why}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function UserDetailModal({ id, onClose }) {
   const { data, loading, reload } = useAsync(() => api.get(`/admin/users/${id}`), [id]);
   const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
@@ -4167,6 +4277,10 @@ function UserDetailModal({ id, onClose }) {
               ))}</div> : <div className="text-[12px] text-[var(--faint)]">{t('ud.sessNone', 'No active sessions.')}</div>}
             </div>
           )}
+
+          {/* Answering an access or erasure request from the account it is about, rather
+              than from a separate screen where the person is a row in a list. */}
+          <DataRequestPanel user={u} />
 
           {u.apiKeys && (
             <div>

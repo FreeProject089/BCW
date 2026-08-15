@@ -6,6 +6,7 @@ import argon2 from 'argon2';
 import crypto from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { exportUser } from '../lib/user-export.mjs';
+import { buildErasePlan, eraseUser } from '../lib/user-erase.mjs';
 import { verifyTotp } from '../lib/totp.mjs';
 // Same one-line helper the auth routes use for reset tokens: the token is mailed, only
 // its hash is stored, so the database never holds anything that grants access.
@@ -960,6 +961,17 @@ export default async function miscRoutes(app) {
     // what somebody attaches to a reply.
     reply.header('Content-Disposition', `attachment; filename="bettercommunity-data-${doc.subject.id}.json"`);
     return doc;
+  });
+
+  // What erasing this account WOULD do. There is no commit endpoint on purpose: the plan
+  // currently blocks on one relation, and an irreversible deletion reachable in one click
+  // from a screen full of ordinary buttons is an accident waiting for a tired afternoon.
+  app.get('/admin/users/:id/erase/preview', { preHandler: requireCap('manage_users', 'ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!u) return reply.code(404).send({ error: 'not_found' });
+    // commit is not passed. The default is dry, and this route never overrides it.
+    return eraseUser(p, u.id, buildErasePlan(Prisma.dmmf));
   });
 
   // Mail it to the ADDRESS ON THE ACCOUNT, and nowhere else.
