@@ -32,7 +32,7 @@ guides/
 | **Call the API** | API reference | [EN](reference/API_Reference_EN.md) | [FR](reference/API_Reference_FR.md) |
 | **Sign users in with BetterCommunity** (OIDC — not public yet) | OIDC provider | [EN](reference/OIDC_PROVIDER_EN.md) | [FR](reference/OIDC_PROVIDER_FR.md) |
 | **Understand the design** (subsystems, decisions, roadmap) | Architecture | [EN](reference/ARCHITECTURE_EN.md) | [FR](reference/ARCHITECTURE_FR.md) |
-| **See what the code actually does** (6 admin maps: guards, schema drift, published ports, secrets, config, data flow) | Codebase maps | [EN](reference/CODEBASE_MAPS_EN.md) | [FR](reference/CODEBASE_MAPS_FR.md) |
+| **See what the code actually does** (7 admin maps: guards, schema drift, migrations, published ports, secrets, config, data flow) | Codebase maps | [EN](reference/CODEBASE_MAPS_EN.md) | [FR](reference/CODEBASE_MAPS_FR.md) |
 | **Work on the code** (from-scratch dev deep-dive) | Technical analysis | [EN](reference/Technical_Analysis_EN.md) | [FR](reference/Technical_Analysis_FR.md) |
 | **Add a project to the showcase** | Other projects | [EN](reference/OTHER_PROJECTS_GUIDE_EN.md) | [FR](reference/OTHER_PROJECTS_GUIDE_FR.md) |
 | **Host users' own Docker projects** (design, not built) | User project hosting | [EN](reference/USER_PROJECT_HOSTING_EN.md) | [FR](reference/USER_PROJECT_HOSTING_FR.md) |

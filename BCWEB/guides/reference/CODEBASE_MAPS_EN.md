@@ -1,10 +1,10 @@
 # Codebase maps
 
-Six read-only maps in **Admin → Moderation**. Each reads the source (or, for one, this
+Seven read-only maps in **Admin → Moderation**. Each reads the source (or, for one, this
 instance's own environment) and prints a structure. They are closed by default and fetch on
 first open — a page used every day should not pay for tools opened twice a year.
 
-All six are `requireRole('ADMIN')`, which means 2FA as well.
+All seven are `requireRole('ADMIN')`, which means 2FA as well.
 
 They exist because the answers below were all *derivable* from the code and none of them was
 *written down anywhere* — so each was a thing somebody had to remember correctly.
@@ -33,6 +33,31 @@ That case is not cosmetic. The next generated migration proposes **dropping** it
 !!! note "Postgres truncates identifiers at 63 characters and keeps the suffix"
     The middle is clipped, not the end. Comparing full names reported two false positives
     before that rule was applied.
+
+## The migration history — `GET /admin/migration-map`
+
+The schema map compares `schema.prisma` against the SQL. This is the other axis, and two of
+its three answers need a live database:
+
+- a migration recorded as **applied whose folder is gone**. Prisma re-validates a checksum per
+  migration, so a deleted or renamed folder breaks `migrate deploy` on every machine *except*
+  the one where it was deleted — which is what makes it hard to notice.
+- a migration **started and never finished**, or rolled back. The database is then in a state
+  no migration describes and the next deploy refuses to run at all.
+
+And one the SQL answers alone: which migrations **lost data**. `DROP COLUMN`, `DROP TABLE` and
+`DELETE FROM` cannot be undone by another migration, and knowing which release contained one
+is the difference between a restore and a guess. There is exactly one here.
+
+!!! note "A data migration is not a no-op"
+    `INSERT`/`UPDATE` migrations write ROWS rather than change shape: they cannot simply be
+    re-run, and a restore has to think about them. Two exist here, and both reported "no
+    operations" until they were given their own category — an empty result that reads exactly
+    like a clean one.
+
+A database failure degrades to the on-disk half rather than a 500, and `pending` stays empty
+in that case. "48 migrations pending" from an unreachable database is a lie that reads as an
+emergency.
 
 ## The stack and its ports — `GET /admin/compose-map`
 

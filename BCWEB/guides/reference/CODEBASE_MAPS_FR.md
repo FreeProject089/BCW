@@ -1,11 +1,11 @@
 # Cartes du code
 
-Six cartes en lecture seule dans **Admin → Modération**. Chacune lit les sources (ou, pour
+Sept cartes en lecture seule dans **Admin → Modération**. Chacune lit les sources (ou, pour
 l'une d'elles, l'environnement de cette instance) et imprime une structure. Elles sont
 repliées par défaut et se chargent à la première ouverture — une page utilisée tous les jours
 ne doit pas payer pour des outils ouverts deux fois par an.
 
-Toutes les six sont en `requireRole('ADMIN')`, donc 2FA également.
+Toutes les sept sont en `requireRole('ADMIN')`, donc 2FA également.
 
 Elles existent parce que les réponses ci-dessous étaient toutes *déductibles* du code et
 qu'aucune n'était *écrite quelque part* — chacune était donc une chose que quelqu'un devait
@@ -35,6 +35,32 @@ parce qu'un `migrate diff` croit le schéma. Actuellement zéro.
 !!! note "Postgres tronque les identifiants à 63 caractères en gardant le suffixe"
     C'est le milieu qui est coupé, pas la fin. Comparer les noms complets produisait deux
     faux positifs avant l'application de cette règle.
+
+## L'historique des migrations — `GET /admin/migration-map`
+
+La carte du schéma compare `schema.prisma` au SQL. Voici l'autre axe, et deux de ses trois
+réponses exigent une base vivante :
+
+- une migration enregistrée comme **appliquée dont le dossier a disparu**. Prisma revalide une
+  somme de contrôle par migration : un dossier supprimé ou renommé casse `migrate deploy` sur
+  toutes les machines *sauf* celle où il a été supprimé — d'où la difficulté à le remarquer.
+- une migration **commencée et jamais terminée**, ou annulée. La base est alors dans un état
+  qu'aucune migration ne décrit, et le déploiement suivant refuse de démarrer.
+
+Et une à laquelle le SQL répond seul : quelles migrations ont **perdu des données**.
+`DROP COLUMN`, `DROP TABLE` et `DELETE FROM` ne peuvent pas être défaits par une autre
+migration, et savoir quelle version en contenait une fait la différence entre une restauration
+et une supposition. Il y en a exactement une ici.
+
+!!! note "Une migration de données n'est pas une migration vide"
+    Les migrations `INSERT`/`UPDATE` écrivent des LIGNES au lieu de changer la forme : elles ne
+    peuvent pas être simplement rejouées, et une restauration doit en tenir compte. Il y en a
+    deux ici, et toutes deux annonçaient « aucune opération » avant d'avoir leur propre
+    catégorie — un résultat vide qui se lit exactement comme un résultat propre.
+
+Une panne de base se dégrade vers la moitié sur disque plutôt qu'en 500, et `pending` reste
+alors vide. « 48 migrations en attente » depuis une base injoignable est un mensonge qui se lit
+comme une urgence.
 
 ## La pile et ses ports — `GET /admin/compose-map`
 
