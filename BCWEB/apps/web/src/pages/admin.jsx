@@ -30,7 +30,7 @@ import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 import { AdminMyo } from './admin-myo.jsx';
 import { AdminApi } from './admin-api.jsx';
-import { AdminSanctions } from './admin-sanctions.jsx';
+import { AdminSanctions, ContentSanctionForm } from './admin-sanctions.jsx';
 import { AdminPolls } from './admin-polls.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash, useThreadStream } from './pages.jsx';
 
@@ -10815,6 +10815,7 @@ function AdminCatalogs() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [q, setQ] = useState('');
   const [examine, setExamine] = useState(null); // catalog being examined
+  const [sanctioning, setSanctioning] = useState(null); // catalog being suspended, via a sanction
   const { data, loading, reload } = useAsync(() => api.get('/admin/catalogs'), []);
   const act = async (c, action) => {
     try { await api.post(`/admin/catalogs/${c.id}/${action}`); toast.success(t('cc.acted', 'Done.')); reload(); }
@@ -10825,13 +10826,16 @@ function AdminCatalogs() {
   const setStatus = async (c, next) => {
     const cur = c.status === 'SUSPENDED' ? 'suspended' : c.listed ? 'online' : 'offline';
     if (cur === next) return;
+    // Suspending is a decision with a reason and a term, not a dropdown value. The server
+    // now refuses the bare status write (409 use_sanction); this opens the form that records
+    // one, which is the same form the sanctions page uses.
+    if (next === 'suspended') { setSanctioning(c); return; }
     try {
-      if (next === 'suspended') await api.post(`/admin/catalogs/${c.id}/suspend`);
-      else {
-        if (c.status === 'SUSPENDED') await api.post(`/admin/catalogs/${c.id}/unsuspend`);
-        if (next === 'online' && c.visibility === 'public') await api.post(`/admin/catalogs/${c.id}/relist`);
-        if (next === 'offline') await api.post(`/admin/catalogs/${c.id}/unlist`);
-      }
+      // Lifting stays here: unsuspend/relist/unlist are not decisions with a term, and the
+      // sanction's own lift endpoint handles the record when one exists.
+      if (c.status === 'SUSPENDED') await api.post(`/admin/catalogs/${c.id}/unsuspend`);
+      if (next === 'online' && c.visibility === 'public') await api.post(`/admin/catalogs/${c.id}/relist`);
+      if (next === 'offline') await api.post(`/admin/catalogs/${c.id}/unlist`);
       toast.success(t('cc.acted', 'Done.')); reload();
     } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); }
   };
@@ -10890,6 +10894,19 @@ function AdminCatalogs() {
         ); })}
       </div> : <EmptyState icon={Layers} title={t('cc.admin.none.t', 'No community catalogs')} sub={t('cc.admin.none.s', 'When users host their own catalogs, they show up here for moderation.')} />}
       {examine && <AdminCatalogExamine catalog={examine} onClose={() => setExamine(null)} />}
+      {/* Suspending a catalog goes through a sanction: a reason the owner receives, a term,
+          a staff note they do not, and a record with a code anybody can look up afterwards.
+          The dropdown used to write the status and send "suspended by a moderator" — true,
+          unarguable, and impossible to review six months later. */}
+      {sanctioning && (
+        <Modal open onClose={() => setSanctioning(null)} icon={Gavel} width="max-w-lg"
+          title={t('cc.susp.title', 'Suspend “{n}”').replace('{n}', sanctioning.name)}>
+          <ContentSanctionForm
+            targetType="catalog" targetId={sanctioning.id} targetName={sanctioning.name}
+            onDone={() => { setSanctioning(null); toast.success(t('cc.acted', 'Done.')); reload(); }}
+          />
+        </Modal>
+      )}
     </div>
   );
 }

@@ -372,7 +372,9 @@ export function AdminSanctions() {
  *  Exported so the content screens can drop it in rather than re-deriving the shape. */
 export function ContentSanctionForm({ targetType, targetId, targetName, onDone }) {
   const { t } = useI18n(); const toast = useToast();
-  const [f, setF] = useState({ kind: 'warning', reason: '', request: '' });
+  // `days` and `internalNote` were accepted by the API from the start and had no field
+  // here, so every content sanction was permanent and no staff context could be recorded.
+  const [f, setF] = useState({ kind: 'warning', reason: '', request: '', days: '', internalNote: '' });
   const [busy, setBusy] = useState(false);
 
   const submit = async (e) => {
@@ -383,9 +385,13 @@ export function ContentSanctionForm({ targetType, targetId, targetName, onDone }
       const r = await api.post('/admin/sanctions/content', {
         targetType, targetId, kind: f.kind,
         reason: f.reason.trim(), request: f.request.trim() || undefined,
+        internalNote: f.internalNote.trim() || undefined,
+        // Days from now, because "until when" is not how anybody decides a suspension —
+        // they decide "a week". Empty means indefinite, which is what it always was.
+        expiresAt: f.days ? new Date(Date.now() + Number(f.days) * 86400000).toISOString() : undefined,
       });
       toast.success(t('sanc.issued', 'Issued — {c}').replace('{c}', r.sanction.code));
-      setF({ kind: 'warning', reason: '', request: '' });
+      setF({ kind: 'warning', reason: '', request: '', days: '', internalNote: '' });
       onDone?.(r.sanction);
     } catch (x) {
       toast.error(x?.data?.error === 'cannot_moderate_own_content' ? t('sanc.own', 'This is your own content.') : t('common.failed', 'Failed.'));
@@ -406,9 +412,23 @@ export function ContentSanctionForm({ targetType, targetId, targetName, onDone }
       <Field label={t('sanc.form.reason', 'Reason (they read this)')}>
         <Textarea rows={2} value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} />
       </Field>
+      <Field label={t('sanc.form.days', 'For how long')}
+        hint={t('sanc.form.days.h', 'Leave empty for indefinite. A suspension with no end date is one somebody has to remember to lift.')}>
+        <Select value={f.days} onChange={(e) => setF({ ...f, days: e.target.value })}>
+          <option value="">{t('sanc.form.d.none', 'Indefinite')}</option>
+          <option value="1">{t('sanc.form.d.1', '24 hours')}</option>
+          <option value="7">{t('sanc.form.d.7', '7 days')}</option>
+          <option value="30">{t('sanc.form.d.30', '30 days')}</option>
+          <option value="90">{t('sanc.form.d.90', '90 days')}</option>
+        </Select>
+      </Field>
       <Field label={t('sanc.form.request', 'What you are asking them to do (optional)')}
         hint={t('sanc.form.request.h', 'A warning with no request is just an insult with a reference number.')}>
         <Textarea rows={2} value={f.request} onChange={(e) => setF({ ...f, request: e.target.value })} />
+      </Field>
+      <Field label={t('sanc.form.note', 'Internal note (they never see this)')}
+        hint={t('sanc.form.note.h', 'The reason above is quoted in their e-mail and in any contest. Anything you would not put there goes here.')}>
+        <Textarea rows={2} value={f.internalNote} onChange={(e) => setF({ ...f, internalNote: e.target.value })} />
       </Field>
       <Button type="submit" variant={f.kind === 'takedown' ? 'danger' : 'primary'} disabled={busy}>
         <Gavel size={13} /> {f.kind === 'takedown' ? t('sanc.form.take', 'Take it down') : t('sanc.form.warn', 'Send the warning')}

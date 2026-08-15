@@ -1288,6 +1288,13 @@ export default async function repoRoutes(app) {
       cpuShare: z.number().min(0).max(64).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    // Suspending is a DECISION about somebody's content, not a field edit. This route wrote
+    // the status with no reason, no duration, no record and no notice to the owner — and the
+    // sanction path already does all four, so the only thing keeping the two apart was that
+    // nothing closed this door. POST /admin/sanctions/content is that path.
+    if (b.data.status === 'SUSPENDED') {
+      return reply.code(409).send({ error: 'use_sanction', targetType: 'repo' });
+    }
     const p = await db();
     const data = {};
     if (b.data.status) data.status = b.data.status;

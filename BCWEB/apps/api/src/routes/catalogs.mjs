@@ -753,6 +753,13 @@ export default async function communityCatalogRoutes(app) {
   app.post('/admin/catalogs/:id/:action', { preHandler: requireCap('manage_catalogs') }, async (req, reply) => {
     const action = req.params.action;
     if (!['suspend', 'unsuspend', 'unlist', 'relist', 'delete'].includes(action)) return reply.code(400).send({ error: 'bad_action' });
+    // Same reason as PATCH /admin/repos/:id: this wrote SUSPENDED and sent "suspended by a
+    // moderator" with no reason, no duration and no record anybody can look up later. The
+    // content-sanction path does all of that, so suspending goes through it.
+    // unsuspend/unlist/relist/delete stay here — they are not decisions with a term.
+    if (action === 'suspend') {
+      return reply.code(409).send({ error: 'use_sanction', targetType: 'catalog' });
+    }
     const p = await db();
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id }, include: action === 'delete' ? { items: { select: { payloadKey: true } } } : undefined });
     if (!c) return reply.code(404).send({ error: 'not_found' });
