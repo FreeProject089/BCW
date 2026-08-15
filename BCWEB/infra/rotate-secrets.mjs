@@ -84,8 +84,15 @@ const rollback = (why) => {
         sh('docker', ['compose', '--project-directory', join(HERE, 'compose'), 'up', '-d']);
         console.error('Rolled back. The stack is as it was.');
     } catch {
-        console.error(`Rollback failed. Restore by hand: copy ${BACKUP} over .env, then`);
-        console.error("  docker exec bcweb-db-1 psql -U bcweb -d bcweb -c \"ALTER USER bcweb WITH PASSWORD '<the old one from the backup>';\"");
+        // Deliberately NOT a ready-to-paste command with a placeholder password in it. A
+        // placeholder is itself a valid password: pasted verbatim, it sets the database to the
+        // literal placeholder text while .env keeps the real one, and every route starts
+        // answering 500 with "credentials for bcweb are not valid". That happened once here,
+        // from advice written exactly that way.
+        console.error(`Rollback failed. Restore by hand, in this order:`);
+        console.error(`  1. copy ${BACKUP} over .env`);
+        console.error(`  2. re-run this script — it reads POSTGRES_PASSWORD from .env and puts`);
+        console.error(`     the database back in step with it, so no password is ever retyped.`);
     }
     process.exit(1);
 };
