@@ -317,10 +317,35 @@ export default async function hostingRoutes(app) {
   });
 
   app.post('/admin/hosting/plans', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const b = z.object(planShape).safeParse(req.body);
+    const b = z.object({ ...planShape, force: z.boolean().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const data = { ...b.data };
+    const { force, ...data } = b.data;
+
+    // Refuse an exact duplicate.
+    //
+    // Nothing stopped this before, and the public Hosting page ended up listing 27 identical
+    // "5 GB" plans named after repos — created one at a time through this endpoint, every one
+    // of them active (the column defaults to true), none referenced by any subscription.
+    // A plan list is a shop window: a person reads it top to bottom and picks one, so twelve
+    // copies of the same offer is not clutter, it is a broken page.
+    //
+    // Identity is the whole visible offer, not the name: two plans called "Test" with
+    // different storage are two offers, and two called "Test" and "Test " with the same specs
+    // are one. `force` exists because an admin may genuinely want a second identical row (to
+    // retire one and keep the other), and a guard with no way past it gets removed.
+    if (!force) {
+      const dup = await p.hostingPlan.findFirst({
+        where: {
+          name: data.name.trim(),
+          storageGB: data.storageGB,
+          uploadLimitKbps: data.uploadLimitKbps,
+        },
+        select: { id: true, name: true, active: true },
+      });
+      if (dup) return reply.code(409).send({ error: 'duplicate_plan', existing: dup });
+    }
+    data.name = data.name.trim();
     // Empty price → derive it. The column is NOT NULL, so what is stored is the computed
     // number; `autoPriced` tells the caller it came from the settings rather than from them.
     const autoPriced = data.priceMonthlyCents == null;

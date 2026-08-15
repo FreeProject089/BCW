@@ -262,13 +262,7 @@ export function Admin() {
         {s === 'moderation' && <div>
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
           <BmmpaInspector />
-          <RbacMap />
-          <SchemaMap />
-          <MigrationMap />
-          <ComposeMap />
-          <SecretsMap />
-          <ConfigDiff />
-          <DataFlow />
+          <CodebaseMaps />
           <div className="flex flex-wrap gap-2 mb-3">
             <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
               <Input className="!pl-9" placeholder={t('mod.search.ph', 'Search by item name, author or email…')} value={modQ} onChange={(e) => setModQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setModQApplied(modQ)} /></div>
@@ -5000,7 +4994,20 @@ function AdminHostingPlans() {
     setDraft(null); setEffective(''); setApplyExisting(false);
     undoable(
       async () => {
-        const r = id ? await api.patch(`/admin/hosting/plans/${id}`, payload) : await api.post('/admin/hosting/plans', payload);
+        let r;
+        try {
+          r = id ? await api.patch(`/admin/hosting/plans/${id}`, payload) : await api.post('/admin/hosting/plans', payload);
+        } catch (x) {
+          // The server refuses an exact duplicate (same name + storage + upload). It has no
+          // way past it from here on purpose: the public Hosting page is a shop window, and
+          // the way it ended up listing 27 identical 5 GB plans was one accidental save at a
+          // time. Editing the existing plan is almost always what was meant.
+          if (x?.data?.error === 'duplicate_plan') {
+            toast.error(t('adm.plans.dup', 'A plan with this name and these specs already exists ({n}) — edit that one instead of adding a second.')
+              .replace('{n}', x.data?.existing?.name || ''));
+          }
+          throw x;
+        }
         // The count of who was actually written to is only known once the request has
         // run, so it is reported here rather than promised in the toast beforehand.
         if (scheduling) {
@@ -6554,6 +6561,47 @@ function RbacMap() {
               </div>
             </div>
           </>)}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * The seven maps, behind ONE heading.
+ *
+ * They were mounted flat at the top of the moderation tab, which put seven collapsed panels
+ * between a moderator and the queue they open this page for. Each is opened a few times a
+ * year; the queue is the daily work, and the daily work does not get pushed below the fold
+ * by diagnostics.
+ *
+ * One row, closed. Nothing behind it fetches until it is opened, so the cost of having them
+ * here is a single line of markup.
+ */
+function CodebaseMaps() {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <Card className="p-4 mb-3">
+      <button className="w-full flex items-center gap-2 text-left" onClick={() => setOpen((o) => !o)}>
+        <Code2 size={15} className="text-[var(--primary-2)]" />
+        <span className="text-sm font-semibold">{t('maps.title', 'Codebase maps')}</span>
+        <span className="text-[11px] text-[var(--muted)] ml-auto">
+          {open ? t('maps.hide', 'hide') : t('maps.show', '7 read-only reports')}
+        </span>
+      </button>
+      {open && (
+        <div className="mt-3">
+          <div className="text-[11px] text-[var(--faint)] mb-2">
+            {t('maps.sub', 'Guards, schema drift, migrations, published ports, secrets, config and data flow. Each reads the source and reports; none of them changes anything.')}
+          </div>
+          <RbacMap />
+          <SchemaMap />
+          <MigrationMap />
+          <ComposeMap />
+          <SecretsMap />
+          <ConfigDiff />
+          <DataFlow />
         </div>
       )}
     </Card>
