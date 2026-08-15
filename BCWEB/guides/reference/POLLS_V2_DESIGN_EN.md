@@ -133,6 +133,48 @@ none of them is implied by "more than one question".
 
 ---
 
+---
+
+## Progress
+
+**Step 1 — done** (`8ac624c`). `PollQuestion` / `PollChoice` / `PollAnswer` created, old tables
+untouched, and `apps/api/src/backfill-polls.mjs` converting each poll into a one-question poll.
+Drift is zero: `prisma migrate diff --exit-code` returns 0.
+
+The backfill was verified against real rows, not an empty table — this database has no polls, so
+it would otherwise have shipped untested. Seeded one poll / two options / two votes, ran dry →
+commit → commit again (1/2/2, then 0/0/0 "already converted"), checked the converted rows
+carried the right labels, config and `wasLoggedIn` flags, then removed the fixture.
+
+**Answer validation — done** (`2cbbf19`). `apps/api/src/lib/poll-answer.mjs`, pure and tested
+19/19, ready for the vote endpoint to call. Two rules that the obvious implementation gets
+wrong: a choice id is checked for MEMBERSHIP of its question (an id from another question is a
+real row), and numbers gate on TYPE before parsing (`Number([])` is 0).
+
+**Two unrelated defects fixed on the way**, both found by diffing the schema against the live
+database: `Report.reporterId` had no `ON DELETE SET NULL` despite a migration whose comment
+claimed it enabled anonymising, and `ContactMessage(kind, status)` existed in the database
+without being declared on the model.
+
+**Step 2 — the reader — NOT started.** `apps/api/src/routes/polls.mjs` (read + vote) and the
+public page. `poll-answer.mjs` is what the vote endpoint should call; it already returns the
+column to write.
+
+### Before running the API tests, know where you are
+
+There is no place on this machine where the suite runs as CI runs it, and both wrong places
+report a number that looks real:
+
+- **On the host**: `docker port bcweb-db-1` prints nothing — 5432 is not published — so a
+  hand-made `DATABASE_URL` connects to nothing and ~31 DB-touching tests FAIL. (Without
+  `DATABASE_URL` they skip instead, which at least says so.)
+- **Inside `bcweb-api-1`**: the database is reachable, but the container has no `/web` and no
+  `/packages`, so tests reading those files fail with ENOENT — and the running server's sweeper
+  makes `rollup.test.mjs` fail for reasons unrelated to any change.
+
+Publishing 5432 in `docker-compose.yml` would make the suite measurable from the host. That is
+an infrastructure change and the owner's call.
+
 ## The order to build it
 
 1. Schema + migration + backfill, old tables retained. Nothing reads the new tables yet.
