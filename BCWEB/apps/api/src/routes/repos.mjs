@@ -1260,8 +1260,12 @@ export default async function repoRoutes(app) {
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { id: req.params.id } });
     if (!repo) return reply.code(404).send({ error: 'not_found' });
-    await p.serverRepo.update({ where: { id: repo.id }, data: { verified: false, pendingReview: false, listed: false } });
-    await notify(p, repo.ownerId, 'repo_rejected', `Your repo "${repo.name}" was unlisted: ${reason.data.reason}`);
+    // sha is cleared too. The column means "content hash of the last VERIFIED content", and
+    // leaving it after a rejection leaves a record asserting that content was checked when a
+    // moderator has just decided it was not. Re-listing runs autoVerify, which recomputes it
+    // — so this loses nothing except a claim that had stopped being true.
+    await p.serverRepo.update({ where: { id: repo.id }, data: { verified: false, pendingReview: false, listed: false, sha: null } });
+    await notify(p, repo.ownerId, 'repo_rejected', `Your repo "${repo.name}" was removed from the public list: ${reason.data.reason}`);
     return { ok: true };
   });
 
