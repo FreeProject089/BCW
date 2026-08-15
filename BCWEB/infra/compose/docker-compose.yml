@@ -13,6 +13,17 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-bcweb}
     volumes:
       - db-data:/var/lib/postgresql/data
+    # Loopback ONLY — 127.0.0.1, never 0.0.0.0. Without the explicit host, Docker publishes on
+    # every interface and Postgres is reachable from the network, which on a machine that also
+    # serves the site is the whole database one misconfigured firewall away.
+    #
+    # Published because the API test suite cannot otherwise be run the way CI runs it: from the
+    # host the port was closed, so a hand-made DATABASE_URL connected to nothing and ~31
+    # DB-touching tests FAILED — a convincing wrong answer, not an error. Running them inside
+    # the api container is not the fix either: it has no /web and no /packages, so tests that
+    # read those files die on ENOENT, and the running server's sweeper fails rollup by itself.
+    ports:
+      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bcweb}"]
       interval: 5s
