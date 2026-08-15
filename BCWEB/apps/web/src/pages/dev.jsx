@@ -360,6 +360,24 @@ export default function DevHub() {
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Tool icon={FileJson} title={t('dev.hub.tools', 'Tools')} to="/dev/tools" cta={t('dev.hub.open', 'Open')}>
           {t('dev.hub.tools.s2', 'Try any call against the real API, check a catalog feed before you publish it, and see what your keys have been doing — refusals included.')}
+          {/* Named and linked, not summarised. Five tools live behind that card and the
+              only way to learn which was to open it and read the page — the same
+              discoverability gap that hid a working Switch step and a whole catalogue type
+              elsewhere in this project. The anchors already existed. */}
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {[
+              ['try', t('dev.console.title', 'Try a call')],
+              ['validate', t('dvt.val', 'Check a catalog feed')],
+              ['deeplink', t('dvt.dl.title', 'Build a bmm:// link')],
+              ['signature', t('dvt.sig.title', 'Check a webhook signature')],
+              ['calls', t('dvt.calls', 'What your keys did')],
+            ].map(([id, label]) => (
+              <Link key={id} to={`/dev/tools#${id}`}
+                className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition">
+                {label}
+              </Link>
+            ))}
+          </div>
         </Tool>
 
         <Tool icon={Sliders} title={t('dev.hub.config', 'Credentials')} to="/dev/config" cta={t('dev.hub.open', 'Open')}>
