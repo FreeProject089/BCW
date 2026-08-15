@@ -108,3 +108,84 @@ export function pollStats(poll, options, votes, now = new Date()) {
     lead: leadStrength(tally, voters),
   };
 }
+
+// ── Multi-question shape ─────────────────────────────────────────────────────
+//
+// The aggregates the four typed columns on PollAnswer exist for. Deliberately built on the
+// SAME voterCount and leadStrength as the single-question stats above rather than a second
+// set of rules: "62% of voters" must mean the same thing on both screens, and two definitions
+// of a percentage is how one report contradicts another.
+
+/** Mean, spread and distribution for a `scale` or `number` question. */
+export function numericSummary(answers) {
+  const values = answers.map((a) => a.number).filter((n) => typeof n === 'number' && Number.isFinite(n));
+  if (!values.length) return { count: 0 };
+  const sorted = [...values].sort((a, b) => a - b);
+  const sum = sorted.reduce((t, n) => t + n, 0);
+  const mid = Math.floor(sorted.length / 2);
+  const distribution = {};
+  for (const n of sorted) distribution[n] = (distribution[n] || 0) + 1;
+  return {
+    count: sorted.length,
+    mean: sum / sorted.length,
+    // The median is reported beside the mean because one long scale answer drags a mean and
+    // leaves the median where the answers actually are — and a mean alone is what gets quoted.
+    median: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    distribution,
+  };
+}
+
+/**
+ * How far people got.
+ *
+ * The number a form owner actually wants and no single-question poll can have: how many
+ * started, and how many reached the end. Counted in PEOPLE, by the same identity rule as
+ * voterCount — a multi-choice question would otherwise make one person look like three.
+ */
+export function completion(questions, answers) {
+  const required = questions.filter((q) => q.required);
+  const started = voterCount(answers);
+  if (!required.length) return { started, completed: started, rate: started ? 1 : 0 };
+
+  const byVoter = new Map();
+  for (const a of answers) {
+    const key = a.userId ? `u:${a.userId}` : (a.voterKey ? `k:${a.voterKey}` : null);
+    // An anonymised answer cannot be joined to its siblings, so it can never be shown to have
+    // completed anything. Counted as started and not as completed — the honest direction, and
+    // the one that cannot overstate the rate.
+    if (!key) continue;
+    if (!byVoter.has(key)) byVoter.set(key, new Set());
+    byVoter.get(key).add(a.questionId);
+  }
+  let completed = 0;
+  for (const answered of byVoter.values()) {
+    if (required.every((q) => answered.has(q.id))) completed++;
+  }
+  return { started, completed, rate: started ? completed / started : 0 };
+}
+
+/** Stats for one question, shaped by its kind. */
+export function questionStats(question, answers, choices = []) {
+  const mine = answers.filter((a) => a.questionId === question.id);
+  const voters = voterCount(mine);
+  const base = { id: question.id, kind: question.kind, label: question.label, voters };
+
+  if (question.kind === 'choice') {
+    // Reuses optionTally so a choice question and a legacy poll compute their percentages
+    // identically.
+    const tally = optionTally(choices, mine.map((a) => ({ ...a, optionId: a.choiceId })));
+    return { ...base, tally, lead: leadStrength(tally, voters) };
+  }
+  if (question.kind === 'scale' || question.kind === 'number') {
+    return { ...base, numeric: numericSummary(mine) };
+  }
+  if (question.kind === 'text') {
+    // Text is never aggregated into a "top answer" — that invents a consensus out of free
+    // writing. The count is reported; the words are read.
+    return { ...base, answered: mine.filter((a) => typeof a.text === 'string' && a.text !== '').length };
+  }
+  const dates = mine.map((a) => a.date).filter(Boolean).map((d) => new Date(d)).sort((a, b) => a - b);
+  return { ...base, answered: dates.length, earliest: dates[0] ?? null, latest: dates[dates.length - 1] ?? null };
+}
