@@ -7,12 +7,37 @@ import { Mail, MessageSquare, Send, ShieldCheck, BadgeCheck } from 'lucide-react
 import { GithubIcon, DiscordIcon, KofiIcon, RedditIcon } from '../ui/brand.jsx';
 import { api } from '../lib/api.js';
 
+// Sender-declared subject. Mirrors CONTACT_KINDS in the API, which validates against a
+// closed list — so a kind here that the server does not know is rejected rather than filed
+// into a queue nobody counts.
+const KINDS = [
+  { v: 'other', en: 'Something else', fr: 'Autre chose' },
+  { v: 'bug', en: 'A bug or something broken', fr: 'Un bug ou quelque chose de cassé' },
+  { v: 'billing', en: 'Billing or hosting', fr: 'Facturation ou hébergement' },
+  { v: 'appeal', en: 'Appealing a moderation decision', fr: 'Contester une décision de modération' },
+  { v: 'data_export', en: 'Send me a copy of my data', fr: 'M’envoyer une copie de mes données' },
+  { v: 'data_delete', en: 'Delete my data', fr: 'Supprimer mes données' },
+];
+
+// Prefilled only when the field is still empty, so choosing a kind never overwrites
+// something already typed.
+const TEMPLATES = {
+  data_export: {
+    en: 'I would like a copy of the personal data you hold about me.\n\nAccount (email or display name):\n',
+    fr: 'Je souhaite recevoir une copie des données personnelles que vous détenez à mon sujet.\n\nCompte (e-mail ou nom affiché) :\n',
+  },
+  data_delete: {
+    en: 'I would like my personal data deleted.\n\nAccount (email or display name):\n',
+    fr: 'Je souhaite la suppression de mes données personnelles.\n\nCompte (e-mail ou nom affiché) :\n',
+  },
+};
+
 export function Contact() {
   const { lang } = useI18n();
   const { user } = useAuth();
   const toast = useToast();
   const fr = lang === 'fr';
-  const [msg, setMsg] = useState({ name: '', email: '', body: '' });
+  const [msg, setMsg] = useState({ name: '', email: '', body: '', kind: 'other' });
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   // Prefill from the account when logged in — the message is linked to the
@@ -52,7 +77,7 @@ export function Contact() {
     try {
       const { solvePow } = await import('../lib/pow.js');
       const pow = await solvePow(() => api.get('/auth/pow')); // anti-spam proof-of-work
-      await api.post('/contact', { name: msg.name.trim(), email: msg.email.trim(), body: msg.body.trim(), pow });
+      await api.post('/contact', { name: msg.name.trim(), email: msg.email.trim(), body: msg.body.trim(), kind: msg.kind, pow });
       setSent(true);
     } catch (x) {
       const err = x.data?.error;
@@ -85,10 +110,34 @@ export function Contact() {
             <span className="inline-grid place-items-center w-14 h-14 rounded-2xl bg-success-bg mb-4"><BadgeCheck size={28} className="text-success" /></span>
             <div className="text-lg font-semibold">{fr ? 'Message envoyé !' : 'Message sent!'}</div>
             <p className="text-sm text-[var(--muted)] mt-1.5 max-w-sm mx-auto">{fr ? 'Merci — on te répond dès que possible. Pour du temps réel, rejoins le Discord ci-dessus.' : 'Thanks — we’ll get back to you soon. Prefer real-time? Join the Discord above.'}</p>
-            <Button className="mt-5" onClick={() => { setSent(false); setMsg({ name: '', email: '', body: '' }); }}>{fr ? 'Envoyer un autre' : 'Send another'}</Button>
+            <Button className="mt-5" onClick={() => { setSent(false); setMsg({ name: '', email: '', body: '', kind: 'other' }); }}>{fr ? 'Envoyer un autre' : 'Send another'}</Button>
           </div>
         ) : (
           <div className="p-6">
+            {/* Asked FIRST, because two of these are not support tickets. An export or
+                erasure request carries a legal deadline, and one filed as free text among
+                "the download button is grey" is found by whoever happens to read it. The
+                answer is a routing hint, never a decision — staff can re-file it. */}
+            <Field label={fr ? 'C’est à quel sujet ?' : 'What is this about?'}>
+              <select
+                value={msg.kind}
+                onChange={(e) => setMsg((m) => ({ ...m, kind: e.target.value, body: m.body || (TEMPLATES[e.target.value]?.[fr ? 'fr' : 'en'] || '') }))}
+                className="input w-full"
+              >
+                {KINDS.map((k) => <option key={k.v} value={k.v}>{fr ? k.fr : k.en}</option>)}
+              </select>
+            </Field>
+            {(msg.kind === 'data_export' || msg.kind === 'data_delete') && (
+              <div className="mt-2 mb-4 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-3 text-[12px] text-[var(--muted)]">
+                {msg.kind === 'data_export'
+                  ? (fr
+                    ? 'Nous vous enverrons une copie de vos données à cette adresse. Écrivez depuis l’adresse du compte, ou connectez-vous avant d’envoyer : nous ne pouvons pas envoyer les données d’un compte à une adresse que rien ne relie à lui.'
+                    : 'We will send a copy of your data to this address. Write from the account’s address, or sign in before sending — we cannot send an account’s data to an address nothing links to it.')
+                  : (fr
+                    ? 'La suppression est définitive. Certaines choses ne peuvent pas partir : les décisions de modération vous concernant et les enregistrements de paiement que la loi nous impose de conserver. Tout le reste s’en va.'
+                    : 'Erasure is permanent. Some things cannot go: moderation decisions about you, and payment records we are required to keep. Everything else does.')}
+              </div>
+            )}
             <div className="grid sm:grid-cols-2 gap-4">
               <Field label={fr ? 'Ton nom' : 'Your name'}><Input value={msg.name} onChange={(e) => setMsg({ ...msg, name: e.target.value })} maxLength={100} placeholder={fr ? 'Ton nom ou pseudo' : 'Your name or handle'} /></Field>
               <Field label={fr ? 'Ton email' : 'Your email'} hint={msg.email && !emailOk ? (fr ? 'Email invalide' : 'Invalid email') : undefined}>

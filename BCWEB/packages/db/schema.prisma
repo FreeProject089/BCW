@@ -2031,6 +2031,17 @@ model ContactMessage {
   // support can see who's asking without them having to repeat it. Never required.
   user      User?     @relation(fields: [userId], references: [id])
   userId    String?
+  /// What the sender says this is about.
+  ///
+  /// other · data_export · data_delete · bug · billing · appeal
+  ///
+  /// It exists because two of those are legal deadlines, not support tickets. A request to
+  /// export or erase personal data has a clock on it, and until now it arrived as free text
+  /// in the same list as "the download button is grey" — findable only by whoever happened
+  /// to read it. A kind makes it countable, and a countable thing can be surfaced and
+  /// chased. Sender-declared, so it is a routing hint and never a decision: staff can
+  /// re-file one, and the body is still what gets read.
+  kind      String    @default("other")
   ip        String    @default("") // for the daily anonymous rate limit + abuse review
   status    String    @default("new") // new | read
   readAt    DateTime?

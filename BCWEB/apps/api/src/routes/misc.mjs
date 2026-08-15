@@ -62,6 +62,23 @@ let _stats = null;
 // fetched for the preview list. It is polled by the admin shell, so it must stay cheap.
 const PENDING_QUEUES = [
   {
+    // Data requests come FIRST because they are the only queue here with a legal clock on
+    // it. An export or erasure request has a deadline; a pending catalogue submission does
+    // not. Until this existed they arrived as free text in the contact list, indistinguishable
+    // from "the download button is grey", and were found by whoever happened to read them.
+    key: 'dataRequests', cap: 'manage_users', to: '/admin?s=contact',
+    count: (p) => p.contactMessage.count({ where: { kind: { in: ['data_export', 'data_delete'] }, readAt: null } }),
+    recent: (p) => p.contactMessage.findMany({
+      where: { kind: { in: ['data_export', 'data_delete'] }, readAt: null },
+      orderBy: { createdAt: 'asc' }, take: 5,
+      select: { id: true, email: true, kind: true, createdAt: true },
+    }).then((rows) => rows.map((r) => ({
+      // OLDEST first, unlike every other queue here: with a deadline, the one that has been
+      // waiting longest is the one that matters, not the one that just arrived.
+      id: r.id, title: r.email, sub: r.kind === 'data_export' ? 'export request' : 'erasure request', at: r.createdAt,
+    }))),
+  },
+  {
     key: 'submissions', cap: 'manage_catalogs', to: '/admin?s=moderation',
     count: (p) => p.catalogItem.count({ where: { status: 'PENDING' } }),
     recent: (p) => p.catalogItem.findMany({
@@ -575,12 +592,19 @@ export default async function miscRoutes(app) {
   // daily quota applies: 3/day by IP for anonymous senders, 5/day by account
   // for logged-in senders (checked instead of by IP once linked, since a
   // logged-in sender's IP may be shared/dynamic).
+  // The kinds a sender can pick. data_export and data_delete are the reason this exists:
+  // they carry a legal deadline, and a deadline that is not countable is one nobody counts.
+  const CONTACT_KINDS = ['other', 'data_export', 'data_delete', 'bug', 'billing', 'appeal'];
+
   app.post('/contact', { config: { rateLimit: { max: 8, timeWindow: '10 minutes' } }, preHandler: optionalAuth() }, async (req, reply) => {
     if (!powVerify(req.body?.pow)) return reply.code(400).send({ error: 'pow_required' });
     const b = z.object({
       name: z.string().min(1).max(100),
       email: z.string().email().max(254),
       body: z.string().min(5).max(2000),
+      // Sender-declared and validated against a closed list, so a client cannot invent a
+      // kind that no queue counts and no staff member ever sees.
+      kind: z.enum(CONTACT_KINDS).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -589,7 +613,7 @@ export default async function miscRoutes(app) {
     const since = new Date(Date.now() - 864e5);
     const dailyCount = await p.contactMessage.count({ where: { createdAt: { gte: since }, ...(userId ? { userId } : { ip, userId: null }) } });
     if (dailyCount >= (userId ? 5 : 3)) return reply.code(429).send({ error: 'daily_limit' });
-    const msg = await p.contactMessage.create({ data: { ...b.data, ip, userId } });
+    const msg = await p.contactMessage.create({ data: { ...b.data, kind: b.data.kind || 'other', ip, userId } });
     forwardContactToDiscord(msg).catch(() => {}); // best-effort
     return reply.code(201).send({ ok: true });
   });
