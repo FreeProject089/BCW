@@ -4,7 +4,7 @@
 // whether a feed was well-formed was to publish it and watch BMM refuse — a loop with a
 // human, a deploy and somebody else's app in it.
 import { z } from 'zod';
-import { requireRole, requireCap } from '../lib/lib.mjs';
+import { requireRole, requireCap, db } from '../lib/lib.mjs';
 import { inspectBmmpa } from '../lib/bmmpa.mjs';
 import { inspectAny } from '../lib/bmm-formats.mjs';
 import { buildRbacMap } from '../lib/rbac-map.mjs';
@@ -13,6 +13,7 @@ import { buildComposeMap } from '../lib/compose-map.mjs';
 import { buildSecretsMap, isSecretName } from '../lib/secrets-map.mjs';
 import { diffConfig } from '../lib/config-diff.mjs';
 import { buildDataFlow } from '../lib/data-flow.mjs';
+import { buildMigrationMap } from '../lib/migration-map.mjs';
 import { parseRoutes } from '../lib/rbac-map.mjs';
 import fsp from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -287,6 +288,51 @@ export default async function devtoolRoutes(app) {
       undocumented: envExample ? map.undocumented : null,
       unused: envExample ? map.unused : null,
     };
+  });
+
+  // The migration history, and where the folder and the database disagree.
+  //
+  // The schema map compares schema.prisma against the SQL. This is the other axis, and two
+  // of its three answers need a live database:
+  //
+  //   · a migration recorded as applied whose FOLDER IS GONE. Prisma re-validates a checksum
+  //     per migration, so a deleted or renamed folder breaks `migrate deploy` on every other
+  //     machine — the one where it was deleted keeps working, which is what makes it hard to
+  //     notice.
+  //   · a migration started and never finished, or rolled back. The database is then in a
+  //     state no migration describes and the next deploy refuses to run at all.
+  //
+  // A database failure degrades to the on-disk half rather than a 500: "here is the history,
+  // I could not reach the database" is an answer; "48 migrations pending" would be a lie.
+  app.get('/admin/migration-map', {
+    preHandler: requireRole('ADMIN'),
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const here = nodePath.dirname(fileURLToPath(import.meta.url));
+    let base = null;
+    for (const c of [nodePath.resolve(here, '../../prisma'), nodePath.resolve(here, '../../../../packages/db')]) {
+      try { await fsp.access(nodePath.join(c, 'migrations')); base = c; break; } catch { /* try the next */ }
+    }
+    if (!base) return reply.code(404).send({ error: 'migrations_not_found' });
+
+    const dir = nodePath.join(base, 'migrations');
+    const names = (await fsp.readdir(dir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
+    const onDisk = (await Promise.all(names.map(async (name) => {
+      try { return { name, sql: await fsp.readFile(nodePath.join(dir, name, 'migration.sql'), 'utf8') }; }
+      catch { return null; }
+    }))).filter(Boolean);
+    if (!onDisk.length) return reply.code(500).send({ error: 'parsed_nothing' });
+
+    let applied = [];
+    let hasDatabase = true;
+    try {
+      const p = await db();
+      applied = await p.$queryRaw`
+        SELECT migration_name, finished_at, rolled_back_at
+        FROM _prisma_migrations`;
+    } catch { hasDatabase = false; }
+
+    return buildMigrationMap(onDisk, applied, hasDatabase);
   });
 
   // Where the data goes: which route touches which table, and what a request with no

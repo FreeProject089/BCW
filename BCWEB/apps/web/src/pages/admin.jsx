@@ -264,6 +264,7 @@ export function Admin() {
           <BmmpaInspector />
           <RbacMap />
           <SchemaMap />
+          <MigrationMap />
           <ComposeMap />
           <SecretsMap />
           <ConfigDiff />
@@ -6771,6 +6772,73 @@ function SecretsMap() {
  * Payment, analytics ingestion is anonymous by design. It is the list somebody should be
  * able to recite, and the point is that until this existed nobody could.
  */
+/**
+ * The migration history, and where the folder and the database disagree.
+ *
+ * The two drift lists are the point. An applied migration whose folder is gone breaks
+ * `migrate deploy` on every machine EXCEPT the one where it was deleted, and an unfinished
+ * one leaves the database in a state no migration describes.
+ */
+function MigrationMap() {
+  const { t } = useI18n();
+  return (
+    <MapCard
+      icon={History} path="/admin/migration-map"
+      title={t('mig.title', 'The migration history, and any drift from the database')}
+      badge={(r) => `${r.counts?.onDisk ?? 0}`}
+      explainError={{ migrations_not_found: t('mig.notfound', 'No migrations folder next to the API — this map needs the prisma directory.') }}
+    >
+      {(r) => {
+        const bad = (r.counts?.appliedNotOnDisk ?? 0) + (r.counts?.unfinished ?? 0);
+        return (<>
+          <div className={`text-[12px] rounded-lg border p-2.5 mb-3 ${bad ? 'border-[var(--danger)] text-[var(--danger)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+            {!r.hasDatabase
+              ? t('mig.nodb', '{n} migrations on disk. The database was not reachable, so applied/pending cannot be answered — and is not guessed.').replace('{n}', String(r.counts?.onDisk ?? 0))
+              : bad
+                ? t('mig.bad', 'The folder and the database disagree. This breaks the next deploy — on machines other than this one.')
+                : t('mig.ok', '{d} on disk, {a} applied, {p} pending. Nothing applied is missing from the folder and nothing is half-finished.')
+                  .replace('{d}', String(r.counts?.onDisk ?? 0)).replace('{a}', String(r.counts?.applied ?? 0)).replace('{p}', String(r.counts?.pending ?? 0))}
+          </div>
+          {(r.appliedNotOnDisk || []).map((n) => (
+            <MapRow key={n} n="!" tone="text-[var(--danger)]">
+              <code>{n}</code> <span className="text-[var(--faint)]">{t('mig.gone', 'applied, folder gone')}</span>
+            </MapRow>
+          ))}
+          {(r.unfinished || []).map((u) => (
+            <MapRow key={u.name} n="!" tone="text-[var(--danger)]">
+              <code>{u.name}</code>{' '}
+              <span className="text-[var(--faint)]">{u.rolledBack ? t('mig.rolled', 'rolled back') : t('mig.unfinished', 'started, never finished')}</span>
+            </MapRow>
+          ))}
+          {(r.pending || []).map((n) => (
+            <MapRow key={n} n="·" tone="text-[var(--warning)]"><code>{n}</code></MapRow>
+          ))}
+
+          {r.destructiveMigrations?.length > 0 && (<>
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mt-3 mb-1">{t('mig.destructive', 'Migrations that lost data')}</div>
+            {r.destructiveMigrations.map((d) => (
+              <MapRow key={d.name} n={d.destructive.length} tone="text-[var(--warning)]">
+                <code>{d.name}</code> <span className="text-[var(--faint)]">{d.destructive.join(', ')} · {d.tables.join(', ')}</span>
+              </MapRow>
+            ))}
+          </>)}
+
+          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mt-3 mb-1">{t('mig.recent', 'Most recent')}</div>
+          {(r.timeline || []).slice(0, 8).map((m) => (
+            <MapRow key={m.name} n={m.applied === false ? '·' : ''}>
+              <code>{m.label}</code>{' '}
+              <span className="text-[var(--faint)]">{Object.entries(m.ops || {}).map(([k, v]) => `${k}×${v}`).join(' ') || t('mig.noop', 'no statement recognised')}</span>
+            </MapRow>
+          ))}
+          <div className="text-[11px] text-[var(--faint)] mt-3">
+            {Object.entries(r.totals || {}).map(([k, v]) => `${k} ${v}`).join(' · ')}
+          </div>
+        </>);
+      }}
+    </MapCard>
+  );
+}
+
 function DataFlow() {
   const { t } = useI18n();
   return (
