@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -267,6 +267,7 @@ export function Admin() {
           <ComposeMap />
           <SecretsMap />
           <ConfigDiff />
+          <DataFlow />
           <div className="flex flex-wrap gap-2 mb-3">
             <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
               <Input className="!pl-9" placeholder={t('mod.search.ph', 'Search by item name, author or email…')} value={modQ} onChange={(e) => setModQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setModQApplied(modQ)} /></div>
@@ -6763,6 +6764,60 @@ function SecretsMap() {
  * The server returns names and verdicts only — never a value, enforced by a test. An admin
  * session is not a way to read the instance's environment.
  */
+/**
+ * Where the data goes, and what a request with no session can write.
+ *
+ * The public-write list is not a fault list — sign-up creates a User, a webhook writes a
+ * Payment, analytics ingestion is anonymous by design. It is the list somebody should be
+ * able to recite, and the point is that until this existed nobody could.
+ */
+function DataFlow() {
+  const { t } = useI18n();
+  return (
+    <MapCard
+      icon={Share2} path="/admin/data-flow"
+      title={t('flow.title', 'Where the data goes, and what an anonymous request can write')}
+      badge={(r) => `${r.counts?.models ?? 0}`}
+    >
+      {(r) => (<>
+        <div className="text-[12px] rounded-lg border border-[var(--line)] text-[var(--muted)] p-2.5 mb-3">
+          {t('flow.head', '{r} routes · {m} models · {c} database calls. {u} route(s) with no guard write to the database — read each one, they are mostly deliberate.')
+            .replace('{r}', String(r.counts?.routes ?? 0)).replace('{m}', String(r.counts?.models ?? 0))
+            .replace('{c}', String(r.counts?.calls ?? 0)).replace('{u}', String(r.counts?.writableUnauthenticated ?? 0))}
+        </div>
+        {(r.writableUnauthenticated || []).map((w, i) => (
+          <MapRow key={i} n={w.selfRejects ? '?' : '·'} tone={w.selfRejects ? undefined : 'text-[var(--warning)]'}>
+            <code>{w.route}</code> <span className="text-[var(--faint)]">→ {w.models.join(', ')}</span>
+            {/* An inline 401 is reported as a fact, not as a verdict: /webhooks/kofi checks
+                a token, /auth/login/2fa checks a password on a public endpoint, and the two
+                look identical from here. */}
+            {w.selfRejects && <span className="text-[var(--faint)]"> · {t('flow.self', 'rejects with 401/403 in its own body')}</span>}
+          </MapRow>
+        ))}
+        {r.counts?.writableInHandlerGuard > 0 && (
+          <div className="text-[11px] text-[var(--faint)] mt-2">
+            {t('flow.inhandler', '{n} more route(s) write and are guarded inside the handler rather than by a preHandler (the Discord bot\'s shared secret).')
+              .replace('{n}', String(r.counts.writableInHandlerGuard))}
+          </div>
+        )}
+        <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mt-3 mb-1">{t('flow.models', 'Most-touched models')}</div>
+        {(r.models || []).slice(0, 10).map((m) => (
+          <MapRow key={m.model} n={m.reads + m.writes}>
+            <code>{m.model}</code>{' '}
+            <span className="text-[var(--faint)]">{m.reads}r {m.writes}w · {m.routes} {t('flow.routes', 'routes')}</span>
+          </MapRow>
+        ))}
+        {r.counts?.outsideRoutes > 0 && (
+          <div className="text-[11px] text-[var(--faint)] mt-3">
+            {t('flow.outside', '{n} database call(s) sit outside any route — sweepers, boot code and helpers, reachable by no request.')
+              .replace('{n}', String(r.counts.outsideRoutes))}
+          </div>
+        )}
+      </>)}
+    </MapCard>
+  );
+}
+
 function ConfigDiff() {
   const { t } = useI18n();
   return (

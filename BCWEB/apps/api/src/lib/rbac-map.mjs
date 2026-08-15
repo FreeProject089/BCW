@@ -84,7 +84,9 @@ export function parseRoutes(filename, src) {
       }
       break;
     }
-    out.push({ file: filename, verb: verb.toUpperCase(), path, guard });
+    // `line` is unused by this map and needed by the data-flow one, which attributes each
+    // database call to the route it sits under.
+    out.push({ file: filename, verb: verb.toUpperCase(), path, guard, line: i + 1 });
   }
   return out;
 }

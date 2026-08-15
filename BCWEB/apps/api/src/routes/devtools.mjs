@@ -12,6 +12,8 @@ import { mapSchema, findIndexDrift } from '../lib/schema-map.mjs';
 import { buildComposeMap } from '../lib/compose-map.mjs';
 import { buildSecretsMap, isSecretName } from '../lib/secrets-map.mjs';
 import { diffConfig } from '../lib/config-diff.mjs';
+import { buildDataFlow } from '../lib/data-flow.mjs';
+import { parseRoutes } from '../lib/rbac-map.mjs';
 import fsp from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import nodePath from 'node:path';
@@ -285,6 +287,36 @@ export default async function devtoolRoutes(app) {
       undocumented: envExample ? map.undocumented : null,
       unused: envExample ? map.unused : null,
     };
+  });
+
+  // Where the data goes: which route touches which table, and what a request with no
+  // session can write.
+  //
+  // The schema map draws the models; the RBAC map says which guard sits on which route.
+  // Neither answers "what can an unauthenticated request WRITE", because that needs both:
+  // an unguarded route is normal (public feeds, sign-in, webhooks), an unguarded route that
+  // CREATES rows is a question. On this codebase the answer is 18, and every one of them is
+  // deliberate — which is exactly why it should be a list somebody can look at rather than
+  // a thing everybody assumes.
+  app.get('/admin/data-flow', {
+    preHandler: requireRole('ADMIN'),
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const dir = nodePath.dirname(fileURLToPath(import.meta.url));
+    let files = [];
+    try {
+      const names = (await fsp.readdir(dir)).filter((f) => f.endsWith('.mjs'));
+      files = await Promise.all(names.map(async (name) => ({
+        name, src: await fsp.readFile(nodePath.join(dir, name), 'utf8'),
+      })));
+    } catch (e) {
+      return reply.code(500).send({ error: 'unreadable', detail: String(e).slice(0, 200) });
+    }
+    const map = buildDataFlow(files, parseRoutes);
+    // Zero routes would report zero public writes, which is the most reassuring wrong
+    // answer this could give.
+    if (!map.counts.routes) return reply.code(500).send({ error: 'parsed_nothing' });
+    return map;
   });
 
   // What .env.example promises, against what THIS instance actually has.
