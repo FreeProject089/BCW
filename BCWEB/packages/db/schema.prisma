@@ -95,6 +95,7 @@ model User {
   polls             Poll[]     @relation("PollAuthor")
   oauthClients      OAuthClient[] @relation("OAuthClientOwner")
   pollVotes         PollVote[] @relation("PollVoter")
+  pollAnswers       PollAnswer[] @relation("PollAnswerer")
   sessions          Session[]
   createdAt         DateTime  @default(now())
 
@@ -2057,6 +2058,10 @@ model ContactMessage {
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
+  // Declared here because the DB already has it: 20260815040000_contact_kind created it and
+  // the model never named it, so every drift check wanted to DROP an index the admin queue
+  // filters on. Keeping the index and declaring it is the correct half of that disagreement.
+  @@index([kind, status])
   @@index([createdAt])
 }
 
@@ -2578,8 +2583,83 @@ model Poll {
 
   options     PollOption[]
   votes       PollVote[]
+  // Multi-question shape. `question` above becomes the TITLE; a single-question poll is one
+  // PollQuestion, which is what the backfill turns every existing poll into.
+  questions   PollQuestion[]
+  answers     PollAnswer[]
 
   @@index([status, pinned])
+}
+
+// One question of a poll. `config` carries only what genuinely varies per kind — a scale's
+// bounds, whether a choice question allows several answers — and is never aggregated, which is
+// why it can be Json while the ANSWER's value cannot.
+model PollQuestion {
+  id       String       @id @default(cuid())
+  poll     Poll         @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  pollId   String
+  // 'choice' | 'text' | 'scale' | 'date' | 'number'. Five, not fifteen: each earns a typed
+  // value column below and an aggregate that means something.
+  kind     String       @default("choice")
+  label    String
+  help     String       @default("")
+  required Boolean      @default(false)
+  sort     Int          @default(0)
+  config   Json?
+  // One condition on one earlier answer: { questionId, equals: choiceId }. Full branching is
+  // where form builders become unmaintainable; widening a Json column later is easy, narrowing
+  // a branching engine is not.
+  showIf   Json?
+  choices  PollChoice[]
+  answers  PollAnswer[]
+
+  @@index([pollId, sort])
+}
+
+model PollChoice {
+  id         String       @id @default(cuid())
+  question   PollQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId String
+  label      String
+  sort       Int          @default(0)
+  answers    PollAnswer[]
+
+  @@index([questionId, sort])
+}
+
+// One row per (voter, question, answer). Four TYPED value columns rather than one Json: a Json
+// value would make every question kind free and every aggregate a full table scan, because
+// "average rating" over Json cannot use an index — and the statistics are the reason this
+// feature exists.
+//
+// Exactly one value column is non-null per row.
+model PollAnswer {
+  id          String        @id @default(cuid())
+  poll        Poll          @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  pollId      String
+  question    PollQuestion  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId  String
+  choice      PollChoice?   @relation(fields: [choiceId], references: [id], onDelete: Cascade)
+  choiceId    String?
+  text        String?
+  number      Float?
+  date        DateTime?
+  user        User?         @relation("PollAnswerer", fields: [userId], references: [id], onDelete: SetNull)
+  userId      String?
+  voterKey    String?
+  // Same reason as PollVote.wasLoggedIn: a closed account must not move its answer into the
+  // anonymous column and change a published result.
+  wasLoggedIn Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+
+  // The uniqueness moves with the data: one answer per (question, voter) for a single-choice
+  // question, per (question, voter, choice) when several are allowed. NULLs are distinct in
+  // Postgres, so the signed-in and anonymous forms coexist exactly as they do for PollVote.
+  @@unique([questionId, userId, choiceId])
+  @@unique([questionId, voterKey, choiceId])
+  @@index([pollId, createdAt])
+  @@index([questionId])
+  @@index([userId])
 }
 
 model PollOption {
