@@ -148,6 +148,14 @@ function OfficialSubmit({ onBack }) {
           <div className="grid grid-cols-2 gap-3">
             <Field label={t('sub.project', 'Project')}><Select value={projectKey} onChange={(e) => setProjectKey(e.target.value)}><option value="bmm">BMM</option><option value="bsm">BSM</option></Select></Field>
             <Field label={t('sub.type', 'Type')}><Select value={kind} onChange={(e) => setKind(e.target.value)}>{kinds.map((k) => <option key={k} value={k}>{kindLabel(k, projectKey)}</option>)}</Select></Field>
+            {/* A Server-Repo is NOT a catalogue item — it is a running service with hosting,
+                verification and a public feed of its own, and CatalogKind has no value for
+                it. Somebody arriving here to list one would otherwise pick the closest wrong
+                type or give up, so the page says where that lives instead of pretending. */}
+            <p className="text-[12px] text-[var(--muted)] -mt-1">
+              {t('sub.repohint', 'Looking to list a Server-Repo? That is not a catalogue item — it has its own hosting and review flow.')}{' '}
+              <Link to="/repos" className="underline">{t('sub.repolink', 'Go to Server-Repos')}</Link>
+            </p>
             <Field label={t('sub.name', 'Name')}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
             <Field label={t('sub.version', 'Version')}><Input value={form.version} onChange={(e) => setForm({ ...form, version: e.target.value })} /></Field>
           </div>
