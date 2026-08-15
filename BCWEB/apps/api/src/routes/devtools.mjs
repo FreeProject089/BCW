@@ -8,6 +8,9 @@ import { requireRole, requireCap } from '../lib/lib.mjs';
 import { inspectBmmpa } from '../lib/bmmpa.mjs';
 import { inspectAny } from '../lib/bmm-formats.mjs';
 import { buildRbacMap } from '../lib/rbac-map.mjs';
+import { mapSchema, findIndexDrift } from '../lib/schema-map.mjs';
+import { buildComposeMap } from '../lib/compose-map.mjs';
+import { buildSecretsMap } from '../lib/secrets-map.mjs';
 import fsp from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import nodePath from 'node:path';
@@ -118,6 +121,62 @@ export default async function devtoolRoutes(app) {
     return report;
   });
 
+  // The database as the two files define it, plus the drift between them.
+  //
+  // schema.prisma says what the models are; the migrations say what was done. An index
+  // created in raw SQL and never declared in the schema is the case that matters: the next
+  // generated migration proposes DROPPING it, because a diff believes the schema.
+  //
+  // The files live in the image under /app/prisma (the Dockerfile flattens packages/db to
+  // there) and under packages/db in a dev checkout. Both are tried, and failing to find
+  // either is an error rather than an empty map — a map built from nothing reports no
+  // drift, which is the most dangerous answer this can give.
+  app.get('/admin/schema-map', {
+    preHandler: requireRole('ADMIN'),
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const here = nodePath.dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+      nodePath.resolve(here, '../../prisma'),
+      nodePath.resolve(here, '../../../../packages/db'),
+    ];
+    let base = null;
+    for (const c of candidates) {
+      try { await fsp.access(nodePath.join(c, 'schema.prisma')); base = c; break; } catch { /* try the next */ }
+    }
+    if (!base) return reply.code(500).send({ error: 'schema_not_found', tried: candidates });
+
+    const schema = await fsp.readFile(nodePath.join(base, 'schema.prisma'), 'utf8');
+    let migrations = [];
+    try {
+      const dir = nodePath.join(base, 'migrations');
+      const names = (await fsp.readdir(dir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
+      migrations = (await Promise.all(names.map(async (name) => {
+        try { return { name, sql: await fsp.readFile(nodePath.join(dir, name, 'migration.sql'), 'utf8') }; }
+        catch { return null; }
+      }))).filter(Boolean);
+    } catch { /* a checkout without migrations still has a schema worth mapping */ }
+
+    const map = mapSchema(schema);
+    if (!map.models.length) return reply.code(500).send({ error: 'parsed_nothing' });
+    const drift = findIndexDrift(schema, migrations);
+    return {
+      models: map.models.length,
+      relations: map.edges.length,
+      migrations: migrations.length,
+      // The widest models and the most depended-on ones: the two lists somebody actually
+      // wants, rather than 104 rows they will not read.
+      widest: [...map.models].sort((a, b) => b.fields.length - a.fields.length).slice(0, 8)
+        .map((m) => ({ name: m.name, fields: m.fields.length })),
+      mostDependedOn: (() => {
+        const inbound = new Map();
+        for (const e of map.edges) inbound.set(e.to, (inbound.get(e.to) || 0) + 1);
+        return [...inbound].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, n]) => ({ name, inbound: n }));
+      })(),
+      drift,
+    };
+  });
+
   // Which guard protects which route, read from the route files themselves.
   //
   // Read at request time rather than at boot: this is looked at rarely and the files are
@@ -148,6 +207,83 @@ export default async function devtoolRoutes(app) {
     // dangerous possible answer from a tool like this.
     if (!map.total) return reply.code(500).send({ error: 'parsed_nothing', files: files.length });
     return map;
+  });
+
+  // The stack and what it publishes to the network, read from docker-compose.yml.
+  //
+  // `exposedToNetwork` is the list this exists for. DEPLOY_EN.md §12 says the compose file
+  // publishes the API and MinIO for convenience and that the firewall must close everything
+  // but 22/80/443 immediately after the first deploy — a sentence in section twelve of a
+  // guide, which is not where a fact like that survives. This is the same fact somewhere
+  // somebody looks.
+  //
+  // The compose file is NOT in the API image (nothing copies infra/ into it), so in a
+  // container this reports not_found rather than an empty stack. An empty stack publishes
+  // no ports, which would read as "nothing exposed" — the wrong answer, confidently.
+  app.get('/admin/compose-map', {
+    preHandler: requireRole('ADMIN'),
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    // ONE candidate, not a list. In the image the module sits at /app/src/routes and every
+    // `../` chain clamps at the filesystem root, so a second and third guess resolve to the
+    // exact same path — a list that reads like thoroughness and searches one place.
+    const here = nodePath.dirname(fileURLToPath(import.meta.url));
+    const candidate = nodePath.resolve(here, '../../../../infra/compose/docker-compose.yml');
+    let text = null;
+    try { text = await fsp.readFile(candidate, 'utf8'); } catch { /* answered below */ }
+    if (text == null) return reply.code(404).send({ error: 'compose_not_found' });
+
+    const map = buildComposeMap(text);
+    if (!map.services.length) return reply.code(500).send({ error: 'parsed_nothing' });
+    return map;
+  });
+
+  // Which environment variables the code reads, and whether a secret can fall back to a
+  // value that is in the repository.
+  //
+  // The fallback VALUE is deliberately not returned. It is in the source and anyone who
+  // should be fixing this can read it there; an endpoint that hands out a signing key an
+  // instance may actually be using is a worse thing than the finding it reports. The
+  // file:line is what makes it actionable, and that is returned in full.
+  app.get('/admin/secrets-map', {
+    preHandler: requireRole('ADMIN'),
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const srcRoot = nodePath.resolve(nodePath.dirname(fileURLToPath(import.meta.url)), '..');
+    const files = [];
+    const walk = async (dir) => {
+      for (const e of await fsp.readdir(dir, { withFileTypes: true })) {
+        const p = nodePath.join(dir, e.name);
+        if (e.isDirectory()) await walk(p);
+        else if (e.name.endsWith('.mjs')) files.push({ name: nodePath.relative(srcRoot, p), src: await fsp.readFile(p, 'utf8') });
+      }
+    };
+    try { await walk(srcRoot); } catch (e) {
+      return reply.code(500).send({ error: 'unreadable', detail: String(e).slice(0, 200) });
+    }
+    if (!files.length) return reply.code(500).send({ error: 'parsed_nothing' });
+
+    // .env.example ships with the repo, not with the image. Without it the "documented"
+    // half of the answer is unavailable — which is said, rather than reported as "every
+    // variable is undocumented".
+    let envExample = null;
+    try { envExample = await fsp.readFile(nodePath.resolve(srcRoot, '../../../infra/compose/.env.example'), 'utf8'); }
+    catch { /* answered by envExampleFound below */ }
+
+    const map = buildSecretsMap(files, envExample ?? '');
+    return {
+      counts: map.counts,
+      envExampleFound: envExample != null,
+      variables: map.variables,
+      // Split rather than flagged: the unguarded ones are the finding, and a list where
+      // they sit among thirteen already-guarded entries is a list nobody finishes.
+      liveFallbacks: map.hardcodedSecrets.filter((h) => !h.guardedInProduction)
+        .map(({ name, file, line }) => ({ name, file, line })),
+      guardedFallbacks: map.hardcodedSecrets.filter((h) => h.guardedInProduction)
+        .map(({ name, file, line }) => ({ name, file, line })),
+      undocumented: envExample ? map.undocumented : null,
+      unused: envExample ? map.unused : null,
+    };
   });
 
   // Inspect ANY BMM document — automations, mod lists, session replays, navbar configs.

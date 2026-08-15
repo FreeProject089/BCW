@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -263,6 +263,9 @@ export function Admin() {
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
           <BmmpaInspector />
           <RbacMap />
+          <SchemaMap />
+          <ComposeMap />
+          <SecretsMap />
           <div className="flex flex-wrap gap-2 mb-3">
             <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
               <Input className="!pl-9" placeholder={t('mod.search.ph', 'Search by item name, author or email…')} value={modQ} onChange={(e) => setModQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setModQApplied(modQ)} /></div>
@@ -6551,6 +6554,201 @@ function RbacMap() {
         </div>
       )}
     </Card>
+  );
+}
+
+/**
+ * The shell the four maps share: closed by default, fetches once on first open.
+ *
+ * Closed by default on purpose — each of these reads files off disk on the server, and
+ * four panels that all load when the moderation tab opens would make a page somebody uses
+ * every day pay for four tools somebody opens twice a year.
+ */
+function MapCard({ icon: Icon, title, badge, children, path, explainError }) {
+  const [rep, setRep] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const run = async () => {
+    setBusy(true);
+    try { setRep(await api.get(path)); }
+    catch (e) { setRep({ error: e?.data?.error || String(e?.message || e) }); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Card className="p-4 mb-3">
+      <button className="w-full flex items-center gap-2 text-left" onClick={() => { setOpen((o) => !o); if (!rep) run(); }}>
+        <Icon size={15} className="text-[var(--primary-2)]" />
+        <span className="text-sm font-semibold">{title}</span>
+        {rep && !rep.error && badge?.(rep) && <span className="text-[11px] text-[var(--muted)] ml-auto">{badge(rep)}</span>}
+      </button>
+      {open && (
+        <div className="mt-3">
+          {busy && <Spinner />}
+          {rep?.error && (
+            <div className={`text-[12px] ${explainError?.[rep.error] ? 'text-[var(--muted)]' : 'text-[var(--danger)]'}`}>
+              {explainError?.[rep.error] || rep.error}
+            </div>
+          )}
+          {rep && !rep.error && children(rep)}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** One row of "N — label", the shape all three of these reduce to. */
+function MapRow({ n, children, tone }) {
+  return (
+    <div className="text-[12px] flex gap-2">
+      <span className={`w-8 text-right ${tone || 'text-[var(--muted)]'}`}>{n}</span>
+      <span className="min-w-0 break-all">{children}</span>
+    </div>
+  );
+}
+
+/**
+ * The database as schema.prisma and the migrations define it, and the drift between them.
+ *
+ * `drift` is the one to read. An index created in raw SQL and never declared in the schema
+ * means the next generated migration proposes DROPPING it — a diff believes the schema.
+ */
+function SchemaMap() {
+  const { t } = useI18n();
+  return (
+    <MapCard
+      icon={Database} path="/admin/schema-map"
+      title={t('smap.title', 'The database, and the drift between schema and migrations')}
+      badge={(r) => `${r.models} · ${r.relations}`}
+    >
+      {(r) => (<>
+        <div className={`text-[12px] rounded-lg border p-2.5 mb-3 ${r.drift?.length ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+          {r.drift?.length
+            ? t('smap.drift', '{n} index/indexes exist in SQL but are not declared in schema.prisma — the next generated migration will propose dropping them.').replace('{n}', String(r.drift.length))
+            : t('smap.ok', 'Every index in the migrations is declared in the schema. {m} models, {r} relations, {g} migrations.')
+              .replace('{m}', String(r.models)).replace('{r}', String(r.relations)).replace('{g}', String(r.migrations))}
+        </div>
+        {r.drift?.length > 0 && (
+          <ul className="mb-3 space-y-0.5">
+            {r.drift.map((d, i) => <li key={i} className="text-[12px] break-all"><code>{d.name || d.index || JSON.stringify(d)}</code></li>)}
+          </ul>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('smap.widest', 'Widest models')}</div>
+            {(r.widest || []).map((m) => <MapRow key={m.name} n={m.fields}><code>{m.name}</code></MapRow>)}
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('smap.dependedon', 'Most depended on')}</div>
+            {(r.mostDependedOn || []).map((m) => <MapRow key={m.name} n={m.inbound}><code>{m.name}</code></MapRow>)}
+          </div>
+        </div>
+      </>)}
+    </MapCard>
+  );
+}
+
+/**
+ * The stack, and what it publishes to the network.
+ *
+ * The published-port list is the point. It is NOT a fault list — the edge proxy is supposed
+ * to publish 80 and 443 — it is the list of things reachable from outside the machine,
+ * which is a list somebody should be able to recite and usually cannot.
+ */
+function ComposeMap() {
+  const { t } = useI18n();
+  return (
+    <MapCard
+      icon={Network} path="/admin/compose-map"
+      title={t('cmap.title', 'The stack, and what it publishes to the network')}
+      badge={(r) => `${r.counts?.services ?? 0}`}
+      // Nothing copies infra/ into the API image, so on a deployed instance this reads
+      // nothing. Said in words, because "compose_not_found" is a code, not an answer —
+      // and because "no ports exposed" would be the wrong answer said confidently.
+      explainError={{ compose_not_found: t('cmap.notfound', 'docker-compose.yml is not inside the API image — this map only works from a source checkout.') }}
+    >
+      {(r) => (<>
+        <div className="text-[12px] rounded-lg border border-[var(--line)] text-[var(--muted)] p-2.5 mb-3">
+          {t('cmap.exposed', '{n} port(s) reachable from outside this machine. The proxy is meant to publish 80 and 443; anything else should be closed by the firewall after the first deploy.')
+            .replace('{n}', String(r.exposedToNetwork?.length ?? 0))}
+        </div>
+        {(r.exposedToNetwork || []).map((e, i) => (
+          <MapRow key={i} n={e.host} tone="text-[var(--warning)]">
+            <code>{e.service}</code> <span className="text-[var(--faint)]">→ {e.container} ({e.bind})</span>
+          </MapRow>
+        ))}
+        {r.danglingDeps?.length > 0 && (
+          <div className="text-[12px] text-[var(--danger)] mt-3">
+            {t('cmap.dangling', 'A depends_on names a service that does not exist — compose will refuse to start:')}{' '}
+            {r.danglingDeps.map((d) => `${d.service} → ${d.missing}`).join(', ')}
+          </div>
+        )}
+        <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mt-3 mb-1">{t('cmap.order', 'Start order')}</div>
+        {(r.services || []).map((s) => (
+          <MapRow key={s.name} n={s.dependsOn.length}>
+            <code>{s.name}</code>
+            {s.dependsOn.length > 0 && <span className="text-[var(--faint)]"> ← {s.dependsOn.join(', ')}</span>}
+            {!s.healthcheck && <span className="text-[var(--faint)]"> · {t('cmap.nohealth', 'no healthcheck')}</span>}
+          </MapRow>
+        ))}
+      </>)}
+    </MapCard>
+  );
+}
+
+/**
+ * Which environment variables the code reads, and whether a secret can fall back to a value
+ * that is in the repository.
+ *
+ * The server deliberately does not send the fallback VALUE — only where it is written. It
+ * is in the source for anyone who should be fixing it, and an endpoint that hands out a
+ * signing key an instance may actually be using would be worse than the finding it reports.
+ */
+function SecretsMap() {
+  const { t } = useI18n();
+  return (
+    <MapCard
+      icon={KeyRound} path="/admin/secrets-map"
+      title={t('secmap.title', 'Environment variables, and the secrets that can fall back to a repo value')}
+      badge={(r) => `${r.counts?.read ?? 0}`}
+    >
+      {(r) => (<>
+        <div className={`text-[12px] rounded-lg border p-2.5 mb-3 ${r.liveFallbacks?.length ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+          {r.liveFallbacks?.length
+            ? t('secmap.bad', '{n} secret(s) fall back to a hardcoded value with nothing stopping the app from booting that way. The value is in the source at the line shown — it is not sent over this API on purpose.').replace('{n}', String(r.liveFallbacks.length))
+            : t('secmap.ok', 'No secret can fall back to a repo value unguarded.')}
+        </div>
+        {(r.liveFallbacks || []).map((h, i) => (
+          <MapRow key={i} n="!" tone="text-[var(--warning)]">
+            <code>{h.name}</code> <span className="text-[var(--faint)]">{h.file}:{h.line}</span>
+          </MapRow>
+        ))}
+        {r.guardedFallbacks?.length > 0 && (
+          <div className="text-[11px] text-[var(--faint)] mt-2">
+            {t('secmap.guarded', '{n} more fallback(s) exist but a production boot refuses to start on them.').replace('{n}', String(r.guardedFallbacks.length))}
+          </div>
+        )}
+        {r.envExampleFound === false && (
+          <div className="text-[11px] text-[var(--faint)] mt-2">
+            {t('secmap.noenv', '.env.example is not in this image, so "documented" and "unused" cannot be answered here.')}
+          </div>
+        )}
+        {r.undocumented?.length > 0 && (<>
+          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mt-3 mb-1">{t('secmap.undoc', 'Read by the code, absent from .env.example')}</div>
+          {r.undocumented.map((u) => (
+            <MapRow key={u.name} n={u.reads} tone={u.secret ? 'text-[var(--warning)]' : undefined}>
+              <code>{u.name}</code> <span className="text-[var(--faint)]">{u.first}</span>
+            </MapRow>
+          ))}
+        </>)}
+        {r.unused?.length > 0 && (
+          <div className="text-[11px] text-[var(--faint)] mt-3">
+            {t('secmap.unused', 'In .env.example and never read:')} {r.unused.join(', ')}
+          </div>
+        )}
+      </>)}
+    </MapCard>
   );
 }
 
