@@ -10,7 +10,8 @@ import { inspectAny } from '../lib/bmm-formats.mjs';
 import { buildRbacMap } from '../lib/rbac-map.mjs';
 import { mapSchema, findIndexDrift } from '../lib/schema-map.mjs';
 import { buildComposeMap } from '../lib/compose-map.mjs';
-import { buildSecretsMap } from '../lib/secrets-map.mjs';
+import { buildSecretsMap, isSecretName } from '../lib/secrets-map.mjs';
+import { diffConfig } from '../lib/config-diff.mjs';
 import fsp from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import nodePath from 'node:path';
@@ -284,6 +285,33 @@ export default async function devtoolRoutes(app) {
       undocumented: envExample ? map.undocumented : null,
       unused: envExample ? map.unused : null,
     };
+  });
+
+  // What .env.example promises, against what THIS instance actually has.
+  //
+  // The secrets map reads the source and answers "could a secret fall back to a repo value".
+  // Only a running instance can answer the other half: of everything documented, what is
+  // unset here, and what is still set to the example file's own value.
+  //
+  // POSTGRES_PASSWORD=change-me copied verbatim into a deployed .env is the single most
+  // common way a Compose stack ends up with a credential that is in the repository, and
+  // nothing else would notice — the app starts, the database connects, everything works.
+  //
+  // No VALUE is returned, only names and verdicts, and diffConfig enforces that with a test.
+  // An admin session must not become a way to read this instance's environment.
+  app.get('/admin/config-diff', {
+    preHandler: requireRole('ADMIN'),
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const srcRoot = nodePath.resolve(nodePath.dirname(fileURLToPath(import.meta.url)), '..');
+    let example = null;
+    try { example = await fsp.readFile(nodePath.resolve(srcRoot, '../../../infra/compose/.env.example'), 'utf8'); }
+    catch { /* answered below */ }
+    // Without the example there is no question to answer — and an empty example would report
+    // every variable as undocumented, which reads as a catastrophe and means nothing.
+    if (example == null) return reply.code(404).send({ error: 'env_example_not_found' });
+
+    return diffConfig(example, process.env, isSecretName);
   });
 
   // Inspect ANY BMM document — automations, mod lists, session replays, navbar configs.

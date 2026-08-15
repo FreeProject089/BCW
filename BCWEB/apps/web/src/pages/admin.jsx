@@ -266,6 +266,7 @@ export function Admin() {
           <SchemaMap />
           <ComposeMap />
           <SecretsMap />
+          <ConfigDiff />
           <div className="flex flex-wrap gap-2 mb-3">
             <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
               <Input className="!pl-9" placeholder={t('mod.search.ph', 'Search by item name, author or email…')} value={modQ} onChange={(e) => setModQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setModQApplied(modQ)} /></div>
@@ -6748,6 +6749,64 @@ function SecretsMap() {
           </div>
         )}
       </>)}
+    </MapCard>
+  );
+}
+
+/**
+ * .env.example against what this instance actually has.
+ *
+ * `atExampleValue` with `placeholder` is the line to read: documented, set, and still equal
+ * to the example file's own suggestion. For a secret-ish name that is a credential anybody
+ * with the repository knows.
+ *
+ * The server returns names and verdicts only — never a value, enforced by a test. An admin
+ * session is not a way to read the instance's environment.
+ */
+function ConfigDiff() {
+  const { t } = useI18n();
+  return (
+    <MapCard
+      icon={Sliders} path="/admin/config-diff"
+      title={t('cfg.title', 'What .env.example promises, against what this instance has')}
+      badge={(r) => `${r.counts?.documented ?? 0}`}
+      explainError={{ env_example_not_found: t('cfg.notfound', '.env.example is not inside the API image — this comparison only works from a source checkout.') }}
+    >
+      {(r) => {
+        // `concern`, not `placeholder`: a SECRET equal to the example value is the finding
+        // whether or not the value looks like a stand-in. Filtering on looks put four real
+        // shared credentials in the "meant to be copied" line on the first live run.
+        const copied = (r.atExampleValue || []).filter((x) => x.concern);
+        const kept = (r.atExampleValue || []).filter((x) => !x.concern);
+        const missing = (r.unset || []).filter((u) => u.hadDefault);
+        return (<>
+          <div className={`text-[12px] rounded-lg border p-2.5 mb-3 ${copied.length ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+            {copied.length
+              ? t('cfg.bad', '{n} variable(s) are still set to the placeholder from .env.example. If any is a secret, it is a credential that is in the repository.').replace('{n}', String(copied.length))
+              : t('cfg.ok', 'No variable is still set to a placeholder from the example file.')}
+          </div>
+          {copied.map((x) => (
+            <MapRow key={x.name} n={x.secret ? '!' : '·'} tone={x.secret ? 'text-[var(--warning)]' : undefined}>
+              <code>{x.name}</code>
+              {x.secret && <span className="text-[var(--faint)]"> · {t('cfg.isSecret', 'secret-ish name')}</span>}
+            </MapRow>
+          ))}
+          {missing.length > 0 && (<>
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mt-3 mb-1">{t('cfg.unset', 'Documented with a default, unset here')}</div>
+            {missing.map((u) => <MapRow key={u.name} n={u.secret ? '!' : '·'}><code>{u.name}</code></MapRow>)}
+          </>)}
+          {kept.length > 0 && (
+            <div className="text-[11px] text-[var(--faint)] mt-3">
+              {t('cfg.kept', '{n} variable(s) keep a real default from the example (5432, production, a region) — meant to be copied.').replace('{n}', String(kept.length))}
+            </div>
+          )}
+          {r.undocumented?.length > 0 && (
+            <div className="text-[11px] text-[var(--faint)] mt-2">
+              {t('cfg.extra', 'Set here and not in .env.example:')} {r.undocumented.join(', ')}
+            </div>
+          )}
+        </>);
+      }}
     </MapCard>
   );
 }
