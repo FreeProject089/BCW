@@ -7,6 +7,7 @@
 // separately from signed-in ones, everywhere, all the way to the admin screen — a merged
 // total would look precise and be wrong, and it is the merged number that gets quoted.
 import { z } from 'zod';
+import { viewQuestions } from '../lib/poll-view.mjs';
 import crypto from 'node:crypto';
 import { db, requireRole, requireCap, optionalAuth, logAudit } from '../lib/lib.mjs';
 import { clientIp } from '../lib/geo.mjs';
@@ -108,11 +109,25 @@ export default async function pollRoutes(app) {
     const p = await db();
     const poll = await p.poll.findUnique({
       where: { id: req.params.id },
-      include: { options: { orderBy: { sort: 'asc' } }, votes: { select: { optionId: true, wasLoggedIn: true, userId: true, voterKey: true } } },
+      include: {
+        options: { orderBy: { sort: 'asc' } },
+        votes: { select: { optionId: true, wasLoggedIn: true, userId: true, voterKey: true } },
+        // Loaded HERE and not in the list endpoint: this is the only place a poll is actually
+        // rendered, and pulling questions + choices for fifty listed polls would be work
+        // nothing reads.
+        questions: { include: { choices: true } },
+      },
     });
     if (!poll || poll.status === 'draft') return reply.code(404).send({ error: 'not_found' });
     const mine = myVotesOf(req, poll);
-    return publicPoll(poll, { myVotes: mine, showResults: canSeeResults(poll, mine.length > 0) });
+    const body = publicPoll(poll, { myVotes: mine, showResults: canSeeResults(poll, mine.length > 0) });
+    // Additive, and deliberately alongside `options` rather than replacing it. Every backfilled
+    // poll has exactly one question saying the same thing as `question` + `options`, so the
+    // current client keeps working untouched while the multi-question reader is built. The old
+    // fields go when nothing reads them, not before — that is the whole point of the order.
+    const questions = viewQuestions(poll);
+    if (questions.length) body.questions = questions;
+    return body;
   });
 
   app.post('/polls/:id/vote', { preHandler: optionalAuth(), config: { rateLimit: { max: 20, timeWindow: '5 minutes' } } }, async (req, reply) => {

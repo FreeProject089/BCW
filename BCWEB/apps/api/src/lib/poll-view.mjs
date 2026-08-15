@@ -24,6 +24,33 @@ export function maySeeResults(poll, viewer = {}) {
 }
 
 /**
+ * A poll's questions, in sort order, as the client may see them.
+ *
+ * Exported so the existing single-question endpoint and the multi-question reader shape them
+ * the SAME way. Writing this twice is how the staff-only tally leak happened: two copies of one
+ * rule that agreed until they didn't, and neither looked wrong on its own.
+ */
+export function viewQuestions(poll) {
+    return (poll?.questions || [])
+        .slice()
+        .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+        .map((q) => ({
+            id: q.id,
+            kind: q.kind,
+            label: q.label,
+            help: q.help || '',
+            required: Boolean(q.required),
+            sort: q.sort ?? 0,
+            config: q.config ?? {},
+            showIf: q.showIf ?? null,
+            choices: (q.choices || [])
+                .slice()
+                .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+                .map((c) => ({ id: c.id, label: c.label, sort: c.sort ?? 0 })),
+        }));
+}
+
+/**
  * The poll as this viewer should receive it.
  *
  * `tally` is omitted entirely rather than zeroed when it may not be shown. Zeros are a claim —
@@ -44,23 +71,7 @@ export function viewPoll(poll, viewer = {}, tally = null) {
         pinned: Boolean(poll.pinned),
         canVote: canVote(poll, viewer),
         showResults,
-        questions: (poll.questions || [])
-            .slice()
-            .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
-            .map((q) => ({
-                id: q.id,
-                kind: q.kind,
-                label: q.label,
-                help: q.help || '',
-                required: Boolean(q.required),
-                sort: q.sort ?? 0,
-                config: q.config ?? {},
-                showIf: q.showIf ?? null,
-                choices: (q.choices || [])
-                    .slice()
-                    .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
-                    .map((c) => ({ id: c.id, label: c.label, sort: c.sort ?? 0 })),
-            })),
+        questions: viewQuestions(poll),
     };
     if (showResults && tally) out.tally = tally;
     return out;
