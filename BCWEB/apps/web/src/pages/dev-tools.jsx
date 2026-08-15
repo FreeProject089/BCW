@@ -4,6 +4,10 @@ import { FileJson, Activity, ArrowLeft, CheckCircle2, AlertTriangle, XCircle, Fl
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Textarea, Badge, Field, Spinner, EmptyState, useToast , Select } from '../ui/ui.jsx';
+// useAsync lives in pages.jsx. It was USED before it was imported here and the build still
+// passed — esbuild does not resolve free identifiers, so a missing import is a runtime
+// ReferenceError, not a build error. A green build says nothing about this.
+import { useAsync } from './pages.jsx';
 import { useAuth } from './auth.jsx';
 import { ApiConsole } from './dev.jsx';
 
@@ -157,21 +161,45 @@ function CallLog() {
  */
 function DeeplinkBuilder() {
   const { t } = useI18n(); const toast = useToast();
-  const [action, setAction] = useState('catalog/app/add-source');
-  const [value, setValue] = useState('');
+  const [action, setAction] = useState('');
+  const [values, setValues] = useState({});
 
-  // Only the actions BMM actually registers. A builder that offers a deeplink the app
-  // does not handle produces a link that opens BMM and does nothing, which is worse than
-  // no builder: it looks like the app is broken.
-  const ACTIONS = [
-    ['catalog/app/add-source', t('dvt.dl.app', 'Add an app catalogue as a source'), 'url'],
-    ['catalog/plugin/add-source', t('dvt.dl.plugin', 'Add a plugin catalogue'), 'url'],
-    ['catalog/theme/add-source', t('dvt.dl.theme', 'Add a theme catalogue'), 'url'],
-    ['docs/open', t('dvt.dl.docs', 'Open a documentation page'), 'article'],
-  ];
-  const spec = ACTIONS.find((a) => a[0] === action) || ACTIONS[0];
-  const param = spec[2];
-  const link = `bmm://${action}?${param}=${encodeURIComponent(value)}`;
+  // The action list is FETCHED, never typed here.
+  //
+  // It used to be four entries hand-copied from another repository; BMM handles 43, and the
+  // parameters are not guessable — repo/sync takes seven of them. A hand-kept copy is wrong
+  // the first time somebody adds a deeplink in BMM, silently, and a builder that offers an
+  // action the app does not handle produces a link that opens BMM and does nothing. That
+  // looks like a broken app rather than a stale list.
+  //
+  // BMM derives frontend/deeplinks.json from its own handler (npm run map:deeplinks, checked
+  // in its CI) and publishes it as a platform asset, the same way links.json is published.
+  // If it has not been uploaded, this says so instead of falling back to a shorter list that
+  // would look authoritative and be wrong.
+  const { data, loading, error } = useAsync(() => api.get('/assets/deeplinks.json'), []);
+  const ACTIONS = Array.isArray(data) ? data : [];
+  const spec = ACTIONS.find((a) => a.action === action) || ACTIONS[0];
+  const params = spec?.params || [];
+
+  const query = params
+    .filter((p) => (values[p] ?? '').trim())
+    .map((p) => `${p}=${encodeURIComponent(values[p].trim())}`)
+    .join('&');
+  const link = spec ? `bmm://${spec.action}${query ? `?${query}` : ''}` : '';
+
+  if (loading) return <Card className="p-5"><Spinner /></Card>;
+  if (error || !ACTIONS.length) {
+    return (
+      <Card className="p-5">
+        <div className="flex items-center gap-2 mb-1 font-medium">
+          <LinkIcon size={16} className="text-[var(--primary-2)]" /> {t('dvt.dl.title', 'Build a bmm:// link')}
+        </div>
+        <p className="text-[12px] text-[var(--muted)]">
+          {t('dvt.dl.noassets', 'The action list has not been published yet. In BMM run `npm run map:deeplinks --json`, then upload frontend/deeplinks.json as the platform asset `deeplinks.json`. This builder reads it rather than keeping its own copy, which would go stale the next time a deeplink is added.')}
+        </p>
+      </Card>
+    );
+  }
 
   return (
     <Card className="p-5">
@@ -181,15 +209,28 @@ function DeeplinkBuilder() {
       <p className="text-[12px] text-[var(--muted)] mb-3">
         {t('dvt.dl.sub', 'An unencoded & in the address loses everything after it — BMM opens and adds half a source, and nothing reports it. This encodes for you.')}
       </p>
-      <Select value={action} onChange={(e) => setAction(e.target.value)} className="mb-2">
-        {ACTIONS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+      <Select value={spec.action} onChange={(e) => { setAction(e.target.value); setValues({}); }} className="mb-2">
+        {ACTIONS.map((a) => (
+          <option key={a.action} value={a.action}>
+            {a.action}{a.params.length ? ` — ${a.params.join(', ')}` : ''}
+          </option>
+        ))}
       </Select>
-      <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder={param === 'url' ? 'https://example.com/catalog.json' : 'catalog-index'} />
+      {/* One field per parameter the action actually reads. Every field is optional: several
+          actions take none, and some take seven of which most are optional in BMM too — a
+          builder that demanded all of them would refuse to write links that work. */}
+      {params.length === 0 ? (
+        <p className="text-[12px] text-[var(--faint)]">{t('dvt.dl.noparams', 'This action takes no parameters.')}</p>
+      ) : params.map((p) => (
+        <Input key={p} className="mb-2" value={values[p] || ''}
+          onChange={(e) => setValues((v) => ({ ...v, [p]: e.target.value }))}
+          placeholder={p === 'url' ? `${p} — https://example.com/catalog.json` : p} />
+      ))}
       <div className="mt-3 p-2 rounded-lg text-[11px] break-all" style={{ background: 'var(--bg-solid)', border: '1px solid var(--line)' }}>
         {link}
       </div>
       <div className="flex gap-2 mt-2">
-        <Button size="sm" variant="ghost" disabled={!value.trim()}
+        <Button size="sm" variant="ghost" disabled={!link}
           onClick={() => { navigator.clipboard?.writeText(link); toast.success(t('dvt.dl.copied', 'Link copied.')); }}>
           <Copy size={13} /> {t('dvt.dl.copy', 'Copy')}
         </Button>
