@@ -1,11 +1,11 @@
 # Cartes du code
 
-Sept cartes en lecture seule dans **Admin → Modération**. Chacune lit les sources (ou, pour
+Huit cartes en lecture seule dans **Admin → Modération**. Chacune lit les sources (ou, pour
 l'une d'elles, l'environnement de cette instance) et imprime une structure. Elles sont
 repliées par défaut et se chargent à la première ouverture — une page utilisée tous les jours
 ne doit pas payer pour des outils ouverts deux fois par an.
 
-Toutes les sept sont en `requireRole('ADMIN')`, donc 2FA également.
+Toutes les huit sont en `requireRole('ADMIN')`, donc 2FA également.
 
 Elles existent parce que les réponses ci-dessous étaient toutes *déductibles* du code et
 qu'aucune n'était *écrite quelque part* — chacune était donc une chose que quelqu'un devait
@@ -141,6 +141,27 @@ pouvoir réciter.
     mot de passe erroné, sur un point d'entrée réellement public. Forme identique, sens
     opposé. La ligne porte le fait (`renvoie 401/403 depuis son propre corps`) et aucun
     verdict n'est inventé.
+
+---
+
+## Ce qui construit et livre tout ça — `GET /admin/infra-map`
+
+Vous aviez demandé un visualiseur d'état Terraform. Il n'y a aucun Terraform dans les quatre
+dépôts — pas de `.tf`, pas de `.tfstate`, aucune mention — donc un lecteur lirait un fichier
+inexistant. Ceci répond à la même question contre ce qui existe vraiment.
+
+Un état Terraform dit deux choses : ce qui est déclaré, et ce qui le met en place. La carte
+compose ci-dessus est la première. Voici la seconde — les workflows GitHub Actions, ce que
+chacun publie (lu depuis les ACTIONS utilisées, jamais depuis son nom), et quels secrets un
+clone neuf exigerait.
+
+Sur ces dépôts : 3 workflows, 7 jobs. `Release` est le seul qui publie quelque chose et le
+seul qui demande des secrets. Les deux CI n'en demandent aucun : un contributeur sur un fork
+peut donc vérifier son travail — un fait d'une ligne qui ne vit sinon que dans la tête de
+celui qui les a montés.
+
+`.github/` n'est pas copié dans l'image de l'API : dans un conteneur cela renvoie 404 plutôt
+qu'une pile vide. « Aucun workflow » se lirait « rien ne construit ça ».
 
 ---
 

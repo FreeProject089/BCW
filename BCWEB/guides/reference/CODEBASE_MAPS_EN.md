@@ -1,10 +1,10 @@
 # Codebase maps
 
-Seven read-only maps in **Admin → Moderation**. Each reads the source (or, for one, this
+Eight read-only maps in **Admin → Moderation**. Each reads the source (or, for one, this
 instance's own environment) and prints a structure. They are closed by default and fetch on
 first open — a page used every day should not pay for tools opened twice a year.
 
-All seven are `requireRole('ADMIN')`, which means 2FA as well.
+All eight are `requireRole('ADMIN')`, which means 2FA as well.
 
 They exist because the answers below were all *derivable* from the code and none of them was
 *written down anywhere* — so each was a thing somebody had to remember correctly.
@@ -131,6 +131,24 @@ feedback. Not a fault list; a list somebody should be able to recite.
     401s before writing, and `/auth/login/2fa` also 401s — on a failed password check, on a
     genuinely public endpoint. Identical shape, opposite meaning. The row carries the fact
     (`rejects with 401/403 in its own body`) and no verdict is invented.
+
+## What builds and ships this — `GET /admin/infra-map`
+
+You asked for a Terraform state visualizer. There is no Terraform in any of the four
+repositories — no `.tf`, no `.tfstate`, not a mention — so a reader for one would read a file
+that does not exist. This answers the same question against what is really here.
+
+A Terraform state says two things: what is declared, and what puts it there. The compose map
+above is the first. This is the second — the GitHub Actions workflows, what each one
+publishes (read from the ACTIONS it uses, never from its name), and which secrets a fresh
+clone would need.
+
+On these repositories: 3 workflows, 7 jobs. `Release` is the only one that publishes anything
+and the only one needing secrets. Both CI workflows need none, so a contributor on a fork can
+check their work — a one-line fact that otherwise lives only in whoever set them up.
+
+`.github/` is not copied into the API image, so in a container this returns 404 rather than an
+empty stack. "No workflows" would read as "nothing builds this".
 
 ---
 

@@ -14,6 +14,7 @@ import { buildSecretsMap, isSecretName } from '../lib/secrets-map.mjs';
 import { diffConfig } from '../lib/config-diff.mjs';
 import { buildDataFlow } from '../lib/data-flow.mjs';
 import { buildMigrationMap } from '../lib/migration-map.mjs';
+import { buildInfraMap } from '../lib/infra-map.mjs';
 import { parseRoutes } from '../lib/rbac-map.mjs';
 import fsp from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -288,6 +289,45 @@ export default async function devtoolRoutes(app) {
       undocumented: envExample ? map.undocumented : null,
       unused: envExample ? map.unused : null,
     };
+  });
+
+  // What builds and ships this stack.
+  //
+  // You asked for a Terraform state visualizer; there is no Terraform in any of the four
+  // repositories. This answers the same question against what exists: compose-map covers the
+  // runtime half (which services, which ports), and this covers the other — the GitHub
+  // Actions workflows, what each publishes, and which secrets a fresh clone would need.
+  //
+  // Like the compose map, .github/ is not copied into the API image, so in a container this
+  // returns 404 rather than an empty stack. "No workflows" would read as "nothing builds
+  // this", which is the wrong answer said confidently.
+  app.get('/admin/infra-map', {
+    preHandler: requireRole('ADMIN'),
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const here = nodePath.dirname(fileURLToPath(import.meta.url));
+    const workflows = [];
+    for (const d of [
+      nodePath.resolve(here, '../../../../.github/workflows'),
+      nodePath.resolve(here, '../../../../../.github/workflows'),
+    ]) {
+      try {
+        for (const f of await fsp.readdir(d)) {
+          if (!/[.]ya?ml$/.test(f)) continue;
+          workflows.push({ name: f, text: await fsp.readFile(nodePath.join(d, f), 'utf8') });
+        }
+      } catch { /* try the next */ }
+    }
+    if (!workflows.length) return reply.code(404).send({ error: 'workflows_not_found' });
+
+    // The runtime half when the compose file is readable from here — one document rather
+    // than two screens somebody has to hold side by side.
+    let compose = null;
+    try {
+      compose = buildComposeMap(await fsp.readFile(nodePath.resolve(here, '../../../../infra/compose/docker-compose.yml'), 'utf8'));
+    } catch { /* buildInfraMap reports runtime: null, which says "not checked" */ }
+
+    return buildInfraMap(workflows, compose);
   });
 
   // The migration history, and where the folder and the database disagree.
