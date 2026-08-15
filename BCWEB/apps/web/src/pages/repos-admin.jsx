@@ -6,6 +6,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useToast, useDialog, Button, Card, Badge, Input, Select, Field, EmptyState, Spinner, Modal, ActionBar } from '../ui/ui.jsx';
 import { Loading } from './pages.jsx';
 import { api } from '../lib/api.js';
+import { ContentSanctionForm } from './admin-sanctions.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useFetch, gb, DotDropdown, RepoStatusSelect, RepoCategorySelect, StatusBadges, HostFilesModal } from './repos.jsx';
 
@@ -236,6 +237,7 @@ export function AdminRepos() {
   const { data, loading, reload } = useFetch(() => api.get('/admin/repos'), []);
   const [review, setReview] = useState(null);
   const [q, setQ] = useState(''); const [catF, setCatF] = useState('all'); const [statF, setStatF] = useState('all');
+  const [sanctioning, setSanctioning] = useState(null); // repo being suspended, through a sanction
   const allRepos = data?.repos || [];
   const pending = allRepos.filter((r) => r.pendingReview).length;
   const repos = allRepos.filter((r) => {
@@ -245,8 +247,15 @@ export function AdminRepos() {
     return true;
   });
   const verify = async (r) => { try { await api.post(`/admin/repos/${r.id}/verify`); toast.success(t('arp.verified', 'Verified "{n}".').replace('{n}', r.name)); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
-  const reject = async (r) => { const reason = await dialog.prompt({ title: t('arp.reject', 'Reject / unlist'), label: t('arp.reason', 'Reason (sent to owner)'), okLabel: t('arp.rejectbtn', 'Reject'), danger: true }); if (!reason) return; try { await api.post(`/admin/repos/${r.id}/reject`, { reason }); toast.success(t('arp.rejected', 'Rejected.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
-  const setStatus = async (r, status) => { try { await api.patch(`/admin/repos/${r.id}`, { status }); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
+  const reject = async (r) => { const reason = await dialog.prompt({ title: t('arp.reject', 'Remove from the public repo list'), label: t('arp.reason', 'Reason (sent to owner)'), message: t('arp.reject.m', 'This clears the verification and takes “{n}” out of the public list and out of repos.json, which is the feed BMM reads. The repo keeps running and its owner keeps their data — they can ask for review again.').replace('{n}', r.name), okLabel: t('arp.rejectbtn', 'Remove from the list'), danger: true }); if (!reason) return; try { await api.post(`/admin/repos/${r.id}/reject`, { reason }); toast.success(t('arp.rejected', 'Rejected.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
+  // SUSPENDED is not a status you set, it is a decision you record: a reason the owner
+  // receives, a term, a staff note they never see, and a code anybody can look up later. The
+  // server refuses the bare write (409 use_sanction); this opens the form that does it
+  // properly. Every other status is an operational state and stays a plain patch.
+  const setStatus = async (r, status) => {
+    if (status === 'SUSPENDED') { setSanctioning(r); return; }
+    try { await api.patch(`/admin/repos/${r.id}`, { status }); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); }
+  };
   const setCategory = async (r, category) => { try { await api.patch(`/admin/repos/${r.id}`, { category }); toast.success(category === 'community' ? t('arp.cat.community', 'Set to community.') : category === 'official' ? t('arp.cat.official', 'Marked as OFFICIAL.') : t('arp.cat.partner', 'Marked as PARTNER.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
   const boost = async (r, days) => { try { await api.post(`/admin/repos/${r.id}/feature`, { days }); toast.success(days === 0 ? t('arp.boost.cleared', 'Boost cleared.') : t('arp.boost.ok', 'Boosted for {d} days (free).').replace('{d}', days)); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } };
   const boostPick = async (r) => {
@@ -359,6 +368,18 @@ export function AdminRepos() {
         </div>}
       {review && <HostFilesModal repo={review} admin onClose={() => setReview(null)} onChanged={reload} />}
       {limitsRepo && <RepoLimitsModal repo={limitsRepo} onClose={() => setLimitsRepo(null)} onSaved={() => { setLimitsRepo(null); reload(); }} />}
+      {/* Suspending goes through a sanction, so the owner gets a reason, the decision gets a
+          term and a code, and the next moderator can read why. The status dropdown used to
+          write SUSPENDED and tell nobody anything. */}
+      {sanctioning && (
+        <Modal open onClose={() => setSanctioning(null)} width="max-w-lg"
+          title={t('arp.susp.title', 'Suspend “{n}”').replace('{n}', sanctioning.name)}>
+          <ContentSanctionForm
+            targetType="repo" targetId={sanctioning.id} targetName={sanctioning.name}
+            onDone={() => { setSanctioning(null); toast.success(t('arp.susp.done', 'Suspended, and the owner has been told why.')); reload(); }}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
