@@ -7,6 +7,18 @@ import { BLOG_FR } from './seed-blog-fr.mjs';
 const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || 'admin@bettercommunity.local';
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || 'change-me-now';
 
+// The fallback creates an ADMIN whose password is in the repository. That is fine on a
+// laptop and is the whole point of a default; run against a production database it is a
+// working administrator account for anybody who has read this file.
+//
+// Guarded here rather than in the server's boot check because the server never reads this
+// variable — a guard there would refuse to start over something the running process does
+// not use, and this is the only place the value becomes an account.
+if (process.env.NODE_ENV === 'production' && !process.env.SEED_ADMIN_PASSWORD) {
+  console.error('[fatal] SEED_ADMIN_PASSWORD is unset — seeding would create an admin whose password is in the repository.');
+  process.exit(1);
+}
+
 const p = await db();
 
 // Projects

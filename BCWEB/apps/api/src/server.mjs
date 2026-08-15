@@ -60,12 +60,24 @@ import connectionRoutes from './routes/connections.mjs';
 import { recordRequest } from './lib/monitor.mjs';
 import { registerApiUsageHook, flushApiUsage } from './lib/apiusage.mjs';
 import { installAbuseGuards } from './lib/abuse.mjs';
+import { productionSecretProblems, formatProblems, isProduction } from './lib/boot-guard.mjs';
 
-// Fail-safe: never boot in production with the insecure default JWT secret — that
-// would let anyone forge session tokens (incl. ADMIN) (CWE-798). Force a real one.
-if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev-only-insecure-secret')) {
-  console.error('[fatal] JWT_SECRET is unset or the insecure default — set a strong secret before running in production.');
-  process.exit(1);
+// Fail-safe: never boot in production on a secret that is in the repository (CWE-798).
+//
+// This covered JWT_SECRET only. The secrets map found the rest — LINK_LOOKUP_SECRET falls
+// back to 'dev-bot-secret' in four route files with no guard anywhere, so an instance
+// deployed without it authenticates the /bot/* endpoints and the telemetry link lookup with
+// a value anybody reading the repository knows. It fails open, silently, and works.
+//
+// A failed boot is loud and fixed in a minute; a silent one is found by whoever reads the
+// repository first.
+if (isProduction(process.env)) {
+  const problems = productionSecretProblems(process.env);
+  if (problems.length) {
+    console.error('[fatal] refusing to start in production with these secrets:');
+    console.error(formatProblems(problems));
+    process.exit(1);
+  }
 }
 
 const app = Fastify({ logger: true });
