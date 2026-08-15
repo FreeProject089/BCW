@@ -79,6 +79,7 @@ const DICT = {
     'secmap.noenv': ".env.example n’est pas dans cette image : « documentée » et « inutilisée » ne peuvent pas être répondues ici.",
     'secmap.undoc': "Lues par le code, absentes de .env.example",
     'secmap.unused': "Dans .env.example et jamais lues :",
+    'sub2.k.preset': "Automations",
     'sub.repohint': "Vous cherchez à lister un Server-Repo ? Ce n’est pas un élément de catalogue : il a son propre hébergement et son propre circuit de validation.",
     'sub.repolink': "Aller aux Server-Repos",
     'gdpr.title': "Demandes de données",

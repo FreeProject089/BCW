@@ -257,6 +257,13 @@ function HostCatalog({ onBack }) {
             <option value="plugin">{t('sub2.k.plugin', 'Plugins')}</option>
             <option value="theme">{t('sub2.k.theme', 'Themes')}</option>
             <option value="app">{t('sub2.k.app', 'Apps')}</option>
+            {/* PRESET was missing here and nowhere else: the API has accepted
+                z.enum(['app','plugin','theme','preset']) all along, BMM follows preset
+                catalogues from the scheduler, and this dropdown was the one place that made
+                it unreachable. "Automations" rather than "Presets" for the same reason
+                kindLabel() exists — "Preset" on a BMM page reads as a harmless settings
+                bundle, and these can ask to run PowerShell. */}
+            <option value="preset">{t('sub2.k.preset', 'Automations')}</option>
           </Select>
         </Field>
 
