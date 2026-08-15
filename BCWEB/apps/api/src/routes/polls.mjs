@@ -147,15 +147,36 @@ export default async function pollRoutes(app) {
 
     const userId = req.user?.uid || null;
     const voterKey = userId ? null : voterKeyFor(req, poll.id);
+    // Asked once, before the transaction, because the mirror below is skipped without it.
+    const hasQuestion = (await p.pollQuestion.count({ where: { id: poll.id } })) > 0;
 
     // Changing your mind replaces the previous answer rather than adding to it. The
     // alternative — refusing a second vote — means a mis-click is permanent, and on a
     // single-choice poll that is the most common thing that happens.
-    await p.pollVote.deleteMany({ where: { pollId: poll.id, ...(userId ? { userId } : { voterKey }) } });
-    await p.pollVote.createMany({
-      data: picks.map((optionId) => ({ pollId: poll.id, optionId, userId, voterKey, wasLoggedIn: !!userId })),
-      skipDuplicates: true,
-    });
+    // Both shapes, in ONE transaction. The backfill converted the votes that existed, but a
+    // new vote written only to PollVote would leave the new tables stale from the first person
+    // who answers — and stale is worse than empty, because it looks like data.
+    //
+    // In a transaction rather than best-effort-with-a-log: if the mirror cannot be written the
+    // vote must fail loudly. A logged failure nobody reads is exactly how the two shapes drift
+    // apart while every screen keeps looking right.
+    const answerRows = picks.map((choiceId) => ({
+      pollId: poll.id, questionId: poll.id, choiceId, userId, voterKey, wasLoggedIn: !!userId,
+    }));
+    await p.$transaction([
+      p.pollVote.deleteMany({ where: { pollId: poll.id, ...(userId ? { userId } : { voterKey }) } }),
+      p.pollVote.createMany({
+        data: picks.map((optionId) => ({ pollId: poll.id, optionId, userId, voterKey, wasLoggedIn: !!userId })),
+        skipDuplicates: true,
+      }),
+      // The backfill gives a converted poll a question whose id IS the poll's id, so the
+      // mirror needs no lookup. A poll with no question yet (created after the migration and
+      // never backfilled) writes nothing here rather than inventing one — createMany with an
+      // unknown questionId would fail the whole vote, and a missing question is the backfill's
+      // job, not the vote endpoint's.
+      p.pollAnswer.deleteMany({ where: { pollId: poll.id, ...(userId ? { userId } : { voterKey }) } }),
+      p.pollAnswer.createMany({ data: hasQuestion ? answerRows : [], skipDuplicates: true }),
+    ]);
 
     const fresh = await p.poll.findUnique({
       where: { id: poll.id },
@@ -172,7 +193,13 @@ export default async function pollRoutes(app) {
     if (!openNow(poll)) return reply.code(409).send({ error: 'closed' });
     const userId = req.user?.uid || null;
     const where = { pollId: poll.id, ...(userId ? { userId } : { voterKey: voterKeyFor(req, poll.id) }) };
-    const r = await p.pollVote.deleteMany({ where });
+    // The mirror goes with it. Withdrawing from PollVote alone would leave the answer standing
+    // in the new tables — the same drift the vote path avoids, arrived at from the other end,
+    // and the one that turns "I removed my vote" into a lie once the new reader ships.
+    const [r] = await p.$transaction([
+      p.pollVote.deleteMany({ where }),
+      p.pollAnswer.deleteMany({ where }),
+    ]);
     return { ok: true, removed: r.count };
   });
 
