@@ -5422,6 +5422,8 @@ function AdminProjects() {
   const [scheduling, setScheduling] = useState(false);
   const [active, setActive] = useState('bmm');
   const [text, setText] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [dragOver, setDragOver] = useState(false);
   const [progUrl, setProgUrl] = useState('');
   const [editMode, setEditMode] = useState('form'); // 'form' (visual) | 'json' (raw)
   const projects = data?.projects || {};
@@ -7021,6 +7023,34 @@ function BmmpaInspector() {
     finally { setBusy(false); }
   };
 
+  /**
+   * Read a dropped or chosen file INTO THE TEXTAREA. The file itself is never uploaded.
+   *
+   * That is the same rule the route was built on — the parsed value in the body, never a URL
+   * — for the same reason: a tool for inspecting untrusted content must not become a way to
+   * make the server fetch or store it. Reading it in the browser keeps the server's job to
+   * "make sense of this JSON somebody already has".
+   *
+   * A ZIP is answered here rather than by a JSON parse error. .bmmplug and .bmmtheme are
+   * archives, and "Unexpected token PK" tells nobody what to do next.
+   */
+  const loadFile = async (file) => {
+    if (!file) return;
+    // 8 MB matches the route's bodyLimit; a bigger file cannot be inspected either way, and
+    // finding that out after a two-minute read is worse than being told now.
+    if (file.size > 8 * 1024 * 1024) {
+      return toast.error(t('bmi.toobig', 'That file is over 8 MB — larger than the inspector accepts.'));
+    }
+    const raw = await file.text().catch(() => null);
+    if (raw == null) return toast.error(t('bmi.readfail', 'Could not read that file.'));
+    if (raw.startsWith('PK\u0003\u0004')) {
+      return toast.error(t('bmi.iszip', '{n} is a ZIP archive. Open it and drop the plugin.json or theme.json from inside.').replace('{n}', file.name));
+    }
+    setRep(null);
+    setText(raw);
+    setFileName(file.name);
+  };
+
   if (!open) {
     return (
       <Button size="sm" className="mb-3" onClick={() => setOpen(true)}>
@@ -7032,14 +7062,30 @@ function BmmpaInspector() {
     <Card className="p-4 mb-4">
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="text-sm font-semibold flex items-center gap-2"><FileJson size={15} className="text-[var(--primary-2)]" /> {t('bmi.titleAny', 'Inspect a BMM file')}</div>
-        <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setRep(null); setText(''); }}>{t('common.close', 'Close')}</Button>
+        <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setRep(null); setText(''); setFileName(''); }}>{t('common.close', 'Close')}</Button>
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-2">
         {t('bmi.subAny', 'Paste any BMM file — automation, mod list, session replay, navbar config. It is read, never run: nothing is imported and nothing is fetched.')}
       </p>
-      <Textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder='{"magic":"BMMPA","version":1,"tasks":[…]}' />
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); loadFile(e.dataTransfer?.files?.[0]); }}
+        className={`rounded-lg border border-dashed p-3 mb-2 text-[12px] text-center ${dragOver ? 'border-[var(--primary-2)] text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)]'}`}
+      >
+        {t('bmi.drop', 'Drop a file here, or')}{' '}
+        <label className="underline cursor-pointer">
+          {t('bmi.choose', 'choose one')}
+          <input type="file" className="hidden" accept=".bmmpa,.bmmreplay,.mm,.json,.bmmnav,application/json"
+            onChange={(e) => { loadFile(e.target.files?.[0]); e.target.value = ''; }} />
+        </label>
+        {fileName && <div className="mt-1 text-[var(--faint)] break-all">{fileName}</div>}
+        <div className="mt-1 text-[var(--faint)]">{t('bmi.local', 'The file is read in your browser. Only its contents are sent, and only when you press Read it.')}</div>
+      </div>
+      <Textarea rows={5} value={text} onChange={(e) => { setText(e.target.value); setFileName(''); }} placeholder='{"magic":"BMMPA","version":1,"tasks":[…]}' />
       <div className="flex gap-2 mt-2">
         <Button size="sm" variant="primary" disabled={busy || !text.trim()} onClick={run}>{busy ? <Spinner /> : t('bmi.read', 'Read it')}</Button>
+        {text.trim() && <Button size="sm" variant="ghost" onClick={() => { setText(''); setFileName(''); setRep(null); }}>{t('common.clear', 'Clear')}</Button>}
       </div>
 
       {rep && (
