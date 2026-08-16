@@ -5,7 +5,7 @@ import { zipReadAll } from '../lib/native.mjs';
 import { detectStack, interestingPaths } from '../lib/stack-detect.mjs';
 import { buildCodeGraph, sourcePathsToFetch, tracePath, entryPoints } from '../lib/code-graph.mjs';
 import { buildEndpointGraph, endpointPathsToFetch } from '../lib/endpoint-graph.mjs';
-import { functionEdges, buildFlow } from '../lib/code-flow.mjs';
+import { functionEdges, buildFlow, drawableFunctions } from '../lib/code-flow.mjs';
 import { snapshotKey, settingsKey, secretFor, rebuildSnapshot } from './code-webhook.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
@@ -390,9 +390,12 @@ export default async function projectRoutes(app) {
     // almost nothing; `handleChange → listItems` is the answer to the question people ask.
     const fnEdges = functionEdges(endpoints.links, sources);
     const flows = fnEdges.slice(0, 40).map((e) => buildFlow(e, sources)).filter(Boolean);
+    // Which functions are worth drawing inside each file box — only the ones an edge or a
+    // flow actually touches, so a 900-line module contributes three chips and not forty.
+    const fnByFile = drawableFunctions(fnEdges, sources, flows);
     // Where a reader should start. Derived rather than declared: package.json `main` lies
     // as often as not in a monorepo, while "nothing imports this" is a fact about the code.
-    return { ok: true, source, ...graph, entries: entryPoints(graph).slice(0, 20), endpoints, functions: fnEdges, flows };
+    return { ok: true, source, ...graph, entries: entryPoints(graph).slice(0, 20), endpoints, functions: fnEdges, flows, fnByFile };
   });
 
   // ── Keeping a project's code graph current ─────────────────────────────────
@@ -449,7 +452,7 @@ export default async function projectRoutes(app) {
     const v = row.value;
     // The same shape the live scan returns, so the map draws a saved graph and a fresh one
     // with one component and no second code path to drift.
-    return { ok: true, source: 'snapshot', generatedAt: v.generatedAt, url: v.url, ...v.graph, endpoints: v.endpoints || null, functions: v.functions || [], flows: v.flows || [] };
+    return { ok: true, source: 'snapshot', generatedAt: v.generatedAt, url: v.url, ...v.graph, endpoints: v.endpoints || null, functions: v.functions || [], flows: v.flows || [], fnByFile: v.fnByFile || {} };
   });
 
   app.put('/admin/projects/:key/code-graph', { preHandler: requireEditor() }, async (req, reply) => {

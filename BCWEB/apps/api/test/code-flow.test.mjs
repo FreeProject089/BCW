@@ -6,7 +6,7 @@
 // stays unplaced — `fn: null`, "top level" — rather than being guessed at.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { declarations, enclosing, functionEdges, buildFlow, importedNames, resolveFile, excerpt, langOf } from '../src/lib/code-flow.mjs';
+import { declarations, enclosing, functionEdges, buildFlow, importedNames, resolveFile, excerpt, langOf, drawableFunctions } from '../src/lib/code-flow.mjs';
 
 const JS = [
     "import { getItems } from './service.js';",          // 1
@@ -56,6 +56,18 @@ describe('declarations', () => {
     test('a comment that looks like a declaration is not one', () => {
         const src = ['// function ghost() {', ' * function alsoGhost() {', 'function real() {'].join('\n');
         assert.deepEqual(declarations('a.js', src).map((x) => x.name), ['real']);
+    });
+
+    test('the parameters come along, as written', () => {
+        // The honest version of an "input example": `(event, value)` is a fact about the
+        // function. A JSON payload invented for it is not.
+        const d = declarations('a.jsx', JS);
+        assert.equal(d.find((x) => x.name === 'handleChange').params, 'event, value');
+        assert.equal(declarations('m.rs', 'pub async fn scan_mods(app: AppHandle) {}')[0].params, 'app: AppHandle');
+    });
+
+    test('a signature spanning several lines shows nothing rather than its first third', () => {
+        assert.equal(declarations('a.js', 'function big(').length ? declarations('a.js', 'function big(')[0].params : '', '');
     });
 
     test('a language we cannot read yields nothing, not nonsense', () => {
@@ -218,5 +230,32 @@ describe('the small pieces', () => {
         const e = excerpt('one\ntwo\nthree', 3);
         assert.equal(e.to, 3);
         assert.match(e.text, /two\nthree/);
+    });
+});
+
+describe('drawableFunctions', () => {
+    const sources = {
+        'a.js': 'export function one() {}\nexport function two() {}\nexport function three() {}',
+    };
+    test('only the functions an edge touches are drawn', () => {
+        // A 900-line module has forty declarations. Forty chips in a box is a wall of text,
+        // not a map — and the reader is following the ones on a path, not the rest.
+        const d = drawableFunctions([{ from: { file: 'a.js', fn: 'one' }, to: { file: 'a.js', fn: 'three' } }], sources);
+        assert.deepEqual(d['a.js'].map((x) => x.name), ['one', 'three']);
+    });
+
+    test('they come back in source order, with their line and signature', () => {
+        const d = drawableFunctions([{ from: { file: 'a.js', fn: 'three' }, to: { file: 'a.js', fn: 'one' } }], sources);
+        assert.deepEqual(d['a.js'].map((x) => x.line), [1, 3], 'source order, not the order the edges happened to name them');
+    });
+
+    test('a file nothing touches gets no chips at all', () => {
+        assert.deepEqual(drawableFunctions([], sources), {});
+    });
+
+    test('a function we cannot find still appears, without a line', () => {
+        // It was named by an edge, so hiding it would leave an edge pointing at nothing.
+        const d = drawableFunctions([{ from: { file: 'a.js', fn: 'ghost' }, to: { file: 'a.js', fn: 'one' } }], sources);
+        assert.ok(d['a.js'].some((x) => x.name === 'ghost' && x.line === null));
     });
 });

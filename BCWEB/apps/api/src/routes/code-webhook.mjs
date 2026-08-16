@@ -20,7 +20,7 @@ import { db, safeEqual } from '../lib/lib.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { buildCodeGraph, sourcePathsToFetch, entryPoints } from '../lib/code-graph.mjs';
 import { buildEndpointGraph, endpointPathsToFetch } from '../lib/endpoint-graph.mjs';
-import { functionEdges, buildFlow } from '../lib/code-flow.mjs';
+import { functionEdges, buildFlow, drawableFunctions } from '../lib/code-flow.mjs';
 
 const OFFICIAL = new Set(['community', 'bmm', 'bsm', 'installer', 'developers']);
 const GH_REPO_RE = /^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i;
@@ -86,11 +86,14 @@ export async function rebuildSnapshot(p, key, url, maxFiles = 150) {
     // snapshot is the only place they were ever all held at once.
     const functions = functionEdges(endpoints.links, sources);
     const flows = functions.slice(0, 40).map((e) => buildFlow(e, sources)).filter(Boolean);
+    // Which functions are worth drawing inside each file box — only the ones an edge or a
+    // flow actually touches, so a 900-line module contributes three chips and not forty.
+    const fnByFile = drawableFunctions(functions, sources, flows);
     const value = {
         url, generatedAt: new Date().toISOString(),
         stats: graph.stats, endpointStats: endpoints.stats,
         graph: { ...graph, entries: entryPoints(graph).slice(0, 20) },
-        endpoints, functions, flows,
+        endpoints, functions, flows, fnByFile,
     };
     const k = snapshotKey(key);
     await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value }, update: { value } });

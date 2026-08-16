@@ -72,6 +72,10 @@ export function declarations(path, source) {
             if (m && m[1]) {
                 out.push({
                     name: m[1], line: i + 1, indent: line.match(/^\s*/)[0].length,
+                    // The parameters as WRITTEN. This is the honest version of the "input
+                    // example" a generated diagram shows: `(req, reply)` is a fact about the
+                    // function, and `{ "newValue": "topRated" }` invented for it is not.
+                    params: paramsOf(line),
                     // A one-liner closes where it opens. Without this, `const locOf = (h) => …;`
                     // declared inside a handler owned every line below it until the next
                     // declaration at its indent — a hundred lines away — and a route at the end
@@ -93,6 +97,20 @@ export function declarations(path, source) {
  * in) rather than a silent one. A declaration at the same or greater indent than a later one
  * cannot contain it, so the search stops at the first shallower candidate.
  */
+/** The parameter list on a declaration line, `(a, b)` → 'a, b'. Empty when there is none or
+ *  when the line does not close its own parenthesis — a signature spanning three lines is
+ *  better shown as nothing than as its first third. */
+function paramsOf(line) {
+    const i = String(line).indexOf('(');
+    if (i < 0) return '';
+    let depth = 0;
+    for (let j = i; j < line.length; j++) {
+        if (line[j] === '(') depth++;
+        else if (line[j] === ')') { depth--; if (!depth) return line.slice(i + 1, j).trim().slice(0, 120); }
+    }
+    return '';
+}
+
 /** Does this declaration begin and end on the same line? True when its brackets balance and
  *  the line ends like a statement — which is what an arrow one-liner or a `fn x() {}` looks
  *  like, and never what an opening block looks like. */
@@ -268,4 +286,36 @@ export function excerpt(src, line, span = 3) {
     const from = Math.max(1, line - 1);
     const to = Math.min(lines.length, line + span);
     return { from, to, text: lines.slice(from - 1, to).join('\n') };
+}
+
+/**
+ * The functions worth DRAWING, per file.
+ *
+ * Not every declaration: a 900-line module has forty, and forty chips in a box is a wall of
+ * text rather than a map. Only the ones an edge actually touches — the caller, the handler,
+ * the next hop — because those are the ones a reader is following.
+ *
+ * A file whose functions are all untouched simply keeps its own box, which is the honest
+ * outcome: nothing proven passes through it.
+ */
+export function drawableFunctions(edges = [], sources = {}, flows = []) {
+    const wanted = new Map();   // file -> Set(fn)
+    const want = (file, fn) => {
+        if (!file || !fn) return;
+        if (!wanted.has(file)) wanted.set(file, new Set());
+        wanted.get(file).add(fn);
+    };
+    for (const e of edges) { want(e.from?.file, e.from?.fn); want(e.to?.file, e.to?.fn); }
+    for (const f of flows) for (const s of f.steps || []) want(s.file, s.fn);
+
+    const out = {};
+    for (const [file, names] of wanted) {
+        const decls = declarations(file, sources[file] || '');
+        const rows = [...names]
+            .map((n) => decls.find((d) => d.name === n) || { name: n, line: null, params: '' })
+            .sort((a, b) => (a.line || 0) - (b.line || 0))
+            .map((d) => ({ name: d.name, line: d.line, params: d.params || '' }));
+        if (rows.length) out[file] = rows;
+    }
+    return out;
 }

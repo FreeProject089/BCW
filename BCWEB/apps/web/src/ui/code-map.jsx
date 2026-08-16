@@ -20,8 +20,14 @@ const HEADER = 18;
 const COL_W = 230;
 const COL_GAP = 40;
 
-/** Folders as columns, deepest paths grouped under their own box. */
-function layout(nodes, folders) {
+const FN_H = 15;
+
+/** Folders as columns, deepest paths grouped under their own box.
+ *
+ * `fnByFile` decides how tall a file row is: at the finest detail a file grows to fit the
+ * functions an edge actually touches. Passing it in rather than reading it inside keeps this
+ * a pure function of its arguments, which is why the same call lays out all three levels. */
+function layout(nodes, folders, fnByFile = {}, collapse = false) {
     const byFolder = new Map();
     for (const n of nodes) {
         const f = n.folder || '(root)';
@@ -37,22 +43,32 @@ function layout(nodes, folders) {
     let x = 0; let colTop = 0; let colIndex = 0;
     const MAX_COL_H = 900;
 
+    const rowH = (f) => FILE_H + (fnByFile[f.id]?.length || 0) * FN_H;
     for (const key of keys) {
         const files = byFolder.get(key);
-        const h = HEADER + PAD + files.length * (FILE_H + FILE_GAP) + PAD;
+        // Collapsed, a folder is ONE box the height of a single row. Every file in it still gets
+        // a position — that box — so every edge already drawn keeps working and simply lands on
+        // the folder instead of the file. Lines between two files of the same folder become a
+        // line from a box to itself and are dropped where they are drawn.
+        const h = collapse
+            ? HEADER + PAD + FILE_H + PAD
+            : HEADER + PAD + files.reduce((n, f) => n + rowH(f) + FILE_GAP, 0) + PAD;
         // Start a new column when this one is full, rather than one enormous strip.
         if (colTop > 0 && colTop + h > MAX_COL_H) { colIndex += 1; colTop = 0; }
         x = colIndex * (COL_W + COL_GAP);
         const box = { key, x, y: colTop, w: COL_W, h, files };
         boxes.push(box);
-        files.forEach((f, i) => {
-            pos.set(f.id, {
-                x: x + PAD,
-                y: colTop + HEADER + PAD + i * (FILE_H + FILE_GAP),
-                w: COL_W - PAD * 2,
-                h: FILE_H,
+        let rowY = colTop + HEADER + PAD;
+        if (collapse) {
+            const at = { x: x + PAD, y: rowY, w: COL_W - PAD * 2, h: FILE_H, headH: FILE_H, folder: key };
+            files.forEach((f) => pos.set(f.id, at));
+        } else {
+            files.forEach((f) => {
+                const h2 = rowH(f);
+                pos.set(f.id, { x: x + PAD, y: rowY, w: COL_W - PAD * 2, h: h2, headH: FILE_H });
+                rowY += h2 + FILE_GAP;
             });
-        });
+        }
         colTop += h + 18;
     }
     const width = (colIndex + 1) * (COL_W + COL_GAP);
@@ -101,6 +117,10 @@ function tracePath(edges, fromId, toId) {
 }
 
 export default function CodeMap({ graph, t = (k, d) => d }) {
+    // How close the map stands. Folders answers "what is this repository made of"; functions
+    // answers "what runs". Neither is the right default for both questions, so it is a choice
+    // rather than a zoom that guesses.
+    const [detail, setDetail] = useState('files');
     const [picked, setPicked] = useState(null);
     // Second selection: the destination of a trace. Held apart from `picked` so a plain
     // click keeps meaning "show me this file" and never surprises somebody into a walk.
@@ -134,7 +154,10 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
     }, [graph]);
     const edges = graph?.edges || [];
     const folders = useMemo(() => [...new Set(nodes.map((n) => n.folder).filter(Boolean))].sort(), [nodes]);
-    const { boxes, pos, width, height } = useMemo(() => layout(nodes, folders), [nodes, folders]);
+    // Only at the finest detail do files grow to hold their functions.
+    const fnByFile = detail === 'functions' ? (graph?.fnByFile || {}) : {};
+    const collapsed = detail === 'folders';
+    const { boxes, pos, width, height } = useMemo(() => layout(nodes, folders, fnByFile, collapsed), [nodes, folders, fnByFile, collapsed]);
 
     if (!nodes.length) return null;
 
@@ -173,6 +196,25 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                 </p>
             )}
 
+            {/* How close to stand. A single control rather than a zoom that guesses: "what is
+                this made of" and "what runs" are different questions, and the second is only
+                answerable where the scan found functions to draw. */}
+            <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-[11px] text-[var(--faint)] uppercase tracking-wide mr-1">{t('cm.detail', 'Detail')}</span>
+                {[['folders', t('cm.d.folders', 'Folders')], ['files', t('cm.d.files', 'Files')], ['functions', t('cm.d.functions', 'Functions')]].map(([k, label]) => {
+                    const off = k === 'functions' && !Object.keys(graph?.fnByFile || {}).length;
+                    return (
+                        <button key={k} type="button" disabled={off} onClick={() => setDetail(k)}
+                            title={off ? t('cm.d.none', 'This scan found no calls between functions.') : undefined}
+                            className={`text-xs px-2.5 py-1 rounded-full border transition ${detail === k
+                                ? 'border-[var(--primary)] text-[var(--primary)]'
+                                : `border-[var(--line)] text-[var(--muted)] ${off ? 'opacity-40' : 'hover:text-[var(--text)]'}`}`}>
+                            {label}
+                        </button>
+                    );
+                })}
+            </div>
+
             <div className="grid lg:grid-cols-[1fr_300px] gap-4 items-start">
                 <div className="overflow-auto max-h-[70vh] rounded-xl border border-[var(--line)] p-2">
                     <svg width={width} height={height} style={{ minWidth: width }} role="img"
@@ -182,6 +224,9 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                             them at once on a real repo is 168 crossing curves and no information. */}
                         {picked && edges.filter((e) => e.from === picked || e.to === picked).map((e, i) => {
                             const a = pos.get(e.from); const b = pos.get(e.to);
+                            // Collapsed, two files in one folder become one box: a line from it to
+                            // itself is a loop that says nothing.
+                            if (a === b) return null;
                             if (!a || !b) return null;
                             const x1 = a.x + a.w; const y1 = a.y + a.h / 2;
                             const x2 = b.x; const y2 = b.y + b.h / 2;
@@ -197,6 +242,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                             is a hatch pattern. */}
                         {picked && endpointLinks.filter((l) => l.from.file === picked || l.to.file === picked).map((l, i) => {
                             const a = pos.get(l.from.file); const b2 = pos.get(l.to.file);
+                            if (a === b2) return null;   // same folder, collapsed
                             if (!a || !b2) return null;
                             const x1 = a.x + a.w; const y1 = a.y + a.h / 2;
                             const x2 = b2.x; const y2 = b2.y + b2.h / 2;
@@ -211,7 +257,18 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                     fill="color-mix(in srgb, var(--surface-2) 60%, transparent)"
                                     stroke="var(--line)" strokeWidth="1" />
                                 <text x={b.x + PAD} y={b.y + 13} fontSize="10.5" fill="var(--muted)">{b.key}</text>
-                                {b.files.map((f) => {
+                                {/* Collapsed: one row saying how many files are in here, instead of the
+                                    files themselves. The box is still the folder, so every line that
+                                    pointed at a file now points at the folder that holds it. */}
+                                {collapsed ? (
+                                    <g transform={`translate(${b.x + PAD}, ${b.y + HEADER + PAD})`}>
+                                        <rect width={COL_W - PAD * 2} height={FILE_H} rx="5"
+                                            fill="color-mix(in srgb, var(--primary) 10%, var(--surface-1))" stroke="var(--line)" />
+                                        <text x="7" y="15" fontSize="11" fill="var(--text)">
+                                            {t('cm.nfiles', '{n} file(s)').replace('{n}', String(b.files.length))}
+                                        </text>
+                                    </g>
+                                ) : b.files.map((f) => {
                                     const p = pos.get(f.id);
                                     const on = !picked || lit.has(f.id);
                                     // Weight by how much leans on it, so the hub is visible before
@@ -244,6 +301,15 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                             {f.dependents > 0 && (
                                                 <text x={p.w - 7} y="15" fontSize="10" textAnchor="end" fill="var(--faint)">{f.dependents}</text>
                                             )}
+                                            {/* The functions an edge or a flow actually touches — not every declaration
+                                                in the file, which in a 900-line module is forty and reads as a wall. */}
+                                            {(fnByFile[f.id] || []).map((fn, k) => (
+                                                <text key={fn.name} x="14" y={FILE_H + 11 + k * FN_H} fontSize="9.5"
+                                                    fill="var(--muted)" style={{ fontFamily: 'ui-monospace, monospace' }}>
+                                                    <title>{`${fn.name}(${fn.params})${fn.line ? ` — line ${fn.line}` : ''}`}</title>
+                                                    {`${fn.name}(${fn.params.length > 14 ? '…' : fn.params})`.slice(0, 30)}
+                                                </text>
+                                            ))}
                                         </g>
                                     );
                                 })}
