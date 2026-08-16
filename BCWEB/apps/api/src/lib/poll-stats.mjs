@@ -8,6 +8,10 @@
 // Pure functions over rows, so they are testable and the numbers on a screen come from the
 // same code as the numbers in an export. Nothing here reads a database.
 
+// The one thing here that is not pure arithmetic: which kinds take an answer at all.
+// Imported rather than restated, so "a note is content" is decided in one place.
+import { isAnswerable } from './poll-answer.mjs';
+
 /**
  * People, not ticks.
  *
@@ -145,7 +149,10 @@ export function numericSummary(answers) {
  * voterCount — a multi-choice question would otherwise make one person look like three.
  */
 export function completion(questions, answers) {
-  const required = questions.filter((q) => q.required);
+  // A note cannot be required — it takes no answer, so counting one as an unmet requirement
+  // would make every submission incomplete for ever. Filtered by the same isAnswerable the
+  // endpoint uses rather than by a second rule about which kinds count.
+  const required = questions.filter((q) => q.required && isAnswerable(q.kind));
   const started = voterCount(answers);
   if (!required.length) return { started, completed: started, rate: started ? 1 : 0 };
 
@@ -220,6 +227,12 @@ export function gridSummary(rows, choices, answers) {
 
 /** Stats for one question, shaped by its kind. */
 export function questionStats(question, answers, choices = []) {
+  // Content, not a question. It has no answers by construction, and letting it fall through
+  // to the date branch would report `answered: 0` — the same default-case trap ranking and
+  // grid hit, arrived at from a third direction.
+  if (!isAnswerable(question.kind)) {
+    return { id: question.id, kind: question.kind, label: question.label, voters: 0, content: true };
+  }
   const mine = answers.filter((a) => a.questionId === question.id);
   const voters = voterCount(mine);
   const base = { id: question.id, kind: question.kind, label: question.label, voters };

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { BarChart3, Plus, Trash2, PenSquare, Users, Globe, Pin, Eye, ListTree, ArrowUp, ArrowDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -16,10 +16,13 @@ const emptyDraft = () => ({
   status: 'draft', results: 'after_vote', pinned: false, closesAt: '', options: ['', ''],
 });
 
-function PollEditor({ open, initial, onClose, onSaved }) {
+function PollEditor({ open, initial, onClose, onSaved, onCreated }) {
   const { t } = useI18n(); const toast = useToast();
   const [d, setD] = useState(initial || emptyDraft());
   const [busy, setBusy] = useState(false);
+  // Which button was pressed. A ref rather than state: it is read inside the save that the
+  // click starts, and a state update would not have landed by then.
+  const wantQuestions = useRef(false);
   const editing = !!initial?.id;
   const locked = editing && (initial.total || 0) > 0;
 
@@ -41,9 +44,17 @@ function PollEditor({ open, initial, onClose, onSaved }) {
         // would turn a saved title edit into a 409 the admin cannot explain.
         ...(locked ? {} : { options }),
       };
+      let created = null;
       if (editing) await api.put(`/admin/polls/${initial.id}`, body);
-      else await api.post('/admin/polls', body);
-      toast.success(t('common.saved', 'Saved.')); onSaved(); onClose();
+      else created = await api.post('/admin/polls', body);
+      toast.success(t('common.saved', 'Saved.'));
+      onSaved();
+      onClose();
+      // Hand the new poll back so the caller can open the questions editor on it. A poll with
+      // more than one question was only reachable by saving, finding the row, and pressing a
+      // second button — so "New poll" produced a one-question poll and the form half of the
+      // feature was something you had to know was there.
+      if (wantQuestions.current && (created?.poll || created?.id)) onCreated?.(created.poll || created);
     } catch (x) {
       toast.error(x?.data?.error === 'has_votes' ? t('apoll.locked', 'People have already answered — the options can no longer be changed.') : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
@@ -118,8 +129,13 @@ function PollEditor({ open, initial, onClose, onSaved }) {
           </label>
         </div>
 
-        <div className="flex gap-2 pt-1">
-          <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button>
+        <div className="flex flex-wrap gap-2 pt-1 items-center">
+          <Button variant="primary" disabled={busy} onClick={() => { wantQuestions.current = false; save(); }}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button>
+          {!editing && (
+            <Button disabled={busy} onClick={() => { wantQuestions.current = true; save(); }}>
+              <ListTree size={13} /> {t('apoll.andquestions', 'Save and add questions')}
+            </Button>
+          )}
           <Button onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
         </div>
       </div>
@@ -127,12 +143,19 @@ function PollEditor({ open, initial, onClose, onSaved }) {
   );
 }
 
-const KINDS = ['choice', 'text', 'scale', 'number', 'date', 'ranking', 'grid'];
+const KINDS = ['choice', 'text', 'scale', 'number', 'date', 'ranking', 'grid', 'note'];
+// A note is CONTENT, not a question: a heading, an explanation, a warning before the part that
+// matters. It takes no answer, so it can never be required and never has choices — and the
+// editor has to say so, or somebody ticks Required on a note and no submission is ever
+// complete again.
+const IS_NOTE = (k) => k === 'note';
 // All three are answered by picking from a fixed list, so all three need the choices editor and
 // all three need at least two of them — one thing to rank is not a ranking, and a grid with one
 // column is a list of rows nobody can disagree about. For a grid the choices are its COLUMNS;
 // its rows are labels in config.rows.
 const HAS_CHOICES = (k) => k === 'choice' || k === 'ranking' || k === 'grid';
+// What a note's body is called on screen. It is the content, not a hint about an answer.
+const HELP_LABEL = (k, t) => IS_NOTE(k) ? t('apq.note.body', 'Text (markdown)') : t('apq.help', 'Hint');
 const newQuestion = () => ({ kind: 'choice', label: '', help: '', required: false, config: {}, showIf: null, choices: [{ label: '' }, { label: '' }] });
 
 /**
@@ -148,12 +171,26 @@ const newQuestion = () => ({ kind: 'choice', label: '', help: '', required: fals
  */
 function QuestionsEditor({ poll, onClose, onSaved }) {
   const { t } = useI18n(); const toast = useToast();
-  const [qs, setQs] = useState(() => (poll.questions || []).map((q) => ({
-    id: q.id, kind: q.kind, label: q.label, help: q.help || '', required: !!q.required,
-    config: q.config || {}, showIf: q.showIf || null,
-    choices: (q.choices || []).map((c) => ({ id: c.id, label: c.label })),
-    answers: q.answers || 0,
-  })));
+  const [qs, setQs] = useState(() => {
+    const existing = (poll.questions || []).map((q) => ({
+      id: q.id, kind: q.kind, label: q.label, help: q.help || '', required: !!q.required,
+      config: q.config || {}, showIf: q.showIf || null,
+      choices: (q.choices || []).map((c) => ({ id: c.id, label: c.label })),
+      answers: q.answers || 0,
+    }));
+    if (existing.length) return existing;
+    // A poll that has no questions yet — a freshly created one — starts from the question it
+    // was created WITH. Without this the thing you just typed is not in the form: it stays the
+    // poll's title and its options belong to the legacy vote path, so adding a second question
+    // would silently drop the first.
+    const opts = (poll.options || []).map((o) => ({ label: o.label ?? String(o) })).filter((o) => o.label);
+    if (!opts.length) return [];
+    return [{
+      kind: 'choice', label: poll.question || poll.title || '', help: '', required: false,
+      config: { multiple: !!poll.multiple, ...(poll.maxChoices ? { maxChoices: Number(poll.maxChoices) } : {}) },
+      showIf: null, choices: opts, answers: 0,
+    }];
+  });
   const [saving, setSaving] = useState(false);
   // What the server said an edit would destroy. Held rather than thrown away, because the
   // second attempt has to be the user CONFIRMING this exact list — not a blind retry.
@@ -170,7 +207,9 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
       force: !!force,
       questions: qs.map((q) => ({
         ...(q.id ? { id: q.id } : {}), kind: q.kind, label: q.label.trim(), help: q.help,
-        required: q.required, showIf: q.showIf,
+        // Forced false rather than trusted: switching an existing required question to a note
+        // would otherwise keep the flag, and nothing on screen would still show it.
+        required: IS_NOTE(q.kind) ? false : q.required, showIf: q.showIf,
         // Blank rows are dropped rather than saved: an empty row label renders an unlabelled
         // line people are asked to rate, and the row indices answers are stored against shift
         // the moment someone tidies it up later.
@@ -251,11 +290,27 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
               <Button variant="ghost" onClick={() => move(i, 1)} disabled={i === qs.length - 1}><ArrowDown size={14} /></Button>
               <Button variant="ghost" onClick={() => setQs((x) => x.filter((_, j) => j !== i))}><Trash2 size={14} /></Button>
             </div>
+            {/* `help` was carried by the API, sent by the editor and editable NOWHERE — so
+                every question shipped with an empty hint and no way to fill one. It is also
+                where a note keeps its body, which is why the label changes with the kind:
+                on a question it is a hint, on a note it IS the content. */}
+            <Textarea rows={IS_NOTE(q.kind) ? 4 : 2} value={q.help || ''}
+              onChange={(e) => patch(i, 'help', e.target.value)}
+              placeholder={HELP_LABEL(q.kind, t)} />
+            {IS_NOTE(q.kind) && (
+              <div className="text-[11px] text-[var(--muted)]">
+                {t('apq.note.hint', 'Rendered with the site’s markdown — links, lists and emphasis all work. The title above is optional.')}
+              </div>
+            )}
             <div className="flex items-center gap-3 text-xs">
-              <label className="flex items-center gap-1.5">
-                <input type="checkbox" checked={q.required} onChange={(e) => patch(i, 'required', e.target.checked)} />
-                {t('apq.required', 'Required')}
-              </label>
+              {/* Not offered on a note: it takes no answer, so "required" could never be
+                  met and every submission would count as incomplete for ever. */}
+              {!IS_NOTE(q.kind) && (
+                <label className="flex items-center gap-1.5">
+                  <input type="checkbox" checked={q.required} onChange={(e) => patch(i, 'required', e.target.checked)} />
+                  {t('apq.required', 'Required')}
+                </label>
+              )}
               {/* Named, not just counted: knowing a question already holds 12 answers is what
                   makes changing its type a decision rather than a click. */}
               {q.answers > 0 && (
@@ -355,6 +410,99 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
  * true but unreadable. The number beside it is the count, so the bar is the comparison and the
  * digit is the fact.
  */
+// ── Charts ────────────────────────────────────────────────────────────────────
+//
+// Two, and only where a shape says something a number cannot: turnout OVER TIME, and the
+// SPREAD of a rating. Everything else on this screen stays a labelled bar, because a tally of
+// four options is a list and drawing it as a pie would make it harder to read, not easier.
+//
+// Both are single-series, so neither gets a legend — the heading names it. Both carry visible
+// numbers rather than relying on the mark: the brand orange measures 2.1:1 against the light
+// surface, which the palette check flags as needing that relief, and a bar you cannot see the
+// edge of is not carrying the value on its own.
+const CHART_INK = 'var(--primary)';
+
+/** Votes per day. A shape — "it moved for three days and stopped" — that a total cannot show. */
+function Timeline({ days }) {
+  const { t } = useI18n();
+  if (!days || days.length < 2) return null;
+  const W = 320, H = 64, PAD = 6;
+  const max = Math.max(1, ...days.map((d) => d.votes));
+  const x = (i) => PAD + (i * (W - PAD * 2)) / (days.length - 1);
+  const y = (v) => H - PAD - (v / max) * (H - PAD * 2);
+  const line = days.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(d.votes).toFixed(1)}`).join(' ');
+  const area = `${line} L${x(days.length - 1).toFixed(1)},${H - PAD} L${x(0).toFixed(1)},${H - PAD} Z`;
+  const peak = days.reduce((a, b) => (b.votes > a.votes ? b : a), days[0]);
+  return (
+    <div className="mt-3">
+      <div className="flex items-baseline gap-2 mb-1">
+        <span className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('apoll.ch.timeline', 'Answers per day')}</span>
+        <span className="text-[11px] text-[var(--muted)] tabular-nums ml-auto">
+          {t('apoll.ch.peak', 'peak {n} on {d}').replace('{n}', String(peak.votes)).replace('{d}', peak.day)}
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-16" role="img"
+        aria-label={t('apoll.ch.timeline.a11y', 'Answers per day, {n} days, peak {p}').replace('{n}', String(days.length)).replace('{p}', String(peak.votes))}>
+        <path d={area} fill={CHART_INK} opacity="0.14" />
+        {/* 2px, and the only stroked mark here — a grid would compete with it at this size. */}
+        <path d={line} fill="none" stroke={CHART_INK} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {days.map((d, i) => (
+          // Markers are the hover targets, so they are 8px of hit area even though only the
+          // peak is painted. A bare line has nothing to point at.
+          <circle key={d.day} cx={x(i)} cy={y(d.votes)} r={d === peak ? 3 : 4}
+            fill={d === peak ? CHART_INK : 'transparent'} stroke="none">
+            <title>{`${d.day} — ${d.votes}`}</title>
+          </circle>
+        ))}
+      </svg>
+      <div className="flex justify-between text-[10px] text-[var(--faint)] tabular-nums">
+        <span>{days[0].day}</span><span>{days[days.length - 1].day}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * How a rating was spread.
+ *
+ * The mean is one number and hides the shape people argue about: 1s and 5s average to the same
+ * 3 as everybody answering 3, and those are opposite results. Columns, in SCALE order — sorting
+ * by size would destroy the only axis this data has.
+ */
+function Distribution({ dist, min, max }) {
+  const { t } = useI18n();
+  const keys = Object.keys(dist || {}).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+  if (keys.length < 2) return null;
+  // Every step between min and max, so a value nobody chose is a visible gap rather than a
+  // column that silently is not there.
+  const lo = Number.isFinite(min) ? Math.min(min, keys[0]) : keys[0];
+  const hi = Number.isFinite(max) ? Math.max(max, keys[keys.length - 1]) : keys[keys.length - 1];
+  const span = hi - lo + 1;
+  if (span > 21) return null;   // a scale that wide is not a bar chart, it is a histogram nobody asked for
+  const steps = Array.from({ length: span }, (_, i) => lo + i);
+  const top = Math.max(1, ...steps.map((s) => dist[s] || 0));
+  return (
+    <div className="mt-2">
+      <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('apoll.ch.spread', 'Spread')}</div>
+      <div className="flex items-end gap-[2px] h-20">
+        {steps.map((s) => {
+          const n = dist[s] || 0;
+          return (
+            <div key={s} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full" title={`${s} — ${n}`}>
+              <span className="text-[10px] tabular-nums text-[var(--muted)] leading-none mb-0.5">{n || ''}</span>
+              {/* Rounded at the data end only, anchored to the baseline. A zero keeps a 2px
+                  stub so the step is still a place on the axis rather than a hole. */}
+              <div className="w-full rounded-t-[4px]"
+                style={{ height: `${Math.max(2, (n / top) * 100)}%`, background: CHART_INK, opacity: n ? 1 : 0.25 }} />
+              <span className="text-[10px] tabular-nums text-[var(--faint)] leading-none mt-1">{s}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function QTally({ rows }) {
   const max = Math.max(1, ...rows.map((r) => r.votes));
   return (
@@ -386,6 +534,13 @@ function PollStats({ pollId, onClose }) {
           .replace('{n}', String(d.voters || 0)).replace('{u}', String(d.userVoters || 0)).replace('{a}', String(d.anonVoters || 0))}
         {d.anonIsEstimate && ` ${t('apoll.estimate', 'The anonymous figure is deduplicated per device: two people on one connection count once, one person on two devices counts twice.')}`}
       </div>
+
+      {/* d.stats.timeline, not d.timeline — which is what I wrote first, and it rendered
+          nothing at all: Timeline returns null on fewer than two points, so an undefined field
+          looks exactly like a poll answered on one day. `byDay` beside it carries the same days
+          split signed-in / anonymous; the split is already stated in words above, so the chart
+          shows the total and stays one series. */}
+      <Timeline days={d.stats?.timeline} />
 
       {(d.byOption || []).map((o) => (
         <div key={o.id} className="mb-2">
@@ -424,12 +579,15 @@ function PollStats({ pollId, onClose }) {
                 <span className="text-[11px] text-[var(--faint)]">{t(`apq.kind.${q.kind}`, q.kind)} · {q.voters}</span>
               </div>
               {q.tally && <QTally rows={q.tally} />}
-              {q.numeric?.count > 0 && (
+              {q.numeric?.count > 0 && (<>
                 <div className="text-[12px] text-[var(--muted)] mt-0.5 tabular-nums">
                   {t('apoll.q.mean', 'mean')} {Math.round(q.numeric.mean * 100) / 100} ·{' '}
                   {t('apoll.q.median', 'median')} {q.numeric.median} · {q.numeric.min}–{q.numeric.max}
                 </div>
-              )}
+                {/* The mean hides the argument: 1s and 5s average to the same 3 as everybody
+                    answering 3, and those are opposite results. */}
+                <Distribution dist={q.numeric.distribution} min={q.numeric.min} max={q.numeric.max} />
+              </>)}
               {/* Average rank, best first — lower is better, so the number is labelled rather
                   than drawn as a bar, where longer would read as better and mean the opposite. */}
               {q.ranking && (
@@ -553,7 +711,8 @@ export function AdminPolls() {
         </div>
       )}
 
-      {editor && <PollEditor open initial={editor.id ? editor : null} onClose={() => setEditor(null)} onSaved={reload} />}
+      {editor && <PollEditor open initial={editor.id ? editor : null} onClose={() => setEditor(null)} onSaved={reload}
+        onCreated={(p) => setQuestions({ ...p, questions: p.questions || [] })} />}
       {stats && <PollStats pollId={stats} onClose={() => setStats(null)} />}
       {questions && <QuestionsEditor poll={questions} onClose={() => setQuestions(null)} onSaved={reload} />}
     </div>

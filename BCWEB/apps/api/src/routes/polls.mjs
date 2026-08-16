@@ -13,7 +13,7 @@ import { db, requireRole, requireCap, optionalAuth, logAudit } from '../lib/lib.
 import { clientIp } from '../lib/geo.mjs';
 import { pollStats, questionStats, completion } from '../lib/poll-stats.mjs';
 import { planQuestionUpdate } from '../lib/poll-edit.mjs';
-import { validateAnswer, maxAnswers, validateRanking, validateGrid, COLUMN_FOR_KIND } from '../lib/poll-answer.mjs';
+import { validateAnswer, maxAnswers, validateRanking, validateGrid, ALL_QUESTION_KINDS, isAnswerable } from '../lib/poll-answer.mjs';
 
 /** Per-poll device fingerprint for anonymous voters.
  *
@@ -237,6 +237,11 @@ export default async function pollRoutes(app) {
     const rows = [];
 
     for (const q of poll.questions) {
+      // A note is content — a heading, an explanation. Nothing is expected, nothing is
+      // stored, and a client that sends one is ignored rather than refused: the question set
+      // is public, so a stale page holding a note that has since been added is a normal
+      // thing to receive, not an attack to reject.
+      if (!isAnswerable(q.kind)) continue;
       const sent = b.data.answers.find((a) => a.questionId === q.id);
       const choiceIds = (q.choices || []).map((c) => c.id);
 
@@ -437,7 +442,7 @@ export default async function pollRoutes(app) {
         // number — so the editor offered `ranking`, the save returned a bare `invalid_input`,
         // and nothing named the field. COLUMN_FOR_KIND is the one place a kind is declared, and
         // a kind that cannot be stored cannot be reached from here either.
-        kind: z.enum(Object.keys(COLUMN_FOR_KIND)),
+        kind: z.enum(ALL_QUESTION_KINDS),
         label: z.string().min(1).max(500),
         help: z.string().max(1000).default(''),
         required: z.boolean().default(false),

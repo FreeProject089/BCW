@@ -6,7 +6,7 @@
 // under a question nobody answered, with nothing in any log to say so.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateAnswer, maxAnswers, COLUMN_FOR_KIND, scaleStyle, validateRanking, validateGrid, gridRows } from '../src/lib/poll-answer.mjs';
+import { validateAnswer, maxAnswers, COLUMN_FOR_KIND, scaleStyle, validateRanking, validateGrid, gridRows, isAnswerable, CONTENT_KINDS, ALL_QUESTION_KINDS } from '../src/lib/poll-answer.mjs';
 
 const q = (over = {}) => ({ kind: 'choice', required: false, config: {}, ...over });
 
@@ -290,5 +290,33 @@ describe('validateGrid', () => {
 
     test('validateAnswer refuses a grid instead of parsing it as a date', () => {
         assert.deepEqual(validateAnswer({ kind: 'grid' }, 'a'), { ok: false, error: 'use_validate_grid' });
+    });
+});
+
+describe('content blocks — a note is not a question', () => {
+    test('a note takes no answer, and says so specifically', () => {
+        // Not `unknown_kind`: that would send somebody looking for a typo in a kind that is
+        // perfectly valid and simply does not take answers.
+        assert.deepEqual(validateAnswer({ kind: 'note' }, 'hello'), { ok: false, error: 'not_a_question' });
+    });
+
+    test('a note has NO value column, rather than a null one', () => {
+        // COLUMN_FOR_KIND answers "where does this answer go". An entry meaning "nowhere"
+        // makes every reader of that map handle a case that is not an answer at all.
+        assert.equal('note' in COLUMN_FOR_KIND, false);
+        assert.equal(isAnswerable('note'), false);
+        assert.equal(isAnswerable('choice'), true);
+    });
+
+    test('the admin allowlist is every answerable kind PLUS the content ones', () => {
+        // Derived, so a kind that can be stored can be chosen. Written out by hand once
+        // before, and `ranking` was missing from it for as long as it existed.
+        for (const k of Object.keys(COLUMN_FOR_KIND)) assert.ok(ALL_QUESTION_KINDS.includes(k), k);
+        for (const k of CONTENT_KINDS) assert.ok(ALL_QUESTION_KINDS.includes(k), k);
+        assert.equal(ALL_QUESTION_KINDS.length, Object.keys(COLUMN_FOR_KIND).length + CONTENT_KINDS.length);
+    });
+
+    test('an unknown kind is still refused as unknown', () => {
+        assert.deepEqual(validateAnswer({ kind: 'wat' }, 'x'), { ok: false, error: 'unknown_kind' });
     });
 });

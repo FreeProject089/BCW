@@ -30,6 +30,21 @@ export const COLUMN_FOR_KIND = {
 export const WHOLE_SUBMISSION_KINDS = { ranking: 'use_validate_ranking', grid: 'use_validate_grid' };
 
 /**
+ * Kinds that are CONTENT, not questions: a heading, an explanation, a warning before the part
+ * that matters. They take no answer and have no column.
+ *
+ * Deliberately NOT given a column in COLUMN_FOR_KIND rather than a null one. That map answers
+ * "where does this answer go", and an entry meaning "nowhere" makes every reader of it handle
+ * a case that is not an answer at all. Kept separate so `isAnswerable` is the single question
+ * the endpoint, the stats and the completion funnel all ask.
+ */
+export const CONTENT_KINDS = ['note'];
+export const isAnswerable = (kind) => !CONTENT_KINDS.includes(String(kind));
+
+/** Every kind a question may be — answerable or not. The admin editor's allowlist. */
+export const ALL_QUESTION_KINDS = [...Object.keys(COLUMN_FOR_KIND), ...CONTENT_KINDS];
+
+/**
  * A ranking submission: the choice ids in the order the person put them.
  *
  * Validated as a WHOLE rather than one answer at a time, because the errors are properties of
@@ -154,6 +169,9 @@ const isBlank = (v) => v === undefined || v === null || (typeof v === 'string' &
 export function validateAnswer(question, raw, choiceIds = []) {
     const kind = String(question?.kind || 'choice');
     const cfg = question?.config || {};
+    // Content, not a question. Answering one is a caller bug rather than a bad answer, and
+    // saying so beats `unknown_kind`, which would send somebody looking for a typo.
+    if (!isAnswerable(kind)) return { ok: false, error: 'not_a_question' };
     const column = COLUMN_FOR_KIND[kind];
     if (!column) return { ok: false, error: 'unknown_kind' };
 

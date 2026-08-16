@@ -6,6 +6,7 @@ import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, EmptyState, Spinner, Input, Textarea, useToast } from '../ui/ui.jsx';
 import { useAsync, Loading } from './pages.jsx';
 import { useAuth } from './auth.jsx';
+import Markdown from '../ui/md.jsx';
 
 // The public poll page, and the card the rest of the site reuses.
 //
@@ -55,7 +56,9 @@ function PollForm({ poll, onDone }) {
 
   const submit = async () => {
     setBusy(true); setErrAt(null);
-    const answers = (poll.questions || []).map((q) => {
+    // Notes are content and carry no answer. The server ignores them either way, but sending
+    // an entry with an undefined value asks it to validate a placeholder.
+    const answers = (poll.questions || []).filter((q) => q.kind !== 'note').map((q) => {
       const v = vals[q.id];
       // A ranking nobody reordered still HAS an order — the one on screen. Sending nothing
       // because no button was pressed would refuse a required question the person can see
@@ -102,7 +105,16 @@ function PollForm({ poll, onDone }) {
 
   return (
     <div className="space-y-4">
-      {(poll.questions || []).map((q) => (
+      {(poll.questions || []).map((q) => q.kind === 'note' ? (
+        /* Content, not a question: a heading, an explanation, a warning before the part that
+           matters. No border and no asterisk — a box that looks like the answerable ones is a
+           box people try to answer. The body goes through the site's own markdown, so a note
+           can carry a link or a list like any other text on the site. */
+        <div key={q.id} className="px-1">
+          {q.label && <div className="text-[13px] font-semibold">{q.label}</div>}
+          {q.help && <div className="text-[13px] text-[var(--muted)] mt-1"><Markdown>{q.help}</Markdown></div>}
+        </div>
+      ) : (
         <div key={q.id} className={`rounded-lg border p-3 ${errAt === q.id ? 'border-[var(--danger)]' : 'border-[var(--line)]'}`}>
           <div className="text-[13px] font-medium">
             {q.label}
@@ -301,7 +313,20 @@ export function PollCard({ poll: initial, onChange }) {
       </div>
 
       <div className="mt-3">
-        {showResults ? (
+        {/* The FORM comes before the results, and the order is the whole point.
+            `showResults` is derived from the legacy options carrying vote counts, which is
+            true for any poll whose tally is public — so a multi-question poll with
+            results:'always' rendered its old single-question bars and the form was
+            unreachable. Not "the wrong thing was on top": there was no way to answer it at
+            all. Found by seeding one and opening the page.
+            A backfilled poll has one choice question, so needsForm is false for it and this
+            branch changes nothing about what everybody sees today. */}
+        {needsForm(poll) && !closed && !needsAccount ? (
+          <PollForm poll={poll} onDone={async () => {
+            const fresh = await api.get(`/polls/${poll.id}`);
+            setPoll(fresh); onChange?.(fresh);
+          }} />
+        ) : showResults ? (
           <>
             {poll.options.map((o) => (
               <Bar key={o.id} label={o.label} votes={o.votes} total={poll.total || 0} mine={(poll.myVotes || []).includes(o.id)} />
@@ -326,11 +351,6 @@ export function PollCard({ poll: initial, onChange }) {
           </div>
         ) : closed ? (
           <div className="text-[13px] text-[var(--muted)]">{t('poll.closednoresults', 'This poll is closed.')}</div>
-        ) : needsForm(poll) ? (
-          <PollForm poll={poll} onDone={async () => {
-            const fresh = await api.get(`/polls/${poll.id}`);
-            setPoll(fresh); onChange?.(fresh);
-          }} />
         ) : (
           <>
             <div className="space-y-1.5">
