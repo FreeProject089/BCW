@@ -35,6 +35,14 @@ The filter bar applies to the official catalogue and not to "Catalogues communau
 whether both lists read the same state or whether the community one has its own fetch —
 this is the shape that keeps appearing in this repo: two renderers, one rule, quietly diverged.
 
+**Already ruled out**, so do not start here:  renders a "Community
+catalogs" section but it is the STARRED list on the dashboard, not the browsing page.
+ is a single public catalogue (), not a list.
+ is 233 lines and contains no filter state at all — only a comment about
+building a feed URL that matches what is on screen. So the filter bar lives somewhere else,
+probably a shared component or the repos page; find it by searching for the filter CONTROL
+rather than the word "community".
+
 ---
 
 ## 3. Newsletter: preview the mail, as the transactional e-mails already do
