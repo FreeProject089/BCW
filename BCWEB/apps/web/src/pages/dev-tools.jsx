@@ -304,6 +304,106 @@ function SignatureChecker() {
   );
 }
 
+
+/**
+ * Does this installer.toml say what you think it says?
+ *
+ * The failure it exists for is silent: nothing in the installer engine uses
+ * `deny_unknown_fields`, so a mistyped key is DISCARDED. Write `[[componentss]]` and the
+ * installer builds perfectly with no components — no error, no warning, and the mistake
+ * surfaces as a missing feature in something already shipped.
+ *
+ * The schema is the artifact the engine derives from its own Rust types, never a copy kept
+ * here. A copy would be wrong the first time somebody added a field, and wrong quietly.
+ */
+function RecipeChecker() {
+  const { t } = useI18n(); const toast = useToast();
+  const [body, setBody] = useState('');
+  const [res, setRes] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    setBusy(true); setRes(null);
+    try { setRes(await api.post('/dev/validate-recipe', { body })); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Card className="p-5">
+      <div className="text-sm font-semibold flex items-center gap-2">
+        <FileJson size={15} className="text-[var(--primary-2)]" /> {t('dvt.rec', 'Check an installer.toml')}
+      </div>
+      <p className="text-xs text-[var(--muted)] mt-0.5 mb-3">
+        {t('dvt.rec.s', 'The installer discards any key it does not recognise — silently. A mistyped section builds perfectly and does nothing, and you find out from a shipped installer. This compares your recipe against the schema the engine derives from its own types.')}
+      </p>
+
+      <Field label={t('dvt.rec.toml', 'Paste the installer.toml')}>
+        <Textarea rows={10} value={body} onChange={(e) => setBody(e.target.value)}
+          className="font-mono text-xs" placeholder={'[app]\nid = "com.example.app"\nname = "Example"'} />
+      </Field>
+      <Button className="mt-2" variant="primary" disabled={busy || !body.trim()} onClick={run}>
+        {busy ? <Spinner /> : t('dvt.rec.check', 'Check it')}
+      </Button>
+
+      {res?.error === 'schema_missing' && (
+        <div className="mt-4 text-[12px] rounded-lg border border-[var(--warning)] p-3">
+          <div className="font-medium mb-1">{t('dvt.rec.noschema', 'No schema has been uploaded yet.')}</div>
+          <div className="text-[var(--muted)]">{res.hint}</div>
+        </div>
+      )}
+      {res?.error === 'bad_toml' && (
+        <div className="mt-4 text-[12px] rounded-lg border border-[var(--danger)] p-3">
+          <div className="font-medium mb-1">{t('dvt.rec.badtoml', 'That is not valid TOML.')}</div>
+          <code className="text-[11px] break-words">{res.message}</code>
+        </div>
+      )}
+
+      {res && !res.error && (
+        <div className="mt-4 pt-3 border-t border-[var(--line)] text-[12px]">
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            {res.ok
+              ? <span className="flex items-center gap-1.5 text-success text-sm font-medium"><CheckCircle2 size={15} /> {t('dvt.rec.ok', 'Every key is one the engine reads.')}</span>
+              : <span className="flex items-center gap-1.5 text-error text-sm font-medium"><XCircle size={15} /> {t('dvt.rec.bad', '{n} key(s) the installer will discard').replace('{n}', String(res.dropped.length))}</span>}
+            <span className="text-[11px] text-[var(--faint)] ml-auto">
+              {t('dvt.rec.against', 'against {n} keys, bpkg {v}').replace('{n}', String(res.schema?.keys ?? 0)).replace('{v}', res.schema?.version || '?')}
+            </span>
+          </div>
+
+          {res.dropped.map((d) => (
+            <div key={d.path} className="flex items-start gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 px-2.5 py-1.5 mb-1">
+              <XCircle size={13} className="text-error shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <code className="font-mono text-[11px]">{d.path}</code>
+                {/* Naming the word it meant is the point of reporting a typo. */}
+                {d.key && <span className="text-[var(--muted)]"> — {t('dvt.rec.meant', 'did you mean')} <code className="font-mono">{d.key}</code>?</span>}
+              </div>
+            </div>
+          ))}
+
+          {res.dead?.length > 0 && (
+            <div className="mt-3">
+              <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('dvt.rec.dead', 'Parses, and nothing reads it')}</div>
+              {res.dead.map((k) => <div key={k}><code className="font-mono text-[11px] text-[var(--warning)]">{k}</code></div>)}
+            </div>
+          )}
+
+          {res.unset?.length > 0 && (
+            <details className="mt-3">
+              <summary className="text-[11px] text-[var(--muted)] cursor-pointer">
+                {t('dvt.rec.unset', '{n} key(s) you have not set').replace('{n}', String(res.unset.length))}
+              </summary>
+              <div className="mt-1 grid sm:grid-cols-2 gap-x-4">
+                {res.unset.map((k) => <code key={k} className="font-mono text-[11px] text-[var(--faint)]">{k}</code>)}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function DevTools() {
   const { t } = useI18n();
   const { user, loading } = useAuth();
@@ -318,6 +418,12 @@ export default function DevTools() {
         { id: 'try', label: t('dev.console.title', 'Try a call'), el: <ApiConsole /> },
         { id: 'signature', label: t('dvt.sig.title', 'Check a webhook signature'), el: <SignatureChecker /> },
         { id: 'calls', label: t('dvt.calls', 'What your keys did'), el: <CallLog />, wide: true },
+      ],
+    },
+    {
+      id: 'installer', k: 'dvt.grp.installer', label: 'BetterInstaller',
+      tools: [
+        { id: 'recipe', label: t('dvt.rec', 'Check an installer.toml'), el: <RecipeChecker /> },
       ],
     },
     {

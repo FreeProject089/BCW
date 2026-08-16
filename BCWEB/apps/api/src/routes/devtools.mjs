@@ -15,6 +15,8 @@ import { diffConfig } from '../lib/config-diff.mjs';
 import { buildDataFlow } from '../lib/data-flow.mjs';
 import { buildMigrationMap } from '../lib/migration-map.mjs';
 import { buildInfraMap } from '../lib/infra-map.mjs';
+import { checkRecipe, nearest } from '../lib/recipe-check.mjs';
+import { parse as parseToml } from 'smol-toml';
 import { parseRoutes } from '../lib/rbac-map.mjs';
 import fsp from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -463,6 +465,57 @@ export default async function devtoolRoutes(app) {
 
   // Paste or point. Signed in, because it makes an outbound request on the caller's behalf —
   // anonymous would make this a URL prober with our IP on it.
+  /** The key `bpkg schema --out …` output is uploaded under. */
+  const SCHEMA_KEY = 'installer-schema';
+
+  /**
+   * Check an installer.toml against the schema that will actually read it.
+   *
+   * The failure is silent by construction: no struct in bpkg-core's config.rs uses
+   * `deny_unknown_fields`, so serde discards any key it does not recognise. Write
+   * `[[componentss]]` and the installer builds perfectly with no components — nothing errors,
+   * nothing warns, and it surfaces as a missing feature in a shipped installer.
+   *
+   * The schema is NEVER written out here. It is the artifact `bpkg schema` derives from the
+   * Rust types, uploaded as a JSON platform asset. A copy of the schema in JavaScript would be
+   * wrong the first time somebody adds a field, and wrong silently — the same bug this catches.
+   */
+  app.post('/dev/validate-recipe', {
+    preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const b = z.object({ body: z.string().max(500_000) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: 'Send the installer.toml as `body`.' });
+
+    const p = await db();
+    const asset = await p.platformAsset.findUnique({ where: { key: SCHEMA_KEY } }).catch(() => null);
+    const schema = asset?.kind === 'json' ? asset.json : null;
+    // Said plainly rather than guessed at. Without the artifact every key in a perfectly good
+    // recipe looks unknown, and a confidently wrong answer is worse than no answer.
+    if (!schema?.keys?.length) {
+      return reply.send({
+        ok: false, error: 'schema_missing',
+        hint: 'Run `bpkg schema --out schema/installer-schema.json` in BetterInstaller and upload it as the platform asset "installer-schema".',
+      });
+    }
+
+    let doc;
+    try { doc = parseToml(b.data.body); }
+    catch (e) {
+      // The parser names the line, which is the most useful thing anybody gets out of broken
+      // TOML — and a recipe that does not parse is a different problem from one that does.
+      return reply.send({ ok: false, error: 'bad_toml', message: String(e?.message || e) });
+    }
+
+    const r = checkRecipe(doc, schema);
+    if (r.error) return reply.send({ ok: false, error: r.error });
+    return {
+      ...r,
+      // The suggestion is the point of reporting a typo: `componentss` → `components`.
+      dropped: r.dropped.map((path) => ({ path, ...(nearest(path, schema.keys) || {}) })),
+      schema: { version: schema.bpkgVersion || null, keys: schema.keys.length, generatedAt: asset.updatedAt || null },
+    };
+  });
+
   app.post('/dev/validate-feed', {
     preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (req, reply) => {
