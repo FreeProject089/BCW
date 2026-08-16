@@ -74,8 +74,24 @@ function redirectUri(provider) {
 
 // Stateless, signed + timestamped CSRF token (same pattern as the PoW challenge
 // in auth.mjs) — no server-side session storage needed between /start and /callback.
-function signState(provider) {
-  const payload = Buffer.from(JSON.stringify({ provider, nonce: crypto.randomBytes(12).toString('hex'), ts: Date.now() })).toString('base64url');
+/**
+ * Where the callback may send somebody afterwards.
+ *
+ * Checked on the way IN, not on the way out. The state is signed, so a value that gets in here
+ * cannot be tampered with afterwards — which makes this the only place the check can happen,
+ * and makes a permissive check here a permanent one.
+ *
+ * A single leading slash and nothing else: `//evil.com` and `https://evil.com` are both
+ * absolute destinations, and a sign-in page that forwards to one the moment a password has been
+ * typed is the textbook open redirect.
+ */
+const safeNext = (n) => (typeof n === 'string' && /^\/[^/\\]/.test(n) && n.length <= 512 ? n : null);
+
+function signState(provider, next) {
+  const claims = { provider, nonce: crypto.randomBytes(12).toString('hex'), ts: Date.now() };
+  const ok = safeNext(next);
+  if (ok) claims.next = ok;
+  const payload = Buffer.from(JSON.stringify(claims)).toString('base64url');
   const sig = crypto.createHmac('sha256', JWT_SECRET).update(payload).digest('hex').slice(0, 32);
   return `${payload}.${sig}`;
 }
@@ -85,7 +101,10 @@ function verifyState(state, provider) {
   if (!safeEqual(crypto.createHmac('sha256', JWT_SECRET).update(payload).digest('hex').slice(0, 32), sig)) return false;
   try {
     const claims = JSON.parse(Buffer.from(payload, 'base64url').toString());
-    return claims.provider === provider && Date.now() - claims.ts <= STATE_TTL_MS;
+    if (claims.provider !== provider || Date.now() - claims.ts > STATE_TTL_MS) return false;
+    // The CLAIMS, not just true — the callback needs `next` out of them. Still falsy on
+    // failure, so every existing `if (!verifyState(...))` keeps meaning what it meant.
+    return claims;
   } catch { return false; }
 }
 
@@ -112,7 +131,10 @@ export default async function oauthRoutes(app) {
     url.searchParams.set('redirect_uri', redirectUri(req.params.provider));
     url.searchParams.set('scope', provider.scope);
     url.searchParams.set('response_type', 'code');
-    url.searchParams.set('state', signState(req.params.provider));
+    // Carried through the signed state, because the provider hands `state` back untouched and
+    // there is nowhere else to keep it: this flow is deliberately stateless between /start and
+    // /callback.
+    url.searchParams.set('state', signState(req.params.provider, req.query?.next));
     return reply.redirect(url.toString());
   });
 
@@ -133,7 +155,8 @@ export default async function oauthRoutes(app) {
       try { await exchangeConnect(await db(), { name: connect.connect, code, uid: connect.uid }); return reply.redirect(`${SITE_URL}/profile?connected=${connect.connect}`); }
       catch (e) { req.log.error(e); return reply.redirect(`${SITE_URL}/profile?connect_error=${encodeURIComponent(e?.message || 'unexpected')}`); }
     }
-    if (!verifyState(state, name)) return fail('bad_state');
+    const stateClaims = verifyState(state, name);
+    if (!stateClaims) return fail('bad_state');
     if (!code) return fail('no_code');
     try {
       const tokenRes = await fetch(provider.tokenUrl, {
@@ -193,7 +216,11 @@ export default async function oauthRoutes(app) {
       }
 
       await issueSession(reply, user, req);
-      return reply.redirect(`${SITE_URL}/dashboard?oauth=success`);
+      // Re-checked coming OUT as well as going in. The signature makes tampering impossible,
+      // so this is belt-and-braces — but a state minted by an older build, or by a future one
+      // that relaxes the entry check, must not be the thing that turns this into a redirector.
+      const back = safeNext(stateClaims.next);
+      return reply.redirect(back ? `${SITE_URL}${back}` : `${SITE_URL}/dashboard?oauth=success`);
     } catch (e) {
       req.log.error(e);
       return fail('unexpected');

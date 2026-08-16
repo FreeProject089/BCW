@@ -93,6 +93,13 @@ function AccountLockedPanel({ data, onBack }) {
 export function Auth() {
   const { user, loading: authLoading, login, loginWith2fa, register } = useAuth(); const nav = useNavigate(); const toast = useToast(); const { t, lang } = useI18n();
   const [params, setParams] = useSearchParams();
+  // Forwarded to the OAuth start endpoints so a social sign-in comes back where the person was
+  // going, exactly as the password path already does. The server re-validates it — this is
+  // only the plumbing, never the guard.
+  const oauthNext = (() => {
+    const n = params.get('next');
+    return n && n.startsWith('/') ? `?next=${encodeURIComponent(n)}` : '';
+  })();
   const [mode, setMode] = useState('login'); // login | register | forgot | reset
   const [newsletter, setNewsletter] = useState(true); // opt-in pre-checked at sign-up
   const [f, setF] = useState({ email: '', password: '', confirm: '', displayName: '', token: '' });
@@ -282,9 +289,9 @@ export function Auth() {
           <>
             <div className="flex items-center gap-3 my-4 text-xs text-[var(--faint)]"><div className="flex-1 h-px bg-[var(--line)]" /> {t('auth.or', 'or')} <div className="flex-1 h-px bg-[var(--line)]" /></div>
             <div className="flex flex-col gap-2">
-              {oauthProviders.google && <a href="/api/auth/oauth/google/start"><Button className="w-full"><GoogleIcon size={16} /> {t('auth.oauth.google', 'Continue with Google')}</Button></a>}
-              {oauthProviders.github && <a href="/api/auth/oauth/github/start"><Button className="w-full"><GithubIcon size={16} /> {t('auth.oauth.github', 'Continue with GitHub')}</Button></a>}
-              {oauthProviders.discord && <a href="/api/auth/oauth/discord/start"><Button className="w-full"><DiscordIcon size={16} className="text-[#5865F2]" /> {t('auth.oauth.discord', 'Continue with Discord')}</Button></a>}
+              {oauthProviders.google && <a href={`/api/auth/oauth/google/start${oauthNext}`}><Button className="w-full"><GoogleIcon size={16} /> {t('auth.oauth.google', 'Continue with Google')}</Button></a>}
+              {oauthProviders.github && <a href={`/api/auth/oauth/github/start${oauthNext}`}><Button className="w-full"><GithubIcon size={16} /> {t('auth.oauth.github', 'Continue with GitHub')}</Button></a>}
+              {oauthProviders.discord && <a href={`/api/auth/oauth/discord/start${oauthNext}`}><Button className="w-full"><DiscordIcon size={16} className="text-[#5865F2]" /> {t('auth.oauth.discord', 'Continue with Discord')}</Button></a>}
             </div>
           </>
         )}
