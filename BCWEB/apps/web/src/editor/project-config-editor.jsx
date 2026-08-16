@@ -612,6 +612,24 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label="Tab title" hint="Defaults to “How it runs”."><Input value={stack.title || ''} onChange={(e) => setIn('stack', { title: e.target.value })} placeholder="How it runs" /></Field>
           <Field label="Intro line (optional)"><Input value={stack.note || ''} onChange={(e) => setIn('stack', { note: e.target.value })} placeholder="A short sentence above the diagram" /></Field>
+          {/* Publishing a code map is a decision, not a default. It describes how somebody's
+              repository is laid out, which files matter and what calls what — true of a public
+              repository too, and nothing else here turns a detail public because a feature
+              shipped. Off unless this is ticked; the page then loads it on demand. */}
+          {!isShowcase && (
+            <label className="flex items-start gap-2 text-[13px] mt-1">
+              <input type="checkbox" className="mt-0.5" checked={stack.showCodeMap === true}
+                onChange={(e) => setIn('stack', { showCodeMap: e.target.checked })} />
+              <span>
+                Show the code map on the page
+                <span className="block text-[11px] text-[var(--faint)]">
+                  Readers get the folders, the imports, the calls between languages and the
+                  step-by-step of what runs — from the last snapshot the webhook stored. Nothing
+                  is published until a repository has actually been read.
+                </span>
+              </span>
+            </label>
+          )}
         </div>
 
         <StackDetect

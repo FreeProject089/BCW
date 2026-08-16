@@ -136,6 +136,45 @@ export default async function projectRoutes(app) {
     return { config: cfg, showBlogTab: row?.showBlogTab === true };
   });
 
+  /**
+   * The stored code map, for the project's own page.
+   *
+   * The map and the flows have lived behind an editor session in the developer tools, which is
+   * the one place a reader of the project page will never be. This is the same snapshot, read
+   * only, for anybody looking at the project.
+   *
+   * OPT-IN per project, and off by default. A code map is a description of somebody's
+   * repository — how it is laid out, which files matter, what calls what. Publishing that is a
+   * decision, not a default, even for a repository that is already public: nothing else on this
+   * platform turns a private detail public because a feature shipped.
+   */
+  app.get('/projects/:key/code-map', { preHandler: optionalAuth() }, async (req, reply) => {
+    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    const p = await db();
+    const cfg = await getConfig(p, req.params.key);
+    if (!cfg) return reply.code(404).send({ error: 'not_configured' });
+    // The same visibility gate the page itself passes through — a project nobody may see does
+    // not leak its shape through a second door.
+    const row = await p.project.findUnique({ where: { key: req.params.key }, select: { visibility: true, visibilityWhitelist: true } });
+    if (row && req.params.key !== 'community' && !(await canViewPage(p, row, req))) return reply.code(403).send({ error: 'no_access' });
+    if (cfg.stack?.showCodeMap !== true) return reply.code(404).send({ error: 'not_published' });
+
+    const snap = await p.adminSetting.findUnique({ where: { key: snapshotKey(req.params.key) } }).catch(() => null);
+    const v = snap?.value;
+    if (!v?.graph) return reply.code(404).send({ error: 'no_snapshot' });
+    // Deliberately NOT the whole snapshot: `url` names the repository and is already public on
+    // the page, but the source excerpts inside the flows are the point of the feature, so they
+    // travel. What does not travel is anything the admin screen adds for itself later — the
+    // shape is listed rather than spread.
+    return {
+      ok: true, generatedAt: v.generatedAt,
+      nodes: v.graph.nodes, edges: v.graph.edges, stats: v.stats,
+      unresolved: v.graph.unresolved || [], unsupported: v.graph.unsupported || [],
+      endpoints: v.endpoints || null,
+      functions: v.functions || [], flows: v.flows || [], fnByFile: v.fnByFile || {},
+    };
+  });
+
   // Admin: per-project "show this blog's posts in the home page's Latest news"
   // toggle. Posts always show on /blog regardless — this only affects the home feed.
   app.put('/admin/projects/:key/home-news', { preHandler: requireCap('manage_projects') }, async (req, reply) => {

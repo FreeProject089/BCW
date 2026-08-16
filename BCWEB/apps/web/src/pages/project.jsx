@@ -11,6 +11,7 @@ import { api } from '../lib/api.js';
 import { thumb } from '../lib/img.js';
 import { useI18n } from '../i18n.jsx';
 import StackMap from '../ui/stack-map.jsx';
+import ProjectCodeMap from '../ui/project-code-map.jsx';
 import { stackTabEnabled } from '../lib/stack-layout.js';
 import RrwebPreview from '../hero/RrwebPreview.jsx';
 import { GithubIcon, KofiIcon, DiscordIcon, RedditIcon, AppLogo, APP_LOGO } from '../ui/brand.jsx';
@@ -347,7 +348,7 @@ export default function ProjectPage() {
       {tab === 'overview' && <Overview c={c} pkey={key} />}
       {tab === 'releases' && <Releases pkey={key} />}
       {tab === 'community' && <Community c={c} communityUrl={c.contributorsUrl ? `/projects/${key}/community` : null} />}
-      {tab === 'stack' && <StackMap stack={c.stack} t={t} />}
+      {tab === 'stack' && <><StackMap stack={c.stack} t={t} />{c.stack?.showCodeMap && <ProjectCodeMap projectKey={key} t={t} />}</>}
       {tab === 'blog' && <ProjectBlogTab project={key} />}
       {tab === 'legal' && <Legal c={c} />}
     </div>
@@ -758,6 +759,8 @@ export function ShowcaseProjectPage() {
       {activeTab === 'releases' && <Releases releasesUrl={`/showcase/${slug}/releases`} />}
       {activeTab === 'community' && <ShowcaseCommunity cfg={cfg} c={c} slug={slug} />}
       {activeTab === 'blog' && <ProjectBlogTab page={slug} />}
+      {/* A showcase page has no code snapshot of its own — those are keyed on the fixed
+          projects, so the map is only offered there. */}
       {activeTab === 'stack' && <StackMap stack={cfg.stack} t={t} />}
       {activeTab === 'legal' && <ShowcaseLegal legal={cfg.legal || []} lang={lang} />}
     </div>
