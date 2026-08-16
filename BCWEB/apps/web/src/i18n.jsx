@@ -55,104 +55,63 @@ const DICT = {
     'news.ph': 'you@example.com', 'news.cta': 'Subscribe', 'news.sending': 'Subscribing…',
     'news.check': 'Almost there — check your inbox to confirm your subscription.', 'news.err': 'Could not subscribe — check the address and try again.',
     'news.foot': 'Newsletter',
-    'rbac.title': "Quelle garde protège quelle route",
-    'rbac.ok': "Chaque route /admin et /me porte une garde, ou figure comme publique à dessein.",
-    'rbac.bad': "{n} route(s) /admin ou /me sans garde — lisez chacune avant de conclure, certaines sont publiques à dessein.",
-    'rbac.caps': "Par capacité",
-    'rbac.roles': "Par rôle",
-    'rbac.unguarded': "{n} route(s) sans aucune garde — surtout des flux publics et l’authentification.",
-    'smap.title': "La base de données, et l’écart entre le schéma et les migrations",
-    'smap.ok': "Chaque index des migrations est déclaré dans le schéma. {m} modèles, {r} relations, {g} migrations.",
-    'smap.drift': "{n} index existent en SQL sans être déclarés dans schema.prisma — la prochaine migration générée proposera de les supprimer.",
-    'smap.widest': "Modèles les plus larges",
-    'smap.dependedon': "Les plus référencés",
-    'cmap.title': "La pile, et ce qu’elle publie sur le réseau",
-    'cmap.exposed': "{n} port(s) joignables depuis l’extérieur de cette machine. Le proxy doit publier 80 et 443 ; le reste doit être fermé par le pare-feu après le premier déploiement.",
-    'cmap.dangling': "Un depends_on nomme un service inexistant — compose refusera de démarrer :",
-    'cmap.order': "Ordre de démarrage",
-    'cmap.notfound': "docker-compose.yml n’est pas dans l’image de l’API — cette carte ne fonctionne que depuis un dépôt source.",
-    'cmap.nohealth': "pas de healthcheck",
-    'secmap.title': "Variables d’environnement, et les secrets qui peuvent retomber sur une valeur du dépôt",
-    'secmap.ok': "Aucun secret ne peut retomber sur une valeur du dépôt sans garde.",
-    'secmap.bad': "{n} secret(s) retombent sur une valeur codée en dur sans que rien n’empêche l’application de démarrer ainsi. La valeur est dans le code à la ligne indiquée — elle n’est volontairement pas transmise par cette API.",
-    'secmap.guarded': "{n} autre(s) valeur(s) de repli existent, mais un démarrage en production refuse de se lancer dessus.",
-    'secmap.noenv': ".env.example n’est pas dans cette image : « documentée » et « inutilisée » ne peuvent pas être répondues ici.",
-    'secmap.undoc': "Lues par le code, absentes de .env.example",
-    'secmap.unused': "Dans .env.example et jamais lues :",
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     'sub2.k.preset': "Automations",
-    'sub.repohint': "Vous cherchez à lister un Server-Repo ? Ce n’est pas un élément de catalogue : il a son propre hébergement et son propre circuit de validation.",
-    'sub.repolink': "Aller aux Server-Repos",
-    'dvt.dl.noassets': "La liste des actions n’a pas encore été publiée. Dans BMM, lancez `npm run map:deeplinks --json`, puis téléversez frontend/deeplinks.json comme asset `deeplinks.json`. Ce constructeur la lit plutôt que d’en garder une copie, qui vieillirait dès le prochain deeplink ajouté.",
-    'dvt.dl.noparams': "Cette action ne prend aucun paramètre.",
+    
+    
     'usanc.title': "Sanctions",
-    'usanc.sub': "La levée, la modification et la réponse à une contestation restent sur la page Sanctions. Les preuves s’ajoutent ici.",
+    
     'usanc.note': "Note interne",
-    'gdpr.title': "Demandes de données",
-    'gdpr.sub': "Tout ce qui est détenu sur ce compte, assemblé depuis le schéma lui-même plutôt qu’une liste — une table ajoutée plus tard est incluse sans que personne ait à y penser.",
-    'gdpr.download': "Télécharger le fichier",
-    'gdpr.email': "Le lui envoyer par e-mail",
-    'gdpr.preview': "Prévisualiser un effacement",
-    'gdpr.built': "Construit à partir de {n} table(s).",
-    'gdpr.partial': "{n} table(s) n’ont pas pu être lues — voir couldNotRead dans le fichier.",
-    'gdpr.send.t': "Envoyer ses données par e-mail ?",
-    'gdpr.send.m': "Ceci envoie une copie de tout ce qui est détenu sur ce compte à {e} — l’adresse DU compte, pas celle qui a écrit. Assurez-vous que la demande vient bien de son propriétaire.",
+    
+    
+    
+    
+    
     'gdpr.send.ok': "Envoyer",
-    'gdpr.sent': "Envoyé à {e} ({kb} Ko, {n} tables).",
-    'gdpr.nomail': "L’e-mail n’est pas configuré sur cette instance.",
-    'gdpr.blocked': "Ce compte ne peut pas encore être effacé.",
-    'gdpr.plan': "{d} ligne(s) seraient supprimées, {x} détachées, {k} conservées. Rien n’a été modifié — ceci est un aperçu.",
-    'bmi.drop': "Déposez un fichier ici, ou",
-    'bmi.choose': "choisissez-en un",
-    'bmi.local': "Le fichier est lu dans votre navigateur. Seul son contenu est envoyé, et seulement quand vous cliquez sur Lire.",
-    'bmi.toobig': "Ce fichier dépasse 8 Mo — au-delà de ce que l’inspecteur accepte.",
-    'bmi.readfail': "Impossible de lire ce fichier.",
-    'bmi.iszip': "{n} est une archive ZIP. Ouvrez-la et déposez le plugin.json ou le theme.json qu’elle contient.",
+    
+    
+    
+    
+    
     'arp.susp.title': "Suspendre « {n} »",
-    'arp.susp.done': "Suspendu, et le propriétaire sait pourquoi.",
-    'arp.reject': "Retirer de la liste publique des dépôts",
-    'arp.reject.m': "Cela annule la vérification et sort « {n} » de la liste publique et de repos.json, le flux que lit BMM. Le dépôt continue de tourner et son propriétaire garde ses données — il peut redemander une revue.",
-    'arp.rejectbtn': "Retirer de la liste",
+    
+    
     'cc.susp.title': "Suspendre « {n} »",
-    'sanc.form.days': "Pour combien de temps",
-    'sanc.form.days.h': "Laissez vide pour une durée indéterminée. Une suspension sans échéance est une suspension que quelqu’un doit penser à lever.",
-    'sanc.form.d.none': "Indéterminée",
+    
+    
     'sanc.form.d.1': "24 heures",
     'sanc.form.d.7': "7 jours",
     'sanc.form.d.30': "30 jours",
     'sanc.form.d.90': "90 jours",
-    'sanc.form.note': "Note interne (jamais visible par la personne)",
-    'sanc.form.note.h': "La raison ci-dessus est citée dans son e-mail et dans toute contestation. Ce que vous n’y mettriez pas va ici.",
-    'maps.title': "Cartes du code",
-    'maps.show': "{n} rapports en lecture seule",
+    
+    
     'maps.hide': "masquer",
-    'maps.sub': "Gardes, écart de schéma, migrations, ports publiés, ce qui construit et livre le site, secrets, configuration et flux de données. Chacune lit les sources et rapporte ; aucune ne modifie quoi que ce soit.",
-    'adm.plans.dup': "Un plan avec ce nom et ces caractéristiques existe déjà ({n}) — modifiez celui-là plutôt que d’en ajouter un second.",
-    'mig.title': "L’historique des migrations, et tout écart avec la base",
-    'mig.ok': "{d} sur disque, {a} appliquées, {p} en attente. Rien d’appliqué ne manque au dossier et rien n’est à moitié fait.",
-    'mig.bad': "Le dossier et la base ne concordent pas. Cela casse le prochain déploiement — sur les machines autres que celle-ci.",
-    'mig.nodb': "{n} migrations sur disque. La base n’était pas joignable : appliquées/en attente ne peut pas être répondu — et n’est pas deviné.",
-    'mig.gone': "appliquée, dossier disparu",
-    'mig.rolled': "annulée",
-    'mig.unfinished': "commencée, jamais terminée",
-    'mig.destructive': "Migrations qui ont perdu des données",
-    'mig.recent': "Les plus récentes",
-    'mig.noop': "aucune instruction reconnue",
-    'mig.notfound': "Aucun dossier de migrations à côté de l’API — cette carte a besoin du répertoire prisma.",
-    'flow.title': "Où vont les données, et ce qu’une requête anonyme peut écrire",
-    'flow.head': "{r} routes · {m} modèles · {c} appels à la base. {u} route(s) sans garde écrivent en base — lisez-les, elles sont pour la plupart délibérées.",
-    'flow.self': "renvoie 401/403 depuis son propre corps",
-    'flow.inhandler': "{n} autre(s) route(s) écrivent et sont gardées dans le handler plutôt que par un preHandler (le secret partagé du bot Discord).",
-    'flow.models': "Modèles les plus sollicités",
+    
+    
+    
+    
+    
+    
+    
+    
+    
     'flow.routes': "routes",
-    'flow.outside': "{n} appel(s) à la base hors de toute route — balayeurs, code de démarrage et utilitaires, joignables par aucune requête.",
-    'cfg.title': "Ce que .env.example promet, face à ce que cette instance a vraiment",
-    'cfg.ok': "Aucune variable n’est restée sur une valeur d’exemple à remplacer.",
-    'cfg.bad': "{n} variable(s) sont encore réglées sur la valeur à remplacer de .env.example. Si l’une est un secret, c’est un identifiant qui se trouve dans le dépôt.",
-    'cfg.isSecret': "nom de secret",
-    'cfg.unset': "Documentées avec une valeur par défaut, non définies ici",
-    'cfg.kept': "{n} variable(s) gardent une vraie valeur par défaut de l’exemple (5432, production, une région) — faites pour être copiées.",
-    'cfg.extra': "Définies ici et absentes de .env.example :",
-    'cfg.notfound': ".env.example n’est pas dans l’image de l’API — cette comparaison ne fonctionne que depuis un dépôt source.",
+    
+    
+    
+    
+    
     'adm.tab.newsletter': 'Newsletter',
     'nl.h': 'Newsletter', 'nl.sub': 'Send a custom email to your subscribers — everyone, or a hand-picked list. Every message is branded and includes a one-click unsubscribe link.',
     'nl.c.active': '{n} active', 'nl.c.pending': '{n} pending', 'nl.c.unsub': '{n} unsubscribed',
@@ -209,6 +168,94 @@ const DICT = {
     'common.loading': 'Loading…',
   },
   fr: {
+    // Moved out of the `en` block, which held French values. DICT.en is also the
+    // last-resort fallback for every language, so these rendered French on the
+    // ENGLISH site. Each call site already passes an English fallback — checked, all
+    // 86 of them — so dropping the en entry leaves one source of truth per language.
+    'rbac.title': 'Quelle garde protège quelle route',
+    'rbac.ok': 'Chaque route /admin et /me porte une garde, ou figure comme publique à dessein.',
+    'rbac.bad': '{n} route(s) /admin ou /me sans garde — lisez chacune avant de conclure, certaines sont publiques à dessein.',
+    'rbac.caps': 'Par capacité',
+    'rbac.roles': 'Par rôle',
+    'rbac.unguarded': '{n} route(s) sans aucune garde — surtout des flux publics et l’authentification.',
+    'smap.title': 'La base de données, et l’écart entre le schéma et les migrations',
+    'smap.ok': 'Chaque index des migrations est déclaré dans le schéma. {m} modèles, {r} relations, {g} migrations.',
+    'smap.drift': '{n} index existent en SQL sans être déclarés dans schema.prisma — la prochaine migration générée proposera de les supprimer.',
+    'smap.widest': 'Modèles les plus larges',
+    'smap.dependedon': 'Les plus référencés',
+    'cmap.title': 'La pile, et ce qu’elle publie sur le réseau',
+    'cmap.exposed': '{n} port(s) joignables depuis l’extérieur de cette machine. Le proxy doit publier 80 et 443 ; le reste doit être fermé par le pare-feu après le premier déploiement.',
+    'cmap.dangling': 'Un depends_on nomme un service inexistant — compose refusera de démarrer :',
+    'cmap.order': 'Ordre de démarrage',
+    'cmap.notfound': 'docker-compose.yml n’est pas dans l’image de l’API — cette carte ne fonctionne que depuis un dépôt source.',
+    'cmap.nohealth': 'pas de healthcheck',
+    'secmap.title': 'Variables d’environnement, et les secrets qui peuvent retomber sur une valeur du dépôt',
+    'secmap.ok': 'Aucun secret ne peut retomber sur une valeur du dépôt sans garde.',
+    'secmap.bad': '{n} secret(s) retombent sur une valeur codée en dur sans que rien n’empêche l’application de démarrer ainsi. La valeur est dans le code à la ligne indiquée — elle n’est volontairement pas transmise par cette API.',
+    'secmap.guarded': '{n} autre(s) valeur(s) de repli existent, mais un démarrage en production refuse de se lancer dessus.',
+    'secmap.noenv': '.env.example n’est pas dans cette image : « documentée » et « inutilisée » ne peuvent pas être répondues ici.',
+    'secmap.undoc': 'Lues par le code, absentes de .env.example',
+    'secmap.unused': 'Dans .env.example et jamais lues :',
+    'sub.repohint': 'Vous cherchez à lister un Server-Repo ? Ce n’est pas un élément de catalogue : il a son propre hébergement et son propre circuit de validation.',
+    'sub.repolink': 'Aller aux Server-Repos',
+    'dvt.dl.noassets': 'La liste des actions n’a pas encore été publiée. Dans BMM, lancez `npm run map:deeplinks --json`, puis téléversez frontend/deeplinks.json comme asset `deeplinks.json`. Ce constructeur la lit plutôt que d’en garder une copie, qui vieillirait dès le prochain deeplink ajouté.',
+    'dvt.dl.noparams': 'Cette action ne prend aucun paramètre.',
+    'usanc.sub': 'La levée, la modification et la réponse à une contestation restent sur la page Sanctions. Les preuves s’ajoutent ici.',
+    'gdpr.title': 'Demandes de données',
+    'gdpr.sub': 'Tout ce qui est détenu sur ce compte, assemblé depuis le schéma lui-même plutôt qu’une liste — une table ajoutée plus tard est incluse sans que personne ait à y penser.',
+    'gdpr.download': 'Télécharger le fichier',
+    'gdpr.email': 'Le lui envoyer par e-mail',
+    'gdpr.preview': 'Prévisualiser un effacement',
+    'gdpr.built': 'Construit à partir de {n} table(s).',
+    'gdpr.partial': '{n} table(s) n’ont pas pu être lues — voir couldNotRead dans le fichier.',
+    'gdpr.send.t': 'Envoyer ses données par e-mail ?',
+    'gdpr.send.m': 'Ceci envoie une copie de tout ce qui est détenu sur ce compte à {e} — l’adresse DU compte, pas celle qui a écrit. Assurez-vous que la demande vient bien de son propriétaire.',
+    'gdpr.sent': 'Envoyé à {e} ({kb} Ko, {n} tables).',
+    'gdpr.nomail': 'L’e-mail n’est pas configuré sur cette instance.',
+    'gdpr.blocked': 'Ce compte ne peut pas encore être effacé.',
+    'gdpr.plan': '{d} ligne(s) seraient supprimées, {x} détachées, {k} conservées. Rien n’a été modifié — ceci est un aperçu.',
+    'bmi.drop': 'Déposez un fichier ici, ou',
+    'bmi.choose': 'choisissez-en un',
+    'bmi.local': 'Le fichier est lu dans votre navigateur. Seul son contenu est envoyé, et seulement quand vous cliquez sur Lire.',
+    'bmi.toobig': 'Ce fichier dépasse 8 Mo — au-delà de ce que l’inspecteur accepte.',
+    'bmi.readfail': 'Impossible de lire ce fichier.',
+    'bmi.iszip': '{n} est une archive ZIP. Ouvrez-la et déposez le plugin.json ou le theme.json qu’elle contient.',
+    'arp.susp.done': 'Suspendu, et le propriétaire sait pourquoi.',
+    'arp.reject.m': 'Cela annule la vérification et sort « {n} » de la liste publique et de repos.json, le flux que lit BMM. Le dépôt continue de tourner et son propriétaire garde ses données — il peut redemander une revue.',
+    'sanc.form.days': 'Pour combien de temps',
+    'sanc.form.days.h': 'Laissez vide pour une durée indéterminée. Une suspension sans échéance est une suspension que quelqu’un doit penser à lever.',
+    'sanc.form.d.none': 'Indéterminée',
+    'sanc.form.note': 'Note interne (jamais visible par la personne)',
+    'sanc.form.note.h': 'La raison ci-dessus est citée dans son e-mail et dans toute contestation. Ce que vous n’y mettriez pas va ici.',
+    'maps.title': 'Cartes du code',
+    'maps.show': '{n} rapports en lecture seule',
+    'maps.sub': 'Gardes, écart de schéma, migrations, ports publiés, ce qui construit et livre le site, secrets, configuration et flux de données. Chacune lit les sources et rapporte ; aucune ne modifie quoi que ce soit.',
+    'adm.plans.dup': 'Un plan avec ce nom et ces caractéristiques existe déjà ({n}) — modifiez celui-là plutôt que d’en ajouter un second.',
+    'mig.title': 'L’historique des migrations, et tout écart avec la base',
+    'mig.ok': '{d} sur disque, {a} appliquées, {p} en attente. Rien d’appliqué ne manque au dossier et rien n’est à moitié fait.',
+    'mig.bad': 'Le dossier et la base ne concordent pas. Cela casse le prochain déploiement — sur les machines autres que celle-ci.',
+    'mig.nodb': '{n} migrations sur disque. La base n’était pas joignable : appliquées/en attente ne peut pas être répondu — et n’est pas deviné.',
+    'mig.gone': 'appliquée, dossier disparu',
+    'mig.rolled': 'annulée',
+    'mig.unfinished': 'commencée, jamais terminée',
+    'mig.destructive': 'Migrations qui ont perdu des données',
+    'mig.recent': 'Les plus récentes',
+    'mig.noop': 'aucune instruction reconnue',
+    'mig.notfound': 'Aucun dossier de migrations à côté de l’API — cette carte a besoin du répertoire prisma.',
+    'flow.title': 'Où vont les données, et ce qu’une requête anonyme peut écrire',
+    'flow.head': '{r} routes · {m} modèles · {c} appels à la base. {u} route(s) sans garde écrivent en base — lisez-les, elles sont pour la plupart délibérées.',
+    'flow.self': 'renvoie 401/403 depuis son propre corps',
+    'flow.inhandler': '{n} autre(s) route(s) écrivent et sont gardées dans le handler plutôt que par un preHandler (le secret partagé du bot Discord).',
+    'flow.models': 'Modèles les plus sollicités',
+    'flow.outside': '{n} appel(s) à la base hors de toute route — balayeurs, code de démarrage et utilitaires, joignables par aucune requête.',
+    'cfg.title': 'Ce que .env.example promet, face à ce que cette instance a vraiment',
+    'cfg.ok': 'Aucune variable n’est restée sur une valeur d’exemple à remplacer.',
+    'cfg.bad': '{n} variable(s) sont encore réglées sur la valeur à remplacer de .env.example. Si l’une est un secret, c’est un identifiant qui se trouve dans le dépôt.',
+    'cfg.isSecret': 'nom de secret',
+    'cfg.unset': 'Documentées avec une valeur par défaut, non définies ici',
+    'cfg.kept': '{n} variable(s) gardent une vraie valeur par défaut de l’exemple (5432, production, une région) — faites pour être copiées.',
+    'cfg.extra': 'Définies ici et absentes de .env.example :',
+    'cfg.notfound': '.env.example n’est pas dans l’image de l’API — cette comparaison ne fonctionne que depuis un dépôt source.',
     'poll.f.up': 'Monter',
     'poll.f.down': 'Descendre',
     'apq.kind.ranking': 'Classement',
