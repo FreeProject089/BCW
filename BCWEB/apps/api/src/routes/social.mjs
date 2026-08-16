@@ -159,6 +159,15 @@ export default async function socialRoutes(app) {
       where: {
         OR: [{ displayName: { contains: q, mode: 'insensitive' } }, ...(owners.size ? [{ id: { in: [...owners] } }] : [])],
         status: { not: 'banned' },
+        // A closed account is not a person you can find. Its page already answers "closed on
+        // <date>" for anyone holding the old link, but listing it in a search offers it as
+        // somebody to look at — and the row only still exists because closing anonymises in
+        // place rather than deleting (payments and the audit chain point at it).
+        //
+        // A closure that is merely SCHEDULED is not this: the person still has a month to call
+        // it off, and vanishing from search the moment they ask would be the app deciding for
+        // them. Only `closedAt` — the day it actually happened — hides them.
+        closedAt: null,
         ...(isStaff ? {} : { profilePublic: true }),
       },
       select: userSelect, take: 20, orderBy: { createdAt: 'asc' },
