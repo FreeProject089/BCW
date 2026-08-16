@@ -33,9 +33,17 @@ export function startAnnouncer(client) {
             // The general channel is the fallback on purpose: a new kind of announcement should
             // be loud where people watch, not dropped because nobody configured a channel.
             const fallbackId = cfg.alerts?.generalChannelId || cfg.alerts?.channelId;
+            // Per-kind routing. Commissions, incidents and the "something is waiting" digest go
+            // to different people, and one channel carrying all three is one channel everybody
+            // mutes. Unset falls back, so this is additive: a server that configures nothing
+            // behaves exactly as it did.
+            const routes = cfg.announce?.channels || {};
+            const roles = cfg.announce?.roles || {};
 
             for (const a of announcements) {
-                const channel = client.channels.cache.get(a.channelId || fallbackId);
+                // An announcement that names its own channel keeps it — the admin screen can
+                // still send one message somewhere specific.
+                const channel = client.channels.cache.get(a.channelId || routes[a.kind] || fallbackId);
                 if (!channel?.send) {
                     await api.announcementResult(a.id, false, 'No channel configured, or the bot cannot see it.');
                     continue;
@@ -49,8 +57,16 @@ export function startAnnouncer(client) {
                     ...(a.url ? { url: a.url } : {}),
                     timestamp: new Date(a.createdAt).toISOString(),
                 };
+                // A role is pinged only when the thing is URGENT, and only where one is
+                // configured for that kind. Pinging on every message is how a role gets muted,
+                // and a muted role is worse than none — it looks like coverage.
+                const roleId = a.urgent ? roles[a.kind] : null;
+                const content = roleId ? `<@&${roleId}>` : undefined;
                 try {
-                    await channel.send({ embeds: [embed] });
+                    await channel.send({
+                        ...(content ? { content, allowedMentions: { roles: [roleId] } } : {}),
+                        embeds: [embed],
+                    });
                     await api.announcementResult(a.id, true);
                 } catch (e) {
                     await api.announcementResult(a.id, false, String(e?.message || e).slice(0, 500));

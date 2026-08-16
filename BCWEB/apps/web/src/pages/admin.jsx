@@ -9007,6 +9007,35 @@ function AdminBot() {
           </Field>
         </ModuleCard>
 
+        {/* Where each kind of announcement lands. Empty means the general channel, which is
+            what every existing install already does — so this whole card changes nothing until
+            somebody fills a box in. */}
+        <ModuleCard icon={Megaphone} title={t('db.mod.route', 'Where announcements go')}
+          desc={t('db.mod.route.d', 'A commission, an incident and "something is waiting" are read by different people. One channel carrying all three is one channel everybody mutes.')}
+          enabled onToggle={null}>
+          {[
+            ['myo', t('db.r.myo', 'Commissions (MYO)'), t('db.r.myo.h', 'A paid consultation arriving — somebody is waiting for an answer.')],
+            ['incident', t('db.r.incident', 'Status incidents'), t('db.r.incident.h', 'A service stopped answering, and a server error nobody has seen before.')],
+            ['custom', t('db.r.custom', 'Needs attention'), t('db.r.custom.h', 'The digest of what is waiting: data requests, submissions, reports, contested sanctions.')],
+            ['event', t('db.r.event', 'Events'), ''],
+            ['promo', t('db.r.promo', 'Promotions'), ''],
+          ].map(([k, label, hint]) => (
+            <div key={k} className="grid sm:grid-cols-2 gap-2">
+              <Field label={label} hint={hint || undefined}>
+                <Input value={g(`announce.channels.${k}`)} onChange={(e) => set(`announce.channels.${k}`, e.target.value)}
+                  placeholder={t('db.f.chanid', 'Channel ID')} />
+              </Field>
+              {/* The ping is for URGENT only, and the hint says so where somebody is deciding
+                  whether to fill it in — not in a doc they will not read. */}
+              <Field label={t('db.r.role', 'Role to ping when urgent')}
+                hint={t('db.r.role.h', 'Only for an urgent one. A role pinged on every message is a role people mute.')}>
+                <Input value={g(`announce.roles.${k}`)} onChange={(e) => set(`announce.roles.${k}`, e.target.value)}
+                  placeholder={t('db.f.roleid', 'Role ID')} />
+              </Field>
+            </div>
+          ))}
+        </ModuleCard>
+
         <ModuleCard icon={Heart} title={t('db.mod.kofi', 'Ko-fi tips')} desc={t('db.mod.kofi.d', 'Thank supporters automatically with a running total.')} enabled={!!cfg.kofi?.enabled} onToggle={(v) => set('kofi.enabled', v)}>
           <Field label={t('db.f.tipsch', 'Tips channel id')} hint={t('db.f.tipsch.h', 'Each new tip is posted as a thank-you embed. Old tips are never re-posted.')}>
             <Input value={g('kofi.channelId')} onChange={(e) => set('kofi.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />

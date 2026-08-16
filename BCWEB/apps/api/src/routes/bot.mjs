@@ -39,6 +39,19 @@ const DEFAULT_BOT_CONFIG = {
   // it. `generalChannelId` is optional — unset, incidents keep landing in the perf
   // channel exactly as before, so this default changes nothing for an existing install.
   alerts: { enabled: false, channelId: '', generalChannelId: '' },
+  // Where each kind of announcement lands, and who gets pinged when one is urgent.
+  //
+  // Empty means "the general channel", which is what every existing install has been doing —
+  // so this is additive and changes nothing until somebody fills a box in. The kinds are the
+  // ones the queue already carries: a commission, an incident from the status page, an event,
+  // a promotion, and the catch-all the "something is waiting" digest and the error alerts use.
+  //
+  // A role is pinged ONLY for an urgent one. Pinging on every message is how a role gets
+  // muted, and a muted role is worse than no role because it looks like coverage.
+  announce: {
+    channels: { myo: '', incident: '', event: '', promo: '', custom: '' },
+    roles: { myo: '', incident: '', event: '', promo: '', custom: '' },
+  },
   // Ko-fi tips (see kofi.mjs's webhook → KofiDonation): when enabled, the bot
   // posts each new tip to this channel with the running total.
   kofi: { enabled: false, channelId: '' },
