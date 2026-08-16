@@ -1,4 +1,14 @@
-# What is left of the batch — TWO items
+# What is left of the batch — ONE item
+
+Everything else shipped. The only open chantier is **item 6, the scheduler as a language**
+(`import`: reusable step blocks). Its design is settled in
+`.Assets/.md/SCHEDULER_TYPES_DESIGN.md`, including the decision that gates it — the CALLER's
+permissions apply, never the block's — and it is a kind-level change, so
+`check-step-kinds` will catch the two walkers that fail silently.
+
+---
+
+## The original header, kept for the record
 
 Four of the six shipped after this was first written, so the entries below them are kept only
 for the reasoning they record, marked DONE with their commit. Read the two open ones.
@@ -77,7 +87,17 @@ its preview than in the inbox is worse than no preview.
 
 ---
 
-## 4. Seed content: rework blog / docs / FAQ — STILL OPEN
+## 4. Seed content — DONE (`04f3fde` reference, `28ddeeb` the one block that was missing)
+
+The rework turned out to be nine tenths already finished. `seed-docs.mjs` uses the custom blocks
+127 times; `seed-faq.mjs` used none, and its answers are short and direct enough that wrapping
+them would have been decoration. Exactly one answer earned a callout — the shared-game-folder
+trap — and has it, in both languages, verified rendering in the browser.
+
+Recorded because the instinct on reading this item was to rewrite everything, and the right
+answer was to change one thing. Kept below for the reasoning only.
+
+## 4-bis. The original note, for reference
 
 The documentation half is DONE (`04f3fde` → `guides/reference/CUSTOM_MARKDOWN.md`, sixteen
 directives extracted from `md.jsx` rather than remembered).
