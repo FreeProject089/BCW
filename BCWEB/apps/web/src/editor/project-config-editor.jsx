@@ -122,6 +122,132 @@ function IconBtn({ value, onChange }) {
 
 const LINK_FIELDS = [['github', 'GitHub'], ['source', 'Source'], ['discord', 'Discord'], ['kofi', 'Ko-fi'], ['website', 'Website']];
 
+// Files worth reading out of a picked folder. The SAME list the server applies to a GitHub
+// tree — kept here as well so a folder never leaves the machine whole: the browser filters
+// first and posts a handful of small text files, not the repo.
+const DETECT_NAMES = new Set(['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml',
+  'package.json', 'Cargo.toml', 'go.mod', 'pyproject.toml', 'requirements.txt']);
+const DETECT_SKIP = /(^|\/)(node_modules|vendor|\.git|dist|build|target|\.venv)(\/|$)/;
+
+/**
+ * Read a repository and propose a diagram.
+ *
+ * What comes back is a DRAFT, and it says so: it is published on a public page as a statement
+ * about somebody's infrastructure, so it lists the files each component came from and asks
+ * before overwriting work already done by hand.
+ */
+function StackDetect({ onDraft, hasExisting }) {
+  const toast = useToast(); const { t } = useI18n();
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState(null);
+
+  const run = async (payload, what) => {
+    setBusy(true); setDraft(null);
+    try {
+      const r = await api.post('/admin/projects/stack/detect', payload);
+      if (!r.nodes?.length) {
+        toast.error(t('pce.st.none', 'Nothing recognisable in {what} — no compose file and no package manifest.').replace('{what}', what));
+        return;
+      }
+      setDraft(r);
+    } catch (x) {
+      toast.error(x.data?.error === 'not_a_github_repo' ? t('pce.st.notrepo', 'That is not a GitHub repository URL.')
+        : x.data?.error === 'github_unreachable' ? t('pce.st.unreachable', 'Could not read that repository — check it is public and the address is right.')
+          : x.data?.error === 'bad_zip' ? t('pce.st.badzip', 'That file is not a readable zip.')
+            : t('pce.st.failed', 'Could not read that.'));
+    } finally { setBusy(false); }
+  };
+
+  const pickFolder = () => {
+    const i = document.createElement('input');
+    i.type = 'file'; i.webkitdirectory = true; i.multiple = true;
+    i.onchange = async () => {
+      const all = [...(i.files || [])];
+      const wanted = all.filter((f) => {
+        const rel = f.webkitRelativePath || f.name;
+        // Drop the folder's own name so paths match what the server sees for a repo.
+        const path = rel.split('/').slice(1).join('/') || rel;
+        return DETECT_NAMES.has(path.split('/').pop()) && !DETECT_SKIP.test(path) && path.split('/').length <= 4;
+      });
+      if (!wanted.length) return toast.error(t('pce.st.nofiles', 'No compose file or package manifest in that folder.'));
+      const files = {};
+      for (const f of wanted.slice(0, 40)) {
+        const path = (f.webkitRelativePath || f.name).split('/').slice(1).join('/');
+        files[path] = (await f.text()).slice(0, 200_000);
+      }
+      run({ files }, t('pce.st.thatfolder', 'that folder'));
+    };
+    i.click();
+  };
+
+  const pickZip = () => {
+    const i = document.createElement('input');
+    i.type = 'file'; i.accept = '.zip,application/zip';
+    i.onchange = async () => {
+      const f = i.files?.[0]; if (!f) return;
+      if (f.size > 9 * 1024 * 1024) return toast.error(t('pce.st.zipbig', 'That zip is over 9 MB. Pick the folder instead — only the manifests are read.'));
+      const buf = await f.arrayBuffer();
+      let bin = ''; const bytes = new Uint8Array(buf);
+      for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
+      run({ zipBase64: btoa(bin) }, f.name);
+    };
+    i.click();
+  };
+
+  const apply = () => {
+    if (hasExisting && !window.confirm(t('pce.st.replace', 'Replace the components below with what was found?'))) return;
+    onDraft(draft);
+    setDraft(null);
+    toast.success(t('pce.st.applied', 'Added — edit anything that is not right before saving.'));
+  };
+
+  return (
+    <div className="rounded-xl border border-[var(--line)] p-3 space-y-2">
+      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">Build it from a repository</div>
+      <p className="text-[11px] text-[var(--faint)]">
+        Reads compose files and package manifests and proposes the components. It only ever reports
+        what a file actually said — nothing is invented — and you edit the result before saving.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input className="flex-1 min-w-[200px]" value={url} onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://github.com/owner/repo" />
+        <Button type="button" size="sm" disabled={busy || !url.trim()} onClick={() => run({ url: url.trim() }, url.trim())}>
+          {busy ? <Spinner /> : <><Github size={13} /> Read it</>}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={pickFolder}>Pick a folder</Button>
+        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={pickZip}>…or a zip</Button>
+      </div>
+
+      {draft && (
+        <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-3 space-y-2">
+          <div className="text-sm">
+            <b>{draft.nodes.length}</b> component(s), <b>{draft.edges.length}</b> connection(s)
+            <span className="text-[var(--faint)]"> · {draft.filesRead} file(s) read</span>
+          </div>
+          <ul className="text-[12px] space-y-0.5">
+            {draft.nodes.map((n) => (
+              <li key={n.id} className="flex flex-wrap items-baseline gap-x-2">
+                <span className="font-medium">{n.label}</span>
+                <span className="text-[var(--faint)]">{n.kind}</span>
+                {n.tech && <span className="text-[var(--muted)]">{n.tech}</span>}
+              </li>
+            ))}
+          </ul>
+          {/* Where each claim came from. Without it this is a machine asserting things about
+              somebody's servers with nothing to check it against. */}
+          <div className="text-[11px] text-[var(--faint)]">Read from: {draft.evidence.join(', ')}</div>
+          {(draft.notes || []).map((n, i) => <div key={i} className="text-[11px] text-[var(--warning)]">{n}</div>)}
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant="primary" onClick={apply}>Use these</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setDraft(null)}>Discard</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProjectConfigEditor({ value, onChange, slug, isShowcase }) {
   const toast = useToast(); const { t } = useI18n();
   const c = value || {};
@@ -309,6 +435,11 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
           <Field label="Tab title" hint="Defaults to “How it runs”."><Input value={stack.title || ''} onChange={(e) => setIn('stack', { title: e.target.value })} placeholder="How it runs" /></Field>
           <Field label="Intro line (optional)"><Input value={stack.note || ''} onChange={(e) => setIn('stack', { note: e.target.value })} placeholder="A short sentence above the diagram" /></Field>
         </div>
+
+        <StackDetect
+          onDraft={(d) => setIn('stack', { nodes: d.nodes, edges: d.edges })}
+          hasExisting={stackNodes.length > 0}
+        />
 
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">Components</div>
         <Repeatable items={stackNodes} onChange={(v) => setIn('stack', { nodes: v })} addLabel="Add component" empty="No components yet."

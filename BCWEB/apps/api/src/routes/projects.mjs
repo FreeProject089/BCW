@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants } from '../lib/lib.mjs';
 import { safeFetch } from '../lib/net.mjs';
+import { zipReadAll } from '../lib/native.mjs';
+import { detectStack, interestingPaths } from '../lib/stack-detect.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
 // legal, release-notes source) stored as an AdminSetting row `project.<key>`.
@@ -178,6 +180,87 @@ export default async function projectRoutes(app) {
     const n = cache.size;
     cache.clear();
     return { ok: true, flushed: n };
+  });
+
+  // ── "How it runs": read a repository and propose a diagram ──────────────────
+  //
+  // Returns a DRAFT for the admin to edit, never a saved config: what this produces is
+  // published on a public project page as a description of somebody's infrastructure, and a
+  // detector that is confidently wrong there is worse than an empty tab. Every component
+  // comes back with the file that produced it, and a repo with nothing recognisable comes
+  // back empty rather than plausible.
+  //
+  // Two sources, one shape. A GitHub URL is read through the existing cached `gh()` client —
+  // the tree, then only the handful of paths worth reading. A zip arrives base64 in the body
+  // because uploads here go straight to object storage via presigned PUTs, so there is no
+  // multipart parser to hang a file on; the cap keeps that honest.
+  const MAX_ZIP_B64 = 12 * 1024 * 1024;   // ~9 MB of zip
+  const GH_REPO_RE = /^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(?:tree|blob)\/([^/]+))?\/?$/i;
+
+  app.post('/admin/projects/stack/detect', { preHandler: requireEditor() }, async (req, reply) => {
+    const b = z.object({
+      url: z.string().url().max(300).optional(),
+      zipBase64: z.string().max(MAX_ZIP_B64).optional(),
+      // A folder picked in the browser sends only the files that matter, already filtered
+      // there — the whole repo never leaves the machine.
+      files: z.record(z.string().max(200_000)).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_request' });
+
+    let files = null;
+    let source = '';
+
+    if (b.data.files) {
+      files = b.data.files;
+      source = 'folder';
+    } else if (b.data.zipBase64) {
+      let buf;
+      try { buf = Buffer.from(b.data.zipBase64, 'base64'); } catch { return reply.code(400).send({ error: 'bad_zip' }); }
+      let entries;
+      try { entries = await zipReadAll(buf); } catch { return reply.code(400).send({ error: 'bad_zip' }); }
+      // A GitHub zip wraps everything in `repo-branch/`; strip one leading folder when every
+      // entry shares it, or nothing would sit at the depth the path filter expects.
+      const names = entries.map((e) => e.name);
+      const first = names[0]?.split('/')[0];
+      const wrapped = first && names.every((n) => n.startsWith(`${first}/`));
+      const strip = (n) => (wrapped ? n.slice(first.length + 1) : n);
+      const wanted = new Set(interestingPaths(names.map(strip)));
+      files = {};
+      for (const e of entries) {
+        const path = strip(e.name);
+        if (wanted.has(path)) files[path] = e.data.toString('utf8');
+      }
+      source = 'zip';
+    } else if (b.data.url) {
+      const m = b.data.url.match(GH_REPO_RE);
+      if (!m) return reply.code(400).send({ error: 'not_a_github_repo' });
+      const [, owner, repo, ref] = m;
+      let tree;
+      try {
+        const meta = ref ? { default_branch: ref } : await gh(`https://api.github.com/repos/${owner}/${repo}`);
+        tree = await gh(`https://api.github.com/repos/${owner}/${repo}/git/trees/${meta.default_branch}?recursive=1`);
+      } catch (e) {
+        // 404 covers "private" as well as "typo", and saying which would be a guess.
+        return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message || e).slice(0, 120) });
+      }
+      const paths = (tree.tree || []).filter((e) => e.type === 'blob').map((e) => e.path);
+      const wanted = interestingPaths(paths);
+      files = {};
+      await Promise.all(wanted.map(async (path) => {
+        const branch = ref || 'HEAD';
+        const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
+        try {
+          const res = await safeFetch(raw, { headers: { 'User-Agent': 'bcweb' } });
+          if (res.ok) files[path] = (await res.text()).slice(0, 200_000);
+        } catch { /* one unreadable file must not abandon the scan */ }
+      }));
+      source = `github:${owner}/${repo}`;
+    } else {
+      return reply.code(400).send({ error: 'nothing_to_read' });
+    }
+
+    const draft = detectStack(files);
+    return { ok: true, source, filesRead: Object.keys(files).length, ...draft };
   });
 
   app.put('/projects/:key', { preHandler: requireEditor() }, async (req, reply) => {
