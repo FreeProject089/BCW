@@ -76,6 +76,29 @@ async function resolveCoAuthorIds(p, emails, primaryAuthorId) {
 
 const STAFF = ['MOD', 'ADMIN', 'SUPERADMIN'];
 
+// ── Who may see a draft ─────────────────────────────────────────────────────────
+//
+// One rule, four copies: the list, the single post, the staff list and "my posts" each
+// decided it for themselves, and two of them re-typed the role array instead of using STAFF.
+// A visibility rule written more than once diverges — this codebase has already published a
+// staff-only poll tally by exactly that route — and the divergence here would publish
+// somebody's unfinished post.
+//
+// Staff see everything; a signed-in reader also sees what they wrote and what they were
+// invited to co-write; anybody else sees published posts only.
+export const isStaff = (user) => !!user && STAFF.includes(user.role);
+
+/** The `where` fragment for a LIST of posts. */
+export const draftWhere = (user) => (isStaff(user)
+    ? {}
+    : user
+        ? { OR: [{ status: 'PUBLISHED' }, { authorId: user.uid }, { coAuthorIds: { has: user.uid } }] }
+        : { status: 'PUBLISHED' });
+
+/** The same rule for ONE post already loaded. */
+export const maySeePost = (user, post) => !!post && (post.status === 'PUBLISHED' || isStaff(user)
+    || (!!user && (post.authorId === user.uid || (post.coAuthorIds || []).includes(user.uid))));
+
 // An "editor" of a post — staff, the author, or a co-author. The unit of trust for
 // history, comments, and editing. (`user` is req.user: { uid, role }.)
 const canEditPost = (user, post) => !!user && (STAFF.includes(user.role) || post.authorId === user.uid || (post.coAuthorIds || []).includes(user.uid));
@@ -166,12 +189,7 @@ export default async function blogRoutes(app) {
   // regardless of that flag).
   app.get('/blog', { preHandler: optionalAuth() }, async (req) => {
     const p = await db();
-    // Drafts (unpublished) are visible only to staff, a post's author, AND its
-    // co-authors (so collaborators can find + open the drafts they're working on) —
-    // never to logged-out visitors or unrelated users.
-    const isStaff = req.user && ['MOD', 'ADMIN', 'SUPERADMIN'].includes(req.user.role);
-    const statusCond = isStaff ? {} : (req.user ? { OR: [{ status: 'PUBLISHED' }, { authorId: req.user.uid }, { coAuthorIds: { has: req.user.uid } }] } : { status: 'PUBLISHED' });
-    const AND = [statusCond];
+    const AND = [draftWhere(req.user)];
     if (req.query?.project) AND.push({ project: { key: req.query.project } });
     if (req.query?.page) AND.push({ showcaseProject: { slug: req.query.page } });
     if (req.query?.home) AND.push({ OR: [{ project: { showOnHomeNews: true } }, { showcaseProject: { showOnHomeNews: true } }] });
@@ -197,10 +215,9 @@ export default async function blogRoutes(app) {
   app.get('/blog/:slug', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
     const post = await p.blogPost.findUnique({ where: { slug: req.params.slug }, include: { project: true, showcaseProject: true, author: { select: { id: true, displayName: true, avatar: true } } } });
-    // Drafts are visible only to staff, the author, or a co-author — 404 otherwise.
-    const isStaff = req.user && ['MOD', 'ADMIN', 'SUPERADMIN'].includes(req.user.role);
-    const canSeeDraft = post && (isStaff || (req.user && (post.authorId === req.user.uid || (post.coAuthorIds || []).includes(req.user.uid))));
-    if (!post || (post.status !== 'PUBLISHED' && !canSeeDraft)) return reply.code(404).send({ error: 'not_found' });
+    // A draft nobody may see is a 404, not a 403: "it exists but is not yours" is itself
+    // information about an unpublished post.
+    if (!maySeePost(req.user, post)) return reply.code(404).send({ error: 'not_found' });
     // Resolve collaborators' avatars + a reaction summary (counts by type + the
     // current viewer's own reaction, if any).
     const coAuthors = post.coAuthorIds.length
@@ -253,9 +270,11 @@ export default async function blogRoutes(app) {
   // never staff's full list.
   app.get('/blog/mine', { preHandler: requireRole() }, async (req) => {
     const p = await db();
-    const hasAnyGrant = STAFF.includes(req.user.role) || (await p.blogPermission.count({ where: { userId: req.user.uid } })) > 0;
+    const hasAnyGrant = isStaff(req.user) || (await p.blogPermission.count({ where: { userId: req.user.uid } })) > 0;
     if (!hasAnyGrant) return { posts: [], canWrite: false };
-    const where = STAFF.includes(req.user.role) ? {} : { authorId: req.user.uid };
+    // Staff get the full list; a granted author gets their own — which is `draftWhere` minus
+    // the published-posts branch, since this endpoint is "mine", not "everything I may read".
+    const where = isStaff(req.user) ? {} : { authorId: req.user.uid };
     const posts = await p.blogPost.findMany({ where, orderBy: { createdAt: 'desc' }, select: POST_SELECT });
     return { posts, canWrite: true };
   });
