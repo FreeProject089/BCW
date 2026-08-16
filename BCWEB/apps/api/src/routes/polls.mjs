@@ -13,6 +13,7 @@ import { db, requireRole, requireCap, optionalAuth, logAudit } from '../lib/lib.
 import { clientIp } from '../lib/geo.mjs';
 import { pollStats, questionStats, completion } from '../lib/poll-stats.mjs';
 import { planQuestionUpdate } from '../lib/poll-edit.mjs';
+import { validateAnswer, maxAnswers } from '../lib/poll-answer.mjs';
 
 /** Per-poll device fingerprint for anonymous voters.
  *
@@ -184,6 +185,78 @@ export default async function pollRoutes(app) {
       include: { options: { orderBy: { sort: 'asc' } }, votes: { select: { optionId: true, wasLoggedIn: true, userId: true, voterKey: true } } },
     });
     return publicPoll(fresh, { myVotes: picks, showResults: canSeeResults(fresh, true) });
+  });
+
+  /**
+   * Answer a multi-question poll.
+   *
+   * Separate from /vote, which takes optionIds and is what every existing poll uses. One door
+   * per shape rather than one door that guesses: a body with both would have to decide which
+   * the caller meant, and guessing wrong writes an answer nobody gave.
+   *
+   * Replaces the whole submission, like /vote replaces a previous answer — a form you cannot
+   * correct is a form people abandon.
+   */
+  app.post('/polls/:id/answers', { preHandler: optionalAuth(), config: { rateLimit: { max: 20, timeWindow: '5 minutes' } } }, async (req, reply) => {
+    const b = z.object({
+      answers: z.array(z.object({
+        questionId: z.string(),
+        // One value, or several for a multi-choice question. Unknown types are rejected by
+        // validateAnswer, not here, so the reason returned is specific.
+        value: z.any().optional(),
+        values: z.array(z.any()).optional(),
+      })).max(200),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+
+    const p = await db();
+    const poll = await p.poll.findUnique({
+      where: { id: req.params.id },
+      include: { questions: { include: { choices: { select: { id: true } } } } },
+    });
+    if (!poll || poll.status === 'draft') return reply.code(404).send({ error: 'not_found' });
+    if (!openNow(poll)) return reply.code(409).send({ error: 'closed' });
+    if (poll.audience === 'users' && !req.user?.uid) return reply.code(401).send({ error: 'sign_in_required' });
+    if (!poll.questions.length) return reply.code(409).send({ error: 'no_questions' });
+
+    const userId = req.user?.uid || null;
+    const voterKey = userId ? null : voterKeyFor(req, poll.id);
+    const byId = new Map(poll.questions.map((q) => [q.id, q]));
+    const rows = [];
+
+    for (const q of poll.questions) {
+      const sent = b.data.answers.find((a) => a.questionId === q.id);
+      const raws = sent ? (Array.isArray(sent.values) ? sent.values : [sent.value]) : [undefined];
+      const cap = maxAnswers(q);
+      if (raws.length > cap) return reply.code(400).send({ error: 'too_many', questionId: q.id, max: cap });
+
+      const choiceIds = (q.choices || []).map((c) => c.id);
+      for (const raw of raws) {
+        const v = validateAnswer(q, raw, choiceIds);
+        // The question is named in the error. "invalid_input" on a ten-question form tells the
+        // person nothing about which field to look at.
+        if (!v.ok) return reply.code(400).send({ error: v.error, questionId: q.id });
+        // A blank optional answer stores nothing — "skipped" and "answered with nothing" are
+        // different facts, and the completion funnel counts them differently.
+        if (v.value === null) continue;
+        rows.push({
+          pollId: poll.id, questionId: q.id, userId, voterKey, wasLoggedIn: !!userId,
+          [v.column]: v.value,
+        });
+      }
+    }
+
+    // An answer aimed at a question this poll does not own is refused rather than dropped: a
+    // silently ignored answer looks accepted and is not recorded.
+    const stray = b.data.answers.find((a) => !byId.has(a.questionId));
+    if (stray) return reply.code(400).send({ error: 'unknown_question', questionId: stray.questionId });
+
+    await p.$transaction([
+      p.pollAnswer.deleteMany({ where: { pollId: poll.id, ...(userId ? { userId } : { voterKey }) } }),
+      p.pollAnswer.createMany({ data: rows, skipDuplicates: true }),
+    ]);
+
+    return { ok: true, answers: rows.length };
   });
 
   /** Withdraw an answer. A poll you cannot un-answer is a poll people hesitate to answer. */
