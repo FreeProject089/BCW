@@ -7,7 +7,7 @@
 // separately from signed-in ones, everywhere, all the way to the admin screen — a merged
 // total would look precise and be wrong, and it is the merged number that gets quoted.
 import { z } from 'zod';
-import { viewQuestions } from '../lib/poll-view.mjs';
+import { viewQuestions, viewMyAnswers } from '../lib/poll-view.mjs';
 import crypto from 'node:crypto';
 import { db, requireRole, requireCap, optionalAuth, logAudit } from '../lib/lib.mjs';
 import { clientIp } from '../lib/geo.mjs';
@@ -104,6 +104,21 @@ export default async function pollRoutes(app) {
         questions: { include: { choices: { orderBy: { sort: 'asc' } } }, orderBy: { sort: 'asc' } },
       },
     });
+    // This viewer's own answers, for every listed poll, in ONE query. Without them a form
+    // poll cannot tell that anybody answered — see viewMyAnswers.
+    //
+    // An anonymous voterKey is salted PER POLL, so there is no single key to match on: the
+    // filter is a list of (pollId, voterKey) pairs. A signed-in viewer is one clause.
+    const uid = req.user?.uid || null;
+    const withQs = polls.filter((x) => (x.questions || []).length);
+    const myRows = withQs.length
+      ? await p.pollAnswer.findMany({
+        where: uid
+          ? { userId: uid, pollId: { in: withQs.map((x) => x.id) } }
+          : { OR: withQs.map((x) => ({ pollId: x.id, voterKey: voterKeyFor(req, x.id) })) },
+      })
+      : [];
+
     return {
       polls: polls
         // A poll for signed-in users is still LISTED to a visitor — hiding it would make the
@@ -111,9 +126,15 @@ export default async function pollRoutes(app) {
         // a blank page.
         .map((poll) => {
           const mine = myVotesOf(req, poll);
-          const body = publicPoll(poll, { myVotes: mine, showResults: canSeeResults(poll, mine.length > 0) });
+          const rows = myRows.filter((r) => r.pollId === poll.id);
+          const answered = rows.length > 0;
+          const body = publicPoll(poll, { myVotes: mine, showResults: canSeeResults(poll, mine.length > 0 || answered) });
           const qs = viewQuestions(poll);
-          if (qs.length) body.questions = qs;
+          if (qs.length) {
+            body.questions = qs;
+            body.myAnswers = viewMyAnswers(qs, rows);
+            body.hasAnswered = answered;
+          }
           return body;
         }),
     };
@@ -134,13 +155,29 @@ export default async function pollRoutes(app) {
     });
     if (!poll || poll.status === 'draft') return reply.code(404).send({ error: 'not_found' });
     const mine = myVotesOf(req, poll);
-    const body = publicPoll(poll, { myVotes: mine, showResults: canSeeResults(poll, mine.length > 0) });
+    const questions = viewQuestions(poll);
+    // Read BEFORE the body is built. `showResults` is not a field on the response — it decides
+    // whether the options carry their counts — so deciding it afterwards would change nothing
+    // and look like it had.
+    const uid = req.user?.uid || null;
+    const rows = questions.length
+      ? await p.pollAnswer.findMany({
+        where: { pollId: poll.id, ...(uid ? { userId: uid } : { voterKey: voterKeyFor(req, poll.id) }) },
+      })
+      : [];
+    // A form poll's tally is unlocked by having ANSWERED, which for it means PollAnswer rows:
+    // the legacy `voted` is about PollVote, which that path never writes, so it is always
+    // false here and `after_vote` would hide the result from the person who just answered.
+    const body = publicPoll(poll, { myVotes: mine, showResults: canSeeResults(poll, mine.length > 0 || rows.length > 0) });
     // Additive, and deliberately alongside `options` rather than replacing it. Every backfilled
     // poll has exactly one question saying the same thing as `question` + `options`, so the
     // current client keeps working untouched while the multi-question reader is built. The old
     // fields go when nothing reads them, not before — that is the whole point of the order.
-    const questions = viewQuestions(poll);
-    if (questions.length) body.questions = questions;
+    if (questions.length) {
+      body.questions = questions;
+      body.myAnswers = viewMyAnswers(questions, rows);
+      body.hasAnswered = rows.length > 0;
+    }
     return body;
   });
 

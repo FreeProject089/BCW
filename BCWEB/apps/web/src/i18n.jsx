@@ -271,6 +271,8 @@ const DICT = {
     'apq.note.body': 'Texte (markdown)',
     'apq.note.hint': 'Rendu avec le markdown du site — liens, listes et emphase fonctionnent. Le titre au-dessus est facultatif.',
     'apq.kind.note': 'Bloc de texte',
+    'poll.f.already': 'Vous avez répondu. Vos réponses sont ci-dessous — renvoyer les remplace.',
+    'poll.f.update': 'Mettre à jour mes réponses',
     'dvt.grp.installer': 'BetterInstaller',
     'dvt.rec': 'Vérifier un installer.toml',
     'dvt.rec.s': 'L’installeur ignore silencieusement toute clé qu’il ne reconnaît pas. Une section mal orthographiée se compile parfaitement et ne fait rien — et vous l’apprenez par un installeur déjà livré. Ceci compare votre recette au schéma que le moteur dérive de ses propres types.',

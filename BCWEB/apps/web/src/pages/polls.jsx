@@ -41,9 +41,12 @@ const needsForm = (poll) => {
 };
 
 /** A multi-question poll, as a form. */
-function PollForm({ poll, onDone }) {
+function PollForm({ poll, onDone, onWithdraw }) {
   const { t } = useI18n(); const toast = useToast();
-  const [vals, setVals] = useState({});
+  // Pre-filled with what you already answered. The endpoint REPLACES a submission rather than
+  // adding one, so a blank form would quietly discard every answer you did not retype — and
+  // before this the page could not tell you had answered at all, so it always was blank.
+  const [vals, setVals] = useState(() => ({ ...(poll.myAnswers || {}) }));
   const [busy, setBusy] = useState(false);
   const [errAt, setErrAt] = useState(null);
 
@@ -105,6 +108,14 @@ function PollForm({ poll, onDone }) {
 
   return (
     <div className="space-y-4">
+      {poll.hasAnswered && (
+        // Stated, and stated as replacement rather than as a second answer, because that is
+        // what pressing the button does.
+        <div className="text-[12px] text-[var(--muted)] flex items-center gap-1.5">
+          <Check size={13} className="text-[var(--success)]" />
+          {t('poll.f.already', 'You answered this. Your answers are below — sending again replaces them.')}
+        </div>
+      )}
       {(poll.questions || []).map((q) => q.kind === 'note' ? (
         /* Content, not a question: a heading, an explanation, a warning before the part that
            matters. No border and no asterisk — a box that looks like the answerable ones is a
@@ -253,9 +264,18 @@ function PollForm({ poll, onDone }) {
           </div>
         </div>
       ))}
-      <Button variant="primary" disabled={busy} onClick={submit}>
-        {busy ? <Spinner size={14} /> : t('poll.send', 'Send my answers')}
-      </Button>
+      <div className="flex flex-wrap gap-2 items-center">
+        <Button variant="primary" disabled={busy} onClick={submit}>
+          {busy ? <Spinner size={14} /> : (poll.hasAnswered ? t('poll.f.update', 'Update my answers') : t('poll.send', 'Send my answers'))}
+        </Button>
+        {/* The complement of "you answered": a poll you cannot un-answer is a poll people
+            hesitate to answer. The endpoint clears both tables, so this really removes it. */}
+        {poll.hasAnswered && (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={onWithdraw}>
+            {t('poll.withdraw', 'Withdraw my answer')}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -322,10 +342,18 @@ export function PollCard({ poll: initial, onChange }) {
             A backfilled poll has one choice question, so needsForm is false for it and this
             branch changes nothing about what everybody sees today. */}
         {needsForm(poll) && !closed && !needsAccount ? (
-          <PollForm poll={poll} onDone={async () => {
-            const fresh = await api.get(`/polls/${poll.id}`);
-            setPoll(fresh); onChange?.(fresh);
-          }} />
+          <PollForm
+            // Remounted when the answered state flips, so the pre-filled values are rebuilt
+            // from what the server now holds rather than from a state that was seeded before
+            // the answer existed.
+            key={poll.hasAnswered ? 'answered' : 'blank'}
+            poll={poll}
+            onDone={async () => {
+              const fresh = await api.get(`/polls/${poll.id}`);
+              setPoll(fresh); onChange?.(fresh);
+            }}
+            onWithdraw={withdraw}
+          />
         ) : showResults ? (
           <>
             {poll.options.map((o) => (

@@ -5,7 +5,7 @@
 // published something the owner marked private. Neither throws; both just quietly happen.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { maySeeResults, canVote, viewPoll } from '../src/lib/poll-view.mjs';
+import { maySeeResults, canVote, viewPoll, viewMyAnswers } from '../src/lib/poll-view.mjs';
 
 const poll = (over = {}) => ({
     id: 'p1', question: 'Which loader?', description: '', status: 'open', audience: 'all',
@@ -117,5 +117,50 @@ describe('viewPoll', () => {
     test('a question does not leak anything beyond its declared shape', () => {
         const v = viewPoll(poll({ questions: [{ id: 'q1', kind: 'choice', label: 'x', secret: 'no', choices: [] }] }), {});
         assert.equal('secret' in v.questions[0], false);
+    });
+});
+
+describe('viewMyAnswers — the answers you already gave', () => {
+    const q = (over) => ({ id: 'q', kind: 'choice', config: {}, ...over });
+    const row = (over) => ({ questionId: 'q', ...over });
+
+    test('a single choice comes back as a bare id, a multiple one as a list', () => {
+        // The renderer branches on exactly that, so a second interpretation here would drift.
+        assert.equal(viewMyAnswers([q()], [row({ choiceId: 'a' })]).q, 'a');
+        assert.deepEqual(
+            viewMyAnswers([q({ config: { multiple: true } })], [row({ choiceId: 'a' }), row({ choiceId: 'b' })]).q,
+            ['a', 'b'],
+        );
+    });
+
+    test('a ranking comes back in RANK order, not row order', () => {
+        // The database returns rows in whatever order it likes; the rank is in the data.
+        const rows = [row({ choiceId: 'c', number: 3 }), row({ choiceId: 'a', number: 1 }), row({ choiceId: 'b', number: 2 })];
+        assert.deepEqual(viewMyAnswers([q({ kind: 'ranking' })], rows).q, ['a', 'b', 'c']);
+    });
+
+    test('a grid comes back keyed by row, which is what the picker holds', () => {
+        const rows = [row({ choiceId: 'good', slot: 0 }), row({ choiceId: 'bad', slot: 1 })];
+        assert.deepEqual(viewMyAnswers([q({ kind: 'grid' })], rows).q, { 0: 'good', 1: 'bad' });
+    });
+
+    test('a date comes back as the yyyy-mm-dd an <input type=date> needs', () => {
+        const r = viewMyAnswers([q({ kind: 'date' })], [row({ date: new Date('2026-08-16T10:00:00Z') })]);
+        assert.equal(r.q, '2026-08-16');
+    });
+
+    test('a question with no answer is ABSENT, not empty', () => {
+        // Absent means "you have not answered this"; an empty string is an answer somebody
+        // gave. The form pre-fills from this map and the difference is visible on screen.
+        assert.deepEqual(viewMyAnswers([q(), q({ id: 'q2', kind: 'text' })], [row({ choiceId: 'a' })]), { q: 'a' });
+    });
+
+    test('a note contributes nothing — it cannot be answered', () => {
+        assert.deepEqual(viewMyAnswers([q({ kind: 'note' })], [row({ text: 'x' })]), {});
+    });
+
+    test('nothing at all is an empty map rather than a crash', () => {
+        assert.deepEqual(viewMyAnswers(null, null), {});
+        assert.deepEqual(viewMyAnswers([q()], []), {});
     });
 });
