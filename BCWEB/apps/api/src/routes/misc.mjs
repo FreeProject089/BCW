@@ -1009,7 +1009,11 @@ export default async function miscRoutes(app) {
     await sendMail({
       to: doc.subject.email,
       subject: 'Your BetterCommunity data',
-      html: mailShell({ title: 'Your data', body: mdToEmailHtml(body) }),
+      // POSITIONAL — mailShell(title, bodyHtml, cta, opts). Called with an object, `title`
+      // received the object itself and rendered as "[object Object]", and bodyHtml received
+      // nothing and rendered as "undefined". The mail sent, the attachment was correct, and
+      // the body said undefined: a GDPR data export that arrives looking broken.
+      html: mailShell('Your data', mdToEmailHtml(body)),
       text: body,
       attachments: [{ filename: `bettercommunity-data-${doc.subject.id}.json`, content: json, contentType: 'application/json' }],
     });

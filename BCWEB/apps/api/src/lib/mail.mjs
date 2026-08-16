@@ -247,6 +247,16 @@ export function mdToEmailHtml(md) {
 // (Apple/iOS Mail, Outlook.com…); elsewhere it degrades to light. Optional CTA button (+
 // raw link fallback) and a footer. `cta`: { url, label }.
 export function mailShell(title, bodyHtml, cta, opts = {}) {
+  // These arguments are POSITIONAL, and calling this with an options object is an easy mistake
+  // that fails in the worst way available: `title` stringifies to "[object Object]", bodyHtml
+  // is undefined, the mail SENDS, and the recipient gets a broken message. It happened to the
+  // GDPR data export, which is exactly the mail that must not look untrustworthy.
+  //
+  // Thrown rather than coerced. A shell that quietly unpacked `{title, body}` would make both
+  // call styles work and the next reader would have to know which one this file wants.
+  if (title !== null && typeof title === 'object') {
+    throw new TypeError('mailShell(title, bodyHtml, cta, opts) takes positional arguments — you passed an object as `title`.');
+  }
   // Escape the CTA url/label even though callers validate them — they can carry the
   // admin-supplied broadcast link, and this is HTML attribute + text context (CWE-79).
   const url = cta ? escapeHtml(cta.url) : '';
