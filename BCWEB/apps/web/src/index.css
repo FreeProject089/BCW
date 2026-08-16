@@ -817,3 +817,18 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
 /* The suite cards carry no tint any more: they are ordinary cards, like every
    other card on the page. The alternating wash singled out one row for no
    reason a reader could act on. */
+
+/* ── Tap targets ──────────────────────────────────────────────────────────────
+   A checkbox or radio renders at 13–16px, which is barely half the 24px WCAG 2.2
+   minimum. What you actually aim at is the LABEL wrapping it, so that is what gets
+   the height. Measured on a 375px viewport before this: 20 controls under 24px,
+   nine of them the radios of a grid question — the one place you must hit several
+   in a row.
+
+   Applied at every width, not behind `pointer: coarse`: a rule that only exists on
+   a touch device is a rule nobody checks, and 24px costs a desktop nothing. Grid
+   cells set their own larger target and are left alone. */
+label:has(> input[type="checkbox"]),
+label:has(> input[type="radio"]) {
+  min-height: 24px;
+}

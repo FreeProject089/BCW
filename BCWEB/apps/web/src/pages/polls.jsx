@@ -165,12 +165,15 @@ function PollForm({ poll, onDone, onWithdraw }) {
                     <li key={id} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--line)] text-[13px]">
                       <span className="w-5 text-[var(--faint)] tabular-nums">{i + 1}</span>
                       <span className="flex-1 min-w-0 truncate">{label(id)}</span>
+                      {/* 32×32, not `p-1`. Measured on a 375px viewport these were 14px wide —
+                          under half the 24px WCAG 2.2 minimum, and the two of them sat 4px
+                          apart, so reordering on a phone meant hitting the wrong arrow. */}
                       <button type="button" onClick={() => move(i, -1)} disabled={i === 0}
                         aria-label={t('poll.f.up', 'Move up')}
-                        className="p-1 text-[var(--faint)] hover:text-[var(--text)] disabled:opacity-30">↑</button>
+                        className="grid place-items-center w-8 h-8 shrink-0 rounded text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] disabled:opacity-30">↑</button>
                       <button type="button" onClick={() => move(i, 1)} disabled={i === order.length - 1}
                         aria-label={t('poll.f.down', 'Move down')}
-                        className="p-1 text-[var(--faint)] hover:text-[var(--text)] disabled:opacity-30">↓</button>
+                        className="grid place-items-center w-8 h-8 shrink-0 rounded text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] disabled:opacity-30">↓</button>
                     </li>
                   ))}
                 </ol>
@@ -193,7 +196,12 @@ function PollForm({ poll, onDone, onWithdraw }) {
                   <table className="w-full min-w-[360px] text-[13px] border-collapse">
                     <thead>
                       <tr>
-                        <th className="text-left font-normal text-[12px] text-[var(--muted)] pb-1.5 pr-3" />
+                        {/* The row-name column stays put while the columns scroll under it.
+                            Scrolling it away meant answering row 3 while the screen only showed
+                            the radios — you could not tell which row you were on. It must be
+                            OPAQUE (--bg-solid, not --surface-1): with "Translucent surfaces" on,
+                            the columns would read straight through it. */}
+                        <th className="sticky left-0 z-10 bg-[var(--bg-solid)] text-left font-normal text-[12px] text-[var(--muted)] pb-1.5 pr-3" />
                         {(q.choices || []).map((c) => (
                           <th key={c.id} className="font-normal text-[12px] text-[var(--muted)] pb-1.5 px-2 whitespace-nowrap">{c.label}</th>
                         ))}
@@ -202,12 +210,17 @@ function PollForm({ poll, onDone, onWithdraw }) {
                     <tbody>
                       {rows.map((label, i) => (
                         <tr key={i} className="border-t border-[var(--line)]">
-                          <th scope="row" className="text-left font-normal py-2 pr-3 min-w-0">{label}</th>
+                          <th scope="row" className="sticky left-0 z-10 bg-[var(--bg-solid)] text-left font-normal py-2 pr-3 min-w-0">{label}</th>
                           {(q.choices || []).map((c) => (
-                            <td key={c.id} className="text-center py-2 px-2">
-                              <input type="radio" name={`grid-${q.id}-${i}`} value={c.id}
-                                checked={picks[i] === c.id} onChange={() => pick(i, c.id)}
-                                aria-label={`${label} — ${c.label}`} className="accent-[var(--primary)]" />
+                            // The whole cell is the target, not the 13px dot inside it. A bare
+                            // radio measured 13×13 here — barely half the 24px minimum, in the
+                            // one question type where you must hit several in a row.
+                            <td key={c.id} className="text-center p-0">
+                              <label className="grid place-items-center min-h-[44px] px-3 cursor-pointer">
+                                <input type="radio" name={`grid-${q.id}-${i}`} value={c.id}
+                                  checked={picks[i] === c.id} onChange={() => pick(i, c.id)}
+                                  aria-label={`${label} — ${c.label}`} className="accent-[var(--primary)] w-4 h-4" />
+                              </label>
                             </td>
                           ))}
                         </tr>
