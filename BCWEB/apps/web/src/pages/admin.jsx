@@ -6930,30 +6930,169 @@ function RbacMap() {
 function CodebaseMaps() {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  // One list, rendered and counted. Declared here rather than above the component so the
+  // panels can be defined below it in reading order.
+  const MAPS = [RbacMap, SchemaMap, MigrationMap, ComposeMap, InfraMap, SecretsMap, ConfigDiff, DataFlow];
+  const MAP_COUNT = MAPS.length;
   return (
     <Card className="p-4 mb-3">
       <button className="w-full flex items-center gap-2 text-left" onClick={() => setOpen((o) => !o)}>
         <Code2 size={15} className="text-[var(--primary-2)]" />
         <span className="text-sm font-semibold">{t('maps.title', 'Codebase maps')}</span>
         <span className="text-[11px] text-[var(--muted)] ml-auto">
-          {open ? t('maps.hide', 'hide') : t('maps.show', '7 read-only reports')}
+          {/* Counted, not typed. It said "7" while eight were mounted the moment one was
+              added, and a number in a label is exactly the kind of thing nobody re-reads. */}
+          {open ? t('maps.hide', 'hide') : t('maps.show', '{n} read-only reports').replace('{n}', String(MAP_COUNT))}
         </span>
       </button>
       {open && (
         <div className="mt-3">
           <div className="text-[11px] text-[var(--faint)] mb-2">
-            {t('maps.sub', 'Guards, schema drift, migrations, published ports, secrets, config and data flow. Each reads the source and reports; none of them changes anything.')}
+            {t('maps.sub', 'Guards, schema drift, migrations, published ports, what builds and ships it, secrets, config and data flow. Each reads the source and reports; none of them changes anything.')}
           </div>
-          <RbacMap />
-          <SchemaMap />
-          <MigrationMap />
-          <ComposeMap />
-          <SecretsMap />
-          <ConfigDiff />
-          <DataFlow />
+          {MAPS.map((M, i) => <M key={i} />)}
         </div>
       )}
     </Card>
+  );
+}
+
+/** A small labelled figure. The number is the subject, so it is the biggest thing in the tile. */
+function StatTile({ n, label, tone = '' }) {
+  return (
+    <div className="rounded-lg border border-[var(--line)] px-3 py-2 min-w-0">
+      <div className={`text-lg font-semibold tabular-nums leading-none ${tone}`}>{n}</div>
+      <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] mt-1 truncate">{label}</div>
+    </div>
+  );
+}
+
+const Chip = ({ children, tone = 'text-[var(--muted)] border-[var(--line)]' }) => (
+  <span className={`text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap ${tone}`}>{children}</span>
+);
+
+/**
+ * What builds this, and what it ships.
+ *
+ * The eighth map, and the one that was written and never mounted — the library, the route and
+ * its tests all existed while no screen read it.
+ *
+ * Drawn as a LANE rather than listed, because the thing being described is a sequence:
+ * something triggers a workflow, the workflow runs jobs, the jobs publish. A vertical list of
+ * fields makes the reader rebuild that order in their head every time.
+ *
+ * The lane scrolls inside itself. A workflow with nine jobs must not widen the admin page.
+ */
+function InfraMap() {
+  const { t } = useI18n();
+  return (
+    <MapCard
+      icon={GitBranch} path="/admin/infra-map"
+      title={t('imap.title', 'What builds this, and what it ships')}
+      badge={(r) => `${r.counts?.workflows ?? 0} · ${r.counts?.jobs ?? 0}`}
+      // Same honesty as the compose map: .github/ is not IN the image. It is bind-mounted
+      // read-only by docker-compose, so a deploy that ships only the image sees this instead
+      // of an empty stack — and "nothing builds this" would be the wrong answer said
+      // confidently.
+      explainError={{ workflows_not_found: t('imap.notfound', 'No .github/workflows reachable from the API — this map needs the repo mounted or a source checkout.') }}
+    >
+      {(r) => (<>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <StatTile n={r.counts?.workflows ?? 0} label={t('imap.workflows', 'workflows')} />
+          <StatTile n={r.counts?.jobs ?? 0} label={t('imap.jobs', 'jobs')} />
+          <StatTile n={r.counts?.secretsNeeded ?? 0} label={t('imap.secrets', 'secrets needed')} />
+          {r.counts?.services != null && <StatTile n={r.counts.services} label={t('imap.services', 'services')} />}
+          {r.counts?.publishedPorts != null && (
+            <StatTile n={r.counts.publishedPorts} label={t('imap.ports', 'published ports')}
+              tone={r.counts.publishedPorts > 2 ? 'text-[var(--warning)]' : ''} />
+          )}
+        </div>
+
+        {(r.workflows || []).map((w) => {
+          const ships = Object.entries(w.publishes || {}).filter(([, v]) => v).map(([k]) => k);
+          return (
+            <div key={w.file} className="rounded-lg border border-[var(--line)] p-2.5 mb-2">
+              <div className="flex items-baseline gap-2 mb-2">
+                <span className="text-[13px] font-medium">{w.name}</span>
+                <code className="text-[10px] text-[var(--faint)]">{w.file}</code>
+              </div>
+              <div className="overflow-x-auto">
+                <div className="flex items-stretch gap-2 min-w-max text-[11px]">
+                  {/* On */}
+                  <div className="flex flex-col gap-1 justify-center">
+                    <div className="text-[9px] uppercase tracking-wider text-[var(--faint)]">{t('imap.on', 'on')}</div>
+                    <div className="flex flex-col gap-1">
+                      {(w.triggers || []).map((x) => <Chip key={x}>{x}</Chip>)}
+                      {!w.triggers?.length && <Chip>{t('imap.notrigger', 'no trigger')}</Chip>}
+                    </div>
+                  </div>
+                  <div className="self-center text-[var(--faint)]">→</div>
+                  {/* Jobs — the middle of the lane, so they get the box treatment. */}
+                  <div className="flex flex-col gap-1">
+                    <div className="text-[9px] uppercase tracking-wider text-[var(--faint)]">{t('imap.runs', 'runs')}</div>
+                    <div className="flex gap-1.5">
+                      {(w.jobs || []).map((j) => (
+                        <div key={j.name} className="rounded border border-[var(--line)] bg-[var(--surface-2)]/50 px-2 py-1">
+                          <div className="font-medium">{j.name}</div>
+                          <div className="text-[9px] text-[var(--faint)] tabular-nums">
+                            {t('imap.steps', '{n} steps').replace('{n}', String(j.steps))} · {j.runsOn || '—'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="self-center text-[var(--faint)]">→</div>
+                  {/* Ships */}
+                  <div className="flex flex-col gap-1 justify-center">
+                    <div className="text-[9px] uppercase tracking-wider text-[var(--faint)]">{t('imap.ships', 'ships')}</div>
+                    <div className="flex flex-col gap-1">
+                      {ships.length
+                        ? ships.map((s) => <Chip key={s} tone="text-[var(--primary-2)] border-[var(--primary-2)]/40">{s}</Chip>)
+                        : <Chip>{t('imap.nothing', 'nothing')}</Chip>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {w.secrets?.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2 items-center">
+                  <span className="text-[10px] uppercase tracking-wider text-[var(--faint)]">{t('imap.needs', 'needs')}</span>
+                  {w.secrets.map((s) => <Chip key={s} tone="text-[var(--warning)] border-[var(--warning)]/40">{s}</Chip>)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* The answer to "why does this fail on a fork" — and, when the list is empty, to
+            "can a contributor check their own work". Worth stating either way. */}
+        <div className="text-[12px] text-[var(--muted)] rounded-lg border border-[var(--line)] p-2.5 mt-1">
+          {r.secretsNeeded?.length
+            ? t('imap.secretsneeded', 'These workflows need {n} secret(s) configured, so they fail on a fork: {l}')
+              .replace('{n}', String(r.secretsNeeded.length)).replace('{l}', r.secretsNeeded.join(', '))
+            : t('imap.nosecrets', 'No workflow needs a secret — anybody can run all of this on a fork of the repo.')}
+        </div>
+
+        {/* The runtime half, so one panel answers both what builds it and what runs it. */}
+        {r.runtime ? (<>
+          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mt-3 mb-1">{t('imap.runtime', 'What runs it')}</div>
+          <div className="flex flex-wrap gap-1">
+            {(r.runtime.services || []).map((s) => <Chip key={s}>{s}</Chip>)}
+          </div>
+          {r.runtime.exposed?.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2 items-center">
+              <span className="text-[10px] uppercase tracking-wider text-[var(--faint)]">{t('imap.open', 'open to the network')}</span>
+              {r.runtime.exposed.map((e, i) => (
+                <Chip key={i} tone="text-[var(--warning)] border-[var(--warning)]/40">{e.service}:{e.host}</Chip>
+              ))}
+            </div>
+          )}
+        </>) : (
+          <div className="text-[11px] text-[var(--faint)] mt-3">
+            {t('imap.noruntime', 'The compose file was not readable from here, so the runtime half is unchecked — not empty.')}
+          </div>
+        )}
+      </>)}
+    </MapCard>
   );
 }
 

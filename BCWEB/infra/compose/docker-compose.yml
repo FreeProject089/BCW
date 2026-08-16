@@ -183,6 +183,26 @@ services:
       NODE_ENV: production
     volumes:
       - audit-anchor:/var/audit
+      # The two codebase maps that read FILES rather than the database: the infra map wants
+      # .github/workflows, the compose map wants the compose file itself. Neither is copied
+      # into the image — deliberately, an API image has no business shipping CI config — so
+      # both returned 404 on every deployed instance and the panels could only ever say
+      # "not available here".
+      #
+      # Read-only, and mounted rather than COPYed so the map reflects the workflows on disk
+      # right now instead of the ones that happened to exist at build time — a stale infra
+      # map is worse than none, because it reads as current.
+      #
+      # Only workflow YAML and one compose file, both of which are already in the repo. No
+      # secret VALUES are in either; the map lists secret NAMES, and the route is ADMIN-only.
+      # If these paths are absent (a deploy that ships only the image), the maps go back to
+      # saying so — which is why the route keeps its 404 branch.
+      # At the ROOT, not under /app. The route resolves four levels up from
+      # /app/src/routes/devtools.mjs, which clamps to `/` — the paths were written for a
+      # source checkout where the API sits four directories deep, and the image flattens it.
+      # Checked by running the same path.resolve inside the container rather than assumed.
+      - ../../../.github/workflows:/.github/workflows:ro
+      - ./docker-compose.yml:/infra/compose/docker-compose.yml:ro
     # Lets dependents (esp. Caddy) wait until the API actually serves — otherwise the
     # telemetry origin's forward_auth hits a not-yet-listening api:3000 on every request
     # during boot and Caddy spams "connection refused / 502" until the API comes up.

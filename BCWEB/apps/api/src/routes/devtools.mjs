@@ -316,7 +316,14 @@ export default async function devtoolRoutes(app) {
           if (!/[.]ya?ml$/.test(f)) continue;
           workflows.push({ name: f, text: await fsp.readFile(nodePath.join(d, f), 'utf8') });
         }
-      } catch { /* try the next */ }
+      } catch { continue; /* try the next */ }
+      // STOP at the first directory that answered. The two candidates exist because the API
+      // sits at a different depth in a checkout than in the image — and in the image they
+      // resolve to the SAME directory, because `path.resolve` clamps at `/`. Reading both
+      // counted every workflow twice: two workflows, eight jobs, and `ci.yml` listed twice
+      // under "needs no secrets". It only surfaced once the directory was actually readable
+      // from the container, which is to say the moment the map started working.
+      if (workflows.length) break;
     }
     if (!workflows.length) return reply.code(404).send({ error: 'workflows_not_found' });
 
