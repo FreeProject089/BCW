@@ -12,6 +12,7 @@ import crypto from 'node:crypto';
 import { db, requireRole, requireCap, optionalAuth, logAudit } from '../lib/lib.mjs';
 import { clientIp } from '../lib/geo.mjs';
 import { pollStats, questionStats, completion } from '../lib/poll-stats.mjs';
+import { planQuestionUpdate } from '../lib/poll-edit.mjs';
 
 /** Per-poll device fingerprint for anonymous voters.
  *
@@ -293,6 +294,72 @@ export default async function pollRoutes(app) {
     });
     await logAudit(p, req.user.uid, 'poll.updated', poll.question, clientIp(req));
     return { ok: true, poll };
+  });
+
+  /**
+   * Replace a poll's questions.
+   *
+   * The whole set at once rather than per-question CRUD: reordering, adding and removing in one
+   * screen is what an editor does, and three endpoints would let a client land the poll in a
+   * state no single request describes.
+   *
+   * Refuses by default when it would destroy answers, and says which questions and how many —
+   * see lib/poll-edit.mjs. `force: true` proceeds, having been told.
+   */
+  app.put('/admin/polls/:id/questions', { preHandler: requireCap('manage_polls') }, async (req, reply) => {
+    const b = z.object({
+      force: z.boolean().default(false),
+      questions: z.array(z.object({
+        id: z.string().optional(),
+        kind: z.enum(['choice', 'text', 'scale', 'date', 'number']),
+        label: z.string().min(1).max(500),
+        help: z.string().max(1000).default(''),
+        required: z.boolean().default(false),
+        config: z.record(z.any()).default({}),
+        showIf: z.object({ questionId: z.string(), equals: z.string() }).nullable().default(null),
+        choices: z.array(z.object({ id: z.string().optional(), label: z.string().min(1).max(300) })).default([]),
+      })).max(100),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+
+    const p = await db();
+    const poll = await p.poll.findUnique({ where: { id: req.params.id }, include: { questions: true } });
+    if (!poll) return reply.code(404).send({ error: 'not_found' });
+
+    // Counted per question, not in total: the refusal has to name what it would cost.
+    const grouped = await p.pollAnswer.groupBy({ by: ['questionId'], where: { pollId: poll.id }, _count: true });
+    const answerCounts = Object.fromEntries(grouped.map((g) => [g.questionId, g._count]));
+
+    const plan = planQuestionUpdate(poll.questions, b.data.questions, answerCounts, { force: b.data.force });
+    if (!plan.ok) return reply.code(409).send(plan);
+
+    // One transaction. A half-applied question set is a poll whose reader and whose answers
+    // disagree, and there is no screen that would show you which half landed.
+    await p.$transaction([
+      ...(plan.removedIds.length ? [p.pollQuestion.deleteMany({ where: { id: { in: plan.removedIds } } })] : []),
+      // A retyped question drops its answers with it: they live in a column its new kind will
+      // never read. Deleted explicitly rather than left as unreachable rows.
+      ...(plan.retypedIds.length ? [p.pollAnswer.deleteMany({ where: { questionId: { in: plan.retypedIds } } })] : []),
+      ...plan.ordered.map((q) => (q.id
+        ? p.pollQuestion.update({
+            where: { id: q.id },
+            data: { kind: q.kind, label: q.label, help: q.help, required: q.required, sort: q.sort, config: q.config, showIf: q.showIf },
+          })
+        : p.pollQuestion.create({
+            data: {
+              pollId: poll.id, kind: q.kind, label: q.label, help: q.help, required: q.required,
+              sort: q.sort, config: q.config, showIf: q.showIf,
+              choices: { create: q.choices.map((c, i) => ({ label: c.label, sort: i })) },
+            },
+          }))),
+    ]);
+
+    await logAudit(req, 'poll.questions.update', { pollId: poll.id, questions: plan.ordered.length, answersLost: plan.answersLost });
+    const fresh = await p.poll.findUnique({
+      where: { id: poll.id },
+      include: { questions: { include: { choices: true }, orderBy: { sort: 'asc' } } },
+    });
+    return { ok: true, answersLost: plan.answersLost, questions: fresh.questions };
   });
 
   app.delete('/admin/polls/:id', { preHandler: requireCap('manage_polls') }, async (req, reply) => {
