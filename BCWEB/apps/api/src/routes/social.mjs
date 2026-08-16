@@ -69,6 +69,7 @@ export async function buildPublicProfile(p, id, viewer) {
       select: {
         id: true, displayName: true, role: true, avatar: true, bio: true, website: true,
         createdAt: true, profilePublic: true, showConnections: true, status: true,
+        closedAt: true, moderationUntil: true,
         badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } } },
         oauthAccounts: { select: { provider: true, username: true } },
         discordLinks: { select: { username: true } },
@@ -76,7 +77,20 @@ export async function buildPublicProfile(p, id, viewer) {
         socialConnections: { select: { provider: true, handle: true, url: true } },
       },
     });
-    if (!u || u.status === 'banned') return { error: 'not_found', code: 404 };
+    // A banned account and an account that never existed both answered `not_found`, so the
+    // page said "nothing here" for three different situations and the reader could not tell
+    // which. The STATE is reported; the reason never is — publishing why somebody was
+    // sanctioned is a separate decision from saying that they were.
+    if (!u) return { error: 'gone', code: 410 };
+    if (u.closedAt) return { error: 'closed', code: 410, closedAt: u.closedAt };
+    if (u.status === 'banned') {
+      // Permanent and temporary are not the same statement about a person. A date still in
+      // the future is a suspension that lifts itself; only a ban with no end is named as one.
+      const temporary = u.moderationUntil && new Date(u.moderationUntil) > new Date();
+      return temporary
+        ? { error: 'suspended', code: 403, until: u.moderationUntil }
+        : { error: 'banned', code: 403 };
+    }
     const isSelf = viewer?.uid === u.id;
     const isStaff = STAFF.includes(viewer?.role);
     if (!u.profilePublic && !isSelf && !isStaff) return { error: 'private_profile', code: 403 };
@@ -117,7 +131,9 @@ export default async function socialRoutes(app) {
   app.get('/u/:id', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
     const r = await buildPublicProfile(p, req.params.id, req.user);
-    if (r.error) return reply.code(r.code).send({ error: r.error });
+    // The extra fields travel with the error: the page says "closed on <date>" or "suspended
+    // until <date>", which is the difference between an answer and a shrug.
+    if (r.error) return reply.code(r.code).send({ error: r.error, closedAt: r.closedAt, until: r.until });
     return r;
   });
 

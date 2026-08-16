@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Github, MessageSquare, Globe, Fingerprint, FolderGit2, Boxes, Download, Star, Share2, Calendar, Lock, Search, UserX, Youtube, Twitch, Gamepad2 } from 'lucide-react';
+import { Github, MessageSquare, Globe, Fingerprint, FolderGit2, Boxes, Download, Star, Share2, Calendar, Lock, Search, UserX, Youtube, Twitch, Gamepad2, ShieldOff } from 'lucide-react';
 import { KofiIcon } from '../ui/brand.jsx';
 import { IconGlyph } from '../ui/md.jsx';
 import { api } from '../lib/api.js';
@@ -33,11 +33,22 @@ export default function PublicProfile() {
 
   if (loading) return <div className="max-w-3xl mx-auto px-4 py-10"><Loading /></div>;
   if (error) {
-    const priv = error.data?.error === 'private_profile';
+    // Five different situations used to share one page saying "not found", so a reader could
+    // not tell a typo in a link from an account that closed itself from one that was removed.
+    // Each is named. The REASON is never shown here — saying somebody was sanctioned and
+    // publishing why are two different decisions, and only the first is this page's business.
+    const kind = error.data?.error;
+    const when = (v) => (v ? new Date(v).toLocaleDateString() : '');
+    const STATES = {
+      private_profile: { icon: Lock, title: t('pp.private.t', 'This profile is private'), sub: t('pp.private.s', 'Only the owner and the BetterCommunity team can view it.') },
+      closed: { icon: UserX, title: t('pp.closed.t', 'This account has been closed'), sub: (error.data?.closedAt ? t('pp.closed.son', 'The person closed it on {d}.').replace('{d}', when(error.data.closedAt)) : t('pp.closed.s', 'The person closed it. Anything they shared publicly may still be around under another name.')) },
+      gone: { icon: UserX, title: t('pp.gone.t', 'This account no longer exists'), sub: t('pp.gone.s', 'It has been removed along with its data. A link to it will not start working again.') },
+      banned: { icon: ShieldOff, title: t('pp.banned.t', 'This account is banned'), sub: t('pp.banned.s', 'It was permanently removed from the community by a moderator.') },
+      suspended: { icon: ShieldOff, title: t('pp.susp.t', 'This account is suspended'), sub: (error.data?.until ? t('pp.susp.son', 'Temporarily unavailable until {d}.').replace('{d}', when(error.data.until)) : t('pp.susp.s', 'Temporarily unavailable.')) },
+    };
+    const st = STATES[kind] || { icon: UserX, title: t('pp.404.t', 'Profile not found'), sub: t('pp.404.s', "This user doesn't exist or is no longer available.") };
     return <div className="max-w-3xl mx-auto px-4 py-16">
-      <EmptyState icon={priv ? Lock : UserX}
-        title={priv ? t('pp.private.t', 'This profile is private') : t('pp.404.t', 'Profile not found')}
-        sub={priv ? t('pp.private.s', 'Only the owner and the BetterCommunity team can view it.') : t('pp.404.s', "This user doesn't exist or is no longer available.")} />
+      <EmptyState icon={st.icon} title={st.title} sub={st.sub} />
     </div>;
   }
   const u = data.profile;
