@@ -238,6 +238,7 @@ model User {
   // relation would make both unanswerable.
   sanctions        Sanction[] @relation("SanctionTarget")
   sanctionsIssued  Sanction[] @relation("SanctionIssuer")
+  staffNotes       StaffNote[] @relation("StaffNoteAuthor")
   sanctionEvidence SanctionAttachment[] @relation("SanctionAttachmentAuthor")
   pendingDismissals PendingDismissal[]
   webhooks         WebhookEndpoint[]
@@ -2777,4 +2778,38 @@ model Session {
 
   @@index([userId, revokedAt])
   @@index([lastSeenAt])
+}
+
+/// A staff note about an account, and the record of why an account was closed or erased.
+///
+/// Deliberately NOT a relation to User. A note explaining why somebody was removed is the note
+/// you need AFTER they are gone — a foreign key would cascade it away at the exact moment it
+/// starts to matter. The subject is a plain id plus what they were called at the time, so the
+/// trail survives the erasure it describes.
+model StaffNote {
+  id           String   @id @default(cuid())
+  /// The account this is about. No FK on purpose — see above.
+  subjectId    String
+  /// Display name + address as they were when the note was written, so a closed account still
+  /// reads as a person rather than as a cuid.
+  subjectLabel String   @default("")
+
+  /// note · closure · ban · suspension · erasure — what produced it. A `note` is somebody
+  /// writing something down; the others are stamped by the action itself.
+  kind         String   @default("note")
+  body         String
+  /// For an action: was the reason sent to the person, and to which address.
+  notified     Boolean  @default(false)
+  notifiedTo   String?
+
+  author       User?    @relation("StaffNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  authorId     String?
+  /// Denormalised for the same reason as subjectLabel: the author may leave too.
+  authorLabel  String   @default("")
+
+  pinned       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([subjectId, createdAt])
+  @@index([kind])
 }

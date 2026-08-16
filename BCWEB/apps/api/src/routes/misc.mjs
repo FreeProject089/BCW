@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES } from '../lib/lib.mjs';
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
+import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
@@ -680,12 +681,45 @@ export default async function miscRoutes(app) {
         { email: { contains: q, mode: 'insensitive' } },
       ] };
     }
+    // Filters, ANDed with whatever the text query matched. Each is only applied when it is
+    // actually set — an absent filter must not narrow the list, which is how a "no results"
+    // that is really "you left a filter on" happens.
+    const and = [];
+    const role = String(req.query?.role || '').trim();
+    if (role) and.push({ role });
+    const status = String(req.query?.status || '').trim();
+    // `status` is lowercase in this schema, and the moderation state that MATTERS is the
+    // effective one — a temp lock whose date has passed is not a lock. Expired ones are
+    // excluded here so the filter agrees with the badge the row shows.
+    if (status === 'active') and.push({ OR: [{ status: 'active' }, { status: null }, { moderationUntil: { lt: new Date() } }] });
+    else if (status) and.push({ status, OR: [{ moderationUntil: null }, { moderationUntil: { gt: new Date() } }] });
+    const twofa = String(req.query?.twofa || '');
+    if (twofa === 'yes') and.push({ totpEnabled: true });
+    else if (twofa === 'no') and.push({ totpEnabled: false });
+    const closed = String(req.query?.closed || '');
+    if (closed === 'yes') and.push({ closedAt: { not: null } });
+    else if (closed === 'no') and.push({ closedAt: null });
+    const linked = String(req.query?.linked || '');
+    if (linked === 'discord') and.push({ discordLinks: { some: {} } });
+    else if (linked === 'creator') and.push({ creatorLinks: { some: {} } });
+    else if (linked === 'none') and.push({ discordLinks: { none: {} }, creatorLinks: { none: {} } });
+    const since = Number(req.query?.days) || 0;
+    if (since > 0) and.push({ createdAt: { gte: new Date(Date.now() - since * 86400_000) } });
+    if (and.length) where = Object.keys(where).length ? { AND: [where, ...and] } : { AND: and };
+
+    // Newest first by default; the other orders answer questions the default cannot
+    // ("who has been here longest", "who did I just rename").
+    const sort = String(req.query?.sort || 'new');
+    const orderBy = sort === 'old' ? { createdAt: 'asc' }
+      : sort === 'name' ? { displayName: 'asc' }
+        : { createdAt: 'desc' };
+
     // No query → list everyone (newest first), paginated with a "load more" cursor.
     const rows = await p.user.findMany({
-      where, take: take + 1, skip, orderBy: { createdAt: 'desc' },
+      where, take: take + 1, skip, orderBy,
       select: { id: true, displayName: true, email: true, role: true, avatar: true, createdAt: true,
         totpEnabled: true, canControlServer: true, canViewTelemetry: true, permissions: true, customRoleIds: true,
-        status: true, moderationUntil: true, moderationReason: true,
+        status: true, moderationUntil: true, moderationReason: true, closedAt: true,
         creatorLinks: { select: { creatorId: true } }, discordLinks: { select: { discordId: true, username: true } },
         _count: { select: { serverRepos: true, items: true } } },
     });
@@ -698,7 +732,7 @@ export default async function miscRoutes(app) {
       users: rows.slice(0, take).map((u) => ({
         id: u.id, bcId: userBcId(u.id), displayName: u.displayName, email: u.email, role: u.role, avatar: u.avatar, createdAt: u.createdAt,
         totpEnabled: u.totpEnabled, canControlServer: u.canControlServer, canViewTelemetry: u.canViewTelemetry, permissions: u.permissions || [],
-        status: effStatus(u), moderationUntil: u.moderationUntil, moderationReason: u.moderationReason,
+        status: effStatus(u), moderationUntil: u.moderationUntil, moderationReason: u.moderationReason, closedAt: u.closedAt,
         creatorIds: u.creatorLinks.map((c) => c.creatorId),
         discord: u.discordLinks[0] ? { id: u.discordLinks[0].discordId, username: u.discordLinks[0].username } : null,
         repoCount: u._count.serverRepos, itemCount: u._count.items,
@@ -966,6 +1000,45 @@ export default async function miscRoutes(app) {
   // What erasing this account WOULD do. There is no commit endpoint on purpose: the plan
   // currently blocks on one relation, and an irreversible deletion reachable in one click
   // from a screen full of ordinary buttons is an accident waiting for a tired afternoon.
+  // ── Staff notes ────────────────────────────────────────────────────────────
+  // Readable for an account that no longer exists: the id is all that is needed, and the note
+  // carries the name it had. That is the whole point — see lib/staff-notes.mjs.
+  app.get('/admin/users/:id/notes', { preHandler: requireCap('manage_users', 'MOD') }, async (req) => {
+    const p = await db();
+    return { notes: await notesFor(p, req.params.id) };
+  });
+
+  app.post('/admin/users/:id/notes', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
+    const b = z.object({
+      body: z.string().trim().min(1).max(4000),
+      kind: z.enum(NOTE_KINDS).optional(),
+      pinned: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    // The subject may be gone — a note about an erased account is still worth writing.
+    const u = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, displayName: true, email: true } });
+    const note = await addStaffNote(p, {
+      subject: u || { id: req.params.id },
+      author: req.user,
+      body: b.data.body,
+      kind: b.data.kind || 'note',
+      pinned: b.data.pinned,
+    });
+    return { ok: true, note };
+  });
+
+  app.delete('/admin/users/:id/notes/:noteId', { preHandler: requireCap('manage_users', 'ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const n = await p.staffNote.findUnique({ where: { id: req.params.noteId } });
+    if (!n || n.subjectId !== req.params.id) return reply.code(404).send({ error: 'not_found' });
+    // A note stamped by an action is the record of that action. Deleting it would leave the
+    // action with no reason, which is the state this whole feature exists to prevent.
+    if (n.kind !== 'note') return reply.code(409).send({ error: 'not_a_plain_note' });
+    await p.staffNote.delete({ where: { id: n.id } });
+    return { ok: true };
+  });
+
   app.get('/admin/users/:id/erase/preview', { preHandler: requireCap('manage_users', 'ADMIN') }, async (req, reply) => {
     const p = await db();
     const u = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
@@ -983,10 +1056,16 @@ export default async function miscRoutes(app) {
    * says {confirm:true} is one copied curl away from being sent at the wrong id.
    */
   app.post('/admin/users/:id/erase', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
-    const b = z.object({ email: z.string().email() }).safeParse(req.body);
+    // A reason is REQUIRED. An erasure with no reason is unanswerable six months later, and
+    // this is the one action with nobody left to ask.
+    const b = z.object({
+      email: z.string().email(),
+      reason: z.string().trim().min(3).max(4000),
+      notify: z.boolean().optional(),
+    }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const u = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, email: true, closedAt: true } });
+    const u = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, email: true, displayName: true, closedAt: true } });
     if (!u) return reply.code(404).send({ error: 'not_found' });
     if (u.email.toLowerCase() !== b.data.email.trim().toLowerCase()) return reply.code(409).send({ error: 'email_mismatch' });
 
@@ -1011,6 +1090,14 @@ export default async function miscRoutes(app) {
     // KEEP list — audit entries, payments, subscriptions, sanctions — each of which is
     // deliberately not deletable. When one of them is present the row is anonymised instead,
     // and the answer says WHICH, because "it did not delete" with no reason reads as a bug.
+    // Both of these happen while the account still HAS an address: after the delete there is
+    // nobody to write to, and after the anonymise the address is `closed+<id>@account.invalid`.
+    const notified = b.data.notify ? await notifyAccountAction({ to: u.email, kind: 'erasure', reason: b.data.reason }) : false;
+    await addStaffNote(p, {
+      subject: u, author: req.user, body: b.data.reason, kind: 'erasure',
+      notified, notifiedTo: notified ? u.email : null, pinned: true,
+    }).catch(() => {});
+
     let outcome = 'deleted';
     let heldBy = [];
     try {
