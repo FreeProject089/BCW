@@ -3,13 +3,14 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import {
   Download, Github, MessageCircle, Heart, Globe, BookOpen, Users, ScrollText, ShieldCheck,
   FileText, ListTodo, Boxes, ExternalLink, FolderGit2, ChevronRight, ChevronDown,
-  CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper,
+  CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper, Network,
 } from 'lucide-react';
 import Markdown, { matchesLang, ShowcaseIcon } from '../ui/md.jsx';
 import { ProgressTracker } from '../hero/progress-tracker.jsx';
 import { api } from '../lib/api.js';
 import { thumb } from '../lib/img.js';
 import { useI18n } from '../i18n.jsx';
+import StackMap from '../ui/stack-map.jsx';
 import RrwebPreview from '../hero/RrwebPreview.jsx';
 import { GithubIcon, KofiIcon, DiscordIcon, RedditIcon, AppLogo, APP_LOGO } from '../ui/brand.jsx';
 import { MessageSquare } from 'lucide-react';
@@ -295,6 +296,9 @@ export default function ProjectPage() {
     ['overview', t('proj.overview'), ListTodo],
     c.releaseNotes && ['releases', t('proj.releases'), ScrollText],
     ['community', t('proj.community'), Users],
+    // Only when the project config says so. The tab is the config's presence, not a second
+    // flag to keep in step with it — a project with no stack described has nothing to show.
+    (c.stack?.nodes?.length > 0) && ['stack', c.stack.title || t('proj.stack', 'How it runs'), Network],
     data.showBlogTab && ['blog', t('proj.blog'), Newspaper],
     ['legal', t('proj.legal'), ShieldCheck],
   ].filter(Boolean);
@@ -334,6 +338,7 @@ export default function ProjectPage() {
       {tab === 'overview' && <Overview c={c} pkey={key} />}
       {tab === 'releases' && <Releases pkey={key} />}
       {tab === 'community' && <Community c={c} communityUrl={c.contributorsUrl ? `/projects/${key}/community` : null} />}
+      {tab === 'stack' && <StackMap stack={c.stack} t={t} />}
       {tab === 'blog' && <ProjectBlogTab project={key} />}
       {tab === 'legal' && <Legal c={c} />}
     </div>
