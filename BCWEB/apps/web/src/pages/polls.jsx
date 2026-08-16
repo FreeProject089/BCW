@@ -57,6 +57,15 @@ function PollForm({ poll, onDone }) {
     setBusy(true); setErrAt(null);
     const answers = (poll.questions || []).map((q) => {
       const v = vals[q.id];
+      // A ranking nobody reordered still HAS an order — the one on screen. Sending nothing
+      // because no button was pressed would refuse a required question the person can see
+      // themselves having answered, which is the worst kind of validation error.
+      if (q.kind === 'ranking') {
+        const order = Array.isArray(v) && v.length === (q.choices || []).length
+          ? v
+          : (q.choices || []).map((c) => c.id);
+        return { questionId: q.id, values: order };
+      }
       return Array.isArray(v) ? { questionId: q.id, values: v } : { questionId: q.id, value: v };
     });
     try {
@@ -99,6 +108,38 @@ function PollForm({ poll, onDone }) {
                 </button>
               );
             })}
+            {/* Ranking: an ordered list moved with arrows rather than dragged. Drag needs a
+                pointer, a library and a keyboard fallback anyway; two buttons need none of the
+                three and work on a phone. The order shown IS the answer — it starts in the
+                question's own order so the list is never empty, and the API refuses a partial
+                one, which cannot happen from here by construction. */}
+            {q.kind === 'ranking' && (() => {
+              const order = Array.isArray(vals[q.id]) && vals[q.id].length === (q.choices || []).length
+                ? vals[q.id]
+                : (q.choices || []).map((c) => c.id);
+              const label = (id) => (q.choices || []).find((c) => c.id === id)?.label || id;
+              const move = (i, d) => {
+                const j = i + d; if (j < 0 || j >= order.length) return;
+                const next = [...order]; [next[i], next[j]] = [next[j], next[i]];
+                set(q.id, next);
+              };
+              return (
+                <ol className="space-y-1.5">
+                  {order.map((id, i) => (
+                    <li key={id} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--line)] text-[13px]">
+                      <span className="w-5 text-[var(--faint)] tabular-nums">{i + 1}</span>
+                      <span className="flex-1 min-w-0 truncate">{label(id)}</span>
+                      <button type="button" onClick={() => move(i, -1)} disabled={i === 0}
+                        aria-label={t('poll.f.up', 'Move up')}
+                        className="p-1 text-[var(--faint)] hover:text-[var(--text)] disabled:opacity-30">↑</button>
+                      <button type="button" onClick={() => move(i, 1)} disabled={i === order.length - 1}
+                        aria-label={t('poll.f.down', 'Move down')}
+                        className="p-1 text-[var(--faint)] hover:text-[var(--text)] disabled:opacity-30">↓</button>
+                    </li>
+                  ))}
+                </ol>
+              );
+            })()}
             {q.kind === 'text' && (
               <Textarea rows={2} value={vals[q.id] || ''} onChange={(e) => set(q.id, e.target.value)} />
             )}

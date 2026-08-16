@@ -209,6 +209,10 @@ const DICT = {
     'common.loading': 'Loading…',
   },
   fr: {
+    'poll.f.up': 'Monter',
+    'poll.f.down': 'Descendre',
+    'apq.kind.ranking': 'Classement',
+
     'apq.scale.range': 'De',
     'apq.scale.to': 'à',
     'apq.scale.number': 'Champ numérique',

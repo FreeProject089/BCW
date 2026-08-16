@@ -127,7 +127,10 @@ function PollEditor({ open, initial, onClose, onSaved }) {
   );
 }
 
-const KINDS = ['choice', 'text', 'scale', 'number', 'date'];
+const KINDS = ['choice', 'text', 'scale', 'number', 'date', 'ranking'];
+// Both kinds are answered by picking from a fixed list, so both need the choices editor and
+// both need at least two of them — one thing to rank is not a ranking.
+const HAS_CHOICES = (k) => k === 'choice' || k === 'ranking';
 const newQuestion = () => ({ kind: 'choice', label: '', help: '', required: false, config: {}, showIf: null, choices: [{ label: '' }, { label: '' }] });
 
 /**
@@ -166,11 +169,11 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
       questions: qs.map((q) => ({
         ...(q.id ? { id: q.id } : {}), kind: q.kind, label: q.label.trim(), help: q.help,
         required: q.required, config: q.config, showIf: q.showIf,
-        choices: q.kind === 'choice' ? q.choices.filter((c) => c.label.trim()).map((c) => ({ ...(c.id ? { id: c.id } : {}), label: c.label.trim() })) : [],
+        choices: HAS_CHOICES(q.kind) ? q.choices.filter((c) => c.label.trim()).map((c) => ({ ...(c.id ? { id: c.id } : {}), label: c.label.trim() })) : [],
       })),
     };
     if (body.questions.some((q) => !q.label)) return toast.error(t('apq.needlabel', 'Every question needs a label.'));
-    if (body.questions.some((q) => q.kind === 'choice' && q.choices.length < 2)) {
+    if (body.questions.some((q) => HAS_CHOICES(q.kind) && q.choices.length < 2)) {
       return toast.error(t('apq.need2', 'A choice question needs at least two choices.'));
     }
     setSaving(true);
@@ -255,7 +258,7 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
                 </Select>
               </div>
             )}
-            {q.kind === 'choice' && (
+            {HAS_CHOICES(q.kind) && (
               <div className="space-y-1.5 pl-7">
                 {q.choices.map((c, ci) => (
                   <div key={c.id || `c-${ci}`} className="flex gap-2">
