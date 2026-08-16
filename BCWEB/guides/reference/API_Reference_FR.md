@@ -208,7 +208,7 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 |---|---|---|---|
 | GET | `/bot/config` · `/bot/token` · `/bot/account/:discordId` | bot | Lookup config/token/compte du bot. |
 | POST | `/bot/heartbeat` · `/bot/activity` · `/bot/link/issue` | bot | Heartbeat, activité, émission de code de liaison. |
-| GET/POST | `/bot/blog/unannounced` · `/blog/announced` | bot | File d'annonce blog. |
+| POST | `/bot/blog/sync` · `/bot/blog/announced` | bot | File d'annonce blog : le bot demande les articles dus dans ses salons, puis marque ce qu'il a publié. |
 | GET/POST | `/bot/kofi/unannounced` · `/kofi/announced` | bot | File d'annonce de pourboires Ko-fi. |
 | GET/POST | `/bot/payments/unannounced` · `/payments/announced` | bot | File d'annonce paiement/remboursement (+ ping `test` lu-une-fois). |
 | GET/POST | `/bot/dm/pending` · `/dm/sent` | bot | File de livraison de DM. |
@@ -245,7 +245,7 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | POST | `/contact` | pow | Formulaire de contact public. |
 | GET | `/accounts/search` · `/stats` | user/— | Recherche de compte + stats publiques. |
 | GET | `/admin/analytics` · `/admin/analytics/sessions` · `/admin/analytics/geo` | admin | Dashboard analytics ; les sessions entrelacent les pageviews avec les **interactions dans la page** (clics/édits/soumissions/modales) dans la timeline de chaque visiteur ; géo = pays/région/ville + carte globe. |
-| GET | `/admin/analytics/vitals` · `/admin/analytics/vitals/page?path=` | admin | Web Vitals : percentiles globaux + tendance + p75 par page (`?days=`/`?hours=` pour 24h/7j/30j/90j) ; `/page` décompose UN chemin par appareil / navigateur / OS / pays. |
+| GET | `/admin/analytics/vitals` | admin | Web Vitals : percentiles globaux + tendance + p75 par page (`?days=`/`?hours=` pour 24h/7j/30j/90j). |
 | GET | `/admin/analytics/events?path=&kinds=&days=` | admin | Feed d'événements custom : flux pageview + interaction fusionné (plus récent d'abord) avec compteurs par type, filtrable par chemin (contient) et type. |
 | GET | `/admin/analytics/errors?path=&days=` | admin | Erreurs client groupées par message : occurrences, sessions distinctes, première/dernière vue, dernier échantillon (chemin/stack/appareil/navigateur/OS/pays). |
 | GET/POST/PATCH/DELETE | `/admin/analytics/goals[/:id]` | admin | Objectifs de conversion — matchent un pageview (chemin) ou une interaction (type + label) ; GET renvoie les complétions + taux de conversion visiteur-unique sur `?days=`. |

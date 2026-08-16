@@ -202,7 +202,7 @@ and sends are admin-triggered only (no auto-send on publish).
 |---|---|---|---|
 | GET | `/bot/config` · `/bot/token` · `/bot/account/:discordId` | bot | Bot config/token/account lookup. |
 | POST | `/bot/heartbeat` · `/bot/activity` · `/bot/link/issue` | bot | Bot heartbeat, activity, link-code issue. |
-| GET/POST | `/bot/blog/unannounced` · `/blog/announced` | bot | Blog-announce queue. |
+| POST | `/bot/blog/sync` · `/bot/blog/announced` | bot | Blog-announce queue: the bot asks for the posts due in its channels, then marks what it posted. |
 | GET/POST | `/bot/kofi/unannounced` · `/kofi/announced` | bot | Ko-fi tip announce queue. |
 | GET/POST | `/bot/payments/unannounced` · `/payments/announced` | bot | Payment/refund announce queue (+ read-once `test` ping). |
 | GET/POST | `/bot/dm/pending` · `/dm/sent` | bot | DM delivery queue. |
@@ -239,7 +239,7 @@ and sends are admin-triggered only (no auto-send on publish).
 | POST | `/contact` | pow | Public contact form. |
 | GET | `/accounts/search` · `/stats` | user/— | Account search + public stats. |
 | GET | `/admin/analytics` · `/admin/analytics/sessions` · `/admin/analytics/geo` | admin | Analytics dashboard; sessions interleave pageviews with **in-page interactions** (clicks/edits/submits/modals) into each visitor's timeline; geo = country/region/city + globe map. |
-| GET | `/admin/analytics/vitals` · `/admin/analytics/vitals/page?path=` | admin | Web Vitals: overall percentiles + trend + per-page p75 (`?days=`/`?hours=` for 24h/7d/30d/90d); `/page` breaks ONE path down by device / browser / OS / country. |
+| GET | `/admin/analytics/vitals` | admin | Web Vitals: overall percentiles + trend + per-page p75 (`?days=`/`?hours=` for 24h/7d/30d/90d). |
 | GET | `/admin/analytics/events?path=&kinds=&days=` | admin | Custom-events feed: merged pageview + interaction stream (newest first) with per-kind counts, filterable by path (contains) and kind. |
 | GET | `/admin/analytics/errors?path=&days=` | admin | Client errors grouped by message: occurrences, distinct sessions, first/last seen, latest sample (path/stack/device/browser/OS/country). |
 | GET/POST/PATCH/DELETE | `/admin/analytics/goals[/:id]` | admin | Conversion goals — match a pageview (path) or interaction (kind + label); GET returns completions + unique-visitor conversion rate over `?days=`. |
