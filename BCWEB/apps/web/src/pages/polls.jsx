@@ -432,6 +432,46 @@ export function PollCard({ poll: initial, onChange }) {
   );
 }
 
+/**
+ * What you have answered.
+ *
+ * `/me/polls` says in its own comment that it is "for the profile, and for admin User
+ * details". Neither existed: it has served a person's own answers to nothing since it was
+ * written. This is the profile half — the admin half is not possible, because the endpoint is
+ * scoped to the caller and an admin looking at somebody else would need a different one.
+ *
+ * Only for a signed-in reader, and only when there is something to show: an empty "your
+ * answers" box on a page where you have answered nothing is noise.
+ */
+function MyAnswers() {
+  const { t } = useI18n();
+  const { user } = useAuth();
+  const { data } = useAsync(() => (user ? api.get('/me/polls') : Promise.resolve(null)), [user?.id]);
+  const votes = data?.votes || [];
+  if (!votes.length) return null;
+  return (
+    <Card className="p-4 mb-5">
+      <div className="text-[11px] uppercase tracking-wide text-[var(--faint)] mb-2 flex items-center gap-1.5">
+        <Check size={12} /> {t('poll.mine.title', 'What you answered')}
+      </div>
+      <div className="space-y-1.5">
+        {votes.slice(0, 20).map((v, i) => (
+          <div key={i} className="text-[12px] flex items-start gap-2">
+            <span className="text-[var(--faint)] tabular-nums shrink-0">{new Date(v.createdAt).toLocaleDateString()}</span>
+            <span className="flex-1 min-w-0">
+              <span className="text-[var(--muted)]">{v.poll?.question}</span>
+              {v.option?.label ? <> — <span className="font-medium">{v.option.label}</span></> : null}
+            </span>
+            {/* The admin screen's own status words, so a closed poll is called the same thing in both places. */}
+            {v.poll?.status && v.poll.status !== 'OPEN' && <Badge>{t(`apoll.st.${v.poll.status.toLowerCase()}`, v.poll.status.toLowerCase())}</Badge>}
+          </div>
+        ))}
+      </div>
+      {votes.length > 20 && <p className="text-[11px] text-[var(--faint)] mt-2">{t('poll.mine.more', 'Showing your 20 most recent answers.')}</p>}
+    </Card>
+  );
+}
+
 export default function PollsPage() {
   const { t } = useI18n();
   const { data, loading } = useAsync(() => api.get('/polls'), []);
@@ -441,6 +481,7 @@ export default function PollsPage() {
     <div className="max-w-2xl mx-auto py-8">
       <h1 className="text-xl font-bold mb-1">{t('poll.page.title', 'Polls')}</h1>
       <p className="text-sm text-[var(--muted)] mb-5">{t('poll.page.sub', 'Short questions about where this goes next. Answering takes a moment and genuinely decides things.')}</p>
+      <MyAnswers />
       {!polls.length ? <EmptyState icon={BarChart3} title={t('poll.page.none', 'No poll running.')} sub={t('poll.page.none.s', 'Come back — there will be one.')} /> : (
         <div className="space-y-4">{polls.map((p) => <PollCard key={p.id} poll={p} />)}</div>
       )}

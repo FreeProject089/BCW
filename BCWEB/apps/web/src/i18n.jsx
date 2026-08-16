@@ -317,6 +317,8 @@ const DICT = {
     'dvt.cm.notrepo': 'Ce n’est pas une adresse de dépôt GitHub.',
     'dvt.cm.partial': 'Seule une partie du dépôt a pu être lue : le résultat serait trompeur. Réessaie dans une minute.',
     'dvt.cm.unreachable': 'Impossible de lire ce dépôt — vérifie qu’il est public.',
+    'poll.mine.title': 'Ce que tu as répondu',
+    'poll.mine.more': 'Tes 20 réponses les plus récentes.',
     'acc.holders.sc': 'Contrôle serveur', 'acc.holders.tel': 'Télémétrie',
     'acc.holders.none': 'Personne.', 'acc.holders.no2fa': 'sans 2FA',
     'acc.holders.no2fa.t': 'Sans 2FA — les endpoints serveur les refuseront',
