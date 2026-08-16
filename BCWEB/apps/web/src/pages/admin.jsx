@@ -7155,6 +7155,11 @@ function ConfigDiff() {
 
 function BmmpaInspector() {
   const { t } = useI18n(); const toast = useToast();
+  // Its own drag state. It read `dragOver` for the drop zone's highlight while the only
+  // declaration lived in AdminProjects, 1700 lines away — so opening the inspector threw
+  // ReferenceError: dragOver is not defined. React state is per component; a name that
+  // resolves in the editor does not mean it resolves at runtime.
+  const [dragOver, setDragOver] = useState(false);
   // The API returns codes; the words are ours. An unknown code falls back to itself rather
   // than to a blank — a moderator seeing "app.frobnicate" learns something, a moderator
   // seeing nothing does not.
