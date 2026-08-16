@@ -293,6 +293,7 @@ const DICT = {
     'bmod.queued': 'En file — le bot le fera d’ici une minute, et le résultat s’affichera ici.',
     'bmod.needreason': 'Cette action demande une raison.', 'bmod.needmin': 'Cette action demande une durée.',
     'bmod.last': 'Dernière :', 'bmod.pending': 'en attente du bot', 'bmod.done': 'faite', 'bmod.failed': 'refusée',
+    'st.title': 'État des services',
     'st.b.ok': 'Tous les services fonctionnent', 'st.b.partial': 'Certains services sont en panne',
     'st.b.major': 'Panne majeure', 'st.b.unknown': 'État inconnu',
     'st.s.ok': 'Opérationnel', 'st.s.down': 'En panne', 'st.s.na': 'Non utilisé',

@@ -36,6 +36,10 @@ export const DEFAULT_FOOTER_COLUMNS = [
       { key: 'foot.members', label: 'Members', to: '/users' },
       { key: 'tfa.short', label: 'Authenticator (2FA)', to: '/2fa' },
       { key: null, label: 'Contact', to: '/contact' },
+      // Beside Contact, and for the same reason people click Contact: something is not
+      // working. A status page nobody can find from the site answers the question after the
+      // e-mail has already been written.
+      { key: 'st.title', label: 'Status', to: '/status' },
       { key: 'foot.kofi', label: 'Support us', to: 'https://ko-fi.com/bettercommunity', ext: true },
     ],
   },

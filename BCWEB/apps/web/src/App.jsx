@@ -29,7 +29,7 @@ import { NOTIF, NOTIF_FALLBACK } from './ui/notif.js'; // tiny data module — k
 import { Home } from './pages/home.jsx';
 import { Catalog, ItemDetail } from './pages/catalog.jsx';
 import { Auth } from './pages/signin.jsx';
-import { DEFAULT_FOOTER_SOCIALS } from './ui/footer-default.js';
+import { DEFAULT_FOOTER_SOCIALS, DEFAULT_FOOTER_COLUMNS } from './ui/footer-default.js';
 import { LucideCdnIcon } from './editor/icon-picker.jsx';
 // Lazy: route-split so the initial bundle no longer ships the whole admin back-office,
 // repo tools, editors, etc. — each loads on demand behind the Suspense boundary below.
@@ -867,11 +867,14 @@ function Footer() {
         )}
         {cols.length
           ? cols.map((c) => <FooterCol key={c.title} title={c.title} links={c.links} />)
-          : <>
-        <FooterCol title={t('foot.products')} links={[['BetterModsManager', '/p/bmm'], ['BetterSoundMaker', '/p/bsm'], ['BetterInstaller', '/p/installer'], [t('nav.hosting'), '/hosting'], [t('myo.badge', 'Make Your Own'), '/myo']]} />
-        <FooterCol title={t('foot.community')} links={[[t('foot.about', 'About'), '/legal/about'], ['Blog', '/blog'], [t('nav.docs', 'Docs'), '/docs'], [t('nav.dev', 'Developers'), '/dev'], [t('faq.title', 'FAQ'), '/faq'], [t('nav.repos'), '/repos'], [t('foot.members', 'Members'), '/users'], [t('tfa.short', 'Authenticator (2FA)'), '/2fa'], ['Contact', '/contact'], [t('foot.kofi'), KOFI, true]]} />
-        <FooterCol title={t('foot.legal')} links={[[t('legal.all', 'All'), '/legal'], [t('foot.privacy'), '/legal/privacy'], [t('foot.terms'), '/legal/terms'], [t('foot.cookies'), '/legal/cookies'], [t('foot.refunds', 'Payments & Refunds'), '/legal/refunds']]} />
-          </>}
+          // The built-in footer, from the SAME list the admin editor edits and resets to.
+          // It used to be written out again here, inline — so adding a link to
+          // footer-default.js changed the editor and changed nothing on the site, which is
+          // exactly what happened to the Status link.
+          : DEFAULT_FOOTER_COLUMNS.map((c) => (
+            <FooterCol key={c.key} title={t(c.key, c.title)}
+              links={c.links.map((l) => [l.key ? t(l.key, l.label) : l.label, l.to, l.ext])} />
+          ))}
       </div>
       <div className="border-t border-[var(--line)]"><div className="max-w-6xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 text-xs text-[var(--faint)] pb-24 md:pb-5">
         {/* {year} is expanded here so "© {year} …" stays right on 1 January without an edit. */}
