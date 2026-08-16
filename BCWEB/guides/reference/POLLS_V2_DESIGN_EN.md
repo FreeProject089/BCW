@@ -125,6 +125,32 @@ poll can have.
 
 ---
 
+## Grids — designed, not built
+
+A grid is N rows sharing one set of columns: "rate each of these on the same scale". Each answer
+says WHICH ROW and WHICH COLUMN, and `PollAnswer` has no row field.
+
+It does not need one. Ranking already established the shape: `choiceId` plus `number` in one row,
+with the pair's meaning fixed by the question's kind.
+
+| kind | choiceId | number |
+|---|---|---|
+| `choice` | the answer | — |
+| `ranking` | which item | its rank, from 1 |
+| `grid` | which COLUMN was picked | which ROW it was picked for, from 0 |
+
+Rows live in `config.rows: string[]` — they are labels, not answerable things, so they need no
+table of their own. Columns are the question's existing choices.
+
+**Validate the whole submission, like ranking.** One answer per row, no row twice, no row index
+past the end. A grid half-answered is the same problem as a partial ranking: averaging a column
+across people who filled different rows compares numbers that do not mean the same thing — so
+either require every row or record which were skipped, and say which in the config.
+
+**The trap to avoid:** do NOT model a grid as several hidden questions. It would work, and then
+the editor would show rows nobody added, deleting one would orphan answers, and the completion
+funnel would count a five-row grid as five questions somebody failed to finish.
+
 ## What this is not
 
 Not a form builder for arbitrary data collection. No file upload, no payment, no e-mail
