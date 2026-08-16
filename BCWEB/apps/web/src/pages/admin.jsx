@@ -32,7 +32,7 @@ import { AdminMyo } from './admin-myo.jsx';
 import { AdminApi } from './admin-api.jsx';
 import { AdminSanctions, ContentSanctionForm, Evidence } from './admin-sanctions.jsx';
 import { AdminPolls } from './admin-polls.jsx';
-import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, csvCell, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash, useThreadStream } from './pages.jsx';
+import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash, useThreadStream } from './pages.jsx';
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
 // actual api.del only fires once the 6s window elapses — Undo means nothing was ever deleted,
@@ -372,12 +372,22 @@ export function Admin() {
 // This mirrors the community side deliberately: pick ONE catalog, see what is in it, add to
 // it. The entry's type then follows from the catalog rather than being a per-entry choice
 // that could quietly put a theme in the app feed.
-const OFFICIAL_CATALOGS = [
-  { id: 'bmm-app', projectKey: 'bmm', kind: 'APP', label: (t) => t('cc.cat.bmmapp', 'BMM · Apps') },
-  { id: 'bmm-plugin', projectKey: 'bmm', kind: 'PLUGIN', label: (t) => t('cc.cat.bmmplugin', 'BMM · Plugins') },
-  { id: 'bmm-theme', projectKey: 'bmm', kind: 'THEME', label: (t) => t('cc.cat.bmmtheme', 'BMM · Themes') },
-  { id: 'bsm-preset', projectKey: 'bsm', kind: 'PRESET', label: (t) => t('cc.cat.bsmpreset', 'BSM · Presets') },
-];
+// DERIVED, from the live project list crossed with the kinds each project publishes.
+//
+// Written out by hand it listed four catalogs and was missing BMM automations entirely —
+// so a kind BMM has read for months, and that the submission form has offered for just as
+// long, had no official catalog and no way to make one. A hand-written list is wrong the
+// first time somebody adds a project or a kind, and it is wrong silently: the screen looks
+// complete because it looks like a list.
+//
+// `kindLabel` rather than KIND_LABEL: on a BMM page a PRESET is an Automation, and calling
+// it "Preset" is the wrong intuition about a file that can ask to run PowerShell.
+const OFFICIAL_CATALOGS = CATALOG_PROJECTS.flatMap((key) => kindsFor(key).map((kind) => ({
+  id: `${key}-${kind.toLowerCase()}`,
+  projectKey: key,
+  kind,
+  label: `${key.toUpperCase()} · ${kindLabel(kind, key)}`,
+})));
 
 // Admin: quickly publish an OFFICIAL catalog entry for BMM or BSM.
 function AdminCatalogCreator() {
@@ -490,15 +500,29 @@ function AdminCatalogCreator() {
       <div className="flex flex-wrap gap-2 mb-3">
         {OFFICIAL_CATALOGS.map((c) => {
           const Icon = KIND_ICON[c.kind] || Boxes;
-          const on = c.id === catId;
+          const on = c.id === cat.id;
           return (
             <button key={c.id} type="button" onClick={() => setCatId(c.id)}
               className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
-              <Icon size={14} className={on ? 'text-[var(--primary-2)]' : ''} /> {c.label(t)}
+              <Icon size={14} className={on ? 'text-[var(--primary-2)]' : ''} /> {c.label}
             </button>
           );
         })}
       </div>
+
+      {/* Server-Repos are the fifth thing the catalog index points at, and the one that is
+          NOT a CatalogKind — a repo is a hosted ServerRepo, not an entry somebody publishes
+          here. Saying so is the point: the index lists five types and this screen makes
+          four, and without this line that gap reads as a missing button. */}
+      <Card className="p-3 mb-4 flex flex-wrap items-center gap-2">
+        <Server size={14} className="text-[var(--muted)]" />
+        <span className="text-xs text-[var(--muted)] flex-1 min-w-0">
+          {t('cc.repos', 'Server-Repos are not published here — they are hosted by their owners and appear in the index automatically once verified and listed.')}
+        </span>
+        <a href="/api/repos.json" target="_blank" rel="noreferrer">
+          <Button size="sm" variant="ghost"><ExternalLink size={13} /> {t('cc.reposfeed', 'Repo feed')}</Button>
+        </a>
+      </Card>
 
       {/* Where this entry ends up. BMM adds this URL as a catalog source, so it belongs next to
           the form that publishes into it rather than somewhere a reader has to go and find. */}
@@ -3990,10 +4014,13 @@ function UserExtras({ userId }) {
 // Placed at the TOP of the details, above the profile: a pending closure changes what
 // every other action on this screen means. Banning an account that deletes itself in nine
 // days, or chasing a payment from one, is work nobody needed to do.
-function ClosureBanner({ user, onChanged }) {
+// `form` is owned by the modal, not by this component: the "Close it in 30 days" choice sits
+// in a different block (AccountEndActions) and has to be able to open this one. Two pieces of
+// UI driving one form is exactly the case for lifting the state, and the alternative — a ref
+// with an imperative open() — hides the coupling instead of stating it.
+function ClosureBanner({ user, onChanged, form, setForm }) {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState(null); // { reason, days, cancellable }
 
   const day = (d) => new Date(d).toLocaleDateString();
 
@@ -4088,14 +4115,92 @@ function ClosureBanner({ user, onChanged }) {
         <Button size="sm" onClick={() => setForm(null)}>{t('common.cancel', 'Cancel')}</Button>
       </div>
     </div>
-  ) : (
-    <button onClick={() => setForm({ reason: '', days: 30, cancellable: true })}
-      className="text-[11px] text-[var(--faint)] hover:text-[var(--error)] transition">
-      {t('ud.cl.open', 'Schedule this account for closure…')}
-    </button>
-  );
+  ) : null;   // the way IN is AccountEndActions, below the profile — this used to be an
+              // 11px grey link here, which is why the feature was reported missing twice.
 }
 
+
+/**
+ * Erase an account, permanently. One implementation, two callers.
+ *
+ * Typing the account's own address is the confirmation. A yes/no dialog on an irreversible
+ * action is a reflex; retyping the address is a moment of reading WHICH account this is.
+ */
+function useEraseUser(user, onChanged) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [busy, setBusy] = useState(false);
+
+  const erase = async () => {
+    const typed = await dialog.prompt({
+      title: t('gdpr.erase.t', 'Erase this account permanently?'),
+      message: t('gdpr.erase.m', 'This cannot be undone. Type the account email to confirm: {e}').replace('{e}', user.email),
+      okLabel: t('gdpr.erase.ok', 'Erase'), danger: true,
+    });
+    if (!typed) return;
+    setBusy(true);
+    try {
+      const r = await api.post(`/admin/users/${user.id}/erase`, { email: String(typed).trim() });
+      toast.success(t('gdpr.erase.done', 'Erased — {d} row(s) deleted, {x} detached.')
+        .replace('{d}', r.totals?.deleted ?? 0).replace('{x}', r.totals?.detached ?? 0));
+      onChanged?.();
+    } catch (x) {
+      toast.error(x?.data?.error === 'email_mismatch' ? t('gdpr.erase.mismatch', 'That is not this account’s email.')
+        : x?.data?.error === 'blocked' ? t('gdpr.erase.blocked', 'Still blocked — run the preview to see what by.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  return { erase, busy };
+}
+
+/**
+ * The two ways an account ends, side by side and near the top.
+ *
+ * Both already existed and neither could be found: closure was an 11px grey link under the
+ * header, and erasure was a button at the bottom of a card called "Data requests" — a GDPR
+ * framing, which is not what somebody looking to delete an account is scanning for. The
+ * features were reported missing twice, and they were never missing.
+ *
+ * Presented as a CHOICE because that is what it is, and the difference is the whole decision:
+ * one is reversible for thirty days and tells the person; the other is immediate and silent.
+ */
+function AccountEndActions({ user, onClose, onChanged }) {
+  const { t } = useI18n();
+  const { erase, busy } = useEraseUser(user, onChanged);
+
+  // Nothing to offer once it is already over or already scheduled — the banner above says
+  // what is happening and offers the only useful action, which is calling it off.
+  if (user.closedAt || user.closureScheduledFor) return null;
+
+  return (
+    <div className="rounded-xl border border-[var(--line)] p-3">
+      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5">
+        <Ban size={12} /> {t('ud.end.title', 'End this account')}
+      </div>
+      <div className="grid sm:grid-cols-2 gap-2">
+        <button type="button" onClick={onClose}
+          className="text-left rounded-lg border border-[var(--line)] p-2.5 hover:border-[var(--line-strong)] transition">
+          <div className="text-xs font-semibold flex items-center gap-1.5"><Clock size={12} /> {t('ud.end.close', 'Close it in 30 days')}</div>
+          <div className="text-[11px] text-[var(--muted)] mt-0.5">
+            {t('ud.end.close.s', 'They are emailed the reason, the date and a link to call it off. Their content is suspended now and deleted on the date — calling it off puts everything back.')}
+          </div>
+        </button>
+        <button type="button" disabled={busy} onClick={erase}
+          className="text-left rounded-lg border border-[var(--danger)]/40 p-2.5 hover:border-[var(--danger)] transition disabled:opacity-50">
+          <div className="text-xs font-semibold text-[var(--danger)] flex items-center gap-1.5">
+            {busy ? <Spinner size={12} /> : <Trash2 size={12} />} {t('ud.end.erase', 'Delete it now')}
+          </div>
+          <div className="text-[11px] text-[var(--muted)] mt-0.5">
+            {/* "Anonymised, not deleted" is stated because it is the truth and because the
+                difference is visible: the row survives with a closed+id@account.invalid
+                address, which somebody WILL find later and take for a failed deletion. */}
+            {t('ud.end.erase.s', 'Immediate and irreversible. No email, no grace period, no undo. Their data is erased and the account is anonymised — the row itself survives because the audit chain signs it. Preview it from Data requests below to see exactly what goes.')}
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Answering a data request, from the account it is about.
@@ -4108,7 +4213,7 @@ function ClosureBanner({ user, onChanged }) {
  * of a person's account, sitting on the same row as a download button, is an accident waiting
  * for a tired afternoon.
  */
-function DataRequestPanel({ user }) {
+function DataRequestPanel({ user, onChanged }) {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [busy, setBusy] = useState('');
   const [preview, setPreview] = useState(null);
@@ -4148,27 +4253,11 @@ function DataRequestPanel({ user }) {
     } finally { setBusy(''); }
   };
 
-  // Typing the account's own address is the confirmation. A yes/no dialog on an irreversible
-  // action is a reflex; retyping the address is a moment of reading which account this is.
-  const doErase = async () => {
-    const typed = await dialog.prompt({
-      title: t('gdpr.erase.t', 'Erase this account permanently?'),
-      message: t('gdpr.erase.m', 'This cannot be undone. Type the account email to confirm: {e}').replace('{e}', user.email),
-      okLabel: t('gdpr.erase.ok', 'Erase'), danger: true,
-    });
-    if (!typed) return;
-    setBusy('doerase');
-    try {
-      const r = await api.post(`/admin/users/${user.id}/erase`, { email: String(typed).trim() });
-      toast.success(t('gdpr.erase.done', 'Erased — {d} row(s) deleted, {x} detached.')
-        .replace('{d}', r.totals?.deleted ?? 0).replace('{x}', r.totals?.detached ?? 0));
-      onChanged?.();
-    } catch (x) {
-      toast.error(x?.data?.error === 'email_mismatch' ? t('gdpr.erase.mismatch', 'That is not this account’s email.')
-        : x?.data?.error === 'blocked' ? t('gdpr.erase.blocked', 'Still blocked — run the preview to see what by.')
-        : t('common.failed', 'Failed.'));
-    } finally { setBusy(''); }
-  };
+  // The erase itself lives in ONE place — see useEraseUser. Two copies of an irreversible
+  // action mean two confirmation dialogs to keep in step, and the one that drifts is the one
+  // that stops asking.
+  const { erase } = useEraseUser(user, onChanged);
+  const doErase = async () => { setBusy('doerase'); try { await erase(); } finally { setBusy(''); } };
 
   const previewErase = async () => {
     setBusy('erase');
@@ -4289,6 +4378,11 @@ function UserDetailModal({ id, onClose }) {
   const { data, loading, reload } = useAsync(() => api.get(`/admin/users/${id}`), [id]);
   const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
   const u = data?.user;
+  // The closure form, owned here because two blocks drive it: the banner renders it, and
+  // AccountEndActions opens it. Reset when the modal moves to another user, or the next
+  // account inherits a half-typed reason meant for this one.
+  const [closureForm, setClosureForm] = useState(null);
+  useEffect(() => { setClosureForm(null); }, [id]);
   const hosted = (u?.serverRepos || []).filter((r) => r.hosted);
   const listed = (u?.serverRepos || []).filter((r) => !r.hosted);
   const fdate = (d) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
@@ -4304,7 +4398,7 @@ function UserDetailModal({ id, onClose }) {
       footer={<Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>}>
       {loading ? <Loading /> : !u ? <EmptyState icon={XCircle} title={t('ud.notfound', 'Not found')} /> : (
         <div className="space-y-5">
-          <ClosureBanner user={u} onChanged={reload} />
+          <ClosureBanner user={u} onChanged={reload} form={closureForm} setForm={setClosureForm} />
           {u.priorUserId && (
             <div className="text-[12px] text-[var(--muted)] flex items-center gap-1.5">
               <RotateCcw size={12} />
@@ -4412,7 +4506,14 @@ function UserDetailModal({ id, onClose }) {
           {/* Answering an access or erasure request from the account it is about, rather
               than from a separate screen where the person is a row in a list. */}
           <UserSanctions userId={u.id} />
-          <DataRequestPanel user={u} />
+          {/* The two ways an account ends, stated as a choice. Hidden while the closure form
+              is open — the form IS the closure branch, and offering to open it again beside
+              itself is a dead control. */}
+          {!closureForm && (
+            <AccountEndActions user={u} onChanged={reload}
+              onClose={() => setClosureForm({ reason: '', days: 30, cancellable: true })} />
+          )}
+          <DataRequestPanel user={u} onChanged={reload} />
 
           {u.apiKeys && (
             <div>

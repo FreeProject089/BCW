@@ -480,6 +480,54 @@ async function tearDownOwned(p, userId, log) {
   return out;
 }
 
+/**
+ * End an account as an IDENTITY: the address, the name, and every way back in.
+ *
+ * Exported because two paths need it and only one had it. A closure reaching its date came
+ * through here; an admin pressing "erase" did not — `eraseUser` walks the relations and
+ * skips the User model itself by design, so an account could be told it was erased
+ * permanently while its email, display name and role sat untouched in the table. The words
+ * on the button were true of the person's data and false of the person's account.
+ *
+ * Not a deletion, and cannot be: AuditLogEntry keeps `actorId` inside its HMAC chain and the
+ * column is required, so the row is undeletable for any account that has ever acted. What is
+ * removable is everything that identifies them and everything that authenticates them, which
+ * is what this does.
+ *
+ * Safe to run twice — `closedAt` is the guard the sweeper filters on, and every write here is
+ * idempotent.
+ */
+export async function anonymiseAccount(p, user) {
+  await p.user.update({
+    where: { id: user.id },
+    data: {
+      // The hash goes in as the address goes out, in the same write. Recorded here and
+      // not at request time so that a cancelled closure leaves nothing behind.
+      closedEmailHash: emailHash(user.email),
+      email: `closed+${user.id}@account.invalid`,
+      displayName: 'Closed account',
+      passwordHash: null,
+      bio: '', website: null, avatar: null,
+      totpSecret: null, totpEnabled: false, totpRecoveryCodes: [],
+      emailVerified: false, profilePublic: false,
+      stripeCustomerId: null,
+      closureToken: null, closedAt: new Date(),
+    },
+  });
+  // Everything that could still let somebody in, or let something in on their behalf.
+  await Promise.all([
+    p.session.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {}),
+    p.oAuthRefreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {}),
+    p.oAuthConsent.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    p.apiKey.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {}),
+    p.oAuthPairwiseSub.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    p.creatorLink.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    p.discordLink.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    p.socialConnection.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+    p.oAuthAccount.deleteMany({ where: { userId: user.id } }).catch(() => {}),
+  ]);
+}
+
 export async function sweepAccountClosures(p, log) {
   const due = await p.user.findMany({
     where: { closureScheduledFor: { lte: new Date() }, closedAt: null },
@@ -505,34 +553,7 @@ export async function sweepAccountClosures(p, log) {
       const torn = await tearDownOwned(p, u.id, log);
       log?.info?.({ ...torn }, `[sweeper] staff closure of ${u.id}: tore down what it owned`);
     }
-    await p.user.update({
-      where: { id: u.id },
-      data: {
-        // The hash goes in as the address goes out, in the same write. Recorded here and
-        // not at request time so that a cancelled closure leaves nothing behind.
-        closedEmailHash: emailHash(u.email),
-        email: `closed+${u.id}@account.invalid`,
-        displayName: 'Closed account',
-        passwordHash: null,
-        bio: '', website: null, avatar: null,
-        totpSecret: null, totpEnabled: false, totpRecoveryCodes: [],
-        emailVerified: false, profilePublic: false,
-        stripeCustomerId: null,
-        closureToken: null, closedAt: new Date(),
-      },
-    });
-    // Everything that could still let somebody in, or let something in on their behalf.
-    await Promise.all([
-      p.session.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {}),
-      p.oAuthRefreshToken.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {}),
-      p.oAuthConsent.deleteMany({ where: { userId: u.id } }).catch(() => {}),
-      p.apiKey.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date() } }).catch(() => {}),
-      p.oAuthPairwiseSub.deleteMany({ where: { userId: u.id } }).catch(() => {}),
-      p.creatorLink.deleteMany({ where: { userId: u.id } }).catch(() => {}),
-      p.discordLink.deleteMany({ where: { userId: u.id } }).catch(() => {}),
-      p.socialConnection.deleteMany({ where: { userId: u.id } }).catch(() => {}),
-      p.oAuthAccount.deleteMany({ where: { userId: u.id } }).catch(() => {}),
-    ]);
+    await anonymiseAccount(p, u);
     log?.info?.(`[sweeper] account ${u.id} closed and anonymised`);
     n++;
   }

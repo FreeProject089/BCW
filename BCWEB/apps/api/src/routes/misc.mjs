@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES } from '../lib/lib.mjs';
-import { suspendOwned, restoreOwned, cancelSubscriptions } from './closure.mjs';
+import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
@@ -986,7 +986,7 @@ export default async function miscRoutes(app) {
     const b = z.object({ email: z.string().email() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const u = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, email: true } });
+    const u = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, email: true, closedAt: true } });
     if (!u) return reply.code(404).send({ error: 'not_found' });
     if (u.email.toLowerCase() !== b.data.email.trim().toLowerCase()) return reply.code(409).send({ error: 'email_mismatch' });
 
@@ -997,11 +997,26 @@ export default async function miscRoutes(app) {
     if (dry.blocked?.length) return reply.code(409).send({ error: 'blocked', blocked: dry.blocked });
 
     const done = await eraseUser(p, u.id, plan, { commit: true });
-    // totals.deleted / .detached — checked against the library's actual return shape rather
-    // than guessed; `rows` does not exist on it.
+
+    // And the ACCOUNT, which eraseUser deliberately does not touch: it walks the relations
+    // and skips the User model, so without this the row keeps its address, its display name
+    // and its role. The button says "erase permanently" and the person could still sign in.
+    //
+    // Anonymised rather than deleted, because deleted is not available: AuditLogEntry holds
+    // `actorId` inside its HMAC chain with a required column, so the row cannot go without
+    // invalidating every entry after it. The same function the closure sweeper reaches on
+    // the day — an immediate erasure is a closure with no grace period, and it should leave
+    // the account in exactly the same state.
+    if (!u.closedAt) await anonymiseAccount(p, u);
+    // The cached copy still holds the old address, and it is what the next request reads.
+    clearUserCache(u.id);
+    clearAccountLockCache(u.id);
+
+    // The ORIGINAL address, recorded before it was replaced — an audit line reading
+    // `closed+<id>@account.invalid` names nobody and is the one line that has to.
     await logAudit(p, req.user.uid, 'user.erased',
-      `${u.email} (${done.totals?.deleted ?? 0} deleted, ${done.totals?.detached ?? 0} detached)`, req.ip).catch(() => {});
-    return { ok: true, ...done };
+      `${u.email} (${done.totals?.deleted ?? 0} deleted, ${done.totals?.detached ?? 0} detached, account anonymised)`, req.ip).catch(() => {});
+    return { ok: true, ...done, accountAnonymised: true };
   });
 
   // Mail it to the ADDRESS ON THE ACCOUNT, and nowhere else.
