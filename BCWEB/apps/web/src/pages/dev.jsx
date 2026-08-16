@@ -295,9 +295,15 @@ export function ApiConsole() {
 // this list wholesale. Kept here so a site that has never configured the page still has one,
 // and so "reset to the built-in cards" has something to reset to.
 export const DEFAULT_DEV_CARDS = [
+  // Every built-in card carries its ENGLISH words beside its key. `t(key, fallback)` means
+  // the fallback IS the English — these were written with keys alone, so the French dictionary
+  // answered and English fell through to the empty string the code passed. The page had four
+  // blank cards in English and looked perfect in French.
   {
     id: 'tools', icon: 'file-json', to: '/dev/tools', ctaKey: 'dev.hub.open',
-    titleKey: 'dev.hub.tools', bodyKey: 'dev.hub.tools.s2',
+    titleKey: 'dev.hub.tools', title: 'Tools',
+    bodyKey: 'dev.hub.tools.s2',
+    body: 'Try any call against the real API, check a catalog feed before you publish it, and see what your keys have been doing — refusals included.',
     // Named and linked, not summarised. Five tools live behind this card and the only way to
     // learn which was to open it — the same discoverability gap that hid a working Switch step
     // and a whole catalogue type elsewhere in this project.
@@ -309,9 +315,24 @@ export const DEFAULT_DEV_CARDS = [
       { to: '/dev/tools#calls', labelKey: 'dvt.calls', label: 'What your keys did' },
     ],
   },
-  { id: 'config', icon: 'sliders', to: '/dev/config', ctaKey: 'dev.hub.open', titleKey: 'dev.hub.config', bodyKey: 'dev.hub.config.s' },
-  { id: 'sso', icon: 'shield', to: '/docs/sso', ctaKey: 'dev.hub.ssodoc', titleKey: 'dev.hub.sso', bodyKey: 'dev.hub.sso.s' },
-  { id: 'docs', icon: 'book-open', to: '/docs', ctaKey: 'dev.hub.open', titleKey: 'dev.hub.docs', bodyKey: 'dev.hub.docs.s' },
+  {
+    id: 'config', icon: 'sliders', to: '/dev/config', ctaKey: 'dev.hub.open',
+    titleKey: 'dev.hub.config', title: 'Credentials',
+    bodyKey: 'dev.hub.config.s',
+    body: 'Your API keys and the apps you have registered, in one place. Creating or deleting a key asks for your 2FA code if you have one.',
+  },
+  {
+    id: 'sso', icon: 'shield', to: '/docs/sso', ctaKey: 'dev.hub.ssodoc',
+    titleKey: 'dev.hub.sso', title: 'Sign in with BetterCommunity',
+    bodyKey: 'dev.hub.sso.s',
+    body: 'Standard OpenID Connect. Register an app, point your library at the discovery document, and you are done — there is no in-house SDK to install.',
+  },
+  {
+    id: 'docs', icon: 'book-open', to: '/docs', ctaKey: 'dev.hub.open',
+    titleKey: 'dev.hub.docs', title: 'Docs',
+    bodyKey: 'dev.hub.docs.s',
+    body: 'The API reference, the plugin API, and the format of catalogs and repositories.',
+  },
 ];
 
 // A configured card carries its own words; a built-in one carries a key and is translated.

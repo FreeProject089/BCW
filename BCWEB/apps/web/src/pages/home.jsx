@@ -124,7 +124,9 @@ export function Home() {
       {/* hero */}
       <section className="relative text-center pt-24 md:pt-32 pb-24 md:pb-32">
         <div className="relative z-10">
-          <div className="anim-slide inline-flex items-center gap-2 badge mb-6" style={{ animationDelay: '0ms' }}><img src="/logo.png" alt="" className="w-4 h-4 rounded-md" /> <span className="text-[var(--text)]">{t('home.badge')}</span></div>
+          {/* The "BetterCommunity" pill that used to sit here is gone. It named the site to
+              somebody already on the site, directly above a headline that names it again —
+              a label with nothing left to say, taking the eye first. */}
           <h1 className="anim-slide text-6xl md:text-8xl font-extrabold leading-[0.98] tracking-[-0.035em]" style={{ animationDelay: '80ms' }}>
             {t('home.hero1')}<br /><span className="gradient-text">{t('home.brand')}</span> {t('home.hero2')}
           </h1>
@@ -260,15 +262,19 @@ export function Home() {
                   <Link to="/docs/bcweb-api"><Button className="!px-5 !py-2.5">{t('home.dev.cta2', 'API reference')}</Button></Link>
                 </div>
               </div>
-              {/* The four things you get, named. A list of nouns beats a paragraph here: the
-                  reader is scanning for one word that matches what they came to do. */}
+              {/* The four things you get, named — and each one goes where it is. They looked
+                  like buttons and did nothing: the reader scanning for the single word that
+                  matches what they came to do would click it and stay exactly where they were. */}
               <div className="grid grid-cols-2 gap-3">
-                {[[KeyRound, t('home.dev.f1', 'API keys')], [Shield, t('home.dev.f2', 'Sign-in (OIDC)')],
-                  [Webhook, t('home.dev.f3', 'Webhooks')], [FlaskConical, t('home.dev.f4', 'Sandbox')]].map(([I, label]) => (
-                  <div key={label} className="flex items-center gap-2.5 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-3.5 py-3">
+                {[[KeyRound, t('home.dev.f1', 'API keys'), '/dev/config'],
+                  [Shield, t('home.dev.f2', 'Sign-in (OIDC)'), '/docs/sso'],
+                  [Webhook, t('home.dev.f3', 'Webhooks'), '/dev/tools#signature'],
+                  [FlaskConical, t('home.dev.f4', 'Sandbox'), '/dev/tools#try']].map(([I, label, to]) => (
+                  <Link key={label} to={to}
+                    className="flex items-center gap-2.5 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-3.5 py-3 transition hover:border-[var(--primary)] hover:bg-[var(--surface-2)]">
                     <I size={16} className="text-[var(--primary-2)] shrink-0" />
                     <span className="text-[13px] font-medium min-w-0 truncate">{label}</span>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </div>
