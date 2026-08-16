@@ -51,6 +51,49 @@ export function viewQuestions(poll) {
 }
 
 /**
+ * This viewer's OWN answers, shaped the way the form renders them.
+ *
+ * Without it a form poll could be answered again and again: `myVotes` is built from PollVote,
+ * which the multi-question path never writes, so the page could not tell that anybody had
+ * answered — it re-offered a blank form, showed no result, and each submission silently
+ * replaced the last. Answering felt like it had not worked.
+ *
+ * Their own answers only. Returning anybody else's would turn a poll into a way to look up how
+ * a named person voted, which is the one thing a poll must never become.
+ *
+ * The shape per kind matches exactly what the renderer holds in state, so pre-filling is an
+ * assignment rather than a second interpretation of the same rows — two readings of one shape
+ * is how they drift.
+ */
+export function viewMyAnswers(questions, rows) {
+    const out = {};
+    for (const q of questions || []) {
+        const mine = (rows || []).filter((r) => r.questionId === q.id);
+        if (!mine.length) continue;
+        switch (q.kind) {
+            case 'ranking':
+                // Ordered by the rank itself, not by insertion: the rows come back in
+                // whatever order the database returns them.
+                out[q.id] = mine.slice().sort((a, b) => (a.number ?? 0) - (b.number ?? 0)).map((r) => r.choiceId);
+                break;
+            case 'grid':
+                out[q.id] = Object.fromEntries(mine.map((r) => [r.slot ?? 0, r.choiceId]));
+                break;
+            case 'choice':
+                // A multiple-choice question is several rows and an array; a single one is a
+                // bare id. The renderer branches on exactly that.
+                out[q.id] = q.config?.multiple ? mine.map((r) => r.choiceId) : mine[0].choiceId;
+                break;
+            case 'text': out[q.id] = mine[0].text ?? ''; break;
+            case 'scale': case 'number': out[q.id] = mine[0].number; break;
+            case 'date': out[q.id] = mine[0].date ? new Date(mine[0].date).toISOString().slice(0, 10) : ''; break;
+            default: break;   // a note has no answer, and nothing else should reach here
+        }
+    }
+    return out;
+}
+
+/**
  * The poll as this viewer should receive it.
  *
  * `tally` is omitted entirely rather than zeroed when it may not be shown. Zeros are a claim —
