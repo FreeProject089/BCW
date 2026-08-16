@@ -213,6 +213,7 @@ const DICT = {
     'poll.f.down': 'Descendre',
     'apq.kind.ranking': 'Classement',
     'apq.kind.grid': 'Grille',
+    'apq.lose.opt': 'Option « {o} » de « {q} »',
     'apq.grid.rows': 'Lignes (les options ci-dessus sont les colonnes)',
     'apq.grid.row': 'Ligne',
     'apq.grid.addrow': 'Ajouter une ligne',

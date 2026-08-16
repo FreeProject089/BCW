@@ -87,3 +87,69 @@ describe('planQuestionUpdate', () => {
         assert.equal(r.answersLost, 7);
     });
 });
+
+// Until this existed the update branch wrote label/kind/config and never touched choices, so a
+// typo in an option was fixable only by deleting the question — and its answers with it.
+describe('planQuestionUpdate — choices', () => {
+    const withChoices = [{ id: 'q1', kind: 'choice', choices: [{ id: 'c1', label: 'A' }, { id: 'c2', label: 'B' }] }];
+    const plan1 = (r) => r.choicePlan.find((c) => c.questionId === 'q1');
+
+    test('renaming an option updates it in place, keeping its answers', () => {
+        const r = planQuestionUpdate(withChoices, [{ id: 'q1', kind: 'choice', choices: [{ id: 'c1', label: 'Renamed' }, { id: 'c2', label: 'B' }] }], { q1: 40 });
+        assert.equal(r.ok, true);
+        assert.equal(r.answersLost, 0, 'a rename destroys nothing');
+        assert.deepEqual(plan1(r).update, [{ id: 'c1', label: 'Renamed', sort: 0 }, { id: 'c2', label: 'B', sort: 1 }]);
+        assert.deepEqual(plan1(r).removeIds, []);
+    });
+
+    test('an option with no id is created, and its sort is its position', () => {
+        const r = planQuestionUpdate(withChoices, [{ id: 'q1', kind: 'choice', choices: [{ id: 'c1', label: 'A' }, { label: 'New' }, { id: 'c2', label: 'B' }] }], {});
+        assert.deepEqual(plan1(r).create, [{ label: 'New', sort: 1 }]);
+        assert.deepEqual(plan1(r).update.map((c) => c.sort), [0, 2]);
+    });
+
+    test('deleting an option that holds answers is refused, and names the OPTION', () => {
+        // THE ONE this half exists for. The question survives, so the old plan saw no loss and
+        // the delete went through with a 200 — answers gone, nothing said.
+        const r = planQuestionUpdate(withChoices, [{ id: 'q1', kind: 'choice', choices: [{ id: 'c1', label: 'A' }] }],
+            { q1: 40 }, { choiceAnswerCounts: { c2: 7 } });
+        assert.equal(r.ok, false);
+        assert.equal(r.answersLost, 7, 'the option, not the whole question');
+        assert.deepEqual(r.choices, [{ questionId: 'q1', choiceId: 'c2', label: 'B', answers: 7 }]);
+        assert.deepEqual(r.questions, [], 'no question is being destroyed');
+    });
+
+    test('deleting an option nobody picked needs no confirmation', () => {
+        const r = planQuestionUpdate(withChoices, [{ id: 'q1', kind: 'choice', choices: [{ id: 'c1', label: 'A' }] }],
+            { q1: 40 }, { choiceAnswerCounts: { c2: 0 } });
+        assert.equal(r.ok, true);
+        assert.deepEqual(plan1(r).removeIds, ['c2']);
+    });
+
+    test('a choice id from another question is refused, force or not', () => {
+        for (const opts of [{}, { force: true }]) {
+            const r = planQuestionUpdate(withChoices, [{ id: 'q1', kind: 'choice', choices: [{ id: 'c1', label: 'A' }, { id: 'stranger', label: 'X' }] }], {}, opts);
+            assert.equal(r.error, 'unknown_choice');
+            assert.deepEqual(r.ids, ['stranger']);
+        }
+    });
+
+    test('a removed question does not have its options counted a second time', () => {
+        // Its answers are already in the question total. Counting the options again would report
+        // one deletion as twice the loss, and a warning nobody believes is a warning nobody reads.
+        const r = planQuestionUpdate(withChoices, [], { q1: 7 }, { choiceAnswerCounts: { c1: 4, c2: 3 } });
+        assert.equal(r.answersLost, 7);
+        assert.deepEqual(r.choices, []);
+    });
+
+    test('a RETYPED question does not have its options counted a second time either', () => {
+        const r = planQuestionUpdate(withChoices, [{ id: 'q1', kind: 'text', choices: [] }], { q1: 7 }, { choiceAnswerCounts: { c1: 4, c2: 3 } });
+        assert.equal(r.answersLost, 7);
+    });
+
+    test('a question with no choices at all plans nothing for them', () => {
+        const r = planQuestionUpdate([{ id: 'q1', kind: 'text' }], [{ id: 'q1', kind: 'text' }], {});
+        assert.equal(r.ok, true);
+        assert.deepEqual(plan1(r), { questionId: 'q1', removeIds: [], update: [], create: [] });
+    });
+});

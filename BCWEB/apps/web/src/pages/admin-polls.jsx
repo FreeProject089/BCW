@@ -198,7 +198,7 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
       // 409 is not a failure to report and forget — it is the server refusing to delete answers
       // without being told to. Show WHICH questions and how many, then offer to go ahead.
       if (x?.status === 409 && x?.data?.error === 'would_lose_answers') setConflict(x.data);
-      else if (x?.data?.error === 'unknown_question') toast.error(t('apq.unknown', 'A question in this form does not belong to this poll. Reload and try again.'));
+      else if (x?.data?.error === 'unknown_question' || x?.data?.error === 'unknown_choice') toast.error(t('apq.unknown', 'A question in this form does not belong to this poll. Reload and try again.'));
       else toast.error(t('common.failed', 'Failed.'));
     } finally { setSaving(false); }
   };
@@ -218,6 +218,16 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
             <ul className="text-xs text-[var(--muted)] space-y-0.5">
               {(conflict.questions || []).map((c) => (
                 <li key={c.id}>· {qs.find((q) => q.id === c.id)?.label || c.id} — {t('apq.lose.n', '{n} answer(s)').replace('{n}', String(c.answers))}</li>
+              ))}
+              {/* Deleted OPTIONS, listed separately. Their question survives, so a count with no
+                  question beside it reads as a bug rather than as the cost of removing an option. */}
+              {(conflict.choices || []).map((c) => (
+                <li key={c.choiceId}>
+                  · {t('apq.lose.opt', 'Option “{o}” of “{q}”')
+                    .replace('{o}', c.label)
+                    .replace('{q}', qs.find((q) => q.id === c.questionId)?.label || c.questionId)}
+                  {' — '}{t('apq.lose.n', '{n} answer(s)').replace('{n}', String(c.answers))}
+                </li>
               ))}
             </ul>
             <div className="flex gap-2">

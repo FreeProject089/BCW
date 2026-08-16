@@ -125,22 +125,47 @@ poll can have.
 
 ---
 
-## Grids — designed, not built
+## Grids — built (`859fd5b`), and the design above was wrong about the migration
 
 A grid is N rows sharing one set of columns: "rate each of these on the same scale". Each answer
-says WHICH ROW and WHICH COLUMN, and `PollAnswer` has no row field.
+says WHICH ROW and WHICH COLUMN, and `PollAnswer` had no row field.
 
-It does not need one. Ranking already established the shape: `choiceId` plus `number` in one row,
-with the pair's meaning fixed by the question's kind.
+**This section originally claimed it needed none** — reuse `number` for the row, the way ranking
+reuses it for the rank, and ship without a migration. That was wrong, and the reason is the
+unique key rather than the columns:
 
-| kind | choiceId | number |
-|---|---|---|
-| `choice` | the answer | — |
-| `ranking` | which item | its rank, from 1 |
-| `grid` | which COLUMN was picked | which ROW it was picked for, from 0 |
+```
+@@unique([questionId, userId,   choiceId])
+@@unique([questionId, voterKey, choiceId])
+```
+
+A grid repeating a column across rows — "Speed: good, Docs: good" — is the NORMAL case, and to
+that key it is one voter picking `good` twice. Worse than an error: the write path is
+`createMany({ skipDuplicates: true })`, so it would not raise. The second row would be dropped
+and the grid would come back half-answered with nothing anywhere saying why. A row index parked
+in `number` is invisible to the key.
+
+Measured rather than argued: putting the old key back and writing the normal case through it
+stored **1 of 2 rows**; the new key stores 2 of 2.
+
+So `PollAnswer.slot` — which sub-item of the question a row answers. `NOT NULL DEFAULT 0`,
+because a nullable column in a unique key disables it: every NULL is distinct from every other
+in Postgres, which is the same property the `userId`/`voterKey` pair relies on and the reason a
+nullable discriminator would have looked right and done nothing.
+
+| kind | choiceId | number | slot |
+|---|---|---|---|
+| `choice` | the answer | — | 0 |
+| `ranking` | which item | its rank, from 1 | 0 |
+| `grid` | which COLUMN was picked | — | which ROW, from 0 |
 
 Rows live in `config.rows: string[]` — they are labels, not answerable things, so they need no
-table of their own. Columns are the question's existing choices.
+table of their own. Columns are the question's existing choices. `config.requireAllRows` says
+whether a partial grid is allowed, defaulting to the question's own `required`.
+
+The row index must ARRIVE as a number: `Number(null)` and `Number([])` are both 0, so a gate
+that coerced before checking would file every malformed entry under row 0 and then blame the
+client's honest second answer as a duplicate.
 
 **Validate the whole submission, like ranking.** One answer per row, no row twice, no row index
 past the end. A grid half-answered is the same problem as a partial ranking: averaging a column
@@ -204,13 +229,23 @@ A staff-only tally was private while the poll was open and public to everyone on
 surfaced only because `lib/poll-view.mjs` stated the same rule properly and the two disagreed on
 exactly one pair — closed AND staff-only.
 
-**Step 3 — the editor — NOT started.** This is what is left, plus the public multi-question
-page. The server side is complete: the editor calls `PUT /admin/polls/:id/questions` and must
-handle its 409 by showing the named questions and their answer counts before offering `force`.
+**Step 3 — the editor and the page — done.** Both exist, and two defects of the same shape came
+out of building them: the code could do it and nothing reached it.
 
-The page is deliberately last. Nothing can create a poll with more than one question until the
-editor exists, so until then the page has nothing new to render and could only be tested against
-data no user could produce.
+- The editor offered `ranking` from the day it shipped, and `PUT /admin/polls/:id/questions`
+  restated its kinds by hand as `choice/text/scale/date/number`. Saving a ranking question
+  returned a bare `invalid_input` naming no field. The enum is DERIVED from `COLUMN_FOR_KIND`
+  now, so a kind that can be stored can be reached.
+- `questionStats` had no branch for `ranking` or `grid`, so both fell to the date parser at the
+  bottom and reported `answered: 0` — the same default-case trap `validateAnswer` hit. And the
+  per-question statistics the API had served since the stats library landed were read by no
+  screen at all; they render in the admin results modal now.
+
+**What is still missing:** a question's CHOICES cannot be edited after it is created. The update
+branch of `PUT /admin/polls/:id/questions` writes `kind/label/help/required/sort/config/showIf`
+and never touches `choices` — only the create branch does. So a typo in an option, or a column
+in a grid, is fixable today only by deleting the question and losing its answers. Pre-existing,
+not introduced by grids, and made more visible by them.
 
 ### Before running the API tests, know where you are
 

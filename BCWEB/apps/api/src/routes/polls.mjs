@@ -449,14 +449,21 @@ export default async function pollRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
 
     const p = await db();
-    const poll = await p.poll.findUnique({ where: { id: req.params.id }, include: { questions: true } });
+    const poll = await p.poll.findUnique({
+      where: { id: req.params.id },
+      include: { questions: { include: { choices: { orderBy: { sort: 'asc' } } } } },
+    });
     if (!poll) return reply.code(404).send({ error: 'not_found' });
 
     // Counted per question, not in total: the refusal has to name what it would cost.
     const grouped = await p.pollAnswer.groupBy({ by: ['questionId'], where: { pollId: poll.id }, _count: true });
     const answerCounts = Object.fromEntries(grouped.map((g) => [g.questionId, g._count]));
+    // And per CHOICE, because deleting an option destroys answers without deleting a question —
+    // the loss the old plan could not see and therefore never warned about.
+    const byChoice = await p.pollAnswer.groupBy({ by: ['choiceId'], where: { pollId: poll.id, choiceId: { not: null } }, _count: true });
+    const choiceAnswerCounts = Object.fromEntries(byChoice.map((g) => [g.choiceId, g._count]));
 
-    const plan = planQuestionUpdate(poll.questions, b.data.questions, answerCounts, { force: b.data.force });
+    const plan = planQuestionUpdate(poll.questions, b.data.questions, answerCounts, { force: b.data.force, choiceAnswerCounts });
     if (!plan.ok) return reply.code(409).send(plan);
 
     // One transaction. A half-applied question set is a poll whose reader and whose answers
@@ -478,6 +485,14 @@ export default async function pollRoutes(app) {
               choices: { create: q.choices.map((c, i) => ({ label: c.label, sort: i })) },
             },
           }))),
+      // Choices for questions that already existed. In the SAME transaction as the questions:
+      // a poll whose labels landed and whose options did not is a state no screen would show
+      // you. Deletes first, so renaming A→B while adding a new A cannot collide on nothing.
+      ...(plan.choicePlan || []).flatMap((cp) => [
+        ...(cp.removeIds.length ? [p.pollChoice.deleteMany({ where: { id: { in: cp.removeIds } } })] : []),
+        ...cp.update.map((c) => p.pollChoice.update({ where: { id: c.id }, data: { label: c.label, sort: c.sort } })),
+        ...(cp.create.length ? [p.pollChoice.createMany({ data: cp.create.map((c) => ({ questionId: cp.questionId, label: c.label, sort: c.sort })) })] : []),
+      ]),
     ]);
 
     await logAudit(req, 'poll.questions.update', { pollId: poll.id, questions: plan.ordered.length, answersLost: plan.answersLost });
