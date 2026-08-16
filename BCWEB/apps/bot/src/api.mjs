@@ -57,6 +57,10 @@ export const api = {
   account: (discordId) => call('GET', `/bot/account/${discordId}`).catch(() => ({ linked: false })),
   // Bulk-sync the guild roster into the member database (startup + periodic full scan).
   syncMembers: (members) => call('POST', '/bot/members/sync', { members }).catch(() => ({ synced: 0 })),
+  // Moderation queued on the website. A failed poll returns an empty list rather than
+  // throwing, so one bad request never stops the loop.
+  pendingActions: () => call('GET', '/bot/actions/pending').catch(() => ({ actions: [] })),
+  actionResult: (id, ok, error) => call('POST', `/bot/actions/${id}/result`, { ok, error }).catch(() => null),
   // Report a Discord activity event (join / message / voiceJoin / voiceCreate) so the
   // telemetry dashboard can show it next to the linked creator id. Best-effort.
   activity: (discordId, event, user) => call('POST', '/bot/activity', {

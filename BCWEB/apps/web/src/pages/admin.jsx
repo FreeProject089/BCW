@@ -8976,6 +8976,95 @@ function AdminBot() {
 
 // The bot's "member database" — DiscordActivity rows, paginated + searchable —
 // with the linked BCWEB account shown when there is one.
+// Ban, kick or time somebody out from here — carried out by the bot, not by this page.
+//
+// The request is QUEUED (see BotAction): the website cannot reach Discord, so the bot polls and
+// reports back. That is why this shows the OUTCOME of the last attempt rather than turning green
+// on click — Discord refuses these routinely, most often because the bot's own role sits below
+// the target's, and a moderator who does not see the refusal believes the ban happened.
+function BotModerate({ member }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const hist = useAsync(() => (open ? api.get(`/admin/bot/actions?discordId=${member.discordId}`) : Promise.resolve({ actions: [] })), [open, member.discordId]);
+  const last = hist.data?.actions?.[0];
+
+  const KINDS = [
+    { kind: 'timeout', label: t('bmod.timeout', 'Time out'), minutes: true, danger: false },
+    { kind: 'kick', label: t('bmod.kick', 'Kick'), danger: true },
+    { kind: 'ban', label: t('bmod.ban', 'Ban'), danger: true },
+    { kind: 'untimeout', label: t('bmod.untimeout', 'Lift the timeout'), undo: true },
+    { kind: 'unban', label: t('bmod.unban', 'Lift the ban'), undo: true },
+  ];
+
+  const ask = async (k) => {
+    let reason = '';
+    // The undo actions do not ask for one. Demanding a justification to REVERSE a punishment is
+    // how reversing stops being done.
+    if (!k.undo) {
+      const typed = await dialog.prompt({
+        title: t('bmod.why', 'Why?'),
+        message: t('bmod.whym', 'Sent to Discord with the action, and kept here with your name on it.'),
+        okLabel: t('common.continue', 'Continue'), danger: k.danger,
+      });
+      if (!typed || !String(typed).trim()) return;
+      reason = String(typed).trim();
+    }
+    let minutes;
+    if (k.minutes) {
+      const typed = await dialog.prompt({
+        title: t('bmod.howlong', 'How many minutes?'),
+        message: t('bmod.howlongm', 'Discord allows up to 28 days (40320 minutes).'),
+        okLabel: t('common.continue', 'Continue'),
+      });
+      minutes = Number(String(typed || '').trim());
+      if (!Number.isFinite(minutes) || minutes < 1) return;
+    }
+    setBusy(true);
+    try {
+      await api.post('/admin/bot/actions', { kind: k.kind, discordId: member.discordId, reason, ...(minutes ? { minutes } : {}) });
+      // Deliberately not "done": it is queued, and the bot may still be refused.
+      toast.success(t('bmod.queued', 'Queued — the bot will do it within a minute, and the result shows here.'));
+      hist.reload();
+    } catch (x) {
+      toast.error(x?.data?.error === 'reason_required' ? t('bmod.needreason', 'That one needs a reason.')
+        : x?.data?.error === 'minutes_required' ? t('bmod.needmin', 'That one needs a duration.')
+          : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="ghost" className="shrink-0" onClick={() => setOpen(true)}>
+        <Gavel size={13} /> {t('bmod.open', 'Moderate')}
+      </Button>
+    );
+  }
+  return (
+    <div className="shrink-0 w-full sm:w-auto sm:max-w-[260px] rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2 space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('bmod.title', 'Moderate')}</span>
+        <button onClick={() => setOpen(false)} className="text-[var(--faint)] hover:text-[var(--text)] leading-none px-1">×</button>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {KINDS.map((k) => (
+          <Button key={k.kind} size="sm" variant={k.danger ? 'ghost' : 'ghost'} disabled={busy}
+            className={k.danger ? '!text-error' : ''} onClick={() => ask(k)}>{k.label}</Button>
+        ))}
+      </div>
+      {last && (
+        <div className="text-[11px] leading-snug">
+          <span className="text-[var(--faint)]">{t('bmod.last', 'Last:')} {last.kind} · </span>
+          {last.status === 'pending' && <span className="text-[var(--muted)]">{t('bmod.pending', 'waiting for the bot')}</span>}
+          {last.status === 'done' && <span className="text-[var(--success)]">{t('bmod.done', 'done')}</span>}
+          {/* The whole point of the queue. Discord's own words, not a paraphrase. */}
+          {last.status === 'failed' && <span className="text-[var(--error)]">{t('bmod.failed', 'refused')} — {last.error}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminBotMembers() {
   const { t } = useI18n();
   const [q, setQ] = useState('');
@@ -9031,7 +9120,18 @@ function AdminBotMembers() {
                     : <Badge><XCircle size={11} /> {t('bm.notlinked', 'Not linked')}</Badge>}
                 </div>
                 <div className="text-xs text-[var(--faint)] truncate">{t('bm.joined', 'joined')} {since(m.guildJoinedAt)} · {t('bm.lastmsg', 'last message')} {since(m.lastMessageAt)} · {t('bm.lastvoice', 'last voice')} {since(m.lastVoiceJoinAt)} · id {m.discordId}</div>
+                {/* What they ARE, before deciding what to do about them. @everyone is stripped
+                    by the scan — every member has it, so it says nothing. */}
+                {m.roles?.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {m.roles.slice(0, 8).map((r) => (
+                      <span key={r} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{r}</span>
+                    ))}
+                    {m.roles.length > 8 && <span className="text-[10px] text-[var(--faint)]">+{m.roles.length - 8}</span>}
+                  </div>
+                )}
               </div>
+              <BotModerate member={m} />
             </Card>
           ))}
           {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(true)}>{busy ? <Spinner /> : t('bm.loadmore', 'Load more')}</Button></div>}

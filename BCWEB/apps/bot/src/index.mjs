@@ -13,6 +13,7 @@ import { onMemberAdd, onMemberRemove } from './features/welcome.mjs';
 import { onMessage } from './features/moderation.mjs';
 import { checkGating, syncAllGating } from './features/gating.mjs';
 import { scanAllMembers } from './features/scanMembers.mjs';
+import { startModQueue } from './features/modqueue.mjs';
 import { pollBlog } from './features/blog.mjs';
 import { pollAlerts } from './features/alerts.mjs';
 import { pollKofi } from './features/kofi.mjs';
@@ -61,6 +62,10 @@ function buildClient() {
     // refresh every 30 min (names/avatars change, people join). Independent of gating.
     scanAllMembers(c).catch(() => {});
     timers.push(setInterval(() => scanAllMembers(c).catch(() => {}), 30 * 60_000));
+    // Moderation queued on the website. Every guild the bot is in gets its own poller, because
+    // the queue is keyed by discord id and the bot does not know which guild an id belongs to
+    // until it tries — a single-guild assumption would silently ignore the others.
+    for (const g of c.guilds.cache.values()) timers.push(startModQueue(c, g.id));
     timers.push(setInterval(() => syncAllGating(c).catch(() => {}), 5 * 60_000));
     // Blog announcements: check for new published posts every 5 min (+ once now).
     pollBlog(c).catch(() => {});

@@ -238,6 +238,7 @@ model User {
   // relation would make both unanswerable.
   sanctions        Sanction[] @relation("SanctionTarget")
   sanctionsIssued  Sanction[] @relation("SanctionIssuer")
+  botActions       BotAction[] @relation("BotActionRequester")
   staffNotes       StaffNote[] @relation("StaffNoteAuthor")
   sanctionEvidence SanctionAttachment[] @relation("SanctionAttachmentAuthor")
   pendingDismissals PendingDismissal[]
@@ -288,6 +289,11 @@ model DiscordActivity {
   lastMessageAt     DateTime?
   lastVoiceJoinAt   DateTime?
   lastVoiceCreateAt DateTime?
+  /// Role NAMES as the guild reports them, refreshed by the member scan. Names rather than ids
+  /// because the admin screen has no way to resolve an id, and a moderator deciding whether to
+  /// ban somebody needs to see "Moderator", not a snowflake.
+  roles             String[]  @default([])
+  nickname          String?
   updatedAt         DateTime  @updatedAt
 
   // The storage-cap sweeper evicts oldest-updated rows first (`orderBy updatedAt asc take N`);
@@ -2845,4 +2851,40 @@ model ServerMetricDaily {
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+/// A moderation action the admin asked for, waiting for the bot to carry it out.
+///
+/// A QUEUE, not a call. The API cannot reach into Discord — the bot polls for work and reports
+/// back, which is how every other bot feature here already works (dm/pending, links/pending,
+/// kofi/unannounced). Inventing a push channel for this one would be a second architecture to
+/// keep alive.
+///
+/// It also means the outcome is recorded rather than assumed: a ban that Discord refused
+/// because the bot's role sits below the target's is a normal, frequent failure, and the admin
+/// has to see it instead of watching a button go green.
+model BotAction {
+  id          String    @id @default(cuid())
+  /// ban · unban · kick · timeout · untimeout
+  kind        String
+  discordId   String
+  /// Who it is about, as they were named when it was asked for — the member may leave.
+  targetLabel String    @default("")
+  reason      String    @default("")
+  /// For a timeout, and for a ban that should lift itself. Null means permanent.
+  minutes     Int?
+
+  requestedBy   User?   @relation("BotActionRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  requestedById String?
+  requestedByLabel String @default("")
+
+  /// pending · done · failed
+  status      String    @default("pending")
+  /// What Discord said when it refused. The single most useful field on this row.
+  error       String?
+  createdAt   DateTime  @default(now())
+  attemptedAt DateTime?
+
+  @@index([status, createdAt])
+  @@index([discordId])
 }

@@ -20,6 +20,10 @@ export async function scanAllMembers(client) {
         username: m.user.username,
         avatar: m.user.displayAvatarURL?.({ size: 128 }),
         joinedAt: m.joinedAt ? m.joinedAt.toISOString() : undefined,
+        // Role NAMES, minus @everyone — which every member has and so tells a moderator
+        // nothing. Names because the admin screen cannot resolve a snowflake.
+        roles: m.roles?.cache ? [...m.roles.cache.values()].filter((r) => r.name !== '@everyone').map((r) => r.name).slice(0, 50) : undefined,
+        nickname: m.nickname ?? null,
       });
     }
     for (let i = 0; i < roster.length; i += CHUNK) {

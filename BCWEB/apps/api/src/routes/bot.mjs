@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { randomInt } from 'node:crypto';
-import { db, requireRole, safeEqual } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, logAudit, safeEqual } from '../lib/lib.mjs';
 
 // Server-to-server auth for the Discord bot (shared secret, like the telemetry link
 // lookup). The bot sends `x-bot-secret`; anything else is rejected.
@@ -733,6 +733,71 @@ export default async function botRoutes(app) {
   // so the member database contains every member, not just those who happened to send a
   // message or join while the bot was online. Upserts in chunks; guildJoinedAt is only
   // filled when known and not already set (a real join event is more authoritative).
+  // ── Moderation the admin asks for, and the bot carries out ─────────────────
+  //
+  // Queued, not called. See the BotAction model: the API has no way to reach Discord, and the
+  // outcome matters — a ban Discord refuses because the bot's own role sits below the target's
+  // is a normal, frequent failure that a moderator must SEE rather than assume away.
+  const ACTIONS = ['ban', 'unban', 'kick', 'timeout', 'untimeout'];
+
+  app.post('/admin/bot/actions', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
+    const b = z.object({
+      kind: z.enum(ACTIONS),
+      discordId: z.string().min(1).max(32),
+      // Required for the ones that punish. Unban and untimeout are the undo, and demanding a
+      // reason to undo something is how an undo stops being used.
+      reason: z.string().trim().max(500).optional(),
+      minutes: z.number().int().min(1).max(60 * 24 * 28).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const { kind, discordId, minutes } = b.data;
+    const reason = (b.data.reason || '').trim();
+    if (['ban', 'kick', 'timeout'].includes(kind) && !reason) return reply.code(400).send({ error: 'reason_required' });
+    // Discord's own ceiling. Asking for 40 days silently becomes 28, so it is refused instead.
+    if (kind === 'timeout' && !minutes) return reply.code(400).send({ error: 'minutes_required' });
+
+    const p = await db();
+    const [member, me] = await Promise.all([
+      p.discordActivity.findUnique({ where: { discordId }, select: { username: true } }),
+      p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true, email: true } }),
+    ]);
+    const action = await p.botAction.create({
+      data: {
+        kind, discordId, minutes: minutes ?? null, reason,
+        targetLabel: member?.username || discordId,
+        requestedById: req.user.uid,
+        requestedByLabel: [me?.displayName, me?.email].filter(Boolean).join(' · ').slice(0, 200),
+      },
+    });
+    await logAudit(p, req.user.uid, `bot.${kind}`, `${member?.username || discordId}${reason ? ` — ${reason}` : ''}`, req.ip).catch(() => {});
+    return { ok: true, action };
+  });
+
+  app.get('/admin/bot/actions', { preHandler: requireCap('manage_users', 'MOD') }, async (req) => {
+    const p = await db();
+    const where = req.query?.discordId ? { discordId: String(req.query.discordId) } : {};
+    return { actions: await p.botAction.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 }) };
+  });
+
+  // Bot side: take the queue, then say what happened to each.
+  app.get('/bot/actions/pending', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    return { actions: await p.botAction.findMany({ where: { status: 'pending' }, orderBy: { createdAt: 'asc' }, take: 25 }) };
+  });
+
+  app.post('/bot/actions/:id/result', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ ok: z.boolean(), error: z.string().max(500).optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    await p.botAction.update({
+      where: { id: req.params.id },
+      data: { status: b.data.ok ? 'done' : 'failed', error: b.data.ok ? null : (b.data.error || 'unknown'), attemptedAt: new Date() },
+    }).catch(() => {});
+    return { ok: true };
+  });
+
   app.post('/bot/members/sync', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const b = z.object({
@@ -741,6 +806,8 @@ export default async function botRoutes(app) {
         username: z.string().max(80).optional(),
         avatar: z.string().max(400).optional(),
         joinedAt: z.string().datetime().optional(),
+        roles: z.array(z.string().max(60)).max(50).optional(),
+        nickname: z.string().max(80).nullable().optional(),
       })).max(2000),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -750,9 +817,13 @@ export default async function botRoutes(app) {
       const joinedAt = m.joinedAt ? new Date(m.joinedAt) : null;
       await p.discordActivity.upsert({
         where: { discordId: m.discordId },
-        create: { discordId: m.discordId, username: m.username, avatar: m.avatar, guildJoinedAt: joinedAt },
+        create: { discordId: m.discordId, username: m.username, avatar: m.avatar, guildJoinedAt: joinedAt, roles: m.roles || [], nickname: m.nickname ?? null },
         // Don't clobber a known join date with null; refresh name/avatar (they change).
-        update: { username: m.username, avatar: m.avatar, ...(joinedAt ? { guildJoinedAt: joinedAt } : {}) },
+        // Roles are replaced wholesale when the scan sends them, and left alone when it does
+        // not — a scan that could not read them must not empty the list and make everybody
+        // look like they have no roles at all.
+        update: { username: m.username, avatar: m.avatar, ...(joinedAt ? { guildJoinedAt: joinedAt } : {}),
+          ...(m.roles ? { roles: m.roles } : {}), ...(m.nickname !== undefined ? { nickname: m.nickname } : {}) },
       }).then(() => synced++).catch(() => {});
     }
     return { ok: true, synced };
