@@ -209,6 +209,11 @@ const DICT = {
     'common.loading': 'Loading…',
   },
   fr: {
+    'poll.f.req': 'Celle-ci est obligatoire : {q}',
+    'poll.f.bad': 'Vérifiez cette réponse : {q}',
+    'poll.f.required': 'Obligatoire',
+    'poll.send': 'Envoyer mes réponses',
+
     'apq.title': 'Questions',
     'apq.hint': 'Un sondage à une seule question se comporte exactement comme avant. Ajoutez-en pour en faire un formulaire.',
     'apq.label': 'Question',

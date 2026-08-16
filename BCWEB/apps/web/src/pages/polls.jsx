@@ -3,7 +3,7 @@ import { BarChart3, Check, Lock, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { Card, Button, Badge, EmptyState, Spinner, useToast } from '../ui/ui.jsx';
+import { Card, Button, Badge, EmptyState, Spinner, Input, Textarea, useToast } from '../ui/ui.jsx';
 import { useAsync, Loading } from './pages.jsx';
 import { useAuth } from './auth.jsx';
 
@@ -27,6 +27,94 @@ function Bar({ label, votes, total, mine }) {
       <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden">
         <div className={`h-full rounded-full ${mine ? 'bg-[var(--success)]' : 'bg-[var(--primary-2)]'}`} style={{ width: `${pct}%` }} />
       </div>
+    </div>
+  );
+}
+
+/** Does this poll need the form renderer, or is it the single-choice shape the page already
+ *  draws? Asked of the DATA, not of a flag: a backfilled poll has one choice question and must
+ *  keep rendering exactly as before. */
+const needsForm = (poll) => {
+  const qs = poll.questions || [];
+  return qs.length > 1 || qs.some((q) => q.kind !== 'choice');
+};
+
+/** A multi-question poll, as a form. */
+function PollForm({ poll, onDone }) {
+  const { t } = useI18n(); const toast = useToast();
+  const [vals, setVals] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [errAt, setErrAt] = useState(null);
+
+  const set = (qid, v) => setVals((x) => ({ ...x, [qid]: v }));
+  const toggleChoice = (q, cid) => setVals((x) => {
+    if (!q.config?.multiple) return { ...x, [q.id]: cid };
+    const cur = Array.isArray(x[q.id]) ? x[q.id] : [];
+    return { ...x, [q.id]: cur.includes(cid) ? cur.filter((c) => c !== cid) : [...cur, cid] };
+  });
+
+  const submit = async () => {
+    setBusy(true); setErrAt(null);
+    const answers = (poll.questions || []).map((q) => {
+      const v = vals[q.id];
+      return Array.isArray(v) ? { questionId: q.id, values: v } : { questionId: q.id, value: v };
+    });
+    try {
+      await api.post(`/polls/${poll.id}/answers`, { answers });
+      toast.success(t('poll.thanks', 'Answer recorded.'));
+      onDone?.();
+    } catch (x) {
+      // The server names the question it rejected. Scrolling a ten-question form looking for
+      // the problem is what a generic "failed" costs, so the field is marked instead.
+      if (x?.data?.questionId) {
+        setErrAt(x.data.questionId);
+        const label = (poll.questions || []).find((q) => q.id === x.data.questionId)?.label || '';
+        toast.error(x.data.error === 'required'
+          ? t('poll.f.req', 'This one is required: {q}').replace('{q}', label)
+          : t('poll.f.bad', 'Check this answer: {q}').replace('{q}', label));
+      } else if (x?.data?.error === 'sign_in_required') toast.error(t('poll.needlogin', 'You need an account to answer this one.'));
+      else if (x?.data?.error === 'closed') toast.error(t('poll.closednow', 'This poll has closed.'));
+      else toast.error(t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      {(poll.questions || []).map((q) => (
+        <div key={q.id} className={`rounded-lg border p-3 ${errAt === q.id ? 'border-[var(--danger)]' : 'border-[var(--line)]'}`}>
+          <div className="text-[13px] font-medium">
+            {q.label}
+            {q.required && <span className="text-[var(--danger)] ml-1" title={t('poll.f.required', 'Required')}>*</span>}
+          </div>
+          {q.help && <p className="text-[12px] text-[var(--muted)] mt-0.5">{q.help}</p>}
+
+          <div className="mt-2 space-y-1.5">
+            {q.kind === 'choice' && (q.choices || []).map((c) => {
+              const cur = vals[q.id];
+              const on = Array.isArray(cur) ? cur.includes(c.id) : cur === c.id;
+              return (
+                <button key={c.id} type="button" onClick={() => toggleChoice(q, c.id)}
+                  className={`w-full text-left px-3 py-2 rounded-lg border text-[13px] transition-colors ${on ? 'border-[var(--primary-2)] bg-[var(--primary-2)]/10' : 'border-[var(--line)] hover:bg-[var(--surface-2)]/60'}`}>
+                  {c.label}
+                </button>
+              );
+            })}
+            {q.kind === 'text' && (
+              <Textarea rows={2} value={vals[q.id] || ''} onChange={(e) => set(q.id, e.target.value)} />
+            )}
+            {(q.kind === 'scale' || q.kind === 'number') && (
+              <Input type="number" value={vals[q.id] ?? ''} onChange={(e) => set(q.id, e.target.value)}
+                min={q.config?.min} max={q.config?.max} step={q.kind === 'scale' ? 1 : 'any'} style={{ maxWidth: 140 }} />
+            )}
+            {q.kind === 'date' && (
+              <Input type="date" value={vals[q.id] || ''} onChange={(e) => set(q.id, e.target.value)} style={{ maxWidth: 180 }} />
+            )}
+          </div>
+        </div>
+      ))}
+      <Button variant="primary" disabled={busy} onClick={submit}>
+        {busy ? <Spinner size={14} /> : t('poll.send', 'Send my answers')}
+      </Button>
     </div>
   );
 }
@@ -109,6 +197,11 @@ export function PollCard({ poll: initial, onChange }) {
           </div>
         ) : closed ? (
           <div className="text-[13px] text-[var(--muted)]">{t('poll.closednoresults', 'This poll is closed.')}</div>
+        ) : needsForm(poll) ? (
+          <PollForm poll={poll} onDone={async () => {
+            const fresh = await api.get(`/polls/${poll.id}`);
+            setPoll(fresh); onChange?.(fresh);
+          }} />
         ) : (
           <>
             <div className="space-y-1.5">
