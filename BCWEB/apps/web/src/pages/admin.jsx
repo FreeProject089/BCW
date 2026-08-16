@@ -10263,6 +10263,93 @@ function AdminErrors() {
   );
 }
 
+/**
+ * The live event feed.
+ *
+ * `/admin/analytics/events` and its Server-Sent-Events stream were written in full —
+ * path filter, per-kind counts for the chips, heartbeats, server-side filtering so a
+ * filtered feed only receives what it asked for — and no screen ever called either. The
+ * data has been collected and served to nobody.
+ *
+ * Live is OFF by default: a stream that opens itself the moment somebody clicks a tab is a
+ * connection nobody asked for, and the paused view is the one you want when reading.
+ */
+function EventsFeed({ days, hours }) {
+  const { t } = useI18n();
+  const [path, setPath] = useState('');
+  const [term, setTerm] = useState('');
+  const [kinds, setKinds] = useState([]);
+  const [live, setLive] = useState(false);
+  const [pushed, setPushed] = useState([]);
+  const win = hours ? `hours=${hours}` : `days=${days}`;
+  const qs = `${win}&limit=200${term ? `&path=${encodeURIComponent(term)}` : ''}${kinds.length ? `&kinds=${kinds.join(',')}` : ''}`;
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/events?${qs}`), [qs]);
+
+  // The stream carries the SAME filters as the list, so what arrives live and what is
+  // already on screen are the same set — a live row the filter excludes would be a lie
+  // about the filter. Through the shared hook rather than a second EventSource of my own:
+  // it already handles the callback-in-a-ref and the malformed-frame case.
+  const streamPath = live
+    ? `/admin/analytics/events/stream?${term ? `path=${encodeURIComponent(term)}&` : ''}${kinds.length ? `kinds=${kinds.join(',')}` : ''}`
+    : null;
+  useThreadStream(streamPath, (ev) => setPushed((p) => [ev, ...p].slice(0, 200)));
+  // A change of filter invalidates what was pushed under the old one.
+  useEffect(() => { setPushed([]); }, [live, term, kinds.join(',')]);
+
+  const counts = data?.counts || {};
+  const rows = [...pushed, ...(data?.events || [])].slice(0, 300);
+  const toggleKind = (k) => setKinds((ks) => (ks.includes(k) ? ks.filter((x) => x !== k) : [...ks, k]));
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <Activity size={15} className="text-[var(--primary-2)]" />
+        <h2 className="font-semibold">{t('an.ev.title', 'Events')}</h2>
+        <button onClick={() => setLive((l) => !l)}
+          className={`text-xs px-2 py-1 rounded-lg inline-flex items-center gap-1.5 ${live ? 'bg-success/15 text-success' : 'bg-[var(--surface-2)] text-[var(--muted)]'}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${live ? 'bg-success' : 'bg-[var(--faint)]'}`} />
+          {live ? t('an.ev.live.on', 'Live') : t('an.ev.live.off', 'Paused')}
+        </button>
+        <Button size="sm" variant="ghost" className="ml-auto" onClick={reload}><RefreshCw size={13} /> {t('common.refresh', 'Refresh')}</Button>
+      </div>
+
+      <form className="flex gap-2 mb-2" onSubmit={(e) => { e.preventDefault(); setTerm(path.trim()); }}>
+        <Input value={path} onChange={(e) => setPath(e.target.value)} placeholder={t('an.ev.path', 'Filter by path (contains)')} />
+        <Button type="submit"><Search size={14} /></Button>
+      </form>
+
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => (
+          <button key={k} onClick={() => toggleKind(k)}
+            className={`text-[11px] px-2 py-1 rounded-lg ${kinds.includes(k) ? 'bg-[var(--primary)]/20 text-[var(--primary)]' : 'bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            {t(`an.ev.k.${k}`, k)} <span className="tabular-nums opacity-70">{n}</span>
+          </button>
+        ))}
+      </div>
+
+      {loading && !data ? <Loading /> : !rows.length ? (
+        <p className="text-[12px] text-[var(--muted)]">{t('an.ev.none', 'Nothing in this window matches.')}</p>
+      ) : (
+        <div className="divide-y divide-[var(--line)] max-h-[520px] overflow-auto">
+          {rows.map((e, i) => (
+            <div key={`${e.ts}-${i}`} className="py-1.5 flex items-center gap-2 text-[12px]">
+              <span className="text-[var(--faint)] tabular-nums shrink-0">{new Date(e.ts).toLocaleTimeString()}</span>
+              <span className="px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[11px] shrink-0">{t(`an.ev.k.${e.kind}`, e.kind)}</span>
+              <span className="truncate flex-1 min-w-0">{e.path}{e.label ? <span className="text-[var(--muted)]"> · {e.label}</span> : null}</span>
+              <span className="text-[var(--faint)] text-[11px] shrink-0 hidden sm:inline">
+                {[e.browser, e.os, e.country].filter(Boolean).join(' · ')}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-[11px] text-[var(--faint)] mt-2">
+        {t('an.ev.note', 'The live stream carries the same filters as the list, so both show the same set. Pausing keeps what has already arrived.')}
+      </p>
+    </Card>
+  );
+}
+
 function AdminAnalytics() {
   const [days, setDays] = useState(30);
   const [hours, setHours] = useState(null); // when set → hourly view (zoom-in)
@@ -10337,7 +10424,7 @@ function AdminAnalytics() {
 
       {/* Sub-tab bar — horizontal-scrolls on narrow screens so it never overflows. */}
       <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
-        {[['overview', t('an.tab.overview', 'Overview'), TrendingUp], ['sessions', t('an.tab.sessions', 'Sessions'), Activity], ['geo', t('an.tab.geo', 'Geography'), Globe2], ['tech', t('an.tab.tech', 'Tech'), Monitor], ['data', t('an.tab.data', 'Data'), Archive]].map(([id, label, I]) => (
+        {[['overview', t('an.tab.overview', 'Overview'), TrendingUp], ['sessions', t('an.tab.sessions', 'Sessions'), Activity], ['geo', t('an.tab.geo', 'Geography'), Globe2], ['tech', t('an.tab.tech', 'Tech'), Monitor], ['events', t('an.tab.events', 'Events'), Activity], ['data', t('an.tab.data', 'Data'), Archive]].map(([id, label, I]) => (
           <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={14} /> {label}</button>
         ))}
       </div>
@@ -10399,6 +10486,8 @@ function AdminAnalytics() {
           <Breakdown title={t('an.os', 'Operating systems')} rows={oses} iconOf={(l) => (OS_SLUG[l] ? <BrandImg slug={OS_SLUG[l]} fallback={Monitor} /> : <Monitor size={13} className="text-[var(--faint)] shrink-0" />)} />
         </div>
       )}
+
+      {tab === 'events' && <EventsFeed days={days} hours={hours} />}
 
       {tab === 'data' && <RetentionCard />}
 
