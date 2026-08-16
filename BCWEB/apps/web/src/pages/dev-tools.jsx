@@ -307,6 +307,28 @@ function SignatureChecker() {
 export default function DevTools() {
   const { t } = useI18n();
   const { user, loading } = useAuth();
+
+  // One list, grouped by purpose. The jump nav and the sections both read it, so a link can
+  // never point at a section that moved, and adding a tool — or a whole category like
+  // BetterInstaller — is an entry here, not an edit in three places.
+  const GROUPS = [
+    {
+      id: 'general', k: 'dvt.grp.general', label: 'API & keys',
+      tools: [
+        { id: 'try', label: t('dev.console.title', 'Try a call'), el: <ApiConsole /> },
+        { id: 'signature', label: t('dvt.sig.title', 'Check a webhook signature'), el: <SignatureChecker /> },
+        { id: 'calls', label: t('dvt.calls', 'What your keys did'), el: <CallLog />, wide: true },
+      ],
+    },
+    {
+      id: 'bmm', k: 'dvt.grp.bmm', label: 'BMM',
+      tools: [
+        { id: 'validate', label: t('dvt.val', 'Check a catalog feed'), el: <Validator /> },
+        { id: 'deeplink', label: t('dvt.dl.title', 'Build a bmm:// link'), el: <DeeplinkBuilder /> },
+      ],
+    },
+  ];
+  const ALL_TOOLS = GROUPS.flatMap((g) => g.tools);
   if (loading) return null;
   if (!user) {
     return (
@@ -328,44 +350,34 @@ export default function DevTools() {
         </p>
       </div>
 
-      {/* Jump links. The page is three tall tools stacked, and it was one h1 with no
-          structure under it — nothing to anchor to, nothing to scan, and no way to get
-          back to a tool you had scrolled past. Real anchors also mean a link to a
-          specific tool can be shared, which is what people do with a page like this. */}
-      {/* Sticky: these are tall tools, and a jump bar you have to scroll back up to reach
-          is one you use once. */}
+      {/* Sticky jump bar over every tool of every group — tall tools, so a bar you must
+          scroll up to reach is used once. Reads ALL_TOOLS, the same list the sections do. */}
       <nav className="flex flex-wrap gap-1.5 sticky top-16 z-10 py-2" style={{ background: 'var(--bg)' }}
         aria-label={t('dvt.jump', 'Jump to a tool')}>
-        {[
-          // The same keys the cards themselves use, so a link can never say one thing and
-          // the section it lands on another.
-          ['try', t('dev.console.title', 'Try a call')],
-          ['validate', t('dvt.val', 'Check a catalog feed')],
-          ['deeplink', t('dvt.dl.title', 'Build a bmm:// link')],
-          ['signature', t('dvt.sig.title', 'Check a webhook signature')],
-          ['calls', t('dvt.calls', 'What your keys did')],
-        ].map(([id, label]) => (
-          <a key={id} href={`#${id}`}
+        {ALL_TOOLS.map((tl) => (
+          <a key={tl.id} href={`#${tl.id}`}
              className="text-xs px-2.5 py-1 rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition">
-            {label}
+            {tl.label}
           </a>
         ))}
       </nav>
 
-      {/* Wrapped here rather than given ids inside the components: ApiConsole is shared
-          with /dev, and an id baked into it would appear twice on any page rendering both.
-          scroll-mt keeps a jumped-to section clear of the sticky header instead of landing
-          under it. */}
-      {/* Two columns from lg up. These are independent tools, not steps in an order, so
-          stacking them in one narrow column on a wide screen wasted the width and made
-          the page four scrolls long. The call log stays full width: it is a table. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-        <section id="try" className="scroll-mt-24"><ApiConsole /></section>
-        <section id="validate" className="scroll-mt-24"><Validator /></section>
-        <section id="deeplink" className="scroll-mt-24"><DeeplinkBuilder /></section>
-        <section id="signature" className="scroll-mt-24"><SignatureChecker /></section>
-      </div>
-      <section id="calls" className="scroll-mt-24"><CallLog /></section>
+      {/* Grouped by what a tool is FOR, in one structure that drives both the jump nav and
+          the sections below — so a new tool is one entry in one place, and a category (e.g.
+          BetterInstaller) is one more group rather than an edit in three spots. Each tool's
+          `wide` flag keeps the call log full width, because it is a table. */}
+      {GROUPS.map((g) => (
+        <div key={g.id}>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-4 mb-2">{t(g.k, g.label)}</div>
+          {/* Sticky jump bar per group is overkill; one bar covering everything is not, so
+              the nav below lists every tool of every group. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            {g.tools.map((tl) => (
+              <section key={tl.id} id={tl.id} className={`scroll-mt-24 ${tl.wide ? 'lg:col-span-2' : ''}`}>{tl.el}</section>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

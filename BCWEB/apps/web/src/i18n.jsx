@@ -209,6 +209,9 @@ const DICT = {
     'common.loading': 'Loading…',
   },
   fr: {
+    'dvt.grp.general': 'API et clés',
+    'dvt.grp.bmm': 'BMM',
+
     'gdpr.erase.btn': 'Supprimer definitivement',
     'gdpr.erase.t': 'Supprimer ce compte definitivement ?',
     'gdpr.erase.m': 'Irreversible. Tapez l e-mail du compte pour confirmer : {e}',
