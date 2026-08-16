@@ -89,8 +89,7 @@ from the Fastify route modules in `apps/api/src/routes/`.
 |---|---|---|---|
 | GET | `/blog` · `/blog/:slug` | — | Public blog list + post (`?home=1` for Latest news). |
 | POST | `/blog` · PATCH `/blog/:id` · DELETE `/blog/:id` | mod/grant | Create/edit/delete a post. |
-| GET | `/blog/mine` · `/blog/my-scopes` | user | Posts/scopes I can write. |
-| GET | `/blog-admin` | admin | Admin blog overview. |
+| GET | `/blog/my-scopes` | user | Which blogs I may write to. |
 | GET/POST/DELETE | `/admin/blog-permissions[/:id]` | admin | Granular blog-permission grants. |
 
 ## 4b. Newsletter (`newsletter.mjs`)

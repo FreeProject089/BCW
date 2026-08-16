@@ -260,24 +260,11 @@ export default async function blogRoutes(app) {
     return { coAuthorEmails: users.map((u) => u.email) };
   });
 
-  // Admin/mod: every post incl. drafts (for the full moderation-style editor list).
-  app.get('/blog-admin', { preHandler: requireRole('MOD', 'ADMIN') }, async () => {
-    const p = await db();
-    return { posts: await p.blogPost.findMany({ orderBy: { createdAt: 'desc' }, select: POST_SELECT }) };
-  });
-
-  // A regular user with a blog-post grant only ever sees/manages their own posts —
-  // never staff's full list.
-  app.get('/blog/mine', { preHandler: requireRole() }, async (req) => {
-    const p = await db();
-    const hasAnyGrant = isStaff(req.user) || (await p.blogPermission.count({ where: { userId: req.user.uid } })) > 0;
-    if (!hasAnyGrant) return { posts: [], canWrite: false };
-    // Staff get the full list; a granted author gets their own — which is `draftWhere` minus
-    // the published-posts branch, since this endpoint is "mine", not "everything I may read".
-    const where = isStaff(req.user) ? {} : { authorId: req.user.uid };
-    const posts = await p.blogPost.findMany({ where, orderBy: { createdAt: 'desc' }, select: POST_SELECT });
-    return { posts, canWrite: true };
-  });
+  // `/blog-admin` and `/blog/mine` lived here and are gone. `GET /blog` returns the same
+  // posts to the same people through `draftWhere` — and returns MORE of the right ones, since
+  // it counts co-authors, which "mine" never did: an invited collaborator's own list left out
+  // the drafts they had been invited to write. Two endpoints nothing called, each having
+  // decided the visibility rule for itself.
 
   // Which blogs can the current user write to? (drives the project/page picker in
   // the editor — staff sees everything, a granted USER sees only their scopes.)

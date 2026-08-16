@@ -92,8 +92,7 @@ les modules de routes Fastify dans `apps/api/src/routes/`.
 |---|---|---|---|
 | GET | `/blog` · `/blog/:slug` | — | Liste + article de blog publics (`?home=1` pour Dernières news). |
 | POST | `/blog` · PATCH `/blog/:id` · DELETE `/blog/:id` | mod/octroi | Créer/éditer/supprimer un article. |
-| GET | `/blog/mine` · `/blog/my-scopes` | user | Articles/espaces que je peux écrire. |
-| GET | `/blog-admin` | admin | Aperçu blog admin. |
+| GET | `/blog/my-scopes` | user | Les blogs où je peux écrire. |
 | GET/POST/DELETE | `/admin/blog-permissions[/:id]` | admin | Octrois de permission blog granulaires. |
 
 ## 4b. Newsletter (`newsletter.mjs`)
