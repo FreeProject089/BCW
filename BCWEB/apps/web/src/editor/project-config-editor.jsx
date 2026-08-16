@@ -254,10 +254,17 @@ function StackDetect({ onDraft, hasExisting }) {
       }
       setDraft(r);
     } catch (x) {
-      toast.error(x.data?.error === 'not_a_github_repo' ? t('pce.st.notrepo', 'That is not a GitHub repository URL.')
-        : x.data?.error === 'github_unreachable' ? t('pce.st.unreachable', 'Could not read that repository — check it is public and the address is right.')
-          : x.data?.error === 'bad_zip' ? t('pce.st.badzip', 'That file is not a readable zip.')
-            : t('pce.st.failed', 'Could not read that.'));
+      // Every branch says what to change. The catch-all used to swallow three different
+      // situations — a rejected URL shape, a rate-limited GitHub, a half-read repository —
+      // under "Could not read that.", which is the one sentence that helps nobody.
+      const e = x.data?.error;
+      toast.error(
+        e === 'not_a_github_repo' ? t('pce.st.notrepo', 'That is not a GitHub repository URL — it should look like github.com/owner/repo.')
+          : e === 'github_unreachable' ? t('pce.st.unreachable', 'Could not read that repository — check it is public and the address is right. (GitHub also refuses for a while after many reads in one hour.)')
+            : e === 'incomplete_fetch' ? t('pce.st.partial', 'Only part of that repository could be read, so the result would be misleading. Try again in a minute.')
+              : e === 'bad_zip' ? t('pce.st.badzip', 'That file is not a readable zip.')
+                : e === 'invalid_request' ? t('pce.st.badreq', 'That address could not be read as a repository.')
+                  : t('pce.st.failed', 'Could not read that.'));
     } finally { setBusy(false); }
   };
 

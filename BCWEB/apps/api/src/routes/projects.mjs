@@ -205,13 +205,26 @@ export default async function projectRoutes(app) {
 
   app.post('/admin/projects/stack/detect', { preHandler: requireEditor() }, async (req, reply) => {
     const b = z.object({
-      url: z.string().url().max(300).optional(),
+      // NOT `.url()`. Somebody pasting a repository address types `github.com/owner/repo` or
+      // copies the browser's `…/repo?tab=readme-ov-file`, and a zod failure here answered
+      // `invalid_request`, which the screen renders as "Could not read that." — the one message
+      // that says nothing about what to change. Normalised below instead.
+      url: z.string().max(300).optional(),
       zipBase64: z.string().max(MAX_ZIP_B64).optional(),
       // A folder picked in the browser sends only the files that matter, already filtered
       // there — the whole repo never leaves the machine.
       files: z.record(z.string().max(200_000)).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_request' });
+
+    // What people actually paste: a bare host, a copied URL with `?tab=…`, a trailing slash,
+    // a `.git` suffix, surrounding whitespace. All of them name the same repository.
+    if (b.data.url) {
+      let u = b.data.url.trim();
+      u = u.split('#')[0].split('?')[0];
+      if (!/^https?:\/\//i.test(u)) u = `https://${u.replace(/^\/+/, '')}`;
+      b.data.url = u.replace(/\/+$/, '');
+    }
 
     let files = null;
     let source = '';
