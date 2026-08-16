@@ -3273,6 +3273,19 @@ function AdminNewsletter() {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/newsletter'), []);
   const [f, setF] = useState({ subject: '', title: '', body: '', url: '' });
+  const [nlPreview, setNlPreview] = useState(null);
+  // Debounced, and a server round-trip on purpose: the HTML has to come from newsletterHtml,
+  // the same function the broadcast calls. A preview built in the browser would be a preview
+  // of a different email, and the first time they drift is the first time somebody trusts it.
+  useEffect(() => {
+    if (!f.title.trim() && !f.body.trim()) { setNlPreview(null); return; }
+    const id = setTimeout(() => {
+      api.post('/admin/newsletter/preview', { title: f.title, body: f.body, url: f.url })
+        .then((r) => setNlPreview(r.html))
+        .catch(() => setNlPreview(null));
+    }, 400);
+    return () => clearTimeout(id);
+  }, [f.title, f.body, f.url]);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState('all');            // 'all' | 'en' | 'fr' segment | 'pick' a subset
   const [picked, setPicked] = useState(() => new Set());
@@ -3394,6 +3407,18 @@ function AdminNewsletter() {
 
         {/* Nobody to send to yet? Double opt-in means new sign-ups stay "pending" until
             they click the confirm email. The test send below works regardless. */}
+        {/* Rendered in a sandboxed iframe, exactly as the mail composer's preview is: this is
+            email HTML with its own styles, and letting it into the page would be letting it
+            restyle the dashboard. The white backdrop is the inbox's, not this theme's. */}
+        {nlPreview && (
+          <div className="mb-3">
+            <div className="text-[11px] text-[var(--faint)] mb-1">{t('nl.preview', 'Preview — including the unsubscribe footer that ships with every send')}</div>
+            <div className="rounded-xl border border-[var(--line)] overflow-hidden flex justify-center bg-white">
+              <iframe title="newsletter-preview" sandbox="" srcDoc={nlPreview} className="w-full"
+                style={{ maxWidth: 420, height: 460, border: 0, display: 'block' }} />
+            </div>
+          </div>
+        )}
         {counts.active === 0 && <div className="text-xs text-[var(--muted)] rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 p-2.5">{t('nl.noactive', 'No confirmed subscribers yet — sign-ups stay “pending” until they click the confirm email. You can still send yourself a test below.')}</div>}
 
         <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-end sm:justify-between">

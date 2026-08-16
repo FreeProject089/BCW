@@ -15,14 +15,28 @@ const tok = () => crypto.randomBytes(24).toString('hex');
 
 // Send one branded newsletter email to a single subscriber, with the one-click
 // unsubscribe footer + List-Unsubscribe header. `sub` = { email, unsubToken }.
-export async function sendNewsletterTo(sub, { subject, title, body, url }) {
-  const unsubUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${sub.unsubToken}`;
+/**
+ * The newsletter's HTML, exactly as it is sent.
+ *
+ * Extracted so the admin preview renders THIS and not a second copy of it. The mail-preview
+ * route next door already says why in its own comment — a preview assembled from its own
+ * template is a preview of a different email, and the first time they drift is the first time
+ * somebody trusts it. The newsletter differs from a plain admin mail in two ways that a shared
+ * preview would have hidden: the title is escaped, and the unsubscribe footer is appended
+ * INSIDE the body.
+ */
+export function newsletterHtml({ title, body, url, unsubUrl }) {
   const footer = `<p class="bc-faint bc-hr" style="font-size:12px;color:#918a80;margin:28px 0 0;padding-top:18px;border-top:1px solid #eae4da">You receive this because you subscribed to BetterCommunity updates. <a href="${unsubUrl}" style="color:#c2410c">Unsubscribe in one click</a>.</p>`;
   // Body may contain markdown (incl. BetterCommunity custom blocks) — render it to HTML.
   const safeBody = mdToEmailHtml(body);
+  return mailShell(escapeHtml(title), safeBody + footer, url ? { url, label: 'Read on the blog' } : undefined);
+}
+
+export async function sendNewsletterTo(sub, { subject, title, body, url }) {
+  const unsubUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${sub.unsubToken}`;
   return sendMail({
     to: sub.email, subject,
-    html: mailShell(escapeHtml(title), safeBody + footer, url ? { url, label: 'Read on the blog' } : undefined),
+    html: newsletterHtml({ title, body, url, unsubUrl }),
     headers: { 'List-Unsubscribe': `<${unsubUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
   }).catch(() => false);
 }
@@ -187,6 +201,23 @@ export default async function newsletterRoutes(app) {
   // accident. Send to every ACTIVE subscriber, or to a chosen subset (`emails`).
   // Every message carries a one-click unsubscribe footer AND a List-Unsubscribe
   // header (native "Unsubscribe" button in Gmail/Outlook).
+  // What the broadcast will produce, without producing it. Renders through newsletterHtml —
+  // the same function the send calls — so the two cannot show different emails.
+  app.post('/admin/newsletter/preview', { preHandler: requireCap('manage_newsletter') }, async (req, reply) => {
+    const b = z.object({
+      title: z.string().max(200).default(''),
+      body: z.string().max(50000).default(''),
+      url: z.string().max(500).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    // A visible placeholder rather than a real token. The footer's link must be SEEN — it is
+    // the legal part of the mail — but minting an unsubscribe token for a preview would create
+    // a working one-click link that leaks into a screenshot.
+    const unsubUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=PREVIEW`;
+    const url = /^https?:\/\//i.test(b.data.url || '') ? b.data.url : undefined;
+    return { html: newsletterHtml({ title: b.data.title || '(no title)', body: b.data.body, url, unsubUrl }) };
+  });
+
   app.post('/admin/newsletter/broadcast', { preHandler: requireCap('manage_newsletter') }, async (req, reply) => {
     const b = z.object({
       subject: z.string().min(1).max(200), title: z.string().min(1).max(200),

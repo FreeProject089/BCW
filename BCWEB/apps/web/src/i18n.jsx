@@ -214,6 +214,7 @@ const DICT = {
     'poll.f.required': 'Obligatoire',
     'poll.send': 'Envoyer mes réponses',
 
+    'nl.preview': 'Aperçu — avec le pied de page de désinscription joint à chaque envoi',
     'apq.title': 'Questions',
     'apq.hint': 'Un sondage à une seule question se comporte exactement comme avant. Ajoutez-en pour en faire un formulaire.',
     'apq.label': 'Question',
