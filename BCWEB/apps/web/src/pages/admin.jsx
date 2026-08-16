@@ -3105,7 +3105,18 @@ function AdminReviews() {
   const [editId, setEditId] = useState(null);
   const [busy, setBusy] = useState(false);
   const utog = useUndoableToggle(reload);
-  const reviews = (data?.reviews || []).map(utog.apply);
+  // Declared ABOVE its use. `const` is in the temporal dead zone until its line runs, so with
+  // this below `reviews` the component threw ReferenceError on every render — a state hook is
+  // not hoisted the way a function is.
+  //
+  // Hidden immediately, deleted when the undo window closes. The row leaving at once is what
+  // makes the undo believable.
+  const [pendingDel, setPendingDel] = useState(() => new Set());
+  // Filtered by pendingDel so a review being deleted leaves the list at once, before the API
+  // call. Declaring that set without filtering here would have left the row on screen under a
+  // toast offering to undo its deletion — two contradictory claims, and the undo the one that
+  // stops being believed.
+  const reviews = (data?.reviews || []).map(utog.apply).filter((rv) => !pendingDel.has(rv.id));
   const sectionOn = data?.enabled !== false;
   const reset = () => { setF({ author: '', role: '', body: '', bodyFr: '', rating: '', enabled: true, avatar: null }); setEditId(null); };
   const toggleSection = async () => { try { await api.put('/admin/reviews/settings', { enabled: !sectionOn }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
@@ -3127,7 +3138,23 @@ function AdminReviews() {
   };
   const edit = (rv) => { setEditId(rv.id); setF({ author: rv.author, role: rv.role || '', body: rv.body, bodyFr: rv.bodyFr || '', rating: rv.rating ? String(rv.rating) : '', enabled: rv.enabled, avatar: rv.avatar || null }); };
   const toggleEnabled = (rv) => utog.act(rv.id, { enabled: !rv.enabled }, () => api.patch(`/admin/reviews/${rv.id}`, { enabled: !rv.enabled }), !rv.enabled ? t('arv.shown2', 'Review shown.') : t('arv.hidden2', 'Review hidden.'));
-  const del = async (rv) => { if (!(await dialog.confirm({ title: t('arv.del', 'Delete review?'), message: rv.author, okLabel: t('common.delete', 'Delete'), danger: true }))) return; try { await api.del(`/admin/reviews/${rv.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const del = async (rv) => {
+    if (!(await dialog.confirm({ title: t('arv.del', 'Delete review?'), message: rv.author, okLabel: t('common.delete', 'Delete'), danger: true }))) return;
+    setPendingDel((p) => new Set(p).add(rv.id));
+    const unhide = () => setPendingDel((p) => { const n = new Set(p); n.delete(rv.id); return n; });
+    toast.action({
+      tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('arv.deleted', 'Review deleted.'),
+      onCommit: async () => {
+        try { await api.del(`/admin/reviews/${rv.id}`); reload(); }
+        catch { toast.error(t('common.failed', 'Failed.')); }
+        // reload() drops it from the list when it really applied; unhiding covers the failure
+        // case, where the review is still there and must come back.
+        finally { unhide(); }
+      },
+      onCancel: unhide,
+    });
+  };
   return (
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
