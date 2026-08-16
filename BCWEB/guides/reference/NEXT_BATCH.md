@@ -1,59 +1,94 @@
-# What is left — four items
+# What is left
 
-The previous batch is finished. These are what remain from the one after it, each with what is
-already known so the next session does not re-investigate.
-
-**Done since this file was last rewritten:** the scheduler as a language (reusable blocks,
-`a2041da`) · the catalogue panel opening on click and wearing the house modal (`dd6aa23`,
-`35948c2`, `cfc8590`, `a506d69`) · undo on deleting a landing review (`7d988d3`) · dev tools
-grouped by purpose (`f2d30f2`) · poll scales as stars or buttons (`8ff43e4`) · poll ranking,
-storage and UI (`c6e8e04`, `602d3d8`).
+The previous version of this file listed four items. **Two of them were already built** — I had
+written them down as "not investigated" and "nothing exists", and both were wrong. Check before
+building is the whole lesson of the last two sessions, and this file was itself the counter-example.
 
 ---
 
-## 1. Grid questions — designed, not built
+## Done since the last rewrite
 
-The whole design is in `POLLS_V2_DESIGN_EN.md` under "Grids". The short version: no migration is
-needed. `choiceId` + `number` in one row, meaning fixed by kind — column + row for a grid, the
-same shape ranking already uses. Rows are labels in `config.rows`.
+**Grid questions** (`859fd5b`). The design claimed no migration was needed; it was wrong, and the
+reason was the unique key rather than the columns. `PollAnswer` gained `slot`. Proved rather than
+argued: with the old key back in place, the normal case stored 1 of 2 rows. Full write-up in
+`POLLS_V2_DESIGN_EN.md`.
 
-Build it the way ranking was: `validateGrid` as a whole-submission check first, with tests, then
-the endpoint branch, then the editor and the renderer in the same commit as each other.
+**A question's options could never be edited** (`71af580`). The update branch of
+`PUT /admin/polls/:id/questions` wrote everything except `choices`, so fixing a typo in an option
+meant deleting the question and its answers. Now planned, refused when it would destroy answers,
+and the refusal names the option.
 
-## 2. Follow a catalogue INDEX
+**The catalog index** (BMM `610eef2`). Not "not investigated" — already built, at
+`features/catalogs/catalog-index.ts` + `initCatalogIndexSettings()`. Two defects in it, both one
+rule written twice: the preview compared against a hand-written list naming plugin and theme only,
+and the preview's dedupe lowercased while the writer's did not.
 
-Asked for across all four catalogues — apps, plugins, themes, automations. Today each one follows
-individual catalogue URLs; the ask is to follow an index that lists catalogues, so adding a
-source adds everything it points at.
+**mkdocs for BetterInstaller.** Already exists: 24 bilingual pages under `BetterInstaller/docs/`,
+`mkdocs.yml` on the same mkdocs-material + static-i18n stack as BMM Docs. Verified — builds clean
+under `--strict` in both languages. Nothing to do.
 
-**Not investigated yet.** Start by finding whether the four catalogue browsers share a source
-list or each keep their own — that answers whether this is one change or four. The automations
-one is `showPresetCatalog` / `loadPresetSources` in `frontend/src/features/settings/scheduler.ts`
-(BMM); the theme one is `frontend/src/features/themes/theme-catalog.ts`.
+---
 
-## 3. Dev tools for BetterInstaller
+## 1. Dev tools for BetterInstaller — the only item genuinely left
 
-Half done: `dev-tools.jsx` now reads a `GROUPS` list that drives both the jump nav and the
-sections, so a new category is one entry rather than edits in three places. The tools themselves
-do not exist — decide what an installer developer actually needs (a manifest validator? a handoff
-payload builder?) before adding a group for them.
+`dev-tools.jsx` reads a `GROUPS` list driving both the jump nav and the sections, so adding a
+category is one entry. The tools themselves do not exist.
 
-## 4. mkdocs for BetterInstaller
+**The obvious one is a recipe validator** — paste an `installer.toml`, get back the keys the
+schema silently drops. That failure is real and already documented: no struct in
+`crates/bpkg-core/src/config.rs` uses `deny_unknown_fields`, so `[[componentss]]` builds an
+installer with no components and nothing errors or warns. There is already a Rust test doing
+exactly this check (`config.rs:751`), including a `KNOWN_DEAD` ratchet.
 
-Like BMM Docs. Nothing exists. BMM Docs is the model to copy — `BMM Docs/mkdocs.yml`, bilingual
-pages under `docs/`, and `scripts/sync-docs.mjs` if the in-app reader should carry them too.
+**Do not reimplement the schema in JavaScript.** That is the trap this codebase keeps falling
+into — a second copy of a rule that agrees until it doesn't, and a stale checker reporting
+nothing reads exactly like a clean one. The Rust test already derives the key set by
+round-tripping the parsed config *rather than listing it*, and that derivation is the thing to
+reuse.
+
+Sketch, in build order:
+
+1. `bpkg-cli schema --json` emitting the derived key set, using the same round-trip as the test.
+2. Commit the output as an artifact in BetterInstaller, with a CI check that it matches what the
+   CLI emits — so it cannot rot.
+3. BCWEB's `/dev/validate-recipe` reads that artifact. It parses TOML and compares keys; it never
+   restates the schema.
+
+Note the round-trip goes through **JSON, not TOML**: `toml::Value::try_from` refuses an unset
+`Option` with `UnsupportedType("unit")`, and JSON represents it as `null` — which is exactly what
+"a key the schema knows and the recipe never sets" should look like.
+
+---
+
+## 2. Smaller things noticed and not done
+
+- **`bmm_catalog_origins` provenance is re-stamped on re-import**, even for a source that was
+  already followed, so the origin points at whichever index was imported last rather than the one
+  it actually came from. `settings.ts`, in the import loop.
+- **Only the Apps browser probes for a pasted index** in its plain source box
+  (`apps-catalog.ts:942`, dynamic `looksLikeIndex`). Plugins, Themes, Scheduler and Repo have no
+  such check, so pasting an index URL there follows a document none of them can read.
+- **Origin badges are wired in three of five browsers.** `plugins.ts` and `theme-catalog.ts`
+  import nothing from `catalog-index.ts`.
+- **Deep links write the raw localStorage keys directly**, bypassing every helper —
+  `core/deep_link_manager.ts:427`. Whatever rule the helpers enforce, that path does not.
 
 ---
 
 ## Two things that will waste your time if you do not know them
 
 **The web container serves a bundle baked into its image.** No volume mount. `npm run build` on
-the host does NOT reach the running site — the served bundle stays whatever was there when the
-image was made. `docker cp apps/web/dist/. bcweb-web-1:/usr/share/nginx/html/` is what makes a
-change visible, and without it a browser check tests the wrong code and looks like a bug in your
-work.
+the host does NOT reach the running site. `docker cp apps/web/dist/. bcweb-web-1:/usr/share/nginx/html/`
+is what makes a change visible, and without it a browser check tests the wrong code and looks like
+a bug in your work. **The API container is the same** — it runs code copied in at build time, so a
+route change needs `docker compose build api && docker compose up -d api`, and a schema change
+needs it too or Prisma will reject the new field.
 
-**The API test suite needs Postgres reachable and Redis unset.** 5432 is published on loopback
-now, so `DATABASE_URL=…@127.0.0.1:5432/bcweb npm test` from `apps/api` matches CI. Two failures
-are expected and unrelated: `rollup` wants a fresh database (this one has
+**The API test suite needs Postgres reachable and Redis unset.** 5432 is published on loopback, so
+`DATABASE_URL=…@127.0.0.1:5432/bcweb npm test` from `apps/api` matches CI: **376/378, 0 skipped**.
+The two failures are expected and unrelated — `rollup` wants a fresh database (this one has
 `AdminSetting['analytics.rollupAt']` because the server has run) and one sandbox scope test.
+
+**Admin screens need `totpEnabled`.** Every admin write goes through `ensure2fa`, so a staff
+fixture without that flag gets a 403 that looks exactly like a broken session cookie. It cost a
+full round of red assertions to notice.
