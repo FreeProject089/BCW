@@ -57,6 +57,15 @@ export const api = {
   account: (discordId) => call('GET', `/bot/account/${discordId}`).catch(() => ({ linked: false })),
   // Bulk-sync the guild roster into the member database (startup + periodic full scan).
   syncMembers: (members) => call('POST', '/bot/members/sync', { members }).catch(() => ({ synced: 0 })),
+
+  // Warnings go through the site so the count, the ladder and the record are in one place —
+  // a bot keeping its own tally would disagree with the admin screen the first time either
+  // was used. A refusal returns null and the command says the warning was NOT recorded,
+  // rather than pretending.
+  warn: (discordId, reason, guildId, by) => call('POST', '/bot/warns', { discordId, reason, guildId, by })
+    .catch((e) => { console.warn('[bot] warn failed:', e.message); return null; }),
+  warnList: (discordId) => call('GET', `/bot/warns?discordId=${encodeURIComponent(discordId)}`)
+    .catch(() => ({ warns: [], active: 0 })),
   // Moderation queued on the website. A failed poll returns an empty list rather than
   // throwing, so one bad request never stops the loop.
   pendingActions: () => call('GET', '/bot/actions/pending').catch(() => ({ actions: [] })),

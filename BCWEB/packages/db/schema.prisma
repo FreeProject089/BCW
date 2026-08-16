@@ -243,6 +243,7 @@ model User {
   sanctionEvidence SanctionAttachment[] @relation("SanctionAttachmentAuthor")
   pendingDismissals PendingDismissal[]
   webhooks         WebhookEndpoint[]
+  botWarnsIssued   BotWarn[]  @relation("BotWarnIssuer")
 }
 
 // A GitHub/Discord identity linked to a website account — powers "Continue with
@@ -2888,6 +2889,43 @@ model BotAction {
 
   @@index([status, createdAt])
   @@index([discordId])
+}
+
+/// A warning given to a Discord member, and the reason they were given it.
+///
+/// Warnings are the part of moderation that is NOT an action: nothing happens to the member
+/// when one is written. What makes them worth storing is the count — three of them mean
+/// something the third one does not mean on its own — and the reason, because "you have been
+/// warned" without one teaches nobody anything and is impossible to appeal.
+///
+/// Kept beside BotAction rather than inside it: an action is a thing Discord must be asked to
+/// do and can refuse, and a warning is a fact we record. Merging them would give every warning
+/// a pending/failed status it can never have.
+///
+/// A revoked warning is kept, not deleted. "This was withdrawn on the 4th" is part of the
+/// record, and a count that silently drops rows makes the escalation unexplainable.
+model BotWarn {
+  id          String    @id @default(cuid())
+  discordId   String
+  /// Who it is about, as they were named at the time — the member may leave or rename.
+  targetLabel String    @default("")
+  reason      String
+  guildId     String?
+
+  issuedBy      User?   @relation("BotWarnIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
+  issuedById    String?
+  issuedByLabel String  @default("")
+
+  /// What the count triggered, if anything — recorded on the warning that crossed the line so
+  /// the escalation can be explained months later.
+  triggered   String?
+  revokedAt   DateTime?
+  revokedById String?
+  revokedReason String?
+  createdAt   DateTime  @default(now())
+
+  @@index([discordId, revokedAt])
+  @@index([createdAt])
 }
 
 /// Somebody who wants to be told when a service goes down, and when it comes back.

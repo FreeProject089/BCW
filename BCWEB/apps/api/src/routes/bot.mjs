@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { randomInt } from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, safeEqual } from '../lib/lib.mjs';
+import { issueWarn } from '../lib/warns.mjs';
 
 // Server-to-server auth for the Discord bot (shared secret, like the telemetry link
 // lookup). The bot sends `x-bot-secret`; anything else is rejected.
@@ -771,6 +772,101 @@ export default async function botRoutes(app) {
     });
     await logAudit(p, req.user.uid, `bot.${kind}`, `${member?.username || discordId}${reason ? ` — ${reason}` : ''}`, req.ip).catch(() => {});
     return { ok: true, action };
+  });
+
+  // The bot's own door to warnings. Separate from the admin one because the bot carries a
+  // shared secret, not a session — the previous version of this called the admin endpoint and
+  // would have been refused every time, which is the kind of thing that looks like "the bot is
+  // broken" rather than "that route needs a cookie".
+  app.post('/bot/warns', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({
+      discordId: z.string().min(1).max(32),
+      reason: z.string().trim().min(1).max(500),
+      guildId: z.string().max(32).optional(),
+      // Who typed the command, as Discord names them. Not trusted for anything but the label:
+      // the bot is authenticated, the moderator is not.
+      by: z.string().max(120).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const r = await issueWarn(p, {
+      discordId: b.data.discordId, reason: b.data.reason, guildId: b.data.guildId || null,
+      issuedById: null,
+      issuedByLabel: b.data.by ? `${b.data.by} (Discord)` : 'Discord moderator',
+    });
+    return { ok: true, count: r.count, triggered: r.triggered };
+  });
+
+  app.get('/bot/warns', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const discordId = String(req.query?.discordId || '');
+    if (!discordId) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const [warns, active] = await Promise.all([
+      p.botWarn.findMany({ where: { discordId }, orderBy: { createdAt: 'desc' }, take: 25 }),
+      p.botWarn.count({ where: { discordId, revokedAt: null } }),
+    ]);
+    return { warns, active };
+  });
+
+  // ── Warnings ───────────────────────────────────────────────────────────────
+  //
+  // A warning is a FACT we record, not a thing Discord can refuse — which is why it is its own
+  // model rather than another BotAction kind. What it does is arrive with a count, and the Nth
+  // one buys an action from the configured ladder. See lib/warns.mjs for the rule.
+  app.post('/admin/bot/warns', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
+    const b = z.object({
+      discordId: z.string().min(1).max(32),
+      // A warning with no reason is one nobody can appeal and nobody learns from. Required,
+      // unlike the undo actions.
+      reason: z.string().trim().min(1).max(500),
+      guildId: z.string().max(32).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const { discordId, reason, guildId } = b.data;
+
+    const p = await db();
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true, email: true } });
+    const { warn, count, triggered, action, targetLabel } = await issueWarn(p, {
+      discordId, reason, guildId: guildId || null,
+      issuedById: req.user.uid,
+      issuedByLabel: [me?.displayName, me?.email].filter(Boolean).join(' · '),
+    });
+
+    await logAudit(p, req.user.uid, 'bot.warn', `${targetLabel} — ${reason}${triggered ? ` → ${triggered.kind}` : ''}`, req.ip).catch(() => {});
+    return { ok: true, warn, count, triggered, action };
+  });
+
+  app.get('/admin/bot/warns', { preHandler: requireCap('manage_users', 'MOD') }, async (req) => {
+    const p = await db();
+    const where = req.query?.discordId ? { discordId: String(req.query.discordId) } : {};
+    const [warns, active] = await Promise.all([
+      p.botWarn.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 }),
+      // The number that matters is the one the ladder reads, so it is served rather than
+      // left for the client to recompute from a truncated list.
+      req.query?.discordId
+        ? p.botWarn.count({ where: { discordId: String(req.query.discordId), revokedAt: null } })
+        : Promise.resolve(null),
+    ]);
+    return { warns, active };
+  });
+
+  // Withdrawn, never deleted: "this was taken back on the 4th" is part of the record, and a
+  // count that silently drops rows makes an escalation impossible to explain afterwards.
+  app.post('/admin/bot/warns/:id/revoke', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
+    const b = z.object({ reason: z.string().trim().max(500).optional() }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const row = await p.botWarn.findUnique({ where: { id: req.params.id } });
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    if (row.revokedAt) return { ok: true, warn: row, alreadyRevoked: true };
+    const warn = await p.botWarn.update({
+      where: { id: row.id },
+      data: { revokedAt: new Date(), revokedById: req.user.uid, revokedReason: b.data.reason || null },
+    });
+    await logAudit(p, req.user.uid, 'bot.warn.revoke', `${row.targetLabel} — ${b.data.reason || 'no reason given'}`, req.ip).catch(() => {});
+    return { ok: true, warn };
   });
 
   app.get('/admin/bot/actions', { preHandler: requireCap('manage_users', 'MOD') }, async (req) => {

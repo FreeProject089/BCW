@@ -20,6 +20,16 @@ export const commandData = [
   new SlashCommandBuilder().setName('clear').setDescription('Delete recent messages (max 100)')
     .addIntegerOption((o) => o.setName('count').setDescription('How many (1-100)').setMinValue(1).setMaxValue(100))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+  // Warnings are issued from Discord because that is where the moderator is standing when
+  // somebody misbehaves. The RECORD lives on the site — the count, the ladder and the reason —
+  // so a warning given here and one given from the admin screen are the same thing.
+  new SlashCommandBuilder().setName('warn').setDescription('Warn a member (recorded, with a reason)')
+    .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+    .addStringOption((o) => o.setName('reason').setDescription('Why — they are told this, and it is kept').setRequired(true).setMaxLength(500))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+  new SlashCommandBuilder().setName('warnings').setDescription('Show the warnings on a member')
+    .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
   new SlashCommandBuilder().setName('giveaway').setDescription('Start a giveaway in this channel')
     .addStringOption((o) => o.setName('prize').setDescription('What to give away').setRequired(true))
     .addIntegerOption((o) => o.setName('minutes').setDescription('How long it runs (minutes)').setMinValue(1).setMaxValue(86400).setRequired(true))
@@ -37,11 +47,54 @@ export async function handleInteraction(i) {
       const del = await clearMessages(i.channel, n);
       return eReply(i, `Deleted **${del}** message(s).`, { title: '🧹 Clear' });
     }
+    if (i.commandName === 'warn') return cmdWarn(i);
+    if (i.commandName === 'warnings') return cmdWarnings(i);
     if (i.commandName === 'giveaway') return cmdGiveaway(i);
     return;
   }
   if (i.isButton() && i.customId.startsWith('gw:enter:')) return handleGiveawayButton(i);
   if (i.isButton() || i.isAnySelectMenu() || i.isModalSubmit()) return handlePanelInteraction(i);
+}
+
+async function cmdWarn(i) {
+  const member = i.options.getUser('member');
+  const reason = i.options.getString('reason');
+  // A moderator warning themselves is a mis-click; warning the bot is a joke that leaves a
+  // real row behind. Both refused here rather than recorded and explained later.
+  if (member.id === i.user.id) return eReply(i, 'You cannot warn yourself.', { title: '⚠ Warn' });
+  if (member.bot) return eReply(i, 'Bots do not get warnings.', { title: '⚠ Warn' });
+
+  const r = await api.warn(member.id, reason, i.guildId, i.user.username);
+  if (!r) return eReply(i, 'The site refused that — the warning was NOT recorded.', { title: '⚠ Warn' });
+
+  // What it triggered is said here, in the channel, because a moderator who does not know the
+  // third warning bans somebody will keep issuing them.
+  const what = r.triggered
+    ? (r.triggered.kind === 'timeout' ? `timed out for ${r.triggered.minutes} minute(s)`
+      : r.triggered.kind === 'kick' ? 'removed from the server' : 'banned')
+    : null;
+  return eReply(i,
+    `**${member.username}** warned — that makes **${r.count}**.\nReason: ${reason}`
+    + (what ? `\n\n**Warning ${r.count} means they are ${what}.** Queued; the result shows on the site.` : ''),
+    { title: '⚠ Warn', color: what ? 0xef4444 : BRAND });
+}
+
+async function cmdWarnings(i) {
+  const member = i.options.getUser('member');
+  const r = await api.warnList(member.id);
+  const warns = r?.warns || [];
+  if (!warns.length) return eReply(i, `**${member.username}** has no warnings.`, { title: '⚠ Warnings' });
+  // Revoked ones are shown, struck through: a record that hides what was taken back is not a
+  // record, and "why is he at two when I gave him three" has to have an answer here.
+  const lines = warns.slice(0, 10).map((w) => {
+    const when = new Date(w.createdAt).toISOString().slice(0, 10);
+    const text = `${when} — ${w.reason}${w.issuedByLabel ? ` (${w.issuedByLabel.split(' · ')[0]})` : ''}`;
+    return w.revokedAt ? `~~${text}~~ withdrawn` : text;
+  });
+  return eReply(i,
+    `**${member.username}** — **${r.active ?? warns.filter((w) => !w.revokedAt).length}** standing\n\n${lines.join('\n')}`
+    + (warns.length > 10 ? `\n\n…and ${warns.length - 10} more on the site.` : ''),
+    { title: '⚠ Warnings' });
 }
 
 async function cmdGiveaway(i) {
