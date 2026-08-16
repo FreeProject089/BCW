@@ -183,7 +183,11 @@ export function ApiConsole() {
           {/* A filter over 21 endpoints. A dropdown makes you read all of them to find one;
               typing "repo" is how anybody actually looks for a route. Matches the path, the
               description and the scope, because people search for all three. */}
+          {/* autoComplete off, and a name the browser cannot mistake for a login field. A
+              password manager filled this with an e-mail address, so the filter matched
+              nothing and the console looked broken before anybody had typed a character. */}
           <Input className="mb-2" value={q} onChange={(e) => setQ(e.target.value)}
+            name="endpoint-filter" autoComplete="off" spellCheck={false} type="search"
             placeholder={t('dev.console.filter', 'Filter — path, description or scope')} />
           <div className="rounded-lg border border-[var(--line)] max-h-64 overflow-auto divide-y divide-[var(--line)]">
             {(() => {

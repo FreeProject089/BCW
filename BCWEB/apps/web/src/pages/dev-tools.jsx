@@ -539,20 +539,31 @@ export default function DevTools() {
       <Link to="/dev" className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><ArrowLeft size={13} /> {t('devc.back', 'Developer area')}</Link>
       <div>
         <h1 className="text-2xl font-bold">{t('dvt.title', 'Tools')}</h1>
+        {/* Counted, not stated. It said "three things" while seven tools sat underneath —
+            the sentence was written when there were three and nothing made it age. */}
         <p className="text-[13px] text-[var(--muted)] mt-1">
-          {t('dvt.sub', 'Three things you would otherwise write yourself: make a real call, check a feed before publishing it, and see what your keys have been doing.')}
+          {t('dvt.sub2', '{n} things you would otherwise write yourself — make a real call, check a feed before you publish it, read a repository, see what your keys have been doing.')
+            .replace('{n}', String(ALL_TOOLS.length))}
         </p>
       </div>
 
       {/* Sticky jump bar over every tool of every group — tall tools, so a bar you must
           scroll up to reach is used once. Reads ALL_TOOLS, the same list the sections do. */}
-      <nav className="flex flex-wrap gap-1.5 sticky top-16 z-10 py-2" style={{ background: 'var(--bg)' }}
+      {/* Grouped in the bar too. Seven unlabelled chips in a row is a list you read twice;
+          with the category in front, "the installer one" is found without reading any of the
+          others. */}
+      <nav className="flex flex-wrap items-center gap-x-3 gap-y-1.5 sticky top-16 z-10 py-2" style={{ background: 'var(--bg)' }}
         aria-label={t('dvt.jump', 'Jump to a tool')}>
-        {ALL_TOOLS.map((tl) => (
-          <a key={tl.id} href={`#${tl.id}`}
-             className="text-xs px-2.5 py-1 rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition">
-            {tl.label}
-          </a>
+        {GROUPS.map((g) => (
+          <span key={g.id} className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wide text-[var(--faint)]">{t(g.k, g.label)}</span>
+            {g.tools.map((tl) => (
+              <a key={tl.id} href={`#${tl.id}`}
+                 className="text-xs px-2.5 py-1 rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition">
+                {tl.label}
+              </a>
+            ))}
+          </span>
         ))}
       </nav>
 
