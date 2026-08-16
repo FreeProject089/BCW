@@ -3,6 +3,7 @@ import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, page
 import { safeFetch } from '../lib/net.mjs';
 import { zipReadAll } from '../lib/native.mjs';
 import { detectStack, interestingPaths } from '../lib/stack-detect.mjs';
+import { buildCodeGraph, sourcePathsToFetch } from '../lib/code-graph.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
 // legal, release-notes source) stored as an AdminSetting row `project.<key>`.
@@ -264,6 +265,68 @@ export default async function projectRoutes(app) {
 
     const draft = detectStack(files);
     return { ok: true, source, filesRead: Object.keys(files).length, ...draft };
+  });
+
+  // ── The architecture graph: what the code actually imports ─────────────────
+  //
+  // A second, DEEPER read of the same repository. The stack detector answers "what is deployed"
+  // from compose and manifests; this answers "what is wired to what" from the source itself.
+  // Every edge is a real import statement — nothing is inferred from a name or a folder, because
+  // a diagram that guesses looks expert and is fiction, and this one gets published.
+  //
+  // Separate endpoint, not folded into /stack/detect: it fetches hundreds of files instead of
+  // fifteen, and nobody should pay that cost to fill in a five-box stack diagram.
+  app.post('/admin/projects/code-graph', { preHandler: requireEditor() }, async (req, reply) => {
+    const b = z.object({
+      url: z.string().url().max(300).optional(),
+      files: z.record(z.string().max(400_000)).optional(),
+      maxFiles: z.number().int().min(10).max(300).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_request' });
+
+    let sources = null;
+    let source = '';
+
+    if (b.data.files) {
+      sources = b.data.files;
+      source = 'folder';
+    } else if (b.data.url) {
+      const m = b.data.url.match(GH_REPO_RE);
+      if (!m) return reply.code(400).send({ error: 'not_a_github_repo' });
+      const [, owner, repo, ref] = m;
+      let tree;
+      try {
+        const meta = ref ? { default_branch: ref } : await gh(`https://api.github.com/repos/${owner}/${repo}`);
+        tree = await gh(`https://api.github.com/repos/${owner}/${repo}/git/trees/${meta.default_branch}?recursive=1`);
+      } catch (e) {
+        return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message || e).slice(0, 120) });
+      }
+      const paths = (tree.tree || []).filter((e) => e.type === 'blob').map((e) => e.path);
+      const wanted = sourcePathsToFetch(paths, { limit: b.data.maxFiles || 150 });
+      sources = {};
+      // Sequentially in small batches rather than all at once: raw.githubusercontent rate-limits
+      // a burst, and a half-fetched repo produces a graph with holes that look like real
+      // architecture rather than like a failed download.
+      const branch = ref || 'HEAD';
+      for (let i = 0; i < wanted.length; i += 12) {
+        await Promise.all(wanted.slice(i, i + 12).map(async (path) => {
+          try {
+            const res = await safeFetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`, { headers: { 'User-Agent': 'bcweb' } });
+            if (res.ok) sources[path] = (await res.text()).slice(0, 400_000);
+          } catch { /* one unreadable file must not abandon the scan */ }
+        }));
+      }
+      // Said out loud: a graph built from 40 of 300 files is not this repo's architecture.
+      if (Object.keys(sources).length < wanted.length * 0.6 && wanted.length > 10) {
+        return reply.code(502).send({ error: 'incomplete_fetch', got: Object.keys(sources).length, wanted: wanted.length });
+      }
+      source = `github:${owner}/${repo}`;
+    } else {
+      return reply.code(400).send({ error: 'nothing_to_read' });
+    }
+
+    const graph = buildCodeGraph(sources);
+    return { ok: true, source, ...graph };
   });
 
   app.put('/projects/:key', { preHandler: requireEditor() }, async (req, reply) => {
