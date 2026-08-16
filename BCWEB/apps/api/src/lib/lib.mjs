@@ -59,33 +59,44 @@ const cookieBase = { httpOnly: true, sameSite: 'lax', path: '/', secure: COOKIE_
 // account owner can SEE their signed-in devices and drop one without a global rotation.
 //
 // `req` is optional so a caller that has no request context still gets a working session
-// (it simply lands in the list with unknown origin) — this must never be the thing that
-// stops someone signing in. For the same reason the whole recording step is wrapped: a
-// GeoIP hiccup or a database blip degrades the panel, it does not deny the login.
+// (it simply lands in the list with unknown origin). The origin details are best-effort — a
+// GeoIP hiccup costs a country column — but the ROW is not optional: its id is the `sid` in the
+// token, and a token without one can never be revoked. See tokenAcceptable.
 export async function issueSession(reply, user, req) {
   let sid;
   try {
-    if (req) {
-      const p = await db();
-      const ua = String(req.headers?.['user-agent'] || '').slice(0, 400);
-      const { device, browser, os } = parseUA(ua);
-      const geo = await geoOf(req);
-      const row = await p.session.create({
-        data: {
-          userId: user.id,
-          ip: clientIp(req),
-          userAgent: ua || null,
-          device, browser, os,
-          country: geo?.country || null,
-          region: geo?.region || null,
-          city: geo?.city || null,
-        },
-        select: { id: true },
-      });
-      sid = row.id;
-    }
-  } catch { /* the panel degrades; the login does not fail */ }
-  const token = jwt.sign({ uid: user.id, role: user.role, ...(sid ? { sid } : {}) }, JWT_SECRET, { expiresIn: '7d' });
+    const p = await db();
+    // Recorded even with no request context — it lands in the list with unknown origin, which
+    // is the documented behaviour and is also the only way it gets a `sid` at all. The origin
+    // details are best-effort; the ROW is not.
+    const ua = String(req?.headers?.['user-agent'] || '').slice(0, 400);
+    const { device, browser, os } = req ? parseUA(ua) : {};
+    const geo = req ? await geoOf(req).catch(() => null) : null;
+    const row = await p.session.create({
+      data: {
+        userId: user.id,
+        ip: req ? clientIp(req) : null,
+        userAgent: ua || null,
+        device: device || null, browser: browser || null, os: os || null,
+        country: geo?.country || null,
+        region: geo?.region || null,
+        city: geo?.city || null,
+      },
+      select: { id: true },
+    });
+    sid = row.id;
+  } catch (e) {
+    // This used to degrade silently — "the panel degrades; the login does not fail" — and mint
+    // a token with no `sid`. Such a token is unrevocable BY ANYTHING: not the sessions panel,
+    // not closing the account, not a password change. It works until it expires, and the guards
+    // now refuse it, so degrading here would hand somebody a cookie that fails on their next
+    // request. Recording the session is part of signing in.
+    //
+    // The cost is honest: if the database cannot take a row, the site it fronts is not working
+    // either, and a refused login is a better answer than a session nobody can end.
+    throw Object.assign(new Error('session_not_recorded'), { statusCode: 503, cause: e });
+  }
+  const token = jwt.sign({ uid: user.id, role: user.role, sid }, JWT_SECRET, { expiresIn: '7d' });
   reply.setCookie('bcw_session', token, { ...cookieBase, maxAge: 7 * 24 * 3600 });
   return { id: user.id, email: user.email, displayName: user.displayName, role: user.role };
 }
@@ -293,13 +304,14 @@ const _userCache = new Map(); // uid -> { at, role, perms }
 // since a single role change affects every member's effective perms.
 export function clearUserCache(uid) { if (uid) _userCache.delete(uid); else _userCache.clear(); }
 export async function currentUser(uid) {
-  if (!uid) return { role: null, perms: [] };
+  if (!uid) return { role: null, perms: [], exists: false };
   const hit = _userCache.get(uid);
   if (hit && Date.now() - hit.at < MOD_TTL) return hit;
-  let role = null, perms = [];
+  let role = null, perms = [], exists = null;   // exists: null = could not ask, false = no such account
   try {
     const p = await db();
     const u = await p.user.findUnique({ where: { id: uid }, select: { role: true, permissions: true, customRoleIds: true } });
+    exists = !!u;
     if (u) {
       role = u.role;
       perms = u.permissions || [];
@@ -311,7 +323,7 @@ export async function currentUser(uid) {
       }
     }
   } catch { /* keep nulls */ }
-  const rec = { at: Date.now(), role, perms };
+  const rec = { at: Date.now(), role, perms, exists };
   boundedSet(_userCache, uid, rec, UID_CACHE_MAX, MOD_TTL);
   return rec;
 }
@@ -403,20 +415,63 @@ async function ensure2fa(uid, reply) {
   if (!u?.totpEnabled) { reply.code(403).send({ error: '2fa_required' }); return false; }
   return true;
 }
+/**
+ * Is this token still worth honouring, beyond "it verifies"?
+ *
+ * Two things a signature cannot tell you, both found by looking at a real cookie:
+ *
+ * • **No `sid`.** The session id is what "sign out this device" revokes against, so a token
+ *   without one cannot be revoked by anything — not by the sessions panel, not by closing the
+ *   account, not by a password change. It simply works until it expires. Tokens predating the
+ *   feature were let through on purpose ("forcing everyone to sign in again is a bigger side
+ *   effect than the panel is worth") and that grace expired by construction: tokens last seven
+ *   days and the feature is far older than that. What is left is tokens minted when the
+ *   session row could not be written — see issueSession, which no longer allows that.
+ *
+ * • **No account.** `currentUser` returns nulls for a uid with no row, and the guards read
+ *   `cur.role || claims.role` — so a deleted account kept working with the role baked into its
+ *   token at sign-in. A deleted admin was a permanent admin.
+ *
+ * `exists: null` means the lookup itself failed. Treated as acceptable: a database blip must
+ * not sign the whole site out, and `sessionRevoked` already makes that same call.
+ */
+export function tokenAcceptable(claims, cur) {
+    if (!claims?.uid) return { ok: false, error: 'unauthenticated' };
+    if (!claims.sid) return { ok: false, error: 'session_revoked' };
+    if (cur?.exists === false) return { ok: false, error: 'session_revoked' };
+    return { ok: true };
+}
+
+/**
+ * Everything the four guards did identically: verify, check the account lock, check the
+ * session, read the live role. It was five lines copied four times, and the copies had already
+ * drifted — requireEditor never applied the role fallback the others did.
+ *
+ * Returns `{ user }` or `{ reply }` — the caller sends the latter and stops.
+ */
+async function authenticated(req, reply) {
+    const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);   // throws → caller answers 401
+    const lock = await accountLock(claims.uid, 'signin');
+    if (lock) return { reply: reply.code(403).send(lockBody(lock)) };
+    if (await sessionRevoked(claims)) return { reply: reply.code(401).send({ error: 'session_revoked' }) };
+    const cur = await currentUser(claims.uid);
+    const verdict = tokenAcceptable(claims, cur);
+    if (!verdict.ok) return { reply: reply.code(401).send({ error: verdict.error }) };
+    return { user: { ...claims, role: cur.role || claims.role, perms: cur.perms } };
+}
+
 export function requireRole(...roles) {
   return async (req, reply) => {
     try {
-      const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
-      const lock = await accountLock(claims.uid, 'signin');
-      if (lock) return reply.code(403).send(lockBody(lock));
-      if (await sessionRevoked(claims)) return reply.code(401).send({ error: 'session_revoked' });
-      // Use the LIVE role (not the possibly-stale JWT), so role changes propagate without
-      // requiring the user to re-login.
-      const cur = await currentUser(claims.uid);
-      const role = cur.role || claims.role;
+      // The LIVE role (not the possibly-stale JWT), so a role change takes effect without the
+      // target having to sign out and in again.
+      const got = await authenticated(req, reply);
+      if (got.reply) return got.reply;
+      const { user } = got;
+      const role = user.role;
       if (roles.length && role !== 'SUPERADMIN' && !roles.includes(role)) return reply.code(403).send({ error: 'forbidden' });
-      if (roles.length && ADMIN_TIER_ROLES.includes(role)) { if (!(await ensure2fa(claims.uid, reply))) return; }
-      req.user = { ...claims, role, perms: cur.perms }; // { uid, role (live), perms }
+      if (roles.length && ADMIN_TIER_ROLES.includes(role)) { if (!(await ensure2fa(user.uid, reply))) return; }
+      req.user = user; // { uid, role (live), perms }
     } catch { return reply.code(401).send({ error: 'unauthenticated' }); }
   };
 }
@@ -427,16 +482,12 @@ export function requireRole(...roles) {
 export function requireCap(cap, ...alsoRoles) {
   return async (req, reply) => {
     try {
-      const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
-      const lock = await accountLock(claims.uid, 'signin');
-      if (lock) return reply.code(403).send(lockBody(lock));
-      if (await sessionRevoked(claims)) return reply.code(401).send({ error: 'session_revoked' });
-      const cur = await currentUser(claims.uid);
-      const role = cur.role || claims.role;
-      const user = { ...claims, role, perms: cur.perms };
-      const allowed = hasCap(user, cap) || alsoRoles.includes(role);
+      const got = await authenticated(req, reply);
+      if (got.reply) return got.reply;
+      const { user } = got;
+      const allowed = hasCap(user, cap) || alsoRoles.includes(user.role);
       if (!allowed) return reply.code(403).send({ error: 'missing_permission', capability: cap });
-      if (!(await ensure2fa(claims.uid, reply))) return;
+      if (!(await ensure2fa(user.uid, reply))) return;
       req.user = user;
     } catch { return reply.code(401).send({ error: 'unauthenticated' }); }
   };
@@ -449,13 +500,10 @@ export function requireCap(cap, ...alsoRoles) {
 export function requireEditor() {
   return async (req, reply) => {
     try {
-      const claims = jwt.verify(req.cookies?.bcw_session, JWT_SECRET);
-      const lock = await accountLock(claims.uid, 'signin');
-      if (lock) return reply.code(403).send(lockBody(lock));
-      if (await sessionRevoked(claims)) return reply.code(401).send({ error: 'session_revoked' });
-      const cur = await currentUser(claims.uid);
-      if (!(await ensure2fa(claims.uid, reply))) return;
-      req.user = { ...claims, role: cur.role || claims.role, perms: cur.perms };
+      const got = await authenticated(req, reply);
+      if (got.reply) return got.reply;
+      if (!(await ensure2fa(got.user.uid, reply))) return;
+      req.user = got.user;
     } catch { return reply.code(401).send({ error: 'unauthenticated' }); }
   };
 }
@@ -592,7 +640,12 @@ export function optionalAuth() {
       // recognised by /me, which is exactly the screen the user checks to confirm it
       // worked. optionalUid stays a pure token read on purpose: it feeds no-auth ingest
       // endpoints where a DB round-trip per event is not worth it.
-      const dead = (await accountLock(claims.uid, 'signin')) || (await sessionRevoked(claims));
+      // Anything the strict guards would refuse reads as logged-out here — otherwise /me would
+      // still recognise a device the sessions panel says is gone, which is the screen somebody
+      // opens to confirm it worked.
+      const dead = (await accountLock(claims.uid, 'signin'))
+          || (await sessionRevoked(claims))
+          || !tokenAcceptable(claims, await currentUser(claims.uid)).ok;
       req.user = dead ? null : claims;
     } catch { req.user = null; }
   };
