@@ -7485,7 +7485,12 @@ function BmmpaInspector() {
   // declaration lived in AdminProjects, 1700 lines away — so opening the inspector threw
   // ReferenceError: dragOver is not defined. React state is per component; a name that
   // resolves in the editor does not mean it resolves at runtime.
+  //
+  // `fileName` was the same borrowed name and was NOT fixed with it: the crash simply moved
+  // one line down and the panel still would not open. Fixing the symptom that was reported
+  // instead of the class is why this happened twice — check-undefined-names.mjs now covers it.
   const [dragOver, setDragOver] = useState(false);
+  const [fileName, setFileName] = useState('');
   // The API returns codes; the words are ours. An unknown code falls back to itself rather
   // than to a blank — a moderator seeing "app.frobnicate" learns something, a moderator
   // seeing nothing does not.
