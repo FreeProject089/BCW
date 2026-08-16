@@ -202,6 +202,11 @@ export default async function communityCatalogRoutes(app) {
     const q = String(req.query?.q || '').trim();
     const where = { status: 'ACTIVE', listed: true, visibility: 'public' };
     if (q) where.OR = [{ name: { contains: q, mode: 'insensitive' } }, { description: { contains: q, mode: 'insensitive' } }];
+    // The project switcher applies here too. `kind` deliberately does NOT: a catalog holds
+    // items of several kinds, so filtering catalogs by one would hide a catalog that contains
+    // exactly what was asked for — the opposite of what the filter is for.
+    const project = String(req.query?.project || '').trim();
+    if (project) where.project = { key: project };
     const rows = await p.communityCatalog.findMany({
       where, orderBy: [{ featuredUntil: 'desc' }, { downloads: 'desc' }], take: 60,
       include: { owner: { select: { displayName: true } }, project: { select: { key: true } }, _count: { select: { items: true } } },

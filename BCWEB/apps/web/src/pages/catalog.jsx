@@ -99,16 +99,20 @@ export function Catalog() {
             </div>); })}
         </div>
       ) : <EmptyState icon={Inbox} title={t('cat.empty.t', 'Nothing here yet')} sub={t('cat.empty.s', 'Be the first to publish to this catalog.')} />)}
-      <CommunityCatalogsStrip />
+      <CommunityCatalogsStrip project={project} q={q} />
     </div>
   );
 }
 
 // A strip of community-hosted catalogs under the official grid — separate from the
 // trusted official items (different trust level), each linking to its /c/:slug page.
-function CommunityCatalogsStrip() {
+function CommunityCatalogsStrip({ project = '', q = '' }) {
   const { t } = useI18n();
-  const { data } = useAsync(() => api.get('/c'), []);
+  // It fetched `/c` with no parameters and no deps, so the strip sat unchanged under a filtered
+  // grid — a search for "shaders" showed the official matches above and every community catalog
+  // below, which reads as the filter being broken. The endpoint already accepted `q`; nothing
+  // was sending it.
+  const { data } = useAsync(() => api.get(`/c?${new URLSearchParams({ project, q })}`), [project, q]);
   const cats = data?.catalogs || [];
   if (!cats.length) return null;
   return (
