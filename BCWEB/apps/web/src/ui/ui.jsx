@@ -463,10 +463,32 @@ export function ToastProvider({ children }) {
   //    deferred side effect (e.g. actually publish the post).
   //  • 'cancel' — the user hit × / Undo: run onCancel to restore the previous state; the
   //    deferred side effect never happens.
+// Marking the rows an undo window is about, so the wait is not blind.
+//
+// The undo pattern says callers should update their own UI optimistically before calling. Most
+// do not — so on a long list you press delete, nothing changes, and you wait six seconds
+// wondering whether it worked before daring the next one. Passing `preview` puts the change on
+// screen immediately: what is going costs its colour, what is arriving fades in, and either way
+// it is settled the moment the window closes.
+//
+// Elements are resolved ONCE, when the toast opens. Re-querying at cleanup time would miss a
+// row the caller has since re-rendered, and leave it greyed for good.
+function resolvePreview(preview) {
+  if (!preview) return [];
+  const { el, selector } = preview;
+  const list = el ? (Array.isArray(el) ? el : [el])
+    : selector ? [...document.querySelectorAll(selector)]
+      : [];
+  return list.filter((x) => x && x.classList);
+}
+const PREVIEW_CLASS = { remove: 'undo-going', add: 'undo-arriving' };
+
   const finalize = useCallback((id, how) => {
     const c = ctl.current.get(id);
     if (c?.done) return;
     if (c) { c.done = true; clearTimeout(c.timer); ctl.current.delete(id); }
+    // Whatever happens next — committed or undone — the row stops being "pending".
+    for (const el of c?.previewEls || []) el.classList.remove('undo-going', 'undo-arriving');
     remove(id);
     try { if (how === 'cancel') c?.onCancel?.(); else c?.onCommit?.(); } catch { /* a callback must never crash the toast host */ }
   }, [remove]);
@@ -476,7 +498,12 @@ export function ToastProvider({ children }) {
     const duration = toast.duration || 4200;
     setItems((s) => [...s, { id, ...toast, duration }]);
     const timer = setTimeout(() => finalize(id, 'commit'), duration);
-    ctl.current.set(id, { timer, onCommit: toast.onCommit, onCancel: toast.onCancel, done: false });
+    // Applied here rather than by the caller: doing it at the call site is exactly what most
+    // callers forget, and a pattern that only works when everybody remembers it does not work.
+    const previewEls = resolvePreview(toast.preview);
+    const cls = PREVIEW_CLASS[toast.preview?.mode] || PREVIEW_CLASS.remove;
+    for (const el of previewEls) el.classList.add(cls);
+    ctl.current.set(id, { timer, onCommit: toast.onCommit, onCancel: toast.onCancel, previewEls, done: false });
     return id;
   }, [finalize]);
 
@@ -493,12 +520,13 @@ export function ToastProvider({ children }) {
     // the deferred work runs straight away and the toast degrades to a plain confirmation —
     // every caller keeps working unchanged, because they already put their optimistic UI
     // update before this call and their real work inside onCommit.
-    action: ({ tone = 'info', duration = 6000, onCommit, onCancel, cancelLabel, ...rest }) => {
+    action: ({ tone = 'info', duration = 6000, onCommit, onCancel, cancelLabel, preview, ...rest }) => {
       if (getUndoDisabled()) {
         try { onCommit?.(); } catch { /* a callback must never crash the toast host */ }
+        // No window means nothing to preview — the change is already real.
         return push({ tone, duration: 3200, ...rest });
       }
-      return push({ tone, action: true, duration, onCommit, onCancel, cancelLabel, ...rest });
+      return push({ tone, action: true, duration, onCommit, onCancel, cancelLabel, preview, ...rest });
     },
   };
   const Ico = { success: Check, error: AlertTriangle, info: Info };

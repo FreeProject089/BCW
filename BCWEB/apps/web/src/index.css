@@ -832,3 +832,29 @@ label:has(> input[type="checkbox"]),
 label:has(> input[type="radio"]) {
   min-height: 24px;
 }
+
+/* ── The undo window, made visible ────────────────────────────────────────────
+   While a delete is waiting to commit, the row it is about loses its colour and
+   is struck through; while an addition waits, the new row fades in dimmed. Both
+   clear the moment the window closes, whichever way it closed.
+
+   `pointer-events: none` matters: a row that is on its way out must not be
+   clickable, or you can start a second action on something that is already gone.
+   Reduced motion keeps the state and drops only the fade — the whole point is
+   the state. */
+.undo-going {
+  opacity: .42;
+  filter: grayscale(1);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--error) 60%, transparent);
+  pointer-events: none;
+  transition: opacity .18s ease, filter .18s ease;
+}
+.undo-arriving {
+  opacity: .5;
+  filter: grayscale(.7);
+  transition: opacity .18s ease, filter .18s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .undo-going, .undo-arriving { transition: none; }
+}
