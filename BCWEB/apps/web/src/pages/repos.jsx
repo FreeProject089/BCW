@@ -691,6 +691,11 @@ export function MyRepos() {
     toast.action({
       tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
       msg: t('repos.delnow.pending', 'Deleting "{name}" — permanently.').replace('{name}', r.name),
+      // The row goes grey and stops responding for the whole window. Before this the toast
+      // said "permanently" while the card sat there looking perfectly alive, so on a list you
+      // had no idea whether it had taken — and the only way to be sure was to wait it out
+      // before touching the next one. Undo puts it straight back.
+      preview: { selector: `[data-repo-row="${r.id}"]`, mode: 'remove' },
       onCommit: async () => {
         try {
           await api.del(`/repos/${r.id}`, { immediate: true, confirm: r.name });
@@ -800,7 +805,7 @@ export function MyRepos() {
       {loading ? <div className="text-[var(--muted)] text-sm py-4">{t('common.loading', 'Loading…')}</div>
         : repos.length ? (filteredRepos.length ? <div className="space-y-2">
           {filteredRepos.map((r) => (
-            <Card key={r.id} className="p-4">
+            <Card key={r.id} data-repo-row={r.id} className="p-4">
               {r.deleteAt && (
                 <div className="mb-3 flex items-center gap-2 rounded-lg border border-error-border bg-error-bg px-3 py-2 text-xs">
                   <AlertTriangle size={14} className="text-error shrink-0" />
