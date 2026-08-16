@@ -7799,6 +7799,12 @@ function BmmpaInspector() {
   // instead of the class is why this happened twice — check-undefined-names.mjs now covers it.
   const [dragOver, setDragOver] = useState(false);
   const [fileName, setFileName] = useState('');
+  // An archive dropped here: the file itself (so one entry can be fetched later), its listing,
+  // and whichever entry is open.
+  const [zipFile, setZipFile] = useState(null);
+  const [arch, setArch] = useState(null);
+  const [entry, setEntry] = useState(null);
+  const [busyZip, setBusyZip] = useState(false);
   // The API returns codes; the words are ours. An unknown code falls back to itself rather
   // than to a blank — a moderator seeing "app.frobnicate" learns something, a moderator
   // seeing nothing does not.
@@ -7847,6 +7853,28 @@ function BmmpaInspector() {
    * A ZIP is answered here rather than by a JSON parse error. .bmmplug and .bmmtheme are
    * archives, and "Unexpected token PK" tells nobody what to do next.
    */
+  /** Read a ZIP through the archive route. `wanted` opens one entry in the same round trip —
+   *  the manifest is what a reviewer opens first, every time. */
+  const loadArchive = async (file, wanted) => {
+    setBusyZip(true);
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      // btoa over a whole buffer in one call blows the argument limit; chunked is the boring
+      // way that survives a 30 MB plugin.
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      const r = await api.post('/admin/inspect/archive', { zipBase64: btoa(bin), ...(wanted ? { entry: wanted } : {}) });
+      setArch(r);
+      setEntry(r.opened || null);
+    } catch (e) {
+      toast.error(e?.data?.error === 'bad_zip'
+        ? t('bmi.badzip2', 'That file is not a readable archive.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusyZip(false); }
+  };
+
+  const openEntry = async (name) => { if (zipFile) await loadArchive(zipFile, name); };
+
   const loadFile = async (file) => {
     if (!file) return;
     // 8 MB matches the route's bodyLimit; a bigger file cannot be inspected either way, and
@@ -7857,7 +7885,11 @@ function BmmpaInspector() {
     const raw = await file.text().catch(() => null);
     if (raw == null) return toast.error(t('bmi.readfail', 'Could not read that file.'));
     if (raw.startsWith('PK\u0003\u0004')) {
-      return toast.error(t('bmi.iszip', '{n} is a ZIP archive. Open it and drop the plugin.json or theme.json from inside.').replace('{n}', file.name));
+      // A ZIP used to be refused here — "open it and drop the manifest from inside" — which is
+      // the moment a review stops. It is read as what it is now: a list of entries, any of
+      // which can be opened, with every recognised BMM document inside already summarised.
+      setRep(null); setText(''); setFileName(file.name); setZipFile(file);
+      return loadArchive(file);
     }
     setRep(null);
     setText(raw);
@@ -7895,7 +7927,72 @@ function BmmpaInspector() {
         {fileName && <div className="mt-1 text-[var(--faint)] break-all">{fileName}</div>}
         <div className="mt-1 text-[var(--faint)]">{t('bmi.local', 'The file is read in your browser. Only its contents are sent, and only when you press Read it.')}</div>
       </div>
+      {/* An archive: what is inside it, and any one entry opened. Shown INSTEAD of the paste
+          box while one is loaded — the two answer different questions and stacking both puts
+          a reviewer in front of an empty textarea below a file they are reading. */}
+      {busyZip && <div className="text-[12px] text-[var(--muted)] mb-2"><Spinner /> {t('bmi.zipreading', 'Reading the archive…')}</div>}
+      {arch ? (
+        <div className="mb-2">
+          <div className="flex items-center gap-2 flex-wrap text-[12px] text-[var(--muted)] mb-1">
+            <span>{t('bmi.zipn', '{n} file(s), {kb} KB').replace('{n}', String(arch.total)).replace('{kb}', String(Math.round(arch.bytes / 1024)))}</span>
+            {arch.truncated && <Badge tone="amber">{t('bmi.ziptrunc', 'showing the first {n}').replace('{n}', String(arch.listed))}</Badge>}
+            <Button size="sm" variant="ghost" className="ml-auto"
+              onClick={() => { setArch(null); setEntry(null); setZipFile(null); setFileName(''); }}>
+              {t('common.clear', 'Clear')}
+            </Button>
+          </div>
+
+          {/* Raised above the list on purpose: a path that climbs out of the archive is the one
+              thing a reviewer must not have to scroll for. */}
+          {(arch.warnings || []).length > 0 && (
+            <div className="rounded-lg border border-[var(--danger)] p-2 mb-2 text-[12px]">
+              <div className="font-medium text-[var(--danger)] mb-0.5">{t('bmi.zipwarn', 'Paths that leave the archive')}</div>
+              {arch.warnings.map((w, i) => <div key={i} className="text-[var(--muted)] break-all">{w}</div>)}
+            </div>
+          )}
+
+          {/* Every BMM document inside, already read. This is what the reviewer opened the
+              file for, so it does not wait for a second click. */}
+          {(arch.known || []).length > 0 && (
+            <div className="mb-2 space-y-1">
+              {arch.known.map((k) => (
+                <div key={k.name} className="text-[12px] flex items-center gap-2">
+                  <Badge tone="primary">{k.format}</Badge>
+                  <span className="break-all">{k.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="grid sm:grid-cols-[220px_1fr] gap-2">
+            <div className="rounded-lg border border-[var(--line)] max-h-[320px] overflow-auto">
+              {arch.entries.map((e) => (
+                <button key={e.name} type="button" disabled={!e.text}
+                  onClick={() => openEntry(e.name)}
+                  className={`w-full text-left px-2 py-1 text-[11px] border-b border-[var(--line)] last:border-0 ${
+                    entry?.name === e.name ? 'bg-[var(--surface-2)]' : ''} ${e.text ? 'hover:bg-[var(--surface-2)]' : 'opacity-50 cursor-default'}`}>
+                  <div className="break-all">{e.name}</div>
+                  <div className="text-[var(--faint)]">
+                    {Math.max(1, Math.round(e.size / 1024))} KB{e.text ? '' : ` · ${t('bmi.zipbin', 'binary')}`}
+                    {e.unsafe ? ` · ${e.unsafe}` : ''}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="rounded-lg border border-[var(--line)] p-2 max-h-[320px] overflow-auto">
+              {entry ? (entry.binary
+                ? <div className="text-[12px] text-[var(--muted)]">{t('bmi.zipbinmsg', 'Binary — {kb} KB. Nothing here renders it, and rendering it as text would be noise.').replace('{kb}', String(Math.round(entry.size / 1024)))}</div>
+                : <>
+                    {entry.truncated && <div className="text-[11px] text-[var(--warning)] mb-1">{t('bmi.ziptrunctext', 'Showing the first 256 KB of {kb} KB.').replace('{kb}', String(Math.round(entry.size / 1024)))}</div>}
+                    <pre className="text-[11px] whitespace-pre-wrap break-all">{entry.text}</pre>
+                  </>)
+                : <div className="text-[12px] text-[var(--muted)]">{t('bmi.zippick', 'Pick a file on the left to read it.')}</div>}
+            </div>
+          </div>
+        </div>
+      ) : (
       <Textarea rows={5} value={text} onChange={(e) => { setText(e.target.value); setFileName(''); }} placeholder='{"magic":"BMMPA","version":1,"tasks":[…]}' />
+      )}
       <div className="flex gap-2 mt-2">
         <Button size="sm" variant="primary" disabled={busy || !text.trim()} onClick={run}>{busy ? <Spinner /> : t('bmi.read', 'Read it')}</Button>
         {text.trim() && <Button size="sm" variant="ghost" onClick={() => { setText(''); setFileName(''); setRep(null); }}>{t('common.clear', 'Clear')}</Button>}
