@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
 
+// The trace walk lives with the graph, on the server side of the same file — but the walk is
+// pure, so the same shape is recomputed here rather than making a round trip per click.
+
 // A repository as nested folder boxes, with a line for every real import.
 //
 // Not a force-directed cloud: the thing a reader wants to know is "what lives where, and what
@@ -56,8 +59,51 @@ function layout(nodes, folders) {
     return { boxes, pos, width, height };
 }
 
+/**
+ * The shortest real chain between two files, with the statement that makes each hop.
+ *
+ * The honest version of a "simulation": nothing is executed and no runtime behaviour is claimed.
+ * A step reading "API call: fetch item details" would be invention dressed as analysis. What
+ * this can prove, and all it says, is — this file imports that one, on this line, and here is
+ * the line.
+ */
+function tracePath(edges, fromId, toId) {
+    if (fromId === toId) return [];
+    const out = new Map();
+    for (const e of edges) {
+        if (!out.has(e.to)) out.set(e.to, []);
+        out.get(e.to).push(e);
+    }
+    const prev = new Map();
+    const seen = new Set([fromId]);
+    const queue = [fromId];
+    while (queue.length) {
+        const cur = queue.shift();
+        if (cur === toId) break;
+        for (const e of out.get(cur) || []) {
+            if (seen.has(e.from)) continue;
+            seen.add(e.from);
+            prev.set(e.from, e);
+            queue.push(e.from);
+        }
+    }
+    if (!seen.has(toId)) return null;   // no route IS an answer; an empty walk is not
+    const steps = [];
+    let cur = toId;
+    while (cur !== fromId) {
+        const e = prev.get(cur);
+        if (!e) return null;
+        steps.unshift({ from: e.to, to: e.from, line: e.line, text: e.text });
+        cur = e.to;
+    }
+    return steps;
+}
+
 export default function CodeMap({ graph, t = (k, d) => d }) {
     const [picked, setPicked] = useState(null);
+    // Second selection: the destination of a trace. Held apart from `picked` so a plain
+    // click keeps meaning "show me this file" and never surprises somebody into a walk.
+    const [traceTo, setTraceTo] = useState(null);
     const nodes = graph?.nodes || [];
     const edges = graph?.edges || [];
     const { boxes, pos, width, height } = useMemo(() => layout(nodes, graph?.folders || []), [nodes, graph]);
@@ -70,6 +116,9 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
     const lit = new Set(picked ? [picked, ...needs, ...usedBy] : []);
     // The busiest file, so the scale means something rather than being arbitrary.
     const maxDeps = Math.max(1, ...nodes.map((n) => n.dependents));
+    // Recomputed here rather than fetched: the walk is pure, and a round trip per click
+    // would make exploring the graph feel like using a website instead of reading a map.
+    const steps = (picked && traceTo) ? tracePath(edges, picked, traceTo) : null;
 
     return (
         <div>
@@ -124,8 +173,15 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                     return (
                                         <g key={f.id} transform={`translate(${p.x},${p.y})`}
                                             tabIndex={0} role="button" aria-pressed={picked === f.id}
-                                            onClick={() => setPicked(picked === f.id ? null : f.id)}
-                                            onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setPicked(picked === f.id ? null : f.id); } }}
+                                            onClick={(ev) => {
+                                              // Alt-click picks the DESTINATION of a walk. A plain
+                                              // click keeps meaning "show me this file", so nobody
+                                              // is surprised into a trace they did not ask for.
+                                              if (ev.altKey && picked && picked !== f.id) { setTraceTo(f.id); return; }
+                                              setTraceTo(null);
+                                              setPicked(picked === f.id ? null : f.id);
+                                            }}
+                                            onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setTraceTo(null); setPicked(picked === f.id ? null : f.id); } }}
                                             opacity={on ? 1 : 0.25} style={{ cursor: 'pointer' }}>
                                             <title>{`${f.id} — ${f.dependents} dependent(s)`}</title>
                                             <rect width={p.w} height={p.h} rx="5"
@@ -160,6 +216,11 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                             <div className="text-[11px] text-[var(--faint)] mb-3">
                                 {t('cm.deps', '{n} file(s) depend on this').replace('{n}', byId.get(picked)?.dependents ?? 0)}
                             </div>
+                            {traceTo ? <Trace steps={steps} from={picked} to={traceTo} onClear={() => setTraceTo(null)} t={t} /> : (
+                              <div className="text-[11px] text-[var(--faint)] mb-3">
+                                {t('cm.tracehint', 'Alt-click another file to trace the chain of imports between them.')}
+                              </div>
+                            )}
                             <Side title={t('cm.imports2', 'It imports')} list={needs} onPick={setPicked}
                                 empty={t('cm.noimports', 'Nothing from this repository.')} />
                             <Side title={t('cm.importedby', 'Imported by')} list={usedBy} onPick={setPicked}
@@ -200,6 +261,43 @@ function Side({ title, list, onPick, empty }) {
                         </li>
                     ))}
                 </ul>
+            )}
+        </div>
+    );
+}
+
+/** The walk, step by step, each one quoting the line that makes it. */
+function Trace({ steps, from, to, onClear, t }) {
+    const short = (p) => p.split('/').slice(-2).join('/');
+    return (
+        <div className="mb-3 rounded-lg border border-[var(--primary)] p-2">
+            <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--primary-2)]">
+                    {t('cm.trace', 'How they connect')}
+                </span>
+                <button type="button" onClick={onClear} className="text-[var(--faint)] hover:text-[var(--text)] leading-none px-1">×</button>
+            </div>
+            {steps === null ? (
+                // Said plainly. An empty step list would read as "connected by nothing in
+                // particular", which is a different and false statement.
+                <div className="text-[12px] text-[var(--muted)]">
+                    {t('cm.notrace', 'No chain of imports leads from {a} to {b}.')
+                        .replace('{a}', short(from)).replace('{b}', short(to))}
+                </div>
+            ) : (
+                <ol className="space-y-1.5">
+                    {steps.map((s, i) => (
+                        <li key={i} className="text-[12px]">
+                            <div className="text-[var(--muted)] break-all">
+                                <b className="text-[var(--text)]">{i + 1}.</b> {short(s.from)} → {short(s.to)}
+                            </div>
+                            {/* The proof. Without the line and its text this is an assertion. */}
+                            <code className="block mt-0.5 px-1.5 py-1 rounded bg-[var(--surface-1)] border border-[var(--line)] text-[11px] break-all">
+                                <span className="text-[var(--faint)]">{s.from.split('/').pop()}:{s.line}</span>{'  '}{s.text}
+                            </code>
+                        </li>
+                    ))}
+                </ol>
             )}
         </div>
     );

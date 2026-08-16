@@ -23,16 +23,29 @@ const dirOf = (p) => { const a = p.split('/'); a.pop(); return a.join('/'); };
  * dependency that exists only in prose.
  */
 export function importsIn(source) {
-    const src = String(source)
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+    // Comments are BLANKED, not deleted, so every character keeps its offset and a match can
+    // still be turned into the line it came from. Deleting them shifts everything after the
+    // first comment, and then every citation points at the wrong line — worse than no citation,
+    // because it looks authoritative.
+    const raw = String(source);
+    const src = raw
+        .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+        .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
+
+    const srcLines = raw.split('\n');
+    const lineAt = (idx) => raw.slice(0, idx).split('\n').length;
+
     const out = [];
-    const push = (m) => { if (m && !out.includes(m)) out.push(m); };
-    for (const m of src.matchAll(/\bimport\s+[^'"()]*?from\s*['"]([^'"]+)['"]/g)) push(m[1]);
-    for (const m of src.matchAll(/\bimport\s*['"]([^'"]+)['"]/g)) push(m[1]);          // side-effect import
-    for (const m of src.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) push(m[1]); // dynamic
-    for (const m of src.matchAll(/\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) push(m[1]);
-    for (const m of src.matchAll(/\bexport\s+[^'"]*?from\s*['"]([^'"]+)['"]/g)) push(m[1]);
+    const push = (spec, idx) => {
+        if (!spec || out.some((o) => o.spec === spec)) return;
+        const line = lineAt(idx);
+        out.push({ spec, line, text: (srcLines[line - 1] || '').trim().slice(0, 200) });
+    };
+    for (const m of src.matchAll(/\bimport\s+[^'"()]*?from\s*['"]([^'"]+)['"]/g)) push(m[1], m.index);
+    for (const m of src.matchAll(/\bimport\s*['"]([^'"]+)['"]/g)) push(m[1], m.index);
+    for (const m of src.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) push(m[1], m.index);
+    for (const m of src.matchAll(/\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) push(m[1], m.index);
+    for (const m of src.matchAll(/\bexport\s+[^'"]*?from\s*['"]([^'"]+)['"]/g)) push(m[1], m.index);
     return out;
 }
 
@@ -97,19 +110,22 @@ export function buildCodeGraph(sources = {}, { maxNodes = 400 } = {}) {
     const unresolved = [];
     const seen = new Set();
     for (const f of kept) {
-        for (const spec of importsIn(sources[f])) {
+        for (const { spec, line, text } of importsIn(sources[f])) {
             const target = resolveImport(f, spec, files);
             if (!target) {
                 // A bare specifier is a package — expected, and not worth reporting. A relative
                 // one that does not resolve is a genuine oddity worth surfacing.
-                if (spec.startsWith('.')) unresolved.push({ from: f, spec });
+                if (spec.startsWith('.')) unresolved.push({ from: f, spec, line });
                 continue;
             }
             if (!keptSet.has(target)) continue;      // beyond the cap; drawing half an edge is worse
             const key = `${f}|${target}`;
             if (seen.has(key)) continue;
             seen.add(key);
-            edges.push({ from: target, to: f });     // "f needs target" — same direction as the stack map
+            // The line and its text travel WITH the edge: a trace has to show the statement
+            // that creates each hop, and recomputing it later would mean parsing twice and
+            // risking two different answers.
+            edges.push({ from: target, to: f, line, text });
         }
     }
 
@@ -149,4 +165,66 @@ export function sourcePathsToFetch(paths = [], { limit = 300, maxDepth = 6 } = {
         .filter((p) => p.split('/').length - 1 <= maxDepth)
         .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))
         .slice(0, limit);
+}
+
+/**
+ * Walk the graph from one file to another, and show the statement that makes each hop.
+ *
+ * This is the honest version of a "simulation". It does NOT execute anything and does not claim
+ * to know what happens at runtime — a step reading "API call: fetch item details" would be
+ * invention dressed as analysis. What it can prove, and all it says, is: this file imports that
+ * one, on this line, and here is the line.
+ *
+ * Shortest path by breadth-first search, following the direction things are USED: from an entry
+ * point outwards through what it pulls in.
+ *
+ * @returns { steps } or null when no path exists — null rather than an empty walk, because
+ *          "there is no route between these two" is an answer and an empty list is not.
+ */
+export function tracePath(graph, fromId, toId) {
+    if (fromId === toId) return { steps: [] };
+    // `to` needs `from`, so walking outwards from an entry point means following the edges
+    // backwards: the entry is the `to` of its own imports.
+    const out = new Map();
+    for (const e of graph.edges || []) {
+        if (!out.has(e.to)) out.set(e.to, []);
+        out.get(e.to).push(e);
+    }
+
+    const prev = new Map();
+    const seen = new Set([fromId]);
+    const queue = [fromId];
+    while (queue.length) {
+        const cur = queue.shift();
+        if (cur === toId) break;
+        for (const e of out.get(cur) || []) {
+            if (seen.has(e.from)) continue;
+            seen.add(e.from);
+            prev.set(e.from, e);
+            queue.push(e.from);
+        }
+    }
+    if (!seen.has(toId)) return null;
+
+    const steps = [];
+    let cur = toId;
+    while (cur !== fromId) {
+        const e = prev.get(cur);
+        if (!e) return null;
+        steps.unshift({ from: e.to, to: e.from, line: e.line, text: e.text });
+        cur = e.to;
+    }
+    return { steps };
+}
+
+/**
+ * The files nothing else imports — where a reader should start.
+ *
+ * An entry point is not declared anywhere reliable (package.json `main` lies as often as not in
+ * a monorepo), so it is DERIVED: a file with no dependents is either the entry or dead code, and
+ * both are worth looking at first.
+ */
+export function entryPoints(graph) {
+    const used = new Set((graph.edges || []).map((e) => e.from));
+    return (graph.nodes || []).filter((n) => !used.has(n.id)).map((n) => n.id);
 }

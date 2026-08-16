@@ -2,7 +2,7 @@
 // the tests care most about the edges it must NOT draw.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { importsIn, resolveImport, buildCodeGraph, sourcePathsToFetch } from '../src/lib/code-graph.mjs';
+import { importsIn, resolveImport, buildCodeGraph, sourcePathsToFetch, tracePath, entryPoints } from '../src/lib/code-graph.mjs';
 
 describe('importsIn', () => {
     test('reads every form an import takes', () => {
@@ -14,7 +14,7 @@ describe('importsIn', () => {
       const d = await import('./d.js');
       export { e } from './e.js';
     `;
-        assert.deepEqual(importsIn(src).sort(), ['../b', './a.js', './c', './d.js', './e.js', './side-effect.css']);
+        assert.deepEqual(importsIn(src).map((i) => i.spec).sort(), ['../b', './a.js', './c', './d.js', './e.js', './side-effect.css']);
     });
 
     test('THE ONE: an import inside a comment is not an import', () => {
@@ -25,16 +25,16 @@ describe('importsIn', () => {
       /* import spectre from './spectre.js'; */
       import real from './real.js';
     `;
-        assert.deepEqual(importsIn(src), ['./real.js']);
+        assert.deepEqual(importsIn(src).map((i) => i.spec), ['./real.js']);
     });
 
     test('a url is not mistaken for a comment', () => {
         const src = `const u = 'https://x/y'; import real from './real.js';`;
-        assert.deepEqual(importsIn(src), ['./real.js']);
+        assert.deepEqual(importsIn(src).map((i) => i.spec), ['./real.js']);
     });
 
     test('the same target twice is one specifier', () => {
-        assert.deepEqual(importsIn(`import a from './a'; import b from './a';`), ['./a']);
+        assert.deepEqual(importsIn(`import a from './a'; import b from './a';`).map((i) => i.spec), ['./a']);
     });
 });
 
@@ -161,5 +161,75 @@ describe('TypeScript ESM specifiers', () => {
     });
     test('it still refuses to invent a target', () => {
         assert.equal(resolveImport('source/a.ts', './nowhere.js', files), null);
+    });
+});
+
+describe('citations', () => {
+    // A trace shows the statement that creates each hop. If the line number is wrong the whole
+    // thing is worse than useless: it is confidently wrong, and a reader checks it once, finds
+    // the wrong line, and stops trusting any of it.
+    const SRC = [
+        "// a leading comment",           // 1
+        "/* a block",                     // 2
+        "   comment that spans lines */", // 3
+        "import a from './a.js';",        // 4
+        "",                               // 5
+        "import b from './b.js';",        // 6
+    ].join('\n');
+
+    test('the line number survives a comment above it', () => {
+        const got = importsIn(SRC);
+        assert.deepEqual(got.map((i) => [i.spec, i.line]), [['./a.js', 4], ['./b.js', 6]]);
+    });
+
+    test('and the text of the line comes with it', () => {
+        assert.equal(importsIn(SRC)[0].text, "import a from './a.js';");
+    });
+
+    test('an edge carries the citation of the import that made it', () => {
+        const g = buildCodeGraph({
+            'src/index.js': "import './x.js';\nimport y from './y.js';",
+            'src/x.js': '', 'src/y.js': '',
+        });
+        const toY = g.edges.find((e) => e.from === 'src/y.js');
+        assert.equal(toY.line, 2);
+        assert.equal(toY.text, "import y from './y.js';");
+    });
+});
+
+describe('tracePath', () => {
+    const G = buildCodeGraph({
+        'src/index.js': "import { render } from './ui/render.js';",
+        'src/ui/render.js': "import { fmt } from '../util/fmt.js';",
+        'src/util/fmt.js': "export const fmt = () => 1;",
+        'src/orphan.js': "export const nothing = 1;",
+    });
+
+    test('walks the real chain and cites every hop', () => {
+        const t = tracePath(G, 'src/index.js', 'src/util/fmt.js');
+        assert.equal(t.steps.length, 2);
+        assert.deepEqual(t.steps.map((s) => [s.from, s.to]), [
+            ['src/index.js', 'src/ui/render.js'],
+            ['src/ui/render.js', 'src/util/fmt.js'],
+        ]);
+        // The citation is the point of the whole feature.
+        assert.equal(t.steps[0].line, 1);
+        assert.ok(t.steps[0].text.includes("./ui/render.js"));
+        assert.ok(t.steps[1].text.includes("../util/fmt.js"));
+    });
+
+    test('no route is null, not an empty walk', () => {
+        // "There is no path between these two" is an answer. An empty list reads as "they are
+        // connected by nothing in particular", which is a different and false statement.
+        assert.equal(tracePath(G, 'src/index.js', 'src/orphan.js'), null);
+    });
+
+    test('a file traces to itself in no steps', () => {
+        assert.deepEqual(tracePath(G, 'src/index.js', 'src/index.js'), { steps: [] });
+    });
+
+    test('entry points are what nothing imports', () => {
+        const e = entryPoints(G).sort();
+        assert.deepEqual(e, ['src/index.js', 'src/orphan.js']);
     });
 });

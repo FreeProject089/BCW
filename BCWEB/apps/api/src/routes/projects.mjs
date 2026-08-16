@@ -3,7 +3,7 @@ import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, page
 import { safeFetch } from '../lib/net.mjs';
 import { zipReadAll } from '../lib/native.mjs';
 import { detectStack, interestingPaths } from '../lib/stack-detect.mjs';
-import { buildCodeGraph, sourcePathsToFetch } from '../lib/code-graph.mjs';
+import { buildCodeGraph, sourcePathsToFetch, tracePath, entryPoints } from '../lib/code-graph.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
 // legal, release-notes source) stored as an AdminSetting row `project.<key>`.
@@ -326,7 +326,9 @@ export default async function projectRoutes(app) {
     }
 
     const graph = buildCodeGraph(sources);
-    return { ok: true, source, ...graph };
+    // Where a reader should start. Derived rather than declared: package.json `main` lies
+    // as often as not in a monorepo, while "nothing imports this" is a fact about the code.
+    return { ok: true, source, ...graph, entries: entryPoints(graph).slice(0, 20) };
   });
 
   app.put('/projects/:key', { preHandler: requireEditor() }, async (req, reply) => {
