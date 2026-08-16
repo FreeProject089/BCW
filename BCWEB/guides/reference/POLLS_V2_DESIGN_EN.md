@@ -156,9 +156,35 @@ database: `Report.reporterId` had no `ON DELETE SET NULL` despite a migration wh
 claimed it enabled anonymising, and `ContactMessage(kind, status)` existed in the database
 without being declared on the model.
 
-**Step 2 — the reader — NOT started.** `apps/api/src/routes/polls.mjs` (read + vote) and the
-public page. `poll-answer.mjs` is what the vote endpoint should call; it already returns the
-column to write.
+**Step 2 — the API half — done.** `GET /polls/:id` serves `questions` beside everything it
+already served (`d8f391b`), and a vote now writes PollVote **and** PollAnswer in one
+transaction, with withdrawal clearing both (`7d206d4`). Without that mirror the new tables would
+have gone stale from the first person to answer after the migration — and stale is worse than
+empty, because it looks like data.
+
+**Step 4 — statistics — done early** (`13d0629`, `0b14f98`), because it is pure and testable
+today whereas the page is not. Per-question tallies, numeric summaries with the median beside
+the mean, and a completion funnel counting PEOPLE. Served by the existing admin stats endpoint,
+beside its current shape.
+
+**Editing — done** (`4cd7399`, `a39eebc`). `PUT /admin/polls/:id/questions` sets the whole set
+at once, refusing with 409 when it would destroy answers and naming which ones. Two destructive
+cases, and the second looks harmless: removing a question, and keeping its id while changing its
+KIND — the value lives in a column chosen by the kind.
+
+**A real leak fixed on the way** (`8cd9854`). `results:'staff'` was never checked by the public
+route's `canSeeResults`, whose last clause returns true for any poll that is not currently open.
+A staff-only tally was private while the poll was open and public to everyone once it closed. It
+surfaced only because `lib/poll-view.mjs` stated the same rule properly and the two disagreed on
+exactly one pair — closed AND staff-only.
+
+**Step 3 — the editor — NOT started.** This is what is left, plus the public multi-question
+page. The server side is complete: the editor calls `PUT /admin/polls/:id/questions` and must
+handle its 409 by showing the named questions and their answer counts before offering `force`.
+
+The page is deliberately last. Nothing can create a poll with more than one question until the
+editor exists, so until then the page has nothing new to render and could only be tested against
+data no user could produce.
 
 ### Before running the API tests, know where you are
 
