@@ -10,22 +10,33 @@ Ordered by how much is already settled, not by size.
 
 ## 1. `?next` is dropped after sign-in — half-diagnosed, do this first
 
-**The finding.** The telemetry SSO gate redirects to `/auth?next=telemetry` (measured: the 302
-carries it). `apps/web/src/pages/auth.jsx` never reads `next` — the only match in the file is an
-eslint comment. The OAuth return hardcodes its destination: `oauth.mjs:196` redirects to
-`${SITE_URL}/dashboard?oauth=success`.
+**Corrected after a second look — the first diagnosis named the wrong file.** `auth.jsx` is the
+auth CONTEXT (62 lines). The sign-in page is `pages/signin.jsx`, and it already honours `next`:
 
-So signing in from the gate lands you on the dashboard, and the telemetry page has to be opened
-again by hand. Not a security defect — the gate works and access is correctly granted or
-refused — but it reads like a broken SSO.
+```js
+if (next && next.startsWith('/oauth2/')) { window.location.href = next; return; }
+nav(next && next.startsWith('/') ? next : '/profile', { replace: true });
+```
 
-**Two pieces.** `/auth` honouring `next`, and the OAuth round trip carrying it through the
-`state` parameter, which is already signed for CSRF.
+That `startsWith('/')` is also already the open-redirect guard — `?next=https://not-your-site`
+does not survive it. So the security constraint I first wrote up as the hard part is **met**.
 
-**The constraint that decides the design:** `next` must be validated against an allowlist, never
-followed as given. A free-form `next` turns the sign-in page into an open redirect — a link
-like `/auth?next=https://not-your-site` that forwards the user the moment they have typed their
-password. Relative paths only, and a known set of them.
+**The real gap is smaller and more specific.** The telemetry gate sends `?next=telemetry` — a
+bare TOKEN, not a path (measured: the 302 carries exactly that). It does not start with `/`, so
+it falls through to `/profile`. And it cannot simply be made a path, because the dashboard is on
+a different HOST (`TELEMETRY_DOMAIN`), not a route of this SPA.
+
+So `next` here is a symbolic destination, and the fix is a small map from known tokens to
+absolute URLs — which is the allowlist, arrived at for a different reason than I first gave.
+The open question is how the SPA learns `TELEMETRY_PUBLIC_URL`: check whether it is already
+exposed (a VITE_ var or a config endpoint) before inventing a way.
+
+**Second piece, unchanged:** the OAuth return hardcodes `${SITE_URL}/dashboard?oauth=success`
+(`oauth.mjs:196`), so a social sign-in ignores `next` entirely. Carry it through the `state`
+parameter, which is already signed for CSRF.
+
+Not a security defect either way — the gate works and access is correctly granted or refused.
+It reads like a broken SSO, which is a different and cheaper problem.
 
 ---
 
