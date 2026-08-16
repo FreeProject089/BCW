@@ -402,6 +402,37 @@ export default async function projectRoutes(app) {
     };
   });
 
+  // The saved maps, and one of them in full.
+  //
+  // The webhook has been keeping these current since it was written and NOTHING displayed one:
+  // the settings screen showed a line of statistics and the map tool could only re-read a
+  // repository from GitHub, which is the slow path the snapshot exists to avoid.
+  app.get('/admin/projects/code-graphs', { preHandler: requireEditor() }, async () => {
+    const p = await db();
+    const rows = await p.adminSetting.findMany({ where: { key: { startsWith: 'codegraph.' } } }).catch(() => []);
+    return {
+      items: rows
+        // `codegraph.settings.<key>` shares the prefix and is not a snapshot.
+        .filter((r) => !r.key.startsWith('codegraph.settings.') && r.value?.graph)
+        .map((r) => ({
+          key: r.key.slice('codegraph.'.length),
+          url: r.value.url || '', generatedAt: r.value.generatedAt || null,
+          files: r.value.stats?.files ?? null, links: r.value.stats?.links ?? null,
+        }))
+        .sort((a, b) => String(b.generatedAt).localeCompare(String(a.generatedAt))),
+    };
+  });
+
+  app.get('/admin/projects/:key/code-graph/snapshot', { preHandler: requireEditor() }, async (req, reply) => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: snapshotKey(req.params.key) } }).catch(() => null);
+    if (!row?.value?.graph) return reply.code(404).send({ error: 'no_snapshot' });
+    const v = row.value;
+    // The same shape the live scan returns, so the map draws a saved graph and a fresh one
+    // with one component and no second code path to drift.
+    return { ok: true, source: 'snapshot', generatedAt: v.generatedAt, url: v.url, ...v.graph, endpoints: v.endpoints || null };
+  });
+
   app.put('/admin/projects/:key/code-graph', { preHandler: requireEditor() }, async (req, reply) => {
     const b = z.object({
       url: z.string().max(300).optional(),

@@ -326,9 +326,23 @@ function CodeMapTool() {
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [graph, setGraph] = useState(null);
+  // The maps a webhook has already built. Reading a repository from GitHub takes a minute and
+  // these are current as of the last push, so they are offered first.
+  const [saved, setSaved] = useState([]);
+  const [pick, setPick] = useState('');
+  useEffect(() => { api.get('/admin/projects/code-graphs').then((r) => setSaved(r.items || [])).catch(() => {}); }, []);
+
+  const open = async (key) => {
+    setPick(key);
+    if (!key) return;
+    setBusy(true); setGraph(null);
+    try { setGraph(await api.get(`/admin/projects/${key}/code-graph/snapshot`)); }
+    catch { toast.error(t('dvt.cm.nosnap', 'That map could not be opened.')); }
+    finally { setBusy(false); }
+  };
 
   const run = async () => {
-    setBusy(true); setGraph(null);
+    setBusy(true); setGraph(null); setPick('');
     try {
       const r = await api.post('/admin/projects/code-graph', { url: url.trim(), maxFiles: 150 });
       if (!r.nodes?.length) {
@@ -358,7 +372,27 @@ function CodeMapTool() {
           {busy ? <Spinner /> : <><Network size={14} /> {t('dvt.cm.go', 'Read it')}</>}
         </Button>
       </div>
+      {saved.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="text-[12px] text-[var(--muted)]">{t('dvt.cm.saved', 'Or open a map a webhook already built:')}</span>
+          <Select value={pick} onChange={(e) => open(e.target.value)} className="min-w-[220px]">
+            <option value="">{t('dvt.cm.saved.pick', 'Choose a project…')}</option>
+            {saved.map((s2) => (
+              <option key={s2.key} value={s2.key}>
+                {s2.key}{s2.generatedAt ? ` — ${new Date(s2.generatedAt).toLocaleDateString()}` : ''}
+                {s2.files != null ? ` (${s2.files})` : ''}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
       {busy && <div className="text-[12px] text-[var(--faint)]">{t('dvt.cm.busy', 'Reading the source — a few hundred files takes a moment.')}</div>}
+      {graph?.source === 'snapshot' && (
+        <div className="text-[12px] text-[var(--muted)] mb-2">
+          {t('dvt.cm.asof', 'Saved map, as of')} {graph.generatedAt ? new Date(graph.generatedAt).toLocaleString() : '—'}
+          {graph.url ? ` · ${graph.url}` : ''}
+        </div>
+      )}
       {graph && <CodeMap graph={graph} t={t} />}
     </div>
   );
