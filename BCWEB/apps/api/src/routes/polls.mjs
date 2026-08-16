@@ -93,7 +93,16 @@ export default async function pollRoutes(app) {
       where: { status: { in: ['open', 'closed'] } },
       orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
       take: 50,
-      include: { options: { orderBy: { sort: 'asc' } }, votes: { select: { optionId: true, wasLoggedIn: true, userId: true, voterKey: true } } },
+      include: {
+        options: { orderBy: { sort: 'asc' } },
+        votes: { select: { optionId: true, wasLoggedIn: true, userId: true, voterKey: true } },
+        // Loaded here after all. I left it out arguing that questions for fifty listed polls
+        // would be "work nothing reads" — wrong, and only opening the page showed it: /polls is
+        // where a poll is rendered AND answered, so without this the multi-question form could
+        // never appear anywhere. A feature that exists and cannot be reached, built by the
+        // person who spent the day fixing that exact shape.
+        questions: { include: { choices: { orderBy: { sort: 'asc' } } }, orderBy: { sort: 'asc' } },
+      },
     });
     return {
       polls: polls
@@ -102,7 +111,10 @@ export default async function pollRoutes(app) {
         // a blank page.
         .map((poll) => {
           const mine = myVotesOf(req, poll);
-          return publicPoll(poll, { myVotes: mine, showResults: canSeeResults(poll, mine.length > 0) });
+          const body = publicPoll(poll, { myVotes: mine, showResults: canSeeResults(poll, mine.length > 0) });
+          const qs = viewQuestions(poll);
+          if (qs.length) body.questions = qs;
+          return body;
         }),
     };
   });
