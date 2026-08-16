@@ -14,6 +14,7 @@ import { onMessage } from './features/moderation.mjs';
 import { checkGating, syncAllGating } from './features/gating.mjs';
 import { scanAllMembers } from './features/scanMembers.mjs';
 import { startModQueue } from './features/modqueue.mjs';
+import { startAnnouncer } from './features/announce.mjs';
 import { pollBlog } from './features/blog.mjs';
 import { pollAlerts } from './features/alerts.mjs';
 import { pollKofi } from './features/kofi.mjs';
@@ -66,6 +67,8 @@ function buildClient() {
     // the queue is keyed by discord id and the bot does not know which guild an id belongs to
     // until it tries — a single-guild assumption would silently ignore the others.
     for (const g of c.guilds.cache.values()) timers.push(startModQueue(c, g.id));
+    // One announcer for the client, not one per guild: an announcement names its channel.
+    timers.push(startAnnouncer(c));
     timers.push(setInterval(() => syncAllGating(c).catch(() => {}), 5 * 60_000));
     // Blog announcements: check for new published posts every 5 min (+ once now).
     pollBlog(c).catch(() => {});

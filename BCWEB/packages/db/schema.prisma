@@ -2939,3 +2939,32 @@ model IncidentNote {
 
   @@index([outageId, createdAt])
 }
+
+/// Something the site wants said in Discord, waiting for the bot to say it.
+///
+/// The same queue shape as BotAction and for the same reason: the API cannot reach Discord, the
+/// bot polls. What this adds over the existing alert path is that these are EDITORIAL — an
+/// event, a promotion, a commission request — so they carry their own channel choice and their
+/// own urgency, and a failure to post is recorded rather than lost.
+model BotAnnouncement {
+  id        String   @id @default(cuid())
+  /// event · promo · myo · incident · custom
+  kind      String
+  title     String
+  body      String   @default("")
+  /// Where it should end up. Optional: unset means the bot's general channel, which is the
+  /// honest default — a new kind should be loud where people watch, not dropped because
+  /// nobody configured a channel for it.
+  channelId String?
+  url       String?
+  /// Shown as a colour and a mention-worthy flag. A commission that is urgent and one that is
+  /// not are read by the same person at very different speeds.
+  urgent    Boolean  @default(false)
+
+  status    String   @default("pending")   // pending · sent · failed
+  error     String?
+  createdAt DateTime @default(now())
+  sentAt    DateTime?
+
+  @@index([status, createdAt])
+}

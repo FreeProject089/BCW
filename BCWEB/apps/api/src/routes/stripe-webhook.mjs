@@ -92,6 +92,15 @@ export default async function stripeWebhook(app) {
         const r = await p.myoRequest.findUnique({ where: { id: meta.requestId } });
         if (r && r.userId === meta.userId && !r.consultationPaid) {
           await p.myoRequest.update({ where: { id: r.id }, data: { consultationPaid: true, status: 'open', staffUnread: true, lastActivityAt: new Date() } });
+          // Announced HERE, not when the request was created: a request sitting at
+          // pending_payment is an abandoned checkout as often as not, and announcing those
+          // would train everybody to ignore the channel. Paid means somebody is waiting.
+          await p.botAnnouncement.create({ data: {
+            kind: 'myo', urgent: !!r.urgent,
+            title: r.name || 'New commission',
+            body: [r.objective, r.target].filter(Boolean).join(' — ').slice(0, 500),
+            url: `${(process.env.SITE_URL || '').replace(/\/+$/, '')}/myo/${r.id}`,
+          } }).catch(() => {});   // an announcement must never block a payment
           await p.myoMessage.create({ data: { requestId: r.id, authorId: null, staff: true, body: `Consultation paid — thanks! Tell us more about "${r.name}" and a consultant will reply with advice and a quote. You're paying for advice here; building the product starts once you approve a quote.` } }).catch(() => {});
           await p.payment.create({ data: { userId: meta.userId, kind: 'MYO_CONSULTATION', description: `MYO consultation — "${r.name}"${r.urgent ? ' (urgent)' : ''}`, amountCents: s.amount_total ?? r.consultationCents, currency: s.currency || 'usd', stripeSessionId: s.id } }).catch(() => {});
           await notify(p, meta.userId, 'myo_open', `Your consultation for "${r.name}" is open — a consultant will reply shortly.`).catch(() => {});

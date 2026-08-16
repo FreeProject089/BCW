@@ -779,6 +779,53 @@ export default async function botRoutes(app) {
     return { actions: await p.botAction.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 }) };
   });
 
+  // ── Announcements: events, promotions, a commission waiting ────────────────
+  //
+  // Same queue shape as BotAction, and shared so a fifth kind of message cannot invent a sixth
+  // way of being posted. `announce` is exported for the places that should fire one without an
+  // admin pressing anything.
+  const ANNOUNCE_KINDS = ['event', 'promo', 'myo', 'incident', 'custom'];
+
+  app.post('/admin/bot/announce', { preHandler: requireCap('manage_users', 'ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      kind: z.enum(ANNOUNCE_KINDS),
+      title: z.string().trim().min(1).max(200),
+      body: z.string().trim().max(1500).optional(),
+      url: z.string().url().max(400).optional(),
+      channelId: z.string().max(32).optional(),
+      urgent: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const row = await p.botAnnouncement.create({ data: { ...b.data, body: b.data.body || '' } });
+    return { ok: true, announcement: row };
+  });
+
+  app.get('/admin/bot/announcements', { preHandler: requireCap('manage_users', 'MOD') }, async () => {
+    const p = await db();
+    return { announcements: await p.botAnnouncement.findMany({ orderBy: { createdAt: 'desc' }, take: 50 }) };
+  });
+
+  app.get('/bot/announcements/pending', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    return { announcements: await p.botAnnouncement.findMany({ where: { status: 'pending' }, orderBy: { createdAt: 'asc' }, take: 10 }) };
+  });
+
+  app.post('/bot/announcements/:id/result', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ ok: z.boolean(), error: z.string().max(500).optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    // A failure is kept as `failed` with its message, not retried for ever: a channel that was
+    // deleted would otherwise produce one attempt every twenty seconds until somebody noticed.
+    await p.botAnnouncement.update({
+      where: { id: req.params.id },
+      data: { status: b.data.ok ? 'sent' : 'failed', error: b.data.ok ? null : (b.data.error || 'unknown'), sentAt: new Date() },
+    }).catch(() => {});
+    return { ok: true };
+  });
+
   // Bot side: take the queue, then say what happened to each.
   app.get('/bot/actions/pending', async (req, reply) => {
     if (!botAuth(req, reply)) return;

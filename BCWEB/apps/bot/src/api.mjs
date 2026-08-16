@@ -60,6 +60,8 @@ export const api = {
   // Moderation queued on the website. A failed poll returns an empty list rather than
   // throwing, so one bad request never stops the loop.
   pendingActions: () => call('GET', '/bot/actions/pending').catch(() => ({ actions: [] })),
+  pendingAnnouncements: () => call('GET', '/bot/announcements/pending').catch(() => ({ announcements: [] })),
+  announcementResult: (id, ok, error) => call('POST', `/bot/announcements/${id}/result`, { ok, error }).catch(() => null),
   actionResult: (id, ok, error) => call('POST', `/bot/actions/${id}/result`, { ok, error }).catch(() => null),
   // Report a Discord activity event (join / message / voiceJoin / voiceCreate) so the
   // telemetry dashboard can show it next to the linked creator id. Best-effort.
