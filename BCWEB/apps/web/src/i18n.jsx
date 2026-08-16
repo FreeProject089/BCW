@@ -283,6 +283,8 @@ const DICT = {
     'perf.cmp.nodata': 'Rien d’enregistré pour cette période.',
     'perf.cmp.built': '{d} jour(s), {n} échantillon(s).',
     'perf.cmp.short': 'L’historique ne remonte qu’à {h} jour(s) — il n’y a pas encore de période antérieure à comparer. Les résumés quotidiens ont commencé avec cette fonction et sont gardés définitivement : les comparaisons longues se rempliront à partir de maintenant.',
+    'as.csv.areas': 'CSV par zone', 'as.csv.repos': 'CSV par dépôt',
+    'as.snapshot': 'Un relévé de maintenant. Le stockage ne garde pas d’historique : il n’y a rien d’antérieur à comparer — exporte régulièrement si tu veux une tendance.',
     'perf.r.1': 'Hier', 'perf.r.7': 'Une semaine', 'perf.r.30': 'Un mois', 'perf.r.182': 'Six mois', 'perf.r.365': 'Un an',
     'au.f.role': 'Tous les rôles', 'au.f.status': 'Tous les statuts', 'au.f.active': 'Actif',
     'au.f.susp': 'Suspendu', 'au.f.banned': 'Banni',

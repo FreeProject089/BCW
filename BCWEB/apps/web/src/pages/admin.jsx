@@ -9077,6 +9077,30 @@ function AdminStorage() {
   const [repoQ, setRepoQ] = useState('');   // search: hosted repos
   const [pendQ, setPendQ] = useState('');   // search: pending deletions
   const cancelRepoDeletion = async (r) => { try { await api.post(`/admin/repos/${r.id}/delete/cancel`); toast.success(t('as.backonline', '"{n}" is back online.').replace('{n}', r.name)); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  // Two exports rather than one: the areas answer "what is using the disk", the repos answer
+  // "who is". A single file mixing both would need a "type" column nobody wants to filter on.
+  const exportAreas = () => {
+    const d0 = data || {};
+    const rows = [
+      ...(d0.areas || []).map((x) => ({ scope: 'area', name: x.key || x.label, bytes: x.bytes, count: x.count })),
+      ...(d0.tiers || []).map((x) => ({ scope: 'tier', name: x.key || x.label, bytes: x.bytes, count: null })),
+    ].filter((r) => r.bytes != null);
+    if (!rows.length) return;
+    downloadCsv(toCsv(rows, [['scope', 'scope'], ['name', 'name'], ['bytes', 'bytes'], ['objects', (r) => r.count ?? '']]),
+      `storage-areas-${new Date().toISOString().slice(0, 10)}`);
+  };
+  const exportRepos = () => {
+    const rows = (data?.topRepos || []);
+    if (!rows.length) return;
+    downloadCsv(toCsv(rows, [
+      ['repo_id', 'id'], ['name', 'name'], ['owner', (r) => r.owner || ''],
+      // `used` / `quota` — the RESPONSE's names, not the Prisma column names the endpoint
+      // selects by. Copying the latter produced a CSV with three empty columns that still
+      // looked like a valid file.
+      ['used_bytes', 'used'], ['quota_bytes', 'quota'],
+      ['used_pct', (r) => (r.quota ? ((r.used / r.quota) * 100).toFixed(1) : '')],
+    ]), `storage-repos-${new Date().toISOString().slice(0, 10)}`);
+  };
   if (loading) return <Loading />;
   const d = data || {};
   const rq = repoQ.trim().toLowerCase();
@@ -9093,8 +9117,16 @@ function AdminStorage() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--primary-2)]" /> {t('as.title', 'Storage')}</h2>
-        <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> {t('as.refresh', 'Refresh')}</Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={exportAreas}><Download size={13} /> {t('as.csv.areas', 'Areas CSV')}</Button>
+          <Button size="sm" onClick={exportRepos}><Download size={13} /> {t('as.csv.repos', 'Repos CSV')}</Button>
+          <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> {t('as.refresh', 'Refresh')}</Button>
+        </div>
       </div>
+      {/* Storage is a SNAPSHOT — there is no history table behind it, so unlike Server
+          performance it cannot be compared with last month. Said here rather than left for
+          somebody to discover by looking for a date picker that does not exist. */}
+      <p className="text-[11px] text-[var(--faint)] -mt-2 mb-4">{t('as.snapshot', 'A reading of right now. Storage keeps no history, so there is nothing earlier to compare it with — export regularly if you want a trend.')}</p>
 
       {/* Headline = grand total across ALL storage tiers (object storage + database +
           backups + telemetry), not just the object bucket — with each tier's real size
