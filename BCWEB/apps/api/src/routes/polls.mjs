@@ -119,6 +119,25 @@ export default async function pollRoutes(app) {
       })
       : [];
 
+    // Per-question tallies, for the polls this viewer may see them for.
+    //
+    // A question-based poll showed its readers NOTHING, ever. `canSeeResults` was computed and
+    // passed along, `viewPoll`/`maySeeResults` were written and tested — and no tally was ever
+    // produced for a question, so with results:'always', a closed poll and hundreds of answers,
+    // a visitor got "this poll is closed" while the admin saw the full breakdown.
+    //
+    // Loaded only for the polls that will actually show one: answers for fifty polls nobody may
+    // see is a table scan spent on nothing.
+    const visible = polls.filter((poll) => {
+      if (!(poll.questions || []).length) return false;
+      const mine = myVotesOf(req, poll);
+      const answered = myRows.some((r) => r.pollId === poll.id);
+      return canSeeResults(poll, mine.length > 0 || answered);
+    });
+    const allAnswers = visible.length
+      ? await p.pollAnswer.findMany({ where: { pollId: { in: visible.map((x) => x.id) } } })
+      : [];
+
     return {
       polls: polls
         // A poll for signed-in users is still LISTED to a visitor — hiding it would make the
@@ -128,12 +147,20 @@ export default async function pollRoutes(app) {
           const mine = myVotesOf(req, poll);
           const rows = myRows.filter((r) => r.pollId === poll.id);
           const answered = rows.length > 0;
-          const body = publicPoll(poll, { myVotes: mine, showResults: canSeeResults(poll, mine.length > 0 || answered) });
+          const show = canSeeResults(poll, mine.length > 0 || answered);
+          const body = publicPoll(poll, { myVotes: mine, showResults: show });
           const qs = viewQuestions(poll);
           if (qs.length) {
             body.questions = qs;
             body.myAnswers = viewMyAnswers(qs, rows);
             body.hasAnswered = answered;
+            if (show) {
+              const mineAll = allAnswers.filter((r) => r.pollId === poll.id);
+              // The same counting the admin sees, from the same tested module — one tally, not
+              // a second implementation that agrees until it does not.
+              body.questionStats = (poll.questions || []).map((q) =>
+                questionStats(q, mineAll, q.choices || []));
+            }
           }
           return body;
         }),

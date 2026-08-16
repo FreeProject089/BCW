@@ -3,6 +3,7 @@ import { BarChart3, Check, Lock, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
+import { QuestionResults } from '../ui/poll-results.jsx';
 import { Card, Button, Badge, EmptyState, Spinner, Input, Textarea, useToast } from '../ui/ui.jsx';
 import { useAsync, Loading } from './pages.jsx';
 import { useAuth } from './auth.jsx';
@@ -389,6 +390,18 @@ export function PollCard({ poll: initial, onChange }) {
           <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-[13px] text-[var(--muted)] flex items-center gap-2">
             <Lock size={14} /> {t('poll.needlogin', 'You need an account to answer this one.')}
             <Link to="/signin" className="ml-auto"><Button size="sm" variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
+          </div>
+        ) : poll.questionStats?.length ? (
+          // A question-based poll used to show its readers NOTHING here, ever. `showResults` is
+          // derived from `poll.options` — the LEGACY option list, which a question poll never
+          // fills — so with the tally set to public, hundreds of answers and the poll closed, a
+          // visitor got "this poll is closed" while the admin saw the whole breakdown.
+          //
+          // Whether they may see it is still the owner's setting (Show the tally: always /
+          // after answering / staff only); this only makes the answer visible when it is yes.
+          <div>
+            {closed && <div className="text-[12px] text-[var(--faint)] mb-2">{t('poll.closed', 'Closed')}</div>}
+            <QuestionResults questions={poll.questionStats} />
           </div>
         ) : closed ? (
           <div className="text-[13px] text-[var(--muted)]">{t('poll.closednoresults', 'This poll is closed.')}</div>

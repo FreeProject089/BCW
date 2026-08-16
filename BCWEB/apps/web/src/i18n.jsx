@@ -329,6 +329,7 @@ const DICT = {
     'cm.tracehint': 'Alt+clic sur un autre fichier pour tracer la chaîne d’imports entre les deux.',
     'cm.notrace': 'Aucune chaîne d’imports ne mène de {a} à {b}.',
     'cm.clear': 'Effacer la sélection', 'cm.unres': '{n} import(s) relatifs qui ne mènent nulle part',
+    'apoll.q.avgrank': 'moy.',
     'perf.r.1': 'Hier', 'perf.r.7': 'Une semaine', 'perf.r.30': 'Un mois', 'perf.r.182': 'Six mois', 'perf.r.365': 'Un an',
     'au.f.role': 'Tous les rôles', 'au.f.status': 'Tous les statuts', 'au.f.active': 'Actif',
     'au.f.susp': 'Suspendu', 'au.f.banned': 'Banni',
