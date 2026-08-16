@@ -64,7 +64,10 @@ let _stats = null;
 //
 // Cheap by construction: counts are COUNT queries, and only a small, capped slice of rows is
 // fetched for the preview list. It is polled by the admin shell, so it must stay cheap.
-const PENDING_QUEUES = [
+// Exported so the Discord digest reads the SAME queues as the badge. A second list would
+// drift, and the two would disagree about what "needs attention" means — the badge saying 3
+// while the channel says 2 is worse than either alone.
+export const PENDING_QUEUES = [
   {
     // Data requests come FIRST because they are the only queue here with a legal clock on
     // it. An export or erasure request has a deadline; a pending catalogue submission does

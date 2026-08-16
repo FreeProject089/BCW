@@ -72,9 +72,47 @@ export function recordServerError(req, err) {
         const p = await db();
         await p.errorEvent.create({ data: { source: 'server', message, stack, path, userId } });
         entry.persisted = true;
+        await announceIfNew(p, key, path, message);
       })
       .catch(() => { entry.persisted = false; }); // the DB may be exactly what's broken — the ring keeps it
   } catch {
     // unreachable in practice; the point is that this function cannot be the thing that fails
   }
+}
+
+// ── Saying it out loud ───────────────────────────────────────────────────────────
+//
+// An error that only lands in a table is an error somebody finds on Tuesday. The bot already
+// drains an announcement queue, so a NEW failure can reach the people who can act on it.
+//
+// "New" is doing the work here. The throttle above stops an identical row being written twice a
+// minute; this is stricter, because a Discord message costs attention rather than a row:
+//
+//   · one announcement per distinct path+message per ANNOUNCE_QUIET, so a route failing on
+//     every request produces one message, not thousands.
+//   · a cap per process lifetime, so a storm of DIFFERENT errors — the shape a broken deploy
+//     takes — cannot turn the channel into the log. After the cap it stays quiet, and the
+//     Errors page is where the rest live.
+const ANNOUNCE_QUIET_MS = 60 * 60 * 1000;
+const ANNOUNCE_MAX = 8;
+const announced = new Map();   // key -> at
+let announcedCount = 0;
+
+async function announceIfNew(p, key, path, message) {
+    const now = Date.now();
+    const prev = announced.get(key);
+    if (prev && now - prev < ANNOUNCE_QUIET_MS) return;
+    if (announcedCount >= ANNOUNCE_MAX) return;
+    boundedSet(announced, key, now, MAX_KEYS, ANNOUNCE_QUIET_MS);
+    announcedCount++;
+    const site = (process.env.SITE_URL || '').replace(/\/+$/, '');
+    // Never blocks, never throws: an announcement failing must not turn one error into two.
+    await p.botAnnouncement.create({
+        data: {
+            kind: 'incident', urgent: false,
+            title: `Server error on ${path || 'an unknown route'}`,
+            body: String(message).slice(0, 500),
+            url: site ? `${site}/admin?s=errors` : null,
+        },
+    }).catch(() => {});
 }

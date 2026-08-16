@@ -3,6 +3,8 @@
 // Their files are kept until that moment, then this job hard-deletes the rows and
 // their object-storage bytes. Runs periodically from the API process.
 import { db, notify, catalogLog, clearAccountLockCache } from './lib.mjs';
+import { sweepAttention } from './attention.mjs';
+import { PENDING_QUEUES } from '../routes/misc.mjs';
 import { sendMail, mailShell, emailEnabled } from './mail.mjs';
 import { resolveRetention } from './retention.mjs';
 import { getRedis } from './redis.mjs';
