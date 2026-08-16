@@ -121,6 +121,11 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
     // answers "what runs". Neither is the right default for both questions, so it is a choice
     // rather than a zoom that guesses.
     const [detail, setDetail] = useState('files');
+    // Zoom. A real repository lays out wider than any screen, and the answer to "where am I"
+    // has been scrolling two axes. Kept as a plain scale on the SVG rather than a transform on
+    // its contents: the browser then scrolls the scaled box for us, so panning stays the
+    // scrollbar people already know instead of a drag gesture they have to discover.
+    const [zoom, setZoom] = useState(1);
     const [picked, setPicked] = useState(null);
     // Second selection: the destination of a trace. Held apart from `picked` so a plain
     // click keeps meaning "show me this file" and never surprises somebody into a walk.
@@ -157,6 +162,21 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
     // Only at the finest detail do files grow to hold their functions.
     const fnByFile = detail === 'functions' ? (graph?.fnByFile || {}) : {};
     const collapsed = detail === 'folders';
+    // Where each drawn function sits, so a call can land on the FUNCTION rather than on the
+    // file that contains it. Same geometry the chips are drawn with — one source, so a chip and
+    // the line arriving at it cannot disagree.
+    const fnPos = useMemo(() => {
+        const m = new Map();
+        if (detail !== 'functions') return m;
+        for (const [file, rows] of Object.entries(fnByFile)) {
+            const p = pos.get(file);
+            if (!p) continue;
+            rows.forEach((fn, k) => m.set(`${file}#${fn.name}`, {
+                x: p.x, w: p.w, y: p.y + FILE_H + k * FN_H, h: FN_H,
+            }));
+        }
+        return m;
+    }, [detail, fnByFile, pos]);
     const { boxes, pos, width, height } = useMemo(() => layout(nodes, folders, fnByFile, collapsed), [nodes, folders, fnByFile, collapsed]);
 
     if (!nodes.length) return null;
@@ -216,8 +236,20 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
             </div>
 
             <div className="grid lg:grid-cols-[1fr_300px] gap-4 items-start">
-                <div className="overflow-auto max-h-[70vh] rounded-xl border border-[var(--line)] p-2">
-                    <svg width={width} height={height} style={{ minWidth: width }} role="img"
+                <div className="overflow-auto max-h-[70vh] rounded-xl border border-[var(--line)] p-2 relative">
+                    <div className="sticky top-0 left-0 z-10 flex items-center gap-1 w-fit">
+                        {[['−', -0.2, t('cm.zoomout', 'Zoom out')], ['+', 0.2, t('cm.zoomin', 'Zoom in')]].map(([sign, d, title]) => (
+                            <button key={sign} type="button" title={title}
+                                onClick={() => setZoom((z) => Math.min(2, Math.max(0.4, +(z + d).toFixed(2))))}
+                                className="w-6 h-6 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] text-sm leading-none"
+                                style={{ background: 'var(--bg-solid)' }}>{sign}</button>
+                        ))}
+                        <button type="button" onClick={() => setZoom(1)}
+                            className="h-6 px-1.5 rounded-md border border-[var(--line)] text-[10px] text-[var(--muted)] hover:text-[var(--text)] tabular-nums"
+                            style={{ background: 'var(--bg-solid)' }}>{Math.round(zoom * 100)}%</button>
+                    </div>
+                    <svg width={width * zoom} height={height * zoom} viewBox={`0 0 ${width} ${height}`}
+                        style={{ minWidth: width * zoom }} role="img"
                         aria-label={t('cm.a11y', '{n} files in {f} folders, {e} imports')
                             .replace('{n}', nodes.length).replace('{f}', boxes.length).replace('{e}', edges.length)}>
                         {/* Edges under everything. Only the selected file's lines are drawn: all of
@@ -235,12 +267,37 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                 fill="none" stroke="var(--primary-2)" strokeWidth="1.5" opacity="0.75" />;
                         })}
 
+                        {/* At the finest detail the calls land on the FUNCTIONS. Drawn for the
+                            selected file only, like everything else here: 387 of them at once is
+                            a hatch pattern, not a map. */}
+                        {picked && detail === 'functions' && (graph?.functions || [])
+                            .filter((fe) => fe.from.file === picked || fe.to.file === picked)
+                            .map((fe, i) => {
+                                const a2 = fnPos.get(fe.from.id) || pos.get(fe.from.file);
+                                const b3 = fnPos.get(fe.to.id) || pos.get(fe.to.file);
+                                if (!a2 || !b3 || a2 === b3) return null;
+                                const x1 = a2.x + a2.w; const y1 = a2.y + a2.h / 2;
+                                const x2 = b3.x; const y2 = b3.y + b3.h / 2;
+                                const mid = (x1 + x2) / 2;
+                                return (
+                                    <g key={`f${i}`}>
+                                        <path d={`M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`}
+                                            fill="none" stroke="var(--warning)" strokeWidth="1.5" opacity="0.8" strokeDasharray="5 3" />
+                                        {/* The label is the whole point of a function-level line:
+                                            "GET /admin/pending" says what the call IS. */}
+                                        <text x={mid} y={(y1 + y2) / 2 - 3} fontSize="9" textAnchor="middle" fill="var(--warning)">
+                                            {fe.label.length > 28 ? `${fe.label.slice(0, 27)}…` : fe.label}
+                                        </text>
+                                    </g>
+                                );
+                            })}
+
                         {/* Calls that cross a language boundary. Dashed and in a different ink
                             because they are not imports: nothing here `imports` a Rust file, and
                             drawing both the same way would say it does. Same rule as the imports
                             though — only shown for the selected file, or 178 + 2028 lines at once
                             is a hatch pattern. */}
-                        {picked && endpointLinks.filter((l) => l.from.file === picked || l.to.file === picked).map((l, i) => {
+                        {picked && detail !== 'functions' && endpointLinks.filter((l) => l.from.file === picked || l.to.file === picked).map((l, i) => {
                             const a = pos.get(l.from.file); const b2 = pos.get(l.to.file);
                             if (a === b2) return null;   // same folder, collapsed
                             if (!a || !b2) return null;
