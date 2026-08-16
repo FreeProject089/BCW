@@ -146,6 +146,43 @@ const ALERT_TITLE = { note: 'Note', tip: 'Tip', important: 'Important', warning:
 
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function nodeText(n) { if (!n) return ''; if (typeof n.value === 'string') return n.value; return (n.children || []).map(nodeText).join(''); }
+/**
+ * Where every in-page anchor in the docs and the blog goes.
+ *
+ * rehype-sanitize rewrites each `id` it keeps to `user-content-<id>` — its `clobberPrefix`
+ * default, which is what stops a heading called "Body" from shadowing `document.body`. It does
+ * NOT rewrite the `href="#…"` pointing at that id, and nothing outside the pipeline knew the
+ * prefix existed. So every anchor on the site resolved to nothing: the "On this page" rail, the
+ * in-page `:::toc`, a hand-written `[see](#setup)`, a shared `#link`, and the jump from a
+ * comment to the paragraph it is about. Clicking did precisely nothing, which reads as a dead
+ * page rather than as a bug.
+ *
+ * Kept as a constant rather than repeated: it is a library default, and a copy of it would be
+ * wrong the first time that default changed.
+ */
+export const ANCHOR_PREFIX = 'user-content-';
+
+/** The element an anchor id points at. Accepts either form — a URL people already shared
+ *  carries the bare id, while the DOM carries the prefixed one. */
+export function anchorEl(id) {
+    const raw = String(id || '').replace(/^#/, '');
+    if (!raw) return null;
+    return document.getElementById(raw.startsWith(ANCHOR_PREFIX) ? raw : ANCHOR_PREFIX + raw)
+        || document.getElementById(raw);
+}
+
+/** Put the prefix on every in-document link, so the href matches the id sanitize wrote.
+ *  Runs AFTER sanitize — before it, the ids have not been rewritten yet. */
+function rehypeAnchorPrefix() {
+    return (tree) => visit(tree, 'element', (n) => {
+        if (n.tagName !== 'a') return;
+        const href = n.properties?.href;
+        if (typeof href !== 'string' || !href.startsWith('#')) return;
+        if (href.startsWith(`#${ANCHOR_PREFIX}`) || href === '#') return;
+        n.properties.href = `#${ANCHOR_PREFIX}${href.slice(1)}`;
+    });
+}
+
 function slugify(s) { return String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'section'; }
 
 export function preprocessMd(md) {
@@ -686,7 +723,7 @@ export default function Markdown({ children, className = '', pageMap }) {
     <div className={`md-body ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkDirective, remarkDocBlocks]}
-        rehypePlugins={[rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], rehypeIframeAllowlist,
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], rehypeAnchorPrefix, rehypeIframeAllowlist,
           ...(rehypeHighlight ? [[rehypeHighlight, { detect: true, ignoreMissing: true }]] : [])]}
         components={components}
       >{preprocessMd(children || '')}</ReactMarkdown>

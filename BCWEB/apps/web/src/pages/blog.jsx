@@ -11,7 +11,7 @@ import { api, uploadBlogImage, uploadReplay } from '../lib/api.js';
 import { thumb } from '../lib/img.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
-import Markdown from '../ui/md.jsx';
+import Markdown, { anchorEl } from '../ui/md.jsx';
 import Avatar from '../ui/Avatar.jsx';
 import { REACTION_OPTIONS, ReactionIcon } from '../ui/reactions.jsx';
 import VisualEditor from '../editor/visual-editor.jsx';
@@ -280,7 +280,7 @@ export function BlogPostPage() {
             </button>
           </div>
         )}
-        {showComments && <CommentsModal base={`/blog/${p.id}`} body={v.body || p.body} onClose={() => setShowComments(false)} onJump={(slug) => { const el = document.getElementById(slug); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />}
+        {showComments && <CommentsModal base={`/blog/${p.id}`} body={v.body || p.body} onClose={() => setShowComments(false)} onJump={(slug) => anchorEl(slug)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />}
         {showHistory && <HistoryModal base={`/blog/${p.id}`} onClose={() => setShowHistory(false)} />}
 
         {/* author + collaborators */}

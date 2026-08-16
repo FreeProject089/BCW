@@ -9,7 +9,7 @@ import DiffMergeModal from '../editor/diff-merge-modal.jsx';
 import CommentsModal from '../editor/comments-modal.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
-import Markdown, { IconGlyph } from '../ui/md.jsx';
+import Markdown, { IconGlyph, anchorEl, ANCHOR_PREFIX } from '../ui/md.jsx';
 import { MarkdownEditor, useSectionComments, useSectionCommentPills, AuthorsRow } from './blog.jsx';
 import { useToast, useDialog, Button, Spinner, Modal, Input, Select, Field, EmptyState } from '../ui/ui.jsx';
 
@@ -127,7 +127,7 @@ export default function Docs() {
     const slug = typeof r === 'object' ? r.slug : r;
     const anchor = typeof r === 'object' ? r.anchor : null;
     nav(`/docs/${slug}${anchor ? '#' + anchor : ''}`);
-    if (anchor) setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+    if (anchor) setTimeout(() => anchorEl(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
   };
 
   // Shared sidebar content — rendered in the desktop rail AND the mobile drawer.
@@ -247,7 +247,7 @@ export default function Docs() {
       {page && <PageToc body={body} />}
 
       {search && <SearchPalette onClose={() => setSearch(false)} onPick={goTo} />}
-      {readerComments && page && <CommentsModal base={`/docs/${page.id}`} body={body} onClose={() => setReaderComments(false)} onJump={(slug) => { const el = document.getElementById(slug); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />}
+      {readerComments && page && <CommentsModal base={`/docs/${page.id}`} body={body} onClose={() => setReaderComments(false)} onJump={(slug) => anchorEl(slug)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />}
       {readerHistory && page && <HistoryModal base={`/docs/${page.id}`} onClose={() => setReaderHistory(false)} />}
       {editing && <DocEditor page={editing.id ? editing : null} draft={editing._draft || null} draftBase={editing._base || null} conflictReopen={!!editing._conflict}
         reopenDraft={(d, opts = {}) => setEditing(opts.page ? { ...opts.page, _draft: d, _base: opts.base || null, _conflict: !!opts.conflict } : { _draft: d })}
@@ -257,17 +257,36 @@ export default function Docs() {
 }
 
 const tocSlug = (s) => String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'section';
-const tocHeads = (body) => (String(body || '').match(/^#{2,3}\s+.+$/gm) || []).map((h) => {
-  const depth = (h.match(/^#+/) || ['##'])[0].length; const text = h.replace(/^#+\s+/, '').trim();
-  return { depth, text, id: tocSlug(text) };
-});
+
+// The renderer slugs a heading from its TEXT — the markdown having been parsed away. Reading
+// the raw line here instead meant `## [Setup](/x)` produced `setup-x` against the renderer's
+// `setup`, and the entry pointed at nothing. Also what stops backticks showing up in the rail.
+const stripInline = (s) => String(s)
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, '$1$2')
+    .replace(/\*([^*]+)\*|_([^_]+)_/g, '$1$2')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .trim();
+const tocHeads = (body) => {
+  // A `## heading` inside a fenced code block is a line of sample code, not a section: it gets
+  // no id from the renderer, so an entry for it can only ever point at nothing.
+  const src = String(body || '').replace(/^```[^]*?^```/gm, '');
+  return (src.match(/^#{2,3}\s+.+$/gm) || []).map((h) => {
+    const depth = (h.match(/^#+/) || ['##'])[0].length;
+    const text = stripInline(h.replace(/^#+\s+/, ''));
+    return { depth, text, id: tocSlug(text) };
+  });
+};
 
 /* Collapsible "On this page" shown above the article on phones/tablets (< xl). */
 function PageTocMobile({ body }) {
   const { t } = useI18n();
   const heads = useMemo(() => tocHeads(body), [body]);
   if (heads.length < 2) return null;
-  const go = (e, id) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', `#${id}`); };
+  // The URL keeps the bare id — that is what a shared link should look like, and anchorEl
+  // resolves both forms on arrival.
+  const go = (e, id) => { e.preventDefault(); anchorEl(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', `#${id}`); };
   return (
     <details className="xl:hidden mb-6 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]">
       <summary className="doc-toc-m-summary cursor-pointer list-none px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] flex items-center gap-2">
@@ -284,20 +303,29 @@ function PageTocMobile({ body }) {
    highlighted (IntersectionObserver against the anchor ids the renderer emits). */
 function PageToc({ body }) {
   const { t } = useI18n();
-  const heads = useMemo(() => (String(body || '').match(/^#{2,3}\s+.+$/gm) || []).map((h) => {
-    const depth = (h.match(/^#+/) || ['##'])[0].length; const text = h.replace(/^#+\s+/, '').trim();
-    return { depth, text, id: tocSlug(text) };
-  }), [body]);
+  // The same reader the mobile contents uses. It was a second copy, and a copy of a rule is
+  // wrong the first time the rule changes.
+  const heads = useMemo(() => tocHeads(body), [body]);
   const [active, setActive] = useState(null);
   useEffect(() => {
     if (heads.length < 2) return;
     const obs = new IntersectionObserver((entries) => {
       const vis = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-      if (vis[0]) setActive(vis[0].target.id);
+      // The element carries the PREFIXED id and the list holds the bare one — compared raw,
+      // nothing ever highlighted.
+      if (vis[0]) setActive(vis[0].target.id.replace(ANCHOR_PREFIX, ''));
     }, { rootMargin: '-80px 0px -70% 0px' });
-    const els = heads.map((h) => document.getElementById(h.id)).filter(Boolean);
-    els.forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
+    // The article is rendered by a child, so on the first pass the headings do not exist yet
+    // and this observed nothing — for the whole life of the page, because the effect only
+    // re-runs when the headings change. That is why nothing was ever highlighted.
+    let tries = 0; let timer = null;
+    const attach = () => {
+      const els = heads.map((h) => anchorEl(h.id)).filter(Boolean);
+      if (els.length) { els.forEach((el) => obs.observe(el)); return; }
+      if (tries++ < 20) timer = setTimeout(attach, 150);
+    };
+    attach();
+    return () => { clearTimeout(timer); obs.disconnect(); };
   }, [heads]);
   if (heads.length < 2) return null;
   return (
@@ -305,7 +333,7 @@ function PageToc({ body }) {
       <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-2">{t('docs.onthispage')}</div>
       <nav className="border-l border-[var(--line)]">
         {heads.map((h) => (
-          <a key={h.id} href={`#${h.id}`} onClick={(e) => { e.preventDefault(); document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', `#${h.id}`); }}
+          <a key={h.id} href={`#${h.id}`} onClick={(e) => { e.preventDefault(); anchorEl(h.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', `#${h.id}`); }}
             className={`block -ml-px border-l-2 py-1 text-sm leading-snug ${h.depth === 3 ? 'pl-6 text-[13px]' : 'pl-3'} ${active === h.id ? 'border-[var(--primary)] text-[var(--primary)] font-medium' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {h.text}
           </a>
