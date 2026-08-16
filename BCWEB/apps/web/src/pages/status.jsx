@@ -5,6 +5,7 @@ import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAsync, Loading } from './pages.jsx';
 import { Card, Button, Input, Badge, useToast } from '../ui/ui.jsx';
+import MetricChart from '../ui/metric-chart.jsx';
 
 // The public status page.
 //
@@ -51,6 +52,7 @@ export default function StatusPage() {
   const { t } = useI18n(); const toast = useToast();
   const [sp] = useSearchParams();
   const { data, loading } = useAsync(() => api.get('/status'), []);
+  const [table, setTable] = useState(false);   // the figures behind the charts
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -150,8 +152,24 @@ export default function StatusPage() {
       <Card className="p-4 mb-6">
         {!(d.metrics || []).length ? (
           <div className="text-[13px] text-[var(--muted)]">{t('st.nometrics', 'No daily figures recorded yet.')}</div>
-        ) : (
-          <div className="overflow-x-auto">
+        ) : (<>
+          {/* Four charts, never one with four lines: a percentage and a millisecond figure on
+              one pair of axes is the most common way to make a chart say something untrue. */}
+          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4">
+            {[['CPU', 'cpu', '%', 85], [t('st.m.mem', 'Memory'), 'mem', '%', 90],
+              [t('st.m.disk', 'Disk'), 'disk', '%', 90], [t('st.m.lat', 'Latency'), 'latencyMs', ' ms', null]].map(([label, key, unit, warn]) => (
+              <MetricChart key={key} title={label} unit={unit} warnAt={warn}
+                points={d.metrics.slice(-30).map((m) => ({ label: String(m.day).slice(0, 10), value: m[key] }))} />
+            ))}
+          </div>
+          {/* The table has not gone anywhere. A chart is the answer to "is it climbing"; the
+              exact number on the 4th is a different question, and a screen reader needs the
+              numbers rather than the shape. */}
+          <button onClick={() => setTable((v) => !v)} className="mt-3 text-[11px] text-[var(--muted)] hover:text-[var(--text)]">
+            {table ? t('st.m.hidetable', 'Hide the figures') : t('st.m.showtable', 'Show the figures')}
+          </button>
+          {table && (
+          <div className="overflow-x-auto mt-2">
             <table className="text-[12px] w-full">
               <thead><tr className="text-[var(--faint)] text-left">
                 <th className="font-normal pb-1">{t('st.m.day', 'Day')}</th>
@@ -173,7 +191,8 @@ export default function StatusPage() {
               </tbody>
             </table>
           </div>
-        )}
+          )}
+        </>)}
       </Card>
 
       <Card className="p-4">

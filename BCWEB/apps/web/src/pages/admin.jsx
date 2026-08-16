@@ -31,6 +31,7 @@ import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 import { AdminMyo } from './admin-myo.jsx';
 import { AdminApi } from './admin-api.jsx';
 import { AdminSanctions, ContentSanctionForm, Evidence } from './admin-sanctions.jsx';
+import AdminStatusPage from './admin-statuspage.jsx';
 import { AdminPolls } from './admin-polls.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash, useThreadStream } from './pages.jsx';
 
@@ -233,6 +234,10 @@ export function Admin() {
       sub: [
         { id: 'serverperf', label: t('adm.tab.serverperf2', 'Performance'), icon: Cpu, badge: pc.alerts || undefined },
         { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
+        // Beside Performance rather than in its own group: the incidents on the public page are
+        // the outages this screen's probes recorded, and writing the account of one is what you
+        // do straight after looking at what broke.
+        { id: 'statuspage', label: t('adm.tab.statuspage', 'Status page'), icon: Activity },
         { id: 'serveradv', label: t('adm.tab.serveradv', 'Advanced'), icon: AlertTriangle },
       ] },
     can('manage_analytics') && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp,
@@ -321,6 +326,7 @@ export function Admin() {
         {s === 'access' && <AdminAccess isSuperAdmin={isSuperAdmin} />}
         {s === 'security' && <AdminSecurity />}
         {s === 'serverperf' && <AdminServerPerf />}
+        {s === 'statuspage' && <AdminStatusPage />}
         {s === 'serveradv' && <AdminServerAdvanced />}
         {s === 'announcements' && <AdminAnnouncements />}
         {s === 'badges' && <AdminBadges />}

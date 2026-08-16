@@ -12,7 +12,7 @@
 
 import { z } from 'zod';
 import { randomBytes } from 'node:crypto';
-import { db } from '../lib/lib.mjs';
+import { db, requireCap, logAudit } from '../lib/lib.mjs';
 import { DEP_LABELS, DEP_KEYS, checkDependencies, getDepsConfig } from '../lib/monitor.mjs';
 import { dailyUptime, overallUptime, serviceState, overallState } from '../lib/status-page.mjs';
 import { sendMail, mailShell, escapeHtml, emailEnabled } from '../lib/mail.mjs';
@@ -87,6 +87,81 @@ export default async function statusRoutes(app) {
       })),
       generatedAt: now,
     };
+  });
+
+  // ── Writing the account of what happened ────────────────────────────────────
+  //
+  // IncidentNote has existed since the status page shipped, the public page renders every note
+  // marked public, and nothing anywhere could write one. Every incident on the page therefore
+  // read "no account of this one" — which is the worst thing a status page can say, because it
+  // is exactly what somebody came to read.
+  //
+  // An outage row itself is created by the monitor when a probe fails. Staff do not open or
+  // close them by hand: a status page whose incidents are typed in is a blog post, and it will
+  // disagree with the uptime bars drawn from the same rows.
+  const STATES = ['investigating', 'identified', 'monitoring', 'resolved'];
+
+  app.get('/admin/status/incidents', { preHandler: requireCap('manage_server', 'ADMIN') }, async (req) => {
+    const p = await db();
+    const days = Math.min(365, Math.max(1, Number(req.query?.days) || 90));
+    const outages = await p.serviceOutage.findMany({
+      where: { startedAt: { gte: new Date(Date.now() - days * 864e5) } },
+      orderBy: { startedAt: 'desc' }, take: 100,
+      include: { notes: { orderBy: { createdAt: 'asc' } } },
+    });
+    return { outages: outages.map((o) => ({ ...o, service: DEP_LABELS[o.dep] || o.dep })) };
+  });
+
+  app.post('/admin/status/incidents/:id/notes', { preHandler: requireCap('manage_server', 'ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      state: z.enum(STATES),
+      body: z.string().trim().min(1).max(2000),
+      // Private by choice, not by default: the point of the note is that people outside the
+      // team read it. An internal one is for the detail that would only worry them.
+      publicNote: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const outage = await p.serviceOutage.findUnique({ where: { id: req.params.id } });
+    if (!outage) return reply.code(404).send({ error: 'not_found' });
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true } });
+    const note = await p.incidentNote.create({
+      data: {
+        outageId: outage.id, state: b.data.state, body: b.data.body,
+        publicNote: b.data.publicNote !== false,
+        authorId: req.user.uid, authorLabel: me?.displayName || '',
+      },
+    });
+    // A cause is the one-line version of the same story, shown beside the incident rather than
+    // inside its timeline. Set from the first note that identifies one, and never overwritten:
+    // the first explanation is the one people were given.
+    if (b.data.state === 'identified' && !outage.cause) {
+      await p.serviceOutage.update({ where: { id: outage.id }, data: { cause: b.data.body.slice(0, 300) } }).catch(() => {});
+    }
+    await logAudit(p, req.user.uid, 'status.note', `${DEP_LABELS[outage.dep] || outage.dep} — ${b.data.state}`, req.ip).catch(() => {});
+    return { ok: true, note };
+  });
+
+  app.patch('/admin/status/notes/:id', { preHandler: requireCap('manage_server', 'ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      body: z.string().trim().min(1).max(2000).optional(),
+      publicNote: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const note = await p.incidentNote.update({ where: { id: req.params.id }, data: b.data }).catch(() => null);
+    if (!note) return reply.code(404).send({ error: 'not_found' });
+    return { ok: true, note };
+  });
+
+  // Deleted, not hidden: a note nobody should have published is the one case where leaving the
+  // row would be worse. Unpublishing it is one PATCH away and is the usual answer.
+  app.delete('/admin/status/notes/:id', { preHandler: requireCap('manage_server', 'ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const gone = await p.incidentNote.delete({ where: { id: req.params.id } }).catch(() => null);
+    if (!gone) return reply.code(404).send({ error: 'not_found' });
+    await logAudit(p, req.user.uid, 'status.note.delete', gone.body.slice(0, 120), req.ip).catch(() => {});
+    return { ok: true };
   });
 
   // ── Being told when it breaks ───────────────────────────────────────────────
