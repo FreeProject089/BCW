@@ -4121,6 +4121,28 @@ function DataRequestPanel({ user }) {
     } finally { setBusy(''); }
   };
 
+  // Typing the account's own address is the confirmation. A yes/no dialog on an irreversible
+  // action is a reflex; retyping the address is a moment of reading which account this is.
+  const doErase = async () => {
+    const typed = await dialog.prompt({
+      title: t('gdpr.erase.t', 'Erase this account permanently?'),
+      message: t('gdpr.erase.m', 'This cannot be undone. Type the account email to confirm: {e}').replace('{e}', user.email),
+      okLabel: t('gdpr.erase.ok', 'Erase'), danger: true,
+    });
+    if (!typed) return;
+    setBusy('doerase');
+    try {
+      const r = await api.post(`/admin/users/${user.id}/erase`, { email: String(typed).trim() });
+      toast.success(t('gdpr.erase.done', 'Erased — {d} row(s) deleted, {x} detached.')
+        .replace('{d}', r.totals?.deleted ?? 0).replace('{x}', r.totals?.detached ?? 0));
+      onChanged?.();
+    } catch (x) {
+      toast.error(x?.data?.error === 'email_mismatch' ? t('gdpr.erase.mismatch', 'That is not this account’s email.')
+        : x?.data?.error === 'blocked' ? t('gdpr.erase.blocked', 'Still blocked — run the preview to see what by.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(''); }
+  };
+
   const previewErase = async () => {
     setBusy('erase');
     try { setPreview(await api.get(`/admin/users/${user.id}/erase/preview`)); }
@@ -4145,6 +4167,9 @@ function DataRequestPanel({ user }) {
         </Button>
         <Button size="sm" variant="ghost" disabled={!!busy} onClick={previewErase}>
           {busy === 'erase' ? <Spinner /> : <Trash2 size={14} />} {t('gdpr.preview', 'Preview an erasure')}
+        </Button>
+        <Button size="sm" variant="danger" disabled={!!busy} onClick={doErase}>
+          {busy === 'doerase' ? <Spinner /> : <Trash2 size={14} />} {t('gdpr.erase.btn', 'Erase permanently')}
         </Button>
       </div>
 

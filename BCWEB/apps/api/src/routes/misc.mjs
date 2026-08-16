@@ -974,6 +974,36 @@ export default async function miscRoutes(app) {
     return eraseUser(p, u.id, buildErasePlan(Prisma.dmmf));
   });
 
+  /**
+   * Actually erase. The preview above had no counterpart, so an erasure could be inspected and
+   * never performed — the whole GDPR path stopped one click short of doing anything.
+   *
+   * SUPERADMIN, not manage_users: the preview is an inspection and this is irreversible. And it
+   * takes the account's own email as confirmation rather than a boolean, because a body that
+   * says {confirm:true} is one copied curl away from being sent at the wrong id.
+   */
+  app.post('/admin/users/:id/erase', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
+    const b = z.object({ email: z.string().email() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, email: true } });
+    if (!u) return reply.code(404).send({ error: 'not_found' });
+    if (u.email.toLowerCase() !== b.data.email.trim().toLowerCase()) return reply.code(409).send({ error: 'email_mismatch' });
+
+    const plan = buildErasePlan(Prisma.dmmf);
+    // Re-run dry first: `blocked` is what stops an erasure that would break referential
+    // integrity, and the preview the admin looked at may be minutes old.
+    const dry = await eraseUser(p, u.id, plan);
+    if (dry.blocked?.length) return reply.code(409).send({ error: 'blocked', blocked: dry.blocked });
+
+    const done = await eraseUser(p, u.id, plan, { commit: true });
+    // totals.deleted / .detached — checked against the library's actual return shape rather
+    // than guessed; `rows` does not exist on it.
+    await logAudit(p, req.user.uid, 'user.erased',
+      `${u.email} (${done.totals?.deleted ?? 0} deleted, ${done.totals?.detached ?? 0} detached)`, req.ip).catch(() => {});
+    return { ok: true, ...done };
+  });
+
   // Mail it to the ADDRESS ON THE ACCOUNT, and nowhere else.
   //
   // Not to an address in the request, and not to the address the contact message came from.

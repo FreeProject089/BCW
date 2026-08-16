@@ -209,6 +209,14 @@ const DICT = {
     'common.loading': 'Loading…',
   },
   fr: {
+    'gdpr.erase.btn': 'Supprimer definitivement',
+    'gdpr.erase.t': 'Supprimer ce compte definitivement ?',
+    'gdpr.erase.m': 'Irreversible. Tapez l e-mail du compte pour confirmer : {e}',
+    'gdpr.erase.ok': 'Supprimer',
+    'gdpr.erase.done': 'Supprime — {d} ligne(s) effacee(s), {x} detachee(s).',
+    'gdpr.erase.mismatch': 'Ce n est pas l e-mail de ce compte.',
+    'gdpr.erase.blocked': 'Toujours bloque — lancez l apercu pour voir par quoi.',
+
     'poll.f.req': 'Celle-ci est obligatoire : {q}',
     'poll.f.bad': 'Vérifiez cette réponse : {q}',
     'poll.f.required': 'Obligatoire',
