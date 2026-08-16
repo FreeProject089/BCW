@@ -4,6 +4,7 @@ import { safeFetch } from '../lib/net.mjs';
 import { zipReadAll } from '../lib/native.mjs';
 import { detectStack, interestingPaths } from '../lib/stack-detect.mjs';
 import { buildCodeGraph, sourcePathsToFetch, tracePath, entryPoints } from '../lib/code-graph.mjs';
+import { buildEndpointGraph, endpointPathsToFetch } from '../lib/endpoint-graph.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
 // legal, release-notes source) stored as an AdminSetting row `project.<key>`.
@@ -302,7 +303,12 @@ export default async function projectRoutes(app) {
         return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message || e).slice(0, 120) });
       }
       const paths = (tree.tree || []).filter((e) => e.type === 'blob').map((e) => e.path);
-      const wanted = sourcePathsToFetch(paths, { limit: b.data.maxFiles || 150 });
+      // The union: the import graph reads JS/TS, the endpoint pairing also reads Rust,
+      // Python and Go. Fetching only the first list would leave every Rust command unread.
+      const wanted = [...new Set([
+        ...sourcePathsToFetch(paths, { limit: b.data.maxFiles || 150 }),
+        ...endpointPathsToFetch(paths, { limit: b.data.maxFiles || 150 }),
+      ])];
       sources = {};
       // Sequentially in small batches rather than all at once: raw.githubusercontent rate-limits
       // a burst, and a half-fetched repo produces a graph with holes that look like real
@@ -326,9 +332,17 @@ export default async function projectRoutes(app) {
     }
 
     const graph = buildCodeGraph(sources);
+    // The other half of the picture. Imports connect files inside one language; this crosses
+    // the gap they cannot — a browser calling a server, a Tauri front end calling Rust — and
+    // it is why a repo like BMM shows 0 import edges between its two halves and 2000 real
+    // links once the command names are read.
+    // `truncated` travels in: on a capped scan of a monorepo the callers are inside the cap
+    // and the handlers are not, so every call looks orphaned. Those are artefacts, not
+    // findings, and the flag is what stops them being shown as findings.
+    const endpoints = buildEndpointGraph(sources, { truncated: !!graph.stats?.truncated });
     // Where a reader should start. Derived rather than declared: package.json `main` lies
     // as often as not in a monorepo, while "nothing imports this" is a fact about the code.
-    return { ok: true, source, ...graph, entries: entryPoints(graph).slice(0, 20) };
+    return { ok: true, source, ...graph, entries: entryPoints(graph).slice(0, 20), endpoints };
   });
 
   app.put('/projects/:key', { preHandler: requireEditor() }, async (req, reply) => {
