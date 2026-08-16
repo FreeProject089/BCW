@@ -20,6 +20,7 @@ import { db, safeEqual } from '../lib/lib.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { buildCodeGraph, sourcePathsToFetch, entryPoints } from '../lib/code-graph.mjs';
 import { buildEndpointGraph, endpointPathsToFetch } from '../lib/endpoint-graph.mjs';
+import { functionEdges, buildFlow } from '../lib/code-flow.mjs';
 
 const OFFICIAL = new Set(['community', 'bmm', 'bsm', 'installer', 'developers']);
 const GH_REPO_RE = /^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i;
@@ -81,11 +82,15 @@ export async function rebuildSnapshot(p, key, url, maxFiles = 150) {
 
     const graph = buildCodeGraph(sources);
     const endpoints = buildEndpointGraph(sources, { truncated: !!graph.stats?.truncated });
+    // Stored with the snapshot: recomputing the function level needs the SOURCES, and the
+    // snapshot is the only place they were ever all held at once.
+    const functions = functionEdges(endpoints.links, sources);
+    const flows = functions.slice(0, 40).map((e) => buildFlow(e, sources)).filter(Boolean);
     const value = {
         url, generatedAt: new Date().toISOString(),
         stats: graph.stats, endpointStats: endpoints.stats,
         graph: { ...graph, entries: entryPoints(graph).slice(0, 20) },
-        endpoints,
+        endpoints, functions, flows,
     };
     const k = snapshotKey(key);
     await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value }, update: { value } });

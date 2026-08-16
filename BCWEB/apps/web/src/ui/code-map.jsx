@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import CodeFlows from './code-flows.jsx';
 
 // The trace walk lives with the graph, on the server side of the same file — but the walk is
 // pure, so the same shape is recomputed here rather than making a round trip per click.
@@ -318,6 +319,10 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                     )}
                 </aside>
             </div>
+
+            {/* The boxes say what exists; this says what runs. Rendered under the map rather
+                than inside it: a reader looks at the shape first, then asks what happens. */}
+            <CodeFlows flows={graph.flows || []} t={t} />
 
             {graph.unresolved?.length > 0 && (
                 <details className="mt-3">

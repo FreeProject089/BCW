@@ -343,6 +343,8 @@ const DICT = {
     'cls.none': 'Personne n’a répondu sur cette période.',
     'cls.o.closed': 'fermé', 'cls.o.cancelled': 'annulé',
     'adm.tab.statuspage': 'Page de statut',
+    'cf.title': 'Ce qui s’exécute, dans l’ordre', 'cf.steps': 'étapes',
+    'cf.sub': 'Chacun part d’un appel que ce scan a prouvé et suit ce que la fonction réceptrice appelle ensuite. Rien n’est exécuté et rien n’est décrit — chaque étape montre le fichier, la ligne et le code, pour que tu lises le code plutôt qu’un résumé.',
     'dvt.sub2': '{n} choses que tu écrirais toi-même sinon — faire un vrai appel, vérifier un flux avant de le publier, lire un dépôt, voir ce que tes clés ont fait.',
     'stp.title': 'Page de statut',
     'stp.sub': 'Chaque panne enregistrée par les sondes, et le compte rendu que les gens lisent. Les incidents ne se créent pas ici — le moniteur les écrit quand un service cesse de répondre, pour que la page ne puisse jamais contredire ses propres barres de disponibilité.',
