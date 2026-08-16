@@ -11,7 +11,7 @@ import { viewQuestions } from '../lib/poll-view.mjs';
 import crypto from 'node:crypto';
 import { db, requireRole, requireCap, optionalAuth, logAudit } from '../lib/lib.mjs';
 import { clientIp } from '../lib/geo.mjs';
-import { pollStats } from '../lib/poll-stats.mjs';
+import { pollStats, questionStats, completion } from '../lib/poll-stats.mjs';
 
 /** Per-poll device fingerprint for anonymous voters.
  *
@@ -312,6 +312,8 @@ export default async function pollRoutes(app) {
       include: {
         options: { orderBy: { sort: 'asc' } },
         votes: { include: { user: { select: { id: true, displayName: true, email: true } }, option: { select: { label: true } } }, orderBy: { createdAt: 'desc' } },
+        questions: { include: { choices: true }, orderBy: { sort: 'asc' } },
+        answers: true,
       },
     });
     if (!poll) return reply.code(404).send({ error: 'not_found' });
@@ -325,6 +327,16 @@ export default async function pollRoutes(app) {
     // The library adds what could not be answered here: turnout over time, picks per voter,
     // days since the last vote, and whether the lead is big enough to mean anything.
     const stats = pollStats(poll, poll.options, poll.votes, new Date());
+
+    // Per-question numbers, present only once a poll HAS questions. Added beside the existing
+    // shape rather than replacing it: this route is what the admin screen reads today, and
+    // rewriting its response to serve a screen that does not exist yet would break the one
+    // that does.
+    //
+    // A backfilled poll answers both ways and agrees with itself, because both sides count
+    // people through the same voterCount rather than each counting rows its own way.
+    const perQuestion = (poll.questions || []).map((q) =>
+      questionStats(q, poll.answers || [], q.choices || []));
 
     // Distinct voters, not ticks: on a multi-choice poll one person can be several rows.
     const voterOf = (v) => (v.userId ? `u:${v.userId}` : `a:${v.voterKey}`);
@@ -369,6 +381,12 @@ export default async function pollRoutes(app) {
       // one. `lead.decided` is false under 20 voters or inside a 5% margin — a 3-1 split is
       // a room, not a sample.
       stats,
+      // Only when the poll has questions, so the field's presence is the signal rather than an
+      // empty array a screen has to distinguish from "none yet".
+      ...(perQuestion.length ? {
+        questions: perQuestion,
+        completion: completion(poll.questions, poll.answers || []),
+      } : {}),
     };
   });
 
