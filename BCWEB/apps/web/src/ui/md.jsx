@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkDirective from 'remark-directive';
+import { normalizeDirectiveNesting } from '../lib/md-nesting.js';
 import rehypeRaw from 'rehype-raw';
 // NOT a static import. rehype-highlight drags in highlight.js and a grammar per language
 // — 180kB raw, 55kB gzipped — and a static import put all of it in the ENTRY chunk, so
@@ -148,7 +149,9 @@ function nodeText(n) { if (!n) return ''; if (typeof n.value === 'string') retur
 function slugify(s) { return String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'section'; }
 
 export function preprocessMd(md) {
-  let s = md || '';
+  // Re-count `:::` fences first, so a block written the obvious way keeps its children.
+  // Everything below works on lines and must not see a document mid-rewrite.
+  let s = normalizeDirectiveNesting(md || '');
   // GitHub-style alerts: a run of blockquote lines whose first line is [!TYPE].
   s = s.replace(/(^|\n)((?:[ \t]*>[^\n]*(?:\n|$))+)/g, (block, lead, quote) => {
     const lines = quote.replace(/\n$/, '').split('\n').map((l) => l.replace(/^[ \t]*>[ \t]?/, ''));
@@ -176,6 +179,34 @@ function stepMarker(kind, n) {
   if (kind === 'i' || kind === 'roman') return ROMAN[n - 1] || String(n);
   if (kind === 'dot' || kind === 'none' || kind === 'bullet') return '\u2022';
   return String(n);
+}
+
+// `:::stage` children → the tracker's own `{ categories: [{ name, items }] }` shape.
+//
+// A stage's state applies to every item under it. Per-item states are deliberately NOT
+// invented here: a bullet list is the thing authors already know how to write, and a
+// micro-syntax hidden inside list text would be one more rule nobody can see. An author who
+// needs per-item percentages still has the JSON block, which is why that path stays.
+const STAGE_STATE = { done: 'done', complete: 'done', shipped: 'done', progress: 'progress',
+  'in-progress': 'progress', doing: 'progress', active: 'progress', planned: 'planned', todo: 'planned', next: 'planned' };
+function stagesToJson(node) {
+  const stages = (node.children || []).filter((c) => c.type === 'containerDirective'
+    && (c.name === 'stage' || c.name === 'phase'));
+  if (!stages.length) return '';
+  const categories = stages.map((st) => {
+    const a = st.attributes || {};
+    const status = STAGE_STATE[String(a.state || a.status || '').toLowerCase()] || 'planned';
+    // The stage's own [Label], read before the visitor reaches it and strips the node.
+    const label = (st.children || []).find((c) => c.data && c.data.directiveLabel);
+    // Every list item under the stage, at any depth — a nested list is still a list of work.
+    const items = [];
+    visit(st, 'listItem', (li) => {
+      const text = nodeText(li).trim();
+      if (text) items.push({ label: text, status, percent: status === 'done' ? 100 : (parseInt(a.percent, 10) || 0), ...(a.eta ? { eta: String(a.eta) } : {}) });
+    });
+    return { name: label ? nodeText(label) : (a.title || ''), items };
+  }).filter((c) => c.items.length);
+  return categories.length ? JSON.stringify({ categories }) : '';
 }
 
 function remarkDocBlocks() {
@@ -311,7 +342,17 @@ function remarkDocBlocks() {
         //   static → :::roadmap{title="Roadmap"} with a ```json … ``` block inside
         // Both render the same customisable tracker (categories, %, meters, ETA).
         const code = (node.children || []).find((c) => c.type === 'code');
-        const inlineJson = code ? String(code.value || '') : '';
+        // Third source, and the one an author reaches for first: `:::stage` children.
+        //   :::roadmap[Where we are]
+        //   :::stage[Shipped]{state=done}
+        //   - Grid questions
+        //   :::
+        //
+        // Before this, those children were dropped on the floor by the `children = []` below
+        // and the block rendered "Empty roadmap — provide a src or a JSON block" while the
+        // stages sat right there in the source. Writing a roadmap should not require hand-
+        // authoring the tracker's JSON.
+        const inlineJson = code ? String(code.value || '') : stagesToJson(node);
         // `orientation=horizontal` lays the phases along a track instead of down a column.
         // An option on the block that exists rather than a second roadmap directive: two
         // roadmaps would be two things to keep in step, and the data is identical.

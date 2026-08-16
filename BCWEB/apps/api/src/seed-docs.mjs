@@ -518,7 +518,15 @@ From your repo dashboard you can set access (public / whitelist), bans, and the 
 
 # Documentation blocks
 
-Docs and blog posts support rich blocks on top of Markdown. Here's the toolkit.
+Docs and blog posts support rich blocks on top of Markdown. Here's the whole toolkit — every
+block below is shown twice: the source, and what it renders to.
+
+:::note[Write everything with three colons]
+Including blocks inside blocks. The renderer sorts the nesting out for you.
+
+Leave a blank line before a directive — \`:::note\` on the line right after a paragraph is read
+as part of that paragraph — and always close what you open.
+:::
 
 ## Callouts
 
@@ -528,11 +536,76 @@ Your text here.
 :::
 \`\`\`
 
-Kinds: \`:::note\` · \`:::tip\` · \`:::success\` · \`:::warning\` · \`:::danger\`.
+Kinds: \`:::note\` · \`:::tip\` · \`:::success\` · \`:::warning\` · \`:::danger\`. Each has synonyms so
+you can write the word you mean — \`info\` = note, \`hint\` = tip, \`check\` = success,
+\`caution\` and \`important\` = warning, \`error\` = danger.
 
 :::success[Result]
 That renders a coloured callout like this one.
 :::
+
+\`:::callout{icon=rocket color=#c2410c}[Title]\` picks its own icon (any [lucide](https://lucide.dev)
+name) and colour.
+
+## Steps
+
+\`\`\`
+:::steps
+:::step[Install]
+Download and run the installer.
+:::
+:::step[Sign in]
+Use your BetterCommunity account.
+:::
+:::
+\`\`\`
+
+:::steps
+:::step[Install]
+Download and run the installer.
+:::
+:::step[Sign in]
+Use your BetterCommunity account.
+:::
+:::
+
+Numbering is automatic — don't number the titles yourself. On \`:::steps\`: \`type\` picks the
+alphabet (\`1\` · \`a\` · \`i\` · \`dot\`), \`start\` offsets it, \`orientation=horizontal\` lays them in a
+row, \`color\` paints the markers. On a single \`:::step\`: \`icon\`, \`color\`, \`status=done\`.
+
+## Roadmap
+
+Write the stages inline — no JSON needed:
+
+\`\`\`
+:::roadmap[Where we are]
+:::stage[Shipped]{state=done}
+- Grid questions
+- Recipe checker
+:::
+:::stage[In progress]{state=doing percent=40}
+- Blog roadmaps
+:::
+:::
+\`\`\`
+
+:::roadmap[Where we are]
+:::stage[Shipped]{state=done}
+- Grid questions
+- Recipe checker
+:::
+:::stage[In progress]{state=doing percent=40}
+- Blog roadmaps
+:::
+:::stage[Planned]{state=planned}
+- MCP parity
+:::
+:::
+
+Every bullet under a stage becomes a tracked item and inherits that stage's state. \`state=\` is
+\`done\`, \`doing\` or \`planned\`; \`percent=\` fills the bar of a stage that is under way; \`eta=\`
+adds a date. For per-item percentages or bilingual labels, put a \`json\` code block inside the
+roadmap instead; for numbers that live elsewhere, use \`:::roadmap{src="https://…/progress.json"}\`.
 
 ## Cards
 
@@ -544,6 +617,56 @@ Body text.
 :::
 \`\`\`
 
+Attributes: \`title\`, \`href\`, \`image\`, \`video\`, \`icon\`, \`color\`.
+
+## Columns
+
+\`\`\`
+:::columns
+:::column
+Left.
+:::
+:::column
+Right.
+:::
+:::
+\`\`\`
+
+They stack on narrow screens, so never write "the table on the left" in the prose.
+\`:::center\`, \`:::left\` and \`:::right\` align a block.
+
+## Collapsible
+
+\`\`\`
+:::details[Show the full output]
+Hidden until clicked.
+:::
+\`\`\`
+
+:::details[Show the full output]
+Hidden until clicked.
+:::
+
+## Download link
+
+\`\`\`
+:::file{href=/api/assets/setup.exe name="BMM Setup" size="42 MB"}
+:::
+\`\`\`
+
+Renders a file row with Download and Open buttons. Without \`icon\`, the icon comes from the
+file extension.
+
+## Session replay
+
+\`\`\`
+:::replay{src="/api/assets/demo.bmmreplay" title="Installing a plugin"}
+:::
+\`\`\`
+
+Plays a \`.bmmreplay\` recording inline; \`autoplay\` and \`loop\` are bare flags. Prefer an asset
+served by this site — a replay that 404s leaves a dead frame mid-page.
+
 ## Inline bits
 
 - Keyboard: \`:kbd[Ctrl+S]\` → :kbd[Ctrl+S]
@@ -553,6 +676,15 @@ Body text.
 ## Table of contents
 
 Add \`::toc[On this page]\` at the top and it builds a summary from your \`##\` / \`###\` headings automatically.
+
+## Two extras that aren't directives
+
+A blockquote starting with \`[!NOTE]\`, \`[!TIP]\`, \`[!IMPORTANT]\`, \`[!WARNING]\` or \`[!CAUTION]\`
+becomes the matching callout — handy when pasting from GitHub. French spellings work too.
+
+A bare \`[NEW]\`, \`[FIXED]\`, \`[IMPROVED]\`, \`[REFINE]\`, \`[VISUAL]\` or \`[MAJOR]\` becomes a
+coloured change badge (each has a French spelling: \`[NOUVEAU]\`, \`[FIXÉ]\`, \`[AMÉLIORÉ]\`,
+\`[RAFFINEMENT]\`, \`[VISUEL]\`, \`[MAJEUR]\`). Anything inside code is left alone.
 
 :::tip[Annotations]
 Wrap text in a \`<doc-comment data-comment="…">\` to add a hover note — great for glossary terms.

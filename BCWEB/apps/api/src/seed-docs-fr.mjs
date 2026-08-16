@@ -674,7 +674,15 @@ Depuis le tableau de bord du dépôt, tu règles les accès (public / liste blan
 
 # Blocs de documentation
 
-Les docs et les billets de blog acceptent des blocs riches par-dessus le Markdown. Voici la boîte à outils.
+Les docs et les billets de blog acceptent des blocs riches par-dessus le Markdown. Voici toute la
+boîte à outils — chaque bloc est montré deux fois : la source, puis le rendu.
+
+:::note[Écris tout avec trois deux-points]
+Y compris les blocs dans les blocs. Le rendu s'occupe de l'imbrication tout seul.
+
+Laisse une ligne vide avant une directive — \`:::note\` collé sous un paragraphe est lu comme
+faisant partie de ce paragraphe — et ferme toujours ce que tu ouvres.
+:::
 
 ## Les encadrés
 
@@ -684,11 +692,78 @@ Ton texte ici.
 :::
 \`\`\`
 
-Types : \`:::note\` · \`:::tip\` · \`:::success\` · \`:::warning\` · \`:::danger\`.
+Types : \`:::note\` · \`:::tip\` · \`:::success\` · \`:::warning\` · \`:::danger\`. Chacun a des synonymes
+pour que tu écrives le mot que tu penses — \`info\` = note, \`hint\` = tip, \`check\` = success,
+\`caution\` et \`important\` = warning, \`error\` = danger.
 
 :::success[Résultat]
 Ça produit un encadré coloré comme celui-ci.
 :::
+
+\`:::callout{icon=rocket color=#c2410c}[Titre]\` choisit son icône (un nom
+[lucide](https://lucide.dev)) et sa couleur.
+
+## Les étapes
+
+\`\`\`
+:::steps
+:::step[Installer]
+Télécharge et lance l'installeur.
+:::
+:::step[Se connecter]
+Utilise ton compte BetterCommunity.
+:::
+:::
+\`\`\`
+
+:::steps
+:::step[Installer]
+Télécharge et lance l'installeur.
+:::
+:::step[Se connecter]
+Utilise ton compte BetterCommunity.
+:::
+:::
+
+La numérotation est automatique — ne numérote pas les titres toi-même. Sur \`:::steps\` : \`type\`
+choisit l'alphabet (\`1\` · \`a\` · \`i\` · \`dot\`), \`start\` décale le compteur,
+\`orientation=horizontal\` les met en ligne, \`color\` peint les pastilles. Sur une \`:::step\` :
+\`icon\`, \`color\`, \`status=done\`.
+
+## La feuille de route
+
+Écris les étapes directement dedans — pas de JSON à taper :
+
+\`\`\`
+:::roadmap[Où on en est]
+:::stage[Livré]{state=done}
+- Questions en grille
+- Vérificateur de recette
+:::
+:::stage[En cours]{state=doing percent=40}
+- Feuilles de route dans le blog
+:::
+:::
+\`\`\`
+
+:::roadmap[Où on en est]
+:::stage[Livré]{state=done}
+- Questions en grille
+- Vérificateur de recette
+:::
+:::stage[En cours]{state=doing percent=40}
+- Feuilles de route dans le blog
+:::
+:::stage[Prévu]{state=planned}
+- Parité MCP
+:::
+:::
+
+Chaque puce sous une étape devient une ligne suivie et hérite de l'état de l'étape. \`state=\` vaut
+\`done\`, \`doing\` ou \`planned\` ; \`percent=\` remplit la barre d'une étape en cours ; \`eta=\` ajoute
+une date. Pour des pourcentages par ligne ou des libellés bilingues, mets un bloc de code \`json\`
+dans la feuille de route ; pour des chiffres hébergés ailleurs, utilise
+\`:::roadmap{src="https://…/progress.json"}\`.
 
 ## Les cartes
 
@@ -700,6 +775,56 @@ Le texte.
 :::
 \`\`\`
 
+Attributs : \`title\`, \`href\`, \`image\`, \`video\`, \`icon\`, \`color\`.
+
+## Les colonnes
+
+\`\`\`
+:::columns
+:::column
+À gauche.
+:::
+:::column
+À droite.
+:::
+:::
+\`\`\`
+
+Elles s'empilent sur un écran étroit : n'écris donc jamais « le tableau à gauche » dans le texte.
+\`:::center\`, \`:::left\` et \`:::right\` alignent un bloc.
+
+## Le bloc repliable
+
+\`\`\`
+:::details[Voir la sortie complète]
+Caché jusqu'au clic.
+:::
+\`\`\`
+
+:::details[Voir la sortie complète]
+Caché jusqu'au clic.
+:::
+
+## Le lien de téléchargement
+
+\`\`\`
+:::file{href=/api/assets/setup.exe name="BMM Setup" size="42 Mo"}
+:::
+\`\`\`
+
+Affiche une ligne de fichier avec les boutons Télécharger et Ouvrir. Sans \`icon\`, l'icône vient
+de l'extension.
+
+## Le replay de session
+
+\`\`\`
+:::replay{src="/api/assets/demo.bmmreplay" title="Installer un plugin"}
+:::
+\`\`\`
+
+Joue un enregistrement \`.bmmreplay\` dans la page ; \`autoplay\` et \`loop\` sont des drapeaux nus.
+Préfère un fichier hébergé ici — un replay en 404 laisse un cadre mort au milieu de la page.
+
 ## Les éléments en ligne
 
 - Touche clavier : \`:kbd[Ctrl+S]\` → :kbd[Ctrl+S]
@@ -709,6 +834,17 @@ Le texte.
 ## Le sommaire
 
 Mets \`::toc[Sur cette page]\` en haut et il construit un résumé depuis tes titres \`##\` / \`###\`, tout seul.
+
+## Deux bonus qui ne sont pas des directives
+
+Une citation qui commence par \`[!NOTE]\`, \`[!TIP]\`, \`[!IMPORTANT]\`, \`[!WARNING]\` ou
+\`[!CAUTION]\` devient l'encadré correspondant — pratique quand tu colles depuis GitHub. Les
+graphies françaises marchent aussi : \`[!REMARQUE]\`, \`[!ASTUCE]\`, \`[!AVERTISSEMENT]\`,
+\`[!ATTENTION]\`.
+
+Un \`[NOUVEAU]\`, \`[FIXÉ]\`, \`[AMÉLIORÉ]\`, \`[RAFFINEMENT]\`, \`[VISUEL]\` ou \`[MAJEUR]\` tout seul
+devient un badge coloré (les graphies anglaises marchent également). Ce qui est dans du code
+est laissé tel quel.
 
 :::tip[Annotations]
 Entoure un texte d'un \`<doc-comment data-comment="…">\` pour ajouter une note au survol — parfait pour un terme de glossaire.
