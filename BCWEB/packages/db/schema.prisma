@@ -1411,6 +1411,7 @@ model ServiceOutage {
   cause     String?
   startedAt DateTime  @default(now())
   endedAt   DateTime?
+  notes     IncidentNote[]
 
   @@index([dep, startedAt])
   @@index([endedAt])
@@ -2887,4 +2888,54 @@ model BotAction {
 
   @@index([status, createdAt])
   @@index([discordId])
+}
+
+/// Somebody who wants to be told when a service goes down, and when it comes back.
+///
+/// Double opt-in for e-mail, like the newsletter: an unconfirmed row is never written to. A
+/// Discord target needs no confirmation because only an admin can add one — you cannot
+/// subscribe somebody else's channel from the public page.
+model StatusSubscriber {
+  id        String   @id @default(cuid())
+  /// email · discord
+  kind      String   @default("email")
+  /// The address, or the Discord channel id.
+  target    String
+  /// Which services they care about. Empty means all of them — the common case, and it must
+  /// keep working when a new service is added rather than silently excluding it.
+  deps      String[] @default([])
+
+  confirmed   Boolean  @default(false)
+  confirmToken String? @unique
+  /// Also the unsubscribe token: one link in every message, no login needed.
+  token       String   @unique
+
+  createdAt  DateTime @default(now())
+  lastSentAt DateTime?
+
+  @@unique([kind, target])
+  @@index([confirmed])
+}
+
+/// A human note attached to an outage — what happened, and what was done about it.
+///
+/// Separate from ServiceOutage because the outage is DETECTED (start, end, which service) while
+/// this is WRITTEN afterwards. Merging them would mean an automatic row carrying empty prose,
+/// and no way to tell "nobody has explained this yet" from "there was nothing to say".
+model IncidentNote {
+  id        String        @id @default(cuid())
+  outage    ServiceOutage @relation(fields: [outageId], references: [id], onDelete: Cascade)
+  outageId  String
+
+  /// investigating · identified · watching · resolved
+  state     String        @default("investigating")
+  body      String
+  /// Shown on the public page. An admin may want to record something internal first.
+  publicNote Boolean      @default(true)
+
+  authorId  String?
+  authorLabel String      @default("")
+  createdAt DateTime      @default(now())
+
+  @@index([outageId, createdAt])
 }

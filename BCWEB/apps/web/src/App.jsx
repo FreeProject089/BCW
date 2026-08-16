@@ -40,6 +40,7 @@ const Hero3D = lazy(() => import('./hero/Hero3D.jsx'));
 const ClosureCancel = lazy(() => import('./pages/closure.jsx'));
 const PollsPage = lazy(() => import('./pages/polls.jsx'));
 const DevHub = lazy(() => import('./pages/dev.jsx'));
+const StatusPage = lazy(() => import('./pages/status.jsx'));
 const DevConfig = lazy(() => import('./pages/dev-config.jsx'));
 const NotificationCentre = lazy(() => import('./pages/notifications.jsx'));
 const SanctionPage = lazy(() => import('./pages/sanction.jsx'));
@@ -1080,6 +1081,7 @@ export default function App() {
           <Route path="/polls" element={<PollsPage />} />
           {/* Open to visitors: reading how to build against the site should not require
               an account, and the two things that do (an app, a key) say so themselves. */}
+          <Route path="/status" element={<StatusPage />} />
           <Route path="/dev" element={<DevHub />} />
           <Route path="/dev/config" element={<DevConfig />} />
           <Route path="/notifications" element={<NotificationCentre />} />

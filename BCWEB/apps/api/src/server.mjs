@@ -55,6 +55,7 @@ import kofiRoutes from './routes/kofi.mjs';
 import oauthRoutes from './routes/oauth.mjs';
 import ogRoutes from './routes/og.mjs';
 import socialRoutes from './routes/social.mjs';
+import statusRoutes from './routes/status.mjs';
 import reportRoutes from './routes/reports.mjs';
 import connectionRoutes from './routes/connections.mjs';
 import { recordRequest } from './lib/monitor.mjs';
@@ -229,6 +230,7 @@ await app.register(ogRoutes); // crawler link-unfurl prerender (og:title/image p
 await app.register(socialRoutes); // profile badges + public profiles + user search
 await app.register(reportRoutes); // user reports + support threads + admin moderation
 await app.register(connectionRoutes); // social profile connections (youtube/twitch/github/steam)
+await app.register(statusRoutes); // public status page: service uptime, incidents, alert sign-up
 await app.register(stripeWebhook); // encapsulated: raw-body for Stripe signature
 
 // Make sure the object-storage bucket exists (non-fatal if storage isn't up yet).
