@@ -3,6 +3,7 @@ import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, n
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
 import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
+import { MAIL_SAMPLES, MAIL_GROUPS, renderSample } from '../lib/mail-samples.mjs';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -828,6 +829,28 @@ export default async function miscRoutes(app) {
   // Built by calling the same three functions in the same order as the send below, on
   // purpose: a preview assembled by its own copy of the template is a preview of a
   // different email, and the first time they drift is the first time somebody trusts it.
+  /**
+   * Every mail the platform can send, as something you can look at.
+   *
+   * Until now the only way to see one was to CAUSE one: to check the closure warning you
+   * scheduled an account for closure. So nobody checked, and a broken mail was found by its
+   * recipient — which for a password reset is the worst available reviewer.
+   *
+   * Built by the same `mailShell` the senders use, so the preview is the mail. Nothing here
+   * sends: it returns HTML.
+   */
+  app.get('/admin/mail/gallery', { preHandler: requireRole('ADMIN') }, async () => ({
+    groups: MAIL_GROUPS,
+    samples: MAIL_SAMPLES.map((s) => ({ id: s.id, group: s.group, label: s.label, note: s.note || null })),
+  }));
+
+  app.get('/admin/mail/gallery/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const scheme = ['auto', 'light', 'dark'].includes(String(req.query?.scheme)) ? String(req.query.scheme) : 'auto';
+    const html = renderSample(req.params.id, scheme);
+    if (!html) return reply.code(404).send({ error: 'unknown_sample' });
+    return { ok: true, id: req.params.id, scheme, html };
+  });
+
   app.post('/admin/mail/preview', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
       subject: z.string().max(200).default(''),

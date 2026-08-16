@@ -5364,6 +5364,97 @@ Everything you had is still yours; picking it back up takes a couple of minutes.
   },
 ];
 
+/**
+ * Every mail the platform can send, as something you can look at.
+ *
+ * Seeing one used to mean CAUSING one: to check the closure warning you scheduled an account
+ * for closure. So nobody checked, and a broken mail was found by its recipient — which for a
+ * password reset is the worst reviewer available.
+ *
+ * The HTML comes from the server, built by the same shell the senders use, and is rendered in
+ * an iframe with `sandbox=""`: mail HTML is table soup with inline styles, and letting it
+ * inherit the dashboard's CSS would show a mail nobody will ever receive. The sandbox also
+ * means nothing in a preview can run or navigate.
+ */
+function MailGallery({ t }) {
+  const [open, setOpen] = useState(false);
+  const [pick, setPick] = useState(null);
+  const [scheme, setScheme] = useState('auto');
+  const { data } = useAsync(() => (open ? api.get('/admin/mail/gallery') : Promise.resolve(null)), [open]);
+  const [html, setHtml] = useState('');
+
+  useEffect(() => {
+    if (!pick) { setHtml(''); return; }
+    api.get(`/admin/mail/gallery/${pick}?scheme=${scheme}`).then((r) => setHtml(r.html)).catch(() => setHtml(''));
+  }, [pick, scheme]);
+
+  const groups = data?.groups || [];
+  const samples = data?.samples || [];
+  const current = samples.find((s) => s.id === pick);
+
+  if (!open) {
+    return (
+      <Button size="sm" onClick={() => setOpen(true)}>
+        <Mail size={14} /> {t('adm.mail.gal.open', 'See every mail we send')}
+      </Button>
+    );
+  }
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-2 mb-1 flex-wrap">
+        <Mail size={15} className="text-[var(--primary-2)]" />
+        <span className="font-semibold text-sm">{t('adm.mail.gal.title', 'Every mail we send')}</span>
+        <div className="ml-auto flex items-center gap-1">
+          {['auto', 'light', 'dark'].map((k) => (
+            <button key={k} type="button" onClick={() => setScheme(k)}
+              className={`text-xs px-2 py-1 rounded-full border ${scheme === k
+                ? 'border-[var(--primary)] text-[var(--primary)]'
+                : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+              {t(`adm.mail.gal.${k}`, k)}
+            </button>
+          ))}
+          <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setPick(null); }}>{t('common.close', 'Close')}</Button>
+        </div>
+      </div>
+      <p className="text-xs text-[var(--muted)] mb-3">
+        {t('adm.mail.gal.sub', 'Built by the same template the senders use, so this is the mail — with obviously fake names and links, because a screenshot of this page should never be a leak. Nothing here sends anything.')}
+      </p>
+
+      <div className="grid lg:grid-cols-[260px_1fr] gap-3">
+        <div className="space-y-3 max-h-[560px] overflow-auto pr-1">
+          {groups.map((g) => {
+            const mine = samples.filter((s) => s.group === g.id);
+            if (!mine.length) return null;
+            return (
+              <div key={g.id}>
+                <div className="text-[11px] uppercase tracking-wide text-[var(--faint)] mb-1">{g.label}</div>
+                <div className="space-y-1">
+                  {mine.map((s) => (
+                    <button key={s.id} type="button" onClick={() => setPick(s.id)}
+                      className={`w-full text-left px-2 py-1.5 rounded-lg text-[13px] ${pick === s.id ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div>
+          {current?.note && <p className="text-[12px] text-[var(--muted)] mb-2">{current.note}</p>}
+          {html ? (
+            <iframe title={current?.label || 'mail'} sandbox="" srcDoc={html}
+              className="w-full rounded-xl border border-[var(--line)]" style={{ height: 560, background: '#fff' }} />
+          ) : (
+            <div className="text-[12px] text-[var(--muted)]">{t('adm.mail.gal.pick', 'Pick a mail on the left.')}</div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function AdminMail() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { user: me } = useAuth();
   const plans = useAsync(() => api.get('/admin/hosting/plans'), []);
@@ -5441,6 +5532,7 @@ function AdminMail() {
 
   return (
     <div className="space-y-4">
+      <MailGallery t={t} />
       <Card className="p-4">
         <div className="flex items-center gap-2 mb-1"><Mail size={15} className="text-[var(--primary-2)]" /> <span className="font-semibold text-sm">{t('adm.mail.title', 'Email users')}</span></div>
         <p className="text-xs text-[var(--muted)] mb-3">
