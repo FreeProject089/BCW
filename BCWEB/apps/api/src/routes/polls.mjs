@@ -238,12 +238,20 @@ export default async function pollRoutes(app) {
         options: { orderBy: { sort: 'asc' } },
         votes: { select: { optionId: true, wasLoggedIn: true, userId: true, voterKey: true } },
         createdBy: { select: { displayName: true } },
+        // The editable multi-question shape. The public detail endpoint cannot serve this to an
+        // admin working on a DRAFT — it 404s drafts on purpose — so the admin list carries it.
+        questions: { include: { choices: { orderBy: { sort: 'asc' } } }, orderBy: { sort: 'asc' } },
       },
     });
+    // Answers per question, so the editor can warn about what an edit would destroy BEFORE the
+    // save is attempted. One grouped query for every poll rather than one per poll.
+    const counts = await p.pollAnswer.groupBy({ by: ['questionId'], _count: true });
+    const answersBy = Object.fromEntries(counts.map((c) => [c.questionId, c._count]));
     return {
       polls: polls.map((poll) => ({
         ...publicPoll(poll, { showResults: true }),
         author: poll.createdBy?.displayName || null,
+        questions: viewQuestions(poll).map((q) => ({ ...q, answers: answersBy[q.id] || 0 })),
       })),
     };
   });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BarChart3, Plus, Trash2, PenSquare, Users, Globe, Pin, Eye } from 'lucide-react';
+import { BarChart3, Plus, Trash2, PenSquare, Users, Globe, Pin, Eye, ListTree, ArrowUp, ArrowDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Textarea, Select, Badge, Modal, Field, EmptyState, Spinner, useToast, useDialog } from '../ui/ui.jsx';
@@ -127,6 +127,151 @@ function PollEditor({ open, initial, onClose, onSaved }) {
   );
 }
 
+const KINDS = ['choice', 'text', 'scale', 'number', 'date'];
+const newQuestion = () => ({ kind: 'choice', label: '', help: '', required: false, config: {}, showIf: null, choices: [{ label: '' }, { label: '' }] });
+
+/**
+ * The multi-question editor.
+ *
+ * Separate from PollEditor because that one edits the shape every existing poll still uses and
+ * it works — the API took the same additive route, and breaking the screen that people use to
+ * serve one that nobody uses yet would be the wrong trade.
+ *
+ * The whole set is submitted at once. Order is the array's order: the server ignores any `sort`
+ * sent, because two questions both claiming 3 is a state this UI could produce and the reader
+ * could not resolve.
+ */
+function QuestionsEditor({ poll, onClose, onSaved }) {
+  const { t } = useI18n(); const toast = useToast();
+  const [qs, setQs] = useState(() => (poll.questions || []).map((q) => ({
+    id: q.id, kind: q.kind, label: q.label, help: q.help || '', required: !!q.required,
+    config: q.config || {}, showIf: q.showIf || null,
+    choices: (q.choices || []).map((c) => ({ id: c.id, label: c.label })),
+    answers: q.answers || 0,
+  })));
+  const [saving, setSaving] = useState(false);
+  // What the server said an edit would destroy. Held rather than thrown away, because the
+  // second attempt has to be the user CONFIRMING this exact list — not a blind retry.
+  const [conflict, setConflict] = useState(null);
+
+  const patch = (i, k, v) => setQs((x) => x.map((q, j) => (j === i ? { ...q, [k]: v } : q)));
+  const move = (i, d) => setQs((x) => {
+    const j = i + d; if (j < 0 || j >= x.length) return x;
+    const c = [...x]; [c[i], c[j]] = [c[j], c[i]]; return c;
+  });
+
+  const save = async (force) => {
+    const body = {
+      force: !!force,
+      questions: qs.map((q) => ({
+        ...(q.id ? { id: q.id } : {}), kind: q.kind, label: q.label.trim(), help: q.help,
+        required: q.required, config: q.config, showIf: q.showIf,
+        choices: q.kind === 'choice' ? q.choices.filter((c) => c.label.trim()).map((c) => ({ ...(c.id ? { id: c.id } : {}), label: c.label.trim() })) : [],
+      })),
+    };
+    if (body.questions.some((q) => !q.label)) return toast.error(t('apq.needlabel', 'Every question needs a label.'));
+    if (body.questions.some((q) => q.kind === 'choice' && q.choices.length < 2)) {
+      return toast.error(t('apq.need2', 'A choice question needs at least two choices.'));
+    }
+    setSaving(true);
+    try {
+      await api.put(`/admin/polls/${poll.id}/questions`, body);
+      toast.success(t('common.saved', 'Saved.'));
+      onSaved?.(); onClose();
+    } catch (x) {
+      // 409 is not a failure to report and forget — it is the server refusing to delete answers
+      // without being told to. Show WHICH questions and how many, then offer to go ahead.
+      if (x?.status === 409 && x?.data?.error === 'would_lose_answers') setConflict(x.data);
+      else if (x?.data?.error === 'unknown_question') toast.error(t('apq.unknown', 'A question in this form does not belong to this poll. Reload and try again.'));
+      else toast.error(t('common.failed', 'Failed.'));
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={t('apq.title', 'Questions')} size="lg">
+      <div className="space-y-3">
+        <p className="text-xs text-[var(--muted)]">
+          {t('apq.hint', 'A poll with one question behaves exactly as before. Add more to turn it into a form.')}
+        </p>
+
+        {conflict && (
+          <div className="rounded-lg border border-[var(--danger)] p-3 space-y-2">
+            <div className="text-sm font-medium">
+              {t('apq.lose.t', 'This removes {n} answer(s).').replace('{n}', String(conflict.answersLost))}
+            </div>
+            <ul className="text-xs text-[var(--muted)] space-y-0.5">
+              {(conflict.questions || []).map((c) => (
+                <li key={c.id}>· {qs.find((q) => q.id === c.id)?.label || c.id} — {t('apq.lose.n', '{n} answer(s)').replace('{n}', String(c.answers))}</li>
+              ))}
+            </ul>
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setConflict(null)}>{t('common.cancel', 'Cancel')}</Button>
+              <Button size="sm" variant="danger" disabled={saving} onClick={() => { setConflict(null); save(true); }}>
+                {t('apq.lose.ok', 'Delete them and save')}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {qs.map((q, i) => (
+          <Card key={q.id || `new-${i}`} className="p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--muted)] w-5">{i + 1}</span>
+              <Input value={q.label} onChange={(e) => patch(i, 'label', e.target.value)} placeholder={t('apq.label', 'Question')} />
+              <Select value={q.kind} onChange={(e) => patch(i, 'kind', e.target.value)} style={{ maxWidth: 130 }}>
+                {KINDS.map((k) => <option key={k} value={k}>{t(`apq.kind.${k}`, k)}</option>)}
+              </Select>
+              <Button variant="ghost" onClick={() => move(i, -1)} disabled={i === 0}><ArrowUp size={14} /></Button>
+              <Button variant="ghost" onClick={() => move(i, 1)} disabled={i === qs.length - 1}><ArrowDown size={14} /></Button>
+              <Button variant="ghost" onClick={() => setQs((x) => x.filter((_, j) => j !== i))}><Trash2 size={14} /></Button>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <label className="flex items-center gap-1.5">
+                <input type="checkbox" checked={q.required} onChange={(e) => patch(i, 'required', e.target.checked)} />
+                {t('apq.required', 'Required')}
+              </label>
+              {/* Named, not just counted: knowing a question already holds 12 answers is what
+                  makes changing its type a decision rather than a click. */}
+              {q.answers > 0 && (
+                <span className="text-[var(--muted)]">{t('apq.has', '{n} answer(s) already').replace('{n}', String(q.answers))}</span>
+              )}
+            </div>
+            {q.kind === 'choice' && (
+              <div className="space-y-1.5 pl-7">
+                {q.choices.map((c, ci) => (
+                  <div key={c.id || `c-${ci}`} className="flex gap-2">
+                    <Input value={c.label} placeholder={`${t('apoll.option', 'Option')} ${ci + 1}`}
+                      onChange={(e) => patch(i, 'choices', q.choices.map((x, j) => (j === ci ? { ...x, label: e.target.value } : x)))} />
+                    {q.choices.length > 2 && (
+                      <Button variant="ghost" onClick={() => patch(i, 'choices', q.choices.filter((_, j) => j !== ci))}><Trash2 size={14} /></Button>
+                    )}
+                  </div>
+                ))}
+                {q.choices.length < 20 && (
+                  <Button size="sm" variant="ghost" onClick={() => patch(i, 'choices', [...q.choices, { label: '' }])}>
+                    <Plus size={13} /> {t('apoll.addopt', 'Add an option')}
+                  </Button>
+                )}
+              </div>
+            )}
+          </Card>
+        ))}
+
+        <Button size="sm" variant="ghost" onClick={() => setQs((x) => [...x, newQuestion()])}>
+          <Plus size={13} /> {t('apq.add', 'Add a question')}
+        </Button>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
+          <Button variant="primary" disabled={saving} onClick={() => save(false)}>
+            {saving ? <Spinner size={14} /> : t('common.save', 'Save')}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function PollStats({ pollId, onClose }) {
   const { t } = useI18n();
   const { data, loading } = useAsync(() => api.get(`/admin/polls/${pollId}/stats`), [pollId]);
@@ -184,6 +329,7 @@ export function AdminPolls() {
   const { data, loading, reload } = useAsync(() => api.get('/admin/polls'), []);
   const [editor, setEditor] = useState(null); // null | {} | poll
   const [stats, setStats] = useState(null);
+  const [questions, setQuestions] = useState(null);
 
   if (loading) return <Loading />;
   const polls = data?.polls || [];
@@ -234,6 +380,7 @@ export function AdminPolls() {
                   </div>
                 </div>
                 <Button size="sm" variant="ghost" onClick={() => setStats(poll.id)} title={t('apoll.stats', 'Results')}><Eye size={14} /></Button>
+                <Button size="sm" variant="ghost" onClick={() => setQuestions(poll)} title={t('apq.title', 'Questions')}><ListTree size={14} /></Button>
                 <Button size="sm" variant="ghost" onClick={() => setEditor(toEditor(poll))} title={t('common.edit', 'Edit')}><PenSquare size={14} /></Button>
                 <Button size="sm" variant="ghost" onClick={() => remove(poll)} title={t('common.delete', 'Delete')}><Trash2 size={14} className="text-[var(--error)]" /></Button>
               </div>
@@ -244,6 +391,7 @@ export function AdminPolls() {
 
       {editor && <PollEditor open initial={editor.id ? editor : null} onClose={() => setEditor(null)} onSaved={reload} />}
       {stats && <PollStats pollId={stats} onClose={() => setStats(null)} />}
+      {questions && <QuestionsEditor poll={questions} onClose={() => setQuestions(null)} onSaved={reload} />}
     </div>
   );
 }
