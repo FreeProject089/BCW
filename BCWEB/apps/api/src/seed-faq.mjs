@@ -39,8 +39,8 @@ const FAQ = [
     categoryFr: 'Utiliser BMM',
     question: 'I disabled a mod but it\'s still active in-game — why?',
     questionFr: 'J’ai désactivé un mod mais il est toujours actif en jeu — pourquoi ?',
-    answer: 'Almost always two profiles pointing at the **same game folder**. Both deploy into the same place and neither knows what the other left behind, so files survive a profile switch. BMM warns about this when you set it up — it calls it "a major source of human error". Give each profile its own folder.',
-    answerFr: 'Presque toujours deux profils qui pointent vers le **même dossier de jeu**. Les deux se déploient au même endroit et aucun ne sait ce que l\'autre a laissé, donc des fichiers survivent au changement de profil. BMM prévient à la configuration — il parle d\'« une source majeure d\'erreur humaine ». Donne à chaque profil son propre dossier.',
+    answer: 'Almost always two profiles pointing at the **same game folder**. Both deploy into the same place and neither knows what the other left behind, so files survive a profile switch. BMM warns about this when you set it up — it calls it "a major source of human error". \n\n:::warning[Give each profile its own folder]\nTwo profiles sharing one game folder is the single most common cause of this. Point them at separate folders and it cannot happen.\n:::',
+    answerFr: 'Presque toujours deux profils qui pointent vers le **même dossier de jeu**. Les deux se déploient au même endroit et aucun ne sait ce que l\'autre a laissé, donc des fichiers survivent au changement de profil. BMM prévient à la configuration — il parle d\'« une source majeure d\'erreur humaine ». \n\n:::warning[Donne à chaque profil son propre dossier]\nDeux profils qui partagent un dossier de jeu sont de loin la première cause. Sépare les dossiers et le problème ne peut plus se produire.\n:::',
   },
   {
     category: 'Using BMM', order: 120,
