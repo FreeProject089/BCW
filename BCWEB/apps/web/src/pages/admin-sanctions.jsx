@@ -366,7 +366,90 @@ export function AdminSanctions() {
       {data?.total > list.length && (
         <p className="text-[11px] text-[var(--faint)] mt-2">{t('sanc.more', 'Showing {n} of {t} — narrow the search to see the rest.').replace('{n}', String(list.length)).replace('{t}', String(data.total))}</p>
       )}
+
+      <ClosureSurveys />
     </div>
+  );
+}
+
+/**
+ * Why people left.
+ *
+ * The closure page asks a departing account for a reason, the answer has been stored since
+ * that page shipped, and `/admin/closure-surveys` has served it the whole time to nobody: no
+ * screen called it. So the site has been asking people a question on their way out and filing
+ * the answers where no one could read them.
+ *
+ * Here rather than in its own tab because a closure IS a sanction kind on this screen — the
+ * decisions are above, and this is what came back from them.
+ */
+function ClosureSurveys() {
+  const { t } = useI18n();
+  const [days, setDays] = useState(90);
+  const [open, setOpen] = useState(false);
+  const { data, loading } = useAsync(() => (open ? api.get(`/admin/closure-surveys?days=${days}`) : Promise.resolve(null)), [open, days]);
+
+  // The reason codes come back as `outcome:reason` counts. Sorted by weight — the point of the
+  // question is which answer comes up most.
+  // Labelled with the closure page's own `acl.reason.*` keys, so staff read exactly the wording
+  // the person was offered rather than a second, drifting set of names for the same answers.
+  const reasons = Object.entries(data?.byReason || {})
+    .map(([k, n]) => { const [outcome, reason] = k.split(':'); return { outcome, reason, n }; })
+    .sort((x, y) => y.n - x.n);
+
+  return (
+    <Card className="p-4 mt-8">
+      <button className="w-full flex items-center gap-2 text-left" onClick={() => setOpen((o) => !o)}>
+        <FileText size={15} className="text-[var(--primary-2)]" />
+        <span className="font-semibold text-sm">{t('cls.title', 'Why people left')}</span>
+        <span className="text-[11px] text-[var(--faint)] ml-auto">{open ? t('common.hide', 'Hide') : t('common.show', 'Show')}</span>
+      </button>
+      {!open ? (
+        <p className="text-[11px] text-[var(--muted)] mt-1.5">
+          {t('cls.sub', 'The reason given when an account is closed — and when a closure is called off. Asked on the closure page; this is where the answers are read.')}
+        </p>
+      ) : loading && !data ? <Loading /> : (
+        <div className="mt-3">
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <Select className="w-auto" value={String(days)} onChange={(e) => setDays(Number(e.target.value))}>
+              <option value="30">{t('cls.d30', 'Last 30 days')}</option>
+              <option value="90">{t('cls.d90', 'Last 90 days')}</option>
+              <option value="365">{t('cls.d365', 'Last year')}</option>
+            </Select>
+            <span className="text-[12px] text-[var(--muted)]">
+              {t('cls.counts', '{t} answers · {c} closed · {k} called off')
+                .replace('{t}', String(data?.total ?? 0)).replace('{c}', String(data?.closed ?? 0)).replace('{k}', String(data?.cancelled ?? 0))}
+            </span>
+          </div>
+
+          {!data?.total ? (
+            <p className="text-[12px] text-[var(--muted)]">{t('cls.none', 'Nobody has answered in this window.')}</p>
+          ) : (<>
+            <div className="space-y-1.5 mb-4">
+              {reasons.map((r) => (
+                <div key={`${r.outcome}:${r.reason}`} className="flex items-center gap-2 text-[12px]">
+                  <Badge tone={r.outcome === 'cancelled' ? 'green' : 'red'}>{t(`cls.o.${r.outcome}`, r.outcome)}</Badge>
+                  <span className="flex-1 min-w-0 truncate">{t(`acl.reason.${r.reason}`, r.reason)}</span>
+                  {/* Share of the window, so one answer out of three does not read like a trend. */}
+                  <span className="h-1.5 rounded bg-[var(--primary)]" style={{ width: `${Math.round((r.n / data.total) * 120)}px` }} />
+                  <span className="tabular-nums text-[var(--muted)] w-8 text-right">{r.n}</span>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2">
+              {(data.recent || []).filter((r) => r.comment).slice(0, 25).map((r, i) => (
+                <div key={i} className="text-[12px] border-l-2 border-[var(--line)] pl-2.5">
+                  <div className="text-[var(--faint)] text-[11px]">
+                    {new Date(r.createdAt).toLocaleDateString()} · {t(`cls.o.${r.outcome}`, r.outcome)} · {t(`acl.reason.${r.reason}`, r.reason || '—')}
+                  </div>
+                  <div className="text-[var(--muted)] whitespace-pre-wrap break-words">{r.comment}</div>
+                </div>
+              ))}
+            </div>
+          </>)}
+        </div>
+      )}
+    </Card>
   );
 }
 
