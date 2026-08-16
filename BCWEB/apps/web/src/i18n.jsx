@@ -271,6 +271,8 @@ const DICT = {
     'apq.note.body': 'Texte (markdown)',
     'apq.note.hint': 'Rendu avec le markdown du site — liens, listes et emphase fonctionnent. Le titre au-dessus est facultatif.',
     'apq.kind.note': 'Bloc de texte',
+    'set.forceconfirm': 'Toujours demander, même avec Shift enfoncé',
+    'set.forceconfirm.d': 'Maintenir Shift en cliquant répond normalement à une confirmation sans l’afficher — vider une file, c’est une décision, pas quarante. Activez ceci pour rendre chaque confirmation insautable, ce qu’on veut sur une machine partagée ou supervisée. Ça ne s’applique jamais aux invites qui demandent de saisir quelque chose.',
     'gdpr.erase.deleted': 'Supprimé — le compte n’existe plus, ainsi que {d} ligne(s).',
     'gdpr.erase.kept': 'Effacé et anonymisé. La ligne elle-même a dû rester : elle est encore référencée par {w}.',
     'gdpr.erase.records': 'des enregistrements qui ne peuvent pas être supprimés',

@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef, us
 import { createPortal } from 'react-dom';
 import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown, Undo2, Star, MoreHorizontal } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
-import { getUndoDisabled } from '../lib/prefs.js';
+import { getUndoDisabled, getForceConfirm } from '../lib/prefs.js';
 
 // Robust clipboard copy — navigator.clipboard is unavailable on non-HTTPS origins and
 // inside some embedded webviews, so fall back to a hidden <textarea> + execCommand.
@@ -353,6 +353,24 @@ export function Modal({ open, onClose, title, icon: Icon, children, footer, widt
 const DialogCtx = createContext(null);
 export const useDialog = () => useContext(DialogCtx);
 
+/**
+ * Is Shift held RIGHT NOW?
+ *
+ * Tracked globally rather than read off the click event, because `dialog.confirm()` is called
+ * from handlers that never see one — a row action three components down, a keyboard shortcut,
+ * a callback. Threading the event through every call site would mean touching all of them and
+ * missing one.
+ *
+ * Cleared on blur: alt-tabbing away with Shift down never delivers the keyup, and a browser
+ * that thinks Shift is still held would silently skip the next confirmation somebody meant.
+ */
+let _shift = false;
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (e) => { if (e.key === 'Shift') _shift = true; }, true);
+  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') _shift = false; }, true);
+  window.addEventListener('blur', () => { _shift = false; });
+}
+
 export function DialogProvider({ children }) {
   const [state, setState] = useState(null); // { kind, opts, resolve }
   const [value, setValue] = useState('');
@@ -362,7 +380,12 @@ export function DialogProvider({ children }) {
 
   const api = {
     prompt: (opts) => new Promise((resolve) => { setValue(opts.defaultValue || ''); setReveal(false); setState({ kind: 'prompt', opts, resolve }); }),
-    confirm: (opts) => new Promise((resolve) => setState({ kind: 'confirm', opts, resolve })),
+    confirm: (opts) => new Promise((resolve) => {
+      // Shift answers it. Not for a prompt — that collects something typed, and a modifier
+      // key has nothing to supply — and not when the force setting is on.
+      if (_shift && !getForceConfirm()) { resolve(true); return; }
+      setState({ kind: 'confirm', opts, resolve });
+    }),
     alert: (opts) => new Promise((resolve) => setState({ kind: 'alert', opts, resolve })),
   };
   useEffect(() => { if (state?.kind === 'prompt') setTimeout(() => inputRef.current?.focus(), 50); }, [state]);
@@ -381,6 +404,13 @@ export function DialogProvider({ children }) {
             onClick={() => close(state?.kind === 'prompt' ? (value || '') : true)}>{o.okLabel || 'OK'}</Button>
         </>}>
         {o.message && <p className="text-sm text-[var(--muted)] leading-relaxed">{o.message}</p>}
+        {/* Said HERE, in the thing it skips. A shortcut nobody is told about is not a
+            shortcut, it is a surprise the first time somebody leans on Shift. */}
+        {state?.kind === 'confirm' && !getForceConfirm() && (
+          <p className="text-[11px] text-[var(--faint)] mt-3">
+            Hold <kbd className="px-1 py-0.5 rounded border border-[var(--line)] font-mono">Shift</kbd> while clicking to skip this next time.
+          </p>
+        )}
         {state?.kind === 'prompt' && <div className={o.message ? 'mt-3' : ''}>
           {o.label && <div className="text-xs font-medium text-[var(--muted)] mb-1.5">{o.label}</div>}
           {o.type === 'password' ? (

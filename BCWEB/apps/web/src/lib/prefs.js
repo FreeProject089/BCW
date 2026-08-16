@@ -72,3 +72,23 @@ export function setGlassPrefs({ on, pct }) {
   } catch { /* ignore */ }
   applyGlassPrefs({ on, pct: pct ?? getGlassPrefs().pct });
 }
+
+// ── Shift to skip a confirmation ─────────────────────────────────────────────
+//
+// Holding Shift while clicking answers the confirm dialog "yes" without showing it. For
+// somebody clearing a moderation queue, confirming forty times is not forty decisions — it is
+// one decision and thirty-nine reflexes, and a dialog answered by reflex protects nobody.
+//
+// Only `confirm`. A `prompt` collects something that has to be typed — the account's own
+// address before an erasure — and there is nothing for a modifier key to supply.
+//
+// This setting turns the shortcut OFF: on a shared or supervised machine, "are you sure"
+// should be unskippable. Default is that the shortcut works, because it is opt-out friction
+// rather than opt-in danger.
+export const FORCE_CONFIRM_KEY = 'bcw_force_confirm';
+export function getForceConfirm() {
+  try { return localStorage.getItem(FORCE_CONFIRM_KEY) === '1'; } catch { return false; }
+}
+export function setForceConfirm(on) {
+  try { localStorage.setItem(FORCE_CONFIRM_KEY, on ? '1' : '0'); } catch { /* ignore */ }
+}
