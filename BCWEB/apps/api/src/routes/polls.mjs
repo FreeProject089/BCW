@@ -13,7 +13,7 @@ import { db, requireRole, requireCap, optionalAuth, logAudit } from '../lib/lib.
 import { clientIp } from '../lib/geo.mjs';
 import { pollStats, questionStats, completion } from '../lib/poll-stats.mjs';
 import { planQuestionUpdate } from '../lib/poll-edit.mjs';
-import { validateAnswer, maxAnswers } from '../lib/poll-answer.mjs';
+import { validateAnswer, maxAnswers, validateRanking } from '../lib/poll-answer.mjs';
 
 /** Per-poll device fingerprint for anonymous voters.
  *
@@ -238,11 +238,24 @@ export default async function pollRoutes(app) {
 
     for (const q of poll.questions) {
       const sent = b.data.answers.find((a) => a.questionId === q.id);
+      const choiceIds = (q.choices || []).map((c) => c.id);
+
+      // Ranking is validated as a LIST, not item by item: a duplicate, a stranger and a short
+      // list are all properties of the whole submission and invisible from one entry.
+      if (q.kind === 'ranking') {
+        const order = Array.isArray(sent?.values) ? sent.values : [];
+        const rk = validateRanking(order, choiceIds, { required: q.required });
+        if (!rk.ok) return reply.code(400).send({ error: rk.error, questionId: q.id, ...(rk.expected ? { expected: rk.expected, got: rk.got } : {}) });
+        for (const row of rk.rows) {
+          rows.push({ pollId: poll.id, questionId: q.id, userId, voterKey, wasLoggedIn: !!userId, ...row });
+        }
+        continue;
+      }
+
       const raws = sent ? (Array.isArray(sent.values) ? sent.values : [sent.value]) : [undefined];
       const cap = maxAnswers(q);
       if (raws.length > cap) return reply.code(400).send({ error: 'too_many', questionId: q.id, max: cap });
 
-      const choiceIds = (q.choices || []).map((c) => c.id);
       for (const raw of raws) {
         const v = validateAnswer(q, raw, choiceIds);
         // The question is named in the error. "invalid_input" on a ten-question form tells the

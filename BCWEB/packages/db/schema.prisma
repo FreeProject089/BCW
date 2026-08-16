@@ -2632,7 +2632,17 @@ model PollChoice {
 // "average rating" over Json cannot use an index — and the statistics are the reason this
 // feature exists.
 //
-// Exactly one value column is non-null per row.
+// Exactly one value column is non-null per row — with `choiceId` playing two roles depending
+// on the question's kind, which is worth stating rather than discovering:
+//
+//   choice   choiceId IS the value. Nothing else is set.
+//   ranking  choiceId says WHICH item, `number` says what rank it was given. Both, on purpose:
+//            the answer is a pairing, and splitting it across two rows would make "rank 2" a
+//            fact with nothing attached to it.
+//
+// Everything else sets exactly one of text / number / date and leaves choiceId null. Refining
+// the rule this way keeps the aggregates indexable, which is the whole reason the columns are
+// typed at all.
 model PollAnswer {
   id          String        @id @default(cuid())
   poll        Poll          @relation(fields: [pollId], references: [id], onDelete: Cascade)

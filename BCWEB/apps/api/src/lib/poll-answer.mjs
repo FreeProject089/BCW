@@ -15,7 +15,44 @@ export const COLUMN_FOR_KIND = {
     scale: 'number',
     number: 'number',
     date: 'date',
+    // ranking sets choiceId AND number — see the note on PollAnswer in schema.prisma. It is
+    // listed here so an unknown-kind check does not reject it, and handled by validateRanking
+    // rather than validateAnswer, because its errors are properties of the whole list.
+    ranking: 'number',
 };
+
+/**
+ * A ranking submission: the choice ids in the order the person put them.
+ *
+ * Validated as a WHOLE rather than one answer at a time, because the errors are properties of
+ * the list — a duplicate, a stranger, a short list — and none of them is visible from a single
+ * item. Returns rows ready for PollAnswer: choiceId says which, number says what rank.
+ *
+ * Rank starts at 1. Zero-based ranks read as "0th place" on every screen that shows them, and
+ * somebody would eventually add 1 in one place and forget in another.
+ */
+export function validateRanking(order, choiceIds, { required = false } = {}) {
+    if (!Array.isArray(order) || !order.length) {
+        return required ? { ok: false, error: 'required' } : { ok: true, rows: [] };
+    }
+    const seen = new Set();
+    for (const raw of order) {
+        const id = String(raw);
+        // A duplicate would give one item two ranks and silently shift everything below it.
+        if (seen.has(id)) return { ok: false, error: 'duplicate_choice', choiceId: id };
+        // Membership of THIS question, same reason as validateAnswer: an id from another
+        // question is a real row and would file a rank under something nobody ranked.
+        if (!choiceIds.includes(id)) return { ok: false, error: 'unknown_choice', choiceId: id };
+        seen.add(id);
+    }
+    // A partial ranking is refused. "Rank these five" answered with two is not a ranking of
+    // five, and averaging ranks across submissions that ranked different subsets compares
+    // numbers that do not mean the same thing.
+    if (seen.size !== choiceIds.length) {
+        return { ok: false, error: 'incomplete_ranking', expected: choiceIds.length, got: seen.size };
+    }
+    return { ok: true, rows: order.map((id, i) => ({ choiceId: String(id), number: i + 1 })) };
+}
 
 /**
  * How a `scale` is drawn. Presentation only — never a kind of its own.
@@ -49,6 +86,12 @@ export function validateAnswer(question, raw, choiceIds = []) {
     if (isBlank(raw)) {
         return question?.required ? { ok: false, error: 'required' } : { ok: true, value: null, column };
     }
+
+    // Ranking never comes through here. Its column resolves, so it passes the unknown-kind
+    // check above and would fall all the way to the date branch at the bottom and be parsed as
+    // a date — a whole answer type quietly mangled by the default case. It is validated as a
+    // list by validateRanking, and reaching this point with one is a caller bug worth naming.
+    if (kind === 'ranking') return { ok: false, error: 'use_validate_ranking' };
 
     if (kind === 'choice') {
         const id = String(raw);

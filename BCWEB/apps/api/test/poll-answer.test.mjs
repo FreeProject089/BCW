@@ -6,7 +6,7 @@
 // under a question nobody answered, with nothing in any log to say so.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateAnswer, maxAnswers, COLUMN_FOR_KIND, scaleStyle } from '../src/lib/poll-answer.mjs';
+import { validateAnswer, maxAnswers, COLUMN_FOR_KIND, scaleStyle, validateRanking } from '../src/lib/poll-answer.mjs';
 
 const q = (over = {}) => ({ kind: 'choice', required: false, config: {}, ...over });
 
@@ -98,10 +98,14 @@ describe('kinds', () => {
         assert.deepEqual(validateAnswer(q({ kind: 'wat' }), 'x'), { ok: false, error: 'unknown_kind' });
     });
 
-    test('every kind maps to exactly one column', () => {
+    test('every kind maps to exactly one column, and ranking is the stated exception', () => {
         const cols = Object.values(COLUMN_FOR_KIND);
-        assert.equal(cols.length, 5);
-        assert.equal(new Set(cols).size, 4, 'scale and number share the number column, the rest are distinct');
+        assert.equal(cols.length, 6, 'choice, text, scale, number, date, ranking');
+        assert.equal(new Set(cols).size, 4, 'scale, number and ranking share the number column');
+        // Ranking writes choiceId AND number — the one row shape that carries both, documented
+        // on PollAnswer in schema.prisma. Asserted here so the exception stays deliberate: if
+        // somebody later "tidies" it into a single column, this line is what argues back.
+        assert.equal(COLUMN_FOR_KIND.ranking, 'number');
     });
 });
 
@@ -151,5 +155,49 @@ describe('scaleStyle — presentation, not a kind', () => {
         // are the same answer in the same column, so the aggregate stays one aggregate.
         assert.equal(COLUMN_FOR_KIND.scale, 'number');
         assert.equal(validateAnswer({ kind: 'scale', config: { style: 'stars', min: 1, max: 5 } }, 4).column, 'number');
+    });
+});
+
+describe('validateRanking', () => {
+    const ids = ['a', 'b', 'c'];
+
+    test('a full ordering becomes rows numbered from 1', () => {
+        // From 1, not 0. A zero-based rank reads as "0th place" on every screen that shows it,
+        // and somebody eventually adds 1 in one place and forgets in another.
+        const r = validateRanking(['c', 'a', 'b'], ids);
+        assert.deepEqual(r.rows, [
+            { choiceId: 'c', number: 1 }, { choiceId: 'a', number: 2 }, { choiceId: 'b', number: 3 },
+        ]);
+    });
+
+    test('a duplicate is refused', () => {
+        // It would give one item two ranks and silently shift everything below it.
+        assert.deepEqual(validateRanking(['a', 'a', 'b'], ids), { ok: false, error: 'duplicate_choice', choiceId: 'a' });
+    });
+
+    test('an id from another question is refused', () => {
+        assert.equal(validateRanking(['a', 'b', 'zz'], ids).error, 'unknown_choice');
+    });
+
+    test('a partial ranking is refused, and says by how much', () => {
+        // Averaging ranks across submissions that ranked different subsets compares numbers
+        // that do not mean the same thing.
+        const r = validateRanking(['a', 'b'], ids);
+        assert.equal(r.error, 'incomplete_ranking');
+        assert.equal(r.expected, 3);
+        assert.equal(r.got, 2);
+    });
+
+    test('empty is allowed when optional, refused when required', () => {
+        assert.deepEqual(validateRanking([], ids), { ok: true, rows: [] });
+        assert.equal(validateRanking([], ids, { required: true }).error, 'required');
+        assert.equal(validateRanking(null, ids, { required: true }).error, 'required');
+    });
+
+    test('validateAnswer refuses a ranking instead of parsing it as a date', () => {
+        // THE ONE. `ranking` resolves a column, so it passed the unknown-kind check and fell
+        // through every branch to the date parser at the bottom — a whole answer type mangled
+        // by the default case, silently.
+        assert.deepEqual(validateAnswer({ kind: 'ranking' }, 'a'), { ok: false, error: 'use_validate_ranking' });
     });
 });
