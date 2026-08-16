@@ -6,7 +6,7 @@
 // under a question nobody answered, with nothing in any log to say so.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateAnswer, maxAnswers, COLUMN_FOR_KIND } from '../src/lib/poll-answer.mjs';
+import { validateAnswer, maxAnswers, COLUMN_FOR_KIND, scaleStyle } from '../src/lib/poll-answer.mjs';
 
 const q = (over = {}) => ({ kind: 'choice', required: false, config: {}, ...over });
 
@@ -123,5 +123,33 @@ describe('maxAnswers', () => {
 
     test('multiple with a cap returns the cap', () => {
         assert.equal(maxAnswers(q({ config: { multiple: true, maxChoices: 2 } })), 2);
+    });
+});
+
+describe('scaleStyle — presentation, not a kind', () => {
+    test('a declared style is used', () => {
+        assert.equal(scaleStyle({ config: { style: 'stars' } }), 'stars');
+        assert.equal(scaleStyle({ config: { style: 'buttons' } }), 'buttons');
+    });
+
+    test('anything unknown falls back to the plain number input', () => {
+        // A renderer switching on this must always have a branch to take. An unknown style
+        // that returned itself would draw nothing and the question would look broken rather
+        // than plain.
+        for (const bad of ['emoji', '', null, undefined, 42, {}]) {
+            assert.equal(scaleStyle({ config: { style: bad } }), 'number', String(bad));
+        }
+    });
+
+    test('a question with no config at all is safe', () => {
+        assert.equal(scaleStyle({}), 'number');
+        assert.equal(scaleStyle(null), 'number');
+    });
+
+    test('style does NOT change where the answer is stored', () => {
+        // The whole reason this is config and not a kind: a starred scale and a numeric one
+        // are the same answer in the same column, so the aggregate stays one aggregate.
+        assert.equal(COLUMN_FOR_KIND.scale, 'number');
+        assert.equal(validateAnswer({ kind: 'scale', config: { style: 'stars', min: 1, max: 5 } }, 4).column, 'number');
     });
 });

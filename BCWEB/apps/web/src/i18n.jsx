@@ -209,6 +209,13 @@ const DICT = {
     'common.loading': 'Loading…',
   },
   fr: {
+    'apq.scale.range': 'De',
+    'apq.scale.to': 'à',
+    'apq.scale.number': 'Champ numérique',
+    'apq.scale.stars': 'Étoiles',
+    'apq.scale.buttons': 'Boutons',
+    'poll.f.clear': 'Effacer',
+
     'dvt.grp.general': 'API et clés',
     'dvt.grp.bmm': 'BMM',
 

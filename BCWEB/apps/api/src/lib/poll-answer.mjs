@@ -17,6 +17,18 @@ export const COLUMN_FOR_KIND = {
     date: 'date',
 };
 
+/**
+ * How a `scale` is drawn. Presentation only — never a kind of its own.
+ *
+ * "Five stars" and "rate it 1 to 5" are the same question with the same answer in the same
+ * column; making stars a KIND would fork the validation, the aggregate and the storage rule for
+ * a choice of glyph, and the two copies would drift the way every other duplicated rule in this
+ * codebase has. So it rides in `config.style`, and anything unknown falls back to the plain
+ * number input rather than rendering nothing.
+ */
+export const SCALE_STYLES = ['number', 'stars', 'buttons'];
+export const scaleStyle = (q) => (SCALE_STYLES.includes(q?.config?.style) ? q.config.style : 'number');
+
 const isBlank = (v) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
 
 /**

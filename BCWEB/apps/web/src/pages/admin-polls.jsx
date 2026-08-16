@@ -236,6 +236,25 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
                 <span className="text-[var(--muted)]">{t('apq.has', '{n} answer(s) already').replace('{n}', String(q.answers))}</span>
               )}
             </div>
+            {/* A scale's bounds and how it is drawn. Without these the kind existed and could
+                only ever be a bare number box — the config was reachable by the API and by
+                nothing a human uses. */}
+            {q.kind === 'scale' && (
+              <div className="flex items-center gap-2 pl-7 text-xs">
+                <span className="text-[var(--muted)]">{t('apq.scale.range', 'From')}</span>
+                <Input type="number" style={{ maxWidth: 70 }} value={q.config?.min ?? 1}
+                  onChange={(e) => patch(i, 'config', { ...q.config, min: Number(e.target.value) })} />
+                <span className="text-[var(--muted)]">{t('apq.scale.to', 'to')}</span>
+                <Input type="number" style={{ maxWidth: 70 }} value={q.config?.max ?? 5}
+                  onChange={(e) => patch(i, 'config', { ...q.config, max: Number(e.target.value) })} />
+                <Select style={{ maxWidth: 130 }} value={q.config?.style || 'number'}
+                  onChange={(e) => patch(i, 'config', { ...q.config, style: e.target.value })}>
+                  <option value="number">{t('apq.scale.number', 'Number box')}</option>
+                  <option value="stars">{t('apq.scale.stars', 'Stars')}</option>
+                  <option value="buttons">{t('apq.scale.buttons', 'Buttons')}</option>
+                </Select>
+              </div>
+            )}
             {q.kind === 'choice' && (
               <div className="space-y-1.5 pl-7">
                 {q.choices.map((c, ci) => (

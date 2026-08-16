@@ -102,7 +102,41 @@ function PollForm({ poll, onDone }) {
             {q.kind === 'text' && (
               <Textarea rows={2} value={vals[q.id] || ''} onChange={(e) => set(q.id, e.target.value)} />
             )}
-            {(q.kind === 'scale' || q.kind === 'number') && (
+            {/* A scale can be drawn three ways. Same question, same answer, same column — only
+                the glyph changes, which is why this is a presentation switch and not a kind.
+                An unknown style falls through to the plain input rather than drawing nothing. */}
+            {q.kind === 'scale' && (q.config?.style === 'stars' || q.config?.style === 'buttons') && (() => {
+              const min = Number.isFinite(Number(q.config?.min)) ? Number(q.config.min) : 1;
+              const max = Number.isFinite(Number(q.config?.max)) ? Number(q.config.max) : 5;
+              // Guard the span: a mis-typed max of 500 would render five hundred buttons and
+              // freeze the page, and config comes from an editor a human types into.
+              const steps = Math.min(Math.max(max - min + 1, 2), 11);
+              const cur = Number(vals[q.id]);
+              return (
+                <div className="flex items-center gap-1.5 flex-wrap" role="radiogroup" aria-label={q.label}>
+                  {Array.from({ length: steps }, (_, i) => min + i).map((n) => {
+                    const on = q.config.style === 'stars' ? cur >= n : cur === n;
+                    return (
+                      <button key={n} type="button" role="radio" aria-checked={cur === n}
+                        onClick={() => set(q.id, n)}
+                        title={String(n)}
+                        className={q.config.style === 'stars'
+                          ? `text-xl leading-none transition-colors ${on ? 'text-[var(--primary)]' : 'text-[var(--faint)]'}`
+                          : `px-2.5 py-1 rounded-lg border text-[13px] transition-colors ${on ? 'border-[var(--primary-2)] bg-[var(--primary-2)]/10' : 'border-[var(--line)] hover:bg-[var(--surface-2)]/60'}`}>
+                        {q.config.style === 'stars' ? '★' : n}
+                      </button>
+                    );
+                  })}
+                  {cur ? (
+                    <button type="button" onClick={() => set(q.id, '')}
+                      className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] ml-1">
+                      {t('poll.f.clear', 'Clear')}
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })()}
+            {((q.kind === 'scale' && q.config?.style !== 'stars' && q.config?.style !== 'buttons') || q.kind === 'number') && (
               <Input type="number" value={vals[q.id] ?? ''} onChange={(e) => set(q.id, e.target.value)}
                 min={q.config?.min} max={q.config?.max} step={q.kind === 'scale' ? 1 : 'any'} style={{ maxWidth: 140 }} />
             )}
