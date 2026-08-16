@@ -66,7 +66,17 @@ function tokenFromReq(req) {
 export default async function telemetryRoutes(app) {
   app.get('/telemetry/authorize', async (req, reply) => {
     const site = process.env.SITE_URL || '';
-    const deny = () => reply.code(302).header('Location', `${site}/auth?next=telemetry`).header('Cache-Control', 'no-store').send();
+    // `next` is a real PATH back to this gate, not the token `telemetry` it used to be.
+    //
+    // The sign-in page honours next only when it starts with a slash — which is also its
+    // open-redirect guard — so a bare token failed that test and dropped the person on
+    // /profile. The SSO worked and looked broken.
+    //
+    // A path back here is the right target rather than the dashboard's own URL: the dashboard
+    // is on another HOST, and this route is what mints the cross-domain token. Sending the
+    // absolute URL instead would need the SPA to learn TELEMETRY_PUBLIC_URL and would hand the
+    // sign-in page an off-site destination to trust.
+    const deny = () => reply.code(302).header('Location', `${site}/auth?next=/api/telemetry/authorize`).header('Cache-Control', 'no-store').send();
 
     // Mint the telemetry-host session cookie bound to a user + their current logout
     // epoch. It rides EVERY telemetry request (HTML, /assets/*.js, the app's own /api)

@@ -128,7 +128,10 @@ export function Auth() {
     const next = params.get('next');
     // `/oauth2/*` is served by the API (OIDC authorize), not an SPA route — do a real
     // navigation so it hits the backend rather than the SPA's not-found.
-    if (next && next.startsWith('/oauth2/')) { window.location.href = next; return; }
+    // `/oauth2/*` and `/api/*` are served by the API, not by this SPA — a router navigation
+    // would land on the not-found page. Same origin either way, so the startsWith('/') guard
+    // below still covers the open-redirect case: nothing here can leave the site.
+    if (next && (next.startsWith('/oauth2/') || next.startsWith('/api/'))) { window.location.href = next; return; }
     nav(next && next.startsWith('/') ? next : '/profile', { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
