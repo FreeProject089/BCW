@@ -349,9 +349,18 @@ export async function recordOutages(p, deps, inGrace) {
     if (ok === null || ok === undefined) continue; // not configured — not an outage
     const open = await p.serviceOutage.findFirst({ where: { dep, endedAt: null }, orderBy: { startedAt: 'desc' } });
     if (ok === false) {
-      if (!open && !inGrace) await p.serviceOutage.create({ data: { dep, cause: `${DEP_LABELS[dep] || dep} is unreachable.` } });
+      if (!open && !inGrace) {
+        await p.serviceOutage.create({ data: { dep, cause: `${DEP_LABELS[dep] || dep} is unreachable.` } });
+        // Only on the TRANSITION — inside `!open`, so a service that stays down for an hour
+        // sends one message, not one every tick. Imported lazily to keep the notifier (and its
+        // mail dependencies) out of the hot sampling path when nobody subscribes.
+        const { notifyStatusChange } = await import('./status-notify.mjs');
+        await notifyStatusChange(p, dep, 'down').catch(() => {});
+      }
     } else if (open) {
       await p.serviceOutage.update({ where: { id: open.id }, data: { endedAt: new Date() } });
+      const { notifyStatusChange } = await import('./status-notify.mjs');
+      await notifyStatusChange(p, dep, 'up', open.startedAt).catch(() => {});
     }
   }
 }
