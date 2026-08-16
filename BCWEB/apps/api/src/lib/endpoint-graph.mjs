@@ -217,13 +217,38 @@ export function buildEndpointGraph(sources = {}, { bases = ['/api'], truncated =
 }
 
 /** Which files are worth reading for endpoints — more languages than the import graph. */
+/** Directories whose code is not the application: fixtures, tooling, samples, docs. */
+const SKIP_DIR = /(^|\/)(tests?|__tests__|e2e|fixtures?|mocks?|scratch|benchmarks?|bench|examples?|samples?|docs?)(\/|$)/i;
+
+/** Directories where an application keeps the code that declares its endpoints. */
+const SRC_DIR = /(^|\/)(src|app|apps|api|server|routes|handlers|controllers|commands|lib|pages|frontend|backend|src-tauri)(\/|$)/i;
+/** Tooling that lives beside the application and is not it. */
+const AUX_DIR = /(^|\/)(scripts?|tools?|build|infra|ci|config|migrations?)(\/|$)/i;
+
+/**
+ * Which files to read FIRST when the budget will not cover the repository.
+ *
+ * Depth alone was the old answer and it read the wrong repo: a project with a hundred
+ * maintenance scripts at depth 1 spent the entire budget there and never opened
+ * `src-tauri/src/` or `frontend/js/`, so the scan came back with one link and reported it
+ * as the truth about that codebase.
+ */
+function rank(p) {
+    if (SRC_DIR.test(p)) return 0;
+    if (AUX_DIR.test(p)) return 2;
+    return 1;
+}
+
 export function endpointPathsToFetch(paths = [], { limit = 400, maxDepth = 8 } = {}) {
     const WANT = new Set([...JS, 'rs', 'py', 'go']);
     return paths
         .filter((p) => WANT.has(EXT(p)))
         .filter((p) => !/(^|\/)(node_modules|vendor|dist|build|out|target|coverage|\.next|\.git)(\/|$)/.test(p))
         .filter((p) => !/\.(test|spec|min|d)\.[cm]?[jt]sx?$/.test(p))
+        // A whole test DIRECTORY, not just `x.test.ts`. A real repo declared 841 routes because
+        // its test suite spins up a server per case — none of which the application serves.
+        .filter((p) => !SKIP_DIR.test(p))
         .filter((p) => p.split('/').length - 1 <= maxDepth)
-        .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))
+        .sort((a, b) => rank(a) - rank(b) || a.split('/').length - b.split('/').length || a.localeCompare(b))
         .slice(0, limit);
 }

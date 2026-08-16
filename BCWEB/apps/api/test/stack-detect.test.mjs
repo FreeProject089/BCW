@@ -160,7 +160,27 @@ describe('detectStack', () => {
 
     test('it says when it found components but no wiring', () => {
         const r = detectStack({ 'apps/a/package.json': '{"name":"a"}' });
-        assert.ok(r.notes.some((n) => /no compose file/i.test(n)), r.notes.join(' | '));
+        assert.ok(r.notes.some((n) => /no connections were found/i.test(n)), r.notes.join(' | '));
+    });
+
+    test('and it does NOT say that when the calls supplied the wiring', () => {
+        // The note used to be decided on compose alone and printed above the connections it
+        // was denying: "listed without connections", with two of them drawn underneath.
+        const r = detectStack(
+            { 'web/package.json': '{"name":"web"}', 'srv/Cargo.toml': '[package]\nname = "srv"\n' },
+            { endpointLinks: [{ from: { file: 'web/a.js' }, to: { file: 'srv/b.rs' } }] },
+        );
+        assert.equal(r.edges.length, 1);
+        assert.ok(!r.notes.some((n) => /no connections were found/i.test(n)), r.notes.join(' | '));
+    });
+
+    test('a partly-read repository says its counts are a floor', () => {
+        const args = { endpointLinks: [{ from: { file: 'web/a.js' }, to: { file: 'srv/b.rs' } }], callsTruncated: true };
+        const files = { 'web/package.json': '{"name":"web"}', 'srv/Cargo.toml': '[package]\nname = "srv"\n' };
+        const r = detectStack(files, args);
+        assert.equal(r.edges[0].label, '1+ call', 'not "1 call" — we did not read the whole repo');
+        assert.ok(r.notes.some((n) => /minimum/i.test(n)), r.notes.join(' | '));
+        assert.equal(detectStack(files, { ...args, callsTruncated: false }).edges[0].label, '1 call');
     });
 
     test('a saved node carries no bookkeeping field', () => {
@@ -205,5 +225,56 @@ describe('image tidying', () => {
     test('the org survives, because it says something', () => {
         const r = detectStack({ 'docker-compose.yml': 'services:\n  db:\n    image: ghcr.io/immich-app/postgres:14\n' });
         assert.equal(r.nodes[0].tech, 'immich-app/postgres:14');
+    });
+});
+
+
+describe('connections derived from real calls', () => {
+    // The gap this closes: a Tauri app has no compose file, so the detector returned its two
+    // halves as unconnected boxes — and its own note said so. The `invoke` calls between them
+    // were provable all along and nothing used them.
+    const TAURI = {
+        'frontend/package.json': '{"name":"frontend","dependencies":{"react":"19"}}',
+        'src-tauri/Cargo.toml': '[package]\nname = "bmm"\n',
+    };
+    const LINKS = [
+        { kind: 'tauri', from: { file: 'frontend/src/a.ts' }, to: { file: 'src-tauri/src/cmd.rs' } },
+        { kind: 'tauri', from: { file: 'frontend/src/b.ts' }, to: { file: 'src-tauri/src/cmd.rs' } },
+    ];
+
+    test('two halves with no compose file are connected by their calls', () => {
+        const r = detectStack(TAURI, { endpointLinks: LINKS });
+        assert.equal(r.edges.length, 1);
+        assert.equal(r.edges[0].from, 'bmm', 'the Rust side is what the front end needs');
+        assert.equal(r.edges[0].to, 'frontend');
+        assert.equal(r.edges[0].label, '2 calls', 'and the count is the label — a bare arrow says only "related"');
+    });
+
+    test('it says the connection came from the source, not from compose', () => {
+        const r = detectStack(TAURI, { endpointLinks: LINKS });
+        assert.ok(r.notes.some((n) => /from calls found in the source/.test(n)), r.notes.join(' | '));
+    });
+
+    test('a call inside ONE component is not a connection', () => {
+        // Otherwise every box gets a self-loop.
+        const r = detectStack(TAURI, {
+            endpointLinks: [{ from: { file: 'frontend/src/a.ts' }, to: { file: 'frontend/src/b.ts' } }],
+        });
+        assert.deepEqual(r.edges, []);
+    });
+
+    test('the nested component wins over a root manifest', () => {
+        // `src-tauri/src/x.rs` belongs to src-tauri/Cargo.toml, never to a manifest at the root.
+        const r = detectStack({ ...TAURI, 'package.json': '{"name":"root"}' }, { endpointLinks: LINKS });
+        assert.ok(r.edges.some((e) => e.from === 'bmm' && e.to === 'frontend'));
+    });
+
+    test('a connection compose already stated is not drawn twice', () => {
+        const r = detectStack({
+            'docker-compose.yml': 'services:\n  web:\n    build: ./web\n  api:\n    build: ./api\n',
+            'web/package.json': '{"name":"web"}', 'api/package.json': '{"name":"api"}',
+        }, { endpointLinks: [{ from: { file: 'web/x.js' }, to: { file: 'api/y.js' } }] });
+        const pairs = r.edges.map((e) => `${e.from}|${e.to}`);
+        assert.equal(new Set(pairs).size, pairs.length, 'no duplicate connection');
     });
 });

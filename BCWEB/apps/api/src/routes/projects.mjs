@@ -265,7 +265,37 @@ export default async function projectRoutes(app) {
       return reply.code(400).send({ error: 'nothing_to_read' });
     }
 
-    const draft = detectStack(files);
+    // Connections the manifests cannot supply. A Tauri app has no compose file, so the draft
+    // used to come back as two unconnected boxes — while the `invoke` calls joining them were
+    // provable all along. Only for a GitHub read: a picked folder sends fifteen manifests and
+    // nothing to scan, and a zip is capped for size, so neither has the source to prove a call.
+    let endpointLinks = [];
+    let callsTruncated = false;
+    if (b.data.url) {
+      try {
+        const m2 = b.data.url.match(GH_REPO_RE);
+        const [, owner2, repo2, ref2] = m2;
+        const meta2 = ref2 ? { default_branch: ref2 } : await gh(`https://api.github.com/repos/${owner2}/${repo2}`);
+        const tree2 = await gh(`https://api.github.com/repos/${owner2}/${repo2}/git/trees/${meta2.default_branch}?recursive=1`);
+        const candidates = (tree2.tree || []).filter((e) => e.type === 'blob').map((e) => e.path);
+        const srcPaths = endpointPathsToFetch(candidates, { limit: 120 });
+        // A big repository does not fit in the budget, and the counts drawn on the connections
+        // would then be a fraction presented as a total.
+        callsTruncated = srcPaths.length >= 120 && endpointPathsToFetch(candidates, { limit: 100_000 }).length > srcPaths.length;
+        const srcFiles = {};
+        for (let i = 0; i < srcPaths.length; i += 12) {
+          await Promise.all(srcPaths.slice(i, i + 12).map(async (path) => {
+            try {
+              const res = await safeFetch(`https://raw.githubusercontent.com/${owner2}/${repo2}/${ref2 || 'HEAD'}/${path}`, { headers: { 'User-Agent': 'bcweb' } });
+              if (res.ok) srcFiles[path] = (await res.text()).slice(0, 200_000);
+            } catch { /* one unreadable file must not lose the whole draft */ }
+          }));
+        }
+        endpointLinks = buildEndpointGraph(srcFiles).links;
+      } catch { /* no connections is a poorer draft, not a failed one */ }
+    }
+
+    const draft = detectStack(files, { endpointLinks, callsTruncated });
     return { ok: true, source, filesRead: Object.keys(files).length, ...draft };
   });
 

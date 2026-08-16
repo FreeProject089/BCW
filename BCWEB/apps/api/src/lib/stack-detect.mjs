@@ -158,7 +158,7 @@ function fromManifests(files) {
  * @param {Record<string,string>} files  path → contents (only the ones worth reading)
  * @returns {{nodes: object[], edges: object[], evidence: string[], notes: string[]}}
  */
-export function detectStack(files = {}) {
+export function detectStack(files = {}, { endpointLinks = [], callsTruncated = false } = {}) {
     const notes = [];
     const compose = fromCompose(files);
     const composeIds = new Set(compose.nodes.map((n) => n.id));
@@ -190,9 +190,6 @@ export function detectStack(files = {}) {
     if (skipped) {
         notes.push(`${skipped} package manifest(s) were left out: a compose file says what is deployed, and the rest are internal packages. Add any of them by hand if they belong here.`);
     }
-    if (!compose.nodes.length && list.length) {
-        notes.push('No compose file was found, so the components are listed without connections. Draw them yourself below.');
-    }
 
     // Two compose files declaring the same dependency (a repo with a prod one and an e2e one)
     // produced the same edge twice, and a duplicate edge draws a second line over the first.
@@ -205,11 +202,32 @@ export function detectStack(files = {}) {
         return byId.has(e.from) && byId.has(e.to);
     });
 
+    // Connections nothing else could supply. A repo with no compose file came back as a list
+    // of boxes and no lines — which is every Tauri app, where the front end and the Rust are
+    // joined by `invoke` calls and by nothing a manifest can see. Added only where they do not
+    // duplicate a connection compose already stated: compose is the better source when it
+    // exists, because it says intent while these say traffic.
+    const derived = edgesFromCalls(list, endpointLinks, { approx: callsTruncated });
+    const already = new Set(edges.map((e) => `${e.from}|${e.to}`));
+    const extraEdges = derived.filter((e) => !already.has(`${e.from}|${e.to}`) && byId.has(e.from) && byId.has(e.to));
+    if (extraEdges.length) {
+        notes.push(`${extraEdges.length} connection(s) came from calls found in the source, not from a compose file.`);
+        // The count on the line is a floor, not a total: only part of the repository was read.
+        // Said here because "102 calls" reads as a measurement, and a public page should not
+        // print a number we only partly counted without saying so.
+        if (callsTruncated) notes.push('Only part of the source was read, so those call counts are a minimum ("+"), not a total.');
+    }
+    // Said last, and only if nothing at all connected the boxes — it used to be printed above
+    // and contradicted the connections found underneath it.
+    if (!edges.length && !extraEdges.length && list.length) {
+        notes.push('No connections were found, so the components are listed on their own. Draw them yourself below.');
+    }
+
     const evidence = [...new Set(list.map((n) => n.from))].sort();
     // `from` is for the admin to see where a box came from; it is not part of the saved shape.
     const clean = list.map(({ from, ...n }) => n);
 
-    return { nodes: clean, edges, evidence, notes };
+    return { nodes: clean, edges: [...edges, ...extraEdges], evidence, notes };
 }
 
 /** Which paths are worth fetching. Keeps a repo scan to a handful of files, not a whole tree. */
@@ -226,4 +244,55 @@ export function interestingPaths(paths = [], { maxDepth = 3, limit = 40 } = {}) 
         // the ones buried in an example folder.
         .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))
         .slice(0, limit);
+}
+
+/**
+ * Turn proven cross-file calls into connections between COMPONENTS.
+ *
+ * The detector reads compose files and manifests. A repo without a compose file therefore comes
+ * back as a list of boxes and no lines — I wrote that limitation into its own note, and it is
+ * every Tauri app: there is no compose, so nothing said the front end talks to the Rust.
+ *
+ * The endpoint pairing knows. Collapsed to component level, 2028 proven `invoke` calls become
+ * the single edge that was missing — and it is derived from real calls, not from the fact that
+ * two folders happen to sit in the same repository.
+ *
+ * A file belongs to the component whose own manifest sits closest above it: `src-tauri/src/x.rs`
+ * belongs to the component from `src-tauri/Cargo.toml`, not to the one at the repo root.
+ *
+ * @param nodes  components, each carrying the `from` path of the manifest that produced it
+ * @param links  from buildEndpointGraph — each with from.file / to.file
+ */
+export function edgesFromCalls(nodes, links = [], { approx = false } = {}) {
+    const dirs = nodes
+        .filter((n) => n.from)
+        .map((n) => ({ id: n.id, dir: dirOf(n.from) }))
+        // Longest first, so a nested component wins over the repo root.
+        .sort((a, b) => b.dir.length - a.dir.length);
+
+    const owner = (file) => {
+        for (const d of dirs) {
+            if (!d.dir) continue;                       // the root owns everything; checked last
+            if (file === d.dir || file.startsWith(`${d.dir}/`)) return d.id;
+        }
+        return dirs.find((d) => !d.dir)?.id || null;    // a root manifest, if there is one
+    };
+
+    const counts = new Map();
+    for (const l of links) {
+        const a = owner(l.from?.file || ''); const b = owner(l.to?.file || '');
+        // A call inside one component is not a connection between components. Drawing it would
+        // put a self-loop on every box.
+        if (!a || !b || a === b) continue;
+        const key = `${b}|${a}`;                        // "a needs b" — the direction the map uses
+        counts.set(key, (counts.get(key) || 0) + 1);
+    }
+
+    return [...counts.entries()].map(([key, n]) => {
+        const [from, to] = key.split('|');
+        // The count IS the label. "24 calls" is a fact a reader can act on; an unlabelled arrow
+        // between two boxes says only that somebody thought they were related.
+        const plus = approx ? '+' : '';
+        return { from, to, label: n === 1 ? `1${plus} call` : `${n}${plus} calls` };
+    });
 }
