@@ -13,6 +13,11 @@ import { Card, Button, Input, Badge, useToast } from '../ui/ui.jsx';
 // map, the dependency config, thresholds, hostnames, ports, or an outage's `cause` — a status
 // page says what is broken and since when, not how the machine is wired.
 
+// The server sends an English label. On a page that is otherwise entirely French, "Object
+// storage" and "Website" were the only English left — and the label is a fixed key, so it can
+// be translated here without the server having to know a language.
+const SERVICE_NAME = (key, fallback, t) => t(`st.svc.${key}`, fallback || key);
+
 const STATE = {
   operational: { icon: CheckCircle2, tone: 'var(--success)', key: 'st.s.ok', en: 'Operational' },
   down: { icon: XCircle, tone: 'var(--error)', key: 'st.s.down', en: 'Down' },
@@ -90,7 +95,7 @@ export default function StatusPage() {
           return (
             <div key={s.key}>
               <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-                <span className="font-medium flex items-center gap-2"><st.icon size={15} style={{ color: st.tone }} /> {s.label}</span>
+                <span className="font-medium flex items-center gap-2"><st.icon size={15} style={{ color: st.tone }} /> {SERVICE_NAME(s.key, s.label, t)}</span>
                 <span className="text-sm" style={{ color: st.tone }}>{t(st.key, st.en)}</span>
               </div>
               {s.state !== 'not_configured' && <>
@@ -120,7 +125,7 @@ export default function StatusPage() {
             {d.incidents.map((i) => (
               <li key={i.id} className="border-l-2 pl-3" style={{ borderColor: i.endedAt ? 'var(--line)' : 'var(--error)' }}>
                 <div className="flex items-center gap-2 flex-wrap text-sm">
-                  <span className="font-medium">{i.service}</span>
+                  <span className="font-medium">{SERVICE_NAME(i.key, i.service, t)}</span>
                   {i.endedAt ? <Badge>{t('st.resolved', 'Resolved')}</Badge> : <Badge tone="red">{t('st.ongoing', 'Ongoing')}</Badge>}
                   <span className="text-[var(--faint)] text-[12px]">{fdate(i.startedAt)} · {i.minutes} min</span>
                 </div>

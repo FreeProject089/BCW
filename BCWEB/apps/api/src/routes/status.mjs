@@ -64,6 +64,9 @@ export default async function statusRoutes(app) {
       .slice(0, 50)
       .map((o) => ({
         id: o.id,
+        // Both: `key` so the page can name it in the reader's language, `service` because the
+        // English name is what a mail or a Discord message quotes.
+        key: o.dep,
         service: DEP_LABELS[o.dep] || o.dep,
         startedAt: o.startedAt,
         endedAt: o.endedAt,

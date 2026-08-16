@@ -112,18 +112,28 @@ const DEP_CHECKS = {
   telemetry: async () => {
     try { const r = await fetch('http://telemetry:8900/', { signal: AbortSignal.timeout(4000) }); return r.ok; } catch { return false; }
   },
+  // The site itself. A status page that lists the database, the bot and Stripe but not the
+  // website cannot answer the question people open it to ask. Probed as a real request to the
+  // web container, not self-reported: the API and the site fail separately — an API outage is
+  // exactly what people would be reading this page during.
+  //
+  // There is deliberately no "API" row. This answer comes FROM the API, so it could only ever
+  // say "up", and a row that cannot report a failure is worse than no row.
+  web: async () => {
+    try { const r = await fetch('http://web/', { signal: AbortSignal.timeout(4000) }); return r.ok; } catch { return false; }
+  },
   stripe: async () => {
     if (!process.env.STRIPE_SECRET_KEY) return null;
     try { const r = await fetch('https://api.stripe.com/v1/balance', { headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` }, signal: AbortSignal.timeout(5000) }); return r.ok; }
     catch { return false; }
   },
 };
-export const DEP_LABELS = { db: 'Database', storage: 'Object storage', bot: 'Discord bot', telemetry: 'Telemetry dashboard', stripe: 'Stripe' };
+export const DEP_LABELS = { db: 'Database', storage: 'Object storage', bot: 'Discord bot', telemetry: 'Telemetry dashboard', web: 'Website', stripe: 'Stripe' };
 export const DEP_KEYS = Object.keys(DEP_CHECKS);
 
 export async function getDepsConfig(p) {
   const row = await p.adminSetting.findUnique({ where: { key: 'serverperf.deps' } });
-  return { db: true, storage: true, bot: true, telemetry: true, stripe: true, ...(row?.value || {}) };
+  return { db: true, storage: true, bot: true, telemetry: true, web: true, stripe: true, ...(row?.value || {}) };
 }
 
 export async function checkDependencies(p) {

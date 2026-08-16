@@ -317,6 +317,8 @@ const DICT = {
     'dvt.cm.notrepo': 'Ce n’est pas une adresse de dépôt GitHub.',
     'dvt.cm.partial': 'Seule une partie du dépôt a pu être lue : le résultat serait trompeur. Réessaie dans une minute.',
     'dvt.cm.unreachable': 'Impossible de lire ce dépôt — vérifie qu’il est public.',
+    'st.svc.db': 'Base de données', 'st.svc.storage': 'Stockage objet', 'st.svc.bot': 'Bot Discord',
+    'st.svc.telemetry': 'Tableau de bord télémétrie', 'st.svc.web': 'Site web', 'st.svc.stripe': 'Stripe',
     'dvt.cm.saved': 'Ou ouvre une carte déjà construite par un webhook :',
     'dvt.cm.saved.pick': 'Choisir un projet…',
     'dvt.cm.nosnap': 'Cette carte n’a pas pu être ouverte.',
