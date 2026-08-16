@@ -5,6 +5,16 @@
 // and not the SVG. A cycle in a hand-written config must not hang the page — somebody WILL
 // write one, since the config is a JSON blob an admin edits by hand.
 
+/** `['a','b']` or `{from,to,label}` → `[from, to, label]`; anything else → null (dropped). */
+function normalizeEdge(e) {
+    if (Array.isArray(e)) return (e[0] && e[1]) ? [e[0], e[1], e[2] || ''] : null;
+    if (e && typeof e === 'object') {
+        const from = e.from ?? e.source; const to = e.to ?? e.target;
+        return (from && to) ? [from, to, e.label || ''] : null;
+    }
+    return null;
+}
+
 /**
  * Depth of each node: the longest chain of dependencies leading to it.
  *
@@ -18,9 +28,11 @@
  */
 export function stackLayers(nodes = [], edges = []) {
     const ids = new Set(nodes.map((n) => n.id));
-    // Edges to nodes that do not exist are dropped rather than silently creating them: a typo
-    // in a config should not invent a box nobody declared.
-    const clean = edges.filter((e) => Array.isArray(e) && ids.has(e[0]) && ids.has(e[1]));
+    // Two edge shapes, because an arrow that can say WHAT it carries ("SQL", "webhook") is worth
+    // more on an analysis panel than a bare line: `['db','api']` and `{from,to,label}`. Both
+    // normalise to `[from, to, label]`, so `[from, to]` destructuring keeps working everywhere
+    // and the label is simply the third slot when there is one.
+    const clean = edges.map(normalizeEdge).filter((e) => e && ids.has(e[0]) && ids.has(e[1]));
     const dropped = edges.length - clean.length;
 
     const needs = new Map(nodes.map((n) => [n.id, []]));
@@ -49,6 +61,37 @@ export function stackLayers(nodes = [], edges = []) {
     for (const n of nodes) columns[depth.get(n.id) ?? 0].push(n);
 
     return { columns, depth, edges: clean, cycles, droppedEdges: dropped };
+}
+
+/**
+ * Is the "How it runs" tab shown?
+ *
+ * The switch is stored in two places, because the two kinds of project page store their tab
+ * settings differently and neither should be bent to match the other: a showcase page has a
+ * `tabs` object driving its SUB-TABS checkboxes, a built-in project has no such concept and
+ * carries the flag on the stack itself. What must NOT be duplicated is the RULE, so it lives
+ * here and both pages — and the editor — ask this one function.
+ *
+ * Off whenever there is nothing described: a switch left on with no nodes would publish an
+ * empty tab, which reads as a broken page rather than as an unfinished config.
+ *
+ * A stack with nodes and no flag at all is ON, so a config written before the switch existed
+ * keeps the tab it already had.
+ */
+export function stackTabEnabled(stack, tabs) {
+    return stackSwitchOn(stack, tabs) && stack?.nodes?.length > 0;
+}
+
+/**
+ * The switch ALONE, ignoring whether anything has been described yet.
+ *
+ * The admin checkbox has to show what the admin set, not what the page currently does with it —
+ * a box that unticks itself the moment you delete the last component reads as a broken control,
+ * and you would tick it again rather than adding a component. The editor warns instead.
+ */
+export function stackSwitchOn(stack, tabs) {
+    if (tabs && typeof tabs.stack === 'boolean') return tabs.stack;
+    return stack?.enabled !== false;
 }
 
 /** Node kinds, and what each is for. The colour and column meaning live with the renderer. */

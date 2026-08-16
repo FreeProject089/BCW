@@ -11,10 +11,18 @@ import { api } from '../lib/api.js';
 import { thumb } from '../lib/img.js';
 import { useI18n } from '../i18n.jsx';
 import StackMap from '../ui/stack-map.jsx';
+import { stackTabEnabled } from '../lib/stack-layout.js';
 import RrwebPreview from '../hero/RrwebPreview.jsx';
 import { GithubIcon, KofiIcon, DiscordIcon, RedditIcon, AppLogo, APP_LOGO } from '../ui/brand.jsx';
 import { MessageSquare } from 'lucide-react';
 import { Button, Card, Badge, PageHeader, EmptyState, Spinner, Modal } from '../ui/ui.jsx';
+
+// Which tab is actually shown. A `?tab=` naming one that is switched OFF must not render it:
+// hiding the link while still serving the content means an admin who turns a tab off has not
+// turned it off, only made it harder to find. Falls back to the first tab that IS allowed.
+function pickTab(want, tabs) {
+  return tabs.some(([id]) => id === want) ? want : (tabs[0]?.[0] || 'overview');
+}
 
 // Pick an icon that suits the release note from its filename.
 function noteIcon(name = '') {
@@ -284,7 +292,7 @@ export default function ProjectPage() {
   const { key } = useParams();
   const { t } = useI18n();
   const [sp, setSp] = useSearchParams();
-  const tab = sp.get('tab') || 'overview';
+  const wantTab = sp.get('tab') || 'overview';
   const [showVersions, setShowVersions] = useState(false);
   const { data, loading, err } = useFetch(() => api.get(`/projects/${key}`), [key]);
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
@@ -296,12 +304,13 @@ export default function ProjectPage() {
     ['overview', t('proj.overview'), ListTodo],
     c.releaseNotes && ['releases', t('proj.releases'), ScrollText],
     ['community', t('proj.community'), Users],
-    // Only when the project config says so. The tab is the config's presence, not a second
-    // flag to keep in step with it — a project with no stack described has nothing to show.
-    (c.stack?.nodes?.length > 0) && ['stack', c.stack.title || t('proj.stack', 'How it runs'), Network],
+    // The admin switch AND something to draw — see stackTabEnabled, which both kinds of
+    // project page share so the rule cannot drift between them.
+    stackTabEnabled(c.stack) && ['stack', c.stack.title || t('proj.stack', 'How it runs'), Network],
     data.showBlogTab && ['blog', t('proj.blog'), Newspaper],
     ['legal', t('proj.legal'), ShieldCheck],
   ].filter(Boolean);
+  const tab = pickTab(wantTab, tabs);
 
   return (
     <div>
@@ -704,6 +713,7 @@ export function ShowcaseProjectPage() {
     name: proj.name, tagline: cfg.tagline, downloads: cfg.downloads || [], links: cfg.links || {},
     releaseNotes: cfg.releaseNotes, media: cfg.overview, replayUrl: cfg.overview?.replayUrl,
     contributors: cfg.community?.contributors || [], messages: cfg.community?.messages || [], contributorsUrl: cfg.community?.contributorsUrl,
+    stack: cfg.stack,
   };
   const tabs = [
     inlineCountdown && ['countdown', t('proj.countdown', 'Countdown'), Clock],
@@ -711,10 +721,13 @@ export function ShowcaseProjectPage() {
     (T.releases && cfg.releaseNotes?.owner) && ['releases', t('proj.releases'), ScrollText],
     T.community && ['community', t('proj.community'), Users],
     proj.showBlogTab && ['blog', t('proj.blog'), Newspaper],
+    // Same rule as the built-in projects below: the admin switch decides, and a switch that
+    // is on with nothing described would show an empty tab.
+    stackTabEnabled(cfg.stack, T) && ['stack', cfg.stack.title || t('proj.stack', 'How it runs'), Network],
     T.legal && ['legal', t('proj.legal'), ShieldCheck],
   ].filter(Boolean);
   // Default to the countdown tab when one is present and no explicit tab chosen.
-  const activeTab = sp.get('tab') || (inlineCountdown ? 'countdown' : 'overview');
+  const activeTab = pickTab(sp.get('tab') || (inlineCountdown ? 'countdown' : 'overview'), tabs);
   return (
     <div>
       <div className="flex flex-col md:flex-row md:items-center gap-5 mb-8">
@@ -745,6 +758,7 @@ export function ShowcaseProjectPage() {
       {activeTab === 'releases' && <Releases releasesUrl={`/showcase/${slug}/releases`} />}
       {activeTab === 'community' && <ShowcaseCommunity cfg={cfg} c={c} slug={slug} />}
       {activeTab === 'blog' && <ProjectBlogTab page={slug} />}
+      {activeTab === 'stack' && <StackMap stack={cfg.stack} t={t} />}
       {activeTab === 'legal' && <ShowcaseLegal legal={cfg.legal || []} lang={lang} />}
     </div>
   );

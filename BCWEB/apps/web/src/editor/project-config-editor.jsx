@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   ChevronDown, Plus, Trash2, GripVertical, Star, Link2, Download, Image as ImageIcon,
-  Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github,
+  Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network,
 } from 'lucide-react';
 import { Button, Input, Textarea, Field, Badge, Spinner } from '../ui/ui.jsx';
 import { useToast } from '../ui/ui.jsx';
@@ -10,6 +10,8 @@ import { api, uploadMedia } from '../lib/api.js';
 import IconPicker from './icon-picker.jsx';
 import { IconGlyph } from '../ui/md.jsx';
 import { ProgressTracker } from '../pages/project.jsx';
+import StackMap from '../ui/stack-map.jsx';
+import { stackSwitchOn, STACK_KINDS } from '../lib/stack-layout.js';
 
 // ── Visual project-config editor ──────────────────────────────────────────────
 // A form-based editor for a project / showcase page's config, so admins don't have
@@ -18,6 +20,9 @@ import { ProgressTracker } from '../pages/project.jsx';
 // visual previews (the progress tracker renders exactly like the public page).
 
 const STATUS_OPTS = [['planned', 'Planned'], ['progress', 'In progress'], ['done', 'Done']];
+// Derived from the renderer's own kind list, so a kind added there cannot go missing here.
+const KIND_LABEL = { edge: 'Edge', app: 'App', worker: 'Worker', data: 'Data', external: 'External (someone else runs it)' };
+const STACK_KIND_OPTS = STACK_KINDS.map((k) => [k, KIND_LABEL[k] || k]);
 
 // A collapsible titled section.
 function Section({ icon: Icon, title, desc, children, defaultOpen = false, badge }) {
@@ -144,6 +149,17 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
   const legalArr = legalIsArray ? c.legal : [];
   const legalObj = (!legalIsArray && c.legal && typeof c.legal === 'object') ? c.legal : {};
   const setLegalObj = (patch) => set({ legal: { ...legalObj, ...patch } });
+  // "How it runs". Connections are normalised to objects on READ, because the renderer accepts
+  // both `['db','api']` and `{from,to,label}` but Repeatable patches by merging — merging a
+  // `{from}` into an array item would produce an array wearing extra properties, which is
+  // neither shape and draws nothing. Reading them as objects means an older config is converted
+  // the first time it is edited, visibly, rather than half-written.
+  const stack = c.stack || {};
+  const stackNodes = Array.isArray(stack.nodes) ? stack.nodes : [];
+  const stackEdges = (Array.isArray(stack.edges) ? stack.edges : []).map((e) =>
+    (Array.isArray(e) ? { from: e[0], to: e[1], label: e[2] || '' } : (e || {})));
+  const stackOn = stackSwitchOn(stack, isShowcase ? (c.tabs || {}) : null);
+
   const rn = c.releaseNotes || {};
   const ov = c.overview || {};
   const community = c.community || {};
@@ -268,6 +284,76 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Eye size={12} /> Live preview</div>
               <ProgressTracker data={prog} title="Progress" lang="en" />
             </div>
+          </div>
+        )}
+      </Section>
+
+      {/* How it runs */}
+      <Section icon={Network} title="How it runs" desc="A diagram of the pieces this project is made of, shown on its own tab. It is a description you write — never the live infrastructure, which is admin-only for a reason." badge={stackNodes.length || null}>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" checked={stackOn} onChange={(e) => {
+            // On a showcase page the sub-tab checkboxes are the established switch, and this
+            // one has to be the SAME switch — two places to turn one tab on is how a setting
+            // stops being believed. Built-in projects have no such block, so the flag rides
+            // on the stack itself. `stackTabEnabled` is what both pages actually read.
+            if (isShowcase) set({ tabs: { ...(c.tabs || {}), stack: e.target.checked } });
+            else setIn('stack', { enabled: e.target.checked });
+          }} />
+          Show the “How it runs” tab
+        </label>
+        {stackOn && !stackNodes.length && (
+          <p className="text-xs text-[var(--warning)]">Add at least one component below — the tab stays hidden while there is nothing to draw.</p>
+        )}
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label="Tab title" hint="Defaults to “How it runs”."><Input value={stack.title || ''} onChange={(e) => setIn('stack', { title: e.target.value })} placeholder="How it runs" /></Field>
+          <Field label="Intro line (optional)"><Input value={stack.note || ''} onChange={(e) => setIn('stack', { note: e.target.value })} placeholder="A short sentence above the diagram" /></Field>
+        </div>
+
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">Components</div>
+        <Repeatable items={stackNodes} onChange={(v) => setIn('stack', { nodes: v })} addLabel="Add component" empty="No components yet."
+          add={() => ({ id: `n${stackNodes.length + 1}`, label: 'New component', kind: 'app' })}
+          render={(n, patch) => (
+            <div className="space-y-2">
+              <div className="grid grid-cols-[1fr_120px] gap-2">
+                <Input value={n.label || ''} onChange={(e) => patch({ label: e.target.value })} placeholder="Name (e.g. API)" className="font-medium" />
+                <select value={n.kind || 'app'} onChange={(e) => patch({ kind: e.target.value })} className="input !py-1.5 !text-sm">
+                  {STACK_KIND_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-[110px_1fr_100px] gap-2">
+                <Input value={n.id || ''} onChange={(e) => patch({ id: e.target.value })} placeholder="id" className="!py-1.5 !text-xs font-mono" />
+                <Input value={n.tech || ''} onChange={(e) => patch({ tech: e.target.value })} placeholder="Built with (Fastify, Postgres…)" className="!py-1.5 !text-sm" />
+                <Input value={n.version || ''} onChange={(e) => patch({ version: e.target.value })} placeholder="version" className="!py-1.5 !text-sm" />
+              </div>
+              <Textarea rows={2} value={n.note || ''} onChange={(e) => patch({ note: e.target.value })} placeholder="What this piece does, in a sentence or two." className="!text-sm" />
+              <Input value={n.docs || ''} onChange={(e) => patch({ docs: e.target.value })} placeholder="Documentation URL (optional)" className="!py-1.5 !text-sm" />
+            </div>
+          )} />
+
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">Connections</div>
+        <p className="text-[11px] text-[var(--faint)] -mt-1.5">“A needs B” — B is drawn to the left of A. A connection naming a component that no longer exists is ignored rather than drawn.</p>
+        <Repeatable items={stackEdges} onChange={(v) => setIn('stack', { edges: v })} addLabel="Add connection" empty="No connections yet."
+          add={() => ({ from: stackNodes[0]?.id || '', to: stackNodes[1]?.id || '', label: '' })}
+          render={(e, patch) => (
+            <div className="grid grid-cols-[1fr_1fr_110px] gap-2 items-center">
+              <select value={e.to || ''} onChange={(ev) => patch({ to: ev.target.value })} className="input !py-1.5 !text-sm">
+                <option value="">this one…</option>
+                {stackNodes.map((n) => <option key={n.id} value={n.id}>{n.label || n.id}</option>)}
+              </select>
+              <select value={e.from || ''} onChange={(ev) => patch({ from: ev.target.value })} className="input !py-1.5 !text-sm">
+                <option value="">…needs</option>
+                {stackNodes.map((n) => <option key={n.id} value={n.id}>{n.label || n.id}</option>)}
+              </select>
+              <Input value={e.label || ''} onChange={(ev) => patch({ label: ev.target.value })} placeholder="SQL, HTTP…" className="!py-1.5 !text-sm" />
+            </div>
+          )} />
+
+        {/* Live preview — the same component the public tab renders. */}
+        {stackNodes.length > 0 && (
+          <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Eye size={12} /> Live preview</div>
+            <StackMap stack={stack} />
           </div>
         )}
       </Section>

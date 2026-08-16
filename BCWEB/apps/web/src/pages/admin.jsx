@@ -10399,7 +10399,7 @@ function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
   const [short, setShort] = useState(project?.short || '');
   const [icon, setIcon] = useState(project?.icon || '');
   const [published, setPublished] = useState(project?.published ?? true);
-  const [tabs, setTabs] = useState({ releases: !!cfg0.tabs?.releases, community: !!cfg0.tabs?.community, legal: !!cfg0.tabs?.legal });
+  const [tabs, setTabs] = useState({ releases: !!cfg0.tabs?.releases, community: !!cfg0.tabs?.community, legal: !!cfg0.tabs?.legal, stack: !!cfg0.tabs?.stack });
   const [tagline, setTagline] = useState(cfg0.tagline || '');
   const { tabs: _t, tagline: _tl, ...rest } = cfg0;
   const [details, setDetails] = useState(JSON.stringify(Object.keys(rest).length ? rest : SHOWCASE_TEMPLATE, null, 2));
@@ -10470,6 +10470,7 @@ function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
           <Toggle k="releases" label={t('sh.e.releases', 'Release notes')} />
           <Toggle k="community" label={t('sh.e.community', 'Community')} />
           <Toggle k="legal" label={t('sh.e.legal', 'Legal')} />
+          <Toggle k="stack" label={t('sh.e.stack', 'How it runs')} />
         </div>
       </div>
       <div className="mt-3">

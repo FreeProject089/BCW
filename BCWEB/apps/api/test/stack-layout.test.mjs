@@ -3,7 +3,7 @@
 // function, and the part that can go wrong is the walk, not the SVG.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { stackLayers } from '../../web/src/lib/stack-layout.js';
+import { stackLayers, stackTabEnabled, stackSwitchOn } from '../../web/src/lib/stack-layout.js';
 
 const n = (...ids) => ids.map((id) => ({ id, label: id }));
 
@@ -48,8 +48,66 @@ describe('stackLayers', () => {
         assert.deepEqual(r.columns[0], []);
     });
 
+    test('an edge may name what it carries, and still lays out the same', () => {
+        // `{from,to,label}` beside `['a','b']`: the analysis panel shows the label, the layout
+        // never sees it. Both normalise to [from, to, label] so `[from, to]` destructuring in
+        // the renderer keeps working.
+        const r = stackLayers(n('db', 'api'), [{ from: 'db', to: 'api', label: 'SQL' }]);
+        assert.deepEqual(r.columns.map((c) => c.map((x) => x.id)), [['db'], ['api']]);
+        assert.deepEqual(r.edges[0], ['db', 'api', 'SQL']);
+    });
+
+    test('mixed edge shapes coexist, and a malformed one is dropped', () => {
+        const r = stackLayers(n('a', 'b', 'c'), [['a', 'b'], { from: 'b', to: 'c' }, null, {}, ['a']]);
+        assert.equal(r.edges.length, 2);
+        assert.equal(r.droppedEdges, 3);
+        assert.deepEqual(r.edges.map((e) => e[2]), ['', ''], 'a label-less edge carries an empty one, never undefined');
+    });
+
     test('a long chain keeps its order', () => {
         const r = stackLayers(n('a', 'b', 'c', 'd'), [['a', 'b'], ['b', 'c'], ['c', 'd']]);
         assert.deepEqual(r.columns.map((c) => c.map((x) => x.id)), [['a'], ['b'], ['c'], ['d']]);
+    });
+});
+
+describe('stackTabEnabled', () => {
+    const withNodes = (extra = {}) => ({ nodes: [{ id: 'a' }], ...extra });
+
+    test('a stack written before the switch existed keeps its tab', () => {
+        // THE BACK-COMPAT ONE. Adding a flag must not silently un-publish a page that was
+        // already showing its diagram.
+        assert.equal(stackTabEnabled(withNodes()), true);
+    });
+
+    test('the built-in switch turns it off', () => {
+        assert.equal(stackTabEnabled(withNodes({ enabled: false })), false);
+    });
+
+    test("a showcase's sub-tab checkbox wins over the stack's own flag", () => {
+        // The two kinds of page store the switch differently; the RULE must not fork. A
+        // showcase admin unticking the box is the decision, whatever the stack object says.
+        assert.equal(stackTabEnabled(withNodes({ enabled: true }), { stack: false }), false);
+        assert.equal(stackTabEnabled(withNodes({ enabled: false }), { stack: true }), true);
+    });
+
+    test('a tabs object that says nothing about the stack does not decide', () => {
+        assert.equal(stackTabEnabled(withNodes(), { legal: true }), true);
+    });
+
+    test('on, but nothing described → off', () => {
+        // A switch left on with no components would publish an empty tab, which reads as a
+        // broken page rather than an unfinished config.
+        assert.equal(stackTabEnabled({ enabled: true, nodes: [] }, { stack: true }), false);
+        assert.equal(stackTabEnabled(undefined), false);
+        assert.equal(stackTabEnabled(null, { stack: true }), false);
+    });
+
+    test('the admin checkbox shows the SWITCH, not what the page does with it', () => {
+        // Deleting the last component must not untick the box under the admin's cursor — they
+        // would tick it again instead of adding a component. The editor warns instead.
+        assert.equal(stackSwitchOn({ nodes: [] }), true, 'still on, just with nothing to draw');
+        assert.equal(stackTabEnabled({ nodes: [] }), false, 'and the tab is still hidden');
+        assert.equal(stackSwitchOn({ nodes: [], enabled: false }), false);
+        assert.equal(stackSwitchOn({ nodes: [] }, { stack: false }), false);
     });
 });
