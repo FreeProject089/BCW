@@ -66,7 +66,7 @@ export function FeedMenu({ project = '', kind = '', className = '' }) {
 
   const idx = (qs) => `${origin}/api/catalogs.json${qs ? `?${qs}` : ''}`;
   const rows = [
-    { k: 'all', label: t('feed.ix.all', 'Every catalogue'), url: idx('') },
+    { k: 'all', label: t('feed.ix.all', 'Every catalog'), url: idx('') },
     { k: 'off', label: t('feed.ix.official', 'Official only'), url: idx('scope=official') },
     { k: 'com', label: t('feed.ix.community', 'Community only'), url: idx('scope=community') },
     ...(project ? [{ k: 'proj', label: t('feed.ix.project', 'This project only'), url: idx(`app=${encodeURIComponent(project)}`) }] : []),
@@ -80,7 +80,7 @@ export function FeedMenu({ project = '', kind = '', className = '' }) {
   return (
     <div className={`relative inline-block ${className}`}>
       <button type="button" onClick={() => setOpen((o) => !o)}
-        title={t('feed.ix.hint', 'Addresses that list catalogues rather than items. Paste one into BMM → Settings → Catalogue index.')}
+        title={t('feed.ix.hint', 'Addresses that list catalogs rather than items. Paste one into BMM → Settings → Catalog index.')}
         className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition"
         style={{ background: 'var(--bg-solid)' }}>
         <FileJson size={13} className="text-[var(--primary-2)]" />

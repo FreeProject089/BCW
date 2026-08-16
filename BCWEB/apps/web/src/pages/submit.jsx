@@ -156,7 +156,7 @@ function OfficialSubmit({ onBack }) {
                 it. Somebody arriving here to list one would otherwise pick the closest wrong
                 type or give up, so the page says where that lives instead of pretending. */}
             <p className="text-[12px] text-[var(--muted)] -mt-1">
-              {t('sub.repohint', 'Looking to list a Server-Repo? That is not a catalogue item — it has its own hosting and review flow.')}{' '}
+              {t('sub.repohint', 'Looking to list a Server-Repo? That is not a catalog item — it has its own hosting and review flow.')}{' '}
               <Link to="/repos" className="underline">{t('sub.repolink', 'Go to Server-Repos')}</Link>
             </p>
             <Field label={t('sub.name', 'Name')}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>

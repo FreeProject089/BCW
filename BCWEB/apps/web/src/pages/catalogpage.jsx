@@ -83,7 +83,7 @@ export default function CommunityCatalogPage() {
                   {DEEPLINKABLE.has(kind)
                     ? <a href={deeplink(kind)}><Button size="sm" variant="primary"><Download size={14} /> {t('ccp.addbmm', 'Add to BMM')}</Button></a>
                     : <span className="text-[11px] text-[var(--muted)]">
-                        {t('ccp.pastein', 'Copy the address and paste it in BMM → Scheduler → From a catalogue.')}
+                        {t('ccp.pastein', 'Copy the address and paste it in BMM → Scheduler → From a catalog.')}
                       </span>}
                   <Button size="sm" variant="ghost" onClick={() => copy(feedUrl(kind))}><Copy size={13} /> {t('ccp.copyurl', 'Copy feed URL')}</Button>
                   <a href={feedUrl(kind)} target="_blank" rel="noreferrer" className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1"><ArrowUpRight size={12} /> {t('ccp.view', 'View feed')}</a>
