@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FileJson, Activity, ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FlaskConical , Link2 as LinkIcon, ShieldCheck, Copy } from 'lucide-react';
+import { FileJson, Activity, ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FlaskConical , Link2 as LinkIcon, ShieldCheck, Copy, Network } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Textarea, Badge, Field, Spinner, EmptyState, useToast , Select } from '../ui/ui.jsx';
@@ -10,6 +10,7 @@ import { Card, Button, Input, Textarea, Badge, Field, Spinner, EmptyState, useTo
 import { useAsync } from './pages.jsx';
 import { useAuth } from './auth.jsx';
 import { ApiConsole } from './dev.jsx';
+import CodeMap from '../ui/code-map.jsx';
 
 // /dev/tools — the two things a developer wants that are not "call an endpoint".
 //
@@ -316,6 +317,53 @@ function SignatureChecker() {
  * The schema is the artifact the engine derives from its own Rust types, never a copy kept
  * here. A copy would be wrong the first time somebody added a field, and wrong quietly.
  */
+// Read a repository and draw what imports what.
+//
+// Every line in the picture is a real import statement — see lib/code-graph.mjs. It fetches a
+// few hundred files, so it is behind a button rather than run on arrival.
+function CodeMapTool() {
+  const { t } = useI18n(); const toast = useToast();
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [graph, setGraph] = useState(null);
+
+  const run = async () => {
+    setBusy(true); setGraph(null);
+    try {
+      const r = await api.post('/admin/projects/code-graph', { url: url.trim(), maxFiles: 150 });
+      if (!r.nodes?.length) {
+        toast.error(t('dvt.cm.none', 'No JavaScript or TypeScript found in that repository.'));
+        return;
+      }
+      setGraph(r);
+    } catch (x) {
+      toast.error(
+        x?.data?.error === 'not_a_github_repo' ? t('dvt.cm.notrepo', 'That is not a GitHub repository URL.')
+          : x?.data?.error === 'incomplete_fetch' ? t('dvt.cm.partial', 'Only part of the repository could be read, so the result would be misleading. Try again in a minute.')
+            : x?.data?.error === 'github_unreachable' ? t('dvt.cm.unreachable', 'Could not read that repository — check it is public.')
+              : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div>
+      <p className="text-[12px] text-[var(--muted)] mb-2">
+        {t('dvt.cm.desc', 'Draws a repository as folders and files, with a line for every import that really exists in the source. JavaScript and TypeScript only — anything else is named rather than guessed at.')}
+      </p>
+      <div className="flex flex-wrap gap-2 mb-3">
+        <Input className="flex-1 min-w-[220px]" value={url} onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && url.trim() && run()}
+          placeholder="https://github.com/owner/repo" />
+        <Button variant="primary" disabled={busy || !url.trim()} onClick={run}>
+          {busy ? <Spinner /> : <><Network size={14} /> {t('dvt.cm.go', 'Read it')}</>}
+        </Button>
+      </div>
+      {busy && <div className="text-[12px] text-[var(--faint)]">{t('dvt.cm.busy', 'Reading the source — a few hundred files takes a moment.')}</div>}
+      {graph && <CodeMap graph={graph} t={t} />}
+    </div>
+  );
+}
+
 function RecipeChecker() {
   const { t } = useI18n(); const toast = useToast();
   const [body, setBody] = useState('');
@@ -424,6 +472,12 @@ export default function DevTools() {
       id: 'installer', k: 'dvt.grp.installer', label: 'BetterInstaller',
       tools: [
         { id: 'recipe', label: t('dvt.rec', 'Check an installer.toml'), el: <RecipeChecker /> },
+      ],
+    },
+    {
+      id: 'code', k: 'dvt.grp.code', label: 'Code',
+      tools: [
+        { id: 'codemap', label: t('dvt.cm', 'Map a repository'), el: <CodeMapTool />, wide: true },
       ],
     },
     {
