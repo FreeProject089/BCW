@@ -8182,6 +8182,11 @@ function AdminSsoPeople() {
 function AdminOAuthClients() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/oauth-clients'), []);
+  // How many people use each app, and how many are signed in through it right now.
+  // `/admin/sso/clients/stats` computes exactly this and had no caller — so the screen listed
+  // the apps and could not say whether any of them was used. Separate request on purpose: a
+  // failed rollup costs the numbers, not the list.
+  const stats = useAsync(() => api.get('/admin/sso/clients/stats').catch(() => ({ users: {}, live: {} })), []);
   const [f, setF] = useState({ name: '', confidential: true, redirectUris: '', scopes: ['openid', 'profile', 'email'] });
   // From the provider's own discovery document rather than a copy. The list here was five
   // names while the provider serves fourteen — so nine scopes could not be granted from this
@@ -8249,7 +8254,7 @@ function AdminOAuthClients() {
             <div className="flex items-center gap-3 flex-wrap">
               <Shield size={18} className={c.active ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold">{c.name}</span>{!c.active && <Badge>{t('oc.disabled', 'Disabled')}</Badge>}<Badge tone="primary">{c.confidential ? t('oc.conf', 'confidential') : t('oc.pub', 'public')}</Badge>{c.scopes.map((s) => <Badge key={s}>{s}</Badge>)}</div>
+                <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold">{c.name}</span>{!c.active && <Badge>{t('oc.disabled', 'Disabled')}</Badge>}{stats.data?.users?.[c.id] ? <Badge tone="primary" title={t('oc.stat.t', 'People who have granted this app access · sessions live right now')}>{t('oc.stat', '{u} users · {l} live').replace('{u}', String(stats.data.users[c.id])).replace('{l}', String(stats.data.live?.[c.id] || 0))}</Badge> : <Badge title={t('oc.stat.never.t', 'Nobody has ever signed in through this app')}>{t('oc.stat.never', 'unused')}</Badge>}<Badge tone="primary">{c.confidential ? t('oc.conf', 'confidential') : t('oc.pub', 'public')}</Badge>{c.scopes.map((s) => <Badge key={s}>{s}</Badge>)}</div>
                 <div className="text-xs text-[var(--muted)] mt-0.5 flex items-center gap-1.5"><code className="font-mono break-anywhere">{c.id}</code><button onClick={() => copy(c.id)} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={12} /></button> · {c.redirectUris.join(', ')}</div>
               </div>
               {c.confidential && <Button size="sm" variant="ghost" onClick={() => rotate(c)}>{t('oc.rotate', 'Rotate secret')}</Button>}

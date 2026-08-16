@@ -5,7 +5,6 @@
 // human, a deploy and somebody else's app in it.
 import { z } from 'zod';
 import { requireRole, requireCap, db } from '../lib/lib.mjs';
-import { inspectBmmpa } from '../lib/bmmpa.mjs';
 import { inspectAny } from '../lib/bmm-formats.mjs';
 import { buildRbacMap } from '../lib/rbac-map.mjs';
 import { mapSchema, findIndexDrift } from '../lib/schema-map.mjs';
@@ -114,19 +113,11 @@ export default async function devtoolRoutes(app) {
   //
   // manage_catalogs, because this is for reviewing submissions — the same audience that
   // approves the catalog items these arrive as.
-  app.post('/admin/bmmpa/inspect', {
-    preHandler: requireCap('manage_catalogs', 'MOD'),
-    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
-    // A .bmmpa is JSON of unbounded shape, so it is parsed as a raw value rather than
-    // described field by field. The size cap is what keeps that safe.
-    bodyLimit: 2 * 1024 * 1024,
-  }, async (req, reply) => {
-    const b = z.object({ doc: z.any() }).safeParse(req.body);
-    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
-    const report = inspectBmmpa(b.data.doc);
-    if (!report.ok) return reply.code(400).send({ error: 'unreadable', detail: report.error });
-    return report;
-  });
+  // `/admin/bmmpa/inspect` lived here: the same guard, the same body, one format. `/admin/inspect`
+  // replaced it with a reader that recognises every BMM file and answers "not a format I know"
+  // instead of a 400, and the inspector screen has called that one ever since. Removed rather
+  // than left: an endpoint nothing calls is a second door onto the same room, kept open by
+  // nobody watching it. Its reader is untouched — inspectAny still routes .bmmpa to it.
 
   // The database as the two files define it, plus the drift between them.
   //
