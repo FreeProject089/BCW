@@ -5,6 +5,7 @@ import { zipReadAll } from '../lib/native.mjs';
 import { detectStack, interestingPaths } from '../lib/stack-detect.mjs';
 import { buildCodeGraph, sourcePathsToFetch, tracePath, entryPoints } from '../lib/code-graph.mjs';
 import { buildEndpointGraph, endpointPathsToFetch } from '../lib/endpoint-graph.mjs';
+import { snapshotKey, settingsKey, secretFor, rebuildSnapshot } from './code-webhook.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
 // legal, release-notes source) stored as an AdminSetting row `project.<key>`.
@@ -343,6 +344,65 @@ export default async function projectRoutes(app) {
     // Where a reader should start. Derived rather than declared: package.json `main` lies
     // as often as not in a monorepo, while "nothing imports this" is a fact about the code.
     return { ok: true, source, ...graph, entries: entryPoints(graph).slice(0, 20), endpoints };
+  });
+
+  // ── Keeping a project's code graph current ─────────────────────────────────
+  //
+  // The settings an admin edits, and the stored graph a webhook refreshes. `secret` is written
+  // but NEVER read back — a field that returns the secret is a field that leaks it to anybody
+  // who can open the page, and the page only needs to know whether one is set and where it
+  // comes from.
+  app.get('/admin/projects/:key/code-graph', { preHandler: requireEditor() }, async (req) => {
+    const p = await db();
+    const [row, snap, sec] = await Promise.all([
+      p.adminSetting.findUnique({ where: { key: settingsKey(req.params.key) } }).catch(() => null),
+      p.adminSetting.findUnique({ where: { key: snapshotKey(req.params.key) } }).catch(() => null),
+      secretFor(p, req.params.key),
+    ]);
+    return {
+      url: row?.value?.url || '',
+      hasSecret: !!sec.secret,
+      secretFrom: sec.from,          // 'page' | 'env' | null — which one is actually in force
+      snapshot: snap?.value ? {
+        generatedAt: snap.value.generatedAt, url: snap.value.url,
+        stats: snap.value.stats, endpointStats: snap.value.endpointStats,
+      } : null,
+      // The address to paste into GitHub. Built here so nobody has to guess the shape of it.
+      deliverTo: `${(process.env.SITE_URL || '').replace(/\/+$/, '')}/api/webhooks/code/${req.params.key}`,
+    };
+  });
+
+  app.put('/admin/projects/:key/code-graph', { preHandler: requireEditor() }, async (req, reply) => {
+    const b = z.object({
+      url: z.string().max(300).optional(),
+      // An empty string CLEARS the page secret — for an official project that means falling
+      // back to the environment, which has to be possible without editing the database by hand.
+      secret: z.string().max(200).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const k = settingsKey(req.params.key);
+    const cur = (await p.adminSetting.findUnique({ where: { key: k } }).catch(() => null))?.value || {};
+    const value = { ...cur };
+    if (b.data.url !== undefined) value.url = b.data.url.trim();
+    if (b.data.secret !== undefined) {
+      if (b.data.secret.trim()) value.secret = b.data.secret.trim();
+      else delete value.secret;
+    }
+    await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value }, update: { value } });
+    return { ok: true };
+  });
+
+  // The manual "read it now" — the same rebuild the webhook triggers, so a project without a
+  // webhook is not a second-class one.
+  app.post('/admin/projects/:key/code-graph/refresh', { preHandler: requireEditor() }, async (req, reply) => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: settingsKey(req.params.key) } }).catch(() => null);
+    const url = req.body?.url || row?.value?.url;
+    if (!url) return reply.code(400).send({ error: 'no_repo_configured' });
+    const r = await rebuildSnapshot(p, req.params.key, url);
+    if (!r.ok) return reply.code(502).send(r);
+    return r;
   });
 
   app.put('/projects/:key', { preHandler: requireEditor() }, async (req, reply) => {

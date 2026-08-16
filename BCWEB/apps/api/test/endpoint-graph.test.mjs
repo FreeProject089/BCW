@@ -165,3 +165,13 @@ describe('a capped scan does not invent orphans', () => {
         assert.equal(buildEndpointGraph(files, { truncated: true }).unmatchedReliable, false);
     });
 });
+
+describe('a client is not a server', () => {
+    test('r.get() and api.get() are CALLS, never route declarations', () => {
+        // On `got` — an HTTP client — the loose pattern read 841 "routes" out of the library's
+        // own examples and tests. A route is declared on a server object.
+        const f = scanFile('a.js', "const r = got.extend();\nr.get('/x');\napi.get('/y');\napp.get('/real', h);");
+        assert.deepEqual(f.routes.map((x) => x.path), ['/real']);
+        assert.deepEqual(f.calls.map((x) => x.path).sort(), ['/y']);
+    });
+});

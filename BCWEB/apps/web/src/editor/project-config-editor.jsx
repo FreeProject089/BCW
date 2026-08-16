@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ChevronDown, Plus, Trash2, GripVertical, Star, Link2, Download, Image as ImageIcon,
-  Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes,
+  Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes, Copy,
 } from 'lucide-react';
 import { Button, Input, Textarea, Field, Badge, Spinner } from '../ui/ui.jsx';
 import { useToast } from '../ui/ui.jsx';
@@ -137,6 +137,107 @@ const DETECT_SKIP = /(^|\/)(node_modules|vendor|\.git|dist|build|target|\.venv)(
  * about somebody's infrastructure, so it lists the files each component came from and asks
  * before overwriting work already done by hand.
  */
+/**
+ * Keep this project's code graph current.
+ *
+ * The repository address and, for a showcase project, its webhook secret. For an official one
+ * the secret may come from the server environment instead — which one is actually IN FORCE is
+ * shown, because a page that hides that leaves somebody rotating a secret that nothing reads.
+ *
+ * The secret is never read back. A field that returns it is a field that leaks it to anybody who
+ * can open this page.
+ */
+function CodeGraphSettings({ projectKey }) {
+  const { t } = useI18n(); const toast = useToast();
+  const [state, setState] = useState(null);
+  const [url, setUrl] = useState('');
+  const [secret, setSecret] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let on = true;
+    api.get(`/admin/projects/${projectKey}/code-graph`)
+      .then((r) => { if (on) { setState(r); setUrl(r.url || ''); } })
+      .catch(() => {});
+    return () => { on = false; };
+  }, [projectKey]);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      // `secret` is sent only when something was typed. Sending an empty string means CLEAR,
+      // and clearing it every time the address is edited would silently unhook the webhook.
+      await api.put(`/admin/projects/${projectKey}/code-graph`, { url, ...(secret ? { secret } : {}) });
+      setSecret('');
+      const r = await api.get(`/admin/projects/${projectKey}/code-graph`);
+      setState(r);
+      toast.success(t('cg.saved', 'Saved.'));
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+
+  const refresh = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post(`/admin/projects/${projectKey}/code-graph/refresh`, { url });
+      toast.success(t('cg.read', 'Read {n} file(s).').replace('{n}', r.stats?.drawn ?? 0));
+      setState(await api.get(`/admin/projects/${projectKey}/code-graph`));
+    } catch (x) {
+      toast.error(x?.data?.error === 'incomplete_fetch'
+        ? t('cg.partial', 'Only part of the repository could be read, so nothing was stored.')
+        : x?.data?.error === 'not_a_github_repo' ? t('cg.notrepo', 'That is not a GitHub repository URL.')
+          : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  const copy = () => { navigator.clipboard?.writeText(state?.deliverTo || ''); toast.success(t('cg.copied', 'Address copied.')); };
+
+  return (
+    <Section icon={Network} title="Code graph" desc="Read the repository so the architecture view stays current. A GitHub webhook rebuilds it on every push; the button below does the same by hand.">
+      <Field label="Repository">
+        <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/owner/repo" />
+      </Field>
+
+      <Field label="Webhook secret" hint={
+        state?.secretFrom === 'env'
+          ? 'Currently coming from the server environment (GITHUB_WEBHOOK_SECRET). Type one here to override it for this project only.'
+          : state?.secretFrom === 'page'
+            ? 'Set on this page. Leave blank to keep it; clear it by saving a single space.'
+            : 'Required — a webhook with no secret is refused. Paste the same value into GitHub.'
+      }>
+        <Input type="password" value={secret} onChange={(e) => setSecret(e.target.value)}
+          placeholder={state?.hasSecret ? '••••••••  (unchanged)' : 'a long random string'} />
+      </Field>
+
+      {/* The address to paste into GitHub, built for them — guessing the shape of it is the
+          usual reason a webhook never fires. */}
+      {state?.deliverTo && (
+        <Field label="Send it to" hint="GitHub → Settings → Webhooks → Add webhook. Content type: application/json. Event: push.">
+          <div className="flex items-center gap-2">
+            <Input readOnly value={state.deliverTo} className="flex-1 font-mono !text-[12px]" />
+            <Button type="button" size="sm" onClick={copy}><Copy size={13} /> Copy</Button>
+          </div>
+        </Field>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" size="sm" variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : 'Save'}</Button>
+        <Button type="button" size="sm" disabled={busy || !url.trim()} onClick={refresh}>{busy ? <Spinner /> : 'Read it now'}</Button>
+      </div>
+
+      {state?.snapshot ? (
+        <div className="text-[11px] text-[var(--faint)]">
+          Last read {new Date(state.snapshot.generatedAt).toLocaleString()} —{' '}
+          {state.snapshot.stats?.drawn} file(s), {state.snapshot.stats?.edges} import(s),{' '}
+          {state.snapshot.endpointStats?.links} call/route link(s).
+        </div>
+      ) : (
+        <div className="text-[11px] text-[var(--faint)]">Never read yet.</div>
+      )}
+    </Section>
+  );
+}
+
 function StackDetect({ onDraft, hasExisting }) {
   const toast = useToast(); const { t } = useI18n();
   const [url, setUrl] = useState('');
@@ -510,6 +611,11 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
           onDraft={(d) => setIn('stack', { nodes: d.nodes, edges: d.edges })}
           hasExisting={stackNodes.length > 0}
         />
+
+        {/* Below the one-off import: that reads a repo ONCE into this config, while this keeps a
+            stored graph current on every push. Different jobs, and confusing them means somebody
+            wonders why their diagram never changes. */}
+        <CodeGraphSettings projectKey={slug} />
 
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">Components</div>
         <Repeatable items={stackNodes} onChange={(v) => setIn('stack', { nodes: v })} addLabel="Add component" empty="No components yet."

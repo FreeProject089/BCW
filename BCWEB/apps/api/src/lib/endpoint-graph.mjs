@@ -91,8 +91,11 @@ export function scanFile(path, source) {
     const at = (i) => ({ line: lineOf(raw, i), text: textOf(raw, lineOf(raw, i)) });
 
     if (lang === 'js') {
+        // NOT `api` or a bare `r`: those are client names, and on an HTTP-client library every
+        // `r.get(...)` in its own docs and tests became a "route" — 841 of them on one repo.
+        // A route is DECLARED on a server object; anything else is a call.
         // Express / Fastify / Koa-router / Hono: `app.get('/x'`, `router.post("/x"`.
-        for (const m of src.matchAll(new RegExp(`\\b(?:app|router|server|fastify|api|r)\\s*\\.\\s*(${METHODS})\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`, 'gi'))) {
+        for (const m of src.matchAll(new RegExp(`\\b(?:app|router|server|fastify|routes)\\s*\\.\\s*(${METHODS})\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`, 'gi'))) {
             routes.push({ method: m[1].toUpperCase(), path: m[2], ...at(m.index) });
         }
         // A client call. `fetch` and the usual wrappers; a template literal keeps its `${}` and
