@@ -1,10 +1,20 @@
-# The six open items, with what is already known
+# What is left of the batch — TWO items
 
-Written at the end of a long session so the next one does not re-investigate. Two items from
-the same batch are already done (the .bmmpa inspector crash, the duplicate hosting plans) and
-one turned out not to be a code problem at all.
+Four of the six shipped after this was first written, so the entries below them are kept only
+for the reasoning they record, marked DONE with their commit. Read the two open ones.
 
-Ordered by how much is already settled, not by size.
+**Still open:** the seed rework (item 4, half of it) and the scheduler-as-a-language (item 6).
+
+**Done:** `?next` after sign-in (`9fbf77a` password, `f9507f2` OAuth) · community catalogues
+now obey the filters (`ea23026`) · the newsletter preview (`fda2cf0`) · the custom-markdown
+reference (`04f3fde`, now at `guides/reference/CUSTOM_MARKDOWN.md`). Plus, from the same batch,
+the .bmmpa inspector crash and the duplicate hosting plans, and the cookie warnings which turned
+out not to be a code problem at all.
+
+Two entries below were WRONG when first written and are corrected in place. Both said a feature
+was missing when it existed — `signin.jsx` already honoured `next`, and `catalog.jsx` keeps its
+filters in URL params rather than state. If a note here says something is absent, check before
+building on it.
 
 ---
 
@@ -67,12 +77,17 @@ its preview than in the inbox is worse than no preview.
 
 ---
 
-## 4. Seed content: rework blog / docs / FAQ, and DOCUMENT the custom markdown
+## 4. Seed content: rework blog / docs / FAQ — STILL OPEN
 
-Two halves, and the second is the one with lasting value. BCWEB's markdown has custom
-directives (`:::replay` and the GitBook-style block system in `md.jsx`) and there is no single
-page explaining them. Write that page first — then rewrite the seed content using it, which
-doubles as the proof that the documentation is right.
+The documentation half is DONE (`04f3fde` → `guides/reference/CUSTOM_MARKDOWN.md`, sixteen
+directives extracted from `md.jsx` rather than remembered).
+
+What remains is rewriting `apps/api/src/seed-*.mjs` content to actually use those blocks — which
+doubles as the proof the reference is right, because writing real posts against it is what
+surfaces a directive that was documented wrong.
+
+Start from the reference, not from the existing seed text: the point is content that shows the
+blocks off, not the same paragraphs with callouts sprinkled on.
 
 ---
 
