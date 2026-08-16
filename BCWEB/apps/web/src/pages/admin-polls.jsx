@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { BarChart3, Plus, Trash2, PenSquare, Users, Globe, Pin, Eye, ListTree, ArrowUp, ArrowDown } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -16,13 +16,19 @@ const emptyDraft = () => ({
   status: 'draft', results: 'after_vote', pinned: false, closesAt: '', options: ['', ''],
 });
 
-function PollEditor({ open, initial, onClose, onSaved, onCreated }) {
+/** A new poll starts as a form with one real question, not a title plus two blank options. */
+const startQuestions = () => [{
+  kind: 'choice', label: '', help: '', required: false, config: {}, showIf: null,
+  choices: [{ label: '' }, { label: '' }], answers: 0,
+}];
+
+function PollEditor({ open, initial, onClose, onSaved }) {
   const { t } = useI18n(); const toast = useToast();
   const [d, setD] = useState(initial || emptyDraft());
   const [busy, setBusy] = useState(false);
-  // Which button was pressed. A ref rather than state: it is read inside the save that the
-  // click starts, and a state update would not have landed by then.
-  const wantQuestions = useRef(false);
+  // The questions being built, for a NEW poll. An existing one edits them from its own row,
+  // where the answer counts and the 409-on-destruction flow live.
+  const [qs, setQs] = useState(startQuestions);
   const editing = !!initial?.id;
   const locked = editing && (initial.total || 0) > 0;
 
@@ -31,8 +37,28 @@ function PollEditor({ open, initial, onClose, onSaved, onCreated }) {
 
   const save = async () => {
     const options = d.options.map((o) => o.trim()).filter(Boolean);
-    if (d.question.trim().length < 3) return toast.error(t('apoll.needq', 'The question is too short.'));
-    if (!editing && options.length < 2) return toast.error(t('apoll.need2', 'Two options at least.'));
+    if (d.question.trim().length < 3) return toast.error(t('apoll.needq', 'The title is too short.'));
+
+    // A NEW poll is built here in full: the title above, the questions below. It no longer
+    // needs legacy options — the create endpoint accepts none and the poll becomes a form,
+    // which is what every question kind beyond a single choice requires anyway. Inventing
+    // "Option 1" and "Option 2" for a poll that would never use them, and then hiding them,
+    // was the shape this replaces.
+    const build = !editing ? qs.map((q) => ({
+      kind: q.kind, label: (q.label || '').trim(), help: q.help || '',
+      required: IS_NOTE(q.kind) ? false : !!q.required, config: q.config || {}, showIf: q.showIf || null,
+      choices: HAS_CHOICES(q.kind) ? (q.choices || []).filter((c) => c.label.trim()).map((c) => ({ label: c.label.trim() })) : [],
+    })) : null;
+    if (build) {
+      if (!build.length) return toast.error(t('apoll.needquestion', 'Add at least one question.'));
+      if (build.some((q) => !q.label)) return toast.error(t('apq.needlabel', 'Every question needs a label.'));
+      if (build.some((q) => HAS_CHOICES(q.kind) && q.choices.length < 2)) {
+        return toast.error(t('apq.need2', 'A choice question needs at least two choices.'));
+      }
+      if (build.some((q) => q.kind === 'grid' && !(q.config.rows || []).filter(Boolean).length)) {
+        return toast.error(t('apq.grid.needrow', 'A grid needs at least one row.'));
+      }
+    }
     setBusy(true);
     try {
       const body = {
@@ -42,19 +68,20 @@ function PollEditor({ open, initial, onClose, onSaved, onCreated }) {
         closesAt: d.closesAt ? new Date(d.closesAt).toISOString() : null,
         // Never sent once somebody has answered — the API refuses it anyway, and sending it
         // would turn a saved title edit into a 409 the admin cannot explain.
-        ...(locked ? {} : { options }),
+        // On CREATE it is an empty list: the questions below carry the poll.
+        ...(locked ? {} : { options: editing ? options : [] }),
       };
       let created = null;
       if (editing) await api.put(`/admin/polls/${initial.id}`, body);
       else created = await api.post('/admin/polls', body);
+      // The questions go in the SAME breath as the poll, before anything is reported saved.
+      // Two steps meant a poll could exist for a moment with none, and "New poll" produced a
+      // one-question poll unless you knew to press a second button afterwards.
+      const madeId = created?.poll?.id || created?.id;
+      if (build && madeId) await api.put(`/admin/polls/${madeId}/questions`, { questions: build });
       toast.success(t('common.saved', 'Saved.'));
       onSaved();
       onClose();
-      // Hand the new poll back so the caller can open the questions editor on it. A poll with
-      // more than one question was only reachable by saving, finding the row, and pressing a
-      // second button — so "New poll" produced a one-question poll and the form half of the
-      // feature was something you had to know was there.
-      if (wantQuestions.current && (created?.poll || created?.id)) onCreated?.(created.poll || created);
     } catch (x) {
       toast.error(x?.data?.error === 'has_votes' ? t('apoll.locked', 'People have already answered — the options can no longer be changed.') : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
@@ -70,21 +97,33 @@ function PollEditor({ open, initial, onClose, onSaved, onCreated }) {
           <Textarea rows={2} value={d.description} onChange={(e) => set('description', e.target.value)} />
         </Field>
 
-        <Field label={t('apoll.options', 'Options')} hint={locked ? t('apoll.locked', 'People have already answered — the options can no longer be changed.') : undefined}>
-          <div className="space-y-1.5">
-            {d.options.map((o, i) => (
-              <div key={i} className="flex gap-2">
-                <Input value={o} disabled={locked} onChange={(e) => setOpt(i, e.target.value)} placeholder={`${t('apoll.option', 'Option')} ${i + 1}`} />
-                {d.options.length > 2 && !locked && (
-                  <Button variant="ghost" onClick={() => setD((x) => ({ ...x, options: x.options.filter((_, j) => j !== i) }))}><Trash2 size={14} /></Button>
-                )}
-              </div>
-            ))}
-            {!locked && d.options.length < 20 && (
-              <Button size="sm" variant="ghost" onClick={() => setD((x) => ({ ...x, options: [...x.options, ''] }))}><Plus size={13} /> {t('apoll.addopt', 'Add an option')}</Button>
-            )}
-          </div>
-        </Field>
+        {/* The QUESTIONS, here, while the poll is being made — not behind a second button on
+            a row that does not exist yet. Every kind is available from the start: a choice, a
+            scale, a ranking, a grid, a date, free text, or a note that takes no answer at all.
+            The old screen offered a title and two blank option boxes, which quietly decided
+            the poll was a single choice before anybody had said so. */}
+        {!editing ? (
+          <Field label={t('apoll.questions', 'Questions')}
+            hint={t('apoll.questions.h', 'Every kind is available. A note is content rather than a question — a heading or an explanation between two of them.')}>
+            <QuestionList qs={qs} setQs={setQs} t={t} />
+          </Field>
+        ) : (
+          <Field label={t('apoll.options', 'Options')} hint={locked ? t('apoll.locked', 'People have already answered — the options can no longer be changed.') : t('apoll.options.h', 'The original single-choice shape. Use the Questions button on the row to add more than one question.')}>
+            <div className="space-y-1.5">
+              {d.options.map((o, i) => (
+                <div key={i} className="flex gap-2">
+                  <Input value={o} disabled={locked} onChange={(e) => setOpt(i, e.target.value)} placeholder={`${t('apoll.option', 'Option')} ${i + 1}`} />
+                  {d.options.length > 2 && !locked && (
+                    <Button variant="ghost" onClick={() => setD((x) => ({ ...x, options: x.options.filter((_, j) => j !== i) }))}><Trash2 size={14} /></Button>
+                  )}
+                </div>
+              ))}
+              {!locked && d.options.length < 20 && (
+                <Button size="sm" variant="ghost" onClick={() => setD((x) => ({ ...x, options: [...x.options, ''] }))}><Plus size={13} /> {t('apoll.addopt', 'Add an option')}</Button>
+              )}
+            </div>
+          </Field>
+        )}
 
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('apoll.audience', 'Who can answer')}
@@ -130,12 +169,7 @@ function PollEditor({ open, initial, onClose, onSaved, onCreated }) {
         </div>
 
         <div className="flex flex-wrap gap-2 pt-1 items-center">
-          <Button variant="primary" disabled={busy} onClick={() => { wantQuestions.current = false; save(); }}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button>
-          {!editing && (
-            <Button disabled={busy} onClick={() => { wantQuestions.current = true; save(); }}>
-              <ListTree size={13} /> {t('apoll.andquestions', 'Save and add questions')}
-            </Button>
-          )}
+          <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button>
           <Button onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
         </div>
       </div>
@@ -157,6 +191,139 @@ const HAS_CHOICES = (k) => k === 'choice' || k === 'ranking' || k === 'grid';
 // What a note's body is called on screen. It is the content, not a hint about an answer.
 const HELP_LABEL = (k, t) => IS_NOTE(k) ? t('apq.note.body', 'Text (markdown)') : t('apq.help', 'Hint');
 const newQuestion = () => ({ kind: 'choice', label: '', help: '', required: false, config: {}, showIf: null, choices: [{ label: '' }, { label: '' }] });
+
+/**
+ * The question list, and every control for one question.
+ *
+ * Extracted because it is now used TWICE — by the editor that changes an existing poll's
+ * questions, and by the new-poll screen that builds them before the poll exists. It is the
+ * largest piece of UI in this file, and two copies of it would be two places to add the next
+ * question kind, one of which somebody would miss.
+ *
+ * State lives with the caller: this renders `qs` and calls `setQs`. It owns no saving, no
+ * endpoint and no modal, so the two callers can each decide what saving means.
+ */
+function QuestionList({ qs, setQs, t }) {
+  const patch = (i, k, v) => setQs((x) => x.map((q, j) => (j === i ? { ...q, [k]: v } : q)));
+  const move = (i, d) => setQs((x) => {
+    const j = i + d; if (j < 0 || j >= x.length) return x;
+    const c = [...x]; [c[i], c[j]] = [c[j], c[i]]; return c;
+  });
+  return (<>
+      {qs.map((q, i) => (
+        <Card key={q.id || `new-${i}`} className="p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[var(--muted)] w-5">{i + 1}</span>
+            <Input value={q.label} onChange={(e) => patch(i, 'label', e.target.value)} placeholder={t('apq.label', 'Question')} />
+            <Select value={q.kind} onChange={(e) => patch(i, 'kind', e.target.value)} style={{ maxWidth: 130 }}>
+              {KINDS.map((k) => <option key={k} value={k}>{t(`apq.kind.${k}`, k)}</option>)}
+            </Select>
+            <Button variant="ghost" onClick={() => move(i, -1)} disabled={i === 0}><ArrowUp size={14} /></Button>
+            <Button variant="ghost" onClick={() => move(i, 1)} disabled={i === qs.length - 1}><ArrowDown size={14} /></Button>
+            <Button variant="ghost" onClick={() => setQs((x) => x.filter((_, j) => j !== i))}><Trash2 size={14} /></Button>
+          </div>
+          {/* `help` was carried by the API, sent by the editor and editable NOWHERE — so
+              every question shipped with an empty hint and no way to fill one. It is also
+              where a note keeps its body, which is why the label changes with the kind:
+              on a question it is a hint, on a note it IS the content. */}
+          <Textarea rows={IS_NOTE(q.kind) ? 4 : 2} value={q.help || ''}
+            onChange={(e) => patch(i, 'help', e.target.value)}
+            placeholder={HELP_LABEL(q.kind, t)} />
+          {IS_NOTE(q.kind) && (
+            <div className="text-[11px] text-[var(--muted)]">
+              {t('apq.note.hint', 'Rendered with the site’s markdown — links, lists and emphasis all work. The title above is optional.')}
+            </div>
+          )}
+          <div className="flex items-center gap-3 text-xs">
+            {/* Not offered on a note: it takes no answer, so "required" could never be
+                met and every submission would count as incomplete for ever. */}
+            {!IS_NOTE(q.kind) && (
+              <label className="flex items-center gap-1.5">
+                <input type="checkbox" checked={q.required} onChange={(e) => patch(i, 'required', e.target.checked)} />
+                {t('apq.required', 'Required')}
+              </label>
+            )}
+            {/* Named, not just counted: knowing a question already holds 12 answers is what
+                makes changing its type a decision rather than a click. */}
+            {q.answers > 0 && (
+              <span className="text-[var(--muted)]">{t('apq.has', '{n} answer(s) already').replace('{n}', String(q.answers))}</span>
+            )}
+          </div>
+          {/* A scale's bounds and how it is drawn. Without these the kind existed and could
+              only ever be a bare number box — the config was reachable by the API and by
+              nothing a human uses. */}
+          {q.kind === 'scale' && (
+            <div className="flex items-center gap-2 pl-7 text-xs">
+              <span className="text-[var(--muted)]">{t('apq.scale.range', 'From')}</span>
+              <Input type="number" style={{ maxWidth: 70 }} value={q.config?.min ?? 1}
+                onChange={(e) => patch(i, 'config', { ...q.config, min: Number(e.target.value) })} />
+              <span className="text-[var(--muted)]">{t('apq.scale.to', 'to')}</span>
+              <Input type="number" style={{ maxWidth: 70 }} value={q.config?.max ?? 5}
+                onChange={(e) => patch(i, 'config', { ...q.config, max: Number(e.target.value) })} />
+              <Select style={{ maxWidth: 130 }} value={q.config?.style || 'number'}
+                onChange={(e) => patch(i, 'config', { ...q.config, style: e.target.value })}>
+                <option value="number">{t('apq.scale.number', 'Number box')}</option>
+                <option value="stars">{t('apq.scale.stars', 'Stars')}</option>
+                <option value="buttons">{t('apq.scale.buttons', 'Buttons')}</option>
+              </Select>
+            </div>
+          )}
+          {/* A grid's ROWS. Labels, not answerable things, so they live in config rather than
+              a table — and they have to be editable here or the kind is reachable by the API
+              and by nothing a human uses, which is how `ranking` shipped unsaveable. */}
+          {q.kind === 'grid' && (() => {
+            const rows = Array.isArray(q.config?.rows) ? q.config.rows : [];
+            const setRows = (r) => patch(i, 'config', { ...q.config, rows: r });
+            return (
+              <div className="space-y-1.5 pl-7">
+                <div className="text-xs text-[var(--muted)]">{t('apq.grid.rows', 'Rows (the options above are the columns)')}</div>
+                {rows.map((r, ri) => (
+                  <div key={ri} className="flex gap-2">
+                    <Input value={r} placeholder={`${t('apq.grid.row', 'Row')} ${ri + 1}`}
+                      onChange={(e) => setRows(rows.map((x, j) => (j === ri ? e.target.value : x)))} />
+                    <Button variant="ghost" onClick={() => setRows(rows.filter((_, j) => j !== ri))}><Trash2 size={14} /></Button>
+                  </div>
+                ))}
+                {rows.length < 20 && (
+                  <Button size="sm" variant="ghost" onClick={() => setRows([...rows, ''])}>
+                    <Plus size={13} /> {t('apq.grid.addrow', 'Add a row')}
+                  </Button>
+                )}
+                <label className="flex items-center gap-1.5 text-xs">
+                  <input type="checkbox"
+                    checked={q.config?.requireAllRows ?? !!q.required}
+                    onChange={(e) => patch(i, 'config', { ...q.config, requireAllRows: e.target.checked })} />
+                  {t('apq.grid.all', 'Every row must be answered')}
+                </label>
+              </div>
+            );
+          })()}
+          {HAS_CHOICES(q.kind) && (
+            <div className="space-y-1.5 pl-7">
+              {q.choices.map((c, ci) => (
+                <div key={c.id || `c-${ci}`} className="flex gap-2">
+                  <Input value={c.label} placeholder={`${t('apoll.option', 'Option')} ${ci + 1}`}
+                    onChange={(e) => patch(i, 'choices', q.choices.map((x, j) => (j === ci ? { ...x, label: e.target.value } : x)))} />
+                  {q.choices.length > 2 && (
+                    <Button variant="ghost" onClick={() => patch(i, 'choices', q.choices.filter((_, j) => j !== ci))}><Trash2 size={14} /></Button>
+                  )}
+                </div>
+              ))}
+              {q.choices.length < 20 && (
+                <Button size="sm" variant="ghost" onClick={() => patch(i, 'choices', [...q.choices, { label: '' }])}>
+                  <Plus size={13} /> {t('apoll.addopt', 'Add an option')}
+                </Button>
+              )}
+            </div>
+          )}
+        </Card>
+      ))}
+
+      <Button size="sm" variant="ghost" onClick={() => setQs((x) => [...x, newQuestion()])}>
+        <Plus size={13} /> {t('apq.add', 'Add a question')}
+      </Button>
+  </>);
+}
 
 /**
  * The multi-question editor.
@@ -196,11 +363,7 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
   // second attempt has to be the user CONFIRMING this exact list — not a blind retry.
   const [conflict, setConflict] = useState(null);
 
-  const patch = (i, k, v) => setQs((x) => x.map((q, j) => (j === i ? { ...q, [k]: v } : q)));
-  const move = (i, d) => setQs((x) => {
-    const j = i + d; if (j < 0 || j >= x.length) return x;
-    const c = [...x]; [c[i], c[j]] = [c[j], c[i]]; return c;
-  });
+  // patch/move moved into QuestionList with the markup that used them.
 
   const save = async (force) => {
     const body = {
@@ -278,118 +441,7 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
           </div>
         )}
 
-        {qs.map((q, i) => (
-          <Card key={q.id || `new-${i}`} className="p-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[var(--muted)] w-5">{i + 1}</span>
-              <Input value={q.label} onChange={(e) => patch(i, 'label', e.target.value)} placeholder={t('apq.label', 'Question')} />
-              <Select value={q.kind} onChange={(e) => patch(i, 'kind', e.target.value)} style={{ maxWidth: 130 }}>
-                {KINDS.map((k) => <option key={k} value={k}>{t(`apq.kind.${k}`, k)}</option>)}
-              </Select>
-              <Button variant="ghost" onClick={() => move(i, -1)} disabled={i === 0}><ArrowUp size={14} /></Button>
-              <Button variant="ghost" onClick={() => move(i, 1)} disabled={i === qs.length - 1}><ArrowDown size={14} /></Button>
-              <Button variant="ghost" onClick={() => setQs((x) => x.filter((_, j) => j !== i))}><Trash2 size={14} /></Button>
-            </div>
-            {/* `help` was carried by the API, sent by the editor and editable NOWHERE — so
-                every question shipped with an empty hint and no way to fill one. It is also
-                where a note keeps its body, which is why the label changes with the kind:
-                on a question it is a hint, on a note it IS the content. */}
-            <Textarea rows={IS_NOTE(q.kind) ? 4 : 2} value={q.help || ''}
-              onChange={(e) => patch(i, 'help', e.target.value)}
-              placeholder={HELP_LABEL(q.kind, t)} />
-            {IS_NOTE(q.kind) && (
-              <div className="text-[11px] text-[var(--muted)]">
-                {t('apq.note.hint', 'Rendered with the site’s markdown — links, lists and emphasis all work. The title above is optional.')}
-              </div>
-            )}
-            <div className="flex items-center gap-3 text-xs">
-              {/* Not offered on a note: it takes no answer, so "required" could never be
-                  met and every submission would count as incomplete for ever. */}
-              {!IS_NOTE(q.kind) && (
-                <label className="flex items-center gap-1.5">
-                  <input type="checkbox" checked={q.required} onChange={(e) => patch(i, 'required', e.target.checked)} />
-                  {t('apq.required', 'Required')}
-                </label>
-              )}
-              {/* Named, not just counted: knowing a question already holds 12 answers is what
-                  makes changing its type a decision rather than a click. */}
-              {q.answers > 0 && (
-                <span className="text-[var(--muted)]">{t('apq.has', '{n} answer(s) already').replace('{n}', String(q.answers))}</span>
-              )}
-            </div>
-            {/* A scale's bounds and how it is drawn. Without these the kind existed and could
-                only ever be a bare number box — the config was reachable by the API and by
-                nothing a human uses. */}
-            {q.kind === 'scale' && (
-              <div className="flex items-center gap-2 pl-7 text-xs">
-                <span className="text-[var(--muted)]">{t('apq.scale.range', 'From')}</span>
-                <Input type="number" style={{ maxWidth: 70 }} value={q.config?.min ?? 1}
-                  onChange={(e) => patch(i, 'config', { ...q.config, min: Number(e.target.value) })} />
-                <span className="text-[var(--muted)]">{t('apq.scale.to', 'to')}</span>
-                <Input type="number" style={{ maxWidth: 70 }} value={q.config?.max ?? 5}
-                  onChange={(e) => patch(i, 'config', { ...q.config, max: Number(e.target.value) })} />
-                <Select style={{ maxWidth: 130 }} value={q.config?.style || 'number'}
-                  onChange={(e) => patch(i, 'config', { ...q.config, style: e.target.value })}>
-                  <option value="number">{t('apq.scale.number', 'Number box')}</option>
-                  <option value="stars">{t('apq.scale.stars', 'Stars')}</option>
-                  <option value="buttons">{t('apq.scale.buttons', 'Buttons')}</option>
-                </Select>
-              </div>
-            )}
-            {/* A grid's ROWS. Labels, not answerable things, so they live in config rather than
-                a table — and they have to be editable here or the kind is reachable by the API
-                and by nothing a human uses, which is how `ranking` shipped unsaveable. */}
-            {q.kind === 'grid' && (() => {
-              const rows = Array.isArray(q.config?.rows) ? q.config.rows : [];
-              const setRows = (r) => patch(i, 'config', { ...q.config, rows: r });
-              return (
-                <div className="space-y-1.5 pl-7">
-                  <div className="text-xs text-[var(--muted)]">{t('apq.grid.rows', 'Rows (the options above are the columns)')}</div>
-                  {rows.map((r, ri) => (
-                    <div key={ri} className="flex gap-2">
-                      <Input value={r} placeholder={`${t('apq.grid.row', 'Row')} ${ri + 1}`}
-                        onChange={(e) => setRows(rows.map((x, j) => (j === ri ? e.target.value : x)))} />
-                      <Button variant="ghost" onClick={() => setRows(rows.filter((_, j) => j !== ri))}><Trash2 size={14} /></Button>
-                    </div>
-                  ))}
-                  {rows.length < 20 && (
-                    <Button size="sm" variant="ghost" onClick={() => setRows([...rows, ''])}>
-                      <Plus size={13} /> {t('apq.grid.addrow', 'Add a row')}
-                    </Button>
-                  )}
-                  <label className="flex items-center gap-1.5 text-xs">
-                    <input type="checkbox"
-                      checked={q.config?.requireAllRows ?? !!q.required}
-                      onChange={(e) => patch(i, 'config', { ...q.config, requireAllRows: e.target.checked })} />
-                    {t('apq.grid.all', 'Every row must be answered')}
-                  </label>
-                </div>
-              );
-            })()}
-            {HAS_CHOICES(q.kind) && (
-              <div className="space-y-1.5 pl-7">
-                {q.choices.map((c, ci) => (
-                  <div key={c.id || `c-${ci}`} className="flex gap-2">
-                    <Input value={c.label} placeholder={`${t('apoll.option', 'Option')} ${ci + 1}`}
-                      onChange={(e) => patch(i, 'choices', q.choices.map((x, j) => (j === ci ? { ...x, label: e.target.value } : x)))} />
-                    {q.choices.length > 2 && (
-                      <Button variant="ghost" onClick={() => patch(i, 'choices', q.choices.filter((_, j) => j !== ci))}><Trash2 size={14} /></Button>
-                    )}
-                  </div>
-                ))}
-                {q.choices.length < 20 && (
-                  <Button size="sm" variant="ghost" onClick={() => patch(i, 'choices', [...q.choices, { label: '' }])}>
-                    <Plus size={13} /> {t('apoll.addopt', 'Add an option')}
-                  </Button>
-                )}
-              </div>
-            )}
-          </Card>
-        ))}
-
-        <Button size="sm" variant="ghost" onClick={() => setQs((x) => [...x, newQuestion()])}>
-          <Plus size={13} /> {t('apq.add', 'Add a question')}
-        </Button>
+        <QuestionList qs={qs} setQs={setQs} t={t} />
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
@@ -711,8 +763,7 @@ export function AdminPolls() {
         </div>
       )}
 
-      {editor && <PollEditor open initial={editor.id ? editor : null} onClose={() => setEditor(null)} onSaved={reload}
-        onCreated={(p) => setQuestions({ ...p, questions: p.questions || [] })} />}
+      {editor && <PollEditor open initial={editor.id ? editor : null} onClose={() => setEditor(null)} onSaved={reload} />}
       {stats && <PollStats pollId={stats} onClose={() => setStats(null)} />}
       {questions && <QuestionsEditor poll={questions} onClose={() => setQuestions(null)} onSaved={reload} />}
     </div>

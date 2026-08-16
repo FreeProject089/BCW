@@ -383,7 +383,16 @@ export default async function pollRoutes(app) {
     closesAt: z.string().datetime().nullable().optional(),
     results: z.enum(['always', 'after_vote', 'staff']).default('after_vote'),
     pinned: z.boolean().default(false),
-    options: z.array(z.string().min(1).max(200)).min(2).max(20),
+    // Two at least — for the LEGACY shape, which is a poll that is one choice question and
+    // stores its answers in PollOption/PollVote. A question-based poll uses neither, so an
+    // empty list is allowed and means "this one is a form": the questions are set by
+    // PUT /admin/polls/:id/questions immediately after. Requiring two here forced the
+    // new-poll screen to invent "Option 1" and "Option 2" for a poll that would never use
+    // them, and then to hide them.
+    options: z.array(z.string().min(1).max(200)).max(20).refine(
+      (v) => v.length === 0 || v.length >= 2,
+      { message: 'give two options or none' },
+    ),
   });
 
   app.get('/admin/polls', { preHandler: requireCap('manage_polls') }, async () => {
