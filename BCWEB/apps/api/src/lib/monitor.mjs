@@ -16,6 +16,49 @@ import { notify } from './lib.mjs';
 function cpuSnapshot() {
   return os.cpus().reduce((a, c) => { for (const k in c.times) a[k] = (a[k] || 0) + c.times[k]; return a; }, {});
 }
+/**
+ * Fold one day's raw samples into the row that outlives them.
+ *
+ * Idempotent on the day: an upsert, so a restart, a double tick or a manual re-run recomputes
+ * rather than double-counting. A day with no samples writes nothing — a row of zeroes would
+ * read as "the server was idle" when it means "we were not watching".
+ */
+export async function rollUpDay(p, when) {
+  const day = new Date(Date.UTC(when.getUTCFullYear(), when.getUTCMonth(), when.getUTCDate()));
+  const next = new Date(day.getTime() + 864e5);
+  const rows = await p.serverMetricSample.findMany({
+    where: { createdAt: { gte: day, lt: next } },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!rows.length) return null;
+
+  const avg = (f) => rows.reduce((a, r) => a + (f(r) ?? 0), 0) / rows.length;
+  const max = (f) => rows.reduce((a, r) => Math.max(a, f(r) ?? 0), 0);
+  // Only average the samples that HAVE the value: latency and throughput are nullable, and
+  // treating a missing reading as zero would quietly report a fast day.
+  const avgOf = (f) => { const v = rows.map(f).filter((x) => x != null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; };
+  // Same rule the metrics endpoint uses: a gap of more than 25 minutes between two ~10-minute
+  // ticks means nothing was running in between.
+  let downMinutes = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const gap = (rows[i].createdAt - rows[i - 1].createdAt) / 60000;
+    if (gap > 25) downMinutes += Math.round(gap);
+  }
+
+  const data = {
+    cpuAvg: avg((r) => r.cpuPct), cpuMax: max((r) => r.cpuPct),
+    memAvg: avg((r) => r.memPct), memMax: max((r) => r.memPct),
+    diskAvg: avg((r) => r.diskPct), diskMax: max((r) => r.diskPct),
+    loadAvg: avg((r) => r.loadAvg1),
+    latencyAvg: avgOf((r) => r.latencyMs),
+    netRxAvg: avgOf((r) => r.netRxKbps),
+    netTxAvg: avgOf((r) => r.netTxKbps),
+    samples: rows.length,
+    downMinutes,
+  };
+  return p.serverMetricDaily.upsert({ where: { day }, create: { day, ...data }, update: data });
+}
+
 export async function sampleCpuPct(windowMs = 200) {
   const a = cpuSnapshot();
   await new Promise((r) => setTimeout(r, windowMs));
@@ -327,8 +370,14 @@ export async function sampleAndAlert(p, log) {
       cpuPct, memPct, diskPct, loadAvg1: os.loadavg()[0], uptimeSec: Math.round(process.uptime()), latencyMs,
       netRxKbps: rxKbps, netTxKbps: txKbps,
     } });
-    // Keep 30 days of history — enough for the dashboard's trend graph without
-    // the table growing unbounded (one row per ~10 min tick).
+    // Summarise BEFORE pruning, or the summary would be missing exactly the days the prune
+    // takes. Yesterday and today: yesterday because it is now complete, today so the dashboard
+    // has a current row to compare against rather than a gap.
+    await rollUpDay(p, new Date(Date.now() - 864e5)).catch(() => {});
+    await rollUpDay(p, new Date()).catch(() => {});
+
+    // Keep 30 days of raw history — enough for the dashboard's trend graph without the table
+    // growing unbounded (one row per ~10 min tick). Anything older lives on as a daily row.
     await p.serverMetricSample.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 30 * 864e5) } } });
 
     const t = await thresholds(p);

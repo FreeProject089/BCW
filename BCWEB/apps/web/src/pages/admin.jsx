@@ -32,7 +32,7 @@ import { AdminMyo } from './admin-myo.jsx';
 import { AdminApi } from './admin-api.jsx';
 import { AdminSanctions, ContentSanctionForm, Evidence } from './admin-sanctions.jsx';
 import { AdminPolls } from './admin-polls.jsx';
-import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash, useThreadStream } from './pages.jsx';
+import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash, useThreadStream } from './pages.jsx';
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
 // actual api.del only fires once the 6s window elapses — Undo means nothing was ever deleted,
@@ -1040,12 +1040,7 @@ function AdminSecurity() {
 
   const exportCsv = (rowsArr, cols, name) => {
     if (!rowsArr.length) return;
-    const esc = csvCell;
-    const csv = [cols.map((c) => esc(c[0])).join(','), ...rowsArr.map((r) => cols.map((c) => esc(c[1](r))).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `${name}.csv`; document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    downloadCsv(toCsv(rowsArr, cols), name);
   };
 
   return (
@@ -1288,6 +1283,110 @@ function AlertThresholds() {
   );
 }
 
+// Comparing a period with the one before it, out to a year.
+//
+// Reads the DAILY rollup, because the raw samples are pruned at 30 days — which is why this
+// question had no answer until now. When the history does not reach back far enough the panel
+// SAYS so instead of drawing a comparison against nothing: a change measured against no data is
+// not a change of zero, it is not a measurement.
+function PerfCompare() {
+  const { t } = useI18n();
+  const [days, setDays] = useState(7);
+  const { data, loading } = useAsync(() => api.get(`/admin/server/metrics/compare?days=${days}`), [days]);
+
+  const RANGES = [[1, t('perf.r.1', 'Yesterday')], [7, t('perf.r.7', 'A week')], [30, t('perf.r.30', 'A month')],
+    [182, t('perf.r.182', 'Six months')], [365, t('perf.r.365', 'A year')]];
+
+  const pct = (v) => (v == null ? '—' : `${v.toFixed(1)}%`);
+  // Up is worse for all of these — more CPU, more memory, more downtime.
+  const Delta = ({ v, unit = '%' }) => {
+    if (v == null) return <span className="text-[var(--faint)]">—</span>;
+    const up = v > 0.05, down = v < -0.05;
+    return (
+      <span className={up ? 'text-[var(--warning)]' : down ? 'text-[var(--success)]' : 'text-[var(--faint)]'}>
+        {up ? '+' : ''}{unit === '%' ? v.toFixed(1) : Math.round(v)}{unit === '%' ? ' pt' : ` ${unit}`}
+      </span>
+    );
+  };
+
+  const exportCsv = () => {
+    const rows = data?.series || [];
+    if (!rows.length) return;
+    downloadCsv(toCsv(rows, [
+      ['day', (r) => String(r.day).slice(0, 10)],
+      ['cpu_avg_pct', (r) => r.cpuAvg?.toFixed(2)], ['cpu_max_pct', (r) => r.cpuMax?.toFixed(2)],
+      ['mem_avg_pct', (r) => r.memAvg?.toFixed(2)], ['mem_max_pct', (r) => r.memMax?.toFixed(2)],
+      ['disk_avg_pct', (r) => r.diskAvg?.toFixed(2)], ['disk_max_pct', (r) => r.diskMax?.toFixed(2)],
+      ['load_avg', (r) => r.loadAvg?.toFixed(2)], ['latency_avg_ms', 'latencyAvg'],
+      ['net_rx_avg_kbps', 'netRxAvg'], ['net_tx_avg_kbps', 'netTxAvg'],
+      ['samples', 'samples'], ['down_minutes', 'downMinutes'],
+    ]), `server-metrics-${days}d-${new Date().toISOString().slice(0, 10)}`);
+  };
+
+  const cur = data?.current; const prev = data?.previous; const cov = data?.coverage;
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+        <div className="text-sm font-semibold flex items-center gap-2">
+          <TrendingUp size={15} className="text-[var(--primary-2)]" /> {t('perf.cmp.title', 'Compared with the period before')}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="input !py-1.5 !text-sm !w-auto">
+            {RANGES.map(([d, label]) => <option key={d} value={d}>{label}</option>)}
+          </select>
+          <Button size="sm" disabled={!data?.series?.length} onClick={exportCsv}>
+            <Download size={13} /> {t('perf.cmp.csv', 'Export CSV')}
+          </Button>
+        </div>
+      </div>
+
+      {loading ? <Spinner size={14} /> : !cur ? (
+        <div className="text-[12px] text-[var(--faint)]">{t('perf.cmp.nodata', 'Nothing recorded for this period yet.')}</div>
+      ) : (
+        <>
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="text-[11px] uppercase tracking-wider text-[var(--faint)]">
+                <th className="text-left font-normal pb-1.5" />
+                <th className="text-right font-normal pb-1.5">{t('perf.cmp.now', 'This period')}</th>
+                <th className="text-right font-normal pb-1.5">{t('perf.cmp.before', 'The one before')}</th>
+                <th className="text-right font-normal pb-1.5">{t('perf.cmp.change', 'Change')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                [t('perf.cmp.cpu', 'CPU, average'), pct(cur.cpuAvg), pct(prev?.cpuAvg), data?.change?.cpuAvg, '%'],
+                [t('perf.cmp.mem', 'Memory, average'), pct(cur.memAvg), pct(prev?.memAvg), data?.change?.memAvg, '%'],
+                [t('perf.cmp.disk', 'Disk, average'), pct(cur.diskAvg), pct(prev?.diskAvg), data?.change?.diskAvg, '%'],
+                [t('perf.cmp.down', 'Minutes not running'), String(cur.downMinutes), prev ? String(prev.downMinutes) : '—', data?.change?.downMinutes, 'min'],
+              ].map(([label, a, b, d, unit]) => (
+                <tr key={label} className="border-t border-[var(--line)]">
+                  <td className="py-1.5">{label}</td>
+                  <td className="py-1.5 text-right tabular-nums">{a}</td>
+                  <td className="py-1.5 text-right tabular-nums text-[var(--muted)]">{b}</td>
+                  <td className="py-1.5 text-right tabular-nums"><Delta v={d} unit={unit} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* What the numbers rest on. A week's comparison built from four days is a different
+              statement from one built from fourteen, and the reader cannot tell without this. */}
+          <div className="text-[11px] text-[var(--faint)] mt-2">
+            {t('perf.cmp.built', '{d} day(s), {n} sample(s).').replace('{d}', cur.days).replace('{n}', cur.samples)}
+            {cov && !cov.complete && (
+              <span className="text-[var(--warning)]">
+                {' '}{t('perf.cmp.short', 'History only goes back {h} day(s) — there is no earlier period to compare with yet. Daily summaries started when this was added; they are kept for good, so longer comparisons fill in from here.').replace('{h}', cov.daysHeld)}
+              </span>
+            )}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
 function AdminServerPerf() {
   const toast = useToast();
   const { t } = useI18n();
@@ -1433,6 +1532,10 @@ function AdminServerPerf() {
         </div>
       </div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('sp.desc', 'Metrics reflect this API container\'s own view (os/cgroup) — sampled every ~10 min, auto-refreshed here every 30s. A full per-service breakdown with restart controls needs Docker-socket access (see "Advanced server management").')}</p>
+
+      {/* Placed straight under the live numbers: "is this normal" is the question the live
+          numbers provoke, and it is the one they cannot answer. */}
+      <div className="mb-4"><PerfCompare /></div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
         {kpi('CPU', latest ? `${latest.cpuPct.toFixed(0)}%` : '—', Cpu, cpuTone, 'cpuPct')}
@@ -2066,12 +2169,7 @@ function DbViewer() {
   const cellText = (v) => v === null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
   const exportCsv = () => {
     if (!rows?.rows?.length) return;
-    const esc = csvCell;
-    const csv = [cols.map(esc).join(','), ...rows.rows.map((r) => cols.map((c) => esc(cellText(r[c]))).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `${active}_page${page + 1}.csv`; document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    downloadCsv(toCsv(rows.rows, cols.map((c) => [c, (r) => cellText(r[c])])), `${active}_page${page + 1}`);
   };
   const visibleTables = tables?.filter((t) => !tableQ.trim() || t.name.toLowerCase().includes(tableQ.trim().toLowerCase())) || [];
 
@@ -9397,9 +9495,9 @@ function WebVitals() {
     for (const m of metrics) lines.push(['overall', m.metric, m.p50, m.p75, m.p90, m.p99, m.n, m.goodShare].map(esc).join(','));
     for (const [k] of WV_DIMS) { lines.push(''); lines.push([k, 'LCP', 'CLS', 'INP', 'FCP', 'TTFB', 'samples'].join(','));
       for (const r of (data?.[k] || [])) lines.push([r.key ?? r.path, r.lcp, r.cls, r.inp, r.fcp, r.ttfb, r.samples].map(esc).join(',')); }
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `web-vitals-${hours ? `${hours}h` : `${days}d`}-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(a.href);
+    // Several tables in one file with blank lines between them, so this one builds its own
+    // rows; only the handing-to-the-browser half is shared.
+    downloadCsv(lines.join('\n'), `web-vitals-${hours ? `${hours}h` : `${days}d`}-${new Date().toISOString().slice(0, 10)}`);
   };
   return (
     <Card className="p-5 mb-4">

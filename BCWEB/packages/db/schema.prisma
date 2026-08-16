@@ -2813,3 +2813,36 @@ model StaffNote {
   @@index([subjectId, createdAt])
   @@index([kind])
 }
+
+/// One row per day, kept forever.
+///
+/// Raw samples are pruned at 30 days (monitor.mjs), which made "how does this month compare with
+/// six months ago" unanswerable — there was nothing left to compare against. This is the summary
+/// that survives the prune: ~365 rows a year, small enough to keep indefinitely, detailed enough
+/// to answer the question the raw samples cannot.
+///
+/// Written by the same sweeper that prunes, BEFORE it prunes, and idempotent on `day` so a
+/// restart or a double tick cannot double-count.
+model ServerMetricDaily {
+  day        DateTime @id @db.Date
+
+  cpuAvg     Float
+  cpuMax     Float
+  memAvg     Float
+  memMax     Float
+  diskAvg    Float
+  diskMax    Float
+  loadAvg    Float
+  latencyAvg Int?
+  netRxAvg   Int?
+  netTxAvg   Int?
+
+  /// How many raw samples this day is made of — a day with four is not a day with 144, and a
+  /// reader comparing two of them deserves to know which they are looking at.
+  samples    Int      @default(0)
+  /// Minutes the sampler was not running, from the gaps between consecutive samples.
+  downMinutes Int     @default(0)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

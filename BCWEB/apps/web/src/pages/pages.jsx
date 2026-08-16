@@ -249,6 +249,42 @@ export const csvCell = (s) => {
   if (/^[=@\t\r]/.test(v) || (/^[+\-]/.test(v) && !Number.isFinite(Number(v)))) v = `'${v}`;
   return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 };
+/**
+ * Hand a CSV file to the browser.
+ *
+ * The blob → object URL → anchor → click → revoke dance was written out three separate times in
+ * admin.jsx, each subtly different: one forgot to attach the anchor to the document, another
+ * built its rows with a different escape path. `csvCell` was already shared; this is the other
+ * half, so a fourth export cannot invent a fourth variant.
+ *
+ * The anchor IS attached before clicking — a detached one is ignored by Firefox, which is the
+ * kind of difference that works on the machine it was written on.
+ */
+export function downloadCsv(text, name) {
+  const blob = new Blob([`﻿${text}`], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name.endsWith('.csv') ? name : `${name}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Rows + named columns → a CSV string.
+ *
+ * @param rows  the records
+ * @param cols  [header, accessor] pairs — an accessor rather than a key so a column can be
+ *              computed without the caller pre-flattening every row.
+ */
+export function toCsv(rows, cols) {
+  const head = cols.map(([h]) => csvCell(h)).join(',');
+  const body = rows.map((r) => cols.map(([, get]) => csvCell(typeof get === 'function' ? get(r) : r[get])).join(','));
+  return [head, ...body].join('\n');
+}
+
 // Coarse "time left" for a scheduled deletion.
 export function fmtRemaining(deleteAt) {
   const ms = new Date(deleteAt).getTime() - Date.now();

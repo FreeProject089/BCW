@@ -43,6 +43,67 @@ function cachedProbes(p) {
 export default async function serverPerfRoutes(app) {
   // Warm the probe cache at boot so the first admin visit already has deps/SSL populated.
   db().then((p) => refreshProbes(p)).catch(() => {});
+  // ── Long-range comparison ───────────────────────────────────────────────────
+  //
+  // Answers "how does this week compare with the one before", out to a year. It reads the DAILY
+  // rollup, not the raw samples — those are pruned at 30 days, which is why this question had no
+  // answer at all before. It reports what the history actually COVERS: a year requested against
+  // three weeks of data is a real situation and must not be drawn as a flat line at zero.
+  app.get('/admin/server/metrics/compare', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const days = Math.min(Math.max(Number(req.query?.days) || 7, 1), 366);
+    const midnight = (d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    const today = midnight(new Date());
+    const startCur = new Date(today.getTime() - (days - 1) * 864e5);
+    const startPrev = new Date(startCur.getTime() - days * 864e5);
+
+    const [current, previous, oldest] = await Promise.all([
+      p.serverMetricDaily.findMany({ where: { day: { gte: startCur } }, orderBy: { day: 'asc' } }),
+      p.serverMetricDaily.findMany({ where: { day: { gte: startPrev, lt: startCur } }, orderBy: { day: 'asc' } }),
+      p.serverMetricDaily.findFirst({ orderBy: { day: 'asc' }, select: { day: true } }),
+    ]);
+
+    // Weighted by the number of samples behind each day, so a day with four readings does not
+    // count the same as a day with a hundred and forty.
+    const summarise = (rows) => {
+      if (!rows.length) return null;
+      const n = rows.reduce((a, r) => a + (r.samples || 0), 0) || rows.length;
+      const w = (f) => rows.reduce((a, r) => a + f(r) * (r.samples || 1), 0) / n;
+      return {
+        days: rows.length,
+        samples: n,
+        cpuAvg: w((r) => r.cpuAvg), cpuMax: Math.max(...rows.map((r) => r.cpuMax)),
+        memAvg: w((r) => r.memAvg), memMax: Math.max(...rows.map((r) => r.memMax)),
+        diskAvg: w((r) => r.diskAvg), diskMax: Math.max(...rows.map((r) => r.diskMax)),
+        downMinutes: rows.reduce((a, r) => a + (r.downMinutes || 0), 0),
+      };
+    };
+
+    const cur = summarise(current);
+    const prev = summarise(previous);
+    // A change against nothing is not a change. Returning 0 there would read as "no movement".
+    const delta = (a, b) => (a == null || b == null ? null : a - b);
+    return {
+      days,
+      from: startCur, to: today,
+      series: current,
+      current: cur,
+      previous: prev,
+      change: cur && prev ? {
+        cpuAvg: delta(cur.cpuAvg, prev.cpuAvg),
+        memAvg: delta(cur.memAvg, prev.memAvg),
+        diskAvg: delta(cur.diskAvg, prev.diskAvg),
+        downMinutes: delta(cur.downMinutes, prev.downMinutes),
+      } : null,
+      // What the answer is actually built on, so a short history is visible rather than implied.
+      coverage: {
+        since: oldest?.day || null,
+        daysHeld: oldest ? Math.round((today - new Date(oldest.day)) / 864e5) + 1 : 0,
+        complete: !!oldest && new Date(oldest.day) <= startPrev,
+      },
+    };
+  });
+
   app.get('/admin/server/metrics', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
     const hoursBack = Math.min(Number(req.query?.hours) || (24 * 7), 24 * 30);
