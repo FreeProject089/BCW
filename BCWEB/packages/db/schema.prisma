@@ -2654,6 +2654,12 @@ model PollAnswer {
   text        String?
   number      Float?
   date        DateTime?
+  // WHICH sub-item of the question this row answers. 0 for every kind that has only one thing
+  // to answer, and the row index for a grid — where one voter legitimately picks the SAME
+  // column for two rows ("Speed: good, Docs: good") and the unique below would otherwise call
+  // the second one a duplicate of the first. NOT NULL on purpose: a nullable discriminator is
+  // no discriminator at all in Postgres, where every NULL is distinct from every other.
+  slot        Int           @default(0)
   user        User?         @relation("PollAnswerer", fields: [userId], references: [id], onDelete: SetNull)
   userId      String?
   voterKey    String?
@@ -2665,8 +2671,10 @@ model PollAnswer {
   // The uniqueness moves with the data: one answer per (question, voter) for a single-choice
   // question, per (question, voter, choice) when several are allowed. NULLs are distinct in
   // Postgres, so the signed-in and anonymous forms coexist exactly as they do for PollVote.
-  @@unique([questionId, userId, choiceId])
-  @@unique([questionId, voterKey, choiceId])
+  // `slot` is in the key so a grid can repeat a column across rows; it is 0 everywhere else,
+  // which leaves the constraint exactly as strict as it was for every other kind.
+  @@unique([questionId, userId, choiceId, slot])
+  @@unique([questionId, voterKey, choiceId, slot])
   @@index([pollId, createdAt])
   @@index([questionId])
   @@index([userId])

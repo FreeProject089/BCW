@@ -19,7 +19,15 @@ export const COLUMN_FOR_KIND = {
     // listed here so an unknown-kind check does not reject it, and handled by validateRanking
     // rather than validateAnswer, because its errors are properties of the whole list.
     ranking: 'number',
+    // grid stores the picked COLUMN in choiceId and the ROW in `slot`, not in `number`. The
+    // design said `number` and the design was wrong: the unique key is (question, voter,
+    // choice), and a grid repeating a column across two rows is the normal case, so the row has
+    // to live in a column the KEY can see. Whole-submission validation, like ranking.
+    grid: 'choiceId',
 };
+
+/** The kinds whose errors are properties of the whole submission, not of one answer. */
+export const WHOLE_SUBMISSION_KINDS = { ranking: 'use_validate_ranking', grid: 'use_validate_grid' };
 
 /**
  * A ranking submission: the choice ids in the order the person put them.
@@ -55,6 +63,76 @@ export function validateRanking(order, choiceIds, { required = false } = {}) {
 }
 
 /**
+ * A grid's rows. Labels, not answerable things, so they live in config rather than a table.
+ *
+ * Anything that is not a list of usable labels reads as "no rows", which makes a malformed grid
+ * answerable-by-nobody rather than answerable-wrongly.
+ */
+export function gridRows(question) {
+    const rows = question?.config?.rows;
+    if (!Array.isArray(rows)) return [];
+    return rows.map((r) => String(r ?? '')).filter((r) => r.trim() !== '');
+}
+
+/**
+ * A grid submission: which COLUMN was picked for each ROW.
+ *
+ * Input is a list of `{ row, choiceId }` rather than an object keyed by row, on purpose. An
+ * object makes "the same row twice" unrepresentable, which sounds like a feature until you
+ * realise it also makes it undetectable — a client that sends a row twice is broken, and the
+ * shape that can say so is the shape that can refuse it.
+ *
+ * Validated as a whole for the same reason as a ranking: a missing row is not visible from any
+ * single answer. Rows are indices from 0 into `config.rows`; columns are the question's choices.
+ * The result rows carry `slot`, not `number` — see COLUMN_FOR_KIND for why that matters.
+ *
+ * Every row must be answered when `config.requireAllRows` says so — and it defaults to the
+ * question's own `required`, because "you must answer this grid" and "you must answer every row
+ * of it" are the same thing to everyone except the person who wrote the config.
+ */
+export function validateGrid(entries, question, choiceIds = []) {
+    const rows = gridRows(question);
+    const cfg = question?.config || {};
+    const requireAll = cfg.requireAllRows === undefined ? !!question?.required : !!cfg.requireAllRows;
+
+    if (!Array.isArray(entries) || !entries.length) {
+        return question?.required ? { ok: false, error: 'required' } : { ok: true, rows: [] };
+    }
+    // A grid with no rows can be answered by nothing, so an answer to one is an answer to a
+    // question that does not exist. Refusing beats storing rows nobody can ever read back.
+    if (!rows.length) return { ok: false, error: 'no_rows' };
+
+    const seen = new Set();
+    const out = [];
+    for (const raw of entries) {
+        const row = raw?.row;
+        // A row index must arrive AS a number — not as something Number() is willing to turn
+        // into one. `null` and `[]` both become 0, so a gate written as
+        // `!Number.isInteger(Number(row))` accepts them and files every malformed entry under
+        // row 0, where the duplicate check then blames the client's second honest answer. The
+        // renderer computes this index; nobody types it, so there is no string form to accept.
+        if (!Number.isInteger(row)) return { ok: false, error: 'bad_row', row };
+        if (row < 0 || row >= rows.length) return { ok: false, error: 'unknown_row', row };
+        // Two answers for one row means one of them silently wins, and which one depends on
+        // insertion order at write time.
+        if (seen.has(row)) return { ok: false, error: 'duplicate_row', row };
+        const id = String(raw?.choiceId ?? '');
+        // Membership of THIS question, same reason as everywhere else: an id from another
+        // question is a real row and would file a pick under a column nobody offered.
+        if (!choiceIds.includes(id)) return { ok: false, error: 'unknown_choice', choiceId: id, row };
+        seen.add(row);
+        out.push({ choiceId: id, slot: row });
+    }
+
+    // Averaging a column across people who filled different rows compares numbers that do not
+    // mean the same thing — the same trap a partial ranking sets.
+    if (requireAll && seen.size !== rows.length) {
+        return { ok: false, error: 'incomplete_grid', expected: rows.length, got: seen.size };
+    }
+    return { ok: true, rows: out };
+}
+
+/**
  * How a `scale` is drawn. Presentation only — never a kind of its own.
  *
  * "Five stars" and "rate it 1 to 5" are the same question with the same answer in the same
@@ -87,11 +165,11 @@ export function validateAnswer(question, raw, choiceIds = []) {
         return question?.required ? { ok: false, error: 'required' } : { ok: true, value: null, column };
     }
 
-    // Ranking never comes through here. Its column resolves, so it passes the unknown-kind
-    // check above and would fall all the way to the date branch at the bottom and be parsed as
-    // a date — a whole answer type quietly mangled by the default case. It is validated as a
-    // list by validateRanking, and reaching this point with one is a caller bug worth naming.
-    if (kind === 'ranking') return { ok: false, error: 'use_validate_ranking' };
+    // Ranking and grid never come through here. Their column resolves, so they pass the
+    // unknown-kind check above and would fall all the way to the date branch at the bottom and
+    // be parsed as dates — a whole answer type quietly mangled by the default case. They are
+    // validated as lists, and reaching this point with one is a caller bug worth naming.
+    if (WHOLE_SUBMISSION_KINDS[kind]) return { ok: false, error: WHOLE_SUBMISSION_KINDS[kind] };
 
     if (kind === 'choice') {
         const id = String(raw);

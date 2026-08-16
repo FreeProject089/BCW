@@ -5,7 +5,7 @@
 // humans involved — and it is the turnout figure that gets quoted.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { numericSummary, completion, questionStats } from '../src/lib/poll-stats.mjs';
+import { numericSummary, completion, questionStats, rankingSummary, gridSummary } from '../src/lib/poll-stats.mjs';
 
 const ans = (over) => ({ questionId: 'q1', userId: null, voterKey: null, ...over });
 
@@ -120,5 +120,79 @@ describe('questionStats', () => {
         assert.equal(s.answered, 2);
         assert.equal(s.earliest.toISOString().slice(0, 10), '2026-01-05');
         assert.equal(s.latest.toISOString().slice(0, 10), '2026-03-02');
+    });
+
+    test('ranking and grid are named, not left to the date branch', () => {
+        // THE ONE. Neither matches a branch above, so both fell to the date parser at the
+        // bottom and reported `answered: 0` — the question shown as unanswered on the stats
+        // screen while its rows sat in the table.
+        const cs = [{ id: 'c1', label: 'A' }, { id: 'c2', label: 'B' }];
+        const rk = questionStats({ id: 'q1', kind: 'ranking', label: 'order' },
+            [ans({ choiceId: 'c1', number: 1 }), ans({ choiceId: 'c2', number: 2 })], cs);
+        assert.ok(rk.ranking, 'a ranking reports ranks');
+        assert.equal('earliest' in rk, false);
+
+        const gd = questionStats({ id: 'q1', kind: 'grid', label: 'rate', config: { rows: ['Speed'] } },
+            [ans({ choiceId: 'c1', slot: 0 })], cs);
+        assert.ok(gd.grid, 'a grid reports rows');
+        assert.equal('earliest' in gd, false);
+    });
+});
+
+describe('rankingSummary', () => {
+    const cs = [{ id: 'c1', label: 'Forge' }, { id: 'c2', label: 'Fabric' }];
+
+    test('consistent second place beats erratic first place', () => {
+        // The whole reason this is a mean and not a count of first places: Fabric is first for
+        // one person and last for two; Forge is second for everybody. Forge is the better
+        // answer and only the average says so.
+        const rows = [
+            ans({ userId: 'u1', choiceId: 'c2', number: 1 }), ans({ userId: 'u1', choiceId: 'c1', number: 2 }),
+            ans({ userId: 'u2', choiceId: 'c1', number: 1 }), ans({ userId: 'u2', choiceId: 'c2', number: 2 }),
+            ans({ userId: 'u3', choiceId: 'c1', number: 1 }), ans({ userId: 'u3', choiceId: 'c2', number: 2 }),
+        ];
+        const s = rankingSummary(cs, rows);
+        assert.equal(s[0].label, 'Forge');
+        assert.equal(Math.round(s[0].averageRank * 100) / 100, 1.33);
+        assert.equal(s[0].count, 3);
+    });
+
+    test('an item nobody ranked sorts last rather than winning with no number', () => {
+        const s = rankingSummary(cs, [ans({ choiceId: 'c2', number: 3 })]);
+        assert.equal(s[0].label, 'Fabric');
+        assert.equal(s[1].averageRank, null);
+        assert.equal(s[1].count, 0);
+    });
+
+    test('a rank from another question is ignored', () => {
+        assert.equal(rankingSummary(cs, [ans({ choiceId: 'stranger', number: 1 })])[0].count, 0);
+    });
+});
+
+describe('gridSummary', () => {
+    const cs = [{ id: 'c1', label: 'Good' }, { id: 'c2', label: 'Bad' }];
+
+    test('each row is tallied separately, and rows come from the config', () => {
+        // Rows from the config, not the answers: a row nobody filled must appear with zero.
+        // Missing and unanimously-skipped look identical in the data and are different facts.
+        const s = gridSummary(['Speed', 'Docs', 'Price'], cs, [
+            ans({ userId: 'u1', choiceId: 'c1', slot: 0 }), ans({ userId: 'u1', choiceId: 'c2', slot: 1 }),
+            ans({ userId: 'u2', choiceId: 'c1', slot: 0 }),
+        ]);
+        assert.equal(s.length, 3);
+        assert.equal(s[0].label, 'Speed');
+        assert.equal(s[0].tally.find((t) => t.label === 'Good').votes, 2);
+        assert.equal(s[1].tally.find((t) => t.label === 'Bad').votes, 1);
+        assert.equal(s[2].voters, 0, 'a row nobody answered is still shown');
+    });
+
+    test('one person picking the same column for two rows counts once per row', () => {
+        // The case that forced PollAnswer.slot to exist. Both rows are that person's real
+        // answer; neither is a duplicate of the other.
+        const s = gridSummary(['Speed', 'Docs'], cs, [
+            ans({ userId: 'u1', choiceId: 'c1', slot: 0 }), ans({ userId: 'u1', choiceId: 'c1', slot: 1 }),
+        ]);
+        assert.equal(s[0].tally.find((t) => t.label === 'Good').votes, 1);
+        assert.equal(s[1].tally.find((t) => t.label === 'Good').votes, 1);
     });
 });

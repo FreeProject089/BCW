@@ -13,7 +13,7 @@ import { db, requireRole, requireCap, optionalAuth, logAudit } from '../lib/lib.
 import { clientIp } from '../lib/geo.mjs';
 import { pollStats, questionStats, completion } from '../lib/poll-stats.mjs';
 import { planQuestionUpdate } from '../lib/poll-edit.mjs';
-import { validateAnswer, maxAnswers, validateRanking } from '../lib/poll-answer.mjs';
+import { validateAnswer, maxAnswers, validateRanking, validateGrid, COLUMN_FOR_KIND } from '../lib/poll-answer.mjs';
 
 /** Per-poll device fingerprint for anonymous voters.
  *
@@ -252,6 +252,22 @@ export default async function pollRoutes(app) {
         continue;
       }
 
+      // A grid is validated as a whole for the same reason, plus one of its own: a row nobody
+      // filled is only visible by counting, and averaging a column over people who filled
+      // different rows compares numbers that do not mean the same thing.
+      if (q.kind === 'grid') {
+        const entries = Array.isArray(sent?.values) ? sent.values : [];
+        const gr = validateGrid(entries, q, choiceIds);
+        if (!gr.ok) {
+          const { ok, rows: _ignored, ...detail } = gr;
+          return reply.code(400).send({ ...detail, questionId: q.id });
+        }
+        for (const row of gr.rows) {
+          rows.push({ pollId: poll.id, questionId: q.id, userId, voterKey, wasLoggedIn: !!userId, ...row });
+        }
+        continue;
+      }
+
       const raws = sent ? (Array.isArray(sent.values) ? sent.values : [sent.value]) : [undefined];
       const cap = maxAnswers(q);
       if (raws.length > cap) return reply.code(400).send({ error: 'too_many', questionId: q.id, max: cap });
@@ -417,7 +433,11 @@ export default async function pollRoutes(app) {
       force: z.boolean().default(false),
       questions: z.array(z.object({
         id: z.string().optional(),
-        kind: z.enum(['choice', 'text', 'scale', 'date', 'number']),
+        // DERIVED, not restated. Written out by hand this list said choice/text/scale/date/
+        // number — so the editor offered `ranking`, the save returned a bare `invalid_input`,
+        // and nothing named the field. COLUMN_FOR_KIND is the one place a kind is declared, and
+        // a kind that cannot be stored cannot be reached from here either.
+        kind: z.enum(Object.keys(COLUMN_FOR_KIND)),
         label: z.string().min(1).max(500),
         help: z.string().max(1000).default(''),
         required: z.boolean().default(false),

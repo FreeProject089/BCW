@@ -166,6 +166,58 @@ export function completion(questions, answers) {
   return { started, completed, rate: started ? completed / started : 0 };
 }
 
+/**
+ * A ranking's result: each item's AVERAGE rank, best first.
+ *
+ * Not a tally of first places. "How many people put it first" is a different and worse question —
+ * an item ranked second by everybody beats one ranked first by a third and last by the rest, and
+ * only the mean says so.
+ *
+ * `count` rides along because an average rank over three people and over three hundred look
+ * identical on a bar, and the reader deserves to know which they are looking at.
+ */
+export function rankingSummary(choices, answers) {
+  const byChoice = new Map(choices.map((c) => [c.id, []]));
+  for (const a of answers) {
+    if (!byChoice.has(a.choiceId)) continue;
+    if (typeof a.number !== 'number' || !Number.isFinite(a.number)) continue;
+    byChoice.get(a.choiceId).push(a.number);
+  }
+  return [...byChoice]
+    .map(([id, ranks]) => ({
+      id,
+      label: choices.find((c) => c.id === id)?.label ?? id,
+      count: ranks.length,
+      averageRank: ranks.length ? ranks.reduce((t, n) => t + n, 0) / ranks.length : null,
+    }))
+    // Lower is better, and an item nobody ranked has no average — it sorts last rather than
+    // winning by having no number to beat.
+    .sort((a, b) => (a.averageRank ?? Infinity) - (b.averageRank ?? Infinity));
+}
+
+/**
+ * A grid's result: one tally per ROW.
+ *
+ * Rows come from the question's config, not from the answers, so a row nobody filled appears
+ * with zero rather than vanishing — a missing row and an unanimously-skipped row look the same
+ * in the data and are very different facts to a form owner.
+ *
+ * Deliberately NOT summed into one grand tally across rows. "Speed: good, Docs: bad" averaged
+ * into "50% good" answers a question nobody asked, and the whole point of a grid is that the
+ * rows are separate.
+ */
+export function gridSummary(rows, choices, answers) {
+  return rows.map((label, i) => {
+    const mine = answers.filter((a) => a.slot === i);
+    return {
+      row: i,
+      label,
+      voters: voterCount(mine),
+      tally: optionTally(choices, mine.map((a) => ({ ...a, optionId: a.choiceId }))),
+    };
+  });
+}
+
 /** Stats for one question, shaped by its kind. */
 export function questionStats(question, answers, choices = []) {
   const mine = answers.filter((a) => a.questionId === question.id);
@@ -185,6 +237,17 @@ export function questionStats(question, answers, choices = []) {
     // Text is never aggregated into a "top answer" — that invents a consensus out of free
     // writing. The count is reported; the words are read.
     return { ...base, answered: mine.filter((a) => typeof a.text === 'string' && a.text !== '').length };
+  }
+  // Ranking and grid must be named here. Neither matches a branch above, so both used to fall
+  // to the date parser at the bottom and report `answered: 0` — a whole question type shown as
+  // unanswered on the stats screen while the rows sat in the table, the same default-case trap
+  // validateAnswer hit.
+  if (question.kind === 'ranking') {
+    return { ...base, ranking: rankingSummary(choices, mine) };
+  }
+  if (question.kind === 'grid') {
+    const rows = Array.isArray(question.config?.rows) ? question.config.rows.map((r) => String(r ?? '')) : [];
+    return { ...base, grid: gridSummary(rows, choices, mine) };
   }
   const dates = mine.map((a) => a.date).filter(Boolean).map((d) => new Date(d)).sort((a, b) => a - b);
   return { ...base, answered: dates.length, earliest: dates[0] ?? null, latest: dates[dates.length - 1] ?? null };

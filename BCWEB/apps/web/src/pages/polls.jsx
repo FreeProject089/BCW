@@ -66,6 +66,19 @@ function PollForm({ poll, onDone }) {
           : (q.choices || []).map((c) => c.id);
         return { questionId: q.id, values: order };
       }
+      // A grid's state is keyed by row so a second pick on the same row replaces the first;
+      // the wire shape is a list of {row, choiceId}, which is the shape that can carry — and
+      // therefore be refused for — a duplicate row. Unanswered rows are absent, not null: the
+      // server decides whether a partial grid is allowed, and sending nulls would ask it to
+      // validate placeholders.
+      if (q.kind === 'grid') {
+        const picks = v && typeof v === 'object' ? v : {};
+        const values = Object.keys(picks)
+          .map(Number).filter(Number.isInteger).sort((a, b) => a - b)
+          .filter((row) => picks[row])
+          .map((row) => ({ row, choiceId: picks[row] }));
+        return { questionId: q.id, values };
+      }
       return Array.isArray(v) ? { questionId: q.id, values: v } : { questionId: q.id, value: v };
     });
     try {
@@ -138,6 +151,47 @@ function PollForm({ poll, onDone }) {
                     </li>
                   ))}
                 </ol>
+              );
+            })()}
+            {/* Grid: the same columns asked of several rows. One radio group per row, named by
+                the question AND the row — share a name across rows and the browser treats the
+                whole grid as one choice, so answering row 2 silently clears row 1. The wrapper
+                scrolls rather than the page: a five-column grid does not fit a phone, and a
+                table that widens its parent breaks every layout beside it. */}
+            {q.kind === 'grid' && (() => {
+              const rows = Array.isArray(q.config?.rows) ? q.config.rows.map((r) => String(r ?? '')).filter((r) => r.trim() !== '') : [];
+              const picks = vals[q.id] && typeof vals[q.id] === 'object' ? vals[q.id] : {};
+              const pick = (row, cid) => set(q.id, { ...picks, [row]: cid });
+              if (!rows.length || !(q.choices || []).length) {
+                return <p className="text-[12px] text-[var(--muted)]">{t('poll.f.gridempty', 'This grid has no rows or no columns yet.')}</p>;
+              }
+              return (
+                <div className="overflow-x-auto -mx-1 px-1">
+                  <table className="w-full min-w-[360px] text-[13px] border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="text-left font-normal text-[12px] text-[var(--muted)] pb-1.5 pr-3" />
+                        {(q.choices || []).map((c) => (
+                          <th key={c.id} className="font-normal text-[12px] text-[var(--muted)] pb-1.5 px-2 whitespace-nowrap">{c.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((label, i) => (
+                        <tr key={i} className="border-t border-[var(--line)]">
+                          <th scope="row" className="text-left font-normal py-2 pr-3 min-w-0">{label}</th>
+                          {(q.choices || []).map((c) => (
+                            <td key={c.id} className="text-center py-2 px-2">
+                              <input type="radio" name={`grid-${q.id}-${i}`} value={c.id}
+                                checked={picks[i] === c.id} onChange={() => pick(i, c.id)}
+                                aria-label={`${label} — ${c.label}`} className="accent-[var(--primary)]" />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               );
             })()}
             {q.kind === 'text' && (

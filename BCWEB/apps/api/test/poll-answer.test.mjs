@@ -6,7 +6,7 @@
 // under a question nobody answered, with nothing in any log to say so.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateAnswer, maxAnswers, COLUMN_FOR_KIND, scaleStyle, validateRanking } from '../src/lib/poll-answer.mjs';
+import { validateAnswer, maxAnswers, COLUMN_FOR_KIND, scaleStyle, validateRanking, validateGrid, gridRows } from '../src/lib/poll-answer.mjs';
 
 const q = (over = {}) => ({ kind: 'choice', required: false, config: {}, ...over });
 
@@ -100,8 +100,11 @@ describe('kinds', () => {
 
     test('every kind maps to exactly one column, and ranking is the stated exception', () => {
         const cols = Object.values(COLUMN_FOR_KIND);
-        assert.equal(cols.length, 6, 'choice, text, scale, number, date, ranking');
-        assert.equal(new Set(cols).size, 4, 'scale, number and ranking share the number column');
+        assert.equal(cols.length, 7, 'choice, text, scale, number, date, ranking, grid');
+        assert.equal(new Set(cols).size, 4, 'scale/number/ranking share number; choice/grid share choiceId');
+        // A grid's VALUE is which column was picked — an fk, like a plain choice. What makes it
+        // a grid is `slot` saying which row, and slot is not a value column.
+        assert.equal(COLUMN_FOR_KIND.grid, 'choiceId');
         // Ranking writes choiceId AND number — the one row shape that carries both, documented
         // on PollAnswer in schema.prisma. Asserted here so the exception stays deliberate: if
         // somebody later "tidies" it into a single column, this line is what argues back.
@@ -199,5 +202,93 @@ describe('validateRanking', () => {
         // through every branch to the date parser at the bottom — a whole answer type mangled
         // by the default case, silently.
         assert.deepEqual(validateAnswer({ kind: 'ranking' }, 'a'), { ok: false, error: 'use_validate_ranking' });
+    });
+});
+
+describe('validateGrid', () => {
+    const cols = ['bad', 'ok', 'good'];
+    const g = (over = {}) => ({ kind: 'grid', required: false, config: { rows: ['Speed', 'Docs'] }, ...over });
+    const pick = (row, choiceId) => ({ row, choiceId });
+
+    test('a full grid becomes rows carrying column AND row', () => {
+        const r = validateGrid([pick(0, 'good'), pick(1, 'ok')], g(), cols);
+        assert.deepEqual(r.rows, [
+            { choiceId: 'good', slot: 0 }, { choiceId: 'ok', slot: 1 },
+        ]);
+    });
+
+    test('the row goes in slot, NOT in number', () => {
+        // THE ONE that cost a migration. The unique key is (question, voter, choice, slot); a
+        // row index parked in `number` is invisible to it, so "Speed: good, Docs: good" — the
+        // normal case — reads as one voter picking `good` twice, and createMany's
+        // skipDuplicates drops the second silently.
+        const r = validateGrid([pick(0, 'good'), pick(1, 'good')], g(), cols);
+        assert.equal(r.ok, true);
+        assert.deepEqual(r.rows.map((x) => x.slot), [0, 1]);
+        assert.ok(r.rows.every((x) => x.number === undefined), 'number stays free for the kinds that use it');
+    });
+
+    test('the row index is zero-based, unlike a rank', () => {
+        // Deliberately different from validateRanking, which starts at 1. A rank is shown to
+        // people ("1st"); a row index is an offset into config.rows and is never displayed.
+        assert.equal(validateGrid([pick(0, 'ok')], g({ config: { rows: ['Speed'] } }), cols).rows[0].slot, 0);
+    });
+
+    test('the same row twice is refused', () => {
+        // One of the two would silently win, decided by insertion order at write time.
+        const r = validateGrid([pick(0, 'ok'), pick(0, 'good')], g(), cols);
+        assert.deepEqual(r, { ok: false, error: 'duplicate_row', row: 0 });
+    });
+
+    test('a row past the end is refused', () => {
+        assert.equal(validateGrid([pick(2, 'ok')], g(), cols).error, 'unknown_row');
+        assert.equal(validateGrid([pick(-1, 'ok')], g(), cols).error, 'unknown_row');
+    });
+
+    test('a row that is not a whole number is refused before the range check', () => {
+        // THE ONE for grids. NaN < rows.length is false, so a bare range check lets NaN — and
+        // therefore undefined, '', {} — through as a row index and writes number: NaN.
+        for (const bad of [1.5, 'x', undefined, null, {}, []]) {
+            const r = validateGrid([{ row: bad, choiceId: 'ok' }], g(), cols);
+            assert.equal(r.error, 'bad_row', String(bad));
+        }
+    });
+
+    test('a column from another question is refused, and says which row', () => {
+        const r = validateGrid([pick(0, 'ok'), pick(1, 'col_from_q2')], g(), cols);
+        assert.deepEqual(r, { ok: false, error: 'unknown_choice', choiceId: 'col_from_q2', row: 1 });
+    });
+
+    test('a required grid wants every row; an optional one does not', () => {
+        assert.equal(validateGrid([pick(0, 'ok')], g({ required: true }), cols).error, 'incomplete_grid');
+        assert.equal(validateGrid([pick(0, 'ok')], g(), cols).ok, true);
+    });
+
+    test('requireAllRows overrides required, in both directions', () => {
+        const half = [pick(0, 'ok')];
+        assert.equal(validateGrid(half, g({ required: true, config: { rows: ['Speed', 'Docs'], requireAllRows: false } }), cols).ok, true);
+        assert.equal(validateGrid(half, g({ config: { rows: ['Speed', 'Docs'], requireAllRows: true } }), cols).error, 'incomplete_grid');
+    });
+
+    test('empty is allowed when optional, refused when required', () => {
+        assert.deepEqual(validateGrid([], g(), cols), { ok: true, rows: [] });
+        assert.equal(validateGrid([], g({ required: true }), cols).error, 'required');
+        assert.equal(validateGrid(null, g({ required: true }), cols).error, 'required');
+    });
+
+    test('answering a grid that has no rows is refused, not stored', () => {
+        // The rows would be unreadable: `number` would point into a list that is not there.
+        assert.equal(validateGrid([pick(0, 'ok')], g({ config: {} }), cols).error, 'no_rows');
+    });
+
+    test('gridRows drops blanks and anything that is not a list', () => {
+        assert.deepEqual(gridRows({ config: { rows: ['a', '', '  ', 'b'] } }), ['a', 'b']);
+        for (const bad of [undefined, null, 'a,b', 42, {}]) {
+            assert.deepEqual(gridRows({ config: { rows: bad } }), [], String(bad));
+        }
+    });
+
+    test('validateAnswer refuses a grid instead of parsing it as a date', () => {
+        assert.deepEqual(validateAnswer({ kind: 'grid' }, 'a'), { ok: false, error: 'use_validate_grid' });
     });
 });

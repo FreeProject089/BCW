@@ -127,10 +127,12 @@ function PollEditor({ open, initial, onClose, onSaved }) {
   );
 }
 
-const KINDS = ['choice', 'text', 'scale', 'number', 'date', 'ranking'];
-// Both kinds are answered by picking from a fixed list, so both need the choices editor and
-// both need at least two of them — one thing to rank is not a ranking.
-const HAS_CHOICES = (k) => k === 'choice' || k === 'ranking';
+const KINDS = ['choice', 'text', 'scale', 'number', 'date', 'ranking', 'grid'];
+// All three are answered by picking from a fixed list, so all three need the choices editor and
+// all three need at least two of them — one thing to rank is not a ranking, and a grid with one
+// column is a list of rows nobody can disagree about. For a grid the choices are its COLUMNS;
+// its rows are labels in config.rows.
+const HAS_CHOICES = (k) => k === 'choice' || k === 'ranking' || k === 'grid';
 const newQuestion = () => ({ kind: 'choice', label: '', help: '', required: false, config: {}, showIf: null, choices: [{ label: '' }, { label: '' }] });
 
 /**
@@ -168,13 +170,24 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
       force: !!force,
       questions: qs.map((q) => ({
         ...(q.id ? { id: q.id } : {}), kind: q.kind, label: q.label.trim(), help: q.help,
-        required: q.required, config: q.config, showIf: q.showIf,
+        required: q.required, showIf: q.showIf,
+        // Blank rows are dropped rather than saved: an empty row label renders an unlabelled
+        // line people are asked to rate, and the row indices answers are stored against shift
+        // the moment someone tidies it up later.
+        config: q.kind === 'grid'
+          ? { ...q.config, rows: (Array.isArray(q.config?.rows) ? q.config.rows : []).map((r) => String(r).trim()).filter(Boolean) }
+          : q.config,
         choices: HAS_CHOICES(q.kind) ? q.choices.filter((c) => c.label.trim()).map((c) => ({ ...(c.id ? { id: c.id } : {}), label: c.label.trim() })) : [],
       })),
     };
     if (body.questions.some((q) => !q.label)) return toast.error(t('apq.needlabel', 'Every question needs a label.'));
     if (body.questions.some((q) => HAS_CHOICES(q.kind) && q.choices.length < 2)) {
       return toast.error(t('apq.need2', 'A choice question needs at least two choices.'));
+    }
+    // A grid with no rows is answerable by nobody, and the server refuses an answer to one with
+    // `no_rows` — refusing it here names the question instead of failing at the first voter.
+    if (body.questions.some((q) => q.kind === 'grid' && !q.config.rows.length)) {
+      return toast.error(t('apq.grid.needrow', 'A grid needs at least one row.'));
     }
     setSaving(true);
     try {
@@ -258,6 +271,36 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
                 </Select>
               </div>
             )}
+            {/* A grid's ROWS. Labels, not answerable things, so they live in config rather than
+                a table — and they have to be editable here or the kind is reachable by the API
+                and by nothing a human uses, which is how `ranking` shipped unsaveable. */}
+            {q.kind === 'grid' && (() => {
+              const rows = Array.isArray(q.config?.rows) ? q.config.rows : [];
+              const setRows = (r) => patch(i, 'config', { ...q.config, rows: r });
+              return (
+                <div className="space-y-1.5 pl-7">
+                  <div className="text-xs text-[var(--muted)]">{t('apq.grid.rows', 'Rows (the options above are the columns)')}</div>
+                  {rows.map((r, ri) => (
+                    <div key={ri} className="flex gap-2">
+                      <Input value={r} placeholder={`${t('apq.grid.row', 'Row')} ${ri + 1}`}
+                        onChange={(e) => setRows(rows.map((x, j) => (j === ri ? e.target.value : x)))} />
+                      <Button variant="ghost" onClick={() => setRows(rows.filter((_, j) => j !== ri))}><Trash2 size={14} /></Button>
+                    </div>
+                  ))}
+                  {rows.length < 20 && (
+                    <Button size="sm" variant="ghost" onClick={() => setRows([...rows, ''])}>
+                      <Plus size={13} /> {t('apq.grid.addrow', 'Add a row')}
+                    </Button>
+                  )}
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <input type="checkbox"
+                      checked={q.config?.requireAllRows ?? !!q.required}
+                      onChange={(e) => patch(i, 'config', { ...q.config, requireAllRows: e.target.checked })} />
+                    {t('apq.grid.all', 'Every row must be answered')}
+                  </label>
+                </div>
+              );
+            })()}
             {HAS_CHOICES(q.kind) && (
               <div className="space-y-1.5 pl-7">
                 {q.choices.map((c, ci) => (
@@ -294,6 +337,31 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
   );
 }
 
+/**
+ * A per-question tally, as bars.
+ *
+ * Scaled against the biggest row in THIS tally, not against the voter count: a grid row where
+ * everyone picked the same column would otherwise draw one full bar and nothing else, which is
+ * true but unreadable. The number beside it is the count, so the bar is the comparison and the
+ * digit is the fact.
+ */
+function QTally({ rows }) {
+  const max = Math.max(1, ...rows.map((r) => r.votes));
+  return (
+    <div className="mt-1 space-y-1">
+      {rows.map((r) => (
+        <div key={r.id} className="flex items-center gap-2 text-[12px]">
+          <span className="flex-1 min-w-0 truncate">{r.label}</span>
+          <div className="w-24 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden shrink-0">
+            <div className="h-full bg-[var(--primary-2)]" style={{ width: `${(r.votes / max) * 100}%` }} />
+          </div>
+          <span className="tabular-nums text-[var(--muted)] w-6 text-right shrink-0">{r.votes}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PollStats({ pollId, onClose }) {
   const { t } = useI18n();
   const { data, loading } = useAsync(() => api.get(`/admin/polls/${pollId}/stats`), [pollId]);
@@ -325,6 +393,70 @@ function PollStats({ pollId, onClose }) {
           </div>
         </div>
       ))}
+
+      {/* Per-question results. The API has served these since the stats library landed and no
+          screen read them — a whole feature reachable by curl and by nothing else. Rendered
+          beside the legacy byOption bars rather than instead of them, because a backfilled poll
+          answers both ways and the two agree. */}
+      {(d.questions || []).length > 0 && (
+        <div className="mt-4 pt-3 border-t border-[var(--line)] space-y-3">
+          {d.completion && (
+            <div className="text-[12px] text-[var(--muted)]">
+              {t('apoll.completion', '{c} of {s} finished every required question ({p}%).')
+                .replace('{c}', String(d.completion.completed)).replace('{s}', String(d.completion.started))
+                .replace('{p}', String(Math.round((d.completion.rate || 0) * 100)))}
+            </div>
+          )}
+          {d.questions.map((q) => (
+            <div key={q.id}>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[13px] font-medium flex-1 min-w-0 truncate">{q.label}</span>
+                <span className="text-[11px] text-[var(--faint)]">{t(`apq.kind.${q.kind}`, q.kind)} · {q.voters}</span>
+              </div>
+              {q.tally && <QTally rows={q.tally} />}
+              {q.numeric?.count > 0 && (
+                <div className="text-[12px] text-[var(--muted)] mt-0.5 tabular-nums">
+                  {t('apoll.q.mean', 'mean')} {Math.round(q.numeric.mean * 100) / 100} ·{' '}
+                  {t('apoll.q.median', 'median')} {q.numeric.median} · {q.numeric.min}–{q.numeric.max}
+                </div>
+              )}
+              {/* Average rank, best first — lower is better, so the number is labelled rather
+                  than drawn as a bar, where longer would read as better and mean the opposite. */}
+              {q.ranking && (
+                <ol className="mt-1 space-y-0.5">
+                  {q.ranking.map((r, i) => (
+                    <li key={r.id} className="flex items-baseline gap-2 text-[12px]">
+                      <span className="w-4 text-[var(--faint)] tabular-nums">{i + 1}</span>
+                      <span className="flex-1 min-w-0 truncate">{r.label}</span>
+                      <span className="tabular-nums text-[var(--muted)]">
+                        {r.averageRank === null ? '—' : Math.round(r.averageRank * 100) / 100}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {/* One tally per row, never summed across rows: averaging "Speed: good, Docs: bad"
+                  into one number answers a question nobody asked. */}
+              {q.grid && (
+                <div className="mt-1 space-y-1.5">
+                  {q.grid.map((row) => (
+                    <div key={row.row}>
+                      <div className="text-[12px] text-[var(--muted)]">{row.label}</div>
+                      <QTally rows={row.tally} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {q.answered !== undefined && (
+                <div className="text-[12px] text-[var(--muted)] mt-0.5">
+                  {t('apoll.q.answered', '{n} answered').replace('{n}', String(q.answered))}
+                  {q.earliest && ` · ${new Date(q.earliest).toLocaleDateString()} → ${new Date(q.latest).toLocaleDateString()}`}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {(d.recent || []).length > 0 && (
         <div className="mt-4 pt-3 border-t border-[var(--line)]">
