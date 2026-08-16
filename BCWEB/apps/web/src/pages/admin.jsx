@@ -614,13 +614,19 @@ function AdminUsers() {
   const [hasMore, setHasMore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState(null);
+  // Filters. Held in one object so `load` reads the CURRENT set rather than closing over a
+  // stale one — a filter that applies on the next search but not this one is worse than none.
+  const [f, setF] = useState({ role: '', status: '', twofa: '', closed: '', linked: '', days: '', sort: 'new' });
+  const activeFilters = Object.entries(f).filter(([k, v]) => v && !(k === 'sort' && v === 'new')).length;
   // Load users; `append` pages more (Load more), else replaces. Empty term = all users.
-  const load = async (term, append = false) => {
+  const load = async (term, append = false, filters = f) => {
     term = (term || '').trim();
     setBusy(true);
     try {
       const skip = append ? (results?.length || 0) : 0;
-      const { users, hasMore: more } = await api.get(`/admin/users?q=${encodeURIComponent(term)}&skip=${skip}&take=30`);
+      const qs = new URLSearchParams({ q: term, skip: String(skip), take: '30' });
+      for (const [k, v] of Object.entries(filters)) if (v) qs.set(k, v);
+      const { users, hasMore: more } = await api.get(`/admin/users?${qs}`);
       setResults(append ? [...(results || []), ...users] : users); setHasMore(more);
     } catch { if (!append) setResults([]); } finally { setBusy(false); }
   };
@@ -637,6 +643,33 @@ function AdminUsers() {
           <Input className="!pl-9" placeholder={t('au.search.ph', 'id / display name / email / creator id / Discord…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
         </div>
         <Button variant="primary" disabled={busy} onClick={search}>{busy ? <Spinner /> : <><Search size={15} /> {t('au.search', 'Search')}</>}</Button>
+      </div>
+
+      {/* Filters apply on change rather than on a second button: a set of controls that need a
+          separate "apply" is how somebody stares at a list that does not match what the boxes
+          say. `activeFilters` is shown because an empty result with a filter left on reads
+          exactly like an empty result. */}
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        {[
+          ['role', t('au.f.role', 'Any role'), [['USER', 'USER'], ['MOD', 'MOD'], ['ADMIN', 'ADMIN'], ['SUPERADMIN', 'SUPERADMIN']]],
+          ['status', t('au.f.status', 'Any status'), [['active', t('au.f.active', 'Active')], ['suspended', t('au.f.susp', 'Suspended')], ['banned', t('au.f.banned', 'Banned')]]],
+          ['closed', t('au.f.closed', 'Open or closed'), [['no', t('au.f.open', 'Open')], ['yes', t('au.f.isclosed', 'Closed')]]],
+          ['twofa', t('au.f.2fa', '2FA — either'), [['yes', t('au.f.2fayes', 'Has 2FA')], ['no', t('au.f.2fano', 'No 2FA')]]],
+          ['linked', t('au.f.linked', 'Any link'), [['discord', 'Discord'], ['creator', t('au.f.creator', 'Creator id')], ['none', t('au.f.nolink', 'Nothing linked')]]],
+          ['days', t('au.f.joined', 'Joined — any time'), [['1', t('au.f.d1', 'Last 24 h')], ['7', t('au.f.d7', 'Last 7 days')], ['30', t('au.f.d30', 'Last 30 days')], ['365', t('au.f.d365', 'Last year')]]],
+          ['sort', t('au.f.new', 'Newest first'), [['old', t('au.f.old', 'Oldest first')], ['name', t('au.f.name', 'By name')]]],
+        ].map(([key, any, opts]) => (
+          <select key={key} value={f[key]} className="input !py-1.5 !text-sm !w-auto"
+            onChange={(e) => { const next = { ...f, [key]: e.target.value }; setF(next); load(q, false, next); }}>
+            <option value={key === 'sort' ? 'new' : ''}>{any}</option>
+            {opts.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select>
+        ))}
+        {activeFilters > 0 && (
+          <Button size="sm" variant="ghost" onClick={() => { const next = { role: '', status: '', twofa: '', closed: '', linked: '', days: '', sort: 'new' }; setF(next); load(q, false, next); }}>
+            {t('au.f.clear', 'Clear {n} filter(s)').replace('{n}', activeFilters)}
+          </Button>
+        )}
       </div>
       {results === null ? <EmptyState icon={Users} title={t('au.find.t', 'Find a user')} sub={t('au.find.s', 'Enter a term above to search.')} />
         : results.length ? <div className="space-y-2">
@@ -4137,9 +4170,29 @@ function useEraseUser(user, onChanged) {
       okLabel: t('gdpr.erase.ok', 'Erase'), danger: true,
     });
     if (!typed) return;
+    // A reason is required by the server, and it is the only thing that will still be readable
+    // after the account is gone — the note survives the erasure it describes. Asked as its own
+    // step rather than squeezed beside the confirmation, because it is the part somebody will
+    // actually read six months from now.
+    const reason = await dialog.prompt({
+      title: t('gdpr.erase.rt', 'Why is this account being erased?'),
+      message: t('gdpr.erase.rm', 'Kept as a staff note, and readable after the account is gone. Whoever asks "why is this person no longer here" reads this.'),
+      okLabel: t('common.continue', 'Continue'), danger: true,
+    });
+    if (!reason || !String(reason).trim()) return;
+    // Asked the way round it is on purpose. Holding Shift answers a confirm with YES, so a
+    // moderator skipping confirmations would have sent mail to somebody they were erasing
+    // without ever deciding to. Phrased like this, the accidental answer is the silent one —
+    // sending has to be chosen.
+    const silent = await dialog.confirm({
+      title: t('gdpr.erase.nt', 'Erase without telling them?'),
+      message: t('gdpr.erase.nm', 'Choose “Send the reason” and {e} gets one message: the reason exactly as you wrote it, and nothing else.').replace('{e}', user.email),
+      okLabel: t('gdpr.erase.nok', 'Erase silently'), cancelLabel: t('gdpr.erase.nno', 'Send the reason'),
+    });
+    const notify = !silent;
     setBusy(true);
     try {
-      const r = await api.post(`/admin/users/${user.id}/erase`, { email: String(typed).trim() });
+      const r = await api.post(`/admin/users/${user.id}/erase`, { email: String(typed).trim(), reason: String(reason).trim(), notify: !!notify });
       // Which of the two happened, and why, because they are genuinely different outcomes:
       // the account is gone from the list, or it is still there wearing a placeholder name.
       // Reporting them the same way is how somebody concludes the delete button is broken.
@@ -4383,6 +4436,94 @@ function UserSanctions({ userId }) {
   );
 }
 
+// Staff notes about an account — and the record of why it was closed, banned or erased.
+//
+// Keyed by id alone, so it still answers for an account that no longer exists: that is the
+// whole reason StaffNote carries no foreign key to its subject. A note stamped by an action
+// cannot be deleted, because deleting it would leave the action with no reason.
+function StaffNotes({ userId }) {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/users/${userId}/notes`), [userId]);
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+  const notes = data?.notes || [];
+
+  const add = async () => {
+    const text = body.trim(); if (!text) return;
+    setBusy(true);
+    try { await api.post(`/admin/users/${userId}/notes`, { body: text }); setBody(''); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const remove = async (n) => {
+    try { await api.del(`/admin/users/${userId}/notes/${n.id}`); reload(); }
+    catch (x) {
+      toast.error(x?.data?.error === 'not_a_plain_note'
+        ? t('un.locked', 'This one records a decision — it stays with it.')
+        : t('common.failed', 'Failed.'));
+    }
+  };
+
+  const KIND = {
+    note: { label: t('un.k.note', 'Note'), tone: null },
+    closure: { label: t('un.k.closure', 'Closed'), tone: 'warning' },
+    ban: { label: t('un.k.ban', 'Banned'), tone: 'danger' },
+    suspension: { label: t('un.k.susp', 'Suspended'), tone: 'warning' },
+    erasure: { label: t('un.k.erase', 'Erased'), tone: 'danger' },
+  };
+
+  return (
+    <Card className="p-4">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2">
+        <FileText size={15} className="text-[var(--primary-2)]" /> {t('un.title', 'Staff notes')}
+        {notes.length > 0 && <Badge>{notes.length}</Badge>}
+      </div>
+      <p className="text-[11px] text-[var(--faint)] mb-3">
+        {t('un.hint', 'Only staff see these. They stay readable if the account is closed or erased — which is when they matter most.')}
+      </p>
+
+      <div className="flex flex-col sm:flex-row gap-2 mb-3">
+        <Textarea rows={2} className="flex-1 !text-sm" value={body} onChange={(e) => setBody(e.target.value)}
+          placeholder={t('un.ph', 'What the next moderator needs to know.')} />
+        <Button size="sm" variant="primary" disabled={busy || !body.trim()} onClick={add} className="self-start">
+          {busy ? <Spinner size={12} /> : <Plus size={13} />} {t('un.add', 'Add')}
+        </Button>
+      </div>
+
+      {loading ? <Spinner size={14} /> : notes.length === 0 ? (
+        <div className="text-[12px] text-[var(--faint)]">{t('un.none', 'Nothing written down yet.')}</div>
+      ) : (
+        <ul className="space-y-2">
+          {notes.map((n) => {
+            const k = KIND[n.kind] || KIND.note;
+            return (
+              <li key={n.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5">
+                <div className="flex items-center gap-2 flex-wrap text-[11px] text-[var(--faint)] mb-1">
+                  {n.kind !== 'note' && <Badge tone={k.tone}>{k.label}</Badge>}
+                  <span>{n.authorLabel || t('un.system', 'system')}</span>
+                  <span>·</span>
+                  <span>{new Date(n.createdAt).toLocaleString()}</span>
+                  {/* Whether the person was actually TOLD — recorded from what the send
+                      returned, not from whether we tried. */}
+                  {n.kind !== 'note' && (n.notified
+                    ? <span className="text-[var(--success)]">{t('un.sent', 'reason sent to {e}').replace('{e}', n.notifiedTo || '')}</span>
+                    : <span>{t('un.notsent', 'not sent to them')}</span>)}
+                  {n.kind === 'note' && (
+                    <button onClick={() => remove(n)} className="ml-auto hover:text-error" title={t('common.delete', 'Delete')}>
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
+                <div className="text-[13px] whitespace-pre-wrap break-words">{n.body}</div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 function UserDetailModal({ id, onClose }) {
   const { data, loading, reload } = useAsync(() => api.get(`/admin/users/${id}`), [id]);
   const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
@@ -4522,6 +4663,9 @@ function UserDetailModal({ id, onClose }) {
             <AccountEndActions user={u} onChanged={reload}
               onClose={() => setClosureForm({ reason: '', days: 30, cancellable: true })} />
           )}
+          {/* Above the data-request panel on purpose: what somebody reaching this screen is
+              usually looking for is why the account is in the state it is in. */}
+          <StaffNotes userId={id} />
           <DataRequestPanel user={u} onChanged={reload} />
 
           {u.apiKeys && (
