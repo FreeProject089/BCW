@@ -6,7 +6,10 @@ import { detectStack, interestingPaths } from '../lib/stack-detect.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
 // legal, release-notes source) stored as an AdminSetting row `project.<key>`.
-const KEYS = ['community', 'bmm', 'bsm', 'installer'];
+// 'developers' is the /dev hub. It was listed in the admin's project rail but NOT here, so
+// selecting it, editing it and pressing save answered `unknown_project` — an editor for a page
+// the server refused to store. The two lists have to be one list.
+const KEYS = ['community', 'bmm', 'bsm', 'installer', 'developers'];
 // 'community' always stays public — it's the site's own community hub, not an
 // admin-curated project someone might want to soft-launch or gate.
 const VISIBILITY_KEYS = KEYS.filter((k) => k !== 'community');

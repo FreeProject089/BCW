@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   ChevronDown, Plus, Trash2, GripVertical, Star, Link2, Download, Image as ImageIcon,
-  Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network,
+  Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes,
 } from 'lucide-react';
 import { Button, Input, Textarea, Field, Badge, Spinner } from '../ui/ui.jsx';
 import { useToast } from '../ui/ui.jsx';
@@ -12,6 +12,7 @@ import { IconGlyph } from '../ui/md.jsx';
 import { ProgressTracker } from '../pages/project.jsx';
 import StackMap from '../ui/stack-map.jsx';
 import { stackSwitchOn, STACK_KINDS } from '../lib/stack-layout.js';
+import { DEFAULT_DEV_CARDS } from '../pages/dev.jsx';
 
 // ── Visual project-config editor ──────────────────────────────────────────────
 // A form-based editor for a project / showcase page's config, so admins don't have
@@ -296,6 +297,75 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
   const customLinks = Array.isArray(links.custom)
     ? links.custom
     : (links.customUrl ? [{ icon: 'link', label: links.customLabel || 'Link', url: links.customUrl }] : []);
+
+  // The /dev hub is a landing page, not a project page: it has no downloads, no release notes
+  // and no legal tab, and offering those was most of what its editor showed. It gets the
+  // sections that match what it actually renders.
+  if (slug === 'developers') {
+    const hero = c.hero || {};
+    const sections = c.sections || {};
+    const cards = Array.isArray(c.cards) && c.cards.length ? c.cards : DEFAULT_DEV_CARDS;
+    const usingDefaults = !Array.isArray(c.cards) || !c.cards.length;
+    return (
+      <div className="space-y-3">
+        <Section icon={Eye} title="Header" defaultOpen desc="Leave a field empty to keep the built-in wording.">
+          <Field label="Title"><Input value={hero.title || ''} onChange={(e) => setIn('hero', { title: e.target.value })} placeholder="Build on BetterCommunity" /></Field>
+          <Field label="Intro"><Textarea rows={2} value={hero.body || ''} onChange={(e) => setIn('hero', { body: e.target.value })} placeholder="What somebody can build here, in a sentence or two." /></Field>
+          <Field label="Small print under the buttons"><Input value={hero.note || ''} onChange={(e) => setIn('hero', { note: e.target.value })} placeholder="A key takes about a minute…" /></Field>
+          <Field label="Heading above the cards"><Input value={hero.toolsTitle || ''} onChange={(e) => setIn('hero', { toolsTitle: e.target.value })} placeholder="Everything here" /></Field>
+        </Section>
+
+        <Section icon={ListTodo} title="Blocks" desc="Turn a whole block of the page off.">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={sections.jobs !== false} onChange={(e) => setIn('sections', { jobs: e.target.checked })} />
+            Show the “which of the two jobs is yours” pair
+          </label>
+        </Section>
+
+        <Section icon={Boxes} title="Cards" badge={cards.length} defaultOpen
+          desc="What the page lists under the heading. Reorder by dragging.">
+          {usingDefaults && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-[var(--line)] p-2 text-xs text-[var(--faint)]">
+              <span>Showing the built-in cards. Editing one makes this page’s own list, and the built-ins stop applying.</span>
+              <Button type="button" size="sm" onClick={() => set({ cards: DEFAULT_DEV_CARDS.map((x) => ({ ...x })) })}>Start from these</Button>
+            </div>
+          )}
+          {!usingDefaults && (
+            <Repeatable items={c.cards} onChange={(v) => set({ cards: v })} addLabel="Add card" empty="No cards — the page will show none."
+              add={() => ({ id: `card${c.cards.length + 1}`, icon: 'circle', title: 'New card', body: '', to: '', cta: 'Open' })}
+              render={(card, patch) => (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <IconBtn value={card.icon} onChange={(v) => patch({ icon: v })} />
+                    <Input className="flex-1" value={card.titleKey ? '' : (card.title || '')}
+                      onChange={(e) => patch({ title: e.target.value, titleKey: undefined })}
+                      placeholder={card.titleKey ? '(built-in wording — type to replace)' : 'Card title'} />
+                  </div>
+                  <Textarea rows={2} value={card.bodyKey ? '' : (card.body || '')}
+                    onChange={(e) => patch({ body: e.target.value, bodyKey: undefined })}
+                    placeholder={card.bodyKey ? '(built-in wording — type to replace)' : 'What it is for'} className="!text-sm" />
+                  <div className="grid grid-cols-[1fr_140px] gap-2">
+                    <Input value={card.to || ''} onChange={(e) => patch({ to: e.target.value })} placeholder="/dev/tools or https://…" className="!py-1.5 !text-sm" />
+                    <Input value={card.ctaKey ? '' : (card.cta || '')} onChange={(e) => patch({ cta: e.target.value, ctaKey: undefined })} placeholder="Open" className="!py-1.5 !text-sm" />
+                  </div>
+                  <label className="flex items-center gap-2 text-[12px] text-[var(--muted)] cursor-pointer">
+                    <input type="checkbox" checked={!!card.hidden} onChange={(e) => patch({ hidden: e.target.checked })} /> Hidden
+                  </label>
+                </div>
+              )} />
+          )}
+        </Section>
+
+        <Section icon={Link2} title="Links">
+          <div className="grid sm:grid-cols-2 gap-3">
+            {LINK_FIELDS.map(([k, label]) => (
+              <Field key={k} label={label}><Input value={links[k] || ''} onChange={(e) => setIn('links', { [k]: e.target.value })} placeholder="https://…" /></Field>
+            ))}
+          </div>
+        </Section>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">

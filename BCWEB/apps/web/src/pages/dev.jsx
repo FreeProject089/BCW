@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Code2, Shield, KeyRound, BookOpen, Send, Newspaper, Copy, Sliders, FlaskConical, ArrowRight, FileJson } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -6,6 +6,7 @@ import { useI18n } from '../i18n.jsx';
 import { highlightCode } from './pages.jsx';
 import { Card, Button, Input, Select, Textarea, Badge, Field, Spinner, useToast, copyText } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
+import { IconGlyph } from '../ui/md.jsx';
 
 // /dev — the front door for anybody building against BetterCommunity.
 //
@@ -289,6 +290,46 @@ export function ApiConsole() {
   );
 }
 
+// The cards this page ships with. They are the DEFAULT, not the truth: an admin can add,
+// remove and reorder them in Projects config → Developers, and what is saved there replaces
+// this list wholesale. Kept here so a site that has never configured the page still has one,
+// and so "reset to the built-in cards" has something to reset to.
+export const DEFAULT_DEV_CARDS = [
+  {
+    id: 'tools', icon: 'file-json', to: '/dev/tools', ctaKey: 'dev.hub.open',
+    titleKey: 'dev.hub.tools', bodyKey: 'dev.hub.tools.s2',
+    // Named and linked, not summarised. Five tools live behind this card and the only way to
+    // learn which was to open it — the same discoverability gap that hid a working Switch step
+    // and a whole catalogue type elsewhere in this project.
+    chips: [
+      { to: '/dev/tools#try', labelKey: 'dev.console.title', label: 'Try a call' },
+      { to: '/dev/tools#validate', labelKey: 'dvt.val', label: 'Check a catalog feed' },
+      { to: '/dev/tools#deeplink', labelKey: 'dvt.dl.title', label: 'Build a bmm:// link' },
+      { to: '/dev/tools#signature', labelKey: 'dvt.sig.title', label: 'Check a webhook signature' },
+      { to: '/dev/tools#calls', labelKey: 'dvt.calls', label: 'What your keys did' },
+    ],
+  },
+  { id: 'config', icon: 'sliders', to: '/dev/config', ctaKey: 'dev.hub.open', titleKey: 'dev.hub.config', bodyKey: 'dev.hub.config.s' },
+  { id: 'sso', icon: 'shield', to: '/docs/sso', ctaKey: 'dev.hub.ssodoc', titleKey: 'dev.hub.sso', bodyKey: 'dev.hub.sso.s' },
+  { id: 'docs', icon: 'book-open', to: '/docs', ctaKey: 'dev.hub.open', titleKey: 'dev.hub.docs', bodyKey: 'dev.hub.docs.s' },
+];
+
+// A configured card carries its own words; a built-in one carries a key and is translated.
+// Both end up as the same shape, so the renderer has one case rather than two.
+export function devCards(cfg, t) {
+  const custom = Array.isArray(cfg?.cards) ? cfg.cards.filter((c) => c && !c.hidden) : null;
+  const list = custom && custom.length ? custom : DEFAULT_DEV_CARDS;
+  return list.map((c, i) => ({
+    key: c.id || `c${i}`,
+    icon: c.icon || 'circle',
+    title: c.titleKey ? t(c.titleKey, c.title || '') : (c.title || ''),
+    body: c.bodyKey ? t(c.bodyKey, c.body || '') : (c.body || ''),
+    to: c.to || '',
+    cta: c.ctaKey ? t(c.ctaKey, c.cta || '') : (c.cta || t('dev.hub.open', 'Open')),
+    chips: Array.isArray(c.chips) ? c.chips : null,
+  }));
+}
+
 function Tool({ icon: Icon, title, children, to, cta }) {
   return (
     <Card className="p-5 flex flex-col">
@@ -304,6 +345,17 @@ export default function DevHub() {
   const { user } = useAuth();
   const [scopes, setScopes] = useState(null);
   const base = typeof location !== 'undefined' ? location.origin : '';
+  // What an admin saved for this page. Absent (or a 404 before it has ever been saved) leaves
+  // every default in place, so the page never depends on the config existing.
+  const [cfg, setCfg] = useState(null);
+  useEffect(() => {
+    let on = true;
+    api.get('/projects/developers').then((d) => { if (on) setCfg(d.config || d || null); }).catch(() => {});
+    return () => { on = false; };
+  }, []);
+  const hero = cfg?.hero || {};
+  const show = cfg?.sections || {};
+  const cards = devCards(cfg, t);
 
   const loadScopes = async () => {
     if (scopes) return setScopes(null);
@@ -319,10 +371,10 @@ export default function DevHub() {
       <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-12">
         <span className="inline-grid place-items-center w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg shadow-orange-500/25 mb-4"><Code2 size={26} /></span>
         <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">
-          {t('dev.hub.h1a', 'Build on')} <span className="gradient-text">BetterCommunity</span>
+          {hero.title || <>{t('dev.hub.h1a', 'Build on')} <span className="gradient-text">BetterCommunity</span></>}
         </h1>
         <p className="text-[var(--muted)] mt-3 text-base sm:text-lg">
-          {t('dev.hub.h1b', 'Sign people in with their account, read their content with their permission, and get told when it changes. A REST API, OpenID Connect, and webhooks — no SDK to install.')}
+          {hero.body || t('dev.hub.h1b', 'Sign people in with their account, read their content with their permission, and get told when it changes. A REST API, OpenID Connect, and webhooks — no SDK to install.')}
         </p>
         <div className="flex flex-wrap gap-2 justify-center mt-6">
           <Link to="/dev/config"><Button variant="primary"><KeyRound size={15} /> {t('dev.hub.start', 'Get a key')}</Button></Link>
@@ -331,13 +383,13 @@ export default function DevHub() {
         {/* Said once, at the top, because it is the number that decides whether somebody
             starts today or bookmarks the page. */}
         <p className="text-[12px] text-[var(--faint)] mt-4">
-          {t('dev.hub.time', 'A key takes about a minute. Nothing here needs approval.')}
+          {hero.note || t('dev.hub.time', 'A key takes about a minute. Nothing here needs approval.')}
         </p>
       </div>
 
       {/* The two jobs, before the tools — picking the wrong one is the mistake that costs a
-          day, and it is not obvious from the names. */}
-      <div className="grid sm:grid-cols-2 gap-4 mb-8">
+          day, and it is not obvious from the names. Removable from Projects config. */}
+      {show.jobs !== false && <div className="grid sm:grid-cols-2 gap-4 mb-8">
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-1"><KeyRound size={16} className="text-[var(--primary-2)]" />
             <span className="font-semibold text-[15px]">{t('dev.hub.jobkey', 'Your program acts as YOU')}</span></div>
@@ -354,41 +406,25 @@ export default function DevHub() {
             {['OpenID Connect', 'PKCE', 'URL generator'].map((x) => <span key={x} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{x}</span>)}
           </div>
         </Card>
-      </div>
+      </div>}
 
-      <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('dev.hub.toolsh', 'Everything here')}</h2>
+      <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{hero.toolsTitle || t('dev.hub.toolsh', 'Everything here')}</h2>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Tool icon={FileJson} title={t('dev.hub.tools', 'Tools')} to="/dev/tools" cta={t('dev.hub.open', 'Open')}>
-          {t('dev.hub.tools.s2', 'Try any call against the real API, check a catalog feed before you publish it, and see what your keys have been doing — refusals included.')}
-          {/* Named and linked, not summarised. Five tools live behind that card and the
-              only way to learn which was to open it and read the page — the same
-              discoverability gap that hid a working Switch step and a whole catalogue type
-              elsewhere in this project. The anchors already existed. */}
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {[
-              ['try', t('dev.console.title', 'Try a call')],
-              ['validate', t('dvt.val', 'Check a catalog feed')],
-              ['deeplink', t('dvt.dl.title', 'Build a bmm:// link')],
-              ['signature', t('dvt.sig.title', 'Check a webhook signature')],
-              ['calls', t('dvt.calls', 'What your keys did')],
-            ].map(([id, label]) => (
-              <Link key={id} to={`/dev/tools#${id}`}
-                className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition">
-                {label}
-              </Link>
-            ))}
-          </div>
-        </Tool>
-
-        <Tool icon={Sliders} title={t('dev.hub.config', 'Credentials')} to="/dev/config" cta={t('dev.hub.open', 'Open')}>
-          {t('dev.hub.config.s', 'Your API keys, your registered apps and your webhooks. Creating or deleting a key asks for your 2FA code when you have it.')}
-        </Tool>
-        <Tool icon={Shield} title={t('dev.hub.sso', 'Sign in with BetterCommunity')} to="/docs/sso" cta={t('dev.hub.ssodoc', 'Read the guide')}>
-          {t('dev.hub.sso.s', 'Standard OpenID Connect. Register an app, point your library at the discovery document, and you are done — there is no SDK of ours to install.')}
-        </Tool>
-        <Tool icon={BookOpen} title={t('dev.hub.docs', 'Docs')} to="/docs" cta={t('dev.hub.open', 'Open')}>
-          {t('dev.hub.docs.s', 'The API reference, the plugin API, and how catalogs and repos are formatted.')}
-        </Tool>
+        {cards.map((c) => (
+          <Tool key={c.key} icon={(props) => <IconGlyph name={c.icon} {...props} />} title={c.title} to={c.to} cta={c.cta}>
+            {c.body}
+            {c.chips && (
+              <span className="flex flex-wrap gap-1.5 mt-2">
+                {c.chips.map((ch, i) => (
+                  <Link key={i} to={ch.to || '#'}
+                    className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition">
+                    {ch.labelKey ? t(ch.labelKey, ch.label || '') : (ch.label || '')}
+                  </Link>
+                ))}
+              </span>
+            )}
+          </Tool>
+        ))}
       </div>
 
       <Card className="p-4 mt-4">
