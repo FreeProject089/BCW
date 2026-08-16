@@ -2847,6 +2847,60 @@ const CAP_CATEGORIES = [
   { id: 'ops', label: 'Operations', labelFr: 'Opérations' },
 ];
 
+/**
+ * Who currently holds the two dangerous permissions.
+ *
+ * Both were grantable and neither was listable: `/admin/server-control/users` and
+ * `/admin/telemetry-access/users` have returned exactly this since they were written, and no
+ * screen asked. So the only way to learn who could restart the server was to search for a
+ * person you already suspected — which is not an audit, it is a guess.
+ *
+ * Server-control also reports whether the holder has 2FA on, because the endpoints it unlocks
+ * refuse without it: a holder with no 2FA has a permission that does not work, and that is
+ * worth seeing at a glance rather than discovering during an incident.
+ */
+function PowerHolders({ onOpen }) {
+  const { t } = useI18n();
+  const { data } = useAsync(() => Promise.all([
+    api.get('/admin/server-control/users').catch(() => ({ users: [] })),
+    api.get('/admin/telemetry-access/users').catch(() => ({ users: [] })),
+  ]).then(([sc, tel]) => ({ server: sc.users || [], telemetry: tel.users || [] })), []);
+
+  const Group = ({ icon: I, tone, title, users, extra }) => (
+    <div className="flex-1 min-w-[220px]">
+      <div className="text-[11px] uppercase tracking-wide text-[var(--faint)] mb-1.5 flex items-center gap-1.5">
+        <I size={12} /> {title} <span className="tabular-nums">({users.length})</span>
+      </div>
+      {!users.length ? (
+        <div className="text-[12px] text-[var(--muted)]">{t('acc.holders.none', 'Nobody.')}</div>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {users.map((u) => (
+            <button key={u.id} onClick={() => onOpen(u)} title={u.email}
+              className="text-[12px] px-2 py-1 rounded-lg bg-[var(--surface-2)] hover:bg-[var(--surface-3)] inline-flex items-center gap-1.5">
+              <Badge tone={tone}>{u.displayName || u.email}</Badge>
+              {extra?.(u)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <Card className="p-3 mb-3">
+      <div className="flex gap-4 flex-wrap">
+        <Group icon={Server} tone="red" title={t('acc.holders.sc', 'Server-control')} users={data?.server || []}
+          extra={(u) => (u.totpEnabled === false
+            ? <span className="text-warning text-[11px]" title={t('acc.holders.no2fa.t', 'No 2FA — the server endpoints will refuse them')}>{t('acc.holders.no2fa', 'no 2FA')}</span>
+            : null)} />
+        <Group icon={TrendingUp} tone="primary" title={t('acc.holders.tel', 'Telemetry')} users={data?.telemetry || []} />
+      </div>
+      <p className="text-[11px] text-[var(--faint)] mt-2">{t('acc.holders.note', 'Click a name to look them up and change it.')}</p>
+    </Card>
+  );
+}
+
 function AdminAccess({ isSuperAdmin }) {
   const toast = useToast();
   const { t } = useI18n();
@@ -2866,12 +2920,17 @@ function AdminAccess({ isSuperAdmin }) {
   const projGrants = useAsync(() => api.get('/admin/project-permissions'), []);
   const customRoles = roles.data?.roles || [];
 
-  const search = async () => {
-    if (!q.trim()) return setResults(null);
+  const searchFor = async (value) => {
+    const v = String(value || '').trim();
+    if (!v) return setResults(null);
     setBusy(true);
-    try { const { users } = await api.get(`/admin/users?q=${encodeURIComponent(q)}&take=10`); setResults(users); } catch { setResults([]); } finally { setBusy(false); }
+    try { const { users } = await api.get(`/admin/users?q=${encodeURIComponent(v)}&take=10`); setResults(users); } catch { setResults([]); } finally { setBusy(false); }
   };
+  const search = () => searchFor(q);
   const pick = (u) => { setPicked(u); setRoleSel(u.role); setScopeSel('global'); setPermsSel(u.permissions || []); setRolesSel(u.customRoleIds || []); setPscopeSel('all'); };
+  // From the holder lists: search for the person rather than opening their summary row, which
+  // carries a name and an email and none of the permission state the panels below edit.
+  const openHolder = (u) => { const v = u.email || u.id; setQ(v); setPicked(null); searchFor(v); };
   const togglePerm = (cap) => setPermsSel((s) => s.includes(cap) ? s.filter((c) => c !== cap) : [...s, cap]);
   // DELIBERATELY NOT behind the undo window. The undo window is a convenience for edits you
   // might regret, not a safety mechanism — and for this action a six-second "maybe" is worse
@@ -2955,6 +3014,7 @@ function AdminAccess({ isSuperAdmin }) {
       <div>
         <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('acc.title', 'Access & permissions')}</h2>
         <p className="text-sm text-[var(--muted)] mb-3">{isSuperAdmin ? t('acc.desc.super', 'Find a user to manage their role, server-control access and blog-post access — all in one place. Search by user id, display name, email, a linked creator id, or a linked Discord.') : t('acc.desc.admin', 'Find a user to manage blog-post access — all in one place. Search by user id, display name, email, a linked creator id, or a linked Discord.')}</p>
+        {isSuperAdmin && <PowerHolders onOpen={openHolder} />}
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
             <Input className="!pl-9" placeholder={t('au.search.ph', 'id / display name / email / creator id / Discord…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} /></div>
