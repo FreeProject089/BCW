@@ -6,12 +6,15 @@ import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
 import { api, uploadPayload } from '../lib/api.js';
-import { kindLabel } from './pages.jsx';
+import { kindLabel, kindsFor } from './pages.jsx';
 
 // BMM publishes automations as PRESET too — the same enum value BSM uses for an audio
 // preset, told apart by the project. Leaving it out of this list meant a BMM user had no
 // way to submit one at all, while BMM itself has read preset catalogs for a while.
-const KINDS = { bmm: ['APP', 'PLUGIN', 'THEME', 'PRESET'], bsm: ['PRESET'] };
+//
+// kindsFor, not a local map: this screen knew that and the admin's official-catalog picker
+// did not, so an official BMM automation catalog was unpublishable from the admin.
+const KINDS = { bmm: kindsFor('bmm'), bsm: kindsFor('bsm') };
 // A local copy of the kind labels used to live here, which meant a BMM submission was
 // offered as "Preset" — the BSM word for a settings bundle — for a file that can ask to
 // run PowerShell. kindLabel() is project-aware and shared, so the two screens cannot drift.

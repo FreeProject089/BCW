@@ -104,6 +104,24 @@ export function useElementWidth(fallback = 760) {
 }
 export const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson };
 export const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset' };
+/** Every kind the CatalogKind enum holds, in the order screens show them. */
+export const ALL_KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
+
+/**
+ * Which kinds each project publishes — and, by its absence, which projects publish nothing.
+ *
+ * ONE place, because it was two: the submission form knew BMM publishes automations
+ * (`PRESET`) and the admin's official-catalog picker did not, so the only way to get an
+ * official BMM automation catalog was to not have one.
+ *
+ * Not derived from the project list. `/projects` also returns `community` (the site's own
+ * hub) and `installer` (an engine, not a mod manager) — neither has a catalog, so a list of
+ * projects is not a list of catalog publishers, and treating it as one would offer four
+ * feeds nobody can fill. A project appears here when it starts publishing.
+ */
+export const PROJECT_KINDS = { bmm: ALL_KINDS, bsm: ['PRESET'] };
+export const kindsFor = (projectKey) => PROJECT_KINDS[String(projectKey).toLowerCase()] || [];
+export const CATALOG_PROJECTS = Object.keys(PROJECT_KINDS);
 
 /**
  * A kind's name, for a project.

@@ -298,7 +298,10 @@ export default async function communityCatalogRoutes(app) {
 
       const official = (scope === 'community') ? [] : projects.flatMap((pr) => {
         const key = String(pr.key).toLowerCase();
-        return ['APP', 'PLUGIN', 'THEME', 'PRESET'].filter((k) => populated.has(`${pr.id}:${k}`)).map((k) => ({
+        // KINDS, not a fourth copy of the same four words. This file already declares the
+        // list at the top; restating it here is how a new kind ends up served by the feed
+        // endpoint and missing from the index that is supposed to advertise it.
+        return KINDS.filter((k) => populated.has(`${pr.id}:${k}`)).map((k) => ({
           type: k.toLowerCase(),
           app: key,
           official: true,
