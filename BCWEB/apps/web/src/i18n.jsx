@@ -328,6 +328,8 @@ const DICT = {
     'cm.trace': 'Comment ils sont reliés',
     'cm.tracehint': 'Alt+clic sur un autre fichier pour tracer la chaîne d’imports entre les deux.',
     'cm.notrace': 'Aucune chaîne d’imports ne mène de {a} à {b}.',
+    'cm.calls': 'appels inter-langages', 'cm.crosscalls': 'Appels inter-langages',
+    'cm.andmore': '+{n} de plus',
     'cm.clear': 'Effacer la sélection', 'cm.unres': '{n} import(s) relatifs qui ne mènent nulle part',
     'apoll.q.avgrank': 'moy.',
     'cg.saved': 'Enregistré.', 'cg.read': '{n} fichier(s) lus.', 'cg.copied': 'Adresse copiée.',

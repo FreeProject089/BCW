@@ -175,3 +175,24 @@ describe('a client is not a server', () => {
         assert.deepEqual(f.calls.map((x) => x.path).sort(), ['/y']);
     });
 });
+
+describe('Tauri plugin commands', () => {
+    test('a plugin invoke is paired with the bare command it names', () => {
+        // `plugin:store|get` on the JS side, `fn get` on the Rust side. Found on
+        // tauri-apps/tauri-plugin-store: 12 commands, 24 invokes, zero links, every name
+        // differing only by the prefix Tauri itself adds.
+        const g = buildEndpointGraph({
+            'guest-js/index.ts': "await invoke('plugin:store|get', { key });",
+            'src/commands.rs': '#[tauri::command]\npub async fn get() {}',
+        });
+        const l = g.links.find((x) => x.kind === 'tauri');
+        assert.ok(l, 'paired');
+        assert.equal(l.name, 'plugin:store|get', 'and keeps the name as WRITTEN, not the stripped one');
+        assert.equal(l.to.file, 'src/commands.rs');
+    });
+
+    test('the prefix is not a licence to match anything', () => {
+        const g = buildEndpointGraph({ 'a.ts': "invoke('plugin:store|missing');", 'b.rs': '#[tauri::command]\nfn other() {}' });
+        assert.deepEqual(g.links, []);
+    });
+});

@@ -187,7 +187,12 @@ export function buildEndpointGraph(sources = {}, { bases = ['/api'], truncated =
         byName.get(cmd.name).push(cmd);
     }
     for (const inv of invokes) {
-        const hit = byName.get(inv.name);
+        // A Tauri PLUGIN command is invoked as `plugin:store|get` and declared as `fn get`.
+        // The prefix is Tauri's own routing convention, not a guess — without stripping it a
+        // plugin repository pairs nothing at all: tauri-plugin-store showed 12 commands, 24
+        // invokes and 0 links, every name differing only by that prefix.
+        const bare = inv.name.includes('|') ? inv.name.split('|').pop() : inv.name;
+        const hit = byName.get(inv.name) || byName.get(bare);
         if (!hit?.length) { unmatched.push({ kind: 'tauri', ...inv }); continue; }
         for (const cmd of hit) links.push({ kind: 'tauri', name: inv.name, from: inv, to: cmd });
     }

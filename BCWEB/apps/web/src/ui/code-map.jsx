@@ -104,9 +104,36 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
     // Second selection: the destination of a trace. Held apart from `picked` so a plain
     // click keeps meaning "show me this file" and never surprises somebody into a walk.
     const [traceTo, setTraceTo] = useState(null);
-    const nodes = graph?.nodes || [];
+    // The import graph reads JS/TS only, so a Rust file serving a Tauri command is not one of
+    // its nodes — and a line to a box that does not exist cannot be drawn. The files on the far
+    // side of an endpoint link are added as nodes of their own, marked `served`, which is also
+    // the honest description: they are part of this architecture and the imports simply cannot
+    // see them.
+    const { nodes, endpointLinks } = useMemo(() => {
+        const base = graph?.nodes || [];
+        const links = graph?.endpoints?.links || [];
+        const known = new Set(base.map((n) => n.id));
+        const extra = new Map();
+        for (const l of links) {
+            for (const side of [l.from, l.to]) {
+                if (!side?.file || known.has(side.file) || extra.has(side.file)) continue;
+                const parts = side.file.split('/');
+                extra.set(side.file, {
+                    id: side.file, label: parts[parts.length - 1],
+                    folder: parts.slice(0, -1).join('/'),
+                    dependents: 0, served: true,
+                });
+            }
+        }
+        // Only the links whose BOTH ends are now on the map. One end missing means the other
+        // side of the repo was outside the scan, and half a line is a claim nobody can check.
+        const all = [...base, ...extra.values()];
+        const on = new Set(all.map((n) => n.id));
+        return { nodes: all, endpointLinks: links.filter((l) => on.has(l.from?.file) && on.has(l.to?.file)) };
+    }, [graph]);
     const edges = graph?.edges || [];
-    const { boxes, pos, width, height } = useMemo(() => layout(nodes, graph?.folders || []), [nodes, graph]);
+    const folders = useMemo(() => [...new Set(nodes.map((n) => n.folder).filter(Boolean))].sort(), [nodes]);
+    const { boxes, pos, width, height } = useMemo(() => layout(nodes, folders), [nodes, folders]);
 
     if (!nodes.length) return null;
 
@@ -119,6 +146,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
     // Recomputed here rather than fetched: the walk is pure, and a round trip per click
     // would make exploring the graph feel like using a website instead of reading a map.
     const steps = (picked && traceTo) ? tracePath(edges, picked, traceTo) : null;
+    const myCalls = picked ? endpointLinks.filter((l) => l.from.file === picked || l.to.file === picked) : [];
 
     return (
         <div>
@@ -126,6 +154,9 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                 <span><b className="text-[var(--text)] tabular-nums">{graph.stats?.drawn ?? nodes.length}</b> {t('cm.files', 'files')}</span>
                 <span><b className="text-[var(--text)] tabular-nums">{boxes.length}</b> {t('cm.folders', 'folders')}</span>
                 <span><b className="text-[var(--text)] tabular-nums">{edges.length}</b> {t('cm.imports', 'imports')}</span>
+                {endpointLinks.length > 0 && (
+                  <span><b className="text-[var(--text)] tabular-nums">{endpointLinks.length}</b> {t('cm.calls', 'calls across languages')}</span>
+                )}
             </div>
 
             {/* Said before the picture, not after: a truncated graph is not this repo. */}
@@ -158,6 +189,21 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                 fill="none" stroke="var(--primary-2)" strokeWidth="1.5" opacity="0.75" />;
                         })}
 
+                        {/* Calls that cross a language boundary. Dashed and in a different ink
+                            because they are not imports: nothing here `imports` a Rust file, and
+                            drawing both the same way would say it does. Same rule as the imports
+                            though — only shown for the selected file, or 178 + 2028 lines at once
+                            is a hatch pattern. */}
+                        {picked && endpointLinks.filter((l) => l.from.file === picked || l.to.file === picked).map((l, i) => {
+                            const a = pos.get(l.from.file); const b2 = pos.get(l.to.file);
+                            if (!a || !b2) return null;
+                            const x1 = a.x + a.w; const y1 = a.y + a.h / 2;
+                            const x2 = b2.x; const y2 = b2.y + b2.h / 2;
+                            const mid = (x1 + x2) / 2;
+                            return <path key={`e${i}`} d={`M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`}
+                                fill="none" stroke="var(--warning)" strokeWidth="1.5" strokeDasharray="5 4" opacity="0.9" />;
+                        })}
+
                         {boxes.map((b) => (
                             <g key={b.key}>
                                 <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="8"
@@ -185,9 +231,12 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                             opacity={on ? 1 : 0.25} style={{ cursor: 'pointer' }}>
                                             <title>{`${f.id} — ${f.dependents} dependent(s)`}</title>
                                             <rect width={p.w} height={p.h} rx="5"
-                                                fill={`color-mix(in srgb, var(--primary) ${Math.round(strength * 30)}%, var(--surface-1))`}
-                                                stroke={picked === f.id ? 'var(--primary-2)' : 'var(--line)'}
-                                                strokeWidth={picked === f.id ? 2 : 1} />
+                                                fill={f.served
+                                                  ? 'color-mix(in srgb, var(--warning) 12%, var(--surface-1))'
+                                                  : `color-mix(in srgb, var(--primary) ${Math.round(strength * 30)}%, var(--surface-1))`}
+                                                stroke={picked === f.id ? 'var(--primary-2)' : f.served ? 'color-mix(in srgb, var(--warning) 45%, var(--line))' : 'var(--line)'}
+                                                strokeWidth={picked === f.id ? 2 : 1}
+                                                strokeDasharray={f.served ? '4 3' : undefined} />
                                             <text x="7" y="15" fontSize="11" fill="var(--text)">
                                                 {f.label.length > 26 ? `${f.label.slice(0, 25)}…` : f.label}
                                             </text>
@@ -216,6 +265,44 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                             <div className="text-[11px] text-[var(--faint)] mb-3">
                                 {t('cm.deps', '{n} file(s) depend on this').replace('{n}', byId.get(picked)?.dependents ?? 0)}
                             </div>
+                            {/* The cross-language calls this file is either end of. Both lines
+                                are quoted: this is the one place in the map where the connection
+                                is a string rather than an import, so the proof has to be on
+                                screen or it is just an assertion. */}
+                            {myCalls.length > 0 && (
+                                <div className="mb-3">
+                                    <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">
+                                        {t('cm.crosscalls', 'Calls across languages')}
+                                    </div>
+                                    <ul className="space-y-1.5">
+                                        {myCalls.slice(0, 12).map((l, i) => {
+                                            const outgoing = l.from.file === picked;
+                                            const other = outgoing ? l.to : l.from;
+                                            return (
+                                                <li key={i} className="text-[12px]">
+                                                    <div className="flex items-baseline gap-1.5">
+                                                        <span className="text-[var(--warning)]">{outgoing ? '→' : '←'}</span>
+                                                        <span className="font-medium">{l.name || l.route}</span>
+                                                        <span className="text-[10px] text-[var(--faint)]">{l.kind}</span>
+                                                    </div>
+                                                    <button type="button" onClick={() => setPicked(other.file)}
+                                                        className="block text-left text-[11px] text-[var(--muted)] hover:text-[var(--primary-2)] break-all">
+                                                        {other.file}:{other.line}
+                                                    </button>
+                                                    <code className="block mt-0.5 px-1.5 py-1 rounded bg-[var(--surface-1)] border border-[var(--line)] text-[10.5px] break-all">
+                                                        {(outgoing ? l.from : l.to).text}
+                                                    </code>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                    {myCalls.length > 12 && (
+                                        <div className="text-[10px] text-[var(--faint)] mt-1">
+                                            {t('cm.andmore', '+{n} more').replace('{n}', myCalls.length - 12)}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             {traceTo ? <Trace steps={steps} from={picked} to={traceTo} onClear={() => setTraceTo(null)} t={t} /> : (
                               <div className="text-[11px] text-[var(--faint)] mb-3">
                                 {t('cm.tracehint', 'Alt-click another file to trace the chain of imports between them.')}
