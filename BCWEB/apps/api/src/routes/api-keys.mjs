@@ -565,12 +565,25 @@ export default async function apiKeyRoutes(app) {
     if (!poll.multiple && picks.length > 1) return reply.code(400).send({ error: 'single_choice' });
     if (poll.maxChoices > 0 && picks.length > poll.maxChoices) return reply.code(400).send({ error: 'too_many', max: poll.maxChoices });
     // Replaces the previous answer, exactly like the website — one behaviour for one act,
-    // whichever door it came through.
-    await p.pollVote.deleteMany({ where: { pollId: poll.id, userId: req.user.uid } });
-    await p.pollVote.createMany({
-      data: picks.map((optionId) => ({ pollId: poll.id, optionId, userId: req.user.uid, wasLoggedIn: true })),
-      skipDuplicates: true,
-    });
+    // whichever door it came through. Which is why the multi-question mirror is HERE too: the
+    // site endpoint writes PollVote and PollAnswer together, and a token vote that wrote only
+    // PollVote would make the new tables depend on which door somebody used. That is the same
+    // drift the mirror exists to prevent, arriving through the door nobody was looking at.
+    const hasQuestion = (await p.pollQuestion.count({ where: { id: poll.id } })) > 0;
+    await p.$transaction([
+      p.pollVote.deleteMany({ where: { pollId: poll.id, userId: req.user.uid } }),
+      p.pollVote.createMany({
+        data: picks.map((optionId) => ({ pollId: poll.id, optionId, userId: req.user.uid, wasLoggedIn: true })),
+        skipDuplicates: true,
+      }),
+      p.pollAnswer.deleteMany({ where: { pollId: poll.id, userId: req.user.uid } }),
+      p.pollAnswer.createMany({
+        data: hasQuestion ? picks.map((choiceId) => ({
+          pollId: poll.id, questionId: poll.id, choiceId, userId: req.user.uid, wasLoggedIn: true,
+        })) : [],
+        skipDuplicates: true,
+      }),
+    ]);
     return { ok: true, myVotes: picks };
   });
 
