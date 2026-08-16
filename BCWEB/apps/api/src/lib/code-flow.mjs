@@ -27,7 +27,12 @@ const DECL = {
         // class Foo {  — a class is a container people navigate by, like a function
         /^\s*(?:export\s+)?(?:default\s+)?class\s+([A-Za-z_$][\w$]*)/,
         // A method in a class or an object literal: `  handleChange(e) {`
-        /^\s{2,}(?:async\s+)?([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/,
+        //
+        // The keyword guard is not decoration: `  if (ok) {` matches this shape exactly, and a
+        // flow step on a real repository came back reading "if runs — misc.mjs:1727". A control
+        // keyword presented as a function is a statement about somebody's code that is simply
+        // false, which is the one thing this file promises not to do.
+        /^\s{2,}(?:async\s+)?(?!(?:if|for|while|switch|catch|do|else|return|function|typeof|await|new|delete|throw|case|with)\s*\()([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/,
     ],
     rs: [
         /^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_][\w]*)\s*[(<]/,
@@ -72,6 +77,13 @@ export function declarations(path, source) {
             if (m && m[1]) {
                 out.push({
                     name: m[1], line: i + 1, indent: line.match(/^\s*/)[0].length,
+                    // Where its body stops: the first later line that is real code at the same
+                    // indent or shallower — the closing brace, the next statement, the dedent.
+                    // Computed from the SOURCE rather than from the next declaration, because a
+                    // multi-line arrow with nothing declared after it swallowed four hundred
+                    // lines and credited a route to a currency helper. Found twice, on two
+                    // different repositories, before it was believed.
+                    end: bodyEnd(lines, i),
                     // The parameters as WRITTEN. This is the honest version of the "input
                     // example" a generated diagram shows: `(req, reply)` is a fact about the
                     // function, and `{ "newValue": "topRated" }` invented for it is not.
@@ -97,6 +109,20 @@ export function declarations(path, source) {
  * in) rather than a silent one. A declaration at the same or greater indent than a later one
  * cannot contain it, so the search stops at the first shallower candidate.
  */
+/** The last line of the block opened on `i`, or Infinity when nothing closes it. Blank lines
+ *  and comments are skipped: a comment at column 0 inside an indented block is common and does
+ *  not end anything. */
+function bodyEnd(lines, i) {
+    const indent = lines[i].match(/^\s*/)[0].length;
+    for (let j = i + 1; j < lines.length; j++) {
+        const l = lines[j];
+        if (!l.trim()) continue;
+        if (/^\s*(\/\/|\/\*|\*|#)/.test(l)) continue;
+        if (l.match(/^\s*/)[0].length <= indent) return j + 1;
+    }
+    return Infinity;
+}
+
 /** The parameter list on a declaration line, `(a, b)` → 'a, b'. Empty when there is none or
  *  when the line does not close its own parenthesis — a signature spanning three lines is
  *  better shown as nothing than as its first third. */
@@ -130,12 +156,11 @@ export function enclosing(decls, line) {
     for (let i = 0; i < decls.length; i++) {
         const d = decls[i];
         if (d.line > line) break;
+        // `end` comes from the source when we have it; the next declaration is the fallback for
+        // a decls array built by hand (a test, a caller that only has names).
         const closer = decls.slice(i + 1).find((x) => x.indent <= d.indent);
-        const end = d.oneLine ? d.line : (closer ? closer.line - 1 : Infinity);
-        // The end is the NEXT declaration, not the closing brace: tracking braces across four
-        // languages is a parser, and this is not one. The cost is that a blank line between two
-        // functions is credited to the first — calls do not live there, so it is a stated
-        // imprecision rather than a wrong answer about code that runs.
+        const end = d.oneLine ? d.line
+            : (d.end != null ? d.end : (closer ? closer.line - 1 : Infinity));
         if (line > end) continue;
         if (!best || d.indent >= best.indent) best = d; // innermost wins: a method over its class
     }

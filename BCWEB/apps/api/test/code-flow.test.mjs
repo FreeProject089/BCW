@@ -53,6 +53,25 @@ describe('declarations', () => {
         assert.deepEqual(declarations('m.go', 'func ListItems(w http.ResponseWriter) {').map((x) => x.name), ['ListItems']);
     });
 
+    test('THE THIRD ONE: a control keyword is not a function', () => {
+        // `  if (ok) {` matches the method shape exactly. A real repository produced a flow step
+        // reading "if runs — misc.mjs:1727", which is a false statement about somebody's code
+        // on a public page.
+        const src = [
+            'function real() {',
+            '  if (ok) {',
+            '    for (const x of xs) {',
+            '      while (go) {',
+            '        switch (k) {',
+            '        }',
+            '      }',
+            '    }',
+            '  }',
+            '}',
+        ].join('\n');
+        assert.deepEqual(declarations('a.js', src).map((x) => x.name), ['real']);
+    });
+
     test('a comment that looks like a declaration is not one', () => {
         const src = ['// function ghost() {', ' * function alsoGhost() {', 'function real() {'].join('\n');
         assert.deepEqual(declarations('a.js', src).map((x) => x.name), ['real']);
@@ -125,12 +144,10 @@ describe('enclosing', () => {
         const d = declarations('r.mjs', src);
         assert.equal(enclosing(d, 3).name, 'routes', 'line 3 is inside routes');
         assert.equal(enclosing(d, 7).name, 'helper');
-        // Line 5 — blank, between the two bodies — comes back as `routes`. A declaration's
-        // end is the next declaration, not its closing brace, so the gap belongs to whatever
-        // came before. Left as it is rather than tracking braces across four languages: calls
-        // do not live in the gap between two functions, and the imprecision is stated here
-        // instead of being discovered later.
-        assert.equal(enclosing(d, 5).name, 'routes');
+        // The gap between the two bodies belongs to neither. It used to be credited to
+        // `routes`, because a declaration's end was "the next declaration" — reading the
+        // dedent out of the source removed that imprecision rather than documenting it.
+        assert.equal(enclosing(d, 5), null);
     });
 });
 
