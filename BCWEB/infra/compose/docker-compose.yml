@@ -267,7 +267,7 @@ services:
       # rejected with 401 "bad key" and telemetry simply stops, with nothing on either side
       # saying why. It was `change-me` here against a client sending bmm_pk_… — measured, not
       # assumed: the shipped key returned 401 and the configured one returned 200.
-      API_KEY: ${TELEMETRY_API_KEY:-bmm_pk_3aab75ffc7b964990178682c918f117767ba2657}
+      API_KEY: ${TELEMETRY_API_KEY:-bmm_pk_a8bc7a0dba3faca94dd497aab3c4a5e8d56f13fb}
       # Read by the server (config.rs) and NOT passed before, so the dashboard's own .env could
       # say RETENTION_DAYS=30 while Docker silently kept the 180-day default. A retention
       # setting that looks configurable and is not is the worst kind for a privacy knob.
