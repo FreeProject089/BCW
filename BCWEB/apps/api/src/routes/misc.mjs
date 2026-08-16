@@ -6,7 +6,7 @@ import argon2 from 'argon2';
 import crypto from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { exportUser } from '../lib/user-export.mjs';
-import { buildErasePlan, eraseUser } from '../lib/user-erase.mjs';
+import { buildErasePlan, eraseUser, KEEP } from '../lib/user-erase.mjs';
 import { verifyTotp } from '../lib/totp.mjs';
 // Same one-line helper the auth routes use for reset tokens: the token is mailed, only
 // its hash is stored, so the database never holds anything that grants access.
@@ -1002,12 +1002,39 @@ export default async function miscRoutes(app) {
     // and skips the User model, so without this the row keeps its address, its display name
     // and its role. The button says "erase permanently" and the person could still sign in.
     //
-    // Anonymised rather than deleted, because deleted is not available: AuditLogEntry holds
-    // `actorId` inside its HMAC chain with a required column, so the row cannot go without
-    // invalidating every entry after it. The same function the closure sweeper reaches on
-    // the day — an immediate erasure is a closure with no grace period, and it should leave
-    // the account in exactly the same state.
-    if (!u.closedAt) await anonymiseAccount(p, u);
+    // DELETED when it can be. The previous version always anonymised, on the grounds that
+    // AuditLogEntry signs `actorId` inside its HMAC chain — true, and true of almost nobody:
+    // an ordinary member has never acted as staff, has no audit entries, and is exactly the
+    // account somebody wants GONE from the list rather than renamed to "Closed account".
+    //
+    // So it is attempted, and the fallback is the honest one. What holds a row back is the
+    // KEEP list — audit entries, payments, subscriptions, sanctions — each of which is
+    // deliberately not deletable. When one of them is present the row is anonymised instead,
+    // and the answer says WHICH, because "it did not delete" with no reason reads as a bug.
+    let outcome = 'deleted';
+    let heldBy = [];
+    try {
+      await p.user.delete({ where: { id: u.id } });
+    } catch (e) {
+      if (e?.code !== 'P2003') throw e;
+      outcome = 'anonymised';
+      // Counted rather than guessed from the error, which names one constraint and stops.
+      //
+      // The foreign key comes from the PLAN, which derives it from the client metadata. My
+      // first version asked each model for `userId OR actorId` — AuditLogEntry has only the
+      // second, Prisma throws on a field a model does not have, and the `.catch(() => 0)`
+      // turned every one of those throws into "nothing here". heldBy was empty every single
+      // time: a report that always says "nothing held it" beside a row that was plainly held.
+      heldBy = (await Promise.all(
+        plan.filter((e) => e.action === 'keep').map(async (e) => {
+          const d = p[e.model.charAt(0).toLowerCase() + e.model.slice(1)];
+          if (!d?.count) return null;
+          const n = await d.count({ where: { [e.fk]: u.id } });
+          return n ? { model: e.model, rows: n, why: e.reason } : null;
+        }),
+      )).filter(Boolean);
+      if (!u.closedAt) await anonymiseAccount(p, u);
+    }
     // The cached copy still holds the old address, and it is what the next request reads.
     clearUserCache(u.id);
     clearAccountLockCache(u.id);
@@ -1015,8 +1042,8 @@ export default async function miscRoutes(app) {
     // The ORIGINAL address, recorded before it was replaced — an audit line reading
     // `closed+<id>@account.invalid` names nobody and is the one line that has to.
     await logAudit(p, req.user.uid, 'user.erased',
-      `${u.email} (${done.totals?.deleted ?? 0} deleted, ${done.totals?.detached ?? 0} detached, account anonymised)`, req.ip).catch(() => {});
-    return { ok: true, ...done, accountAnonymised: true };
+      `${u.email} (${done.totals?.deleted ?? 0} deleted, ${done.totals?.detached ?? 0} detached, account ${outcome})`, req.ip).catch(() => {});
+    return { ok: true, ...done, outcome, heldBy };
   });
 
   // Mail it to the ADDRESS ON THE ACCOUNT, and nowhere else.

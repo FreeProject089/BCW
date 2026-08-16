@@ -4140,8 +4140,17 @@ function useEraseUser(user, onChanged) {
     setBusy(true);
     try {
       const r = await api.post(`/admin/users/${user.id}/erase`, { email: String(typed).trim() });
-      toast.success(t('gdpr.erase.done', 'Erased — {d} row(s) deleted, {x} detached.')
-        .replace('{d}', r.totals?.deleted ?? 0).replace('{x}', r.totals?.detached ?? 0));
+      // Which of the two happened, and why, because they are genuinely different outcomes:
+      // the account is gone from the list, or it is still there wearing a placeholder name.
+      // Reporting them the same way is how somebody concludes the delete button is broken.
+      if (r.outcome === 'deleted') {
+        toast.success(t('gdpr.erase.deleted', 'Deleted — the account is gone, along with {d} row(s).')
+          .replace('{d}', r.totals?.deleted ?? 0));
+      } else {
+        const held = (r.heldBy || []).map((h) => `${h.model} (${h.rows})`).join(', ');
+        toast.success(t('gdpr.erase.kept', 'Erased and anonymised. The row itself had to stay — it is still referenced by {w}.')
+          .replace('{w}', held || t('gdpr.erase.records', 'records that may not be deleted')));
+      }
       onChanged?.();
     } catch (x) {
       toast.error(x?.data?.error === 'email_mismatch' ? t('gdpr.erase.mismatch', 'That is not this account’s email.')
@@ -4194,7 +4203,7 @@ function AccountEndActions({ user, onClose, onChanged }) {
             {/* "Anonymised, not deleted" is stated because it is the truth and because the
                 difference is visible: the row survives with a closed+id@account.invalid
                 address, which somebody WILL find later and take for a failed deletion. */}
-            {t('ud.end.erase.s', 'Immediate and irreversible. No email, no grace period, no undo. Their data is erased and the account is anonymised — the row itself survives because the audit chain signs it. Preview it from Data requests below to see exactly what goes.')}
+            {t('ud.end.erase.s', 'Immediate and irreversible. No email, no grace period, no undo. The account is deleted outright when nothing that may not be deleted still refers to it — payments, sanctions, audit entries. When something does, it is anonymised instead and you are told what held it. Preview it from Data requests below to see exactly what goes.')}
           </div>
         </button>
       </div>
