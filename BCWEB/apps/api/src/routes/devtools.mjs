@@ -6,6 +6,8 @@
 import { z } from 'zod';
 import { requireRole, requireCap, db } from '../lib/lib.mjs';
 import { inspectAny } from '../lib/bmm-formats.mjs';
+import { listArchive, readEntry } from '../lib/archive-inspect.mjs';
+import { zipReadAll } from '../lib/native.mjs';
 import { buildRbacMap } from '../lib/rbac-map.mjs';
 import { mapSchema, findIndexDrift } from '../lib/schema-map.mjs';
 import { buildComposeMap } from '../lib/compose-map.mjs';
@@ -118,6 +120,57 @@ export default async function devtoolRoutes(app) {
   // instead of a 400, and the inspector screen has called that one ever since. Removed rather
   // than left: an endpoint nothing calls is a second door onto the same room, kept open by
   // nobody watching it. Its reader is untouched — inspectAny still routes .bmmpa to it.
+
+  /**
+   * An archive, listed and readable entry by entry.
+   *
+   * The JSON inspector's answer for a `.bmmplug` or `.bmmtheme` was "extract it yourself and
+   * paste the manifest". That is where a review stops — nobody unzips a submission, finds the
+   * manifest, pastes it, and then repeats for the four files they still cannot see.
+   *
+   * Same rules as the JSON reader, and they matter more here: nothing is executed, nothing
+   * touches the disk, and an entry whose path climbs out of the archive is REPORTED rather
+   * than tidied away.
+   */
+  app.post('/admin/inspect/archive', {
+    preHandler: requireCap('manage_catalogs', 'MOD'),
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    bodyLimit: 32 * 1024 * 1024,
+  }, async (req, reply) => {
+    const b = z.object({
+      zipBase64: z.string().max(44 * 1024 * 1024),
+      // When given, that one entry comes back as text too — one round trip for "show me the
+      // manifest", which is what a reviewer opens first every single time.
+      entry: z.string().max(400).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+
+    let entries;
+    try {
+      entries = await zipReadAll(Buffer.from(b.data.zipBase64, 'base64'));
+    } catch (e) {
+      return reply.code(400).send({ error: 'bad_zip', detail: String(e?.message || e).slice(0, 160) });
+    }
+    const listing = listArchive(entries);
+
+    // Recognised BMM documents inside the archive get their summary without a second request:
+    // a plugin's manifest is the reason the moderator opened it.
+    const known = [];
+    for (const row of listing.entries) {
+      if (!row.text || !row.name.toLowerCase().endsWith('.json')) continue;
+      if (known.length >= 12) break;
+      const r = readEntry(entries, row.name);
+      if (!r || r.binary || r.truncated) continue;
+      try {
+        const doc = JSON.parse(r.text);
+        const rep = inspectAny(doc);
+        if (rep.ok) known.push({ name: row.name, ...rep });
+      } catch { /* not JSON after all — the listing already says it is text */ }
+    }
+
+    const opened = b.data.entry ? readEntry(entries, b.data.entry) : null;
+    return { ok: true, ...listing, known, opened: opened ? { name: b.data.entry, ...opened } : null };
+  });
 
   // The database as the two files define it, plus the drift between them.
   //
