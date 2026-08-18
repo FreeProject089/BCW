@@ -36,14 +36,35 @@ export { NOTIF, NOTIF_FALLBACK };
 function NotificationsPanel() {
   const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/me/notifications'), []);
-  const list = data?.notifications || [];
+  // The list is held locally so an action shows IMMEDIATELY. It used to fire the request and
+  // then refetch, which meant marking one read left it looking unread until the page was
+  // reloaded by hand — a button that appears to do nothing.
+  //
+  // The bell in the topbar and the notification centre both already worked this way; this
+  // panel was the third copy of the same behaviour and the only one that refetched. The
+  // reload is now the FAILURE path: if the write did not land, the server's answer wins.
+  const [items, setItems] = useState(null);
+  useEffect(() => { if (data) setItems(data.notifications || []); }, [data]);
+  const list = items || [];
   const unread = list.filter((n) => !n.readAt).length;
-  const markAll = async () => { try { await api.post('/me/notifications/read-all'); reload(); } catch {} };
-  const markOne = async (n) => { if (!n.readAt) { try { await api.post(`/me/notifications/${n.id}/read`); reload(); } catch {} } };
-  const del = async (n) => { try { await api.del(`/me/notifications/${n.id}`); reload(); } catch {} };
+  const stamp = () => new Date().toISOString();
+  const markAll = async () => {
+    setItems((s) => (s || []).map((x) => ({ ...x, readAt: x.readAt || stamp() })));
+    try { await api.post('/me/notifications/read-all'); } catch { reload(); }
+  };
+  const markOne = async (n) => {
+    if (n.readAt) return;
+    setItems((s) => (s || []).map((x) => (x.id === n.id ? { ...x, readAt: stamp() } : x)));
+    try { await api.post(`/me/notifications/${n.id}/read`); } catch { reload(); }
+  };
+  const del = async (n) => {
+    setItems((s) => (s || []).filter((x) => x.id !== n.id));
+    try { await api.del(`/me/notifications/${n.id}`); } catch { reload(); }
+  };
   const clearAll = async () => {
     if (!(await dialog.confirm({ title: 'Clear all notifications', message: 'This permanently deletes all of your notifications. Continue?', okLabel: 'Clear all', danger: true }))) return;
-    try { await api.del('/me/notifications'); reload(); } catch {}
+    setItems([]);
+    try { await api.del('/me/notifications'); } catch { reload(); }
   };
   const ago = (d) => { const s = (Date.now() - new Date(d)) / 1000; if (s < 60) return 'now'; if (s < 3600) return `${Math.floor(s / 60)}m`; if (s < 86400) return `${Math.floor(s / 3600)}h`; return `${Math.floor(s / 86400)}d`; };
   return (
