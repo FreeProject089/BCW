@@ -195,7 +195,7 @@ export function functionEdges(links = [], sources = {}) {
         const from = side(l.from); const to = side(l.to);
         if (!from || !to) continue;
         out.push({
-            kind: l.kind,                                     // http | tauri
+            kind: l.kind,                                     // http | tauri | ipc
             label: l.kind === 'http' ? `${l.method || 'GET'} ${l.route || ''}`.trim() : (l.name || 'invoke'),
             from, to,
             text: l.from?.text || '',                          // the calling line, verbatim
@@ -223,7 +223,8 @@ export function buildFlow(edge, sources = {}, { depth = 3 } = {}) {
         label: edge.from.fn ? `${edge.from.fn} calls ${edge.label}` : `calls ${edge.label}`,
         code: excerpt(sources[edge.from.file], edge.from.line),
     }, {
-        kind: edge.kind === 'http' ? 'route' : 'command',
+        // What the far end IS, in the reader's words: a route, an IPC channel, a command.
+        kind: edge.kind === 'http' ? 'route' : edge.kind === 'ipc' ? 'channel' : 'command',
         file: edge.to.file, line: edge.to.line, fn: edge.to.fn,
         label: edge.to.fn ? `${edge.to.fn} handles it` : 'handled here',
         code: excerpt(sources[edge.to.file], edge.to.line),

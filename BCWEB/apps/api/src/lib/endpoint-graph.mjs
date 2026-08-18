@@ -88,6 +88,7 @@ export function scanFile(path, source) {
     const raw = String(source);
     const src = blankComments(raw, lang);
     const routes = []; const calls = []; const commands = []; const invokes = [];
+    const ipcHandlers = []; const ipcCalls = []; const bridges = [];
     const at = (i) => ({ line: lineOf(raw, i), text: textOf(raw, lineOf(raw, i)) });
 
     if (lang === 'js') {
@@ -106,6 +107,25 @@ export function scanFile(path, source) {
         for (const m of src.matchAll(new RegExp(`\\b(?:api|axios|http|client)\\s*\\.\\s*(${METHODS})\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`, 'gi'))) {
             calls.push({ method: m[1].toUpperCase(), path: m[2], ...at(m.index) });
         }
+        // Electron: `ipcMain.handle('x')` declares, `ipcRenderer.invoke('x')` calls.
+        //
+        // Without this an Electron app pairs NOTHING. Better Sound.Maker reads as 35 files and
+        // zero connections while its preload calls twenty handlers by name — the whole
+        // architecture of the app, invisible. The receiver is what makes it Electron: a bare
+        // `invoke('x')` below is Tauri's, and the two must not be confused.
+        for (const m of src.matchAll(/\bipcMain\s*\.\s*(?:handle|handleOnce|on|once)\s*\(\s*['"`]([^'"`]+)['"`]/g)) {
+            ipcHandlers.push({ name: m[1], ...at(m.index) });
+        }
+        for (const m of src.matchAll(/\bipcRenderer\s*\.\s*(?:invoke|send|sendSync)\s*\(\s*['"`]([^'"`]+)['"`]/g)) {
+            if (m[1].includes('${')) continue;
+            ipcCalls.push({ name: m[1], ...at(m.index) });
+        }
+        // The preload bridge. `contextBridge.exposeInMainWorld('electronAPI', {…})` is the ONLY
+        // reason the renderer can reach any of it, and a diagram of an Electron app that leaves
+        // it out has left out the door.
+        for (const m of src.matchAll(/\bcontextBridge\s*\.\s*exposeInMainWorld\s*\(\s*['"`]([^'"`]+)['"`]/g)) {
+            bridges.push({ name: m[1], ...at(m.index) });
+        }
         // Tauri: the JS side of a command.
         for (const m of src.matchAll(/\binvoke\s*(?:<[^>]*>)?\s*\(\s*['"`]([^'"`]+)['"`]/g)) {
             // A command name built at runtime — invoke(`${kind}_list`) — is not a name.
@@ -113,6 +133,11 @@ export function scanFile(path, source) {
             // "${m[1]}": pure noise, and noise makes the genuine orphans — a caller
             // nobody updated after a rename — less believable.
             if (m[1].includes('${')) continue;
+            // `ipcRenderer.invoke('x')` is Electron's, and it is paired above. Counted here
+            // too it produced fourteen phantom Tauri commands on an Electron app, every one
+            // of them reported as an orphan — and an orphan list that is all noise makes the
+            // real ones (a caller nobody updated after a rename) unbelievable.
+            if (/ipcRenderer\s*\.\s*$/.test(src.slice(Math.max(0, m.index - 24), m.index))) continue;
             invokes.push({ name: m[1], ...at(m.index) });
         }
     } else if (lang === 'rs') {
@@ -142,7 +167,7 @@ export function scanFile(path, source) {
         }
     }
 
-    return { path, lang, routes, calls, commands, invokes };
+    return { path, lang, routes, calls, commands, invokes, ipcHandlers, ipcCalls, bridges };
 }
 
 /**
@@ -156,11 +181,15 @@ export function buildEndpointGraph(sources = {}, { bases = ['/api'], truncated =
     const scans = Object.entries(sources).map(([p, s]) => scanFile(p, s)).filter(Boolean);
 
     const routes = []; const calls = []; const commands = []; const invokes = [];
+    const ipcHandlers = []; const ipcCalls = []; const bridges = [];
     for (const f of scans) {
         for (const r of f.routes) routes.push({ ...r, file: f.path, lang: f.lang, key: routeKey(r.path) });
         for (const c of f.calls) calls.push({ ...c, file: f.path, lang: f.lang, key: routeKey(stripBase(c.path, bases)) });
         for (const c of f.commands) commands.push({ ...c, file: f.path, lang: f.lang });
         for (const i of f.invokes) invokes.push({ ...i, file: f.path, lang: f.lang });
+        for (const h of f.ipcHandlers || []) ipcHandlers.push({ ...h, file: f.path, lang: f.lang });
+        for (const c of f.ipcCalls || []) ipcCalls.push({ ...c, file: f.path, lang: f.lang });
+        for (const b of f.bridges || []) bridges.push({ ...b, file: f.path, lang: f.lang });
     }
 
     const links = [];
@@ -197,8 +226,23 @@ export function buildEndpointGraph(sources = {}, { bases = ['/api'], truncated =
         for (const cmd of hit) links.push({ kind: 'tauri', name: inv.name, from: inv, to: cmd });
     }
 
+    // Electron IPC: `ipcRenderer.invoke('fs:writeFile')` meets `ipcMain.handle('fs:writeFile')`.
+    // Exact names on both sides — an IPC channel is a string literal chosen once, so there is
+    // nothing to normalise and nothing to guess.
+    const handlerByName = new Map();
+    for (const h of ipcHandlers) {
+        if (!handlerByName.has(h.name)) handlerByName.set(h.name, []);
+        handlerByName.get(h.name).push(h);
+    }
+    for (const c of ipcCalls) {
+        const hit = handlerByName.get(c.name);
+        if (!hit?.length) { unmatched.push({ kind: 'ipc', ...c }); continue; }
+        for (const h of hit) links.push({ kind: 'ipc', name: c.name, from: c, to: h });
+    }
+
     return {
         links, routes, calls, commands, invokes,
+        ipcHandlers, ipcCalls, bridges,
         // An unmatched call is worth showing: usually a third-party URL, sometimes a route that
         // moved and a caller nobody updated. Both are things a reader wants to know.
         unmatched: unmatched.slice(0, 100),
@@ -211,6 +255,7 @@ export function buildEndpointGraph(sources = {}, { bases = ['/api'], truncated =
         stats: {
             routes: routes.length, calls: calls.length,
             commands: commands.length, invokes: invokes.length,
+            ipcHandlers: ipcHandlers.length, ipcCalls: ipcCalls.length, bridges: bridges.length,
             links: links.length, unmatched: unmatched.length,
         },
     };

@@ -278,3 +278,130 @@ describe('connections derived from real calls', () => {
         assert.equal(new Set(pairs).size, pairs.length, 'no duplicate connection');
     });
 });
+
+describe('an Electron app is three processes, not one box', () => {
+    // It came back as two boxes both labelled "Node.js" with no lines between them, while
+    // thirteen IPC channels joined them. The manifest reader is not wrong — it is answering a
+    // different question, and for a desktop app the answer it gives is the whole app squashed
+    // into its package name.
+    const APP = {
+        'package.json': '{"name":"better-sound-maker","devDependencies":{"electron":"30","vite":"5"}}',
+        'electron/package.json': '{"name":"electron"}',
+        'electron/main.js': "const { ipcMain } = require('electron');\nipcMain.handle('fs:writeFile', () => {});",
+        'electron/preload.js': "const { contextBridge, ipcRenderer } = require('electron');\ncontextBridge.exposeInMainWorld('electronAPI', { writeFile: () => ipcRenderer.invoke('fs:writeFile') });",
+    };
+
+    test('the renderer, the bridge, the main process and the disk', () => {
+        const r = detectStack(APP);
+        assert.deepEqual(r.nodes.map((n) => n.id), ['renderer', 'preload', 'main', 'disk']);
+        assert.equal(r.nodes.find((n) => n.id === 'renderer').tech, 'Vite');
+        assert.equal(r.nodes.find((n) => n.id === 'main').tech, 'Electron');
+    });
+
+    test('and the path each one goes through', () => {
+        const r = detectStack(APP);
+        const pairs = r.edges.map((e) => `${e.from}>${e.to}`);
+        assert.deepEqual(pairs, ['renderer>preload', 'preload>main', 'main>disk']);
+    });
+
+    test('no preload means the renderer talks to main directly', () => {
+        const { 'electron/preload.js': _drop, ...noBridge } = APP;
+        const r = detectStack(noBridge);
+        assert.ok(!r.nodes.some((n) => n.id === 'preload'));
+        assert.ok(r.edges.some((e) => e.from === 'renderer' && e.to === 'main'));
+    });
+
+    test('a compose file still wins — that is a deployed system, not a desktop app', () => {
+        const r = detectStack({ ...APP, 'docker-compose.yml': 'services:\n  db:\n    image: postgres:16\n' });
+        assert.ok(r.nodes.some((n) => n.id === 'db'));
+        assert.ok(!r.nodes.some((n) => n.id === 'preload'));
+    });
+
+    test('a plain web project is untouched by any of this', () => {
+        const r = detectStack({ 'package.json': '{"name":"site","dependencies":{"next":"14"}}' });
+        assert.deepEqual(r.nodes.map((n) => n.id), ['app']);
+        assert.equal(r.nodes[0].tech, 'Next.js');
+    });
+
+    test('every node it draws is marked as generated', () => {
+        // So a rebuild replaces its own boxes and never a hand-placed one.
+        const r = detectStack(APP);
+        assert.ok(r.nodes.every((n) => n.gen === true));
+    });
+});
+
+describe('a compose file that is a task runner, not a deployment', () => {
+    // BetterInstaller ships one that runs its CI gate in a container. The detector took it
+    // for the architecture: a Rust installer drawn as two boxes called "ci" and "shell", and
+    // its three real crates not drawn at all.
+    const CI = `services:
+  ci:
+    build: .
+    image: betterinstaller-dev
+    working_dir: /app
+    volumes:
+      - .:/app
+      - bi-target:/tmp/target
+  shell:
+    extends: ci
+    command: bash
+`;
+    const REPO = {
+        'docker-compose.yml': CI,
+        'crates/bpkg-core/Cargo.toml': '[package]\nname = "bpkg-core"\n',
+        'crates/bpkg-cli/Cargo.toml': '[package]\nname = "bpkg-cli"\n',
+    };
+
+    test('the crates are drawn, not the containers', () => {
+        const r = detectStack(REPO);
+        const ids = r.nodes.map((n) => n.id);
+        assert.ok(ids.includes('bpkg-core') && ids.includes('bpkg-cli'), ids.join(','));
+        assert.ok(!ids.includes('ci') && !ids.includes('shell'), ids.join(','));
+    });
+
+    test('and it says which file it declined to read, and why', () => {
+        // Silently ignoring a compose file would be its own trap: somebody would wonder why
+        // their services are missing and have nothing to read.
+        const r = detectStack(REPO);
+        assert.ok(r.notes.some((n) => n.includes('docker-compose.yml') && /port/.test(n)), r.notes.join(' | '));
+    });
+
+    test('a real deployment is still a deployment', () => {
+        // Ports OR depends_on is enough to be a system, whatever it mounts.
+        const r = detectStack({
+            'docker-compose.yml': 'services:\n  web:\n    build: .\n    ports: ["80:80"]\n    volumes: [".:/app"]\n',
+            'package.json': '{"name":"site"}',
+        });
+        assert.deepEqual(r.nodes.map((n) => n.id), ['web']);
+    });
+
+    test('a single worker that publishes nothing is still a deployment', () => {
+        // It mounts nothing of the project, so the second signal is absent.
+        const r = detectStack({ 'docker-compose.yml': 'services:\n  worker:\n    image: myorg/worker:1\n' });
+        assert.deepEqual(r.nodes.map((n) => n.id), ['worker']);
+    });
+});
+
+describe("Cargo path dependencies", () => {
+    test('a workspace draws the lines between its crates', () => {
+        // As explicit as compose's depends_on, and thrown away until now: a Rust workspace
+        // came back as one box per crate and not one line between them.
+        const r = detectStack({
+            'crates/bpkg-core/Cargo.toml': '[package]\nname = "bpkg-core"\n',
+            'crates/bpkg-cli/Cargo.toml': '[package]\nname = "bpkg-cli"\n[dependencies]\nbpkg-core = { path = "../bpkg-core" }\nclap.workspace = true\n',
+            'crates/installer/Cargo.toml': '[package]\nname = "installer"\n[dependencies]\nbpkg-core = { path = "../bpkg-core" }\nslint.workspace = true\n',
+        });
+        const pairs = r.edges.map((e) => `${e.from}>${e.to}`);
+        assert.ok(pairs.includes('bpkg-core>bpkg-cli'), pairs.join(','));
+        assert.ok(pairs.includes('bpkg-core>installer'), pairs.join(','));
+        assert.equal(pairs.length, 2, 'and nothing else');
+    });
+
+    test('a crates.io dependency is not a component', () => {
+        // `clap.workspace = true` and `serde = "1"` are somebody else's code.
+        const r = detectStack({
+            'a/Cargo.toml': '[package]\nname = "a"\n[dependencies]\nserde = "1"\nclap = { version = "4", features = ["derive"] }\n',
+        });
+        assert.deepEqual(r.edges, []);
+    });
+});

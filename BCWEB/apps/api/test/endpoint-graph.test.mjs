@@ -196,3 +196,60 @@ describe('Tauri plugin commands', () => {
         assert.deepEqual(g.links, []);
     });
 });
+
+describe('Electron IPC', () => {
+    // An Electron app paired NOTHING: Better Sound.Maker read as 35 files and zero
+    // connections while its preload called thirteen handlers by name.
+    const MAIN = "const { ipcMain } = require('electron');\n"
+        + "ipcMain.handle('fs:writeFile', async (_e, p, c) => {});\n"
+        + "ipcMain.handle('dialog:selectDirectory', async () => {});\n";
+    const PRELOAD = "const { contextBridge, ipcRenderer } = require('electron');\n"
+        + "contextBridge.exposeInMainWorld('electronAPI', {\n"
+        + "  writeFile: (p, c) => ipcRenderer.invoke('fs:writeFile', p, c),\n"
+        + "  selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),\n"
+        + "});\n";
+
+    test('a channel is paired with the handler that serves it', () => {
+        const g = buildEndpointGraph({ 'electron/main.js': MAIN, 'electron/preload.js': PRELOAD });
+        assert.equal(g.stats.links, 2);
+        assert.ok(g.links.every((l) => l.kind === 'ipc'));
+        assert.deepEqual(g.links.map((l) => l.name).sort(), ['dialog:selectDirectory', 'fs:writeFile']);
+        assert.equal(g.links[0].from.file, 'electron/preload.js');
+        assert.equal(g.links[0].to.file, 'electron/main.js');
+    });
+
+    test('THE ONE: ipcRenderer.invoke is not counted as a Tauri command', () => {
+        // Counted as both, an Electron app produced a phantom Tauri invoke per channel and
+        // reported every one as an orphan — and an orphan list that is all noise makes the
+        // real ones (a caller nobody updated after a rename) unbelievable.
+        const g = buildEndpointGraph({ 'electron/main.js': MAIN, 'electron/preload.js': PRELOAD });
+        assert.equal(g.stats.invokes, 0);
+        assert.equal(g.stats.unmatched, 0);
+    });
+
+    test('a bare invoke() is still Tauri', () => {
+        const g = buildEndpointGraph({
+            'src/a.js': "import { invoke } from '@tauri-apps/api';\ninvoke('do_thing');",
+            'src-tauri/src/cmd.rs': '#[tauri::command]\npub fn do_thing() {}',
+        });
+        assert.equal(g.stats.links, 1);
+        assert.equal(g.links[0].kind, 'tauri');
+    });
+
+    test('the context bridge is recorded — it is the door', () => {
+        const g = buildEndpointGraph({ 'electron/preload.js': PRELOAD });
+        assert.deepEqual(g.bridges.map((b) => b.name), ['electronAPI']);
+    });
+
+    test('a channel nobody handles is an orphan, and says so', () => {
+        const g = buildEndpointGraph({ 'electron/preload.js': PRELOAD });
+        assert.equal(g.stats.links, 0);
+        assert.equal(g.stats.unmatched, 2);
+        assert.ok(g.unmatched.every((u) => u.kind === 'ipc'));
+    });
+
+    test('a channel name built at runtime is not a name', () => {
+        const g = buildEndpointGraph({ 'p.js': 'ipcRenderer.invoke(`fs:${op}`)' });
+        assert.equal(g.stats.ipcCalls, 0);
+    });
+});

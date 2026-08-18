@@ -96,9 +96,10 @@ describe('buildCodeGraph', () => {
 
     test('a language it cannot read is NAMED, not silently dropped', () => {
         // A mostly-Go repo must not be shown three stray JS files as though that were its
-        // architecture.
+        // architecture. `rs` used to be on this list and no longer is — the graph reads Rust
+        // now, so naming it as unreadable would be the lie in the other direction.
         const g = buildCodeGraph({ 'main.go': 'package main', 'lib.rs': 'fn main(){}', 'a.js': '' });
-        assert.deepEqual(g.unsupported, ['go', 'rs']);
+        assert.deepEqual(g.unsupported, ['go']);
     });
 
     test('a relative import that resolves to nothing is reported', () => {
@@ -231,5 +232,81 @@ describe('tracePath', () => {
     test('entry points are what nothing imports', () => {
         const e = entryPoints(G).sort();
         assert.deepEqual(e, ['src/index.js', 'src/orphan.js']);
+    });
+});
+
+// ── Rust ─────────────────────────────────────────────────────────────────────
+//
+// The graph read JS and TS and listed `rs` under "cannot read". BetterInstaller — three
+// crates, 28 source files — therefore had an architecture tab with an empty diagram in it,
+// and nothing said why.
+describe('Rust', () => {
+    const files = {
+        'crates/app/src/main.rs': 'mod config;\nmod net;\nuse crate::config::Settings;\nfn main() {}',
+        'crates/app/src/config.rs': 'use crate::net::Client;\npub struct Settings;',
+        'crates/app/src/net/mod.rs': 'mod http;\npub struct Client;',
+        'crates/app/src/net/http.rs': 'pub fn get() {}',
+    };
+
+    test('mod and use crate:: both resolve to real files', () => {
+        const g = buildCodeGraph(files);
+        assert.equal(g.stats.rustFiles, 4);
+        const pairs = g.edges.map((e) => `${e.from} -> ${e.to}`);
+        // `main.rs` declares config and net; the edge points from the file BEING USED to the
+        // one using it, the same direction the JS side draws.
+        assert.ok(pairs.includes('crates/app/src/config.rs -> crates/app/src/main.rs'), pairs.join('\n'));
+        assert.ok(pairs.includes('crates/app/src/net/mod.rs -> crates/app/src/main.rs'), pairs.join('\n'));
+        // `use crate::net::Client` from config.rs resolves through the crate root, not the
+        // declaring file's own folder.
+        assert.ok(pairs.includes('crates/app/src/net/mod.rs -> crates/app/src/config.rs'), pairs.join('\n'));
+        // A submodule declared inside a folder module.
+        assert.ok(pairs.includes('crates/app/src/net/http.rs -> crates/app/src/net/mod.rs'), pairs.join('\n'));
+    });
+
+    test('an external crate is not an edge and not an oddity', () => {
+        // `use serde::Serialize` resolves to nothing, exactly as `import 'react'` does. It
+        // must not appear as unresolved, or every Rust file reports five.
+        const g = buildCodeGraph({ 'src/main.rs': 'use serde::Serialize;\nuse std::fs;\nfn main(){}' });
+        assert.equal(g.edges.length, 0);
+        assert.equal(g.unresolved.length, 0);
+    });
+
+    test('an inline module declares no file', () => {
+        // `mod tests { … }` is a module in the same file. Treated as a `mod tests;` it would
+        // be reported as a missing file on nearly every Rust source there is.
+        const g = buildCodeGraph({ 'src/lib.rs': 'mod tests {\n  fn t() {}\n}\npub fn x() {}' });
+        assert.equal(g.unresolved.length, 0);
+    });
+
+    test('a mod that names no file IS reported', () => {
+        // The genuine oddity: a declaration whose file is missing from the scan.
+        const g = buildCodeGraph({ 'src/lib.rs': 'mod missing;\npub fn x() {}' });
+        assert.equal(g.unresolved.length, 1);
+        assert.equal(g.unresolved[0].spec, 'missing');
+    });
+
+    test('a commented-out mod is not a module', () => {
+        const g = buildCodeGraph({ 'src/lib.rs': '// mod gone;\n/* mod alsogone; */\npub fn x() {}' });
+        assert.equal(g.unresolved.length, 0);
+        assert.equal(g.edges.length, 0);
+    });
+
+    test('rs no longer counts as a language the graph cannot read', () => {
+        const g = buildCodeGraph({ 'src/main.rs': 'fn main(){}', 'README.md': '# x' });
+        assert.ok(!g.stats.unsupported?.includes?.('rs'));
+        assert.deepEqual(g.unsupported, ['md']);
+    });
+
+    test('a repository that is both languages draws both', () => {
+        const g = buildCodeGraph({
+            'src/main.js': "import './helper.js';",
+            'src/helper.js': 'export const x = 1;',
+            'src-tauri/src/main.rs': 'mod cmd;\nfn main(){}',
+            'src-tauri/src/cmd.rs': 'pub fn run(){}',
+        });
+        assert.equal(g.stats.jsFiles, 2);
+        assert.equal(g.stats.rustFiles, 2);
+        assert.equal(g.nodes.length, 4);
+        assert.equal(g.edges.length, 2);
     });
 });

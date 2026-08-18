@@ -18,6 +18,9 @@ import { ArrowDown, ChevronRight, FileCode2, Play, Pause, SkipBack, SkipForward 
 const KIND_LABEL = {
     http: 'over HTTP',
     tauri: 'through the app bridge',
+    // Electron. Named after what it is rather than after "IPC", which tells a reader who is
+    // not an Electron developer nothing at all.
+    ipc: 'across the window boundary',
 };
 
 /** file/path/thing.js → thing.js, with the folder kept as a title. Long paths in a step

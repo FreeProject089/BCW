@@ -74,6 +74,7 @@ function kindForImage(image) {
  */
 function fromCompose(files) {
     const nodes = []; const edges = []; const seen = new Set();
+    const ignored = [];
 
     for (const path of Object.keys(files)) {
         if (!COMPOSE_FILES.includes(baseName(path))) continue;
@@ -82,6 +83,31 @@ function fromCompose(files) {
         try { doc = parseYaml(files[path]); } catch { continue; }
         const services = doc?.services;
         if (!services || typeof services !== 'object') continue;
+
+        // Not every compose file describes a deployment. BetterInstaller ships one that runs
+        // the CI gate in a container — two services, `ci` and `shell` — and the detector took
+        // it for the architecture: the project page showed a Rust installer as two boxes
+        // called "ci" and "shell", and its three real crates not at all.
+        //
+        // The test is structural, not a name list. Two things are true of a task runner and
+        // of nothing that is deployed:
+        //
+        //   · nothing is reachable — no service publishes or exposes a port, and none depends
+        //     on another, so there is no system here for anything to be part of;
+        //   · at least one service BIND-MOUNTS THE PROJECT ITSELF (`.:/app`). A deployed
+        //     service ships its code in its image; one that mounts the working tree over it
+        //     exists to run commands against your checkout.
+        //
+        // Both together, because either alone has honest counter-examples: a single worker
+        // publishes no port, and a dev database mounts a seed folder.
+        const list = Object.values(services).filter((s) => s && typeof s === 'object');
+        const anyPort = list.some((s) => s.ports || s.expose || s.network_mode === 'host');
+        const anyDep = list.some((s) => s.depends_on);
+        const mountsSelf = list.some((s) => {
+            const vols = Array.isArray(s.volumes) ? s.volumes : [];
+            return vols.some((v) => typeof v === 'string' && /^\.\/?:/.test(v.trim()));
+        });
+        if (list.length && !anyPort && !anyDep && mountsSelf) { ignored.push(path); continue; }
 
         for (const [name, svc] of Object.entries(services)) {
             if (!svc || typeof svc !== 'object') continue;
@@ -118,7 +144,32 @@ function fromCompose(files) {
             }
         }
     }
-    return { nodes, edges };
+    return { nodes, edges, ignored };
+}
+
+/**
+ * Which crate depends on which, from the manifests themselves.
+ *
+ * `bpkg-core = { path = "../bpkg-core" }` is a dependency stated outright — the same class of
+ * evidence as compose's `depends_on`, and the reason a Rust workspace was three unconnected
+ * boxes: nothing had read it. Only PATH dependencies, because a crate from crates.io is
+ * somebody else's code and not part of this diagram.
+ */
+function cargoPathEdges(files) {
+    const edges = [];
+    for (const [path, body] of Object.entries(files)) {
+        if (baseName(path) !== 'Cargo.toml') continue;
+        const me = body.match(/^\s*name\s*=\s*"([^"]+)"/m);
+        if (!me) continue;
+        const from = slug(me[1]);
+        // `dep = { path = "../x" }` on one line, which is how Cargo writes it. The dependency
+        // NAME is what the node is called; the path only proves it is local.
+        for (const m of body.matchAll(/^\s*([A-Za-z0-9_-]+)\s*=\s*\{[^}]*\bpath\s*=\s*"[^"]+"/gm)) {
+            const to = slug(m[1]);
+            if (to !== from) edges.push({ from: to, to: from, label: 'uses' });
+        }
+    }
+    return edges;
 }
 
 /** package.json / Cargo.toml / go.mod / pyproject: one app per manifest, named by its folder. */
@@ -152,6 +203,63 @@ function fromManifests(files) {
     return nodes;
 }
 
+
+/**
+ * A desktop app, as the three processes it really is.
+ *
+ * ELECTRON only, deliberately. Electron ships one package.json, so the manifest reader saw
+ * one box named after the folder and stopped — Better Sound.Maker came back as two boxes both
+ * labelled "Node.js" and no lines, while thirteen IPC channels joined them. That is not what
+ * the app is: a renderer that draws the window, a main process that holds the privileges, and
+ * a preload script that is the only reason the first can reach the second.
+ *
+ * A Tauri app is left alone. Its two halves are already named by real manifests — the crate
+ * and the package — and the call pairing labels the arrow between them with how many `invoke`
+ * calls it carries. Replacing that with "Front end → Rust core" would be trading a measured
+ * answer for a tidier one.
+ *
+ * Every node carries the file that proves it. A repo with no electron dependency produces
+ * nothing here, and the manifest reader's answer stands.
+ */
+function fromDesktop(files) {
+    const nodes = [];
+    const edges = [];
+    const pkgPaths = Object.keys(files).filter((p) => baseName(p) === 'package.json');
+    let electronAt = null;
+    let renderTech = null;
+    for (const path of pkgPaths) {
+        let pkg; try { pkg = JSON.parse(files[path]); } catch { continue; }
+        const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+        if (deps.electron || deps['electron-builder']) electronAt = electronAt || path;
+        if (deps['@tauri-apps/api'] || deps['@tauri-apps/cli']) electronAt = electronAt; // Tauri is found by its Cargo/conf below
+        // What draws the window, when the renderer is not a framework the manifest lists.
+        if (!renderTech) {
+            const fw = FRAMEWORK.find(([d]) => deps[d]);
+            if (fw) renderTech = fw[1];
+            else if (deps.vite) renderTech = 'Vite';
+        }
+    }
+    if (!electronAt) return { nodes, edges };
+
+    nodes.push({ id: 'renderer', label: 'Window (renderer)', kind: 'app', tech: renderTech || 'JavaScript', from: electronAt, gen: true });
+    // The bridge and the main process are named after the files that are them, when those
+    // files were read; otherwise after the folder that holds the manifest.
+    const preload = Object.keys(files).find((p) => /(^|\/)preload\.(js|cjs|mjs|ts)$/i.test(p));
+    const main = Object.keys(files).find((p) => /(^|\/)(main|index|background)\.(js|cjs|mjs|ts)$/i.test(p) && /electron/i.test(p));
+    if (preload) {
+        nodes.push({ id: 'preload', label: 'Preload bridge', kind: 'app', tech: 'contextBridge', from: preload, gen: true });
+        edges.push({ from: 'renderer', to: 'preload', label: 'window.api' });
+        edges.push({ from: 'preload', to: 'main', label: 'IPC' });
+    }
+    nodes.push({ id: 'main', label: 'Main process', kind: 'app', tech: 'Electron', from: main || electronAt, gen: true });
+    if (!preload) edges.push({ from: 'renderer', to: 'main', label: 'IPC' });
+    // What a desktop app exists to touch. Not a guess: an app with a main process has the
+    // file system, and leaving it off draws a program that talks to nothing.
+    nodes.push({ id: 'disk', label: 'Your machine', kind: 'data', tech: 'files', from: main || electronAt, gen: true });
+    edges.push({ from: 'main', to: 'disk', label: 'reads / writes' });
+    return { nodes, edges };
+}
+
 /**
  * Build a stack draft from a repository's files.
  *
@@ -177,7 +285,10 @@ export function detectStack(files = {}, { endpointLinks = [], callsTruncated = f
     // site, a scripts folder — and adding them produced twelve unconnected boxes beside the
     // four real ones on the first repo this was pointed at. They are counted, not drawn, so
     // nothing is dropped silently.
-    const extra = compose.nodes.length ? [] : manifests;
+    // A desktop app is not one box. Checked BEFORE the manifest fallback, because for an
+    // Electron repo the manifests are exactly the answer that was wrong.
+    const desktop = compose.nodes.length ? { nodes: [], edges: [] } : fromDesktop(files);
+    const extra = compose.nodes.length ? [] : (desktop.nodes.length ? desktop.nodes : manifests);
     const skipped = compose.nodes.length ? manifests.filter((m) => !composeIds.has(m.id)).length : 0;
 
     const nodes = [...compose.nodes, ...extra];
@@ -187,6 +298,11 @@ export function detectStack(files = {}, { endpointLinks = [], callsTruncated = f
     for (const n of nodes) if (!byId.has(n.id)) byId.set(n.id, n);
     const list = [...byId.values()];
 
+    for (const path of compose.ignored || []) {
+        notes.push(`${path} was not read as the architecture: no service in it publishes a port `
+            + 'or depends on another, which is what a build/CI container looks like rather than a '
+            + 'deployed system. The manifests were used instead.');
+    }
     if (skipped) {
         notes.push(`${skipped} package manifest(s) were left out: a compose file says what is deployed, and the rest are internal packages. Add any of them by hand if they belong here.`);
     }
@@ -194,7 +310,9 @@ export function detectStack(files = {}, { endpointLinks = [], callsTruncated = f
     // Two compose files declaring the same dependency (a repo with a prod one and an e2e one)
     // produced the same edge twice, and a duplicate edge draws a second line over the first.
     const seenEdge = new Set();
-    const edges = compose.edges.filter((e) => {
+    // Cargo's path dependencies, which are as explicit as compose's depends_on and were being
+    // thrown away: a Rust workspace drew one box per crate and not one line between them.
+    const edges = [...compose.edges, ...desktop.edges, ...cargoPathEdges(files)].filter((e) => {
         const k = `${e.from} ${e.to}`;
         if (seenEdge.has(k)) return false;
         seenEdge.add(k);
@@ -225,10 +343,15 @@ export function detectStack(files = {}, { endpointLinks = [], callsTruncated = f
 
     const evidence = [...new Set(list.map((n) => n.from))].sort();
     // `from` is for the admin to see where a box came from; it is not part of the saved shape.
-    const clean = list.map(({ from, ...n }) => n);
+    // `gen` IS saved: it is how a later rebuild knows which boxes it drew itself and may
+    // replace, and which ones a person added and it must never touch.
+    const clean = list.map(({ from, ...n }) => ({ ...n, gen: true }));
 
     return { nodes: clean, edges: [...edges, ...extraEdges], evidence, notes };
 }
+
+/** An Electron/Tauri entry point: the main process, and the preload bridge beside it. */
+const DESKTOP_ENTRY = /(^|\/)(electron|electron-main|desktop|src-tauri)\/(main|index|background|preload)\.(js|cjs|mjs|ts)$|(^|\/)preload\.(js|cjs|mjs|ts)$/i;
 
 /** Which paths are worth fetching. Keeps a repo scan to a handful of files, not a whole tree. */
 export function interestingPaths(paths = [], { maxDepth = 3, limit = 40 } = {}) {
@@ -238,7 +361,11 @@ export function interestingPaths(paths = [], { maxDepth = 3, limit = 40 } = {}) 
             if (p.split('/').length - 1 > maxDepth) return false;
             // node_modules and friends describe somebody else's code, not this project's shape.
             if (/(^|\/)(node_modules|vendor|\.git|dist|build|target|\.venv)(\/|$)/.test(p)) return false;
-            return WANTED.has(baseName(p));
+            if (WANTED.has(baseName(p))) return true;
+            // A desktop app's two entry points. They are not manifests, but they are what
+            // makes the app three processes instead of one box — and without reading them
+            // there is no file to name the main process and the preload bridge after.
+            return DESKTOP_ENTRY.test(p);
         })
         // Shallowest first, so the limit keeps the files that describe the project rather than
         // the ones buried in an example folder.

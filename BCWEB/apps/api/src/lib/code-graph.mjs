@@ -87,6 +87,87 @@ export function resolveImport(fromPath, spec, files) {
     return null;
 }
 
+
+// ── Rust ──────────────────────────────────────────────────────────────────────
+//
+// A Rust repository used to draw NOTHING. The graph read JS and TS, listed `rs` under
+// "languages this cannot read", and stopped — so BetterInstaller, three crates and 28 source
+// files, had an architecture tab with an empty diagram in it.
+//
+// Rust says what it includes with two statements, and both are exact:
+//
+//   `mod foo;`            — this file's parent declares foo, which is `foo.rs` or `foo/mod.rs`
+//                           in the same directory. This is what actually builds the tree.
+//   `use crate::a::b::C;` — a path from the crate root, so it resolves against `src/`.
+//
+// Neither is guessed at. `use` of an external crate (`use serde::…`) resolves to nothing here
+// and is dropped, exactly as a bare `import 'react'` is on the JS side.
+
+const isRust = (p) => p.endsWith('.rs');
+
+/** Every `mod x;` and `use crate::x::y;` in a Rust file, with the line it came from. */
+export function rustImportsIn(source) {
+    const raw = String(source);
+    const src = raw
+        .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+        .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
+    const srcLines = raw.split('\n');
+    const lineAt = (idx) => raw.slice(0, idx).split('\n').length;
+
+    const out = [];
+    const push = (spec, idx, kind) => {
+        if (!spec || out.some((o) => o.spec === spec && o.kind === kind)) return;
+        const line = lineAt(idx);
+        out.push({ spec, kind, line, text: (srcLines[line - 1] || '').trim().slice(0, 200) });
+    };
+    // `pub mod x;` / `mod x;` — but NOT `mod x { … }`, which declares the module inline and
+    // therefore points at no file at all.
+    for (const m of src.matchAll(/^[ \t]*(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_]\w*)\s*;/gm)) {
+        push(m[1], m.index, 'mod');
+    }
+    // `use crate::a::b;` and `use self::a::b;` — the first segment after the root is what
+    // names a file; the rest are items inside it.
+    for (const m of src.matchAll(/\buse\s+(?:crate|self)::([A-Za-z_][\w:]*)/g)) {
+        push(m[1].split('::')[0], m.index, 'use');
+    }
+    return out;
+}
+
+/**
+ * Resolve a Rust `mod`/`use` to a file that exists.
+ *
+ * `mod` is relative to the declaring file's own module directory; `use crate::` is relative to
+ * the crate root, which is the `src/` folder holding the nearest `main.rs`/`lib.rs` above.
+ * Both forms accept `x.rs` and `x/mod.rs`, which is the whole of Rust's file layout.
+ */
+export function resolveRust(fromPath, spec, kind, files) {
+    const dir = dirOf(fromPath);
+    const stem = fromPath.replace(/\.rs$/, '');
+    const bases = [];
+    if (kind === 'mod') {
+        // `mod x` inside `a/mod.rs` or `a/lib.rs` looks in `a/`; inside `a/b.rs` it looks in
+        // `a/b/` — the directory that file's own module owns.
+        bases.push(/\/(mod|lib|main)\.rs$/.test(fromPath) ? dir : stem);
+        bases.push(dir);
+    } else {
+        // Crate root: the nearest ancestor directory that holds a lib.rs or main.rs.
+        const parts = dir.split('/');
+        while (parts.length) {
+            const at = parts.join('/');
+            if (files.has(`${at}/lib.rs`) || files.has(`${at}/main.rs`)) { bases.push(at); break; }
+            parts.pop();
+        }
+        bases.push(dir);
+    }
+    for (const base of bases) {
+        if (!base) continue;
+        for (const cand of [`${base}/${spec}.rs`, `${base}/${spec}/mod.rs`]) {
+            if (files.has(cand)) return cand;
+        }
+    }
+    return null;
+}
+
 /**
  * The architecture graph: files, the folders that contain them, and the imports between them.
  *
@@ -99,23 +180,33 @@ export function buildCodeGraph(sources = {}, { maxNodes = 400 } = {}) {
     const js = all.filter(isJs);
     // Named, not silently dropped: a repo that is mostly Go should be told so, not shown three
     // stray JS files as though that were its architecture.
-    const unsupported = [...new Set(all.filter((f) => !isJs(f)).map((f) => f.split('.').pop()))]
+    const unsupported = [...new Set(all.filter((f) => !isJs(f) && !isRust(f)).map((f) => f.split('.').pop()))]
         .filter((e) => e && e.length <= 5).sort();
 
-    const files = new Set(js);
-    const kept = js.slice(0, maxNodes);
+    // Rust files are NODES now, beside the JS ones. A repository is allowed to be two
+    // languages, and BetterInstaller — three crates, 28 files — drew an empty diagram while
+    // every `mod` and `use crate::` in it was there to be read.
+    const rs = all.filter(isRust);
+    const drawable = [...js, ...rs];
+    const files = new Set(drawable);
+    const kept = drawable.slice(0, maxNodes);
     const keptSet = new Set(kept);
 
     const edges = [];
     const unresolved = [];
     const seen = new Set();
     for (const f of kept) {
-        for (const { spec, line, text } of importsIn(sources[f])) {
-            const target = resolveImport(f, spec, files);
+        const statements = isRust(f)
+            ? rustImportsIn(sources[f]).map((i) => ({ ...i, rust: true }))
+            : importsIn(sources[f]);
+        for (const { spec, line, text, kind, rust } of statements) {
+            const target = rust ? resolveRust(f, spec, kind, files) : resolveImport(f, spec, files);
             if (!target) {
                 // A bare specifier is a package — expected, and not worth reporting. A relative
-                // one that does not resolve is a genuine oddity worth surfacing.
-                if (spec.startsWith('.')) unresolved.push({ from: f, spec, line });
+                // one that does not resolve is a genuine oddity worth surfacing. On the Rust
+                // side the same distinction: a `mod` that resolves to no file is worth seeing,
+                // a `use crate::` that does not is usually a re-export and is not.
+                if (rust ? kind === 'mod' : spec.startsWith('.')) unresolved.push({ from: f, spec, line });
                 continue;
             }
             if (!keptSet.has(target)) continue;      // beyond the cap; drawing half an edge is worse
@@ -149,8 +240,9 @@ export function buildCodeGraph(sources = {}, { maxNodes = 400 } = {}) {
         stats: {
             filesSeen: all.length,
             jsFiles: js.length,
+            rustFiles: rs.length,
             drawn: kept.length,
-            truncated: js.length > kept.length,
+            truncated: drawable.length > kept.length,
             edges: edges.length,
         },
     };
@@ -159,8 +251,10 @@ export function buildCodeGraph(sources = {}, { maxNodes = 400 } = {}) {
 /** Files worth fetching for a code graph, shallowest first, bounded. */
 export function sourcePathsToFetch(paths = [], { limit = 300, maxDepth = 6 } = {}) {
     return paths
-        .filter((p) => isJs(p))
-        .filter((p) => !/(^|\/)(node_modules|vendor|dist|build|out|coverage|\.next|\.git|__tests__|__mocks__)(\/|$)/.test(p))
+        // Rust as well as JS: the graph draws both now, and fetching only one of them would
+        // leave a Rust repository with an empty diagram for a different reason than before.
+        .filter((p) => isJs(p) || p.endsWith('.rs'))
+        .filter((p) => !/(^|\/)(node_modules|vendor|dist|build|out|coverage|\.next|\.git|__tests__|__mocks__|target)(\/|$)/.test(p))
         .filter((p) => !/\.(test|spec|min|d)\.[cm]?[jt]sx?$/.test(p))
         .filter((p) => p.split('/').length - 1 <= maxDepth)
         .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))
