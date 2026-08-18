@@ -15,9 +15,15 @@
      instead of blending in — the old #faf8f5 vs #fff gap was barely perceptible. */
   --bg: #f4efe8;
   --bg-solid: #ffffff;
-  --surface: #ffffff;
-  --surface-2: #f3eee6;
-  --surface-3: #e8e1d5;   /* +1 elevation step (hover / popovers / raised rows) */
+  /* -base holds the opaque colour; --surface* point at it. The indirection is what lets
+     [data-surface-glass] re-tint the whole family from one place — a token cannot be defined
+     in terms of itself (that is a cycle, and the property silently computes to nothing). */
+  --surface-base:   #ffffff;
+  --surface-2-base: #f3eee6;
+  --surface-3-base: #e8e1d5;   /* +1 elevation step (hover / popovers / raised rows) */
+  --surface:   var(--surface-base);
+  --surface-2: var(--surface-2-base);
+  --surface-3: var(--surface-3-base);
   /* Opaque separator ring for OVERLAPPING avatars — must match the card/page colour so
      the gap reads clean. Using translucent --surface or flat --bg-solid showed a
      mismatched frame over the translucent cards + page glows ("le cadre buggé"). */
@@ -48,9 +54,22 @@
   color-scheme: dark;
   --bg: #0a0907;
   --bg-solid: #0e0c09;
-  --surface: rgba(255, 255, 255, 0.028);
-  --surface-2: rgba(255, 255, 255, 0.05);
-  --surface-3: rgba(255, 255, 255, 0.085); /* elevation = a LIGHTER surface, not a shadow */
+  /* Elevation = a LIGHTER surface, not a shadow. These used to BE the rgba values, and that
+     was the bug behind every "it does not respect Translucent surfaces" report: the orb
+     renders at `fixed inset-0 -z-10`, which is above the body background, so an alpha
+     surface composites onto the ORB rather than onto the page. Roughly 420 elements across
+     the site are painted with these two tokens, so all of them showed the orb through —
+     with the setting OFF, with no blur, and with no way to turn it off.
+     They are the pre-composited results of the same alphas over the page, so the elevation
+     LADDER is unchanged (each step is still lighter than the one below it); what changed is
+     that the ladder is now opaque by default. The rgba originals come back, as originals,
+     under [data-surface-glass] further down — which is what the setting is for. */
+  --surface-base:   #11100e;   /* was rgba(255,255,255,0.028) */
+  --surface-2-base: #161513;   /* was rgba(255,255,255,0.05)  */
+  --surface-3-base: #1f1e1c;   /* was rgba(255,255,255,0.085) */
+  --surface:   var(--surface-base);
+  --surface-2: var(--surface-2-base);
+  --surface-3: var(--surface-3-base);
   --avatar-ring: #16130f;  /* opaque, ~ the dark card colour (surface over bg-solid) */
   --line: rgba(255, 255, 255, 0.09);
   --line-strong: rgba(255, 255, 255, 0.16);
@@ -351,6 +370,27 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   [data-theme="dark"][data-surface-glass] .dd-menu {
     background: color-mix(in srgb, #17130e calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
   }
+  /* Translucent surfaces, at the TOKEN level.
+     Every element painted with --surface / --surface-2 / --surface-3 turns translucent
+     together, which is the only way ~420 call sites can honour one switch without each one
+     opting in — and the reason they did not honour it before. The values are the alphas the
+     dark theme originally shipped, scaled by --glass-alpha so the slider still means
+     something: at 100% they are the old look, at lower settings they let more through.
+     Light theme gets the same treatment from its own opaque bases.
+     --bg-solid is deliberately NOT here. Popups are built on it precisely because they must
+     stay opaque over whatever they cover; the ones that DO frost (.dd-menu, .modal-card) opt
+     in by name below. */
+  /* `:root[data-surface-glass]`, not `[data-surface-glass]`: the theme blocks that define
+     these tokens are plain `:root` / `[data-theme=…]` selectors, the same (0,1,0) specificity
+     this would have — and Tailwind emits them AFTER this rule, so the bare attribute selector
+     loses the tie and the setting does nothing. Verified in the built stylesheet, not
+     guessed: the token kept its default value with the attribute present. */
+  :root[data-surface-glass] {
+    --surface:   color-mix(in srgb, var(--surface-base)   calc(var(--glass-alpha, 0.85) * 100%), transparent);
+    --surface-2: color-mix(in srgb, var(--surface-2-base) calc(var(--glass-alpha, 0.85) * 100%), transparent);
+    --surface-3: color-mix(in srgb, var(--surface-3-base) calc(var(--glass-alpha, 0.85) * 100%), transparent);
+  }
+
   /* Sticky in-page toolbars (search/filter headers that scroll-pin). Solid by
      default (they must hide the content scrolling under them), frosted on opt-in.
      Replaces inline `bg-[var(--bg-solid)]/NN backdrop-blur*` so the setting wins. */
