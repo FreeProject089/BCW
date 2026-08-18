@@ -11,6 +11,7 @@
 // written. Looking at a thing must not be the thing happening.
 
 import { inspectBmmpa } from './bmmpa.mjs';
+import { verifyDocument } from './bmm-signature.mjs';
 
 /** Formats that are ZIP archives, not JSON. Named so the panel can say what to paste
  *  instead of failing with "not a BMM file", which is true and useless. */
@@ -159,7 +160,11 @@ export function inspectAny(doc) {
       hint: 'Plugins (.bmmplug) and themes (.bmmtheme) are ZIP archives — paste the plugin.json or theme.json from inside instead.',
     };
   }
-  if (format === 'bmmpa') return { ok: true, format, bmmpa: inspectBmmpa(doc) };
+  // Whether the document is still what its author wrote. Reported for every format,
+  // including the ones BMM does not sign yet — "unsigned" is an answer, and it is the one a
+  // reviewer needs to see rather than a blank space where a verdict would go.
+  const signature = verifyDocument(doc, format);
+  if (format === 'bmmpa') return { ok: true, format, signature, bmmpa: inspectBmmpa(doc) };
   const readers = { mm: inspectModList, bmmreplay: inspectReplay, bmmnav: inspectNav };
-  return { ok: true, format, ...readers[format](doc) };
+  return { ok: true, format, signature, ...readers[format](doc) };
 }

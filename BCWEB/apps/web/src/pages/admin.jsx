@@ -7880,6 +7880,57 @@ function ConfigDiff() {
   );
 }
 
+/**
+ * The one line a moderator reads first: has this file been altered since it was signed?
+ *
+ * `valid` deliberately does NOT say "trusted". `author_id` is a public key, not a person —
+ * it says two files came from the same BMM installation, and what that is worth is the
+ * reviewer's call. So the key is shown, short, next to the verdict, rather than being turned
+ * into a name the page cannot vouch for.
+ */
+function SignatureVerdict({ v, t }) {
+  if (!v || v.state === 'unsigned') {
+    return (
+      <div className="text-[12px] rounded-lg border border-[var(--line)] text-[var(--muted)] p-2 mb-2">
+        {t('bmi.sig.unsigned', 'Unsigned — this file makes no claim about who wrote it. Not a fault: files written before BMM signed anything, and files written by other tools, look like this.')}
+      </div>
+    );
+  }
+  if (v.state === 'valid') {
+    return (
+      <div className="text-[12px] rounded-lg border border-[var(--success)] p-2 mb-2">
+        <div className="text-[var(--success)] font-medium">
+          {t('bmi.sig.valid', 'Intact — unchanged since it was signed.')}
+        </div>
+        <div className="text-[var(--muted)] mt-0.5 break-all">
+          {t('bmi.sig.key', 'Signing key')} <code>{String(v.authorId).slice(0, 16)}…</code>
+          {v.signedAt ? ` · ${new Date(v.signedAt).toLocaleString()}` : ''}
+        </div>
+        <div className="text-[var(--faint)] mt-0.5">
+          {t('bmi.sig.notidentity', 'A key is not a person: this says the file has not changed, not that its author is trustworthy.')}
+        </div>
+      </div>
+    );
+  }
+  if (v.state === 'tampered') {
+    return (
+      <div className="text-[12px] rounded-lg border border-[var(--danger)] p-2 mb-2">
+        <div className="text-[var(--danger)] font-medium">
+          {t('bmi.sig.tampered', 'ALTERED — this file carries a signature, and it does not match its contents.')}
+        </div>
+        <div className="text-[var(--muted)] mt-0.5">
+          {t('bmi.sig.tamperedwhy', 'Either it was edited after signing, or the signature block was copied from another file.')}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="text-[12px] rounded-lg border border-[var(--warning)] text-[var(--warning)] p-2 mb-2">
+      {t('bmi.sig.malformed', 'The signature block is not readable')}: {v.reason}
+    </div>
+  );
+}
+
 function BmmpaInspector() {
   const { t } = useI18n(); const toast = useToast();
   // Its own drag state. It read `dragOver` for the drop zone's highlight while the only
@@ -8151,6 +8202,11 @@ function BmmpaInspector() {
           {/* Everything that is not an automation: mod lists, replays, navbar configs. One
               renderer, because every reader returns the same summary shape — a per-format
               panel would be four screens to keep consistent instead of one. */}
+          {/* Is this still what its author wrote? Above everything else, because a reviewer
+              reads the rest differently once they know. "Unsigned" is shown too — a blank
+              space where a verdict would go reads as "fine", and it is not the same answer. */}
+          {rep.ok && <SignatureVerdict v={rep.signature} t={t} />}
+
           {rep.ok && rep.format && rep.format !== 'bmmpa' && (
             <div className="rounded-lg border border-[var(--line)] p-2.5 mb-2">
               <div className="flex items-baseline gap-2 flex-wrap">
