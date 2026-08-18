@@ -4,6 +4,7 @@ import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPl
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 import { validatePromo, redeemPromoAtomic } from './promo.mjs';
 import { getActiveCampaign, applyCampaign } from './campaigns.mjs';
+import { promoMeetsMinimum } from '../lib/promo-rules.mjs';
 
 const GiB = 1024 ** 3;
 
@@ -778,7 +779,11 @@ export default async function hostingRoutes(app) {
       const v = await validatePromo(p, b.data.promoCode, req.user.uid);
       if (v.error) return reply.code(400).send({ error: `promo_${v.error}` });
       if (v.promo.kind !== 'discount') return reply.code(400).send({ error: 'promo_not_discount' });
-      if (v.promo.minMonths && months < v.promo.minMonths) return reply.code(400).send({ error: 'promo_min_months', minMonths: v.promo.minMonths });
+      // One rule, one place. A code may require a long term OR a big enough basket, and
+      // this check used to be a bare `minMonths` comparison written once per checkout path
+      // — the shape that diverges the moment a second condition exists, which it now does.
+      const min = promoMeetsMinimum(v.promo, { months, subtotalCents: total });
+      if (!min.ok) return reply.code(400).send({ error: 'promo_min_months', ...min });
       promo = v.promo;
       if (promo.percentOff) total = Math.round(total * (1 - promo.percentOff / 100));
       if (promo.freeMonths) total = Math.max(0, total - Math.round((termTotalCents(plan.priceMonthlyCents, months, cf.priceMult) / months) * promo.freeMonths));
@@ -932,7 +937,7 @@ export default async function hostingRoutes(app) {
     if (cap.allocatedGB + neededStorageGB > cap.usableGB) return { error: 'capacity_full', freeGB: cap.freeGB };
 
     // Promo codes (discount kind only). Stacking rule enforced here.
-    let combinedPct = 0, freeMonths = 0, minMonthsReq = 0; const appliedCodes = [];
+    let combinedPct = 0, freeMonths = 0; const appliedCodes = []; const minimums = [];
     const uniq = [...new Set((data.promoCodes || []).map((c) => c.trim().toUpperCase()).filter(Boolean))];
     if (uniq.length) {
       const resolved = [];
@@ -943,9 +948,17 @@ export default async function hostingRoutes(app) {
         resolved.push(v.promo);
       }
       if (resolved.length > 1 && !resolved.every((r) => r.stackable)) return { error: 'promo_not_stackable' };
-      for (const r of resolved) { if (r.percentOff) combinedPct += r.percentOff; if (r.freeMonths) freeMonths = Math.max(freeMonths, r.freeMonths); if (r.minMonths) minMonthsReq = Math.max(minMonthsReq, r.minMonths); appliedCodes.push(r.code); }
+      for (const r of resolved) { if (r.percentOff) combinedPct += r.percentOff; if (r.freeMonths) freeMonths = Math.max(freeMonths, r.freeMonths); minimums.push(r); appliedCodes.push(r.code); }
       combinedPct = Math.min(90, combinedPct);
-      if (minMonthsReq && lines.some((l) => l.kind === 'hosting' && l.months < minMonthsReq)) return { error: 'promo_min_months', minMonths: minMonthsReq };
+      // Judged on the LONGEST term in the cart and the whole pre-discount subtotal: a code
+      // that asks for three months is satisfied by a three-month line, and one that asks
+      // for $10 is satisfied by a basket that reaches it however it was assembled.
+      const longest = Math.max(0, ...lines.filter((l) => l.kind === 'hosting').map((l) => l.months));
+      const cartSubtotal = lines.reduce((n, l) => n + l.baseCents, 0);
+      for (const r of minimums) {
+        const min = promoMeetsMinimum(r, { months: longest, subtotalCents: cartSubtotal });
+        if (!min.ok) return { error: 'promo_min_months', code: r.code, ...min };
+      }
     }
     let subtotal = 0, total = 0;
     for (const l of lines) {

@@ -6825,7 +6825,7 @@ function AdminKofiGoal() {
 function AdminPromo() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/promo'), []);
-  const [f, setF] = useState({ kind: 'discount', code: '', percentOff: 20, freeMonths: 0, minMonths: 0, storageGB: 10, uploadMbps: 8, hostMonths: 0, boostDays: 7, maxRedemptions: '', perUserLimit: 1, stackable: false, assignType: 'email', assignInput: '', assignedTokens: [], note: '' });
+  const [f, setF] = useState({ kind: 'discount', code: '', percentOff: 20, freeMonths: 0, minMonths: 0, minAmount: 0, storageGB: 10, uploadMbps: 8, hostMonths: 0, boostDays: 7, maxRedemptions: '', perUserLimit: 1, stackable: false, assignType: 'email', assignInput: '', assignedTokens: [], note: '' });
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const undo = useUndoableDelete(reload);
   const codes = (data?.codes || []).filter((c) => !undo.pending.has(c.id));
@@ -6838,7 +6838,7 @@ function AdminPromo() {
   const removeToken = (tok) => setF((s) => ({ ...s, assignedTokens: s.assignedTokens.filter((x) => x !== tok) }));
   const create = async () => {
     const body = { kind: f.kind, code: f.code.trim() || undefined, perUserLimit: Number(f.perUserLimit) || 1, stackable: !!f.stackable, ...(f.assignedTokens.length ? { assignedTokens: f.assignedTokens } : {}), note: f.note || undefined, maxRedemptions: f.maxRedemptions ? Number(f.maxRedemptions) : null };
-    if (f.kind === 'discount') { if (Number(f.percentOff)) body.percentOff = Number(f.percentOff); if (Number(f.freeMonths)) body.freeMonths = Number(f.freeMonths); if (Number(f.minMonths)) body.minMonths = Number(f.minMonths); }
+    if (f.kind === 'discount') { if (Number(f.percentOff)) body.percentOff = Number(f.percentOff); if (Number(f.freeMonths)) body.freeMonths = Number(f.freeMonths); if (Number(f.minMonths)) body.minMonths = Number(f.minMonths); if (Number(f.minAmount)) body.minAmountCents = Math.round(Number(f.minAmount) * 100); }
     if (f.kind === 'free_hosting' || f.kind === 'free_pool') { body.storageGB = Number(f.storageGB); if (Number(f.uploadMbps)) body.uploadMbps = Number(f.uploadMbps); if (Number(f.hostMonths)) body.hostMonths = Number(f.hostMonths); }
     if (f.kind === 'free_boost') body.boostDays = Number(f.boostDays);
     try { const r = await api.post('/admin/promo', body); toast.success(t('pc.created', 'Code {code} created.').replace('{code}', r.code.code)); setF((s) => ({ ...s, code: '', assignedTokens: [], assignInput: '' })); reload(); }
@@ -6854,7 +6854,7 @@ function AdminPromo() {
     setOpenId(c.id);
     if (!reds[c.id]) { try { const r = await api.get(`/admin/promo/${c.id}/redemptions`); setReds((s) => ({ ...s, [c.id]: r.redemptions })); } catch { toast.error(t('common.loadfail', 'Failed to load.')); } }
   };
-  const desc = (c) => c.kind === 'discount' ? [c.percentOff && t('pc.d.off', '{n}% off').replace('{n}', c.percentOff), c.freeMonths && t('pc.d.mofree', '{n} mo free').replace('{n}', c.freeMonths), c.minMonths && t('pc.d.minterm', '{n}mo+ term only').replace('{n}', c.minMonths)].filter(Boolean).join(' + ')
+  const desc = (c) => c.kind === 'discount' ? [c.percentOff && t('pc.d.off', '{n}% off').replace('{n}', c.percentOff), c.freeMonths && t('pc.d.mofree', '{n} mo free').replace('{n}', c.freeMonths), c.minMonths && t('pc.d.minterm', '{n}mo+ term only').replace('{n}', c.minMonths), c.minAmountCents && t('pc.d.minamount', '${n}+ basket').replace('{n}', Math.round(c.minAmountCents / 100))].filter(Boolean).join(c.minMonths && c.minAmountCents ? ' · either: ' : ' + ')
     : (c.kind === 'free_hosting' || c.kind === 'free_pool') ? `${c.storageGB}GB${c.uploadMbps ? ` · ${c.uploadMbps}Mbps` : ''}${c.hostMonths ? ` · ${c.hostMonths}mo` : ` · ${t('pc.d.forever', 'forever')}`}`
     : t('pc.d.boost', 'boost {n} days').replace('{n}', c.boostDays);
   return (
@@ -6865,7 +6865,7 @@ function AdminPromo() {
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('pc.f.type', 'Type')}><Dropdown className="w-full" value={f.kind} onChange={(v) => set('kind', v)} options={[{ value: 'discount', label: t('pc.t.discount', 'Discount (% off / months free)') }, { value: 'free_hosting', label: t('pc.t.hosting', 'Free hosting (one repo)') }, { value: 'free_pool', label: t('pc.t.pool', 'Free storage pool') }, { value: 'free_boost', label: t('pc.t.boost', 'Free boost') }]} /></Field>
           <Field label={t('pc.f.code', 'Code (blank = auto-generate)')}><Input value={f.code} onChange={(e) => set('code', e.target.value)} placeholder="AUTO" /></Field>
-          {f.kind === 'discount' && <><Field label={t('pc.f.pctoff', '% off')}><Input type="number" value={f.percentOff} onChange={(e) => set('percentOff', e.target.value)} /></Field><Field label={t('pc.f.freemonths', 'First months free')}><Input type="number" value={f.freeMonths} onChange={(e) => set('freeMonths', e.target.value)} /></Field><Field label={t('pc.f.minterm', 'Min. term months (0 = any)')}><Input type="number" value={f.minMonths} onChange={(e) => set('minMonths', e.target.value)} /></Field></>}
+          {f.kind === 'discount' && <><Field label={t('pc.f.pctoff', '% off')}><Input type="number" value={f.percentOff} onChange={(e) => set('percentOff', e.target.value)} /></Field><Field label={t('pc.f.freemonths', 'First months free')}><Input type="number" value={f.freeMonths} onChange={(e) => set('freeMonths', e.target.value)} /></Field><Field label={t('pc.f.minterm', 'Min. term months (0 = any)')}><Input type="number" value={f.minMonths} onChange={(e) => set('minMonths', e.target.value)} /></Field><Field label={t('pc.f.minamount', 'Min. basket $ (0 = any)')}><Input type="number" value={f.minAmount} onChange={(e) => set('minAmount', e.target.value)} /></Field></>}
           {(f.kind === 'free_hosting' || f.kind === 'free_pool') && <><Field label={t('pc.f.storage', 'Storage GB')}><Input type="number" value={f.storageGB} onChange={(e) => set('storageGB', e.target.value)} /></Field><Field label={t('pc.f.upload', 'Upload Mbps')}><Input type="number" value={f.uploadMbps} onChange={(e) => set('uploadMbps', e.target.value)} /></Field><Field label={t('pc.f.duration', 'Duration (months, 0 = forever)')}><Input type="number" value={f.hostMonths} onChange={(e) => set('hostMonths', e.target.value)} /></Field></>}
           {f.kind === 'free_boost' && <Field label={t('pc.f.boostdays', 'Boost days')}><Input type="number" value={f.boostDays} onChange={(e) => set('boostDays', e.target.value)} /></Field>}
           <Field label={t('pc.f.maxred', 'Max redemptions (blank = ∞)')}><Input type="number" value={f.maxRedemptions} onChange={(e) => set('maxRedemptions', e.target.value)} placeholder="∞" /></Field>

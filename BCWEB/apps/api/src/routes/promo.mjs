@@ -113,6 +113,9 @@ export default async function promoRoutes(app) {
       percentOff: z.number().int().min(1).max(100).nullable().optional(),
       freeMonths: z.number().int().min(0).max(24).nullable().optional(),
       minMonths: z.number().int().min(1).max(24).nullable().optional(),
+      // A minimum basket, in cents. Set alongside minMonths it is an OR, not an AND —
+      // see promoMeetsMinimum(), which both checkout paths call.
+      minAmountCents: z.number().int().min(0).max(1_000_000).nullable().optional(),
       storageGB: z.number().int().min(1).max(2000).nullable().optional(),
       uploadMbps: z.number().int().min(1).max(2000).nullable().optional(),
       hostMonths: z.number().int().min(0).max(60).nullable().optional(),
@@ -161,7 +164,7 @@ export default async function promoRoutes(app) {
     }
     try {
       const created = await p.promoCode.create({ data: {
-        code, kind: d.kind, percentOff: d.percentOff ?? null, freeMonths: d.freeMonths ?? null, minMonths: d.minMonths ?? null,
+        code, kind: d.kind, percentOff: d.percentOff ?? null, freeMonths: d.freeMonths ?? null, minMonths: d.minMonths ?? null, minAmountCents: d.minAmountCents ?? null,
         storageGB: d.storageGB ?? null, uploadMbps: d.uploadMbps ?? null, hostMonths: d.hostMonths ?? null,
         boostDays: d.boostDays ?? null, maxRedemptions: d.maxRedemptions ?? null, perUserLimit: d.perUserLimit ?? 1,
         expiresAt: d.expiresAt ? new Date(d.expiresAt) : null, stackable: d.stackable ?? false, assignedUserIds, assignedTokens, note: d.note || '',
@@ -203,7 +206,7 @@ export default async function promoRoutes(app) {
     const p = await db();
     const { promo, error } = await validatePromo(p, req.query?.code, req.user.uid);
     if (error) return reply.code(400).send({ error });
-    return { promo: { code: promo.code, kind: promo.kind, percentOff: promo.percentOff, freeMonths: promo.freeMonths, minMonths: promo.minMonths, storageGB: promo.storageGB, uploadMbps: promo.uploadMbps, hostMonths: promo.hostMonths, boostDays: promo.boostDays } };
+    return { promo: { code: promo.code, kind: promo.kind, percentOff: promo.percentOff, freeMonths: promo.freeMonths, minMonths: promo.minMonths, minAmountCents: promo.minAmountCents, storageGB: promo.storageGB, uploadMbps: promo.uploadMbps, hostMonths: promo.hostMonths, boostDays: promo.boostDays } };
   });
 
   // ── User: redeem a GRANT code (discount codes are applied at checkout instead) ──

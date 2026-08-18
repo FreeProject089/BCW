@@ -36,6 +36,7 @@ import { runWebhookQueue } from './webhooks.mjs';
 const SITE_URL = process.env.SITE_URL || 'http://localhost:5176';
 const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 import { signBytes } from './signing.mjs';
+import { awardSeason } from './game-season.mjs';
 
 const DAY_MS = 864e5;
 
@@ -519,6 +520,11 @@ export function startSweeper(app) {
       await pruneApiRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'api request prune failed'));
       await sampleAndAlert(p, app.log);
       await runEventScheduler(p).catch((e) => app.log.warn({ e: String(e) }, 'event scheduler failed'));
+      // The 404 game's monthly podium. Idempotent in the database (GameAward is unique on
+      // game+season+rank), so running this every ten minutes mints nothing after the first.
+      await awardSeason(p)
+        .then((r) => { if (r.awarded?.length) app.log.info(`[sweeper] Orb Fall ${r.season}: awarded ${r.awarded.length} code(s)`); })
+        .catch((e) => app.log.warn({ e: String(e) }, 'game season award failed'));
       if (items || repos || cats || rejPayloads || expired || warned || pruned || backedUp || analytics) app.log.info(`[sweeper] hard-deleted ${items} item(s), ${repos} repo(s), ${cats} catalog(s) · purged ${rejPayloads} rejected payload(s) · suspended ${expired} expired term(s) · warned ${warned} · pruned ${pruned} old Discord member row(s) · aged out ${analytics} analytics row(s)${backedUp ? ' · took daily file backup snapshot' : ''}`);
     } catch (e) { app.log.warn({ e: String(e) }, 'sweeper run failed'); }
   };

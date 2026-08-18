@@ -23,8 +23,18 @@ export default function NotFound() {
   const [saved, setSaved] = useState(null); // { improved } after submitting
   const [boardOpen, setBoardOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768); // collapsed by default on phones
 
-  const loadBoard = () => api.get('/game/leaderboard?game=orbfall').then((r) => setBoard(r.leaderboard || [])).catch(() => {});
-  useEffect(() => { loadBoard(); }, []);
+  const [season, setSeason] = useState(null);   // { season, prizes }
+  const [awards, setAwards] = useState(null);   // last month's podium
+
+  const loadBoard = () => api.get('/game/leaderboard?game=orbfall')
+    .then((r) => { setBoard(r.leaderboard || []); setSeason({ season: r.season, prizes: r.prizes }); })
+    .catch(() => {});
+  useEffect(() => {
+    loadBoard();
+    // Last month's podium, and — if you are on it — your code. Signed in or not: the winners
+    // are public, the code is only ever returned to the person who won it.
+    api.get('/game/awards?game=orbfall').then((r) => setAwards(r)).catch(() => {});
+  }, []);
 
   // Resolve theme colours once (canvas can't use CSS vars directly).
   const colors = () => { const cs = getComputedStyle(document.documentElement); return {
@@ -45,7 +55,7 @@ export default function NotFound() {
     const col = colors();
     // Slow-drifting starfield for depth (regenerated each game).
     const stars = Array.from({ length: 46 }, () => ({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 1.4 + 0.3, s: Math.random() * 0.25 + 0.05 }));
-    const st = { px: W / 2, pw: 60, orbs: [], parts: [], spawn: 0, speed: 1, score: 0, shake: 0, last: performance.now(), raf: 0, alive: true, stars };
+    const st = { px: W / 2, kv: 0, pw: 60, orbs: [], parts: [], spawn: 0, speed: 1, score: 0, shake: 0, last: performance.now(), raf: 0, alive: true, stars };
     g.current = st; setScore(0); setSaved(null); setPhase('playing');
     const loop = (now) => {
       if (!st.alive) return;
@@ -59,6 +69,13 @@ export default function NotFound() {
         const drift = (Math.random() - 0.5) * Math.min(1.6, st.score * 0.05); // sideways drift late-game
         st.orbs.push({ x: 20 + Math.random() * (W - 40), y: -14, r: bad ? 12 : 11, bad, vy: (1.9 + Math.random() * 1.2) * st.speed, vx: drift });
       }
+      // Keyboard: accelerate towards a top speed, and stop dead when nothing is held. The
+      // paddle is clamped to the walls rather than bouncing — a wall is where you park.
+      const want = (keys.current.right ? 1 : 0) - (keys.current.left ? 1 : 0);
+      st.kv = want ? Math.max(-7.2, Math.min(7.2, (st.kv || 0) + want * 0.9 * f)) : (st.kv || 0) * Math.pow(0.72, f);
+      if (Math.abs(st.kv) < 0.02) st.kv = 0;
+      if (st.kv) st.px = Math.max(st.pw / 2, Math.min(W - st.pw / 2, st.px + st.kv * f));
+
       const py = H - 26;
       for (const o of st.orbs) { o.y += o.vy * f; o.x += (o.vx || 0) * f; if (o.x < o.r || o.x > W - o.r) o.vx = -(o.vx || 0); }
       st.orbs = st.orbs.filter((o) => {
@@ -99,19 +116,54 @@ export default function NotFound() {
   // Spawn a little particle burst (catch / crash feedback).
   function burst(st, x, y, c, n) { for (let i = 0; i < n; i++) { const a = Math.random() * 7, sp = Math.random() * 2.6 + 0.6; st.parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1, r: Math.random() * 2 + 1, c, life: 400 }); } }
 
-  // Controls — pointer / touch position the paddle; arrow keys nudge it.
+  // Controls — pointer / touch position the paddle; the keyboard drives it.
   const move = (clientX) => { const st = g.current, c = canvasRef.current; if (!st?.alive || !c) return; const rect = c.getBoundingClientRect(); st.px = Math.max(st.pw / 2, Math.min(W - st.pw / 2, (clientX - rect.left) * (W / rect.width))); };
+
+  /**
+   * Which arrow keys are DOWN, read by the game loop.
+   *
+   * It used to jump the paddle 26 px per keydown event, which meant the paddle moved at
+   * whatever rate the operating system chose to repeat a held key: nothing for the first
+   * half-second, then a stutter, and a different speed on every machine. Holding a key is a
+   * state, so it is held as one and the loop accelerates towards a top speed — same frame,
+   * same physics, same feel as the mouse.
+   */
+  const keys = useRef({ left: false, right: false });
   useEffect(() => {
-    const onKey = (e) => { const st = g.current; if (!st?.alive) return; if (e.key === 'ArrowLeft') st.px = Math.max(st.pw / 2, st.px - 26); if (e.key === 'ArrowRight') st.px = Math.min(W - st.pw / 2, st.px + 26); };
-    window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('keydown', onKey); cancelAnimationFrame(g.current?.raf); if (g.current) g.current.alive = false; };
+    const which = (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A' || e.key === 'q' || e.key === 'Q') return 'left';
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') return 'right';
+      return null;
+    };
+    const down = (e) => {
+      const k = which(e);
+      if (!k) return;
+      // Or the page scrolls under the game every time somebody dodges.
+      e.preventDefault();
+      keys.current[k] = true;
+    };
+    const up = (e) => { const k = which(e); if (k) keys.current[k] = false; };
+    // A key held while the tab loses focus is never released, and the paddle would sail
+    // into the wall and stay there.
+    const blur = () => { keys.current.left = false; keys.current.right = false; };
+    window.addEventListener('keydown', down, { passive: false });
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+      cancelAnimationFrame(g.current?.raf); if (g.current) g.current.alive = false;
+    };
   }, []);
 
   return (
     <div className="max-w-4xl mx-auto text-center py-6">
+      {/* The page number, and one line. There were two headings above the game saying the
+          same thing in different words — "Lost in space" over "that page doesn't exist" —
+          and neither told anybody anything they had not worked out from the 404. */}
       <div className="text-[86px] leading-none font-black text-[var(--primary)] tracking-tight select-none">404</div>
-      <h1 className="text-2xl font-extrabold mt-1">{t('nf.title', 'Lost in space')}</h1>
-      <p className="text-[var(--muted)] mt-1.5 mb-7">{t('nf.sub', "That page doesn't exist — but here's a game while you're here.")}</p>
+      <p className="text-[var(--muted)] mt-1 mb-7">{t('nf.sub', 'That page does not exist. Have a game instead.')}</p>
 
       <div className="flex flex-col md:flex-row gap-6 items-start justify-center">
         {/* Game */}
@@ -130,7 +182,7 @@ export default function NotFound() {
                     : <div className="text-xs text-[var(--faint)] mb-2"><Link to="/auth" className="text-[var(--primary-2)] underline">{t('nf.signin', 'Sign in')}</Link> {t('nf.tosave', 'to save your score')}</div>}
                 </>}
                 <Button variant="primary" onClick={start}>{phase === 'over' ? <><RotateCcw size={16} /> {t('nf.again', 'Play again')}</> : <><Play size={16} /> {t('nf.play', 'Play')}</>}</Button>
-                <div className="text-[11px] text-[var(--faint)] mt-3 leading-relaxed">{t('nf.how', 'Catch the orange orbs · dodge the red ones. Move with your mouse, finger, or ← →.')}</div>
+                <div className="text-[11px] text-[var(--faint)] mt-3 leading-relaxed">{t('nf.how', 'Catch orange, dodge red. Mouse, finger, or hold ← →.')}</div>
               </div>
             </div>
           )}
@@ -152,6 +204,58 @@ export default function NotFound() {
               </div>
             ))}
           </div> : <div className="text-sm text-[var(--faint)] py-3 text-center">{t('nf.noscores', 'No scores yet — be the first!')}</div>)}
+
+          {/* What the month is for. The numbers come from the API rather than being written
+              here, because they are the same numbers the codes are minted with and a page
+              that disagrees with them is a page that promises the wrong discount. */}
+          {boardOpen && season?.prizes && (
+            <div className="mt-3 pt-3 border-t border-[var(--line)] text-[12px] text-[var(--muted)]">
+              <div className="font-semibold text-[var(--text)] mb-1">
+                {t('nf.prizes', 'Top 3 this month win a code')}
+              </div>
+              <div className="flex gap-1.5 flex-wrap mb-1.5">
+                {season.prizes.podium.map((x) => (
+                  <span key={x.rank} className="px-1.5 py-0.5 rounded bg-[var(--surface-2)] tabular-nums">
+                    #{x.rank} · −{x.percentOff}%
+                  </span>
+                ))}
+              </div>
+              <div className="text-[11px] text-[var(--faint)]">
+                {t('nf.prizeterms', 'On a {m}-month term or a basket of ${a} or more. One code, one person, not combinable.')
+                  .replace('{m}', String(season.prizes.minMonths))
+                  .replace('${a}', `$${Math.round(season.prizes.minAmountCents / 100)}`)}
+              </div>
+              <div className="text-[11px] text-[var(--faint)] mt-1">
+                {t('nf.season', 'Board for {s} · resets on the 1st').replace('{s}', season.season)}
+              </div>
+            </div>
+          )}
+
+          {/* Last month's podium. Your own code appears here and nowhere else. */}
+          {boardOpen && awards?.awards?.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-[var(--line)]">
+              <div className="text-[12px] font-semibold mb-1.5">
+                {t('nf.lastmonth', 'Winners — {s}').replace('{s}', awards.season)}
+              </div>
+              <div className="space-y-1">
+                {awards.awards.map((a) => (
+                  <div key={a.rank} className="flex items-center gap-2 text-[12px]">
+                    <span className="w-4 text-center font-bold text-warning tabular-nums">{a.rank}</span>
+                    <span className="flex-1 min-w-0 truncate">{a.user?.displayName || t('nf.anon', 'Anonymous')}</span>
+                    <span className="tabular-nums text-[var(--muted)]">−{a.percentOff}%</span>
+                  </div>
+                ))}
+              </div>
+              {awards.awards.some((a) => a.code) && (
+                <div className="mt-2 rounded-lg border border-[var(--primary)] p-2">
+                  <div className="text-[11px] text-[var(--muted)]">{t('nf.yourcode', 'Your code')}</div>
+                  <div className="font-mono text-[13px] font-bold text-[var(--primary-2)] break-all">
+                    {awards.awards.find((a) => a.code).code}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </Card>
       </div>
 

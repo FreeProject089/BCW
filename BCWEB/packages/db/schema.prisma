@@ -1500,6 +1500,14 @@ model PromoCode {
   percentOff      Int? // discount: 1..100
   freeMonths      Int? // discount: first N months free (100% off, repeating)
   minMonths       Int? // discount: only applies at checkout when the chosen prepaid term is >= this (e.g. Ko-fi's reward is 12mo+ only)
+  /// Minimum cart subtotal, in cents, for the code to apply.
+  ///
+  /// When BOTH this and minMonths are set, EITHER one satisfies the code — "a long term or
+  /// a big enough basket". That is deliberately an OR, and it is written once, in
+  /// promoMeetsMinimum(); the two checkout paths call it rather than each testing the
+  /// fields, because this rule existed twice before and would have diverged the moment a
+  /// second condition appeared.
+  minAmountCents  Int?
   storageGB       Int? // free_hosting
   uploadMbps      Int? // free_hosting
   hostMonths      Int? // free_hosting: grant duration (0/none = no auto-expiry)
@@ -2346,15 +2354,43 @@ model ErrorEvent {
 // is a plain reference (no FK/cascade) so the leaderboard survives an account delete and the
 // User model stays untouched; display name/avatar are resolved at read time.
 model GameScore {
-  id        String   @id @default(cuid())
-  userId    String
-  game      String   @default("orbfall")
-  score     Int
+  id     String @id @default(cuid())
+  userId String
+  game   String @default("orbfall")
+  score  Int
+  /// The month this score belongs to, as "YYYY-MM" (UTC). The leaderboard resets every
+  /// month, and it resets by asking for the current season rather than by DELETING: a
+  /// deleted board cannot award anything afterwards, and the winners are decided once the
+  /// month is already over.
+  season    String   @default("")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([userId, game])
-  @@index([game, score])
+  @@unique([userId, game, season])
+  @@index([game, season, score])
+}
+
+/// A finished month's podium, and the code it earned.
+///
+/// One row per (game, season, rank), which is what makes awarding idempotent: the sweeper
+/// runs on every boot and every hour, and the second run must not mint a second code. The
+/// row is also the only durable answer to "who won March" once a season scrolls off the
+/// board.
+model GameAward {
+  id       String   @id @default(cuid())
+  game     String   @default("orbfall")
+  season   String
+  rank     Int
+  userId   String
+  score    Int
+  /// The code minted for this winner. Kept as the code string rather than a relation so
+  /// deleting a spent code never erases the record of who won.
+  code       String
+  percentOff Int
+  createdAt  DateTime @default(now())
+
+  @@unique([game, season, rank])
+  @@index([userId])
 }
 
 // FAQ — admin/editor-curated questions & answers, grouped by category. Answers use the
