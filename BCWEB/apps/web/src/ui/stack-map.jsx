@@ -29,10 +29,13 @@ const KIND = {
   external: { ink: null, label: 'External' },
 };
 
-const NODE_W = 152;
-const NODE_H = 62;
+// Wide enough for a real name. At 152 the two components of a Tauri app both rendered as
+// "better-mods-mana…" — two boxes with the same truncated text, which is not a diagram, and
+// the only thing telling them apart was the smallest, faintest line in the node.
+const NODE_W = 196;
+const NODE_H = 70;
 const GAP_X = 78;
-const GAP_Y = 20;
+const GAP_Y = 22;
 
 export default function StackMap({ stack, t = (k, d) => d }) {
   const nodes = Array.isArray(stack?.nodes) ? stack.nodes.filter((n) => n && n.id) : [];
@@ -64,6 +67,24 @@ export default function StackMap({ stack, t = (k, d) => d }) {
   });
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
+
+  // Two components can genuinely carry the same name — a detector reading a monorepo names
+  // both halves after the repository, which is correct and unreadable. Where a label is
+  // shared, what is drawn is the name PLUS the thing that differs, so the boxes stop being
+  // interchangeable and the panel stops saying "X is used by X".
+  //
+  // Only applied where there is a collision: appending "· Node.js" to a name nothing else
+  // shares is noise, and this diagram is mostly names nothing else shares.
+  const nameCount = new Map();
+  for (const n of nodes) {
+    const key = n.label || n.id;
+    nameCount.set(key, (nameCount.get(key) || 0) + 1);
+  }
+  const display = (n) => {
+    if (!n) return '';
+    const base = n.label || n.id;
+    return nameCount.get(base) > 1 && n.tech ? `${base} · ${n.tech}` : base;
+  };
   const kindsUsed = STACK_KINDS.filter((k) => nodes.some((n) => (n.kind || 'app') === k));
   // What the drawing highlights: the picked node wins, hover is only a preview of it.
   const focus = picked || hover;
@@ -138,9 +159,15 @@ export default function StackMap({ stack, t = (k, d) => d }) {
                     strokeDasharray={k.ink ? undefined : '5 4'} />
                   {/* The kind's colour as a bar, beside the name rather than instead of it. */}
                   {k.ink && <rect x="0" y="0" width="4" height={NODE_H} rx="2" fill={k.ink} />}
-                  <text x="14" y="23" fontSize="13" fill="var(--text)">{clip(n.label || n.id, 17)}</text>
-                  <text x="14" y="39" fontSize="10.5" fill="var(--muted)">{kindLabel(t, n.kind, k)}</text>
-                  {n.tech && <text x="14" y="53" fontSize="10" fill="var(--faint)">{clip(n.tech, 20)}</text>}
+                  {/* The full name, always reachable. Truncation is fine as long as it is
+                      recoverable, and an SVG <title> is the one tooltip that needs no JS. */}
+                  <title>{`${n.label || n.id}${n.tech ? ` — ${n.tech}` : ''}`}</title>
+                  <text x="14" y="24" fontSize="13" fill="var(--text)">{clip(n.label || n.id, 22)}</text>
+                  {/* tech before kind, and no longer the faintest thing in the box. When two
+                      components share a name this line is the ONLY thing that distinguishes
+                      them, and it was set in the smallest, palest text in the node. */}
+                  {n.tech && <text x="14" y="41" fontSize="11" fill="var(--muted)">{clip(n.tech, 26)}</text>}
+                  <text x="14" y={n.tech ? 56 : 41} fontSize="10.5" fill="var(--faint)">{kindLabel(t, n.kind, k)}</text>
                 </g>
               );
             })}
@@ -148,7 +175,8 @@ export default function StackMap({ stack, t = (k, d) => d }) {
         </div>
 
         <Panel node={picked ? byId.get(picked) : null} edges={clean} byId={byId} kind={KIND}
-          onPick={setPicked} onClose={() => setPicked(null)} t={t} count={nodes.length} />
+          onPick={setPicked} onClose={() => setPicked(null)} t={t} count={nodes.length}
+          display={display} />
       </div>
 
       {/* Always present: with more than one kind on screen, identity must never be carried by
@@ -187,7 +215,7 @@ export default function StackMap({ stack, t = (k, d) => d }) {
                   <td className="py-1 pr-3 text-[var(--muted)]">{kindLabel(t, n.kind, KIND[n.kind] || KIND.app)}</td>
                   <td className="py-1 pr-3 text-[var(--muted)]">{n.tech || ''}</td>
                   <td className="py-1 text-[var(--muted)]">
-                    {clean.filter(([, to]) => to === n.id).map(([from]) => byId.get(from)?.label || from).join(', ') || '—'}
+                    {clean.filter(([, to]) => to === n.id).map(([from]) => display(byId.get(from)) || from).join(', ') || '—'}
                   </td>
                 </tr>
               ))}
@@ -225,7 +253,7 @@ function Summary({ nodes, edges, layers, t }) {
 }
 
 /** What one component is: its role, what it is built from, and both sides of its wiring. */
-function Panel({ node, edges, byId, kind, onPick, onClose, t, count }) {
+function Panel({ node, edges, byId, kind, onPick, onClose, t, count, display = (n) => n?.label || n?.id }) {
   if (!node) {
     return (
       <aside className="rounded-xl border border-dashed border-[var(--line)] p-4 text-sm text-[var(--muted)]">
@@ -239,14 +267,14 @@ function Panel({ node, edges, byId, kind, onPick, onClose, t, count }) {
   const k = kind[node.kind] || kind.app;
   const needs = edges.filter(([, to]) => to === node.id).map(([from, , label]) => [from, label]);
   const feeds = edges.filter(([from]) => from === node.id).map(([, to, label]) => [to, label]);
-  const name = (id) => byId.get(id)?.label || id;
+  const name = (id) => display(byId.get(id)) || id;
 
   return (
     <aside className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] overflow-hidden">
       <div className="flex items-start gap-2 px-4 py-3 border-b border-[var(--line)]">
         <span className="w-1 self-stretch rounded-full shrink-0" style={{ background: k.ink || 'var(--line)' }} />
         <div className="flex-1 min-w-0">
-          <div className="font-semibold truncate">{node.label || node.id}</div>
+          <div className="font-semibold break-words" title={node.label || node.id}>{node.label || node.id}</div>
           <div className="text-[11px] text-[var(--muted)]">{kindLabel(t, node.kind, k)}{node.version ? ` · v${node.version}` : ''}</div>
         </div>
         <button type="button" onClick={onClose} aria-label={t('common.close', 'Close')}
