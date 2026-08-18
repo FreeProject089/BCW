@@ -18,7 +18,8 @@
     "setup": "node src/setup.mjs",
     "test:e2e": "node --test test/e2e/*.test.mjs",
     "seed:site": "node src/seed-site-guide.mjs",
-    "gen": "node src/gen-relational.mjs"
+    "gen": "node src/gen-relational.mjs",
+    "fix:drift": "node src/fix-data-drift.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.637.0",
