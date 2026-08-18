@@ -194,6 +194,15 @@ export function functionEdges(links = [], sources = {}) {
     for (const l of links) {
         const from = side(l.from); const to = side(l.to);
         if (!from || !to) continue;
+        // An Electron handler has no name to find: `ipcMain.handle('fs:writeFile', async () =>
+        // …)` IS the function, and it is anonymous. Its CHANNEL is what a reader calls it —
+        // the label on the flow already says so — so that is the name it gets here rather
+        // than "(top level)" and an empty Functions view. Not invention: the string is in the
+        // source, on that line.
+        if (l.kind === 'ipc' && l.name) {
+            if (!to.fn) { to.fn = l.name; to.fnLine = to.line; to.id = `${to.file}#${l.name}`; }
+            if (!from.fn) { from.fn = l.name; from.fnLine = from.line; from.id = `${from.file}#${l.name}`; }
+        }
         out.push({
             kind: l.kind,                                     // http | tauri | ipc
             label: l.kind === 'http' ? `${l.method || 'GET'} ${l.route || ''}`.trim() : (l.name || 'invoke'),
@@ -338,6 +347,8 @@ export function drawableFunctions(edges = [], sources = {}, flows = []) {
     for (const [file, names] of wanted) {
         const decls = declarations(file, sources[file] || '');
         const rows = [...names]
+            // A name with no declaration is still drawn, without a line. That is the Electron
+            // channel case: there is a function there, it simply has no identifier to find.
             .map((n) => decls.find((d) => d.name === n) || { name: n, line: null, params: '' })
             .sort((a, b) => (a.line || 0) - (b.line || 0))
             .map((d) => ({ name: d.name, line: d.line, params: d.params || '' }));

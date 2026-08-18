@@ -276,3 +276,56 @@ describe('drawableFunctions', () => {
         assert.ok(d['a.js'].some((x) => x.name === 'ghost' && x.line === null));
     });
 });
+
+describe('an Electron handler has no name, so its channel is its name', () => {
+    // `ipcMain.handle('fs:writeFile', async () => …)` IS the function, and it is anonymous.
+    // Left as "(top level)", the Functions view of an Electron app drew nothing at all — on
+    // the one project where the IPC channels ARE the architecture.
+    const FILES = {
+        'electron/preload.js': "const { contextBridge, ipcRenderer } = require('electron');\n"
+            + "contextBridge.exposeInMainWorld('api', {\n"
+            + "  writeFile: (p, c) => ipcRenderer.invoke('fs:writeFile', p, c),\n"
+            + "});\n",
+        'electron/main.js': "const { ipcMain } = require('electron');\n"
+            + "ipcMain.handle('fs:writeFile', async (_e, p, c) => {\n  return true;\n});\n",
+    };
+    const links = [{
+        kind: 'ipc', name: 'fs:writeFile',
+        from: { file: 'electron/preload.js', line: 3, text: "  writeFile: (p, c) => ipcRenderer.invoke('fs:writeFile', p, c)," },
+        to: { file: 'electron/main.js', line: 2, text: "ipcMain.handle('fs:writeFile', async (_e, p, c) => {" },
+    }];
+
+    test('both ends are named after the channel', () => {
+        const [edge] = functionEdges(links, FILES);
+        assert.equal(edge.to.fn, 'fs:writeFile');
+        assert.equal(edge.from.fn, 'fs:writeFile');
+        assert.equal(edge.to.fnLine, 2, 'and it points at the line the handler is on');
+    });
+
+    test('so the file boxes have something to draw', () => {
+        const edges = functionEdges(links, FILES);
+        const drawn = drawableFunctions(edges, FILES, []);
+        assert.deepEqual(Object.keys(drawn).sort(), ['electron/main.js', 'electron/preload.js']);
+        assert.deepEqual(drawn['electron/main.js'].map((r) => r.name), ['fs:writeFile']);
+    });
+
+    test('a REAL enclosing function still wins over the channel', () => {
+        // Naming a named function after its channel would be renaming somebody's code.
+        const named = {
+            'main.js': "function writeTheFile() {\n  ipcMain.handle('fs:writeFile', () => {});\n}\n",
+        };
+        const [edge] = functionEdges([{
+            kind: 'ipc', name: 'fs:writeFile',
+            from: { file: 'main.js', line: 2 }, to: { file: 'main.js', line: 2 },
+        }], named);
+        assert.equal(edge.to.fn, 'writeTheFile');
+    });
+
+    test('a Tauri or HTTP link is untouched by any of this', () => {
+        const [edge] = functionEdges([{
+            kind: 'tauri', name: 'do_thing',
+            from: { file: 'a.js', line: 1 }, to: { file: 'b.rs', line: 1 },
+        }], { 'a.js': "invoke('do_thing');", 'b.rs': '#[tauri::command]\npub fn do_thing() {}' });
+        assert.notEqual(edge.from.fn, 'do_thing');
+    });
+});
