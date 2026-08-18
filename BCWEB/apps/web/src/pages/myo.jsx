@@ -93,6 +93,22 @@ export function MyoPage() {
         </div>
       </Card>
 
+      {/* Capacity, at the top, where somebody decides whether to start.
+          Commissions are work done by people: a page that keeps taking requests after the
+          team is full is selling a promise nobody can keep. This is the same flag the intake
+          form and the server both read — one answer, three places, not three opinions. */}
+      {cfg.queueFull && (
+        <div className="rounded-xl border border-[var(--warning)] p-3.5 mb-6 flex items-start gap-2.5">
+          <Clock size={15} className="shrink-0 mt-0.5 text-[var(--warning)]" />
+          <div>
+            <div className="text-sm font-semibold text-[var(--warning)]">{t('myo.queuefull.t', 'The queue is full right now')}</div>
+            <p className="text-[13px] text-[var(--muted)] mt-0.5">
+              {t('myo.queuefull.s', 'Every commission slot is taken, so new ones are paused until something finishes. Everything below is still worth reading — and existing requests carry on as normal.')}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Catalog ── */}
       <div className="flex items-baseline gap-3 mb-4">
         <h2 className="text-lg font-bold">{t('myo.pick.t', 'Choose a starting point')}</h2>
@@ -236,8 +252,20 @@ function IntakeModal({ intake, cfg, onClose }) {
   return (
     <Modal open onClose={onClose} title={t('myo.intake.title', 'Start a request')} icon={K} width="max-w-lg"
       footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
-        <Button variant="primary" disabled={busy} onClick={submit}>{busy ? <Spinner /> : <><CreditCard size={15} /> {t('myo.intake.pay', 'Pay {p} & start').replace('{p}', fmtMoney(fee, cfg.currency))}</>}</Button></>}>
+        <Button variant="primary" disabled={busy || cfg.queueFull} onClick={submit}>{busy ? <Spinner /> : <><CreditCard size={15} /> {t('myo.intake.pay', 'Pay {p} & start').replace('{p}', fmtMoney(fee, cfg.currency))}</>}</Button></>}>
       <div className="space-y-3">
+        {/* Said BEFORE the brief is written, not after it is submitted.
+            The endpoint has always computed this and its own comment says why — "discovering
+            the option is unavailable after writing a brief and reaching the payment step is
+            the version of this that wastes the customer's time". The page fetched the field
+            and used only the urgent half of it, so a full queue was still discovered at the
+            payment button. */}
+        {cfg.queueFull && (
+          <div className="text-xs rounded-lg p-2.5 flex items-start gap-2 border border-[var(--warning)] text-[var(--warning)]">
+            <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+            <span>{t('myo.queuefull.note', 'The queue is full right now, so new requests are not being taken. Nothing is lost if you write your brief — but the payment button stays off until a slot frees up.')}</span>
+          </div>
+        )}
         <div className="text-xs text-[var(--faint)] flex items-start gap-2 bg-[var(--surface-2)] rounded-lg p-2.5">
           <AlertTriangle size={13} className="shrink-0 mt-0.5 text-warning" />
           <span>{t('myo.intake.note', "You're paying {p} for a consultation (advice + a quote) about “{name}”. This is not the product price — building starts after you approve the quote.").replace('{p}', fmtMoney(fee, cfg.currency)).replace('{name}', kindMeta(intake.kind)[lang === 'fr' ? 'fr' : 'en'])}</span>
