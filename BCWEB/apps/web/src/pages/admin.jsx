@@ -20,6 +20,7 @@ import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx'
 import { useAuth } from './auth.jsx';
 import { utilAllowed, effectiveCaps } from '../lib/roles.js';
 import { readLayout, navAlignClass } from '../lib/navLayout.js';
+import { listZip, readZipEntry } from '../lib/zip-read.js';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
 import { rawStatusLabel, DotDropdown } from './repos.jsx';
@@ -7945,38 +7946,77 @@ function BmmpaInspector() {
    * A ZIP is answered here rather than by a JSON parse error. .bmmplug and .bmmtheme are
    * archives, and "Unexpected token PK" tells nobody what to do next.
    */
-  /** Read a ZIP through the archive route. `wanted` opens one entry in the same round trip —
-   *  the manifest is what a reviewer opens first, every time. */
-  const loadArchive = async (file, wanted) => {
+  /**
+   * List an archive, from the archive — nothing is uploaded.
+   *
+   * This used to base64 the whole file into a JSON body against a 32 MB limit, and repeat the
+   * upload for every entry a reviewer clicked. A `.DATABMM` — BMM's "everything I have"
+   * export, carrying session recordings and crash reports — is routinely hundreds of
+   * megabytes, so the file most worth looking inside was the one file the tool refused.
+   *
+   * A ZIP's index sits at its END, so listing costs two small reads whatever the size, and
+   * opening an entry decompresses that entry alone. It also makes the line on the drop zone
+   * literally true: the archive never leaves this machine.
+   */
+  const loadArchive = async (file) => {
     setBusyZip(true);
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      // btoa over a whole buffer in one call blows the argument limit; chunked is the boring
-      // way that survives a 30 MB plugin.
-      let bin = '';
-      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-      const r = await api.post('/admin/inspect/archive', { zipBase64: btoa(bin), ...(wanted ? { entry: wanted } : {}) });
-      setArch(r);
-      setEntry(r.opened || null);
+      const listing = await listZip(file);
+      setArch(listing);
+      setEntry(null);
+      void summarise(file, listing);
     } catch (e) {
-      toast.error(e?.data?.error === 'bad_zip'
+      toast.error(String(e?.message || '').includes('not a zip')
         ? t('bmi.badzip2', 'That file is not a readable archive.')
         : t('common.failed', 'Failed.'));
     } finally { setBusyZip(false); }
   };
 
-  const openEntry = async (name) => { if (zipFile) await loadArchive(zipFile, name); };
+  /**
+   * Every BMM document inside, summarised — the reason the moderator opened the file.
+   *
+   * Only the small JSON entries travel, one at a time, and only to the reader that already
+   * exists for a pasted document. The archive itself still does not move.
+   */
+  const summarise = async (file, listing) => {
+    const known = [];
+    for (const row of listing.entries) {
+      if (known.length >= 12) break;
+      if (!row.name.toLowerCase().endsWith('.json') || row.size > 512 * 1024) continue;
+      try {
+        const got = await readZipEntry(file, row);
+        if (got.binary || got.truncated) continue;
+        const rep = await api.post('/admin/inspect', { doc: JSON.parse(got.text) });
+        if (rep.ok) known.push({ name: row.name, ...rep });
+      } catch { /* not a BMM document — the listing already says what it is */ }
+    }
+    if (known.length) setArch((prev) => (prev ? { ...prev, known } : prev));
+  };
+
+  const openEntry = async (row) => {
+    if (!zipFile) return;
+    setEntry({ name: row.name, loading: true });
+    try {
+      setEntry({ name: row.name, ...(await readZipEntry(zipFile, row)) });
+    } catch (e) {
+      setEntry({ name: row.name, error: String(e?.message || e) });
+    }
+  };
 
   const loadFile = async (file) => {
     if (!file) return;
-    // 8 MB matches the route's bodyLimit; a bigger file cannot be inspected either way, and
-    // finding that out after a two-minute read is worse than being told now.
-    if (file.size > 8 * 1024 * 1024) {
+    // The FIRST FOUR BYTES decide, not the whole file: an archive is answered without ever
+    // reading it, and only a document that really is text gets read into the box. Reading a
+    // 400 MB export with file.text() to find out it starts with PK is how this hung before
+    // refusing. Archives have no size limit any more — nothing is uploaded.
+    const head = new Uint8Array(await file.slice(0, 4).arrayBuffer().catch(() => new ArrayBuffer(0)));
+    const isZip = head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04;
+    if (!isZip && file.size > 8 * 1024 * 1024) {
       return toast.error(t('bmi.toobig', 'That file is over 8 MB — larger than the inspector accepts.'));
     }
-    const raw = await file.text().catch(() => null);
+    const raw = isZip ? '' : await file.text().catch(() => null);
     if (raw == null) return toast.error(t('bmi.readfail', 'Could not read that file.'));
-    if (raw.startsWith('PK\u0003\u0004')) {
+    if (isZip) {
       // A ZIP used to be refused here — "open it and drop the manifest from inside" — which is
       // the moment a review stops. It is read as what it is now: a list of entries, any of
       // which can be opened, with every recognised BMM document inside already summarised.
@@ -8013,7 +8053,7 @@ function BmmpaInspector() {
         {t('bmi.drop', 'Drop a file here, or')}{' '}
         <label className="underline cursor-pointer">
           {t('bmi.choose', 'choose one')}
-          <input type="file" className="hidden" accept=".bmmpa,.bmmreplay,.mm,.json,.bmmnav,application/json"
+          <input type="file" className="hidden" accept=".bmmpa,.bmmreplay,.mm,.json,.bmmnav,.DATABMM,.bmmplug,.bmmtheme,.zip,application/json"
             onChange={(e) => { loadFile(e.target.files?.[0]); e.target.value = ''; }} />
         </label>
         {fileName && <div className="mt-1 text-[var(--faint)] break-all">{fileName}</div>}
@@ -8059,20 +8099,26 @@ function BmmpaInspector() {
           <div className="grid sm:grid-cols-[220px_1fr] gap-2">
             <div className="rounded-lg border border-[var(--line)] max-h-[320px] overflow-auto">
               {arch.entries.map((e) => (
-                <button key={e.name} type="button" disabled={!e.text}
-                  onClick={() => openEntry(e.name)}
-                  className={`w-full text-left px-2 py-1 text-[11px] border-b border-[var(--line)] last:border-0 ${
-                    entry?.name === e.name ? 'bg-[var(--surface-2)]' : ''} ${e.text ? 'hover:bg-[var(--surface-2)]' : 'opacity-50 cursor-default'}`}>
+                <button key={e.name} type="button"
+                  onClick={() => openEntry(e)}
+                  className={`w-full text-left px-2 py-1 text-[11px] border-b border-[var(--line)] last:border-0 hover:bg-[var(--surface-2)] ${
+                    entry?.name === e.name ? 'bg-[var(--surface-2)]' : ''}`}>
                   <div className="break-all">{e.name}</div>
                   <div className="text-[var(--faint)]">
-                    {Math.max(1, Math.round(e.size / 1024))} KB{e.text ? '' : ` · ${t('bmi.zipbin', 'binary')}`}
+                    {/* Every entry is clickable now. The extension is only a guess here — the
+                        bytes decide when it is opened, which is how an .exe called .txt gets
+                        caught instead of being greyed out and skipped. */}
+                    {Math.max(1, Math.round(e.size / 1024))} KB{e.text ? '' : ` · ${t('bmi.zipbin', 'probably binary')}`}
                     {e.unsafe ? ` · ${e.unsafe}` : ''}
                   </div>
                 </button>
               ))}
             </div>
             <div className="rounded-lg border border-[var(--line)] p-2 max-h-[320px] overflow-auto">
-              {entry ? (entry.binary
+              {entry?.loading ? <div className="text-[12px] text-[var(--muted)]"><Spinner /> {t('bmi.zipopening', 'Opening…')}</div>
+                : entry?.error ? <div className="text-[12px] text-[var(--warning)] break-all">{entry.error}</div>
+                : entry?.tooBig ? <div className="text-[12px] text-[var(--muted)]">{t('bmi.ziphuge', 'This entry is {mb} MB — too large to open in a panel. Everything about it that a review needs is in the listing.').replace('{mb}', String(Math.round(entry.size / 1048576)))}</div>
+                : entry ? (entry.binary
                 ? <div className="text-[12px] text-[var(--muted)]">{t('bmi.zipbinmsg', 'Binary — {kb} KB. Nothing here renders it, and rendering it as text would be noise.').replace('{kb}', String(Math.round(entry.size / 1024)))}</div>
                 : <>
                     {entry.truncated && <div className="text-[11px] text-[var(--warning)] mb-1">{t('bmi.ziptrunctext', 'Showing the first 256 KB of {kb} KB.').replace('{kb}', String(Math.round(entry.size / 1024)))}</div>}
