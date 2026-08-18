@@ -8602,6 +8602,62 @@ function GatingRules({ rules, onChange }) {
 // each post with (project key, or 'showcase' for Other-projects pages, or '*'=all).
 const BLOG_SOURCES = [['*', 'All blogs'], ['bmm', 'BMM'], ['bsm', 'BSM'], ['community', 'Community'], ['installer', 'Installer'], ['developers', 'Developers'], ['showcase', 'Other projects']];
 
+
+/**
+ * Prove one announcement route, without waiting for a real one.
+ *
+ * A channel id is eighteen digits: it is either right, or silently wrong, and the way anybody
+ * found out which was by waiting for a commission to arrive and land nowhere. This sends one
+ * message down the exact path a real announcement takes — the same queue, the same routing —
+ * and then says what became of it.
+ *
+ * It reports the OUTCOME, not the submission. "Queued" is what the old failures all looked
+ * like too.
+ */
+function RouteTest({ kind, label, t }) {
+  const [state, setState] = useState(null);   // null | 'sending' | {ok, error}
+  const toast = useToast();
+
+  const send = async () => {
+    setState('sending');
+    try {
+      const { announcement } = await api.post('/admin/bot/announce', {
+        kind,
+        title: t('db.r.test.title', 'Routing test'),
+        body: t('db.r.test.body', 'If you can read this, {label} announcements arrive here.').replace('{label}', label),
+      });
+      // The bot polls every 20 seconds; poll the row until it stops being pending.
+      for (let i = 0; i < 16; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const { announcements } = await api.get('/admin/bot/announcements');
+        const row = announcements.find((x) => x.id === announcement.id);
+        if (!row || row.status === 'pending') continue;
+        setState(row.status === 'sent' ? { ok: true } : { ok: false, error: row.error });
+        return;
+      }
+      // Not a failure of the route — a failure to hear back. Said as itself, because "it did
+      // not arrive" and "the bot is not running" send somebody looking in different places.
+      setState({ ok: false, error: t('db.r.test.silent', 'The bot did not pick it up within 30 seconds — is it running?') });
+    } catch (e) {
+      toast.error(e?.data?.error || t('common.failed', 'Failed.'));
+      setState(null);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <Button size="sm" variant="ghost" onClick={send} disabled={state === 'sending'}>
+        {state === 'sending' ? <Spinner /> : <Megaphone size={13} />} {t('db.r.test', 'Send a test here')}
+      </Button>
+      {state && state !== 'sending' && (
+        <span className={`text-[12px] ${state.ok ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+          {state.ok ? t('db.r.test.ok', 'Delivered.') : state.error}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // Per-route editor for blog announcements: each route = a channel (in any server)
 // + which blogs to post there. A channel id is globally unique, so routing works
 // across every server the bot is in.
@@ -9226,6 +9282,12 @@ function AdminBot() {
                 <Input value={g(`announce.roles.${k}`)} onChange={(e) => set(`announce.roles.${k}`, e.target.value)}
                   placeholder={t('db.f.roleid', 'Role ID')} />
               </Field>
+              {/* An 18-digit id is either right or silently wrong, and the way anybody found
+                  out was by waiting for a real commission to arrive somewhere else. This
+                  queues one message to THIS route and reports back what happened to it. */}
+              <div className="sm:col-span-2">
+                <RouteTest kind={k} label={label} t={t} />
+              </div>
             </div>
           ))}
         </ModuleCard>

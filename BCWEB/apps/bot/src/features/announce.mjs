@@ -8,6 +8,7 @@
 
 import { api } from '../api.mjs';
 import { config } from '../config.mjs';
+import { routeFor } from './announce-route.mjs';
 
 const EVERY_MS = 20_000;
 
@@ -30,22 +31,28 @@ export function startAnnouncer(client) {
             const { announcements } = await api.pendingAnnouncements();
             if (!announcements?.length) return;
             const cfg = await config();
-            // The general channel is the fallback on purpose: a new kind of announcement should
-            // be loud where people watch, not dropped because nobody configured a channel.
-            const fallbackId = cfg.alerts?.generalChannelId || cfg.alerts?.channelId;
-            // Per-kind routing. Commissions, incidents and the "something is waiting" digest go
-            // to different people, and one channel carrying all three is one channel everybody
-            // mutes. Unset falls back, so this is additive: a server that configures nothing
-            // behaves exactly as it did.
-            const routes = cfg.announce?.channels || {};
-            const roles = cfg.announce?.roles || {};
-
             for (const a of announcements) {
-                // An announcement that names its own channel keeps it — the admin screen can
-                // still send one message somewhere specific.
-                const channel = client.channels.cache.get(a.channelId || routes[a.kind] || fallbackId);
+                // The decision lives in announce-route.mjs, where it can be tested without a
+                // Discord connection — see the note there.
+                const { channelId, roleId, from } = routeFor(cfg, a);
+                if (!channelId) {
+                    await api.announcementResult(a.id, false,
+                        `No channel is configured for "${a.kind}", and there is no general or alerts channel to fall back to.`);
+                    continue;
+                }
+                // The cache first, then a FETCH. A channel the bot has simply not seen since it
+                // started is not a missing channel, and reporting it as one sent somebody
+                // hunting for a configuration mistake that did not exist.
+                let channel = client.channels.cache.get(channelId);
+                if (!channel) {
+                    channel = await client.channels.fetch(channelId).catch(() => null);
+                }
                 if (!channel?.send) {
-                    await api.announcementResult(a.id, false, 'No channel configured, or the bot cannot see it.');
+                    // The two failures a person can act on are different sentences: an id that
+                    // is wrong, and an id that is right but invisible to this bot.
+                    await api.announcementResult(a.id, false,
+                        `Cannot post to ${channelId} (from ${from}): the bot is not in that server, `
+                        + 'cannot see the channel, or the id is not a text channel.');
                     continue;
                 }
                 const k = KIND[a.kind] || KIND.custom;
@@ -57,10 +64,6 @@ export function startAnnouncer(client) {
                     ...(a.url ? { url: a.url } : {}),
                     timestamp: new Date(a.createdAt).toISOString(),
                 };
-                // A role is pinged only when the thing is URGENT, and only where one is
-                // configured for that kind. Pinging on every message is how a role gets muted,
-                // and a muted role is worse than none — it looks like coverage.
-                const roleId = a.urgent ? roles[a.kind] : null;
                 const content = roleId ? `<@&${roleId}>` : undefined;
                 try {
                     await channel.send({

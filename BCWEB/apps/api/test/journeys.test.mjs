@@ -215,7 +215,7 @@ describe('the sandbox writes nothing', { skip }, () => {
     // does not exist — and the refusal is the row the sandbox view is built to show, so it
     // must be classified as sandbox rather than as real traffic.
     assert.equal(r.statusCode, 403);
-    const { recordedSandbox } = await lastRecord();
+    const { recordedSandbox } = await lastRecord(u.id);
     assert.equal(recordedSandbox, true);
   });
 
@@ -228,12 +228,26 @@ describe('the sandbox writes nothing', { skip }, () => {
   });
 });
 
-/** The usage recorder buffers and flushes on a timer; flush it by hand and read the last row
- *  back, so "was it filed as sandbox" is answered by the table rather than by the response. */
-async function lastRecord() {
+/**
+ * The usage recorder buffers and flushes on a timer; flush it by hand and read THIS test's row
+ * back, so "was it filed as sandbox" is answered by the table rather than by the response.
+ *
+ * Scoped to the user whose call it was. It used to read the newest row in the entire table,
+ * which made it a coin toss: `at` has millisecond precision, several tests call the API inside
+ * the same millisecond, and the tie resolves however Postgres feels. That is the whole reason
+ * this suite failed intermittently on a change that touched none of it — and an intermittent
+ * failure teaches everybody to re-run rather than to look.
+ */
+async function lastRecord(userId) {
   const { flushApiUsage } = await import('../src/lib/apiusage.mjs');
   await flushApiUsage();
-  const row = await p.apiRequest.findFirst({ orderBy: { at: 'desc' }, select: { sandbox: true, status: true } });
+  const row = await p.apiRequest.findFirst({
+    ...(userId ? { where: { userId } } : {}),
+    // `id` breaks the tie when two rows share a millisecond. cuid is monotonic within a
+    // process, so the newest really is the newest.
+    orderBy: [{ at: 'desc' }, { id: 'desc' }],
+    select: { sandbox: true, status: true },
+  });
   return { recordedSandbox: row?.sandbox, status: row?.status };
 }
 
