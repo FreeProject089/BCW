@@ -475,6 +475,49 @@ export function requireRole(...roles) {
     } catch { return reply.code(401).send({ error: 'unauthenticated' }); }
   };
 }
+/**
+ * Require a CONFIRMED email address, on top of being signed in.
+ *
+ * The confirmation mail has always been sent and the /verify-email flow has always worked;
+ * almost nothing ever checked the result. So an address nobody could receive mail at could
+ * publish content, open a paid commission and post in other people's threads — and the one
+ * thing a confirmed address is for is being reachable afterwards, which is exactly what those
+ * actions need.
+ *
+ * Two rules keep this from becoming a lockout:
+ *
+ *   · If email is switched OFF for this deployment, verification is IMPOSSIBLE — nobody can
+ *     ever receive the link. Gating on it there would brick the site for everybody, so the
+ *     guard stands aside. A deployment that wants the gate turns email on; that is the same
+ *     switch, and it cannot be half-set.
+ *   · Staff are exempt. An admin locked out of the admin surface by an unverified address has
+ *     no way to fix it from inside, and the seeded owner account is verified by the seed
+ *     precisely so this is never reachable — but relying on a seed for a lockout is not a
+ *     plan.
+ *
+ * The refusal names itself (`email_unverified`) so the client can offer "resend the link"
+ * rather than a generic failure, which is the only useful thing to show someone here.
+ */
+export function requireVerifiedEmail() {
+  return async (req, reply) => {
+    try {
+      const got = await authenticated(req, reply);
+      if (got.reply) return got.reply;
+      const { user } = got;
+      req.user = user;
+      // Nobody can verify when no mail can be sent. See above.
+      const { emailEnabled } = await import('./mail.mjs');
+      if (!emailEnabled()) return;
+      if (ADMIN_TIER_ROLES.includes(user.role)) return;
+      const p = await db();
+      const u = await p.user.findUnique({ where: { id: user.uid }, select: { emailVerified: true } });
+      if (!u?.emailVerified) {
+        return reply.code(403).send({ error: 'email_unverified' });
+      }
+    } catch { return reply.code(401).send({ error: 'unauthenticated' }); }
+  };
+}
+
 // Require a specific capability. Allowed if the (live) role is ADMIN/SUPERADMIN, or one of
 // `alsoRoles` (e.g. 'MOD' for moderation routes), or the user has `cap` granted. A denial
 // returns { error:'missing_permission', capability } so the client can say exactly what's

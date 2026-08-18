@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { emitWebhook } from '../lib/webhooks.mjs';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
-import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy, catalogLog, logAudit } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy, catalogLog, logAudit, requireVerifiedEmail } from '../lib/lib.mjs';
 import { issueSanction } from '../lib/sanctions.mjs';
 import { presignGet, getObject, deleteObject } from '../lib/storage.mjs';
 import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
@@ -375,7 +375,7 @@ export default async function catalogRoutes(app) {
   // ── Submit a NEW item (requires an account) → PENDING + a submission ──
   // Anti-spam: PoW (below) + a rate limit + a cap on PENDING submissions per user,
   // so one account can't flood the moderation queue or the temp storage margin.
-  app.post('/catalog', { preHandler: requireRole(), config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
+  app.post('/catalog', { preHandler: requireVerifiedEmail(), config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
     if (!powVerify(req.body?.pow)) return reply.code(400).send({ error: 'pow_required' });
     const parsed = submitSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', details: parsed.error.flatten() });
@@ -451,7 +451,7 @@ export default async function catalogRoutes(app) {
   // Every entry is a URL-based (self-hosted) proposal — no payload upload, so no hosting
   // billing / temp-margin concerns; they just enter the queue as PENDING. Same anti-spam
   // as single submit: PoW + rate limit + the PENDING cap (checked against the whole batch).
-  app.post('/catalog/bulk', { preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (req, reply) => {
+  app.post('/catalog/bulk', { preHandler: requireVerifiedEmail(), config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (req, reply) => {
     if (!powVerify(req.body?.pow)) return reply.code(400).send({ error: 'pow_required' });
     const b = z.object({
       projectKey: z.enum(['bmm', 'bsm', 'community']),

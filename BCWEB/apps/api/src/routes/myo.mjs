@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { publishToThread, streamThread } from '../lib/threadbus.mjs';
-import { db, requireRole, requireCap, hasCap, currentUser, logAudit, clientIp } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, hasCap, currentUser, logAudit, clientIp, requireVerifiedEmail } from '../lib/lib.mjs';
 import { applyCampaign } from './campaigns.mjs';
 import { stripe, ensureCustomer } from './hosting.mjs';
 
@@ -123,7 +123,7 @@ export default async function myoRoutes(app) {
     lang: z.enum(['en', 'fr']).default('en'),
     urgent: z.boolean().default(false),
   });
-  app.post('/myo/requests', { preHandler: requireRole(), config: { rateLimit: { max: 8, timeWindow: '10 minutes' } } }, async (req, reply) => {
+  app.post('/myo/requests', { preHandler: requireVerifiedEmail(), config: { rateLimit: { max: 8, timeWindow: '10 minutes' } } }, async (req, reply) => {
     const b = intake.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
     const p = await db();
