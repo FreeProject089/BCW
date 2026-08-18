@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Code2, Shield, KeyRound, BookOpen, Send, Newspaper, Copy, Sliders, FlaskConical, ArrowRight, FileJson } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { highlightCode } from './pages.jsx';
+import { highlightCode, useAsync } from './pages.jsx';
 import { Card, Button, Input, Select, Textarea, Badge, Field, Spinner, useToast, copyText } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
 import { IconGlyph } from '../ui/md.jsx';
@@ -376,6 +376,11 @@ function Tool({ icon: Icon, title, children, to, cta }) {
 export default function DevHub() {
   const { t } = useI18n(); const toast = useToast();
   const { user } = useAuth();
+  // What this visitor already has. Only asked for when signed in — a signed-out developer is
+  // the one this page was written for, and should not pay for a request that can only answer
+  // "none".
+  const mine = useAsync(() => (user ? api.get('/me/api-keys') : Promise.resolve({ keys: [] })), [!!user]);
+  const myKeys = (mine.data?.keys || []).filter((k) => !k.revokedAt);
   const [scopes, setScopes] = useState(null);
   const base = typeof location !== 'undefined' ? location.origin : '';
   // What an admin saved for this page. Absent (or a 404 before it has ever been saved) leaves
@@ -412,15 +417,29 @@ export default function DevHub() {
         <p className="text-[var(--muted)] mt-3 text-base sm:text-lg">
           {hero.body || t('dev.hub.h1b', 'Sign people in with their account, read their content with their permission, and get told when it changes. A REST API, OpenID Connect, and webhooks — no SDK to install.')}
         </p>
+        {/* The first button depends on whether you already have a key.
+            A developer who has been using this API for months arrived to "Get a key — takes
+            about a minute", which is a sales pitch aimed at somebody they stopped being. The
+            page is still written for the newcomer; it just no longer talks over the person who
+            already said yes. */}
         <div className="flex flex-wrap gap-2 justify-center mt-6">
-          <Link to="/dev/config"><Button variant="primary"><KeyRound size={15} /> {t('dev.hub.start', 'Get a key')}</Button></Link>
+          <Link to="/dev/config">
+            <Button variant="primary">
+              <KeyRound size={15} />
+              {myKeys.length
+                ? t('dev.hub.mine', 'My keys ({n})').replace('{n}', String(myKeys.length))
+                : t('dev.hub.start', 'Get a key')}
+            </Button>
+          </Link>
           <Link to="/docs/bcweb-api"><Button><BookOpen size={15} /> {t('dev.hub.ref', 'API reference')}</Button></Link>
         </div>
         {/* Said once, at the top, because it is the number that decides whether somebody
-            starts today or bookmarks the page. */}
-        <p className="text-[12px] text-[var(--faint)] mt-4">
-          {hero.note || t('dev.hub.time', 'A key takes about a minute. Nothing here needs approval.')}
-        </p>
+            starts today or bookmarks the page. Pointless once they have started. */}
+        {!myKeys.length && (
+          <p className="text-[12px] text-[var(--faint)] mt-4">
+            {hero.note || t('dev.hub.time', 'A key takes about a minute. Nothing here needs approval.')}
+          </p>
+        )}
       </div>
 
       {/* The two jobs, before the tools — picking the wrong one is the mistake that costs a
@@ -491,7 +510,9 @@ export default function DevHub() {
         <div className="flex flex-wrap gap-2 mt-3">
           <Button size="sm" variant="ghost" onClick={loadScopes}>{scopes ? t('common.close', 'Close') : t('dev.hub.scopes', 'What the scopes mean')}</Button>
           <Link to="/blog?project=developers"><Button size="sm" variant="ghost"><Newspaper size={13} /> {t('dev.hub.blog', 'Developer blog')}</Button></Link>
-          <Link to="/dev/config"><Button size="sm" variant="ghost"><KeyRound size={13} /> {t('dev.hub.mykeys', 'My keys')}</Button></Link>
+          {/* Only when the hero is not already offering it — the same link twice on one
+              screen is the thing that made the tools look like footnotes in the first place. */}
+          {!myKeys.length && <Link to="/dev/config"><Button size="sm" variant="ghost"><KeyRound size={13} /> {t('dev.hub.mykeys', 'My keys')}</Button></Link>}
         </div>
         {scopes && (
           <div className="mt-3 space-y-1">

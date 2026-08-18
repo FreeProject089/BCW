@@ -126,6 +126,59 @@ export function MyoPage() {
         </div>
       )}
 
+      {/* Your own requests come FIRST, above the catalogue.
+          They used to sit at the very bottom — under the hero, the how-it-works card, the
+          capacity banner, every product card and the custom feature. So somebody with a
+          commission already open, waiting on a reply, had to scroll past the pitch for the
+          thing they had already bought to find it. Somebody who has bought is not shopping.
+
+          And the ones with an unread reply lead, because "there is an answer waiting" is the
+          only thing on this page that is time-sensitive. It was a 2 px dot at the bottom of a
+          long page; now it is a row that says so, at the top. */}
+      {user && (mine.data?.requests?.length > 0) && (() => {
+        const reqs = [...mine.data.requests].sort((a, b) =>
+          (b.userUnread ? 1 : 0) - (a.userUnread ? 1 : 0)
+          || new Date(b.createdAt) - new Date(a.createdAt));
+        const unread = reqs.filter((r) => r.userUnread).length;
+        return (
+          <div className="mb-10 sm:mb-12">
+            <div className="flex items-baseline gap-3 mb-3 flex-wrap">
+              <h2 className="font-semibold text-lg flex items-center gap-2">
+                <MessageSquare size={18} className="text-[var(--primary-2)]" /> {t('myo.mine', 'My requests')}
+              </h2>
+              {unread > 0 && (
+                <span className="text-xs font-semibold text-[var(--primary-2)]">
+                  {t('myo.mineUnread', '{n} waiting for you').replace('{n}', String(unread))}
+                </span>
+              )}
+            </div>
+            <div className="space-y-2">
+              {reqs.map((r) => {
+                const K = kindMeta(r.productKind).icon;
+                return (
+                  <Link key={r.id} to={`/myo/${r.id}`}
+                    className={`card p-3 flex items-center gap-3 hover:border-[var(--primary)] ${r.userUnread ? 'border-[var(--primary)]' : ''}`}>
+                    <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><K size={16} /></span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{r.name}</div>
+                      <div className="text-xs text-[var(--faint)]">{new Date(r.createdAt).toLocaleDateString()}</div>
+                    </div>
+                    {/* A word, not a dot. A coloured circle is only legible to somebody who
+                        already knows what it means. */}
+                    {r.userUnread && (
+                      <span className="text-[11px] font-semibold text-[var(--primary-2)] whitespace-nowrap">
+                        {t('myo.unread', 'New reply')}
+                      </span>
+                    )}
+                    <Badge tone={STATUS_TONE[r.status]}>{statusLabel(r.status, t)}</Badge>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Catalog ── */}
       <div className="flex items-baseline gap-3 mb-4">
         <h2 className="text-lg font-bold">{t('myo.pick.t', 'Choose a starting point')}</h2>
@@ -139,26 +192,6 @@ export function MyoPage() {
           {/* Custom = one strong full-width feature (replaces the lonely 4th card + old CTA band) */}
           <CustomFeatureCard card={customCard} cfg={cfg} onStart={() => start(customCard)} />
         </>
-      )}
-
-      {/* My requests (logged-in) */}
-      {user && (mine.data?.requests?.length > 0) && (
-        <div className="mt-12">
-          <h2 className="font-semibold text-lg mb-3 flex items-center gap-2"><MessageSquare size={18} className="text-[var(--primary-2)]" /> {t('myo.mine', 'My requests')}</h2>
-          <div className="space-y-2">
-            {mine.data.requests.map((r) => {
-              const K = kindMeta(r.productKind).icon;
-              return (
-                <Link key={r.id} to={`/myo/${r.id}`} className="card p-3 flex items-center gap-3 hover:border-[var(--primary)]">
-                  <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><K size={16} /></span>
-                  <div className="flex-1 min-w-0"><div className="font-medium truncate">{r.name}</div><div className="text-xs text-[var(--faint)]">{new Date(r.createdAt).toLocaleDateString()}</div></div>
-                  {r.userUnread && <span className="w-2 h-2 rounded-full bg-[var(--primary)]" title={t('myo.unread', 'New reply')} />}
-                  <Badge tone={STATUS_TONE[r.status]}>{statusLabel(r.status, t)}</Badge>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
       )}
 
       {intake && <IntakeModal intake={intake} cfg={cfg} onClose={() => setIntake(null)} />}
