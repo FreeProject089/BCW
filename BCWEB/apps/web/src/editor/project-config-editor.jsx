@@ -630,6 +630,32 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
               </span>
             </label>
           )}
+
+          {/* What an admin can say ABOUT the map, and what they can keep out of it. The map
+              itself is generated and must stay generated — nothing here edits a file, an
+              import or a call, because the whole claim of the feature is that every line was
+              read from the source. What is editable is the framing and the scope. */}
+          {!isShowcase && stack.showCodeMap === true && (
+            <div className="space-y-2 mt-2 pl-6">
+              <Field label="Intro line for the code map (optional)"
+                hint="Your words, shown above the map. The standing explanation of what a code map is stays underneath it.">
+                <Textarea rows={2} value={stack.codeMapNote || ''}
+                  onChange={(e) => setIn('stack', { codeMapNote: e.target.value })}
+                  placeholder="e.g. The front end never touches your files — every read goes through a Rust command." />
+              </Field>
+              <Field label="Paths to keep out of it"
+                hint="One per line. A folder takes everything under it. These are removed on the SERVER — they are not sent to the browser at all, so they cannot be read out of the response either. The page says how many were left out, never which.">
+                <Textarea rows={3}
+                  value={(stack.codeMapHide || []).join('
+')}
+                  onChange={(e) => setIn('stack', { codeMapHide: e.target.value.split('
+').map((x) => x.trim()).filter(Boolean) })}
+                  placeholder={'src-tauri/target
+vendor/
+internal/secrets.ts'} />
+              </Field>
+            </div>
+          )}
         </div>
 
         <StackDetect

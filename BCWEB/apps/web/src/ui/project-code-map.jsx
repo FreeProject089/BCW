@@ -56,9 +56,15 @@ export default function ProjectCodeMap({ projectKey, t = (k, d) => d }) {
                 <h3 className="text-sm font-semibold mb-1 flex items-center gap-2">
                     <Network size={15} className="text-[var(--primary-2)]" /> {t('pmap.title', 'The code itself')}
                 </h3>
+                {/* The admin's own words first, then what the map is. Their sentence is
+                    about THIS repository; the standing explanation is about every map. */}
+                {graph.note && <p className="text-[13px] mb-2 leading-relaxed">{graph.note}</p>}
                 <p className="text-[12px] text-[var(--muted)] mb-3">
                     {t('pmap.sub', 'Read from the repository. Every line is an import or a call that exists in the source — nothing is inferred from a name, and nothing about what the code does is described.')}
                     {graph.generatedAt ? ` ${t('pmap.asof', 'As of')} ${new Date(graph.generatedAt).toLocaleDateString()}.` : ''}
+                    {/* Disclosed, without naming what was left out. A reader comparing this
+                        to the repository would otherwise conclude the scan is broken. */}
+                    {graph.hiddenCount > 0 && ` ${t('pmap.hidden', '{n} path(s) are deliberately not published.').replace('{n}', String(graph.hiddenCount))}`}
                 </p>
                 <CodeMap graph={graph} t={t} />
             </div>

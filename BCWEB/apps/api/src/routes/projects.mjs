@@ -166,12 +166,97 @@ export default async function projectRoutes(app) {
     // the page, but the source excerpts inside the flows are the point of the feature, so they
     // travel. What does not travel is anything the admin screen adds for itself later — the
     // shape is listed rather than spread.
+    // What the admin chose not to publish is REMOVED HERE, not hidden in the browser.
+    //
+    // This map is public and the response is fetchable directly. Filtering it in the client
+    // would draw a shorter picture while still handing every path to anyone who opened the
+    // network tab — which is not "hidden", it is decoration over the same leak. An admin
+    // ticking a path off this map means "do not publish this", so it does not leave the
+    // server.
+    //
+    // Prefix match on the path, because that is how somebody thinks about it: typing
+    // `src-tauri/target` should take the folder and everything under it, not one entry that
+    // happens to be exactly that string.
+    const hide = Array.isArray(cfg.stack?.codeMapHide)
+      ? cfg.stack.codeMapHide.map((x) => String(x).trim()).filter(Boolean)
+      : [];
+    const hidden = (path) => !!path && hide.some((h) => String(path) === h || String(path).startsWith(h.endsWith('/') ? h : `${h}/`));
+
+    const allNodes = (v.graph.nodes || []).filter((n) => !hidden(n.id || n.path));
+    const keep = new Set(allNodes.map((n) => n.id ?? n.path));
+    // An edge to a file that is no longer published would draw a line to nothing.
+    const edges = (v.graph.edges || []).filter((e) => {
+      const [from, to] = Array.isArray(e) ? e : [e.from, e.to];
+      return keep.has(from) && keep.has(to);
+    });
+    // Same for the walkthroughs: a flow that steps through a hidden file would print its path
+    // and its source, which is exactly what was asked to stay unpublished. The whole flow goes
+    // rather than a gap in the middle of it.
+    // `dependents` is "how many published files lean on this one", so it has to be counted
+    // AFTER the hidden ones are gone. Left as generated it would say 7 next to a file only 4
+    // published files reach — a number the reader cannot check against the drawing in front
+    // of them, which is worse than no number.
+    const dependents = new Map();
+    for (const e of edges) {
+      const from = Array.isArray(e) ? e[0] : e.from;
+      dependents.set(from, (dependents.get(from) || 0) + 1);
+    }
+    const nodes = allNodes.map((n) => (
+      'dependents' in n ? { ...n, dependents: dependents.get(n.id ?? n.path) || 0 } : n
+    ));
+
+    // Scrubbed at every depth, not just the top level.
+    //
+    // Filtering `functions` by its own `.file` and calling it done was wrong and measurably
+    // so: a function entry carries the calls it makes, an endpoint carries the handler it
+    // resolves to, and each of those is a nested { file, line, text } that still named a
+    // hidden path — with a line of its source attached. The response passed a check on
+    // `nodes` while the excluded folder was still fully readable inside two other fields.
+    //
+    // So the rule is applied structurally: any object anywhere that names a hidden file is
+    // removed from whatever holds it. Slower than four hand-written filters and immune to the
+    // next field somebody adds to a snapshot, which is the trade a privacy promise deserves.
+    const scrub = (val) => {
+      if (Array.isArray(val)) return val.map(scrub).filter((x) => x !== undefined);
+      if (val && typeof val === 'object') {
+        if (hidden(val.file) || hidden(val.path)) return undefined;
+        const out = {};
+        for (const [k, x] of Object.entries(val)) {
+          const cleaned = scrub(x);
+          // A key whose whole value was a hidden reference is dropped, not set to null: a
+          // null `to` on a call link would draw an arrow into nothing.
+          if (cleaned !== undefined) out[k] = cleaned;
+        }
+        return out;
+      }
+      return val;
+    };
+
+    // A flow through a hidden file loses the whole walkthrough rather than a step in the
+    // middle of it — a chain with a hole is a chain that misleads about what calls what.
+    const flows = scrub((v.flows || []).filter((f) => !(f.steps || []).some((st) => hidden(st.file))));
+    const functions = scrub((v.functions || []).filter((f) => !hidden(f.file)));
+    const fnByFile = scrub(Object.fromEntries(Object.entries(v.fnByFile || {}).filter(([file]) => !hidden(file))));
+    const endpoints = scrub(v.endpoints || null);
+    const unresolved = (v.graph.unresolved || []).filter((u) => !hidden(u?.file ?? u));
+    const unsupported = v.graph.unsupported || [];
+
     return {
       ok: true, generatedAt: v.generatedAt,
-      nodes: v.graph.nodes, edges: v.graph.edges, stats: v.stats,
-      unresolved: v.graph.unresolved || [], unsupported: v.graph.unsupported || [],
-      endpoints: v.endpoints || null,
-      functions: v.functions || [], flows: v.flows || [], fnByFile: v.fnByFile || {},
+      // The admin's own words above the map, alongside the generated content rather than
+      // instead of it — the same arrangement `stack.note` already has on the diagram.
+      note: typeof cfg.stack?.codeMapNote === 'string' ? cfg.stack.codeMapNote : '',
+      nodes,
+      edges,
+      // The counts describe what is DRAWN. Passing the pre-filter stats through would put a
+      // header on the map contradicting the map.
+      stats: hide.length ? { ...(v.stats || {}), drawn: nodes.length, edges: edges.length } : v.stats,
+      unresolved, unsupported,
+      endpoints,
+      functions, flows, fnByFile,
+      // Said rather than silently smaller: a reader comparing this to the repository should
+      // know a choice was made, without being told which paths.
+      hiddenCount: (v.graph.nodes || []).length - allNodes.length,
     };
   });
 

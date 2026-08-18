@@ -391,6 +391,7 @@ const DICT = {
     'pmap.sub': 'Lu dans le dépôt. Chaque trait est un import ou un appel qui existe dans les sources — rien n’est déduit d’un nom, et rien n’est raconté sur ce que fait le code.',
     'pmap.asof': 'À la date du', 'pmap.open': 'Afficher la carte du code', 'pmap.loading': 'Lecture de la carte…',
     'pmap.none': 'Ce projet n’a pas encore été lu.', 'pmap.failed': 'La carte n’a pas pu être chargée.',
+    'pmap.hidden': '{n} chemin(s) ne sont délibérément pas publiés.',
     'cm.zoomin': 'Zoom avant', 'cm.zoomout': 'Zoom arrière',
     'cm.nfiles': '{n} fichier(s)',
     'cm.detail': 'Détail', 'cm.d.folders': 'Dossiers', 'cm.d.files': 'Fichiers', 'cm.d.functions': 'Fonctions',
