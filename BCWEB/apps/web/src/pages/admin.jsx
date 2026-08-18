@@ -34,7 +34,7 @@ import { AdminApi } from './admin-api.jsx';
 import { AdminSanctions, ContentSanctionForm, Evidence } from './admin-sanctions.jsx';
 import AdminStatusPage from './admin-statuspage.jsx';
 import { AdminPolls } from './admin-polls.jsx';
-import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, JsonEditor, highlightJson, SideDash, useThreadStream } from './pages.jsx';
+import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, JsonEditor, highlightJson, highlightCode, SideDash, useThreadStream } from './pages.jsx';
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
 // actual api.del only fires once the 6s window elapses — Undo means nothing was ever deleted,
@@ -7888,6 +7888,19 @@ function ConfigDiff() {
  * reviewer's call. So the key is shown, short, next to the verdict, rather than being turned
  * into a name the page cannot vouch for.
  */
+
+/** A file name to a Prism language. Unknown extensions fall through to plain text, which is
+ *  what an unhighlighted <pre> already was — never a wrong grammar, which mis-colours a file
+ *  and makes it read as something it is not. */
+function langOfName(name = '') {
+  const ext = String(name).split('.').pop()?.toLowerCase();
+  return ({
+    json: 'json', js: 'javascript', mjs: 'javascript', cjs: 'javascript', ts: 'javascript',
+    jsx: 'javascript', tsx: 'javascript', py: 'python', sh: 'bash', bash: 'bash',
+    bmmpa: 'json', bmmnav: 'json', bmmreplay: 'json', mm: 'json',
+  })[ext] || 'plain';
+}
+
 function SignatureVerdict({ v, t }) {
   if (!v || v.state === 'unsigned') {
     return (
@@ -8205,7 +8218,13 @@ function BmmpaInspector() {
                 ? <div className="text-[12px] text-[var(--muted)]">{t('bmi.zipbinmsg', 'Binary — {kb} KB. Nothing here renders it, and rendering it as text would be noise.').replace('{kb}', String(Math.round(entry.size / 1024)))}</div>
                 : <>
                     {entry.truncated && <div className="text-[11px] text-[var(--warning)] mb-1">{t('bmi.ziptrunctext', 'Showing the first 256 KB of {kb} KB.').replace('{kb}', String(Math.round(entry.size / 1024)))}</div>}
-                    <pre className="text-[11px] whitespace-pre-wrap break-all">{entry.text}</pre>
+                    {/* Highlighted with the same Prism setup the JSON editor uses. A moderator
+                        reading somebody's plugin script needs strings to look like strings —
+                        an unhighlighted wall of JS is where a `fetch` to somewhere unexpected
+                        hides. `whitespace-pre-wrap` and not `break-all`: breaking mid-token
+                        makes a URL unreadable, which is the one thing worth reading closely. */}
+                    <pre className="text-[11px] whitespace-pre-wrap break-words prism-bmm"
+                      dangerouslySetInnerHTML={{ __html: highlightCode(entry.text, langOfName(entry.name)) }} />
                   </>)
                 : <div className="text-[12px] text-[var(--muted)]">{t('bmi.zippick', 'Pick a file on the left to read it.')}</div>}
             </div>
