@@ -507,6 +507,7 @@ Deux choses partagent cette page : l'**entrée de catalogue** (ce que liste un f
 - \`plugin.json\` — le manifeste (**obligatoire**).
 - \`icon.png\` — 40×40 (optionnel).
 - \`checksums.json\` — **sha256 de chaque fichier** du paquet.
+- \`bmm_signature.json\` — la signature, quand c'est BMM qui a écrit le paquet (optionnel).
 
 Le manifeste déclare \`id\`, \`name\`, \`version\`, \`author\`, \`description\`, \`game\`, \`permissions\`, et comment il s'applique (\`scripts\`, \`folders\`, \`apply_mode\`) — plus une \`modlist\` optionnelle.
 
@@ -516,6 +517,30 @@ Un plugin demande des capacités dans l'ensemble réel de l'API (\`mods.write\`,
 
 :::danger[Les deux empreintes sont vérifiées]
 Le \`sha256\` de l'entrée couvre tout le \`.bmmplug\` ; \`checksums.json\` couvre chaque fichier à l'intérieur. Si l'une des deux échoue, BMM marque le plugin **invalide** et déconseille de l'installer. Les plugins du catalogue sont toujours vérifiés.
+:::
+
+## Signatures
+
+\`checksums.json\` répond à « ce paquet est-il cohérent avec lui-même ». Il ne peut pas répondre
+à « est-ce que ça vient bien de la personne qui prétend l'avoir fait » — n'importe qui
+repaquetant un plugin le recalcule.
+
+Un paquet écrit par BMM porte donc une entrée de plus, \`bmm_signature.json\` : une signature
+ed25519 sur une liste de **chaque autre fichier et de son SHA-256**. Vérifier, c'est deux
+questions, et les deux doivent passer — la signature vérifie-t-elle la liste, et chaque
+fichier a-t-il bien l'empreinte que la liste annonce. C'est cette deuxième moitié qui compte :
+ne signer que le manifeste dirait « ce plugin est intact » alors que chaque script à côté du
+manifeste aurait pu être échangé.
+
+N'importe qui peut en vérifier un sans l'installer, via **Inspecter un fichier BMM** — la
+vérification tourne dans le navigateur et le fichier n'est jamais envoyé.
+
+:::warning[Non signé ne veut pas dire invalide]
+Un paquet sans \`bmm_signature.json\` se lit comme **non signé**, pas comme cassé. Tout ce qui a
+été publié avant l'existence des signatures est non signé, et un paquet construit par un autre
+outil que BMM le sera aussi. Et \`author_id\` est une **clé publique, pas une identité** — ça dit
+que deux fichiers viennent de la même installation, pas que leur auteur est digne de
+confiance. C'est pour ça que l'id est affiché à côté du verdict plutôt que transformé en nom.
 :::`,
   },
 

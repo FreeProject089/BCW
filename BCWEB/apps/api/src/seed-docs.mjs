@@ -291,6 +291,7 @@ Emitted into a \`plugins\` array. **Required:** \`id\`, \`name\`, \`version\`, \
 - \`plugin.json\` — the manifest (**required**).
 - \`icon.png\` — 40×40 (optional).
 - \`checksums.json\` — **sha256 of every file** in the package.
+- \`bmm_signature.json\` — the signature, when BMM wrote the package (optional).
 
 The manifest declares \`id\`, \`name\`, \`version\`, \`author\`, \`description\`, \`game\`, \`permissions\`, and how it applies (\`scripts\`, \`folders\`, \`apply_mode\`) — plus an optional \`modlist\`.
 
@@ -300,6 +301,28 @@ A plugin requests capabilities from the API's real permission set (\`mods.write\
 
 :::danger[Both checksums are validated]
 The catalog entry's \`sha256\` covers the whole \`.bmmplug\`; \`checksums.json\` covers each file inside. If either fails, BMM flags the plugin **invalid** and recommends not installing it. Catalog plugins are always validated.
+:::
+
+## Signatures
+
+\`checksums.json\` answers "is this package internally consistent". It cannot answer "did this
+come from the person who claims to have made it" — anyone repacking a plugin recomputes it.
+
+So a package BMM wrote carries one more entry, \`bmm_signature.json\`: an ed25519 signature over
+a list of **every other file and its SHA-256**. Verifying is two questions and both must pass —
+does the signature verify over the list, and does every file hash to what the list says. That
+second half is the point: signing only the manifest would say "this plugin is intact" while
+every script beside the manifest could have been swapped.
+
+Anyone can check one without installing it, at **Inspect a BMM file** — the check runs in the
+browser and the file is never uploaded.
+
+:::warning[Unsigned is not invalid]
+A package with no \`bmm_signature.json\` reads as **unsigned**, not broken. Everything published
+before signatures existed is unsigned, and a package built by any tool other than BMM will be
+too. And \`author_id\` is a **public key, not an identity** — it says two files came from the
+same install, not that their author is trustworthy. Which is why the id is shown next to the
+verdict rather than being turned into a name.
 :::`,
   },
   {
