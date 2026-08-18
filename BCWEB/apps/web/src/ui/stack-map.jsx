@@ -153,12 +153,20 @@ export default function StackMap({ stack, t = (k, d) => d }) {
                   onClick={() => setPicked(isPicked ? null : n.id)}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPicked(isPicked ? null : n.id); } }}
                   opacity={dim(n.id) ? 0.28 : 1} style={{ cursor: 'pointer' }}>
+                  {/* One colour statement per node, not two.
+                      The border used to be painted in the kind's colour AND a 4px bar drawn
+                      down the left edge — so every box shouted its category twice, and the
+                      bar's rx="2" cut across the box's rx="10" corners, which is the hard
+                      notch you can see at the top and bottom of each one.
+                      The border is neutral now (the accent is reserved for what is SELECTED,
+                      which is the only state a border should be announcing) and the colour
+                      moved to a dot beside the kind's name — where it sits next to the word
+                      it encodes, which is what the palette check requires anyway. */}
                   <rect width={NODE_W} height={NODE_H} rx="10"
-                    fill="var(--surface-2)" stroke={isPicked ? 'var(--primary-2)' : (k.ink || 'var(--line)')}
-                    strokeWidth={isPicked ? 3 : 2}
+                    fill={isPicked ? 'var(--surface-3)' : 'var(--surface-2)'}
+                    stroke={isPicked ? 'var(--primary-2)' : 'var(--line)'}
+                    strokeWidth={isPicked ? 2 : 1}
                     strokeDasharray={k.ink ? undefined : '5 4'} />
-                  {/* The kind's colour as a bar, beside the name rather than instead of it. */}
-                  {k.ink && <rect x="0" y="0" width="4" height={NODE_H} rx="2" fill={k.ink} />}
                   {/* The full name, always reachable. Truncation is fine as long as it is
                       recoverable, and an SVG <title> is the one tooltip that needs no JS. */}
                   <title>{`${n.label || n.id}${n.tech ? ` — ${n.tech}` : ''}`}</title>
@@ -167,7 +175,11 @@ export default function StackMap({ stack, t = (k, d) => d }) {
                       components share a name this line is the ONLY thing that distinguishes
                       them, and it was set in the smallest, palest text in the node. */}
                   {n.tech && <text x="14" y="41" fontSize="11" fill="var(--muted)">{clip(n.tech, 26)}</text>}
-                  <text x="14" y={n.tech ? 56 : 41} fontSize="10.5" fill="var(--faint)">{kindLabel(t, n.kind, k)}</text>
+                  {/* The kind, with its colour as a dot in front of it. An external box has
+                      no colour by design — it is the ABSENCE of a category — and keeps its
+                      dashed border instead. */}
+                  {k.ink && <circle cx="17.5" cy={(n.tech ? 56 : 41) - 3.5} r="3.5" fill={k.ink} />}
+                  <text x={k.ink ? 26 : 14} y={n.tech ? 56 : 41} fontSize="10.5" fill="var(--faint)">{kindLabel(t, n.kind, k)}</text>
                 </g>
               );
             })}

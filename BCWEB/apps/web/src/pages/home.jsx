@@ -308,7 +308,8 @@ export function Home() {
                   They are a LIST of what can be commissioned, so they are written as a list:
                   no border, no surface, no padding, nothing that invites a click. The only
                   control in the section is the one that works. */}
-              <div className="relative max-w-2xl">
+              <div className="relative grid lg:grid-cols-[1.15fr_.85fr] gap-8 lg:gap-12 items-start">
+                <div>
                 <div className="inline-flex items-center gap-2 badge badge-primary mb-4"><Wand2 size={13} /> {t('home.myo.k', 'Make Your Own')}</div>
                 <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{t('home.myo.t', 'Have it built for you')}</h3>
                 <p className="text-[var(--muted)] mt-3 leading-relaxed">
@@ -333,6 +334,33 @@ export function Home() {
                     <Clock size={12} /> {t('home.myo.full', 'The queue is full right now — new commissions are paused.')}
                   </p>
                 )}
+                </div>
+
+                {/* What actually happens, in three steps.
+                    The right half of this card used to be empty, so the section read as a
+                    paragraph and a button floating in a lot of nothing. What belongs there is
+                    not decoration — it is the question a person has before clicking: what am I
+                    committing to, and when does money change hands. Answering it here is what
+                    turns "interesting" into "I understand the deal".
+                    Numbered markers, not icons: this is a sequence, and a row of glyphs would
+                    say category where the meaning is order. */}
+                <ol className="relative space-y-4 lg:pl-6 lg:border-l border-[var(--line)]">
+                  {[
+                    [t('home.myo.s1', 'You describe it'), t('home.myo.s1d', 'What you want built, who it is for. A paid consultation opens the conversation.')],
+                    [t('home.myo.s2', 'You get advice and a quote'), t('home.myo.s2d', 'An itemised price with a date it is valid until. That is what the consultation buys.')],
+                    [t('home.myo.s3', 'You decide, then it gets built'), t('home.myo.s3d', 'Nothing is charged for the work until you approve the quote. Say no and it stops there.')],
+                  ].map(([title, desc], i) => (
+                    <li key={title} className="flex gap-3">
+                      <span className="shrink-0 w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold tabular-nums bg-[var(--surface-2)] text-[var(--primary-2)] border border-[var(--line)]">
+                        {i + 1}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-[13px] font-semibold">{title}</span>
+                        <span className="block text-[12px] text-[var(--muted)] leading-relaxed mt-0.5">{desc}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
               </div>
             </Card>
           </div>
