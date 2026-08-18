@@ -414,7 +414,7 @@ function QuestionsEditor({ poll, onClose, onSaved }) {
         </p>
 
         {conflict && (
-          <div className="rounded-lg border border-[var(--danger)] p-3 space-y-2">
+          <div className="rounded-lg border border-[var(--error)] p-3 space-y-2">
             <div className="text-sm font-medium">
               {t('apq.lose.t', 'This removes {n} answer(s).').replace('{n}', String(conflict.answersLost))}
             </div>

@@ -435,7 +435,7 @@ function RecipeChecker() {
         </div>
       )}
       {res?.error === 'bad_toml' && (
-        <div className="mt-4 text-[12px] rounded-lg border border-[var(--danger)] p-3">
+        <div className="mt-4 text-[12px] rounded-lg border border-[var(--error)] p-3">
           <div className="font-medium mb-1">{t('dvt.rec.badtoml', 'That is not valid TOML.')}</div>
           <code className="text-[11px] break-words">{res.message}</code>
         </div>

@@ -97,7 +97,7 @@ export function Evidence({ s, onChanged }) {
               <button className="underline truncate text-left min-w-0" onClick={() => open(a)}>{a.name}</button>
               {a.bytes > 0 && <span className="text-[var(--faint)] shrink-0">{fmtBytes(a.bytes)}</span>}
               {a.note && <span className="text-[var(--faint)] truncate">— {a.note}</span>}
-              <button className="ml-auto shrink-0 text-[var(--faint)] hover:text-[var(--danger)]" title={t('common.delete', 'Delete')} onClick={() => remove(a)}>
+              <button className="ml-auto shrink-0 text-[var(--faint)] hover:text-[var(--error)]" title={t('common.delete', 'Delete')} onClick={() => remove(a)}>
                 <Trash2 size={12} />
               </button>
             </li>

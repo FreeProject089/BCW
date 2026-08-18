@@ -149,7 +149,7 @@ export function ActionBar({ actions, extra = [], className = '', size = 'sm' }) 
           {open && pos && createPortal(
             <>
               <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
-              {/* --bg-solid, not --surface-1: a popup must stay OPAQUE, else "Translucent
+              {/* --bg-solid, not --surface: a popup must stay OPAQUE, else "Translucent
                   surfaces" makes the cards behind it show through its text. Same rule the
                   Dropdown/DotDropdown menus follow. */}
               <div role="menu" className="fixed z-[61] rounded-xl border border-[var(--line-strong)] shadow-xl p-1"

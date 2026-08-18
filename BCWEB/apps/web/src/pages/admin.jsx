@@ -4413,8 +4413,8 @@ function AccountEndActions({ user, onClose, onChanged }) {
           </div>
         </button>
         <button type="button" disabled={busy} onClick={erase}
-          className="text-left rounded-lg border border-[var(--danger)]/40 p-2.5 hover:border-[var(--danger)] transition disabled:opacity-50">
-          <div className="text-xs font-semibold text-[var(--danger)] flex items-center gap-1.5">
+          className="text-left rounded-lg border border-[var(--error)]/40 p-2.5 hover:border-[var(--error)] transition disabled:opacity-50">
+          <div className="text-xs font-semibold text-[var(--error)] flex items-center gap-1.5">
             {busy ? <Spinner size={12} /> : <Trash2 size={12} />} {t('ud.end.erase', 'Delete it now')}
           </div>
           <div className="text-[11px] text-[var(--muted)] mt-0.5">
@@ -4519,7 +4519,7 @@ function DataRequestPanel({ user, onChanged }) {
       {preview && (
         <div className="mt-3 text-[12px]">
           {preview.ok === false ? (
-            <div className="rounded-lg border border-[var(--danger)] text-[var(--danger)] p-2.5">
+            <div className="rounded-lg border border-[var(--error)] text-[var(--error)] p-2.5">
               <div className="font-semibold mb-1">{t('gdpr.blocked', 'This account cannot be erased yet.')}</div>
               {(preview.blocked || []).map((b, i) => (
                 <div key={i} className="break-all"><code>{b.model}.{b.fk}</code> — {b.reason}</div>
@@ -7220,7 +7220,7 @@ function BmmpaStep({ node, depth = 0, t }) {
           <span className="text-[12px]">{node.type || node.kind}</span>
           {/* A glyph, not colour alone: a faint red word is easy to skim past on a light
               theme, and this is the thing not to skim. */}
-          {node.note && <span className="text-[10px] font-bold text-[var(--danger)] border border-[var(--danger)] rounded px-1">!</span>}
+          {node.note && <span className="text-[10px] font-bold text-[var(--error)] border border-[var(--error)] rounded px-1">!</span>}
           {node.refId && (node.refName
             ? <span className="text-[11px] text-[var(--muted)]">→ {node.refName}</span>
             : <span className="text-[11px] text-[var(--warning)]">→ {t('bmi.notIncluded', 'not in this file')}: <code>{node.refId}</code></span>)}
@@ -7280,7 +7280,7 @@ function RbacMap() {
       {open && (
         <div className="mt-3">
           {busy && <Spinner />}
-          {rep?.error && <div className="text-[12px] text-[var(--danger)]">{rep.error}</div>}
+          {rep?.error && <div className="text-[12px] text-[var(--error)]">{rep.error}</div>}
           {rep?.total > 0 && (<>
             {/* The verdict first: this is a security screen, and an answer under three
                 tables is an answer nobody reads. */}
@@ -7536,7 +7536,7 @@ function MapCard({ icon: Icon, title, badge, children, path, explainError }) {
         <div className="mt-3">
           {busy && <Spinner />}
           {rep?.error && (
-            <div className={`text-[12px] ${explainError?.[rep.error] ? 'text-[var(--muted)]' : 'text-[var(--danger)]'}`}>
+            <div className={`text-[12px] ${explainError?.[rep.error] ? 'text-[var(--muted)]' : 'text-[var(--error)]'}`}>
               {explainError?.[rep.error] || rep.error}
             </div>
           )}
@@ -7628,7 +7628,7 @@ function ComposeMap() {
           </MapRow>
         ))}
         {r.danglingDeps?.length > 0 && (
-          <div className="text-[12px] text-[var(--danger)] mt-3">
+          <div className="text-[12px] text-[var(--error)] mt-3">
             {t('cmap.dangling', 'A depends_on names a service that does not exist — compose will refuse to start:')}{' '}
             {r.danglingDeps.map((d) => `${d.service} → ${d.missing}`).join(', ')}
           </div>
@@ -7737,7 +7737,7 @@ function MigrationMap() {
       {(r) => {
         const bad = (r.counts?.appliedNotOnDisk ?? 0) + (r.counts?.unfinished ?? 0);
         return (<>
-          <div className={`text-[12px] rounded-lg border p-2.5 mb-3 ${bad ? 'border-[var(--danger)] text-[var(--danger)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+          <div className={`text-[12px] rounded-lg border p-2.5 mb-3 ${bad ? 'border-[var(--error)] text-[var(--error)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
             {!r.hasDatabase
               ? t('mig.nodb', '{n} migrations on disk. The database was not reachable, so applied/pending cannot be answered — and is not guessed.').replace('{n}', String(r.counts?.onDisk ?? 0))
               : bad
@@ -7746,12 +7746,12 @@ function MigrationMap() {
                   .replace('{d}', String(r.counts?.onDisk ?? 0)).replace('{a}', String(r.counts?.applied ?? 0)).replace('{p}', String(r.counts?.pending ?? 0))}
           </div>
           {(r.appliedNotOnDisk || []).map((n) => (
-            <MapRow key={n} n="!" tone="text-[var(--danger)]">
+            <MapRow key={n} n="!" tone="text-[var(--error)]">
               <code>{n}</code> <span className="text-[var(--faint)]">{t('mig.gone', 'applied, folder gone')}</span>
             </MapRow>
           ))}
           {(r.unfinished || []).map((u) => (
-            <MapRow key={u.name} n="!" tone="text-[var(--danger)]">
+            <MapRow key={u.name} n="!" tone="text-[var(--error)]">
               <code>{u.name}</code>{' '}
               <span className="text-[var(--faint)]">{u.rolledBack ? t('mig.rolled', 'rolled back') : t('mig.unfinished', 'started, never finished')}</span>
             </MapRow>
@@ -7914,8 +7914,8 @@ function SignatureVerdict({ v, t }) {
   }
   if (v.state === 'tampered') {
     return (
-      <div className="text-[12px] rounded-lg border border-[var(--danger)] p-2 mb-2">
-        <div className="text-[var(--danger)] font-medium">
+      <div className="text-[12px] rounded-lg border border-[var(--error)] p-2 mb-2">
+        <div className="text-[var(--error)] font-medium">
           {t('bmi.sig.tampered', 'ALTERED — this file carries a signature, and it does not match its contents.')}
         </div>
         <div className="text-[var(--muted)] mt-0.5">
@@ -8128,8 +8128,8 @@ function BmmpaInspector() {
           {/* Raised above the list on purpose: a path that climbs out of the archive is the one
               thing a reviewer must not have to scroll for. */}
           {(arch.warnings || []).length > 0 && (
-            <div className="rounded-lg border border-[var(--danger)] p-2 mb-2 text-[12px]">
-              <div className="font-medium text-[var(--danger)] mb-0.5">{t('bmi.zipwarn', 'Paths that leave the archive')}</div>
+            <div className="rounded-lg border border-[var(--error)] p-2 mb-2 text-[12px]">
+              <div className="font-medium text-[var(--error)] mb-0.5">{t('bmi.zipwarn', 'Paths that leave the archive')}</div>
               {arch.warnings.map((w, i) => <div key={i} className="text-[var(--muted)] break-all">{w}</div>)}
             </div>
           )}
@@ -8381,7 +8381,7 @@ function AdminWebhooks() {
           [t('sso.wh.failed', 'Failed (7 days)'), q.failedLast7d ?? 0, (q.failedLast7d || 0) > 0],
         ].map(([label, value, warn]) => (
           <div key={label} className="rounded-[12px] border border-[var(--line)] px-3 py-2 min-w-[120px]"
-               style={{ background: 'var(--surface-1)' }}>
+               style={{ background: 'var(--surface)' }}>
             <div className="text-[11px] text-[var(--muted)]">{label}</div>
             <div className={`text-[18px] font-semibold ${warn ? 'text-[var(--warning)]' : ''}`}>{value}</div>
           </div>
@@ -8650,7 +8650,7 @@ function RouteTest({ kind, label, t }) {
         {state === 'sending' ? <Spinner /> : <Megaphone size={13} />} {t('db.r.test', 'Send a test here')}
       </Button>
       {state && state !== 'sending' && (
-        <span className={`text-[12px] ${state.ok ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+        <span className={`text-[12px] ${state.ok ? 'text-[var(--success)]' : 'text-[var(--error)]'}`}>
           {state.ok ? t('db.r.test.ok', 'Delivered.') : state.error}
         </span>
       )}
@@ -10222,7 +10222,7 @@ function SessionEventRow({ e, idx, t }) {
         ) : (
           <>
             <span className="text-[var(--faint)] shrink-0">{verb}</span>
-            {e.label && <span className="font-medium text-[var(--fg)] truncate">{e.label}</span>}
+            {e.label && <span className="font-medium text-[var(--text)] truncate">{e.label}</span>}
             <span className="font-mono text-[10px] text-[var(--faint)]/70 truncate">· {e.path}</span>
           </>
         )}
@@ -12371,7 +12371,7 @@ function AdminCatalogs() {
                 <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline">/c/{c.slug}</a>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0 border-t border-[var(--border)] pt-2 sm:border-0 sm:pt-0">
+            <div className="flex items-center gap-2 shrink-0 border-t border-[var(--line)] pt-2 sm:border-0 sm:pt-0">
               {/* DotDropdown, not a native <select> with 🟢/⚪/🔴 in the labels: an <option> can
                   only hold text, which is why the emoji were there at all. They render in the
                   OS font, ignore the theme, and don't match the colour tokens the repo cards

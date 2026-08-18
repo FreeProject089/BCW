@@ -113,7 +113,7 @@ export default function StackMap({ stack, t = (k, d) => d }) {
                       is a wall of text over the drawing. */}
                   {label && lit && (
                     <text x={mid} y={(y1 + y2) / 2 - 5} fontSize="10" textAnchor="middle"
-                      fill="var(--muted)" style={{ paintOrder: 'stroke', stroke: 'var(--surface-1)', strokeWidth: 3 }}>{label}</text>
+                      fill="var(--muted)" style={{ paintOrder: 'stroke', stroke: 'var(--surface)', strokeWidth: 3 }}>{label}</text>
                   )}
                 </g>
               );

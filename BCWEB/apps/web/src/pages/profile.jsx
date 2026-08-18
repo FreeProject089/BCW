@@ -1044,7 +1044,7 @@ function CreatorLinks() {
           <div className="text-sm font-semibold flex items-center gap-1.5"><KeyRound size={14} /> {t('cl.keyTitle', 'Your BMM notifications key')}</div>
           <div className="text-xs text-[var(--faint)] leading-relaxed">{t('cl.keyDesc', 'Paste this into BMM under Settings → Identity & API to see your BetterCommunity notifications there. It is shown once and cannot be recovered — only revoked and replaced.')}</div>
           <div className="flex items-center gap-2">
-            <code className="flex-1 min-w-0 truncate text-xs font-mono px-2 py-1.5 rounded-lg bg-[var(--surface-1)]">{notifKey}</code>
+            <code className="flex-1 min-w-0 truncate text-xs font-mono px-2 py-1.5 rounded-lg bg-[var(--surface)]">{notifKey}</code>
             <Button size="sm" onClick={() => { copyText(notifKey); toast.success(t('cl.keyCopied', 'Key copied.')); }}><Copy size={13} /> {t('common.copy', 'Copy')}</Button>
           </div>
           <Button size="sm" variant="ghost" onClick={() => setNotifKey('')}>{t('cl.keyDone', 'I have saved it')}</Button>

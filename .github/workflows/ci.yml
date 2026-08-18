@@ -29,6 +29,10 @@ jobs:
       # i18n integrity: fails on duplicate dict keys (silent-override bugs) and, in
       # --strict, on any t() key used in code with no DICT.fr entry (silent EN fallback).
       - run: npm run i18n:check
+      # A CSS variable that is used and never defined. Harmless in most declarations, and NOT
+      # harmless inside color-mix(): the function becomes invalid, an invalid `fill` falls
+      # back to black, and the code map drew every file as a black bar with black text on it.
+      - run: npm run css:check
       # The "last updated" date on the legal pages must not be older than the pages. A privacy
       # policy is quoted by its date, and a wrong one looks authoritative.
       - run: npm run legal:check

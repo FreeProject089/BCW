@@ -111,7 +111,7 @@ export default function AdminStatusPage() {
                           <button className="ml-auto hover:text-[var(--text)]" onClick={() => toggleVisible(n)}>
                             {n.publicNote ? t('stp.n.hide', 'Hide from the page') : t('stp.n.show', 'Publish')}
                           </button>
-                          <button className="hover:text-[var(--danger)]" onClick={() => remove(n)}>{t('common.delete', 'Delete')}</button>
+                          <button className="hover:text-[var(--error)]" onClick={() => remove(n)}>{t('common.delete', 'Delete')}</button>
                         </div>
                         <div className="text-[var(--muted)] whitespace-pre-wrap break-words">{n.body}</div>
                       </div>

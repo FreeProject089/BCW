@@ -331,7 +331,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                 {collapsed ? (
                                     <g transform={`translate(${b.x + PAD}, ${b.y + HEADER + PAD})`}>
                                         <rect width={COL_W - PAD * 2} height={FILE_H} rx="5"
-                                            fill="color-mix(in srgb, var(--primary) 10%, var(--surface-1))" stroke="var(--line)" />
+                                            fill="color-mix(in srgb, var(--primary) 10%, var(--surface))" stroke="var(--line)" />
                                         <text x="7" y="15" fontSize="11" fill="var(--text)">
                                             {t('cm.nfiles', '{n} file(s)').replace('{n}', String(b.files.length))}
                                         </text>
@@ -358,8 +358,8 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                             <title>{`${f.id} — ${f.dependents} dependent(s)`}</title>
                                             <rect width={p.w} height={p.h} rx="5"
                                                 fill={f.served
-                                                  ? 'color-mix(in srgb, var(--warning) 12%, var(--surface-1))'
-                                                  : `color-mix(in srgb, var(--primary) ${Math.round(strength * 30)}%, var(--surface-1))`}
+                                                  ? 'color-mix(in srgb, var(--warning) 12%, var(--surface))'
+                                                  : `color-mix(in srgb, var(--primary) ${Math.round(strength * 30)}%, var(--surface))`}
                                                 stroke={picked === f.id ? 'var(--primary-2)' : f.served ? 'color-mix(in srgb, var(--warning) 45%, var(--line))' : 'var(--line)'}
                                                 strokeWidth={picked === f.id ? 2 : 1}
                                                 strokeDasharray={f.served ? '4 3' : undefined} />
@@ -424,7 +424,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                                         className="block text-left text-[11px] text-[var(--muted)] hover:text-[var(--primary-2)] break-all">
                                                         {other.file}:{other.line}
                                                     </button>
-                                                    <code className="block mt-0.5 px-1.5 py-1 rounded bg-[var(--surface-1)] border border-[var(--line)] text-[10.5px] break-all">
+                                                    <code className="block mt-0.5 px-1.5 py-1 rounded bg-[var(--surface)] border border-[var(--line)] text-[10.5px] break-all">
                                                         {(outgoing ? l.from : l.to).text}
                                                     </code>
                                                 </li>
@@ -518,7 +518,7 @@ function Trace({ steps, from, to, onClear, t }) {
                                 <b className="text-[var(--text)]">{i + 1}.</b> {short(s.from)} → {short(s.to)}
                             </div>
                             {/* The proof. Without the line and its text this is an assertion. */}
-                            <code className="block mt-0.5 px-1.5 py-1 rounded bg-[var(--surface-1)] border border-[var(--line)] text-[11px] break-all">
+                            <code className="block mt-0.5 px-1.5 py-1 rounded bg-[var(--surface)] border border-[var(--line)] text-[11px] break-all">
                                 <span className="text-[var(--faint)]">{s.from.split('/').pop()}:{s.line}</span>{'  '}{s.text}
                             </code>
                         </li>

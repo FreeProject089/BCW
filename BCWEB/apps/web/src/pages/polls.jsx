@@ -127,10 +127,10 @@ function PollForm({ poll, onDone, onWithdraw }) {
           {q.help && <div className="text-[13px] text-[var(--muted)] mt-1"><Markdown>{q.help}</Markdown></div>}
         </div>
       ) : (
-        <div key={q.id} className={`rounded-lg border p-3 ${errAt === q.id ? 'border-[var(--danger)]' : 'border-[var(--line)]'}`}>
+        <div key={q.id} className={`rounded-lg border p-3 ${errAt === q.id ? 'border-[var(--error)]' : 'border-[var(--line)]'}`}>
           <div className="text-[13px] font-medium">
             {q.label}
-            {q.required && <span className="text-[var(--danger)] ml-1" title={t('poll.f.required', 'Required')}>*</span>}
+            {q.required && <span className="text-[var(--error)] ml-1" title={t('poll.f.required', 'Required')}>*</span>}
           </div>
           {q.help && <p className="text-[12px] text-[var(--muted)] mt-0.5">{q.help}</p>}
 
@@ -200,7 +200,7 @@ function PollForm({ poll, onDone, onWithdraw }) {
                         {/* The row-name column stays put while the columns scroll under it.
                             Scrolling it away meant answering row 3 while the screen only showed
                             the radios — you could not tell which row you were on. It must be
-                            OPAQUE (--bg-solid, not --surface-1): with "Translucent surfaces" on,
+                            OPAQUE (--bg-solid, not --surface): with "Translucent surfaces" on,
                             the columns would read straight through it. */}
                         <th className="sticky left-0 z-10 bg-[var(--bg-solid)] text-left font-normal text-[12px] text-[var(--muted)] pb-1.5 pr-3" />
                         {(q.choices || []).map((c) => (

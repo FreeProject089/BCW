@@ -140,7 +140,7 @@ function RepoContents({ id, k }) {
       </div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('rc.sub', 'Download a file directly — no BMM needed.')}</p>
 
-      <ul className="divide-y divide-[var(--border)]">
+      <ul className="divide-y divide-[var(--line)]">
         <TreeLevel node={tree} depth={0} path="" />
       </ul>
       {access.restricted && <p className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><Lock size={10} /> {t('rc.youok', 'This repo is restricted — your account is allowed.')}</p>}
