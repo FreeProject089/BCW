@@ -162,6 +162,13 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
     // Only at the finest detail do files grow to hold their functions.
     const fnByFile = detail === 'functions' ? (graph?.fnByFile || {}) : {};
     const collapsed = detail === 'folders';
+    // The layout comes FIRST: `fnPos` below reads `pos`, and a dependency array is evaluated
+    // on every render — including the first, where a `const` declared further down has not
+    // been initialised yet. That is a temporal-dead-zone throw during render, so the whole
+    // tool rendered as "can't access lexical declaration before initialization" and nothing
+    // else. Early-returning inside the callback does not save it; the array is read anyway.
+    const { boxes, pos, width, height } = useMemo(() => layout(nodes, folders, fnByFile, collapsed), [nodes, folders, fnByFile, collapsed]);
+
     // Where each drawn function sits, so a call can land on the FUNCTION rather than on the
     // file that contains it. Same geometry the chips are drawn with — one source, so a chip and
     // the line arriving at it cannot disagree.
@@ -177,7 +184,6 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
         }
         return m;
     }, [detail, fnByFile, pos]);
-    const { boxes, pos, width, height } = useMemo(() => layout(nodes, folders, fnByFile, collapsed), [nodes, folders, fnByFile, collapsed]);
 
     if (!nodes.length) return null;
 
