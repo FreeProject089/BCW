@@ -20,7 +20,7 @@ import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx'
 import { useAuth } from './auth.jsx';
 import { utilAllowed, effectiveCaps } from '../lib/roles.js';
 import { readLayout, navAlignClass } from '../lib/navLayout.js';
-import { listZip, readZipEntry } from '../lib/zip-read.js';
+import { listZip, readZipEntry, hashEntries } from '../lib/zip-read.js';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
 import { rawStatusLabel, DotDropdown } from './repos.jsx';
@@ -7949,6 +7949,9 @@ function BmmpaInspector() {
   const [arch, setArch] = useState(null);
   const [entry, setEntry] = useState(null);
   const [busyZip, setBusyZip] = useState(false);
+  // The verdict on the ARCHIVE as a whole, which is a different question from the verdict on
+  // any single document inside it.
+  const [archSig, setArchSig] = useState(null);
   // The API returns codes; the words are ours. An unknown code falls back to itself rather
   // than to a blank — a moderator seeing "app.frobnicate" learns something, a moderator
   // seeing nothing does not.
@@ -8011,6 +8014,7 @@ function BmmpaInspector() {
    */
   const loadArchive = async (file) => {
     setBusyZip(true);
+    setArchSig(null);
     try {
       const listing = await listZip(file);
       setArch(listing);
@@ -8030,6 +8034,26 @@ function BmmpaInspector() {
    * exists for a pasted document. The archive itself still does not move.
    */
   const summarise = async (file, listing) => {
+    // An archive's signature is an ENTRY, not a block: bmm_signature.json lists every other
+    // file and its hash. Verifying it means hashing the archive here — it never moves — and
+    // sending the list, which is exactly what was signed.
+    const sigRow = listing.entries.find((e) => e.name === 'bmm_signature.json');
+    if (sigRow) {
+      try {
+        const got = await readZipEntry(file, sigRow);
+        const doc = JSON.parse(got.text);
+        const hashes = await hashEntries(file, listing);
+        if (!hashes) {
+          setArchSig({ state: 'toobig' });
+        } else {
+          const r = await api.post('/admin/inspect', { doc, archive: hashes });
+          setArchSig(r.archiveSignature || { state: 'unsigned' });
+        }
+      } catch { setArchSig({ state: 'malformed', reason: 'bmm_signature.json could not be read' }); }
+    } else {
+      setArchSig({ state: 'unsigned' });
+    }
+
     const known = [];
     for (const row of listing.entries) {
       if (known.length >= 12) break;
@@ -8116,6 +8140,14 @@ function BmmpaInspector() {
       {busyZip && <div className="text-[12px] text-[var(--muted)] mb-2"><Spinner /> {t('bmi.zipreading', 'Reading the archive…')}</div>}
       {arch ? (
         <div className="mb-2">
+          {/* Whether the ARCHIVE is intact — above its file list, because it changes how the
+              list should be read. */}
+          {archSig && archSig.state !== 'toobig' && <SignatureVerdict v={archSig} t={t} />}
+          {archSig?.state === 'toobig' && (
+            <div className="text-[12px] rounded-lg border border-[var(--line)] text-[var(--muted)] p-2 mb-2">
+              {t('bmi.sig.toobig', 'Too large to verify in the browser — every entry would have to be hashed. The listing below is still exact.')}
+            </div>
+          )}
           <div className="flex items-center gap-2 flex-wrap text-[12px] text-[var(--muted)] mb-1">
             <span>{t('bmi.zipn', '{n} file(s), {kb} KB').replace('{n}', String(arch.total)).replace('{kb}', String(Math.round(arch.bytes / 1024)))}</span>
             {arch.truncated && <Badge tone="amber">{t('bmi.ziptrunc', 'showing the first {n}').replace('{n}', String(arch.listed))}</Badge>}

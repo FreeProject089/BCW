@@ -239,3 +239,30 @@ export async function readZipEntry(file, row) {
         text: new TextDecoder('utf-8').decode(cut),
     };
 }
+
+/**
+ * The SHA-256 of every entry, for verifying a signed archive.
+ *
+ * The archive never leaves this machine, so the hashes are computed here and only the list
+ * travels — which is exactly what BMM signed, so the check the server performs is the same
+ * one it would perform with the bytes in front of it.
+ *
+ * Bounded by total size rather than by count: hashing is a full read of every entry, and a
+ * 400 MB `.DATABMM` is not what this is for. Past the limit it returns null and the caller
+ * says "too large to verify" instead of quietly saying "unsigned".
+ */
+export async function hashEntries(file, listing, { maxBytes = 64 * 1024 * 1024 } = {}) {
+    const rows = (listing?.entries || []);
+    const total = rows.reduce((n, r) => n + (r.size || 0), 0);
+    if (total > maxBytes) return null;
+    const out = [];
+    for (const row of rows) {
+        const bytes = await readZipEntryBytes(file, row);
+        const digest = await crypto.subtle.digest('SHA-256', bytes);
+        out.push({
+            name: row.name,
+            sha256: [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join(''),
+        });
+    }
+    return out;
+}

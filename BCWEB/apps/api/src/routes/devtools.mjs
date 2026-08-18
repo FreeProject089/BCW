@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { requireRole, requireCap, db } from '../lib/lib.mjs';
 import { inspectAny } from '../lib/bmm-formats.mjs';
+import { verifyArchiveList } from '../lib/bmm-signature.mjs';
 import { buildRbacMap } from '../lib/rbac-map.mjs';
 import { mapSchema, findIndexDrift } from '../lib/schema-map.mjs';
 import { buildComposeMap } from '../lib/compose-map.mjs';
@@ -462,9 +463,19 @@ export default async function devtoolRoutes(app) {
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
     bodyLimit: 8 * 1024 * 1024,
   }, async (req, reply) => {
-    const b = z.object({ doc: z.any() }).safeParse(req.body);
+    const b = z.object({
+      doc: z.any(),
+      // An ARCHIVE sends its entries as name + sha256 instead of its bytes: the file never
+      // leaves the reviewer's machine (see apps/web/src/lib/zip-read.js), so the hashes are
+      // computed there and only the list travels. That is enough to answer the question —
+      // the signature covers exactly that list.
+      archive: z.array(z.object({ name: z.string().max(400), sha256: z.string().length(64) })).max(4000).optional(),
+    }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const report = inspectAny(b.data.doc);
+    if (b.data.archive) {
+      report.archiveSignature = verifyArchiveList(b.data.doc, b.data.archive, report.format);
+    }
     // 200 with ok:false, not a 4xx: "this is not a format I know" is an ANSWER about the
     // file, and the body carries the keys it did find so the caller can say what it saw.
     return report;

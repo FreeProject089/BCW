@@ -117,3 +117,96 @@ export function verifyDocument(doc, expectedFormat) {
         ? { state: 'valid', authorId, format, signedAt: block.signed_at || null }
         : { state: 'tampered', authorId };
 }
+
+// ── Archives ──────────────────────────────────────────────────────────────────
+//
+// A `.bmmplug` and a `.bmmtheme` are ZIPs, so there is no document to carry a block. They
+// hold one more entry instead — `bmm_signature.json`, an ordinary signed document whose
+// content is every other entry and its SHA-256.
+//
+// Which makes verifying two questions, and BOTH must pass:
+//   1. does the block verify over the list (so the list itself was not rewritten);
+//   2. does every file in the archive hash to what the list says.
+//
+// Signing only the manifest inside a plugin would be worse than not signing it: it would
+// tell a moderator "this plugin is intact" while every script beside the manifest could have
+// been swapped. This is the check that makes the claim mean the whole archive.
+
+import { createHash } from 'node:crypto';
+
+export const ARCHIVE_ENTRY = 'bmm_signature.json';
+
+const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
+
+/**
+ * The verdict on an archive.
+ *
+ * `entries` are [{ name, data }] — the shape the zip reader already produces.
+ */
+export function verifyArchive(entries = [], expectedFormat) {
+    const sig = entries.find((e) => e?.name === ARCHIVE_ENTRY);
+    if (!sig) return { state: 'unsigned' };
+
+    let doc;
+    try {
+        doc = JSON.parse(Buffer.from(sig.data).toString('utf8'));
+    } catch (e) {
+        return { state: 'malformed', reason: `${ARCHIVE_ENTRY} is not JSON` };
+    }
+
+    // The list first: if it was edited, nothing it claims about the files means anything.
+    const verdict = verifyDocument(doc, expectedFormat);
+    if (verdict.state !== 'valid') return verdict;
+
+    const listed = new Map((doc.entries || [])
+        .filter((r) => r && typeof r.name === 'string')
+        .map((r) => [r.name, r.sha256]));
+
+    for (const e of entries) {
+        if (!e || e.name === ARCHIVE_ENTRY) continue;
+        const want = listed.get(e.name);
+        // A file that is not in the list was added after signing.
+        if (!want) return { state: 'tampered', authorId: verdict.authorId, detail: `${e.name} was added` };
+        if (want !== sha256(e.data)) {
+            return { state: 'tampered', authorId: verdict.authorId, detail: `${e.name} was changed` };
+        }
+    }
+    const present = new Set(entries.map((e) => e?.name));
+    for (const name of listed.keys()) {
+        if (!present.has(name)) {
+            return { state: 'tampered', authorId: verdict.authorId, detail: `${name} was removed` };
+        }
+    }
+    return verdict;
+}
+
+/**
+ * The same check, when the caller has HASHES instead of bytes.
+ *
+ * The inspector reads the archive in the reviewer's browser and never uploads it, so the
+ * files are not here to hash. It sends `[{ name, sha256 }]` instead — which is precisely what
+ * the signed list contains, so the comparison is identical and nothing is weakened: the
+ * hashes were computed from the real bytes a moment earlier, on the machine that has them.
+ *
+ * `doc` is the parsed bmm_signature.json.
+ */
+export function verifyArchiveList(doc, computed = [], expectedFormat) {
+    const verdict = verifyDocument(doc, expectedFormat);
+    if (verdict.state !== 'valid') return verdict;
+
+    const listed = new Map((doc.entries || [])
+        .filter((r) => r && typeof r.name === 'string')
+        .map((r) => [r.name, r.sha256]));
+
+    for (const e of computed) {
+        if (e.name === ARCHIVE_ENTRY) continue;
+        const want = listed.get(e.name);
+        if (!want) return { state: 'tampered', authorId: verdict.authorId, detail: `${e.name} was added` };
+        if (want !== e.sha256) return { state: 'tampered', authorId: verdict.authorId, detail: `${e.name} was changed` };
+    }
+    const present = new Set(computed.map((e) => e.name));
+    for (const name of listed.keys()) {
+        if (!present.has(name)) return { state: 'tampered', authorId: verdict.authorId, detail: `${name} was removed` };
+    }
+    return verdict;
+}

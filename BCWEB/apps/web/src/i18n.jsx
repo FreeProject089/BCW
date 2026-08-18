@@ -364,6 +364,7 @@ const DICT = {
     'db.r.role.h': 'Uniquement pour un cas urgent. Un rôle mentionné à chaque message est un rôle que les gens coupent.',
     'db.f.roleid': 'ID de rôle',
     'bmi.badzip2': 'Ce fichier n’est pas une archive lisible.',
+    'bmi.sig.toobig': 'Trop volumineux pour être vérifié dans le navigateur — il faudrait hacher chaque entrée. La liste ci-dessous reste exacte.',
     'bmi.sig.unsigned': 'Non signé — ce fichier ne prétend rien sur son auteur. Ce n’est pas un défaut : les fichiers écrits avant que BMM ne signe quoi que ce soit, et ceux écrits par d’autres outils, ressemblent à ça.',
     'bmi.sig.valid': 'Intact — inchangé depuis sa signature.',
     'bmi.sig.key': 'Clé de signature',
