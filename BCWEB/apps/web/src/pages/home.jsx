@@ -301,35 +301,38 @@ export function Home() {
             <Card className="p-8 sm:p-10 relative overflow-hidden">
               <div className="absolute inset-0 pointer-events-none opacity-[0.07]"
                 style={{ background: 'radial-gradient(60% 120% at 15% 0%, var(--primary) 0%, transparent 70%)' }} />
-              <div className="relative grid lg:grid-cols-[1.3fr_1fr] gap-8 items-center">
-                <div>
-                  <div className="inline-flex items-center gap-2 badge badge-primary mb-4"><Wand2 size={13} /> {t('home.myo.k', 'Make Your Own')}</div>
-                  <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{t('home.myo.t', 'Have it built for you')}</h3>
-                  <p className="text-[var(--muted)] mt-3 leading-relaxed">
-                    {t('home.myo.d', 'A Discord bot, an app, a website, or something nobody has made yet. It starts with a paid consultation — advice and a quote — and building begins only once you have approved that quote. Nothing is charged for the work before you agree to it.')}
-                  </p>
-                  <div className="flex flex-wrap gap-2 mt-6">
-                    <Link to="/myo"><Button variant="primary" className="!px-5 !py-2.5"><Wand2 size={15} /> {t('home.myo.cta', 'Start a commission')}</Button></Link>
-                  </div>
-                  {myo?.queueFull && (
-                    <p className="text-[12px] text-[var(--warning)] mt-3 inline-flex items-center gap-1.5">
-                      <Clock size={12} /> {t('home.myo.full', 'The queue is full right now — new commissions are paused.')}
-                    </p>
-                  )}
-                </div>
-                {/* What can be commissioned, named. The same four kinds the intake form
-                    offers, so the page does not promise a category the form cannot take. */}
-                <div className="grid grid-cols-2 gap-3">
+              {/* One column, not two.
+                  The four kinds used to sit in a right-hand grid as bordered, padded,
+                  card-backed boxes — which is what a button looks like on this site, so the
+                  section offered five things to click and only one of them did anything.
+                  They are a LIST of what can be commissioned, so they are written as a list:
+                  no border, no surface, no padding, nothing that invites a click. The only
+                  control in the section is the one that works. */}
+              <div className="relative max-w-2xl">
+                <div className="inline-flex items-center gap-2 badge badge-primary mb-4"><Wand2 size={13} /> {t('home.myo.k', 'Make Your Own')}</div>
+                <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{t('home.myo.t', 'Have it built for you')}</h3>
+                <p className="text-[var(--muted)] mt-3 leading-relaxed">
+                  {t('home.myo.d', 'A Discord bot, an app, a website, or something nobody has made yet. It starts with a paid consultation — advice and a quote — and building begins only once you have approved that quote. Nothing is charged for the work before you agree to it.')}
+                </p>
+                <ul className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-5 text-[13px] text-[var(--muted)]">
                   {[[Bot, t('home.myo.f1', 'Discord bots')],
                     [AppWindow, t('home.myo.f2', 'Apps')],
                     [Globe, t('home.myo.f3', 'Websites')],
                     [Sparkles, t('home.myo.f4', 'Something else')]].map(([I, label]) => (
-                    <span key={label} className="flex items-center gap-2.5 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-3.5 py-3">
-                      <I size={16} className="text-[var(--primary-2)] shrink-0" />
-                      <span className="text-[13px] font-medium min-w-0 truncate">{label}</span>
-                    </span>
+                    <li key={label} className="inline-flex items-center gap-2">
+                      <I size={15} className="text-[var(--primary-2)] shrink-0" aria-hidden="true" />
+                      <span>{label}</span>
+                    </li>
                   ))}
+                </ul>
+                <div className="flex flex-wrap gap-2 mt-6">
+                  <Link to="/myo"><Button variant="primary" className="!px-5 !py-2.5"><Wand2 size={15} /> {t('home.myo.cta', 'Start a commission')}</Button></Link>
                 </div>
+                {myo?.queueFull && (
+                  <p className="text-[12px] text-[var(--warning)] mt-3 inline-flex items-center gap-1.5">
+                    <Clock size={12} /> {t('home.myo.full', 'The queue is full right now — new commissions are paused.')}
+                  </p>
+                )}
               </div>
             </Card>
           </div>

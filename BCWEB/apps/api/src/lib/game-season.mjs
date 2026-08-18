@@ -31,6 +31,17 @@ export function previousSeason(season) {
     return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
 }
 
+/** The first moment AFTER a season, in UTC — i.e. when the board resets.
+ *
+ *  Derived from the season string rather than from "now", so it is the same answer whether
+ *  it is asked on the 1st or the 30th, and it handles December → January without a
+ *  hand-rolled `month + 1` rolling over to month 13. */
+export function seasonEndsAt(season) {
+    const [y, m] = String(season).split('-').map(Number);
+    if (!y || !m) return new Date(0);
+    return m === 12 ? new Date(Date.UTC(y + 1, 0, 1)) : new Date(Date.UTC(y, m, 1));
+}
+
 /** Rank → percent off. First place gets the biggest cut; the shape of the podium is the
  *  whole reason anyone plays for it. */
 export const PODIUM = [
@@ -39,10 +50,17 @@ export const PODIUM = [
     { rank: 3, percentOff: 5 },
 ];
 
-/** A code has to be worth having and impossible to hoard: it expires. Three months is long
- *  enough to plan a purchase around and short enough that a season's prize belongs to that
- *  season. */
-export const AWARD_VALID_DAYS = 90;
+/** A code has to be worth having and impossible to hoard: it expires.
+ *
+ *  One month, matching the season that awarded it. Ninety days meant a player could be
+ *  holding three seasons' codes at once, which is the opposite of what a monthly board is
+ *  for — the prize stops belonging to the month you won it in, and the next month's podium
+ *  competes with a stack of unspent codes.
+ *
+ *  30 days rather than "the end of next month": a winner announced on the 2nd and one
+ *  announced on the 27th should get the same amount of time, and a calendar-month expiry
+ *  gives one of them four times the other. */
+export const AWARD_VALID_DAYS = 30;
 
 /** What a winner's code requires: a 3-month term, OR a basket of $10 or more. */
 export const AWARD_MIN_MONTHS = 3;

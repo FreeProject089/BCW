@@ -8,7 +8,7 @@
 // wiped board has nothing left to decide from.
 import { z } from 'zod';
 import { db, requireRole, optionalAuth } from '../lib/lib.mjs';
-import { seasonOf, previousSeason, PODIUM, AWARD_MIN_MONTHS, AWARD_MIN_AMOUNT_CENTS } from '../lib/game-season.mjs';
+import { seasonOf, previousSeason, seasonEndsAt, PODIUM, AWARD_MIN_MONTHS, AWARD_MIN_AMOUNT_CENTS, AWARD_VALID_DAYS } from '../lib/game-season.mjs';
 
 /** Names and avatars for a set of ids, in one query. */
 async function usersById(p, ids) {
@@ -54,7 +54,18 @@ export default async function gameRoutes(app) {
       season,
       // What is at stake this month, sent with the board rather than written into the page:
       // the numbers live in one file and the page must not disagree with the codes it mints.
-      prizes: { podium: PODIUM, minMonths: AWARD_MIN_MONTHS, minAmountCents: AWARD_MIN_AMOUNT_CENTS },
+      // The instant this season stops counting: the first moment of the next month, UTC.
+      // Sent rather than derived in the page, because the page and the sweeper must agree
+      // about which month a score lands in — and the page does not know the sweeper uses UTC.
+      endsAt: seasonEndsAt(season).toISOString(),
+      prizes: {
+        podium: PODIUM,
+        minMonths: AWARD_MIN_MONTHS,
+        minAmountCents: AWARD_MIN_AMOUNT_CENTS,
+        // How long a won code lasts. Same reason as the rest of this block: the page must
+        // not print a number the codes are not minted with.
+        validDays: AWARD_VALID_DAYS,
+      },
       leaderboard: top.map((s, i) => {
         const u = byId.get(s.userId);
         return { rank: i + 1, score: s.score, user: u ? { displayName: u.displayName, avatar: u.avatar } : null };

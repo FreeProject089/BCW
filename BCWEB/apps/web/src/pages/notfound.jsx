@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Home as HomeIcon, Trophy, Play, RotateCcw, Gamepad2, ChevronDown } from 'lucide-react';
+import { Home as HomeIcon, Trophy, Play, RotateCcw, Gamepad2, ChevronDown, Timer } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -12,6 +12,28 @@ const W = 340, H = 460;
 // A tiny "Orb Fall" catcher — move the paddle to catch the orange BetterCommunity orbs
 // (+1) and dodge the red ones (game over). Runs entirely client-side (canvas + rAF); the
 // score is submitted to a leaderboard only if you're signed in. This is the 404 page.
+/**
+ * How much of the season is left, in the largest unit that is still honest.
+ *
+ * "Resets on the 1st" was true and useless: on the 2nd it means a month, on the 31st it means
+ * hours, and the whole reason to look at a monthly board is to know which of those you are in.
+ *
+ * Days while there are days, then hours, then minutes — never "0 days", which reads as over
+ * when there are still twenty hours to play. Returns null once the season has passed, so the
+ * caller shows nothing rather than a negative number.
+ */
+function timeLeft(endsAt, t) {
+    if (!endsAt) return null;
+    const ms = new Date(endsAt).getTime() - Date.now();
+    if (!Number.isFinite(ms) || ms <= 0) return null;
+    const mins = Math.floor(ms / 60000);
+    const hours = Math.floor(mins / 60);
+    const days = Math.floor(hours / 24);
+    if (days >= 1) return t('nf.leftD', '{n} days left').replace('{n}', String(days));
+    if (hours >= 1) return t('nf.leftH', '{n}h left').replace('{n}', String(hours));
+    return t('nf.leftM', '{n} min left').replace('{n}', String(Math.max(1, mins)));
+}
+
 export default function NotFound() {
   const { t } = useI18n(); const { user } = useAuth();
   const canvasRef = useRef(null);
@@ -21,13 +43,27 @@ export default function NotFound() {
   const [best, setBest] = useState(0);
   const [board, setBoard] = useState([]);
   const [saved, setSaved] = useState(null); // { improved } after submitting
+  // The countdown is text, not state — but it has to be RECOMPUTED for the page to keep
+  // telling the truth. A 404 with a leaderboard is a page people leave open; a minute tick is
+  // enough for a unit that never gets finer than minutes, and cheap enough not to matter.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const [boardOpen, setBoardOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768); // collapsed by default on phones
 
-  const [season, setSeason] = useState(null);   // { season, prizes }
+  // Everything the endpoint says about the season, not a hand-copied subset.
+  //
+  // This used to be `{ season: r.season, prizes: r.prizes }`, and adding endsAt to the API
+  // changed nothing on screen: the field arrived and was dropped one line later, silently,
+  // exactly the way an allowlist serialiser drops a new column. A projection that has to be
+  // edited every time the endpoint grows is a projection that will be forgotten.
+  const [season, setSeason] = useState(null);   // the /game/leaderboard payload, minus the board
   const [awards, setAwards] = useState(null);   // last month's podium
 
   const loadBoard = () => api.get('/game/leaderboard?game=orbfall')
-    .then((r) => { setBoard(r.leaderboard || []); setSeason({ season: r.season, prizes: r.prizes }); })
+    .then((r) => { const { leaderboard, ...rest } = r; setBoard(leaderboard || []); setSeason(rest); })
     .catch(() => {});
   useEffect(() => {
     loadBoard();
@@ -225,8 +261,23 @@ export default function NotFound() {
                   .replace('{m}', String(season.prizes.minMonths))
                   .replace('${a}', `$${Math.round(season.prizes.minAmountCents / 100)}`)}
               </div>
-              <div className="text-[11px] text-[var(--faint)] mt-1">
-                {t('nf.season', 'Board for {s} · resets on the 1st').replace('{s}', season.season)}
+              {/* The code's own expiry, said where the prize is described rather than
+                  discovered later: a code that outlives its season is a code somebody is
+                  saving for a purchase they will make too late. */}
+              {season.prizes.validDays != null && (
+                <div className="text-[11px] text-[var(--faint)] mt-1">
+                  {t('nf.prizevalid', 'A won code is valid for {n} days from the day it is awarded.')
+                    .replace('{n}', String(season.prizes.validDays))}
+                </div>
+              )}
+              <div className="text-[11px] text-[var(--faint)] mt-1 inline-flex items-center gap-1.5">
+                <Timer size={11} className="shrink-0" />
+                <span>
+                  {t('nf.season', 'Board for {s}').replace('{s}', season.season)}
+                  {timeLeft(season.endsAt, t)
+                    ? ` \u00b7 ${timeLeft(season.endsAt, t)}`
+                    : ` \u00b7 ${t('nf.resets', 'resets on the 1st')}`}
+                </span>
               </div>
             </div>
           )}

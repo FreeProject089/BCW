@@ -13,7 +13,7 @@
 //
 // The word "simulation" is avoided for the same reason.
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ChevronRight, FileCode2, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { ArrowDown, ChevronRight, FileCode2, Play, Pause, SkipBack, SkipForward, Search, X } from 'lucide-react';
 
 const KIND_LABEL = {
     http: 'over HTTP',
@@ -63,6 +63,7 @@ function Step({ s, n, last, current }) {
 
 export default function CodeFlows({ flows = [], t = (k, d) => d }) {
     const [open, setOpen] = useState(null);
+    const [q, setQ] = useState('');
     // Where the walkthrough is standing, and whether it is moving on its own. `null` means
     // nobody has started it — every step reads normally, which is the state you want when you
     // are scanning rather than following.
@@ -91,17 +92,65 @@ export default function CodeFlows({ flows = [], t = (k, d) => d }) {
         setAt((i) => Math.max(0, Math.min(steps.length - 1, (i ?? (d > 0 ? -1 : 0)) + d)));
     };
 
+    // Filtering keeps each flow's ORIGINAL index alongside it.
+    //
+    // `open` and the `steps` lookup are indexes into `flows`, so filtering into a fresh array
+    // would renumber them: type a query with a flow open and a different one expands, with the
+    // walkthrough standing on a step that belongs to neither. Carrying the index is what makes
+    // the search safe to use while reading rather than only before it.
+    //
+    // The haystack is the flow's label, its kind, and every step's label and file. With forty
+    // flows the question is almost never "which one is called X" — it is "which one touches
+    // this file", and a search that only read labels could not answer it.
+    const needle = q.trim().toLowerCase();
+    const shown = flows
+        .map((f, i) => ({ f, i }))
+        .filter(({ f }) => !needle || (
+            `${f.label} ${f.kind} ${(f.steps || []).map((s) => `${s.label || ''} ${s.file || ''}`).join(' ')}`
+                .toLowerCase().includes(needle)
+        ));
+
     if (!flows.length) return null;
     return (
         <div className="mt-4">
             <div className="text-[11px] uppercase tracking-wide text-[var(--faint)] mb-2">
-                {t('cf.title', 'What runs, in order')} <span className="tabular-nums">({flows.length})</span>
+                {t('cf.title', 'What runs, in order')}{' '}
+                {/* The count says what you are looking at, not what exists: "7 of 40" while a
+                    query is on, so a short list never reads as a scan that found little. */}
+                <span className="tabular-nums">
+                    ({needle ? `${shown.length}/${flows.length}` : flows.length})
+                </span>
             </div>
             <p className="text-[12px] text-[var(--muted)] mb-2">
                 {t('cf.sub', 'Each one starts at a call this scan proved and follows what the receiving function reaches for next. Nothing is executed and nothing is described — every step shows the file, the line and the source, so you read the code rather than a summary of it.')}
             </p>
+            {/* Search appears once the list is long enough to need it. Below that it is a
+                control that costs a row and saves nothing. */}
+            {flows.length > 6 && (
+                <div className="relative mb-2">
+                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
+                    <input
+                        value={q}
+                        onChange={(e) => setQ(e.target.value)}
+                        placeholder={t('cf.search', 'Search a flow, a function or a file…')}
+                        aria-label={t('cf.search', 'Search a flow, a function or a file…')}
+                        className="input w-full !pl-8 !pr-8 !py-1.5 !text-[13px]"
+                    />
+                    {q && (
+                        <button type="button" onClick={() => setQ('')} title={t('cf.clear', 'Clear')}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]">
+                            <X size={13} />
+                        </button>
+                    )}
+                </div>
+            )}
+            {needle && !shown.length && (
+                <p className="text-[12px] text-[var(--muted)] py-3">
+                    {t('cf.none', 'No flow matches that — the search reads flow names, function names and file paths.')}
+                </p>
+            )}
             <div className="space-y-2">
-                {flows.map((f, i) => (
+                {shown.map(({ f, i }) => (
                     <div key={i} className="rounded-xl border border-[var(--line)] overflow-hidden">
                         <button onClick={() => openFlow(i)}
                             className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-[var(--surface-2)]">
