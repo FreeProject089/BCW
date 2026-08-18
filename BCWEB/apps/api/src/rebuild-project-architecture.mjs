@@ -36,9 +36,24 @@ const want = process.argv.slice(2).filter((a) => KEYS.includes(a));
 if (process.argv.includes('--reset')) console.log('--reset: every stored node is dropped, including hand-written ones.');
 const keys = want.length ? want : KEYS;
 
+// A read-only token when there is one: anonymous GitHub allows 60 requests an hour, and one
+// pass over four projects spends eight before it has fetched a single file.
+const GH_HEADERS = {
+    'User-Agent': 'bcweb',
+    Accept: 'application/vnd.github+json',
+    ...(process.env.GITHUB_TOKEN || process.env.GH_TOKEN
+        ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN || process.env.GH_TOKEN}` } : {}),
+};
+
 async function gh(url) {
-    const res = await fetch(url, { headers: { 'User-Agent': 'bcweb', Accept: 'application/vnd.github+json' } });
-    if (!res.ok) throw new Error(`${res.status} ${url}`);
+    const res = await fetch(url, { headers: GH_HEADERS });
+    if (!res.ok) {
+        // 403 from this API is almost always the hourly limit, and "403" alone sends somebody
+        // checking whether the repository went private.
+        const hint = res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0'
+            ? ' — hourly rate limit reached; set GITHUB_TOKEN or wait for the reset' : '';
+        throw new Error(`${res.status} ${url}${hint}`);
+    }
     return res.json();
 }
 
@@ -120,7 +135,7 @@ for (const key of keys) {
     for (let i = 0; i < wanted.length; i += 10) {
         await Promise.all(wanted.slice(i, i + 10).map(async (path) => {
             try {
-                const res = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/HEAD/${path}`, { headers: { 'User-Agent': 'bcweb' } });
+                const res = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/HEAD/${path}`, { headers: GH_HEADERS });
                 if (res.ok) files[path] = (await res.text()).slice(0, 200_000);
             } catch { /* one unreadable file is not a failed scan */ }
         }));
@@ -135,7 +150,7 @@ for (const key of keys) {
         for (let i = 0; i < srcPaths.length; i += 12) {
             await Promise.all(srcPaths.slice(i, i + 12).map(async (path) => {
                 try {
-                    const res = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/HEAD/${path}`, { headers: { 'User-Agent': 'bcweb' } });
+                    const res = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/HEAD/${path}`, { headers: GH_HEADERS });
                     if (res.ok) srcFiles[path] = (await res.text()).slice(0, 200_000);
                 } catch { /* same */ }
             }));

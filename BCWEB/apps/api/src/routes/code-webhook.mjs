@@ -46,6 +46,24 @@ export async function secretFor(p, key) {
     return { secret: null, from: null };
 }
 
+/**
+ * GitHub's headers, with a token when there is one.
+ *
+ * Anonymous, the API allows 60 requests an hour, and reading four projects costs eight —
+ * plus one per file over raw.githubusercontent, which is not rate-limited the same way. That
+ * is enough until it is not: a rebuild of every project mid-afternoon hits the wall and every
+ * project after the first two reports "unreachable", which reads like the repository is gone.
+ * `GITHUB_TOKEN` (a read-only PAT, or the one CI already has) raises it to 5000.
+ */
+function ghHeaders() {
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
+    return {
+        'User-Agent': 'bcweb',
+        Accept: 'application/vnd.github+json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+}
+
 /** Read a repository and store the graph. Shared by the webhook and the manual button. */
 export async function rebuildSnapshot(p, key, url, maxFiles = 150) {
     const m = String(url || '').match(GH_REPO_RE);
@@ -54,13 +72,19 @@ export async function rebuildSnapshot(p, key, url, maxFiles = 150) {
 
     let tree;
     try {
-        const meta = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: { 'User-Agent': 'bcweb', Accept: 'application/vnd.github+json' } }).then((r) => r.json());
-        tree = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${meta.default_branch}?recursive=1`, { headers: { 'User-Agent': 'bcweb', Accept: 'application/vnd.github+json' } }).then((r) => r.json());
+        const meta = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: ghHeaders() }).then((r) => r.json());
+        tree = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${meta.default_branch}?recursive=1`, { headers: ghHeaders() }).then((r) => r.json());
     } catch (e) {
         return { ok: false, error: 'github_unreachable', detail: String(e.message || e).slice(0, 120) };
     }
 
-    const paths = (tree.tree || []).filter((e) => e.type === 'blob').map((e) => e.path);
+    // A rate-limited or errored answer has no `tree` at all. Reported as itself: without this
+    // it fell through as "a repository with no files", stored an empty graph, and the project
+    // page then showed an architecture that had been successfully read and was empty.
+    if (!Array.isArray(tree?.tree)) {
+        return { ok: false, error: 'github_unreadable', detail: String(tree?.message || 'no file list in the response').slice(0, 160) };
+    }
+    const paths = tree.tree.filter((e) => e.type === 'blob').map((e) => e.path);
     const wanted = [...new Set([
         ...sourcePathsToFetch(paths, { limit: maxFiles }),
         ...endpointPathsToFetch(paths, { limit: maxFiles }),
