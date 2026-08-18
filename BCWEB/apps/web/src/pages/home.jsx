@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Boxes, Music2, Server, Rocket, Download, ArrowRight, Upload, CheckCircle2, Package, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, KeyRound, Shield, Webhook, FlaskConical,
+  Boxes, Music2, Server, Rocket, Download, ArrowRight, Upload, CheckCircle2, Package, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, KeyRound, Shield, Webhook, FlaskConical, Wand2, Bot, AppWindow, Globe, Sparkles, Clock,
 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -106,6 +106,9 @@ function CountUp({ value }) {
 export function Home() {
   const { data } = useAsync(() => api.get('/blog?home=1'), []);
   const { data: stats } = useAsync(() => api.get('/stats').catch(() => null), []);
+  // The same public endpoint /myo reads. `null` on failure so a landing page never fails to
+  // render because a commission service did not answer.
+  const { data: myo } = useAsync(() => api.get('/myo/products').catch(() => null), []);
   const { data: reviewsData } = useAsync(() => api.get('/reviews').catch(() => null), []);
   const { user } = useAuth();
   const { t, lang } = useI18n();
@@ -281,6 +284,57 @@ export function Home() {
           </Card>
         </div>
       </section>
+
+      {/* Make Your Own.
+          Beside the developer band and not inside it: those are the two halves of the same
+          answer to "what if the thing I want does not exist" — build it yourself with the
+          API, or have it built. Somebody who has read this far has already decided the
+          catalogue does not have their thing.
+
+          HIDDEN when the service is off, and it says so when the queue is full: a landing
+          page that keeps advertising commissions after the team is full sells a promise
+          nobody can keep, and the flag that decides it is the same one /myo and the intake
+          form read. */}
+      {myo?.enabled !== false && (
+        <section>
+          <div className="reveal-on-scroll">
+            <Card className="p-8 sm:p-10 relative overflow-hidden">
+              <div className="absolute inset-0 pointer-events-none opacity-[0.07]"
+                style={{ background: 'radial-gradient(60% 120% at 15% 0%, var(--primary) 0%, transparent 70%)' }} />
+              <div className="relative grid lg:grid-cols-[1.3fr_1fr] gap-8 items-center">
+                <div>
+                  <div className="inline-flex items-center gap-2 badge badge-primary mb-4"><Wand2 size={13} /> {t('home.myo.k', 'Make Your Own')}</div>
+                  <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{t('home.myo.t', 'Have it built for you')}</h3>
+                  <p className="text-[var(--muted)] mt-3 leading-relaxed">
+                    {t('home.myo.d', 'A Discord bot, an app, a website, or something nobody has made yet. It starts with a paid consultation — advice and a quote — and building begins only once you have approved that quote. Nothing is charged for the work before you agree to it.')}
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-6">
+                    <Link to="/myo"><Button variant="primary" className="!px-5 !py-2.5"><Wand2 size={15} /> {t('home.myo.cta', 'Start a commission')}</Button></Link>
+                  </div>
+                  {myo?.queueFull && (
+                    <p className="text-[12px] text-[var(--warning)] mt-3 inline-flex items-center gap-1.5">
+                      <Clock size={12} /> {t('home.myo.full', 'The queue is full right now — new commissions are paused.')}
+                    </p>
+                  )}
+                </div>
+                {/* What can be commissioned, named. The same four kinds the intake form
+                    offers, so the page does not promise a category the form cannot take. */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[[Bot, t('home.myo.f1', 'Discord bots')],
+                    [AppWindow, t('home.myo.f2', 'Apps')],
+                    [Globe, t('home.myo.f3', 'Websites')],
+                    [Sparkles, t('home.myo.f4', 'Something else')]].map(([I, label]) => (
+                    <span key={label} className="flex items-center gap-2.5 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-3.5 py-3">
+                      <I size={16} className="text-[var(--primary-2)] shrink-0" />
+                      <span className="text-[13px] font-medium min-w-0 truncate">{label}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </Card>
+          </div>
+        </section>
+      )}
 
       {/* community reviews / testimonials — admin-curated, hidden when off or empty */}
       {reviewsData?.enabled && reviewsData.reviews?.length > 0 && (
