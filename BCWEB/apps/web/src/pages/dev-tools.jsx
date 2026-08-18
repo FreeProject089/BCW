@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FileJson, Activity, ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FlaskConical , Link2 as LinkIcon, ShieldCheck, Copy, Network } from 'lucide-react';
+import { FileJson, Activity, ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FlaskConical , Link2 as LinkIcon, ShieldCheck, Copy, Network, Lock } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Textarea, Badge, Field, Spinner, EmptyState, useToast , Select } from '../ui/ui.jsx';
@@ -486,6 +486,25 @@ function RecipeChecker() {
   );
 }
 
+
+/** A tool that cannot run without an account, in the place the tool would be.
+ *
+ *  In place rather than removed: a reader who came for this one needs to see that it exists
+ *  and why it is asking, not a shorter page with a hole where it was. */
+function NeedsAccount({ label, t }) {
+  return (
+    <Card className="p-5">
+      <div className="text-sm font-semibold flex items-center gap-2 mb-1">
+        <Lock size={14} className="text-[var(--faint)]" /> {label}
+      </div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">
+        {t('dvt.needsaccount', 'This one works with your own keys and history, so it needs you signed in.')}
+      </p>
+      <Link to="/auth?next=/dev/tools"><Button size="sm" variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
+    </Card>
+  );
+}
+
 export default function DevTools() {
   const { t } = useI18n();
   const { user, loading } = useAuth();
@@ -497,43 +516,51 @@ export default function DevTools() {
     {
       id: 'general', k: 'dvt.grp.general', label: 'API & keys',
       tools: [
-        { id: 'try', label: t('dev.console.title', 'Try a call'), el: <ApiConsole /> },
+        { id: 'try', label: t('dev.console.title', 'Try a call'), el: <ApiConsole />, needsAuth: true },
+        // No account needed: it hashes what you paste, here, and calls nothing.
         { id: 'signature', label: t('dvt.sig.title', 'Check a webhook signature'), el: <SignatureChecker /> },
-        { id: 'calls', label: t('dvt.calls', 'What your keys did'), el: <CallLog />, wide: true },
+        { id: 'calls', label: t('dvt.calls', 'What your keys did'), el: <CallLog />, wide: true, needsAuth: true },
       ],
     },
     {
       id: 'installer', k: 'dvt.grp.installer', label: 'BetterInstaller',
       tools: [
-        { id: 'recipe', label: t('dvt.rec', 'Check an installer.toml'), el: <RecipeChecker /> },
+        // The server reads the file; the route is signed-in for the same reason it is rate
+        // limited, so this one asks.
+        { id: 'recipe', label: t('dvt.rec', 'Check an installer.toml'), el: <RecipeChecker />, needsAuth: true },
       ],
     },
     {
       id: 'code', k: 'dvt.grp.code', label: 'Code',
       tools: [
-        { id: 'codemap', label: t('dvt.cm', 'Map a repository'), el: <CodeMapTool />, wide: true },
+        { id: 'codemap', label: t('dvt.cm', 'Map a repository'), el: <CodeMapTool />, wide: true, needsAuth: true },
       ],
     },
     {
       id: 'bmm', k: 'dvt.grp.bmm', label: 'BMM',
       tools: [
-        { id: 'validate', label: t('dvt.val', 'Check a catalog feed'), el: <Validator /> },
+        // The server fetches the URL for you, which is why it wants a signed-in caller.
+        { id: 'validate', label: t('dvt.val', 'Check a catalog feed'), el: <Validator />, needsAuth: true },
+        // Reads the public deeplink list and builds the URL in the page. No account needed.
         { id: 'deeplink', label: t('dvt.dl.title', 'Build a bmm:// link'), el: <DeeplinkBuilder /> },
       ],
     },
   ];
   const ALL_TOOLS = GROUPS.flatMap((g) => g.tools);
   if (loading) return null;
-  if (!user) {
-    return (
-      <div className="max-w-lg mx-auto py-12">
-        <Card className="p-7 text-center">
-          <p className="text-sm text-[var(--muted)] mb-4">{t('dvt.signin', 'These read your own keys and calls — sign in first.')}</p>
-          <Link to="/auth?next=/dev/tools"><Button variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
-        </Card>
-      </div>
-    );
-  }
+
+  // The GATE IS PER TOOL, not per page.
+  //
+  // Signed out, this whole page was one sentence and a button — including the two tools that
+  // need no account at all: the signature checker hashes what you paste and calls nothing,
+  // and the deeplink builder reads a public list and writes a URL in the page. Somebody sent
+  // a link to "the deeplink builder" and landed on a login form for a tool that does not
+  // need one.
+  //
+  // The others stay gated because their SERVER routes are: the console spends your key, the
+  // call log is your history, and the two validators make the server fetch a URL for you,
+  // which is exactly why that route wants a signed-in caller. Nothing here loosens any of
+  // that — it stops hiding the ones it never applied to.
   return (
     <div className="max-w-6xl mx-auto py-8 space-y-4">
       <Link to="/dev" className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><ArrowLeft size={13} /> {t('devc.back', 'Developer area')}</Link>
@@ -578,7 +605,9 @@ export default function DevTools() {
               the nav below lists every tool of every group. */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
             {g.tools.map((tl) => (
-              <section key={tl.id} id={tl.id} className={`scroll-mt-24 ${tl.wide ? 'lg:col-span-2' : ''}`}>{tl.el}</section>
+              <section key={tl.id} id={tl.id} className={`scroll-mt-24 ${tl.wide ? 'lg:col-span-2' : ''}`}>
+                {(!tl.needsAuth || user) ? tl.el : <NeedsAccount label={tl.label} t={t} />}
+              </section>
             ))}
           </div>
         </div>

@@ -3364,6 +3364,7 @@ const DICT = {
     'devc.test.h': "Toutes ses écritures sont simulées, sans aucun en-tête à retenir. Les lectures sont réelles. Ce choix est définitif — une clé dont le sens changerait sous un script en cours est pire que deux clés.",
     'devc.testkey': "clé de test — les écritures sont simulées",
     'dvt.title': "Outils",
+    'dvt.needsaccount': 'Celui-ci travaille avec tes propres clés et ton historique : il faut être connecté.',
     'dvt.signin': "Ces outils lisent tes propres clés et appels — connecte-toi d’abord.",
     'dvt.val': "Vérifier un flux de catalogue",
     'dvt.val.s': "Tout ce qui cloche en une seule passe, avant publication. Volontairement plus strict que le lecteur : le lecteur doit continuer à fonctionner avec des flux publiés il y a des années, donc un contrôle aussi indulgent que lui ne dirait rien.",
