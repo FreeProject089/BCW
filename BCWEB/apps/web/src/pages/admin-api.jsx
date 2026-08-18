@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyRound, Search, Activity, AlertTriangle, Ban, Sliders, RefreshCw, FlaskConical } from 'lucide-react';
+import { KeyRound, Search, Activity, AlertTriangle, Ban, Sliders, RefreshCw, FlaskConical, Undo2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Select, Badge, Field, EmptyState, Spinner, useToast, useDialog } from '../ui/ui.jsx';
@@ -207,7 +207,7 @@ function SandboxView() {
 }
 
 export function AdminApi() {
-  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { t } = useI18n(); const toast = useToast();
   const [view, setView] = useState('overview');
   const [days, setDays] = useState(30);
   const { data, loading, reload } = useAsync(() => api.get(`/admin/api/overview?days=${days}`), [days]);
@@ -222,17 +222,6 @@ export function AdminApi() {
     } catch { toast.error(t('common.failed', 'Failed.')); }
   };
 
-  const revoke = async (keyId, label) => {
-    if (!await dialog.confirm({
-      title: t('aapi.revoke.t', 'Revoke this key?'),
-      // Naming the consequence rather than asking "are you sure": whoever is using it stops
-      // working within seconds, and the owner is told it was staff who did it.
-      message: t('aapi.revoke.m', '“{n}” stops working immediately and cannot be un-revoked. Its owner is notified that staff revoked it.').replace('{n}', label || t('aapi.untitled', 'Untitled key')),
-      okLabel: t('aapi.revoke.ok', 'Revoke'), danger: true,
-    })) return;
-    try { await api.post(`/admin/api/keys/${keyId}/revoke`); toast.success(t('aapi.revoked', 'Revoked.')); reload(); }
-    catch { toast.error(t('common.failed', 'Failed.')); }
-  };
 
   return (
     <div>
@@ -292,7 +281,7 @@ export function AdminApi() {
         </>
       )}
 
-      {view === 'keys' && <KeysTable onRevoke={revoke} />}
+      {view === 'keys' && <KeysTable />}
       {view === 'requests' && <RequestsTable />}
 
       {view === 'sandbox' && <SandboxView />}
@@ -324,13 +313,58 @@ export function AdminApi() {
   );
 }
 
-function KeysTable({ onRevoke }) {
-  const { t } = useI18n();
+function KeysTable() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [q, setQ] = useState('');
   const [term, setTerm] = useState('');
-  const { data, loading } = useAsync(() => api.get(`/admin/api/keys?q=${encodeURIComponent(term)}`), [term]);
+  // `reload` is taken here and used here.
+  //
+  // Revoking used to live in the parent and call ITS reload — which refetches
+  // /admin/api/overview, not this list. So the request succeeded, the toast said "Revoked."
+  // and the row was unchanged until you left the page and came back. The list that has to
+  // change is the one this component fetches, so the action that changes it belongs here.
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/api/keys?q=${encodeURIComponent(term)}`), [term]);
   const keys = data?.keys || [];
-  const dead = (k) => k.revokedAt || (k.expiresAt && new Date(k.expiresAt) < new Date());
+  const expired = (k) => k.expiresAt && new Date(k.expiresAt) < new Date();
+  const dead = (k) => k.revokedAt || expired(k);
+
+  // Revoking is NOT a delayed commit. A key you have decided to kill has to stop working now,
+  // not in six seconds — so the request goes immediately and the undo is a real un-revoke,
+  // which is also why the toast says "restore" rather than pretending nothing happened.
+  const unrevoke = async (keyId) => {
+    try { await api.post(`/admin/api/keys/${keyId}/unrevoke`); toast.success(t('aapi.restored', 'Restored — the key works again.')); }
+    catch (e) {
+      toast.error(e?.body?.error === 'expired'
+        ? t('aapi.cantrestore', 'That key has expired — restoring it would not make it work.')
+        : t('common.failed', 'Failed.'));
+    }
+    reload();
+  };
+
+  const revoke = async (k) => {
+    const label = k.label || t('aapi.untitled', 'Untitled key');
+    if (!await dialog.confirm({
+      title: t('aapi.revoke.t', 'Revoke this key?'),
+      // Naming the consequence rather than asking "are you sure": whoever is using it stops
+      // working within seconds, and the owner is told it was staff who did it. It no longer
+      // claims the revocation is permanent — it is not, and a dialog that overstates a
+      // consequence teaches people to skip reading it.
+      message: t('aapi.revoke.m', '“{n}” stops working immediately and its owner is notified that staff revoked it. You can restore it afterwards.').replace('{n}', label),
+      okLabel: t('aapi.revoke.ok', 'Revoke'), danger: true,
+    })) return;
+    try {
+      await api.post(`/admin/api/keys/${k.id}/revoke`);
+      reload();
+      // toast.action, with NO onCommit. The host only draws the undo button for an
+      // `action` toast, and the work here is already done — so the window offers the
+      // reversal and expiring does nothing, instead of the usual "commit on expiry".
+      toast.action({
+        tone: 'success', msg: t('aapi.revoked', 'Revoked.'),
+        cancelLabel: t('aapi.undorevoke', 'Restore'),
+        onCancel: () => unrevoke(k.id),
+      });
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+  };
 
   return (
     <Card className="p-4">
@@ -364,8 +398,19 @@ function KeysTable({ onRevoke }) {
                 <div className="text-sm font-semibold tabular-nums">{(k.calls || 0).toLocaleString()}</div>
                 <div className="text-[10px] text-[var(--faint)]">{t('aapi.calls', 'calls')}</div>
               </div>
-              {!k.revokedAt && (
-                <Button size="sm" variant="ghost" onClick={() => onRevoke(k.id, k.label)} title={t('aapi.revoke.ok', 'Revoke')}>
+              {/* The undo is on the ROW, not only in the toast. A toast lasts six seconds
+                  and the person who needs to reverse a revocation is often not the person
+                  who made it — an undo that expires is an undo that is not there. Absent on
+                  an expired key: clearing revokedAt there would return a row claiming to be
+                  active while every request with it is still refused. */}
+              {k.revokedAt ? (
+                !expired(k) && (
+                  <Button size="sm" variant="ghost" onClick={() => unrevoke(k.id)} title={t('aapi.undorevoke', 'Restore')}>
+                    <Undo2 size={13} className="text-[var(--muted)]" />
+                  </Button>
+                )
+              ) : (
+                <Button size="sm" variant="ghost" onClick={() => revoke(k)} title={t('aapi.revoke.ok', 'Revoke')}>
                   <Ban size={13} className="text-[var(--error)]" />
                 </Button>
               )}

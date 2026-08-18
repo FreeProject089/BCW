@@ -256,6 +256,41 @@ export default async function apiKeyRoutes(app) {
     return { ok: true };
   });
 
+  /**
+   * Undo a revocation.
+   *
+   * Revoking is immediate and stays immediate — a key suspected of being leaked has to stop
+   * working the moment somebody decides it should, not after an undo window has elapsed. So
+   * this is not a delayed commit: the key really was dead in between, and restoring it says
+   * so rather than pretending the revocation never happened.
+   *
+   * Which is why the audit trail keeps BOTH entries. A key that was revoked and restored is a
+   * different history from a key that was never revoked, and the second is the one somebody
+   * would reconstruct from a log that only kept the last state.
+   *
+   * The owner is told again, for the same reason they were told the first time: they have
+   * been debugging a dead key, and the useful message is the one that says it works now.
+   */
+  app.post('/admin/api/keys/:id/unrevoke', { preHandler: requireCap('manage_api') }, async (req, reply) => {
+    const p = await db();
+    const key = await p.apiKey.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, label: true, revokedAt: true, expiresAt: true, userId: true },
+    });
+    if (!key) return reply.code(404).send({ error: 'not_found' });
+    if (!key.revokedAt) return { ok: true, alreadyActive: true };
+    // An expired key cannot be brought back by un-revoking it: clearing revokedAt would
+    // return a key that is still dead, and the row would then claim to be active while every
+    // request with it is refused. Said plainly instead of half-doing it.
+    if (key.expiresAt && key.expiresAt <= new Date()) {
+      return reply.code(409).send({ error: 'expired', expiresAt: key.expiresAt });
+    }
+    await p.apiKey.update({ where: { id: key.id }, data: { revokedAt: null } });
+    await logAudit(p, req.user.uid, 'api.key_unrevoked', `${key.label || key.id} (owner ${key.userId})`, clientIp(req));
+    await notify(p, key.userId, 'api_key_restored', `“${key.label || 'Untitled key'}” works again — staff restored it after revoking it.`);
+    return { ok: true };
+  });
+
   /** Everything the API knows about one user's keys — used by the admin User details. */
   app.get('/admin/api/users/:id', { preHandler: requireCap('manage_api') }, async (req) => {
     const p = await db();
