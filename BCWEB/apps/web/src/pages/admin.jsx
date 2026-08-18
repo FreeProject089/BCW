@@ -1305,16 +1305,34 @@ function PerfCompare() {
     [182, t('perf.r.182', 'Six months')], [365, t('perf.r.365', 'A year')]];
 
   const pct = (v) => (v == null ? '—' : `${v.toFixed(1)}%`);
-  // Up is worse for all of these — more CPU, more memory, more downtime.
-  const Delta = ({ v, unit = '%' }) => {
+  const num = (v, d = 2) => (v == null ? '—' : v.toFixed(d));
+  const ms = (v) => (v == null ? '—' : `${Math.round(v)} ms`);
+  /** kbps as the unit a person reads: Mb/s once it is worth it. */
+  const rate = (v) => (v == null ? '—' : v >= 1024 ? `${(v / 1024).toFixed(1)} Mb/s` : `${Math.round(v)} kb/s`);
+
+  // Direction is per-metric, not global.
+  //
+  // This used to assume up is always worse, which was true while the table held CPU, memory,
+  // disk and downtime. Uptime broke it the moment it was added: +0.4 pt is the best line on
+  // the panel and would have been painted as a warning. `good` says which way is which.
+  const Delta = ({ v, unit = '%', good = 'down', digits = 1 }) => {
     if (v == null) return <span className="text-[var(--faint)]">—</span>;
-    const up = v > 0.05, down = v < -0.05;
+    const eps = unit === '%' ? 0.05 : 0.5;
+    const up = v > eps, down = v < -eps;
+    const better = good === 'up' ? up : down;
+    const worse = good === 'up' ? down : up;
+    const shown = unit === '%' ? `${v.toFixed(digits)} pt` : unit === 'ms' ? `${Math.round(v)} ms` : `${Math.round(v)} ${unit}`;
     return (
-      <span className={up ? 'text-[var(--warning)]' : down ? 'text-[var(--success)]' : 'text-[var(--faint)]'}>
-        {up ? '+' : ''}{unit === '%' ? v.toFixed(1) : Math.round(v)}{unit === '%' ? ' pt' : ` ${unit}`}
+      <span className={better ? 'text-[var(--success)]' : worse ? 'text-[var(--warning)]' : 'text-[var(--faint)]'}>
+        {v > 0 ? '+' : ''}{shown}
       </span>
     );
   };
+
+  /** dd/mm → dd/mm, in the reader's locale. */
+  const range = (a, b) => (a && b
+    ? `${new Date(a).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })} – ${new Date(b).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}`
+    : null);
 
   const exportCsv = () => {
     const rows = data?.series || [];
@@ -1356,23 +1374,48 @@ function PerfCompare() {
             <thead>
               <tr className="text-[11px] uppercase tracking-wider text-[var(--faint)]">
                 <th className="text-left font-normal pb-1.5" />
-                <th className="text-right font-normal pb-1.5">{t('perf.cmp.now', 'This period')}</th>
-                <th className="text-right font-normal pb-1.5">{t('perf.cmp.before', 'The one before')}</th>
+                {/* Both windows are dated. "The one before" is not a date, and an admin
+                    reading a regression needs to know which days it is blamed on. */}
+                <th className="text-right font-normal pb-1.5">
+                  {t('perf.cmp.now', 'This period')}
+                  {range(data?.from, data?.to) && <div className="font-normal normal-case text-[10px] opacity-70">{range(data.from, data.to)}</div>}
+                </th>
+                <th className="text-right font-normal pb-1.5">
+                  {t('perf.cmp.before', 'The one before')}
+                  {range(data?.previousFrom, data?.previousTo) && <div className="font-normal normal-case text-[10px] opacity-70">{range(data.previousFrom, data.previousTo)}</div>}
+                </th>
                 <th className="text-right font-normal pb-1.5">{t('perf.cmp.change', 'Change')}</th>
               </tr>
             </thead>
             <tbody>
+              {/* Averages AND peaks. A server averaging 30% with a peak of 99% is a
+                  different server from one that sits at 30%, and only the average was shown
+                  — so the panel could not see the shape of a problem, only its mean.
+                  Latency, load and network were recorded per day and exported to CSV all
+                  along; the comparison simply never read them. */}
               {[
-                [t('perf.cmp.cpu', 'CPU, average'), pct(cur.cpuAvg), pct(prev?.cpuAvg), data?.change?.cpuAvg, '%'],
-                [t('perf.cmp.mem', 'Memory, average'), pct(cur.memAvg), pct(prev?.memAvg), data?.change?.memAvg, '%'],
-                [t('perf.cmp.disk', 'Disk, average'), pct(cur.diskAvg), pct(prev?.diskAvg), data?.change?.diskAvg, '%'],
-                [t('perf.cmp.down', 'Minutes not running'), String(cur.downMinutes), prev ? String(prev.downMinutes) : '—', data?.change?.downMinutes, 'min'],
-              ].map(([label, a, b, d, unit]) => (
-                <tr key={label} className="border-t border-[var(--line)]">
-                  <td className="py-1.5">{label}</td>
-                  <td className="py-1.5 text-right tabular-nums">{a}</td>
-                  <td className="py-1.5 text-right tabular-nums text-[var(--muted)]">{b}</td>
-                  <td className="py-1.5 text-right tabular-nums"><Delta v={d} unit={unit} /></td>
+                { k: 'cpuAvg', label: t('perf.cmp.cpu', 'CPU, average'), fmt: pct },
+                { k: 'cpuMax', label: t('perf.cmp.cpumax', 'CPU, peak'), fmt: pct, sub: true },
+                { k: 'memAvg', label: t('perf.cmp.mem', 'Memory, average'), fmt: pct },
+                { k: 'memMax', label: t('perf.cmp.memmax', 'Memory, peak'), fmt: pct, sub: true },
+                { k: 'diskAvg', label: t('perf.cmp.disk', 'Disk, average'), fmt: pct },
+                { k: 'diskMax', label: t('perf.cmp.diskmax', 'Disk, peak'), fmt: pct, sub: true },
+                { k: 'loadAvg', label: t('perf.cmp.load', 'Load average'), fmt: (v) => num(v, 2), unit: '', digits: 2 },
+                { k: 'latencyAvg', label: t('perf.cmp.lat', 'Response time, average'), fmt: ms, unit: 'ms' },
+                { k: 'netRxAvg', label: t('perf.cmp.rx', 'Network in'), fmt: rate, unit: 'kb/s', good: 'none' },
+                { k: 'netTxAvg', label: t('perf.cmp.tx', 'Network out'), fmt: rate, unit: 'kb/s', good: 'none' },
+                { k: 'uptimePct', label: t('perf.cmp.up', 'Uptime'), fmt: pct, good: 'up' },
+                { k: 'downMinutes', label: t('perf.cmp.down', 'Minutes not running'), fmt: (v) => String(Math.round(v)), unit: 'min', sub: true },
+              ].map((row) => (
+                <tr key={row.k} className="border-t border-[var(--line)]">
+                  <td className={`py-1.5 ${row.sub ? 'pl-3 text-[var(--muted)] text-[12px]' : ''}`}>{row.label}</td>
+                  <td className="py-1.5 text-right tabular-nums">{row.fmt(cur[row.k])}</td>
+                  <td className="py-1.5 text-right tabular-nums text-[var(--muted)]">{prev ? row.fmt(prev[row.k]) : '—'}</td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {/* Network has no better direction — more traffic is not good or bad, it
+                        is just more — so it shows the movement without a verdict colour. */}
+                    <Delta v={data?.change?.[row.k]} unit={row.unit ?? '%'} good={row.good || 'down'} digits={row.digits ?? 1} />
+                  </td>
                 </tr>
               ))}
             </tbody>

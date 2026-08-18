@@ -69,13 +69,26 @@ export default async function serverPerfRoutes(app) {
       if (!rows.length) return null;
       const n = rows.reduce((a, r) => a + (r.samples || 0), 0) || rows.length;
       const w = (f) => rows.reduce((a, r) => a + f(r) * (r.samples || 1), 0) / n;
+      const down = rows.reduce((a, r) => a + (r.downMinutes || 0), 0);
       return {
         days: rows.length,
         samples: n,
         cpuAvg: w((r) => r.cpuAvg), cpuMax: Math.max(...rows.map((r) => r.cpuMax)),
         memAvg: w((r) => r.memAvg), memMax: Math.max(...rows.map((r) => r.memMax)),
         diskAvg: w((r) => r.diskAvg), diskMax: Math.max(...rows.map((r) => r.diskMax)),
-        downMinutes: rows.reduce((a, r) => a + (r.downMinutes || 0), 0),
+        // Every one of these was already recorded per day and already exported to CSV. Only
+        // the comparison ignored them — so the panel that exists to answer "is it getting
+        // worse" could not answer it about the two things a visitor actually feels.
+        loadAvg: w((r) => r.loadAvg || 0),
+        latencyAvg: w((r) => r.latencyAvg || 0),
+        netRxAvg: w((r) => r.netRxAvg || 0),
+        netTxAvg: w((r) => r.netTxAvg || 0),
+        downMinutes: down,
+        // Uptime as a share, because "43 minutes" means nothing without knowing whether the
+        // period was a day or a year. Clamped at 0: a day row can carry more down-minutes
+        // than the window holds if the collector restarted, and a negative uptime is worse
+        // than a rounded one.
+        uptimePct: Math.max(0, 100 - (down / (rows.length * 1440)) * 100),
       };
     };
 
@@ -89,12 +102,17 @@ export default async function serverPerfRoutes(app) {
       series: current,
       current: cur,
       previous: prev,
-      change: cur && prev ? {
-        cpuAvg: delta(cur.cpuAvg, prev.cpuAvg),
-        memAvg: delta(cur.memAvg, prev.memAvg),
-        diskAvg: delta(cur.diskAvg, prev.diskAvg),
-        downMinutes: delta(cur.downMinutes, prev.downMinutes),
-      } : null,
+      // Every field summarise() produces, compared. Listing them by hand is what left six of
+      // them uncompared for months.
+      change: cur && prev ? Object.fromEntries(
+        ['cpuAvg', 'cpuMax', 'memAvg', 'memMax', 'diskAvg', 'diskMax',
+          'loadAvg', 'latencyAvg', 'netRxAvg', 'netTxAvg', 'downMinutes', 'uptimePct']
+          .map((k) => [k, delta(cur[k], prev[k])]),
+      ) : null,
+      // The window being compared against, named. "The one before" is not a date, and an
+      // admin reading a regression needs to know which days it is being blamed on.
+      previousFrom: startPrev,
+      previousTo: new Date(startCur.getTime() - 864e5),
       // What the answer is actually built on, so a short history is visible rather than implied.
       coverage: {
         since: oldest?.day || null,
