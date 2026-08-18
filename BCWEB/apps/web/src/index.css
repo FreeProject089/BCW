@@ -404,6 +404,17 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
      fit — driving the Dashboard/Admin labels at the same time so they never split. */
   .seg-nav .nav-lbl { margin-left: 6px; }
   .seg-nav.is-compact .nav-lbl { display: none; margin-left: 0; }
+  /* The mirror: labels-only. Hides each pill's LEADING icon and nothing else — a dropdown's
+     chevron stays, because it is the only thing saying the pill opens something.
+     Targets the `nav-ic` class NavIcon puts on every branch it renders, NOT a position: a
+     pill's icon is an <img>, a lucide component or an IconGlyph depending on the item, and it
+     is not the first child of anything. A positional rule was tried and matched nothing. */
+  /* !important, and this one is earned: IconGlyph's image branches carry an inline
+     `style="display:inline-block"`, which a class cannot beat. Without it the mode would work
+     for lucide glyphs and silently fail for every brand icon and app logo — the half that is
+     hardest to notice, because those are the items an admin adds last. */
+  .seg-nav.is-textonly .nav-ic { display: none !important; }
+  .seg-nav.is-textonly .nav-lbl { margin-left: 0; }
   /* Segmented-control rail: a subtle surface that holds a row of toggle/tab/chip buttons.
      Solid by default, frosts under Translucent surfaces (see [data-surface-glass] .seg-rail). */
   .seg-rail { display: inline-flex; align-items: center; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; }

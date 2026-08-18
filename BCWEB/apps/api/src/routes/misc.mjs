@@ -1699,7 +1699,12 @@ export default async function miscRoutes(app) {
     layout: z.object({
       align: z.enum(['start', 'center', 'end']).optional().default('start'),
       density: z.enum(['comfortable', 'compact']).optional().default('comfortable'),
-      labels: z.enum(['both', 'icons']).optional().default('both'),
+      // 'labels' is text-only, the mirror of 'icons'. A site whose sections are words rather
+      // than pictures reads better without a row of near-identical glyphs.
+      labels: z.enum(['both', 'icons', 'labels']).optional().default('both'),
+      // How many pinned projects the Projects dropdown lists before it stops and offers the
+      // page instead. Past about six a dropdown is a menu you have to read.
+      projectsMax: z.number().int().min(1).max(12).optional().default(6),
     }).optional().default({}),
   });
 

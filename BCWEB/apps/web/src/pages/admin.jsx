@@ -11728,6 +11728,11 @@ const pvSheet = 'flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-[
 function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 'inline', downbar = true, projects = [], layout: layoutProp }) {
   const layout = readLayout(layoutProp);
   const iconsOnly = layout.labels === 'icons';
+  // Same flag, same name, same meaning as App.jsx. This preview has already drifted from the
+  // real topbar once badly enough to show "Log out" and "Sign in" together; every rule it
+  // draws comes from the shared reader, and the two flags derived from it are spelled the
+  // same on both sides so a diff between the files stays readable.
+  const textOnly = layout.labels === 'labels';
   const { t } = useI18n();
   const { user } = useAuth();
   const [openIdx, setOpenIdx] = useState(null);
@@ -11908,18 +11913,31 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
               ))}
             </div>}
           </div>
-        ) : <button key={idx} title={onEdit ? t('nav.pv.editlink', 'Click to edit this item') : undefined} onClick={() => jump(idx)} className={pillCls(false)}><NavPvIcon name={it.icon} /> {iconsOnly ? null : pvLabel(it, lang)}</button>)}
+        ) : <button key={idx} title={onEdit ? t('nav.pv.editlink', 'Click to edit this item') : undefined} onClick={() => jump(idx)} className={pillCls(false)}>{textOnly ? null : <NavPvIcon name={it.icon} />} {iconsOnly ? null : pvLabel(it, lang)}</button>)}
         {/* Pinned projects — inline pills, or one "Projects" dropdown, per projectsMode. */}
         {projDropdown ? (
           <div className="relative">
             <button onClick={() => setProjOpen((o) => !o)} className={pillCls(projOpen)}>
-              <Sparkles size={15} />{!iconsOnly && <span>{t('nav.projects', 'Projects')}</span>}<ChevronDown size={13} className={`transition-transform ${projOpen ? 'rotate-180' : ''}`} />
+              {!textOnly && <Sparkles size={15} />}{!iconsOnly && <span>{t('nav.projects', 'Projects')}</span>}<ChevronDown size={13} className={`transition-transform ${projOpen ? 'rotate-180' : ''}`} />
             </button>
             {projOpen && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[220px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
-              {pvProjects.map((p) => <div key={p.slug} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]"><span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /></span><span className="text-sm font-medium truncate">{p.name}</span></div>)}
+              {pvProjects.slice(0, layout.projectsMax).map((p) => <div key={p.slug} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]"><span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /></span><span className="text-sm font-medium truncate">{p.name}</span></div>)}
+              {/* The same tail the real topbar appends, so the cap is visible while it is
+                  being chosen rather than after saving. */}
+              <div className="flex items-center gap-2.5 p-2 rounded-xl border-t border-[var(--line)] mt-1 pt-2">
+                <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><Boxes size={15} /></span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium truncate">{t('nav.allProjects', 'All projects')}</span>
+                  {pvProjects.length > layout.projectsMax && (
+                    <span className="block text-[11px] text-[var(--faint)]">
+                      {t('nav.allProjectsMore', '{n} more, and everything not pinned here').replace('{n}', String(pvProjects.length - layout.projectsMax))}
+                    </span>
+                  )}
+                </span>
+              </div>
             </div>}
           </div>
-        ) : pvProjects.map((p) => <span key={p.slug} className={pillCls(false)}><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /> {iconsOnly ? null : p.name}</span>)}
+        ) : pvProjects.map((p) => <span key={p.slug} className={pillCls(false)}>{textOnly ? null : <ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} />} {iconsOnly ? null : p.name}</span>)}
       </div>
       </div>
       {/* Right-side utility cluster — mirrors the real topbar (App.jsx): cluster A always
@@ -11950,7 +11968,7 @@ function AdminNav() {
   const [utility, setUtility] = useState({}); // { <key>: { visible, order } } for built-in topbar buttons
   const [projectsMode, setProjectsMode] = useState('inline'); // how pinned showcase projects show: inline pills | one "Projects" dropdown
   const [downbarEnabled, setDownbarEnabled] = useState(true);  // mobile bottom tab bar on/off (its items derive from the nav)
-  const [layout, setLayout] = useState({ align: 'start', density: 'comfortable', labels: 'both' }); // desktop topbar layout
+  const [layout, setLayout] = useState({ align: 'start', density: 'comfortable', labels: 'both', projectsMax: 6 }); // desktop topbar layout
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState('desktop'); // preview device
   // Pinned showcase projects, so the preview shows them exactly as the live topbar will
@@ -12144,7 +12162,12 @@ function AdminNav() {
           return <>
             {seg(t('nav.layout.align', 'Nav alignment'), t('nav.layout.align.d', 'Where the nav sits in the bar on desktop.'), 'align', [['start', t('nav.layout.left', 'Left')], ['center', t('nav.layout.center', 'Center')], ['end', t('nav.layout.right', 'Right')]])}
             {seg(t('nav.layout.density', 'Density'), t('nav.layout.density.d', 'Spacing between nav items.'), 'density', [['comfortable', t('nav.layout.comfortable', 'Comfortable')], ['compact', t('nav.layout.compact', 'Compact')]])}
-            {seg(t('nav.layout.labels', 'Labels'), t('nav.layout.labels.d', 'Show text next to icons, or icons only to save room.'), 'labels', [['both', t('nav.layout.both', 'Icons + text')], ['icons', t('nav.layout.iconsonly', 'Icons only')]])}
+            {seg(t('nav.layout.labels', 'Labels'), t('nav.layout.labels.d', 'Icons and text, one or the other. Text only suits sections whose names are words rather than pictures.'), 'labels', [['both', t('nav.layout.both', 'Icons + text')], ['icons', t('nav.layout.iconsonly', 'Icons only')], ['labels', t('nav.layout.labelsonly', 'Text only')]])}
+            {/* Only worth showing when the dropdown is the mode that has a length to cap. */}
+            {projectsMode === 'dropdown' && seg(
+              t('nav.layout.projmax', 'Projects in the dropdown'),
+              t('nav.layout.projmax.d', 'How many pinned projects the menu lists before it points at the Projects page instead. The page always has more — it lists the unpinned ones too.'),
+              'projectsMax', [[3, '3'], [4, '4'], [6, '6'], [8, '8'], [12, '12']])}
           </>;
         })()}
       </Card>

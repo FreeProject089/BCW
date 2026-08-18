@@ -646,13 +646,9 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
               <Field label="Paths to keep out of it"
                 hint="One per line. A folder takes everything under it. These are removed on the SERVER — they are not sent to the browser at all, so they cannot be read out of the response either. The page says how many were left out, never which.">
                 <Textarea rows={3}
-                  value={(stack.codeMapHide || []).join('
-')}
-                  onChange={(e) => setIn('stack', { codeMapHide: e.target.value.split('
-').map((x) => x.trim()).filter(Boolean) })}
-                  placeholder={'src-tauri/target
-vendor/
-internal/secrets.ts'} />
+                  value={(stack.codeMapHide || []).join('\n')}
+                  onChange={(e) => setIn('stack', { codeMapHide: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) })}
+                  placeholder={'src-tauri/target\nvendor/\ninternal/secrets.ts'} />
               </Field>
             </div>
           )}

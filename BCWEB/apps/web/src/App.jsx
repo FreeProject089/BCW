@@ -154,12 +154,18 @@ function projectLogo(to) {
   return m ? APP_LOGO[m[1].toLowerCase()] : undefined;
 }
 
+// Every branch carries `nav-ic`, which is what the labels-only mode hides.
+//
+// A structural CSS rule was tried first and was simply wrong: this renders an <img>, an
+// arbitrary lucide component or an IconGlyph depending on the item, and inside a pill the
+// result is not the first child. Marking the icon is the same thing `.nav-lbl` already does
+// for the text, and it is why that rule works and a positional guess did not.
 function NavIcon({ item, size = 15 }) {
   const src = item.img || projectLogo(item.to);
   const [ok, setOk] = useState(!!src);
-  if (src && ok) return <img src={src} alt="" width={size + 3} height={size + 3} className="rounded-[4px] object-contain" onError={() => setOk(false)} />;
-  if (typeof item.icon !== 'string') { const I = item.icon || Boxes; return <I size={size} />; }
-  return <IconGlyph name={navIconName(item.icon)} size={size} />;
+  if (src && ok) return <img src={src} alt="" width={size + 3} height={size + 3} className="nav-ic rounded-[4px] object-contain" onError={() => setOk(false)} />;
+  if (typeof item.icon !== 'string') { const I = item.icon || Boxes; return <I size={size} className="nav-ic" />; }
+  return <IconGlyph name={navIconName(item.icon)} size={size} className="nav-ic" />;
 }
 
 // A nav item's visible text. Hardcoded items carry a translation key `k`; admin-configured
@@ -445,6 +451,15 @@ function Nav() {
   const [projVisible, setProjVisible] = useState(null); // { bmm: true, bsm: false, ... } | null (not loaded yet -> show all)
   const [pinnedShowcase, setPinnedShowcase] = useState([]);
   const navCfg = useNavConfig(); // admin-configured nav (null -> use hardcoded NAV), shared with the bottom bar
+  // Admin-configured desktop layout (align · density · labels · projectsMax), via the shared
+  // reader the preview also uses. labels:'icons' reuses the existing responsive icons-only
+  // mode by FORCING is-compact regardless of width; density:'compact' tightens the pill gap.
+  //
+  // Declared HERE, next to the config it reads, and not further down where it used to sit:
+  // the projects dropdown below needs projectsMax, and a `const` read above its declaration
+  // is a ReferenceError at first render, not a warning. This app has already shipped that
+  // exact bug once (/dev/tools, "can't access lexical declaration before initialization").
+  const layout = readLayout(navCfg?.layout);
   useEffect(() => {
     api.get('/projects').then((r) => setProjVisible(r.visible || null)).catch(() => {});
     api.get('/showcase').then((r) => setPinnedShowcase((r.projects || []).filter((p) => p.pinTopbar))).catch(() => {});
@@ -465,13 +480,34 @@ function Nav() {
   // under a single "Projects" hover-dropdown when the admin chose projectsMode:'dropdown'.
   // Each keeps its own icon. Visitor-gated project links already filtered upstream.
   const projectsDropdown = navCfg?.projectsMode === 'dropdown' && pinnedShowcase.length > 0;
+  // The dropdown is a SHORTCUT to the most important few, not a copy of the catalogue.
+  //
+  // Past about six entries a hover menu is a list you have to read standing up, and it hides
+  // the rest of the topbar while you do. So it shows `projectsMax` and then hands over to
+  // /projects — which already lists every showcase project, pinned or not, with taglines and
+  // icons, and is a page you can link to, search and come back to.
+  //
+  // "All projects" is appended even when nothing was truncated: the page holds the UNPINNED
+  // ones too, so it always has more than this menu does. Saying so once is better than a
+  // visitor concluding these are all of them.
   const projectsGroup = projectsDropdown ? {
     type: 'group', k: 'nav.projects', icon: Boxes,
-    children: pinnedShowcase.map((p) => ({
-      to: `/project/${p.slug}`,
-      label: p.isAnnouncing ? (p.announceTitle || p.name) : p.name,
-      ...showcaseChildIcon(p.icon),
-    })),
+    children: [
+      ...pinnedShowcase.slice(0, layout.projectsMax).map((p) => ({
+        to: `/project/${p.slug}`,
+        label: p.isAnnouncing ? (p.announceTitle || p.name) : p.name,
+        ...showcaseChildIcon(p.icon),
+      })),
+      {
+        to: '/projects',
+        label: t('nav.allProjects', 'All projects'),
+        desc: pinnedShowcase.length > layout.projectsMax
+          ? t('nav.allProjectsMore', '{n} more, and everything not pinned here')
+            .replace('{n}', String(pinnedShowcase.length - layout.projectsMax))
+          : t('nav.allProjectsAll', 'Everything, including what is not pinned here'),
+        icon: 'boxes',
+      },
+    ],
   } : null;
   // Now that the segmented nav scrolls horizontally when it doesn't all fit, keep
   // the current page's pill actually in view instead of possibly scrolled off.
@@ -522,11 +558,12 @@ function Nav() {
   // lg+ account cluster (dashboard · admin · profile · logout / login). Each element
   // still has a hard precondition (auth, admin) that the config can only further hide.
   const uCfg = navCfg?.utility || {};
-  // Admin-configured desktop layout (align · density · labels), via the shared reader the
-  // preview also uses. labels:'icons' reuses the existing responsive icons-only mode by
-  // FORCING is-compact regardless of width; density:'compact' tightens the pill gap.
-  const layout = readLayout(navCfg?.layout);
   const iconsOnly = layout.labels === 'icons';
+  // The mirror of iconsOnly. Kept as a separate flag rather than a ternary on one class,
+  // because the two are not opposites: the responsive `compact` mode can force icons-only
+  // at a narrow width, and text-only must not fight it — a pill with neither icon nor label
+  // is an empty pill.
+  const textOnly = layout.labels === 'labels';
   const uVisible = (k) => uCfg[k]?.visible !== false; // default: shown
   const orderIn = (list) => [...list].sort((a, b) => (uCfg[a]?.order ?? list.indexOf(a)) - (uCfg[b]?.order ?? list.indexOf(b)));
   const clusterA = orderIn(UTIL_A);
@@ -567,7 +604,7 @@ function Nav() {
             horizontal scroll). The rounded background lives on the INNER nav which is
             content-width, so the pill bar ends right after the last tab instead of
             stretching the whole width. */}
-        <div ref={segNavRef} className={`seg-nav ${compact || iconsOnly ? 'is-compact' : ''} hidden lg:flex flex-1 min-w-0 overflow-x-auto no-scrollbar ${navAlignClass(layout.align)}`}>
+        <div ref={segNavRef} className={`seg-nav ${compact || iconsOnly ? 'is-compact' : ''} ${textOnly && !(compact || iconsOnly) ? 'is-textonly' : ''} hidden lg:flex flex-1 min-w-0 overflow-x-auto no-scrollbar ${navAlignClass(layout.align)}`}>
           <nav className={`inline-flex items-center rounded-full bg-[var(--surface-2)] p-1 border border-[var(--line)] shrink-0 ${layout.density === 'compact' ? 'gap-0' : 'gap-0.5'}`}>
             {effItems.map((it, i) => it.type === 'group'
               ? <NavDropdown key={'g' + i} item={it} t={t} lang={lang} />
@@ -576,7 +613,7 @@ function Nav() {
               ? <NavDropdown key="proj-dd" item={projectsGroup} t={t} lang={lang} />
               : pinnedShowcase.map((p) => (
                 <NavLink key={p.slug} to={`/project/${p.slug}`} title={p.name} aria-label={p.name} className={(s) => pill(s) + ' shrink-0'}>
-                  <ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /><span className="nav-lbl">{p.isAnnouncing ? p.announceTitle || p.name : p.name}</span>
+                  <span className="nav-ic inline-flex"><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /></span><span className="nav-lbl">{p.isAnnouncing ? p.announceTitle || p.name : p.name}</span>
                 </NavLink>
               ))}
           </nav>
