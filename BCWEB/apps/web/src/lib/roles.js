@@ -43,3 +43,22 @@ export function utilAllowed(key, user) {
       return true; // projects · lang · theme · settings — everyone
   }
 }
+
+/**
+ * May this person edit THIS project's page?
+ *
+ * The client's half of the server's `canEditProject` (lib.mjs): the manage_projects
+ * capability, or a per-project grant for this key. The grants ride in /me as
+ * `projectGrants.projectKeys`, so nothing here needs a request.
+ *
+ * This decides whether an "Edit page" link is drawn, never whether an edit is allowed — the
+ * server answers that again on every write. A link that appears for somebody who cannot use
+ * it is a small rudeness; a link that is MISSING for somebody who can is the reason the
+ * project page had no way back to its own editor.
+ */
+export function canEditProject(user, projectKey) {
+  if (!user || !projectKey) return false;
+  if (effectiveCaps(user).includes('manage_projects')) return true;
+  const keys = user?.projectGrants?.projectKeys;
+  return Array.isArray(keys) ? keys.includes(projectKey) : !!keys?.has?.(projectKey);
+}

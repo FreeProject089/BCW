@@ -6177,7 +6177,13 @@ function AdminProjects() {
   const show = useAsync(() => api.get('/admin/showcase'), []);
   const adminMeta = useAsync(() => api.get('/admin/projects'), []);
   const [scheduling, setScheduling] = useState(false);
-  const [active, setActive] = useState('bmm');
+  // `?key=` selects a project on arrival, so the "Edit page" link on a project page lands on
+  // THAT project rather than on bmm and a hunt through the rail. A link that opens the right
+  // tab with the wrong thing selected is a link that half-works, which is worse than none:
+  // somebody edits the page they were sent to and saves it over another project's config.
+  const [sp] = useSearchParams();
+  const wantKey = sp.get('key');
+  const [active, setActive] = useState(wantKey || 'bmm');
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState('');
   const [dragOver, setDragOver] = useState(false);

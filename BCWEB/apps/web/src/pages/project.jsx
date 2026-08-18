@@ -3,7 +3,7 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import {
   Download, Github, MessageCircle, Heart, Globe, BookOpen, Users, ScrollText, ShieldCheck,
   FileText, ListTodo, Boxes, ExternalLink, FolderGit2, ChevronRight, ChevronDown,
-  CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper, Network,
+  CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper, Network, Pencil,
 } from 'lucide-react';
 import Markdown, { matchesLang, ShowcaseIcon } from '../ui/md.jsx';
 import { ProgressTracker } from '../hero/progress-tracker.jsx';
@@ -13,6 +13,8 @@ import { useI18n } from '../i18n.jsx';
 import StackMap from '../ui/stack-map.jsx';
 import ProjectCodeMap from '../ui/project-code-map.jsx';
 import { stackTabEnabled } from '../lib/stack-layout.js';
+import { canEditProject } from '../lib/roles.js';
+import { useAuth } from './auth.jsx';
 import RrwebPreview from '../hero/RrwebPreview.jsx';
 import { GithubIcon, KofiIcon, DiscordIcon, RedditIcon, AppLogo, APP_LOGO } from '../ui/brand.jsx';
 import { MessageSquare } from 'lucide-react';
@@ -292,6 +294,7 @@ function CountdownPanel({ announcement, onReveal }) {
 export default function ProjectPage() {
   const { key } = useParams();
   const { t } = useI18n();
+  const { user } = useAuth();
   const [sp, setSp] = useSearchParams();
   const wantTab = sp.get('tab') || 'overview';
   const [showVersions, setShowVersions] = useState(false);
@@ -327,6 +330,23 @@ export default function ProjectPage() {
         <div className="flex flex-wrap items-start gap-2">
           <DownloadMenu downloads={c.downloads} />
           {hasCatalog && <Link to={`/catalog?project=${key}`}><Button><Boxes size={16} /> {t('proj.browse')}</Button></Link>}
+          {/* The way BACK to the editor, for somebody who may edit this page.
+              The config has always been editable — in an admin section, reached from a menu,
+              two pages from the thing it describes. So the person who spots that a diagram is
+              wrong is looking at the diagram, and the fix is somewhere else entirely. This is
+              the link between the two.
+
+              Shown only to somebody who actually holds the grant; canEditProject is the same
+              predicate the admin screen uses, imported rather than re-derived — a preview
+              that re-derives a rule is how the topbar ended up offering "Log out" and
+              "Sign in" at once. */}
+          {canEditProject(user, key) && (
+            <Link to={`/admin?s=projects&key=${key}`}>
+              <Button variant="ghost" title={t('proj.edit.h', 'Edit this page — text, links, downloads, and the How it runs diagram')}>
+                <Pencil size={15} /> {t('proj.edit', 'Edit page')}
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -348,7 +368,21 @@ export default function ProjectPage() {
       {tab === 'overview' && <Overview c={c} pkey={key} />}
       {tab === 'releases' && <Releases pkey={key} />}
       {tab === 'community' && <Community c={c} communityUrl={c.contributorsUrl ? `/projects/${key}/community` : null} />}
-      {tab === 'stack' && <><StackMap stack={c.stack} t={t} />{c.stack?.showCodeMap && <ProjectCodeMap projectKey={key} t={t} />}</>}
+      {tab === 'stack' && (
+        <>
+          <StackMap stack={c.stack} t={t} />
+          {c.stack?.showCodeMap && <ProjectCodeMap projectKey={key} t={t} />}
+          {/* Again here, because this is the tab whose content is most often wrong: a box
+              named after a folder that was renamed, a component that no longer exists. The
+              person who notices is looking at THIS. */}
+          {canEditProject(user, key) && (
+            <Link to={`/admin?s=projects&key=${key}`}
+              className="inline-flex items-center gap-1.5 mt-6 text-[12px] text-[var(--muted)] hover:text-[var(--text)] transition">
+              <Pencil size={12} /> {t('proj.edit.stack', 'Edit this diagram')}
+            </Link>
+          )}
+        </>
+      )}
       {tab === 'blog' && <ProjectBlogTab project={key} />}
       {tab === 'legal' && <Legal c={c} />}
     </div>

@@ -161,6 +161,9 @@ const DICT = {
     'auth.2fa.title': 'Two-factor code', 'auth.2fa.sub': 'Enter the 6-digit code from your authenticator app.',
     'auth.2fa.code': 'Code', 'auth.2fa.verify': 'Verify', 'auth.2fa.back': 'Back to login', 'auth.2fa.bad': 'Invalid code.',
 
+    'proj.edit': 'Modifier la page',
+    'proj.edit.h': 'Modifier cette page — textes, liens, téléchargements et le diagramme « How it runs »',
+    'proj.edit.stack': 'Modifier ce diagramme',
     'proj.overview': 'Overview', 'proj.releases': 'Release Notes', 'proj.community': 'Community', 'proj.legal': 'Legal', 'proj.countdown': 'Countdown',
     'proj.browse': 'Browse catalog', 'proj.progress': 'Progress tracker', 'proj.noprogress': 'No roadmap yet',
     'proj.nocontrib': 'No contributors yet', 'proj.messages': 'Community messages',
