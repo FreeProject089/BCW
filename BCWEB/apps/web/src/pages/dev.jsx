@@ -311,12 +311,20 @@ export const DEFAULT_DEV_CARDS = [
     // Named and linked, not summarised. Five tools live behind this card and the only way to
     // learn which was to open it — the same discoverability gap that hid a working Switch step
     // and a whole catalogue type elsewhere in this project.
+    // Each one says what it DOES, because these are drawn as their own cards now — five
+    // pills inside a paragraph made the five things a developer came for look like footnotes
+    // to the card that contained them.
     chips: [
-      { to: '/dev/tools#try', labelKey: 'dev.console.title', label: 'Try a call' },
-      { to: '/dev/tools#validate', labelKey: 'dvt.val', label: 'Check a catalog feed' },
-      { to: '/dev/tools#deeplink', labelKey: 'dvt.dl.title', label: 'Build a bmm:// link' },
-      { to: '/dev/tools#signature', labelKey: 'dvt.sig.title', label: 'Check a webhook signature' },
-      { to: '/dev/tools#calls', labelKey: 'dvt.calls', label: 'What your keys did' },
+      { to: '/dev/tools#try', labelKey: 'dev.console.title', label: 'Try a call',
+        icon: 'terminal', hintKey: 'dev.hub.tool.try', hint: 'Against the real API, with your key. A sandbox switch makes a write answer without writing.' },
+      { to: '/dev/tools#validate', labelKey: 'dvt.val', label: 'Check a catalog feed',
+        icon: 'check-circle-2', hintKey: 'dev.hub.tool.val', hint: 'Paste a URL and see what BMM would make of it — before anybody subscribes to it.' },
+      { to: '/dev/tools#deeplink', labelKey: 'dvt.dl.title', label: 'Build a bmm:// link',
+        icon: 'link-2', hintKey: 'dev.hub.tool.dl', hint: 'Every action, every parameter, with the link written for you as you pick.' },
+      { to: '/dev/tools#signature', labelKey: 'dvt.sig.title', label: 'Check a webhook signature',
+        icon: 'fingerprint', hintKey: 'dev.hub.tool.sig', hint: 'Paste a payload and a header and find out which half is wrong.' },
+      { to: '/dev/tools#calls', labelKey: 'dvt.calls', label: 'What your keys did',
+        icon: 'activity', hintKey: 'dev.hub.tool.calls', hint: 'Every call, refusals included — the ones you never see are the ones worth reading.' },
     ],
   },
   {
@@ -381,6 +389,9 @@ export default function DevHub() {
   const hero = cfg?.hero || {};
   const show = cfg?.sections || {};
   const cards = devCards(cfg, t);
+  // Every chip on every card, flattened: an admin who adds a chip to a custom card gets it
+  // in the tools grid without a second list to keep in step.
+  const toolCards = cards.flatMap((c) => c.chips || []);
 
   const loadScopes = async () => {
     if (scopes) return setScopes(null);
@@ -433,21 +444,43 @@ export default function DevHub() {
         </Card>
       </div>}
 
+      {/* THE TOOLS, as the page's main answer.
+          They were five pills inside one card of four — so the five things a developer
+          actually came to use looked like footnotes to the card that contained them, and the
+          only way to learn what any of them did was to open it. Each is its own card with a
+          line saying what it does; the card that held them keeps its place below, beside the
+          other three, where "here is the section" belongs. */}
+      {toolCards.length > 0 && (
+        <>
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
+            {t('dev.hub.toolsh2', 'Tools you can use right now')}
+          </h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
+            {toolCards.map((c, i) => (
+              <Link key={i} to={c.to || '#'}
+                className="group rounded-xl border border-[var(--line)] p-4 hover:border-[var(--primary)] transition flex flex-col"
+                style={{ background: 'var(--surface)' }}>
+                <span className="flex items-center gap-2 text-[13px] font-semibold">
+                  <IconGlyph name={c.icon || 'circle'} size={15} className="text-[var(--primary-2)]" />
+                  {c.labelKey ? t(c.labelKey, c.label || '') : (c.label || '')}
+                  <ArrowRight size={13} className="ml-auto opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
+                </span>
+                {(c.hint || c.hintKey) && (
+                  <p className="text-[12px] text-[var(--muted)] mt-1.5 leading-snug">{t(c.hintKey, c.hint || '')}</p>
+                )}
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+
       <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{hero.toolsTitle || t('dev.hub.toolsh', 'Everything here')}</h2>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {cards.map((c) => (
           <Tool key={c.key} icon={(props) => <IconGlyph name={c.icon} {...props} />} title={c.title} to={c.to} cta={c.cta}>
             {c.body}
-            {c.chips && (
-              <span className="flex flex-wrap gap-1.5 mt-2">
-                {c.chips.map((ch, i) => (
-                  <Link key={i} to={ch.to || '#'}
-                    className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition">
-                    {ch.labelKey ? t(ch.labelKey, ch.label || '') : (ch.label || '')}
-                  </Link>
-                ))}
-              </span>
-            )}
+            {/* The chips are drawn as their own cards above; repeating them here would be
+                the same five links twice on one screen. */}
           </Tool>
         ))}
       </div>
