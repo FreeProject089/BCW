@@ -408,10 +408,12 @@ export function detectStack(files = {}, { endpointLinks = [], callsTruncated = f
     for (const n of list) {
         if (labelCount.get(n.label) < 2) continue;
         const dir = dirOf(n.from || '');
-        // The folder, or — for a manifest at the repository root, which has none — what it is
-        // built from. Both are read off the manifest; neither is invented.
-        const tag = dir ? baseName(dir) : n.tech;
-        if (tag) n.label = `${n.label} (${tag})`;
+        if (!dir) continue;   // a manifest at the root has no folder to name it after
+        // On the TECH line, not appended to the name. A box is 152px wide and clips its title
+        // at 17 characters: "better-mods-manager (src-tauri)" and "better-mods-manager" both
+        // render as "better-mods-mana…", which is the two identical boxes all over again with
+        // extra steps. The second line has room and is already there.
+        n.tech = n.tech ? `${n.tech} · ${baseName(dir)}` : baseName(dir);
     }
 
     // `from` is for the admin to see where a box came from; it is not part of the saved shape.

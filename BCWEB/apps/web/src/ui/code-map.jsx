@@ -212,13 +212,18 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
             {/* Said before the picture, not after: a truncated graph is not this repo. */}
             {graph.stats?.truncated && (
                 <p className="text-[12px] text-[var(--warning)] mb-2">
+                    {/* Every drawable file, not just the JS ones — the Rust half of a repo
+                        counted for nothing in this total and made it read low. */}
                     {t('cm.truncated', 'Showing {n} of {m} files — the rest are not drawn.')
-                        .replace('{n}', graph.stats.drawn).replace('{m}', graph.stats.jsFiles)}
+                        .replace('{n}', graph.stats.drawn)
+                        .replace('{m}', (graph.stats.jsFiles || 0) + (graph.stats.rustFiles || 0))}
                 </p>
             )}
             {graph.unsupported?.length > 0 && (
                 <p className="text-[12px] text-[var(--faint)] mb-2">
-                    {t('cm.unsupported', 'Only JavaScript and TypeScript are read. Skipped: {x}.').replace('{x}', graph.unsupported.join(', '))}
+                    {/* It reads Rust as well now, and a caption that says otherwise on a page
+                        showing 28 Rust files is the drawing arguing with its own label. */}
+                    {t('cm.unsupported', 'JavaScript, TypeScript and Rust are read. Skipped: {x}.').replace('{x}', graph.unsupported.join(', '))}
                 </p>
             )}
 

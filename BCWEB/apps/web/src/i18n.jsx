@@ -417,7 +417,7 @@ const DICT = {
     'dvt.cm.asof': 'Carte enregistrée, à la date du',
     'cm.files': 'fichiers', 'cm.folders': 'dossiers', 'cm.imports': 'imports',
     'cm.truncated': 'Affichage de {n} fichiers sur {m} — les autres ne sont pas dessinés.',
-    'cm.unsupported': 'Seuls JavaScript et TypeScript sont lus. Ignorés : {x}.',
+    'cm.unsupported': 'JavaScript, TypeScript et Rust sont lus. Ignorés : {x}.',
     'cm.a11y': '{n} fichiers dans {f} dossiers, {e} imports',
     'cm.pick': 'Choisis un fichier pour voir ce qu’il importe et qui l’importe.',
     'cm.hint': 'Le nombre sur un fichier est le nombre d’autres qui dépendent de lui.',

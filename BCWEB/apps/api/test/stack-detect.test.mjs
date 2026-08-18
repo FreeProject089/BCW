@@ -460,8 +460,11 @@ describe('two components with the same name', () => {
             'frontend/package.json': '{"name":"better-mods-manager"}',
             'src-tauri/Cargo.toml': '[package]\nname = "better-mods-manager"\n',
         }, { paths: ['frontend/package.json', 'frontend/src/a.js', 'src-tauri/Cargo.toml', 'src-tauri/src/main.rs'] });
-        const labels = r.nodes.map((n) => n.label).sort();
-        assert.deepEqual(labels, ['better-mods-manager (frontend)', 'better-mods-manager (src-tauri)']);
+        // On the TECH line, not the title: a box clips its title at 17 characters, so
+        // "better-mods-manager (src-tauri)" and "better-mods-manager" both render as
+        // "better-mods-mana…" — the two identical boxes again, with extra steps.
+        assert.deepEqual(r.nodes.map((n) => n.tech).sort(), ['Node.js · frontend', 'Rust · src-tauri']);
+        assert.deepEqual([...new Set(r.nodes.map((n) => n.label))], ['better-mods-manager']);
     });
 
     test('a manifest at the root is tagged with what it is built from', () => {
@@ -471,8 +474,9 @@ describe('two components with the same name', () => {
             'package.json': '{"name":"better-mods-manager","dependencies":{"react":"19"}}',
             'src-tauri/Cargo.toml': '[package]\nname = "better-mods-manager"\n',
         }, { paths: ['package.json', 'src/a.js', 'src-tauri/Cargo.toml', 'src-tauri/src/main.rs'] });
-        assert.deepEqual(r.nodes.map((n) => n.label).sort(),
-            ['better-mods-manager (React)', 'better-mods-manager (src-tauri)']);
+        // The root manifest keeps its bare tech — there is no folder to add — and the one in
+        // a folder gains it, which is enough to tell them apart.
+        assert.deepEqual(r.nodes.map((n) => n.tech).sort(), ['React', 'Rust · src-tauri']);
     });
 
     test('a unique name is left alone', () => {
