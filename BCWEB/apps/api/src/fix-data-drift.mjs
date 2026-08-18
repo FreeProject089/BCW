@@ -109,13 +109,55 @@ async function restoreBasePlans() {
 
 // ── 4. Closed accounts ───────────────────────────────────────────────────────
 //
-// Closure anonymises the row and keeps it — the id is referenced by content, audit entries and
-// sanctions, so deleting it would tear holes in other people's history. Reported rather than
-// touched: seeing eleven of them in a list is confusing, but they are correct, and a script
-// that "cleaned them up" would be destroying the record on purpose.
-async function reportClosedAccounts() {
-  const n = await p.user.count({ where: { closedAt: { not: null } } });
-  if (n) say(`closed accounts: ${n} (kept on purpose — their ids are referenced by content and audit history)`);
+// Closure anonymises the row and keeps it, because other records point at the id. The
+// question worth answering is which ones still have something pointing at them.
+//
+// The answer is not a list of tables kept in this file — that list would go stale the first
+// time somebody adds a relation. It is the DATABASE's answer: every reference to User is
+// declared ON DELETE RESTRICT, CASCADE or SET NULL, so attempting the delete inside a
+// transaction asks Postgres directly. A RESTRICT reference refuses it; everything else falls
+// away as it was declared to. Nothing here has to know the schema.
+//
+// One thing IS deleted first, deliberately: the account's own notifications. They are
+// addressed to somebody who can no longer sign in, so they are worthless on their own — but
+// they are RESTRICT, so leaving them would block every deletion for a reason nobody cares
+// about. Every other blocker is a real one and is left to say no.
+//
+// The blocker that matters most is AuditLogEntry.actorId. The staff log is a tamper-evident
+// hash chain; an actor removed from under it is the one thing that log exists to prevent.
+async function pruneClosedAccounts() {
+  const closed = await p.user.findMany({ where: { closedAt: { not: null } }, select: { id: true } });
+  if (!closed.length) return say('closed accounts: none');
+
+  let removed = 0;
+  const kept = [];
+  for (const u of closed) {
+    if (DRY) {
+      // Ask the same question without writing: is anything RESTRICT pointing at it? The
+      // cheapest honest proxy is the audit log, which is what holds nearly all of them.
+      const audit = await p.auditLogEntry.count({ where: { actorId: u.id } }).catch(() => 0);
+      if (audit) kept.push(`${u.id} (${audit} audit entr${audit === 1 ? 'y' : 'ies'})`);
+      continue;
+    }
+    try {
+      await p.$transaction([
+        p.notification.deleteMany({ where: { userId: u.id } }),
+        p.user.delete({ where: { id: u.id } }),
+      ]);
+      removed++;
+    } catch {
+      // Refused by a foreign key: something real still points at it. The transaction rolled
+      // back, so its notifications are still there too.
+      const audit = await p.auditLogEntry.count({ where: { actorId: u.id } }).catch(() => 0);
+      kept.push(audit ? `${u.id} (${audit} audit entr${audit === 1 ? 'y' : 'ies'})` : u.id);
+    }
+  }
+  if (removed) { say(`closed accounts: ${removed} removed (nothing referenced them)`); repaired += removed; }
+  if (kept.length) {
+    say(`closed accounts: ${kept.length} kept — something still points at them:`);
+    for (const k of kept) say(`  · ${k}`);
+    say('  the audit log is a tamper-evident chain; an actor removed from under it defeats it.');
+  }
 }
 
 const run = async () => {
@@ -123,7 +165,7 @@ const run = async () => {
   await fixStatusCasing();
   await fixDuplicatePlans();
   await restoreBasePlans();
-  await reportClosedAccounts();
+  await pruneClosedAccounts();
   console.log(DRY ? `\n${repaired} thing(s) would change.` : `\n${repaired} thing(s) changed.`);
   await p.$disconnect();
 };

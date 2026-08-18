@@ -700,7 +700,16 @@ export default async function miscRoutes(app) {
     const twofa = String(req.query?.twofa || '');
     if (twofa === 'yes') and.push({ totpEnabled: true });
     else if (twofa === 'no') and.push({ totpEnabled: false });
-    const closed = String(req.query?.closed || '');
+    // Closed accounts are hidden UNLESS asked for.
+    //
+    // They were shown by default and there is no version of this list where that helps: a
+    // closed account is anonymised, cannot sign in, and is not somebody you moderate. It is
+    // kept only because other records point at it. Twelve of them in a dev database is
+    // clutter; on a real one it is a moderation list padded with rows nobody can act on.
+    //
+    // `?closed=yes` still shows only those, so nothing became unreachable — this changes the
+    // default, not the capability.
+    const closed = String(req.query?.closed || 'no');
     if (closed === 'yes') and.push({ closedAt: { not: null } });
     else if (closed === 'no') and.push({ closedAt: null });
     const linked = String(req.query?.linked || '');
