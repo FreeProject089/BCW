@@ -1452,6 +1452,7 @@ const DICT = {
     'myo.hiw1.t': '1 · Payez le conseil', 'myo.hiw1.s': 'Une consultation de {n} ({u} si urgent) ouvre une conversation privée avec un consultant.',
     'myo.hiw2.t': '2 · Recevez un devis', 'myo.hiw2.s': 'On discute de vos besoins et on envoie un prix clair et détaillé pour le produit.',
     'myo.hiw3.t': '3 · On crée & on livre', 'myo.hiw3.s': 'Une fois le devis validé et payé, on le crée et on le livre directement dans la conversation.',
+    'myo.disclaimer.head': 'Ce que couvre la consultation, et ce qu’elle ne couvre pas',
     'myo.disclaimer': 'Les frais de consultation paient un conseil d’expert et un devis — ce n’est PAS le prix du produit. La création ne commence qu’après validation et paiement du devis séparé. Certaines livraisons incluent le code source, d’autres non — c’est toujours indiqué sur le devis.',
     'myo.custom.tag': 'Autre chose — un outil, un SaaS, un audit de code avec CVE/CWE + CVSS…',
     'myo.from': 'à partir de {p}', 'myo.start': 'Démarrer', 'myo.src.with': 'code source inclus', 'myo.src.without': 'sans code source',

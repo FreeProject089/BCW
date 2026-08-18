@@ -87,10 +87,27 @@ export function MyoPage() {
             </div>
           ))}
         </div>
-        <div className="mt-5 text-xs text-[var(--muted)] flex items-start gap-2.5 border-t border-[var(--line)] pt-4">
-          <AlertTriangle size={15} className="shrink-0 mt-0.5 text-warning" />
-          <span>{t('myo.disclaimer', 'The consultation fee pays for expert advice and a quote — it is NOT the price of the product. Building only begins after you approve and pay the separate quote. Some deliverables include source code, some do not — this is always stated on the quote.')}</span>
-        </div>
+        {/* FOLDED, not deleted.
+            "The fee is not the product price" was said four times on one screen: in the
+            hero, across these three steps, in this paragraph, and again on the custom card.
+            Repeated that hard it reads as anxiety rather than as clarity — and this copy of
+            it pushed the catalogue, the thing people came for, past the fold on a 900px
+            window (it began at 764px).
+
+            It stays because the one line it adds is real — whether SOURCE CODE is included
+            is not said anywhere else, and it is the question that turns into a dispute. It
+            is a summary line that opens, so the page states it and the reader chooses when
+            to read the detail. The intake modal repeats it in full at the moment money is
+            about to move, which is the moment it must not be foldable. */}
+        <details className="mt-4 border-t border-[var(--line)] pt-3.5">
+          <summary className="text-xs text-[var(--muted)] cursor-pointer flex items-center gap-2.5 list-none">
+            <AlertTriangle size={15} className="shrink-0 text-warning" />
+            {t('myo.disclaimer.head', 'What the consultation fee covers, and what it does not')}
+          </summary>
+          <p className="text-xs text-[var(--muted)] mt-2.5 pl-[25px] leading-relaxed">
+            {t('myo.disclaimer', 'The consultation fee pays for expert advice and a quote — it is NOT the price of the product. Building only begins after you approve and pay the separate quote. Some deliverables include source code, some do not — this is always stated on the quote.')}
+          </p>
+        </details>
       </Card>
 
       {/* Capacity, at the top, where somebody decides whether to start.
