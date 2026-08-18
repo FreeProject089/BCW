@@ -267,6 +267,7 @@ export default async function projectRoutes(app) {
     }
 
     let files = null;
+    let allPaths = [];
     let source = '';
 
     if (b.data.files) {
@@ -283,7 +284,8 @@ export default async function projectRoutes(app) {
       const first = names[0]?.split('/')[0];
       const wrapped = first && names.every((n) => n.startsWith(`${first}/`));
       const strip = (n) => (wrapped ? n.slice(first.length + 1) : n);
-      const wanted = new Set(interestingPaths(names.map(strip)));
+      allPaths = names.map(strip);
+      const wanted = new Set(interestingPaths(allPaths));
       files = {};
       for (const e of entries) {
         const path = strip(e.name);
@@ -303,6 +305,7 @@ export default async function projectRoutes(app) {
         return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message || e).slice(0, 120) });
       }
       const paths = (tree.tree || []).filter((e) => e.type === 'blob').map((e) => e.path);
+      allPaths = paths;
       const wanted = interestingPaths(paths);
       files = {};
       await Promise.all(wanted.map(async (path) => {
@@ -322,6 +325,8 @@ export default async function projectRoutes(app) {
     // used to come back as two unconnected boxes — while the `invoke` calls joining them were
     // provable all along. Only for a GitHub read: a picked folder sends fifteen manifests and
     // nothing to scan, and a zip is capped for size, so neither has the source to prove a call.
+    // The repository's whole file list, when there is one. A folder pick sends manifests and
+    // no tree, and detectStack keeps every manifest in that case rather than guessing.
     let endpointLinks = [];
     let callsTruncated = false;
     if (b.data.url) {
@@ -348,7 +353,7 @@ export default async function projectRoutes(app) {
       } catch { /* no connections is a poorer draft, not a failed one */ }
     }
 
-    const draft = detectStack(files, { endpointLinks, callsTruncated });
+    const draft = detectStack(files, { endpointLinks, callsTruncated, paths: allPaths });
     return { ok: true, source, filesRead: Object.keys(files).length, ...draft };
   });
 

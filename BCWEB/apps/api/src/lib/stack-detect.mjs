@@ -172,10 +172,58 @@ function cargoPathEdges(files) {
     return edges;
 }
 
+/**
+ * Directories whose contents are not the product: dependencies, build output, and the
+ * repository's own tooling.
+ *
+ * `tools/` earns its place here the hard way — BetterInstaller holds one Python script in it
+ * (a PDF check), and that single file was enough to keep a requirements.txt that pins mkdocs
+ * on the diagram as a Python application beside three Rust crates.
+ */
+const TOOLING_DIR = /(^|\/)(node_modules|vendor|target|dist|build|out|\.venv|site|docs?|tools?|scripts?|infra|ci|examples?|samples?)(\/|$)/;
+
+/** The source extensions a manifest of each kind promises. */
+const MANIFEST_SOURCE = {
+    'package.json': ['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts', '.svelte', '.vue'],
+    'Cargo.toml': ['.rs'],
+    'go.mod': ['.go'],
+    'pyproject.toml': ['.py'],
+    'requirements.txt': ['.py'],
+};
+
+/**
+ * Does this manifest have any source under it?
+ *
+ * BetterInstaller keeps a `requirements.txt` at its root — pinned mkdocs, for building the
+ * documentation site — and it was drawn as a Python application beside the three Rust crates
+ * that are the actual product. The same shape catches a package.json that exists only to hold
+ * a lint script, and a Cargo.toml that is a bare workspace.
+ *
+ * Answered from the repository's FILE LIST, not from a list of tool names: "mkdocs is
+ * documentation" is a judgement that ages, and "there is no Python here" is a fact. With no
+ * file list to consult, nothing is dropped — a scan from a picked folder or a zip keeps every
+ * manifest it found, exactly as before.
+ */
+function manifestHasSource(path, paths) {
+    if (!paths?.length) return true;
+    const exts = MANIFEST_SOURCE[baseName(path)];
+    if (!exts) return true;
+    const dir = dirOf(path);
+    const prefix = dir ? `${dir}/` : '';
+    return paths.some((f) => f.startsWith(prefix)
+        && exts.some((e) => f.endsWith(e))
+        // Somebody else's code, and the repository's own tooling, are not the product. The
+        // same directories the endpoint scanner already skips for the same reason — one
+        // list of "this is not the application", not two that drift.
+        && !TOOLING_DIR.test(f));
+}
+
 /** package.json / Cargo.toml / go.mod / pyproject: one app per manifest, named by its folder. */
-function fromManifests(files) {
+function fromManifests(files, paths) {
     const nodes = [];
+    const empty = [];
     for (const [path, body] of Object.entries(files)) {
+        if (!manifestHasSource(path, paths)) { empty.push(path); continue; }
         const base = baseName(path);
         const dir = dirOf(path);
         // The repo root's own manifest is usually the workspace, not a deployable — but if it is
@@ -200,6 +248,9 @@ function fromManifests(files) {
             nodes.push({ id: slug(m ? m[1] : name), label: m ? m[1] : name, kind: 'app', tech: 'Python', from: path });
         }
     }
+    // Carried on the array rather than returned as a pair: every caller wants the nodes,
+    // and one of them also wants to say what it declined to draw.
+    nodes.emptyManifests = empty;
     return nodes;
 }
 
@@ -266,14 +317,14 @@ function fromDesktop(files) {
  * @param {Record<string,string>} files  path → contents (only the ones worth reading)
  * @returns {{nodes: object[], edges: object[], evidence: string[], notes: string[]}}
  */
-export function detectStack(files = {}, { endpointLinks = [], callsTruncated = false } = {}) {
+export function detectStack(files = {}, { endpointLinks = [], callsTruncated = false, paths = [] } = {}) {
     const notes = [];
     const compose = fromCompose(files);
     const composeIds = new Set(compose.nodes.map((n) => n.id));
 
     // Manifests lend what compose could not know: a service built from source (`build:`, no
     // `image:`) has no tech at all, and its package.json names the framework.
-    const manifests = fromManifests(files);
+    const manifests = fromManifests(files, paths);
     for (const m of manifests) {
         if (!composeIds.has(m.id)) continue;
         const node = compose.nodes.find((n) => n.id === m.id);
@@ -298,6 +349,11 @@ export function detectStack(files = {}, { endpointLinks = [], callsTruncated = f
     for (const n of nodes) if (!byId.has(n.id)) byId.set(n.id, n);
     const list = [...byId.values()];
 
+    for (const path of manifests.emptyManifests || []) {
+        notes.push(`${path} was not drawn as a component: there is no source of its language `
+            + 'anywhere under it, so it describes tooling (a docs build, a lint script) rather '
+            + 'than something this project runs.');
+    }
     for (const path of compose.ignored || []) {
         notes.push(`${path} was not read as the architecture: no service in it publishes a port `
             + 'or depends on another, which is what a build/CI container looks like rather than a '
@@ -342,6 +398,22 @@ export function detectStack(files = {}, { endpointLinks = [], callsTruncated = f
     }
 
     const evidence = [...new Set(list.map((n) => n.from))].sort();
+    // Two boxes with the same name are two boxes nobody can tell apart. BMM's package.json
+    // and its src-tauri/Cargo.toml are BOTH called better-mods-manager, so the diagram drew
+    // the name twice and an arrow between them — which reads as a mistake even though both
+    // labels are what the manifests say. The directory that produced each one is the
+    // disambiguator, and it is a fact rather than a guess.
+    const labelCount = new Map();
+    for (const n of list) labelCount.set(n.label, (labelCount.get(n.label) || 0) + 1);
+    for (const n of list) {
+        if (labelCount.get(n.label) < 2) continue;
+        const dir = dirOf(n.from || '');
+        // The folder, or — for a manifest at the repository root, which has none — what it is
+        // built from. Both are read off the manifest; neither is invented.
+        const tag = dir ? baseName(dir) : n.tech;
+        if (tag) n.label = `${n.label} (${tag})`;
+    }
+
     // `from` is for the admin to see where a box came from; it is not part of the saved shape.
     // `gen` IS saved: it is how a later rebuild knows which boxes it drew itself and may
     // replace, and which ones a person added and it must never touch.

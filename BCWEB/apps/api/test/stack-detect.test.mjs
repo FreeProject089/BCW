@@ -405,3 +405,81 @@ describe("Cargo path dependencies", () => {
         assert.deepEqual(r.edges, []);
     });
 });
+
+describe('a manifest with no source under it', () => {
+    // BetterInstaller keeps a requirements.txt at its root — pinned mkdocs, for building the
+    // documentation — and it was drawn as a Python application beside the three Rust crates
+    // that are the actual product.
+    const FILES = {
+        'requirements.txt': 'mkdocs==1.6.1\nmkdocs-material==9.5.44\n',
+        'crates/bpkg-core/Cargo.toml': '[package]\nname = "bpkg-core"\n',
+    };
+    const PATHS = ['requirements.txt', 'crates/bpkg-core/Cargo.toml', 'crates/bpkg-core/src/lib.rs', 'mkdocs.yml'];
+
+    test('is not a component', () => {
+        const r = detectStack(FILES, { paths: PATHS });
+        assert.deepEqual(r.nodes.map((n) => n.id), ['bpkg-core']);
+    });
+
+    test('and the page says which one was left out, and why', () => {
+        const r = detectStack(FILES, { paths: PATHS });
+        assert.ok(r.notes.some((n) => n.includes('requirements.txt') && /tooling/.test(n)), r.notes.join(' | '));
+    });
+
+    test('a manifest WITH source is drawn', () => {
+        const r = detectStack(
+            { 'api/requirements.txt': 'fastapi\n' },
+            { paths: ['api/requirements.txt', 'api/main.py'] },
+        );
+        assert.deepEqual(r.nodes.map((n) => n.id), ['api']);
+    });
+
+    test('source that is only in vendored or built folders does not count', () => {
+        const r = detectStack(
+            { 'package.json': '{"name":"tooling"}' },
+            { paths: ['package.json', 'node_modules/x/index.js', 'dist/bundle.js'] },
+        );
+        assert.deepEqual(r.nodes, []);
+    });
+
+    test('with NO file list, nothing is dropped', () => {
+        // A scan from a picked folder or a zip sends manifests and no tree; guessing there
+        // would silently delete components from a diagram that was fine before.
+        const r = detectStack(FILES);
+        // The root manifest is named 'app' — there is no folder to name it after.
+        assert.deepEqual(r.nodes.map((n) => n.id).sort(), ['app', 'bpkg-core']);
+    });
+});
+
+describe('two components with the same name', () => {
+    test('are told apart by the folder that produced them', () => {
+        // BMM's package.json and its src-tauri/Cargo.toml are BOTH called
+        // better-mods-manager, so the diagram drew the name twice with an arrow between —
+        // which reads as a mistake even though both labels are what the manifests say.
+        const r = detectStack({
+            'frontend/package.json': '{"name":"better-mods-manager"}',
+            'src-tauri/Cargo.toml': '[package]\nname = "better-mods-manager"\n',
+        }, { paths: ['frontend/package.json', 'frontend/src/a.js', 'src-tauri/Cargo.toml', 'src-tauri/src/main.rs'] });
+        const labels = r.nodes.map((n) => n.label).sort();
+        assert.deepEqual(labels, ['better-mods-manager (frontend)', 'better-mods-manager (src-tauri)']);
+    });
+
+    test('a manifest at the root is tagged with what it is built from', () => {
+        // There is no folder to name it after, and "better-mods-manager" twice is the problem
+        // this exists to solve.
+        const r = detectStack({
+            'package.json': '{"name":"better-mods-manager","dependencies":{"react":"19"}}',
+            'src-tauri/Cargo.toml': '[package]\nname = "better-mods-manager"\n',
+        }, { paths: ['package.json', 'src/a.js', 'src-tauri/Cargo.toml', 'src-tauri/src/main.rs'] });
+        assert.deepEqual(r.nodes.map((n) => n.label).sort(),
+            ['better-mods-manager (React)', 'better-mods-manager (src-tauri)']);
+    });
+
+    test('a unique name is left alone', () => {
+        const r = detectStack({
+            'web/package.json': '{"name":"web"}',
+            'api/package.json': '{"name":"api"}',
+        }, { paths: ['web/package.json', 'web/a.js', 'api/package.json', 'api/b.js'] });
+        assert.deepEqual(r.nodes.map((n) => n.label).sort(), ['api', 'web']);
+    });
+});

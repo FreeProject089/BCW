@@ -158,7 +158,10 @@ for (const key of keys) {
         endpointLinks = buildEndpointGraph(srcFiles).links;
     } catch { /* no connections is a poorer draft, not a failed one */ }
 
-    const draft = detectStack(files, { endpointLinks });
+    // `paths` is the repository's whole file list, which is how a manifest with no source
+    // under it (a requirements.txt that pins mkdocs for the docs site) stops being drawn as a
+    // component beside the crates that are the actual product.
+    const draft = detectStack(files, { endpointLinks, paths });
     if (!draft.nodes?.length) {
         console.log(`${key}: nothing recognisable in ${wanted.length} manifest(s) — left alone`);
     } else {
