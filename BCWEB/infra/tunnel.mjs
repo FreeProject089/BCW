@@ -32,6 +32,16 @@
 // the http origin Caddy matches on :5176. Two different things that happen to share a
 // hostname, which is exactly why one of them was easy to forget.
 //
+// UPLOADS need a SECOND tunnel, and that is not an accident of this script. A file never
+// passes through the API: the browser asks for a pre-signed URL and PUTs the bytes straight
+// at MinIO on :9000. Pre-signed means the signature covers the host, so the address in that
+// URL is the address the browser must use — and it was S3_PUBLIC_ENDPOINT, http://localhost
+// :9000, i.e. the VISITOR'S own machine. Attaching a file did nothing, with no error worth
+// reading, because the request never left their laptop.
+//
+// So a second quick tunnel fronts :9000 and S3_PUBLIC_ENDPOINT points at it. Nothing else has
+// to change: the CSP already allows `https:` in connect-src, and MinIO's CORS is `*`.
+//
 // OAUTH STILL WILL NOT WORK, and no change here can fix it: Discord and GitHub only accept a
 // redirect_uri registered in their app settings, and this hostname is different every run.
 // Tell your tester to sign up with an e-mail address.
@@ -46,6 +56,9 @@ import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 const PORT = 5176;
+// MinIO. Pre-signed upload URLs are signed against whatever S3_PUBLIC_ENDPOINT says, so this
+// port needs its own public address for a file to reach us at all.
+const S3_PORT = 9000;
 // fileURLToPath, not `new URL(...).pathname`: the latter percent-encodes, so a checkout under
 // a directory with a space in its name ("Better Project") yields a path containing %20 and
 // every file read fails with ENOENT on a path that looks almost right.
@@ -60,6 +73,7 @@ const SITE = 'SITE_URL';
 // next request arrived anonymous. Pointed at the tunnel host instead, it is the page's own
 // domain and the cookie sticks.
 const COOKIE = 'COOKIE_DOMAIN';
+const S3 = 'S3_PUBLIC_ENDPOINT';
 const say = (m) => console.log(`[tunnel] ${m}`);
 
 const readEnvRaw = () => (fs.existsSync(ENV_FILE) ? fs.readFileSync(ENV_FILE, 'utf8') : '');
@@ -86,6 +100,7 @@ function setEnv(entries) {
 // What these were before this run, so they can be put back exactly.
 const SITE_WAS = readEnv(SITE);
 const COOKIE_WAS = readEnv(COOKIE);
+const S3_WAS = readEnv(S3);
 
 // Caddy alone. Restarting the stack to change one hostname would drop the API for anybody
 // already using it.
@@ -100,11 +115,15 @@ const reloadCaddy = () => execFileSync('docker', ['compose', 'up', '-d', 'caddy'
 // localhost, which is a smaller problem than a bot that reconnects mid-session.
 const recreateApi = () => execFileSync('docker', ['compose', 'up', '-d', '--force-recreate', 'api'], { cwd: COMPOSE, stdio: 'inherit' });
 
-const child = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${PORT}`, '--no-autoupdate'], {
+const spawnTunnel = (port) => spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`, '--no-autoupdate'], {
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 
+const child = spawnTunnel(PORT);
+const s3child = spawnTunnel(S3_PORT);
+
 let url = null;
+let s3url = null;
 let stopping = false;
 
 function stop(code = 0) {
@@ -117,11 +136,12 @@ function stop(code = 0) {
   // every verification e-mail from this machine to an address that no longer exists, long
   // after the tunnel is forgotten.
   try {
-    setEnv({ [KEY]: null, [SITE]: SITE_WAS, [COOKIE]: COOKIE_WAS });
+    setEnv({ [KEY]: null, [SITE]: SITE_WAS, [COOKIE]: COOKIE_WAS, [S3]: S3_WAS });
     reloadCaddy();
     recreateApi();
   } catch { /* leaving it set breaks nothing that a re-run will not fix */ }
   try { child.kill(); } catch { /* already gone */ }
+  try { s3child.kill(); } catch { /* already gone */ }
   process.exit(code);
 }
 process.on('SIGINT', () => stop(0));
@@ -129,46 +149,72 @@ process.on('SIGTERM', () => stop(0));
 
 // cloudflared prints the assigned URL inside a box, on stderr in current builds. Matched by
 // SHAPE rather than by line position, which moves between releases.
+//
+// Two processes hand out two addresses and neither is useful alone: the site is unusable
+// without somewhere to upload to, and an upload endpoint with no site in front of it is
+// nothing. So each reader records its own and calls ready(), which does the work once both
+// have arrived — rather than racing to configure a half-known stack.
+for (const stream of [s3child.stdout, s3child.stderr]) {
+  readline.createInterface({ input: stream }).on('line', (line) => {
+    const m = !s3url && line.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+    if (!m) return;
+    s3url = m[0];
+    ready();
+  });
+}
+
 for (const stream of [child.stdout, child.stderr]) {
   readline.createInterface({ input: stream }).on('line', (line) => {
     const m = !url && line.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
     if (!m) return;
     url = m[0];
-    // `http://host:5176`, with BOTH the scheme and the port.
-    //
-    // A bare hostname makes Caddy treat it as a public site: it listens on 443 and tries to
-    // provision a certificate for a name it does not control. The tunnel already terminates
-    // TLS and forwards plain HTTP to :5176, so requests keep arriving on a port that address
-    // is not listening on — and Caddy answers its empty 200 again. Two silent failures that
-    // look identical from outside; only the port tells them apart.
-    setEnv({
-      [KEY]: `http://${url.replace(/^https:\/\//, '')}:${PORT}`,
-      // No port: this is the address the visitor's browser uses, and the tunnel terminates
-      // TLS on 443. A port here would appear in every e-mail link and reach nothing.
-      [SITE]: url,
-      // Bare hostname, no scheme and no port — a cookie Domain is a host, not a URL.
-      [COOKIE]: url.replace(/^https:\/\//, ''),
-    });
-    say('telling Caddy to answer on that hostname…');
-    try { reloadCaddy(); } catch (e) { say(`could not reload Caddy: ${e.message}`); return stop(1); }
-    say('rebuilding the API so its links point at the tunnel…');
-    try { recreateApi(); } catch (e) { say(`could not recreate the api: ${e.message}`); return stop(1); }
-    say('');
-    say(`  Share this:  ${url}`);
-    say('');
-    say('  It reaches YOUR machine, through the same Caddy you use locally.');
-    say('  Sign-ups, uploads and payments on it are the real ones on this instance.');
-    say('  Ctrl-C ends the tunnel, puts SITE_URL back, and the address stops working.');
-    say('');
-    say('  Sign-in by e-mail works — the session cookie is scoped to this hostname for the');
-    say('  duration. OAUTH DOES NOT: Discord and GitHub only accept a');
-    say('  redirect_uri registered in their app settings, and this hostname is new every run.');
-    say('');
-    say(`  While this runs, SITE_URL is https — so cookies are Secure and signing in at`);
-    say(`  http://localhost:${PORT} will not work until you Ctrl-C.`);
-    say('');
+    ready();
   });
 }
+
+let announced = false;
+function ready() {
+  if (announced || !url || !s3url) return;
+  announced = true;
+  // `http://host:5176`, with BOTH the scheme and the port.
+  //
+  // A bare hostname makes Caddy treat it as a public site: it listens on 443 and tries to
+  // provision a certificate for a name it does not control. The tunnel already terminates
+  // TLS and forwards plain HTTP to :5176, so requests keep arriving on a port that address
+  // is not listening on — and Caddy answers its empty 200 again. Two silent failures that
+  // look identical from outside; only the port tells them apart.
+  setEnv({
+    [KEY]: `http://${url.replace(/^https:\/\//, '')}:${PORT}`,
+    // No port: this is the address the visitor's browser uses, and the tunnel terminates
+    // TLS on 443. A port here would appear in every e-mail link and reach nothing.
+    [SITE]: url,
+    // Bare hostname, no scheme and no port — a cookie Domain is a host, not a URL.
+    [COOKIE]: url.replace(/^https:\/\//, ''),
+    // The address a pre-signed upload URL is signed against, and therefore the one the
+    // browser must PUT to. No trailing slash: the S3 client joins paths itself.
+    [S3]: s3url,
+  });
+  say('telling Caddy to answer on that hostname…');
+  try { reloadCaddy(); } catch (e) { say(`could not reload Caddy: ${e.message}`); return stop(1); }
+  say('rebuilding the API so its links point at the tunnel…');
+  try { recreateApi(); } catch (e) { say(`could not recreate the api: ${e.message}`); return stop(1); }
+  say('');
+  say(`  Share this:  ${url}`);
+  say('');
+  say('  It reaches YOUR machine, through the same Caddy you use locally.');
+  say('  Sign-ups, uploads and payments on it are the real ones on this instance.');
+  say('  Ctrl-C ends the tunnel, puts SITE_URL back, and the address stops working.');
+  say('');
+  say('  Sign-in by e-mail works — the session cookie is scoped to this hostname for the');
+  say('  duration. OAUTH DOES NOT: Discord and GitHub only accept a');
+  say('  redirect_uri registered in their app settings, and this hostname is new every run.');
+  say('');
+  say(`  Uploads go to ${s3url} (a second tunnel in front of MinIO).`);
+  say('');
+  say(`  While this runs, SITE_URL is https — so cookies are Secure and signing in at`);
+  say(`  http://localhost:${PORT} will not work until you Ctrl-C.`);
+  say('');
+  }
 
 child.on('exit', (code) => {
   if (!url) {
