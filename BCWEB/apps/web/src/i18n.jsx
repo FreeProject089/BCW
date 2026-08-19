@@ -3074,6 +3074,7 @@ const DICT = {
     'dvt.sig.nomatch': "ne correspond pas",
     'dvt.sub': "Trois choses que tu aurais sinon à écrire toi-même : passer un vrai appel, vérifier un flux avant de le publier, et voir ce que tes clés ont fait.",
     'dvt.jump': "Aller à un outil",
+    'dvt.needsAcc': 'demande un compte',
     'dev.ep.get-scopes': "Tous les scopes et ce qu’ils débloquent — aucune clé nécessaire",
     'dev.ep.get-webhook-events': "Tous les événements auxquels un webhook peut s’abonner",
     'dev.ep.get-catalog': "Le flux de catalogue publié",

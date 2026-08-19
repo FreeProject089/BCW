@@ -547,6 +547,39 @@ export default function DevTools() {
     },
   ];
   const ALL_TOOLS = GROUPS.flatMap((g) => g.tools);
+
+  // ONE TOOL AT A TIME.
+  //
+  // All seven were rendered at once, every form and table mounted, in a two-column grid — and
+  // the sticky jump bar existed because that page was too long to move around in. A jump bar
+  // is a symptom: you came here for one tool, and the other six were between you and it.
+  //
+  // The hash is the selection, not a scroll target. `#deeplink` already addressed a tool and
+  // already worked in a shared link; it now SELECTS it, so every link anybody has sent still
+  // lands on the right thing and lands on it directly.
+  const [active, setActive] = useState(() => {
+    const want = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '');
+    return ALL_TOOLS.some((x) => x.id === want) ? want : ALL_TOOLS[0]?.id;
+  });
+  // Back/forward, and a hash typed by hand, both move the selection — a page whose URL says
+  // one thing while showing another is worse than one with no URL state at all.
+  useEffect(() => {
+    const onHash = () => {
+      const want = window.location.hash.replace('#', '');
+      if (ALL_TOOLS.some((x) => x.id === want)) setActive(want);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, [ALL_TOOLS.length]);
+
+  const pick = (id) => {
+    setActive(id);
+    // replaceState, not a new entry: clicking through five tools should not mean five presses
+    // of Back to leave the page.
+    if (typeof window !== 'undefined') window.history.replaceState(null, '', `#${id}`);
+  };
+  const current = ALL_TOOLS.find((x) => x.id === active) || ALL_TOOLS[0];
+
   if (loading) return null;
 
   // The GATE IS PER TOOL, not per page.
@@ -574,44 +607,53 @@ export default function DevTools() {
         </p>
       </div>
 
-      {/* Sticky jump bar over every tool of every group — tall tools, so a bar you must
-          scroll up to reach is used once. Reads ALL_TOOLS, the same list the sections do. */}
-      {/* Grouped in the bar too. Seven unlabelled chips in a row is a list you read twice;
-          with the category in front, "the installer one" is found without reading any of the
-          others. */}
-      <nav className="flex flex-wrap items-center gap-x-3 gap-y-1.5 sticky top-16 z-10 py-2" style={{ background: 'var(--bg)' }}
-        aria-label={t('dvt.jump', 'Jump to a tool')}>
-        {GROUPS.map((g) => (
-          <span key={g.id} className="flex items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wide text-[var(--faint)]">{t(g.k, g.label)}</span>
-            {g.tools.map((tl) => (
-              <a key={tl.id} href={`#${tl.id}`}
-                 className="text-xs px-2.5 py-1 rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition">
-                {tl.label}
-              </a>
-            ))}
-          </span>
-        ))}
-      </nav>
+      {/* The rail: grouped by what a tool is FOR, and it is the SELECTION rather than a jump
+          bar. Grouping stays because seven unlabelled chips is a list you read twice — with
+          the category in front, "the installer one" is found without reading the others.
+          On a narrow screen it sits above the panel and scrolls sideways; from `lg` it is a
+          column beside it, which is where a tool picker belongs. */}
+      <div className="grid lg:grid-cols-[190px_1fr] gap-5 items-start">
+        <nav className="lg:sticky lg:top-20 flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0"
+          aria-label={t('dvt.jump', 'Choose a tool')}>
+          {GROUPS.map((g) => (
+            <div key={g.id} className="shrink-0 lg:w-full">
+              <div className="hidden lg:block text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-3 first:mt-0 mb-1">
+                {t(g.k, g.label)}
+              </div>
+              <div className="flex lg:flex-col gap-1">
+                {g.tools.map((tl) => (
+                  <button key={tl.id} type="button" onClick={() => pick(tl.id)}
+                    aria-current={active === tl.id ? 'true' : undefined}
+                    className={`text-left text-xs px-2.5 py-1.5 rounded-lg border transition whitespace-nowrap lg:whitespace-normal ${
+                      active === tl.id
+                        ? 'border-[var(--primary)] text-[var(--text)] bg-[var(--surface-2)]'
+                        : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'
+                    }`}>
+                    {tl.label}
+                    {/* Said on the picker, not after the click. A tool you cannot use is worth
+                        knowing about before you choose it. */}
+                    {tl.needsAuth && !user && (
+                      <span className="hidden lg:block text-[10px] text-[var(--faint)] font-normal">
+                        {t('dvt.needsAcc', 'needs an account')}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
 
-      {/* Grouped by what a tool is FOR, in one structure that drives both the jump nav and
-          the sections below — so a new tool is one entry in one place, and a category (e.g.
-          BetterInstaller) is one more group rather than an edit in three spots. Each tool's
-          `wide` flag keeps the call log full width, because it is a table. */}
-      {GROUPS.map((g) => (
-        <div key={g.id}>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-4 mb-2">{t(g.k, g.label)}</div>
-          {/* Sticky jump bar per group is overkill; one bar covering everything is not, so
-              the nav below lists every tool of every group. */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-            {g.tools.map((tl) => (
-              <section key={tl.id} id={tl.id} className={`scroll-mt-24 ${tl.wide ? 'lg:col-span-2' : ''}`}>
-                {(!tl.needsAuth || user) ? tl.el : <NeedsAccount label={tl.label} t={t} />}
-              </section>
-            ))}
-          </div>
+        {/* Only the chosen tool is mounted. Seven forms and two tables rendered at once is
+            what made this page slow to open and long to move around in. */}
+        <div>
+          {current && (
+            <section id={current.id}>
+              {(!current.needsAuth || user) ? current.el : <NeedsAccount label={current.label} t={t} />}
+            </section>
+          )}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
