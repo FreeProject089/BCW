@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, slugify, pruneRevisions } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalAuth, slugify, pruneRevisions } from '../lib/lib.mjs';
 import { emailEnabled } from '../lib/mail.mjs';
 import { sendNewsletter } from './newsletter.mjs';
 
@@ -535,4 +535,76 @@ export default async function blogRoutes(app) {
     await p.blogPermission.delete({ where: { id: req.params.id } }).catch(() => {});
     return { ok: true };
   });
+
+  /**
+   * What readers thought — reactions on posts, and the helpful vote on docs pages.
+   *
+   * Two different mechanisms, deliberately shown together: they answer the same question and
+   * an admin who wants "how is the writing landing" should not have to know that one is a
+   * table of rows and the other three integers on the page.
+   *
+   * Docs are sorted by the ratio of people who said NO, not by how many votes a page got. The
+   * most-voted page is usually just the most-visited one; the page a third of readers marked
+   * unhelpful is the one somebody has to go and rewrite. A page with only a couple of votes is
+   * not ranked as a problem — one grumpy reader is not a signal.
+   */
+  app.get('/admin/reactions', { preHandler: requireCap('manage_announcements') }, async (req) => {
+    const p = await db();
+    const days = Math.min(Math.max(Number(req.query?.days) || 90, 1), 3650);
+    const since = new Date(Date.now() - days * 86400_000);
+
+    const [grouped, posts, docs] = await Promise.all([
+      p.blogReaction.groupBy({ by: ['postId', 'type'], _count: { type: true }, where: { createdAt: { gte: since } } }),
+      p.blogPost.findMany({ select: { id: true, title: true, slug: true, projectKey: true, publishedAt: true } }),
+      p.docPage.findMany({
+        select: { slug: true, title: true, category: true, helpfulYes: true, helpfulOk: true, helpfulNo: true },
+      }),
+    ]);
+
+    const byPost = new Map();
+    for (const g of grouped) {
+      if (!byPost.has(g.postId)) byPost.set(g.postId, { total: 0, types: {} });
+      const e = byPost.get(g.postId);
+      e.types[g.type] = g._count.type;
+      e.total += g._count.type;
+    }
+    const postMeta = new Map(posts.map((x) => [x.id, x]));
+
+    const blog = [...byPost.entries()]
+      .map(([id, e]) => ({
+        id,
+        title: postMeta.get(id)?.title || id,
+        slug: postMeta.get(id)?.slug || null,
+        projectKey: postMeta.get(id)?.projectKey || null,
+        total: e.total,
+        types: e.types,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    const docRows = docs
+      .map((d) => {
+        const votes = (d.helpfulYes || 0) + (d.helpfulOk || 0) + (d.helpfulNo || 0);
+        return {
+          slug: d.slug, title: d.title, category: d.category,
+          yes: d.helpfulYes || 0, ok: d.helpfulOk || 0, no: d.helpfulNo || 0,
+          votes,
+          // null rather than 0 when nobody voted: "0% said no" and "nobody has said anything"
+          // look identical as a number and are opposite as an answer.
+          negRatio: votes ? (d.helpfulNo || 0) / votes : null,
+        };
+      })
+      .filter((d) => d.votes > 0)
+      .sort((a, b) => (b.votes >= 5 ? b.negRatio : -1) - (a.votes >= 5 ? a.negRatio : -1) || b.votes - a.votes);
+
+    return {
+      days,
+      blog,
+      docs: docRows,
+      totals: {
+        blogReactions: blog.reduce((n, x) => n + x.total, 0),
+        docVotes: docRows.reduce((n, x) => n + x.votes, 0),
+      },
+    };
+  });
+
 }

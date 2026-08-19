@@ -34,6 +34,7 @@ import { AdminApi } from './admin-api.jsx';
 import { AdminSanctions, ContentSanctionForm, Evidence } from './admin-sanctions.jsx';
 import AdminStatusPage from './admin-statuspage.jsx';
 import { AdminPolls } from './admin-polls.jsx';
+import { AdminReactions } from './admin-reactions.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, JsonEditor, highlightJson, highlightCode, SideDash, useThreadStream } from './pages.jsx';
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
@@ -207,6 +208,7 @@ export function Admin() {
         isAdmin && { id: 'mail', label: t('adm.tab.mail', 'Mail delivery'), icon: Send },
         isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: MessageSquare },
         can('manage_polls') && { id: 'polls', label: t('adm.tab.polls', 'Polls'), icon: BarChart3 },
+        can('manage_announcements') && { id: 'reactions', label: t('adm.tab.reactions', 'Reader feedback'), icon: Heart },
       ].filter(Boolean) },
     isAdmin && { id: 'badges', label: t('adm.tab.badges', 'Badges'), icon: BadgeCheck },
 
@@ -352,6 +354,7 @@ export function Admin() {
         {s === 'api' && <AdminApi />}
         {s === 'sanctions' && <AdminSanctions />}
         {s === 'polls' && <AdminPolls />}
+        {s === 'reactions' && <AdminReactions />}
         {s === 'storage' && <AdminStorage />}
         {s === 'bot' && <AdminBot />}
         {s === 'analytics' && <AdminAnalytics />}

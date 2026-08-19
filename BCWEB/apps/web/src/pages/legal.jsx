@@ -192,7 +192,7 @@ const LEGAL_SUMMARY = {
 // used `new Date()`, so every one of these pages claimed to have been updated today, every
 // day, whatever it said. On a policy page that is the one line a reader uses to decide
 // whether the terms they agreed to are still the terms in front of them.
-const LEGAL_UPDATED = '2026-08-18';
+const LEGAL_UPDATED = '2026-08-19';
 
 export function Legal({ page }) {
   const { lang, t } = useI18n();
