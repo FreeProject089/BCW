@@ -6581,28 +6581,85 @@ const fmtBytes = (n) => {
 
 // Admin: contact-form inbox. Messages are stored server-side (and forwarded to
 // Discord if a webhook is configured).
+// The kinds a sender can pick, and how each one reads in the list. LEGAL is the pair the
+// Terms send people here for, and it is the reason this screen gained a filter: a
+// rights-holder notice starts a clock, and a clock does not survive being the fourteenth
+// card under a stack of bug reports.
+const MSG_KINDS = {
+  report: { legal: true, tone: 'error', label: (t) => t('am.k.report', 'Illegal content') },
+  copyright: { legal: true, tone: 'error', label: (t) => t('am.k.copyright', 'Copyright') },
+  data_export: { data: true, tone: 'primary', label: (t) => t('am.k.export', 'Data copy') },
+  data_delete: { data: true, tone: 'primary', label: (t) => t('am.k.delete', 'Data deletion') },
+  appeal: { tone: 'amber', label: (t) => t('am.k.appeal', 'Moderation appeal') },
+  billing: { tone: null, label: (t) => t('am.k.billing', 'Billing') },
+  bug: { tone: null, label: (t) => t('am.k.bug', 'Bug') },
+};
+
 function AdminMessages() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/contact'), []);
   const undo = useUndoableDelete(reload);
-  const msgs = (data?.messages || []).filter((m) => !undo.pending.has(m.id));
+  const [sp, setSp] = useSearchParams();
+  // The attention digest links straight here with ?k=legal, so the counter that said
+  // "2 waiting" lands on those two rather than on everything ever sent.
+  const filter = sp.get('k') || 'all';
+  const setFilter = (k) => { const n = new URLSearchParams(sp); if (k === 'all') n.delete('k'); else n.set('k', k); setSp(n, { replace: true }); };
+  const all = (data?.messages || []).filter((m) => !undo.pending.has(m.id));
+  const bucket = (m) => (MSG_KINDS[m.kind]?.legal ? 'legal' : MSG_KINDS[m.kind]?.data ? 'data' : 'other');
+  const msgs = filter === 'all' ? all : all.filter((m) => bucket(m) === filter);
+  const countOf = (k) => all.filter((m) => bucket(m) === k && !m.readAt).length;
   const markRead = async (m) => { if (m.readAt) return; try { await api.post(`/admin/contact/${m.id}/read`); reload(); } catch {} };
   const del = (m) => undo.del(m.id, () => api.del(`/admin/contact/${m.id}`), t('common.deleted', 'Deleted.'));
   if (loading) return <Loading />;
+  const TABS = [
+    ['all', t('am.f.all', 'Everything'), all.filter((m) => !m.readAt).length],
+    ['legal', t('am.f.legal', 'Legal notices'), countOf('legal')],
+    ['data', t('am.f.data', 'Data requests'), countOf('data')],
+    ['other', t('am.f.other', 'Everything else'), countOf('other')],
+  ];
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-semibold flex items-center gap-2"><Mail size={16} className="text-[var(--primary-2)]" /> {t('am.title', 'Contact messages')} {data?.unread > 0 && <Badge tone="amber">{t('am.new', '{n} new').replace('{n}', data.unread)}</Badge>}</h2>
         <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> {t('am.refresh', 'Refresh')}</Button>
       </div>
+      {/* Unread count per bucket, not total: a bucket with forty read messages and one
+          unread notice is a bucket you must open, and a bare total hides exactly that. */}
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {TABS.map(([k, label, n]) => (
+          <button key={k} type="button" onClick={() => setFilter(k)}
+            aria-current={filter === k ? 'true' : undefined}
+            className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition ${
+              filter === k
+                ? 'border-[var(--primary)] text-[var(--text)] bg-[var(--surface-2)]'
+                : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'
+            }`}>
+            {k === 'legal' && <Gavel size={12} />}
+            {label}
+            {n > 0 && <Badge tone={k === 'legal' ? 'error' : 'amber'}>{n}</Badge>}
+          </button>
+        ))}
+      </div>
+      {filter === 'legal' && (
+        <Card className="p-3 mb-3 text-xs text-[var(--muted)] flex items-start gap-2">
+          <AlertTriangle size={14} className="text-error shrink-0 mt-0.5" />
+          {/* Says the deadline where the decision is made, not in a policy nobody rereads. */}
+          <span>{t('am.legal.note', 'These carry a clock: the DSA expects action without undue delay, and under the LCEN a notification in form is what makes us legally presumed to know. Answer with a reason either way — a removal and a refusal both need one.')}</span>
+        </Card>
+      )}
       {msgs.length ? <div className="space-y-2">
         {msgs.map((m) => (
-          <Card key={m.id} className={`p-4 ${m.readAt ? '' : 'border-[var(--ring)] bg-orange-500/[0.03]'}`} onMouseEnter={() => markRead(m)}>
+          <Card key={m.id} className={`p-4 ${m.readAt ? '' : MSG_KINDS[m.kind]?.legal ? 'border-error/40 bg-red-500/[0.04]' : 'border-[var(--ring)] bg-orange-500/[0.03]'}`} onMouseEnter={() => markRead(m)}>
             <div className="flex items-start gap-3">
-              <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><MessageSquare size={15} className="text-[var(--primary-2)]" /></span>
+              <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0">
+                {MSG_KINDS[m.kind]?.legal
+                  ? <Gavel size={15} className="text-error" />
+                  : <MessageSquare size={15} className="text-[var(--primary-2)]" />}
+              </span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium">{m.name}</span>
+                  {MSG_KINDS[m.kind] && <Badge tone={MSG_KINDS[m.kind].tone || undefined}>{MSG_KINDS[m.kind].label(t)}</Badge>}
                   <a href={`mailto:${m.email}`} className="text-xs text-[var(--primary-2)] hover:underline">{m.email}</a>
                   {m.user && <Badge tone="primary"><Users size={9} /> {m.user.displayName}</Badge>}
                   {!m.readAt && <Badge tone="amber">{t('am.newbadge', 'new')}</Badge>}
@@ -6617,7 +6674,16 @@ function AdminMessages() {
             </div>
           </Card>
         ))}
-      </div> : <EmptyState icon={Mail} title={t('am.none.t', 'No messages')} sub={t('am.none.s', 'Contact-form submissions will appear here.')} />}
+      </div> : (
+        // Filter-aware, because "No messages" under an active filter reads as an empty
+        // inbox when there are forty messages one click away.
+        <EmptyState icon={filter === 'legal' ? Gavel : Mail}
+          title={filter === 'all' ? t('am.none.t', 'No messages')
+            : filter === 'legal' ? t('am.none.legal', 'No legal notices')
+              : t('am.none.filtered', 'Nothing in this category')}
+          sub={filter === 'all' ? t('am.none.s', 'Contact-form submissions will appear here.')
+            : t('am.none.s2', '{n} message(s) in other categories.').replace('{n}', all.length)} />
+      )}
     </div>
   );
 }
@@ -9397,6 +9463,10 @@ function AdminBot() {
           {[
             ['myo', t('db.r.myo', 'Commissions (MYO)'), t('db.r.myo.h', 'A paid consultation arriving — somebody is waiting for an answer.')],
             ['incident', t('db.r.incident', 'Status incidents'), t('db.r.incident.h', 'A service stopped answering, and a server error nobody has seen before.')],
+            // Left empty ON PURPOSE by default: unlike every other row here, empty means
+            // nothing is sent rather than "send to the general channel". A notice names
+            // its sender, and the general channel is the wrong place for that.
+            ['legal', t('db.r.legal', 'Legal notices'), t('db.r.legal.h', 'Reports of illegal content and rights-holder claims. Empty means no message is sent at all — not the general channel. Only ever a heads-up and a link; the notice itself stays in the dashboard, because it identifies whoever sent it.')],
             ['custom', t('db.r.custom', 'Needs attention'), t('db.r.custom.h', 'The digest of what is waiting: data requests, submissions, reports, contested sanctions.')],
             ['event', t('db.r.event', 'Events'), ''],
             ['promo', t('db.r.promo', 'Promotions'), ''],

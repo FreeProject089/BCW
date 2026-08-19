@@ -19,6 +19,9 @@ const KIND = {
     promo: { colour: 0xf59e0b, label: 'Promotion' },
     myo: { colour: 0x0ea5e9, label: 'Commission request' },
     incident: { colour: 0xef4444, label: 'Incident' },
+    // Red, like an incident, because it carries the same kind of clock: the DSA expects
+    // action without undue delay and the LCEN presumption of knowledge starts on arrival.
+    legal: { colour: 0xdc2626, label: 'Legal notice' },
     custom: { colour: 0x64748b, label: 'Announcement' },
 };
 

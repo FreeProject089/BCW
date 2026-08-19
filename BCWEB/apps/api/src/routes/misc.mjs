@@ -77,7 +77,7 @@ export const PENDING_QUEUES = [
     // Notices carry a clock — the DSA expects action "without undue delay" and the LCEN
     // presumption of knowledge starts the moment one lands. Counted separately from the
     // general inbox for exactly that reason.
-    key: 'legalNotices', cap: 'manage_users', to: '/admin?s=messages',
+    key: 'legalNotices', cap: 'manage_users', to: '/admin?s=messages&k=legal',
     count: (p) => p.contactMessage.count({ where: { kind: { in: ['report', 'copyright'] }, readAt: null } }),
     recent: (p) => p.contactMessage.findMany({
       where: { kind: { in: ['report', 'copyright'] }, readAt: null },
@@ -639,8 +639,43 @@ export default async function miscRoutes(app) {
     if (dailyCount >= (userId ? 5 : 3)) return reply.code(429).send({ error: 'daily_limit' });
     const msg = await p.contactMessage.create({ data: { ...b.data, kind: b.data.kind || 'other', ip, userId } });
     forwardContactToDiscord(msg).catch(() => {}); // best-effort
+    announceLegalNotice(p, msg).catch(() => {}); // best-effort, and opt-in — see below
     return reply.code(201).send({ ok: true });
   });
+
+  // A report or a rights-holder notice, announced to Discord — OPT-IN, and deliberately
+  // not routed through the usual fallback chain.
+  //
+  // Every other announcement kind falls back to the general channel when nothing is
+  // configured, on the reasoning that a new kind should be loud rather than dropped. That
+  // reasoning inverts here: a legal notice names its sender, and LCEN Art. 6-I-5 asks a
+  // notifier for their address, date of birth and nationality. Defaulting THAT into
+  // whichever channel happens to be general would publish a complainant's identity to
+  // everyone who can read it. So: no channel configured, no message.
+  //
+  // And the body never travels. The embed says a notice arrived, of which kind, and links
+  // to the admin dashboard where it can be read by somebody who is allowed to. Discord is
+  // the doorbell; it is not the mailbox.
+  async function announceLegalNotice(p, msg) {
+    if (!['report', 'copyright'].includes(msg.kind)) return;
+    const cfg = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {};
+    const channelId = String(cfg?.announce?.channels?.legal || '').trim();
+    if (!channelId) return;
+    const site = (process.env.SITE_URL || '').replace(/\/+$/, '');
+    await p.botAnnouncement.create({
+      data: {
+        kind: 'legal',
+        // Explicit, so routeFor's first rule applies and the fallback chain is never
+        // reached even if this is somehow queued without a configured channel.
+        channelId,
+        urgent: true,
+        title: msg.kind === 'copyright' ? 'Rights-holder notice' : 'Report of illegal content',
+        body: 'A notice arrived through the contact form. Open the dashboard to read it — '
+          + 'the contents are not repeated here because they identify the sender.',
+        url: site ? `${site}/admin?s=messages` : null,
+      },
+    });
+  }
 
   app.get('/admin/contact', { preHandler: requireRole('MOD', 'ADMIN') }, async () => {
     const p = await db();

@@ -49,8 +49,11 @@ const DEFAULT_BOT_CONFIG = {
   // A role is pinged ONLY for an urgent one. Pinging on every message is how a role gets
   // muted, and a muted role is worse than no role because it looks like coverage.
   announce: {
-    channels: { myo: '', incident: '', event: '', promo: '', custom: '' },
-    roles: { myo: '', incident: '', event: '', promo: '', custom: '' },
+    // `legal` is the exception to the "empty means the general channel" rule above: a
+    // legal notice identifies its sender, so empty means NOTHING IS SENT. The API checks
+    // this key before queueing at all — see announceLegalNotice in misc.mjs.
+    channels: { myo: '', incident: '', event: '', promo: '', custom: '', legal: '' },
+    roles: { myo: '', incident: '', event: '', promo: '', custom: '', legal: '' },
   },
   // Ko-fi tips (see kofi.mjs's webhook → KofiDonation): when enabled, the bot
   // posts each new tip to this channel with the running total.

@@ -1264,6 +1264,23 @@ const DICT = {
 
     // ── Admin : messages de contact ──
     'am.title': 'Messages de contact', 'am.new': '{n} nouveau(x)', 'am.refresh': 'Rafraîchir', 'am.newbadge': 'nouveau',
+    'am.f.all': 'Tout',
+    'am.f.legal': 'Notifications légales',
+    'am.f.data': 'Demandes de données',
+    'am.f.other': 'Le reste',
+    'am.k.report': 'Contenu illégal',
+    'am.k.copyright': 'Droit d’auteur',
+    'am.k.export': 'Copie des données',
+    'am.k.delete': 'Suppression des données',
+    'am.k.appeal': 'Contestation de modération',
+    'am.k.billing': 'Facturation',
+    'am.k.bug': 'Bug',
+    'am.legal.note': 'Celles-ci portent une horloge : le DSA attend une action sans délai injustifié, et selon la LCEN une notification en la forme nous rend légalement présumés de savoir. Réponds avec un motif dans les deux cas — un retrait comme un refus en demande un.',
+    'am.none.legal': 'Aucune notification légale',
+    'am.none.filtered': 'Rien dans cette catégorie',
+    'am.none.s2': '{n} message(s) dans les autres catégories.',
+    'db.r.legal': 'Notifications légales',
+    'db.r.legal.h': 'Signalements de contenu illégal et réclamations d’ayants droit. Vide = aucun message n’est envoyé du tout — pas le salon général. Toujours seulement un avertissement et un lien ; la notification elle-même reste dans le dashboard, parce qu’elle identifie son expéditeur.',
     'am.reply': 'Répondre', 'am.delete': 'Supprimer', 'am.replysubj': 'Re : ton message à BetterCommunity',
     'am.none.t': 'Aucun message', 'am.none.s': 'Les messages du formulaire de contact apparaîtront ici.',
 
