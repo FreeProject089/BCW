@@ -349,6 +349,172 @@ Export a theme from the in-app **[Theme Editor](/docs/themes)** — it writes a 
 :::`,
   },
   {
+    slug: 'legal-pages', category: 'Reference', title: 'The legal pages', icon: 'scale', order: 340,
+    body: `::toc[On this page]
+
+# The legal pages
+
+Five documents — Privacy, Terms, Cookies, Payments & Refunds, About — with a plain-language
+summary at the top of each. They are served from the DATABASE once imported, and from the
+application's built-in defaults until then.
+
+## Two states, per document
+
+A document is in exactly one of them, and never half in each.
+
+| State | What it means |
+|---|---|
+| **Built-in** | Rendered from the code. Nothing in the dashboard is editable, and the page is byte-identical to what shipped. |
+| **Database-backed** | Imported. The dashboard edits it, and the site serves what you saved. |
+
+Importing is per document and refuses to run twice. **Back to the built-in text** deletes the
+rows and the page keeps working, rendering from the code again.
+
+There is deliberately no state where half a policy comes from the code and half from the
+database. That failure would be invisible — the page would simply say two different things and
+look completely normal doing it.
+
+:::warning[Editing the code no longer changes the site]
+Once a document is imported, \`legal.jsx\` is only the default for a fresh install. Editing it
+does nothing for a visitor. Edit the document in **Admin → Legal**.
+:::
+
+## Writing
+
+Bodies are markdown with the same block directives as these docs — \`:::note\`, \`:::steps\`,
+cards, columns. Each section has an English and a French field; a section with no French text
+falls back to English on a French page, and the editor marks those **no FR** so it is visible
+rather than discovered by a French reader.
+
+## Publishing a version
+
+**Publish** freezes the whole document and gives it a number.
+
+That number is what an acceptance records. Without it, \`termsAcceptedAt\` says *when* somebody
+agreed and never *what* — and a timestamp pointing at a document that can still be edited
+proves nothing in a dispute. With it, you can produce the exact text a person accepted.
+
+Nothing published is ever edited. A correction is a new version, and there is no endpoint that
+changes or deletes one. The archive is public, so somebody who accepted v2 can read v2 without
+asking you for it.
+
+Unpublished edits are live on the site but are **not** what an acceptance points at. Publish
+when a change is one you would want to be able to prove.
+
+## Telling people
+
+Two checkboxes, deliberately separate.
+
+:::steps
+:::step[Tell everyone]
+An email to every active address, and an in-site notification. On by default. Cheap, and
+almost always the right thing.
+:::
+:::step[Require agreement again]
+Adds a banner on every page for every signed-in user until they accept. **Off by default** —
+this interrupts everybody, so it is only right when the change actually alters what they
+agreed to.
+:::
+:::
+
+Nothing happens to an account that has not accepted. The banner is persistent, not blocking:
+holding the product hostage over a policy update is the pattern this platform exists to avoid.
+
+Both emails can be previewed under **Admin → Emails** without sending one.
+
+## Two guards
+
+- A test fails if the legal text changes without its date changing. The last-updated line is
+  what a reader uses to decide whether a policy is current, so it is not allowed to go stale.
+- Once a document is database-backed, the page shows **its own** newest edit as that date
+  rather than the constant in the code, which would otherwise freeze while the text moved.
+`,
+    titleFr: 'Les pages légales', categoryFr: 'Référence',
+    bodyFr: `::toc[Sur cette page]
+
+# Les pages légales
+
+Cinq documents — Confidentialité, Conditions, Cookies, Paiements & remboursements, À propos —
+avec un résumé en langage clair en tête de chacun. Ils sont servis depuis la BASE DE DONNÉES
+une fois importés, et depuis les valeurs intégrées à l'application tant qu'ils ne le sont pas.
+
+## Deux états, par document
+
+Un document est dans exactement l'un des deux, jamais à moitié dans chacun.
+
+| État | Ce que ça veut dire |
+|---|---|
+| **Intégré** | Rendu depuis le code. Rien n'est modifiable dans le dashboard, et la page est identique à ce qui a été livré. |
+| **En base** | Importé. Le dashboard le modifie, et le site sert ce que vous avez enregistré. |
+
+L'import se fait par document et refuse de tourner deux fois. **Revenir au texte intégré**
+supprime les lignes et la page continue de fonctionner, rendue depuis le code.
+
+Il n'existe délibérément aucun état où la moitié d'une politique vient du code et l'autre de
+la base. Cette panne serait invisible — la page dirait simplement deux choses différentes en
+ayant l'air parfaitement normale.
+
+:::warning[Modifier le code ne change plus le site]
+Une fois un document importé, \`legal.jsx\` n'est plus que le défaut d'une installation neuve.
+Le modifier ne change rien pour un visiteur. Modifiez le document dans **Admin → Légal**.
+:::
+
+## Rédiger
+
+Les contenus sont en markdown, avec les mêmes blocs que cette documentation — \`:::note\`,
+\`:::steps\`, cartes, colonnes. Chaque section a un champ anglais et un champ français ; une
+section sans texte français retombe sur l'anglais sur une page française, et l'éditeur marque
+celles-là **pas de FR** pour que ce soit visible plutôt que découvert par un lecteur français.
+
+## Publier une version
+
+**Publier** fige le document entier et lui donne un numéro.
+
+Ce numéro est ce qu'une acceptation enregistre. Sans lui, \`termsAcceptedAt\` dit *quand*
+quelqu'un a accepté et jamais *quoi* — et un horodatage qui pointe vers un document encore
+modifiable ne prouve rien en cas de litige. Avec lui, vous pouvez produire le texte exact
+qu'une personne a accepté.
+
+Rien de publié n'est jamais modifié. Une correction est une nouvelle version, et aucun
+endpoint ne permet d'en changer ou d'en supprimer une. L'archive est publique : qui a accepté
+la v2 peut lire la v2 sans vous la demander.
+
+Les modifications non publiées sont en ligne sur le site mais ne sont **pas** ce vers quoi
+pointe une acceptation. Publiez quand un changement est de ceux que vous voudriez pouvoir
+prouver.
+
+## Prévenir les gens
+
+Deux cases à cocher, volontairement séparées.
+
+:::steps
+:::step[Prévenir tout le monde]
+Un e-mail à chaque adresse active, et une notification sur le site. Activé par défaut. Peu
+coûteux, et presque toujours la bonne chose à faire.
+:::
+:::step[Redemander l'accord]
+Ajoute une bannière sur chaque page pour chaque utilisateur connecté jusqu'à ce qu'il accepte.
+**Désactivé par défaut** — ça interrompt tout le monde, donc ce n'est justifié que si le
+changement modifie réellement ce à quoi ils ont consenti.
+:::
+:::
+
+Rien n'arrive à un compte qui n'a pas accepté. La bannière est persistante, pas bloquante :
+prendre le produit en otage pour une mise à jour de politique est exactement le motif que
+cette plateforme évite.
+
+Les deux e-mails se prévisualisent dans **Admin → E-mails** sans en envoyer un seul.
+
+## Deux garde-fous
+
+- Un test échoue si le texte légal change sans que sa date change. La ligne « mis à jour le »
+  est ce qu'un lecteur utilise pour juger si une politique est actuelle : elle n'a pas le
+  droit de vieillir en silence.
+- Dès qu'un document vient de la base, la page affiche **sa propre** dernière modification
+  comme date, et non la constante du code, qui resterait figée pendant que le texte bouge.
+`,
+  },
+  {
     slug: 'catalog-index', category: 'BetterCommunity', title: 'Catalogue index', icon: 'list', order: 306,
     body: `::toc[On this page]
 
@@ -1416,8 +1582,12 @@ const run = async () => {
     const data = {
       title: pg.title, category: pg.category, icon: pg.icon, body: pg.body, order: pg.order, published: true,
       bodyFr: pg.bodyFr ?? fr.body ?? null,
-      titleFr: fr.title ?? null,
-      categoryFr: fr.category ?? null,
+      // Inline wins for the TITLE and CATEGORY too, not only the body. A page could already
+      // carry its French body beside its English; discarding an inline French title while
+      // honouring an inline French body is the kind of asymmetry that gets found by a French
+      // reader seeing an English heading over French text.
+      titleFr: pg.titleFr ?? fr.title ?? null,
+      categoryFr: pg.categoryFr ?? fr.category ?? null,
     };
     if (data.bodyFr) translated++;
     await p.docPage.upsert({ where: { slug: pg.slug }, update: data, create: { slug: pg.slug, ...data } });
