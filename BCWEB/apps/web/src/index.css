@@ -805,12 +805,26 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
      one thing on this site people genuinely print and file, so it gets the same
      treatment — and everything it holds must be readable ON PAPER, which means dark
      text on white regardless of the theme the reader happens to be using. */
+  /* NOT position:absolute, which is what the invoice rule above uses and what broke this:
+     an absolutely-positioned block does not paginate — it prints its first page and the rest
+     is simply gone. An invoice is one page so it never showed there. A policy is twenty.
+     The document therefore stays in NORMAL FLOW, and the chrome around it is removed with
+     `display: none` rather than hidden with `visibility`, which would leave its layout behind
+     as pages of blank paper. */
   #legal-print, #legal-print * { visibility: visible !important; }
   #legal-print {
-    position: absolute !important; left: 0; top: 0;
     width: 100%; max-width: none; margin: 0; padding: 0;
     color: #111; background: #fff;
   }
+
+  /* Walking the real ancestor chain — body > #root > div > div.flex-1 > main > #legal-print —
+     and dropping everything that is not on it. Read off the DOM rather than guessed, because
+     a positional guess here fails silently: the page still prints, just with a blank band
+     where the navigation used to be. */
+  body > *:not(#root) { display: none !important; }
+  #root > *:not(:has(#legal-print)) { display: none !important; }
+  #root > * > *:not(:has(#legal-print)) { display: none !important; }
+  #root > * > * > *:not(:has(#legal-print)):not(#main-content) { display: none !important; }
   /* The page's own tokens resolve to light-on-dark in the dark theme and would print as
      white ink. Forced, because print has no theme to follow. */
   #legal-print h1, #legal-print h2, #legal-print h3, #legal-print strong, #legal-print b { color: #000 !important; }
