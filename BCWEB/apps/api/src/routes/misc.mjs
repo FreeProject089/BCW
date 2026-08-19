@@ -942,6 +942,123 @@ export default async function miscRoutes(app) {
     return v;
   });
 
+
+  // ── Running costs ──────────────────────────────────────────────────────────
+  //
+  // The revenue screen showed MRR and stopped there, which answers how much comes in and
+  // leaves the only question that matters to a spreadsheet somebody keeps elsewhere.
+  const EXPENSE_CATEGORIES = ['hosting', 'domain', 'service', 'software', 'hardware', 'fees', 'tax', 'other'];
+
+  /** Whether a recurring cost applies during a given month, and what it contributes to it.
+   *  Pulled out so the monthly figure is computed one way \u2014 the summary and the per-month
+   *  series asking the same question differently is how two totals on one screen disagree. */
+  function monthlyCents(e, monthStart, monthEnd) {
+    const started = e.incurredAt <= monthEnd;
+    const notEnded = !e.endedAt || e.endedAt >= monthStart;
+    if (e.recurring === 'monthly') return started && notEnded ? e.amountCents : 0;
+    // A yearly cost is spread, not dropped on its anniversary: a hosting bill paid once in
+    // January is a cost the business carries in July, and a chart that spikes once a year
+    // cannot be read against a monthly income.
+    if (e.recurring === 'yearly') return started && notEnded ? Math.round(e.amountCents / 12) : 0;
+    return e.incurredAt >= monthStart && e.incurredAt <= monthEnd ? e.amountCents : 0;
+  }
+
+  app.get('/admin/expenses', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const months = Math.min(Math.max(Number(req.query?.months) || 12, 1), 36);
+    const p = await db();
+    const rows = await p.expense.findMany({
+      orderBy: [{ incurredAt: 'desc' }],
+      include: { createdBy: { select: { id: true, displayName: true } } },
+    });
+
+    // Month buckets, newest last, in UTC so the boundaries do not move with the reader.
+    const now = new Date();
+    const series = [];
+    for (let i = months - 1; i >= 0; i -= 1) {
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i + 1, 0, 23, 59, 59, 999));
+      let cents = 0;
+      for (const e of rows) cents += monthlyCents(e, start, end);
+      series.push({ month: start.toISOString().slice(0, 7), cents });
+    }
+
+    // What the business carries EVERY month right now: recurring only, one-offs excluded.
+    // Mixing a laptop bought once into a monthly burn figure makes the number useless for
+    // the one thing it is for \u2014 comparing against MRR.
+    const active = rows.filter((e) => !e.endedAt || e.endedAt >= now);
+    const monthlyBurn = active.reduce((n, e) => n
+      + (e.recurring === 'monthly' ? e.amountCents : e.recurring === 'yearly' ? Math.round(e.amountCents / 12) : 0), 0);
+
+    const byCategory = {};
+    for (const e of active) {
+      const per = e.recurring === 'monthly' ? e.amountCents : e.recurring === 'yearly' ? Math.round(e.amountCents / 12) : 0;
+      if (per) byCategory[e.category] = (byCategory[e.category] || 0) + per;
+    }
+
+    // Currencies are NOT summed across. Everything below is in the majority currency, and the
+    // others are reported separately rather than converted at a rate we would have to invent.
+    const currencies = [...new Set(rows.map((e) => e.currency))];
+
+    return {
+      expenses: rows, series, monthlyBurn, byCategory, currencies,
+      categories: EXPENSE_CATEGORIES,
+      oneOffTotal: rows.filter((e) => e.recurring === 'none').reduce((n, e) => n + e.amountCents, 0),
+    };
+  });
+
+  app.post('/admin/expenses', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      label: z.string().min(1).max(120),
+      category: z.enum(EXPENSE_CATEGORIES).default('other'),
+      amountCents: z.number().int().min(0).max(100_000_000),
+      currency: z.string().length(3).default('CHF'),
+      recurring: z.enum(['none', 'monthly', 'yearly']).default('none'),
+      incurredAt: z.string().datetime().optional(),
+      note: z.string().max(500).default(''),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const row = await p.expense.create({
+      data: {
+        ...b.data,
+        currency: b.data.currency.toUpperCase(),
+        incurredAt: b.data.incurredAt ? new Date(b.data.incurredAt) : new Date(),
+        createdById: req.user.uid,
+      },
+    });
+    return reply.code(201).send({ expense: row });
+  });
+
+  app.put('/admin/expenses/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      label: z.string().min(1).max(120).optional(),
+      category: z.enum(EXPENSE_CATEGORIES).optional(),
+      amountCents: z.number().int().min(0).max(100_000_000).optional(),
+      currency: z.string().length(3).optional(),
+      recurring: z.enum(['none', 'monthly', 'yearly']).optional(),
+      incurredAt: z.string().datetime().optional(),
+      // Explicit null ends it; omitted leaves it alone. Ending is the normal way a recurring
+      // cost stops \u2014 deleting it would rewrite months that are already closed.
+      endedAt: z.string().datetime().nullable().optional(),
+      note: z.string().max(500).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const d = { ...b.data };
+    if (d.currency) d.currency = d.currency.toUpperCase();
+    if (d.incurredAt) d.incurredAt = new Date(d.incurredAt);
+    if (d.endedAt !== undefined) d.endedAt = d.endedAt ? new Date(d.endedAt) : null;
+    const p = await db();
+    const n = await p.expense.updateMany({ where: { id: req.params.id }, data: d });
+    if (!n.count) return reply.code(404).send({ error: 'not_found' });
+    return { ok: true };
+  });
+
+  app.delete('/admin/expenses/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    await p.expense.deleteMany({ where: { id: req.params.id } });
+    return { ok: true };
+  });
+
   // ── Blocked addresses ──────────────────────────────────────────────────────
   // The list the Terms promise. MOD can read and add — a moderator handling a notice is
   // exactly who needs to block something — but only ADMIN can REMOVE one, because removing

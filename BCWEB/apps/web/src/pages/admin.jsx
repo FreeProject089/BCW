@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -731,6 +731,181 @@ const PLANUSERS_TABS = [
 ];
 // Classified by CURRENT state (see the endpoint): a user can appear in more than one
 // tab — e.g. one free repo + one paid boost — since the tabs aren't a strict partition.
+
+// Running costs, and what they leave once revenue has paid them.
+//
+// Sits inside Customers & revenue rather than in a screen of its own, because the number
+// anybody actually wants is the SUBTRACTION. MRR on one page and costs on another is how a
+// business ends up knowing both figures and not the answer.
+//
+// Money is integer cents throughout, formatted only at the edge. Currencies are never summed
+// across: the totals are in whichever currency the costs are mostly in, and anything else is
+// listed separately rather than converted at a rate this screen would have to invent.
+function AdminExpenses({ mrrCents }) {
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/expenses'), []);
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ label: '', category: 'hosting', amount: '', currency: 'CHF', recurring: 'monthly', note: '' });
+  const [busy, setBusy] = useState(false);
+
+  const rows = data?.expenses || [];
+  const burn = data?.monthlyBurn || 0;
+  const cats = data?.categories || [];
+  const money = (c) => (c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const net = (mrrCents || 0) - burn;
+
+  const add = async () => {
+    const amount = Math.round(Number(String(f.amount).replace(',', '.')) * 100);
+    if (!f.label.trim() || !Number.isFinite(amount) || amount < 0) {
+      toast.error(t('ex.bad', 'A label and an amount are required.')); return;
+    }
+    setBusy(true);
+    try {
+      await api.post('/admin/expenses', {
+        label: f.label.trim(), category: f.category, amountCents: amount,
+        currency: f.currency.toUpperCase(), recurring: f.recurring, note: f.note.trim(),
+      });
+      setF({ ...f, label: '', amount: '', note: '' });
+      reload();
+    } catch { toast.error(t('common.err', 'Something went wrong.')); }
+    finally { setBusy(false); }
+  };
+
+  // Ending a recurring cost, not deleting it: last month's figure must not change because a
+  // subscription stopped today.
+  const end = async (e) => {
+    if (!await dialog.confirm({
+      title: t('ex.end.t', 'Mark this as ended?'),
+      message: t('ex.end.m', 'It stops counting from now on and stays in the history, so past months keep the figure they actually had.'),
+      confirmLabel: t('ex.end.ok', 'Mark ended'),
+    })) return;
+    try { await api.put(`/admin/expenses/${e.id}`, { endedAt: new Date().toISOString() }); reload(); }
+    catch { toast.error(t('common.err', 'Something went wrong.')); }
+  };
+  const del = async (e) => {
+    if (!await dialog.confirm({
+      title: t('ex.del.t', 'Delete this cost?'),
+      message: t('ex.del.m', 'It disappears from every month it applied to, including closed ones. To stop a recurring cost without rewriting history, mark it ended instead.'),
+      danger: true,
+    })) return;
+    try { await api.del(`/admin/expenses/${e.id}`); reload(); }
+    catch { toast.error(t('common.err', 'Something went wrong.')); }
+  };
+
+  if (loading) return null;
+  const maxSeries = Math.max(1, ...(data?.series || []).map((s) => s.cents));
+
+  return (
+    <Card className="p-4 mb-3">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 text-left mb-1">
+        <Wallet size={15} className="text-[var(--primary-2)]" />
+        <span className="font-medium text-sm">{t('ex.title', 'Running costs')}</span>
+        <Badge>{rows.length}</Badge>
+        <span className="ml-auto text-sm tabular-nums">
+          <span className="text-[var(--muted)]">{t('ex.burn', 'per month')} </span>
+          <b>{money(burn)}</b>
+        </span>
+        <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* The subtraction, always visible whether the panel is open or not — it is the reason
+          this exists. Red when costs exceed income, and it says which. */}
+      <div className="grid sm:grid-cols-3 gap-2 mt-2 text-sm">
+        <div className="p-2.5 rounded-lg bg-[var(--surface-2)]">
+          <div className="text-[11px] text-[var(--faint)]">{t('ex.in', 'Recurring income')}</div>
+          <div className="tabular-nums font-medium text-success">{money(mrrCents || 0)}</div>
+        </div>
+        <div className="p-2.5 rounded-lg bg-[var(--surface-2)]">
+          <div className="text-[11px] text-[var(--faint)]">{t('ex.out', 'Recurring costs')}</div>
+          <div className="tabular-nums font-medium text-error">−{money(burn)}</div>
+        </div>
+        <div className="p-2.5 rounded-lg" style={{ background: `color-mix(in srgb, var(--${net >= 0 ? 'success' : 'error'}) 12%, transparent)` }}>
+          <div className="text-[11px] text-[var(--faint)]">{net >= 0 ? t('ex.net', 'Left over each month') : t('ex.short', 'Short each month')}</div>
+          <div className={`tabular-nums font-bold ${net >= 0 ? 'text-success' : 'text-error'}`}>{money(Math.abs(net))}</div>
+        </div>
+      </div>
+
+      {/* More than one currency in play makes every total above a half-truth. Said once,
+          here, rather than silently adding francs to euros. */}
+      {(data?.currencies || []).length > 1 && (
+        <div className="mt-2 text-xs text-[var(--muted)] flex items-start gap-1.5">
+          <AlertTriangle size={13} className="text-[var(--warning)] shrink-0 mt-0.5" />
+          {t('ex.multicur', 'Costs are recorded in {n} currencies and are NOT converted — the totals above add the raw numbers together and are only meaningful once they share a currency.').replace('{n}', data.currencies.length)}
+        </div>
+      )}
+
+      {open && (<div className="mt-4 space-y-4">
+        {/* Twelve months at a glance. Bars, not a chart library: the shape is the whole
+            message and a dependency would not add one. */}
+        <div>
+          <div className="text-[11px] text-[var(--faint)] mb-1.5">{t('ex.series', 'Cost per month')}</div>
+          <div className="flex items-end gap-1 h-16">
+            {(data?.series || []).map((s) => (
+              <div key={s.month} className="flex-1 rounded-t bg-[var(--primary)]/60 hover:bg-[var(--primary)] transition-colors"
+                style={{ height: `${Math.max(2, (s.cents / maxSeries) * 100)}%` }}
+                title={`${s.month} · ${money(s.cents)}`} />
+            ))}
+          </div>
+        </div>
+
+        {Object.keys(data?.byCategory || {}).length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(data.byCategory).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
+              <span key={k} className="text-xs px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]">
+                {t(`ex.cat.${k}`, k)} <b className="tabular-nums">{money(v)}</b>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="grid sm:grid-cols-[1fr_auto_auto_auto] gap-2">
+          <Input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder={t('ex.label', 'What is it (VPS, domain, …)')} />
+          <Input className="!w-24" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="0.00" inputMode="decimal" />
+          <Select className="!w-auto" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>
+            {cats.map((c) => <option key={c} value={c}>{t(`ex.cat.${c}`, c)}</option>)}
+          </Select>
+          <Select className="!w-auto" value={f.recurring} onChange={(e) => setF({ ...f, recurring: e.target.value })}>
+            <option value="monthly">{t('ex.r.monthly', 'per month')}</option>
+            <option value="yearly">{t('ex.r.yearly', 'per year')}</option>
+            <option value="none">{t('ex.r.none', 'one-off')}</option>
+          </Select>
+        </div>
+        <div className="flex gap-2">
+          <Input className="!w-20" value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })} placeholder="CHF" maxLength={3} />
+          <Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder={t('ex.note', 'Note (optional)')} />
+          <Button size="sm" onClick={add} disabled={busy}><Plus size={14} /> {t('ex.add', 'Add')}</Button>
+        </div>
+
+        <div className="space-y-1.5">
+          {rows.map((e) => {
+            const ended = e.endedAt && new Date(e.endedAt) <= new Date();
+            return (
+              <div key={e.id} className={`flex items-center gap-2 text-xs p-2 rounded-lg bg-[var(--surface-2)] ${ended ? 'opacity-55' : ''}`}>
+                <Badge tone={e.recurring === 'none' ? undefined : 'primary'}>
+                  {e.recurring === 'monthly' ? t('ex.r.monthly', 'per month') : e.recurring === 'yearly' ? t('ex.r.yearly', 'per year') : t('ex.r.none', 'one-off')}
+                </Badge>
+                <span className="font-medium truncate">{e.label}</span>
+                <span className="text-[var(--faint)] shrink-0">{t(`ex.cat.${e.category}`, e.category)}</span>
+                {ended && <Badge tone="amber">{t('ex.ended', 'ended')}</Badge>}
+                <span className="ml-auto tabular-nums shrink-0">{money(e.amountCents)} {e.currency}</span>
+                {!ended && e.recurring !== 'none' && (
+                  <button onClick={() => end(e)} className="text-[var(--faint)] hover:text-[var(--warning)] shrink-0" title={t('ex.end.ok', 'Mark ended')}>
+                    <XCircle size={13} />
+                  </button>
+                )}
+                <button onClick={() => del(e)} className="text-[var(--faint)] hover:text-error shrink-0" title={t('common.delete', 'Delete')}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            );
+          })}
+          {!rows.length && <p className="text-xs text-[var(--muted)]">{t('ex.none', 'Nothing recorded yet. Add the VPS, the domain, anything you pay for — the figures above become real as soon as one exists.')}</p>}
+        </div>
+      </div>)}
+    </Card>
+  );
+}
+
 function AdminPlanUsers() {
   const { t } = useI18n(); const toast = useToast();
   const [sp] = useSearchParams();
@@ -762,6 +937,7 @@ function AdminPlanUsers() {
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> {t('pu.title', 'Customers & revenue')}</h2>
       <p className="text-sm text-[var(--muted)] mb-3">{t('pu.desc', "What every customer currently has active: free-tier hosting, paid hosting/boosts, or expired/ended terms. Click a row to see the detail; click the user's name for their full profile.")}</p>
+      <AdminExpenses mrrCents={mrr?.totalCents || 0} />
       {/* The cards render even with nothing to show. They used to be hidden until the
           request came back with an `mrr` object, so an empty site showed no figures at
           all — and the honest answer to "how much am I making" on an empty site is a

@@ -105,6 +105,7 @@ model User {
   blockedUrls       BlockedUrl[]
   legalEdits        LegalSection[]
   legalPublished    LegalVersion[] @relation("LegalPublisher")
+  expenses          Expense[]      @relation("ExpenseAuthor")
   sessions          Session[]
   createdAt         DateTime  @default(now())
 
@@ -1091,6 +1092,41 @@ model RepoAccessEvent {
 // whitelist when either the repo or `whitelistOnly` (site-wide) requires one. Entries
 // in the account lists are { type: "bcweb"|"discord", id, label }. Singleton row
 // (id is always "global") — read/written via GET/PUT /admin/access-policy.
+// What the platform costs to run, so revenue can be read against something.
+//
+// The admin screen showed MRR and nothing else, which answers "how much comes in" and leaves
+// the only question that matters — whether it covers the bills — to a spreadsheet somebody
+// keeps elsewhere and forgets to update.
+//
+// Amounts are integer CENTS, like every other money column here. Floats and money do not mix:
+// 0.1 + 0.2 is not 0.3, and a rounding error in a total is the kind of bug nobody reports
+// because everybody assumes they misread it.
+model Expense {
+  id          String   @id @default(cuid())
+  label       String
+  /// hosting · domain · service · software · hardware · fees · tax · other
+  category    String   @default("other")
+  amountCents Int
+  /// ISO 4217. Stored per row rather than converted on the way in: converting at entry
+  /// bakes in that day's rate and loses what was actually paid.
+  currency    String   @default("CHF")
+  /// none · monthly · yearly. A recurring cost is counted every month it applies to, not
+  /// only in the month it was entered.
+  recurring   String   @default("none")
+  /// When it applies from. For a recurring cost this is the start, not a single date.
+  incurredAt  DateTime @default(now())
+  /// Set on a recurring cost that has stopped, so history stays intact rather than being
+  /// deleted — last month's numbers must not change because a subscription ended today.
+  endedAt     DateTime?
+  note        String   @default("")
+  createdById String?
+  createdBy   User?    @relation("ExpenseAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([incurredAt])
+  @@index([category])
+}
+
 // A published, frozen copy of one legal document.
 //
 // This exists because `User.termsAcceptedAt` records WHEN somebody accepted and never WHAT.
