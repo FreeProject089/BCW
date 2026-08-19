@@ -6595,6 +6595,91 @@ const MSG_KINDS = {
   bug: { tone: null, label: (t) => t('am.k.bug', 'Bug') },
 };
 
+// The list behind the promise in the Terms: an address that may not be listed again.
+//
+// Lives inside the Legal notices bucket rather than in a settings page of its own, because
+// adding one is something you do WHILE reading the notice that asked for it — a screen two
+// clicks away is a screen you visit after you have already forgotten the address.
+function BlockedUrls({ t }) {
+  const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/blocked-urls'), []);
+  const [open, setOpen] = useState(false);
+  const [scope, setScope] = useState('domain');
+  const [pattern, setPattern] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const rules = data?.rules || [];
+
+  const add = async () => {
+    if (!pattern.trim() || busy) return;
+    setBusy(true);
+    try {
+      const r = await api.post('/admin/blocked-urls', { scope, pattern: pattern.trim(), reason: reason.trim() });
+      // The unique key firing is not an error to the person clicking: what they wanted
+      // blocked is blocked. Say which, so it does not read as a silent no-op.
+      toast.success(r?.already ? t('bu.already', 'Already blocked.') : t('bu.added', 'Blocked.'));
+      setPattern(''); setReason(''); reload();
+    } catch (e) {
+      toast.error(e?.body?.error === 'not_a_web_address'
+        ? t('bu.noturl', 'That is not a web address.')
+        : t('common.err', 'Something went wrong.'));
+    } finally { setBusy(false); }
+  };
+  const del = async (r) => {
+    try { await api.del(`/admin/blocked-urls/${r.id}`); toast.success(t('bu.removed', 'Removed.')); reload(); }
+    catch { toast.error(t('bu.removeerr', 'Only an admin can remove a block.')); }
+  };
+
+  return (
+    <Card className="p-4 mb-3">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 text-left">
+        <Ban size={15} className="text-error" />
+        <span className="font-medium text-sm">{t('bu.title', 'Blocked addresses')}</span>
+        {!loading && <Badge tone={rules.length ? 'error' : undefined}>{rules.length}</Badge>}
+        <ChevronDown size={15} className={`ml-auto text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (<div className="mt-3 space-y-3">
+        <p className="text-xs text-[var(--muted)]">
+          {t('bu.help', 'A blocked address cannot be submitted as a catalog item or listed as a repository — by anyone, staff included. A domain covers every subdomain under it; a URL covers only that exact address.')}
+        </p>
+        <div className="grid sm:grid-cols-[130px_1fr] gap-2">
+          <Select value={scope} onChange={(e) => setScope(e.target.value)}>
+            <option value="domain">{t('bu.s.domain', 'Domain + subs')}</option>
+            <option value="url">{t('bu.s.url', 'Exact URL')}</option>
+          </Select>
+          <Input value={pattern} onChange={(e) => setPattern(e.target.value)}
+            placeholder={scope === 'domain' ? 'example.com' : 'https://example.com/file.zip'}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
+        </div>
+        {/* Staff-only, and said so where it is typed: a reason can name a complainant. */}
+        <Input value={reason} onChange={(e) => setReason(e.target.value)}
+          placeholder={t('bu.reason', 'Why (staff only — never shown to the person refused)')} />
+        <Button size="sm" onClick={add} disabled={busy || !pattern.trim()}><Plus size={14} /> {t('bu.add', 'Block it')}</Button>
+        {loading ? <Loading /> : rules.length ? (
+          <div className="space-y-1.5 pt-1">
+            {rules.map((r) => (
+              <div key={r.id} className="flex items-start gap-2 text-xs p-2 rounded-lg bg-[var(--surface-2)]">
+                <Badge tone={r.scope === 'domain' ? 'amber' : undefined}>{r.scope === 'domain' ? t('bu.s.domain', 'Domain + subs') : t('bu.s.url', 'Exact URL')}</Badge>
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono break-all">{r.pattern}</div>
+                  {r.reason && <div className="text-[var(--faint)] mt-0.5 break-words">{r.reason}</div>}
+                  <div className="text-[var(--faint)] mt-0.5">
+                    {/* Hits are the honest measure of whether a rule is doing anything. */}
+                    {t('bu.hits', '{n} caught').replace('{n}', r.hits)}
+                    {r.createdBy?.displayName ? ` · ${r.createdBy.displayName}` : ''}
+                    {` · ${new Date(r.createdAt).toLocaleDateString()}`}
+                  </div>
+                </div>
+                <button onClick={() => del(r)} className="text-[var(--faint)] hover:text-error shrink-0" title={t('bu.remove', 'Remove')}><Trash2 size={13} /></button>
+              </div>
+            ))}
+          </div>
+        ) : <EmptyState icon={Ban} title={t('bu.none', 'Nothing blocked')} sub={t('bu.none.s', 'Addresses you block after a notice appear here.')} />}
+      </div>)}
+    </Card>
+  );
+}
+
 function AdminMessages() {
   const toast = useToast(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/contact'), []);
@@ -6640,6 +6725,7 @@ function AdminMessages() {
           </button>
         ))}
       </div>
+      {filter === 'legal' && <BlockedUrls t={t} />}
       {filter === 'legal' && (
         <Card className="p-3 mb-3 text-xs text-[var(--muted)] flex items-start gap-2">
           <AlertTriangle size={14} className="text-error shrink-0 mt-0.5" />

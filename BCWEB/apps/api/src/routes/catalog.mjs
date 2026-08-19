@@ -9,6 +9,36 @@ import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
 import { replyCachedJson } from '../lib/cache.mjs';
 import { powVerify } from './auth.mjs';
 import { campaignCoupon } from './campaigns.mjs';
+import { findBlock, urlsOfMeta } from '../lib/urlblock.mjs';
+
+// ── Blocked addresses ────────────────────────────────────────────────────────
+// The Terms promise that a link taken down after a notice cannot simply be posted again.
+// Enforced HERE rather than at each create site's own if-statement, because there are three
+// of them plus the update path, and the one that gets forgotten is the one that matters.
+//
+// The rules are read fresh each time. A blocklist is small and only written by staff, and a
+// cache would mean a rights holder's block is not in force for the length of a TTL — which is
+// precisely the window somebody re-uploading is watching for.
+async function blockedFor(p, urls) {
+  const list = (Array.isArray(urls) ? urls : [urls]).filter((u) => typeof u === 'string' && u.trim());
+  if (!list.length) return null;
+  const rules = await p.blockedUrl.findMany({ select: { id: true, scope: true, pattern: true } });
+  const hit = findBlock(rules, list);
+  if (!hit) return null;
+  // Counted, not logged: the point is to know a rule is doing work, and the URL itself is
+  // already the rule. Never log the raw address alongside a user id.
+  p.blockedUrl.update({ where: { id: hit.rule.id }, data: { hits: { increment: 1 }, lastHitAt: new Date() } })
+    .catch(() => {});
+  return hit;
+}
+
+// One refusal shape everywhere, so the client has one thing to handle. `url` is echoed back
+// because the sender may have submitted several and needs to know WHICH one — the reason is
+// NOT echoed: it can name a complainant.
+function replyBlocked(reply, hit) {
+  return reply.code(409).send({ error: 'url_blocked', url: hit.url, scope: hit.rule.scope });
+}
+
 
 const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
 // The ProjectKey enum. Validated like KINDS: an unknown ?project= must never reach the feed's
@@ -409,6 +439,8 @@ export default async function catalogRoutes(app) {
       if (ft.capEnabled && ft.usedMB + (d.payloadSize || 0) / (1024 * 1024) > ft.capMB) return reply.code(409).send({ error: 'free_tier_full', freeMB: ft.freeMB });
       if (await hasFreeTierClaim(p, 'CATALOG', req.user.uid)) return reply.code(409).send({ error: 'free_tier_already_used' });
     }
+    const blocked = await blockedFor(p, urlsOfMeta(d.meta));
+    if (blocked) return replyBlocked(reply, blocked);
     const slug = `${d.projectKey}-${slugify(d.name)}-${Math.random().toString(36).slice(2, 6)}`;
     const item = await p.catalogItem.create({
       data: { projectId: project.id, kind: d.kind, ownerId: req.user.uid, name: d.name, slug, shareKey: mkShareKey(),
@@ -479,6 +511,9 @@ export default async function catalogRoutes(app) {
     for (const e of b.data.entries) {
       if (e.kind !== 'PRESET' && !(e.meta?.download_url || e.meta?.downloadUrl || e.meta?.url)) continue;
       if (e.kind === 'PRESET' && !presetSchema.safeParse(e.meta).success) continue;
+      // Skipped like any other invalid entry, so one blocked link in a hundred does not
+      // reject the batch — the response already reports `skipped`.
+      if (await blockedFor(p, urlsOfMeta(e.meta))) continue;
       const slug = `${b.data.projectKey}-${slugify(e.name)}-${Math.random().toString(36).slice(2, 6)}`;
       const item = await p.catalogItem.create({ data: {
         projectId: project.id, kind: e.kind, ownerId: req.user.uid, name: e.name, slug, shareKey: mkShareKey(),
@@ -503,6 +538,11 @@ export default async function catalogRoutes(app) {
     const p = await db();
     const project = await p.project.findUnique({ where: { key: d.projectKey } });
     if (!project) return reply.code(400).send({ error: 'unknown_project' });
+    // Staff too. A block exists because somebody has a right in the thing; being an admin
+    // does not change whose right it is, and an accidental official re-list is exactly the
+    // kind that nobody reports a second time.
+    const blocked = await blockedFor(p, urlsOfMeta(d.meta));
+    if (blocked) return replyBlocked(reply, blocked);
     const slug = `${d.projectKey}-${slugify(d.name)}-${Math.random().toString(36).slice(2, 6)}`;
     const item = await p.catalogItem.create({
       data: { projectId: project.id, kind: d.kind, ownerId: req.user.uid, name: d.name, slug, shareKey: mkShareKey(),
@@ -672,6 +712,14 @@ export default async function catalogRoutes(app) {
     if (patch.payloadKey && req.user.role === 'USER') {
       const s = await settings(p);
       hostCents = catalogHostCents(patch.payloadSize || 0, s);
+    }
+    // Creation alone would leave the obvious hole: submit something clean, then edit the
+    // download url to the blocked one. Checked against the INCOMING meta only — an item
+    // whose stored meta was blocked after the fact is a moderation job, not an edit that
+    // must be refused for unrelated reasons.
+    if (patch.meta) {
+      const blockedEdit = await blockedFor(p, urlsOfMeta(patch.meta));
+      if (blockedEdit) return replyBlocked(reply, blockedEdit);
     }
     const { payloadKey: newPayloadKey, payloadSize: newPayloadSize, ...rest } = patch;
     // Resubmitting within the rejection grace cancels the scheduled payload purge — the

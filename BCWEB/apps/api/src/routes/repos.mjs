@@ -7,6 +7,19 @@ import { safeFetch } from '../lib/net.mjs';
 import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } from '../lib/repofingerprint.mjs';
 import { mintAttestation, attestationPublicKeyHex, ATTESTATION_TTL_SECONDS } from '../lib/identity-attestation.mjs';
 import { capacityStatus, capacityFactors, priceCents, termTotalCents, TERM_MONTHS, stripe, settings, ensureCustomer, recomputePoolBytes } from './hosting.mjs';
+import { findBlock } from '../lib/urlblock.mjs';
+
+// A listed repo is a link like any other, so the blocklist reaches it too. Same shape of
+// refusal as the catalog, so a client handles one error and not two.
+async function repoUrlBlocked(p, url) {
+  if (!url) return null;
+  const rules = await p.blockedUrl.findMany({ select: { id: true, scope: true, pattern: true } });
+  const hit = findBlock(rules, [url]);
+  if (!hit) return null;
+  p.blockedUrl.update({ where: { id: hit.rule.id }, data: { hits: { increment: 1 }, lastHitAt: new Date() } })
+    .catch(() => {});
+  return hit;
+}
 
 const SHA = /^[a-f0-9]{40}$|^[a-f0-9]{64}$/i;
 const GiB = 1024 ** 3;
@@ -919,6 +932,8 @@ export default async function repoRoutes(app) {
     const p = await db();
     const gate = await repoCreateGate(p, req.user);
     if (!gate.ok) return reply.code(403).send({ error: gate.reason });
+    const blocked = await repoUrlBlocked(p, b.data.repoUrl);
+    if (blocked) return reply.code(409).send({ error: 'url_blocked', url: blocked.url, scope: blocked.rule.scope });
     let repo = await p.serverRepo.create({ data: { ...b.data, ownerId: req.user.uid, hosted: false, status: 'OFFLINE' } });
     // Auto health-check + auto content-SHA (like BMM's repo check) so status/sha are real from the start.
     if (repo.repoUrl) {
@@ -971,6 +986,12 @@ export default async function repoRoutes(app) {
     const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
     if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     const urlChanged = b.data.repoUrl && b.data.repoUrl !== repo.repoUrl;
+    // Only when it CHANGED: re-checking an unchanged url would lock the owner out of
+    // editing a description on a repo blocked for something they have since fixed.
+    if (urlChanged) {
+      const blocked = await repoUrlBlocked(p, b.data.repoUrl);
+      if (blocked) return reply.code(409).send({ error: 'url_blocked', url: blocked.url, scope: blocked.rule.scope });
+    }
     await p.serverRepo.update({ where: { id: repo.id }, data: b.data });
     const out = urlChanged ? (await autoVerify(p, repo.id)).repo : await p.serverRepo.findUnique({ where: { id: repo.id } });
     return { repo: ser(out) };

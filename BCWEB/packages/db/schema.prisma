@@ -96,6 +96,7 @@ model User {
   oauthClients      OAuthClient[] @relation("OAuthClientOwner")
   pollVotes         PollVote[] @relation("PollVoter")
   pollAnswers       PollAnswer[] @relation("PollAnswerer")
+  blockedUrls       BlockedUrl[]
   sessions          Session[]
   createdAt         DateTime  @default(now())
 
@@ -1082,6 +1083,39 @@ model RepoAccessEvent {
 // whitelist when either the repo or `whitelistOnly` (site-wide) requires one. Entries
 // in the account lists are { type: "bcweb"|"discord", id, label }. Singleton row
 // (id is always "global") — read/written via GET/PUT /admin/access-policy.
+// An address that may not be listed again.
+//
+// The Terms promise this in "Listings that point somewhere else": when an item is only a
+// LINK, taking the listing down is most of what we can do, and the rest is stopping the same
+// address being posted straight back. Matching lives in lib/urlblock.mjs and is deliberately
+// dull — an exact address, or a host and everything under it. No wildcards: somebody refused
+// a link is owed a rule they can read.
+model BlockedUrl {
+  id        String   @id @default(cuid())
+  /// 'domain' — the host and every subdomain · 'url' — that exact address, path and query
+  scope     String   @default("domain")
+  /// Stored normalised (lowercase, no www., no trailing slash) so a duplicate cannot be
+  /// added in a different spelling and read as a second, different rule.
+  pattern   String
+  /// Shown to staff, never to the person refused: it can name a complainant.
+  reason    String   @default("")
+  /// The notice this came from, when it came from one. Nullable because an admin may block
+  /// something they found themselves, and SetNull so deleting a message never deletes the
+  /// protection that message caused.
+  noticeId  String?
+  notice    ContactMessage? @relation(fields: [noticeId], references: [id], onDelete: SetNull)
+  createdById String?
+  createdBy   User?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  /// How often it actually caught something. A rule with zero hits after a year is a rule to
+  /// re-read, and a rule with thousands is worth telling somebody about.
+  hits      Int      @default(0)
+  lastHitAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@unique([scope, pattern])
+  @@index([createdAt])
+}
+
 model GlobalAccessPolicy {
   id                String   @id @default("global")
   whitelistOnly     Boolean  @default(false) // forces whitelist-only mode on ALL repos
@@ -2074,6 +2108,10 @@ model ContactMessage {
   status    String    @default("new") // new | read
   readAt    DateTime?
   createdAt DateTime  @default(now())
+
+  /// Blocks that exist because of this notice. SetNull on the other side, so deleting a
+  /// message never quietly removes the protection it caused.
+  blocks    BlockedUrl[]
 
   // Declared here because the DB already has it: 20260815040000_contact_kind created it and
   // the model never named it, so every drift check wanted to DROP an index the admin queue

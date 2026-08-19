@@ -167,6 +167,7 @@ export const PENDING_QUEUES = [
 ];
 
 import { footerSchema, pageColours, THEME_KEY, HEX, THEME_DEFAULTS } from '../lib/config-schemas.mjs';
+import { hostOf, normalizeUrl } from '../lib/urlblock.mjs';
 export { footerSchema, footSocial, pageColours } from '../lib/config-schemas.mjs';
 
 export default async function miscRoutes(app) {
@@ -676,6 +677,54 @@ export default async function miscRoutes(app) {
       },
     });
   }
+
+  // ── Blocked addresses ──────────────────────────────────────────────────────
+  // The list the Terms promise. MOD can read and add — a moderator handling a notice is
+  // exactly who needs to block something — but only ADMIN can REMOVE one, because removing
+  // a block quietly undoes a decision somebody took under a legal notice.
+  app.get('/admin/blocked-urls', { preHandler: requireRole('MOD', 'ADMIN') }, async () => {
+    const p = await db();
+    const rules = await p.blockedUrl.findMany({
+      orderBy: { createdAt: 'desc' }, take: 500,
+      include: {
+        createdBy: { select: { id: true, displayName: true } },
+        notice: { select: { id: true, name: true, kind: true, createdAt: true } },
+      },
+    });
+    return { rules };
+  });
+
+  app.post('/admin/blocked-urls', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      scope: z.enum(['domain', 'url']).default('domain'),
+      pattern: z.string().min(3).max(400),
+      reason: z.string().max(500).default(''),
+      noticeId: z.string().max(60).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    // Normalised before it is stored, so the unique key actually catches a duplicate written
+    // in a different spelling instead of filing it as a second, different rule.
+    const pattern = b.data.scope === 'domain' ? hostOf(b.data.pattern) : normalizeUrl(b.data.pattern);
+    if (!pattern) return reply.code(400).send({ error: 'not_a_web_address' });
+    const p = await db();
+    try {
+      const rule = await p.blockedUrl.create({
+        data: { scope: b.data.scope, pattern, reason: b.data.reason, noticeId: b.data.noticeId || null, createdById: req.user.uid },
+      });
+      return reply.code(201).send({ rule });
+    } catch (e) {
+      // The unique key doing its job reads as success to the person clicking, because the
+      // address they wanted blocked is blocked.
+      if (e?.code === 'P2002') return reply.code(200).send({ ok: true, already: true });
+      throw e;
+    }
+  });
+
+  app.delete('/admin/blocked-urls/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    await p.blockedUrl.deleteMany({ where: { id: req.params.id } });
+    return { ok: true };
+  });
 
   app.get('/admin/contact', { preHandler: requireRole('MOD', 'ADMIN') }, async () => {
     const p = await db();
