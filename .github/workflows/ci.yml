@@ -73,6 +73,14 @@ jobs:
       # server, because that address is only ever used somewhere else.
       - name: env vars documented
         run: node scripts/check-env-documented.mjs
+      # The guides must describe THIS stack. check-links proves every link resolves, which a
+      # guide naming a deleted service or a renamed script passes perfectly. This checks the
+      # claims a reader ACTS on: every `docker compose <service>`, `npm run <script>`,
+      # variable and infra/ path they are told to use has to exist. It found TOPOLOGY
+      # pointing at an infra/k8s directory that is not in the repository.
+      - name: guides describe the real stack
+        working-directory: BCWEB
+        run: node guides/check-claims.mjs
       - run: npm ci
       - run: npx prisma generate --schema ../../packages/db/schema.prisma
       - run: npx prisma validate --schema ../../packages/db/schema.prisma

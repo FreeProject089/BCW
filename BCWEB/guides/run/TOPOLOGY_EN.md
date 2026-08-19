@@ -165,9 +165,13 @@ must already be OFF those machines (shape ②). What changes:
 - **`COOKIE_DOMAIN`** must cover every hostname you serve, or sessions break as the load
   balancer moves people between them.
 
-The `infra/k8s` manifests exist for this shape. They are **inert** — nothing in the project
-requires Kubernetes, and Compose on two or three machines is simpler to reason about and to
-debug at three in the morning.
+There are no Kubernetes manifests in this repository. An earlier draft of this guide said an
+infra/k8s directory existed; it does not, and pointing somebody at a directory that is not
+there is worse than saying nothing.
+
+Nothing in the project requires Kubernetes anyway. Compose on two or three machines is
+simpler to reason about and to debug at three in the morning, which is the only time the
+difference matters.
 
 ---
 

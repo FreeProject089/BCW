@@ -172,9 +172,13 @@ partagés et doivent déjà être **hors** de ces machines (forme ②). Ce qui c
 - **`COOKIE_DOMAIN`** doit couvrir tous les noms d'hôte que tu sers, sinon les sessions cassent
   dès que le répartiteur déplace quelqu'un d'une machine à l'autre.
 
-Les manifestes `infra/k8s` existent pour cette forme. Ils sont **inertes** — rien dans le
-projet n'exige Kubernetes, et Compose sur deux ou trois machines se raisonne et se débogue
-plus facilement à trois heures du matin.
+Il n'y a aucun manifeste Kubernetes dans ce dépôt. Une version antérieure de ce guide
+affirmait qu'un dossier infra/k8s existait ; ce n'est pas le cas, et envoyer quelqu'un vers un dossier
+absent est pire que de ne rien dire.
+
+Rien dans le projet n'exige Kubernetes de toute façon. Compose sur deux ou trois machines se
+raisonne et se débogue plus facilement à trois heures du matin, qui est le seul moment où la
+différence compte.
 
 ---
 
