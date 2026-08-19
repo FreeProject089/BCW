@@ -1094,6 +1094,10 @@ model BlockedUrl {
   id        String   @id @default(cuid())
   /// 'domain' — the host and every subdomain · 'url' — that exact address, path and query
   scope     String   @default("domain")
+  /// An EXCEPTION rather than a rule: an allow entry beats every block entry, whichever is
+  /// more specific. Deliberately not a specificity contest — an allowed address is allowed,
+  /// which is a sentence somebody can hold while deciding whether to add one.
+  allow     Boolean  @default(false)
   /// Stored normalised (lowercase, no www., no trailing slash) so a duplicate cannot be
   /// added in a different spelling and read as a second, different rule.
   pattern   String

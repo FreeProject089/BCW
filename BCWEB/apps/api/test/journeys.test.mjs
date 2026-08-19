@@ -271,11 +271,23 @@ describe('notification preferences stop the write', { skip }, () => {
     assert.deepEqual(kinds, ['account_locked', 'kind_nobody_has_seen']);
   });
 
-  test('a broadcast skips the accounts that muted it', async () => {
+  // notifyAll means ALL — it is the behaviour under test, so this necessarily writes one
+  // row for every account in the database it runs against, not only the two created here.
+  //
+  // That is fine in CI, where the database is thrown away. It was not fine here: this suite
+  // runs against the developer's own database, and 559 copies of "a broadcast" had piled up
+  // across five days of test runs, arriving in the real notification bell as the same
+  // message over and over with nothing to explain it.
+  //
+  // The body is unique to this test and the rows are removed after it, so the assertion is
+  // unchanged and the side effect does not outlive the run.
+  test('a broadcast skips the accounts that muted it', async (t) => {
+    const BODY = 'a broadcast (test fixture)';
+    t.after(() => p.notification.deleteMany({ where: { body: BODY } }).catch(() => {}));
     const quiet = await mkUser({ notifPrefs: { broadcasts: false } });
     const loud = await mkUser();
-    await lib.notifyAll(p, 'event', 'a broadcast');
-    const got = async (id) => p.notification.count({ where: { userId: id, body: 'a broadcast' } });
+    await lib.notifyAll(p, 'event', BODY);
+    const got = async (id) => p.notification.count({ where: { userId: id, body: BODY } });
     assert.equal(await got(quiet.id), 0);
     assert.equal(await got(loud.id), 1);
   });

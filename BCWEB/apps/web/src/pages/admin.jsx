@@ -6605,6 +6605,7 @@ function BlockedUrls({ t }) {
   const { data, loading, reload } = useAsync(() => api.get('/admin/blocked-urls'), []);
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState('domain');
+  const [allow, setAllow] = useState(false);
   const [pattern, setPattern] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -6614,10 +6615,11 @@ function BlockedUrls({ t }) {
     if (!pattern.trim() || busy) return;
     setBusy(true);
     try {
-      const r = await api.post('/admin/blocked-urls', { scope, pattern: pattern.trim(), reason: reason.trim() });
+      const r = await api.post('/admin/blocked-urls', { scope, allow, pattern: pattern.trim(), reason: reason.trim() });
       // The unique key firing is not an error to the person clicking: what they wanted
       // blocked is blocked. Say which, so it does not read as a silent no-op.
-      toast.success(r?.already ? t('bu.already', 'Already blocked.') : t('bu.added', 'Blocked.'));
+      toast.success(r?.flipped ? t('bu.flipped', 'Rule updated.')
+        : allow ? t('bu.allowed', 'Allowed.') : t('bu.added', 'Blocked.'));
       setPattern(''); setReason(''); reload();
     } catch (e) {
       toast.error(e?.body?.error === 'not_a_web_address'
@@ -6640,8 +6642,23 @@ function BlockedUrls({ t }) {
       </button>
       {open && (<div className="mt-3 space-y-3">
         <p className="text-xs text-[var(--muted)]">
-          {t('bu.help', 'A blocked address cannot be submitted as a catalog item or listed as a repository — by anyone, staff included. A domain covers every subdomain under it; a URL covers only that exact address.')}
+          {t('bu.help', 'A blocked address cannot be submitted as a catalog item or listed as a repository — by anyone, staff included. A domain covers every subdomain under it; a URL covers only that exact address. An allow entry is an exception that beats every block.')}
         </p>
+        <div className="flex gap-1.5">
+          {[[false, t('bu.mode.block', 'Block')], [true, t('bu.mode.allow', 'Allow')]].map(([v, label]) => (
+            <button key={String(v)} type="button" onClick={() => setAllow(v)}
+              aria-current={allow === v ? 'true' : undefined}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition ${
+                allow === v
+                  ? (v ? 'border-success text-[var(--text)] bg-[var(--surface-2)]' : 'border-error text-[var(--text)] bg-[var(--surface-2)]')
+                  : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'
+              }`}>{label}</button>
+          ))}
+        </div>
+        {/* Said here rather than in a doc: an allow beats every block, and somebody adding
+            one should know that before they add it, not after a link they meant to stop
+            goes through. */}
+        {allow && <p className="text-xs text-[var(--muted)]">{t('bu.allow.help', 'An allow entry beats every block entry, whichever is more specific. Use it for the one address on a blocked domain that is genuinely fine — an official release page under a host that also serves reuploads.')}</p>}
         <div className="grid sm:grid-cols-[130px_1fr] gap-2">
           <Select value={scope} onChange={(e) => setScope(e.target.value)}>
             <option value="domain">{t('bu.s.domain', 'Domain + subs')}</option>
@@ -6654,11 +6671,12 @@ function BlockedUrls({ t }) {
         {/* Staff-only, and said so where it is typed: a reason can name a complainant. */}
         <Input value={reason} onChange={(e) => setReason(e.target.value)}
           placeholder={t('bu.reason', 'Why (staff only — never shown to the person refused)')} />
-        <Button size="sm" onClick={add} disabled={busy || !pattern.trim()}><Plus size={14} /> {t('bu.add', 'Block it')}</Button>
+        <Button size="sm" onClick={add} disabled={busy || !pattern.trim()}><Plus size={14} /> {allow ? t('bu.addallow', 'Allow it') : t('bu.add', 'Block it')}</Button>
         {loading ? <Loading /> : rules.length ? (
           <div className="space-y-1.5 pt-1">
             {rules.map((r) => (
               <div key={r.id} className="flex items-start gap-2 text-xs p-2 rounded-lg bg-[var(--surface-2)]">
+                <Badge tone={r.allow ? 'success' : 'error'}>{r.allow ? t('bu.mode.allow', 'Allow') : t('bu.mode.block', 'Block')}</Badge>
                 <Badge tone={r.scope === 'domain' ? 'amber' : undefined}>{r.scope === 'domain' ? t('bu.s.domain', 'Domain + subs') : t('bu.s.url', 'Exact URL')}</Badge>
                 <div className="flex-1 min-w-0">
                   <div className="font-mono break-all">{r.pattern}</div>

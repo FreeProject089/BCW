@@ -1264,6 +1264,12 @@ const DICT = {
 
     // ── Admin : messages de contact ──
     'am.title': 'Messages de contact', 'am.new': '{n} nouveau(x)', 'am.refresh': 'Rafraîchir', 'am.newbadge': 'nouveau',
+    'bu.mode.block': 'Bloquer',
+    'bu.mode.allow': 'Autoriser',
+    'bu.addallow': 'Autoriser',
+    'bu.allowed': 'Autorisé.',
+    'bu.flipped': 'Règle mise à jour.',
+    'bu.allow.help': 'Une autorisation l’emporte sur tout blocage, quel que soit le plus précis. À utiliser pour la seule adresse d’un domaine bloqué qui est vraiment légitime — une page de release officielle sur un hébergeur qui sert aussi des réuploads.',
     'bu.title': 'Adresses bloquées',
     'bu.help': 'Une adresse bloquée ne peut plus être soumise comme élément de catalogue ni référencée comme dépôt — par personne, staff compris. Un domaine couvre tous ses sous-domaines ; une URL ne couvre que cette adresse exacte.',
     'bu.s.domain': 'Domaine + sous-domaines',

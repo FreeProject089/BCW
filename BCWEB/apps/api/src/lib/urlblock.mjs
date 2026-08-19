@@ -65,32 +65,52 @@ export function hostUnder(host, domain) {
     return h === d || h.endsWith(`.${d}`);
 }
 
+/** Does one rule cover one address? Split out because both the block pass and the allow pass
+ *  ask exactly the same question, and asking it twice in two places is how they drift. */
+function ruleCovers(rule, norm, host) {
+    if (rule.scope === 'domain') return hostUnder(host, rule.pattern);
+    return !!norm && normalizeUrl(rule.pattern) === norm;
+}
+
 /**
- * The first rule that catches any of `urls`, or null.
+ * The first BLOCK rule that catches any of `urls`, unless an ALLOW rule covers it first.
  *
  * Takes the rules as an argument rather than reading the database, so the decision can be
  * tested without one — the same reason announce-route.mjs was pulled out of its posting loop.
  *
- * @param rules [{ id, scope: 'url'|'domain', pattern }]
+ * PRECEDENCE: any matching allow rule beats any block rule, full stop. Not "the most specific
+ * wins" — that sounds smarter and is unpredictable, because it asks somebody to rank a domain
+ * against a URL in their head before they can say what will happen. One sentence you can hold
+ * is worth more here than a rule that is cleverer in the rare case: an allowed address is
+ * allowed, and if that is wrong the answer is to remove the allow rule, which is visible.
+ *
+ * @param rules [{ id, scope: 'url'|'domain', pattern, allow?: boolean }]
  * @param urls  strings; nullish and non-http entries are skipped rather than treated as ''
  * @returns {{rule: object, url: string}|null} which rule, and which of the URLs tripped it
  */
 export function findBlock(rules, urls) {
     const list = (Array.isArray(urls) ? urls : [urls]).filter((u) => typeof u === 'string' && u.trim());
     if (!list.length || !rules?.length) return null;
+    const allows = rules.filter((r) => r.allow);
+    const blocks = rules.filter((r) => !r.allow);
     for (const url of list) {
         const norm = normalizeUrl(url);
         const host = hostOf(url);
         if (!norm && !host) continue;   // not a web address; nothing here can match it
-        for (const rule of rules) {
-            if (rule.scope === 'domain') {
-                if (hostUnder(host, rule.pattern)) return { rule, url };
-            } else if (norm && normalizeUrl(rule.pattern) === norm) {
-                return { rule, url };
-            }
-        }
+        if (allows.some((r) => ruleCovers(r, norm, host))) continue;   // explicitly permitted
+        const hit = blocks.find((r) => ruleCovers(r, norm, host));
+        if (hit) return { rule: hit, url };
     }
     return null;
+}
+
+/** The allow rule covering an address, or null. Only for explaining a decision — the block
+ *  path already handles precedence itself and must not be asked twice. */
+export function findAllow(rules, url) {
+    const norm = normalizeUrl(url);
+    const host = hostOf(url);
+    if (!norm && !host) return null;
+    return (rules || []).find((r) => r.allow && ruleCovers(r, norm, host)) || null;
 }
 
 /** Every URL worth checking on a catalog item's meta blob. Kept here rather than at each

@@ -22,7 +22,7 @@ import { findBlock, urlsOfMeta } from '../lib/urlblock.mjs';
 async function blockedFor(p, urls) {
   const list = (Array.isArray(urls) ? urls : [urls]).filter((u) => typeof u === 'string' && u.trim());
   if (!list.length) return null;
-  const rules = await p.blockedUrl.findMany({ select: { id: true, scope: true, pattern: true } });
+  const rules = await p.blockedUrl.findMany({ select: { id: true, scope: true, pattern: true, allow: true } });
   const hit = findBlock(rules, list);
   if (!hit) return null;
   // Counted, not logged: the point is to know a rule is doing work, and the URL itself is

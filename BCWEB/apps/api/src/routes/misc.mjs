@@ -697,6 +697,8 @@ export default async function miscRoutes(app) {
   app.post('/admin/blocked-urls', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
     const b = z.object({
       scope: z.enum(['domain', 'url']).default('domain'),
+      // An exception rather than a rule. Same shape, one flag, one list to read.
+      allow: z.boolean().default(false),
       pattern: z.string().min(3).max(400),
       reason: z.string().max(500).default(''),
       noticeId: z.string().max(60).optional(),
@@ -709,13 +711,21 @@ export default async function miscRoutes(app) {
     const p = await db();
     try {
       const rule = await p.blockedUrl.create({
-        data: { scope: b.data.scope, pattern, reason: b.data.reason, noticeId: b.data.noticeId || null, createdById: req.user.uid },
+        data: { scope: b.data.scope, allow: b.data.allow, pattern, reason: b.data.reason, noticeId: b.data.noticeId || null, createdById: req.user.uid },
       });
       return reply.code(201).send({ rule });
     } catch (e) {
-      // The unique key doing its job reads as success to the person clicking, because the
-      // address they wanted blocked is blocked.
-      if (e?.code === 'P2002') return reply.code(200).send({ ok: true, already: true });
+      // The unique key is (scope, pattern), so the same address cannot be both blocked and
+      // allowed. Hitting it is not an error and must not be a silent no-op either: somebody
+      // clicking "allow" on an address that is currently blocked means FLIP IT, and telling
+      // them "already blocked" while changing nothing is the worst of the three answers.
+      if (e?.code === 'P2002') {
+        const rule = await p.blockedUrl.update({
+          where: { scope_pattern: { scope: b.data.scope, pattern } },
+          data: { allow: b.data.allow, reason: b.data.reason || undefined },
+        });
+        return reply.code(200).send({ rule, flipped: true });
+      }
       throw e;
     }
   });

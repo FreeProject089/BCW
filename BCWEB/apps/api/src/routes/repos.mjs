@@ -13,7 +13,7 @@ import { findBlock } from '../lib/urlblock.mjs';
 // refusal as the catalog, so a client handles one error and not two.
 async function repoUrlBlocked(p, url) {
   if (!url) return null;
-  const rules = await p.blockedUrl.findMany({ select: { id: true, scope: true, pattern: true } });
+  const rules = await p.blockedUrl.findMany({ select: { id: true, scope: true, pattern: true, allow: true } });
   const hit = findBlock(rules, [url]);
   if (!hit) return null;
   p.blockedUrl.update({ where: { id: hit.rule.id }, data: { hits: { increment: 1 }, lastHitAt: new Date() } })

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { hostOf, normalizeUrl, hostUnder, findBlock, urlsOfMeta } from '../src/lib/urlblock.mjs';
+import { hostOf, normalizeUrl, hostUnder, findBlock, findAllow, urlsOfMeta } from '../src/lib/urlblock.mjs';
 
 describe('hostOf', () => {
     test('strips scheme, www, port and case', () => {
@@ -95,6 +95,44 @@ describe('findBlock', () => {
     });
     test('a non-http listing cannot be matched by a domain rule by accident', () => {
         assert.equal(findBlock(RULES, ['javascript:location="//warez.example"']), null);
+    });
+});
+
+describe('allow rules', () => {
+    // The case this exists for: a whole host is blocked, but one address on it is fine —
+    // the project's own release page under a domain that also serves reuploads.
+    const RULES = [
+        { id: 'b1', scope: 'domain', pattern: 'mixed.example' },
+        { id: 'a1', scope: 'url', allow: true, pattern: 'https://mixed.example/official/release.zip' },
+    ];
+
+    test('the allowed address passes while the rest of the domain does not', () => {
+        assert.equal(findBlock(RULES, ['https://mixed.example/official/release.zip']), null);
+        assert.equal(findBlock(RULES, ['https://mixed.example/warez/x.zip'])?.rule.id, 'b1');
+    });
+    test('an allow rule beats a block rule regardless of which is more specific', () => {
+        const inverted = [
+            { id: 'b2', scope: 'url', pattern: 'https://a.example/f.zip' },
+            { id: 'a2', scope: 'domain', allow: true, pattern: 'a.example' },
+        ];
+        // The broad allow wins over the narrow block. Stated as a rule you can hold, not as
+        // a specificity contest nobody can predict.
+        assert.equal(findBlock(inverted, ['https://a.example/f.zip']), null);
+    });
+    test('an allow rule normalises like any other — spelling does not decide it', () => {
+        assert.equal(findBlock(RULES, ['https://WWW.mixed.example/official/release.zip/']), null);
+    });
+    test('one allowed url in a set does not rescue a blocked sibling', () => {
+        const hit = findBlock(RULES, ['https://mixed.example/official/release.zip', 'https://mixed.example/bad.zip']);
+        assert.equal(hit?.url, 'https://mixed.example/bad.zip');
+    });
+    test('allow-only rules block nothing', () => {
+        assert.equal(findBlock([RULES[1]], ['https://anything.example/x']), null);
+    });
+    test('findAllow names the rule that permitted it, for explaining a decision', () => {
+        assert.equal(findAllow(RULES, 'https://mixed.example/official/release.zip')?.id, 'a1');
+        assert.equal(findAllow(RULES, 'https://mixed.example/other.zip'), null);
+        assert.equal(findAllow(RULES, 'not a url'), null);
     });
 });
 

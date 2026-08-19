@@ -1,5 +1,6 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Lock, ShieldCheck, Cookie, Sparkles, Receipt, FileText } from 'lucide-react';
+import { Lock, ShieldCheck, Cookie, Sparkles, Receipt, FileText, Printer } from 'lucide-react';
 import { PageHeader, Button, Card } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 
@@ -208,10 +209,87 @@ const LEGAL_SUMMARY = {
 // whether the terms they agreed to are still the terms in front of them.
 const LEGAL_UPDATED = '2026-08-19';
 
+// ── Rendering a policy ───────────────────────────────────────────────────────
+//
+// The text is authored as plain strings on purpose — there is no markdown parser in the
+// path, so nothing here can misread a policy and render it as something it does not say.
+// What follows is the smallest amount of structure that makes it READ like a legal
+// document instead of a wall: a run of `· ` lines is a list, a run of `1. ` or `a. ` lines
+// is an ordered list, and everything else stays a paragraph. Any line that does not match
+// falls through unchanged rather than being dropped.
+
+// Two or more consecutive ALL-CAPS words become emphasis. Authored that way throughout —
+// "ALL THREE", "HAS BEEN NOTIFIED", "FOURTEEN DAYS" — and left as literal capitals it reads
+// as shouting. Each token must be at least two capitals, so a lone acronym followed by a
+// capitalised word ("DSA Article 16") is NOT swept up: `Article` contributes only `A`, which
+// is one character and fails the rule.
+const CAPS_RUN = /(\p{Lu}[\p{Lu}\d’'-]+(?:\s+\p{Lu}[\p{Lu}\d’'-]+)+)/gu;
+
+function Emphasised({ text }) {
+  const parts = String(text).split(CAPS_RUN);
+  return parts.map((s, i) => (
+    // The odd indices are the captured runs. Emphasis is a colour change and a weight, not
+    // a different size: a legal page where phrases jump around in scale reads as a flyer.
+    i % 2 ? <strong key={i} className="font-semibold text-[var(--text)]">{s}</strong> : <span key={i}>{s}</span>
+  ));
+}
+
+const BULLET = /^·\s+/;
+const NUM = /^(\d{1,2})\.\s+/;
+const ALPHA = /^([a-z])\.\s+/;
+
+function LegalParagraph({ text }) {
+  const lines = String(text).split('\n');
+  const blocks = [];
+  for (const line of lines) {
+    const kind = BULLET.test(line) ? 'ul' : NUM.test(line) ? 'ol' : ALPHA.test(line) ? 'oa' : 'p';
+    const content = line.replace(BULLET, '').replace(NUM, '').replace(ALPHA, '');
+    const last = blocks[blocks.length - 1];
+    // A paragraph never merges with the one before it — only list items group, because two
+    // adjacent prose lines inside one entry are a deliberate line break, not one sentence.
+    if (last && last.kind === kind && kind !== 'p') last.items.push(content);
+    else blocks.push({ kind, items: [content] });
+  }
+  return blocks.map((b, i) => {
+    if (b.kind === 'p') {
+      return b.items.map((s, k) => (
+        <p key={`${i}-${k}`} className="text-[var(--muted)] leading-relaxed mb-3 last:mb-0">
+          {s ? <Emphasised text={s} /> : <br />}
+        </p>
+      ));
+    }
+    const Tag = b.kind === 'ul' ? 'ul' : 'ol';
+    return (
+      <Tag key={i}
+        className={`mb-3 last:mb-0 space-y-1.5 text-[var(--muted)] leading-relaxed ${
+          b.kind === 'ul' ? 'list-disc' : b.kind === 'oa' ? 'list-[lower-alpha]' : 'list-decimal'
+        } pl-5 marker:text-[var(--primary-2)]`}>
+        {b.items.map((s, k) => <li key={k}><Emphasised text={s} /></li>)}
+      </Tag>
+    );
+  });
+}
+
 export function Legal({ page }) {
   const { lang, t } = useI18n();
   const d = (LEGAL[lang] || LEGAL.en)[page];
   const summary = (LEGAL_SUMMARY[lang] || LEGAL_SUMMARY.en)[page];
+  // Which section you are actually reading. A 32-entry contents list with nothing marked is
+  // a list you have to re-find your place in every time you glance at it.
+  const [active, setActive] = useState(0);
+  useEffect(() => {
+    const secs = Array.from(document.querySelectorAll('section[id^="s"]'));
+    if (!secs.length) return undefined;
+    const io = new IntersectionObserver((entries) => {
+      // The topmost section currently on screen wins. Taking "the last one that intersected"
+      // makes the marker jump backwards when you scroll up past a short section.
+      const vis = entries.filter((e) => e.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (vis) setActive(Number(vis.target.id.slice(1)));
+    }, { rootMargin: '-80px 0px -70% 0px' });
+    secs.forEach((s) => io.observe(s));
+    return () => io.disconnect();
+  }, [page, lang]);
   const tabs = [['about', t('foot.about', 'About'), Sparkles], ['privacy', t('foot.privacy'), Lock], ['terms', t('foot.terms'), ShieldCheck], ['cookies', t('foot.cookies'), Cookie], ['refunds', t('foot.refunds', 'Payments'), Receipt]];
   return (
     <div className="max-w-4xl mx-auto">
@@ -223,27 +301,45 @@ export function Legal({ page }) {
         <div className="text-sm text-[var(--muted)]">{summary}</div>
       </Card>
       <div className="grid md:grid-cols-[180px_1fr] gap-8">
-        <nav className="hidden md:block sticky top-20 self-start space-y-0.5">
+        {/* Its own scroll region with a max height: a 32-entry contents list that is itself
+            taller than the window cannot be used to navigate, which is the one job it has. */}
+        <nav className="hidden md:block sticky top-20 self-start space-y-0.5 max-h-[calc(100vh-7rem)] overflow-y-auto pr-1 print:hidden">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{lang === 'fr' ? 'Sur cette page' : 'On this page'}</div>
-          {d.body.map(([h], i) => <a key={h} href={`#s${i}`} className="block text-sm text-[var(--muted)] hover:text-[var(--primary-2)] py-1 border-l border-transparent hover:border-[var(--primary)] pl-2 -ml-px transition-colors">{h}</a>)}
+          {d.body.map(([h], i) => (
+            <a key={h} href={`#s${i}`}
+              className={`block text-sm py-1 border-l pl-2 -ml-px transition-colors ${
+                active === i
+                  ? 'text-[var(--primary-2)] border-[var(--primary)] font-medium'
+                  : 'text-[var(--muted)] border-transparent hover:text-[var(--primary-2)] hover:border-[var(--primary)]'
+              }`}>{h}</a>
+          ))}
         </nav>
-        <Card className="p-6 md:p-8 space-y-7">
+        <Card className="p-6 md:p-8 space-y-8">
           {d.body.map(([h, p], i) => (
-            <section id={`s${i}`} key={h} className="scroll-mt-24">
-              <h2 className="text-lg font-semibold mb-2 flex items-center gap-2"><span className="text-[var(--primary-2)] font-mono text-sm">{String(i + 1).padStart(2, '0')}</span>{h}</h2>
-              {/* Blank lines separate paragraphs; single newlines are kept.
-                  This was one <p>, which was fine while every entry was one paragraph. The
-                  copyright notice is not: it has an enumerated list of six required elements,
-                  and collapsing that into a wall of prose would make the one section on this
-                  page somebody has to follow step by step the hardest to follow.
-                  `whitespace-pre-line` keeps single newlines without any parsing of the text
-                  — there is nothing here that can misread a policy and render it wrong. */}
-              {String(p).split('\n\n').map((para, k) => (
-                <p key={k} className="text-[var(--muted)] leading-relaxed whitespace-pre-line mb-3 last:mb-0">{para}</p>
-              ))}
+            <section id={`s${i}`} key={h} className="scroll-mt-24 group">
+              <h2 className="text-lg font-semibold mb-2.5 flex items-baseline gap-2.5">
+                <span className="text-[var(--primary-2)] font-mono text-xs tabular-nums shrink-0">{String(i + 1).padStart(2, '0')}</span>
+                <span>{h}</span>
+                {/* A permalink per section. People CITE these — "clause 14 of your terms" is
+                    unusable, a link is not. Hidden until hover so it does not clutter, but
+                    it is a real anchor, so keyboard focus reveals it too. */}
+                <a href={`#s${i}`} aria-label={lang === 'fr' ? 'Lien vers cette section' : 'Link to this section'}
+                  className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[var(--faint)] hover:text-[var(--primary-2)] transition-opacity text-sm print:hidden">#</a>
+              </h2>
+              {/* Blank lines separate entries; inside one, a run of `· ` or `1. ` lines
+                  becomes a real list. See LegalParagraph — no markdown parser is involved,
+                  so nothing here can misread a policy and render it wrong. */}
+              {String(p).split('\n\n').map((para, k) => <LegalParagraph key={k} text={para} />)}
             </section>
           ))}
-          <div className="pt-4 border-t border-[var(--line)] text-sm text-[var(--muted)]">{lang === 'fr' ? 'Des questions sur cette politique ? Contacte-nous via les liens du pied de page.' : 'Questions about this policy? Reach us via the links in the footer.'}</div>
+          <div className="pt-5 border-t border-[var(--line)] text-sm text-[var(--muted)] flex flex-wrap items-center justify-between gap-3">
+            <span>{lang === 'fr' ? 'Des questions sur cette politique ? Contacte-nous via les liens du pied de page.' : 'Questions about this policy? Reach us via the links in the footer.'}</span>
+            {/* Legal pages get saved and filed. print:hidden everywhere else keeps the
+                printed copy to the document itself. */}
+            <Button size="sm" variant="ghost" onClick={() => window.print()} className="print:hidden">
+              <Printer size={13} /> {lang === 'fr' ? 'Imprimer' : 'Print'}
+            </Button>
+          </div>
         </Card>
       </div>
     </div>
