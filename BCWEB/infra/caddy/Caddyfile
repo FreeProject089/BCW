@@ -122,7 +122,21 @@
 # BMM telemetry dashboard on its OWN origin (it owns /api, /assets, etc., which
 # would collide under a sub-path). Local: http://telemetry.localhost.
 # Production: set TELEMETRY_DOMAIN to a real subdomain (auto-HTTPS).
-{$TELEMETRY_DOMAIN:http://telemetry.localhost} {
+#
+# TELEMETRY_TUNNEL_DOMAIN is the second address, mirroring TUNNEL_DOMAIN on the site block
+# above so the two are configured the same way. It is NOT wired into infra/tunnel.mjs, and
+# that is deliberate: a Cloudflare QUICK tunnel cannot serve this dashboard, for a reason no
+# amount of configuration fixes.
+#
+# The forward_auth gate below reads the session cookie set by the main site. A quick tunnel
+# hands out ONE random hostname per process, so the dashboard would need a second, unrelated
+# `*.trycloudflare.com` name — and two unrelated hostnames cannot share a cookie. Scoping it
+# to `trycloudflare.com` itself is not an option either: it is on the Public Suffix List and
+# browsers refuse a cookie set that wide. The gate would deny every request.
+#
+# So this slot is for a REAL domain, where the site and the dashboard are two subdomains of
+# one zone and the cookie spans both. Until then it stays at its unreachable default.
+{$TELEMETRY_DOMAIN:http://telemetry.localhost}, {$TELEMETRY_TUNNEL_DOMAIN:http://telemetry-tunnel.invalid} {
 	encode gzip zstd
 
 	# Public ingest + client-facing helpers. BMM posts telemetry batches with an

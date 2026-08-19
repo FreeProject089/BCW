@@ -319,6 +319,10 @@ services:
       # Set by infra/tunnel.mjs while a tunnel is up; an unreachable default otherwise.
       TUNNEL_DOMAIN: ${TUNNEL_DOMAIN:-http://tunnel.invalid}
       TELEMETRY_DOMAIN: ${TELEMETRY_DOMAIN:-http://telemetry.localhost}
+      # Second address for the dashboard, for a real domain with real subdomains. NOT usable
+      # with a quick tunnel — the forward_auth gate needs the site's cookie, and two
+      # unrelated *.trycloudflare.com hostnames cannot share one. See the Caddyfile.
+      TELEMETRY_TUNNEL_DOMAIN: ${TELEMETRY_TUNNEL_DOMAIN:-http://telemetry-tunnel.invalid}
     volumes:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
