@@ -54,6 +54,12 @@ const COMPOSE = path.join(HERE, 'compose');
 const ENV_FILE = path.join(COMPOSE, '.env');
 const KEY = 'TUNNEL_DOMAIN';
 const SITE = 'SITE_URL';
+// The session cookie is issued with Domain=COOKIE_DOMAIN, which is `localhost` here. A page
+// served from <something>.trycloudflare.com CANNOT accept a cookie scoped to localhost — the
+// browser drops it without a word. Sign-in returned 200, the app said welcome, and the very
+// next request arrived anonymous. Pointed at the tunnel host instead, it is the page's own
+// domain and the cookie sticks.
+const COOKIE = 'COOKIE_DOMAIN';
 const say = (m) => console.log(`[tunnel] ${m}`);
 
 const readEnvRaw = () => (fs.existsSync(ENV_FILE) ? fs.readFileSync(ENV_FILE, 'utf8') : '');
@@ -77,8 +83,9 @@ function setEnv(entries) {
   fs.writeFileSync(ENV_FILE, kept.join(eol));
 }
 
-// What SITE_URL was before this run, so it can be put back exactly.
+// What these were before this run, so they can be put back exactly.
 const SITE_WAS = readEnv(SITE);
+const COOKIE_WAS = readEnv(COOKIE);
 
 // Caddy alone. Restarting the stack to change one hostname would drop the API for anybody
 // already using it.
@@ -110,7 +117,7 @@ function stop(code = 0) {
   // every verification e-mail from this machine to an address that no longer exists, long
   // after the tunnel is forgotten.
   try {
-    setEnv({ [KEY]: null, [SITE]: SITE_WAS });
+    setEnv({ [KEY]: null, [SITE]: SITE_WAS, [COOKIE]: COOKIE_WAS });
     reloadCaddy();
     recreateApi();
   } catch { /* leaving it set breaks nothing that a re-run will not fix */ }
@@ -139,6 +146,8 @@ for (const stream of [child.stdout, child.stderr]) {
       // No port: this is the address the visitor's browser uses, and the tunnel terminates
       // TLS on 443. A port here would appear in every e-mail link and reach nothing.
       [SITE]: url,
+      // Bare hostname, no scheme and no port — a cookie Domain is a host, not a URL.
+      [COOKIE]: url.replace(/^https:\/\//, ''),
     });
     say('telling Caddy to answer on that hostname…');
     try { reloadCaddy(); } catch (e) { say(`could not reload Caddy: ${e.message}`); return stop(1); }
@@ -151,7 +160,8 @@ for (const stream of [child.stdout, child.stderr]) {
     say('  Sign-ups, uploads and payments on it are the real ones on this instance.');
     say('  Ctrl-C ends the tunnel, puts SITE_URL back, and the address stops working.');
     say('');
-    say('  Sign-in by e-mail works. OAUTH DOES NOT: Discord and GitHub only accept a');
+    say('  Sign-in by e-mail works — the session cookie is scoped to this hostname for the');
+    say('  duration. OAUTH DOES NOT: Discord and GitHub only accept a');
     say('  redirect_uri registered in their app settings, and this hostname is new every run.');
     say('');
     say(`  While this runs, SITE_URL is https — so cookies are Secure and signing in at`);
