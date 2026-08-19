@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 import { exportUser } from '../lib/user-export.mjs';
 import { buildErasePlan, eraseUser, KEEP } from '../lib/user-erase.mjs';
 import { verifyTotp } from '../lib/totp.mjs';
+import { replyCachedJson, invalidate } from '../lib/cache.mjs';
 // Same one-line helper the auth routes use for reset tokens: the token is mailed, only
 // its hash is stored, so the database never holds anything that grants access.
 const sha256 = (x) => crypto.createHash('sha256').update(x).digest('hex');
@@ -677,6 +678,126 @@ export default async function miscRoutes(app) {
       },
     });
   }
+
+
+  // ── Legal pages ────────────────────────────────────────────────────────────
+  //
+  // Public read. Returns ONLY the documents that have been imported into the database;
+  // anything absent is rendered by the client from its built-in defaults. That is what makes
+  // this safe to ship half-adopted: a document nobody has touched is byte-identical to what
+  // it was before this endpoint existed.
+  //
+  // `updatedAt` is the newest edit in the document, and the page shows it instead of the
+  // hardcoded LEGAL_UPDATED once a document is database-backed \u2014 otherwise the date would
+  // freeze at whatever the source file last said while the text kept changing, which is the
+  // one line a reader uses to decide whether a policy is current.
+  app.get('/legal', async (req, reply) => replyCachedJson(req, reply, 'legal:all', 60_000, async () => {
+    const p = await db();
+    const rows = await p.legalSection.findMany({
+      orderBy: [{ doc: 'asc' }, { order: 'asc' }],
+      select: { id: true, doc: true, title: true, titleFr: true, body: true, bodyFr: true, order: true, updatedAt: true },
+    });
+    const docs = {};
+    for (const r of rows) {
+      (docs[r.doc] ||= { sections: [], updatedAt: null }).sections.push(r);
+      const cur = docs[r.doc].updatedAt;
+      if (!cur || r.updatedAt > cur) docs[r.doc].updatedAt = r.updatedAt;
+    }
+    return { docs };
+  }));
+
+  const LEGAL_DOCS = ['privacy', 'terms', 'cookies', 'about', 'refunds'];
+
+  app.get('/admin/legal', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const sections = await p.legalSection.findMany({
+      orderBy: [{ doc: 'asc' }, { order: 'asc' }],
+      include: { updatedBy: { select: { id: true, displayName: true } } },
+    });
+    return { sections, docs: LEGAL_DOCS };
+  });
+
+  // Import a document's built-in defaults. The client posts them, because the defaults live
+  // in the web bundle \u2014 keeping a second copy here is exactly how the two would drift.
+  // Refuses when the document already has rows: this is a first-time import, not a reset, and
+  // silently overwriting somebody's edited policy is not a recoverable mistake.
+  app.post('/admin/legal/import', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      doc: z.enum(LEGAL_DOCS),
+      sections: z.array(z.object({
+        title: z.string().min(1).max(300),
+        titleFr: z.string().max(300).optional(),
+        body: z.string().max(60000),
+        bodyFr: z.string().max(60000).optional(),
+      })).min(1).max(200),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const existing = await p.legalSection.count({ where: { doc: b.data.doc } });
+    if (existing) return reply.code(409).send({ error: 'already_imported', count: existing });
+    await p.legalSection.createMany({
+      data: b.data.sections.map((s, i) => ({
+        doc: b.data.doc, order: i, title: s.title, titleFr: s.titleFr || null,
+        body: s.body, bodyFr: s.bodyFr || null, updatedById: req.user.uid,
+      })),
+    });
+    invalidate('legal:all');
+    return reply.code(201).send({ ok: true, created: b.data.sections.length });
+  });
+
+  app.put('/admin/legal/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      title: z.string().min(1).max(300).optional(),
+      titleFr: z.string().max(300).nullable().optional(),
+      body: z.string().max(60000).optional(),
+      bodyFr: z.string().max(60000).nullable().optional(),
+      order: z.number().int().min(0).max(999).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const n = await p.legalSection.updateMany({
+      where: { id: req.params.id },
+      data: { ...b.data, updatedById: req.user.uid },
+    });
+    if (!n.count) return reply.code(404).send({ error: 'not_found' });
+    invalidate('legal:all');
+    return { ok: true };
+  });
+
+  app.post('/admin/legal', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      doc: z.enum(LEGAL_DOCS),
+      title: z.string().min(1).max(300),
+      body: z.string().max(60000).default(''),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const last = await p.legalSection.findFirst({ where: { doc: b.data.doc }, orderBy: { order: 'desc' } });
+    const row = await p.legalSection.create({
+      data: { ...b.data, order: (last?.order ?? -1) + 1, updatedById: req.user.uid },
+    });
+    invalidate('legal:all');
+    return reply.code(201).send({ section: row });
+  });
+
+  app.delete('/admin/legal/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    await p.legalSection.deleteMany({ where: { id: req.params.id } });
+    invalidate('legal:all');
+    return { ok: true };
+  });
+
+  // Hand a document back to the built-in defaults by removing its rows. Named `revert`
+  // rather than `delete` because that is what it does from where the reader stands: the page
+  // keeps working and goes back to what the code says.
+  app.post('/admin/legal/revert', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({ doc: z.enum(LEGAL_DOCS) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const n = await p.legalSection.deleteMany({ where: { doc: b.data.doc } });
+    invalidate('legal:all');
+    return { ok: true, removed: n.count };
+  });
 
   // ── Blocked addresses ──────────────────────────────────────────────────────
   // The list the Terms promise. MOD can read and add — a moderator handling a notice is

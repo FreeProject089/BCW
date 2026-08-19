@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
+import { api } from '../lib/api.js';
+import Markdown from '../ui/md.jsx';
 import { Link } from 'react-router-dom';
 import { Lock, ShieldCheck, Cookie, Sparkles, Receipt, FileText, Printer } from 'lucide-react';
 import { PageHeader, Button, Card } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 
 /* ─────────────────────────  Legal  ───────────────────────── */
-const LEGAL = {
+export const LEGAL = {
   en: {
     privacy: { icon: Lock, title: 'Privacy Policy', body: [
       ['What we collect', 'An account requires your email and a display name. We store the content you submit (apps, plugins, themes, presets) and basic moderation records. Passwords are hashed with argon2id — never stored in plain text.'],
@@ -188,7 +190,7 @@ const LEGAL = {
   },
 };
 
-const LEGAL_SUMMARY = {
+export const LEGAL_SUMMARY = {
   en: {
     privacy: 'What data we collect, why we keep it, and the GDPR rights you can exercise at any time.',
     terms: 'The rules for using BetterCommunity, moderation, and the strict copyright rules for hosted content.',
@@ -274,8 +276,41 @@ function LegalParagraph({ text }) {
 
 export function Legal({ page }) {
   const { lang, t } = useI18n();
-  const d = (LEGAL[lang] || LEGAL.en)[page];
+  const builtIn = (LEGAL[lang] || LEGAL.en)[page];
   const summary = (LEGAL_SUMMARY[lang] || LEGAL_SUMMARY.en)[page];
+
+  // Database first, built-in defaults otherwise — per DOCUMENT, never mixed. A page
+  // assembled half from the database and half from the code is one nobody can diff, and the
+  // failure would be invisible: it would just quietly say two different things.
+  //
+  // `null` means "not asked yet" and is deliberately distinct from `{}` ("asked, nothing
+  // there"). Rendering the built-in text during the fetch and then swapping it would show a
+  // reader one policy and then another, which on this page is worse than a blank moment.
+  const [remote, setRemote] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    api.get('/legal').then((r) => { if (alive) setRemote(r?.docs || {}); })
+      // A failed fetch falls back to the built-in text rather than to an error: the policy
+      // in the bundle is a correct policy, just possibly an older one.
+      .catch(() => { if (alive) setRemote({}); });
+    return () => { alive = false; };
+  }, []);
+
+  const override = remote?.[page];
+  const d = override
+    ? {
+      icon: builtIn.icon,
+      title: builtIn.title,
+      body: override.sections.map((sec) => [
+        (lang === 'fr' && sec.titleFr) || sec.title,
+        (lang === 'fr' && sec.bodyFr) || sec.body,
+      ]),
+      markdown: true,
+    }
+    : builtIn;
+  // Once a document is database-backed its own newest edit is the honest date; the constant
+  // would freeze at whatever the source file last said while the text kept changing.
+  const updated = override?.updatedAt ? String(override.updatedAt).slice(0, 10) : LEGAL_UPDATED;
   // Which section you are actually reading. A 32-entry contents list with nothing marked is
   // a list you have to re-find your place in every time you glance at it.
   const [active, setActive] = useState(0);
@@ -295,7 +330,7 @@ export function Legal({ page }) {
   const tabs = [['about', t('foot.about', 'About'), Sparkles], ['privacy', t('foot.privacy'), Lock], ['terms', t('foot.terms'), ShieldCheck], ['cookies', t('foot.cookies'), Cookie], ['refunds', t('foot.refunds', 'Payments'), Receipt]];
   return (
     <div className="max-w-4xl mx-auto">
-      <PageHeader icon={d.icon} title={d.title} subtitle={`${lang === 'fr' ? 'Mis à jour le' : 'Last updated'} ${new Date(`${LEGAL_UPDATED}T00:00:00`).toLocaleDateString()}`} />
+      <PageHeader icon={d.icon} title={d.title} subtitle={`${lang === 'fr' ? 'Mis à jour le' : 'Last updated'} ${new Date(`${updated}T00:00:00`).toLocaleDateString()}`} />
       <div className="flex flex-wrap gap-2 mb-5"><Link to="/legal"><Button size="sm" variant="default"><FileText size={14} /> {t('legal.all', 'All')}</Button></Link>{tabs.map(([k, l, I]) => <Link key={k} to={`/legal/${k}`}><Button size="sm" variant={k === page ? 'primary' : 'default'}><I size={14} /> {l}</Button></Link>)}</div>
       {/* plain-language summary */}
       <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-[var(--primary)]/10 to-transparent">
@@ -331,7 +366,9 @@ export function Legal({ page }) {
               {/* Blank lines separate entries; inside one, a run of `· ` or `1. ` lines
                   becomes a real list. See LegalParagraph — no markdown parser is involved,
                   so nothing here can misread a policy and render it wrong. */}
-              {String(p).split('\n\n').map((para, k) => <LegalParagraph key={k} text={para} />)}
+              {d.markdown
+                ? <div className="legal-md"><Markdown>{String(p)}</Markdown></div>
+                : String(p).split('\n\n').map((para, k) => <LegalParagraph key={k} text={para} />)}
             </section>
           ))}
           <div className="pt-5 border-t border-[var(--line)] text-sm text-[var(--muted)] flex flex-wrap items-center justify-between gap-3">

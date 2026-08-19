@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -27,6 +27,9 @@ import { rawStatusLabel, DotDropdown } from './repos.jsx';
 import { AdminRepos, AdminPools } from './repos-admin.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
 import { MarkdownEditor } from './blog.jsx';
+// The built-in legal text, so the import button copies the SAME words the public page
+// renders. A second hand-typed copy here is how the two would drift apart.
+import { LEGAL } from './legal.jsx';
 import { Badges, BadgeIcon } from '../ui/Badges.jsx';
 import { ReportThread, ReportComposer, ReportModal } from '../ui/report.jsx';
 import { AdminMyo } from './admin-myo.jsx';
@@ -171,6 +174,7 @@ export function Admin() {
         { id: 'moderation', label: t('adm.tab.submissions', 'Submissions'), icon: Inbox, badge: queue.length || undefined },
         can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: AlertTriangle, badge: pc.reports || undefined },
         { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
+        { id: 'legal', label: t('adm.tab.legal', 'Legal'), icon: Scale },
         { id: 'sanctions', label: t('adm.tab.sanctions', 'Sanctions'), icon: Gavel, badge: pc.contests || undefined },
       ].filter(Boolean) },
 
@@ -324,6 +328,7 @@ export function Admin() {
         </div>}
         {s === 'needs' && <AdminNeedsAttention data={pending.data} loading={pending.loading} onReload={pending.reload} />}
         {s === 'messages' && <AdminMessages />}
+        {s === 'legal' && <AdminLegal />}
         {s === 'users' && <AdminUsers />}
         {s === 'planusers' && <AdminPlanUsers />}
         {s === 'access' && <AdminAccess isSuperAdmin={isSuperAdmin} />}
@@ -6695,6 +6700,182 @@ function BlockedUrls({ t }) {
         ) : <EmptyState icon={Ban} title={t('bu.none', 'Nothing blocked')} sub={t('bu.none.s', 'Addresses you block after a notice appear here.')} />}
       </div>)}
     </Card>
+  );
+}
+
+
+// Admin: edit the legal pages.
+//
+// The built-in text in legal.jsx stays the source of truth until a document is IMPORTED,
+// and import is per document and refuses to run twice. That is the whole safety model: an
+// untouched document is byte-identical to what shipped, and there is no state where half a
+// policy comes from the code and half from the database.
+//
+// Bodies are markdown with the same block directives as the docs and blog, so a legal page
+// can carry a callout or a numbered list without a second renderer existing for it.
+function AdminLegal() {
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/legal'), []);
+  const [doc, setDoc] = useState('terms');
+  const [openId, setOpenId] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const DOCS = data?.docs || ['privacy', 'terms', 'cookies', 'about', 'refunds'];
+  const all = data?.sections || [];
+  const mine = all.filter((x) => x.doc === doc);
+  const imported = mine.length > 0;
+
+  const doImport = async () => {
+    // The defaults come from the bundle, not from a second copy on the server: one set of
+    // words, in one place, or they drift.
+    const en = LEGAL.en[doc], fr = LEGAL.fr[doc];
+    const sections = en.body.map(([title, body], i) => ({
+      title, body,
+      titleFr: fr?.body?.[i]?.[0] || undefined,
+      bodyFr: fr?.body?.[i]?.[1] || undefined,
+    }));
+    if (!await dialog.confirm({
+      title: t('al.import.t', 'Import the built-in text?'),
+      message: t('al.import.m', 'Copies the {n} sections of this document into the database, where you can edit them. Until you do this, the page renders from the code exactly as it does now.').replace('{n}', sections.length),
+      confirmLabel: t('al.import.ok', 'Import'),
+    })) return;
+    setBusy(true);
+    try { await api.post('/admin/legal/import', { doc, sections }); toast.success(t('al.imported', 'Imported.')); reload(); }
+    catch (e) { toast.error(e?.body?.error === 'already_imported' ? t('al.already', 'Already imported.') : t('common.err', 'Something went wrong.')); }
+    finally { setBusy(false); }
+  };
+
+  const revert = async () => {
+    if (!await dialog.confirm({
+      title: t('al.revert.t', 'Back to the built-in text?'),
+      // Says what is lost, in the sentence where the decision is made.
+      message: t('al.revert.m', 'Deletes your {n} edited sections for this document. The page keeps working and goes back to what the code says. This cannot be undone.').replace('{n}', mine.length),
+      confirmLabel: t('al.revert.ok', 'Revert'), danger: true,
+    })) return;
+    try { await api.post('/admin/legal/revert', { doc }); toast.success(t('al.reverted', 'Back to the built-in text.')); setOpenId(null); reload(); }
+    catch { toast.error(t('common.err', 'Something went wrong.')); }
+  };
+
+  const open = (sec) => { setOpenId(sec.id); setDraft({ ...sec }); };
+  const save = async () => {
+    if (!draft) return;
+    setBusy(true);
+    try {
+      await api.put(`/admin/legal/${draft.id}`, {
+        title: draft.title, titleFr: draft.titleFr || null,
+        body: draft.body, bodyFr: draft.bodyFr || null,
+      });
+      toast.success(t('al.saved', 'Saved.')); setOpenId(null); setDraft(null); reload();
+    } catch { toast.error(t('common.err', 'Something went wrong.')); }
+    finally { setBusy(false); }
+  };
+  const del = async (sec) => {
+    if (!await dialog.confirm({ title: t('al.del.t', 'Delete this section?'), message: sec.title, danger: true })) return;
+    try { await api.del(`/admin/legal/${sec.id}`); toast.success(t('common.deleted', 'Deleted.')); reload(); }
+    catch { toast.error(t('common.err', 'Something went wrong.')); }
+  };
+  const add = async () => {
+    const title = await dialog.prompt({ title: t('al.add.t', 'New section'), label: t('al.add.l', 'Title') });
+    if (!title) return;
+    try { await api.post('/admin/legal', { doc, title, body: '' }); reload(); }
+    catch { toast.error(t('common.err', 'Something went wrong.')); }
+  };
+
+  if (loading) return <Loading />;
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-semibold flex items-center gap-2"><Scale size={16} className="text-[var(--primary-2)]" /> {t('al.title', 'Legal pages')}</h2>
+        <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> {t('am.refresh', 'Refresh')}</Button>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {DOCS.map((k) => {
+          const n = all.filter((x) => x.doc === k).length;
+          return (
+            <button key={k} type="button" onClick={() => { setDoc(k); setOpenId(null); }}
+              aria-current={doc === k ? 'true' : undefined}
+              className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition ${
+                doc === k ? 'border-[var(--primary)] text-[var(--text)] bg-[var(--surface-2)]'
+                  : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'
+              }`}>
+              {k}
+              {/* Which documents are database-backed has to be visible at a glance, or you
+                  edit one for ten minutes before noticing the page never changed. */}
+              {n > 0 && <Badge tone="primary">{n}</Badge>}
+            </button>
+          );
+        })}
+      </div>
+
+      {!imported ? (
+        <Card className="p-4">
+          <div className="flex items-start gap-2 text-sm">
+            <AlertTriangle size={15} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+            <div>
+              <div className="font-medium mb-1">{t('al.builtin', 'This document is served from the code')}</div>
+              <p className="text-xs text-[var(--muted)] mb-3">
+                {t('al.builtin.d', 'Nothing here is editable yet. Importing copies the built-in text into the database so you can edit it; the page looks identical until you change something, and you can go back at any time.')}
+              </p>
+              <Button size="sm" onClick={doImport} disabled={busy}><Plus size={14} /> {t('al.import.btn', 'Import the built-in text')}</Button>
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <Button size="sm" variant="ghost" onClick={add}><Plus size={14} /> {t('al.add.btn', 'Add a section')}</Button>
+            <Button size="sm" variant="ghost" onClick={revert}><RotateCcw size={14} /> {t('al.revert.btn', 'Back to the built-in text')}</Button>
+            <span className="text-xs text-[var(--faint)] ml-auto">{t('al.md', 'Markdown, with the same blocks as the docs (:::note, :::steps, …)')}</span>
+          </div>
+          <div className="space-y-2">
+            {mine.map((sec) => (
+              <Card key={sec.id} className="p-0 overflow-hidden">
+                <button type="button" onClick={() => (openId === sec.id ? setOpenId(null) : open(sec))}
+                  className="w-full flex items-center gap-2 p-3 text-left">
+                  <span className="font-mono text-[10px] text-[var(--faint)] tabular-nums w-6 shrink-0">{String(sec.order + 1).padStart(2, '0')}</span>
+                  <span className="font-medium text-sm flex-1 min-w-0 truncate">{sec.title}</span>
+                  {/* A section with no French text falls back to English on a French page,
+                      silently. Said here rather than discovered by a French reader. */}
+                  {!sec.bodyFr && <Badge tone="amber">{t('al.nofr', 'no FR')}</Badge>}
+                  <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${openId === sec.id ? 'rotate-180' : ''}`} />
+                </button>
+                {openId === sec.id && draft && (
+                  <div className="p-3 pt-0 space-y-3 border-t border-[var(--line)]">
+                    <div className="grid sm:grid-cols-2 gap-2 pt-3">
+                      <Field label={t('al.title.en', 'Title (EN)')}>
+                        <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+                      </Field>
+                      <Field label={t('al.title.fr', 'Title (FR)')}>
+                        <Input value={draft.titleFr || ''} onChange={(e) => setDraft({ ...draft, titleFr: e.target.value })} />
+                      </Field>
+                    </div>
+                    <Field label={t('al.body.en', 'Body (EN)')}>
+                      <MarkdownEditor value={draft.body} onChange={(v) => setDraft({ ...draft, body: v })} minHeight={220} />
+                    </Field>
+                    <Field label={t('al.body.fr', 'Body (FR)')}>
+                      <MarkdownEditor value={draft.bodyFr || ''} onChange={(v) => setDraft({ ...draft, bodyFr: v })} minHeight={220} />
+                    </Field>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" onClick={save} disabled={busy}><Save size={14} /> {t('common.save', 'Save')}</Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setOpenId(null); setDraft(null); }}>{t('common.cancel', 'Cancel')}</Button>
+                      <Button size="sm" variant="ghost" className="ml-auto text-error" onClick={() => del(sec)}><Trash2 size={14} /></Button>
+                    </div>
+                    {sec.updatedBy?.displayName && (
+                      <div className="text-[11px] text-[var(--faint)]">
+                        {t('al.by', 'Last edited by {n} on {d}').replace('{n}', sec.updatedBy.displayName)
+                          .replace('{d}', new Date(sec.updatedAt).toLocaleDateString())}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

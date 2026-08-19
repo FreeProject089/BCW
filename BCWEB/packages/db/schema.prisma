@@ -97,6 +97,7 @@ model User {
   pollVotes         PollVote[] @relation("PollVoter")
   pollAnswers       PollAnswer[] @relation("PollAnswerer")
   blockedUrls       BlockedUrl[]
+  legalEdits        LegalSection[]
   sessions          Session[]
   createdAt         DateTime  @default(now())
 
@@ -1083,6 +1084,32 @@ model RepoAccessEvent {
 // whitelist when either the repo or `whitelistOnly` (site-wide) requires one. Entries
 // in the account lists are { type: "bcweb"|"discord", id, label }. Singleton row
 // (id is always "global") — read/written via GET/PUT /admin/access-policy.
+// One section of one legal document, editable from the admin dashboard.
+//
+// The built-in LEGAL constant in legal.jsx stays the DEFAULT and is what a fresh install
+// serves: no rows here means the page renders exactly as it always has. Rows are created by
+// importing those defaults from the dashboard, and from then on the database wins for that
+// document. A half-migrated state is therefore impossible — it is per document, all or
+// nothing, because a policy assembled from two sources is a policy nobody can diff.
+//
+// `body` is markdown with the same block directives as the docs and blog (md.jsx), so a
+// legal page can use callouts and steps without a second renderer being written for it.
+model LegalSection {
+  id        String   @id @default(cuid())
+  /// privacy · terms · cookies · about · refunds
+  doc       String
+  title     String
+  titleFr   String?
+  body      String   @default("")
+  bodyFr    String?
+  order     Int      @default(0)
+  updatedAt DateTime @updatedAt
+  updatedById String?
+  updatedBy   User?  @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([doc, order])
+}
+
 // An address that may not be listed again.
 //
 // The Terms promise this in "Listings that point somewhere else": when an item is only a
