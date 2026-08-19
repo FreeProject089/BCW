@@ -167,7 +167,7 @@ function DeeplinkBuilder() {
 
   // The action list is FETCHED, never typed here.
   //
-  // It used to be four entries hand-copied from another repository; BMM handles 43, and the
+  // It used to be four entries hand-copied from another repository; BMM handles dozens, and the
   // parameters are not guessable — repo/sync takes seven of them. A hand-kept copy is wrong
   // the first time somebody adds a deeplink in BMM, silently, and a builder that offers an
   // action the app does not handle produces a link that opens BMM and does nothing. That
