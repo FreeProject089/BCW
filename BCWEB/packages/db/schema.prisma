@@ -93,6 +93,9 @@ model User {
   /// The published Terms version that acceptance refers to. Without it the timestamp above
   /// points at whatever the document says TODAY, which in a dispute is worth nothing.
   termsVersion      Int?
+  /// Last time the user agreed to a policy change that required it. Distinct from
+  /// termsAcceptedAt, which is tied to a purchase; this one can be prompted at any time.
+  legalAcceptedAt   DateTime?
   stripeCustomerId  String?   @unique
   apiKeys           ApiKey[]
   polls             Poll[]     @relation("PollAuthor")
@@ -1110,6 +1113,10 @@ model LegalVersion {
   sections    Json
   /// Why this version exists, for the reader, not for staff. Shown in the archive.
   note        String   @default("")
+  /// Whether this change is one people must agree to again. Separate from merely notifying
+  /// them: demanding agreement interrupts everybody, so it is only right when the change
+  /// actually alters what they agreed to.
+  requiresAcceptance Boolean @default(false)
   publishedAt DateTime @default(now())
   publishedById String?
   publishedBy   User?  @relation("LegalPublisher", fields: [publishedById], references: [id], onDelete: SetNull)

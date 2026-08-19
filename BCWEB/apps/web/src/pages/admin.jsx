@@ -6717,6 +6717,10 @@ function AdminLegal() {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/legal'), []);
   const [doc, setDoc] = useState('terms');
+  // Two decisions, kept apart on purpose. Telling everyone is cheap; demanding agreement
+  // again interrupts every user, so it is off unless somebody deliberately ticks it.
+  const [notify, setNotify] = useState(true);
+  const [reaccept, setReaccept] = useState(false);
   const [openId, setOpenId] = useState(null);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -6771,7 +6775,7 @@ function AdminLegal() {
     if (note === null) return;
     setBusy(true);
     try {
-      const r = await api.post('/admin/legal/publish', { doc, note: note || '' });
+      const r = await api.post('/admin/legal/publish', { doc, note: note || '', notify, requiresAcceptance: reaccept });
       toast.success(t('al.published', 'Published as version {n}.').replace('{n}', r?.version?.version));
       loadVersions();
     } catch (e) {
@@ -6850,6 +6854,16 @@ function AdminLegal() {
         <>
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <Button size="sm" onClick={publish} disabled={busy}><Save size={14} /> {t('al.publish.btn', 'Publish a version')}</Button>
+            <label className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer">
+              <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+              {t('al.opt.notify', 'Tell everyone (email + notification)')}
+            </label>
+            {/* The consequence is spelled out where the box is ticked, not in a doc: this one
+                interrupts every signed-in user until they click accept. */}
+            <label className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer">
+              <input type="checkbox" checked={reaccept} onChange={(e) => setReaccept(e.target.checked)} />
+              {t('al.opt.reaccept', 'Require agreement again (asks every user on their next visit)')}
+            </label>
             <Button size="sm" variant="ghost" onClick={add}><Plus size={14} /> {t('al.add.btn', 'Add a section')}</Button>
             <Button size="sm" variant="ghost" onClick={revert}><RotateCcw size={14} /> {t('al.revert.btn', 'Back to the built-in text')}</Button>
             <span className="text-xs text-[var(--faint)] ml-auto">{t('al.md', 'Markdown, with the same blocks as the docs (:::note, :::steps, …)')}</span>

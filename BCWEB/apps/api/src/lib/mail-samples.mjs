@@ -114,6 +114,28 @@ export const MAIL_SAMPLES = [
             'Your storage pool <b>"my-pool"</b> is paid until <b>1 September 2026</b>. After that its repos are suspended for 72 hours, then hidden. Renewing at any point puts everything back.',
             { url: link('/hosting'), label: 'Renew it' }),
     },
+    {
+        id: 'legal-changed', group: 'account', label: 'A policy changed',
+        note: 'Sent when a legal document is published with "notify everyone" ticked. The '
+            + 'link goes to the new version; the archived previous one stays readable.',
+        build: () => mailShell('The Terms of Service have changed',
+            'We published a new version of the Terms of Service on 1 January 2026.\n\n'
+            + 'What changed: we added a section on reporting illegal content.\n\n'
+            + 'The previous version stays available, so you can read exactly what you agreed to before.',
+            { url: link('/legal/terms'), label: 'Read the new version' }),
+    },
+    {
+        id: 'legal-reaccept', group: 'account', label: 'A policy needs your agreement',
+        note: 'Only for a change marked as requiring acceptance. The site also asks on the '
+            + 'next visit — the mail exists so somebody who does not visit still hears about it.',
+        build: () => mailShell('Please review the updated Privacy Policy',
+            'We published a new version of the Privacy Policy on 1 January 2026, and this one '
+            + 'needs your agreement before you continue using your account.\n\n'
+            + 'What changed: we now name every processor that receives data.\n\n'
+            + 'Nothing happens to your account in the meantime, and you can read the version you '
+            + 'previously accepted at any time.',
+            { url: link('/legal/privacy'), label: 'Review and accept' }),
+    },
 ];
 
 export const MAIL_GROUPS = [

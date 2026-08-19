@@ -281,6 +281,64 @@ function timeAgo(d, justnow) {
  *
  *  Not dismissible: this is not news, it is the state the account is in.
  */
+// Asks a signed-in user to agree to a policy change that was published as requiring it.
+//
+// A banner, not a modal that blocks the site. Nothing about their account changes while they
+// have not clicked, and holding the product hostage over a policy update is the pattern this
+// platform exists to avoid. It is persistent instead — present on every page until answered,
+// which is enough pressure for something that is genuinely their choice.
+function LegalReaccept() {
+  const { user } = useAuth();
+  const { lang } = useI18n();
+  const [pending, setPending] = useState([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!user) { setPending([]); return undefined; }
+    let alive = true;
+    api.get('/me/legal-pending')
+      .then((r) => { if (alive) setPending(r?.pending || []); })
+      .catch(() => { if (alive) setPending([]); });
+    return () => { alive = false; };
+  }, [user?.id]);
+
+  if (!user || !pending.length) return null;
+  const DOC = {
+    privacy: lang === 'fr' ? 'la politique de confidentialité' : 'the Privacy Policy',
+    terms: lang === 'fr' ? 'les conditions d’utilisation' : 'the Terms of Service',
+    cookies: lang === 'fr' ? 'la politique de cookies' : 'the Cookie Policy',
+    refunds: lang === 'fr' ? 'la politique de paiement' : 'the Payments policy',
+    about: lang === 'fr' ? 'la page À propos' : 'the About page',
+  };
+  const names = [...new Set(pending.map((v) => DOC[v.doc] || v.doc))].join(lang === 'fr' ? ' et ' : ' and ');
+
+  const accept = async () => {
+    setBusy(true);
+    try { await api.post('/me/legal-accept', {}); setPending([]); }
+    catch { setBusy(false); }
+  };
+
+  return (
+    <div className="relative z-20 print:hidden border-b border-[var(--line)]"
+      style={{ background: 'color-mix(in srgb, var(--primary) 10%, var(--bg-solid))' }}>
+      <div className="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center gap-3 text-sm">
+        <ShieldCheck size={16} className="text-[var(--primary-2)] shrink-0" />
+        <span className="flex-1 min-w-0">
+          {lang === 'fr'
+            ? `Nous avons mis à jour ${names}. Merci de la lire et de donner votre accord.`
+            : `We have updated ${names}. Please read it and confirm your agreement.`}
+          {pending[0]?.note && <span className="text-[var(--muted)]"> — {pending[0].note}</span>}
+        </span>
+        <Link to={`/legal/${pending[0].doc}`} className="shrink-0">
+          <Button size="sm">{lang === 'fr' ? 'Lire' : 'Read it'}</Button>
+        </Link>
+        <Button size="sm" variant="primary" onClick={accept} disabled={busy} className="shrink-0">
+          {lang === 'fr' ? 'J’accepte' : 'I agree'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function SanctionBanner() {
   const { user } = useAuth();
   const { t } = useI18n();
@@ -1087,6 +1145,7 @@ export default function App() {
               mobile dashboard nav sheet) stacked ABOVE the footer, which follows in the
               DOM and would otherwise paint over an open dropdown on short pages. */}
           <SanctionBanner />
+          <LegalReaccept />
           <main ref={mainRef} id="main-content" tabIndex={-1} className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-10 anim-fade">
             <Suspense fallback={<div className="flex justify-center py-20 text-[var(--muted)]"><span className="anim-fade">…</span></div>}>
             <Routes>

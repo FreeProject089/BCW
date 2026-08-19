@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES } from '../lib/lib.mjs';
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
 import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
@@ -707,6 +707,67 @@ export default async function miscRoutes(app) {
   }));
 
   const LEGAL_DOCS = ['privacy', 'terms', 'cookies', 'about', 'refunds'];
+  const DOC_LABEL = {
+    privacy: 'Privacy Policy', terms: 'Terms of Service', cookies: 'Cookie Policy',
+    about: 'About', refunds: 'Payments & Refunds',
+  };
+  const DOC_LABEL_FR = {
+    privacy: 'Politique de confidentialité', terms: 'Conditions d’utilisation',
+    cookies: 'Politique de cookies', about: 'À propos', refunds: 'Paiements & remboursements',
+  };
+
+  // One mail per address, in batches, best-effort. A policy change is not urgent enough to
+  // justify blocking the publish on an SMTP round-trip per user, and a publish that fails
+  // because the mail server is down would be the worst possible coupling.
+  async function sendLegalMail(p, doc, version, label) {
+    if (!emailEnabled()) return;
+    const site = (process.env.SITE_URL || '').replace(/\/+$/, '');
+    const users = await p.user.findMany({
+      where: { status: 'active', email: { not: null } },
+      select: { email: true },
+    });
+    const subject = version.requiresAcceptance
+      ? `Please review the updated ${label}` : `The ${label} has changed`;
+    const body = [
+      `We published a new version of the ${label} on ${new Date(version.publishedAt).toDateString()}.`,
+      version.note ? `What changed: ${version.note}` : '',
+      version.requiresAcceptance
+        ? 'This one needs your agreement before you continue using your account. Nothing happens to your account in the meantime.'
+        : 'The previous version stays available, so you can read exactly what you agreed to before.',
+    ].filter(Boolean).join('\n\n');
+    const html = mailShell(subject, body,
+      site ? { url: `${site}/legal/${doc}`, label: version.requiresAcceptance ? 'Review and accept' : 'Read the new version' } : null);
+    for (const u of users) {
+      await sendMail({ to: u.email, subject, html }).catch(() => {});
+    }
+  }
+
+  // What the signed-in user still has to agree to. Empty for everybody until a version is
+  // published WITH that flag, so this costs nothing until it is used.
+  app.get('/me/legal-pending', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { legalAcceptedAt: true } });
+    const versions = await p.legalVersion.findMany({
+      where: { requiresAcceptance: true, ...(me?.legalAcceptedAt ? { publishedAt: { gt: me.legalAcceptedAt } } : {}) },
+      orderBy: { publishedAt: 'desc' },
+      select: { id: true, doc: true, version: true, note: true, publishedAt: true },
+    });
+    return { pending: versions };
+  });
+
+  app.post('/me/legal-accept', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    // Stamped with the moment, and the newest published Terms version alongside it, so an
+    // acceptance points at a frozen text rather than at whatever the page says later.
+    const tv = await p.legalVersion.findFirst({
+      where: { doc: 'terms' }, orderBy: { version: 'desc' }, select: { version: true },
+    }).catch(() => null);
+    await p.user.update({
+      where: { id: req.user.uid },
+      data: { legalAcceptedAt: new Date(), termsVersion: tv?.version ?? undefined },
+    });
+    return { ok: true };
+  });
 
   app.get('/admin/legal', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
@@ -810,6 +871,11 @@ export default async function miscRoutes(app) {
     const b = z.object({
       doc: z.enum(LEGAL_DOCS),
       note: z.string().max(500).default(''),
+      // Two separate decisions, deliberately. Telling everyone is cheap and usually right;
+      // demanding agreement again interrupts every single user and is only right when the
+      // change actually alters what they agreed to.
+      notify: z.boolean().default(false),
+      requiresAcceptance: z.boolean().default(false),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -825,9 +891,29 @@ export default async function miscRoutes(app) {
       data: {
         doc: b.data.doc, version: (last?.version ?? 0) + 1, sections,
         note: b.data.note, publishedById: req.user.uid,
+        requiresAcceptance: b.data.requiresAcceptance,
       },
-      select: { id: true, doc: true, version: true, note: true, publishedAt: true },
+      select: { id: true, doc: true, version: true, note: true, publishedAt: true, requiresAcceptance: true },
     });
+
+    // Announced AFTER the version exists, so the link in the mail always resolves. The other
+    // order would send everybody to a page that 404s for as long as the write takes.
+    if (b.data.notify) {
+      const label = DOC_LABEL[b.data.doc] || b.data.doc;
+      const labelFr = DOC_LABEL_FR[b.data.doc] || b.data.doc;
+      const en = b.data.requiresAcceptance
+        ? `${label}: a new version needs your agreement.`
+        : `${label}: a new version was published.`;
+      const fr = b.data.requiresAcceptance
+        ? `${labelFr} : une nouvelle version demande votre accord.`
+        : `${labelFr} : une nouvelle version a été publiée.`;
+      // notifyAll drops the accounts that muted this category; a re-acceptance request is
+      // NOT in that category, because it is not news — it is something they must act on.
+      notifyAll(p, b.data.requiresAcceptance ? 'account_action' : 'announcement',
+        b.data.note ? `${en} ${b.data.note}` : en,
+        b.data.note ? `${fr} ${b.data.note}` : fr).catch(() => {});
+      sendLegalMail(p, b.data.doc, row, label).catch(() => {});
+    }
     invalidate('legal:all');
     invalidate('legal:versions');
     return reply.code(201).send({ version: row });

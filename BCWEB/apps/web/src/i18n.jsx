@@ -1268,6 +1268,8 @@ const DICT = {
 
     // ── Admin : messages de contact ──
     'am.title': 'Messages de contact', 'am.new': '{n} nouveau(x)', 'am.refresh': 'Rafraîchir', 'am.newbadge': 'nouveau',
+    'al.opt.notify': 'Prévenir tout le monde (e-mail + notification)',
+    'al.opt.reaccept': 'Redemander l’accord (chaque utilisateur sera sollicité à sa prochaine visite)',
     'la.banner.t': 'Ceci est une version archivée',
     'la.banner.d': 'Figée au moment de sa publication et jamais modifiée depuis. Elle est conservée pour que quiconque a accepté cette version puisse lire exactement ce qu’il a accepté. Ce n’est peut-être pas ce qui s’applique aujourd’hui.',
     'la.note': 'Ce qui a changé',
