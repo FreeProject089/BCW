@@ -4952,6 +4952,84 @@ function StaffNotes({ userId }) {
   );
 }
 
+// What this account can actually DO on the admin surface, and — the part an administrator
+// cannot work out by looking — WHERE each capability comes from.
+//
+// The list is resolved server-side by the same currentUser()/hasCap() the server uses when
+// it ENFORCES, so this panel cannot drift from what requireCap() will decide. Re-deriving
+// the rule here to render a list is how an admin screen ends up confidently describing
+// permissions the server disagrees with; the topbar preview already taught that lesson once.
+//
+// `from` matters because revoking means editing a different thing in each case: the role,
+// an individual grant, or a bundle that may be assigned to other people too.
+function UserPermissionsCard({ user }) {
+  const { t, lang } = useI18n();
+  const caps = user?.capabilities || [];
+  const held = caps.filter((c) => c.held);
+  const byId = Object.fromEntries(ADMIN_CAPS.map((c) => [c.id, c]));
+  const tone = { role: 'amber', grant: 'primary', bundle: '' };
+  const label = {
+    role: t('up.from.role', 'from the role'),
+    grant: t('up.from.grant', 'granted individually'),
+    bundle: t('up.from.bundle', 'from a bundle'),
+  };
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-2 mb-1 font-medium">
+        <KeyRound size={15} className="text-[var(--primary-2)]" />
+        {t('up.title', 'Permissions')}
+        <Badge tone={user.role === 'SUPERADMIN' ? 'red' : user.role === 'ADMIN' ? 'amber' : user.role === 'MOD' ? 'primary' : ''}>{user.role}</Badge>
+      </div>
+
+      {/* An admin-tier role holds everything by construction, so listing fifteen identical
+          "from the role" rows would say less than one sentence. */}
+      {(user.role === 'ADMIN' || user.role === 'SUPERADMIN') ? (
+        <p className="text-[12px] text-[var(--muted)]">
+          {t('up.alltier', 'This tier holds every capability. Individual grants and bundles below change nothing while the role stands.')}
+        </p>
+      ) : held.length === 0 ? (
+        <p className="text-[12px] text-[var(--muted)]">{t('up.none', 'No admin capabilities. This account sees no admin surface.')}</p>
+      ) : null}
+
+      {held.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {held.map((c) => {
+            const meta = byId[c.cap];
+            const Icon = meta?.icon || KeyRound;
+            const name = meta ? (lang === 'fr' ? meta.labelFr : meta.label) : c.cap;
+            const why = c.from === 'bundle' && c.bundleName
+              ? t('up.from.bundlen', 'from the bundle “{n}”').replace('{n}', c.bundleName)
+              : label[c.from] || '';
+            return (
+              <Badge key={c.cap} tone={tone[c.from] ?? ''} title={`${name} — ${why}`}>
+                <Icon size={9} /> {name}
+              </Badge>
+            );
+          })}
+        </div>
+      )}
+
+      {user.customRoles?.length > 0 && (
+        <div className="mt-3 text-[11px] text-[var(--muted)]">
+          {t('up.bundles', 'Bundles assigned:')}{' '}
+          {user.customRoles.map((b) => `${b.name} (${b.count})`).join(' · ')}
+        </div>
+      )}
+
+      {/* Capabilities the server does not recognise. They cannot be enforced, so they cannot
+          do anything — but they sit in the account looking like access, and the only place
+          anyone would notice is here. */}
+      {(user.permissions || []).filter((x) => !ADMIN_CAPS.some((c) => c.id === x)).length > 0 && (
+        <div className="mt-3 text-[11px] text-error">
+          {t('up.unknown', 'Granted but unknown to this build (enforced nowhere):')}{' '}
+          {(user.permissions || []).filter((x) => !ADMIN_CAPS.some((c) => c.id === x)).join(', ')}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function UserDetailModal({ id, onClose }) {
   const { data, loading, reload } = useAsync(() => api.get(`/admin/users/${id}`), [id]);
   const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
@@ -5003,6 +5081,8 @@ function UserDetailModal({ id, onClose }) {
           {u.bio && <p className="text-sm text-[var(--muted)]">{u.bio}</p>}
 
           <UserModerationCard user={u} onChange={reload} />
+
+          <UserPermissionsCard user={u} />
 
           <UserTwoFactorCard user={u} onChange={reload} />
           <UserPasswordCard user={u} />

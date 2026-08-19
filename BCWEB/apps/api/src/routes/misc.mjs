@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES, currentUser} from '../lib/lib.mjs';
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
 import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
@@ -1709,7 +1709,7 @@ export default async function miscRoutes(app) {
   app.get('/admin/users/:id', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
     const p = await db();
     const u = await p.user.findUnique({ where: { id: req.params.id }, select: {
-      id: true, displayName: true, email: true, role: true, permissions: true, avatar: true, bio: true, createdAt: true, stripeCustomerId: true,
+      id: true, displayName: true, email: true, role: true, permissions: true, customRoleIds: true, avatar: true, bio: true, createdAt: true, stripeCustomerId: true,
       status: true, moderationUntil: true, moderationReason: true, moderatedAt: true, totpEnabled: true,
       // A pending closure changes what every other action on this screen means — banning
       // an account that is deleting itself in nine days, or chasing a payment from one, is
@@ -1773,9 +1773,40 @@ export default async function miscRoutes(app) {
         });
       }
     } catch (e) { req.log?.warn?.({ err: e?.message }, 'user subs fetch failed'); }
+    // What this account can actually DO, resolved the same way the server resolves it when
+    // it enforces. currentUser() expands custom roles and hasCap() applies the tier rules —
+    // ADMIN/SUPERADMIN hold everything, MOD holds its defaults — so this cannot drift from
+    // what requireCap() will decide. Re-deriving the rule here to render a list is exactly
+    // how an admin screen ends up confidently describing permissions the server disagrees
+    // with.
+    //
+    // `from` is the part an administrator cannot work out by looking: a capability can arrive
+    // from the tier, from an individual grant, or from a bundle — and revoking it means
+    // editing a different thing in each case.
+    const live = await currentUser(u.id);
+    const bundles = live.perms.length && u.customRoleIds?.length
+      ? await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { id: true, name: true, capabilities: true } })
+      : [];
+    const explicit = new Set(u.permissions || []);
+    const capabilities = CAPABILITIES.map((cap) => {
+      const held = hasCap(live, cap);
+      if (!held) return { cap, held: false, from: null };
+      // Order matters: the tier is what a revoke would have to change first, and saying
+      // "granted individually" about a capability an ADMIN holds regardless would send
+      // somebody to remove a grant that changes nothing.
+      const from = (live.role === 'ADMIN' || live.role === 'SUPERADMIN') ? 'role'
+        : explicit.has(cap) ? 'grant'
+        : bundles.find((b) => (b.capabilities || []).includes(cap))?.name ? 'bundle'
+        : 'role';                                   // MOD default
+      const bundle = from === 'bundle' ? bundles.find((b) => (b.capabilities || []).includes(cap)) : null;
+      return { cap, held: true, from, bundleName: bundle?.name || null };
+    });
+
     return { user: {
       ...u,
       bcId: userBcId(u.id),
+      capabilities,
+      customRoles: bundles.map((b) => ({ id: b.id, name: b.name, count: (b.capabilities || []).length })),
       // null (not []) for a non-SUPERADMIN caller, so the UI can tell "you may not
       // see this" apart from "this user has no keys" — two very different answers to
       // show an administrator.
