@@ -163,6 +163,17 @@ export async function cancelSubscriptionList(p, subs, log) {
 export const serSanctionForUser = (s) => ({
   code: s.code, kind: s.kind, scope: s.scope, reason: s.reason, request: s.request,
   requiresAction: s.requiresAction, targetType: s.targetType, targetName: s.targetName,
+  // EVERYTHING the decision covered, not just the item it was filed against.
+  //
+  // A takedown can name several items at once (that is what relatedIds is for), and this
+  // shape sent one name. So somebody whose five repos went down over one decision saw one of
+  // them, and had to contest a decision without knowing its extent — which is not a fair
+  // process, it is a guess.
+  //
+  // Resolved to names by the caller where it can; an id that no longer resolves is still
+  // listed, because "we also took down something that is now deleted" is information and
+  // silence is not.
+  coveredItems: Array.isArray(s.coveredItems) ? s.coveredItems : [],
   issuedAt: s.issuedAt, expiresAt: s.expiresAt, status: s.status,
   liftedAt: s.liftedAt, liftReason: s.liftReason,
   contestedAt: s.contestedAt, contestBody: s.contestBody,

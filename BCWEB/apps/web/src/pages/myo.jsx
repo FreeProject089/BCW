@@ -206,8 +206,14 @@ function ProductCard({ card, cfg, onStart }) {
   const priced = card.basePriceCents > 0;
   return (
     <Card hover className="group relative p-5 flex flex-col overflow-hidden h-full transition-transform duration-200 hover:-translate-y-1">
-      {/* soft corner glow in the card's accent, brightening on hover — decorative accent, not a surface */}
-      <div aria-hidden className="absolute -top-16 -right-16 w-40 h-40 rounded-full opacity-[0.10] blur-2xl transition-opacity duration-300 group-hover:opacity-20" style={{ background: accent }} />
+      {/* The accent glow appears ON HOVER, and is absent otherwise.
+          At rest, six cards each carrying a permanent coloured haze made the grid read as six
+          different surfaces rather than six of the same thing — the glow was competing with
+          the icon, which is the element actually carrying the card's identity. Reserved for
+          hover it does what a highlight is for: marking the one you are pointing at.
+          opacity-0 → 0.18 rather than mounting on hover, so the transition has something to
+          animate from and nothing shifts in the layout. */}
+      <div aria-hidden className="absolute -top-16 -right-16 w-40 h-40 rounded-full opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-[0.18] motion-reduce:transition-none" style={{ background: accent }} />
       <div className="relative flex items-start gap-3.5 mb-3.5">
         <span className="w-12 h-12 rounded-2xl grid place-items-center text-white shrink-0 shadow-sm" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}bb)` }}><Icon size={22} /></span>
         <div className="min-w-0 pt-0.5">
@@ -249,9 +255,12 @@ function CustomFeatureCard({ card, cfg, onStart }) {
   const accent = kindAccent('custom');
   const highlights = (card.options || []).slice(0, 3).map((o) => o.label).filter(Boolean);
   return (
-    <Card className="relative overflow-hidden mt-5 sm:mt-6 p-6 sm:p-8 flex flex-col md:flex-row md:items-center gap-6">
-      <div aria-hidden className="absolute inset-0" style={{ background: `radial-gradient(120% 150% at 100% 0%, ${accent}1f, transparent 55%)` }} />
-      <div aria-hidden className="absolute -bottom-24 -right-12 w-80 h-80 rounded-full opacity-20 blur-3xl" style={{ background: accent }} />
+    <Card className="group relative overflow-hidden mt-5 sm:mt-6 p-6 sm:p-8 flex flex-col md:flex-row md:items-center gap-6">
+      {/* This one keeps a glow at rest, deliberately: it is ONE card, not one of six, and the
+          tint is what marks it as the odd offer out. Toned down and made to lift on hover like
+          the others, so the two behave as one family. */}
+      <div aria-hidden className="absolute inset-0" style={{ background: `radial-gradient(120% 150% at 100% 0%, ${accent}14, transparent 55%)` }} />
+      <div aria-hidden className="absolute -bottom-24 -right-12 w-80 h-80 rounded-full opacity-[0.12] blur-3xl transition-opacity duration-300 group-hover:opacity-25 motion-reduce:transition-none" style={{ background: accent }} />
       <span className="relative w-14 h-14 rounded-2xl grid place-items-center text-white shrink-0 shadow-md" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}bb)` }}><Wand2 size={26} /></span>
       <div className="relative flex-1 min-w-0">
         <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full text-white shadow-sm mb-2" style={{ background: accent }}><Sparkles size={11} /> {t('myo.popular', 'Most flexible')}</span>

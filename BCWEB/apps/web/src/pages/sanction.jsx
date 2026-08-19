@@ -91,9 +91,33 @@ export default function SanctionPage() {
         <dl className="mt-4 space-y-2 text-[14px]">
           <div><dt className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('sanp.reason', 'Reason')}</dt>
             <dd className="break-words">{s.reason}</dd></div>
-          {s.targetName && (
-            <div><dt className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('sanp.about', 'What it is about')}</dt>
-              <dd>{s.targetName}</dd></div>
+          {/* Everything the decision covered.
+              This showed ONE name. A takedown can name several items at once, so somebody
+              whose five repos went down over one decision saw one of them — and was invited
+              to contest a decision whose extent they had not been told. You cannot argue
+              with what you have not been shown. */}
+          {(s.coveredItems?.length > 0 || s.targetName) && (
+            <div>
+              <dt className="text-[11px] uppercase tracking-wider text-[var(--faint)]">
+                {s.coveredItems?.length > 1
+                  ? t('sanp.aboutN', 'What it covers ({n})').replace('{n}', String(s.coveredItems.length))
+                  : t('sanp.about', 'What it is about')}
+              </dt>
+              {s.coveredItems?.length > 0 ? (
+                <dd>
+                  <ul className="space-y-0.5">
+                    {s.coveredItems.map((it) => (
+                      <li key={it.id} className="break-words">
+                        {it.name}
+                        {/* An item that no longer exists is still named, because "it was also
+                            about something now deleted" is information. */}
+                        {it.gone && <span className="text-[11px] text-[var(--faint)]"> · {t('sanp.gone', 'no longer exists')}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </dd>
+              ) : <dd>{s.targetName}</dd>}
+            </div>
           )}
           {s.request && (
             <div><dt className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('sanp.asked', 'What we are asking you to do')}</dt>

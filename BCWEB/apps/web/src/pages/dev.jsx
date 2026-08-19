@@ -393,10 +393,17 @@ export default function DevHub() {
   }, []);
   const hero = cfg?.hero || {};
   const show = cfg?.sections || {};
-  const cards = devCards(cfg, t);
+  const allCards = devCards(cfg, t);
   // Every chip on every card, flattened: an admin who adds a chip to a custom card gets it
   // in the tools grid without a second list to keep in step.
-  const toolCards = cards.flatMap((c) => c.chips || []);
+  const toolCards = allCards.flatMap((c) => c.chips || []);
+  // A card whose chips are drawn above is not shown again below.
+  //
+  // It was: five chips hoisted into the tools grid as their own cards, AND the card that held
+  // them kept in "Everything here" — so /dev offered six links to /dev/tools, five of them
+  // anchors into the same page. The container card only ever said "here is the section", and
+  // the section is already right there, described item by item.
+  const cards = allCards.filter((c) => !(c.chips && c.chips.length));
 
   const loadScopes = async () => {
     if (scopes) return setScopes(null);

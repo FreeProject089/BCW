@@ -52,6 +52,37 @@ export const CONTENT_TARGETS = {
   },
 };
 
+/**
+ * Every item one decision covered, as { id, name, gone }.
+ *
+ * `relatedIds` holds ids only. Names are looked up when the row is still there and the id is
+ * returned bare when it is not — a takedown outlives the thing it took down, which is exactly
+ * when somebody asks what it was.
+ *
+ * One query per type rather than one per id: a decision covering forty items should not cost
+ * forty round trips to describe itself.
+ */
+async function coveredItems(p, s) {
+  const first = s.targetId
+    ? [{ id: s.targetId, name: s.targetName || s.targetId, gone: false, primary: true }]
+    : [];
+  const rest = (s.relatedIds || []).filter((id) => id && id !== s.targetId);
+  if (!rest.length) return first;
+
+  const def = CONTENT_TARGETS[s.targetType];
+  let byId = new Map();
+  if (def) {
+    const rows = await def.model(p)
+      .findMany({ where: { id: { in: rest } }, select: { id: true, name: true } })
+      .catch(() => []);
+    byId = new Map(rows.map((r) => [r.id, def.name(r)]));
+  }
+  return [
+    ...first,
+    ...rest.map((id) => ({ id, name: byId.get(id) || id, gone: !byId.has(id), primary: false })),
+  ];
+}
+
 /** Load a piece of content and who answers for it. Returns null when it does not exist, so a
  *  staff member cannot use a takedown form to discover which ids are real. */
 async function loadTarget(p, type, id) {
@@ -69,6 +100,10 @@ const serForStaff = (s) => ({
   // Staff only. serSanctionForUser is a separate allowlist and must never gain this.
   internalNote: s.internalNote || null,
   targetType: s.targetType, targetId: s.targetId, targetName: s.targetName, relatedIds: s.relatedIds,
+  // Names for those ids when the caller resolved them. Optional so the many places that
+  // serialise a single updated row do not each have to run the lookup — the LIST is where
+  // somebody reads what a decision covered.
+  coveredItems: Array.isArray(s.coveredItems) ? s.coveredItems : undefined,
   issuedAt: s.issuedAt, expiresAt: s.expiresAt,
   liftedAt: s.liftedAt, liftReason: s.liftReason,
   contestedAt: s.contestedAt, contestBody: s.contestBody,
@@ -96,7 +131,11 @@ export default async function sanctionRoutes(app) {
   app.get('/me/sanctions', { preHandler: requireRole() }, async (req) => {
     const p = await db();
     const rows = await p.sanction.findMany({ where: { userId: req.user.uid }, orderBy: { issuedAt: 'desc' }, take: 100 });
-    return { sanctions: rows.map(serSanctionForUser) };
+    return {
+      sanctions: await Promise.all(rows.map(async (s) => (
+        serSanctionForUser({ ...s, coveredItems: await coveredItems(p, s) })
+      ))),
+    };
   });
 
   // By code, because that is what the e-mail gave them. Scoped to their own account: a code
@@ -105,7 +144,7 @@ export default async function sanctionRoutes(app) {
     const p = await db();
     const s = await p.sanction.findFirst({ where: { code: String(req.params.code).toUpperCase(), userId: req.user.uid } });
     if (!s) return reply.code(404).send({ error: 'not_found' });
-    return { sanction: serSanctionForUser(s) };
+    return { sanction: serSanctionForUser({ ...s, coveredItems: await coveredItems(p, s) }) };
   });
 
   // Contest it. Note what this is NOT: it does not lift anything and it does not pause a
@@ -173,7 +212,10 @@ export default async function sanctionRoutes(app) {
       p.sanction.count({ where }),
       p.sanction.count({ where: { contestedAt: { not: null }, contestOutcome: null } }),
     ]);
-    return { sanctions: rows.map(serForStaff), total, openContests, kinds: KINDS, targetTypes: TARGET_TYPES };
+    const withItems = await Promise.all(rows.map(async (r) => (
+      serForStaff({ ...r, coveredItems: await coveredItems(p, r) })
+    )));
+    return { sanctions: withItems, total, openContests, kinds: KINDS, targetTypes: TARGET_TYPES };
   });
 
   // Issue one against CONTENT. The account path stays where it was (/admin/users/:id/moderate)

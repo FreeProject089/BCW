@@ -157,8 +157,16 @@ function Row({ s, onLift, onResend, onAnswer, onEdit, onArchive, onReapply, onCh
               <span className="text-[var(--faint)]">{t('sanc.request', 'Asked of them')}: </span>{s.request}
             </div>
           )}
+          {/* Named, not counted. "{n} other items" is the number you already knew from the
+              fact that you issued it; which ones is the thing you come back to check. */}
           {s.relatedIds?.length > 0 && (
-            <div className="text-[11px] text-[var(--faint)]">{t('sanc.related', '{n} other item(s) covered by the same decision').replace('{n}', String(s.relatedIds.length))}</div>
+            <div className="text-[11px] text-[var(--faint)]">
+              <span>{t('sanc.relatedH', 'Also covered by this decision')}: </span>
+              {(s.coveredItems?.length
+                ? s.coveredItems.filter((it) => !it.primary).map((it) => it.name + (it.gone ? ' (deleted)' : ''))
+                : s.relatedIds
+              ).join(', ')}
+            </div>
           )}
           {s.meta?.cancelledSubs?.length > 0 && (
             <div className="text-[11px] text-[var(--muted)]">
