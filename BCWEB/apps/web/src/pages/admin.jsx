@@ -1327,14 +1327,33 @@ function AdminSecurity() {
 // approach as the repo dashboard's traffic chart (no charting library dependency).
 // Smooth path through points [{x,y}] via Catmull-Rom → cubic Bézier. Turns jagged
 // straight-segment line charts into polished flowing curves (the "pro chart" look).
+// Catmull-Rom through the points, emitted as cubic Beziers.
+//
+// The control-point y values are CLAMPED to the band spanned by the two points they sit
+// between, and that clamp is load-bearing. A cubic Bezier is contained in the convex hull
+// of its four control points, so with all four inside [min(p1.y,p2.y), max(p1.y,p2.y)] the
+// curve cannot leave the range of the data — which is what stops it being cut off.
+//
+// Without the clamp, a Catmull-Rom tangent OVERSHOOTS at a spike. Real case: the analytics
+// KPI sparkline draws into a `viewBox="0 0 120 40"` on data like [0,0,0,3,3,0,0,0,0] — one
+// busy day surrounded by empty ones. The tangents put control points at y = -4.7 and
+// y = 44.7, outside the viewBox on both sides, and an SVG clips to its own viewport. The
+// crest and the trough came out sliced flat against the edge of the card.
+//
+// It only showed up SOMETIMES because it needs a sharp spike in otherwise flat data: the
+// flatter the neighbours, the further the tangent throws the control point.
+//
+// The cost is that a crest is very slightly flatter than an unclamped spline. That is the
+// correct trade — the alternative is a curve that lies about its own peak.
 function smoothPath(pts) {
   if (!pts.length) return '';
   if (pts.length < 3) return pts.map((p, i) => `${i ? 'L' : 'M'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  const clamp = (v, a, b) => Math.max(Math.min(a, b), Math.min(Math.max(a, b), v));
   let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
   for (let i = 0; i < pts.length - 1; i++) {
     const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
-    const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+    const c1x = p1.x + (p2.x - p0.x) / 6, c1y = clamp(p1.y + (p2.y - p0.y) / 6, p1.y, p2.y);
+    const c2x = p2.x - (p3.x - p1.x) / 6, c2y = clamp(p2.y - (p3.y - p1.y) / 6, p1.y, p2.y);
     d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
   }
   return d;
