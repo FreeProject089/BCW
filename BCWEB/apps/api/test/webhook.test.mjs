@@ -44,7 +44,11 @@ async function post(event) {
 async function scaffold({ poolBytes = 0n } = {}) {
   const uid = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const user = track('user', await p.user.create({ data: { email: `wh-${uid}@test.local`, displayName: 'W' } }));
-  const plan = await p.hostingPlan.create({ data: { name: 'W', storageGB: 5, uploadLimitKbps: 1000, priceMonthlyCents: 500 } });
+  // track(), like the user above. Everything else this file creates hangs off that user and
+  // goes with it on cascade — a plan does not, so an untracked one survives every run. Four
+  // had piled up in the developer's database and showed up as phantom hosting offers in the
+  // admin screen, created by nobody.
+  const plan = track('hostingPlan', await p.hostingPlan.create({ data: { name: 'W', storageGB: 5, uploadLimitKbps: 1000, priceMonthlyCents: 500 } }));
   const group = await p.hostingGroup.create({ data: { ownerId: user.id, name: 'pool', poolBytes } });
   return { uid, user, plan, group };
 }
