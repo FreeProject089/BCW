@@ -19,8 +19,22 @@ after(async () => { if (RUN) await p?.$disconnect?.(); });
 const log = { warn() {} };
 
 test('rollup aggregates a day into views (count) + visitors (distinct), idempotently', { skip }, async () => {
-  // An isolated day 105 days in the past (nothing else touches it) at 10:00 UTC.
-  const at = new Date(); at.setUTCDate(at.getUTCDate() - 105); at.setUTCHours(10, 0, 0, 0);
+  // An isolated day 10 days in the past, at 10:00 UTC.
+  //
+  // TEN, not 105, and the number is load-bearing. retention.test.mjs runs in a PARALLEL
+  // process against the SAME database: it sets analytics.retention to pageviewDays: 30 and
+  // calls sweepAnalyticsRetention, which deletes every AnalyticsEvent older than 30 days.
+  // Seeded at 105 days these four rows were inside that purge, so whether they survived
+  // depended on which process won the race — and because the purge deletes in bounded
+  // batches, a mid-insert hit left a PARTIAL count. That is exactly what CI saw: views = 1
+  // where 4 were expected, on a suite that is green every time locally.
+  //
+  // 10 keeps the day outside the rollup's trailing 3-day window (so the idempotency half of
+  // this test still means something) and inside any retention floor the suite uses. Nothing
+  // else seeds analytics events here: retention.test.mjs uses 60 days, 9999 days and now.
+  //
+  // Do not move this back without checking what retention.test.mjs purges.
+  const at = new Date(); at.setUTCDate(at.getUTCDate() - 10); at.setUTCHours(10, 0, 0, 0);
   const dayKey = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()));
   const tag = `roll-${Date.now()}`;
   // 4 events, 3 distinct visitors, all on that day.
