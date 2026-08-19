@@ -7,7 +7,7 @@ import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
 import { useAuth } from './auth.jsx';
 import { api } from '../lib/api.js';
-import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref, getUndoDisabled, setUndoDisabled, getLogoutConfirm, setLogoutConfirm, getForceConfirm, setForceConfirm } from '../lib/prefs.js';
+import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref, getUndoDisabled, setUndoDisabled, getLogoutConfirm, setLogoutConfirm, getForceConfirm, setForceConfirm, getHero3dDisabled, setHero3dDisabled } from '../lib/prefs.js';
 import { getConsent, setConsent } from '../lib/analytics.js';
 import { SKIP_KEY } from '../ui/IntroContext.jsx';
 
@@ -24,6 +24,7 @@ export function Settings() {
   const [consent, setConsentState] = useState(() => getConsent() || 'essential');
   const [glass, setGlass] = useState(() => getGlassPrefs());
   const [orbTransition, setOrbTransition] = useState(() => getOrbTransitionPref());
+  const [orbOff, setOrbOff] = useState(() => getHero3dDisabled());
   const [fx, setFxState] = useState(() => fxPref());
   const [undoOff, setUndoOff] = useState(() => getUndoDisabled());
   const [logoutConfirm, setLogoutConfirmState] = useState(() => getLogoutConfirm());
@@ -32,6 +33,10 @@ export function Settings() {
   const setFx = (v) => { setFxState(v); setFxPref(v); };
   const setIntro = (skip) => { setSkipIntro(skip); try { skip ? localStorage.setItem(SKIP_KEY, '1') : localStorage.removeItem(SKIP_KEY); } catch {} };
   const setOrbTr = (on) => { setOrbTransition(on); setOrbTransitionPref(on); };
+  // A reload is required and is stated, rather than pretending the change is live: the
+  // scene is mounted once at boot and tearing a WebGL context down mid-session is worse
+  // than asking for a refresh.
+  const setOrb = (off) => { setOrbOff(off); setHero3dDisabled(off); toast.success(t('set.reload', 'Saved — reload the page to apply.')); };
   const setCookie = (v) => { setConsentState(v); setConsent(v); toast.success(t('set.saved', 'Saved.')); };
   const applyGlass = (next) => { setGlass(next); setGlassPrefs(next); };
   const setUndo = (off) => { setUndoOff(off); setUndoDisabled(off); };
@@ -64,6 +69,10 @@ export function Settings() {
         <Row icon={Sparkles} title={t('set.intro', 'Intro animation')} desc={t('set.intro.d', 'Play the orb intro on each page load.')}>
           <Switch on={!skipIntro} onChange={(v) => setIntro(!v)} />
         </Row>
+        <Row icon={Orbit} title={t('set.orb3d', '3D hero orb')} desc={t('set.orb3d.d', 'The WebGL scene behind the pages. Turning it off skips loading it entirely — lighter on an older machine, and on battery.')}>
+          <Switch on={!orbOff} onChange={(v) => setOrb(!v)} />
+        </Row>
+
         <Row icon={Orbit} title={t('set.orbtr', 'Orb page transitions')} desc={t('set.orbtr.d', 'On each navigation, the hero orb shatters and dives into a random shard, then rebuilds. Off by default.')}>
           <Switch on={orbTransition} onChange={setOrbTr} />
         </Row>

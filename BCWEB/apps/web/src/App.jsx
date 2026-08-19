@@ -4,6 +4,8 @@ import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from
 import { Code2, Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
+import { getHero3dDisabled } from './lib/prefs.js';
+import WelcomePrefs from './ui/WelcomePrefs.jsx';
 import { Button, useToast, Modal, useDialog } from './ui/ui.jsx';
 import { Badges, BadgeIcon } from './ui/Badges.jsx';
 import { ThemeToggle } from './ui/theme.jsx';
@@ -1136,7 +1138,12 @@ export default function App() {
         {/* Keyboard skip link: first focusable element, off-screen until focused, so
             keyboard/screen-reader users can jump straight past the nav to the content. */}
         <a href="#main-content" className="skip-link">{t('a11y.skip', 'Skip to content')}</a>
-        <Suspense fallback={null}><Hero3D /></Suspense>
+        {/* Read once at mount, not reactively: turning the orb off mid-session and
+            tearing down a live WebGL context is a worse experience than the reload the
+            Settings row already tells you to do. Not rendering it means no GPU context and
+            no render loop, which is the cost that is felt; the three.js chunk is still
+            fetched, since index.html preloads it and event-effect.jsx imports it too. */}
+        {!getHero3dDisabled() && <Suspense fallback={null}><Hero3D /></Suspense>}
         <AppReveal>
           <PromoBadge />
           <EventEffect />
@@ -1146,6 +1153,9 @@ export default function App() {
               DOM and would otherwise paint over an open dropdown on short pages. */}
           <SanctionBanner />
           <LegalReaccept />
+          {/* One-time, and it answers the cookie question itself — so it replaces the
+              banner rather than stacking a second prompt on top of it. */}
+          <WelcomePrefs />
           <main ref={mainRef} id="main-content" tabIndex={-1} className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-10 anim-fade">
             <Suspense fallback={<div className="flex justify-center py-20 text-[var(--muted)]"><span className="anim-fade">…</span></div>}>
             <Routes>

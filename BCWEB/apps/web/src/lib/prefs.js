@@ -92,3 +92,20 @@ export function getForceConfirm() {
 export function setForceConfirm(on) {
   try { localStorage.setItem(FORCE_CONFIRM_KEY, on ? '1' : '0'); } catch { /* ignore */ }
 }
+
+// Turn the 3D hero orb off entirely.
+//
+// Distinct from the page-transition flourish above and from the intro skip: those keep the
+// orb and drop an animation, this drops the WebGL scene. It is the heaviest thing on the
+// site — three.js, a render loop, a GPU context — and on an older laptop or a phone that is
+// felt as heat and battery rather than as a visual choice. OFF here means the component is never
+// mounted: no WebGL context, no render loop, no per-frame work — which is the cost that is
+// actually felt. The three.js chunk itself is still fetched, because index.html preloads it
+// and event-effect.jsx imports it too. Measured, not assumed.
+export const HERO_3D_KEY = 'bcw_hero_3d_off';
+export function getHero3dDisabled() {
+  try { return localStorage.getItem(HERO_3D_KEY) === '1'; } catch { return false; }
+}
+export function setHero3dDisabled(off) {
+  try { localStorage.setItem(HERO_3D_KEY, off ? '1' : '0'); } catch { /* ignore */ }
+}
