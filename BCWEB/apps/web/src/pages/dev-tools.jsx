@@ -196,7 +196,7 @@ function DeeplinkBuilder() {
           <LinkIcon size={16} className="text-[var(--primary-2)]" /> {t('dvt.dl.title', 'Build a bmm:// link')}
         </div>
         <p className="text-[12px] text-[var(--muted)]">
-          {t('dvt.dl.noassets', 'The action list has not been published yet. In BMM run `npm run map:deeplinks --json`, then upload frontend/deeplinks.json as the platform asset `deeplinks.json`. This builder reads it rather than keeping its own copy, which would go stale the next time a deeplink is added.')}
+          {t('dvt.dl.noassets', 'The action list has not been published yet. In BMM run `npm run map:deeplinks:json`, then upload frontend/deeplinks.json as the platform asset `deeplinks.json`. This builder reads it rather than keeping its own copy, which would go stale the next time a deeplink is added.')}
         </p>
       </Card>
     );

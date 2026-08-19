@@ -201,7 +201,7 @@ const DICT = {
     'secmap.unused': 'Dans .env.example et jamais lues :',
     'sub.repohint': 'Vous cherchez à lister un Server-Repo ? Ce n’est pas un élément de catalogue : il a son propre hébergement et son propre circuit de validation.',
     'sub.repolink': 'Aller aux Server-Repos',
-    'dvt.dl.noassets': 'La liste des actions n’a pas encore été publiée. Dans BMM, lancez `npm run map:deeplinks --json`, puis téléversez frontend/deeplinks.json comme asset `deeplinks.json`. Ce constructeur la lit plutôt que d’en garder une copie, qui vieillirait dès le prochain deeplink ajouté.',
+    'dvt.dl.noassets': 'La liste des actions n’a pas encore été publiée. Dans BMM, lancez `npm run map:deeplinks:json`, puis téléversez frontend/deeplinks.json comme asset `deeplinks.json`. Ce constructeur la lit plutôt que d’en garder une copie, qui vieillirait dès le prochain deeplink ajouté.',
     'dvt.dl.noparams': 'Cette action ne prend aucun paramètre.',
     'usanc.sub': 'La levée, la modification et la réponse à une contestation restent sur la page Sanctions. Les preuves s’ajoutent ici.',
     'gdpr.title': 'Demandes de données',
