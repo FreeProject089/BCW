@@ -1147,7 +1147,16 @@ function SocialConnections() {
   if (configured.length === 0) return null;
   const linked = Object.fromEntries(conns.map((c) => [c.provider, c]));
   const show = new Set(user?.showConnections || []);
-  const disconnect = async (k) => { try { await api.del(`/me/connections/${k}`); load(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  // Disconnecting is one click and reconnecting is a whole OAuth round trip through another
+  // site — the asymmetry is the reason this one earns a window rather than a confirm dialog.
+  const disconnect = (k) => {
+    toast.action({
+      tone: 'success', cancelLabel: t('common.undo', 'Undo'),
+      msg: t('sc.disconnected', 'Disconnected.'),
+      onCommit: async () => { try { await api.del(`/me/connections/${k}`); load(); } catch { toast.error(t('acc.failed', 'Failed.')); load(); } },
+      onCancel: () => load(),
+    });
+  };
   // Accept a bare handle, "@handle", or a full ko-fi.com/<handle> URL → the handle.
   const kofiHandle = kofi.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?ko-fi\.com\//i, '').replace(/\/.*$/, '');
   const saveKofi = async () => {

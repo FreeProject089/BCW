@@ -6924,9 +6924,19 @@ function BlockedUrls({ t }) {
         : t('common.err', 'Something went wrong.'));
     } finally { setBusy(false); }
   };
-  const del = async (r) => {
-    try { await api.del(`/admin/blocked-urls/${r.id}`); toast.success(t('bu.removed', 'Removed.')); reload(); }
-    catch { toast.error(t('bu.removeerr', 'Only an admin can remove a block.')); }
+  const del = (r) => {
+    // Removing a block RE-PERMITS an address that was taken down after a notice, which the
+    // Terms promise cannot simply come back. That makes a mis-click here a rights-holder
+    // problem, not a tidying mistake — so it waits, and it waits longer than the default.
+    toast.action({
+      tone: 'success', duration: 9000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('bu.removed', 'Removed.'),
+      onCommit: async () => {
+        try { await api.del(`/admin/blocked-urls/${r.id}`); reload(); }
+        catch { toast.error(t('bu.removeerr', 'Only an admin can remove a block.')); reload(); }
+      },
+      onCancel: () => reload(),
+    });
   };
 
   return (

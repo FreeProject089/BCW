@@ -125,9 +125,17 @@ export default function NotificationCentre() {
     setItems((s) => s.map((x) => ({ ...x, readAt: x.readAt || new Date().toISOString() })));
     try { await api.post('/me/notifications/read-all'); } catch { load(); }
   };
-  const remove = async (n) => {
+  const remove = (n) => {
+    // Optimistic hide, deferred delete. The row vanished immediately before this change too;
+    // what was missing was the few seconds in which "that was the wrong one" is still true.
     setItems((s) => s.filter((x) => x.id !== n.id));
-    try { await api.del(`/me/notifications/${n.id}`); } catch { load(); }
+    toast.action({
+      tone: 'success', cancelLabel: t('common.undo', 'Undo'),
+      msg: t('notif.removed', 'Notification deleted.'),
+      onCommit: async () => { try { await api.del(`/me/notifications/${n.id}`); } catch { load(); } },
+      // Nothing was sent, so putting it back is a reload rather than a re-create.
+      onCancel: () => load(),
+    });
   };
   const clearAll = async () => {
     if (!await dialog.confirm({

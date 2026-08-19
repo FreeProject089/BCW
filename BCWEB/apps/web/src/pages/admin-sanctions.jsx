@@ -79,9 +79,18 @@ export function Evidence({ s, onChanged }) {
     } catch (e) { toast.error(String(e?.message || e)); }
   };
 
-  const remove = async (a) => {
-    try { await api.del(`/admin/sanctions/${s.id}/evidence/${a.id}`); onChanged?.(); }
-    catch (e) { toast.error(String(e?.message || e)); }
+  const remove = (a) => {
+    // Evidence on a sanction. A mis-click here destroys the reason a decision was made, and
+    // there is no second copy — so it gets the window, and the window is the long one.
+    toast.action({
+      tone: 'success', duration: 9000, cancelLabel: t('common.undo', 'Undo'),
+      msg: t('sanc.ev.removed', 'Evidence removed.'),
+      onCommit: async () => {
+        try { await api.del(`/admin/sanctions/${s.id}/evidence/${a.id}`); onChanged?.(); }
+        catch (e) { toast.error(String(e?.message || e)); onChanged?.(); }
+      },
+      onCancel: () => onChanged?.(),
+    });
   };
 
   return (
