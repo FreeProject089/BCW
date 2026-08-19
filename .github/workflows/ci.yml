@@ -66,6 +66,13 @@ jobs:
       - name: node --check all API modules
         working-directory: .
         run: find BCWEB/apps/api/src -name '*.mjs' -print0 | xargs -0 -n1 node --check
+      # Every variable docker-compose reads is described in .env.example, or listed as
+      # internal. REPO_PUBLIC_BASE was in neither: it falls back to http://localhost/repos,
+      # which is the address handed to BMM inside every hosted repo.json — so a production
+      # deploy that missed it publishes repos nobody can sync, and nothing fails on the
+      # server, because that address is only ever used somewhere else.
+      - name: env vars documented
+        run: node scripts/check-env-documented.mjs
       - run: npm ci
       - run: npx prisma generate --schema ../../packages/db/schema.prisma
       - run: npx prisma validate --schema ../../packages/db/schema.prisma
