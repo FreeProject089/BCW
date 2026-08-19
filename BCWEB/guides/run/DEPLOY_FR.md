@@ -155,16 +155,59 @@ convient — celui de ton hébergeur, SendGrid, Mailgun, Amazon SES, ou un relai
 
 ## 9. Mise à jour
 
+### La méthode courte
+
 ```bash
-git pull --recurse-submodules
+infra/deploy.sh
+```
+
+Sauvegarde, récupère, reconstruit, attend que l'API réponde vraiment, et **remet le commit
+précédent si elle ne répond pas**. Utilise celle-là.
+
+| Option | Effet |
+|---|---|
+| `--dry-run` | Affiche chaque étape sans rien changer. Sans risque, même maintenant. |
+| `--no-backup` | Saute le dump — seulement si tu viens d'en faire un. |
+| `--no-rollback` | Laisse la version cassée en place pour l'examiner. |
+
+Il refuse de démarrer si l'arbre de travail a des modifications non commitées : le retour
+arrière est un `git reset --hard` et les emporterait.
+
+### Ce qu'il attend
+
+`/ready` renvoie **503** tant que l'API ne peut pas interroger la base. Le script attend donc
+que le site fonctionne, pas qu'un processus existe. Les migrations tournent au démarrage du
+conteneur, donc cette fenêtre les couvre aussi. `READY_TIMEOUT=120` secondes par défaut.
+
+### La seule chose qu'il ne fera pas
+
+**Il ne remet pas la base en arrière.** Les migrations ne vont que dans un sens : revenir au
+commit précédent restaure le code et laisse le schéma où il est. Un retour arrière qui
+annulerait les données en silence pourrait détruire tout ce qui a été écrit entre la
+sauvegarde et la panne, et toi seul peux en juger — le script affiche donc l'emplacement du
+dump et s'arrête. La restauration est en section 10.
+
+### À la main
+
+```bash
+git pull
 cd infra/compose
 docker compose up -d --build      # reconstruit les images modifiées, migrations au boot
 ```
 
-Les mises à jour sont **gracieuses** : quand le conteneur API est remplacé, il capte le
-`SIGTERM`, termine les requêtes en cours, puis ferme ses connexions DB/Redis avant de
-quitter (budget de 10 s) — un rebuild ne coupe jamais une requête en vol. Avec 2+ réplicas
+Les mises à jour sont **gracieuses** dans les deux cas : quand le conteneur API est remplacé,
+il capte le `SIGTERM`, termine les requêtes en cours, puis ferme ses connexions DB/Redis avant
+de quitter (budget de 10 s) — un rebuild ne coupe jamais une requête en vol. Avec 2+ réplicas
 (section suivante), le déploiement est invisible pour les utilisateurs.
+
+### Pourquoi il n'y a pas de déploiement GitHub
+
+La CI (`.github/workflows/ci.yml`) **vérifie** — build, tests, dérive des migrations, scan de
+secrets — et ne déploie délibérément pas. Un déploiement automatique voudrait dire une clé SSH
+ou des identifiants de registre dans les secrets GitHub, soit une nouvelle porte vers ton
+serveur, en échange d'une commande économisée. Ce compromis devient intéressant quand
+plusieurs personnes poussent ou qu'il existe une préproduction. D'ici là, ce script est la
+bonne forme.
 
 ## 10. Sauvegardes
 

@@ -153,16 +153,57 @@ Any SMTP provider works — your host's, SendGrid, Mailgun, Amazon SES, or a sel
 
 ## 9. Updating
 
+### The short way
+
 ```bash
-git pull --recurse-submodules
+infra/deploy.sh
+```
+
+Backs up, pulls, rebuilds, waits for the API to actually answer, and **puts the previous
+commit back if it does not**. Use this one.
+
+| Flag | Effect |
+|---|---|
+| `--dry-run` | Print every step, change nothing. Safe to run right now. |
+| `--no-backup` | Skip the dump — only if you took one minutes ago. |
+| `--no-rollback` | Leave the broken version up so you can look at it. |
+
+It refuses to start if the working tree has uncommitted changes, because the rollback is a
+`git reset --hard` and would take them with it.
+
+### What it waits for
+
+`/ready` returns **503** until the API can query the database, so the script waits for the
+site to work rather than for a process to exist. Migrations run at container boot, so that
+window covers them too. `READY_TIMEOUT=120` seconds by default.
+
+### The one thing it will not do
+
+**It does not roll the database back.** Migrations run forwards only, so returning to the
+previous commit restores the code and leaves the schema where it is. A rollback that silently
+reverted data could destroy anything written between the backup and the failure, and only you
+can judge that — so the script prints the dump's location and stops. Restoring is section 10.
+
+### By hand
+
+```bash
+git pull
 cd infra/compose
 docker compose up -d --build      # rebuilds changed images, applies migrations on boot
 ```
 
-Updates are **graceful**: when the API container is replaced it catches `SIGTERM`,
+Updates are **graceful** either way: when the API container is replaced it catches `SIGTERM`,
 finishes in-flight requests, then closes its DB/Redis handles before exiting (10 s
 budget) — a rebuild never hard-drops a live request. With 2+ replicas (next section)
 the rollout is effectively invisible to users.
+
+### Why there is no GitHub deploy
+
+CI (`.github/workflows/ci.yml`) **checks** — build, tests, migration drift, secret scan — and
+deliberately does not deploy. Automatic deployment would mean an SSH key or registry
+credentials living in GitHub's secrets, which is a new way in to your server, in exchange for
+saving one command. That trade is worth it when several people push or there is a staging
+environment. Until then this script is the better shape.
 
 ## 10. Backups
 

@@ -81,8 +81,10 @@ Règle simple : **changement de code → `--build`**, **changement de `.env` →
 
 ## 5. Mettre à jour en production
 
-1. `git pull --recurse-submodules`
-2. `cd infra/compose && docker compose up -d --build`
+1. `infra/deploy.sh` — sauvegarde, récupère, reconstruit, attend /ready, remet le code en
+   arrière s’il ne répond jamais. Voir DEPLOY_FR.md section 9. À la main :
+2. `git pull`
+3. `cd infra/compose && docker compose up -d --build`
    - Seules les images modifiées se reconstruisent (cache de couches Docker).
    - L'api lance `boot-migrate.mjs` au boot → `prisma migrate deploy` applique les
      migrations **commitées**. Conséquence à retenir : si tu changes le schéma, sa

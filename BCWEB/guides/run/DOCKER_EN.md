@@ -79,8 +79,10 @@ containers with the new env; a plain `restart` does NOT re-read `.env`).
 
 ## 5. Updating in production
 
-1. `git pull --recurse-submodules`
-2. `cd infra/compose && docker compose up -d --build`
+1. `infra/deploy.sh` — backs up, pulls, rebuilds, waits for /ready, rolls the code back if
+   it never answers. See DEPLOY_EN.md section 9. By hand instead:
+2. `git pull`
+3. `cd infra/compose && docker compose up -d --build`
    - Only changed images rebuild (Docker layer cache).
    - The api runs `boot-migrate.mjs` at boot → `prisma migrate deploy` applies the
      **checked-in** migrations. The consequence to remember: if you changed the schema, its
