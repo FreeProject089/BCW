@@ -399,6 +399,7 @@ const DICT = {
     'cf.prev': 'Étape précédente', 'cf.next': 'Étape suivante', 'cf.play': 'Dérouler', 'cf.pause': 'Pause', 'cf.notstarted': 'pas commencé',
     'cf.title': 'Ce qui s’exécute, dans l’ordre', 'cf.steps': 'étapes',
     'cf.search': 'Chercher un flux, une fonction ou un fichier…', 'cf.clear': 'Effacer',
+    'cf.open': 'Ouvrir {f} sur GitHub',
     'cf.none': 'Aucun flux ne correspond — la recherche lit les noms de flux, de fonctions et les chemins de fichiers.',
     'cf.sub': 'Chacun part d’un appel que ce scan a prouvé et suit ce que la fonction réceptrice appelle ensuite. Rien n’est exécuté et rien n’est décrit — chaque étape montre le fichier, la ligne et le code, pour que tu lises le code plutôt qu’un résumé.',
     'dvt.sub2': '{n} choses que tu écrirais toi-même sinon — faire un vrai appel, vérifier un flux avant de le publier, lire un dépôt, voir ce que tes clés ont fait.',

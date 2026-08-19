@@ -243,6 +243,12 @@ export default async function projectRoutes(app) {
 
     return {
       ok: true, generatedAt: v.generatedAt,
+      // The repository this was read from. It was deliberately withheld when this endpoint
+      // was written, on the grounds that the page already shows it — but the page showing a
+      // NAME is not the same as the map being able to link INTO it, and "open this file on
+      // GitHub" is the first thing anybody wants from a line number. Public either way: this
+      // map is only published for a repository somebody chose to publish.
+      repoUrl: typeof v.url === 'string' ? v.url : null,
       // The admin's own words above the map, alongside the generated content rather than
       // instead of it — the same arrangement `stack.note` already has on the diagram.
       note: typeof cfg.stack?.codeMapNote === 'string' ? cfg.stack.codeMapNote : '',

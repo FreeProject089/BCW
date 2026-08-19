@@ -171,7 +171,7 @@ export function Home() {
         <div className="reveal-stagger grid md:grid-cols-4 gap-4">
           {products.map((p) => (
             <Link key={p.name} to={p.to} className="group"><Card hover className="relative overflow-hidden p-5 h-full transition-transform duration-300 group-hover:-translate-y-1">
-              <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 65%)' }} />
+              <div aria-hidden className="absolute top-0 right-0 w-32 h-32 rounded-full pointer-events-none blur-3xl opacity-0 group-hover:opacity-40 transition-opacity duration-500 motion-reduce:transition-none" style={{ background: 'var(--primary)' }} />
               <div className="relative">
                 <span className="inline-block transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3">
                   {p.logo ? <AppLogo pkey={p.logo} size={30} fallback={p.icon} /> : <p.icon size={22} className="text-[var(--primary-2)]" />}
@@ -191,7 +191,15 @@ export function Home() {
         <div className="reveal-stagger grid md:grid-cols-3 gap-4">
           {/* featured tile: the moderation promise, illustrated by the real review pipeline */}
           <Card hover className="p-6 md:col-span-2 group relative overflow-hidden">
-            <div className="absolute -bottom-16 -right-16 w-48 h-48 rounded-full pointer-events-none opacity-40 group-hover:opacity-70 transition-opacity duration-500" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 65%)' }} />
+            {/* A blurred disc INSIDE the card, not a gradient clipped by its corner.
+                The old one sat 64px past the card on both edges with its centre only 32px
+                inside, so `overflow-hidden` cut it while the orange was still at full
+                strength — a hard vertical edge and a squared-off notch at the rounded corner,
+                which is the artefact you can see against a bright backdrop.
+                It also faded to `transparent`, which is transparent BLACK: the fade ran
+                through grey instead of thinning the orange. A flat colour plus blur has
+                neither problem and needs no clipping to look right. */}
+            <div aria-hidden className="absolute bottom-0 right-0 w-40 h-40 rounded-full pointer-events-none blur-3xl opacity-25 group-hover:opacity-45 transition-opacity duration-500 motion-reduce:transition-none" style={{ background: 'var(--primary)' }} />
             <div className="relative flex items-start justify-between gap-6 flex-wrap">
               <div className="max-w-sm">
                 <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:border-[var(--primary)]/40"><ShieldCheck size={20} className="text-[var(--primary-2)]" /></span>

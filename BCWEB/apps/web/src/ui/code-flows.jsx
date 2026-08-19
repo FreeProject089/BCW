@@ -13,7 +13,34 @@
 //
 // The word "simulation" is avoided for the same reason.
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ChevronRight, FileCode2, Play, Pause, SkipBack, SkipForward, Search, X } from 'lucide-react';
+import { ArrowDown, ChevronRight, FileCode2, Play, Pause, SkipBack, SkipForward, Search, X, ExternalLink } from 'lucide-react';
+import { highlightCode } from '../pages/pages.jsx';
+
+/** A file's language, from its extension. Prism needs telling; the snapshot does not carry it.
+ *  An unknown extension falls through to plain text rather than to a guess — mis-highlighted
+ *  code reads as broken code. */
+function langOf(file) {
+    const ext = String(file || '').split('.').pop().toLowerCase();
+    return { js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
+        ts: 'typescript', tsx: 'typescript', rs: 'rust', py: 'python', json: 'json',
+        toml: 'toml', sh: 'bash', yml: 'yaml', yaml: 'yaml', css: 'css', html: 'markup' }[ext] || '';
+}
+
+/** github.com/owner/repo + a path + a line → the file, at that line, on GitHub.
+ *
+ *  `HEAD` rather than a branch name: the snapshot does not record which branch it read, and a
+ *  link to `main` on a repository whose default is `master` is a 404 that looks like our bug.
+ *  HEAD always resolves to whatever the default is.
+ *
+ *  Returns null for anything that is not a github.com URL, so a project hosted elsewhere shows
+ *  no link instead of a broken one. */
+function githubLink(repoUrl, file, line) {
+    if (!repoUrl || !file) return null;
+    const m = /^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(String(repoUrl).trim());
+    if (!m) return null;
+    const path = String(file).split('/').map(encodeURIComponent).join('/');
+    return `https://github.com/${m[1]}/${m[2]}/blob/HEAD/${path}${line ? `#L${line}` : ''}`;
+}
 
 const KIND_LABEL = {
     http: 'over HTTP',
@@ -27,7 +54,7 @@ const KIND_LABEL = {
  *  header push the useful half off the edge on a laptop. */
 const short = (p) => String(p || '').split('/').pop();
 
-function Step({ s, n, last, current }) {
+function Step({ s, n, last, current, repoUrl, t }) {
     const [open, setOpen] = useState(n <= 2);   // the call and what serves it, open by default
     const ref = useRef(null);
     // While a flow plays, the step being reached opens itself and scrolls into view. Reading
@@ -50,18 +77,31 @@ function Step({ s, n, last, current }) {
                     <FileCode2 size={10} className="inline mr-1" />{short(s.file)}:{s.line}
                 </div>
             </button>
-            {open && s.code?.text && (
+            {open && s.code?.text && (<>
+                {/* Highlighted, and the language comes from the extension because the snapshot
+                    does not record one. An excerpt is a few lines out of a file, so the line
+                    that matters is the one the step points at — hence the link below rather
+                    than more excerpt. */}
                 <pre className="mt-1 ml-[18px] p-2 rounded-lg overflow-x-auto text-[11px] leading-relaxed"
                     style={{ background: 'var(--surface-2)' }}>
-                    <code>{s.code.text}</code>
+                    <code className={`language-${langOf(s.file) || 'none'}`}
+                        dangerouslySetInnerHTML={{ __html: highlightCode(s.code.text, langOf(s.file)) }} />
                 </pre>
-            )}
+                {/* The whole file, at this line. An excerpt answers "what does this call look
+                    like"; the next question is always "and what is around it". */}
+                {githubLink(repoUrl, s.file, s.line) && (
+                    <a href={githubLink(repoUrl, s.file, s.line)} target="_blank" rel="noreferrer"
+                        className="ml-[18px] mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--primary-2)] hover:underline">
+                        <ExternalLink size={11} /> {t('cf.open', 'Open {f} on GitHub').replace('{f}', short(s.file))}
+                    </a>
+                )}
+            </>)}
             {!last && <ArrowDown size={12} className="text-[var(--faint)] ml-[3px] my-1" />}
         </li>
     );
 }
 
-export default function CodeFlows({ flows = [], t = (k, d) => d }) {
+export default function CodeFlows({ flows = [], repoUrl = null, t = (k, d) => d }) {
     const [open, setOpen] = useState(null);
     const [q, setQ] = useState('');
     // Where the walkthrough is standing, and whether it is moving on its own. `null` means
@@ -184,7 +224,7 @@ export default function CodeFlows({ flows = [], t = (k, d) => d }) {
                             </div>
                             <ol className="px-3 pb-3 pt-1 space-y-0">
                                 {f.steps.map((s, j) => (
-                                    <Step key={j} s={s} n={j + 1} last={j === f.steps.length - 1} current={at === j} />
+                                    <Step key={j} s={s} n={j + 1} last={j === f.steps.length - 1} current={at === j} repoUrl={repoUrl} t={t} />
                                 ))}
                             </ol>
                         </>)}

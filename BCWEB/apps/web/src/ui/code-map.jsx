@@ -456,7 +456,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
 
             {/* The boxes say what exists; this says what runs. Rendered under the map rather
                 than inside it: a reader looks at the shape first, then asks what happens. */}
-            <CodeFlows flows={graph.flows || []} t={t} />
+            <CodeFlows flows={graph.flows || []} repoUrl={graph.repoUrl || null} t={t} />
 
             {graph.unresolved?.length > 0 && (
                 <details className="mt-3">
