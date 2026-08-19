@@ -21,7 +21,7 @@ import CookieConsent from './ui/CookieConsent.jsx';
 import PromoBadge from './ui/promo-badge.jsx';
 import EventEffect from './hero/event-effect.jsx';
 import { IntroProvider, useIntro } from './ui/IntroContext.jsx';
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { ReportJoin } from './ui/report.jsx';
 import Avatar from './ui/Avatar.jsx';
 // Eager: the initial landing routes + nav-critical modules (the notification map is
@@ -33,39 +33,42 @@ import { Catalog, ItemDetail } from './pages/catalog.jsx';
 import { Auth } from './pages/signin.jsx';
 import { DEFAULT_FOOTER_SOCIALS, DEFAULT_FOOTER_COLUMNS } from './ui/footer-default.js';
 import { LucideCdnIcon } from './editor/icon-picker.jsx';
+import { lazyChunk, lazyNamed, installPreloadErrorHandler } from './lib/lazy-chunk.js';
+installPreloadErrorHandler();
 // Lazy: route-split so the initial bundle no longer ships the whole admin back-office,
 // repo tools, editors, etc. — each loads on demand behind the Suspense boundary below.
-const named = (imp, key) => lazy(() => imp().then((m) => ({ default: m[key] })));
+// Route chunks recover from a stale build instead of crashing — see lib/lazy-chunk.js.
+const named = lazyNamed;
 // The hero orb pulls in three.js (~460 KB) — lazy-load it so it never blocks first paint
 // (it's a decorative backdrop; a null fallback means it just fades in once loaded).
-const Hero3D = lazy(() => import('./hero/Hero3D.jsx'));
-const ClosureCancel = lazy(() => import('./pages/closure.jsx'));
-const PollsPage = lazy(() => import('./pages/polls.jsx'));
-const DevHub = lazy(() => import('./pages/dev.jsx'));
-const StatusPage = lazy(() => import('./pages/status.jsx'));
-const DevConfig = lazy(() => import('./pages/dev-config.jsx'));
-const NotificationCentre = lazy(() => import('./pages/notifications.jsx'));
-const SanctionPage = lazy(() => import('./pages/sanction.jsx'));
-const DevTools = lazy(() => import('./pages/dev-tools.jsx'));
+const Hero3D = lazyChunk(() => import('./hero/Hero3D.jsx'));
+const ClosureCancel = lazyChunk(() => import('./pages/closure.jsx'));
+const PollsPage = lazyChunk(() => import('./pages/polls.jsx'));
+const DevHub = lazyChunk(() => import('./pages/dev.jsx'));
+const StatusPage = lazyChunk(() => import('./pages/status.jsx'));
+const DevConfig = lazyChunk(() => import('./pages/dev-config.jsx'));
+const NotificationCentre = lazyChunk(() => import('./pages/notifications.jsx'));
+const SanctionPage = lazyChunk(() => import('./pages/sanction.jsx'));
+const DevTools = lazyChunk(() => import('./pages/dev-tools.jsx'));
 const Admin = named(() => import('./pages/admin.jsx'), 'Admin');
 const Dashboard = named(() => import('./pages/dashboard.jsx'), 'Dashboard');
 const ReposPage = named(() => import('./pages/repos.jsx'), 'ReposPage');
 const RepoDashboard = named(() => import('./pages/repo-dashboard.jsx'), 'RepoDashboard');
-const ProjectPage = lazy(() => import('./pages/project.jsx'));
+const ProjectPage = lazyChunk(() => import('./pages/project.jsx'));
 const OtherProjects = named(() => import('./pages/project.jsx'), 'OtherProjects');
 const ShowcaseProjectPage = named(() => import('./pages/project.jsx'), 'ShowcaseProjectPage');
-const Profile = lazy(() => import('./pages/profile.jsx'));
-const PublicProfile = lazy(() => import('./pages/publicprofile.jsx'));
+const Profile = lazyChunk(() => import('./pages/profile.jsx'));
+const PublicProfile = lazyChunk(() => import('./pages/publicprofile.jsx'));
 const UserSearch = named(() => import('./pages/publicprofile.jsx'), 'UserSearch');
 const BlogList = named(() => import('./pages/blog.jsx'), 'BlogList');
 const BlogPostPage = named(() => import('./pages/blog.jsx'), 'BlogPostPage');
-const Docs = lazy(() => import('./pages/docs.jsx'));
+const Docs = lazyChunk(() => import('./pages/docs.jsx'));
 const MyoPage = named(() => import('./pages/myo.jsx'), 'MyoPage');
 const MyoRequestPage = named(() => import('./pages/myo.jsx'), 'MyoRequestPage');
-const Faq = lazy(() => import('./pages/faq.jsx'));
+const Faq = lazyChunk(() => import('./pages/faq.jsx'));
 const Submit = named(() => import('./pages/submit.jsx'), 'Submit');
-const CommunityCatalogPage = lazy(() => import('./pages/catalogpage.jsx'));
-const RepoPublicPage = lazy(() => import('./pages/repopublic.jsx'));
+const CommunityCatalogPage = lazyChunk(() => import('./pages/catalogpage.jsx'));
+const RepoPublicPage = lazyChunk(() => import('./pages/repopublic.jsx'));
 const Hosting = named(() => import('./pages/hosting.jsx'), 'Hosting');
 const Legal = named(() => import('./pages/legal.jsx'), 'Legal');
 const LegalIndex = named(() => import('./pages/legal.jsx'), 'LegalIndex');

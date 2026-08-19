@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders,
@@ -21,8 +21,10 @@ import { MyRepos, Billing } from './repos.jsx';
 // Proper fix, when someone has the appetite: move these sections out of admin.jsx — it needs
 // `useAsync`/`Loading` relocated out of pages.jsx first, since pages.jsx already imports
 // ui/report.jsx and moving them naively creates an import cycle.
-const OwnerCatalogs = lazy(() => import('./admin.jsx').then((m) => ({ default: m.OwnerCatalogs })));
-const MyReports = lazy(() => import('./admin.jsx').then((m) => ({ default: m.MyReports })));
+// lazyNamed, not lazy: a redeploy renames admin.jsx's chunk, and a tab that has been open
+// across it would fail the import and show a crash card. See lib/lazy-chunk.js.
+const OwnerCatalogs = lazyNamed(() => import('./admin.jsx'), 'OwnerCatalogs');
+const MyReports = lazyNamed(() => import('./admin.jsx'), 'MyReports');
 import { KofiIcon } from '../ui/brand.jsx';
 import { useAsync, Loading, statusTone, KIND_ICON, fmtRemaining, JsonEditor, SideDash, startOwnershipTransfer } from './pages.jsx';
 
@@ -32,6 +34,7 @@ const SUBMIT_INIT = { projectKey: 'bmm', kind: 'PLUGIN', name: '', description: 
 // The notification icon/label map lives in ../ui/notif.js so the nav bell can import it
 // without dragging this whole page into the initial bundle. Re-exported for existing callers.
 import { NOTIF, NOTIF_FALLBACK } from '../ui/notif.js';
+import { lazyNamed } from '../lib/lazy-chunk.js';
 export { NOTIF, NOTIF_FALLBACK };
 function NotificationsPanel() {
   const dialog = useDialog();
