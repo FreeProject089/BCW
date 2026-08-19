@@ -15,6 +15,7 @@ guides/
 
 | I want to… | Read | 🇬🇧 | 🇫🇷 |
 |---|---|---|---|
+| **Look up a command** (deploy, docker, seeds, migrations, tests) | Commands | [EN](run/COMMANDS_EN.md) | [FR](run/COMMANDS_FR.md) |
 | **Get it online, fast** (fresh VPS → live in ~15 min) | Quickstart | [EN](run/QUICKSTART_EN.md) | [FR](run/QUICKSTART_FR.md) |
 | **Deploy it properly** (the full path: DNS, HTTPS, Stripe, backups, scaling) | Deploy | [EN](run/DEPLOY_EN.md) | [FR](run/DEPLOY_FR.md) |
 | **Configure it after install** (admin account, 2FA, roles, integrations) | Setup guide | [EN](run/SETUP_GUIDE_EN.md) | [FR](run/SETUP_GUIDE_FR.md) |
