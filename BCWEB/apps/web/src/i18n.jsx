@@ -2705,6 +2705,8 @@ const DICT = {
     'ie.suspended': 'Cet élément a été suspendu par un admin — vous ne pouvez pas le modifier ni le resoumettre. Contactez le support.',
     'item.private.t': 'Privé — non listé publiquement', 'item.private.d': 'Cet élément n’est pas encore dans le catalogue public. Seules les personnes ayant ce lien direct peuvent le voir ; il sera listé une fois validé par un admin.',
     'mod.suspend': 'Suspendre', 'mod.suspend.title': 'Suspendre la soumission', 'mod.suspend.label': 'Raison (envoyée à l’auteur)', 'mod.suspend.ph': 'Pourquoi est-ce suspendu ? L’auteur ne pourra pas resoumettre.', 'mod.suspend.ok': 'Suspendre', 'mod.suspended2': 'Suspendu — l’auteur ne peut plus resoumettre.',
+    'mod.needlink': 'pas de lien {link}',
+    'mod.needlink.hint': 'Le propriétaire n’a pas lié {why}. L’élément peut être hébergé et partagé par lien privé, mais pas listé publiquement.',
     'mod.reasonlabel': 'Raison', 'mod.s.pending': 'En attente', 'mod.s.rejected': 'Rejeté', 'mod.s.suspended': 'Suspendu', 'mod.s.published': 'Publié',
     // Account moderation (admin)
     'mod.title': 'Modération du compte', 'mod.staffnote': 'Les comptes staff (MOD / ADMIN) ne peuvent pas être suspendus ou bannis ici.',

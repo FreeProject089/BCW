@@ -2,8 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2
-} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon} from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -308,6 +307,14 @@ export function Admin() {
                       <Badge>{sub.type}</Badge> <Badge tone="primary">{sub.item?.kind}</Badge>
                       {sub.status && sub.status !== 'PENDING' && <Badge tone={sub.status === 'SUSPENDED' ? 'red' : sub.status === 'REJECTED' ? 'amber' : sub.status === 'PUBLISHED' ? 'green' : ''}>{sub.status}</Badge>}
                       {sub.item?.project?.key && <span className="uppercase">{sub.item.project.key}</span>} · {sub.item?.owner?.displayName || '—'}
+                      {/* Listing under an official catalogue needs the project's link. Shown on
+                          the row, not discovered by clicking Approve and getting a 409 — a
+                          refused button reads as broken rather than as a rule. */}
+                      {sub.projectLink?.required && !sub.projectLink.ok && (
+                        <Badge tone="red" title={t('mod.needlink.hint', 'The owner has not linked {why}. It can be hosted and shared privately, but not listed publicly.').replace('{why}', sub.projectLink.why || '')}>
+                          <LinkIcon size={9} /> {t('mod.needlink', 'no {link} link').replace('{link}', sub.projectLink.link || 'project')}
+                        </Badge>
+                      )}
                       {sub.tags?.map((tg) => <Badge key={tg} tone="amber"><Tag size={9} /> {tg}</Badge>)}
                       {sub.comments?.length > 0 && <span className="flex items-center gap-1 text-[var(--faint)]"><MessageSquare size={11} /> {sub.comments.length}</span>}
                     </div>
@@ -317,7 +324,17 @@ export function Admin() {
                 <div className="mt-3">
                   <ActionBar actions={[
                     { key: 'review', label: t('mod.review', 'Review'), icon: Eye, onClick: () => setReview(sub) },
-                    sub.status !== 'PUBLISHED' && { key: 'approve', label: t('mod.approve', 'Approve'), icon: CheckCircle2, variant: 'primary', onClick: () => approve(sub) },
+                    sub.status !== 'PUBLISHED' && {
+                      key: 'approve', label: t('mod.approve', 'Approve'), icon: CheckCircle2, variant: 'primary',
+                      // Disabled rather than hidden: a missing button leaves the moderator
+                      // wondering what they are not allowed to do, where a disabled one with a
+                      // reason answers it.
+                      disabled: sub.projectLink?.required && !sub.projectLink.ok,
+                      title: sub.projectLink?.required && !sub.projectLink.ok
+                        ? t('mod.needlink.hint', 'The owner has not linked {why}. It can be hosted and shared privately, but not listed publicly.').replace('{why}', sub.projectLink.why || '')
+                        : undefined,
+                      onClick: () => approve(sub),
+                    },
                     sub.status !== 'REJECTED' && { key: 'reject', label: t('mod.reject', 'Reject'), icon: XCircle, onClick: () => reject(sub) },
                     isAdmin && sub.status !== 'SUSPENDED' && { key: 'suspend', label: t('mod.suspend', 'Suspend'), icon: Ban, danger: true, onClick: () => suspend(sub) },
                   ].filter(Boolean)} />

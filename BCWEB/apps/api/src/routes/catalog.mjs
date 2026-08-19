@@ -11,6 +11,7 @@ import { powVerify } from './auth.mjs';
 import { campaignCoupon } from './campaigns.mjs';
 import { findBlock, urlsOfMeta } from '../lib/urlblock.mjs';
 import { reservedTermIn, replyReservedName } from '../lib/reserved-names.mjs';
+import { hasProjectLink, replyNeedsLink, requirementFor } from '../lib/project-link.mjs';
 
 // ── Blocked addresses ────────────────────────────────────────────────────────
 // The Terms promise that a link taken down after a notice cannot simply be posted again.
@@ -556,9 +557,16 @@ export default async function catalogRoutes(app) {
               description: d.description, tags: d.tags, version: d.version, payloadKey: d.payloadKey,
               meta: { ...d.meta, official: true }, status: 'PUBLISHED' },
     });
+    // Said now, not sprung at approval. Listing under an official catalogue needs the
+    // project's link; hosting does not, and the upload they just paid for works either way.
+    // Returned as a field rather than an error: this is information, and refusing here would
+    // block the part that is legitimately theirs.
+    const need = await hasProjectLink(p, req.user.uid, d.projectKey);
+    const willNeedLink = need.ok ? null : { link: need.link, why: need.why };
+
     // Plugins are auto-validated (package + per-file checksums) on publish.
-    if (d.kind === 'PLUGIN' && (d.meta?.download_url || d.payloadKey)) { const v = await revalidatePlugin(p, item); return reply.code(201).send({ item, validation: v.validation || v }); }
-    return reply.code(201).send({ item });
+    if (d.kind === 'PLUGIN' && (d.meta?.download_url || d.payloadKey)) { const v = await revalidatePlugin(p, item); return reply.code(201).send({ item, willNeedLink, validation: v.validation || v }); }
+    return reply.code(201).send({ item, willNeedLink });
   });
 
   // ── Admin: catalog list + plugin verification tools ──
@@ -931,7 +939,27 @@ export default async function catalogRoutes(app) {
         comments: { orderBy: { createdAt: 'asc' }, include: { author: { select: { displayName: true } } } },
       },
     });
-    return { submissions };
+
+    // Whether each owner holds the link their project asks for, resolved HERE so the queue
+    // shows it before anybody clicks Approve. Without it a moderator reviews an item, decides
+    // it is good, approves, and gets a 409 — which reads as a broken button rather than a
+    // rule, and tells them nothing about who to chase.
+    //
+    // One query for every owner in the page, not one per row: the queue is a list and this
+    // would otherwise be the N+1 that makes it slow exactly when it is busiest.
+    const ownerIds = [...new Set(submissions.map((x) => x.ownerId))];
+    const linked = new Set(
+      (await p.creatorLink.findMany({ where: { userId: { in: ownerIds } }, select: { userId: true } }))
+        .map((l) => l.userId),
+    );
+    const withLink = submissions.map((x) => {
+      const req = requirementFor(x.item?.project?.key);
+      // Mirrors hasProjectLink for the one link type that exists; an unknown requirement is
+      // reported as unmet for the same reason it fails closed there.
+      const ok = !req.link ? true : req.link === 'creator' ? linked.has(x.ownerId) : false;
+      return { ...x, projectLink: { required: !!req.link, ok, why: req.why } };
+    });
+    return { submissions: withLink };
   });
 
   // Mod-only internal triage tags on a submission (e.g. "priority", "needs-rework")
@@ -997,8 +1025,22 @@ export default async function catalogRoutes(app) {
 
   app.post('/mod/submissions/:id/approve', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
     const p = await db();
-    const sub = await p.submission.findUnique({ where: { id: req.params.id }, include: { item: true } });
+    const sub = await p.submission.findUnique({ where: { id: req.params.id }, include: { item: { include: { project: true } } } });
     if (!sub) return reply.code(404).send({ error: 'not_found' });
+    // Appearing in an OFFICIAL catalogue is that product vouching for the listing to all of
+    // its users, so the owner has to have proved they belong to it. Paying for storage buys
+    // hosting — the item is already reachable through its private link — it does not buy a
+    // place in the catalogue.
+    //
+    // Checked HERE, at the moment something becomes public, rather than at submission: the
+    // owner can upload, host and share a private link while they sort the link out, and only
+    // the last step waits. Refusing at submission would block the part they paid for.
+    const need = await hasProjectLink(p, sub.ownerId, sub.item.project?.key);
+    if (!need.ok) {
+      await notify(p, sub.ownerId, 'submission_needs_link',
+        `"${sub.item.name}" cannot be listed publicly yet: it needs ${need.why}. It stays reachable through its private link until then.`);
+      return replyNeedsLink(reply, need);
+    }
     await p.$transaction([
       p.submission.update({ where: { id: sub.id }, data: { status: 'PUBLISHED', reviewerId: req.user.uid } }),
       p.catalogItem.update({ where: { id: sub.itemId }, data: { status: 'PUBLISHED' } }),

@@ -27,8 +27,11 @@ export function Button({ variant = 'default', size, className = '', loading = fa
 }
 export const Card = forwardRef(({ hover, className = '', children, ...p }, ref) =>
   <div ref={ref} className={`card ${hover ? 'card-hover' : ''} ${className}`} {...p}>{children}</div>);
-export const Badge = ({ tone = '', className = '', children }) =>
-  <span className={`badge ${tone ? `badge-${tone}` : ''} ${className}`}>{children}</span>;
+// `...p` so a badge can carry a title, an aria-label, a data attribute — anything the
+// caller needs. Without it every such prop was silently dropped: the markup looked right in
+// the source and the tooltip never existed.
+export const Badge = ({ tone = '', className = '', children, ...p }) =>
+  <span className={`badge ${tone ? `badge-${tone}` : ''} ${className}`} {...p}>{children}</span>;
 
 // A row of actions that keeps itself on ONE line: it renders what fits and folds the rest
 // into a "More" menu. Cards here carry 5-6 actions, which free-wrapping turned into a 3-4 row
@@ -118,8 +121,10 @@ export function ActionBar({ actions, extra = [], className = '', size = 'sm' }) 
 
       {shown.map((a) => {
         const btn = (
+          // `title` matters most on a DISABLED action: the button explains itself where it
+          // is, instead of leaving the reason somewhere else on the card.
           <Button key={a.key} size={size} variant={a.variant || 'default'} onClick={a.href ? undefined : a.onClick} disabled={a.disabled}
-            className={`shrink-0 ${a.danger ? '!text-error' : ''}`}>
+            title={a.title} className={`shrink-0 ${a.danger ? '!text-error' : ''}`}>
             {a.icon && <a.icon size={14} />} {a.label}
           </Button>
         );
