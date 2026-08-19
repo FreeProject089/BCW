@@ -40,6 +40,27 @@ BetterModsManager (BMM) app:
 - **Server repos** (`/repos`, individual pages at `/r/<id>`) — hosted or URL-based mod
   sources. Each has an **"Open in BMM"** deeplink and a `repo.json` link.
 
+### Naming what you publish
+
+BMM decides whether something is *official* or a *partner* from **where it fetched the
+catalogue**, never from what the catalogue says about itself — so a community submission can
+never wear a badge it was not given. That defence works, and it is not the one people get
+past.
+
+Names are. A catalogue called "BMM Official Mods" would carry a correct *community* badge
+next to a title chosen to be believed, and people read titles. So the endorsement vocabulary
+is reserved on submission and on rename: **official, partner, verified, certified, endorsed,
+BMM team/staff**, and the French equivalents. Spacing, accents and `0ffic1al`-style
+substitutions are folded before the check, so they do not get you past it.
+
+Honest names are unaffected — **"Community", "Unofficial", "Fan-made"** and the like all pass,
+because they describe the truth. If a submission is refused you get `reserved_name` and the
+word that triggered it.
+
+If a catalogue you follow labels its own entries "official", BMM shows the entry as
+**community** and adds a separate chip saying that the catalogue *claims* otherwise, with the
+source host. The claim is not hidden from you — it is attributed to whoever made it.
+
 ### Downloading from a repo without BMM
 
 A hosted repo's page lists its **contents** (mods, profiles, …) and every file downloads in

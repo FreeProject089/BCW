@@ -41,6 +41,29 @@ l'app BetterModsManager (BMM) :
 - **Dépôts serveur** (`/repos`, pages `/r/<id>`) — sources de mods hébergées ou par URL.
   Chacun a un deeplink **« Ouvrir dans BMM »** et un lien `repo.json`.
 
+### Nommer ce que vous publiez
+
+BMM détermine si quelque chose est *officiel* ou *partenaire* d'après **l'endroit d'où le
+catalogue a été récupéré**, jamais d'après ce que le catalogue dit de lui-même — une
+soumission communautaire ne peut donc jamais porter un badge qu'on ne lui a pas donné. Cette
+défense fonctionne, et ce n'est pas celle que l'on contourne.
+
+Les noms, si. Un catalogue intitulé « Mods Officiels BMM » afficherait un badge *communauté*
+correct à côté d'un titre choisi pour être cru, et les gens lisent les titres. Le vocabulaire
+d'adoubement est donc réservé, à la soumission comme au renommage : **officiel, partenaire,
+vérifié, certifié, approuvé, équipe/staff BMM**, et leurs équivalents anglais. Espacement,
+accents et substitutions du type `0ffic1el` sont normalisés avant le contrôle : ils ne
+permettent pas de passer.
+
+Les noms honnêtes ne sont pas touchés — **« Communauté », « Non officiel », « Fan-made »**
+passent tous, parce qu'ils disent le vrai. Une soumission refusée renvoie `reserved_name` et
+le mot en cause.
+
+Si un catalogue que vous suivez étiquette ses propres entrées « officiel », BMM affiche
+l'entrée comme **communauté** et ajoute une pastille distincte indiquant que le catalogue
+l'*affirme*, avec l'hôte source. La revendication ne vous est pas cachée — elle est attribuée
+à celui qui l'a faite.
+
 ### Télécharger depuis un dépôt sans BMM
 
 La page d'un dépôt hébergé liste son **contenu** (mods, profils, …) et chaque fichier se

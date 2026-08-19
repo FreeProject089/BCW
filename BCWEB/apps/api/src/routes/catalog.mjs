@@ -10,6 +10,7 @@ import { replyCachedJson } from '../lib/cache.mjs';
 import { powVerify } from './auth.mjs';
 import { campaignCoupon } from './campaigns.mjs';
 import { findBlock, urlsOfMeta } from '../lib/urlblock.mjs';
+import { reservedTermIn, replyReservedName } from '../lib/reserved-names.mjs';
 
 // ── Blocked addresses ────────────────────────────────────────────────────────
 // The Terms promise that a link taken down after a notice cannot simply be posted again.
@@ -441,6 +442,12 @@ export default async function catalogRoutes(app) {
     }
     const blocked = await blockedFor(p, urlsOfMeta(d.meta));
     if (blocked) return replyBlocked(reply, blocked);
+    // The name may not claim an endorsement. BMM already refuses to let a catalogue wear a
+    // badge it was not granted — but the badge is four small words beside a title somebody
+    // chose to be believed, and nothing checked the title. /admin/catalog below is
+    // deliberately NOT gated: staff naming a staff catalogue is not impersonation.
+    const reserved = reservedTermIn(d.name);
+    if (reserved) return replyReservedName(reply, reserved);
     const slug = `${d.projectKey}-${slugify(d.name)}-${Math.random().toString(36).slice(2, 6)}`;
     const item = await p.catalogItem.create({
       data: { projectId: project.id, kind: d.kind, ownerId: req.user.uid, name: d.name, slug, shareKey: mkShareKey(),
@@ -720,6 +727,13 @@ export default async function catalogRoutes(app) {
     if (patch.meta) {
       const blockedEdit = await blockedFor(p, urlsOfMeta(patch.meta));
       if (blockedEdit) return replyBlocked(reply, blockedEdit);
+    }
+    // A rename faces the same check as the creation, or the rule is decorative: submit
+    // "My Mods", get published, rename to "BMM Official". Staff are exempt for the same
+    // reason the admin create route is.
+    if (patch.name && req.user.role === 'USER') {
+      const reservedEdit = reservedTermIn(patch.name);
+      if (reservedEdit) return replyReservedName(reply, reservedEdit);
     }
     const { payloadKey: newPayloadKey, payloadSize: newPayloadSize, ...rest } = patch;
     // Resubmitting within the rejection grace cancels the scheduled payload purge — the

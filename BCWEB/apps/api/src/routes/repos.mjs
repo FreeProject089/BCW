@@ -8,6 +8,7 @@ import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } 
 import { mintAttestation, attestationPublicKeyHex, ATTESTATION_TTL_SECONDS } from '../lib/identity-attestation.mjs';
 import { capacityStatus, capacityFactors, priceCents, termTotalCents, TERM_MONTHS, stripe, settings, ensureCustomer, recomputePoolBytes } from './hosting.mjs';
 import { findBlock } from '../lib/urlblock.mjs';
+import { reservedTermIn } from '../lib/reserved-names.mjs';
 
 // A listed repo is a link like any other, so the blocklist reaches it too. Same shape of
 // refusal as the catalog, so a client handles one error and not two.
@@ -934,6 +935,11 @@ export default async function repoRoutes(app) {
     if (!gate.ok) return reply.code(403).send({ error: gate.reason });
     const blocked = await repoUrlBlocked(p, b.data.repoUrl);
     if (blocked) return reply.code(409).send({ error: 'url_blocked', url: blocked.url, scope: blocked.rule.scope });
+    // A repo name may not claim an endorsement. BMM writes every imported repo as
+    // `community` whatever its feed says, so the badge cannot be stolen — but the badge sits
+    // next to a name the submitter chose, and the name was never checked.
+    const reserved = reservedTermIn(b.data.name);
+    if (reserved) return reply.code(409).send({ error: 'reserved_name', term: reserved });
     let repo = await p.serverRepo.create({ data: { ...b.data, ownerId: req.user.uid, hosted: false, status: 'OFFLINE' } });
     // Auto health-check + auto content-SHA (like BMM's repo check) so status/sha are real from the start.
     if (repo.repoUrl) {
@@ -985,6 +991,11 @@ export default async function repoRoutes(app) {
     const p = await db();
     const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
     if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
+    // A rename must face the same check as the creation, or the rule is decorative.
+    if (b.data.name && req.user.role === 'USER') {
+      const reservedEdit = reservedTermIn(b.data.name);
+      if (reservedEdit) return reply.code(409).send({ error: 'reserved_name', term: reservedEdit });
+    }
     const urlChanged = b.data.repoUrl && b.data.repoUrl !== repo.repoUrl;
     // Only when it CHANGED: re-checking an unchanged url would lock the owner out of
     // editing a description on a repo blocked for something they have since fixed.
