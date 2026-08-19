@@ -985,7 +985,17 @@ export default async function hostingRoutes(app) {
     // Must accept the Terms + Payments policy to pay (recorded on the account).
     if (!b.data.acceptedTerms) return reply.code(400).send({ error: 'terms_not_accepted' });
     const p = await db();
-    await p.user.update({ where: { id: req.user.uid }, data: { termsAcceptedAt: new Date() } }).catch(() => {});
+    // The version, not only the moment. A timestamp against a document that can be edited
+    // afterwards cannot show what the person agreed to; the number can, because a published
+    // version is never edited. Null when nothing has been published yet, which is honest:
+    // it says the accepted text was whatever the built-in defaults said at the time.
+    const tv = await p.legalVersion.findFirst({
+      where: { doc: 'terms' }, orderBy: { version: 'desc' }, select: { version: true },
+    }).catch(() => null);
+    await p.user.update({
+      where: { id: req.user.uid },
+      data: { termsAcceptedAt: new Date(), termsVersion: tv?.version ?? null },
+    }).catch(() => {});
     if (await p.creatorLink.count({ where: { userId: req.user.uid } }) === 0) return reply.code(403).send({ error: 'creator_link_required' });
     const r = await resolveCart(p, req, b.data, { persistPlans: true });
     if (r.error) return reply.code(r.error.startsWith('promo_') ? 400 : 409).send(r);

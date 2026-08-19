@@ -6722,6 +6722,10 @@ function AdminLegal() {
   const [busy, setBusy] = useState(false);
 
   const DOCS = data?.docs || ['privacy', 'terms', 'cookies', 'about', 'refunds'];
+  const [versions, setVersions] = useState([]);
+  const loadVersions = () => api.get('/legal/versions').then((r) => setVersions(r?.versions || [])).catch(() => {});
+  useEffect(() => { loadVersions(); }, []);
+  const mineVersions = versions.filter((v) => v.doc === doc);
   const all = data?.sections || [];
   const mine = all.filter((x) => x.doc === doc);
   const imported = mine.length > 0;
@@ -6755,6 +6759,26 @@ function AdminLegal() {
     })) return;
     try { await api.post('/admin/legal/revert', { doc }); toast.success(t('al.reverted', 'Back to the built-in text.')); setOpenId(null); reload(); }
     catch { toast.error(t('common.err', 'Something went wrong.')); }
+  };
+
+  // Publishing freezes the document and numbers it. Nothing published is ever edited, so
+  // the confirm says what that means rather than asking "are you sure".
+  const publish = async () => {
+    const note = await dialog.prompt({
+      title: t('al.publish.t', 'Publish this document'),
+      label: t('al.publish.l', 'What changed? (shown to readers in the archive)'),
+    });
+    if (note === null) return;
+    setBusy(true);
+    try {
+      const r = await api.post('/admin/legal/publish', { doc, note: note || '' });
+      toast.success(t('al.published', 'Published as version {n}.').replace('{n}', r?.version?.version));
+      loadVersions();
+    } catch (e) {
+      toast.error(e?.body?.error === 'nothing_to_publish'
+        ? t('al.pub.empty', 'Import the built-in text first — there is nothing to freeze.')
+        : t('common.err', 'Something went wrong.'));
+    } finally { setBusy(false); }
   };
 
   const open = (sec) => { setOpenId(sec.id); setDraft({ ...sec }); };
@@ -6825,10 +6849,37 @@ function AdminLegal() {
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2 mb-3">
+            <Button size="sm" onClick={publish} disabled={busy}><Save size={14} /> {t('al.publish.btn', 'Publish a version')}</Button>
             <Button size="sm" variant="ghost" onClick={add}><Plus size={14} /> {t('al.add.btn', 'Add a section')}</Button>
             <Button size="sm" variant="ghost" onClick={revert}><RotateCcw size={14} /> {t('al.revert.btn', 'Back to the built-in text')}</Button>
             <span className="text-xs text-[var(--faint)] ml-auto">{t('al.md', 'Markdown, with the same blocks as the docs (:::note, :::steps, …)')}</span>
           </div>
+          {/* Unpublished edits are live on the site but are not what an acceptance points at.
+              Saying so here is the difference between an archive and a decoration. */}
+          <Card className="p-3 mb-3 text-xs">
+            <div className="flex items-center gap-2 mb-1.5">
+              <History size={14} className="text-[var(--primary-2)]" />
+              <span className="font-medium">{t('al.versions', 'Published versions')}</span>
+              <Badge>{mineVersions.length}</Badge>
+            </div>
+            {mineVersions.length ? (
+              <ul className="space-y-1 text-[var(--muted)]">
+                {mineVersions.map((v) => (
+                  <li key={v.id} className="flex items-baseline gap-2">
+                    <span className="font-mono text-[var(--text)]">v{v.version}</span>
+                    <span>{new Date(v.publishedAt).toLocaleDateString()}</span>
+                    {v.note && <span className="truncate">— {v.note}</span>}
+                    <a href={`/legal/archive/${v.id}`} target="_blank" rel="noreferrer"
+                      className="ml-auto text-[var(--primary-2)] hover:underline shrink-0">{t('al.view', 'view')}</a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[var(--muted)]">
+                {t('al.noversions', 'None yet. Until you publish one, an acceptance records only a date — not the text that was accepted.')}
+              </p>
+            )}
+          </Card>
           <div className="space-y-2">
             {mine.map((sec) => (
               <Card key={sec.id} className="p-0 overflow-hidden">

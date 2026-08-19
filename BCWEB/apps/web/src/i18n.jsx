@@ -1268,6 +1268,14 @@ const DICT = {
 
     // ── Admin : messages de contact ──
     'am.title': 'Messages de contact', 'am.new': '{n} nouveau(x)', 'am.refresh': 'Rafraîchir', 'am.newbadge': 'nouveau',
+    'al.publish.btn': 'Publier une version',
+    'al.publish.t': 'Publier ce document',
+    'al.publish.l': 'Qu’est-ce qui change ? (montré aux lecteurs dans l’archive)',
+    'al.published': 'Publié en version {n}.',
+    'al.pub.empty': 'Importez d’abord le texte intégré — il n’y a rien à figer.',
+    'al.versions': 'Versions publiées',
+    'al.view': 'voir',
+    'al.noversions': 'Aucune pour l’instant. Tant que vous n’en publiez pas, une acceptation n’enregistre qu’une date — pas le texte qui a été accepté.',
     'adm.tab.legal': 'Légal',
     'al.title': 'Pages légales',
     'al.builtin': 'Ce document est servi depuis le code',

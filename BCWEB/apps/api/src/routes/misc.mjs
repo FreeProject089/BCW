@@ -799,6 +799,63 @@ export default async function miscRoutes(app) {
     return { ok: true, removed: n.count };
   });
 
+
+  // Publish: freeze the document as it stands and give it a number.
+  //
+  // The number is what an acceptance records, and the snapshot is what gets shown when
+  // somebody asks what they agreed to. Nothing published is ever edited — a correction is a
+  // new version. That is the property the whole thing exists for, so there is deliberately
+  // no update or delete endpoint for a version.
+  app.post('/admin/legal/publish', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      doc: z.enum(LEGAL_DOCS),
+      note: z.string().max(500).default(''),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const sections = await p.legalSection.findMany({
+      where: { doc: b.data.doc }, orderBy: { order: 'asc' },
+      select: { title: true, titleFr: true, body: true, bodyFr: true },
+    });
+    // Publishing a document that is still served from the built-in defaults would freeze an
+    // empty snapshot and then claim it as the accepted text. Import first.
+    if (!sections.length) return reply.code(409).send({ error: 'nothing_to_publish' });
+    const last = await p.legalVersion.findFirst({ where: { doc: b.data.doc }, orderBy: { version: 'desc' } });
+    const row = await p.legalVersion.create({
+      data: {
+        doc: b.data.doc, version: (last?.version ?? 0) + 1, sections,
+        note: b.data.note, publishedById: req.user.uid,
+      },
+      select: { id: true, doc: true, version: true, note: true, publishedAt: true },
+    });
+    invalidate('legal:all');
+    invalidate('legal:versions');
+    return reply.code(201).send({ version: row });
+  });
+
+  // The archive, public. Somebody who accepted version 3 must be able to read version 3
+  // without an account — a version they can only see by asking us is not an archive.
+  app.get('/legal/versions', async (req, reply) => replyCachedJson(req, reply, 'legal:versions', 300_000, async () => {
+    const p = await db();
+    const versions = await p.legalVersion.findMany({
+      orderBy: [{ doc: 'asc' }, { version: 'desc' }],
+      select: { id: true, doc: true, version: true, note: true, publishedAt: true },
+    });
+    return { versions };
+  }));
+
+  app.get('/legal/versions/:id', async (req, reply) => {
+    const p = await db();
+    const v = await p.legalVersion.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, doc: true, version: true, sections: true, note: true, publishedAt: true },
+    });
+    if (!v) return reply.code(404).send({ error: 'not_found' });
+    // Immutable by construction, so it can be cached hard.
+    reply.header('Cache-Control', 'public, max-age=86400, immutable');
+    return v;
+  });
+
   // ── Blocked addresses ──────────────────────────────────────────────────────
   // The list the Terms promise. MOD can read and add — a moderator handling a notice is
   // exactly who needs to block something — but only ADMIN can REMOVE one, because removing

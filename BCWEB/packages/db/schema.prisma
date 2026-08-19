@@ -90,6 +90,9 @@ model User {
   bio               String    @default("")
   avatar            Json? // { variant, seed } for the Boring Avatar
   termsAcceptedAt   DateTime? // last time the user accepted the Terms + Payments policy at checkout
+  /// The published Terms version that acceptance refers to. Without it the timestamp above
+  /// points at whatever the document says TODAY, which in a dispute is worth nothing.
+  termsVersion      Int?
   stripeCustomerId  String?   @unique
   apiKeys           ApiKey[]
   polls             Poll[]     @relation("PollAuthor")
@@ -98,6 +101,7 @@ model User {
   pollAnswers       PollAnswer[] @relation("PollAnswerer")
   blockedUrls       BlockedUrl[]
   legalEdits        LegalSection[]
+  legalPublished    LegalVersion[] @relation("LegalPublisher")
   sessions          Session[]
   createdAt         DateTime  @default(now())
 
@@ -1084,6 +1088,36 @@ model RepoAccessEvent {
 // whitelist when either the repo or `whitelistOnly` (site-wide) requires one. Entries
 // in the account lists are { type: "bcweb"|"discord", id, label }. Singleton row
 // (id is always "global") — read/written via GET/PUT /admin/access-policy.
+// A published, frozen copy of one legal document.
+//
+// This exists because `User.termsAcceptedAt` records WHEN somebody accepted and never WHAT.
+// While the text lived in the source that was survivable — git held the history. Now that it
+// is editable from the dashboard, a timestamp pointing at a mutable document proves nothing:
+// in a dispute you could not produce the text the person actually agreed to.
+//
+// So publishing snapshots the whole document into `sections` and hands it a number. The
+// number is what gets recorded against an acceptance, and the snapshot is what gets shown
+// when somebody asks what they agreed to. Nothing here is ever edited — a correction is a
+// new version, which is the entire point.
+model LegalVersion {
+  id          String   @id @default(cuid())
+  /// privacy · terms · cookies · about · refunds
+  doc         String
+  /// 1, 2, 3 … per document. Human-quotable, unlike a cuid.
+  version     Int
+  /// The full document at publish time: [{ title, titleFr, body, bodyFr }]. Denormalised on
+  /// purpose — a snapshot that joins to live rows is not a snapshot.
+  sections    Json
+  /// Why this version exists, for the reader, not for staff. Shown in the archive.
+  note        String   @default("")
+  publishedAt DateTime @default(now())
+  publishedById String?
+  publishedBy   User?  @relation("LegalPublisher", fields: [publishedById], references: [id], onDelete: SetNull)
+
+  @@unique([doc, version])
+  @@index([doc, publishedAt])
+}
+
 // One section of one legal document, editable from the admin dashboard.
 //
 // The built-in LEGAL constant in legal.jsx stays the DEFAULT and is what a fresh install
