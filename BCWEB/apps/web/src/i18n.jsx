@@ -1183,7 +1183,11 @@ const DICT = {
     'arp.dashboard': 'Gérer (admin)', 'an.wv.export': 'Exporter CSV',
 
     'cookie.title': 'Cookies',
-    'cookie.body': 'Nous utilisons un cookie essentiel pour te garder connecté. Avec ton accord, nous collectons aussi des statistiques de pages respectueuses de la vie privée, en interne — aucun tiers, aucun pistage publicitaire.',
+    // Vouvoyé, unlike the rest of this dictionary. The consent banner is the point at which
+    // a legal basis is established under the GDPR, and it is quoted back in the Cookie
+    // Policy — which is vouvoyé. Two registers for the same statement in two places reads
+    // as two different statements.
+    'cookie.body': 'Nous utilisons un cookie essentiel pour vous garder connecté. Avec votre accord, nous collectons aussi des statistiques de pages respectueuses de la vie privée, en interne — aucun tiers, aucun pistage publicitaire.',
     'cookie.policy': 'Politique de cookies', 'cookie.all': 'Tout accepter', 'cookie.essential': 'Essentiels uniquement',
     'cookie.reject': 'Refuser le non-essentiel', 'cookie.customise': 'Personnaliser', 'cookie.back': 'Retour', 'cookie.save': 'Enregistrer mes choix', 'cookie.always': 'toujours actif',
     'cookie.cat.essential': 'Essentiels', 'cookie.cat.essential.d': 'Session de connexion et sécurité. Le site ne peut pas fonctionner sans.',

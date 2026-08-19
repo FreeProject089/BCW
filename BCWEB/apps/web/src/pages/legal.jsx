@@ -159,7 +159,7 @@ const LEGAL = {
       ['1 · Strictement nécessaires', 'Un seul cookie de session vous garde connecté et sécurise l’envoi des formulaires. Il est indispensable au fonctionnement du site et ne peut être désactivé. Selon le RGPD/ePrivacy, aucun consentement n’est requis pour cette catégorie car elle est essentielle à un service que vous avez demandé.'],
       ['2 · Statistiques (optionnel — désactivé par défaut)', 'Uniquement si vous acceptez la catégorie Statistiques, nous activons des statistiques internes respectueuses de la vie privée : chemin de page et référent, un hachage de visiteur anonyme changeant chaque jour, appareil / navigateur / système approximatif, localisation approximative (pays / région / ville) depuis votre IP, signaux d’interaction anonymes dans la page (quels éléments sont cliqués/édités/soumis — jamais les valeurs saisies), et mesures de performance (Web Vitals). Votre choix est mémorisé dans le stockage local, pas dans un cookie de pistage, et vous pouvez refuser sans perte de fonctionnalité.'],
       ['Tags tiers (Google Tag Manager)', 'Quand il est configuré, nous chargeons Google Tag Manager comme tag de mesure tiers. Ses scripts et cookies ne se chargent QU’APRÈS votre opt-in à la catégorie Statistiques ci-dessus — jamais avant. Refuser, ou simplement ignorer la bannière, le garde désactivé. Google agit comme notre sous-traitant ; certaines données peuvent être transférées hors EEE sous garanties appropriées (voir la Politique de confidentialité). Vous pouvez retirer votre consentement à tout moment, et nous traitons un signal Global Privacy Control / Do-Not-Track comme un refus automatique.'],
-      ['Gérer votre consentement', 'Votre préférence est stockée par navigateur. Pour la revoir ou la changer, vide le stockage de ce site (ou utilise les réglages de données de site de votre navigateur) et recharge — la bannière réapparaît. Retirer le consentement arrête immédiatement toute collecte de statistiques.'],
+      ['Gérer votre consentement', 'Votre préférence est stockée par navigateur. Pour la revoir ou la changer, videz le stockage de ce site (ou utilisez les réglages de données de site de votre navigateur) et rechargez la page — la bannière réapparaît. Retirer le consentement arrête immédiatement toute collecte de statistiques.'],
       ['Aucune publicité', 'Nous n’utilisons jamais de cookies publicitaires, inter-sites ou de pistage social, et nous ne vendons jamais vos données.'],
     ] },
     about: { icon: Sparkles, title: 'À propos', body: [
@@ -333,7 +333,7 @@ export function Legal({ page }) {
             </section>
           ))}
           <div className="pt-5 border-t border-[var(--line)] text-sm text-[var(--muted)] flex flex-wrap items-center justify-between gap-3">
-            <span>{lang === 'fr' ? 'Des questions sur cette politique ? Contacte-nous via les liens du pied de page.' : 'Questions about this policy? Reach us via the links in the footer.'}</span>
+            <span>{lang === 'fr' ? 'Des questions sur cette politique ? Contactez-nous via les liens du pied de page.' : 'Questions about this policy? Reach us via the links in the footer.'}</span>
             {/* Legal pages get saved and filed. print:hidden everywhere else keeps the
                 printed copy to the document itself. */}
             <Button size="sm" variant="ghost" onClick={() => window.print()} className="print:hidden">
