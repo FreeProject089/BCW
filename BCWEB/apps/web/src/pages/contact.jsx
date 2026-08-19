@@ -17,6 +17,10 @@ const KINDS = [
   { v: 'appeal', en: 'Appealing a moderation decision', fr: 'Contester une décision de modération' },
   { v: 'data_export', en: 'Send me a copy of my data', fr: 'M’envoyer une copie de mes données' },
   { v: 'data_delete', en: 'Delete my data', fr: 'Supprimer mes données' },
+  // The two the Terms send people here for. Without them a legal notice arrives as
+  // 'other' and is triaged as a support ticket.
+  { v: 'report', en: 'Report illegal or harmful content', fr: 'Signaler un contenu illégal ou préjudiciable' },
+  { v: 'copyright', en: 'Copyright or other rights claim', fr: 'Droit d’auteur ou autre atteinte à mes droits' },
 ];
 
 // Prefilled only when the field is still empty, so choosing a kind never overwrites
@@ -29,6 +33,19 @@ const TEMPLATES = {
   data_delete: {
     en: 'I would like my personal data deleted.\n\nAccount (email or display name):\n',
     fr: 'Je souhaite la suppression de mes données personnelles.\n\nCompte (e-mail ou nom affiché) :\n',
+  },
+  // Asks for the four things DSA Art. 16 needs to make a notice give us actual
+  // knowledge. Prefilled rather than validated: a notice missing a line is still a
+  // notice and we would rather receive it than reject it at the form.
+  report: {
+    en: 'What is wrong:\n\nExact location (URL or page):\n\nWhy you believe it is illegal or breaks the rules:\n\nI am acting in good faith and believe this information is accurate: yes\n',
+    fr: 'Ce qui ne va pas :\n\nEmplacement exact (URL ou page) :\n\nPourquoi tu penses que c’est illégal ou contraire aux règles :\n\nJ’agis de bonne foi et je crois ces informations exactes : oui\n',
+  },
+  // The rights-holder notice. The last line matters: a listing may only be a LINK, in
+  // which case delisting is all we can do and they need to notify the real host too.
+  copyright: {
+    en: 'The work or right concerned:\n\nWhere it appears here (URL or page):\n\nOn what basis you hold the right:\n\nHow to reach you:\n\nI am acting in good faith and believe this information is accurate: yes\n',
+    fr: 'L’œuvre ou le droit concerné :\n\nOù il apparaît ici (URL ou page) :\n\nÀ quel titre tu détiens ce droit :\n\nComment te joindre :\n\nJ’agis de bonne foi et je crois ces informations exactes : oui\n',
   },
 };
 

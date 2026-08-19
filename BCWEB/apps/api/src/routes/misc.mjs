@@ -74,6 +74,17 @@ export const PENDING_QUEUES = [
     // it. An export or erasure request has a deadline; a pending catalogue submission does
     // not. Until this existed they arrived as free text in the contact list, indistinguishable
     // from "the download button is grey", and were found by whoever happened to read them.
+    // Notices carry a clock — the DSA expects action "without undue delay" and the LCEN
+    // presumption of knowledge starts the moment one lands. Counted separately from the
+    // general inbox for exactly that reason.
+    key: 'legalNotices', cap: 'manage_users', to: '/admin?s=messages',
+    count: (p) => p.contactMessage.count({ where: { kind: { in: ['report', 'copyright'] }, readAt: null } }),
+    recent: (p) => p.contactMessage.findMany({
+      where: { kind: { in: ['report', 'copyright'] }, readAt: null },
+      orderBy: { createdAt: 'desc' }, take: 5,
+      select: { id: true, name: true, kind: true, createdAt: true },
+    }),
+  }, {
     key: 'dataRequests', cap: 'manage_users', to: '/admin?s=contact',
     count: (p) => p.contactMessage.count({ where: { kind: { in: ['data_export', 'data_delete'] }, readAt: null } }),
     recent: (p) => p.contactMessage.findMany({
@@ -602,7 +613,12 @@ export default async function miscRoutes(app) {
   // logged-in sender's IP may be shared/dynamic).
   // The kinds a sender can pick. data_export and data_delete are the reason this exists:
   // they carry a legal deadline, and a deadline that is not countable is one nobody counts.
-  const CONTACT_KINDS = ['other', 'data_export', 'data_delete', 'bug', 'billing', 'appeal'];
+  // 'report' and 'copyright' are the DSA Art. 16 notice and the rights-holder notice. The
+  // Terms promise ONE route for both and the form had no category for either, so a notice
+  // arrived as 'other' — into the generic pile, with no counter and no priority. A legal
+  // route nobody can find is the same as no route.
+  const CONTACT_KINDS = ['other', 'data_export', 'data_delete', 'bug', 'billing', 'appeal',
+    'report', 'copyright'];
 
   app.post('/contact', { config: { rateLimit: { max: 8, timeWindow: '10 minutes' } }, preHandler: optionalAuth() }, async (req, reply) => {
     if (!powVerify(req.body?.pow)) return reply.code(400).send({ error: 'pow_required' });
