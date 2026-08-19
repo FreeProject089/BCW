@@ -1268,6 +1268,14 @@ const DICT = {
 
     // ── Admin : messages de contact ──
     'am.title': 'Messages de contact', 'am.new': '{n} nouveau(x)', 'am.refresh': 'Rafraîchir', 'am.newbadge': 'nouveau',
+    'la.banner.t': 'Ceci est une version archivée',
+    'la.banner.d': 'Figée au moment de sa publication et jamais modifiée depuis. Elle est conservée pour que quiconque a accepté cette version puisse lire exactement ce qu’il a accepté. Ce n’est peut-être pas ce qui s’applique aujourd’hui.',
+    'la.note': 'Ce qui a changé',
+    'la.current': 'Lire la version en vigueur',
+    'la.foot': 'Version archivée {v}, publiée le {d}.',
+    'la.gone.t': 'Version introuvable',
+    'la.gone.s': 'Cette version archivée n’existe pas, ou son lien est erroné.',
+    'la.back': 'Toutes les politiques',
     'al.publish.btn': 'Publier une version',
     'al.publish.t': 'Publier ce document',
     'al.publish.l': 'Qu’est-ce qui change ? (montré aux lecteurs dans l’archive)',

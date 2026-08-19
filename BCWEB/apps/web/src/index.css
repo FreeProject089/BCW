@@ -798,6 +798,41 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
   #invoice-print, #invoice-print * { visibility: visible !important; }
   #invoice-print { position: absolute !important; left: 0; top: 0; width: 100%; max-width: 640px; margin: 0 auto; padding: 32px; color: #111; background: #fff; }
   #invoice-print .tabular-nums, #invoice-print b, #invoice-print .font-bold, #invoice-print .font-medium, #invoice-print .font-extrabold { color: #111; }
+
+  /* ── Legal pages ────────────────────────────────────────────────────────────
+     The rule above hides `body *` and reveals only the invoice, so a legal page
+     printed a blank sheet: the button worked, the paper was empty. A policy is the
+     one thing on this site people genuinely print and file, so it gets the same
+     treatment — and everything it holds must be readable ON PAPER, which means dark
+     text on white regardless of the theme the reader happens to be using. */
+  #legal-print, #legal-print * { visibility: visible !important; }
+  #legal-print {
+    position: absolute !important; left: 0; top: 0;
+    width: 100%; max-width: none; margin: 0; padding: 0;
+    color: #111; background: #fff;
+  }
+  /* The page's own tokens resolve to light-on-dark in the dark theme and would print as
+     white ink. Forced, because print has no theme to follow. */
+  #legal-print h1, #legal-print h2, #legal-print h3, #legal-print strong, #legal-print b { color: #000 !important; }
+  #legal-print p, #legal-print li, #legal-print span, #legal-print div { color: #222 !important; }
+  #legal-print [class*="rounded"], #legal-print [class*="border"] {
+    background: #fff !important; border-color: #ccc !important; box-shadow: none !important;
+  }
+  #legal-print a { color: #111 !important; text-decoration: underline; }
+  /* A URL after every link is what makes a printed policy unreadable — the text is full of
+     cross-references and each one would interrupt a sentence. The link text is enough. */
+  #legal-print a[href]::after { content: "" !important; }
+
+  /* Navigation, the contents rail, the tab row and the print button itself are chrome. */
+  #legal-print nav, .print\:hidden { display: none !important; }
+
+  /* Never split a clause across two sheets, and never leave its heading alone at the foot
+     of one — a section whose heading is on the previous page reads as part of the wrong
+     clause, which on a legal document is not a cosmetic problem. */
+  #legal-print section { break-inside: avoid; page-break-inside: avoid; }
+  #legal-print h2 { break-after: avoid; page-break-after: avoid; }
+
+  @page { margin: 18mm 16mm; }
 }
 
 /* ── Prism, wearing BCWEB's variables ───────────────────────────────────────

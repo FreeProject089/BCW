@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api.js';
 import Markdown from '../ui/md.jsx';
-import { Link } from 'react-router-dom';
-import { Lock, ShieldCheck, Cookie, Sparkles, Receipt, FileText, Printer } from 'lucide-react';
+import { Link, useParams } from 'react-router-dom';
+import { Lock, ShieldCheck, Cookie, Sparkles, Receipt, FileText, Printer, History, ArrowLeft, ArrowRight } from 'lucide-react';
 import { PageHeader, Button, Card } from '../ui/ui.jsx';
+import { Loading } from './pages.jsx';
 import { useI18n } from '../i18n.jsx';
 
 /* ─────────────────────────  Legal  ───────────────────────── */
@@ -327,7 +328,7 @@ export function Legal({ page }) {
   }, [page, lang]);
   const tabs = [['about', t('foot.about', 'About'), Sparkles], ['privacy', t('foot.privacy'), Lock], ['terms', t('foot.terms'), ShieldCheck], ['cookies', t('foot.cookies'), Cookie], ['refunds', t('foot.refunds', 'Payments'), Receipt]];
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto" id="legal-print">
       <PageHeader icon={d.icon} title={d.title} subtitle={`${lang === 'fr' ? 'Mis à jour le' : 'Last updated'} ${new Date(`${updated}T00:00:00`).toLocaleDateString()}`} />
       <div className="flex flex-wrap gap-2 mb-5"><Link to="/legal"><Button size="sm" variant="default"><FileText size={14} /> {t('legal.all', 'All')}</Button></Link>{tabs.map(([k, l, I]) => <Link key={k} to={`/legal/${k}`}><Button size="sm" variant={k === page ? 'primary' : 'default'}><I size={14} /> {l}</Button></Link>)}</div>
       {/* plain-language summary */}
@@ -379,6 +380,92 @@ export function Legal({ page }) {
           </div>
         </Card>
       </div>
+    </div>
+  );
+}
+
+
+// A published version, exactly as it was when it was published.
+//
+// The admin screen linked here before this existed, so the link 404'd — the archive was a
+// promise with nothing behind it. This is the page that makes `termsVersion` mean something:
+// somebody who accepted v2 can read v2.
+//
+// It renders the SNAPSHOT and never the live sections, which is the entire point, and it says
+// so on the page rather than leaving a reader to assume they are looking at the current text.
+export function LegalArchive() {
+  const { id } = useParams();
+  const { lang, t } = useI18n();
+  const [v, setV] = useState(undefined);   // undefined = loading, null = not found
+  useEffect(() => {
+    let alive = true;
+    api.get(`/legal/versions/${id}`)
+      .then((r) => { if (alive) setV(r); })
+      .catch(() => { if (alive) setV(null); });
+    return () => { alive = false; };
+  }, [id]);
+
+  if (v === undefined) return <div className="max-w-4xl mx-auto py-16"><Loading /></div>;
+  if (v === null) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <PageHeader icon={History} title={t('la.gone.t', 'Version not found')}
+          subtitle={t('la.gone.s', 'This archived version does not exist, or its link is wrong.')} />
+        <Link to="/legal"><Button size="sm"><ArrowLeft size={14} /> {t('la.back', 'All policies')}</Button></Link>
+      </div>
+    );
+  }
+
+  const sections = Array.isArray(v.sections) ? v.sections : [];
+  const when = new Date(v.publishedAt).toLocaleDateString();
+  const DOC_LABEL = {
+    privacy: lang === 'fr' ? 'Confidentialité' : 'Privacy Policy',
+    terms: lang === 'fr' ? 'Conditions' : 'Terms of Service',
+    cookies: lang === 'fr' ? 'Cookies' : 'Cookie Policy',
+    about: lang === 'fr' ? 'À propos' : 'About',
+    refunds: lang === 'fr' ? 'Paiements & remboursements' : 'Payments & Refunds',
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto" id="legal-print">
+      <PageHeader icon={History} title={`${DOC_LABEL[v.doc] || v.doc} — v${v.version}`}
+        subtitle={`${lang === 'fr' ? 'Publié le' : 'Published'} ${when}`} />
+
+      {/* An archived page that looks like the live one is a trap: somebody lands here from a
+          search result and reads a superseded policy as current. The banner is not decoration. */}
+      <Card className="p-4 mb-6 border-[var(--ring)]" style={{ background: 'color-mix(in srgb, var(--warning) 8%, transparent)' }}>
+        <div className="flex items-start gap-3">
+          <History size={18} className="text-[var(--warning)] shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <div className="font-medium mb-1">{t('la.banner.t', 'This is an archived version')}</div>
+            <p className="text-[var(--muted)] mb-2">
+              {t('la.banner.d', 'Frozen when it was published and never edited since. It is kept so anyone who accepted this version can read exactly what they accepted. It may not be what applies today.')}
+            </p>
+            {v.note && <p className="text-[var(--muted)] mb-2"><span className="font-medium">{t('la.note', 'What changed')}:</span> {v.note}</p>}
+            <Link to={`/legal/${v.doc}`} className="print:hidden">
+              <Button size="sm"><ArrowRight size={14} /> {t('la.current', 'Read the current version')}</Button>
+            </Link>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-6 md:p-8 space-y-8">
+        {sections.map((sec, i) => (
+          <section key={i} className="scroll-mt-24">
+            <h2 className="text-lg font-semibold mb-2.5 flex items-baseline gap-2.5">
+              <span className="text-[var(--primary-2)] font-mono text-xs tabular-nums shrink-0">{String(i + 1).padStart(2, '0')}</span>
+              <span>{(lang === 'fr' && sec.titleFr) || sec.title}</span>
+            </h2>
+            <div className="legal-md"><Markdown>{String((lang === 'fr' && sec.bodyFr) || sec.body || '')}</Markdown></div>
+          </section>
+        ))}
+        <div className="pt-5 border-t border-[var(--line)] text-sm text-[var(--muted)] flex flex-wrap items-center justify-between gap-3">
+          <span>{t('la.foot', 'Archived version {v}, published {d}.').replace('{v}', `v${v.version}`).replace('{d}', when)}</span>
+          <Button size="sm" variant="ghost" onClick={() => window.print()} className="print:hidden">
+            <Printer size={13} /> {lang === 'fr' ? 'Imprimer' : 'Print'}
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 }

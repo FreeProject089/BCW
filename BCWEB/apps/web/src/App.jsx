@@ -67,6 +67,7 @@ const RepoPublicPage = lazy(() => import('./pages/repopublic.jsx'));
 const Hosting = named(() => import('./pages/hosting.jsx'), 'Hosting');
 const Legal = named(() => import('./pages/legal.jsx'), 'Legal');
 const LegalIndex = named(() => import('./pages/legal.jsx'), 'LegalIndex');
+const LegalArchive = named(() => import('./pages/legal.jsx'), 'LegalArchive');
 const Contact = named(() => import('./pages/contact.jsx'), 'Contact');
 const Settings = named(() => import('./pages/account-pages.jsx'), 'Settings');
 const Authorize = named(() => import('./pages/account-pages.jsx'), 'Authorize');
@@ -1135,6 +1136,9 @@ export default function App() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/2fa" element={<TwoFactor />} />
               <Route path="/legal" element={<LegalIndex />} />
+              {/* Archived versions. Linked from the admin editor and from an acceptance
+                  record, so this route is what makes those references resolve. */}
+              <Route path="/legal/archive/:id" element={<LegalArchive />} />
               <Route path="/legal/about" element={<Legal page="about" />} />
               <Route path="/legal/privacy" element={<Legal page="privacy" />} />
               <Route path="/legal/terms" element={<Legal page="terms" />} />
