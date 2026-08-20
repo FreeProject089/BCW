@@ -60,14 +60,25 @@ sous charge). Pourquoi c'est sûr : l'API est **stateless**, et le cache + le ra
 **partagés via Redis**, donc N réplicas se comportent comme un seul. Active **PgBouncer (§2)
 d'abord** (chaque réplica ouvre des connexions DB — le pooler borne le total).
 
-**Comment — une seule commande :**
+**Comment — un seul réglage :**
 
-```bash
-docker compose --profile pgbouncer up -d --scale api=3   # 3 conteneurs API + le pooler
+```ini
+# infra/compose/.env
+API_REPLICAS=3
 ```
 
-C'est tout le changement. Les deux choses qui demandaient une édition manuelle sont
-désormais dans le dépôt :
+```bash
+docker compose --profile pgbouncer up -d   # 3 conteneurs API + le pooler
+```
+
+`--scale api=3` en ligne de commande fait la même chose **une fois**. Ça ne survit pas au
+prochain `docker compose up -d`, et `infra/deploy.sh` fait exactement ça sans `--scale` — donc
+sur une pile scalée, chaque déploiement de routine te ramènerait discrètement à un seul
+conteneur. Pas d'erreur, pas d'avertissement, juste un site lent que personne n'explique.
+`API_REPLICAS` est relu depuis `.env` à chaque fois : il survit aux déploiements, aux
+redémarrages et à `deploy.sh`.
+
+Les deux choses qui demandaient une édition manuelle sont désormais dans le dépôt :
 
 - **Le port de l'hôte est une plage**, `ports: ["3000-3009:3000"]`. Docker donne à chaque
   réplica le port hôte libre suivant, et le premier garde 3000 — donc rien de ce qui parle à

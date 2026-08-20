@@ -59,6 +59,37 @@ docker compose exec db psql -U bcweb -d bcweb   # a psql prompt
 
 ---
 
+## Rebuilding and scaling
+
+```bash
+docker compose up -d --build              # rebuild what changed, replace, keep the volumes
+docker compose build --no-cache api       # ignore the Docker cache (a dependency that won't update)
+docker compose up -d --force-recreate api # re-read .env without rebuilding
+```
+
+For several API replicas, put `API_REPLICAS=3` in `.env` and run the normal command:
+
+```bash
+docker compose --profile pgbouncer up -d --build
+```
+
+Replicas are replaced **one at a time** (the SIGTERM drain is already in place), so a build on
+a scaled stack is a rollout with no downtime.
+
+`--scale api=3` on the command line works too, but it **does not last**: the next
+`docker compose up -d` drops back to one replica — and `infra/deploy.sh` runs exactly that. On
+a scaled stack a routine deploy would therefore lose two thirds of your capacity without a
+word in the logs. `API_REPLICAS` survives deploys; prefer it.
+
+Check the scale-up took:
+
+```bash
+docker compose ps api                     # one line per replica, host ports 3000, 3001, 3002…
+docker compose logs api | grep "incoming request"   # every replica is serving
+```
+
+---
+
 ## Setting a database up
 
 ```bash

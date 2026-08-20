@@ -99,6 +99,17 @@ services:
     # gets 3000 (so the Vite dev proxy and every local curl keep working), and scaling up is
     # a flag with nothing else to change.
     ports: ["3000-3009:3000"]
+    # How many API replicas, as a SETTING rather than a flag you have to remember.
+    #
+    # `--scale api=3` only lasts until the next `docker compose up -d` — and `infra/deploy.sh`
+    # runs exactly that, with no --scale. So on a scaled deployment every routine deploy would
+    # quietly drop the API back to one container: no error, no warning, just a third of the
+    # capacity and a site that gets slow for reasons nobody can see in a log.
+    #
+    # Set API_REPLICAS in .env instead and the count survives deploys, restarts and deploy.sh.
+    # Defaults to 1, so a single-VPS install behaves exactly as before.
+    deploy:
+      replicas: ${API_REPLICAS:-1}
     depends_on:
       db:
         condition: service_healthy

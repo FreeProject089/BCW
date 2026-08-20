@@ -104,7 +104,7 @@ service se recrée (coupure de quelques secondes sur ce service seulement). Pour
   (https), `COOKIE_DOMAIN=.ton-domaine.com`, clés Stripe + secret webhook.
 - Ports : en prod tu peux retirer les ports publiés `3000` (api) et `9001` (console
   MinIO) du compose si tu n'en as pas besoin de l'extérieur — Caddy route en interne.
-- Montée en charge : `docker compose up -d --scale api=3` + profil `pgbouncer`
+- Montée en charge : `API_REPLICAS=3` dans `.env` + profil `pgbouncer`, puis `up -d`
   (voir guide DEPLOY §Performance) quand le trafic le justifie.
 - Sauvegardes : `pg_dump` pour `db`, miroir de `minio-data` (guide DEPLOY §10).
 

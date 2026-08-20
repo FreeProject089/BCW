@@ -129,7 +129,7 @@ their own project. This is almost certainly not your answer.
 **Move here when** one API container saturates. The API is stateless and its cache and rate
 limiter are shared through Redis, so replicas behave as one.
 
-It is `docker compose up -d --scale api=3` and nothing else — the host port is a range and
+It is `API_REPLICAS=3` in `.env` and the usual `up -d` — the host port is a range and
 Caddy re-resolves `api`, so both of the things that used to need hand-editing are already in
 the repo. [ADDONS_EN.md](ADDONS_EN.md) §3 has the detail, including the one proxy that stays
 static.

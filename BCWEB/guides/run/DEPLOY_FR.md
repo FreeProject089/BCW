@@ -280,9 +280,10 @@ charge → mettre un CDN devant* ci-dessous.
    sont instantanés.
 
 **Quand un seul conteneur API ne suffit plus :**
-- Lance 2–4 réplicas `api` derrière Caddy — `docker compose up -d --scale api=3`, et rien
-  d'autre : le port hôte est une plage et Caddy résout `api` dynamiquement, donc la
-  répartition suit toute seule. Le cache/limiter Redis rendent déjà ça sûr.
+- Lance 2–4 réplicas `api` derrière Caddy — mets `API_REPLICAS=3` dans `.env` et lance le
+  `docker compose up -d` habituel. Rien d'autre : le port hôte est une plage et Caddy résout
+  `api` dynamiquement, donc la répartition suit toute seule. Le cache/limiter Redis rendent
+  déjà ça sûr. (Le réglage, pas `--scale` : un flag ne survit pas au prochain déploiement.)
 - Active le pooler **PgBouncer** : `docker compose --profile pgbouncer up -d`, puis dans
   `.env` mets `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true`
   (`DIRECT_DATABASE_URL` reste sur `db:5432` pour les migrations, géré automatiquement).

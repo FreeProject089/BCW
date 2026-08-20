@@ -94,6 +94,7 @@ Callback à déclarer chez chaque fournisseur : `<SITE_URL>/api/auth/oauth/<prov
 | `DIRECT_DATABASE_URL` | URL directe (non poolée) — pour les migrations. |
 | `DB_HOST` / `DB_PORT` / `DB_URL_PARAMS` | pour router l'API via **PgBouncer** (`pgbouncer` / `6432` / `?pgbouncer=true`). |
 | `PGBOUNCER_UPSTREAM_HOST` / `PGBOUNCER_UPSTREAM_PORT` | pour que PgBouncer poole une base managée/distante au lieu du `db` local. |
+| `API_REPLICAS` | nombre de conteneurs `api` (défaut `1`). À monter seulement quand un seul sature, et en activant PgBouncer en même temps. À préférer à `--scale api=N` : le flag ne survit pas au prochain `docker compose up -d`, et `deploy.sh` fait exactement ça. |
 
 ## 12. Divers
 | Variable | Rôle |

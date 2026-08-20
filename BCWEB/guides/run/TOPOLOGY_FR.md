@@ -132,7 +132,7 @@ deviennent chacun un projet à part entière. Ce n'est presque certainement pas 
 **Passe ici quand** un conteneur API sature. L'API est sans état, et son cache comme son
 limiteur de débit sont partagés via Redis : les réplicas se comportent comme un seul.
 
-C'est `docker compose up -d --scale api=3` et rien d'autre — le port hôte est une plage et
+C'est `API_REPLICAS=3` dans `.env` et le `up -d` habituel — le port hôte est une plage et
 Caddy re-résout `api`, donc les deux choses qui demandaient une édition manuelle sont déjà
 dans le dépôt. [ADDONS_FR.md](ADDONS_FR.md) §3 donne le détail, dont le seul proxy qui reste
 statique.

@@ -102,7 +102,7 @@ service recreates (a few seconds gap on that service only). For the api you can
   (https), `COOKIE_DOMAIN=.your-domain.com`, Stripe keys + webhook secret.
 - Ports: in prod you can remove the published `3000` (api) and `9001` (MinIO console)
   from the compose if you don't need them from outside — Caddy routes internally.
-- Scaling: `docker compose up -d --scale api=3` + enable the `pgbouncer` profile
+- Scaling: `API_REPLICAS=3` in `.env` + enable the `pgbouncer` profile, then `up -d`
   (see DEPLOY guide §Performance) once traffic justifies it.
 - Backups: `pg_dump` for `db`, mirror `minio-data` (see DEPLOY guide §10).
 

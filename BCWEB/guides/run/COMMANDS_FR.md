@@ -60,6 +60,37 @@ docker compose exec db psql -U bcweb -d bcweb   # une invite psql
 
 ---
 
+## Reconstruire et monter en charge
+
+```bash
+docker compose up -d --build              # reconstruire ce qui a changé, remplacer, garder les volumes
+docker compose build --no-cache api       # ignorer le cache Docker (dépendance qui ne se met pas à jour)
+docker compose up -d --force-recreate api # relire .env sans reconstruire
+```
+
+Pour plusieurs répliques d'API, mets `API_REPLICAS=3` dans `.env` puis la commande normale :
+
+```bash
+docker compose --profile pgbouncer up -d --build
+```
+
+Les répliques sont remplacées **une par une** (le drain SIGTERM est déjà en place), donc un
+build sur une pile scalée est un rollout sans coupure.
+
+`--scale api=3` en ligne de commande marche aussi, mais **ne dure pas** : le prochain
+`docker compose up -d` ramène à une seule réplique — et `infra/deploy.sh` fait exactement ça.
+Sur une pile scalée, le déploiement de routine te ferait donc perdre les deux tiers de la
+capacité sans un mot dans les logs. `API_REPLICAS` survit aux déploiements ; préfère-le.
+
+Vérifier que la montée a pris :
+
+```bash
+docker compose ps api                     # une ligne par réplique, ports hôte 3000, 3001, 3002…
+docker compose logs api | grep "incoming request"   # toutes les répliques servent
+```
+
+---
+
 ## Préparer une base
 
 ```bash

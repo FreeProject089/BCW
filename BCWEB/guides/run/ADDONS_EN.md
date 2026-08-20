@@ -59,13 +59,24 @@ load). Why it's safe: the API is **stateless**, and the cache + rate-limiter are
 via Redis**, so N replicas behave as one. Enable **PgBouncer (§2) first** (each replica opens
 DB connections — the pooler keeps the total bounded).
 
-**How — one command:**
+**How — one setting:**
 
-```bash
-docker compose --profile pgbouncer up -d --scale api=3   # 3 API containers + the pooler
+```ini
+# infra/compose/.env
+API_REPLICAS=3
 ```
 
-That is the whole change. Both things that used to need hand-editing are now in the repo:
+```bash
+docker compose --profile pgbouncer up -d   # 3 API containers + the pooler
+```
+
+`--scale api=3` on the command line does the same thing **once**. It does not survive the next
+`docker compose up -d`, and `infra/deploy.sh` runs exactly that with no `--scale` — so on a
+scaled stack every routine deploy would quietly drop you back to one container. No error, no
+warning, just a slow site nobody can explain. `API_REPLICAS` is read from `.env` every time,
+so it survives deploys, restarts and `deploy.sh`.
+
+Both things that used to need hand-editing are now in the repo:
 
 - **The host port is a range**, `ports: ["3000-3009:3000"]`. Docker gives each replica the
   next free host port, and the first still gets 3000 — so nothing that talks to
