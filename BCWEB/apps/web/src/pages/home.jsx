@@ -11,6 +11,7 @@ import Avatar from '../ui/Avatar.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { AuthorsRow } from './blog.jsx';
+import { PollCard } from './polls.jsx';
 import { AppLogo, KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { useAsync } from './pages.jsx';
 
@@ -110,6 +111,10 @@ export function Home() {
   // render because a commission service did not answer.
   const { data: myo } = useAsync(() => api.get('/myo/products').catch(() => null), []);
   const { data: reviewsData } = useAsync(() => api.get('/reviews').catch(() => null), []);
+  // Pinned, open, public polls only — the endpoint decides all three, so the home page
+  // cannot accidentally surface one that is unlisted or private. `.catch` because a poll
+  // failing to load must never take the front page down with it.
+  const { data: pollData } = useAsync(() => api.get('/polls?home=1').catch(() => null), []);
   const { user } = useAuth();
   const { t, lang } = useI18n();
   const root = useScrollReveal();
@@ -412,6 +417,25 @@ export function Home() {
                 );
               })}
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* A pinned poll, when there is one.
+          The schema has said "optionally pinned to the home page" since polls shipped, and
+          nothing ever rendered it — `pinned` only ever affected the sort order on /polls. So
+          the field was half a feature: an admin could pin a poll and watch nothing happen. */}
+      {!!pollData?.polls?.length && (
+        <section>
+          <SectionKicker n="05" label={t('home.k.poll', 'Your say')} />
+          <div className="reveal-on-scroll flex items-center justify-between mb-5">
+            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{t('home.poll', 'One question')}</h2>
+            <Link to="/polls" className="text-sm text-[var(--primary-2)] flex items-center gap-1 hover:gap-2 transition-all">
+              {t('home.poll.all', 'All polls')} <ArrowRight size={13} />
+            </Link>
+          </div>
+          <div className="reveal-on-scroll max-w-2xl">
+            {pollData.polls.map((poll) => <PollCard key={poll.id} poll={poll} />)}
           </div>
         </section>
       )}

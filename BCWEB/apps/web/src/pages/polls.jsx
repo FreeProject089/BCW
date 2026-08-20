@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BarChart3, Check, Lock, Users } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { QuestionResults } from '../ui/poll-results.jsx';
@@ -485,6 +485,59 @@ export default function PollsPage() {
       {!polls.length ? <EmptyState icon={BarChart3} title={t('poll.page.none', 'No poll running.')} sub={t('poll.page.none.s', 'Come back — there will be one.')} /> : (
         <div className="space-y-4">{polls.map((p) => <PollCard key={p.id} poll={p} />)}</div>
       )}
+    </div>
+  );
+}
+
+/**
+ * One poll on its own page — /polls/:id, optionally with ?k=<shareKey>.
+ *
+ * This route exists because an unlisted poll has nowhere else to live: it is deliberately in
+ * no list, so a link to the LIST page cannot reach it. The key rides through untouched to the
+ * API, which is the only thing that decides whether it opens.
+ *
+ * It renders the same PollCard the list does. A second rendering for the shared link is how
+ * two versions of a poll start disagreeing about what it says.
+ */
+export function SinglePollPage() {
+  const { t } = useI18n();
+  const { id } = useParams();
+  const [sp] = useSearchParams();
+  const k = sp.get('k');
+  const { data, err, loading } = useAsync(
+    () => api.get(`/polls/${id}${k ? `?k=${encodeURIComponent(k)}` : ''}`), [id, k]);
+
+  if (loading) return <Loading />;
+
+  // The API answers 404 for every refusal — wrong key, no key, private, draft — because a 403
+  // would confirm the poll exists, which is the one fact an unlisted poll is hiding. So this
+  // page cannot tell those apart either, and says the true thing rather than guessing.
+  if (err || !data?.id) {
+    return (
+      <div className="max-w-2xl mx-auto py-10">
+        <EmptyState
+          icon={Lock}
+          title={t('poll.one.gone', 'This poll is not available')}
+          sub={t('poll.one.gone.s', 'It may have been removed, or the link may be missing the part after ?k= — that part is what opens an unlisted poll, and it is easy to lose when a link is pasted.')}
+        />
+        <div className="text-center mt-4">
+          <Link to="/polls" className="text-sm text-[var(--primary-2)] hover:underline">{t('poll.one.all', 'See the polls that are open')}</Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto py-8">
+      <PollCard poll={data} />
+      {data.visibility === 'unlisted' && (
+        <p className="text-[11px] text-[var(--faint)] mt-3 text-center">
+          {t('poll.one.unlisted', 'You are here through a private link. This poll is not listed anywhere.')}
+        </p>
+      )}
+      <div className="text-center mt-4">
+        <Link to="/polls" className="text-sm text-[var(--primary-2)] hover:underline">{t('poll.one.all', 'See the polls that are open')}</Link>
+      </div>
     </div>
   );
 }

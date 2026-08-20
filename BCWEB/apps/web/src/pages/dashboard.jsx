@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders,
+  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders, BarChart3,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { api, uploadPayload } from '../lib/api.js';
@@ -371,6 +371,11 @@ export function Dashboard() {
     { icon: Server, label: t('dash.repos', 'Repos'), value: rlist.length },
     { icon: Star, label: t('dash.featured', 'Featured'), value: rlist.filter((r) => r.featuredUntil && new Date(r.featuredUntil) > new Date()).length, tone: 'text-warning' },
   ];
+  // How many polls are still waiting on this person, for the sidebar badge. `.catch` because
+  // a badge is not worth taking the dashboard down for, and a missing number simply hides it.
+  const { data: pollMe } = useAsync(() => api.get('/me/polls').catch(() => null), []);
+  const pollsOpen = pollMe?.open?.length || 0;
+
   // Quick actions — no "Write a post" here (that lives in the Blog for staff).
   const actions = [
     { icon: Upload, label: t('sub.title', 'Submit content'), to: '/submit' },
@@ -384,6 +389,9 @@ export function Dashboard() {
     { id: 'catalogs', label: t('dash.mycatalogs', 'My catalogs'), icon: Boxes },
     { id: 'repos', label: t('dash.myrepos', 'My repos'), icon: Server, badge: rlist.length || undefined },
     { id: 'starred', label: t('dash.starred', 'Starred'), icon: Star },
+    // The badge counts what is still WAITING, not what has been answered — a number that
+    // goes down as you use it, rather than one that only ever grows and stops meaning anything.
+    { id: 'polls', label: t('dash.polls', 'Polls'), icon: BarChart3, badge: pollsOpen || undefined },
     { id: 'billing', label: t('dash.billing', 'Billing'), icon: Receipt },
     { id: 'reports', label: t('dash.reports', 'Reports & contact'), icon: MessageSquare },
   ];
@@ -472,6 +480,7 @@ export function Dashboard() {
           {s === 'catalogs' && <OwnerCatalogs />}
           {s === 'repos' && <MyRepos />}
           {s === 'starred' && <Starred />}
+          {s === 'polls' && <MyPolls />}
           {s === 'billing' && <Billing />}
           {s === 'reports' && <MyReports />}
         </>)}
@@ -655,6 +664,79 @@ const KIND_COPY = {
 // finding the thing again later, which the star buttons on /r/:id and /c/:slug couldn't
 // deliver on their own. The API returns the two lists already filtered to what's still
 // reachable, so an unlisted repo or a suspended catalog doesn't resurface through an old star.
+/**
+ * Polls, from the answerer's side: what is still waiting, then what you already said.
+ *
+ * Waiting comes FIRST and answered is collapsed underneath, because a dashboard panel that
+ * opens on a list of things you have already done prompts nobody to do anything. The server
+ * decides what counts as waiting — it excludes unlisted and private polls, so this panel can
+ * never advertise a poll that is deliberately hidden.
+ */
+function MyPolls() {
+  const { t } = useI18n();
+  const { data, loading } = useAsync(() => api.get('/me/polls'), []);
+  if (loading) return <div className="py-8 text-center"><Spinner /></div>;
+  const open = data?.open || [];
+  const answered = data?.answered || [];
+  const votes = data?.votes || [];
+
+  if (!open.length && !answered.length && !votes.length) {
+    return <EmptyState icon={BarChart3} title={t('dash.polls.none', 'No poll running')}
+      sub={t('dash.polls.none.s', 'When there is a question about where this goes next, it shows up here.')} />;
+  }
+
+  return (
+    <div className="space-y-5">
+      {open.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold mb-2">{t('dash.polls.open', 'Waiting for you')}</h3>
+          <div className="space-y-2">
+            {open.map((p) => (
+              <Card key={p.id} className="p-4 flex items-start gap-3">
+                <BarChart3 size={16} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <Link to={`/polls/${p.id}`} className="font-medium hover:underline">{p.question}</Link>
+                  {p.description && <p className="text-xs text-[var(--muted)] mt-0.5 line-clamp-2">{p.description}</p>}
+                  {p.closesAt && (
+                    <p className="text-[11px] text-[var(--faint)] mt-1">
+                      {t('dash.polls.closes', 'Closes {d}').replace('{d}', new Date(p.closesAt).toLocaleDateString())}
+                    </p>
+                  )}
+                </div>
+                <Link to={`/polls/${p.id}`}><Button size="sm" variant="primary">{t('dash.polls.answer', 'Answer')}</Button></Link>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(answered.length > 0 || votes.length > 0) && (
+        <div>
+          <h3 className="text-sm font-semibold mb-2">{t('dash.polls.done', 'You have answered')}</h3>
+          <Card className="divide-y divide-[var(--line)]">
+            {answered.map((a) => (
+              <div key={a.pollId} className="px-4 py-2.5 flex items-center gap-2">
+                <CheckCircle2 size={14} className="text-success shrink-0" />
+                <Link to={`/polls/${a.pollId}`} className="text-sm truncate hover:underline flex-1 min-w-0">{a.poll.question}</Link>
+                <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(a.at).toLocaleDateString()}</span>
+              </div>
+            ))}
+            {/* The single-question shape, which records one row per chosen option rather than
+                one per poll — so the option you picked is worth showing, unlike above. */}
+            {votes.slice(0, 20).map((v) => (
+              <div key={v.id} className="px-4 py-2.5 flex items-center gap-2">
+                <CheckCircle2 size={14} className="text-success shrink-0" />
+                <Link to={`/polls/${v.poll?.id}`} className="text-sm truncate hover:underline flex-1 min-w-0">{v.poll?.question}</Link>
+                <span className="text-[11px] text-[var(--faint)] shrink-0 truncate max-w-[40%]">{v.option?.label}</span>
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Starred() {
   const { t } = useI18n();
   const { data, loading } = useAsync(() => api.get('/me/favorites'), []);

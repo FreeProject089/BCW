@@ -1,10 +1,42 @@
 import { useState } from 'react';
-import { BarChart3, Plus, Trash2, PenSquare, Users, Globe, Pin, Eye, ListTree, ArrowUp, ArrowDown } from 'lucide-react';
+import { BarChart3, Plus, Trash2, PenSquare, Users, Globe, Pin, Eye, ListTree, ArrowUp, ArrowDown, Link2, EyeOff, Lock, Copy, Check } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { QTally, Distribution, QuestionResults, CHART_INK } from '../ui/poll-results.jsx';
-import { Card, Button, Input, Textarea, Select, Badge, Modal, Field, EmptyState, Spinner, useToast, useDialog } from '../ui/ui.jsx';
+import { Card, Button, Input, Textarea, Select, Badge, Modal, Field, EmptyState, Spinner, useToast, useDialog, copyText } from '../ui/ui.jsx';
 import { useAsync, Loading } from './pages.jsx';
+
+/** The link to share, and a button that actually copies it.
+ *
+ * An unlisted poll is useless without its key, and a key that has to be assembled by hand from
+ * two fields on an admin screen is a key that gets pasted wrong. So the URL is built once,
+ * here, from the same two pieces the API checks — and the button copies THAT, not the address
+ * bar. A "copy link" that copies the admin page is worse than none.
+ */
+function PollLink({ poll }) {
+  const { t } = useI18n(); const toast = useToast();
+  const [done, setDone] = useState(false);
+  if (poll.visibility === 'private') return null;
+  const url = `${window.location.origin}/polls/${poll.id}${poll.shareKey ? `?k=${encodeURIComponent(poll.shareKey)}` : ''}`;
+  // ui.jsx's copyText, not a second clipboard implementation: navigator.clipboard is undefined
+  // outside a secure context — which is exactly how this is served locally — and that fallback
+  // is already written, already handles the failure, and is already the one every other copy
+  // button on the site uses.
+  const copy = async () => {
+    if (await copyText(url)) { setDone(true); setTimeout(() => setDone(false), 1500); }
+    else toast.error(t('apoll.copy.failed', 'Could not copy — the link is selectable above.'));
+  };
+  return (
+    <div className="flex items-center gap-1.5 mt-1">
+      <Link2 size={11} className="text-[var(--faint)] shrink-0" />
+      <code className="text-[10px] text-[var(--faint)] truncate min-w-0 font-mono" title={url}>{url}</code>
+      <button type="button" onClick={copy} title={t('apoll.copy', 'Copy the link')}
+        className="shrink-0 text-[var(--faint)] hover:text-[var(--fg)] transition">
+        {done ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+      </button>
+    </div>
+  );
+}
 
 // Admin tab for polls. Gated by `manage_polls`.
 //
@@ -13,7 +45,7 @@ import { useAsync, Loading } from './pages.jsx';
 // half is an estimate — because that is the number that ends up in a decision.
 
 const emptyDraft = () => ({
-  question: '', description: '', audience: 'users', multiple: false, maxChoices: 0,
+  question: '', description: '', audience: 'users', visibility: 'public', multiple: false, maxChoices: 0,
   status: 'draft', results: 'after_vote', pinned: false, closesAt: '', options: ['', ''],
 });
 
@@ -64,7 +96,7 @@ function PollEditor({ open, initial, onClose, onSaved }) {
     try {
       const body = {
         question: d.question.trim(), description: d.description.trim(),
-        audience: d.audience, multiple: d.multiple, maxChoices: Number(d.maxChoices) || 0,
+        audience: d.audience, visibility: d.visibility || 'public', multiple: d.multiple, maxChoices: Number(d.maxChoices) || 0,
         status: d.status, results: d.results, pinned: d.pinned,
         closesAt: d.closesAt ? new Date(d.closesAt).toISOString() : null,
         // Never sent once somebody has answered — the API refuses it anyway, and sending it
@@ -132,6 +164,16 @@ function PollEditor({ open, initial, onClose, onSaved }) {
             <Select value={d.audience} onChange={(e) => set('audience', e.target.value)}>
               <option value="users">{t('apoll.aud.users', 'Members only')}</option>
               <option value="all">{t('apoll.aud.all', 'Everyone')}</option>
+            </Select>
+          </Field>
+          <Field label={t('apoll.visibility', 'Where it can be found')}
+            hint={d.visibility === 'public' ? t('apoll.vis.public.h', 'Listed on the polls page, and on the home page when pinned.')
+              : d.visibility === 'unlisted' ? t('apoll.vis.unlisted.h', 'Reachable only by its link. Not in any list, not in search. The link is shown on the poll once saved.')
+              : t('apoll.vis.private.h', 'Staff only. The link does nothing for anybody else — use this for a draft you want to read back in place.')}>
+            <Select value={d.visibility} onChange={(e) => set('visibility', e.target.value)}>
+              <option value="public">{t('apoll.vis.public', 'Public — listed')}</option>
+              <option value="unlisted">{t('apoll.vis.unlisted', 'Unlisted — link only')}</option>
+              <option value="private">{t('apoll.vis.private', 'Private — staff only')}</option>
             </Select>
           </Field>
           <Field label={t('apoll.results', 'Show the tally')}>
@@ -696,7 +738,17 @@ export function AdminPolls() {
                     <Badge tone={poll.audience === 'all' ? 'amber' : 'primary'}>
                       {poll.audience === 'all' ? <><Globe size={11} /> {t('apoll.aud.all', 'Everyone')}</> : <><Users size={11} /> {t('apoll.aud.users', 'Members only')}</>}
                     </Badge>
+                    {/* Only shown when it is NOT the default. A badge on every row saying
+                        "public" is a badge nobody reads, and the whole value of this one is
+                        being able to spot at a glance the poll that is hidden. */}
+                    {poll.visibility === 'unlisted' && (
+                      <Badge tone="amber"><EyeOff size={11} /> {t('apoll.vis.unlisted.b', 'Link only')}</Badge>
+                    )}
+                    {poll.visibility === 'private' && (
+                      <Badge tone="red"><Lock size={11} /> {t('apoll.vis.private.b', 'Staff only')}</Badge>
+                    )}
                   </div>
+                  <PollLink poll={poll} />
                   <div className="text-[11px] text-[var(--faint)] mt-0.5">
                     {t('apoll.summary', '{n} answers — {u} signed in, {a} anonymous')
                       .replace('{n}', String(poll.total || 0)).replace('{u}', String(poll.userTotal || 0)).replace('{a}', String(poll.anonTotal || 0))}

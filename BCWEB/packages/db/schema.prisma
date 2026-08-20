@@ -2765,8 +2765,22 @@ model Poll {
   // 'always' | 'after_vote' | 'staff' — when a voter may see the tally. after_vote is the
   // default because showing a running total before someone answers steers the answer.
   results     String   @default("after_vote")
-  // Shown on the site's poll page, and optionally pinned to the home page.
+  // Shown on the site's poll page, and pinned to the home page when true.
   pinned      Boolean  @default(false)
+  // WHERE it can be found — a different question from `audience`, which is who may answer.
+  // A poll can be answerable by anyone and still not be listed anywhere.
+  //
+  //   'public'   listed on /polls, and on the home page when pinned
+  //   'unlisted' reachable only at /polls/<id>?k=<shareKey> — not in any list, not in search
+  //   'private'  staff only; the link does nothing for anybody else
+  //
+  // Default 'public' because that is what every existing poll already is: they are all listed
+  // today, and a default of anything else would make them vanish on migration.
+  visibility  String   @default("public")
+  // The secret in an unlisted poll's URL. Empty until the poll is made unlisted, and it is
+  // NOT returned to people who cannot already see the poll — otherwise the list endpoint
+  // would hand out the keys to everything it is hiding.
+  shareKey    String   @default("")
   createdBy   User?    @relation("PollAuthor", fields: [createdById], references: [id], onDelete: SetNull)
   createdById String?
   createdAt   DateTime @default(now())

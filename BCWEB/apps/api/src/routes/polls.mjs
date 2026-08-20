@@ -13,6 +13,7 @@ import { db, requireRole, requireCap, optionalAuth, logAudit } from '../lib/lib.
 import { clientIp } from '../lib/geo.mjs';
 import { pollStats, questionStats, completion } from '../lib/poll-stats.mjs';
 import { planQuestionUpdate } from '../lib/poll-edit.mjs';
+import { mayViewPoll, listWhere, shareKeyFor, newShareKey, POLL_VISIBILITIES } from '../lib/poll-visibility.mjs';
 import { validateAnswer, maxAnswers, validateRanking, validateGrid, ALL_QUESTION_KINDS, isAnswerable } from '../lib/poll-answer.mjs';
 
 /** Per-poll device fingerprint for anonymous voters.
@@ -53,6 +54,7 @@ function publicPoll(poll, { myVotes = [], showResults = false } = {}) {
     audience: poll.audience, multiple: poll.multiple, maxChoices: poll.maxChoices,
     status: poll.status, opensAt: poll.opensAt, closesAt: poll.closesAt,
     results: poll.results, pinned: poll.pinned, createdAt: poll.createdAt,
+    visibility: poll.visibility || 'public',
     open: openNow(poll),
     options,
     myVotes,
@@ -90,9 +92,15 @@ export default async function pollRoutes(app) {
   app.get('/polls', { preHandler: optionalAuth() }, async (req) => {
     const p = await db();
     const polls = await p.poll.findMany({
-      where: { status: { in: ['open', 'closed'] } },
+      // The rule lives in poll-visibility.mjs, next to the predicate this must agree with.
+      // Written out here instead, it would be the second copy of a rule — and the day the
+      // two disagree is the day a staff-only poll is listed on the public page.
+      // `?home=1` narrows to the pinned ones, for the home page. Same rule, same shape, one
+      // extra clause — rather than a second endpoint that would have to be kept in step with
+      // this one's visibility filter.
+      where: { ...listWhere({ role: req.user?.role || null }), ...(req.query?.home ? { pinned: true, status: 'open' } : {}) },
       orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
-      take: 50,
+      take: req.query?.home ? 2 : 50,
       include: {
         options: { orderBy: { sort: 'asc' } },
         votes: { select: { optionId: true, wasLoggedIn: true, userId: true, voterKey: true } },
@@ -180,7 +188,11 @@ export default async function pollRoutes(app) {
         questions: { include: { choices: true } },
       },
     });
-    if (!poll || poll.status === 'draft') return reply.code(404).send({ error: 'not_found' });
+    // 404 rather than 403 for every refusal: a 403 confirms the poll exists, which is the
+    // one fact an unlisted poll is trying not to leak.
+    if (!mayViewPoll(poll, { role: req.user?.role || null, key: req.query?.k || null })) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
     const mine = myVotesOf(req, poll);
     const questions = viewQuestions(poll);
     // Read BEFORE the body is built. `showResults` is not a field on the response — it decides
@@ -213,7 +225,13 @@ export default async function pollRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const poll = await p.poll.findUnique({ where: { id: req.params.id }, include: { options: { select: { id: true } } } });
-    if (!poll || poll.status === 'draft') return reply.code(404).send({ error: 'not_found' });
+    if (!poll) return reply.code(404).send({ error: 'not_found' });
+    // Same gate as reading it. Without this, knowing an id is enough to answer a poll that
+    // is not listed anywhere and was never meant for you — the read side would hide it and
+    // the write side would take the vote.
+    if (!mayViewPoll(poll, { role: req.user?.role || null, key: req.query?.k || null })) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
     if (!openNow(poll)) return reply.code(409).send({ error: 'closed' });
     if (poll.audience === 'users' && !req.user?.uid) return reply.code(401).send({ error: 'sign_in_required' });
 
@@ -290,7 +308,13 @@ export default async function pollRoutes(app) {
       where: { id: req.params.id },
       include: { questions: { include: { choices: { select: { id: true } } } } },
     });
-    if (!poll || poll.status === 'draft') return reply.code(404).send({ error: 'not_found' });
+    if (!poll) return reply.code(404).send({ error: 'not_found' });
+    // Same gate as reading it. Without this, knowing an id is enough to answer a poll that
+    // is not listed anywhere and was never meant for you — the read side would hide it and
+    // the write side would take the vote.
+    if (!mayViewPoll(poll, { role: req.user?.role || null, key: req.query?.k || null })) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
     if (!openNow(poll)) return reply.code(409).send({ error: 'closed' });
     if (poll.audience === 'users' && !req.user?.uid) return reply.code(401).send({ error: 'sign_in_required' });
     if (!poll.questions.length) return reply.code(409).send({ error: 'no_questions' });
@@ -374,6 +398,12 @@ export default async function pollRoutes(app) {
     const p = await db();
     const poll = await p.poll.findUnique({ where: { id: req.params.id } });
     if (!poll) return reply.code(404).send({ error: 'not_found' });
+    // Same gate as reading it. Without this, knowing an id is enough to answer a poll that
+    // is not listed anywhere and was never meant for you — the read side would hide it and
+    // the write side would take the vote.
+    if (!mayViewPoll(poll, { role: req.user?.role || null, key: req.query?.k || null })) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
     if (!openNow(poll)) return reply.code(409).send({ error: 'closed' });
     const userId = req.user?.uid || null;
     const where = { pollId: poll.id, ...(userId ? { userId } : { voterKey: voterKeyFor(req, poll.id) }) };
@@ -387,14 +417,53 @@ export default async function pollRoutes(app) {
     return { ok: true, removed: r.count };
   });
 
-  /** The polls one user answered — for the profile, and for admin User details. */
+  /** The polls one user answered — for the profile, the dashboard, and admin User details.
+   *
+   * `votes` is PollVote: the single-question shape, one row per chosen option. It was the whole
+   * of this endpoint, and that made every MULTI-QUESTION poll invisible here — those write
+   * PollAnswer rows and never touch PollVote, so somebody who had filled in a five-question
+   * form was told they had answered nothing.
+   *
+   * So `answered` is the same question asked of the other table, deduplicated to one row per
+   * poll (a form poll has one PollAnswer per question, and listing "you answered this" five
+   * times is not what anybody meant). And `open` is what is still waiting for them, which is
+   * the half a dashboard actually needs — a list of what you already did prompts nobody.
+   */
   app.get('/me/polls', { preHandler: requireRole() }, async (req) => {
     const p = await db();
-    const votes = await p.pollVote.findMany({
-      where: { userId: req.user.uid }, orderBy: { createdAt: 'desc' }, take: 100,
-      include: { option: { select: { label: true } }, poll: { select: { id: true, question: true, status: true } } },
+    const uid = req.user.uid;
+    const [votes, answerRows] = await Promise.all([
+      p.pollVote.findMany({
+        where: { userId: uid }, orderBy: { createdAt: 'desc' }, take: 100,
+        include: { option: { select: { label: true } }, poll: { select: { id: true, question: true, status: true } } },
+      }),
+      p.pollAnswer.findMany({
+        where: { userId: uid }, orderBy: { createdAt: 'desc' }, take: 500,
+        select: { pollId: true, createdAt: true, poll: { select: { id: true, question: true, status: true, visibility: true } } },
+      }),
+    ]);
+
+    const seen = new Set();
+    const answered = [];
+    for (const r of answerRows) {
+      if (!r.poll || seen.has(r.pollId)) continue;
+      seen.add(r.pollId);
+      answered.push({ pollId: r.pollId, at: r.createdAt, poll: r.poll });
+    }
+
+    // Every poll id this person has already engaged with, by either mechanism.
+    const done = new Set([...seen, ...votes.map((v) => v.poll?.id).filter(Boolean)]);
+
+    // Still open, still public, not yet answered. Unlisted and private polls are excluded by
+    // listWhere — a dashboard that advertised them would undo the point of hiding them.
+    const openPolls = await p.poll.findMany({
+      where: { ...listWhere({ role: null }), status: 'open' },
+      orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
+      take: 20,
+      select: { id: true, question: true, description: true, closesAt: true, pinned: true },
     });
-    return { votes };
+
+    return { votes, answered, open: openPolls.filter((x) => !done.has(x.id)) };
   });
 
   // ── Admin (manage_polls) ────────────────────────────────────────────────────
@@ -403,6 +472,9 @@ export default async function pollRoutes(app) {
     question: z.string().min(3).max(300),
     description: z.string().max(2000).default(''),
     audience: z.enum(['users', 'all']).default('users'),
+    // WHERE it can be found. Distinct from `audience`, which is who may answer: a poll can
+    // be answerable by anyone and still be listed nowhere.
+    visibility: z.enum(POLL_VISIBILITIES).default('public'),
     multiple: z.boolean().default(false),
     maxChoices: z.number().int().min(0).max(20).default(0),
     status: z.enum(['draft', 'open', 'closed']).default('draft'),
@@ -443,6 +515,9 @@ export default async function pollRoutes(app) {
       polls: polls.map((poll) => ({
         ...publicPoll(poll, { showResults: true }),
         author: poll.createdBy?.displayName || null,
+        // The admin screen is where the share link is copied from, so this is the one
+        // listing that carries keys — and requireCap('manage_polls') is what makes that safe.
+        shareKey: shareKeyFor(poll, { role: 'ADMIN' }),
         questions: viewQuestions(poll).map((q) => ({ ...q, answers: answersBy[q.id] || 0 })),
       })),
     };
@@ -456,6 +531,10 @@ export default async function pollRoutes(app) {
     const poll = await p.poll.create({
       data: {
         ...rest,
+        // Only an unlisted poll needs one, and it is minted with the poll rather than on
+        // first use — a share button that has to create the key before it can copy it is a
+        // share button that fails the first time somebody presses it.
+        shareKey: rest.visibility === 'unlisted' ? newShareKey() : '',
         opensAt: opensAt ? new Date(opensAt) : null,
         closesAt: closesAt ? new Date(closesAt) : null,
         createdById: req.user.uid,
@@ -483,15 +562,28 @@ export default async function pollRoutes(app) {
       await p.pollOption.deleteMany({ where: { pollId: existing.id } });
       await p.pollOption.createMany({ data: options.map((label, i) => ({ pollId: existing.id, label, sort: i })) });
     }
+    // Becoming unlisted needs a key; it is minted once and then KEPT, even when the poll is
+    // switched back to public. Clearing it would mean that turning unlisted off and on again
+    // silently rotates the link — and the people holding the old one would get a 404 with
+    // nothing to tell them why. `shareKeyFor` already refuses to hand the key out while the
+    // poll is not unlisted, so keeping it costs nothing.
+    const needsKey = rest.visibility === 'unlisted' && !existing.shareKey;
+
     const poll = await p.poll.update({
       where: { id: existing.id },
       data: {
         ...rest,
+        ...(needsKey ? { shareKey: newShareKey() } : {}),
         ...(opensAt !== undefined ? { opensAt: opensAt ? new Date(opensAt) : null } : {}),
         ...(closesAt !== undefined ? { closesAt: closesAt ? new Date(closesAt) : null } : {}),
       },
       include: { options: { orderBy: { sort: 'asc' } } },
     });
+    // Visibility is the field somebody will ask about later ("why can nobody see this?"), so
+    // it is named in the audit line rather than folded into a generic "updated".
+    if (rest.visibility && rest.visibility !== existing.visibility) {
+      await logAudit(p, req.user.uid, 'poll.visibility', `${poll.question}: ${existing.visibility} -> ${rest.visibility}`, clientIp(req));
+    }
     await logAudit(p, req.user.uid, 'poll.updated', poll.question, clientIp(req));
     return { ok: true, poll };
   });
