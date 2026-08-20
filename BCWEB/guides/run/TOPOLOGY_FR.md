@@ -132,9 +132,10 @@ deviennent chacun un projet à part entière. Ce n'est presque certainement pas 
 **Passe ici quand** un conteneur API sature. L'API est sans état, et son cache comme son
 limiteur de débit sont partagés via Redis : les réplicas se comportent comme un seul.
 
-Entièrement couvert dans [ADDONS_FR.md](ADDONS_FR.md) §3 — y compris le piège du port 3000
-qu'**un seul** conteneur peut réserver, et la modification Caddy qui répartit le trafic entre
-les IP des réplicas.
+C'est `docker compose up -d --scale api=3` et rien d'autre — le port hôte est une plage et
+Caddy re-résout `api`, donc les deux choses qui demandaient une édition manuelle sont déjà
+dans le dépôt. [ADDONS_FR.md](ADDONS_FR.md) §3 donne le détail, dont le seul proxy qui reste
+statique.
 
 Deux choses à avoir en place d'abord :
 

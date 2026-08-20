@@ -272,8 +272,9 @@ setup is the very next thing — see *Performance & scaling → put a CDN in fro
    with ~0 origin hits; the HTML shell stays uncached so deploys are instant.
 
 **When you outgrow one API container:**
-- Run 2–4 `api` replicas behind Caddy (`docker compose up -d --scale api=3` + a Caddy
-  upstream list) — the Redis cache/limiter already make that safe.
+- Run 2–4 `api` replicas behind Caddy — `docker compose up -d --scale api=3` and nothing
+  else: the host port is a range and Caddy resolves `api` dynamically, so the spread follows
+  on its own. The Redis cache/limiter already make that safe.
 - Enable the **PgBouncer** pooler: `docker compose --profile pgbouncer up -d`, then in
   `.env` set `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true`
   (`DIRECT_DATABASE_URL` stays on `db:5432` for migrations, handled automatically).

@@ -129,8 +129,10 @@ their own project. This is almost certainly not your answer.
 **Move here when** one API container saturates. The API is stateless and its cache and rate
 limiter are shared through Redis, so replicas behave as one.
 
-Fully covered in [ADDONS_EN.md](ADDONS_EN.md) §3 — including the trap that only ONE
-container may bind port 3000, and the Caddy change that spreads traffic across replica IPs.
+It is `docker compose up -d --scale api=3` and nothing else — the host port is a range and
+Caddy re-resolves `api`, so both of the things that used to need hand-editing are already in
+the repo. [ADDONS_EN.md](ADDONS_EN.md) §3 has the detail, including the one proxy that stays
+static.
 
 Two things to have in place first:
 

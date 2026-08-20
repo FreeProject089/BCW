@@ -93,7 +93,12 @@ services:
     # Published so the Vite dev server (apps/web `npm run dev`, proxy /api -> :3000)
     # can reach the API when running the frontend outside Docker. Caddy still routes
     # /api internally in the full-stack run.
-    ports: ["3000:3000"]
+    # A RANGE, not a single port. `ports: ["3000:3000"]` makes `--scale api=3` fail on the
+    # spot — three containers cannot each bind host 3000 — and the error names the port, not
+    # the reason. With a range Docker hands each replica the next free one, the first still
+    # gets 3000 (so the Vite dev proxy and every local curl keep working), and scaling up is
+    # a flag with nothing else to change.
+    ports: ["3000-3009:3000"]
     depends_on:
       db:
         condition: service_healthy

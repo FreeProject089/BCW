@@ -59,36 +59,30 @@ load). Why it's safe: the API is **stateless**, and the cache + rate-limiter are
 via Redis**, so N replicas behave as one. Enable **PgBouncer (§2) first** (each replica opens
 DB connections — the pooler keeps the total bounded).
 
-**How — three concrete changes:**
+**How — one command:**
 
-1. **Free the host port.** The `api` service publishes `3000:3000` on the host, which lets
-   only ONE container bind it — a 2nd replica would fail with "port already allocated".
-   Comment it out in `docker-compose.yml` (Caddy reaches the API on the internal network, it
-   doesn't need the host port):
-   ```yaml
-   api:
-     # ports: ["3000:3000"]   # ← comment out to allow multiple replicas
-   ```
+```bash
+docker compose --profile pgbouncer up -d --scale api=3   # 3 API containers + the pooler
+```
 
-2. **Scale up:**
-   ```bash
-   docker compose --profile pgbouncer up -d --scale api=3   # 3 API containers + the pooler
-   ```
+That is the whole change. Both things that used to need hand-editing are now in the repo:
 
-3. **Load-balance in Caddy.** All replicas share the `api` DNS name; make Caddy re-resolve it
-   and spread traffic across every replica IP. In `infra/caddy/Caddyfile`, replace the two
-   `reverse_proxy api:3000` lines (the `/api/*` and the telemetry `forward_auth`/proxy) with a
-   dynamic upstream, then `docker compose restart caddy`:
-   ```
-   reverse_proxy {
-     dynamic a {
-       name api
-       port 3000
-       refresh 5s
-     }
-     lb_policy round_robin
-   }
-   ```
+- **The host port is a range**, `ports: ["3000-3009:3000"]`. Docker gives each replica the
+  next free host port, and the first still gets 3000 — so nothing that talks to
+  `localhost:3000` notices. It used to be `3000:3000`, which let only ONE container bind and
+  failed the second with "port already allocated" — an error that names the port and not the
+  reason.
+- **Caddy resolves `api` dynamically**, through the `(api_upstream)` snippet at the top of
+  `infra/caddy/Caddyfile`, imported by every route. `reverse_proxy api:3000` resolved that
+  name once at config load and kept talking to the container it first got, so scaling up
+  bought capacity that sat idle with nothing reporting it. An earlier version of this guide
+  told you to replace "the two `reverse_proxy api:3000` lines" — there were **ten**, and
+  swapping two of them would have left most of the site pinned to one replica.
+
+One proxy stays static on purpose: the telemetry `forward_auth`, which takes a plain upstream
+rather than a `dynamic a` block. With several replicas that gate always asks the same one, so
+if *that* replica is down the telemetry dashboard bounces people to login while the site is
+fine. It is an admin surface, so the trade is acceptable — but know it is a trade.
 
 **After (verify):**
 - Requests spread across the containers — `docker compose logs api | grep "incoming request"`

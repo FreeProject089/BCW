@@ -60,37 +60,33 @@ sous charge). Pourquoi c'est sûr : l'API est **stateless**, et le cache + le ra
 **partagés via Redis**, donc N réplicas se comportent comme un seul. Active **PgBouncer (§2)
 d'abord** (chaque réplica ouvre des connexions DB — le pooler borne le total).
 
-**Comment — trois changements concrets :**
+**Comment — une seule commande :**
 
-1. **Libérer le port de l'hôte.** Le service `api` publie `3000:3000` sur l'hôte, ce qui
-   n'autorise **qu'un seul** conteneur à le prendre — un 2ᵉ réplica échouerait avec « port
-   already allocated ». Commente-le dans `docker-compose.yml` (Caddy joint l'API sur le réseau
-   interne, il n'a pas besoin du port hôte) :
-   ```yaml
-   api:
-     # ports: ["3000:3000"]   # ← à commenter pour autoriser plusieurs réplicas
-   ```
+```bash
+docker compose --profile pgbouncer up -d --scale api=3   # 3 conteneurs API + le pooler
+```
 
-2. **Monter en réplicas :**
-   ```bash
-   docker compose --profile pgbouncer up -d --scale api=3   # 3 conteneurs API + le pooler
-   ```
+C'est tout le changement. Les deux choses qui demandaient une édition manuelle sont
+désormais dans le dépôt :
 
-3. **Répartir la charge dans Caddy.** Tous les réplicas partagent le nom DNS `api` ; fais
-   re-résoudre ce nom à Caddy et répartis le trafic sur chaque IP de réplica. Dans
-   `infra/caddy/Caddyfile`, remplace les deux `reverse_proxy api:3000` (le `/api/*` et le
-   `forward_auth`/proxy télémétrie) par un upstream dynamique, puis
-   `docker compose restart caddy` :
-   ```
-   reverse_proxy {
-     dynamic a {
-       name api
-       port 3000
-       refresh 5s
-     }
-     lb_policy round_robin
-   }
-   ```
+- **Le port de l'hôte est une plage**, `ports: ["3000-3009:3000"]`. Docker donne à chaque
+  réplica le port hôte libre suivant, et le premier garde 3000 — donc rien de ce qui parle à
+  `localhost:3000` ne s'en aperçoit. C'était `3000:3000`, ce qui n'autorisait **qu'un seul**
+  conteneur à le prendre et faisait échouer le second sur « port already allocated » — une
+  erreur qui nomme le port et pas la raison.
+- **Caddy résout `api` dynamiquement**, via l'extrait `(api_upstream)` en tête de
+  `infra/caddy/Caddyfile`, importé par chaque route. `reverse_proxy api:3000` résolvait ce nom
+  une fois au chargement de la config et continuait de parler au conteneur obtenu au départ :
+  monter en réplicas achetait de la capacité qui restait inutilisée, sans que rien ne le
+  signale. Une version précédente de ce guide disait de remplacer « les deux
+  `reverse_proxy api:3000` » — il y en avait **dix**, et n'en changer que deux aurait laissé
+  l'essentiel du site épinglé sur un seul réplica.
+
+Un proxy reste statique volontairement : le `forward_auth` de la télémétrie, qui prend un
+upstream simple et non un bloc `dynamic a`. Avec plusieurs réplicas, ce garde interroge
+toujours le même — donc si *celui-là* est à terre, le dashboard télémétrie renvoie tout le
+monde vers la connexion alors que le site va bien. C'est une surface admin, le compromis est
+acceptable — mais sache que c'en est un.
 
 **Après (à vérifier) :**
 - Les requêtes se répartissent — `docker compose logs api | grep "incoming request"` montre

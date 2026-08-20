@@ -14,6 +14,27 @@
 # nothing is there.
 #
 # The default is a hostname nobody can request, so this costs nothing when no tunnel is up.
+# Where the API lives, resolved FRESH on every refresh instead of once at startup.
+#
+# `reverse_proxy api:3000` resolves that name when the config loads and sticks to what it
+# got. With one container that is correct and invisible. Run `docker compose up -d --scale
+# api=3` and Docker's DNS starts returning three addresses — but Caddy is still talking to
+# the one it resolved, so two thirds of the capacity you just paid for sits idle and nothing
+# anywhere says so.
+#
+# `dynamic a` re-resolves on an interval and load-balances across every address it gets, so
+# scaling up or down is a compose flag and nothing else. With a single replica it behaves
+# exactly as before.
+(api_upstream) {
+	reverse_proxy {
+		dynamic a {
+			name api
+			port 3000
+			refresh 10s
+		}
+	}
+}
+
 {$SITE_DOMAIN:http://localhost}, {$TUNNEL_DOMAIN:http://tunnel.invalid} {
 	encode gzip zstd
 
@@ -61,47 +82,47 @@
 	}
 	handle @unfurl {
 		rewrite * /og?u={uri}
-		reverse_proxy api:3000
+		import api_upstream
 	}
 
 	# API
 	handle_path /api/* {
-		reverse_proxy api:3000
+		import api_upstream
 	}
 
 	# Public hosted-repo content (repo.json / files) at a clean URL: /hosting/<user>/<repo>/...
 	handle /hosting/* {
-		reverse_proxy api:3000
+		import api_upstream
 	}
 
 	# SEO files served by the API (dynamic sitemap incl. Other Projects + blog).
 	handle /sitemap.xml {
-		reverse_proxy api:3000
+		import api_upstream
 	}
 	handle /robots.txt {
-		reverse_proxy api:3000
+		import api_upstream
 	}
 	# Public aggregate Server-Repos feed (a consumable repo.json index of every listed repo).
 	handle /repos.json {
-		reverse_proxy api:3000
+		import api_upstream
 	}
 
 	# Public catalog.json feed (BMM-consumable app/plugin/theme catalog, ?project=&kind=).
 	handle /catalog.json {
-		reverse_proxy api:3000
+		import api_upstream
 	}
 
 	# OpenID Connect provider: discovery + JWKS (issuer-root paths, NOT under /api) and
 	# the OAuth2 authorize/token/userinfo endpoints. Specific well-known paths only, so
 	# Caddy still answers /.well-known/acme-challenge/* itself for TLS.
 	handle /.well-known/openid-configuration {
-		reverse_proxy api:3000
+		import api_upstream
 	}
 	handle /.well-known/jwks.json {
-		reverse_proxy api:3000
+		import api_upstream
 	}
 	handle /oauth2/* {
-		reverse_proxy api:3000
+		import api_upstream
 	}
 
 	# Content-hashed static assets (Vite emits immutable `assets/*.[hash].js|css`) →
@@ -157,6 +178,11 @@
 	# NOTE: forward_auth talks to api:3000 directly (not through this proxy), so the
 	# path is the API's real route WITHOUT the /api prefix that handle_path strips.
 	handle {
+		# Static on purpose: forward_auth takes a plain upstream, not the `dynamic a` block
+		# the site's routes use. With several API replicas this gate always asks the same one,
+		# so if THAT replica is down the telemetry dashboard bounces everyone to login while
+		# the site itself is fine. It is an admin surface, so the trade is acceptable — but it
+		# is a trade, not an oversight.
 		forward_auth api:3000 {
 			uri /telemetry/authorize
 		}
