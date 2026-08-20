@@ -163,3 +163,29 @@
 		reverse_proxy telemetry:8900
 	}
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Object storage (MinIO) on its own origin.
+#
+# INERT until S3_DOMAIN is set — the default is a hostname nobody can request, exactly like
+# TUNNEL_DOMAIN above. Locally MinIO is reached directly on :9000 and this block never
+# matches, so it costs nothing.
+#
+# To turn it on: point an A record at this server, then in infra/compose/.env set
+#   S3_DOMAIN=s3.example.com
+#   S3_PUBLIC_ENDPOINT=https://s3.example.com
+# and `docker compose up -d caddy api`. Caddy provisions the certificate itself.
+#
+# WHY IT IS NEEDED AT ALL: uploads never pass through the API. The browser asks for a
+# pre-signed URL and PUTs the bytes straight at MinIO, so MinIO needs a public address — and
+# the site's CSP allows only `https:` in connect-src, so a plain :9000 would be refused by
+# the browser before it even left.
+#
+# NO `handle_path`, NO path prefix. A pre-signed S3 signature covers the HOST and the PATH,
+# so rewriting either makes MinIO compute a different signature and answer 403
+# SignatureDoesNotMatch — which reads as "wrong credentials" and is nothing of the sort.
+# Caddy v2 forwards the incoming Host header unchanged by default, which is what makes the
+# signature match; do not add `header_up Host {upstream_hostport}` here.
+{$S3_DOMAIN:http://s3.invalid} {
+	reverse_proxy minio:9000
+}

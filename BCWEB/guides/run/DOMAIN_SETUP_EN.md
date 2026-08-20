@@ -109,19 +109,26 @@ Then open `https://community.example.com` — you should have a valid padlock.
 
 ### 5. Notes
 
-**MinIO is NOT behind Caddy.** The `Caddyfile` has a block for the site and one for
-telemetry, none for storage — MinIO publishes port 9000 directly. So giving
-`S3_PUBLIC_ENDPOINT` an `https://s3.example.com` assumes you add the block that serves it:
+**Storage has its own block, inert by default.** Uploads never pass through the API: the
+browser gets a pre-signed URL and PUTs the bytes straight at MinIO, so MinIO needs a public
+address — and the site's CSP allows only `https:`, so a plain `:9000` would be refused by the
+browser before it even left.
 
-```
-s3.example.com {
-	reverse_proxy minio:9000
-}
+The `Caddyfile` already carries the block. Turning it on is **two** values plus the DNS
+record:
+
+```dotenv
+S3_DOMAIN=s3.example.com                  # what Caddy serves (and certifies itself)
+S3_PUBLIC_ENDPOINT=https://s3.example.com # what the browser gets inside the signed URL
 ```
 
-Without it the only public entrance is plain `:9000` with no certificate — and the site's CSP
-allows only `https:` in `connect-src`, so the browser would refuse the upload. The kind of
-detail you meet at the first real user's first attachment.
+then `docker compose up -d caddy api`. With no `S3_DOMAIN` the block carries a hostname
+nobody can request and MinIO stays reachable on `:9000` as it is locally — which is what you
+want in development.
+
+⚠ Do **not** put a path prefix on that block. An S3 signature covers the host **and** the
+path: rewriting either makes MinIO compute a different signature and answer
+`403 SignatureDoesNotMatch`, which reads as "wrong credentials" and is nothing of the sort.
 
 - The local `5176:5176` port mapping in `docker-compose.yml` is only needed for local
   testing; in production traffic comes in on 80/443. You can leave it or remove it.

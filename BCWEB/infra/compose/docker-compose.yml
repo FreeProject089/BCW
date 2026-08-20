@@ -323,6 +323,9 @@ services:
       # with a quick tunnel — the forward_auth gate needs the site's cookie, and two
       # unrelated *.trycloudflare.com hostnames cannot share one. See the Caddyfile.
       TELEMETRY_TUNNEL_DOMAIN: ${TELEMETRY_TUNNEL_DOMAIN:-http://telemetry-tunnel.invalid}
+      # Object storage on its own origin. Unset → an unreachable default, so the block in the
+      # Caddyfile never matches and MinIO stays reachable only on :9000 as it is locally.
+      S3_DOMAIN: ${S3_DOMAIN:-http://s3.invalid}
     volumes:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
