@@ -39,6 +39,8 @@
 | `S3_ENDPOINT` | endpoint S3 (défaut MinIO interne `http://minio:9000`). |
 | `S3_REGION` | région (`us-east-1` en local, `auto` pour Cloudflare R2). |
 | `S3_PUBLIC_ENDPOINT` | l'URL **publique** du stockage (les navigateurs y accèdent via des URLs pré-signées). |
+| `S3_DOMAIN` | le nom d'hôte que **Caddy** sert pour MinIO (ex. `s3.ton-domaine.com`). Non renseigné, le bloc Caddy porte un nom que personne ne peut demander et le stockage reste sur `:9000` — voulu en local. Va par paire avec `S3_PUBLIC_ENDPOINT` : l'un dit ce que Caddy écoute, l'autre ce qui est écrit dans l'URL signée. |
+| `REPO_PUBLIC_BASE` | base publique des dépôts hébergés (ex. `https://ton-domaine.com/repos`). Cette valeur part **dans** les adresses remises à BMM : laissée sur localhost en prod, chaque dépôt distribué pointe vers la machine du visiteur. |
 | `REPO_EXPORT_MAX_MB` | plafond (Mo) sur l'endpoint admin « télécharger tout le dépôt en un zip ». L'export est *streamé*, donc ça borne la taille de transfert, pas la mémoire. Défaut `250` ; au-delà, l'admin récupère les fichiers un par un. |
 | `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW` | budget de requêtes par IP. Défauts `600` / `1 minute` — généreux pour un humain (~10 req/s) et c'est ce qui protège la DB en cas d'abus, donc **garde le défaut en production**. À monter uniquement pour benchmarker la capacité brute d'une route (`loadtest/`) : depuis une seule IP, le limiter déleste sinon tout le flood et chaque chiffre n'est qu'un 429. |
 
@@ -71,6 +73,8 @@ Callback à déclarer chez chaque fournisseur : `<SITE_URL>/api/auth/oauth/<prov
 | `TELEMETRY_PUBLIC_URL` | URL du bouton « ouvrir la télémétrie » — garde égal à `TELEMETRY_DOMAIN`. |
 | `TELEMETRY_ADMIN_KEY` | clé admin serveur-à-serveur pour piloter les limites de la télémétrie. |
 | `TELEMETRY_API_KEY` | clé d'ingestion de la télémétrie. |
+| `TELEMETRY_RETENTION_DAYS` | au-delà de combien de jours les événements de télémétrie sont purgés. |
+| `TELEMETRY_DELETE_DELAY_H` | délai (heures) avant qu'une demande de suppression de données soit exécutée — la fenêtre pendant laquelle elle reste annulable. |
 
 ## 9. Email transactionnel (optionnel — confirmation + reset mot de passe)
 | Variable | Rôle |
@@ -93,6 +97,7 @@ Callback à déclarer chez chaque fournisseur : `<SITE_URL>/api/auth/oauth/<prov
 | `DATABASE_URL` | override URL complète → pointe la stack vers un **Postgres managé / 2ᵉ VPS** (endpoint poolé). Vide = Postgres local. |
 | `DIRECT_DATABASE_URL` | URL directe (non poolée) — pour les migrations. |
 | `DB_HOST` / `DB_PORT` / `DB_URL_PARAMS` | pour router l'API via **PgBouncer** (`pgbouncer` / `6432` / `?pgbouncer=true`). |
+| `COMPOSE_PROFILES` | quels **profils** compose sont actifs (aujourd'hui : `pgbouncer`). À mettre ici plutôt qu'en flag `--profile` : un flag ne vaut que pour sa commande, et `infra/deploy.sh` lance un `up -d` nu qui arrêterait le pooler alors que `DB_HOST` y envoie l'API. |
 | `PGBOUNCER_UPSTREAM_HOST` / `PGBOUNCER_UPSTREAM_PORT` | pour que PgBouncer poole une base managée/distante au lieu du `db` local. |
 | `API_REPLICAS` | nombre de conteneurs `api` (défaut `1`). À monter seulement quand un seul sature, et en activant PgBouncer en même temps. À préférer à `--scale api=N` : le flag ne survit pas au prochain `docker compose up -d`, et `deploy.sh` fait exactement ça. |
 

@@ -147,6 +147,26 @@ for (const f of files.sort()) {
     }
 }
 
+// The reverse question: does the .env REFERENCE cover every variable the example ships?
+//
+// Everything above asks "does what a guide names exist". This asks "does what exists get
+// named" — the opposite failure, and the quieter one: a variable nobody documented is not a
+// broken link, it is a setting the operator never learns about. It was 59/64 when this was
+// added, and the five missing ones included REPO_PUBLIC_BASE, which silently hands out repo
+// URLs pointing at the visitor's own machine when left on localhost.
+{
+    const example = read(join(ROOT, 'infra/compose/.env.example'));
+    const declared = new Set([...example.matchAll(/^#?([A-Z][A-Z0-9_]{2,})=/gm)].map((m) => m[1]));
+    for (const lang of ['FR', 'EN']) {
+        const ref = read(join(HERE, `run/ENV_${lang}.md`));
+        if (!ref) continue;
+        for (const v of declared) {
+            if (ref.includes(v)) continue;
+            problems.push(`guides/run/ENV_${lang}.md  ${v} — in .env.example, explained nowhere`);
+        }
+    }
+}
+
 console.log(`checked ${files.length} guides against ${services.size} services, ${Object.keys(scripts).length} scripts, ${composeVars.size + apiVars.size} env vars\n`);
 if (!problems.length) {
     console.log('every service, script, variable and path a guide names exists');
