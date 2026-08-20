@@ -635,6 +635,10 @@ export default async function serverControlRoutes(app) {
       totalBytes: filesBytes + dbBytes + snapshotBytesTotal,
       maxBytes: row?.value?.maxBytes ?? null,
       keep: row?.value?.keep ?? DEFAULT_KEEP,
+      // Absent means ON. The daily snapshot has always run, and an install that predates this
+      // setting has been backing itself up all along — reading a missing key as "off" would
+      // silently stop that on upgrade, and nothing would say so until somebody needed a backup.
+      auto: row?.value?.auto !== false,
     };
   });
 
@@ -645,13 +649,25 @@ export default async function serverControlRoutes(app) {
       // an older client that only knows about maxBytes does not silently reset it to
       // something — an omitted field must never mean "turn off my rotation".
       keep: z.number().int().min(0).max(365).optional(),
+      // Whether the sweeper takes its daily snapshot at all. Optional for the same reason as
+      // `keep`: an older client that only sends maxBytes must not switch automatic backups off
+      // as a side effect of saving a size limit.
+      auto: z.boolean().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const prev = (await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } }))?.value || {};
-    const value = { maxBytes: b.data.maxBytes, keep: b.data.keep ?? prev.keep ?? DEFAULT_KEEP };
+    const value = {
+      maxBytes: b.data.maxBytes,
+      keep: b.data.keep ?? prev.keep ?? DEFAULT_KEEP,
+      auto: b.data.auto ?? prev.auto ?? true,
+    };
     await p.adminSetting.upsert({ where: { key: 'backup.maxBytes' }, create: { key: 'backup.maxBytes', value }, update: { value } });
-    await logAudit(p, req.user.uid, 'server.backup_limit', `size ${b.data.maxBytes ?? 'unlimited'} bytes, keep ${value.keep || 'all'}`, clientIp(req));
+    // Turning automatic backups OFF is the kind of change somebody needs to be able to find
+    // six months later, when the question is "why is there nothing to restore" — so it is
+    // spelled out in the audit line rather than left implicit in a size change.
+    await logAudit(p, req.user.uid, 'server.backup_limit',
+      `size ${b.data.maxBytes ?? 'unlimited'} bytes, keep ${value.keep || 'all'}, automatic ${value.auto ? 'on' : 'OFF'}`, clientIp(req));
     // Lowering the count is an instruction about what to hold, so it takes effect now
     // rather than at the next snapshot — otherwise "keep 3" leaves twelve on disk until
     // someone happens to press the button.

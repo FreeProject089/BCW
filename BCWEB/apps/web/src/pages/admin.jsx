@@ -2795,6 +2795,9 @@ function SnapshotsPanel({ onChanged }) {
     } finally { setBusy(''); }
   };
   const keepNow = data?.keep ?? 10;
+  // Absent means ON — the daily snapshot predates this switch, so an install that never set
+  // it has been backing up all along and must keep doing so.
+  const autoOn = data?.auto !== false;
 
   const take = async (kind) => {
     setBusy('new');
@@ -2809,6 +2812,24 @@ function SnapshotsPanel({ onChanged }) {
     } catch (x) {
       toast.error(x?.data?.error === 'no_backups' ? t('bkp.nobackups', 'Nothing has been backed up yet.') : t('common.failed', 'Failed.'));
     } finally { setBusy(''); }
+  };
+
+  // Turning it OFF asks first. Everything else on this row is a number you can put back; this
+  // one means that from now on the only backups are the ones somebody remembers to take, and
+  // the day that matters is the day nobody did.
+  const saveAuto = async (next) => {
+    if (!next && !await dialog.confirm({
+      title: t('snap.auto.t', 'Stop taking backups automatically?'),
+      message: t('snap.auto.m', 'Nothing will be backed up on its own after this. Existing backups are kept, but no new one appears unless you take it by hand.'),
+      okLabel: t('snap.auto.ok', 'Turn automatic backups off'),
+      danger: true,
+    })) return;
+    setBusy('auto');
+    try {
+      await api.put('/server/backups/limit', { maxBytes: data?.maxBytes ?? null, auto: next });
+      toast.success(next ? t('snap.auto.on2', 'Automatic backups on.') : t('snap.auto.off2', 'Automatic backups off.'));
+      reload(); onChanged?.();
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
   };
 
   const saveKeep = async () => {
@@ -2887,12 +2908,17 @@ function SnapshotsPanel({ onChanged }) {
           </span>
         </label>
         <div className="flex items-center gap-1.5 ml-auto">
+          <label className="inline-flex items-center gap-1.5 text-[11px] text-[var(--muted)] cursor-pointer mr-1" title={t('snap.auto.hint', 'Take a backup automatically once a day')}>
+            <input type="checkbox" checked={autoOn} disabled={!!busy} onChange={(e) => saveAuto(e.target.checked)} />
+            {t('snap.auto.label', 'Daily automatic')}
+          </label>
           <span className="text-[11px] text-[var(--muted)]">{t('snap.keeplabel', 'Keep')}</span>
           <Input className="w-20" type="number" min="0" value={keep} onChange={(e) => setKeep(e.target.value)} placeholder={String(keepNow)} />
           <Button size="sm" disabled={!!busy} onClick={saveKeep}>{busy === 'keep' ? <Spinner /> : t('common.save', 'Save')}</Button>
         </div>
       </div>
       <p className="text-[11px] text-[var(--faint)] mt-1.5">
+        {!autoOn && <span className="text-warning">{t('snap.auto.off', 'Automatic backups are OFF — the only backups from here on are the ones you take by hand. ')}</span>}
         {keepNow > 0
           ? t('snap.keep.on', 'Keeping the {n} most recent of each kind — older ones are overwritten as new ones are taken.').replace('{n}', String(keepNow))
           : t('snap.keep.off', 'Rotation is off: backups are kept until you delete them, and nothing watches the disk for you.')}

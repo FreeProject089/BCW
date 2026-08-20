@@ -50,8 +50,17 @@ async function sweepDailyFileBackup(p, log) {
   const row = await p.adminSetting.findUnique({ where: { key } });
   const last = row?.value?.at ? new Date(row.value.at).getTime() : 0;
   if (Date.now() - last < DAY_MS) return false;
+
+  // The admin switch (Advanced server → Backups). Checked BEFORE the timestamp is written, and
+  // returning without writing it — so switching automatic backups back on takes effect on the
+  // next tick rather than a day later, which is what somebody who just re-enabled it expects.
+  //
+  // A missing key means ON: this setting arrived after the daily snapshot did, and reading an
+  // absent value as "off" would quietly stop backups on every existing install.
+  const limitRow = await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } });
+  if (limitRow?.value?.auto === false) return false;
+
   try {
-    const limitRow = await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } });
     const maxBytes = limitRow?.value?.maxBytes;
     if (maxBytes) {
       const current = await repoSizeBytes(FILES_BACKUP_ROOT);
