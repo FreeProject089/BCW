@@ -1268,8 +1268,40 @@ export default async function miscRoutes(app) {
   //
   // Audiences are QUERIES, not stored lists, so "everyone on a hosting plan" is right at
   // the moment you press send rather than whenever the list was last exported.
-  const audienceWhere = async (p, aud, planId) => {
+  const audienceWhere = async (p, aud, planId, opts = {}) => {
     if (aud === 'all') return {};
+    // People who answered a given poll — and optionally, who gave a given ANSWER.
+    //
+    // This is the segment that cannot be expressed any other way: "everyone who voted for the
+    // thing we are now shipping" is a real audience, and the alternative is exporting a tally
+    // and pasting addresses into a mail client, which is how a customer list ends up in a To:
+    // field.
+    //
+    // Both answer shapes are searched. A single-question poll writes PollVote rows and a
+    // multi-question one writes PollAnswer rows, and a segment that only knew about one of
+    // them would silently return an empty audience for half the polls — the failure that
+    // /me/polls had until this week.
+    if (aud === 'poll' || aud === 'pollchoice') {
+      const pollId = String(opts.pollId || '');
+      if (!pollId) return null;
+      const choiceId = aud === 'pollchoice' ? String(opts.choiceId || '') : '';
+      if (aud === 'pollchoice' && !choiceId) return null;
+      const [votes, answers] = await Promise.all([
+        p.pollVote.findMany({
+          where: { pollId, userId: { not: null }, ...(choiceId ? { optionId: choiceId } : {}) },
+          select: { userId: true },
+        }),
+        p.pollAnswer.findMany({
+          where: { pollId, userId: { not: null }, ...(choiceId ? { choiceId } : {}) },
+          select: { userId: true },
+        }),
+      ]);
+      const ids = [...new Set([...votes, ...answers].map((x) => x.userId).filter(Boolean))];
+      // An empty audience is a legitimate answer (nobody picked that option yet) and must not
+      // be confused with an invalid one — `{ id: { in: [] } }` matches nothing, where `null`
+      // would be reported to the admin as a broken audience.
+      return { id: { in: ids } };
+    }
     if (aud === 'hosting') {
       // Anyone with a live subscription. Through the relation rather than a snapshot, so
       // a lapsed customer is not mailed about a price they no longer pay.
@@ -1317,7 +1349,16 @@ export default async function miscRoutes(app) {
 
   app.get('/admin/mail/audience', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const p = await db();
-    const where = await audienceWhere(p, String(req.query?.audience || 'all'), req.query?.planId || null);
+    const aud = String(req.query?.audience || 'all');
+    // Explicit recipients are not a query, so there is nothing to count — the answer is how
+    // many were picked, and saying so beats returning a number the admin cannot reconcile.
+    if (aud === 'users') {
+      const ids = String(req.query?.userIds || '').split(',').map((x) => x.trim()).filter(Boolean);
+      return { count: await p.user.count({ where: { id: { in: ids }, email: { not: '' } } }) };
+    }
+    const where = await audienceWhere(p, aud, req.query?.planId || null, {
+      pollId: req.query?.pollId || null, choiceId: req.query?.choiceId || null,
+    });
     if (!where) return reply.code(400).send({ error: 'invalid_audience' });
     // A COUNT before sending, because the number is the last chance to notice that
     // "everyone" meant something larger than intended.
@@ -1373,9 +1414,15 @@ export default async function miscRoutes(app) {
 
   app.post('/admin/mail/send', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
-      audience: z.enum(['all', 'hosting', 'verified', 'paid', 'lapsed', 'freehost', 'creators', 'staff', 'user']),
+      audience: z.enum(['all', 'hosting', 'verified', 'paid', 'lapsed', 'freehost', 'creators', 'staff', 'user', 'users', 'poll', 'pollchoice']),
       planId: z.string().optional(),
       userId: z.string().optional(),
+      // Named recipients. Capped at 200 — past that it is a segment, and a segment is a query
+      // that stays right rather than a list that was correct when it was pasted.
+      userIds: z.array(z.string()).max(200).optional(),
+      // Which poll, and optionally which answer, the `poll` / `pollchoice` audiences mean.
+      pollId: z.string().optional(),
+      choiceId: z.string().optional(),
       subject: z.string().min(1).max(200),
       body: z.string().min(1).max(20000),   // markdown
       testOnly: z.boolean().default(false), // send to the sender alone
@@ -1395,8 +1442,17 @@ export default async function miscRoutes(app) {
       if (!b.data.userId) return reply.code(400).send({ error: 'invalid_input' });
       const u = await p.user.findUnique({ where: { id: b.data.userId }, select: { email: true, displayName: true } });
       recipients = u ? [u] : [];
+    } else if (b.data.audience === 'users') {
+      // Named people, resolved through the database rather than trusted from the request — so
+      // an id that no longer exists drops out instead of becoming an empty To: line, and the
+      // addresses never come from the client at all.
+      const ids = [...new Set(b.data.userIds || [])];
+      if (!ids.length) return reply.code(400).send({ error: 'invalid_input' });
+      recipients = await p.user.findMany({ where: { id: { in: ids } }, select: { email: true, displayName: true } });
     } else {
-      const where = await audienceWhere(p, b.data.audience, b.data.planId || null);
+      const where = await audienceWhere(p, b.data.audience, b.data.planId || null, {
+        pollId: b.data.pollId || null, choiceId: b.data.choiceId || null,
+      });
       if (!where) return reply.code(400).send({ error: 'invalid_audience' });
       recipients = await p.user.findMany({ where, select: { email: true, displayName: true } });
     }

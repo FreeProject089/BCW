@@ -5825,6 +5825,81 @@ function MailGallery({ t }) {
   );
 }
 
+/**
+ * Pick named recipients by searching, and show who is on the list.
+ *
+ * The alternative people actually use is exporting addresses and pasting them into a mail
+ * client, which is how a customer list ends up in a To: field — so this never shows an
+ * address the admin could copy in bulk, and the send resolves ids server-side rather than
+ * trusting any address that came from this form.
+ *
+ * Search is debounced and requires two characters: a one-letter query matches most of the
+ * database and returns a list nobody can pick from.
+ */
+function UserPicker({ picked, setPicked }) {
+  const { t } = useI18n();
+  const [q, setQ] = useState('');
+  const [hits, setHits] = useState([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setHits([]); return; }
+    let alive = true;
+    setBusy(true);
+    const id = setTimeout(() => {
+      api.get(`/admin/users?q=${encodeURIComponent(term)}&take=8`)
+        .then((r) => { if (alive) setHits(r.users || []); })
+        .catch(() => { if (alive) setHits([]); })
+        .finally(() => { if (alive) setBusy(false); });
+    }, 300);
+    return () => { alive = false; clearTimeout(id); };
+  }, [q]);
+
+  const add = (u) => {
+    setPicked((cur) => (cur.some((x) => x.id === u.id) ? cur : [...cur, u]));
+    setQ(''); setHits([]);
+  };
+
+  return (
+    <div className="mt-3 rounded-xl border border-[var(--line)] p-3">
+      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">
+        {t('adm.mail.pick.t', 'Recipients')}
+      </div>
+      <Input value={q} onChange={(e) => setQ(e.target.value)} className="!py-1.5 !text-sm"
+        placeholder={t('adm.mail.pick.ph', 'Search by name or email…')} />
+      {busy && <div className="mt-2"><Spinner /></div>}
+      {hits.length > 0 && (
+        <div className="mt-2 rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] max-h-52 overflow-y-auto">
+          {hits.map((u) => (
+            <button key={u.id} type="button" onClick={() => add(u)}
+              className="w-full text-left px-3 py-2 hover:bg-[var(--surface-2)] transition flex items-center gap-2">
+              <span className="text-sm truncate">{u.displayName || u.email}</span>
+              <span className="text-[11px] text-[var(--faint)] truncate ml-auto">{u.email}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {picked.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {picked.map((u) => (
+            <span key={u.id} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--line)]">
+              {u.displayName || u.email}
+              <button type="button" onClick={() => setPicked((cur) => cur.filter((x) => x.id !== u.id))}
+                className="text-[var(--faint)] hover:text-error"><X size={11} /></button>
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="text-[11px] text-[var(--faint)] mt-2">
+        {picked.length
+          ? t('adm.mail.pick.n', '{n} picked — one message each, nobody sees the others.').replace('{n}', String(picked.length))
+          : t('adm.mail.pick.none', 'Nobody picked yet. Past a couple of dozen people, use an audience instead — a query stays right, a pasted list was only right once.')}
+      </p>
+    </div>
+  );
+}
+
 function AdminMail() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog(); const { user: me } = useAuth();
   const plans = useAsync(() => api.get('/admin/hosting/plans'), []);
@@ -5842,18 +5917,40 @@ function AdminMail() {
   const [scheme, setScheme] = useState('light');  // light | dark
   const [ctaLabel, setCtaLabel] = useState('');
   const [ctaUrl, setCtaUrl] = useState('');
+  // Named recipients, and the poll segment. Both are "audiences" the query-based ones cannot
+  // express: a handful of specific people, and everyone who gave a particular answer.
+  const [picked, setPicked] = useState([]);       // [{ id, displayName, email }]
+  const [pollId, setPollId] = useState('');
+  const [choiceId, setChoiceId] = useState('');
+  const adminPolls = useAsync(() => api.get('/admin/polls').catch(() => null), []);
+  // Every choice in the chosen poll, flattened across its questions — the admin is picking an
+  // ANSWER, and which question it belonged to is context, not a second decision.
+  const pollChoices = (() => {
+    const poll = (adminPolls.data?.polls || []).find((x) => x.id === pollId);
+    if (!poll) return [];
+    const out = [];
+    for (const q of poll.questions || []) for (const c of q.choices || []) out.push({ id: c.id, label: `${q.label} — ${c.label}` });
+    for (const o of poll.options || []) out.push({ id: o.id, label: o.label });
+    return out;
+  })();
 
   // The recipient count is refreshed whenever the audience changes, because the number is
   // the last chance to notice that "everyone" is larger than you pictured.
   useEffect(() => {
     if (audience === 'user') { setCount(null); return; }
+    // Named recipients are not a query — the count is simply how many are in the list, and
+    // asking the server for it would be a round-trip to be told what is on screen.
+    if (audience === 'users') { setCount(picked.length); return; }
     let alive = true;
-    const q = new URLSearchParams({ audience, ...(planId ? { planId } : {}) });
+    const q = new URLSearchParams({
+      audience, ...(planId ? { planId } : {}),
+      ...(pollId ? { pollId } : {}), ...(choiceId ? { choiceId } : {}),
+    });
     api.get(`/admin/mail/audience?${q}`)
       .then((r) => { if (alive) setCount(r.count); })
       .catch(() => { if (alive) setCount(null); });
     return () => { alive = false; };
-  }, [audience, planId]);
+  }, [audience, planId, pollId, choiceId, picked.length]);
 
   // Debounced: the preview is a server round-trip because it must come from the SAME
   // template the send uses, and re-rendering on every keystroke would be a request per
@@ -5881,6 +5978,9 @@ function AdminMail() {
     try {
       const r = await api.post('/admin/mail/send', {
         audience, planId: planId || undefined, subject, body, testOnly,
+        userIds: audience === 'users' ? picked.map((u) => u.id) : undefined,
+        pollId: (audience === 'poll' || audience === 'pollchoice') ? pollId || undefined : undefined,
+        choiceId: audience === 'pollchoice' ? choiceId || undefined : undefined,
         cta: ctaLabel.trim() && ctaUrl.trim() ? { label: ctaLabel.trim(), url: ctaUrl.trim() } : null,
       });
       toast.success(testOnly
@@ -5919,6 +6019,9 @@ function AdminMail() {
               <option value="freehost">{t('adm.mail.aud.freehost', 'Free-tier hosts')}</option>
               <option value="creators">{t('adm.mail.aud.creators', 'Creators (published a repo or an item)')}</option>
               <option value="staff">{t('adm.mail.aud.staff', 'Staff only')}</option>
+              <option value="users">{t('adm.mail.aud.users', 'Specific people (pick them)')}</option>
+              <option value="poll">{t('adm.mail.aud.poll', 'Everyone who answered a poll')}</option>
+              <option value="pollchoice">{t('adm.mail.aud.pollchoice', 'Everyone who gave one answer')}</option>
             </Select>
           </Field>
           {audience === 'hosting' && (
@@ -5929,7 +6032,25 @@ function AdminMail() {
               </Select>
             </Field>
           )}
+          {(audience === 'poll' || audience === 'pollchoice') && (
+            <Field label={t('adm.mail.f.poll', 'Which poll')}
+              hint={t('adm.mail.f.poll.h', 'Both answer shapes are counted — a single-question poll and a multi-question form store answers differently, and only one of them would be a silently empty audience.')}>
+              <Select value={pollId} onChange={(e) => { setPollId(e.target.value); setChoiceId(''); }}>
+                <option value="">{t('adm.mail.pickpoll', 'Pick a poll…')}</option>
+                {(adminPolls.data?.polls || []).map((pl) => <option key={pl.id} value={pl.id}>{pl.question}</option>)}
+              </Select>
+            </Field>
+          )}
+          {audience === 'pollchoice' && pollId && (
+            <Field label={t('adm.mail.f.choice', 'Which answer')}>
+              <Select value={choiceId} onChange={(e) => setChoiceId(e.target.value)}>
+                <option value="">{t('adm.mail.pickchoice', 'Pick an answer…')}</option>
+                {pollChoices.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </Select>
+            </Field>
+          )}
         </div>
+        {audience === 'users' && <UserPicker picked={picked} setPicked={setPicked} />}
         {/* Templates fill the form and then get out of the way — they set the audience
             too, because "who is this for" is part of the template rather than a separate
             decision made afterwards and got wrong. */}

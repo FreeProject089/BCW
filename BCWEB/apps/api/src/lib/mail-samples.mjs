@@ -136,6 +136,66 @@ export const MAIL_SAMPLES = [
             + 'previously accepted at any time.',
             { url: link('/legal/privacy'), label: 'Review and accept' }),
     },
+
+    // ── Added after an audit that counted the senders. The gallery had 20 entries and the code
+    // had 25 places that send; these eight are the difference. Every one of them is a mail a
+    // real person receives and that nobody here had ever looked at, which is exactly the state
+    // this file was created to end — the count is the point, not the intention.
+    {
+        id: 'newsletter-confirm', group: 'content', label: 'Confirm your newsletter subscription',
+        note: 'Double opt-in. Distinct from the status-page confirmation, which is a different list with a different link.',
+        build: () => mailShell('Confirm your subscription',
+            "You asked to receive BetterCommunity blog updates. Confirm below — if this wasn't you, ignore this email and you'll receive nothing.",
+            { url: link('/api/newsletter/confirm?token=EXAMPLE'), label: 'Confirm' }),
+    },
+    {
+        id: 'transfer-offer', group: 'content', label: 'Somebody wants to transfer something to you',
+        note: 'Ownership handover of a repo or a catalog. The offer expires; accepting is what moves it.',
+        build: () => mailShell('Jane wants to transfer "Better Textures" to you',
+            '<p><b>Jane</b> would like to hand <b>Better Textures</b> over to you. If you accept, it moves to your dashboard and leaves theirs.</p>'
+            + '<p>If you were not expecting this, ignore it — nothing happens unless you accept.</p>',
+            { url: link('/dashboard?transfer=EXAMPLE'), label: 'Review the transfer' }),
+    },
+    {
+        id: 'transfer-accepted', group: 'content', label: 'A transfer you offered was accepted',
+        note: 'Goes to the person who GAVE it away, so the disappearance from their dashboard is explained rather than discovered.',
+        build: () => mailShell('"Better Textures" has been transferred',
+            '<p><b>Jane</b> accepted the transfer of <b>Better Textures</b>. It now belongs to them and no longer appears in your dashboard.</p>'),
+    },
+    {
+        id: 'report-new', group: 'moderation', label: 'New report opened (to staff)',
+        note: 'The only mail in this group addressed to the team rather than to a member.',
+        build: () => mailShell('New report opened',
+            '<p>A user opened a report on catalog item "Better Textures".</p>',
+            { url: link('/admin?tab=reports'), label: 'Open the report' }),
+    },
+    {
+        id: 'report-added', group: 'moderation', label: 'You were added to a conversation',
+        build: () => mailShell('You were added to a conversation',
+            '<p>A moderator added you to a report conversation.</p>',
+            { url: link('/dashboard?section=reports'), label: 'Open the conversation' }),
+    },
+    {
+        id: 'report-reply', group: 'moderation', label: 'Reply to your report',
+        build: () => mailShell('Reply to your report',
+            '<p>A staff member replied to your report.</p>',
+            { url: link('/dashboard?section=reports'), label: 'Read the reply' }),
+    },
+    {
+        id: 'report-acted', group: 'moderation', label: 'Your report was acted on',
+        note: 'The one that closes the loop. A report with no outcome is why people stop reporting.',
+        build: () => mailShell('Your report was acted on',
+            '<p>The content you reported has been removed.</p>',
+            { url: link('/dashboard?section=reports'), label: 'See the report' }),
+    },
+    {
+        id: 'staff-note', group: 'moderation', label: 'An action was taken on your account',
+        note: 'Carries the reason given and the way to appeal. The erasure wording is a variant of this same mail.',
+        build: () => mailShell('An action was taken on your account',
+            '<p>Reason given:</p><blockquote>Repeated uploads of content that is not yours.</blockquote>'
+            + '<p>If you think this is wrong, you can reply to this message.</p>'
+            + '<p>Write to <a href="mailto:appeals@example.com">appeals@example.com</a>.</p>'),
+    },
 ];
 
 export const MAIL_GROUPS = [
