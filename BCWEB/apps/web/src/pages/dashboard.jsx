@@ -9,6 +9,7 @@ import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useIntro } from '../ui/IntroContext.jsx';
 import { MyRepos, Billing } from './repos.jsx';
+import { TransfersCard } from './profile.jsx';
 
 // These two tabs live in admin.jsx (an artefact of splitting the old pages monolith —
 // nothing in admin.jsx renders them; this page is their only consumer). Referencing them
@@ -37,6 +38,7 @@ import { NOTIF, NOTIF_FALLBACK } from '../ui/notif.js';
 import { lazyNamed } from '../lib/lazy-chunk.js';
 export { NOTIF, NOTIF_FALLBACK };
 function NotificationsPanel() {
+  const nav = useNavigate();
   const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/me/notifications'), []);
   // The list is held locally so an action shows IMMEDIATELY. It used to fire the request and
@@ -55,6 +57,13 @@ function NotificationsPanel() {
     setItems((s) => (s || []).map((x) => ({ ...x, readAt: x.readAt || stamp() })));
     try { await api.post('/me/notifications/read-all'); } catch { reload(); }
   };
+  // Marking read AND going where it points. Read-only rows made every notification a dead end:
+  // the one telling you an ownership transfer is waiting could not take you to it.
+  const openNotif = (n) => {
+    markOne(n);
+    if (n.href) nav(n.href);
+  };
+
   const markOne = async (n) => {
     if (n.readAt) return;
     setItems((s) => (s || []).map((x) => (x.id === n.id ? { ...x, readAt: stamp() } : x)));
@@ -86,7 +95,9 @@ function NotificationsPanel() {
       </div>
       {loading ? <Loading /> : (list.length ? <div className="space-y-2 max-h-[460px] overflow-auto pr-1">
         {list.map((n) => { const m = NOTIF[n.kind] || NOTIF_FALLBACK; return (
-          <Card key={n.id} className={`p-3.5 flex gap-3 group ${!n.readAt ? 'border-[var(--ring)]' : ''}`} onClick={() => markOne(n)} style={{ cursor: n.readAt ? 'default' : 'pointer' }}>
+          <Card key={n.id} className={`p-3.5 flex gap-3 group ${!n.readAt ? 'border-[var(--ring)]' : ''}`}
+            onClick={() => openNotif(n)}
+            style={{ cursor: (n.href || !n.readAt) ? 'pointer' : 'default' }}>
             <span className={`grid place-items-center w-9 h-9 rounded-xl shrink-0 ${m.tint}`}><m.icon size={16} className={m.tone} /></span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
@@ -402,6 +413,15 @@ export function Dashboard() {
         headerActions={<Link to="/submit"><Button variant="primary"><Upload size={16} /> {t('sub.title', 'Submit content')}</Button></Link>}>
         {(s) => (<>
           {s === 'overview' && <>
+            {/* A transfer offer is a DECISION waiting on this person, and it lived only on the
+                profile page — reachable from the e-mail's link and from nowhere anybody goes.
+                Somebody who missed the mail had no way to discover it before it expired.
+
+                The same component the profile renders, not a second copy: accepting moves real
+                ownership, and two renderings of that would eventually disagree about what the
+                button does. It hides itself when nothing is pending, so this costs an ordinary
+                dashboard nothing. */}
+            <TransfersCard />
             {/* Goal-gradient onboarding: the checklist owns first-run guidance (incl. 2FA);
                 once it's done or dismissed, fall back to the standalone 2FA nudge. */}
             {(() => {

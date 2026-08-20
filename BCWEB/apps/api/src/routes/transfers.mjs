@@ -92,8 +92,11 @@ export default async function transferRoutes(app) {
     const from = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true } });
     const what = b.data.kind === 'repo' ? 'repository' : 'catalog item';
     const subject = `${from?.displayName || 'Someone'} wants to transfer "${tr.targetName}" to you`;
+    // The body used to say "accept or decline it in your profile", which is prose pointing at
+    // a page — the reader still had to go and find it. It carries the destination now.
     await notify(p, to.id, 'Ownership transfer offered',
-      `${from?.displayName || 'Someone'} offered you the ${what} "${tr.targetName}". Accept or decline it in your profile.`).catch(() => {});
+      `${from?.displayName || 'Someone'} offered you the ${what} "${tr.targetName}".`,
+      { href: '/dashboard#transfers' }).catch(() => {});
     await sendMail({
       to: to.email,
       subject,

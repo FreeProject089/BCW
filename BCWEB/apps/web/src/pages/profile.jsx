@@ -311,7 +311,7 @@ export default function Profile() {
 // Nothing here is optimistic. Accepting moves real ownership on the server, and showing it
 // as done before the server agrees would mean a refresh could take it away again — the one
 // place a hopeful UI turns into "did that work or not?".
-function TransfersCard() {
+export function TransfersCard() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState('');

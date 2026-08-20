@@ -841,6 +841,15 @@ model Notification {
   // shipped ONE row reading "Bientôt / Upcoming: …" to everybody — the only surface in
   // the app that did that.
   bodyFr    String?
+  // Where clicking it goes. An in-app path ("/dashboard#transfers"), never an absolute URL:
+  // a notification is written by the server and rendered as a link, so allowing an arbitrary
+  // origin here would make any code path that can notify a user also able to send them
+  // anywhere. The renderer refuses anything that does not start with a single "/".
+  //
+  // Null for the notifications that are genuinely just a statement ("your password changed").
+  // Most were not: "you have been offered a transfer — accept or decline it in your profile"
+  // named a destination in prose and made the reader go and find it.
+  href      String?
   readAt    DateTime?
   createdAt DateTime  @default(now())
 }

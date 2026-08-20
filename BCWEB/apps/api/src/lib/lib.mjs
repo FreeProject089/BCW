@@ -803,14 +803,43 @@ export function notifCategory(kind) {
  *  category back on shows nothing retrospectively, which is the honest behaviour for
  *  something you told us not to send.
  */
-export async function notify(p, userId, kind, body, bodyFr) {
+/**
+ * A path a notification may point at.
+ *
+ * In-app only, and deliberately strict: exactly one leading slash, no scheme, no protocol-
+ * relative "//host". Every code path that can notify a user would otherwise also be a way to
+ * send that user to an arbitrary origin — and notifications are written from webhooks, from
+ * the bot, and from anything that can reach `notify`.
+ *
+ * Returns null rather than throwing: a bad link must cost the notification its link, never the
+ * notification itself.
+ */
+export function safeNotifHref(href) {
+  const v = String(href ?? '').trim();
+  if (!v || !v.startsWith('/') || v.startsWith('//')) return null;
+  // A backslash is treated as a slash by some parsers, so "/\evil.com" can escape the origin.
+  if (v.includes('\\')) return null;
+  return v.slice(0, 300);
+}
+
+/**
+ * Notify one user.
+ *
+ * The fifth argument is either the French body (what all 81 existing callers pass) or an
+ * options bag `{ bodyFr, href }`. Accepting both is what let a destination be added without
+ * editing every call site — and every call site edited to pass a field it does not care about
+ * is a call site that can be edited wrong.
+ */
+export async function notify(p, userId, kind, body, opts) {
   try {
+    const o = (opts && typeof opts === 'object') ? opts : { bodyFr: opts };
     const cat = notifCategory(kind);
     if (!NOTIF_CATEGORIES[cat]?.locked) {
       const u = await p.user.findUnique({ where: { id: userId }, select: { notifPrefs: true } });
       if (u?.notifPrefs && u.notifPrefs[cat] === false) return;
     }
-    await p.notification.create({ data: { userId, kind, body, ...(bodyFr ? { bodyFr } : {}) } });
+    const href = safeNotifHref(o.href);
+    await p.notification.create({ data: { userId, kind, body, ...(o.bodyFr ? { bodyFr: o.bodyFr } : {}), ...(href ? { href } : {}) } });
   } catch { /* non-fatal */ }
 }
 

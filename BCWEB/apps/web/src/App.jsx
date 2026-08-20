@@ -428,7 +428,18 @@ function NavNotifications() {
   const badge = unread + pending;
   const markOne = async (n) => { if (n.readAt) return; readIds.current.add(n.id); setItems((s) => s.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x))); try { await api.post(`/me/notifications/${n.id}/read`); } catch {} };
   // Click = mark read + go to the relevant page (if the kind maps to one).
-  const openNotif = (n) => { markOne(n); const to = NOTIF_LINK[n.kind]; if (to) { setOpen(false); nav(to); } };
+  // The notification's OWN destination first, the per-kind default second.
+  //
+  // NOTIF_LINK is a map from kind to one fixed page, so every transfer offer went to the same
+  // place and no notification could ever point at the particular thing it was about. `href` is
+  // written per notification by whatever raised it, validated server-side to an in-app path.
+  // The map stays as the fallback: dozens of existing kinds rely on it and every notification
+  // already in the database has no href.
+  const openNotif = (n) => {
+    markOne(n);
+    const to = n.href || NOTIF_LINK[n.kind];
+    if (to) { setOpen(false); nav(to); }
+  };
   const markAll = async () => { items.forEach((x) => readIds.current.add(x.id)); setItems((s) => s.map((x) => ({ ...x, readAt: x.readAt || new Date().toISOString() }))); try { await api.post('/me/notifications/read-all'); } catch {} };
   const del = async (n) => { setItems((s) => s.filter((x) => x.id !== n.id)); try { await api.del(`/me/notifications/${n.id}`); } catch {} };
   // Durable menu dismiss: remember "everything up to now is cleared" so the poll/reload
