@@ -51,7 +51,7 @@ function UptimeBars({ days, t }) {
 export default function StatusPage() {
   const { t } = useI18n(); const toast = useToast();
   const [sp] = useSearchParams();
-  const { data, loading } = useAsync(() => api.get('/status'), []);
+  const { data, err, loading, reload } = useAsync(() => api.get('/status'), []);
   const [table, setTable] = useState(false);   // the figures behind the charts
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
@@ -73,6 +73,31 @@ export default function StatusPage() {
   };
 
   if (loading) return <div className="max-w-3xl mx-auto px-4 py-10"><Loading /></div>;
+
+  // A page that could not LOAD used to be indistinguishable from a real "unknown": `data` was
+  // null, `d.state` undefined, the banner fell through to BANNER.unknown, and every section
+  // below it rendered empty but plausible — 90-day heading, no bars, no services. So a request
+  // that never arrived read as "we checked, and we cannot tell", which is a different and much
+  // more alarming claim. It got reported as the status page not working, and it was right.
+  //
+  // `useAsync` returned this error all along; this page destructured `{ data, loading }` and
+  // dropped it on the floor.
+  if (err) return (
+    <div className="max-w-3xl mx-auto px-4 py-10">
+      <div className="rounded-xl px-5 py-4 flex items-start gap-3"
+        style={{ background: 'color-mix(in srgb, var(--warning) 12%, var(--bg-solid))', border: '1px solid color-mix(in srgb, var(--warning) 40%, var(--line))' }}>
+        <AlertTriangle size={22} style={{ color: 'var(--warning)' }} className="shrink-0 mt-0.5" />
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold">{t('st.unreachable', 'Could not load the status page')}</h1>
+          <p className="text-sm text-[var(--muted)] mt-1">
+            {t('st.unreachable.hint', 'This request did not get through. That is a fault on the way here — it is not a report about the services below, which this page could not check at all.')}
+          </p>
+          <Button size="sm" className="mt-3" onClick={() => reload()}>{t('st.retry', 'Try again')}</Button>
+        </div>
+      </div>
+    </div>
+  );
+
   const d = data || {};
   const b = BANNER[d.state] || BANNER.unknown;
   const fdate = (x) => new Date(x).toLocaleString();
