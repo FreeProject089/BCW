@@ -224,6 +224,21 @@ node infra/tunnel.mjs
 Opens a Cloudflare quick tunnel in front of the local stack and tells Caddy to answer on the
 hostname it hands out. Ctrl-C ends it and puts the config back.
 
+```bash
+node infra/tunnel.mjs --restore   # repair without opening a tunnel
+```
+
+Run this if a tunnel ended any way other than Ctrl-C — window closed, process killed, machine
+rebooted. The script writes the original config to a file **before** changing it, so repair
+does not depend on how the previous run ended. With nothing to undo it does nothing and says so.
+
+!!! danger "A dirty exit breaks sign-in, silently"
+    `.env` is left pointing at a dead tunnel. The site still loads, but the session cookie is
+    scoped to a hostname that no longer exists: the browser drops it without a word, sign-in
+    answers "welcome", and the next request arrives anonymous.
+
+    A normal start also repairs this on its own before opening the new tunnel.
+
 !!! warning "The hostname part is not optional"
     Caddy matches sites by `Host`. A request arriving as `something.trycloudflare.com` does
     not match the `localhost` site and Caddy answers **200 with an empty body** — not a 404.

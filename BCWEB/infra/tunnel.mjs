@@ -87,17 +87,81 @@ function readEnv(key) {
 }
 
 /** Set or clear keys in the compose .env, leaving the rest and its line endings alone.
- *  A null value removes the key. */
+ *  A null value removes the key.
+ *
+ *  Keys are rewritten WHERE THEY ALREADY ARE. An earlier version filtered them out and pushed
+ *  the new values onto the end, which moved SITE_URL and COOKIE_DOMAIN away from the section
+ *  documenting them and, because the split leaves a trailing empty element, grew a blank line
+ *  on every run. A config file that reshuffles itself each time it is touched is one nobody
+ *  can read a diff of. */
 function setEnv(entries) {
   const raw = readEnvRaw();
   const eol = raw.includes('\r\n') ? '\r\n' : '\n';
-  const keys = Object.keys(entries);
-  const kept = raw.split(/\r?\n/).filter((l) => !keys.some((k) => l.trim().startsWith(`${k}=`)));
-  for (const [k, v] of Object.entries(entries)) if (v) kept.push(`${k}=${v}`);
-  fs.writeFileSync(ENV_FILE, kept.join(eol));
+  const lines = raw.split(/\r?\n/);
+  const pending = new Map(Object.entries(entries));
+  const out = [];
+  for (const line of lines) {
+    const hit = [...pending.keys()].find((k) => line.trim().startsWith(`${k}=`));
+    if (!hit) { out.push(line); continue; }
+    const v = pending.get(hit);
+    pending.delete(hit);
+    if (v) out.push(`${hit}=${v}`);        // in place — same position, same neighbours
+  }
+  // Only keys the file did not already carry get appended, and only when they have a value.
+  for (const [k, v] of pending) if (v) out.push(`${k}=${v}`);
+  fs.writeFileSync(ENV_FILE, out.join(eol));
 }
 
-// What these were before this run, so they can be put back exactly.
+// ── Surviving a dirty exit ───────────────────────────────────────────────────
+// Restoring on Ctrl-C is not enough. Close the terminal, kill the process, lose power, and
+// .env is left describing a tunnel that no longer resolves — silently: the site still loads,
+// but the session cookie is scoped to a dead hostname so signing in says "welcome" and the
+// next request arrives anonymous.
+//
+// Worse, it COMPOUNDS. The originals used to be captured at startup from .env itself, so the
+// next run read the dead tunnel's values as "what these were before" and faithfully restored
+// them on exit. One dirty exit and the broken hostname is permanent, re-applied by the very
+// code meant to clean it up. That is how COOKIE_DOMAIN stayed pinned to a dead
+// trycloudflare.com host here for days.
+//
+// So the originals are written to a file BEFORE anything is touched, and read back on the
+// next start. Recovery stops depending on how the last run ended.
+const STATE_FILE = path.join(COMPOSE, '.tunnel-restore.json');
+
+const readState = () => {
+  try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch { return null; }
+};
+
+/** Put .env back to what a previous run recorded, if it never got the chance itself.
+ *  Returns true when there was something to undo. */
+function recoverPreviousRun() {
+  const prev = readState();
+  if (!prev) return false;
+  say('a previous tunnel did not shut down cleanly — putting .env back first.');
+  setEnv(prev);
+  fs.rmSync(STATE_FILE, { force: true });
+  return true;
+}
+
+// Before reading what to restore later, undo anything a dead run left behind — otherwise the
+// values captured next are that run's tunnel, not the real config.
+const recovered = recoverPreviousRun();
+
+// `node infra/tunnel.mjs --restore` — repair and stop, without starting a tunnel. For the case
+// where you already closed the window and just want the config sane again.
+if (process.argv.includes('--restore')) {
+  if (!recovered) say('nothing to restore — .env carries no leftover tunnel values.');
+  else {
+    say('reloading Caddy and the API so they pick it up…');
+    execFileSync('docker', ['compose', 'up', '-d', 'caddy'], { cwd: COMPOSE, stdio: 'inherit' });
+    execFileSync('docker', ['compose', 'up', '-d', '--force-recreate', 'api'], { cwd: COMPOSE, stdio: 'inherit' });
+    say('done.');
+  }
+  process.exit(0);
+}
+
+// What these were before this run, so they can be put back exactly. Read AFTER recovery, so
+// they are the real config rather than a dead tunnel's leftovers.
 const SITE_WAS = readEnv(SITE);
 const COOKIE_WAS = readEnv(COOKIE);
 const S3_WAS = readEnv(S3);
@@ -137,15 +201,23 @@ function stop(code = 0) {
   // after the tunnel is forgotten.
   try {
     setEnv({ [KEY]: null, [SITE]: SITE_WAS, [COOKIE]: COOKIE_WAS, [S3]: S3_WAS });
+    // Dropped only once .env is actually back: if the write above threw, the file must stay
+    // so the next run (or --restore) still knows what to undo.
+    fs.rmSync(STATE_FILE, { force: true });
     reloadCaddy();
     recreateApi();
-  } catch { /* leaving it set breaks nothing that a re-run will not fix */ }
+  } catch { /* the state file survives, so the next start repairs it */ }
   try { child.kill(); } catch { /* already gone */ }
   try { s3child.kill(); } catch { /* already gone */ }
   process.exit(code);
 }
-process.on('SIGINT', () => stop(0));
-process.on('SIGTERM', () => stop(0));
+// SIGBREAK is Ctrl-Break on Windows, and SIGHUP is what a closing terminal sends. Neither is
+// exotic — they are simply the two ways this gets ended that are not Ctrl-C, and without them
+// the graceful path is skipped. (Closing the console window outright, or Task Manager, still
+// kills the process outright; that is what the state file is for.)
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGBREAK', 'SIGHUP']) {
+  try { process.on(sig, () => stop(0)); } catch { /* not every signal exists on every OS */ }
+}
 
 // cloudflared prints the assigned URL inside a box, on stderr in current builds. Matched by
 // SHAPE rather than by line position, which moves between releases.
@@ -183,6 +255,12 @@ function ready() {
   // TLS and forwards plain HTTP to :5176, so requests keep arriving on a port that address
   // is not listening on — and Caddy answers its empty 200 again. Two silent failures that
   // look identical from outside; only the port tells them apart.
+  // Record how to undo this BEFORE doing it. Written first so that a crash one line later
+  // still leaves a way back; the file is the only thing that makes recovery independent of
+  // this process surviving to run its own cleanup.
+  fs.writeFileSync(STATE_FILE, JSON.stringify({
+    [KEY]: null, [SITE]: SITE_WAS, [COOKIE]: COOKIE_WAS, [S3]: S3_WAS,
+  }, null, 2));
   setEnv({
     [KEY]: `http://${url.replace(/^https:\/\//, '')}:${PORT}`,
     // No port: this is the address the visitor's browser uses, and the tunnel terminates

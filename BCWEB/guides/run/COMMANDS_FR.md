@@ -225,6 +225,22 @@ node infra/tunnel.mjs
 Ouvre un tunnel Cloudflare devant la stack locale et dit à Caddy de répondre sur le nom
 d'hôte distribué. Ctrl-C y met fin et remet la configuration.
 
+```bash
+node infra/tunnel.mjs --restore   # réparer sans rouvrir de tunnel
+```
+
+À lancer si un tunnel a été coupé autrement que par Ctrl-C — fenêtre fermée, process tué,
+machine redémarrée. Le script écrit la configuration d'origine dans un fichier **avant** de la
+modifier, donc la réparation ne dépend pas de la façon dont le run précédent s'est terminé.
+Sans crumb à traiter, la commande ne fait rien et le dit.
+
+!!! danger "Une sortie sale casse la connexion, en silence"
+    `.env` reste alors sur un tunnel mort. Le site se charge encore, mais le cookie de session
+    est rattaché à un nom d'hôte qui n'existe plus : le navigateur le jette sans un mot, la
+    connexion répond « bienvenue » et la requête suivante repart anonyme.
+
+    Le lancement normal répare aussi tout seul avant d'ouvrir le nouveau tunnel.
+
 !!! warning "La partie nom d'hôte n'est pas optionnelle"
     Caddy associe les sites par `Host`. Une requête arrivant en `quelquechose.trycloudflare.com`
     ne correspond pas au site `localhost` et Caddy répond **200 avec un corps vide** — pas un

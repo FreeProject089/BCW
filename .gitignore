@@ -18,6 +18,9 @@ build/
 .env
 .env.*
 !.env.example
+# How infra/tunnel.mjs undoes itself after a dirty exit. Local runtime state, and it holds a
+# copy of .env values — it belongs to one machine's tunnel session, never to the repo.
+.tunnel-restore.json
 **/keys/
 *.private.key
 
