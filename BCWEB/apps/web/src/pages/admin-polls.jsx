@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { BarChart3, Plus, Trash2, PenSquare, Users, Globe, Pin, Eye, ListTree, ArrowUp, ArrowDown, Link2, EyeOff, Lock, Copy, Check } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { QTally, Distribution, QuestionResults, CHART_INK } from '../ui/poll-results.jsx';
+import { QuestionResults, CHART_INK } from '../ui/poll-results.jsx';
 import Markdown from '../ui/md.jsx';
 import { Card, Button, Input, Textarea, Select, Badge, Modal, Field, EmptyState, Spinner, useToast, useDialog, copyText } from '../ui/ui.jsx';
 import { useAsync, Loading } from './pages.jsx';
@@ -232,7 +232,7 @@ function PollEditor({ open, initial, onClose, onSaved }) {
             </label>
           )}
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={d.pinned} onChange={(e) => set('pinned', e.target.checked)} /> {t('apoll.pin', 'Pin to the top')}
+            <input type="checkbox" checked={d.pinned} onChange={(e) => set('pinned', e.target.checked)} /> {t('apoll.pin', 'Feature on the home page')}
           </label>
         </div>
 
@@ -641,57 +641,13 @@ function PollStats({ pollId, onClose }) {
                 .replace('{p}', String(Math.round((d.completion.rate || 0) * 100)))}
             </div>
           )}
-          {d.questions.map((q) => (
-            <div key={q.id}>
-              <div className="flex items-baseline gap-2">
-                <span className="text-[13px] font-medium flex-1 min-w-0 truncate">{q.label}</span>
-                <span className="text-[11px] text-[var(--faint)]">{t(`apq.kind.${q.kind}`, q.kind)} · {q.voters}</span>
-              </div>
-              {q.tally && <QTally rows={q.tally} />}
-              {q.numeric?.count > 0 && (<>
-                <div className="text-[12px] text-[var(--muted)] mt-0.5 tabular-nums">
-                  {t('apoll.q.mean', 'mean')} {Math.round(q.numeric.mean * 100) / 100} ·{' '}
-                  {t('apoll.q.median', 'median')} {q.numeric.median} · {q.numeric.min}–{q.numeric.max}
-                </div>
-                {/* The mean hides the argument: 1s and 5s average to the same 3 as everybody
-                    answering 3, and those are opposite results. */}
-                <Distribution dist={q.numeric.distribution} min={q.numeric.min} max={q.numeric.max} />
-              </>)}
-              {/* Average rank, best first — lower is better, so the number is labelled rather
-                  than drawn as a bar, where longer would read as better and mean the opposite. */}
-              {q.ranking && (
-                <ol className="mt-1 space-y-0.5">
-                  {q.ranking.map((r, i) => (
-                    <li key={r.id} className="flex items-baseline gap-2 text-[12px]">
-                      <span className="w-4 text-[var(--faint)] tabular-nums">{i + 1}</span>
-                      <span className="flex-1 min-w-0 truncate">{r.label}</span>
-                      <span className="tabular-nums text-[var(--muted)]">
-                        {r.averageRank === null ? '—' : Math.round(r.averageRank * 100) / 100}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              )}
-              {/* One tally per row, never summed across rows: averaging "Speed: good, Docs: bad"
-                  into one number answers a question nobody asked. */}
-              {q.grid && (
-                <div className="mt-1 space-y-1.5">
-                  {q.grid.map((row) => (
-                    <div key={row.row}>
-                      <div className="text-[12px] text-[var(--muted)]">{row.label}</div>
-                      <QTally rows={row.tally} />
-                    </div>
-                  ))}
-                </div>
-              )}
-              {q.answered !== undefined && (
-                <div className="text-[12px] text-[var(--muted)] mt-0.5">
-                  {t('apoll.q.answered', '{n} answered').replace('{n}', String(q.answered))}
-                  {q.earliest && ` · ${new Date(q.earliest).toLocaleDateString()} → ${new Date(q.latest).toLocaleDateString()}`}
-                </div>
-              )}
-            </div>
-          ))}
+          {/* The SAME component the public poll card uses.
+              This screen carried its own copy of this markup — the two agreed on tallies and
+              disagreed on everything else: the admin drew grids and the public one did not,
+              the admin read `averageRank` and the public one read a field that never existed.
+              A rendering written twice diverges, and the half nobody looks at is the half that
+              is wrong. `texts` is admin-only: free writing goes here, never on the public card. */}
+          <QuestionResults questions={d.questions} texts={d.texts || {}} />
         </div>
       )}
 
@@ -721,9 +677,22 @@ export function AdminPolls() {
   const [editor, setEditor] = useState(null); // null | {} | poll
   const [stats, setStats] = useState(null);
   const [questions, setQuestions] = useState(null);
+  const [busy, setBusy] = useState('');
 
   if (loading) return <Loading />;
   const polls = data?.polls || [];
+
+  // Featuring is one boolean, and the home page shows at most two. Making it a row control
+  // rather than a trip through the editor is the difference between "which poll is on the
+  // front page" being a decision and being whichever one was put there first.
+  const togglePin = async (poll) => {
+    setBusy(poll.id);
+    try {
+      await api.put(`/admin/polls/${poll.id}`, { pinned: !poll.pinned });
+      toast.success(poll.pinned ? t('apoll.pin.off2', 'No longer on the home page.') : t('apoll.pin.on2', 'Now on the home page.'));
+      reload();
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
+  };
 
   const remove = async (poll) => {
     if (!await dialog.confirm({
@@ -755,7 +724,12 @@ export function AdminPolls() {
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
-                    {poll.pinned && <Pin size={12} className="text-[var(--primary-2)]" />}
+                    <button type="button" onClick={() => togglePin(poll)} disabled={busy === poll.id}
+                      title={poll.pinned ? t('apoll.pin.off', 'Stop featuring this on the home page')
+                        : t('apoll.pin.on', 'Feature this on the home page')}
+                      className={`shrink-0 transition ${poll.pinned ? 'text-[var(--primary-2)]' : 'text-[var(--faint)] hover:text-[var(--text)]'}`}>
+                      <Pin size={12} className={poll.pinned ? '' : 'opacity-50'} />
+                    </button>
                     <span className="truncate">{poll.question}</span>
                     <Badge tone={poll.status === 'open' ? 'green' : poll.status === 'draft' ? '' : 'amber'}>
                       {t(`apoll.st.${poll.status}`, poll.status)}

@@ -207,7 +207,12 @@ export default async function pollRoutes(app) {
     // A form poll's tally is unlocked by having ANSWERED, which for it means PollAnswer rows:
     // the legacy `voted` is about PollVote, which that path never writes, so it is always
     // false here and `after_vote` would hide the result from the person who just answered.
-    const body = publicPoll(poll, { myVotes: mine, showResults: canSeeResults(poll, mine.length > 0 || rows.length > 0) });
+    // Computed ONCE and reused for both shapes. It used to be inlined into the publicPoll call,
+    // which meant the question path had no way to ask the same question without recomputing it
+    // — and a second computation of "may they see the tally" is a second answer waiting to
+    // disagree with the first.
+    const maySeeTally = canSeeResults(poll, mine.length > 0 || rows.length > 0);
+    const body = publicPoll(poll, { myVotes: mine, showResults: maySeeTally });
     // Additive, and deliberately alongside `options` rather than replacing it. Every backfilled
     // poll has exactly one question saying the same thing as `question` + `options`, so the
     // current client keeps working untouched while the multi-question reader is built. The old
@@ -216,6 +221,20 @@ export default async function pollRoutes(app) {
       body.questions = questions;
       body.myAnswers = viewMyAnswers(questions, rows);
       body.hasAnswered = rows.length > 0;
+      // The aggregates, which this endpoint never sent.
+      //
+      // The LIST endpoint has served them since question polls shipped; this one did not, and
+      // nothing said so — the page simply showed a form poll with no results, at every setting,
+      // including "always" and including after the poll closed. It is also the page every share
+      // link points at, so the poll you deliberately sent somebody was the one that could not
+      // show them what it found.
+      //
+      // Same module, same call shape as the list. A second tally written here would agree until
+      // the day it did not.
+      if (maySeeTally) {
+        const all = await p.pollAnswer.findMany({ where: { pollId: poll.id } });
+        body.questionStats = (poll.questions || []).map((q) => questionStats(q, all, q.choices || []));
+      }
     }
     return body;
   });
@@ -719,6 +738,25 @@ export default async function pollRoutes(app) {
     const perQuestion = (poll.questions || []).map((q) =>
       questionStats(q, poll.answers || [], q.choices || []));
 
+    // What people WROTE, for the free-text questions.
+    //
+    // questionStats deliberately reports a count and no words — averaging free writing into a
+    // "top answer" invents a consensus. But the count on its own made the answers unreachable:
+    // people typed, and no screen anywhere ever showed a line of it. So the words go to the
+    // admin screen, which is already behind manage_polls, and never to the public card.
+    //
+    // Newest first and capped: a popular question is thousands of rows, and a stats endpoint
+    // that returns all of them is a stats endpoint that times out on the poll worth reading.
+    const texts = {};
+    for (const q of poll.questions || []) {
+      if (q.kind !== 'text') continue;
+      texts[q.id] = (poll.answers || [])
+        .filter((a) => a.questionId === q.id && typeof a.text === 'string' && a.text.trim() !== '')
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, 200)
+        .map((a) => a.text.slice(0, 2000));
+    }
+
     // Distinct voters, not ticks: on a multi-choice poll one person can be several rows.
     const voterOf = (v) => (v.userId ? `u:${v.userId}` : `a:${v.voterKey}`);
     const voters = new Set(poll.votes.map(voterOf));
@@ -767,6 +805,9 @@ export default async function pollRoutes(app) {
       ...(perQuestion.length ? {
         questions: perQuestion,
         completion: completion(poll.questions, poll.answers || []),
+        // Keyed by question id, so a screen renders what it has and says nothing about what it
+        // does not. Empty for a poll with no free-text question, which is most of them.
+        texts,
       } : {}),
     };
   });

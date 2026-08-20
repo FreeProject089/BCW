@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BarChart3, Check, Lock, Users } from 'lucide-react';
+import { BarChart3, Check, Lock, Users, Search, X, CheckCircle2 } from 'lucide-react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -397,11 +397,6 @@ export function PollCard({ poll: initial, onChange }) {
               <Button size="sm" variant="ghost" className="mt-2" disabled={busy} onClick={withdraw}>{t('poll.withdraw', 'Withdraw my answer')}</Button>
             )}
           </>
-        ) : needsAccount ? (
-          <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-[13px] text-[var(--muted)] flex items-center gap-2">
-            <Lock size={14} /> {t('poll.needlogin', 'You need an account to answer this one.')}
-            <Link to="/signin" className="ml-auto"><Button size="sm" variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
-          </div>
         ) : poll.questionStats?.length ? (
           // A question-based poll used to show its readers NOTHING here, ever. `showResults` is
           // derived from `poll.options` — the LEGACY option list, which a question poll never
@@ -410,9 +405,28 @@ export function PollCard({ poll: initial, onChange }) {
           //
           // Whether they may see it is still the owner's setting (Show the tally: always /
           // after answering / staff only); this only makes the answer visible when it is yes.
+          //
+          // AND IT COMES BEFORE `needsAccount`, which it used to come after. Those are two
+          // different permissions: `needsAccount` is about ANSWERING, the tally setting is
+          // about READING. Checking the first one first meant a members-only poll with its
+          // tally set to "always" — closed, finished, nothing left to answer — showed a signed
+          // out visitor "sign in to answer this one" and never the results they were allowed
+          // to see. The sign-in note is still shown, underneath, when there is still something
+          // to answer.
           <div>
             {closed && <div className="text-[12px] text-[var(--faint)] mb-2">{t('poll.closed', 'Closed')}</div>}
-            <QuestionResults questions={poll.questionStats} />
+            <QuestionResults questions={poll.questionStats} myChoices={poll.myAnswers || {}} />
+            {needsAccount && !closed && (
+              <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-[13px] text-[var(--muted)] flex items-center gap-2">
+                <Lock size={14} /> {t('poll.needlogin', 'You need an account to answer this one.')}
+                <Link to="/signin" className="ml-auto"><Button size="sm" variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
+              </div>
+            )}
+          </div>
+        ) : needsAccount ? (
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-[13px] text-[var(--muted)] flex items-center gap-2">
+            <Lock size={14} /> {t('poll.needlogin', 'You need an account to answer this one.')}
+            <Link to="/signin" className="ml-auto"><Button size="sm" variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
           </div>
         ) : closed ? (
           <div className="text-[13px] text-[var(--muted)]">{t('poll.closednoresults', 'This poll is closed.')}</div>
@@ -486,49 +500,118 @@ function MyAnswers() {
 export default function PollsPage() {
   const { t } = useI18n();
   const { data, loading } = useAsync(() => api.get('/polls'), []);
+  const [q, setQ] = useState('');
+  // 'all' | 'open' | 'closed' | 'todo' — `todo` is the one people actually want: what is still
+  // waiting on ME. It is a filter and not the default, because a page that opens on an empty
+  // list when you have answered everything reads as broken rather than as finished.
+  const [filter, setFilter] = useState('all');
+
   if (loading) return <Loading />;
   const polls = data?.polls || [];
+
+  const answered = (p) => (p.myVotes || []).length > 0 || p.hasAnswered === true;
+  const term = q.trim().toLowerCase();
+  // Question AND description: somebody searching "layout" is as likely to remember it from the
+  // body as from the title, and matching only the title makes the box look broken.
+  const matches = (p) => !term
+    || String(p.question || '').toLowerCase().includes(term)
+    || String(p.description || '').toLowerCase().includes(term);
+
+  const shown = polls.filter((p) => {
+    if (!matches(p)) return false;
+    if (filter === 'open') return p.open;
+    if (filter === 'closed') return !p.open;
+    if (filter === 'todo') return p.open && !answered(p);
+    return true;
+  });
+  const open = shown.filter((p) => p.open);
+  const done = shown.filter((p) => !p.open);
+
+  const counts = {
+    all: polls.length,
+    open: polls.filter((p) => p.open).length,
+    closed: polls.filter((p) => !p.open).length,
+    todo: polls.filter((p) => p.open && !answered(p)).length,
+  };
+  const TABS = [
+    ['all', t('poll.f.all', 'All')],
+    ['todo', t('poll.f.todo', 'To answer')],
+    ['open', t('poll.f.open', 'Open')],
+    ['closed', t('poll.f.closed', 'Closed')],
+  ];
+
   return (
     <div className="max-w-2xl mx-auto py-8">
       <h1 className="text-xl font-bold mb-1">{t('poll.page.title', 'Polls')}</h1>
       <p className="text-sm text-[var(--muted)] mb-5">{t('poll.page.sub', 'Short questions about where this goes next. Answering takes a moment and genuinely decides things.')}</p>
+
       <MyAnswers />
-      {!polls.length ? <EmptyState icon={BarChart3} title={t('poll.page.none', 'No poll running.')} sub={t('poll.page.none.s', 'Come back — there will be one.')} /> : (() => {
-        // Open first, closed underneath, each under its own heading.
-        //
-        // They used to be one list in which a closed poll was told apart only by a small badge
-        // — so the page opened on something that could not be answered and looked like it
-        // could. The order within each group is the server's (pinned first, then newest).
-        //
-        // Closed polls are kept rather than hidden: the results are the point of having asked,
-        // and a poll that vanishes when it closes takes its answer with it.
-        const open = polls.filter((p) => p.open);
-        const done = polls.filter((p) => !p.open);
-        return (
-          <div className="space-y-6">
-            {open.length > 0 && (
-              <div className="space-y-4">
-                {done.length > 0 && (
-                  <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('poll.page.open', 'Open')}</h2>
-                )}
-                {open.map((p) => <PollCard key={p.id} poll={p} />)}
-              </div>
-            )}
-            {done.length > 0 && (
-              <div className="space-y-4">
-                <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)]">
-                  {t('poll.page.closed', 'Closed — results')}
-                </h2>
-                {done.map((p) => <PollCard key={p.id} poll={p} />)}
-              </div>
+
+      {polls.length > 0 && (
+        <div className="mb-5 space-y-2">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} className="!pl-9 !pr-9"
+              placeholder={t('poll.search', 'Search the polls…')} aria-label={t('poll.search', 'Search the polls…')} />
+            {q && (
+              <button type="button" onClick={() => setQ('')} aria-label={t('common.clear', 'Clear')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]">
+                <X size={14} />
+              </button>
             )}
           </div>
-        );
-      })()}
+          {/* Each tab carries its own count, so the empty one is visibly empty BEFORE it is
+              clicked — a filter that silently leads nowhere is the reason people stop using
+              filters. A tab with nothing in it is disabled rather than hidden: a control that
+              appears and disappears is harder to trust than one that is plainly unavailable. */}
+          <div className="flex gap-1 flex-wrap">
+            {TABS.map(([id, label]) => (
+              <button key={id} type="button" onClick={() => setFilter(id)} disabled={!counts[id] && filter !== id}
+                className={`px-2.5 py-1 rounded-full text-[12px] border transition ${
+                  filter === id
+                    ? 'border-[var(--primary-2)] bg-[var(--primary-2)]/10 text-[var(--primary-2)]'
+                    : counts[id]
+                      ? 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'
+                      : 'border-[var(--line)] text-[var(--faint)] opacity-50 cursor-default'
+                }`}>
+                {label} <span className="tabular-nums">{counts[id]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!polls.length ? (
+        <EmptyState icon={BarChart3} title={t('poll.page.none', 'No poll running.')} sub={t('poll.page.none.s', 'Come back — there will be one.')} />
+      ) : !shown.length ? (
+        // Distinguishes "nothing matches what you typed" from "there are no polls", because the
+        // second is a fact about the site and the first is a fact about the search box.
+        <EmptyState icon={term ? Search : CheckCircle2}
+          title={term ? t('poll.nomatch', 'Nothing matches that.') : t('poll.allanswered', 'You have answered everything.')}
+          sub={term ? t('poll.nomatch.s', 'Try a shorter word, or clear the filters.') : t('poll.allanswered.s', 'Nothing is waiting on you right now.')} />
+      ) : (
+        <div className="space-y-6">
+          {open.length > 0 && (
+            <div className="space-y-4">
+              {done.length > 0 && (
+                <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('poll.page.open', 'Open')}</h2>
+              )}
+              {open.map((p) => <PollCard key={p.id} poll={p} />)}
+            </div>
+          )}
+          {done.length > 0 && (
+            <div className="space-y-4">
+              <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)]">
+                {t('poll.page.closed', 'Closed — results')}
+              </h2>
+              {done.map((p) => <PollCard key={p.id} poll={p} />)}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
-
 /**
  * One poll on its own page — /polls/:id, optionally with ?k=<shareKey>.
  *

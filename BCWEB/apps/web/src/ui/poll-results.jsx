@@ -1,4 +1,5 @@
 import { useI18n } from '../i18n.jsx';
+import { Check } from 'lucide-react';
 
 // One ink for every chart in this file. It stayed behind in admin-polls.jsx when these
 // components moved, which the no-undef lint caught before anything rendered — the exact class
@@ -49,19 +50,35 @@ export function Distribution({ dist, min, max }) {
   );
 }
 
-export function QTally({ rows }) {
+export function QTally({ rows, mine = [] }) {
   const max = Math.max(1, ...rows.map((r) => r.votes));
+  // The bar is scaled to the LEADER so the shape is readable; the percentage is of the TOTAL,
+  // because that is the number people quote. Showing only counts meant "3" with no idea
+  // whether that was three out of four or three out of four hundred.
+  const total = rows.reduce((n, r) => n + r.votes, 0);
+  const top = Math.max(0, ...rows.map((r) => r.votes));
   return (
     <div className="mt-1 space-y-1">
-      {rows.map((r) => (
-        <div key={r.id} className="flex items-center gap-2 text-[12px]">
-          <span className="flex-1 min-w-0 truncate">{r.label}</span>
-          <div className="w-24 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden shrink-0">
-            <div className="h-full bg-[var(--primary-2)]" style={{ width: `${(r.votes / max) * 100}%` }} />
+      {rows.map((r) => {
+        const isMine = mine.includes(r.id);
+        const leads = total > 0 && r.votes === top;
+        return (
+          <div key={r.id} className="flex items-center gap-2 text-[12px]">
+            <span className={`flex-1 min-w-0 truncate flex items-center gap-1 ${leads ? 'font-medium' : ''}`}>
+              {isMine && <Check size={11} className="text-[var(--success)] shrink-0" />}
+              {r.label}
+            </span>
+            <div className="w-24 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden shrink-0">
+              <div className={`h-full ${isMine ? 'bg-[var(--success)]' : 'bg-[var(--primary-2)]'}`}
+                style={{ width: `${(r.votes / max) * 100}%` }} />
+            </div>
+            <span className="tabular-nums text-[var(--muted)] w-9 text-right shrink-0">
+              {total ? Math.round((r.votes / total) * 100) : 0}%
+            </span>
+            <span className="tabular-nums text-[var(--faint)] w-6 text-right shrink-0">{r.votes}</span>
           </div>
-          <span className="tabular-nums text-[var(--muted)] w-6 text-right shrink-0">{r.votes}</span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -72,7 +89,7 @@ export function QTally({ rows }) {
  * `voters` is shown beside the kind on purpose — a question answered by four people and one
  * answered by four hundred look identical once they are bars.
  */
-export function QuestionResults({ questions, completion }) {
+export function QuestionResults({ questions, completion, myChoices = {}, texts = {} }) {
   const { t } = useI18n();
   if (!questions?.length) return null;
   return (
@@ -90,7 +107,57 @@ export function QuestionResults({ questions, completion }) {
             <span className="text-[13px] font-medium flex-1 min-w-0 truncate">{q.label}</span>
             <span className="text-[11px] text-[var(--faint)]">{t(`apq.kind.${q.kind}`, q.kind)} · {q.voters}</span>
           </div>
-          {q.tally && <QTally rows={q.tally} />}
+          {q.tally && <QTally rows={q.tally} mine={myChoices[q.id] || []} />}
+
+          {/* A GRID is a tally per row. It has always been computed and never drawn: the
+              question showed its kind and its voter count and then stopped, so a five-row
+              matrix looked like a question nobody had answered. */}
+          {q.grid?.length > 0 && (
+            <div className="mt-1 space-y-2">
+              {q.grid.map((row) => (
+                <div key={row.row}>
+                  <div className="text-[12px] text-[var(--muted)] flex items-baseline gap-2">
+                    <span className="flex-1 min-w-0 truncate">{row.label}</span>
+                    <span className="text-[11px] text-[var(--faint)] tabular-nums">{row.voters}</span>
+                  </div>
+                  <QTally rows={row.tally} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* FREE TEXT is never averaged into a "top answer" — that invents a consensus out of
+              writing. But the count alone made the answers unreachable: people had typed, and
+              nothing on any screen ever showed a word of it. So the words are shown when the
+              caller has them, and only the count when it does not. */}
+          {q.kind === 'text' && (
+            texts[q.id]?.length ? (
+              <ul className="mt-1 space-y-1">
+                {texts[q.id].map((line, i) => (
+                  <li key={i} className="text-[12px] text-[var(--muted)] border-l-2 border-[var(--line)] pl-2 whitespace-pre-wrap break-words">
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-[12px] text-[var(--muted)] mt-0.5">
+                {t('apoll.q.written', '{n} wrote an answer.').replace('{n}', String(q.answered || 0))}
+              </div>
+            )
+          )}
+
+          {/* A DATE question reported nothing either. The span is the answer: "when should this
+              land" is a range, not a count. */}
+          {q.kind === 'date' && (
+            <div className="text-[12px] text-[var(--muted)] mt-0.5 tabular-nums">
+              {q.answered
+                ? t('apoll.q.daterange', '{n} answers, from {a} to {b}')
+                  .replace('{n}', String(q.answered))
+                  .replace('{a}', q.earliest ? new Date(q.earliest).toLocaleDateString() : '—')
+                  .replace('{b}', q.latest ? new Date(q.latest).toLocaleDateString() : '—')
+                : t('apoll.q.nodates', 'No date given yet.')}
+            </div>
+          )}
           {q.numeric?.count > 0 && (<>
             <div className="text-[12px] text-[var(--muted)] mt-0.5 tabular-nums">
               {t('apoll.q.mean', 'mean')} {Math.round(q.numeric.mean * 100) / 100} ·{' '}
@@ -108,7 +175,19 @@ export function QuestionResults({ questions, completion }) {
                 <li key={r.id} className="flex items-baseline gap-2 text-[12px]">
                   <span className="w-4 text-[var(--faint)] tabular-nums">{i + 1}</span>
                   <span className="flex-1 min-w-0 truncate">{r.label}</span>
-                  <span className="tabular-nums text-[var(--muted)]">{t('apoll.q.avgrank', 'avg')} {Math.round(r.avg * 100) / 100}</span>
+                  {/* `averageRank`, not `avg`. The field has been called averageRank in
+                      poll-stats.mjs since it was written; this component read `avg`, so every
+                      public ranking question rendered "avg NaN" — undefined times 100, rounded.
+                      The admin screen had its own copy of this markup with the right name, so
+                      the bug was invisible to whoever was looking at the admin screen.
+
+                      null when nobody ranked that choice: an em dash, not a zero, because
+                      "ranked first by nobody" and "ranked 0th" are not the same claim. */}
+                  <span className="tabular-nums text-[var(--muted)]">
+                    {r.averageRank === null || r.averageRank === undefined
+                      ? '—'
+                      : `${t('apoll.q.avgrank', 'avg')} ${Math.round(r.averageRank * 100) / 100}`}
+                  </span>
                 </li>
               ))}
             </ol>

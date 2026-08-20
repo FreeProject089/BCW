@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Heart, MessageSquare } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Heart, MessageSquare, ArrowUpRight } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, EmptyState } from '../ui/ui.jsx';
@@ -55,7 +56,15 @@ export function AdminReactions() {
             {blog.map((b) => (
               <div key={b.id} className="py-2 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm truncate">{b.title}</div>
+                  {/* The point of this screen is to decide what to go and fix, and the next
+                      action is always "open it". The slug has been in the payload since this
+                      endpoint was written; the row simply never used it. */}
+                  {b.slug ? (
+                    <Link to={`/blog/${b.slug}`} className="text-sm truncate hover:underline flex items-center gap-1 group">
+                      <span className="truncate">{b.title}</span>
+                      <ArrowUpRight size={12} className="shrink-0 opacity-0 group-hover:opacity-100 transition" />
+                    </Link>
+                  ) : <div className="text-sm truncate">{b.title}</div>}
                   {b.projectKey && <div className="text-[11px] text-[var(--faint)]">{b.projectKey}</div>}
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -87,7 +96,10 @@ export function AdminReactions() {
             {docs.map((x) => (
               <div key={x.slug} className="py-2 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm truncate">{x.title}</div>
+                  <Link to={`/docs/${x.slug}`} className="text-sm truncate hover:underline flex items-center gap-1 group">
+                    <span className="truncate">{x.title}</span>
+                    <ArrowUpRight size={12} className="shrink-0 opacity-0 group-hover:opacity-100 transition" />
+                  </Link>
                   <div className="text-[11px] text-[var(--faint)]">{x.category} · {x.slug}</div>
                 </div>
                 <div className="flex items-center gap-2 text-[12px] tabular-nums shrink-0">
