@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normaliseGiftTarget } from '../lib/gift.mjs';
 import { statfsSync } from 'node:fs';
 import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPlan, GRANT_PLAN_NAME, logAudit, clientIp } from '../lib/lib.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
@@ -896,9 +897,32 @@ export default async function hostingRoutes(app) {
       months: z.number().int().refine((m) => TERM_MONTHS.includes(m), 'invalid_term').default(1),
       autoRenew: z.boolean().optional(),
       planId: z.string().optional(),
-      custom: z.object({ storageGB: z.number().int().min(1).max(500), uploadMbps: z.number().min(1).max(1000) }).optional() }),
+      custom: z.object({ storageGB: z.number().int().min(1).max(500), uploadMbps: z.number().min(1).max(1000) }).optional(),
+      // Buying this FOR somebody else. A BC id or an e-mail, as typed — normalised and
+      // validated in lib/gift.mjs, which is also where the reason for minting a code rather
+      // than provisioning onto their account is written down.
+      //
+      // Deliberately a field on the ordinary hosting line and not a new line kind: a gift is
+      // priced exactly like the thing being given, and a second kind would be a second pricing
+      // path to keep in step with this one.
+      giftTo: z.string().max(200).optional() }),
     z.object({ kind: z.literal('boost'), repoId: z.string(), days: z.number().int().min(1).max(365), autoRenew: z.boolean().optional() }),
   ])).min(1).max(20);
+
+  // Validate every beneficiary BEFORE a card is charged.
+  //
+  // Doing it at fulfilment instead would mean taking the money and then discovering the
+  // address was mistyped — and the person who finds out is the giver, weeks later, from the
+  // friend who never received anything.
+  function resolveGifts(items) {
+    for (const it of items) {
+      if (it.kind !== 'hosting' || !it.giftTo) continue;
+      const r = normaliseGiftTarget(it.giftTo);
+      if (r.error) return r.error;
+      it.giftTarget = r;
+    }
+    return null;
+  }
 
   // Resolve a cart to priced lines + combined discount. `persistPlans` = create the
   // custom hidden plan rows (checkout) vs. price them in memory (quote, no rows).
@@ -927,7 +951,12 @@ export default async function hostingRoutes(app) {
         const lineName = it.custom
           ? `Custom ${it.custom.storageGB}GB ${it.custom.uploadMbps}Mbps · ${moLabel}`
           : `${plan.storageGB}GB hosting · ${moLabel}`;
-        lines.push({ kind: 'hosting', name: lineName, baseCents, monthlyCents: Math.round(baseCents / it.months), months: it.months, planId: plan.id, repoName: it.repoName, mode: it.mode, autoRenew: !!it.autoRenew });
+        lines.push({ kind: 'hosting', name: lineName, baseCents, monthlyCents: Math.round(baseCents / it.months), months: it.months, planId: plan.id, repoName: it.repoName, mode: it.mode,
+          // A gift is never auto-renewed. Auto-renew charges the GIVER's card forever for
+          // something somebody else is using — a subscription nobody agreed to, on a card the
+          // user of the thing does not control.
+          autoRenew: it.giftTarget ? false : !!it.autoRenew,
+          ...(it.giftTarget ? { gift: { token: it.giftTarget.token, label: it.giftTarget.label } } : {}) });
       } else {
         const repo = await p.serverRepo.findUnique({ where: { id: it.repoId }, select: { id: true, name: true, ownerId: true } });
         if (!repo || repo.ownerId !== req.user.uid) return { error: 'boost_repo_not_found' };
@@ -973,6 +1002,8 @@ export default async function hostingRoutes(app) {
   app.post('/hosting/cart/quote', { preHandler: requireRole() }, async (req, reply) => {
     const b = z.object({ items: cartItemSchema, promoCodes: z.array(z.string().max(40)).max(10).default([]) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const giftErr = resolveGifts(b.data.items);
+    if (giftErr) return reply.code(400).send({ error: giftErr });
     const p = await db();
     const r = await resolveCart(p, req, b.data, { persistPlans: false });
     if (r.error) return reply.code(r.error.startsWith('promo_') ? 400 : 409).send(r);
@@ -984,6 +1015,8 @@ export default async function hostingRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     // Must accept the Terms + Payments policy to pay (recorded on the account).
     if (!b.data.acceptedTerms) return reply.code(400).send({ error: 'terms_not_accepted' });
+    const giftErr = resolveGifts(b.data.items);
+    if (giftErr) return reply.code(400).send({ error: giftErr });
     const p = await db();
     // The version, not only the moment. A timestamp against a document that can be edited
     // afterwards cannot show what the person agreed to; the number can, because a published

@@ -1,4 +1,6 @@
 import { db, notify } from '../lib/lib.mjs';
+import { mintGiftCode } from '../lib/gift.mjs';
+import { sendMail, mailShell, escapeHtml, emailEnabled } from '../lib/mail.mjs';
 import { provisionHostingPool, recomputePoolBytes } from './hosting.mjs';
 import { redeemPromoAtomic } from './promo.mjs';
 
@@ -41,6 +43,58 @@ export default async function stripeWebhook(app) {
               if (l.kind === 'hosting') {
                 const plan = l.planId ? await p.hostingPlan.findUnique({ where: { id: l.planId } }) : null;
                 if (!plan) continue;
+
+                // A GIFT is fulfilled as a code, not as a pool.
+                //
+                // Provisioning straight onto the recipient would create hosting they never
+                // asked for — and would require them to already have an account, which is
+                // exactly the case a gift needs to support. See lib/gift.mjs.
+                //
+                // The payment row is still written against the PAYER: they are the one who
+                // paid, it is their receipt, and their refund if it comes to that.
+                if (l.gift?.token) {
+                  const code = await mintGiftCode(p, {
+                    target: { token: l.gift.token },
+                    storageGB: plan.storageGB,
+                    // The plan stores KBPS; the promo stores MBPS, and redemption multiplies it
+                    // back by 1024. Passing plan.uploadMbps — which does not exist on a plan —
+                    // would have been undefined, and the gift would silently fall back to the
+                    // 8 Mbps default instead of the speed that was paid for.
+                    uploadMbps: Math.max(1, Math.round(plan.uploadLimitKbps / 1024)),
+                    hostMonths: l.months,
+                    note: `Gift from ${cart.userId}`,
+                  });
+                  await p.payment.create({ data: { userId: cart.userId, kind: 'HOSTING', description: `Gift — ${plan.name}, ${l.months} month${l.months > 1 ? 's' : ''} (${l.gift.label})`, amountCents: l.finalCents ?? 0, currency: 'usd', stripeSessionId: s.id } });
+
+                  // To the address when it is one, and to the account when the token is a BC
+                  // id. A gift nobody is told about is a gift nobody receives.
+                  const to = l.gift.token.startsWith('email:') ? l.gift.token.slice(6) : null;
+                  const subject = 'Somebody bought you hosting';
+                  const body = `<p>Somebody bought you <b>${escapeHtml(plan.name)}</b> hosting for <b>${l.months} month${l.months > 1 ? 's' : ''}</b>.</p>
+                    <p>Redeem it with this code:</p>
+                    <p style="font-size:20px;font-family:monospace;letter-spacing:2px"><b>${escapeHtml(code.code)}</b></p>
+                    <p>You do not need a card. If you do not have an account yet, create one with this address and the code will be waiting.</p>
+                    <p>It expires in a year.</p>`;
+                  if (to && emailEnabled()) {
+                    await sendMail({ to, subject, html: mailShell(subject, body, { url: `${process.env.SITE_URL || ''}/hosting#redeem`, label: 'Redeem it' }), text: `${subject}\n\n${code.code}` }).catch(() => {});
+                  } else if (l.gift.token.startsWith('bcid:')) {
+                    // Resolved to an account so the code arrives in-app as well as by mail —
+                    // a BC id names an account, and that account has an address on file.
+                    const body8 = l.gift.token.slice(5);
+                    const users = await p.user.findMany({ select: { id: true, email: true } });
+                    const { userBcId } = await import('../lib/repofingerprint.mjs');
+                    const hit = users.find((u) => String(userBcId(u.id)).toUpperCase().replace(/[^A-Z0-9]/g, '').endsWith(body8));
+                    if (hit) {
+                      await notify(p, hit.id, 'promo_redeemed', `Somebody bought you ${plan.name} hosting. Your code: ${code.code}`, { href: '/hosting#redeem' }).catch(() => {});
+                      if (emailEnabled()) await sendMail({ to: hit.email, subject, html: mailShell(subject, body, { url: `${process.env.SITE_URL || ''}/hosting#redeem`, label: 'Redeem it' }), text: `${subject}\n\n${code.code}` }).catch(() => {});
+                    }
+                  }
+                  // Told to the GIVER too, with the code, so a gift that never arrives can be
+                  // passed on by hand instead of being lost.
+                  await notify(p, cart.userId, 'promo_redeemed', `Your gift to ${l.gift.label} is ready. Code: ${code.code}`, { href: '/dashboard' }).catch(() => {});
+                  continue;
+                }
+
                 const group = await provisionHostingPool(p, { userId: cart.userId, plan, poolName: l.repoName, months: l.months });
                 await p.payment.create({ data: { userId: cart.userId, hostingGroupId: group.id, kind: 'HOSTING', description: `${plan.name} storage pool — ${l.months} month${l.months > 1 ? 's' : ''}`, amountCents: l.finalCents ?? 0, currency: 'usd', stripeSessionId: s.id } });
                 // Auto-renew: start a subscription that first bills at the prepaid

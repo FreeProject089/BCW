@@ -196,6 +196,17 @@ export const MAIL_SAMPLES = [
             + '<p>If you think this is wrong, you can reply to this message.</p>'
             + '<p>Write to <a href="mailto:appeals@example.com">appeals@example.com</a>.</p>'),
     },
+    {
+        id: 'gift-hosting', group: 'billing', label: 'Somebody bought you hosting',
+        note: 'The gift code. Sent to the recipient — who may not have an account yet, which is why it is a code and not a provisioned pool.',
+        build: () => mailShell('Somebody bought you hosting',
+            '<p>Somebody bought you <b>Standard</b> hosting for <b>6 months</b>.</p>'
+            + '<p>Redeem it with this code:</p>'
+            + '<p style="font-size:20px;font-family:monospace;letter-spacing:2px"><b>K7QP2-M4XRD</b></p>'
+            + '<p>You do not need a card. If you do not have an account yet, create one with this address and the code will be waiting.</p>'
+            + '<p>It expires in a year.</p>',
+            { url: link('/hosting#redeem'), label: 'Redeem it' }),
+    },
 ];
 
 export const MAIL_GROUPS = [

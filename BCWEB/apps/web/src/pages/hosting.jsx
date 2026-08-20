@@ -209,6 +209,11 @@ export function Hosting() {
   };
   const removeItem = (uid) => setCart((c) => c.filter((x) => x.uid !== uid));
   const setItemAutoRenew = (uid, on) => setCart((c) => c.map((x) => (x.uid === uid ? { ...x, autoRenew: on } : x)));
+  // Turning a line into a gift also turns auto-renew OFF, and not as a nicety: auto-renew on a
+  // gift charges the GIVER's card indefinitely for something somebody else is using. The server
+  // refuses it too — this just stops the checkbox showing a promise the server will not keep.
+  const setItemGift = (uid, giftTo) => setCart((c) => c.map((x) => (
+    x.uid === uid ? { ...x, giftTo, ...(giftTo ? { autoRenew: false } : {}) } : x)));
   const clearCart = () => setCart([]);
   const cartCount = cart.length;
   const termTotal = (monthlyCents) => {
@@ -393,7 +398,7 @@ export function Hosting() {
 
       <p className="text-xs text-[var(--faint)] mt-5 flex items-center gap-1.5"><ShieldCheck size={13} /> {t('hosting.note', 'Updates only require a valid SHA. We set the upload limit per repo.')}</p>
       <CustomPlanModal open={customOpen} onClose={() => setCustomOpen(false)} months={months} setMonths={setMonths} termDisc={TERM_DISC} onCheckout={(custom) => { setCustomOpen(false); addHosting({ custom, label: t('cart.custom', 'Custom {gb} GB').replace('{gb}', custom.storageGB) }); }} />
-      <CartPanel open={cartOpen} setOpen={setCartOpen} cart={cart} count={cartCount} removeItem={removeItem} setItemAutoRenew={setItemAutoRenew} clearCart={clearCart} />
+      <CartPanel open={cartOpen} setOpen={setCartOpen} cart={cart} count={cartCount} removeItem={removeItem} setItemAutoRenew={setItemAutoRenew} setItemGift={setItemGift} clearCart={clearCart} />
     </div>
   );
 }
@@ -424,7 +429,7 @@ function BoostAddCard({ repos, onAdd }) {
 // Floating shopping cart: line items + stacked promo codes + a live server quote,
 // then one Stripe checkout for the whole bundle. Responsive (a bottom-right panel on
 // desktop, near-fullscreen sheet on mobile) with a collapsed pill when closed.
-function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew }) {
+function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, setItemGift }) {
   const { t } = useI18n(); const toast = useToast(); const { user } = useAuth(); const nav = useNavigate();
   // The cart is portaled to <body>, so it escapes AppReveal's intro fade — gate it
   // explicitly: NOTHING may show during the intro (only the intro's own controls).
@@ -436,7 +441,9 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
   const [busy, setBusy] = useState(false);
   const [agreed, setAgreed] = useState(false); // must accept Terms + Payments policy before paying
   const apiItems = useMemo(() => cart.map((it) => it.kind === 'hosting'
-    ? { kind: 'hosting', mode: it.mode, repoName: it.repoName, months: it.months, autoRenew: !!it.autoRenew, ...(it.custom ? { custom: it.custom } : { planId: it.planId }) }
+    ? { kind: 'hosting', mode: it.mode, repoName: it.repoName, months: it.months, autoRenew: !!it.autoRenew,
+      ...(it.giftTo ? { giftTo: it.giftTo } : {}),
+      ...(it.custom ? { custom: it.custom } : { planId: it.planId }) }
     : { kind: 'boost', repoId: it.repoId, days: it.days, autoRenew: !!it.autoRenew }), [cart]);
   // Live quote (debounced) whenever the cart or promo set changes.
   useEffect(() => {
@@ -500,9 +507,33 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew })
             {/* Per-item auto-renew — hosting renews as a subscription after the prepaid
                 term; a boost re-bills every N days. Both cancellable in Billing. */}
             <label className="flex items-center gap-1.5 mt-1.5 text-[11px] text-[var(--muted)] cursor-pointer" title={it.kind === 'boost' ? t('cart.autorenew.hb', 'Keep this repo featured automatically — re-bills every {n} days. Cancel anytime in Billing.').replace('{n}', it.days) : t('cart.autorenew.h', 'Keep this repo online automatically — after the prepaid term it renews as a subscription. Cancel anytime in Billing.')}>
-              <input type="checkbox" checked={!!it.autoRenew} onChange={(e) => setItemAutoRenew(it.uid, e.target.checked)} />
+              <input type="checkbox" checked={!!it.autoRenew} disabled={!!it.giftTo} onChange={(e) => setItemAutoRenew(it.uid, e.target.checked)} />
               <RefreshCw size={11} className={it.autoRenew ? 'text-success' : 'text-[var(--faint)]'} /> {it.kind === 'boost' ? t('cart.autorenew.boost', 'Auto-renew every {n} days').replace('{n}', it.days) : t('cart.autorenew', 'Auto-renew after the prepaid term')}
             </label>
+
+            {/* Buying it for somebody else.
+                Only on a hosting line: a boost applies to a repo you already own, so there is
+                nobody else to give it to. */}
+            {it.kind !== 'boost' && (
+              <div className="mt-1.5">
+                <label className="flex items-center gap-1.5 text-[11px] text-[var(--muted)] cursor-pointer">
+                  <input type="checkbox" checked={it.giftTo !== undefined}
+                    onChange={(e) => setItemGift(it.uid, e.target.checked ? '' : undefined)} />
+                  <Gift size={11} className={it.giftTo !== undefined ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
+                  {t('cart.gift', 'This is a gift for somebody else')}
+                </label>
+                {it.giftTo !== undefined && (
+                  <div className="mt-1.5">
+                    <Input value={it.giftTo} onChange={(e) => setItemGift(it.uid, e.target.value)}
+                      className="!py-1.5 !text-[12px]"
+                      placeholder={t('cart.gift.ph', 'Their BC id (BC-XXXX-XXXX) or e-mail')} />
+                    <p className="text-[11px] text-[var(--faint)] mt-1">
+                      {t('cart.gift.h', 'They get a code by e-mail and redeem it themselves — no card needed. It works even if they do not have an account yet. Auto-renew is off on a gift: it would keep charging YOUR card.')}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
         {/* Promo codes (stack the stackable ones) */}
