@@ -105,100 +105,114 @@ function CountUp({ value }) {
 }
 
 /**
- * The polls on the landing page, one at a time.
+ * The polls on the landing page: two across on a wide screen, one on a phone, sliding either way.
  *
- * They used to be stacked, full size, in the middle of a page that is not about polls — two of
- * them made the section the tallest thing on the front page and the question got lost inside
- * its own context.
+ * Built on scroll-snap, not on a transform and a page index. The number visible changes with the
+ * viewport, so a transform version has to know the breakpoint in JavaScript, recompute the page
+ * count when it changes, and clamp the current page so a resize does not land you past the end.
+ * That is three states to keep in step for something the browser already does — and it is the
+ * version that breaks first, on the resize nobody tested.
  *
- * It renders the SAME PollCard the polls page renders, in `compact` mode. A second, smaller
- * poll card would be a second place where voting is implemented.
+ * What this buys, free: real touch inertia, trackpad swipe, keyboard scrolling, and correct
+ * behaviour in RTL.
+ *
+ * It renders the SAME PollCard the polls page renders, in `compact` mode. A second, smaller poll
+ * card would be a second place where voting is implemented.
  */
 function PollSlider({ polls }) {
   const { t } = useI18n();
-  const [i, setI] = useState(0);
-  const n = polls.length;
-  const go = (next) => setI(((next % n) + n) % n);   // wraps both ways
+  const railRef = useRef(null);
+  const [pos, setPos] = useState({ page: 0, pages: 1 });
 
-  // Wrapping is fine for a handful of slides and stops the arrows from being dead controls at
-  // the ends, which is what people click first to find out whether there is more.
-  const prev = () => go(i - 1);
-  const next = () => go(i + 1);
-
-  // Touch. Not a library: a horizontal drag over a threshold, and nothing else — the card
-  // underneath has buttons, and anything cleverer starts stealing taps meant for them.
-  const start = useRef(null);
-  const onStart = (e) => { start.current = e.touches?.[0]?.clientX ?? null; };
-  const onEnd = (e) => {
-    if (start.current === null) return;
-    const dx = (e.changedTouches?.[0]?.clientX ?? start.current) - start.current;
-    start.current = null;
-    if (Math.abs(dx) > 50) (dx < 0 ? next : prev)();
+  // Derived from the DOM rather than from state, because the DOM is what decides how many fit:
+  // one card on a phone, two past the md breakpoint, and the CSS owns that rule.
+  const measure = () => {
+    const el = railRef.current;
+    if (!el) return;
+    const perView = Math.max(1, Math.round(el.clientWidth / (el.firstElementChild?.clientWidth || el.clientWidth)));
+    const pages = Math.max(1, Math.ceil(polls.length / perView));
+    // `scrollWidth - clientWidth` is the whole travel; dividing by it puts the last page at
+    // exactly 1 even when the final page is short, which a naive page*width does not.
+    const travel = el.scrollWidth - el.clientWidth;
+    const page = travel > 0 ? Math.round((el.scrollLeft / travel) * (pages - 1)) : 0;
+    setPos({ page, pages });
   };
 
-  if (!n) return null;
+  useEffect(() => {
+    const el = railRef.current;
+    if (!el) return undefined;
+    measure();
+    el.addEventListener('scroll', measure, { passive: true });
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => { el.removeEventListener('scroll', measure); ro.disconnect(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [polls.length]);
+
+  const goto = (page) => {
+    const el = railRef.current;
+    if (!el) return;
+    const travel = el.scrollWidth - el.clientWidth;
+    const p = Math.max(0, Math.min(pos.pages - 1, page));
+    // The page is set HERE, not left to the scroll listener to discover.
+    //
+    // A click already knows where it is going, and making the dots wait for a scroll event
+    // means the control lags behind the thing it controls — visibly during a smooth scroll,
+    // and indefinitely anywhere scroll events are throttled or coalesced. The listener still
+    // runs and still wins: it is what keeps this honest when somebody swipes or drags the rail
+    // by hand, which is the case a click cannot predict.
+    setPos((s) => ({ ...s, page: p }));
+    el.scrollTo({ left: pos.pages > 1 ? (travel * p) / (pos.pages - 1) : 0, behavior: 'smooth' });
+  };
+  const prev = () => goto(pos.page - 1);
+  const next = () => goto(pos.page + 1);
+
+  if (!polls.length) return null;
 
   return (
-    <div className="reveal-on-scroll max-w-2xl">
+    <div className="reveal-on-scroll max-w-4xl">
       <div
-        className="overflow-hidden"
-        onTouchStart={onStart}
-        onTouchEnd={onEnd}
-        // Arrow keys when the slider has focus. A carousel that only responds to a mouse is a
-        // carousel half the people on the page cannot use.
-        tabIndex={n > 1 ? 0 : -1}
-        role={n > 1 ? 'group' : undefined}
-        aria-roledescription={n > 1 ? 'carousel' : undefined}
-        aria-label={n > 1 ? t('home.poll.slider', 'Polls') : undefined}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
-          if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
-        }}
+        ref={railRef}
+        className="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-1"
+        tabIndex={polls.length > 1 ? 0 : -1}
+        role={polls.length > 1 ? 'group' : undefined}
+        aria-roledescription={polls.length > 1 ? 'carousel' : undefined}
+        aria-label={polls.length > 1 ? t('home.poll.slider', 'Polls') : undefined}
       >
-        {/* NOT gated on prefers-reduced-motion, and that is this repo's rule rather than mine.
-            index.css says it twice, next to the reviews marquee and the scroll reveals: Windows
-            turns that flag on behind users' backs (battery saver, animation settings), and
-            gating on it silently flattened both. A horizontal translate with no flashing is the
-            case those comments call safe.
-
-            The switch is the inline transform either way, so even where the transition does not
-            apply the slide still changes — the control never becomes a dead one. */}
-        <div
-          className="flex transition-transform duration-300 ease-out"
-          style={{ transform: `translateX(-${i * 100}%)` }}
-        >
-          {polls.map((poll, k) => (
-            // The off-screen slides are hidden from assistive tech and from tab order, so a
-            // keyboard user does not tab into a card they cannot see.
-            <div key={poll.id} className="w-full shrink-0 px-0.5" aria-hidden={k !== i} inert={k !== i ? '' : undefined}>
-              <PollCard poll={poll} compact />
-            </div>
-          ))}
-        </div>
+        {polls.map((poll) => (
+          // Half a page past `md`, one page below it. Two cards side by side on a phone is two
+          // cards nobody can read.
+          <div key={poll.id} className="snap-start shrink-0 w-full md:w-[calc(50%-0.5rem)]">
+            <PollCard poll={poll} compact />
+          </div>
+        ))}
       </div>
 
-      {n > 1 && (
+      {pos.pages > 1 && (
         <div className="flex items-center justify-between gap-3 mt-3">
           <div className="flex items-center gap-1.5">
-            {polls.map((poll, k) => (
+            {Array.from({ length: pos.pages }, (_, k) => (
               <button
-                key={poll.id}
+                key={k}
                 type="button"
-                onClick={() => go(k)}
+                onClick={() => goto(k)}
                 aria-label={t('home.poll.goto', 'Poll {n}').replace('{n}', String(k + 1))}
-                aria-current={k === i ? 'true' : undefined}
-                className={`h-1.5 rounded-full transition-all ${k === i ? 'w-6 bg-[var(--primary-2)]' : 'w-1.5 bg-[var(--line-strong)] hover:bg-[var(--muted)]'}`}
+                aria-current={k === pos.page ? 'true' : undefined}
+                className={`h-1.5 rounded-full transition-all ${k === pos.page ? 'w-6 bg-[var(--primary-2)]' : 'w-1.5 bg-[var(--line-strong)] hover:bg-[var(--muted)]'}`}
               />
             ))}
           </div>
           <div className="flex items-center gap-1">
-            <span className="text-[11px] text-[var(--faint)] tabular-nums mr-1">{i + 1}/{n}</span>
-            <button type="button" onClick={prev} aria-label={t('home.poll.prev', 'Previous poll')}
-              className="w-7 h-7 grid place-items-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] transition">
+            <span className="text-[11px] text-[var(--faint)] tabular-nums mr-1">{pos.page + 1}/{pos.pages}</span>
+            {/* Disabled at the ends rather than wrapping. A rail you can scroll by hand has a
+                visible beginning and end, so an arrow that jumps back to the start from the last
+                card contradicts what the scrollbar just showed you. */}
+            <button type="button" onClick={prev} disabled={pos.page === 0} aria-label={t('home.poll.prev', 'Previous poll')}
+              className="w-7 h-7 grid place-items-center rounded-full border border-[var(--line)] text-[var(--muted)] enabled:hover:text-[var(--text)] enabled:hover:border-[var(--line-strong)] disabled:opacity-40 transition">
               <ChevronLeft size={14} />
             </button>
-            <button type="button" onClick={next} aria-label={t('home.poll.next', 'Next poll')}
-              className="w-7 h-7 grid place-items-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] transition">
+            <button type="button" onClick={next} disabled={pos.page >= pos.pages - 1} aria-label={t('home.poll.next', 'Next poll')}
+              className="w-7 h-7 grid place-items-center rounded-full border border-[var(--line)] text-[var(--muted)] enabled:hover:text-[var(--text)] enabled:hover:border-[var(--line-strong)] disabled:opacity-40 transition">
               <ChevronRight size={14} />
             </button>
           </div>
