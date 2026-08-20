@@ -284,8 +284,9 @@ charge → mettre un CDN devant* ci-dessous.
   `docker compose up -d` habituel. Rien d'autre : le port hôte est une plage et Caddy résout
   `api` dynamiquement, donc la répartition suit toute seule. Le cache/limiter Redis rendent
   déjà ça sûr. (Le réglage, pas `--scale` : un flag ne survit pas au prochain déploiement.)
-- Active le pooler **PgBouncer** : `docker compose --profile pgbouncer up -d`, puis dans
-  `.env` mets `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true`
+- Active le pooler **PgBouncer** dans `.env` : `COMPOSE_PROFILES=pgbouncer` plus
+  `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true` (dans `.env`, pas en flag
+  `--profile` — le flag ne dure qu'une commande et `deploy.sh` arrêterait le pooler)
   (`DIRECT_DATABASE_URL` reste sur `db:5432` pour les migrations, géré automatiquement).
 
 **Mettre Postgres sur son propre serveur (managé — c'est ton objectif « DB sur un serveur

@@ -37,6 +37,16 @@ for (const k of ['volumes', 'networks', 'services', 'secrets', 'configs']) servi
 
 const composeVars = new Set([...compose.matchAll(/\$\{([A-Z0-9_]+)/g)].map((m) => m[1]));
 
+// Variables the Docker Compose CLI reads out of .env for ITSELF. They never appear as
+// `${VAR}` inside docker-compose.yml, because nothing in the file substitutes them — the CLI
+// consumes them before parsing. Without this list the checker calls COMPOSE_PROFILES
+// undocumented, which is the one failure mode this file's other comments already warn about:
+// a check that is wrong once teaches the reader to skim past it when it is right.
+//
+// COMPOSE_PROFILES is verified, not assumed: with it set in .env, `docker compose config
+// --services` lists pgbouncer; without it, it does not.
+for (const v of ['COMPOSE_PROFILES', 'COMPOSE_PROJECT_NAME', 'COMPOSE_FILE', 'COMPOSE_ENV_FILES']) composeVars.add(v);
+
 // Everything that can legitimately READ a variable — not just the API.
 //
 // A first version scanned compose and apps/api/src only, and reported six of its seven

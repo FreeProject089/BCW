@@ -70,7 +70,7 @@ docker compose up -d --force-recreate api # re-read .env without rebuilding
 For several API replicas, put `API_REPLICAS=3` in `.env` and run the normal command:
 
 ```bash
-docker compose --profile pgbouncer up -d --build
+docker compose up -d --build
 ```
 
 Replicas are replaced **one at a time** (the SIGTERM drain is already in place), so a build on

@@ -34,17 +34,20 @@ vérifier)**.
 **Quand l'ajouter :** **uniquement** quand tu fais tourner **≥ 2 réplicas d'API** (§3).
 Avec un seul conteneur API, ça n'apporte rien.
 
-**Comment :**
-```bash
-docker compose --profile pgbouncer up -d
-```
-Puis dans `infra/compose/.env` :
+**Comment :** tout se passe dans `infra/compose/.env` —
 ```ini
+COMPOSE_PROFILES=pgbouncer
 DB_HOST=pgbouncer
 DB_PORT=6432
 DB_URL_PARAMS=?pgbouncer=true
 ```
-`docker compose up -d api` pour recharger.
+`docker compose up -d` pour recharger.
+
+!!! danger "`--profile` ne dure qu'une commande"
+    `infra/deploy.sh` lance un `docker compose up -d` nu. Si PgBouncer n'a été activé que par
+    le flag, ce déploiement l'**arrête** — et comme `DB_HOST=pgbouncer` y envoie l'API, celle-ci
+    parle alors à un conteneur éteint. Le site tombe juste après un déploiement qui s'est
+    annoncé réussi. Dans `.env`, toutes les commandes compose le voient, `deploy.sh` compris.
 
 **Après (à vérifier) :**
 - L'API démarre et répond (`/ready` = 200).
@@ -68,7 +71,7 @@ API_REPLICAS=3
 ```
 
 ```bash
-docker compose --profile pgbouncer up -d   # 3 conteneurs API + le pooler
+docker compose up -d   # 3 conteneurs API + le pooler (voir §2 pour COMPOSE_PROFILES)
 ```
 
 `--scale api=3` en ligne de commande fait la même chose **une fois**. Ça ne survit pas au

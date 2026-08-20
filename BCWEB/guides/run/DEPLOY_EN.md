@@ -276,8 +276,9 @@ setup is the very next thing — see *Performance & scaling → put a CDN in fro
   `docker compose up -d`. Nothing else: the host port is a range and Caddy resolves `api`
   dynamically, so the spread follows on its own. The Redis cache/limiter already make that
   safe. (Use the setting, not `--scale` — a flag does not survive the next deploy.)
-- Enable the **PgBouncer** pooler: `docker compose --profile pgbouncer up -d`, then in
-  `.env` set `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true`
+- Enable the **PgBouncer** pooler in `.env`: `COMPOSE_PROFILES=pgbouncer` plus
+  `DB_HOST=pgbouncer DB_PORT=6432 DB_URL_PARAMS=?pgbouncer=true` (in `.env`, not as a
+  `--profile` flag — the flag lasts one command and `deploy.sh` would stop the pooler)
   (`DIRECT_DATABASE_URL` stays on `db:5432` for migrations, handled automatically).
 
 **Move Postgres to its own server (managed — this is the "DB on a separate server" goal,

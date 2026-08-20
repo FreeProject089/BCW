@@ -33,17 +33,20 @@ backup). Every recipe follows the same shape: **When to add it · How · After (
 **When to add it:** **only** once you run **≥ 2 API replicas** (§3). With a single API
 container it buys you nothing.
 
-**How:**
-```bash
-docker compose --profile pgbouncer up -d
-```
-Then in `infra/compose/.env`:
+**How:** it all happens in `infra/compose/.env` —
 ```ini
+COMPOSE_PROFILES=pgbouncer
 DB_HOST=pgbouncer
 DB_PORT=6432
 DB_URL_PARAMS=?pgbouncer=true
 ```
-`docker compose up -d api` to reload.
+`docker compose up -d` to reload.
+
+!!! danger "`--profile` lasts one command"
+    `infra/deploy.sh` runs a plain `docker compose up -d`. If PgBouncer was only enabled by the
+    flag, that deploy **stops** it — and since `DB_HOST=pgbouncer` points the API at it, the API
+    is left talking to a container that is not running. The site goes down right after a deploy
+    that reported success. In `.env`, every compose command sees it, `deploy.sh` included.
 
 **After (verify):**
 - API boots and answers (`/ready` = 200).
@@ -67,7 +70,7 @@ API_REPLICAS=3
 ```
 
 ```bash
-docker compose --profile pgbouncer up -d   # 3 API containers + the pooler
+docker compose up -d   # 3 API containers + the pooler (see §2 for COMPOSE_PROFILES)
 ```
 
 `--scale api=3` on the command line does the same thing **once**. It does not survive the next

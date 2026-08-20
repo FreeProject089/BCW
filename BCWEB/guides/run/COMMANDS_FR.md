@@ -71,7 +71,7 @@ docker compose up -d --force-recreate api # relire .env sans reconstruire
 Pour plusieurs répliques d'API, mets `API_REPLICAS=3` dans `.env` puis la commande normale :
 
 ```bash
-docker compose --profile pgbouncer up -d --build
+docker compose up -d --build
 ```
 
 Les répliques sont remplacées **une par une** (le drain SIGTERM est déjà en place), donc un
