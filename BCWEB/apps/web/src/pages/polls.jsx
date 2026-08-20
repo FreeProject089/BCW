@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BarChart3, Check, Lock, Users, Search, X, CheckCircle2 } from 'lucide-react';
+import { BarChart3, Check, Lock, Users, Search, X, CheckCircle2, ArrowRight } from 'lucide-react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -295,13 +295,82 @@ function PollForm({ poll, onDone, onWithdraw }) {
 }
 
 /**
- * @param compact  Trim it for a page that is not about polls.
+ * Plain text out of a markdown description.
  *
- * Only the DESCRIPTION is clamped, never the options: a card that hides the thing you vote on
- * to save space has saved space by removing its purpose. The clamp is CSS, so the full text is
- * still in the DOM for a screen reader and for the person who opens the poll itself.
+ * A CSS line-clamp was tried first and is why this exists: clamping the RENDERED markdown cut a
+ * callout in half and left a box with no bottom and a sentence stopping mid-word. Markdown is
+ * not text with decorations — it is blocks, and half a block is a broken block.
+ *
+ * So a teaser never renders markdown at all. It strips it to a sentence. Images, callouts,
+ * tables and embeds belong on the poll's own page, at full size, where they are the point.
  */
-export function PollCard({ poll: initial, onChange, compact = false }) {
+export function plainExcerpt(md, max = 140) {
+  const text = String(md || '')
+    // Directive blocks (`:::callout{...}` … `:::`) — the fence lines go, the words inside stay.
+    .replace(/^:::.*$/gm, ' ')
+    // Images and embeds have no text worth keeping; a link keeps its label.
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    // Table pipes and leading markers, then the inline emphasis characters.
+    .replace(/^[>\-*+|#\s]+/gm, ' ')
+    .replace(/[*_~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length <= max) return text;
+  // Cut on a word, not mid-word: the ellipsis should look deliberate.
+  const cut = text.slice(0, max);
+  const sp = cut.lastIndexOf(' ');
+  return `${(sp > max * 0.6 ? cut.slice(0, sp) : cut).trimEnd()}…`;
+}
+
+/**
+ * One poll, as a row in a list: what it asks, roughly what it is about, and a way in.
+ *
+ * The landing page and the polls index both used to render the WHOLE card — every option, every
+ * question of a form poll, the full rich description. Three consequences, all visible:
+ * a five-question form made the section taller than the hero; the slider rail took the height
+ * of its tallest slide and left a screen of white space under the short ones; and the clamp
+ * that was supposed to contain it broke the markdown instead.
+ *
+ * A teaser is a fixed, small height by construction — there is nothing in it that can grow.
+ * Answering happens on the poll's own page, which is also the page every share link opens.
+ */
+export function PollTeaser({ poll }) {
+  const { t } = useI18n();
+  const answered = (poll.myVotes || []).length > 0 || poll.hasAnswered === true;
+  const excerpt = plainExcerpt(poll.description);
+  const count = poll.total ?? null;
+
+  return (
+    <Link
+      to={`/polls/${poll.id}`}
+      className="card p-4 flex flex-col gap-2 h-full hover:border-[var(--line-strong)] transition group"
+    >
+      <div className="flex items-start gap-2">
+        <BarChart3 size={15} className="text-[var(--primary-2)] mt-0.5 shrink-0" />
+        <span className="font-semibold text-[14px] leading-snug flex-1 min-w-0">{poll.question}</span>
+        {answered && <Check size={14} className="text-[var(--success)] shrink-0 mt-0.5" aria-label={t('poll.t.done', 'You answered this')} />}
+      </div>
+
+      {/* One line, and only if there is something to say. An empty second line on a card that
+          has none is furniture. */}
+      {excerpt && <p className="text-[12px] text-[var(--muted)] line-clamp-2 pl-[23px]">{excerpt}</p>}
+
+      <div className="flex items-center gap-2 mt-auto pl-[23px] text-[11px] text-[var(--faint)]">
+        {!poll.open && <Badge>{t('poll.closed', 'Closed')}</Badge>}
+        {poll.open && poll.audience === 'users' && <Badge tone="primary"><Users size={10} /> {t('poll.members', 'Members')}</Badge>}
+        {count !== null && <span className="tabular-nums">{t('poll.t.answers', '{n} answers').replace('{n}', String(count))}</span>}
+        <span className="ml-auto text-[var(--primary-2)] opacity-0 group-hover:opacity-100 transition inline-flex items-center gap-0.5">
+          {answered || !poll.open ? t('poll.t.see', 'See results') : t('poll.t.answer', 'Answer')} <ArrowRight size={11} />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+export function PollCard({ poll: initial, onChange }) {
   const { t } = useI18n(); const toast = useToast(); const { user } = useAuth();
   const [poll, setPoll] = useState(initial);
   const [picked, setPicked] = useState([]);
@@ -357,9 +426,7 @@ export function PollCard({ poll: initial, onChange, compact = false }) {
               those places is markup read aloud by a screen reader. Rich content belongs in the
               description and in a question's help text, which is also markdown. */}
           {poll.description && (
-            <div className={`text-[13px] text-[var(--muted)] mt-1 poll-rich${compact ? ' poll-rich-compact' : ''}`}>
-              <Markdown>{poll.description}</Markdown>
-            </div>
+            <div className="text-[13px] text-[var(--muted)] mt-1 poll-rich"><Markdown>{poll.description}</Markdown></div>
           )}
         </div>
         {closed && <Badge>{t('poll.closed', 'Closed')}</Badge>}
@@ -550,7 +617,7 @@ export default function PollsPage() {
   ];
 
   return (
-    <div className="max-w-2xl mx-auto py-8">
+    <div className="max-w-3xl mx-auto py-8">
       <h1 className="text-xl font-bold mb-1">{t('poll.page.title', 'Polls')}</h1>
       <p className="text-sm text-[var(--muted)] mb-5">{t('poll.page.sub', 'Short questions about where this goes next. Answering takes a moment and genuinely decides things.')}</p>
 
@@ -600,20 +667,30 @@ export default function PollsPage() {
           sub={term ? t('poll.nomatch.s', 'Try a shorter word, or clear the filters.') : t('poll.allanswered.s', 'Nothing is waiting on you right now.')} />
       ) : (
         <div className="space-y-6">
+          {/* Titles, not forms.
+              This page rendered every poll in full — every option, and for a form poll every
+              question of it. Five polls made a page nobody scrolled to the end of, and the one
+              you were looking for was somewhere inside it. It is an INDEX now: what each poll
+              asks, roughly what it is about, whether you have answered it. Answering happens on
+              the poll's own page, which is also where every share link already pointed. */}
           {open.length > 0 && (
-            <div className="space-y-4">
+            <div>
               {done.length > 0 && (
-                <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('poll.page.open', 'Open')}</h2>
+                <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2">{t('poll.page.open', 'Open')}</h2>
               )}
-              {open.map((p) => <PollCard key={p.id} poll={p} />)}
+              <div className="grid sm:grid-cols-2 gap-3">
+                {open.map((p) => <PollTeaser key={p.id} poll={p} />)}
+              </div>
             </div>
           )}
           {done.length > 0 && (
-            <div className="space-y-4">
-              <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)]">
+            <div>
+              <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2">
                 {t('poll.page.closed', 'Closed — results')}
               </h2>
-              {done.map((p) => <PollCard key={p.id} poll={p} />)}
+              <div className="grid sm:grid-cols-2 gap-3">
+                {done.map((p) => <PollTeaser key={p.id} poll={p} />)}
+              </div>
             </div>
           )}
         </div>

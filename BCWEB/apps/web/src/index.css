@@ -977,22 +977,3 @@ label:has(> input[type="radio"]) {
  * description must not make the whole page scroll sideways. */
 .poll-rich .md-body pre,
 .poll-rich .md-body table { max-width: 100%; overflow-x: auto; display: block; }
-
-/* The same rich description, on a page that is not about polls.
- *
- * The landing page shows a poll between other sections, so a description with a full-width
- * screenshot and a table made the poll the tallest thing on the page — the question got lost
- * inside its own context. Clamped rather than removed: the text is still in the DOM, so a
- * screen reader reads all of it and the poll's own page shows all of it. */
-.poll-rich-compact .md-body {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-/* Media inside a clamped block is capped separately: line-clamp counts LINES, and an image is
- * one line however tall it is — so without this a single 1600px screenshot still owned the
- * section. */
-.poll-rich-compact .md-body img,
-.poll-rich-compact .md-body video,
-.poll-rich-compact .md-body iframe { max-height: 120px; width: auto; object-fit: cover; }

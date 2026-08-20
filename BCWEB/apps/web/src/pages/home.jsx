@@ -11,7 +11,7 @@ import Avatar from '../ui/Avatar.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { AuthorsRow } from './blog.jsx';
-import { PollCard } from './polls.jsx';
+import { PollTeaser } from './polls.jsx';
 import { AppLogo, KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { useAsync } from './pages.jsx';
 
@@ -126,15 +126,27 @@ function PollSlider({ polls }) {
 
   // Derived from the DOM rather than from state, because the DOM is what decides how many fit:
   // one card on a phone, two past the md breakpoint, and the CSS owns that rule.
+  //
+  // GUARDED, because an unmeasurable rail used to remove the controls entirely and say nothing.
+  // At mount the section may not be laid out — `clientWidth` is 0, `0 / 0` is NaN, and NaN
+  // survived every Math.max and Math.ceil below it until `pages > 1` came out false and the
+  // arrows were simply never rendered. Nothing threw; the feature was just gone.
+  //
+  // When it cannot be measured the honest assumption is ONE per view, which is the narrow case:
+  // the controls appear, they work, and the first real measurement corrects the count. Guessing
+  // "everything fits" would be the one guess that hides them.
   const measure = () => {
     const el = railRef.current;
     if (!el) return;
-    const perView = Math.max(1, Math.round(el.clientWidth / (el.firstElementChild?.clientWidth || el.clientWidth)));
+    const railW = el.clientWidth;
+    const cardW = el.firstElementChild?.clientWidth;
+    const perView = (railW > 0 && cardW > 0) ? Math.max(1, Math.round(railW / cardW)) : 1;
     const pages = Math.max(1, Math.ceil(polls.length / perView));
     // `scrollWidth - clientWidth` is the whole travel; dividing by it puts the last page at
     // exactly 1 even when the final page is short, which a naive page*width does not.
     const travel = el.scrollWidth - el.clientWidth;
-    const page = travel > 0 ? Math.round((el.scrollLeft / travel) * (pages - 1)) : 0;
+    const raw = travel > 0 ? Math.round((el.scrollLeft / travel) * (pages - 1)) : 0;
+    const page = Number.isFinite(raw) ? Math.max(0, Math.min(pages - 1, raw)) : 0;
     setPos({ page, pages });
   };
 
@@ -142,10 +154,18 @@ function PollSlider({ polls }) {
     const el = railRef.current;
     if (!el) return undefined;
     measure();
+    // Two more passes after layout. ResizeObserver is the right tool and is also the one that
+    // does not fire on a tab the browser is not painting — so it stays, and these back it up
+    // rather than replacing it.
+    const raf = requestAnimationFrame(measure);
+    const settle = setTimeout(measure, 250);
     el.addEventListener('scroll', measure, { passive: true });
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => { el.removeEventListener('scroll', measure); ro.disconnect(); };
+    return () => {
+      cancelAnimationFrame(raf); clearTimeout(settle);
+      el.removeEventListener('scroll', measure); ro.disconnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [polls.length]);
 
@@ -173,7 +193,7 @@ function PollSlider({ polls }) {
     <div className="reveal-on-scroll max-w-4xl">
       <div
         ref={railRef}
-        className="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-1"
+        className="flex items-stretch gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-1"
         tabIndex={polls.length > 1 ? 0 : -1}
         role={polls.length > 1 ? 'group' : undefined}
         aria-roledescription={polls.length > 1 ? 'carousel' : undefined}
@@ -182,8 +202,11 @@ function PollSlider({ polls }) {
         {polls.map((poll) => (
           // Half a page past `md`, one page below it. Two cards side by side on a phone is two
           // cards nobody can read.
+          // `items-stretch` on the rail plus `h-full` on the teaser: every card in a page is
+          // the same height, so the rail no longer takes the height of its tallest slide and
+          // leaves a screen of white space under the short ones.
           <div key={poll.id} className="snap-start shrink-0 w-full md:w-[calc(50%-0.5rem)]">
-            <PollCard poll={poll} compact />
+            <PollTeaser poll={poll} />
           </div>
         ))}
       </div>
@@ -198,8 +221,12 @@ function PollSlider({ polls }) {
                 onClick={() => goto(k)}
                 aria-label={t('home.poll.goto', 'Poll {n}').replace('{n}', String(k + 1))}
                 aria-current={k === pos.page ? 'true' : undefined}
-                className={`h-1.5 rounded-full transition-all ${k === pos.page ? 'w-6 bg-[var(--primary-2)]' : 'w-1.5 bg-[var(--line-strong)] hover:bg-[var(--muted)]'}`}
-              />
+                // The visible dot stays small; the HIT AREA is 24px tall via padding. A 6px
+                // target is a target people miss, and missing it scrolls the page instead.
+                className="py-2.5 px-1 -my-2.5 group/dot"
+              >
+                <span className={`block h-1.5 rounded-full transition-all ${k === pos.page ? 'w-6 bg-[var(--primary-2)]' : 'w-1.5 bg-[var(--line-strong)] group-hover/dot:bg-[var(--muted)]'}`} />
+              </button>
             ))}
           </div>
           <div className="flex items-center gap-1">
@@ -208,12 +235,12 @@ function PollSlider({ polls }) {
                 visible beginning and end, so an arrow that jumps back to the start from the last
                 card contradicts what the scrollbar just showed you. */}
             <button type="button" onClick={prev} disabled={pos.page === 0} aria-label={t('home.poll.prev', 'Previous poll')}
-              className="w-7 h-7 grid place-items-center rounded-full border border-[var(--line)] text-[var(--muted)] enabled:hover:text-[var(--text)] enabled:hover:border-[var(--line-strong)] disabled:opacity-40 transition">
-              <ChevronLeft size={14} />
+              className="w-9 h-9 grid place-items-center rounded-full border border-[var(--line)] text-[var(--muted)] enabled:hover:text-[var(--text)] enabled:hover:border-[var(--line-strong)] disabled:opacity-40 transition">
+              <ChevronLeft size={16} />
             </button>
             <button type="button" onClick={next} disabled={pos.page >= pos.pages - 1} aria-label={t('home.poll.next', 'Next poll')}
-              className="w-7 h-7 grid place-items-center rounded-full border border-[var(--line)] text-[var(--muted)] enabled:hover:text-[var(--text)] enabled:hover:border-[var(--line-strong)] disabled:opacity-40 transition">
-              <ChevronRight size={14} />
+              className="w-9 h-9 grid place-items-center rounded-full border border-[var(--line)] text-[var(--muted)] enabled:hover:text-[var(--text)] enabled:hover:border-[var(--line-strong)] disabled:opacity-40 transition">
+              <ChevronRight size={16} />
             </button>
           </div>
         </div>
