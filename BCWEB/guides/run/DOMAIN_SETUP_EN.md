@@ -15,16 +15,46 @@ manual cert handling.
   Let's Encrypt ACME challenge, 443 serves HTTPS).
 
 ### 1. Point DNS at the server
-At your DNS provider, create records for the host you'll use:
 
-| Type | Name | Value |
-|---|---|---|
-| `A` | `community.example.com` | your server's IPv4 |
-| `AAAA` (optional) | `community.example.com` | your server's IPv6 |
-| `A` (optional, telemetry) | `telemetry.example.com` | your server's IPv4 |
-| `A` (storage) | `s3.example.com` | your server's IPv4 — see §5 |
+**A choice first.** Serving BCWEB from the bare domain (`example.com`) replaces whatever that
+domain serves today — check it serves nothing else before touching its `A` record. A
+sub-domain (`app.example.com`) leaves the rest alone and is undone in a minute, which is the
+careful choice until the production run has actually gone well once.
 
-Wait for DNS to propagate (`nslookup community.example.com` should return your IP).
+At your DNS provider, create:
+
+| Type | Name | Value | Why |
+|---|---|---|---|
+| `A` | `example.com` (or `app.`) | the server's IPv4 | the site |
+| `AAAA` *(if you have IPv6)* | same | the server's IPv6 | — |
+| `A` | `telemetry.example.com` | the same IPv4 | telemetry dashboard |
+| `A` | `s3.example.com` | the same IPv4 | uploads — see §5, it also needs a Caddy block |
+
+**Do not create `www.`** without first adding the Caddy block that redirects it: the
+`Caddyfile` has a block for the site and one for telemetry only, so `www.` would answer an
+empty 200 — not an error, a blank page.
+
+**If you have a `CAA` record**, it must allow `letsencrypt.org`, or Caddy cannot get a
+certificate and will fail in a loop:
+
+```
+example.com. CAA 0 issue "letsencrypt.org"
+```
+
+With no `CAA` at all any authority may issue — that is the default, and it works.
+
+**Mail does not go through this stack** and its records are separate. If verification e-mails
+come from a mailbox on your domain you need an `SPF` including your provider, `DKIM`, and a
+`DMARC`. Mind `p=reject`: a message that fails alignment is not put in spam, it is **refused**
+— so the sender in `SMTP_FROM` has to be a mailbox on that domain, not an address elsewhere.
+
+Wait for propagation, then check all three:
+
+```sh
+nslookup example.com            # should return the server's IP
+nslookup telemetry.example.com
+nslookup s3.example.com
+```
 
 ### 2. Set the domain in `.env`
 Edit `infra/compose/.env`. **Six values** carry `localhost` in the template and all six have

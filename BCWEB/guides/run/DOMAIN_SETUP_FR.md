@@ -15,16 +15,47 @@ aucune gestion manuelle de certificat.
   Let's Encrypt, le 443 sert le HTTPS).
 
 ### 1. Pointer le DNS vers le serveur
-Chez votre fournisseur DNS, créez les enregistrements :
 
-| Type | Nom | Valeur |
-|---|---|---|
-| `A` | `community.example.com` | l'IPv4 de votre serveur |
-| `AAAA` (optionnel) | `community.example.com` | l'IPv6 de votre serveur |
-| `A` (optionnel, télémétrie) | `telemetry.example.com` | l'IPv4 de votre serveur |
-| `A` (stockage) | `s3.example.com` | l'IPv4 de votre serveur — voir la note §5 |
+**D'abord, un choix.** Servir BCWEB depuis le domaine nu (`example.com`) remplace ce que ce
+domaine sert aujourd'hui — vérifiez qu'il ne sert rien d'autre avant de toucher son `A`. Un
+sous-domaine (`app.example.com`) laisse le reste intact et se défait en une minute ; c'est le
+choix prudent tant que la mise en production n'est pas jouée.
 
-Attendez la propagation (`nslookup community.example.com` doit renvoyer votre IP).
+Chez votre fournisseur DNS, créez :
+
+| Type | Nom | Valeur | Pourquoi |
+|---|---|---|---|
+| `A` | `example.com` (ou `app.`) | l'IPv4 du serveur | le site |
+| `AAAA` *(si vous avez une IPv6)* | idem | l'IPv6 du serveur | — |
+| `A` | `telemetry.example.com` | la même IPv4 | tableau de bord télémétrie |
+| `A` | `s3.example.com` | la même IPv4 | téléversements — voir §5, il faut aussi un bloc Caddy |
+
+**Ne créez pas `www.`** sans ajouter d'abord le bloc Caddy qui le redirige : le `Caddyfile`
+n'a de bloc que pour le site et la télémétrie, donc `www.` répondrait un 200 vide — pas une
+erreur, une page blanche.
+
+**Si vous avez un enregistrement `CAA`**, il doit autoriser `letsencrypt.org`, sinon Caddy ne
+peut pas obtenir de certificat et échouera en boucle :
+
+```
+example.com. CAA 0 issue "letsencrypt.org"
+```
+
+Sans `CAA` du tout, n'importe quelle autorité peut émettre — c'est le défaut, et ça marche.
+
+**Le mail ne passe pas par cette pile** et ses enregistrements sont indépendants. Si vous
+envoyez les e-mails de vérification depuis une boîte de votre domaine, il vous faut un `SPF`
+qui inclut votre fournisseur, du `DKIM`, et un `DMARC`. Attention à `p=reject` : un message
+qui ne s'aligne pas n'est pas mis en indésirable, il est **refusé** — donc l'expéditeur
+configuré dans `SMTP_FROM` doit bien être une boîte de ce domaine, pas une adresse d'ailleurs.
+
+Attendez la propagation, puis vérifiez les trois :
+
+```sh
+nslookup example.com            # doit renvoyer l'IP du serveur
+nslookup telemetry.example.com
+nslookup s3.example.com
+```
 
 ### 2. Définir le domaine dans `.env`
 Éditez `infra/compose/.env`. **Six valeurs** portent `localhost` dans le modèle, et les six
