@@ -3,6 +3,7 @@ import { BarChart3, Plus, Trash2, PenSquare, Users, Globe, Pin, Eye, ListTree, A
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { QTally, Distribution, QuestionResults, CHART_INK } from '../ui/poll-results.jsx';
+import Markdown from '../ui/md.jsx';
 import { Card, Button, Input, Textarea, Select, Badge, Modal, Field, EmptyState, Spinner, useToast, useDialog, copyText } from '../ui/ui.jsx';
 import { useAsync, Loading } from './pages.jsx';
 
@@ -59,6 +60,8 @@ function PollEditor({ open, initial, onClose, onSaved }) {
   const { t } = useI18n(); const toast = useToast();
   const [d, setD] = useState(initial || emptyDraft());
   const [busy, setBusy] = useState(false);
+  // Off by default: the preview is for checking an embed, not something to look at while typing.
+  const [showPreview, setShowPreview] = useState(false);
   // The questions being built, for a NEW poll. An existing one edits them from its own row,
   // where the answer counts and the 409-on-destruction flow live.
   const [qs, setQs] = useState(startQuestions);
@@ -123,11 +126,33 @@ function PollEditor({ open, initial, onClose, onSaved }) {
   return (
     <Modal open={open} onClose={onClose} title={editing ? t('apoll.edit', 'Edit poll') : t('apoll.new', 'New poll')}>
       <div className="space-y-3">
+        {/* Only when editing: a poll that has not been saved has no id and no share key, and a
+            copy button that yields a link to nothing is worse than no button. */}
+        {initial?.id && <div className="mb-3"><PollLink poll={{ ...initial, visibility: d.visibility, shareKey: initial.shareKey }} /></div>}
+
         <Field label={t('apoll.q', 'Question')}>
           <Input value={d.question} onChange={(e) => set('question', e.target.value)} placeholder={t('apoll.qph', 'What should we build next?')} />
         </Field>
-        <Field label={t('apoll.desc', 'Context (optional)')}>
-          <Textarea rows={2} value={d.description} onChange={(e) => set('description', e.target.value)} />
+        <Field label={t('apoll.desc', 'Context (optional)')}
+          hint={t('apoll.desc.h', 'Markdown, and every BCWEB block: images, GIFs, video, callouts, cards — even an inline session replay. This is where you put the thing you are asking about.')}>
+          <Textarea rows={4} value={d.description} onChange={(e) => set('description', e.target.value)}
+            placeholder={'![Layout A](https://…/a.png)\n\n:::callout{type=info}\nBoth options ship either way.\n:::'} />
+          <div className="flex items-center justify-between gap-2 mt-1.5">
+            <button type="button" onClick={() => setShowPreview((v) => !v)}
+              className="text-[11px] text-[var(--primary-2)] hover:underline">
+              {showPreview ? t('apoll.desc.hide', 'Hide preview') : t('apoll.desc.show', 'Preview')}
+            </button>
+          </div>
+          {/* The preview uses the SAME renderer the poll page uses. A preview drawn by its own
+              markdown pass is a preview of a different document, and the first time they
+              disagree is the first time somebody publishes something they never saw. */}
+          {showPreview && (
+            <div className="mt-2 rounded-lg border border-[var(--line)] p-3 text-[13px] text-[var(--muted)] poll-rich">
+              {d.description.trim()
+                ? <Markdown>{d.description}</Markdown>
+                : <span className="text-[var(--faint)]">{t('apoll.desc.empty', 'Nothing to preview yet.')}</span>}
+            </div>
+          )}
         </Field>
 
         {/* The QUESTIONS, here, while the poll is being made — not behind a second button on

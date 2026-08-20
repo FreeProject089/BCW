@@ -958,3 +958,22 @@ label:has(> input[type="radio"]) {
 @media (prefers-reduced-motion: reduce) {
   .undo-going, .undo-arriving { transition: none; }
 }
+
+/* Markdown inside a poll card.
+ *
+ * The renderer is the same one the blog uses, and its default type scale is built for an
+ * article column — dropped straight into a poll card it makes the CONTEXT bigger than the
+ * QUESTION it is context for. So the scale is pulled back, and the media is bounded: an
+ * unconstrained image in a card is how a 2000px screenshot pushes a vote button off-screen
+ * on a phone. */
+.poll-rich .md-body { font-size: 13px; line-height: 1.6; }
+.poll-rich .md-body > :first-child { margin-top: 0; }
+.poll-rich .md-body > :last-child { margin-bottom: 0; }
+.poll-rich .md-body h1, .poll-rich .md-body h2, .poll-rich .md-body h3 { font-size: 1.05em; margin: .9em 0 .4em; border-bottom: 0; padding-bottom: 0; }
+.poll-rich .md-body img,
+.poll-rich .md-body video,
+.poll-rich .md-body iframe { max-width: 100%; height: auto; border-radius: 10px; display: block; }
+/* Anything that scrolls does so INSIDE its own box. A wide table or code block in a poll
+ * description must not make the whole page scroll sideways. */
+.poll-rich .md-body pre,
+.poll-rich .md-body table { max-width: 100%; overflow-x: auto; display: block; }

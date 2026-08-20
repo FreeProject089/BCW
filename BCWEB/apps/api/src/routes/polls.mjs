@@ -470,7 +470,10 @@ export default async function pollRoutes(app) {
 
   const pollBody = z.object({
     question: z.string().min(3).max(300),
-    description: z.string().max(2000).default(''),
+    // Raised from 2000 when the description became markdown. An image URL plus a couple of
+    // BCWEB blocks eats a thousand characters before a word is written, and the old cap cut
+    // people off mid-embed — which reads as the editor being broken, not as a limit.
+    description: z.string().max(8000).default(''),
     audience: z.enum(['users', 'all']).default('users'),
     // WHERE it can be found. Distinct from `audience`, which is who may answer: a poll can
     // be answerable by anyone and still be listed nowhere.

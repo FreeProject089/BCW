@@ -340,7 +340,18 @@ export function PollCard({ poll: initial, onChange }) {
         <BarChart3 size={16} className="text-[var(--primary-2)] mt-0.5 shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-[15px]">{poll.question}</div>
-          {poll.description && <p className="text-[13px] text-[var(--muted)] mt-1">{poll.description}</p>}
+          {/* Markdown, not plain text — so a poll can show the thing it is asking about.
+              "Which of these two layouts?" is unanswerable without the two layouts, and the
+              same renderer the blog and docs use already handles images, GIFs, video and every
+              BCWEB block, including an inline session replay.
+
+              The QUESTION stays plain text on purpose: it is also used as an aria-label, as a
+              row title in the admin tally, and as the subject of a notification. Markdown in
+              those places is markup read aloud by a screen reader. Rich content belongs in the
+              description and in a question's help text, which is also markdown. */}
+          {poll.description && (
+            <div className="text-[13px] text-[var(--muted)] mt-1 poll-rich"><Markdown>{poll.description}</Markdown></div>
+          )}
         </div>
         {closed && <Badge>{t('poll.closed', 'Closed')}</Badge>}
         {!closed && poll.audience === 'users' && <Badge tone="primary"><Users size={11} /> {t('poll.members', 'Members')}</Badge>}
@@ -482,9 +493,38 @@ export default function PollsPage() {
       <h1 className="text-xl font-bold mb-1">{t('poll.page.title', 'Polls')}</h1>
       <p className="text-sm text-[var(--muted)] mb-5">{t('poll.page.sub', 'Short questions about where this goes next. Answering takes a moment and genuinely decides things.')}</p>
       <MyAnswers />
-      {!polls.length ? <EmptyState icon={BarChart3} title={t('poll.page.none', 'No poll running.')} sub={t('poll.page.none.s', 'Come back — there will be one.')} /> : (
-        <div className="space-y-4">{polls.map((p) => <PollCard key={p.id} poll={p} />)}</div>
-      )}
+      {!polls.length ? <EmptyState icon={BarChart3} title={t('poll.page.none', 'No poll running.')} sub={t('poll.page.none.s', 'Come back — there will be one.')} /> : (() => {
+        // Open first, closed underneath, each under its own heading.
+        //
+        // They used to be one list in which a closed poll was told apart only by a small badge
+        // — so the page opened on something that could not be answered and looked like it
+        // could. The order within each group is the server's (pinned first, then newest).
+        //
+        // Closed polls are kept rather than hidden: the results are the point of having asked,
+        // and a poll that vanishes when it closes takes its answer with it.
+        const open = polls.filter((p) => p.open);
+        const done = polls.filter((p) => !p.open);
+        return (
+          <div className="space-y-6">
+            {open.length > 0 && (
+              <div className="space-y-4">
+                {done.length > 0 && (
+                  <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('poll.page.open', 'Open')}</h2>
+                )}
+                {open.map((p) => <PollCard key={p.id} poll={p} />)}
+              </div>
+            )}
+            {done.length > 0 && (
+              <div className="space-y-4">
+                <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)]">
+                  {t('poll.page.closed', 'Closed — results')}
+                </h2>
+                {done.map((p) => <PollCard key={p.id} poll={p} />)}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
