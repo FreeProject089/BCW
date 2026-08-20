@@ -3202,3 +3202,40 @@ model BotAnnouncement {
 
   @@index([status, createdAt])
 }
+
+// A recorded session replay (rrweb), for the admin analytics screen.
+//
+// OFF by default and admin-gated, because this is the heaviest thing the site can collect: it
+// reproduces what a page LOOKED like, not a count. Two guards are structural rather than
+// optional — the recorder masks every input value before an event is created (so a typed
+// password or address never exists client-side to be sent), and nothing records at all unless
+// the visitor accepted the analytics category. Both are stated in the privacy policy, which
+// was updated in the same commit that added this.
+//
+// `visitor` is the SAME daily-rotating anonymous hash the rest of analytics uses, so a replay
+// cannot be joined to an account or followed across days.
+model SessionReplay {
+  id         String   @id @default(cuid())
+  // The client's id for one recording, so the chunks of a single visit land in one row.
+  //
+  // A replay HAS to arrive in pieces: sendBeacon and a keepalive fetch are both capped at
+  // about 64 KB, and five seconds of a normal page is already past that. Sending it whole at
+  // the end fails silently — the browser simply refuses and there is no error to see.
+  sid        String?  @unique
+  visitor    String? // daily anonymous hash (matches AnalyticsEvent.visitor)
+  path       String // the page the recording started on
+  // The rrweb event stream. Json rather than a relation: it is one opaque artefact that is
+  // only ever read whole, by a player.
+  events     Json
+  // Stored so the admin list can show weight and length without deserialising every stream —
+  // the reason a "sessions" screen is slow is usually that it read all of them to draw a list.
+  bytes      Int      @default(0)
+  durationMs Int      @default(0)
+  eventCount Int      @default(0)
+  device     String?
+  browser    String?
+  country    String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}

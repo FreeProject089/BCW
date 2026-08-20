@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle} from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -11822,6 +11822,112 @@ function EventsFeed({ days, hours }) {
   );
 }
 
+/**
+ * Recorded sessions: the switch, and what it has collected.
+ *
+ * The switch is ON THIS SCREEN rather than in a settings page, next to the recordings it
+ * produces — a collection setting kept away from the data it collects is one nobody revisits.
+ * It is off by default: this is the only thing the site records that reproduces what a page
+ * LOOKED like, where the rest of analytics is counts.
+ */
+function ReplaysPanel() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/analytics/replays'), []);
+  const [open, setOpen] = useState(null);
+  const [busy, setBusy] = useState('');
+  const cfg = data?.config || { enabled: false, sampleRate: 10, keep: 50 };
+
+  const save = async (next) => {
+    if (next.enabled && !cfg.enabled && !await dialog.confirm({
+      title: t('an.rep.on.t', 'Start recording sessions?'),
+      message: t('an.rep.on.m', 'Visitors who accepted analytics will have their session recorded as a replayable view of the page. Values typed into fields are masked before the recording is made, and sign-in, 2FA and settings pages are never recorded. Check your privacy policy still matches what you are turning on.'),
+      okLabel: t('an.rep.on.ok', 'Turn recording on'),
+      danger: true,
+    })) return;
+    setBusy('cfg');
+    try { await api.put('/admin/analytics/replay/config', next); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
+  };
+
+  const play = async (id) => {
+    setBusy(id);
+    // Fetched one at a time: the list deliberately carries no events, because fifty streams is
+    // tens of megabytes and the screen only draws rows.
+    try { setOpen(await api.get(`/admin/analytics/replays/${id}`)); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
+  };
+
+  const remove = async (id) => {
+    if (!await dialog.confirm({ title: t('an.rep.del.t', 'Delete this recording?'), okLabel: t('common.delete', 'Delete'), danger: true })) return;
+    setBusy(id);
+    try { await api.del(`/admin/analytics/replays/${id}`); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
+  };
+
+  const rows = data?.replays || [];
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input type="checkbox" checked={!!cfg.enabled} disabled={busy === 'cfg'} className="mt-1"
+            onChange={(e) => save({ ...cfg, enabled: e.target.checked })} />
+          <span className="min-w-0">
+            <span className="font-medium text-sm">{t('an.rep.enable', 'Record sessions (rrweb)')}</span>
+            <p className="text-[12px] text-[var(--muted)] mt-0.5">
+              {t('an.rep.enable.h', 'Off by default. Only visitors who accepted the analytics category are recorded, values typed into fields are masked before the recording exists, and sign-in, 2FA and settings pages are never recorded.')}
+            </p>
+          </span>
+        </label>
+        {cfg.enabled && (
+          <div className="flex flex-wrap items-end gap-3 mt-3 pt-3 border-t border-[var(--line)]">
+            <Field label={t('an.rep.rate', 'Sample (% of visits)')} className="!mb-0">
+              <Input type="number" min="0" max="100" className="w-24" defaultValue={cfg.sampleRate}
+                onBlur={(e) => save({ ...cfg, sampleRate: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} />
+            </Field>
+            <Field label={t('an.rep.keep', 'Keep at most')} className="!mb-0">
+              <Input type="number" min="0" max="2000" className="w-24" defaultValue={cfg.keep}
+                onBlur={(e) => save({ ...cfg, keep: Math.max(0, Number(e.target.value) || 0) })} />
+            </Field>
+            <p className="text-[11px] text-[var(--faint)] flex-1 min-w-[12rem]">
+              {t('an.rep.usage', '{n} recording(s), {b} on disk. The oldest are removed as new ones arrive.')
+                .replace('{n}', String(data?.count || 0)).replace('{b}', fmtBytes(data?.bytes || 0))}
+            </p>
+          </div>
+        )}
+      </Card>
+
+      {loading ? <div className="py-8 text-center"><Spinner /></div>
+        : !rows.length ? <EmptyState icon={PlayCircle} title={t('an.rep.none', 'No recording yet')}
+          sub={cfg.enabled ? t('an.rep.none.on', 'Recording is on — the first one appears when a sampled visitor leaves the page.')
+            : t('an.rep.none.off', 'Recording is off. Nothing is being collected.')} />
+        : (
+          <Card className="divide-y divide-[var(--line)]">
+            {rows.map((r) => (
+              <div key={r.id} className="px-3 py-2 flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm truncate">{r.path}</div>
+                  <div className="text-[11px] text-[var(--faint)] truncate">
+                    {new Date(r.createdAt).toLocaleString()} · {Math.round((r.durationMs || 0) / 1000)}s · {r.eventCount} ev · {fmtBytes(r.bytes || 0)}
+                    {r.device ? ` · ${r.device}` : ''}{r.browser ? ` · ${r.browser}` : ''}{r.country ? ` · ${r.country}` : ''}
+                  </div>
+                </div>
+                <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => play(r.id)} title={t('an.rep.play', 'Play')}><PlayCircle size={14} /></Button>
+                <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => remove(r.id)} title={t('common.delete', 'Delete')}><Trash2 size={13} className="text-[var(--error)]" /></Button>
+              </div>
+            ))}
+          </Card>
+        )}
+
+      {open && (
+        <Modal open onClose={() => setOpen(null)} title={open.path} icon={PlayCircle} width="max-w-4xl">
+          {/* The same player the docs and the moderation inspector use. */}
+          <ReplayPlayer doc={{ events: open.events, durationMs: open.durationMs }} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function AdminAnalytics() {
   const [days, setDays] = useState(30);
   const [hours, setHours] = useState(null); // when set → hourly view (zoom-in)
@@ -11896,7 +12002,7 @@ function AdminAnalytics() {
 
       {/* Sub-tab bar — horizontal-scrolls on narrow screens so it never overflows. */}
       <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
-        {[['overview', t('an.tab.overview', 'Overview'), TrendingUp], ['sessions', t('an.tab.sessions', 'Sessions'), Activity], ['geo', t('an.tab.geo', 'Geography'), Globe2], ['tech', t('an.tab.tech', 'Tech'), Monitor], ['events', t('an.tab.events', 'Events'), Activity], ['data', t('an.tab.data', 'Data'), Archive]].map(([id, label, I]) => (
+        {[['overview', t('an.tab.overview', 'Overview'), TrendingUp], ['sessions', t('an.tab.sessions', 'Sessions'), Activity], ['geo', t('an.tab.geo', 'Geography'), Globe2], ['tech', t('an.tab.tech', 'Tech'), Monitor], ['events', t('an.tab.events', 'Events'), Activity], ['replays', t('an.tab.replays', 'Replays'), PlayCircle], ['data', t('an.tab.data', 'Data'), Archive]].map(([id, label, I]) => (
           <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={14} /> {label}</button>
         ))}
       </div>
@@ -11940,6 +12046,8 @@ function AdminAnalytics() {
       </>}
 
       {tab === 'sessions' && <SessionsPanel days={days} hours={hours} />}
+
+      {tab === 'replays' && <ReplaysPanel />}
 
       {tab === 'geo' && (
         <div className="grid lg:grid-cols-[1.2fr_1.4fr] gap-4">

@@ -1083,7 +1083,13 @@ export default function App() {
   const loc = useLocation();
   const toast = useToast();
   const { t } = useI18n();
-  useEffect(() => { loadGtmIfConsented(); initVitals(); initInteractions(); initErrors(); }, []);
+  // Session replay is imported LAZILY and last: it is the only one of these that can pull in
+  // rrweb, and a visitor who declined analytics or an install with the switch off must never
+  // download it. initReplay() checks consent before the dynamic import resolves anything heavy.
+  useEffect(() => {
+    loadGtmIfConsented(); initVitals(); initInteractions(); initErrors();
+    import('./lib/replay.js').then((m) => m.initReplay()).catch(() => {});
+  }, []);
   // Global "you don't have permission" toast — the api client dispatches bcw:forbidden on
   // any missing_permission 403, so the user is told exactly what they lack no matter which
   // screen triggered it.

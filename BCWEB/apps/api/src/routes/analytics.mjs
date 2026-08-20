@@ -48,6 +48,153 @@ function initFeedSubscriber() {
 // visitor hash + coarse device/browser. No cookies, no third party. Consent-gated client-side.
 export default async function analyticsRoutes(app) {
   initFeedSubscriber(); // start relaying other replicas' live events onto this instance's bus
+
+  // ── Session replay (rrweb) — OFF unless an admin turns it on ────────────────
+  //
+  // The heaviest thing this site can collect: it reproduces what a page LOOKED like, where
+  // everything else here is a count. So it is off by default, and the client asks before it
+  // records rather than the server refusing afterwards — a browser that has already recorded
+  // three minutes of somebody's session has already done the thing consent was meant to gate.
+  const REPLAY_KEY = 'analytics.replay';
+  const REPLAY_DEFAULTS = { enabled: false, sampleRate: 10, keep: 50 };
+  // 2 MB of events per session. rrweb is chatty on a long visit, and an unbounded column is
+  // how one afternoon fills a disk that nothing was watching.
+  const REPLAY_MAX_BYTES = 2 * 1024 * 1024;
+
+  const replayConfig = async (p) => {
+    const row = await p.adminSetting.findUnique({ where: { key: REPLAY_KEY } }).catch(() => null);
+    return { ...REPLAY_DEFAULTS, ...(row?.value || {}) };
+  };
+
+  // Public, and deliberately says nothing else. The client needs two numbers to decide whether
+  // to load rrweb at all; anything more here would be configuration handed to everybody.
+  app.get('/analytics/replay/config', { config: { rateLimit: { max: 240, timeWindow: '1 minute' } } }, async () => {
+    const p = await db();
+    const c = await replayConfig(p);
+    return { enabled: !!c.enabled, sampleRate: Math.max(0, Math.min(100, Number(c.sampleRate) || 0)) };
+  });
+
+  app.post('/analytics/replay', {
+    // Raised because a recording is now many requests rather than one. Still bounded — a
+    // long visit flushes every ~20s, so this is roughly an hour of continuous recording.
+    config: { rateLimit: { max: 200, timeWindow: '5 minutes' } },
+    bodyLimit: REPLAY_MAX_BYTES + 64 * 1024,
+  }, async (req, reply) => {
+    const b = z.object({
+      // One recording, arriving in pieces. It HAS to: sendBeacon and a keepalive fetch are both
+      // capped at roughly 64 KB, and five seconds of an ordinary page is already past that. A
+      // recorder that only sends at the end sends nothing at all, and the browser refuses
+      // silently — there is no error anywhere, just an empty table that looks like no traffic.
+      sid: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/),
+      path: z.string().max(300),
+      durationMs: z.number().int().min(0).max(6 * 60 * 60 * 1000).default(0),
+      // `min(1)`, not 2: only the FIRST chunk carries the Meta + FullSnapshot pair. A later
+      // chunk is whatever happened since, which can legitimately be a single event.
+      events: z.array(z.any()).min(1).max(20000),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid' });
+
+    const p = await db();
+    const c = await replayConfig(p);
+    // Checked again on the server. The client decides whether to RECORD; the server decides
+    // whether to keep — otherwise turning the feature off would still accept whatever was
+    // already recording in an open tab.
+    if (!c.enabled) return reply.code(204).send();
+
+    const chunkBytes = Buffer.byteLength(JSON.stringify(b.data.events));
+    if (chunkBytes > REPLAY_MAX_BYTES) return reply.code(413).send({ error: 'too_large' });
+
+    const existing = await p.sessionReplay.findUnique({ where: { sid: b.data.sid } }).catch(() => null);
+    if (existing) {
+      const prior = Array.isArray(existing.events) ? existing.events : [];
+      // The cap applies to the WHOLE recording, not the chunk. Over it, the recording stops
+      // growing and keeps what it has — a truncated replay is worth something, a discarded one
+      // is worth nothing, and silently dropping the oldest events would break playback, since
+      // rrweb cannot rebuild a DOM without the snapshot the stream opened with.
+      if (existing.bytes >= REPLAY_MAX_BYTES) return reply.code(204).send();
+      const merged = prior.concat(b.data.events).slice(0, 20000);
+      await p.sessionReplay.update({
+        where: { sid: b.data.sid },
+        data: {
+          events: merged,
+          bytes: existing.bytes + chunkBytes,
+          eventCount: merged.length,
+          durationMs: Math.max(existing.durationMs, b.data.durationMs),
+        },
+      }).catch(() => {});
+      return reply.code(204).send();
+    }
+
+    const { device, browser } = parseUA(req.headers['user-agent']);
+    const { country } = await geoOf(req);
+    await p.sessionReplay.create({
+      data: {
+        sid: b.data.sid, visitor: visitorHash(req), path: b.data.path, events: b.data.events,
+        bytes: chunkBytes, durationMs: b.data.durationMs, eventCount: b.data.events.length,
+        device, browser, country,
+      },
+    }).catch(() => {});
+
+    // Rotate here rather than in the sweeper: the sweeper runs every ten minutes, and ten
+    // minutes of a busy afternoon is what the cap exists to prevent. `keep: 0` means unbounded
+    // and is the admin's explicit choice, not a missing value.
+    const keep = Number(c.keep);
+    if (Number.isFinite(keep) && keep > 0) {
+      const rows = await p.sessionReplay.findMany({
+        orderBy: { createdAt: 'desc' }, skip: keep, select: { id: true },
+      }).catch(() => []);
+      if (rows.length) await p.sessionReplay.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } }).catch(() => {});
+    }
+    return reply.code(204).send();
+  });
+
+  app.get('/admin/analytics/replays', { preHandler: requireCap('manage_analytics') }, async () => {
+    const p = await db();
+    const [rows, total, c] = await Promise.all([
+      // Never the events: a list of fifty streams is tens of megabytes, and the screen draws
+      // rows. The stream is fetched one at a time, when somebody presses play.
+      p.sessionReplay.findMany({
+        orderBy: { createdAt: 'desc' }, take: 100,
+        select: { id: true, path: true, bytes: true, durationMs: true, eventCount: true, device: true, browser: true, country: true, createdAt: true },
+      }),
+      p.sessionReplay.aggregate({ _count: true, _sum: { bytes: true } }),
+      replayConfig(p),
+    ]);
+    return { replays: rows, count: total._count, bytes: total._sum.bytes || 0, config: c };
+  });
+
+  app.get('/admin/analytics/replays/:id', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
+    const p = await db();
+    const row = await p.sessionReplay.findUnique({ where: { id: String(req.params.id) } });
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    return { id: row.id, path: row.path, durationMs: row.durationMs, createdAt: row.createdAt, events: row.events };
+  });
+
+  app.delete('/admin/analytics/replays/:id', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
+    const p = await db();
+    await p.sessionReplay.delete({ where: { id: String(req.params.id) } }).catch(() => {});
+    return reply.code(204).send();
+  });
+
+  app.put('/admin/analytics/replay/config', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
+    const b = z.object({
+      enabled: z.boolean(),
+      // A percentage of sessions. Recording everybody is rarely what anybody wants and always
+      // what they get by leaving a default alone.
+      sampleRate: z.number().int().min(0).max(100).optional(),
+      keep: z.number().int().min(0).max(2000).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const prev = (await p.adminSetting.findUnique({ where: { key: REPLAY_KEY } }))?.value || {};
+    const value = {
+      enabled: b.data.enabled,
+      sampleRate: b.data.sampleRate ?? prev.sampleRate ?? REPLAY_DEFAULTS.sampleRate,
+      keep: b.data.keep ?? prev.keep ?? REPLAY_DEFAULTS.keep,
+    };
+    await p.adminSetting.upsert({ where: { key: REPLAY_KEY }, create: { key: REPLAY_KEY, value }, update: { value } });
+    return { ok: true, config: value };
+  });
   app.post('/analytics/pageview', { config: { rateLimit: { max: 240, timeWindow: '1 minute' } } }, async (req, reply) => {
     const b = z.object({ path: z.string().max(300), ref: z.string().max(300).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid' });

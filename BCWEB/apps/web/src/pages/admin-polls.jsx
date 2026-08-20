@@ -31,7 +31,7 @@ function PollLink({ poll }) {
       <Link2 size={11} className="text-[var(--faint)] shrink-0" />
       <code className="text-[10px] text-[var(--faint)] truncate min-w-0 font-mono" title={url}>{url}</code>
       <button type="button" onClick={copy} title={t('apoll.copy', 'Copy the link')}
-        className="shrink-0 text-[var(--faint)] hover:text-[var(--fg)] transition">
+        className="shrink-0 text-[var(--faint)] hover:text-[var(--text)] transition">
         {done ? <Check size={12} className="text-success" /> : <Copy size={12} />}
       </button>
     </div>
