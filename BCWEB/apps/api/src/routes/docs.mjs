@@ -152,16 +152,37 @@ export default async function docRoutes(app) {
     return { page, canEdit: isEditor(req), contributors };
   });
 
-  // "Was this helpful?" — a single yes/no tally bump. Deduping is client-side
-  // (localStorage), so this is intentionally lightweight and unauthenticated.
+  // "Was this helpful?" — a 3-face tally bump. Deduping is client-side (localStorage), so this
+  // is intentionally lightweight and unauthenticated.
+  //
+  // `previous` lets a reader CHANGE their mind. Without it the first click was final: the
+  // buttons disabled themselves forever, and since the counts are only shown to editors,
+  // nothing on screen moved either. Clicking a face and having the widget go quiet and grey is
+  // indistinguishable from a broken button — which is exactly what it got reported as.
+  //
+  // The server cannot verify `previous` (there is nobody to attribute a vote to), so a crafted
+  // request can decrement a tally it never incremented. That is the price of an unauthenticated
+  // vote counter and it was already the price: the same request could inflate one. The floor at
+  // zero keeps it from going negative, and this number decides nothing but a writer's priorities.
   app.post('/docs/:id/feedback', async (req, reply) => {
+    const FIELD = { good: 'helpfulYes', ok: 'helpfulOk', bad: 'helpfulNo' };
     // 3-face rating: 'good' | 'ok' | 'bad' (legacy: helpful:true→good, false→bad).
     let rating = req.body?.rating;
     if (!rating && typeof req.body?.helpful === 'boolean') rating = req.body.helpful ? 'good' : 'bad';
-    const field = { good: 'helpfulYes', ok: 'helpfulOk', bad: 'helpfulNo' }[rating];
+    const field = FIELD[rating];
     if (!field) return reply.code(400).send({ error: 'invalid_rating' });
+    const prevField = FIELD[req.body?.previous];
     const p = await db();
-    const page = await p.docPage.update({ where: { id: req.params.id }, data: { [field]: { increment: 1 } },
+
+    const data = { [field]: { increment: 1 } };
+    if (prevField && prevField !== field) {
+      // Read before decrementing: `{ decrement: 1 }` on a zero would go negative, and a
+      // negative tally is the kind of number somebody screenshots.
+      const cur = await p.docPage.findUnique({ where: { id: req.params.id }, select: { [prevField]: true } });
+      if (!cur) return reply.code(404).send({ error: 'not_found' });
+      if (cur[prevField] > 0) data[prevField] = { decrement: 1 };
+    }
+    const page = await p.docPage.update({ where: { id: req.params.id }, data,
       select: { helpfulYes: true, helpfulOk: true, helpfulNo: true } }).catch(() => null);
     if (!page) return reply.code(404).send({ error: 'not_found' });
     return page;

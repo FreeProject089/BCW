@@ -491,11 +491,23 @@ function HelpfulWidget({ page, canEdit }) {
   const [voted, setVoted] = useState(read);
   const [counts, setCounts] = useState({ good: page.helpfulYes || 0, ok: page.helpfulOk || 0, bad: page.helpfulNo || 0 });
   useEffect(() => { setCounts({ good: page.helpfulYes || 0, ok: page.helpfulOk || 0, bad: page.helpfulNo || 0 }); setVoted(read()); /* eslint-disable-next-line */ }, [page.id]);
+  // Clicking the face you already chose clears the vote locally; clicking another one changes
+  // it. The old behaviour bailed on `if (voted) return`, so the first click was permanent — and
+  // with the counts hidden from non-editors, a reader saw the buttons grey out and nothing else.
+  // "It doesn't work" was a fair description of that.
   const vote = async (rating) => {
-    if (voted) return;
+    const previous = voted;
+    if (previous === rating) return;
     setVoted(rating); try { localStorage.setItem(key, rating); } catch {}
-    setCounts((c) => ({ ...c, [rating]: c[rating] + 1 }));
-    try { const r = await api.post(`/docs/${page.id}/feedback`, { rating }); setCounts({ good: r.helpfulYes, ok: r.helpfulOk, bad: r.helpfulNo }); } catch {}
+    setCounts((c) => ({ ...c, [rating]: c[rating] + 1, ...(previous ? { [previous]: Math.max(0, c[previous] - 1) } : {}) }));
+    try {
+      const r = await api.post(`/docs/${page.id}/feedback`, { rating, previous: previous || undefined });
+      setCounts({ good: r.helpfulYes, ok: r.helpfulOk, bad: r.helpfulNo });
+    } catch {
+      // Put the optimistic change back rather than leaving a number the server never agreed to.
+      setVoted(previous); try { previous ? localStorage.setItem(key, previous) : localStorage.removeItem(key); } catch {}
+      setCounts({ good: page.helpfulYes || 0, ok: page.helpfulOk || 0, bad: page.helpfulNo || 0 });
+    }
   };
   const FACES = [['good', Smile, 'text-success', 'hover:border-success hover:text-success'], ['ok', Meh, 'text-warning', 'hover:border-warning hover:text-warning'], ['bad', Frown, 'text-error', 'hover:border-error hover:text-error']];
   return (
@@ -503,8 +515,8 @@ function HelpfulWidget({ page, canEdit }) {
       <span className="text-sm text-[var(--muted)]">{voted ? t('docs.helpful.thanks') : t('docs.helpful')}</span>
       <div className="flex items-center gap-2">
         {FACES.map(([r, Ico, on, hov]) => (
-          <button key={r} disabled={!!voted} onClick={() => vote(r)} title={r}
-            className={`w-11 h-11 grid place-items-center rounded-full border transition ${voted === r ? `border-current ${on}` : `border-[var(--line)] text-[var(--muted)] ${voted ? '' : hov}`} ${voted ? 'cursor-default' : ''}`}>
+          <button key={r} onClick={() => vote(r)} title={r}
+            className={`w-11 h-11 grid place-items-center rounded-full border transition ${voted === r ? `border-current ${on} cursor-default` : `border-[var(--line)] text-[var(--muted)] ${hov}`}`}>
             <Ico size={22} />
           </button>
         ))}
