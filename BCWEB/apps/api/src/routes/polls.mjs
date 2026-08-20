@@ -100,7 +100,11 @@ export default async function pollRoutes(app) {
       // this one's visibility filter.
       where: { ...listWhere({ role: req.user?.role || null }), ...(req.query?.home ? { pinned: true, status: 'open' } : {}) },
       orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
-      take: req.query?.home ? 2 : 50,
+      // Five, not two. The home page shows them one at a time in a slider, and a slider with
+      // two slides is two arrows that toggle — it reads as a broken carousel rather than as a
+      // set. Still only the pinned, open, public ones: the cap is a display budget, not a
+      // widening of what may appear there.
+      take: req.query?.home ? 5 : 50,
       include: {
         options: { orderBy: { sort: 'asc' } },
         votes: { select: { optionId: true, wasLoggedIn: true, userId: true, voterKey: true } },

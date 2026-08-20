@@ -294,7 +294,14 @@ function PollForm({ poll, onDone, onWithdraw }) {
   );
 }
 
-export function PollCard({ poll: initial, onChange }) {
+/**
+ * @param compact  Trim it for a page that is not about polls.
+ *
+ * Only the DESCRIPTION is clamped, never the options: a card that hides the thing you vote on
+ * to save space has saved space by removing its purpose. The clamp is CSS, so the full text is
+ * still in the DOM for a screen reader and for the person who opens the poll itself.
+ */
+export function PollCard({ poll: initial, onChange, compact = false }) {
   const { t } = useI18n(); const toast = useToast(); const { user } = useAuth();
   const [poll, setPoll] = useState(initial);
   const [picked, setPicked] = useState([]);
@@ -350,7 +357,9 @@ export function PollCard({ poll: initial, onChange }) {
               those places is markup read aloud by a screen reader. Rich content belongs in the
               description and in a question's help text, which is also markdown. */}
           {poll.description && (
-            <div className="text-[13px] text-[var(--muted)] mt-1 poll-rich"><Markdown>{poll.description}</Markdown></div>
+            <div className={`text-[13px] text-[var(--muted)] mt-1 poll-rich${compact ? ' poll-rich-compact' : ''}`}>
+              <Markdown>{poll.description}</Markdown>
+            </div>
           )}
         </div>
         {closed && <Badge>{t('poll.closed', 'Closed')}</Badge>}

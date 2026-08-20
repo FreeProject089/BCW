@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Boxes, Music2, Server, Rocket, Download, ArrowRight, Upload, CheckCircle2, Package, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, KeyRound, Shield, Webhook, FlaskConical, Wand2, Bot, AppWindow, Globe, Sparkles, Clock,
+  Boxes, Music2, Server, Rocket, Download, ArrowRight, Upload, CheckCircle2, Package, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, KeyRound, Shield, Webhook, FlaskConical, Wand2, Bot, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -102,6 +102,110 @@ function CountUp({ value }) {
     return () => { io.disconnect(); cancelAnimationFrame(raf); };
   }, [value]);
   return <span ref={ref}>{n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : n}</span>;
+}
+
+/**
+ * The polls on the landing page, one at a time.
+ *
+ * They used to be stacked, full size, in the middle of a page that is not about polls — two of
+ * them made the section the tallest thing on the front page and the question got lost inside
+ * its own context.
+ *
+ * It renders the SAME PollCard the polls page renders, in `compact` mode. A second, smaller
+ * poll card would be a second place where voting is implemented.
+ */
+function PollSlider({ polls }) {
+  const { t } = useI18n();
+  const [i, setI] = useState(0);
+  const n = polls.length;
+  const go = (next) => setI(((next % n) + n) % n);   // wraps both ways
+
+  // Wrapping is fine for a handful of slides and stops the arrows from being dead controls at
+  // the ends, which is what people click first to find out whether there is more.
+  const prev = () => go(i - 1);
+  const next = () => go(i + 1);
+
+  // Touch. Not a library: a horizontal drag over a threshold, and nothing else — the card
+  // underneath has buttons, and anything cleverer starts stealing taps meant for them.
+  const start = useRef(null);
+  const onStart = (e) => { start.current = e.touches?.[0]?.clientX ?? null; };
+  const onEnd = (e) => {
+    if (start.current === null) return;
+    const dx = (e.changedTouches?.[0]?.clientX ?? start.current) - start.current;
+    start.current = null;
+    if (Math.abs(dx) > 50) (dx < 0 ? next : prev)();
+  };
+
+  if (!n) return null;
+
+  return (
+    <div className="reveal-on-scroll max-w-2xl">
+      <div
+        className="overflow-hidden"
+        onTouchStart={onStart}
+        onTouchEnd={onEnd}
+        // Arrow keys when the slider has focus. A carousel that only responds to a mouse is a
+        // carousel half the people on the page cannot use.
+        tabIndex={n > 1 ? 0 : -1}
+        role={n > 1 ? 'group' : undefined}
+        aria-roledescription={n > 1 ? 'carousel' : undefined}
+        aria-label={n > 1 ? t('home.poll.slider', 'Polls') : undefined}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+          if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+        }}
+      >
+        {/* NOT gated on prefers-reduced-motion, and that is this repo's rule rather than mine.
+            index.css says it twice, next to the reviews marquee and the scroll reveals: Windows
+            turns that flag on behind users' backs (battery saver, animation settings), and
+            gating on it silently flattened both. A horizontal translate with no flashing is the
+            case those comments call safe.
+
+            The switch is the inline transform either way, so even where the transition does not
+            apply the slide still changes — the control never becomes a dead one. */}
+        <div
+          className="flex transition-transform duration-300 ease-out"
+          style={{ transform: `translateX(-${i * 100}%)` }}
+        >
+          {polls.map((poll, k) => (
+            // The off-screen slides are hidden from assistive tech and from tab order, so a
+            // keyboard user does not tab into a card they cannot see.
+            <div key={poll.id} className="w-full shrink-0 px-0.5" aria-hidden={k !== i} inert={k !== i ? '' : undefined}>
+              <PollCard poll={poll} compact />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {n > 1 && (
+        <div className="flex items-center justify-between gap-3 mt-3">
+          <div className="flex items-center gap-1.5">
+            {polls.map((poll, k) => (
+              <button
+                key={poll.id}
+                type="button"
+                onClick={() => go(k)}
+                aria-label={t('home.poll.goto', 'Poll {n}').replace('{n}', String(k + 1))}
+                aria-current={k === i ? 'true' : undefined}
+                className={`h-1.5 rounded-full transition-all ${k === i ? 'w-6 bg-[var(--primary-2)]' : 'w-1.5 bg-[var(--line-strong)] hover:bg-[var(--muted)]'}`}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] text-[var(--faint)] tabular-nums mr-1">{i + 1}/{n}</span>
+            <button type="button" onClick={prev} aria-label={t('home.poll.prev', 'Previous poll')}
+              className="w-7 h-7 grid place-items-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] transition">
+              <ChevronLeft size={14} />
+            </button>
+            <button type="button" onClick={next} aria-label={t('home.poll.next', 'Next poll')}
+              className="w-7 h-7 grid place-items-center rounded-full border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] transition">
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Home() {
@@ -429,14 +533,14 @@ export function Home() {
         <section>
           <SectionKicker n="05" label={t('home.k.poll', 'Your say')} />
           <div className="reveal-on-scroll flex items-center justify-between mb-5">
-            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{t('home.poll', 'One question')}</h2>
+            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">
+              {pollData.polls.length > 1 ? t('home.poll.many', 'A few questions') : t('home.poll', 'One question')}
+            </h2>
             <Link to="/polls" className="text-sm text-[var(--primary-2)] flex items-center gap-1 hover:gap-2 transition-all">
               {t('home.poll.all', 'All polls')} <ArrowRight size={13} />
             </Link>
           </div>
-          <div className="reveal-on-scroll max-w-2xl">
-            {pollData.polls.map((poll) => <PollCard key={poll.id} poll={poll} />)}
-          </div>
+          <PollSlider polls={pollData.polls} />
         </section>
       )}
 
