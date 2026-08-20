@@ -37,6 +37,7 @@ import { AdminSanctions, ContentSanctionForm, Evidence } from './admin-sanctions
 import AdminStatusPage from './admin-statuspage.jsx';
 import { AdminPolls } from './admin-polls.jsx';
 import { AdminReactions } from './admin-reactions.jsx';
+import ReplayPlayer from '../ui/ReplayPlayer.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, JsonEditor, highlightJson, highlightCode, SideDash, useThreadStream } from './pages.jsx';
 
 // Deferred-commit delete with a Gmail-style undo toast. The row hides immediately and the
@@ -8905,6 +8906,10 @@ function BmmpaInspector() {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [rep, setRep] = useState(null);
+  // The document as parsed, kept alongside the server's report. The report DESCRIBES the file;
+  // playing a replay needs the file itself, and it is already here — re-reading or re-fetching
+  // it would be asking for something the browser is already holding.
+  const [parsed, setParsed] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const run = async () => {
@@ -8913,8 +8918,8 @@ function BmmpaInspector() {
     // never asked to make sense of something that is not JSON at all.
     try { doc = JSON.parse(text); }
     catch { return toast.error(t('bmi.badjson', 'That is not valid JSON — paste the whole .bmmpa file.')); }
-    setBusy(true); setRep(null);
-    try { setRep(await api.post('/admin/inspect', { doc })); }
+    setBusy(true); setRep(null); setParsed(null);
+    try { setRep(await api.post('/admin/inspect', { doc })); setParsed(doc); }
     catch (x) { toast.error(x?.data?.detail || t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
@@ -9025,10 +9030,10 @@ function BmmpaInspector() {
       // A ZIP used to be refused here — "open it and drop the manifest from inside" — which is
       // the moment a review stops. It is read as what it is now: a list of entries, any of
       // which can be opened, with every recognised BMM document inside already summarised.
-      setRep(null); setText(''); setFileName(file.name); setZipFile(file);
+      setRep(null); setParsed(null); setText(''); setFileName(file.name); setZipFile(file);
       return loadArchive(file);
     }
-    setRep(null);
+    setRep(null); setParsed(null);
     setText(raw);
     setFileName(file.name);
   };
@@ -9044,7 +9049,7 @@ function BmmpaInspector() {
     <Card className="p-4 mb-4">
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="text-sm font-semibold flex items-center gap-2"><FileJson size={15} className="text-[var(--primary-2)]" /> {t('bmi.titleAny', 'Inspect a BMM file')}</div>
-        <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setRep(null); setText(''); setFileName(''); }}>{t('common.close', 'Close')}</Button>
+        <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setRep(null); setParsed(null); setText(''); setFileName(''); }}>{t('common.close', 'Close')}</Button>
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-2">
         {t('bmi.subAny', 'Paste any BMM file — automation, mod list, session replay, navbar config. It is read, never run: nothing is imported and nothing is fetched.')}
@@ -9174,6 +9179,20 @@ function BmmpaInspector() {
               reads the rest differently once they know. "Unsigned" is shown too — a blank
               space where a verdict would go reads as "fine", and it is not the same answer. */}
           {rep.ok && <SignatureVerdict v={rep.signature} t={t} />}
+
+          {/* A session replay is the one format whose summary cannot answer the question.
+              "1 240 events, 3m12s, 2 console errors" tells a moderator nothing about what the
+              person was actually DOING — and that is the entire reason a replay was attached
+              to a report. So it plays, here, in the same player the docs use.
+
+              `parsed` and not a URL: the file was read off the reviewer's machine and never
+              uploaded, so there is nothing to fetch. Nothing is executed either — rrweb
+              rebuilds a DOM from recorded mutations, it does not run the recorded page. */}
+          {rep.ok && rep.format === 'bmmreplay' && parsed && (
+            <div className="mb-2">
+              <ReplayPlayer doc={parsed} title={fileName || t('bmi.replay', 'Session replay')} />
+            </div>
+          )}
 
           {rep.ok && rep.format && rep.format !== 'bmmpa' && (
             <div className="rounded-lg border border-[var(--line)] p-2.5 mb-2">

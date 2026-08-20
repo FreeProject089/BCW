@@ -3744,6 +3744,7 @@ const DICT = {
     'adm.mail.pick.ph': "Chercher par nom ou email…",
     'adm.mail.pick.n': "{n} sélectionné(s) — un message chacun, personne ne voit les autres.",
     'adm.mail.pick.none': "Personne pour l'instant. Au-delà de quelques dizaines, utilise plutôt une audience — une requête reste juste, une liste collée ne l'était qu'une fois.",
+    'bmi.replay': "Session enregistrée",
     'snap.keeplabel': "Garder",
     'snap.auto.label': "Auto quotidien",
     'snap.auto.hint': "Prendre une sauvegarde automatiquement une fois par jour",

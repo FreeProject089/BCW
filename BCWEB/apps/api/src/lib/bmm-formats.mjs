@@ -30,12 +30,33 @@ const arr = (v) => (Array.isArray(v) ? v : []);
  * a `meta`; guessing from one shared field would route files to the wrong reader and report
  * confident nonsense, which is worse than "unknown".
  */
+/**
+ * Does this array look like rrweb's own event stream?
+ *
+ * rrweb events are `{ type: <number>, timestamp: <number>, data }`. Checking the first few
+ * rather than all of them: a long recording is tens of thousands of entries and the shape does
+ * not change halfway through. Two is the floor because a single event is not a recording —
+ * every replay opens with a Meta and a FullSnapshot.
+ */
+function looksLikeRrweb(events) {
+  if (!Array.isArray(events) || events.length < 2) return false;
+  return events.slice(0, 5).every((e) => isObj(e) && typeof e.type === 'number' && typeof e.timestamp === 'number');
+}
+
 export function detectFormat(doc) {
   if (!isObj(doc) && !Array.isArray(doc)) return null;
-  if (Array.isArray(doc)) return doc.some((x) => isObj(x) && Array.isArray(x.steps)) ? 'bmmpa' : null;
+  if (Array.isArray(doc)) {
+    if (doc.some((x) => isObj(x) && Array.isArray(x.steps))) return 'bmmpa';
+    // A BARE rrweb export: no wrapper, no console, just the events. rrweb's own recorder
+    // produces exactly this, and refusing it meant a moderator with a plain recording was told
+    // "not a recognised BMM format" about a file the player can open perfectly.
+    return looksLikeRrweb(doc) ? 'bmmreplay' : null;
+  }
   if (doc.magic === 'BMMPA' || arr(doc.tasks).some((x) => isObj(x) && Array.isArray(x.steps))) return 'bmmpa';
   if (doc.format === 'bmmnav') return 'bmmnav';
-  if (Array.isArray(doc.events) && ('console' in doc || 'rustLog' in doc)) return 'bmmreplay';
+  // `console`/`rustLog` identify BMM's own export. They are not required any more: a recording
+  // taken without the console attached has neither, and it is still a replay.
+  if (Array.isArray(doc.events) && ('console' in doc || 'rustLog' in doc || looksLikeRrweb(doc.events))) return 'bmmreplay';
   if (typeof doc.format_version === 'string' && Array.isArray(doc.mods)) return 'mm';
   return null;
 }
@@ -89,7 +110,10 @@ function inspectModList(doc) {
  * DOM text, and the file paths BMM displays include a Windows user name more often than
  * not. A moderator handling one should know that before they open it, not after.
  */
-function inspectReplay(doc) {
+function inspectReplay(input) {
+  // A bare array IS the event stream. Normalising here rather than at every read below is what
+  // keeps "we detected a replay" and "we can describe it" from disagreeing.
+  const doc = Array.isArray(input) ? { events: input } : input;
   const events = arr(doc.events);
   const console_ = arr(doc.console);
   const first = events[0]?.timestamp;
@@ -105,6 +129,7 @@ function inspectReplay(doc) {
       row('Console lines', console_.length),
       row('Console errors', errors, errors ? 'warn' : undefined),
       row('Rust log', 'rustLog' in doc ? 'included' : 'absent'),
+      row('Shape', Array.isArray(input) ? 'bare rrweb event array' : 'BMM replay document'),
       row('Privacy', 'Contains recorded screen content and file paths — treat as personal data.', 'warn'),
     ],
     // The first console errors, which is what a replay attached to a bug report is FOR.
