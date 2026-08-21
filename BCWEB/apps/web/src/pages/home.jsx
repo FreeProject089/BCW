@@ -190,7 +190,7 @@ function PollSlider({ polls }) {
   if (!polls.length) return null;
 
   return (
-    <div className="reveal-on-scroll max-w-4xl">
+    <div className="reveal-on-scroll">
       <div
         ref={railRef}
         className="flex items-stretch gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-1"
@@ -202,10 +202,13 @@ function PollSlider({ polls }) {
         {polls.map((poll) => (
           // Half a page past `md`, one page below it. Two cards side by side on a phone is two
           // cards nobody can read.
-          // `items-stretch` on the rail plus `h-full` on the teaser: every card in a page is
-          // the same height, so the rail no longer takes the height of its tallest slide and
-          // leaves a screen of white space under the short ones.
-          <div key={poll.id} className="snap-start shrink-0 w-full md:w-[calc(50%-0.5rem)]">
+          // One across on a phone, two from sm, three from lg, four from xl — a teaser is a
+          // title and a line, so it stays readable narrow, and a wide screen stops showing two
+          // cards beside a screen of nothing.
+          //
+          // `items-stretch` on the rail plus `h-full` on the teaser keeps every card in a page
+          // the same height, so the rail never takes the height of its tallest slide.
+          <div key={poll.id} className="snap-start shrink-0 w-full sm:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.667rem)] xl:w-[calc(25%-0.75rem)]">
             <PollTeaser poll={poll} />
           </div>
         ))}
