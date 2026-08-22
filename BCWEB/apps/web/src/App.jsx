@@ -1177,7 +1177,8 @@ export default function App() {
           {/* One-time, and it answers the cookie question itself — so it replaces the
               banner rather than stacking a second prompt on top of it. */}
           <WelcomePrefs />
-          <main ref={mainRef} id="main-content" tabIndex={-1} className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-10 anim-fade">
+          <main ref={mainRef} id="main-content" tabIndex={-1}
+            className={`relative z-10 flex-1 w-full mx-auto px-4 py-10 anim-fade ${/^\/docs(\/|$)/.test(loc.pathname) ? 'max-w-[84rem]' : 'max-w-6xl'}`}>
             <Suspense fallback={<div className="flex justify-center py-20 text-[var(--muted)]"><span className="anim-fade">…</span></div>}>
             <Routes>
               <Route path="/" element={<Home />} />

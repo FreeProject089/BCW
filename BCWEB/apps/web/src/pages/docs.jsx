@@ -202,7 +202,7 @@ export default function Docs() {
         </div>, document.body)}
 
       {/* Content */}
-      <main className="flex-1 min-w-0 w-full max-w-3xl">
+      <main className="flex-1 min-w-0 w-full max-w-3xl xl:max-w-4xl 2xl:max-w-5xl">
         <div className="flex items-center gap-2 mb-2">
           <button className="btn btn-sm" onClick={() => setSidebar((v) => !v)} title="Toggle sidebar"><PanelLeftClose size={15} className="hidden md:block" /><Menu size={15} className="md:hidden" /></button>
           {page && (canEdit || page.commentsPublic) && <div className="ml-auto flex gap-2">
