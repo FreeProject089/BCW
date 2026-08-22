@@ -4,6 +4,7 @@ import querystring from 'node:querystring';
 import jwt from 'jsonwebtoken';
 import { db, requireRole, optionalAuth, clearSession, logAudit, clientIp, notify, safeEqual } from '../lib/lib.mjs';
 import { jwks, issuer, signRs256, verifyRs256, verifyPkce, validateAuthorizeRequest } from '../lib/oidc.mjs';
+import { flagEnabled } from '../lib/flags.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -143,6 +144,13 @@ export default async function oidcProviderRoutes(app) {
 
   // ── Authorization endpoint (browser flow) ──
   app.get('/oauth2/authorize', { preHandler: optionalAuth() }, async (req, reply) => {
+    // Us acting as an identity provider FOR other applications. Distinct from
+    // features.oauthLoginEnabled, which is us using GitHub/Discord/Google to sign people
+    // in HERE - an operator may well want one without the other.
+    //
+    // This is an HTML endpoint a person lands on, so it answers with the error page the
+    // rest of this route uses rather than a JSON body nobody will see.
+    if (!flagEnabled('features.ssoEnabled')) return reply.code(503).type('text/html').send(errPage('Single sign-on is turned off on this site.'));
     const q = req.query || {};
     const p = await db();
     const client = q.client_id ? await p.oAuthClient.findUnique({ where: { id: String(q.client_id) } }) : null;
@@ -262,6 +270,9 @@ export default async function oidcProviderRoutes(app) {
 
   // ── Token endpoint (authorization_code + refresh_token grants) ──
   app.post('/oauth2/token', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
+    // The token endpoint too: a code issued before the switch was thrown must not still
+    // be exchangeable afterwards.
+    if (!flagEnabled('features.ssoEnabled')) return reply.code(503).send({ error: 'feature_disabled', feature: 'sso' });
     const b = req.body || {};
     reply.header('Cache-Control', 'no-store');
     const p = await db();

@@ -12,6 +12,10 @@ import { campaignCoupon } from './campaigns.mjs';
 import { findBlock, urlsOfMeta } from '../lib/urlblock.mjs';
 import { reservedTermIn, replyReservedName } from '../lib/reserved-names.mjs';
 import { hasProjectLink, replyNeedsLink, requirementFor } from '../lib/project-link.mjs';
+// The one in hosting.mjs, not a second copy. This file used to define its own, which
+// meant the payments switch added to that one would have left every catalog checkout
+// running. Same client, same gate, one place to change.
+import { stripe } from './hosting.mjs';
 
 // ── Blocked addresses ────────────────────────────────────────────────────────
 // The Terms promise that a link taken down after a notice cannot simply be posted again.
@@ -101,12 +105,6 @@ const isPublicHit = (item) => item.status === 'PUBLISHED' && !isInvalid(item);
 // free (they use /admin/catalog). The per-MB price is an admin-tunable knob; when it's
 // 0 (default), hosting is free. The download link is auto-configured (payloadKey), so
 // the author never sets a URL for our-hosted files.
-let _stripe = null;
-async function stripe() {
-  if (!process.env.STRIPE_SECRET_KEY) return null;
-  if (!_stripe) { const Stripe = (await import('stripe')).default; _stripe = new Stripe(process.env.STRIPE_SECRET_KEY); }
-  return _stripe;
-}
 async function settings(p) { return Object.fromEntries((await p.adminSetting.findMany()).map((r) => [r.key, r.value])); }
 
 // Even the OFFICIAL catalog obeys the site-wide GlobalAccessPolicy: a globally-banned

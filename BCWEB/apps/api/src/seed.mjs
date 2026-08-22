@@ -78,6 +78,14 @@ const settings = {
   'pricing.perCpuShareCents': 400,
   'pricing.featurePerDayCents': 50,   // paid "featured listing" promotion, per day
   'features.hostingEnabled': true,
+  // Seeded true so the admin screen shows a real state rather than an empty checkbox.
+  // The code treats a MISSING row as enabled too, so an existing install that upgrades
+  // into these keys keeps working before anybody seeds or touches them.
+  'features.paymentsEnabled': true,
+  'features.oauthLoginEnabled': true,
+  'features.ssoEnabled': true,
+  'features.webhooksEnabled': true,
+  'features.publicApiEnabled': true,
 };
 for (const [key, value] of Object.entries(settings)) {
   await p.adminSetting.upsert({ where: { key }, create: { key, value }, update: {} }); // don't clobber admin edits

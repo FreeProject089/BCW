@@ -6,6 +6,7 @@ import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { db } from './lib/lib.mjs';
+import { startFlagRefresh } from './lib/flags.mjs';
 import { getRedis } from './lib/redis.mjs';
 import { ensureBucket } from './lib/storage.mjs';
 import { startSweeper } from './lib/sweeper.mjs';
@@ -172,6 +173,9 @@ async function refreshRateLimit() {
   } catch { /* leave the current value; a DB blip must not change the ceiling */ }
 }
 await refreshRateLimit();
+// Loaded before the first request, then refreshed on a timer. A route asking "is payments
+// on?" must never be the thing that opens a database connection.
+await startFlagRefresh();
 const rlTimer = setInterval(refreshRateLimit, 15_000);
 rlTimer.unref?.();   // never hold the process open on this
 

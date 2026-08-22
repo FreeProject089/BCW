@@ -611,6 +611,16 @@ function touch(p, id, ip) {
  */
 export function apiAuth(scope) {
   return async (req, reply) => {
+    // The public-API switch lives HERE, not on each /v1 route: apiAuth already guards
+    // every one of them, and a check that has to be repeated per route is one that will
+    // be missed on the route added next week.
+    //
+    // Imported lazily to keep lib.mjs free of a load-order dependency on flags.mjs, which
+    // imports db() from this file.
+    const { flagEnabled } = await import('./flags.mjs');
+    if (!flagEnabled('features.publicApiEnabled')) {
+      return reply.code(503).send({ error: 'feature_disabled', feature: 'public_api' });
+    }
     const secret = presentedKey(req);
     // Short-circuit before touching the database: a real key is 40+ characters.
     if (!secret || secret.length < 20) {

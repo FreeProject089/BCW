@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { normaliseGiftTarget } from '../lib/gift.mjs';
+import { flagEnabled } from '../lib/flags.mjs';
 import { statfsSync } from 'node:fs';
 import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPlan, GRANT_PLAN_NAME, logAudit, clientIp } from '../lib/lib.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
@@ -22,10 +23,24 @@ export function realDiskStats() {
 }
 let _stripe = null;
 export async function stripe() {
+  // The site-wide payments switch lives HERE rather than at each checkout call site:
+  // there are five of those across hosting and catalog, and a switch you have to
+  // remember to check in five places is a switch that will be missed in one.
+  //
+  // Callers already handle a null (it is what an unconfigured Stripe returns), so
+  // turning payments off degrades exactly like never having configured it.
+  //
+  // The webhook does NOT go through this. Existing subscriptions must keep being
+  // reconciled while new purchases are refused, or renewals and cancellations stop
+  // being recorded and the database drifts away from Stripe.
+  if (!flagEnabled('features.paymentsEnabled')) return null;
   if (!process.env.STRIPE_SECRET_KEY) return null;
   if (!_stripe) { const Stripe = (await import('stripe')).default; _stripe = new Stripe(process.env.STRIPE_SECRET_KEY); }
   return _stripe;
 }
+
+// Re-exported so catalog.mjs stops carrying its own copy of the Stripe client.
+export { flagEnabled };
 
 export async function settings(p) {
   return Object.fromEntries((await p.adminSetting.findMany()).map((r) => [r.key, r.value]));

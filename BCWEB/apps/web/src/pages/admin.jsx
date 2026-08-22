@@ -12854,6 +12854,11 @@ const SETTINGS_GROUPS = [
   ] },
   { title: 'Feature flags', gk: 'features', icon: Sliders, keys: [
     ['features.hostingEnabled', 'Hosting enabled', 'Turns the whole Server-Repo hosting feature off site-wide when unchecked.', 'bool'],
+    ['features.paymentsEnabled', 'Payments (Stripe) enabled', 'Off = no new checkout can be started anywhere: hosting, catalog, boosts, MYO. Existing subscriptions are NOT cancelled and the Stripe webhook keeps running, so renewals and cancellations still get recorded — turning this off stops new money coming in, it does not abandon the customers you already have.', 'bool'],
+    ['features.oauthLoginEnabled', 'Sign in with GitHub / Discord / Google', 'Off = those buttons disappear and both halves of the flow refuse, including a callback already in flight. Password sign-in is untouched, so this can never lock you out of this page.', 'bool'],
+    ['features.ssoEnabled', 'Single sign-on (we are the identity provider)', 'Off = /oauth2/authorize and /oauth2/token refuse, so applications can no longer sign people in with a BetterCommunity account. Different from the switch above: that one is us USING GitHub/Discord, this one is other apps using US.', 'bool'],
+    ['features.webhooksEnabled', 'Incoming webhooks (Ko-fi, code push)', 'Off = Ko-fi tips and repository push events are refused with 503. The Stripe webhook is deliberately NOT included — cutting that one makes the billing database drift away from Stripe.', 'bool'],
+    ['features.publicApiEnabled', 'Public API (/v1) enabled', 'Off = every API-key route answers 503, including read-only ones. The site itself is unaffected; this only governs third-party keys.', 'bool'],
   ] },
 ];
 
@@ -12863,7 +12868,7 @@ const GROUP_DESC = {
   'Blog, docs & history': 'Article/page count & size caps, and edit-history retention.',
   'Security & audit logs': 'How long the tamper-evident staff action log is kept.',
   'Pricing': 'What customers pay — per GB, Mbps, CPU, boost & catalog hosting.',
-  'Feature flags': 'Master on/off switches.',
+  'Feature flags': 'Master on/off switches. Each one says what it does NOT turn off, which is usually the part that matters.',
 };
 
 // GB<->MB conversion for the free-floor unit toggle — the stored setting value

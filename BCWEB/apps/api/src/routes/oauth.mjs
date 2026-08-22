@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { db, issueSession, requireRole, safeEqual } from '../lib/lib.mjs';
 import { verifyConnectState, exchangeConnect, OAUTH as CONNECT_OAUTH } from './connections.mjs';
 import { grantAutoBadges } from './social.mjs';
+import { flagEnabled, disabledReply } from '../lib/flags.mjs';
 
 // GitHub/Discord "Continue with…" login + signup. No library — both providers'
 // authorization-code flow is a handful of fetches, and pulling in a whole OAuth
@@ -115,13 +116,21 @@ function slugName(base) {
 export default async function oauthRoutes(app) {
   // Feature-detection — the frontend only shows a "Continue with X" button once
   // that provider actually has credentials configured server-side.
-  app.get('/auth/oauth/providers', async () => ({
-    github: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
-    discord: !!(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET),
-    google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
-  }));
+  // Keeps its shape when the switch is off - every provider reports false, which is
+  // already how the sign-in page renders "not available". A `disabled` flag rides along
+  // so the page can say WHY rather than just dropping the buttons, but nothing has to
+  // read it for the page to behave.
+  app.get('/auth/oauth/providers', async () => {
+    if (!flagEnabled('features.oauthLoginEnabled')) return { github: false, discord: false, google: false, disabled: true };
+    return {
+      github: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
+      discord: !!(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET),
+      google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    };
+  });
 
   app.get('/auth/oauth/:provider/start', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    if (!flagEnabled('features.oauthLoginEnabled')) return disabledReply(reply, 'oauth_login');
     const provider = PROVIDERS[req.params.provider];
     if (!provider) return reply.code(404).send({ error: 'unknown_provider' });
     const clientId = provider.clientId();
@@ -139,6 +148,9 @@ export default async function oauthRoutes(app) {
   });
 
   app.get('/auth/oauth/:provider/callback', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    // The callback too, not just the start. A code already in flight when the switch is
+    // thrown would otherwise still be exchanged for a session.
+    if (!flagEnabled('features.oauthLoginEnabled')) return disabledReply(reply, 'oauth_login');
     const name = req.params.provider;
     const provider = PROVIDERS[name];
     const fail = (reason) => reply.redirect(`${SITE_URL}/auth?oauth_error=${encodeURIComponent(reason)}`);

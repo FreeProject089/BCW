@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { db, requireRole, notify, safeEqual } from '../lib/lib.mjs';
 import { invalidate, replyCachedJson } from '../lib/cache.mjs';
 import { grantAutoBadges } from './social.mjs';
+import { flagEnabled, disabledReply } from '../lib/flags.mjs';
 
 // Ko-fi's webhook POSTs a single `application/x-www-form-urlencoded` field
 // named `data`, itself a JSON string — see https://ko-fi.com/manage/webhooks.
@@ -49,6 +50,7 @@ export default async function kofiRoutes(app) {
   // verification token (there's no request-signing scheme, just a shared
   // secret embedded in the payload, matching Ko-fi's own webhook design).
   app.post('/webhooks/kofi', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
+    if (!flagEnabled('features.webhooksEnabled')) return disabledReply(reply, 'webhooks');
     const p = await db();
     // KOFI_WEBHOOK_TOKEN (env) wins over the admin-set token, mirroring DISCORD_TOKEN
     // for the bot — so ops can pin the secret in the .env and lock it from the UI.
