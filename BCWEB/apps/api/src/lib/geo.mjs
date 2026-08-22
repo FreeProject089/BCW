@@ -42,7 +42,16 @@ function isPrivateIp(ip) {
 }
 // Dev fallback: deterministically place a private/loopback visitor in one real city
 // (by their anonymous hash, so a given visitor stays put). Lets Countries/Regions/Cities
-// /Map/Globe all populate on a local machine. OFF only if ANALYTICS_DEV_GEO=0.
+// /Map/Globe all populate on a local machine.
+//
+// NEVER IN PRODUCTION. This writes a country, region, city and coordinates into
+// AnalyticsEvent that no visitor ever had, and nothing downstream can tell them from real
+// rows afterwards. In dev that is a convenience; in production it would be a dashboard
+// quietly reporting fiction — and the trigger is not "we are in dev", it is
+// `isPrivateIp(clientIp(req))`, which is also true in production whenever the client IP is
+// not visible (a request that reaches the API inside the Docker network, a proxy that
+// forgot X-Forwarded-For). So the gate is NODE_ENV, checked here rather than trusted to an
+// operator remembering to set ANALYTICS_DEV_GEO=0.
 const DEV_CITIES = [
   { country: 'US', region: 'California', city: 'San Francisco', lat: 37.77, lng: -122.42 },
   { country: 'US', region: 'New York', city: 'New York', lat: 40.71, lng: -74.01 },
@@ -57,6 +66,10 @@ const DEV_CITIES = [
   { country: 'AU', region: 'New South Wales', city: 'Sydney', lat: -33.87, lng: 151.21 },
   { country: 'CH', region: 'Vaud', city: 'Lausanne', lat: 46.52, lng: 6.63 },
 ];
+/** Dev geo is allowed only outside production, and can still be turned off there.
+ *  Opt-OUT in dev, impossible in production — the two are not the same switch. */
+const DEV_GEO_ALLOWED = process.env.NODE_ENV !== 'production' && process.env.ANALYTICS_DEV_GEO !== '0';
+
 function devGeoSample(seed) {
   let h = 0; const s = String(seed || '');
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
@@ -101,12 +114,15 @@ export async function geoOf(req) {
   const ip = clientIp(req);
   // Dev/local traffic → use the dev machine's REAL public-IP location (so it shows the
   // developer's actual country), falling back to a sample city only if that lookup fails.
-  if (!headerCountry && isPrivateIp(ip) && process.env.ANALYTICS_DEV_GEO !== '0') {
+  if (!headerCountry && isPrivateIp(ip) && DEV_GEO_ALLOWED) {
     const real = await devRealGeo();
     if (real) return real;
     const d = devGeoSample(visitorHash(req));
     return { country: d.country, region: d.region, city: d.city, lat: d.lat, lng: d.lng };
   }
+  // In production an unresolvable IP yields NO location. A null country is honest and the
+  // dashboard already excludes it (`WHERE country IS NOT NULL`); a guessed one would be
+  // counted, charted and believed.
   const geo = await loadGeoip();
   let hit = null;
   if (geo) { try { hit = geo.lookup(ip); } catch { hit = null; } }

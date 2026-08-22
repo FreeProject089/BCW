@@ -19,6 +19,7 @@ import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx'
 import { useAuth } from './auth.jsx';
 import { utilAllowed, effectiveCaps } from '../lib/roles.js';
 import { readLayout, navAlignClass } from '../lib/navLayout.js';
+import { featureNameFor } from '../lib/geo-names.js';
 import { listZip, readZipEntry, hashEntries } from '../lib/zip-read.js';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
@@ -11499,17 +11500,11 @@ function SessionRow({ s }) {
     </div>
   );
 }
-// ISO alpha-2 → the Natural-Earth country name used in world.json, when it differs from
-// the Intl.DisplayNames name. Everything else matches the Intl name directly.
-const GEO_NAME_ALIAS = {
-  US: 'United States', GB: 'United Kingdom', RU: 'Russia', CZ: 'Czech Rep.', KR: 'Korea',
-  KP: 'Dem. Rep. Korea', BA: 'Bosnia and Herz.', MK: 'Macedonia', CI: "Côte d'Ivoire",
-  SZ: 'Swaziland', CD: 'Dem. Rep. Congo', CG: 'Congo', CF: 'Central African Rep.',
-  SS: 'S. Sudan', DO: 'Dominican Rep.', LA: 'Laos', SY: 'Syria', MD: 'Moldova',
-  TZ: 'Tanzania', VN: 'Vietnam', BN: 'Brunei', IR: 'Iran', VE: 'Venezuela', BO: 'Bolivia',
-  TW: 'Taiwan', EH: 'W. Sahara', AE: 'United Arab Emirates', GN: 'Guinea', TR: 'Turkey',
-};
-const geoName = (cc) => GEO_NAME_ALIAS[String(cc).toUpperCase()] || countryName(cc);
+// The ISO code → world.json feature name mapping lives in lib/geo-names.js, where it is
+// CHECKED against world.json by apps/web/scripts/check-geo-names.mjs. It used to be a table
+// right here that nothing validated, and two of its entries named countries the map file
+// does not contain — Laos and Taiwan never shaded, silently.
+const geoName = (cc) => featureNameFor(cc);
 
 // Interactive analytics map with a 2D (mercator) / 3D (globe) toggle — same approach as
 // the BMM telemetry dashboard: MapLibre GL + a keyless CARTO dark basemap. Renders EITHER
@@ -11670,7 +11665,9 @@ function GeoMap({ days, hours, height = 420 }) {
   const deltaOf = (count, prev) => prev > 0 ? Math.round(((count - prev) / prev) * 100) : (count > 0 ? 100 : null);
   const infoByName = useMemo(() => {
     const m = {};
-    for (const c of countries) m[geoName(c.cc)] = { cc: c.cc, label: countryName(c.cc), count: c.count, share: shareOf(c.count), delta: deltaOf(c.count, c.prev) };
+    // A country this map file does not contain resolves to null; keying the lookup by
+    // null would put every one of them in the same slot.
+    for (const c of countries) { const n = geoName(c.cc); if (n) m[n] = { cc: c.cc, label: countryName(c.cc), count: c.count, share: shareOf(c.count), delta: deltaOf(c.count, c.prev) }; }
     return m;
     // eslint-disable-next-line
   }, [data]);

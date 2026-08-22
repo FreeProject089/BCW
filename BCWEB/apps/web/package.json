@@ -12,7 +12,8 @@
     "budget": "node scripts/bundle-budget.mjs",
     "legal:check": "node scripts/check-legal-fresh.mjs",
     "i18n:untranslated": "node scripts/i18n-untranslated.mjs",
-    "css:check": "node scripts/check-css-vars.mjs"
+    "css:check": "node scripts/check-css-vars.mjs",
+    "geo:check": "node scripts/check-geo-names.mjs"
   },
   "dependencies": {
     "boring-avatars": "^1.11.2",
