@@ -13,6 +13,7 @@
 //   SCENARIOS=cached,feed node run.mjs              # subset of mixes
 //   RPM_PER_USER=6 node run.mjs                     # tune the min-spec user model
 import autocannon from 'autocannon';
+import { resourcesAvailable, sampleWhile } from './resources.mjs';
 import os from 'node:os';
 import { writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
@@ -100,8 +101,13 @@ function rowFrom(scn, level, r, ping) {
 console.log(`\nBCWEB stress test → ${ORIGIN}${PREFIX}`);
 console.log(`  levels: ${LEVELS.map((l) => `${l.name}(${fmt(l.conns)})`).join(' ')}  ·  ${DURATION}s each  ·  scenarios: ${SCENARIOS.map((s) => s.name).join(', ')}\n`);
 
+// Measured cost, beside the extrapolated min-spec. Asked once: a machine with no docker
+// degrades to "no samples" rather than spawning a doomed process per level.
+const RESOURCES = process.env.NO_RESOURCES ? false : await resourcesAvailable();
+if (!RESOURCES) console.log('  (no docker stats — the report will carry throughput only, no measured CPU/RAM)\n');
+
 const meta = {
-  at: new Date().toISOString(), origin: ORIGIN, prefix: PREFIX,
+  at: new Date().toISOString(), origin: ORIGIN, prefix: PREFIX, resourcesSampled: RESOURCES,
   node: process.version, cores: os.cpus().length, memGB: Math.round(os.totalmem() / 1e9),
   durationSec: DURATION, levels: LEVELS, rpmPerUser: RPM_PER_USER,
 };
@@ -109,15 +115,19 @@ const meta = {
 const scenarioOut = [];
 for (const scn of SCENARIOS) {
   console.log(`■ ${scn.name} — ${scn.desc}`);
-  console.log(`  ${pad('level', 9)}${pad('conns', 8)}${pad('req/s', 9)}${pad('2xx/s', 9)}${pad('p50', 8)}${pad('p99', 8)}${pad('p99.9', 9)}${pad('non2xx', 8)}${pad('err', 5)}${pad('t/o', 5)}pingp99`);
+  console.log(`  ${pad('level', 9)}${pad('conns', 8)}${pad('req/s', 9)}${pad('2xx/s', 9)}${pad('p50', 8)}${pad('p99', 8)}${pad('p99.9', 9)}${pad('non2xx', 8)}${pad('err', 5)}${pad('t/o', 5)}${pad('pingp99', 9)}busiest`);
   const requests = scn.endpoints.map((ep) => ({ method: 'GET', path: p(ep) }));
   const results = [];
   for (const level of LEVELS) {
+    // Started before the run and stopped after it, so the frames cover the load and not
+    // the gap between levels.
+    const sampler = RESOURCES ? sampleWhile(1000) : null;
     const { result: r, ping } = await withPingProbe(() =>
       autocannon({ url: ORIGIN, requests, connections: level.conns, duration: DURATION, pipelining: 1, timeout: 20 }));
-    const row = rowFrom(scn, level, r, ping);
+    const res = sampler ? await sampler.stop() : null;
+    const row = { ...rowFrom(scn, level, r, ping), resources: res };
     results.push(row);
-    console.log(`  ${pad(level.name, 9)}${pad(fmt(level.conns), 8)}${pad(fmt(row.rps), 9)}${pad(fmt(row.ok2xx_s), 9)}${pad(`${row.p50}ms`, 8)}${pad(`${row.p99}ms`, 8)}${pad(`${row.p99_9}ms`, 9)}${pad(fmt(row.non2xx), 8)}${pad(row.errors, 5)}${pad(row.timeouts, 5)}${ping ? `${Math.round(ping.p99)}ms` : '—'}`);
+    console.log(`  ${pad(level.name, 9)}${pad(fmt(level.conns), 8)}${pad(fmt(row.rps), 9)}${pad(fmt(row.ok2xx_s), 9)}${pad(`${row.p50}ms`, 8)}${pad(`${row.p99}ms`, 8)}${pad(`${row.p99_9}ms`, 9)}${pad(fmt(row.non2xx), 8)}${pad(row.errors, 5)}${pad(row.timeouts, 5)}${pad(ping ? `${Math.round(ping.p99)}ms` : '—', 9)}${row.resources?.busiest ? `${row.resources.busiest.name.replace(/^bcweb-|-1$/g, '')} ${row.resources.busiest.cpuPeak}%` : ''}`);
     await sleep(500); // let the rate-limiter window + sockets settle between levels
   }
   const knee = findKnee(results);

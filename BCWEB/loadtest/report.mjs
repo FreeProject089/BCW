@@ -133,6 +133,32 @@ export function toMarkdown(meta, scenarios, lang = 'en') {
   } else {
     L.push(t('minspec.none'));
   }
+  // Measured, beside the extrapolation above.
+  //
+  // The min-spec table converts one throughput number into cores, which answers "how many
+  // for N users" and nothing about what the stack actually eats or which service gives out
+  // first. These rows come from `docker stats` sampled DURING each level, so they are
+  // observations rather than arithmetic.
+  const withRes = scenarios.flatMap((sc) => sc.results.filter((r) => r.resources)
+    .map((r) => ({ scenario: sc.name, ...r })));
+  if (withRes.length) {
+    L.push('', `## ${t('cost')}`, '', t('cost.intro'), '');
+    L.push(`| ${t('cost.level')} | ${t('cost.rps')} | ${t('cost.busiest')} | ${t('cost.cpu')} | ${t('cost.ram')} |`, '|---|--:|---|--:|--:|');
+    for (const r of withRes) {
+      const svc = r.resources.busiest;
+      L.push(`| ${r.scenario} / ${r.level} | ${fmt(r.ok2xx_s)} | ${svc ? `\`${svc.name}\`` : '—'} | ${r.resources.totalCpuPeak}% | ${r.resources.totalMemPeakMB} MB |`);
+    }
+    // Per-service, from the busiest level only: one table per level would be six tables
+    // saying almost the same thing, and the one that matters is the hardest push.
+    const worst = withRes.slice().sort((a, b) => b.resources.totalCpuPeak - a.resources.totalCpuPeak)[0];
+    L.push('', t('cost.per', { level: `${worst.scenario} / ${worst.level}` }), '');
+    L.push(`| ${t('cost.service')} | ${t('cost.cpupeak')} | ${t('cost.cpumean')} | ${t('cost.mempeak')} |`, '|---|--:|--:|--:|');
+    for (const [name, v] of Object.entries(worst.resources.services).sort((a, b) => b[1].cpuPeak - a[1].cpuPeak)) {
+      L.push(`| \`${name}\` | ${v.cpuPeak}% | ${v.cpuMean}% | ${v.memPeakMB ?? '—'} MB |`);
+    }
+    L.push('', `> ${t('cost.caveat')}`);
+  }
+
   L.push('', `## ${t('act')}`, '');
   L.push(`1. ${t('act.1')}`, `2. ${t('act.2')}`, `3. ${t('act.3')}`, `4. ${t('act.4')}`, '');
 
