@@ -144,12 +144,44 @@ const clientKey = (req) => {
 // every API replica (behind Caddy) instead of each replica keeping its own count —
 // otherwise N replicas would let an IP do N×600/min. Falls back to in-process.
 const rlRedis = getRedis();
+
+// The per-IP ceiling, settable from Admin -> Hosting settings.
+//
+// It was env-only and read once at boot, so changing it meant editing .env and restarting
+// the API - which nobody does at the moment they actually need it, i.e. while something is
+// hammering the site.
+//
+// REFRESHED ON A TIMER, not per request. `max` runs on every single request; making it
+// await a database read would put the DB on the hot path of the thing that protects the
+// DB, and a slow query would become a slow site. A 15s-stale ceiling is harmless.
+const RL_ENV_MAX = Number(process.env.RATE_LIMIT_MAX) || 600;
+// Clamped, because this is reachable from a form. Below ~30/min ordinary browsing trips
+// 429s (a single page load is several requests), and an unbounded value is a way to switch
+// the protection off by typing a large number rather than by deciding to.
+const RL_MIN = 30;
+const RL_MAX = 100000;
+let rlMax = RL_ENV_MAX;
+async function refreshRateLimit() {
+  try {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'hosting.apiRateLimitMax' } });
+    const v = Number(row?.value);
+    // Unset, zero or nonsense -> the env default. An admin clearing the field means "use
+    // the default", not "allow nothing".
+    rlMax = Number.isFinite(v) && v > 0 ? Math.min(RL_MAX, Math.max(RL_MIN, Math.round(v))) : RL_ENV_MAX;
+  } catch { /* leave the current value; a DB blip must not change the ceiling */ }
+}
+await refreshRateLimit();
+const rlTimer = setInterval(refreshRateLimit, 15_000);
+rlTimer.unref?.();   // never hold the process open on this
+
 await app.register(rateLimit, {
   // 600/min per IP is generous for a human (~10 req/s) and is what keeps the DB safe under
   // abuse — keep it in production. Env-tunable so an operator can adjust it, and so a load
   // test can raise it to measure a route's RAW capacity (from one IP the limiter otherwise
   // sheds the flood and every number is just 429s). See guides/ENV + loadtest/BENCHMARK.
-  max: Number(process.env.RATE_LIMIT_MAX) || 600,
+  // Sync, reading the value the timer above keeps fresh.
+  max: () => rlMax,
   timeWindow: process.env.RATE_LIMIT_WINDOW || '1 minute',
   keyGenerator: clientKey, ban: 4,
   ...(rlRedis ? { redis: rlRedis } : {}),

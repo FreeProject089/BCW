@@ -12839,6 +12839,7 @@ const SETTINGS_GROUPS = [
     ['history.maxRevisionKB', 'Edit-history: max size per item (KB)', 'Also cap each item\'s stored history by size — older snapshots drop once this is exceeded. 0 = size limit off (count only).', 'number'],
   ] },
   { title: 'Security & audit logs', gk: 'security', icon: ShieldCheck, keys: [
+    ['hosting.apiRateLimitMax', 'API requests per minute, per IP', 'Above this an IP gets 429 for the rest of the minute, and after 4 refusals it is blocked outright with 403 until the window passes. 600 is generous for a person (~10/s); lower it while something is hammering the site, raise it if real traffic is being refused. Clamped to 30-100000 — empty or 0 means the RATE_LIMIT_MAX default. Takes effect within ~15s, no restart.', 'number'],
     ['audit.maxDays', 'Audit log retention (days)', 'Staff-action log entries older than this are pruned. 0 = keep forever. The log is HMAC-chained (tamper-evident) — pruning is the only sanctioned deletion.', 'number'],
     ['audit.maxEntries', 'Audit log max entries', 'Also cap the staff-action log by entry count — the oldest are pruned past this. 0 = no count cap.', 'number'],
   ] },
