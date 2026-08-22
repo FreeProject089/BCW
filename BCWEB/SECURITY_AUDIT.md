@@ -330,3 +330,77 @@ response cannot be used to tell existing addresses from absent ones.
 no session. That is the edge, not the route: from inside the API container the same routes
 answer `401 {"error":"unauthenticated"}`. Curl at the edge is not a valid auth test on this
 stack.
+
+## Second sitting, same day — IDOR, token confusion, 2FA elevation
+
+### IDOR on the owner-facing routes: clean, 49/49
+
+Every `/me/…/:id` route ties the object to the caller — by a direct `ownerId: req.user.uid`
+filter, through a helper (`ownRepo`, `ownRepoMutable`, `canAccessReport`), or, for billing
+objects, through the Stripe customer (`inv.customer !== u.stripeCustomerId`).
+
+Worth recording about the method: a first scan using a 12-line window "found" eight
+unguarded routes, all of them false. The check has to read the WHOLE handler — several
+verify ownership thirty lines down, and a helper called `ownRepoMutable` does not match a
+pattern written for `owned*`.
+
+**Design note, not a finding.** `ownRepo` reads
+`if (repo.ownerId !== user.uid && user.role === 'USER') return { err: 403 }`, so every
+non-`USER` role (MOD, ADMIN, SUPERADMIN) can write ANY repo through the owner-facing
+routes — including minting a share key for a private one. It is deliberate and commented
+("Staff still manage it via /admin/repos"), and custom roles do not reach it: `CustomRole`
+carries capabilities and never changes `User.role`. Flagged only because it is broader
+than "moderate content", and a future MOD-scoped review should decide whether it should be
+a capability rather than "not a USER".
+
+### Token confusion across one secret: blocked, and deliberately
+
+Six kinds of JWT are signed with `JWT_SECRET` and told apart only by their claims: the
+session (`uid, role, sid`), `server-control`, `2fa-pending`, `oauth-consent`, the
+repo-dashboard (`rid, scope`), and `telemetry`. The session token carries no `purpose`, so
+"does `jwt.verify` alone let one stand in for another?" is a real question.
+
+The answer is `tokenAcceptable`: `if (!claims.sid) return { ok: false, error:
+'session_revoked' }`. Only the session token has a `sid`, so nothing else can be presented
+as one. The one that would have mattered is `2fa-pending` — issued after the password and
+before the second factor. Had it been accepted as a session cookie, two-factor
+authentication would have been an optional step.
+
+Verified by forging each token type with the running instance's secret and presenting it
+as `bcw_session`, **with a genuine session token as a control**:
+
+| presented as `bcw_session` | result |
+|---|---|
+| a real session token (control) | **200** — without this the rest proves nothing |
+| `2fa-pending` | 401 |
+| `server-control` (elevated) | 401 |
+| `oauth-consent` | 401 |
+| repo-dashboard (`rid`/`scope`) | 401 |
+| `telemetry` | 401 |
+| a `sid` naming no session row | 401 |
+| another user's `sid` | 401 |
+
+### 2FA elevation (`bcw_elevated`): correct
+
+`requireElevated` verifies the signature, requires `purpose === 'server-control'`, and
+binds the token to the session user (`claims.uid !== req.user?.uid` → refuse). Tested
+against the guard directly — seven cases, control passing:
+
+valid + same user → allowed; issued for another user → 401; a session token replayed as
+elevation → 401; a `2fa-pending` token replayed as elevation → 401; signed with a
+different secret → 401; expired → 401; absent → 401.
+
+Route-level testing was abandoned in favour of the guard: `requireCanControlServer()` runs
+first and returned 403 for every case, so every result measured that guard and not this
+one. Testing elevation through a route would have meant flipping `canControlServer` on a
+real account, which is not a change to make casually on somebody's database for a test
+that a direct call answers exactly.
+
+### Fixed in the same sitting (found while adding the payments flag)
+
+`POST /me/hosting/groups/:id/consolidate` used the imported `stripe` — the FUNCTION
+exported by `hosting.mjs` — as if it were a client: `if (!stripe)` (a function is never
+falsy, so the guard was dead) and `stripe.checkout.sessions.create(...)` (a property read
+on a function). Every request to that endpoint returned 500. Confirmed against `HEAD`
+before any of this session's edits, and reproduced in the container.
+
