@@ -456,15 +456,23 @@ The mod-name one is the clearest illustration: the same field is already escaped
 
 The missing CSP is the finding underneath the other three, and it is left open
 deliberately. Dropping `'unsafe-inline'` from `script-src` is what breaks the XSS-to-RCE chain, and
-inline `style=` is unaffected by it — but the frontend generates **89 inline event
-handlers** (41 `onclick`, 26 `onmouseover`/`onmouseout`, 13 `onerror`, 9 others) that it
-would break, alongside 2492 inline style attributes that keep working regardless.
+inline `style=` is unaffected by it — but the frontend generates **238 inline event
+handlers** that it would break, alongside 2492 inline style attributes that keep working
+regardless.
 
-Of the 89: the 26 hover pairs are pure styling and belong in CSS; the 13 `onerror` are
-image fallbacks and fit one delegated capture listener; 21 of the `onclick` are a uniform
-`window.fn('id')` shape that a single delegated dispatcher covers. The remaining **22 pass
-`this` or `event`** and need reading one at a time — that is the part that cannot be done
-mechanically, and it is why this is a session of its own rather than a line of config.
+That figure was first reported here as 89. It was an undercount: the pattern behind it
+listed `onclick`/`onmouseover`/`onerror` and a handful more, and missed `onmouseenter`,
+`onmouseleave`, `dblclick`, `keydown` and the rest. 238 is the measured number, and
+`scripts/security-guard.mjs` now counts it on every build so the figure cannot go stale
+again. (Widening the pattern also needed making it case-SENSITIVE: `/i` matched
+`const onClick = (e) => {`, ordinary JavaScript, and inflated the count to 241.)
+
+The shape of the work is unchanged: the hover pairs are pure styling and belong in CSS,
+the `onerror` are image fallbacks that fit one delegated capture listener, and most
+`onclick` are a uniform `window.fn('id')` that a single delegated dispatcher covers. The
+ones that pass `this` or `event` need reading one at a time — that is the part that cannot
+be done mechanically, and it is why this is a session of its own rather than a line of
+config.
 
 Adding it blind to a desktop application that cannot be launched from this environment
 would trade a possible compromise for a certain breakage. The order of work is: migrate
