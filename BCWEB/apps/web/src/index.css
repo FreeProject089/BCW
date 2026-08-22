@@ -315,11 +315,22 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     font-size: 14px; box-shadow: 0 8px 24px -8px rgba(0,0,0,0.5); transition: transform .15s ease; }
   .skip-link:focus { transform: translateY(0); outline: 2px solid #fff; outline-offset: 2px; }
 
-  .topbar { background: color-mix(in srgb, var(--bg-solid) 82%, transparent); backdrop-filter: blur(14px); }
-  /* Dark theme: the glassy 82% + blur reads fine on white, but over the dark
-     bg (with the bright orb moving underneath) menu text became genuinely hard
-     to read — floating surfaces go near-opaque in dark. */
-  [data-theme="dark"] .topbar { background: color-mix(in srgb, var(--bg-solid) 94%, transparent); }
+  /* SOLID by default. This used to be a hardcoded 82% (94% in dark) with a permanent
+     blur, which meant it looked the same whether the Translucent-surfaces setting was
+     off, on at 100% or on at 35% — measured identical in all three. It was the one
+     surface that was translucent for people who had turned translucency OFF, and it is
+     on every page: the header, the mobile bottom bar, the topbar menus, the mobile
+     sheet, and the admin topbar builder.
+     Both themes now share one rule, because --bg-solid already differs per theme —
+     the old pair only existed to give dark a higher opacity. */
+  .topbar { background: var(--bg-solid); }
+  /* !important for the same reason .dd-menu needs it: several .topbar elements also
+     carry a Tailwind `bg-[var(--bg-solid)]` utility, which is emitted after this and
+     would otherwise win. */
+  [data-surface-glass] .topbar {
+    background: color-mix(in srgb, var(--bg-solid) calc(var(--glass-alpha, 0.85) * 100%), transparent) !important;
+    backdrop-filter: blur(14px) saturate(1.2) !important;
+  }
   [data-theme="dark"] .modal-card { background: #17130e; backdrop-filter: none; }
   /* Opt-in frosted-glass surfaces (Settings → Appearance → Translucent surfaces).
      --glass-alpha is the surface opacity; a strong blur keeps text readable over

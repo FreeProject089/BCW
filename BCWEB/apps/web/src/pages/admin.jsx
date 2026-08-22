@@ -11406,7 +11406,10 @@ function AnalyticsMap({ points, choropleth, infoByName, height = 420 }) {
   return (
     <div className="relative">
       <div ref={boxRef} className="w-full rounded-lg overflow-hidden" style={{ height, background: '#05070d' }} />
-      <div className="absolute top-2 right-2 z-10 flex rounded-lg border border-[var(--line)] overflow-hidden bg-[var(--bg-solid)]/80 backdrop-blur">
+      {/* .sticky-bar, not a hardcoded `/80 backdrop-blur`: that spelling ignores the
+          Translucent-surfaces setting in both directions — frosted for people who turned
+          it off, and stuck at 80% for people who asked for 35%. */}
+      <div className="absolute top-2 right-2 z-10 flex rounded-lg border border-[var(--line)] overflow-hidden sticky-bar">
         {[['2d', '2D'], ['globe', '3D']].map(([v, l]) => (
           <button key={v} onClick={() => setMode(v)} className={`px-2.5 py-1 text-xs ${mode === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
         ))}
@@ -12853,7 +12856,7 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
         {/* The real phone gets a bottom tab bar too — home + the leading links (derived), or
             nothing when the admin turned it off. This is the part the old preview never showed. */}
         {downbar
-          ? <div className="mt-2 rounded-2xl border border-[var(--line)] bg-[var(--bg-solid)] flex items-stretch px-1 py-1">
+          ? <div className="mt-2 rounded-2xl border border-[var(--line)] topbar flex items-stretch px-1 py-1">
               {[{ home: true }, ...validLeaves].map((n, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center justify-center py-1 text-[var(--muted)]">
                   <span className="grid place-items-center w-8 h-6"><NavPvIcon name={n.home ? 'home' : n.icon} size={16} /></span>

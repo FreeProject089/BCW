@@ -864,7 +864,7 @@ function FooterNewsletter({ cfg }) {
       {pick(cfg?.text, cfg?.textFr, '') && <p className="text-xs text-[var(--muted)] mb-2 leading-relaxed">{pick(cfg?.text, cfg?.textFr, '')}</p>}
       <div className="flex gap-2">
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={pick(cfg?.placeholder, cfg?.placeholderFr, t('news.ph', 'you@example.com'))}
-          className="flex-1 min-w-0 rounded-lg border border-[var(--line)] bg-[var(--bg-solid)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)]" />
+          className="input flex-1 min-w-0" />
         <button type="submit" disabled={busy} className="shrink-0 rounded-lg bg-[var(--primary)] text-white px-3.5 py-2 text-sm font-semibold hover:brightness-110 disabled:opacity-50 transition">{busy ? '…' : pick(cfg?.button, cfg?.buttonFr, t('news.cta', 'Subscribe'))}</button>
       </div>
     </form>

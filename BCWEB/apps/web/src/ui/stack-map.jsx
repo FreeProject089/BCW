@@ -134,7 +134,7 @@ export default function StackMap({ stack, t = (k, d) => d }) {
                       is a wall of text over the drawing. */}
                   {label && lit && (
                     <text x={mid} y={(y1 + y2) / 2 - 5} fontSize="10" textAnchor="middle"
-                      fill="var(--muted)" style={{ paintOrder: 'stroke', stroke: 'var(--surface)', strokeWidth: 3 }}>{label}</text>
+                      fill="var(--muted)" style={{ paintOrder: 'stroke', stroke: 'var(--surface-base)', strokeWidth: 3 }}>{label}</text>
                   )}
                 </g>
               );
@@ -162,8 +162,15 @@ export default function StackMap({ stack, t = (k, d) => d }) {
                       which is the only state a border should be announcing) and the colour
                       moved to a dot beside the kind's name — where it sits next to the word
                       it encodes, which is what the palette check requires anyway. */}
+                  {/* The BASE tokens, not --surface-2 / --surface-3.
+                      Those two turn translucent under Settings → Translucent surfaces,
+                      and an SVG rect takes no backdrop-filter — so the box lost its
+                      opacity and got no frosting back, the connector lines drawn beneath
+                      it showed through, and the page showed through that. A box in a
+                      diagram is a mark, not a window: the card around a diagram is what
+                      frosts, never the drawing itself. */}
                   <rect width={NODE_W} height={NODE_H} rx="10"
-                    fill={isPicked ? 'var(--surface-3)' : 'var(--surface-2)'}
+                    fill={isPicked ? 'var(--surface-3-base)' : 'var(--surface-2-base)'}
                     stroke={isPicked ? 'var(--primary-2)' : 'var(--line)'}
                     strokeWidth={isPicked ? 2 : 1}
                     strokeDasharray={k.ink ? undefined : '5 4'} />
