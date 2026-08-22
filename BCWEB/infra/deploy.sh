@@ -1,4 +1,7 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# POSIX sh, for the same reason as infra/bootstrap.sh: the target is a minimal Alpine
+# container with no bash. bootstrap.sh already failed that way on the first real install.
+# This one is worse to get wrong — it runs on a machine that is already serving.
 # BCWEB deploy — back up, pull, rebuild, and put it back if it does not come up.
 #
 # The two-command update (git pull + docker compose up -d --build) works and is what the
@@ -27,9 +30,10 @@
 #   READY_TIMEOUT   seconds to wait for /ready        (default 120)
 #   READY_URL       probe address                     (default http://127.0.0.1:3000/ready)
 #   BACKUP_DIR      passed through to backup.sh       (default: backup.sh's own)
-set -euo pipefail
+# `pipefail` is a bashism; `-eu` is the portable part.
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_DIR="$SCRIPT_DIR/compose"
 READY_URL="${READY_URL:-http://127.0.0.1:3000/ready}"
@@ -102,9 +106,16 @@ run docker compose -f "$COMPOSE_DIR/docker-compose.yml" up -d
 # matters rather than for a process to exist. Migrations run at boot, so this window also
 # covers them.
 wait_ready() {
-  local deadline=$(( $(date +%s) + READY_TIMEOUT ))
+  deadline=$(( $(date +%s) + READY_TIMEOUT ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    if curl -fsS --max-time 5 "$READY_URL" >/dev/null 2>&1; then return 0; fi
+    if command -v curl >/dev/null 2>&1; then
+      if curl -fsS --max-time 5 "$READY_URL" >/dev/null 2>&1; then return 0; fi
+    elif command -v wget >/dev/null 2>&1; then
+      if wget -q -O - -T 5 "$READY_URL" >/dev/null 2>&1; then return 0; fi
+    else
+      warn "neither curl nor wget is installed — cannot verify $READY_URL"
+      return 2
+    fi
     sleep 3
   done
   return 1
@@ -117,8 +128,24 @@ if [ "$DRY" = 1 ]; then
 fi
 
 say "Waiting for $READY_URL (up to ${READY_TIMEOUT}s)"
-if wait_ready; then
+# The STATUS matters, not just success/failure. 2 means "could not check", and rolling
+# back a deployment because the CHECK could not run — then reporting "never became
+# ready" — would destroy a working version and misname the reason.
+set +e
+wait_ready
+ready_status=$?
+set -e
+
+if [ "$ready_status" = 0 ]; then
   printf '\033[1;32m✓ up and ready\033[0m\n'
+  [ -n "$DUMP_HINT" ] && echo "  backup from before this deploy: $DUMP_HINT"
+  exit 0
+fi
+
+if [ "$ready_status" = 2 ]; then
+  warn "deployed, but NOT verified: no HTTP client on this machine to reach $READY_URL"
+  echo "  Install one (apk add curl), or check by hand:  docker compose ps"
+  echo "  Nothing was rolled back — the new version is running."
   [ -n "$DUMP_HINT" ] && echo "  backup from before this deploy: $DUMP_HINT"
   exit 0
 fi
