@@ -5,6 +5,7 @@
 // public URL can't 30x-bounce into the internal network / cloud metadata.
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import { fetch as undiciFetch, Agent } from 'undici';
 
 /** The first 16 bits of an IPv6 address, as a number.
  *
@@ -46,29 +47,92 @@ export function isPrivateIp(ip) {
   return true; // unknown format → block
 }
 
-async function assertPublicUrl(raw) {
+/** The default resolver. Injectable so a test can drive it; nothing else passes one. */
+const realResolver = (host) => dns.lookup(host, { all: true });
+
+/**
+ * Check a URL, and return the ONE address the caller must then connect to.
+ *
+ * Returning the address is the whole point. Checking a hostname and then letting the HTTP
+ * client resolve it again is two separate DNS answers, and an attacker who controls the
+ * name can make them differ: the first answers a public address and passes the check, the
+ * second answers 169.254.169.254 and is the one actually dialled. The check was never
+ * wrong — it just described a different lookup from the one that mattered.
+ *
+ * Returns null for a literal IP (nothing to pin: the URL already names the address).
+ */
+async function assertPublicUrl(raw, resolve = realResolver) {
   let u;
   try { u = new URL(raw); } catch { throw new Error('ssrf_bad_url'); }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('ssrf_bad_scheme');
   const host = u.hostname.replace(/^\[|\]$/g, '');
-  if (net.isIP(host)) { if (isPrivateIp(host)) throw new Error('ssrf_blocked_ip'); return; }
+  if (net.isIP(host)) { if (isPrivateIp(host)) throw new Error('ssrf_blocked_ip'); return null; }
   if (/^(localhost|(.*\.)?(local|internal|localdomain))$/i.test(host)) throw new Error('ssrf_blocked_host');
   let addrs;
-  try { addrs = await dns.lookup(host, { all: true }); } catch { throw new Error('ssrf_dns_fail'); }
+  try { addrs = await resolve(host); } catch { throw new Error('ssrf_dns_fail'); }
   if (!addrs.length) throw new Error('ssrf_dns_empty');
+  // Every answer must be public, not just the one we pick: a name that resolves to both a
+  // public and a private address is an attempt, not a coincidence.
   for (const a of addrs) if (isPrivateIp(a.address)) throw new Error('ssrf_blocked_resolved');
+  return { address: addrs[0].address, family: addrs[0].family };
+}
+
+/**
+ * An Agent that connects to `pinned` no matter what DNS says next.
+ *
+ * The hostname is NOT rewritten to the IP. Rewriting it is the obvious way to pin an
+ * address and it silently breaks HTTPS: the certificate is issued for the name, so
+ * connecting to `https://93.184.216.34/` fails validation, and the usual next step is to
+ * disable the check — trading an SSRF for something worse. Overriding `lookup` instead
+ * leaves the URL, the SNI and the certificate check on the real hostname, and changes only
+ * which address the socket dials.
+ */
+function pinnedAgent(pinned) {
+  return new Agent({
+    connect: {
+      lookup: (_hostname, options, callback) => {
+        const family = pinned.family === 6 ? 6 : 4;
+        if (options && options.all) callback(null, [{ address: pinned.address, family }]);
+        else callback(null, pinned.address, family);
+      },
+    },
+  });
 }
 
 // Drop-in replacement for fetch() that enforces the rules above. Callers should
-// still pass a timeout signal. Redirects are followed manually (max 5).
-export async function safeFetch(url, opts = {}, maxRedirects = 5) {
+// still pass a timeout signal. Redirects are followed manually (max 5), and each hop is
+// checked and pinned on its own — a 302 is a new URL, so it is a new decision.
+export async function safeFetch(url, opts = {}, maxRedirects = 5, resolve = realResolver) {
   let current = url;
   for (let i = 0; i <= maxRedirects; i++) {
-    await assertPublicUrl(current);
-    const res = await fetch(current, { ...opts, redirect: 'manual' });
+    const pinned = await assertPublicUrl(current, resolve);
+    const agent = pinned ? pinnedAgent(pinned) : null;
+    let res;
+    try {
+      res = await undiciFetch(current, {
+        ...opts,
+        redirect: 'manual',
+        ...(agent ? { dispatcher: agent } : {}),
+      });
+    } catch (e) {
+      if (agent) await agent.close().catch(() => {});
+      throw e;
+    }
     const loc = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
-    if (!loc) return res;
+    if (!loc) {
+      // close(), NOT awaited and NOT destroy(): one agent per request would otherwise leak a
+      // socket pool per call. close() is graceful — it waits for the in-flight response to
+      // finish, so the caller still reads the whole body afterwards. Measured, because
+      // "probably fine" is how a security fix acquires a resource leak.
+      if (agent) agent.close().catch(() => {});
+      return res;
+    }
+    await res.body?.cancel().catch(() => {});
+    if (agent) await agent.close().catch(() => {});
     current = new URL(loc, current).toString();
   }
   throw new Error('ssrf_too_many_redirects');
 }
+
+// Exported for the tests only: they need to assert what was verified, not just what came back.
+export { assertPublicUrl as _assertPublicUrl, pinnedAgent as _pinnedAgent };
