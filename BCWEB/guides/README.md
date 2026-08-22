@@ -21,6 +21,7 @@ guides/
 | **Deploy it properly** (the full path: DNS, HTTPS, Stripe, backups, scaling) | Deploy | [EN](run/DEPLOY_EN.md) | [FR](run/DEPLOY_FR.md) |
 | **Configure it after install** (admin account, 2FA, roles, integrations) | Setup guide | [EN](run/SETUP_GUIDE_EN.md) | [FR](run/SETUP_GUIDE_FR.md) |
 | **Know what a `.env` variable does** | Env reference | [EN](run/ENV_EN.md) | [FR](run/ENV_FR.md) |
+| **Know which seed puts what in the database** | Seeds | [EN](run/SEEDS_EN.md) | [FR](run/SEEDS_FR.md) |
 | **Point a domain at it / fix HTTPS** | Domain & HTTPS | [EN](run/DOMAIN_SETUP_EN.md) | [FR](run/DOMAIN_SETUP_FR.md) |
 | **Understand the Docker setup** (services, volumes, updating prod) | Docker | [EN](run/DOCKER_EN.md) | [FR](run/DOCKER_FR.md) |
 | **Not lose data** (backup, restore, off-site, cron) | Backup & restore | [EN](run/BACKUP_EN.md) | [FR](run/BACKUP_FR.md) |
