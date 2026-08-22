@@ -458,8 +458,37 @@ that are not. Worth reading in this order, because the data is least trusted at 
     ui/components.ts / kit.ts        7
     ui/update-notes.ts               3    release notes fetched remotely
 
+### BMM's Rust side and the deeplink surface — checked, holds
+
+**Zip-slip: protected.** Every site that EXTRACTS uses the `zip` crate's `enclosed_name()`,
+which returns `None` for an entry that would escape the target directory. Three files call
+`.name()` with no `enclosed_name()` beside it — `commands/apps.rs`, `commands/crash.rs`,
+`mcp/state_bridge.rs` — and none of them write: crash.rs and state_bridge.rs match entry
+names against a fixed list and read the contents, and apps.rs turned out not to be zip at
+all (`p.name()` there is a PROCESS name from `sysinfo`, matched by a careless grep).
+`archive.rs` also mirrors the guarantee by hand for the non-zip formats, and says so.
+
+**Deeplinks: gated where it counts.** `bmm://` carries 44 actions and any web page can
+trigger one, so the first is the alarming one: `api`, with `method` and `path`. It is
+guarded — the path must start with `/api/`, and **every non-GET method requires an explicit
+confirmation dialog**, with the threat model written in the code ("any website or app can
+trigger a bmm:// link, so a bare click must not be able to silently mutate app state").
+The confirmation preview escapes its parameters.
+
+GET is not confirmed, which is correct here for a reason worth checking rather than
+assuming: the 18 GET routes on the internal API are all reads — health, status, mods,
+data, profiles, plugins, creator-id, check-update, modpacks, repo/info. No GET with a side
+effect, so the unconfirmed path cannot change anything. Deeplinks can also be disabled
+wholesale (`bmm_deeplink_allow_global`).
+
+**The `bmmpage://` broker: sound.** It identifies a caller by `e.source` — mapping the
+message's source Window to a known page frame — rather than by `e.origin`, and grants are
+looked up per page. That is the stronger check for these frames: an opaque-origin iframe
+reports `e.origin === "null"`, so an origin-string comparison would be the weaker test here,
+not the safer one.
+
 ### Not covered
 
-BetterInstaller, and BMM's Rust side — the deeplink handler, archive extraction (zip-slip),
-and the `bmmpage://` broker — which the 2026-07-18 pass covered and this one did not revisit.
+BetterInstaller. And on BMM, the ~67 remaining unescaped interpolations above still need
+triage — the CSP work is what makes them matter.
 
