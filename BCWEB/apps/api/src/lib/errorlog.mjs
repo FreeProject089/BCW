@@ -23,7 +23,16 @@ const PATH_MAX = 300;
 // holding `manage_analytics`, a capability that grants no access to those repos. Logging the
 // raw URL would hand the key to them (CWE-532). stdout still has the full URL via
 // req.log.error, for whoever already has server access.
-const pathOnly = (url) => String(url || '').split('?')[0].slice(0, PATH_MAX);
+/** A request URL with its query string removed.
+ *
+ *  Exported because the error HANDLER needs the same rule the error RECORDER already
+ *  applied. It logged `req.url` raw while this stripped it, so the same request produced a
+ *  sanitised database row and an unsanitised log line — one rule, written twice, disagreeing.
+ *
+ *  The query string is not metadata here, it is credentials: private share links are
+ *  `/r/<id>?k=<shareKey>`, and repo sync accepts `?password=` as an alternative to the
+ *  X-Repo-Password header (see presentedPassword in hosting-content.mjs). */
+export const pathOnly = (url) => String(url || '').split('?')[0].slice(0, PATH_MAX);
 
 // A broken endpoint fails on EVERY request. Without a throttle, one outage writes a row per
 // hit: it buries the page under thousands of identical rows and grows a table the retention

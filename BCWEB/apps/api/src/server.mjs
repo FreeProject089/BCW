@@ -9,7 +9,7 @@ import { db } from './lib/lib.mjs';
 import { getRedis } from './lib/redis.mjs';
 import { ensureBucket } from './lib/storage.mjs';
 import { startSweeper } from './lib/sweeper.mjs';
-import { recordServerError } from './lib/errorlog.mjs';
+import { recordServerError, pathOnly } from './lib/errorlog.mjs';
 import authRoutes from './routes/auth.mjs';
 import catalogRoutes from './routes/catalog.mjs';
 import communityCatalogRoutes from './routes/catalogs.mjs';
@@ -82,7 +82,39 @@ if (isProduction(process.env)) {
   }
 }
 
-const app = Fastify({ logger: true });
+// `logger: true` alone logs `req.url` RAW on every incoming request, and on this API the
+// query string is sometimes the credential: `/r/<id>?k=<shareKey>` is how a private repo
+// is shared, and repo sync accepts `?password=` as an alternative to the X-Repo-Password
+// header (presentedPassword, hosting-content.mjs). So every hit on a private link wrote a
+// live secret into stdout — which is exactly what gets shipped to a log pipeline (CWE-532).
+//
+// Verified before fixing, by requesting a URL carrying canary values and reading the
+// container's log: the line was
+//   {"level":30,"req":{"url":"/r/…?k=LEAKCANARY123&password=PWCANARY456"},"msg":"incoming request"}
+//
+// The custom serialiser keeps everything the default one gives (method, host, remote
+// address) and replaces `url` with the path. The KEY NAMES are kept — knowing a request
+// carried `k` is useful when reading a log, knowing its value is a breach.
+const app = Fastify({
+  logger: {
+    serializers: {
+      req(req) {
+        const raw = String(req.url || '');
+        const q = raw.indexOf('?');
+        const path = q === -1 ? raw : raw.slice(0, q);
+        const keys = q === -1 ? null : [...new URLSearchParams(raw.slice(q + 1)).keys()];
+        return {
+          method: req.method,
+          url: path,
+          ...(keys && keys.length ? { queryKeys: keys } : {}),
+          host: req.headers?.host,
+          remoteAddress: req.ip,
+          remotePort: req.socket?.remotePort,
+        };
+      },
+    },
+  },
+});
 
 // CORS: the web app is same-origin (/api via Caddy). Reflecting any origin with
 // credentials (origin:true) would be a permissive-CORS weakness (CWE-942), so we
@@ -138,7 +170,12 @@ await app.register(rateLimit, {
 app.setErrorHandler((err, req, reply) => {
   const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
   if (status < 500) return reply.code(status).send(err.payload || { error: err.message || 'error' });
-  req.log.error({ err: { message: err.message, stack: err.stack }, url: req.url }, 'request error');
+  // PATH only. `req.url` carries the query string, and on this API the query string is
+  // sometimes the secret: `/r/<id>?k=<shareKey>` for a private repo, `?password=` for repo
+  // sync. A 500 on either wrote a live credential into stdout — and stdout is what gets
+  // shipped to a log pipeline (CWE-532). The ErrorEvent row was already sanitised; only the
+  // log line was not.
+  req.log.error({ err: { message: err.message, stack: err.stack }, path: pathOnly(req.url) }, 'request error');
   // …and record it, so the admin Errors page shows API failures too. It only ever held
   // browser-reported errors (POST /analytics/error, which is consent-gated), so a 500 was
   // invisible to anyone not tailing stdout — the client saw {error:'internal_error'} and
