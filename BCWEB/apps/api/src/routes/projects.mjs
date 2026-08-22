@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants } from '../lib/lib.mjs';
+import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants, logAudit, clientIp } from '../lib/lib.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { zipReadAll } from '../lib/native.mjs';
 import { detectStack, interestingPaths } from '../lib/stack-detect.mjs';
@@ -24,6 +24,25 @@ async function getConfig(p, key) {
   return row?.value ?? null;
 }
 
+/** Record a project-page snapshot under the config's own `version` string.
+ *
+ *  Module scope, not inside the route closure where it used to live — that is precisely
+ *  why applyProjectSchedule below could not call it, and why a scheduled update shipped a
+ *  new version that never appeared in the history.
+ *
+ *  `at` backdates the entry, for a history an admin is filling in by hand. Left out, the
+ *  row keeps its natural createdAt.
+ */
+async function snapshotVersion(p, target, config, at = null) {
+  const version = typeof config?.version === 'string' ? config.version.trim().slice(0, 40) : '';
+  if (!version) return null;
+  return p.projectVersion.upsert({
+    where: { target_version: { target, version } },
+    create: { target, version, config, ...(at ? { createdAt: at } : {}) },
+    update: { config, ...(at ? { createdAt: at } : {}) },
+  }).catch(() => null);
+}
+
 // Scheduling metadata lives on the Project row; the actual content lives in a
 // separate AdminSetting row (see getConfig) — so a "swap in the staged config"
 // touches both tables, unlike ShowcaseProject where everything is one row
@@ -34,6 +53,14 @@ async function applyProjectSchedule(p, key) {
   if (row.scheduledNext.config) {
     const k = settingKey(key);
     await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: row.scheduledNext.config }, update: { value: row.scheduledNext.config } });
+    // The history entry the schedule used to skip.
+    //
+    // A manual save goes through PUT /projects/:key, which snapshots. A scheduled swap
+    // writes the AdminSetting straight from here and never did — so the one kind of
+    // release that is planned in advance, and therefore most likely to matter, was the
+    // one kind that left no trace. Nothing else about the swap depends on this, so a
+    // failure here must not roll the release back.
+    await snapshotVersion(p, key, row.scheduledNext.config);
   }
   return p.project.update({ where: { key }, data: { scheduledAt: null, scheduledNext: null } });
 }
@@ -308,6 +335,69 @@ export default async function projectRoutes(app) {
     if (b.data.at && !b.data.next) return reply.code(400).send({ error: 'next_required' });
     const p = await db();
     await p.project.update({ where: { key: req.params.key }, data: { scheduledAt: b.data.at ? new Date(b.data.at) : null, scheduledNext: b.data.at ? b.data.next : null } });
+    return { ok: true };
+  });
+
+  // ── Version history, curated ────────────────────────────────────────────────
+  //
+  // The list builds itself: every save under a new `version` string adds an entry, and
+  // (since the fix above) so does a scheduled swap. These three routes are for the cases
+  // automation cannot cover — a history that predates the feature, a typo in a version
+  // string, a snapshot recorded against the wrong release.
+  //
+  // Gated on editing the PROJECT, not on manage_projects: somebody trusted to rewrite the
+  // page is already trusted to say which version that page is.
+
+  app.get('/admin/projects/:key/versions', { preHandler: requireEditor() }, async (req, reply) => {
+    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
+    const p = await db();
+    const rows = await p.projectVersion.findMany({
+      where: { target: req.params.key }, orderBy: { createdAt: 'desc' },
+      select: { version: true, createdAt: true, updatedAt: true },
+    });
+    const cfg = await getConfig(p, req.params.key);
+    const cur = typeof cfg?.version === 'string' ? cfg.version.trim() : '';
+    return {
+      current: cur,
+      // `recorded` distinguishes "there is a stored snapshot" from "this is merely the
+      // version the live config claims". Without it the admin list would show a row you
+      // cannot delete, because there is nothing there to delete.
+      versions: rows.map((r) => ({ version: r.version, createdAt: r.createdAt, updatedAt: r.updatedAt, current: r.version === cur, recorded: true })),
+      liveUnrecorded: cur && !rows.some((r) => r.version === cur) ? cur : null,
+    };
+  });
+
+  // Record the CURRENT live config under a version label. `at` backdates it.
+  //
+  // It stores today's config, not a reconstruction of what that release looked like —
+  // nothing here can know that. The UI says so; this route will not pretend otherwise.
+  app.post('/admin/projects/:key/versions', { preHandler: requireEditor() }, async (req, reply) => {
+    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
+    const b = z.object({
+      version: z.string().trim().min(1).max(40),
+      at: z.string().datetime().nullish(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const cfg = await getConfig(p, req.params.key);
+    if (!cfg) return reply.code(409).send({ error: 'no_config' });
+    // snapshotVersion reads the label off the config, so hand it a copy carrying the one
+    // being asked for rather than the one the live config happens to claim.
+    const row = await snapshotVersion(p, req.params.key, { ...cfg, version: b.data.version }, b.data.at ? new Date(b.data.at) : null);
+    if (!row) return reply.code(400).send({ error: 'invalid_version' });
+    await logAudit(p, req.user.uid, 'project.version.recorded', `${req.params.key} ${b.data.version}`, clientIp(req));
+    return { ok: true, version: row.version, createdAt: row.createdAt };
+  });
+
+  app.delete('/admin/projects/:key/versions/:version', { preHandler: requireEditor() }, async (req, reply) => {
+    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
+    const p = await db();
+    const gone = await p.projectVersion.deleteMany({ where: { target: req.params.key, version: req.params.version } });
+    if (!gone.count) return reply.code(404).send({ error: 'not_found' });
+    await logAudit(p, req.user.uid, 'project.version.deleted', `${req.params.key} ${req.params.version}`, clientIp(req));
     return { ok: true };
   });
 
@@ -680,19 +770,6 @@ export default async function projectRoutes(app) {
       })),
     };
   });
-
-  // Record/refresh a project-page snapshot for its current version (powers the version
-  // history modal). No-op when the config has no version string. Exported-in-spirit: the
-  // showcase route calls the same shape with target `sc:<id>`.
-  async function snapshotVersion(p, target, config) {
-    const version = typeof config?.version === 'string' ? config.version.trim().slice(0, 40) : '';
-    if (!version) return;
-    await p.projectVersion.upsert({
-      where: { target_version: { target, version } },
-      create: { target, version, config },
-      update: { config },
-    }).catch(() => {});
-  }
 
   // Public: list a project's versions (newest first). Includes the current live version even
   // if it hasn't been re-saved since the feature shipped, so the list is never empty.

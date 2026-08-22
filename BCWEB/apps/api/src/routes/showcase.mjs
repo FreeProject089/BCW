@@ -1,5 +1,29 @@
 import { z } from 'zod';
 import { db, requireCap, requireEditor, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate, canManageShowcase, canEditShowcase, projectGrants } from '../lib/lib.mjs';
+
+/** applyScheduledUpdate, plus the version-history entry it does not know to write.
+ *
+ *  The helper is generic — it updates any row with a scheduledNext and is used by things
+ *  that have no `config` — so the snapshot cannot live inside it. A scheduled swap that
+ *  ships a new version left no trace in the history until this wrapper existed, which is
+ *  the same gap the fixed-project side had.
+ *
+ *  Compares the version BEFORE and after: a schedule that only changed the name or the
+ *  blurb is not a release and should not add a row.
+ */
+async function applyShowcaseSchedule(p, row) {
+  const before = typeof row?.config?.version === 'string' ? row.config.version.trim() : '';
+  const next = await applyScheduledUpdate(p, p.showcaseProject, row);
+  const after = typeof next?.config?.version === 'string' ? next.config.version.trim().slice(0, 40) : '';
+  if (after && after !== before) {
+    await p.projectVersion.upsert({
+      where: { target_version: { target: `sc:${next.id}`, version: after } },
+      create: { target: `sc:${next.id}`, version: after, config: next.config },
+      update: { config: next.config },
+    }).catch(() => {});
+  }
+  return next;
+}
 import { invalidate, replyCachedJson } from '../lib/cache.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { gh, ghCache, versionedRawUrl } from './projects.mjs';
@@ -46,7 +70,7 @@ export default async function showcaseRoutes(app) {
     return replyCachedJson(req, reply, 'showcase.list', 10_000, async () => {
       const p = await db();
       const rows0 = await p.showcaseProject.findMany({ where: { published: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
-      const rows = await Promise.all(rows0.map((r) => applyScheduledUpdate(p, p.showcaseProject, r)));
+      const rows = await Promise.all(rows0.map((r) => applyShowcaseSchedule(p, r)));
       // Listing = discovery: only 'public' pages show up here (unlisted/private/
       // whitelist are still directly reachable by slug, just not surfaced) — a
       // still-announcing page IS listed though, so its topbar pill/grid card can
@@ -64,7 +88,7 @@ export default async function showcaseRoutes(app) {
     const p = await db();
     let row = await p.showcaseProject.findUnique({ where: { slug: req.params.slug } });
     if (!row || !row.published) return reply.code(404).send({ error: 'not_found' });
-    row = await applyScheduledUpdate(p, p.showcaseProject, row);
+    row = await applyShowcaseSchedule(p, row);
     // Countdown active. Two modes:
     //  • takeover (default): the countdown IS the page — return it alone.
     //  • showPage: the real page renders too, with the countdown as a first tab —

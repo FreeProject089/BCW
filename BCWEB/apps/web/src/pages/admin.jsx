@@ -6661,6 +6661,124 @@ function AdminAssets() {
   );
 }
 
+// A project's version history, as something an admin can curate.
+//
+// The list mostly fills itself: saving the page config under a new `version` string adds
+// an entry, and so does a scheduled swap. This panel is for what automation cannot do —
+// a history that predates the feature, a version string saved with a typo, a snapshot
+// recorded against the wrong release.
+//
+// It is deliberately honest about what "Record" stores: TODAY's config under an older
+// label. Nothing here can reconstruct what a page looked like in March, and a history
+// that quietly implies it can is worse than a short one.
+function ProjectVersionHistory({ projectKey }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/projects/${projectKey}/versions`), [projectKey]);
+  const [busy, setBusy] = useState('');
+  const rows = data?.versions || [];
+
+  const record = async () => {
+    const version = await dialog.prompt({
+      title: t('apv.add.t', 'Record a version'),
+      message: t('apv.add.m', 'Stores the page config AS IT IS NOW under this label. It cannot recover what the page looked like at an older release — only mark that the release happened.'),
+      label: t('apv.add.l', 'Version'),
+      placeholder: data?.current || '1.0.0',
+      okLabel: t('apv.add.ok', 'Record'),
+    });
+    // '' is an empty box, false is a cancelled dialog. Only the second means "never mind",
+    // and only the first is worth rejecting.
+    if (version === false) return;
+    const v = String(version || '').trim();
+    if (!v) return;
+    const at = await dialog.prompt({
+      title: t('apv.date.t', 'Dated when?'),
+      message: t('apv.date.m', 'Leave empty for now. A date in the past is how you rebuild a history in the right order.'),
+      label: t('apv.date.l', 'Date (YYYY-MM-DD, optional)'),
+      placeholder: 'YYYY-MM-DD',
+      okLabel: t('common.save', 'Save'),
+    });
+    if (at === false) return;
+    const raw = String(at || '').trim();
+    // Rejected here rather than sent: the server wants a full ISO datetime, and a bad
+    // date silently becoming "now" is how an entry lands in the wrong place in the list.
+    let iso = null;
+    if (raw) {
+      const d = new Date(`${raw}T12:00:00Z`);
+      if (Number.isNaN(d.getTime())) { toast.error(t('apv.baddate', 'That is not a date (YYYY-MM-DD).')); return; }
+      iso = d.toISOString();
+    }
+    setBusy(v);
+    try {
+      await api.post(`/admin/projects/${projectKey}/versions`, { version: v, at: iso });
+      toast.success(t('apv.recorded', 'Recorded {v}.').replace('{v}', v));
+      reload();
+    } catch (e) {
+      toast.error(e?.data?.error === 'no_config' ? t('apv.nocfg', 'This project has no saved config yet.') : t('common.failed', 'Failed.'));
+    } finally { setBusy(''); }
+  };
+
+  const remove = async (v) => {
+    if (!await dialog.confirm({
+      title: t('apv.del.t', 'Delete this entry?'),
+      message: t('apv.del.m', 'The stored snapshot for {v} goes away and the version disappears from the public history. The live page is untouched.').replace('{v}', v),
+      okLabel: t('common.delete', 'Delete'), danger: true,
+    })) return;
+    setBusy(v);
+    try { await api.del(`/admin/projects/${projectKey}/versions/${encodeURIComponent(v)}`); toast.success(t('apv.deleted', 'Deleted.')); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(''); }
+  };
+
+  return (
+    <Card className="p-4 mb-4">
+      <div className="flex items-center gap-2 mb-1">
+        <History size={15} className="text-[var(--primary-2)] shrink-0" />
+        <span className="font-medium text-sm flex-1">{t('apv.title', 'Version history')}</span>
+        <Button size="sm" variant="ghost" onClick={record}><Plus size={13} /> {t('apv.add', 'Record a version')}</Button>
+      </div>
+      <p className="text-xs text-[var(--muted)] mb-3">
+        {t('apv.sub', 'Saving the page under a new version adds an entry on its own, and so does a scheduled update. Add one by hand when the history is missing a release.')}
+      </p>
+
+      {/* The live version with no stored snapshot behind it. It shows on the public list
+          already (that list falls back to the live config), so leaving it out here would
+          mean a version the reader can see and the admin cannot find. */}
+      {data?.liveUnrecorded && (
+        <div className="rounded-lg border border-dashed border-[var(--line-strong)] px-3 py-2 mb-2 flex items-center gap-2 text-[13px]">
+          <span className="font-mono">{data.liveUnrecorded}</span>
+          <span className="text-[11px] text-[var(--faint)] flex-1">{t('apv.live', 'Live now, never recorded — the public list reads it from the config.')}</span>
+          <Button size="sm" variant="ghost" disabled={busy === data.liveUnrecorded}
+            onClick={async () => {
+              setBusy(data.liveUnrecorded);
+              try { await api.post(`/admin/projects/${projectKey}/versions`, { version: data.liveUnrecorded, at: null }); toast.success(t('apv.recorded', 'Recorded {v}.').replace('{v}', data.liveUnrecorded)); reload(); }
+              catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
+            }}>{t('apv.snap', 'Record it')}</Button>
+        </div>
+      )}
+
+      {loading ? <div className="text-xs text-[var(--muted)] py-2">{t('common.loading', 'Loading…')}</div>
+        : !rows.length && !data?.liveUnrecorded
+          ? <div className="text-xs text-[var(--faint)] py-2">{t('apv.none', 'Nothing recorded yet. Save the page with a version string, or add one above.')}</div>
+          : (
+            <div className="space-y-1.5">
+              {rows.map((r) => (
+                <div key={r.version} className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-[13px]">
+                  <span className="font-mono">{r.version}</span>
+                  {r.current && <Badge tone="green">{t('apv.current', 'live')}</Badge>}
+                  <span className="text-[11px] text-[var(--faint)] flex-1 text-right tabular-nums">
+                    {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—'}
+                  </span>
+                  <Button size="sm" variant="ghost" className="!text-error shrink-0" disabled={busy === r.version}
+                    title={t('common.delete', 'Delete')} aria-label={t('common.delete', 'Delete')}
+                    onClick={() => remove(r.version)}><Trash2 size={13} /></Button>
+                </div>
+              ))}
+            </div>
+          )}
+    </Card>
+  );
+}
+
 function AdminProjects() {
   const toast = useToast(); const { t } = useI18n();
   const { data, reload } = useAsync(() => api.get('/projects'), []);
@@ -6908,6 +7026,10 @@ function AdminProjects() {
           </div>
         );
       })()}
+      {/* Fixed projects only. The admin version routes are keyed by project key, and a
+          showcase project's snapshots live under `sc:<id>` with no admin route yet — so
+          rendering this for one would be a panel whose buttons 404. */}
+      {!isShowcase && activeManageable && <ProjectVersionHistory projectKey={active} />}
       {activeManageable && <div className="flex justify-end mb-4">
         <Button size="sm" variant="ghost" onClick={() => setScheduling(true)} title={t('apj.stagefuture', 'Stage a future content swap for this page')}><Clock size={13} /> {(isShowcase ? activeShow : activeMeta)?.scheduledAt ? t('apj.reschedule', 'Reschedule') : t('sh.schedtip', 'Schedule an update')}</Button>
       </div>}
