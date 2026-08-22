@@ -11,6 +11,7 @@ scripts `package.json`, de `infra/` et de `.github/workflows/ci.yml`.
 ## Au quotidien, en production
 
 ```bash
+infra/prod-env.sh <domaine>     # pointe un .env existant vers un vrai domaine + remplit les secrets manquants
 infra/deploy.sh                 # sauvegarde, récupère, reconstruit, vérifie, revient en arrière si ça échoue
 infra/deploy.sh --dry-run       # affiche chaque étape sans rien changer
 infra/backup/backup.sh          # un dump tout de suite, sans déployer
