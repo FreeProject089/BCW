@@ -12,6 +12,21 @@ import { z } from 'zod';
 import { db, requireRole, notify, logAudit, clientIp } from '../lib/lib.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 
+/** Send, and if it fails say so in the log instead of nowhere.
+ *
+ *  Still swallows — a transfer must not fail because a mail host is unreachable — but a
+ *  swallowed error with no record is why "it never sends an e-mail" and "it sent one and
+ *  the address bounced" were the same observation. `to` is an address, not a secret, and
+ *  nothing else about the mail is logged. */
+async function mail(app, what, opts) {
+  try {
+    const sent = await sendMail(opts);
+    if (!sent) app.log.info({ what, to: opts.to }, 'transfer mail skipped: e-mail is disabled');
+  } catch (e) {
+    app.log.warn({ what, to: opts.to, err: e?.message }, 'transfer mail failed');
+  }
+}
+
 const KINDS = ['repo', 'catalog'];
 const TTL_DAYS = 14;
 
@@ -97,7 +112,7 @@ export default async function transferRoutes(app) {
     await notify(p, to.id, 'Ownership transfer offered',
       `${from?.displayName || 'Someone'} offered you the ${what} "${tr.targetName}".`,
       { href: '/dashboard#transfers' }).catch(() => {});
-    await sendMail({
+    await mail(app, 'transfer-offer', {
       to: to.email,
       subject,
       html: mailShell(subject, `
@@ -107,9 +122,9 @@ export default async function transferRoutes(app) {
         <p>Nothing has changed yet — it becomes yours only if you accept. If you do, you take on
            its content and any storage it uses.</p>
         <p>This offer expires in ${TTL_DAYS} days.</p>`,
-      { label: 'Review the transfer', url: `${SITE}/profile#transfers` }),
-      text: `${subject}\n${SITE}/profile#transfers`,
-    }).catch(() => {});
+      { label: 'Review the transfer', url: `${SITE}/dashboard#transfers` }),
+      text: `${subject}\n${SITE}/dashboard#transfers`,
+    });
 
     return reply.code(201).send({ ok: true, transfer: { id: tr.id, status: tr.status, expiresAt: tr.expiresAt } });
   });
@@ -130,7 +145,7 @@ export default async function transferRoutes(app) {
     const view = (t, side) => ({
       id: t.id, kind: t.kind, targetId: t.targetId, targetName: t.targetName,
       status: t.status === 'pending' && t.expiresAt < new Date() ? 'expired' : t.status,
-      message: t.message, createdAt: t.createdAt, respondedAt: t.respondedAt, expiresAt: t.expiresAt,
+      message: t.message, reason: t.reason || '', createdAt: t.createdAt, respondedAt: t.respondedAt, expiresAt: t.expiresAt,
       counterparty: byId[side === 'in' ? t.fromUserId : t.toUserId] || { displayName: '(deleted)' },
     });
     return { incoming: incoming.map((t) => view(t, 'in')), outgoing: outgoing.map((t) => view(t, 'out')) };
@@ -168,7 +183,7 @@ export default async function transferRoutes(app) {
     await notify(p, tr.fromUserId, 'Transfer accepted', `${me?.displayName || 'They'} accepted "${tr.targetName}". It is no longer yours.`).catch(() => {});
     if (from?.email) {
       const subject = `"${tr.targetName}" has been transferred`;
-      await sendMail({ to: from.email, subject, html: mailShell(subject, `<p><b>${escapeHtml(me?.displayName || 'The recipient')}</b> accepted the transfer of <b>${escapeHtml(tr.targetName)}</b>. It now belongs to them and no longer appears in your dashboard.</p>`), text: subject }).catch(() => {});
+      await mail(app, 'transfer-accepted', { to: from.email, subject, html: mailShell(subject, `<p><b>${escapeHtml(me?.displayName || 'The recipient')}</b> accepted the transfer of <b>${escapeHtml(tr.targetName)}</b>. It now belongs to them and no longer appears in your dashboard.</p>`), text: subject });
     }
     return { ok: true };
   });
@@ -177,6 +192,11 @@ export default async function transferRoutes(app) {
   // One handler: declining (recipient) and cancelling (sender) are the same state change
   // seen from two sides, and splitting them would mean two chances to forget a guard.
   app.post('/me/transfers/:id/decline', { preHandler: requireRole() }, async (req, reply) => {
+    // The reason is optional and is only kept on a decline. A body this route cannot parse
+    // must not be what stops somebody saying no, so it degrades to no reason rather than a
+    // 400 — the refusal is the part that matters.
+    const parsed = z.object({ reason: z.string().max(300).default('') }).safeParse(req.body || {});
+    const reason = parsed.success ? parsed.data.reason.trim() : '';
     const p = await db();
     const tr = await p.ownershipTransfer.findUnique({ where: { id: String(req.params.id) } });
     if (!tr) return reply.code(404).send({ error: 'not_found' });
@@ -185,12 +205,38 @@ export default async function transferRoutes(app) {
     if (!isRecipient && !isSender) return reply.code(404).send({ error: 'not_found' });
     if (tr.status !== 'pending') return reply.code(409).send({ error: 'not_pending' });
     const status = isRecipient ? 'declined' : 'cancelled';
-    const claimed = await p.ownershipTransfer.updateMany({ where: { id: tr.id, status: 'pending' }, data: { status, respondedAt: new Date() } });
+    const claimed = await p.ownershipTransfer.updateMany({
+      where: { id: tr.id, status: 'pending' },
+      data: { status, respondedAt: new Date(), ...(isRecipient && reason ? { reason } : {}) },
+    });
     if (!claimed.count) return reply.code(409).send({ error: 'not_pending' });
     // Only a decline is worth telling the other side about: the sender cancelling their
     // own offer is not news to the sender, and the recipient never asked for it.
+    //
+    // It goes out by MAIL as well as in-app now. The offer arrived in the sender's inbox;
+    // the answer to it arriving only as a bell they must be logged in to see meant the
+    // usual outcome of a decline was the sender waiting fourteen days for an expiry.
     if (isRecipient) {
-      await notify(p, tr.fromUserId, 'Transfer declined', `Your offer of "${tr.targetName}" was declined. It is still yours.`).catch(() => {});
+      const who = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true } });
+      const name = who?.displayName || 'They';
+      await notify(p, tr.fromUserId, 'Transfer declined',
+        `${name} declined "${tr.targetName}". It is still yours.${reason ? ` \u2014 \u201c${reason}\u201d` : ''}`,
+        { href: '/dashboard#transfers' }).catch(() => {});
+      const from = await p.user.findUnique({ where: { id: tr.fromUserId }, select: { email: true } });
+      if (from?.email) {
+        const subject = `Your transfer of "${tr.targetName}" was declined`;
+        await mail(app, 'transfer-declined', {
+          to: from.email,
+          subject,
+          html: mailShell(subject, `
+            <p><b>${escapeHtml(name)}</b> declined the transfer of <b>${escapeHtml(tr.targetName)}</b>.
+               Nothing moved \u2014 it is still yours, and still in your dashboard.</p>
+            ${reason ? `<p style="padding:10px 14px;border-left:3px solid #f97316;color:#6f685d">${escapeHtml(reason)}</p>` : ''}
+            <p>You can offer it to somebody else whenever you like.</p>`,
+            { label: 'Open your dashboard', url: `${SITE}/dashboard#transfers` }),
+          text: `${subject}${reason ? `\n${reason}` : ''}\n${SITE}/dashboard#transfers`,
+        });
+      }
     }
     return { ok: true, status };
   });

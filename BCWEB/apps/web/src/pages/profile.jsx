@@ -311,7 +311,7 @@ export default function Profile() {
 // Nothing here is optimistic. Accepting moves real ownership on the server, and showing it
 // as done before the server agrees would mean a refresh could take it away again — the one
 // place a hopeful UI turns into "did that work or not?".
-export function TransfersCard() {
+export function TransfersCard({ className = '' }) {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState('');
@@ -327,7 +327,12 @@ export function TransfersCard() {
     free_plan: t('tr.err.free', 'It is on the free plan, and the free tier is one per account — the person receiving it could not hold it without spending a free claim they never made. Delete it and let them create their own.'),
   }[e] || t('prof.failed', 'Failed.'));
 
+  // accept | decline (the recipient says no) | cancel (the sender takes their own offer
+  // back). The last two hit the same endpoint — the server decides which it is from who is
+  // asking — but they are separate words here because they ask for different things: a
+  // decline offers to carry a reason back, a cancel has nobody to explain anything to.
   const act = async (tr, kind) => {
+    let body;
     if (kind === 'accept') {
       const what = tr.kind === 'repo' ? t('tr.repo', 'repository') : t('tr.item', 'catalog item');
       if (!await dialog.confirm({
@@ -336,11 +341,41 @@ export function TransfersCard() {
           .replace('{what}', what).replace('{n}', tr.targetName).replace('{who}', tr.counterparty.displayName),
         okLabel: t('tr.accept', 'Accept'),
       })) return;
+    } else if (kind === 'decline') {
+      // A prompt rather than a confirm, because the useful part of a refusal is the
+      // sentence after it. Optional, though: the sender is told either way, and demanding
+      // an explanation before somebody is allowed to say no is how you get no answer at all.
+      //
+      // Cancelling the dialog resolves `false`; submitting an empty box resolves `''`. Only
+      // the first is "never mind" — hence `=== false` rather than a truthiness test, which
+      // would silently swallow "no, and I would rather not say why".
+      const reason = await dialog.prompt({
+        title: t('tr.decline.t', 'Decline this transfer?'),
+        message: t('tr.decline.m', '“{n}” stays with {who}. They are told you declined; nothing else changes.')
+          .replace('{n}', tr.targetName).replace('{who}', tr.counterparty.displayName),
+        label: t('tr.decline.why', 'Why? (optional — sent to them)'),
+        placeholder: t('tr.decline.ph', 'e.g. I do not have the storage for it right now.'),
+        multiline: true, rows: 3,
+        okLabel: t('tr.decline', 'Decline'),
+        danger: true,
+      });
+      if (reason === false) return;
+      body = { reason: String(reason || '').slice(0, 300) };
+    } else if (kind === 'cancel') {
+      if (!await dialog.confirm({
+        title: t('tr.cancel.t', 'Take the offer back?'),
+        message: t('tr.cancel.m', '“{n}” stays yours and {who} can no longer accept it. You can offer it again later.')
+          .replace('{n}', tr.targetName).replace('{who}', tr.counterparty.displayName),
+        okLabel: t('tr.cancel', 'Take back'),
+        danger: true,
+      })) return;
     }
     setBusy(tr.id);
     try {
-      await api.post(`/me/transfers/${tr.id}/${kind === 'accept' ? 'accept' : 'decline'}`);
-      toast.success(kind === 'accept' ? t('tr.accepted', 'It is yours.') : t('tr.declined', 'Declined.'));
+      await api.post(`/me/transfers/${tr.id}/${kind === 'accept' ? 'accept' : 'decline'}`, body);
+      toast.success(kind === 'accept' ? t('tr.accepted', 'It is yours.')
+        : kind === 'decline' ? t('tr.declined', 'Declined. They have been told.')
+        : t('tr.cancelled', 'Offer withdrawn.'));
       await load();
     } catch (x) { toast.error(ERRORS(x.data?.error)); await load(); }
     finally { setBusy(''); }
@@ -355,51 +390,116 @@ export function TransfersCard() {
   if (!data || (!incoming.length && !outgoing.length && !past.length)) return null;
 
   const days = (iso) => Math.max(0, Math.ceil((new Date(iso) - Date.now()) / 864e5));
+  // Urgency, not decoration. A fortnight away is a detail; two days away is the reason this
+  // card is on the dashboard at all.
+  const expiryTone = (n) => (n <= 2 ? 'text-[var(--error)]' : n <= 5 ? 'text-[var(--warning)]' : 'text-[var(--faint)]');
+  const kindWord = (k) => (k === 'repo' ? t('tr.repo', 'repository') : t('tr.item', 'catalog item'));
+  // Its own map, NOT the shared `statusTone` from pages.jsx: that one answers about
+  // PUBLISHED/REJECTED catalog statuses and falls through to amber for everything it does
+  // not know, so reusing it here would have painted accepted, declined and expired alike.
+  const trTone = (st) => ({ accepted: 'green', declined: 'red' }[st] || '');
 
   return (
-    <Card className="p-5" id="transfers">
+    <Card className={`p-5 ${className}`} id="transfers">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2">
         <ArrowRight size={15} className="text-[var(--primary-2)]" /> {t('tr.title', 'Ownership transfers')}
       </div>
-      <p className="text-[12px] text-[var(--muted)] mb-3">
+      <p className="text-[12px] text-[var(--muted)]">
         {t('tr.sub', 'Nothing moves until it is accepted. Taking something on means taking on its storage and whatever is reported about it.')}
       </p>
 
-      {incoming.map((tr) => (
-        <div key={tr.id} className="rounded-lg border border-[var(--primary-2)] bg-[var(--surface-2)]/40 p-3 mb-2">
-          <div className="text-[13px]">
-            {t('tr.offered', '{who} offers you the {what} “{n}”.')
-              .replace('{who}', tr.counterparty.displayName)
-              .replace('{what}', tr.kind === 'repo' ? t('tr.repo', 'repository') : t('tr.item', 'catalog item'))
-              .replace('{n}', tr.targetName)}
+      {/* Waiting on YOU. Sectioned and labelled rather than stacked straight under the
+          intro: the two halves of this card ask for opposite things — one is a decision,
+          the other is a receipt — and unlabelled they read as one list. */}
+      {incoming.length > 0 && (
+        <div className="mt-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
+            {t('tr.in', 'Waiting on you')}
           </div>
-          {tr.message && <p className="text-[12px] text-[var(--muted)] mt-1 pl-2 border-l-2 border-[var(--line)]">{tr.message}</p>}
-          <div className="text-[11px] text-[var(--faint)] mt-1">{t('tr.expires', 'Expires in {n} day(s)').replace('{n}', String(days(tr.expiresAt)))}</div>
-          <div className="flex gap-2 mt-2">
-            <Button size="sm" variant="primary" disabled={busy === tr.id} onClick={() => act(tr, 'accept')}>{t('tr.accept', 'Accept')}</Button>
-            <Button size="sm" disabled={busy === tr.id} onClick={() => act(tr, 'decline')}>{t('tr.decline', 'Decline')}</Button>
+          <div className="space-y-3">
+            {incoming.map((tr) => {
+              const d = days(tr.expiresAt);
+              return (
+                <div key={tr.id} className="rounded-xl border border-[var(--primary-2)] bg-[var(--surface-2)]/40 p-4">
+                  <div className="flex items-start gap-3">
+                    <Avatar user={tr.counterparty} size={32} className="shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] leading-relaxed">
+                        {t('tr.offered', '{who} offers you the {what} “{n}”.')
+                          .replace('{who}', tr.counterparty.displayName)
+                          .replace('{what}', kindWord(tr.kind))
+                          .replace('{n}', tr.targetName)}
+                      </div>
+                      {tr.message && (
+                        <p className="text-[12px] text-[var(--muted)] mt-2 pl-3 border-l-2 border-[var(--primary-2)] leading-relaxed">{tr.message}</p>
+                      )}
+                      <div className={`text-[11px] mt-2 ${expiryTone(d)}`}>
+                        {t('tr.expires', 'Expires in {n} day(s)').replace('{n}', String(d))}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Both answers are answers. Decline is not a ghost link tucked at the edge:
+                      refusing is the expected outcome about as often as accepting, and the
+                      version of this row that whispered it read as "accept, or close the tab". */}
+                  <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-[var(--line)]">
+                    <Button size="sm" variant="primary" disabled={busy === tr.id} onClick={() => act(tr, 'accept')}>
+                      <Check size={14} /> {t('tr.accept', 'Accept')}
+                    </Button>
+                    <Button size="sm" variant="danger" disabled={busy === tr.id} onClick={() => act(tr, 'decline')}>
+                      <X size={14} /> {t('tr.decline', 'Decline')}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-      ))}
+      )}
 
-      {outgoing.map((tr) => (
-        <div key={tr.id} className="flex items-center gap-3 py-2 border-t border-[var(--line)] text-[13px]">
-          <div className="min-w-0 flex-1">
-            <div className="truncate">{t('tr.sent', 'You offered “{n}” to {who}').replace('{n}', tr.targetName).replace('{who}', tr.counterparty.displayName)}</div>
-            <div className="text-[11px] text-[var(--faint)]">{t('tr.await', 'Waiting — expires in {n} day(s)').replace('{n}', String(days(tr.expiresAt)))}</div>
+      {outgoing.length > 0 && (
+        <div className="mt-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
+            {t('tr.out', 'Sent by you')}
           </div>
-          <Button size="sm" variant="ghost" disabled={busy === tr.id} onClick={() => act(tr, 'decline')}>{t('tr.cancel', 'Take back')}</Button>
+          <div className="space-y-2">
+            {outgoing.map((tr) => {
+              const d = days(tr.expiresAt);
+              return (
+                <div key={tr.id} className="flex items-center gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/30 p-3">
+                  <Avatar user={tr.counterparty} size={28} className="shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] truncate">
+                      {t('tr.sent', 'You offered “{n}” to {who}').replace('{n}', tr.targetName).replace('{who}', tr.counterparty.displayName)}
+                    </div>
+                    <div className={`text-[11px] ${expiryTone(d)}`}>
+                      {t('tr.await', 'Waiting — expires in {n} day(s)').replace('{n}', String(d))}
+                    </div>
+                  </div>
+                  <Button size="sm" variant="ghost" className="shrink-0" disabled={busy === tr.id} onClick={() => act(tr, 'cancel')}>
+                    {t('tr.cancel', 'Take back')}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      ))}
+      )}
 
       {past.length > 0 && (
-        <details className="mt-2">
+        <details className="mt-4 pt-3 border-t border-[var(--line)]">
           <summary className="text-[11px] text-[var(--faint)] cursor-pointer select-none">{t('tr.past', 'Earlier transfers')}</summary>
-          <div className="mt-1">
+          <div className="mt-2 space-y-1.5">
             {past.map((tr) => (
-              <div key={tr.id} className="flex items-center gap-2 py-1 text-[12px] text-[var(--muted)]">
-                <span className="truncate flex-1">{tr.targetName}</span>
-                <span className="text-[11px] text-[var(--faint)]">{t(`tr.st.${tr.status}`, tr.status)}</span>
+              <div key={tr.id} className="text-[12px] text-[var(--muted)]">
+                <div className="flex items-center gap-2">
+                  <span className="truncate flex-1">{tr.targetName}</span>
+                  <Badge tone={trTone(tr.status)}>{t(`tr.st.${tr.status}`, tr.status)}</Badge>
+                </div>
+                {/* The reason is the whole point of having asked for one: a decline that
+                    files its explanation somewhere nobody reads is a decline with none. */}
+                {tr.reason && (
+                  <p className="text-[11px] text-[var(--faint)] mt-1 pl-3 border-l-2 border-[var(--line)] leading-relaxed">{tr.reason}</p>
+                )}
               </div>
             ))}
           </div>

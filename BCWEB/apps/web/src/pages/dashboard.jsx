@@ -421,7 +421,11 @@ export function Dashboard() {
                 ownership, and two renderings of that would eventually disagree about what the
                 button does. It hides itself when nothing is pending, so this costs an ordinary
                 dashboard nothing. */}
-            <TransfersCard />
+            {/* The spacing is a PROP, not a wrapper. Every other block on this tab carries
+                its own mb-6/mb-8 and this one carried nothing, so on the dashboard it sat
+                flush against the checklist below it. A wrapping <div className="mb-6"> would
+                have left 24px of empty margin on the (common) days the card renders null. */}
+            <TransfersCard className="mb-6" />
             {/* Goal-gradient onboarding: the checklist owns first-run guidance (incl. 2FA);
                 once it's done or dismissed, fall back to the standalone 2FA nudge. */}
             {(() => {

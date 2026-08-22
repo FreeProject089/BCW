@@ -163,6 +163,15 @@ export const MAIL_SAMPLES = [
             '<p><b>Jane</b> accepted the transfer of <b>Better Textures</b>. It now belongs to them and no longer appears in your dashboard.</p>'),
     },
     {
+        id: 'transfer-declined', group: 'content', label: 'A transfer you offered was declined',
+        note: 'The other half of transfer-accepted. Carries the reason when one was given \u2014 a bare "no" is what makes people ask twice.',
+        build: () => mailShell('Your transfer of "Better Textures" was declined',
+            '<p><b>Jane</b> declined the transfer of <b>Better Textures</b>. Nothing moved \u2014 it is still yours, and still in your dashboard.</p>'
+            + '<p style="padding:10px 14px;border-left:3px solid #f97316;color:#6f685d">I do not have the storage for it right now, sorry.</p>'
+            + '<p>You can offer it to somebody else whenever you like.</p>',
+            { url: link('/dashboard#transfers'), label: 'Open your dashboard' }),
+    },
+    {
         id: 'report-new', group: 'moderation', label: 'New report opened (to staff)',
         note: 'The only mail in this group addressed to the team rather than to a member.',
         build: () => mailShell('New report opened',

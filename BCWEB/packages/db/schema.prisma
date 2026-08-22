@@ -1849,6 +1849,10 @@ model OwnershipTransfer {
   // pending → accepted | declined | cancelled | expired
   status      String    @default("pending")
   message     String    @default("")
+  // What the recipient said when they turned it down. Optional, and only ever set on a
+  // decline: "no" with no reason leaves the sender guessing whether to ask again, and the
+  // guess is usually to ask again.
+  reason      String    @default("")
   createdAt   DateTime  @default(now())
   respondedAt DateTime?
   // Requests do not hang around forever: an unanswered one becomes noise in both
