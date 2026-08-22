@@ -316,34 +316,34 @@ export const DEFAULT_DEV_CARDS = [
     // to the card that contained them.
     chips: [
       { to: '/dev/tools#try', labelKey: 'dev.console.title', label: 'Try a call',
-        icon: 'terminal', hintKey: 'dev.hub.tool.try', hint: 'Against the real API, with your key. A sandbox switch makes a write answer without writing.' },
+        icon: 'terminal', hintKey: 'dev.hub.tool.try', hint: 'Against the real API, with your key. Sandbox mode answers without writing.' },
       { to: '/dev/tools#validate', labelKey: 'dvt.val', label: 'Check a catalog feed',
-        icon: 'check-circle-2', hintKey: 'dev.hub.tool.val', hint: 'Paste a URL and see what BMM would make of it — before anybody subscribes to it.' },
+        icon: 'check-circle-2', hintKey: 'dev.hub.tool.val', hint: 'Paste a URL, see what BMM makes of it.' },
       { to: '/dev/tools#deeplink', labelKey: 'dvt.dl.title', label: 'Build a bmm:// link',
-        icon: 'link-2', hintKey: 'dev.hub.tool.dl', hint: 'Every action, every parameter, with the link written for you as you pick.' },
+        icon: 'link-2', hintKey: 'dev.hub.tool.dl', hint: 'Pick an action, get the link.' },
       { to: '/dev/tools#signature', labelKey: 'dvt.sig.title', label: 'Check a webhook signature',
-        icon: 'fingerprint', hintKey: 'dev.hub.tool.sig', hint: 'Paste a payload and a header and find out which half is wrong.' },
+        icon: 'fingerprint', hintKey: 'dev.hub.tool.sig', hint: 'Paste a payload and a header, find out which half is wrong.' },
       { to: '/dev/tools#calls', labelKey: 'dvt.calls', label: 'What your keys did',
-        icon: 'activity', hintKey: 'dev.hub.tool.calls', hint: 'Every call, refusals included — the ones you never see are the ones worth reading.' },
+        icon: 'activity', hintKey: 'dev.hub.tool.calls', hint: 'Every call your keys made, refusals included.' },
     ],
   },
   {
     id: 'config', icon: 'sliders', to: '/dev/config', ctaKey: 'dev.hub.open',
     titleKey: 'dev.hub.config', title: 'Credentials',
     bodyKey: 'dev.hub.config.s',
-    body: 'Your API keys and the apps you have registered, in one place. Creating or deleting a key asks for your 2FA code if you have one.',
+    body: 'Your API keys and the apps you have registered.',
   },
   {
     id: 'sso', icon: 'shield', to: '/docs/sso', ctaKey: 'dev.hub.ssodoc',
     titleKey: 'dev.hub.sso', title: 'Sign in with BetterCommunity',
     bodyKey: 'dev.hub.sso.s',
-    body: 'Standard OpenID Connect. Register an app, point your library at the discovery document, and you are done — there is no in-house SDK to install.',
+    body: 'Standard OpenID Connect. Point your library at the discovery document — no in-house SDK.',
   },
   {
     id: 'docs', icon: 'book-open', to: '/docs', ctaKey: 'dev.hub.open',
     titleKey: 'dev.hub.docs', title: 'Docs',
     bodyKey: 'dev.hub.docs.s',
-    body: 'The API reference, the plugin API, and the format of catalogs and repositories.',
+    body: 'API reference, plugin API, catalog and repository formats.',
   },
 ];
 
@@ -446,7 +446,7 @@ export default function DevHub() {
           {hero.title || <>{t('dev.hub.h1a', 'Build on')} <span className="gradient-text">BetterCommunity</span></>}
         </h1>
         <p className="text-[var(--muted)] mt-3 text-base sm:text-lg">
-          {hero.body || t('dev.hub.h1b', 'Sign people in with their account, read their content with their permission, and get told when it changes. A REST API, OpenID Connect, and webhooks — no SDK to install.')}
+          {hero.body || t('dev.hub.h1b', 'Sign people in, read their content with their permission, get told when it changes. REST API, OpenID Connect, webhooks — no SDK to install.')}
         </p>
         {/* The first button depends on whether you already have a key.
             A developer who has been using this API for months arrived to "Get a key — takes
@@ -468,7 +468,7 @@ export default function DevHub() {
             starts today or bookmarks the page. Pointless once they have started. */}
         {!myKeys.length && (
           <p className="text-[12px] text-[var(--faint)] mt-4">
-            {hero.note || t('dev.hub.time', 'A key takes about a minute. Nothing here needs approval.')}
+            {hero.note || t('dev.hub.time', 'A key takes a minute. No approval needed.')}
           </p>
         )}
       </div>
@@ -486,7 +486,7 @@ export default function DevHub() {
               <span className="font-semibold text-[15px] flex-1">{t('dev.hub.jobkey', 'Your program acts as YOU')}</span>
               <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
             </div>
-            <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobkey.s', 'A script, a sync job, a bot you run. Use an API key: scoped, personal, nobody else’s consent involved.')}</p>
+            <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobkey.s', 'A script, a sync job, a bot you run. Use an API key.')}</p>
             <div className="flex flex-wrap gap-1.5 mt-3">
               {['API keys', 'Test keys', 'Webhooks'].map((x) => <span key={x} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{x}</span>)}
             </div>
@@ -497,7 +497,7 @@ export default function DevHub() {
               <span className="font-semibold text-[15px] flex-1">{t('dev.hub.jobsso', 'Your app acts for OTHER people')}</span>
               <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
             </div>
-            <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobsso.s', 'Anything with its own users. Use Sign in with BetterCommunity: they authorise it, and you never touch their password.')}</p>
+            <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobsso.s', 'Anything with its own users. They authorise it — you never touch their password.')}</p>
             <div className="flex flex-wrap gap-1.5 mt-3">
               {['OpenID Connect', 'PKCE', 'URL generator'].map((x) => <span key={x} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{x}</span>)}
             </div>
@@ -554,7 +554,7 @@ export default function DevHub() {
 
       {!user && (
         <p className="text-[11px] text-[var(--muted)] mt-4">
-          {t('dev.hub.signin', 'Registering an app or minting a key needs an account — everything else on this page works signed out.')}
+          {t('dev.hub.signin', 'Only keys and apps need an account.')}
         </p>
       )}
     </div>

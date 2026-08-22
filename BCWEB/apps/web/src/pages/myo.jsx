@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Bot, AppWindow, Globe, Wand2, ShieldCheck, Sparkles, Check, Clock, Package, Download,
+  Bot, AppWindow, Globe, Wand2, ShieldCheck, Check, Clock, Package, Download,
   ExternalLink, Lock, ArrowLeft, ArrowRight, Plus, X, FileText, AlertTriangle, CreditCard, MessageSquare, Send,
 } from 'lucide-react';
 import { api, uploadMyoDeliverable } from '../lib/api.js';
@@ -80,9 +80,8 @@ export function MyoPage() {
       {/* ── Hero ── */}
       <div className="relative text-center max-w-2xl mx-auto mb-8 sm:mb-10">
         <div aria-hidden className="absolute left-1/2 -translate-x-1/2 -top-20 w-[620px] max-w-[130%] h-72 rounded-full bg-[var(--primary)]/15 blur-3xl -z-10" />
-        <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)] mb-4 border border-[var(--primary)]/25"><Sparkles size={13} /> {t('myo.badge', 'Make Your Own')}</div>
         <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-[1.1]">{t('myo.title', 'We build it for you')}</h1>
-        <p className="text-[var(--muted)] mt-3 text-[15px] leading-relaxed">{t('myo.sub', 'Need a Discord bot, an app, a website — or something custom like a security audit of your code (CVE / CWE / CVSS)? Start a paid consultation: you get real advice and a fixed quote. We only start building once you approve the quote.')}</p>
+        <p className="text-[var(--muted)] mt-3 text-[15px] leading-relaxed">{t('myo.sub', 'A Discord bot, an app, a website — or something else entirely. Start with a paid consultation: real advice and a fixed quote. Nothing is built until you approve it.')}</p>
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 mt-5 text-xs text-[var(--muted)]">
           {[[FileText, t('myo.trust1', 'Fixed, itemised quote')], [Check, t('myo.trust2', 'You approve before we build')], [Globe, t('myo.trust3', 'English or French')], [ShieldCheck, t('myo.trust4', 'Source on request')]].map(([Ic, tx], i) => (
             <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--line)]"><Ic size={13} className="text-[var(--primary-2)] shrink-0" /> {tx}</span>
@@ -93,9 +92,9 @@ export function MyoPage() {
       {/* ── How it works + the clear "what you pay for" disclaimer ── */}
       <div className="mb-8 sm:mb-10 max-w-3xl mx-auto">
         <div className="grid sm:grid-cols-3 gap-4 sm:gap-5">
-          {[[MessageSquare, t('myo.hiw1.t', '1 · Pay for advice'), t('myo.hiw1.s', 'A {n} consultation ({u} if urgent) opens a private conversation with a consultant.').replace('{n}', fmtMoney(cfg.consultationCents, cfg.currency)).replace('{u}', fmtMoney(cfg.urgentConsultationCents, cfg.currency))],
-            [FileText, t('myo.hiw2.t', '2 · Get a quote'), t('myo.hiw2.s', "We discuss what you need and send a clear, itemised price for the product.")],
-            [Package, t('myo.hiw3.t', '3 · We build & deliver'), t('myo.hiw3.s', 'Once you approve and pay the quote, we build it and deliver it right in the conversation.')]].map(([Icon, tt, ss], i) => (
+          {[[MessageSquare, t('myo.hiw1.t', '1 · Pay for advice'), t('myo.hiw1.s', '{n} ({u} if urgent) opens a private conversation with a consultant.').replace('{n}', fmtMoney(cfg.consultationCents, cfg.currency)).replace('{u}', fmtMoney(cfg.urgentConsultationCents, cfg.currency))],
+            [FileText, t('myo.hiw2.t', '2 · Get a quote'), t('myo.hiw2.s', 'We agree what you need, and you get an itemised price.')],
+            [Package, t('myo.hiw3.t', '3 · We build it'), t('myo.hiw3.s', 'You approve the quote, we build and deliver in the same conversation.')]].map(([Icon, tt, ss], i) => (
             <div key={i} className="flex gap-3">
               <span className="w-9 h-9 rounded-xl bg-[var(--primary)]/10 border border-[var(--primary)]/20 grid place-items-center shrink-0 text-[var(--primary-2)]"><Icon size={17} /></span>
               <div className="min-w-0"><div className="font-semibold text-[13px]">{tt}</div><div className="text-xs text-[var(--muted)] leading-relaxed mt-0.5">{ss}</div></div>
@@ -120,7 +119,7 @@ export function MyoPage() {
             {t('myo.disclaimer.head', 'What the consultation fee covers, and what it does not')}
           </summary>
           <p className="text-xs text-[var(--muted)] mt-2.5 pl-[25px] leading-relaxed">
-            {t('myo.disclaimer', 'The consultation fee pays for expert advice and a quote — it is NOT the price of the product. Building only begins after you approve and pay the separate quote. Some deliverables include source code, some do not — this is always stated on the quote.')}
+            {t('myo.disclaimer', 'The fee pays for advice and a quote — it is NOT the price of the product. Building starts only once you approve and pay that quote. Whether source code is included is always stated on it.')}
           </p>
         </details>
       </div>
@@ -197,7 +196,7 @@ export function MyoPage() {
       {/* ── Catalog ── */}
       <div className="flex items-baseline gap-3 mb-4">
         <h2 className="text-lg font-bold">{t('myo.pick.t', 'Choose a starting point')}</h2>
-        <span className="text-xs text-[var(--faint)]">{t('myo.pick.s', 'Pick the closest match — we tailor the details together.')}</span>
+        <span className="text-xs text-[var(--faint)]">{t('myo.pick.s', 'Pick the closest match — we sort out the details together.')}</span>
       </div>
       {cat.loading ? <div className="py-10 grid place-items-center"><Spinner /></div> : (
         <>
@@ -285,7 +284,6 @@ function CustomFeatureCard({ card, cfg, onStart }) {
       <div aria-hidden className="absolute -bottom-24 -right-12 w-80 h-80 rounded-full opacity-[0.12] blur-3xl transition-opacity duration-300 group-hover:opacity-25" style={{ background: accent }} />
       <span className="relative w-14 h-14 rounded-2xl grid place-items-center text-white shrink-0 shadow-md" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}bb)` }}><Wand2 size={26} /></span>
       <div className="relative flex-1 min-w-0">
-        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border mb-2 text-[var(--muted)] border-[var(--line)] bg-[var(--surface-2)]"><Sparkles size={11} style={{ color: accent }} /> {t('myo.popular', 'Most flexible')}</span>
         <h3 className="text-lg sm:text-xl font-bold leading-tight">{t('myo.cta.t', 'Have something else in mind?')}</h3>
         <p className="text-sm text-[var(--muted)] leading-relaxed mt-2 max-w-xl">{card.tagline || t('myo.cta.s', 'A tool, a SaaS, an integration, a security audit of your code… start a custom consultation and we’ll figure it out together.')}</p>
         {highlights.length > 0 && (
@@ -293,7 +291,7 @@ function CustomFeatureCard({ card, cfg, onStart }) {
             {highlights.map((h, i) => <span key={i} className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)]"><Check size={13} className="shrink-0" style={{ color: accent }} /> {h}</span>)}
           </div>
         )}
-        <div className="text-xs text-[var(--faint)] mt-3.5">{t('myo.cta.fee', 'Consultation from {p} — this pays for the advice, not the product.').replace('{p}', fmtMoney(cfg.consultationCents, cfg.currency))}</div>
+        <div className="text-xs text-[var(--faint)] mt-3.5">{t('myo.cta.fee', 'Consultation from {p}.').replace('{p}', fmtMoney(cfg.consultationCents, cfg.currency))}</div>
       </div>
       <Button variant="primary" onClick={onStart} className="relative shrink-0 w-full self-stretch md:w-auto md:self-center !px-5 !py-2.5 !min-h-[44px] justify-center">{t('myo.cta.btn', 'Start a custom request')} <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" /></Button>
     </Card>
