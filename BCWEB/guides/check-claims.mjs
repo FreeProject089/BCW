@@ -17,6 +17,7 @@
 // and be wrong about, which is the only kind of staleness worth failing a build over.
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,6 +27,25 @@ const ROOT = join(HERE, '..');
 const read = (p) => { try { return readFileSync(p, 'utf8'); } catch { return ''; } };
 
 // ── What is actually true ───────────────────────────────────────────────────
+// Paths accepted because git is told to ignore them. Reported at the end rather than
+// skipped in silence: "the check found nothing" and "the check waved two things through"
+// should not look the same.
+const untracked = [];
+
+/** Does git deliberately not track this path?
+ *
+ *  git's own matcher, via check-ignore — re-implementing .gitignore semantics here would
+ *  be a second, wrong answer to a question git already answers exactly. Anything that is
+ *  not a clean "yes" (no git, not a repository, an error) counts as NO, so a real broken
+ *  path is never waved through by a missing tool.
+ */
+function gitIgnores(p) {
+    try {
+        execFileSync('git', ['check-ignore', '-q', '--', p], { cwd: ROOT, stdio: 'ignore' });
+        return true;   // exit 0 = ignored
+    } catch { return false; }
+}
+
 const compose = read(join(ROOT, 'infra/compose/docker-compose.yml'));
 const services = new Set(
     compose.split('\n')
@@ -142,6 +162,15 @@ for (const f of files.sort()) {
         const p = m[1];
         if (p.endsWith('/') || seen.path.has(p)) continue;
         if (existsSync(join(ROOT, p))) continue;
+        // Absent from a checkout ON PURPOSE is not a broken claim.
+        //
+        // This check ran existsSync against the WORKING TREE, so it passed on a developer's
+        // machine and failed in CI on two paths that are correct: `infra/compose/.env`, the
+        // file every deploy guide tells you to create, and
+        // `apps/api/node_modules/.prisma/client`, the directory the Prisma two-client trap
+        // requires you to mirror a generated client into. Both are .gitignored. "Fixing"
+        // the guides would have deleted two instructions a reader genuinely needs.
+        if (gitIgnores(p)) { untracked.push({ path: p, rel }); continue; }
         seen.path.add(p);
         problems.push(`${rel}:${lineOf(m.index)}  \`${p}\` — no such file`);
     }
@@ -168,6 +197,18 @@ for (const f of files.sort()) {
 }
 
 console.log(`checked ${files.length} guides against ${services.size} services, ${Object.keys(scripts).length} scripts, ${composeVars.size + apiVars.size} env vars\n`);
+// Said out loud, always. A path waved through because git ignores it is still a path a
+// reader cannot see until they create it, and "nothing to report" should not look the
+// same as "two things accepted on trust".
+if (untracked.length) {
+    // One line per PATH, not per mention: `infra/compose/.env` is named by fourteen guides
+    // and printing it fourteen times buries the one entry that is not it.
+    const byPath = new Map();
+    for (const u of untracked) byPath.set(u.path, (byPath.get(u.path) || 0) + 1);
+    console.log(`${byPath.size} path(s) a reader must create or generate (git ignores them):`);
+    for (const [p, n] of [...byPath].sort()) console.log(`  \`${p}\`  — named by ${n} guide${n > 1 ? 's' : ''}`);
+    console.log('');
+}
 if (!problems.length) {
     console.log('every service, script, variable and path a guide names exists');
     process.exit(0);
