@@ -1,4 +1,8 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# POSIX sh, not bash. This script's whole job is to bring up a FRESH machine, and the
+# machine it was written for is a minimal Alpine container, which has no bash. Requiring
+# one means the first command of the first install fails with 'bash: not found' — which
+# is exactly what happened on the first real deployment.
 # BCWEB first install — a fresh machine to a working site, once.
 #
 # This is NOT deploy.sh. deploy.sh updates an install that already exists: it backs up, pulls,
@@ -26,9 +30,12 @@
 #
 # It refuses to run if infra/compose/.env already exists. Overwriting it would rewrite the
 # database password out from under a volume that was created with the old one.
-set -euo pipefail
+# `pipefail` is a bashism (and a busybox extension); `-eu` is the portable part, and
+# nothing below reads the exit status of a pipeline's left-hand side.
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# $0, not ${BASH_SOURCE[0]}: same value when a script is executed, and it exists in sh.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_DIR="$SCRIPT_DIR/compose"
 ENV_FILE="$COMPOSE_DIR/.env"
@@ -123,10 +130,27 @@ run docker compose -f "$COMPOSE_DIR/docker-compose.yml" up -d --build
 # ── 3. Wait for it to actually answer ───────────────────────────────────────
 # /ready is 503 until the API can query the database. Migrations run at container boot, so
 # this window covers them too — on a first install that is the whole schema being created.
+# curl is NOT a given on a minimal Alpine — it is not part of the base image. Without a
+# fallback this loop can never succeed, so it spins until the timeout and reports "the API
+# never became ready" when the API was ready the whole time. busybox provides wget, so one
+# of the two is always present; if somehow neither is, say so instead of waiting 180s to
+# report the wrong cause.
+http_ok() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS --max-time 5 "$1" >/dev/null 2>&1
+  elif command -v wget >/dev/null 2>&1; then
+    # -q -O -  works on both busybox wget and GNU wget; busybox has no --max-time.
+    wget -q -O - -T 5 "$1" >/dev/null 2>&1
+  else
+    return 127
+  fi
+}
+
 wait_ready() {
-  local deadline=$(( $(date +%s) + READY_TIMEOUT ))
+  deadline=$(( $(date +%s) + READY_TIMEOUT ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    curl -fsS --max-time 5 "$READY_URL" >/dev/null 2>&1 && return 0
+    http_ok "$READY_URL" && return 0
+    [ $? -eq 127 ] && { warn "neither curl nor wget is installed — cannot check $READY_URL"; return 2; }
     sleep 3
   done
   return 1

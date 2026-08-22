@@ -18,7 +18,21 @@ import { dirname, join, resolve } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const API = resolve(HERE, '..');
-const SCHEMA = resolve(API, '../../packages/db/schema.prisma');
+// The schema is NOT in the same place on the host and in the image, and this hardcoded the
+// host layout: apps/api/Dockerfile does `COPY packages/db ./prisma`, so inside the container
+// it lives at ./prisma/schema.prisma and `../../packages/db/` does not exist. `npm run setup`
+// therefore failed on its very first step during the first real deployment, on a path that
+// looks obviously correct when you read it from the repo.
+//
+// boot-migrate.mjs already got this right (`process.env.PRISMA_SCHEMA || 'prisma/schema.prisma'`).
+// Two files answering the same question differently is how one of them ends up wrong, so this
+// honours the same variable first and then tries both known layouts.
+const SCHEMA = [
+    process.env.PRISMA_SCHEMA,
+    resolve(API, 'prisma/schema.prisma'),            // inside the image
+    resolve(API, '../../packages/db/schema.prisma'), // in the repo
+].find((p) => p && existsSync(p))
+    || resolve(API, '../../packages/db/schema.prisma');
 
 const args = new Set(process.argv.slice(2));
 const withDemo = args.has('--demo');

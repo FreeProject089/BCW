@@ -195,6 +195,13 @@ services:
       # Append-only anchor for the tamper-evident audit log (sensitive-action hashes).
       # A dedicated volume mounted OUTSIDE /app so neither the DB viewer nor the
       # /app-confined file manager can reach it — closes the end-truncation gap.
+      # The first-install seed reads these. They lived in .env and were NEVER passed in, so
+      # `docker compose exec api npm run setup` created the admin as change-me-now — or, with
+      # NODE_ENV=production (which IS passed), refused to seed at all, because seed.mjs fails
+      # closed on a missing password. Either way the documented first-install path could not
+      # complete inside Docker, and the operator had to re-run it by hand with `-e`.
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
       AUDIT_ANCHOR_DIR: /var/audit
       NODE_ENV: production
     volumes:
