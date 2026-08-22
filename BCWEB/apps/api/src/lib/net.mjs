@@ -6,7 +6,21 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
 
-function isPrivateIp(ip) {
+/** The first 16 bits of an IPv6 address, as a number.
+ *
+ *  Needed because the ranges below are defined by BIT length, and matching them as text
+ *  prefixes gets them wrong: `fe80::/10` is fe80 through febf, so a `startsWith('fe80')`
+ *  test misses fe81 through fe8f, and a hand-written `fe9`/`fea`/`feb` list beside it
+ *  covers the rest by accident rather than by rule. Both were true here.
+ */
+function firstHextet(s) {
+  if (s.startsWith('::')) return 0;
+  const head = s.split(':')[0];
+  const n = parseInt(head, 16);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+export function isPrivateIp(ip) {
   if (net.isIPv4(ip)) {
     const [a, b] = ip.split('.').map(Number);
     return a === 0 || a === 10 || a === 127 ||
@@ -19,10 +33,15 @@ function isPrivateIp(ip) {
   if (net.isIPv6(ip)) {
     const s = ip.toLowerCase();
     if (s.startsWith('::ffff:')) return isPrivateIp(s.slice(7)); // IPv4-mapped
-    return s === '::1' || s === '::' ||
-      s.startsWith('fc') || s.startsWith('fd') || // unique-local
-      s.startsWith('fe80') ||                     // link-local
-      s.startsWith('fe9') || s.startsWith('fea') || s.startsWith('feb');
+    if (s === '::1' || s === '::') return true;
+    const h = firstHextet(s);
+    if (!Number.isFinite(h)) return true;                 // unparseable → block
+    if (h >= 0xfc00 && h <= 0xfdff) return true;          // unique-local  fc00::/7
+    // fe80::/10 (link-local) and fec0::/10 (site-local, deprecated but still routed on
+    // some networks) are adjacent, so one range covers both: fe80 through feff.
+    if (h >= 0xfe80 && h <= 0xfeff) return true;
+    if (h >= 0xff00) return true;                         // multicast ff00::/8
+    return false;
   }
   return true; // unknown format → block
 }
