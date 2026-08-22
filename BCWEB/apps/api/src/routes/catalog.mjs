@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { emitWebhook } from '../lib/webhooks.mjs';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
-import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy, catalogLog, logAudit, requireVerifiedEmail } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy, catalogLog, logAudit, requireVerifiedEmail, safeEqual } from '../lib/lib.mjs';
 import { issueSanction } from '../lib/sanctions.mjs';
 import { presignGet, getObject, deleteObject } from '../lib/storage.mjs';
 import { validatePlugin, fetchPluginBytes } from '../lib/plugin.mjs';
@@ -95,7 +95,9 @@ function mayViewItem(item, req) {
   if (item.status === 'PUBLISHED') return !isInvalid(item) || !!staffOrOwner;
   if (staffOrOwner) return true;
   const key = String(req.query?.k || '').trim();
-  return !!(key && item.shareKey && key === item.shareKey && (item.status === 'PENDING' || item.status === 'REJECTED'));
+  // safeEqual on the share key: it is a bearer secret handed out in a URL, and `===`
+  // stops at the first wrong byte.
+  return !!(key && item.shareKey && safeEqual(key, item.shareKey) && (item.status === 'PENDING' || item.status === 'REJECTED'));
 }
 // Whether a fetch is a genuine PUBLIC hit (so views/downloads aren't inflated by the
 // owner previewing, or by private share-link traffic on an unlisted item).

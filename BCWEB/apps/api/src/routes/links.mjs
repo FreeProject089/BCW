@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, notify, hashApiKey } from '../lib/lib.mjs';
+import { db, requireRole, notify, hashApiKey, safeEqual } from '../lib/lib.mjs';
 import { genKey, prefixOf } from './api-keys.mjs';
 
 // Human-friendly pairing code (no ambiguous chars): e.g. "K7P3-9QMX".
@@ -70,7 +70,10 @@ export default async function linkRoutes(app) {
   // Protected by a shared secret so only trusted backends (the telemetry dashboard) can call it.
   app.post('/link/lookup', async (req, reply) => {
     const secret = process.env.LINK_LOOKUP_SECRET || process.env.JWT_SECRET;
-    if (!secret || req.headers['x-link-secret'] !== secret) return reply.code(401).send({ error: 'unauthorized' });
+    // safeEqual, not `!==`. A string comparison returns at the first differing byte, so
+    // it leaks the length of the matching prefix — and this endpoint hands back
+    // creator-id -> account joins with Discord ids and display names attached.
+    if (!secret || !safeEqual(req.headers['x-link-secret'] || '', secret)) return reply.code(401).send({ error: 'unauthorized' });
     const b = z.object({ creatorIds: z.array(z.string().max(120)).min(1).max(1000) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();

@@ -1,11 +1,7 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
-import {
-  db, requireRole, requireCap, optionalAuth, slugify, notify,
-  resolveClientIdentity, accessListMatches, policyBans, policyWhitelist,
-  getGlobalAccessPolicy, getUserAccessPolicy,
-} from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalAuth, slugify, notify, resolveClientIdentity, accessListMatches, policyBans, policyWhitelist, getGlobalAccessPolicy, getUserAccessPolicy, safeEqual } from '../lib/lib.mjs';
 import { presignGet, deleteObject, getObject } from '../lib/storage.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
 import { replyCachedJson } from '../lib/cache.mjs';
@@ -53,7 +49,8 @@ function catalogGate(catalog, identity, globalPolicy, ownerPolicy, key) {
     return { code: 403, error: 'not_whitelisted' };
   }
   if (catalog.visibility === 'private') {
-    const shareOk = !!(key && catalog.shareKey && key === catalog.shareKey);
+    // safeEqual: a share key is a bearer secret, not an identifier.
+    const shareOk = !!(key && catalog.shareKey && safeEqual(key, catalog.shareKey));
     if (!shareOk && !accessListMatches(acc, identity)) return { code: 403, error: 'not_whitelisted' };
   }
   return null;

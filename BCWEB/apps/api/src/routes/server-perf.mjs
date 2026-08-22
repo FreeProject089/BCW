@@ -1,14 +1,9 @@
 import os from 'node:os';
 import { z } from 'zod';
-import { db, requireRole } from '../lib/lib.mjs';
+import { db, requireRole, botAuth } from '../lib/lib.mjs';
 import { checkSslExpiry, checkDependencies, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps } from '../lib/monitor.mjs';
 import { realDiskStats } from './hosting.mjs';
 
-const BOT_SECRET = () => process.env.BOT_SHARED_SECRET || process.env.LINK_LOOKUP_SECRET || 'dev-bot-secret';
-function botAuth(req, reply) {
-  if ((req.headers['x-bot-secret'] || '') !== BOT_SECRET()) { reply.code(401).send({ error: 'unauthorized' }); return false; }
-  return true;
-}
 
 // The dependency checks + SSL probe do live network I/O (a TLS handshake to the site,
 // Redis/DB/MinIO pings) that took seconds. Running them inline made the /metrics endpoint

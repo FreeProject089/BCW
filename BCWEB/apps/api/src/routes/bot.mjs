@@ -1,15 +1,11 @@
 import { z } from 'zod';
 import { randomInt } from 'node:crypto';
-import { db, requireRole, requireCap, logAudit, safeEqual } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET } from '../lib/lib.mjs';
 import { issueWarn } from '../lib/warns.mjs';
 
 // Server-to-server auth for the Discord bot (shared secret, like the telemetry link
 // lookup). The bot sends `x-bot-secret`; anything else is rejected.
-const BOT_SECRET = () => process.env.BOT_SHARED_SECRET || process.env.LINK_LOOKUP_SECRET || 'dev-bot-secret';
-function botAuth(req, reply) {
-  if (!safeEqual(req.headers['x-bot-secret'] || '', BOT_SECRET())) { reply.code(401).send({ error: 'unauthorized' }); return false; }
-  return true;
-}
+
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
 const genCode = () => Array.from({ length: 8 }, () => ALPHABET[randomInt(ALPHABET.length)]).join('').replace(/(.{4})(.{4})/, '$1-$2');

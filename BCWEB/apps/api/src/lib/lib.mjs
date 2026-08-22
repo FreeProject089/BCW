@@ -149,6 +149,28 @@ export function issueElevatedToken(reply, userId) {
   reply.setCookie('bcw_elevated', token, { ...cookieBase, maxAge: ELEVATE_TTL_S });
   return ELEVATE_TTL_S;
 }
+/** The shared secret the Discord bot presents on /bot/* routes.
+ *
+ *  BOT_SHARED_SECRET first, LINK_LOOKUP_SECRET as the documented alternative; the literal
+ *  fallback is why the boot guard refuses to start in production without one of them.
+ */
+export const BOT_SECRET = () => process.env.BOT_SHARED_SECRET || process.env.LINK_LOOKUP_SECRET || 'dev-bot-secret';
+
+/** Authenticate a bot request. Returns false and answers 401 when it fails.
+ *
+ *  Lives here because it existed TWICE - routes/bot.mjs and routes/server-perf.mjs - and
+ *  the two copies had drifted: one compared with safeEqual, the other with `!==`, a plain
+ *  string comparison of a secret that the rest of this codebase is careful never to make.
+ *  Two copies of a security check is one copy that will be wrong.
+ */
+export function botAuth(req, reply) {
+  if (!safeEqual(req.headers['x-bot-secret'] || '', BOT_SECRET())) {
+    reply.code(401).send({ error: 'unauthorized' });
+    return false;
+  }
+  return true;
+}
+
 export function requireElevated() {
   return async (req, reply) => {
     try {
