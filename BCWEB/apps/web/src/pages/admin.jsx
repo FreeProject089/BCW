@@ -6671,11 +6671,61 @@ function AdminAssets() {
 // It is deliberately honest about what "Record" stores: TODAY's config under an older
 // label. Nothing here can reconstruct what a page looked like in March, and a history
 // that quietly implies it can is worse than a short one.
-function ProjectVersionHistory({ projectKey }) {
+function ProjectVersionHistory({ projectKey, onApply, onSchedule, refreshKey = 0 }) {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
-  const { data, loading, reload } = useAsync(() => api.get(`/admin/projects/${projectKey}/versions`), [projectKey]);
+  // refreshKey lets the parent re-read the list after IT saves the page — a save under a
+  // new version adds a row, and a panel that only reloads on its own actions would show a
+  // history missing the entry the admin just created.
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/projects/${projectKey}/versions`), [projectKey, refreshKey]);
   const [busy, setBusy] = useState('');
+  const [editing, setEditing] = useState(null); // { version, text } while the JSON editor is open
   const rows = data?.versions || [];
+
+  const fetchConfig = async (v) => (await api.get(`/admin/projects/${projectKey}/versions/${encodeURIComponent(v)}`)).config;
+
+  // Put a version's config back on the page.
+  //
+  // It goes through PUT /projects/:key, the same route the editor's Save button uses,
+  // rather than a restore endpoint of its own: that path already snapshots the config
+  // revision with who did it, and a second write path would be a second set of rules to
+  // keep in step.
+  const putLive = async (v) => {
+    if (!await dialog.confirm({
+      title: t('apv.live.t', 'Put {v} live?').replace('{v}', v),
+      message: t('apv.live.m', 'The page config becomes what is stored under {v}. The version currently live is kept in the history, so this is reversible.').replace('{v}', v),
+      okLabel: t('apv.live.ok', 'Put it live'), danger: true,
+    })) return;
+    setBusy(v);
+    try {
+      const cfg = await fetchConfig(v);
+      await api.put(`/projects/${projectKey}`, { config: cfg });
+      // The open editor still holds the OLD text. Leaving it means the next Save writes
+      // the config we just replaced straight back over the restore.
+      onApply?.(cfg);
+      toast.success(t('apv.lived', '{v} is live.').replace('{v}', v));
+      reload();
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(''); }
+  };
+
+  const openEditor = async (v) => {
+    setBusy(v);
+    try { setEditing({ version: v, text: JSON.stringify(await fetchConfig(v), null, 2) }); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(''); }
+  };
+
+  const saveEditor = async () => {
+    let config;
+    try { config = JSON.parse(editing.text || '{}'); }
+    catch { return toast.error(t('apv.badjson', 'That is not valid JSON.')); }
+    setBusy(editing.version);
+    try {
+      await api.put(`/admin/projects/${projectKey}/versions/${encodeURIComponent(editing.version)}`, { config });
+      toast.success(t('apv.saved', 'Saved.')); setEditing(null); reload();
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(''); }
+  };
 
   const record = async () => {
     const version = await dialog.prompt({
@@ -6762,12 +6812,35 @@ function ProjectVersionHistory({ projectKey }) {
           : (
             <div className="space-y-1.5">
               {rows.map((r) => (
-                <div key={r.version} className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-[13px]">
+                <div key={r.version} className="flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 py-2 text-[13px] flex-wrap">
                   <span className="font-mono">{r.version}</span>
                   {r.current && <Badge tone="green">{t('apv.current', 'live')}</Badge>}
-                  <span className="text-[11px] text-[var(--faint)] flex-1 text-right tabular-nums">
+                  <span className="text-[11px] text-[var(--faint)] flex-1 text-right tabular-nums min-w-[70px]">
                     {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—'}
                   </span>
+                  <Button size="sm" variant="ghost" className="shrink-0" disabled={busy === r.version}
+                    title={t('apv.edit', 'Edit this version\u2019s config')} aria-label={t('apv.edit', 'Edit this version\u2019s config')}
+                    onClick={() => openEditor(r.version)}><FileJson size={13} /></Button>
+                  {/* Scheduling a version and putting it live are the same content going to
+                      two different places — now, or later. Both sit here rather than one of
+                      them living only in the schedule form. */}
+                  {onSchedule && (
+                    <Button size="sm" variant="ghost" className="shrink-0" disabled={busy === r.version}
+                      title={t('apv.sched', 'Schedule this version')} aria-label={t('apv.sched', 'Schedule this version')}
+                      onClick={async () => {
+                        setBusy(r.version);
+                        try { onSchedule(await fetchConfig(r.version)); }
+                        catch { toast.error(t('common.failed', 'Failed.')); }
+                        finally { setBusy(''); }
+                      }}><Clock size={13} /></Button>
+                  )}
+                  {/* Nothing for the version already live: "put the live one live" is a
+                      button whose only possible outcome is no change. */}
+                  {!r.current && (
+                    <Button size="sm" variant="ghost" className="shrink-0 !text-[var(--primary-2)]" disabled={busy === r.version}
+                      title={t('apv.live.ok', 'Put it live')} aria-label={t('apv.live.ok', 'Put it live')}
+                      onClick={() => putLive(r.version)}><RotateCcw size={13} /></Button>
+                  )}
                   <Button size="sm" variant="ghost" className="!text-error shrink-0" disabled={busy === r.version}
                     title={t('common.delete', 'Delete')} aria-label={t('common.delete', 'Delete')}
                     onClick={() => remove(r.version)}><Trash2 size={13} /></Button>
@@ -6775,6 +6848,28 @@ function ProjectVersionHistory({ projectKey }) {
               ))}
             </div>
           )}
+
+      {editing && (() => {
+        let valid = true; try { JSON.parse(editing.text || '{}'); } catch { valid = false; }
+        return (
+          <Modal open onClose={() => setEditing(null)} title={t('apv.edit.t', 'Config stored for {v}').replace('{v}', editing.version)} icon={FileJson} width="max-w-2xl"
+            footer={<>
+              <Button variant="ghost" onClick={() => setEditing(null)}>{t('su.close', 'Close')}</Button>
+              <Button variant="primary" disabled={!valid || busy === editing.version} onClick={saveEditor}>{t('common.save', 'Save')}</Button>
+            </>}>
+            <p className="text-xs text-[var(--muted)] mb-2">
+              {t('apv.edit.m', 'This is what the history holds for this version — not the live page. Editing it changes what a reader sees when they open this version, and what “Put it live” would restore.')}
+            </p>
+            <Textarea rows={18} value={editing.text} spellCheck={false}
+              className="!font-mono !text-[12px]"
+              onChange={(e) => setEditing({ ...editing, text: e.target.value })} />
+            <div className="mt-1.5 text-[11px]">
+              {valid ? <span className="text-[var(--success)]">{t('apj.validjson', 'valid JSON')}</span>
+                     : <span className="text-[var(--error)]">{t('apj.invalidjson', 'invalid JSON')}</span>}
+            </div>
+          </Modal>
+        );
+      })()}
     </Card>
   );
 }
@@ -6798,6 +6893,10 @@ function AdminProjects() {
   const [dragOver, setDragOver] = useState(false);
   const [progUrl, setProgUrl] = useState('');
   const [editMode, setEditMode] = useState('form'); // 'form' (visual) | 'json' (raw)
+  // Bumped after a successful page save so the history panel re-reads: saving under a new
+  // version string adds a row, and a panel that only refreshes on its own actions would
+  // sit there missing the entry the admin just created.
+  const [historyTick, setHistoryTick] = useState(0);
   const projects = data?.projects || {};
   const showcase = show.data?.projects || [];
   // Manage vs. content-only: a per-project grantee edits config/progress only. The reserved
@@ -6871,7 +6970,10 @@ function AdminProjects() {
   };
   let valid = true; try { JSON.parse(text || '{}'); } catch { valid = false; }
   const format = () => { try { setText(JSON.stringify(JSON.parse(text), null, 2)); } catch { toast.error(t('common.invalidjson', 'Invalid JSON.')); } };
-  const undoSaveCfg = useUndoableSave(() => { reload(); show.reload?.(); });
+  // The history panel re-reads on the same tick as everything else: a save under a new
+  // version string writes a row, and a list that only refreshed on its own buttons would
+  // be missing the entry the admin just made.
+  const undoSaveCfg = useUndoableSave(() => { reload(); show.reload?.(); setHistoryTick((n) => n + 1); });
   const save = () => {
     if (!valid) return toast.error(t('common.invalidjson', 'Invalid JSON.'));
     // Parsed once, up front: the text area stays editable during the window and this must
@@ -7029,7 +7131,17 @@ function AdminProjects() {
       {/* Fixed projects only. The admin version routes are keyed by project key, and a
           showcase project's snapshots live under `sc:<id>` with no admin route yet — so
           rendering this for one would be a panel whose buttons 404. */}
-      {!isShowcase && activeManageable && <ProjectVersionHistory projectKey={active} />}
+      {!isShowcase && activeManageable && (
+        <ProjectVersionHistory projectKey={active} refreshKey={historyTick}
+          // Restoring a version writes the page; the editor open above it still holds the
+          // OLD text, and the next Save would put that straight back. So the restore hands
+          // the config over and the editor follows it.
+          onApply={(cfg) => setText(JSON.stringify(cfg, null, 2))}
+          // Scheduling a version = stage THAT config instead of whatever is in the editor.
+          // The schedule modal reads its starting config from `text`, so this is the same
+          // move the "Edit staged" button already makes.
+          onSchedule={(cfg) => { setText(JSON.stringify(cfg, null, 2)); setScheduling(true); }} />
+      )}
       {activeManageable && <div className="flex justify-end mb-4">
         <Button size="sm" variant="ghost" onClick={() => setScheduling(true)} title={t('apj.stagefuture', 'Stage a future content swap for this page')}><Clock size={13} /> {(isShowcase ? activeShow : activeMeta)?.scheduledAt ? t('apj.reschedule', 'Reschedule') : t('sh.schedtip', 'Schedule an update')}</Button>
       </div>}
@@ -7087,6 +7199,7 @@ function AdminProjects() {
         return (
           <ScheduleUpdateModal title={`Schedule an update — ${M.name}`} includeNameShort={isShowcase} existing={existing}
             slug={isShowcase ? activeShow?.slug : active} isShowcase={isShowcase}
+            projectKey={isShowcase ? null : active}
             current={isShowcase ? { name: activeShow?.name, short: activeShow?.short, config: cfg } : { config: cfg }}
             onClose={() => setScheduling(false)}
             onSave={async (at, next) => {
@@ -12418,8 +12531,15 @@ function AlertRow({ a }) {
   );
 }
 
-function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClose, onSave, slug, isShowcase }) {
+function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClose, onSave, slug, isShowcase, projectKey }) {
   const toast = useToast(); const { t } = useI18n();
+  // Versions already in the history, offered as a starting point.
+  //
+  // "Stage an update" meant "hand-write the whole config", which is a lot of JSON to get
+  // right for what is usually "ship the thing we already prepared". Fixed projects only:
+  // a showcase project's snapshots live under `sc:<id>` and have no admin route.
+  const vh = useAsync(() => (projectKey ? api.get(`/admin/projects/${projectKey}/versions`) : Promise.resolve(null)), [projectKey]);
+  const [loadingV, setLoadingV] = useState('');
   const [at, setAt] = useState(existing?.scheduledAt ? new Date(existing.scheduledAt).toISOString().slice(0, 16) : '');
   const [name, setName] = useState(existing?.scheduledNext?.name ?? current.name ?? '');
   const [short, setShort] = useState(existing?.scheduledNext?.short ?? current.short ?? '');
@@ -12459,6 +12579,29 @@ function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClo
         <div className="grid grid-cols-[1fr_110px] gap-3 mt-3">
           <Field label={t('su.newname', 'New name')}><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field label={t('su.newshort', 'New short (≤5)')}><Input value={short} maxLength={5} onChange={(e) => setShort(e.target.value)} /></Field>
+        </div>
+      )}
+      {/* Loading a version REPLACES the config below rather than scheduling it directly:
+          staging is still an explicit act, and the admin can still tweak what they loaded
+          before committing to a date. */}
+      {!!vh.data?.versions?.length && (
+        <div className="mt-3">
+          <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] block mb-1.5">{t('su.fromversion', 'Start from a recorded version')}</label>
+          <Select value="" disabled={!!loadingV} onChange={async (e) => {
+            const v = e.target.value; if (!v) return;
+            setLoadingV(v);
+            try {
+              const r = await api.get(`/admin/projects/${projectKey}/versions/${encodeURIComponent(v)}`);
+              setConfigText(JSON.stringify(r.config, null, 2));
+              toast.success(t('su.loadedversion', 'Loaded {v} — adjust it or pick a date.').replace('{v}', v));
+            } catch { toast.error(t('common.failed', 'Failed.')); }
+            finally { setLoadingV(''); }
+          }}>
+            <option value="">{loadingV ? t('common.loading', 'Loading…') : t('su.pickversion', 'Pick a version…')}</option>
+            {vh.data.versions.map((r) => (
+              <option key={r.version} value={r.version}>{r.version}{r.current ? ` — ${t('apv.current', 'live')}` : ''}</option>
+            ))}
+          </Select>
         </div>
       )}
       <div className="mt-3">

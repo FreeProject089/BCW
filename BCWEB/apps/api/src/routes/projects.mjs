@@ -391,6 +391,42 @@ export default async function projectRoutes(app) {
     return { ok: true, version: row.version, createdAt: row.createdAt };
   });
 
+  // The stored snapshot itself. The public route beside it is visibility-gated and falls
+  // back to the live config; this one answers only "what is actually filed under this
+  // label", which is the question you have when you are about to edit or restore it.
+  app.get('/admin/projects/:key/versions/:version', { preHandler: requireEditor() }, async (req, reply) => {
+    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
+    const p = await db();
+    const row = await p.projectVersion.findUnique({ where: { target_version: { target: req.params.key, version: req.params.version } } });
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    return { version: row.version, createdAt: row.createdAt, config: row.config };
+  });
+
+  // Rewrite what a version holds.
+  //
+  // Recording a version stores TODAY's config under an older label — which is all it can
+  // do — so this is how that entry stops being a placeholder and becomes the config that
+  // release actually shipped.
+  //
+  // The label is NOT taken from the body's `config.version`: a snapshot filed under 1.0.0
+  // whose config says 1.1.0 is confusing but recoverable, whereas silently moving the row
+  // to a different key when somebody edits that field is not. The URL is the identity.
+  app.put('/admin/projects/:key/versions/:version', { preHandler: requireEditor() }, async (req, reply) => {
+    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
+    const b = z.object({ config: z.record(z.any()) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_config' });
+    const p = await db();
+    const done = await p.projectVersion.updateMany({
+      where: { target: req.params.key, version: req.params.version },
+      data: { config: b.data.config },
+    });
+    if (!done.count) return reply.code(404).send({ error: 'not_found' });
+    await logAudit(p, req.user.uid, 'project.version.edited', `${req.params.key} ${req.params.version}`, clientIp(req));
+    return { ok: true };
+  });
+
   app.delete('/admin/projects/:key/versions/:version', { preHandler: requireEditor() }, async (req, reply) => {
     if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
     if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
