@@ -114,6 +114,29 @@ function parse(md) {
         blocks.push({ id: uid(), type: 'collapsible', summary: label || attrs.title || 'Details', text: innerText });
       } else if (name === 'file') {
         blocks.push({ id: uid(), type: 'file', name: label || attrs.name || 'file', href: attrs.href || attrs.url || '', size: attrs.size || '' });
+      } else if (name === 'steps') {
+        // The inner `:::step[Title]` children, back into the rows the editor edits.
+        blocks.push({
+          id: uid(), type: 'steps', title: label || attrs.title || '',
+          // serialize() writes the marker as `type=`; '1' is the default and is omitted.
+          marker: attrs.type || '1',
+          color: attrs.color || '',
+          orientation: attrs.orientation === 'horizontal' ? 'horizontal' : 'vertical',
+          steps: parseChildren(innerText, 'step').map((c) => ({ title: c.label, text: c.body })),
+        });
+      } else if (name === 'roadmap') {
+        // The body is a ```json fence. Unwrap it: the editor edits the JSON itself, and
+        // handing it back the fence made the fence part of the value — which is how a
+        // second save produced a fence inside a fence.
+        const fence = innerText.match(/^```[\w]*\n([\s\S]*?)\n?```$/);
+        blocks.push({
+          id: uid(), type: 'roadmap', title: label || attrs.title || '',
+          orientation: attrs.orientation === 'horizontal' ? 'horizontal' : 'vertical',
+          json: (fence ? fence[1] : innerText).trim() || '{}',
+        });
+      } else if (name === 'columns') {
+        const cols = parseChildren(innerText, 'column');
+        blocks.push({ id: uid(), type: 'columns', left: cols[0]?.body || '', right: cols[1]?.body || '' });
       } else if (name === 'center' || name === 'left' || name === 'right') {
         // alignment wrapper — apply to the inner block(s)
         const inner = parse(innerText); inner.forEach((bl) => { bl.align = name; blocks.push(bl); });
@@ -156,6 +179,36 @@ function parse(md) {
   }
   flushText(textBuf);
   return blocks.length ? blocks : [{ id: uid(), type: 'text', text: '' }];
+}
+
+/** The `:::name[label] … :::` children directly inside a container's body.
+ *
+ *  Kept separate from parse() because these are not blocks in their own right — a
+ *  `:::step` outside a `:::steps` means nothing, and the editor never offers one. It
+ *  counts colons the same way parse() does, so a child that itself contains a nested
+ *  directive does not end its parent early.
+ */
+function parseChildren(inner, wanted) {
+  const lines = String(inner || '').split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const m = lines[i].match(/^(:{3,})([\w-]+)(\[[^\]]*\])?(\{[^}]*\})?\s*$/);
+    if (!m || m[2].toLowerCase() !== wanted) { i++; continue; }
+    const colons = m[1].length;
+    const label = m[3] ? m[3].slice(1, -1) : '';
+    const body = []; i++;
+    let depth = 1;
+    while (i < lines.length) {
+      if (/^:{3,}[\w-]/.test(lines[i])) depth++;
+      else if (new RegExp(`^:{${colons},}\\s*$`).test(lines[i]) || /^:{3,}\s*$/.test(lines[i])) {
+        depth--; if (depth === 0) { i++; break; }
+      }
+      body.push(lines[i]); i++;
+    }
+    out.push({ label, body: body.join('\n').trim() });
+  }
+  return out;
 }
 
 function parseAttrs(s) {
