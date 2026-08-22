@@ -1,4 +1,6 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# POSIX sh: the target is a minimal Alpine container, which has no bash. bootstrap.sh
+# failed exactly that way on the first real install; this script would have too.
 # BCWEB backup — dumps Postgres + archives object storage (MinIO) and the audit
 # anchor, prunes old backups, and (optionally) copies off-site with rclone.
 #
@@ -16,11 +18,12 @@
 # OFF-SITE (recommended): set BACKUP_REMOTE to an rclone remote (configure once with
 # `rclone config` — e.g. Backblaze B2 / S3 / R2 / Google Drive):
 #   BACKUP_REMOTE=b2:my-bucket/bcweb infra/backup/backup.sh
-set -euo pipefail
+# `pipefail` is a bashism; `-eu` is the portable part.
+set -eu
 
 # ── Config (override via env) ────────────────────────────────────────────────
 # Compose dir is two levels up from this script (infra/backup → infra → compose).
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPOSE_DIR="${COMPOSE_DIR:-$SCRIPT_DIR/../compose}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/bcweb}"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"          # delete local backups older than this
@@ -49,9 +52,9 @@ log "  → $(du -h "$PG_OUT" | cut -f1)  $PG_OUT"
 archive_volume() {
   # NOTE: separate `local` lines on purpose — a single `local a=$1 b=$a` expands all
   # words before assigning, so `$name` would be unbound under `set -u`.
-  local vol="$1"
-  local name="$2"
-  local out="$BACKUP_DIR/$name-$TS.tar.gz"
+  vol="$1"
+  name="$2"
+  out="$BACKUP_DIR/$name-$TS.tar.gz"
   if ! docker volume inspect "$vol" >/dev/null 2>&1; then
     log "skip $vol (not found)"; return 0
   fi

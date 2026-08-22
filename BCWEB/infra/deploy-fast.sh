@@ -1,4 +1,6 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# POSIX sh: the target is a minimal Alpine container, which has no bash. bootstrap.sh
+# failed exactly that way on the first real install; this script would have too.
 # BCWEB fast update — pull, rebuild ONLY what changed, and check it answered.
 #
 # deploy.sh is the safe one: it dumps the database first and can put the previous commit back.
@@ -25,9 +27,24 @@
 # ENV
 #   READY_TIMEOUT   seconds to wait for /ready   (default 120)
 #   READY_URL       probe address                (default http://127.0.0.1:3000/ready)
-set -euo pipefail
+# `pipefail` is a bashism; `-eu` is the portable part.
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# curl is not in the Alpine base image. busybox always provides wget, so one of the two is
+# there; without a fallback a readiness check can never succeed and the script concludes the
+# site is down when it is up. Returns 2 when neither exists, so callers can tell "could not
+# check" from "checked, and it is not answering".
+http_ok() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS --max-time 5 "$1" >/dev/null 2>&1
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O - -T 5 "$1" >/dev/null 2>&1
+  else
+    return 2
+  fi
+}
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE="$SCRIPT_DIR/compose/docker-compose.yml"
 READY_URL="${READY_URL:-http://127.0.0.1:3000/ready}"
@@ -135,8 +152,22 @@ fi
 say "Waiting for $READY_URL (up to ${READY_TIMEOUT}s)"
 deadline=$(( $(date +%s) + READY_TIMEOUT ))
 while [ "$(date +%s)" -lt "$deadline" ]; do
-  if curl -fsS --max-time 5 "$READY_URL" >/dev/null 2>&1; then
+  # set +e around the probe: with -e a bare command that returns non-zero KILLS the
+  # script, so `probe=$?` on the next line would never run. Verified, not assumed.
+  set +e
+  http_ok "$READY_URL" >/dev/null 2>&1
+  probe=$?
+  set -e
+  if [ "$probe" = 0 ]; then
     printf '\033[1;32m✓ up and ready\033[0m\n'
+    exit 0
+  fi
+  # 2 = no curl and no wget. Retrying cannot make a missing program appear, and
+  # waiting out the timeout would end in "never became ready" about a site that
+  # may well be fine. Leave now, and name the real reason.
+  if [ "$probe" = 2 ]; then
+    warn "cannot verify $READY_URL: neither curl nor wget is installed"
+    echo "  Check by hand:  docker compose ps"
     exit 0
   fi
   sleep 3
