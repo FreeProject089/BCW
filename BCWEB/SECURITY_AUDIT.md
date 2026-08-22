@@ -236,3 +236,97 @@ BMM telemetry service linked to BCWEB) plus a container CVE scan.
 - Rotate the live Discord token (unchanged — user action).
 - If Redis is ever exposed beyond the compose network, add `requirepass` and point
   `REDIS_URL` at `redis://:pass@redis:6379`.
+
+---
+
+# Re-audit — 2026-08-22 (request logging, OIDC, webhooks, uploads, rate limit)
+
+One HIGH finding, fixed. Everything else in scope was re-verified and is clean.
+
+## Fixed: the API logged private share keys and repo passwords on every request
+
+**CWE-532, high.** `Fastify({ logger: true })` uses the default request serialiser, which
+writes `req.url` **raw**. On this API the query string is sometimes the credential:
+
+- `/r/<id>?k=<shareKey>` is how a private repo is shared.
+- `?password=` is an accepted alternative to the `X-Repo-Password` header for repo sync
+  (`presentedPassword`, `apps/api/src/routes/hosting-content.mjs`).
+
+So every hit on a private link wrote a live secret to stdout at level 30 — on the normal
+path, not on an error — and stdout is what gets shipped to a log pipeline. Anyone able to
+read those logs could replay the link or the password.
+
+Found by running it, not by reading it. A request carrying canary values produced:
+
+```
+{"level":30,"req":{"url":"/r/…?k=LEAKCANARY123&password=PWCANARY456"},"msg":"incoming request"}
+```
+
+and after the fix:
+
+```
+{"level":30,"req":{"url":"/r/…","queryKeys":["k","password"]},"msg":"incoming request"}
+```
+
+with zero canary hits left in the log. A custom `serializers.req` keeps what the default
+gives (method, host, remote address) and replaces `url` with the path. Key **names** are
+kept: knowing a request carried `k` helps when reading a log; knowing its value is the
+breach.
+
+Two related things in the same commit:
+
+- The 500 handler logged `req.url` raw as well, while `recordServerError` right beside it
+  already stripped the query — one rule written twice, disagreeing, so the same request
+  produced a sanitised `ErrorEvent` row and an unsanitised log line. `pathOnly` is exported
+  from `lib/errorlog.mjs` now and both use it.
+- The house rule this broke ("never log a raw request URL server-side") held everywhere it
+  was applied by hand, and failed where a framework default did the logging instead. Worth
+  remembering as a class, not as one bug.
+
+## Re-verified and found SAFE
+
+Listed so a later pass knows what is already covered.
+
+| Surface | What was checked | Result |
+|---|---|---|
+| Stripe webhook | `constructEvent(rawBody, sig, secret)`; behaviour with no secret configured | Verified; **fails closed** with 503 rather than processing unsigned events |
+| OIDC `redirect_uri` | exact match against `client.redirectUris`, checked *before* any redirect; re-checked at token exchange; `post_logout_redirect_uri` allowlisted | Safe |
+| OIDC PKCE | required for public clients (`!confidential && !challenge` → `invalid_request`); `code_challenge_method` forced to S256 | Safe |
+| OIDC client auth | `safeEqual(sha256(secret), client.secretHash)` | Constant-time |
+| OIDC code reuse | single-use claimed atomically: `updateMany({ where: { code, usedAt: null } })` | Race-safe |
+| Code webhook | HMAC with `safeEqual`; a project with no secret is **refused**, never accepted unsigned | Safe |
+| Session cookies | `httpOnly`, `sameSite: lax`, `secure` from `COOKIE_SECURE`, scoped path | Safe |
+| Presigned uploads | key = `<prefix>/<randomUUID()>-<safe>`, where `safe` is `filename.replace(/[^a-zA-Z0-9._-]/g,'_')` — no separators survive | No traversal |
+| Media proxy `/media/*` | `blog/` prefix only, `..` rejected, `nosniff` + sandbox CSP + Content-Disposition so an uploaded SVG cannot execute on our origin | Safe |
+| SSRF | every `fetch()` outside `safeFetch` targets a hardcoded host; the GitHub ones interpolate only into the *path* | Safe |
+| Mass assignment | every `data: { ...b.data }` spreads **zod-validated** output, and zod strips unknown keys | Safe by construction |
+| HTML injection in e-mail | user text reaching `mailShell` goes through `escapeHtml`; the unescaped interpolations are closed `z.enum` values or numbers | Safe |
+| Admin routes | no `app.post/put/patch/delete('/admin/…')` without a `preHandler` | Safe |
+| Secret comparison | no secret compared with `===` (the single grep hit is a `typeof` check) | Safe |
+| Raw SQL | `$queryRawUnsafe` / `$executeRawUnsafe` appear only in CLI scripts, interpolating table names read back from `pg_tables` | Not reachable from a request |
+| `eval` / `new Function` | none | — |
+
+## Login brute force — reviewed, no change needed
+
+Recorded because it looks like a gap and is not. After 3 failures in 15 minutes the login
+endpoint demands a proof of work, and the count is kept **per e-mail across every IP**:
+credential stuffing is distributed by definition, so a per-IP limit never sees it. It is
+deliberately **not** a lockout — locking an account after N failures turns the login form
+into a denial-of-service weapon against its owner, and a PoW costs the attacker seconds per
+attempt while costing the real owner a progress line.
+
+The count is kept on the submitted address whether or not it belongs to an account, so the
+response cannot be used to tell existing addresses from absent ones.
+
+## Not covered by this pass
+
+- The Discord bot and BMM/BetterInstaller (last covered 2026-07-18).
+- Anything reachable only behind an admin session: the routes were checked for their
+  guards, and the guards were confirmed to return 401 unauthenticated, but the screens
+  themselves were not driven.
+- Dependency CVEs — handled separately.
+
+**Testing note.** Through Caddy, `curl` on `/api/admin/…` answers an **empty 200** even with
+no session. That is the edge, not the route: from inside the API container the same routes
+answer `401 {"error":"unauthenticated"}`. Curl at the edge is not a valid auth test on this
+stack.
