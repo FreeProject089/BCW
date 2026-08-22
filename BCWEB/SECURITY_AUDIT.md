@@ -406,9 +406,32 @@ before any of this session's edits, and reproduced in the container.
 
 ## BMM (Tauri desktop) — 2026-08-22
 
-### The amplifier: no Content-Security-Policy on the webview
+### The amplifier: a Content-Security-Policy that permits inline script
 
-`app.security.csp` is `null` in `src-tauri/tauri.conf.json`. The app exposes **361**
+**Corrected 2026-08-22, later the same day.** This section first said the webview declares
+NO policy. That was wrong: `app.security.csp` is `null` in `src-tauri/tauri.conf.json`, and
+I concluded from that alone without looking at `frontend/index.html` — which carries a
+detailed `<meta http-equiv="Content-Security-Policy">`. The conclusion below survives the
+correction; the reason for it does not, and a reader acting on "there is no CSP" would go
+looking for the wrong fix.
+
+What the policy actually says, directive by directive:
+
+| directive | notable |
+|---|---|
+| `script-src` | **`'unsafe-inline'` and `'unsafe-eval'`** |
+| `style-src` | `'unsafe-inline'` (harmless: a style cannot execute) |
+| `img-src` / `media-src` | `https://*` |
+| `connect-src` | `https://*` |
+
+`'unsafe-inline'` in `script-src` is why an injected `<img src=x onerror=…>` still runs, and
+`connect-src https://*` is why, once it runs, it can POST what it reads to any host on the
+internet. So the chain holds — missed escape, script, `window.__TAURI__`, 361 commands — but
+the fix is "remove `'unsafe-inline'`", not "add a policy".
+
+`'unsafe-eval'` is worth a separate look: `scripts/security-guard.mjs` already fails the
+build if `eval(` or `new Function(` appear in the frontend source, so if nothing in a
+dependency needs it, that source can go too. The app exposes **361**
 `#[tauri::command]` functions, and its own capability file records why that matters:
 "most BMM file work happens in Rust commands, which capabilities don't gate." So script
 running in the webview reaches `window.__TAURI__` and through it file read/write and
@@ -432,10 +455,16 @@ The mod-name one is the clearest illustration: the same field is already escaped
 ### NOT fixed, and the reason is a measurement
 
 The missing CSP is the finding underneath the other three, and it is left open
-deliberately. `script-src 'self'` is the directive that breaks the XSS-to-RCE chain, and
-inline `style=` is unaffected by it — but the frontend generates **74 inline event
-handlers** (`onclick=`, `onerror=`, `onfocus=`) that it would break, alongside **2492
-inline style attributes** that need `style-src 'unsafe-inline'` to keep working.
+deliberately. Dropping `'unsafe-inline'` from `script-src` is what breaks the XSS-to-RCE chain, and
+inline `style=` is unaffected by it — but the frontend generates **89 inline event
+handlers** (41 `onclick`, 26 `onmouseover`/`onmouseout`, 13 `onerror`, 9 others) that it
+would break, alongside 2492 inline style attributes that keep working regardless.
+
+Of the 89: the 26 hover pairs are pure styling and belong in CSS; the 13 `onerror` are
+image fallbacks and fit one delegated capture listener; 21 of the `onclick` are a uniform
+`window.fn('id')` shape that a single delegated dispatcher covers. The remaining **22 pass
+`this` or `event`** and need reading one at a time — that is the part that cannot be done
+mechanically, and it is why this is a session of its own rather than a line of config.
 
 Adding it blind to a desktop application that cannot be launched from this environment
 would trade a possible compromise for a certain breakage. The order of work is: migrate
