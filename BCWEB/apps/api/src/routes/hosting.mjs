@@ -22,18 +22,21 @@ export function realDiskStats() {
   } catch { return { totalBytes: null, freeBytes: null }; }
 }
 let _stripe = null;
-export async function stripe() {
-  // The site-wide payments switch lives HERE rather than at each checkout call site:
-  // there are five of those across hosting and catalog, and a switch you have to
-  // remember to check in five places is a switch that will be missed in one.
+export async function stripe({ forPurchase = false } = {}) {
+  // The payments switch gates NEW PURCHASES only, and the caller has to say it is one.
   //
-  // Callers already handle a null (it is what an unconfigured Stripe returns), so
-  // turning payments off degrades exactly like never having configured it.
+  // The first version of this gated every use of the client, which was wrong in a way
+  // worth recording: the same client also cancels subscriptions, lists and fetches
+  // invoices, and reconciles state. Turning payments off would have trapped people in
+  // subscriptions they could no longer cancel and hidden invoices they are entitled to
+  // read. "Stop taking money" must not mean "stop serving the customers you already have".
   //
-  // The webhook does NOT go through this. Existing subscriptions must keep being
-  // reconciled while new purchases are refused, or renewals and cancellations stop
-  // being recorded and the database drifts away from Stripe.
-  if (!flagEnabled('features.paymentsEnabled')) return null;
+  // Default UNGATED on purpose. Forget the flag on a new checkout and it stays
+  // purchasable, which is merely the behaviour before this feature existed; forget it on
+  // a servicing path and somebody cannot cancel. The safe direction to fail is the first.
+  //
+  // The webhook does not come through here at all, for the same reason.
+  if (forPurchase && !flagEnabled('features.paymentsEnabled')) return null;
   if (!process.env.STRIPE_SECRET_KEY) return null;
   if (!_stripe) { const Stripe = (await import('stripe')).default; _stripe = new Stripe(process.env.STRIPE_SECRET_KEY); }
   return _stripe;
@@ -775,7 +778,7 @@ export default async function hostingRoutes(app) {
       return { ok: true, free: true, groupId: group.id };
     }
 
-    const sk = await stripe();
+    const sk = await stripe({ forPurchase: true });
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
     // Site-wide promo CAMPAIGN — an auto-applied discount (no code) live right now. It
@@ -873,7 +876,7 @@ export default async function hostingRoutes(app) {
       amount = Math.max(50, Math.round(amount * (1 - camp.percentOff / 100)));
       campLabel = ` · −${camp.percentOff}% ${camp.kind === 'black_friday' ? 'Black Friday' : 'sale'}`;
     }
-    const sk = await stripe();
+    const sk = await stripe({ forPurchase: true });
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
     const siteUrl = process.env.SITE_URL || 'http://localhost';
@@ -1048,7 +1051,7 @@ export default async function hostingRoutes(app) {
     const r = await resolveCart(p, req, b.data, { persistPlans: true });
     if (r.error) return reply.code(r.error.startsWith('promo_') ? 400 : 409).send(r);
     if (r.total < 50) return reply.code(400).send({ error: 'cart_makes_free', detail: 'Total is free/too low — use a free-hosting grant code, or add paid items.' });
-    const sk = await stripe();
+    const sk = await stripe({ forPurchase: true });
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
     const siteUrl = process.env.SITE_URL || 'http://localhost';

@@ -447,7 +447,7 @@ export default async function repoRoutes(app) {
       return { ok: true, free: true, repoId: repo.id };
     }
 
-    const sk = await stripe();
+    const sk = await stripe({ forPurchase: true });
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
     const siteUrl = process.env.SITE_URL || 'http://localhost';
@@ -505,7 +505,7 @@ export default async function repoRoutes(app) {
       await notify(p, req.user.uid, 'hosting_started', `"${repo.name}" renewed for ${months} month${months > 1 ? 's' : ''} — free tier, no charge.`);
       return { ok: true, free: true, repoId: repo.id };
     }
-    const sk = await stripe();
+    const sk = await stripe({ forPurchase: true });
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
     const md = { type: 'repo_renew', kind: 'hosting', userId: req.user.uid, repoId: repo.id, months: String(months) };
@@ -573,7 +573,7 @@ export default async function repoRoutes(app) {
       await notify(p, group.ownerId, 'hosting_started', `Pool "${group.name}" renewed for ${months} month${months > 1 ? 's' : ''} — free tier, no charge.`);
       return { ok: true, free: true, groupId: group.id };
     }
-    const sk = await stripe();
+    const sk = await stripe({ forPurchase: true });
     if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const customer = await ensureCustomer(p, sk, req.user.uid);
     const md = { type: 'pool_renew', kind: 'hosting', userId: req.user.uid, groupId: group.id, months: String(months) };
@@ -761,7 +761,12 @@ export default async function repoRoutes(app) {
   // trust the client), and we refuse if it wouldn't actually save money. On payment the
   // webhook (pool_consolidate) attaches the new sub and cancels the old ones with proration.
   app.post('/me/hosting/groups/:id/consolidate', { preHandler: requireRole() }, async (req, reply) => {
-    if (!stripe) return reply.code(503).send({ error: 'stripe_not_configured' });
+    // `stripe` is the FUNCTION exported by hosting.mjs, not a client. This read
+    // `if (!stripe)` — a function is never falsy, so the guard never fired — and then
+    // `stripe.checkout.sessions.create(...)`, which is a property read on a function and
+    // threw a TypeError. This endpoint returned 500 on every call it ever received.
+    const sk = await stripe({ forPurchase: true });
+    if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
     const p = await db();
     const g = await p.hostingGroup.findUnique({ where: { id: req.params.id }, select: { id: true, ownerId: true, name: true, poolBytes: true } });
     if (!g) return reply.code(404).send({ error: 'not_found' });
@@ -793,7 +798,7 @@ export default async function repoRoutes(app) {
     // time-boxed sale on for as long as the pool lives. The `no_saving` guard above also
     // compares against the CURRENT monthly bill, which a temporary discount would
     // misrepresent.
-    const session = await stripe.checkout.sessions.create({
+    const session = await sk.checkout.sessions.create({
       mode: 'subscription', customer,
       line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: consolidatedMonthlyCents, recurring: { interval: 'month' }, product_data: { name: `Consolidated hosting — ${sumGB}GB pool "${g.name}"` } } }],
       subscription_data: { metadata: md },

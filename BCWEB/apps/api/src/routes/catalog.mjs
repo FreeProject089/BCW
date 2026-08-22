@@ -455,7 +455,7 @@ export default async function catalogRoutes(app) {
               meta: hostCents > 0 ? { ...d.meta, _hostingUnpaid: true } : d.meta, status: 'PENDING' },
     });
     if (hostCents > 0) {
-      const sk = await stripe();
+      const sk = await stripe({ forPurchase: true });
       if (!sk) { await p.catalogItem.delete({ where: { id: item.id } }).catch(() => {}); return reply.code(503).send({ error: 'stripe_not_configured' }); }
       const siteUrl = process.env.SITE_URL || 'http://localhost';
       // The campaign reaches this checkout through a Stripe COUPON, not through
@@ -752,7 +752,7 @@ export default async function catalogRoutes(app) {
     const updated = await p.catalogItem.update({ where: { id: item.id }, data });
 
     if (hostCents > 0) {
-      const sk = await stripe();
+      const sk = await stripe({ forPurchase: true });
       if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
       const siteUrl = process.env.SITE_URL || 'http://localhost';
       // The campaign reaches this checkout through a Stripe COUPON, not through

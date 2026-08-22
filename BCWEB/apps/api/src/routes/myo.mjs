@@ -302,7 +302,7 @@ async function actorName(p, uid, fallback) {
     if (q.status !== 'sent') return reply.code(400).send({ error: 'quote_not_payable' });
     if (q.totalCents < 50) return reply.code(400).send({ error: 'amount_too_low' });
     try {
-      const sk = await stripe();
+      const sk = await stripe({ forPurchase: true });
       const customer = await ensureCustomer(p, sk, req.user.uid);
       // NO campaign discount. A quote is a price agreed with this customer in the thread
       // above, not a list price — silently charging less than the figure both sides
@@ -563,7 +563,7 @@ async function actorName(p, uid, fallback) {
 
 // Create a Stripe consultation checkout session for a request; returns the URL or throws.
 async function consultationCheckout(p, userId, request, cfg) {
-  const sk = await stripe();
+  const sk = await stripe({ forPurchase: true });
   const customer = await ensureCustomer(p, sk, userId);
   const listPrice = Math.max(50, request.urgent ? cfg.urgentConsultationCents : cfg.consultationCents);
   // The consultation fee is a LIST price, so a site-wide sale applies to it like any
