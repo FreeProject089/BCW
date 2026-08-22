@@ -24,6 +24,21 @@ const KIND_META = {
   audit: { icon: ShieldCheck, en: 'Security audit', fr: 'Audit de sécurité' },
   custom: { icon: Wand2, en: 'Custom project', fr: 'Projet sur mesure' },
 };
+// A line per kind, for the case an admin has not written one.
+//
+// The built-in cards ship with `tagline: ''`, so before anybody curates the catalogue the
+// page offers three cards saying "Discord bot — Custom quote" and nothing else, with a
+// hundred pixels of blank above the footer. That is what a first-time visitor meets, and
+// it tells them nothing about what they would be buying. An admin's own tagline still
+// wins — this only fills a hole.
+const KIND_BLURB = {
+  discord_bot: 'A bot for your server — moderation, roles, tickets, giveaways, or something nobody has built yet.',
+  app: 'A desktop or mobile application, built around what you actually do with it.',
+  website: 'A site that fits: showcase, shop, dashboard — designed, built, and handed over.',
+  audit: 'A read of your code for real vulnerabilities, reported with CVE / CWE references and a CVSS score.',
+  custom: 'Anything else — a tool, a SaaS, an integration.',
+};
+const kindBlurb = (k, t) => t(`myo.blurb.${k}`, KIND_BLURB[k] || KIND_BLURB.custom);
 const kindMeta = (k) => KIND_META[k] || KIND_META.custom;
 // A signature accent per product kind — used only for gradient fills / glows (never text),
 // so it stays readable in both themes. Discord blurple for the bot is a nice cue.
@@ -63,12 +78,12 @@ export function MyoPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-10 sm:py-14">
       {/* ── Hero ── */}
-      <div className="relative text-center max-w-2xl mx-auto mb-12 sm:mb-14">
+      <div className="relative text-center max-w-2xl mx-auto mb-8 sm:mb-10">
         <div aria-hidden className="absolute left-1/2 -translate-x-1/2 -top-20 w-[620px] max-w-[130%] h-72 rounded-full bg-[var(--primary)]/15 blur-3xl -z-10" />
-        <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)] mb-5 border border-[var(--primary)]/25"><Sparkles size={13} /> {t('myo.badge', 'Make Your Own')}</div>
-        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight leading-[1.05]">{t('myo.title', 'We build it for you')}</h1>
-        <p className="text-[var(--muted)] mt-4 text-base sm:text-lg leading-relaxed">{t('myo.sub', 'Need a Discord bot, an app, a website — or something custom like a security audit of your code (CVE / CWE / CVSS)? Start a paid consultation: you get real advice and a fixed quote. We only start building once you approve the quote.')}</p>
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 mt-6 text-xs text-[var(--muted)]">
+        <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)] mb-4 border border-[var(--primary)]/25"><Sparkles size={13} /> {t('myo.badge', 'Make Your Own')}</div>
+        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-[1.1]">{t('myo.title', 'We build it for you')}</h1>
+        <p className="text-[var(--muted)] mt-3 text-[15px] leading-relaxed">{t('myo.sub', 'Need a Discord bot, an app, a website — or something custom like a security audit of your code (CVE / CWE / CVSS)? Start a paid consultation: you get real advice and a fixed quote. We only start building once you approve the quote.')}</p>
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 mt-5 text-xs text-[var(--muted)]">
           {[[FileText, t('myo.trust1', 'Fixed, itemised quote')], [Check, t('myo.trust2', 'You approve before we build')], [Globe, t('myo.trust3', 'English or French')], [ShieldCheck, t('myo.trust4', 'Source on request')]].map(([Ic, tx], i) => (
             <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--line)]"><Ic size={13} className="text-[var(--primary-2)] shrink-0" /> {tx}</span>
           ))}
@@ -76,14 +91,14 @@ export function MyoPage() {
       </div>
 
       {/* ── How it works + the clear "what you pay for" disclaimer ── */}
-      <Card className="p-5 sm:p-6 mb-10 sm:mb-12 max-w-3xl mx-auto">
-        <div className="grid sm:grid-cols-3 gap-5 sm:gap-6">
+      <div className="mb-8 sm:mb-10 max-w-3xl mx-auto">
+        <div className="grid sm:grid-cols-3 gap-4 sm:gap-5">
           {[[MessageSquare, t('myo.hiw1.t', '1 · Pay for advice'), t('myo.hiw1.s', 'A {n} consultation ({u} if urgent) opens a private conversation with a consultant.').replace('{n}', fmtMoney(cfg.consultationCents, cfg.currency)).replace('{u}', fmtMoney(cfg.urgentConsultationCents, cfg.currency))],
             [FileText, t('myo.hiw2.t', '2 · Get a quote'), t('myo.hiw2.s', "We discuss what you need and send a clear, itemised price for the product.")],
             [Package, t('myo.hiw3.t', '3 · We build & deliver'), t('myo.hiw3.s', 'Once you approve and pay the quote, we build it and deliver it right in the conversation.')]].map(([Icon, tt, ss], i) => (
-            <div key={i} className="flex sm:flex-col gap-3 sm:gap-2.5">
-              <span className="w-10 h-10 rounded-xl bg-[var(--primary)]/10 border border-[var(--primary)]/20 grid place-items-center shrink-0 text-[var(--primary-2)]"><Icon size={18} /></span>
-              <div><div className="font-semibold text-sm">{tt}</div><div className="text-xs text-[var(--muted)] leading-relaxed mt-1">{ss}</div></div>
+            <div key={i} className="flex gap-3">
+              <span className="w-9 h-9 rounded-xl bg-[var(--primary)]/10 border border-[var(--primary)]/20 grid place-items-center shrink-0 text-[var(--primary-2)]"><Icon size={17} /></span>
+              <div className="min-w-0"><div className="font-semibold text-[13px]">{tt}</div><div className="text-xs text-[var(--muted)] leading-relaxed mt-0.5">{ss}</div></div>
             </div>
           ))}
         </div>
@@ -99,7 +114,7 @@ export function MyoPage() {
             is a summary line that opens, so the page states it and the reader chooses when
             to read the detail. The intake modal repeats it in full at the moment money is
             about to move, which is the moment it must not be foldable. */}
-        <details className="mt-4 border-t border-[var(--line)] pt-3.5">
+        <details className="mt-4 border-t border-[var(--line)] pt-3.5 max-w-3xl mx-auto">
           <summary className="text-xs text-[var(--muted)] cursor-pointer flex items-center gap-2.5 list-none">
             <AlertTriangle size={15} className="shrink-0 text-warning" />
             {t('myo.disclaimer.head', 'What the consultation fee covers, and what it does not')}
@@ -108,7 +123,7 @@ export function MyoPage() {
             {t('myo.disclaimer', 'The consultation fee pays for expert advice and a quote — it is NOT the price of the product. Building only begins after you approve and pay the separate quote. Some deliverables include source code, some do not — this is always stated on the quote.')}
           </p>
         </details>
-      </Card>
+      </div>
 
       {/* Capacity, at the top, where somebody decides whether to start.
           Commissions are work done by people: a page that keeps taking requests after the
@@ -213,7 +228,10 @@ function ProductCard({ card, cfg, onStart }) {
           hover it does what a highlight is for: marking the one you are pointing at.
           opacity-0 → 0.18 rather than mounting on hover, so the transition has something to
           animate from and nothing shifts in the layout. */}
-      <div aria-hidden className="absolute -top-16 -right-16 w-40 h-40 rounded-full opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-[0.18] motion-reduce:transition-none" style={{ background: accent }} />
+      {/* No `motion-reduce:` gate — index.css says twice that this project does not gate on
+          prefers-reduced-motion, because Windows enables it behind users' backs and the only
+          visible result is a hover highlight that never arrives. */}
+      <div aria-hidden className="absolute -top-16 -right-16 w-40 h-40 rounded-full opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-[0.18]" style={{ background: accent }} />
       <div className="relative flex items-start gap-3.5 mb-3.5">
         <span className="w-12 h-12 rounded-2xl grid place-items-center text-white shrink-0 shadow-sm" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}bb)` }}><Icon size={22} /></span>
         <div className="min-w-0 pt-0.5">
@@ -225,7 +243,9 @@ function ProductCard({ card, cfg, onStart }) {
           </div>
         </div>
       </div>
-      {card.tagline && <p className="relative text-sm text-[var(--muted)] leading-relaxed mb-3.5">{card.tagline}</p>}
+      {/* Never empty: an unconfigured card falls back to the blurb for its kind rather
+          than to a void the footer then floats above. */}
+      <p className="relative text-sm text-[var(--muted)] leading-relaxed mb-3.5">{card.tagline || kindBlurb(card.kind, t)}</p>
       {card.options?.length > 0 && (
         <ul className="relative text-[13px] text-[var(--muted)] space-y-2 mb-4">
           {card.options.slice(0, 4).map((o, i) => (
@@ -255,16 +275,18 @@ function CustomFeatureCard({ card, cfg, onStart }) {
   const accent = kindAccent('custom');
   const highlights = (card.options || []).slice(0, 3).map((o) => o.label).filter(Boolean);
   return (
-    <Card className="group relative overflow-hidden mt-5 sm:mt-6 p-6 sm:p-8 flex flex-col md:flex-row md:items-center gap-6">
-      {/* This one keeps a glow at rest, deliberately: it is ONE card, not one of six, and the
-          tint is what marks it as the odd offer out. Toned down and made to lift on hover like
-          the others, so the two behave as one family. */}
-      <div aria-hidden className="absolute inset-0" style={{ background: `radial-gradient(120% 150% at 100% 0%, ${accent}14, transparent 55%)` }} />
-      <div aria-hidden className="absolute -bottom-24 -right-12 w-80 h-80 rounded-full opacity-[0.12] blur-3xl transition-opacity duration-300 group-hover:opacity-25 motion-reduce:transition-none" style={{ background: accent }} />
+    <Card className="group relative overflow-hidden mt-4 sm:mt-5 p-5 sm:p-6 flex flex-col md:flex-row md:items-center gap-5">
+      {/* ONE glow, at rest, and nothing else.
+          It had a full-surface radial wash AND this blur AND a filled accent pill AND a 2xl
+          heading — so the "anything else" option shouted louder than the three products
+          actually for sale above it. It is still marked as the odd one out (it is the only
+          full-width card on the page); it no longer outranks the catalogue.
+          No `motion-reduce:` gate: see the note on ProductCard. */}
+      <div aria-hidden className="absolute -bottom-24 -right-12 w-80 h-80 rounded-full opacity-[0.12] blur-3xl transition-opacity duration-300 group-hover:opacity-25" style={{ background: accent }} />
       <span className="relative w-14 h-14 rounded-2xl grid place-items-center text-white shrink-0 shadow-md" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}bb)` }}><Wand2 size={26} /></span>
       <div className="relative flex-1 min-w-0">
-        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full text-white shadow-sm mb-2" style={{ background: accent }}><Sparkles size={11} /> {t('myo.popular', 'Most flexible')}</span>
-        <h3 className="text-xl sm:text-2xl font-bold leading-tight">{t('myo.cta.t', 'Have something else in mind?')}</h3>
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border mb-2 text-[var(--muted)] border-[var(--line)] bg-[var(--surface-2)]"><Sparkles size={11} style={{ color: accent }} /> {t('myo.popular', 'Most flexible')}</span>
+        <h3 className="text-lg sm:text-xl font-bold leading-tight">{t('myo.cta.t', 'Have something else in mind?')}</h3>
         <p className="text-sm text-[var(--muted)] leading-relaxed mt-2 max-w-xl">{card.tagline || t('myo.cta.s', 'A tool, a SaaS, an integration, a security audit of your code… start a custom consultation and we’ll figure it out together.')}</p>
         {highlights.length > 0 && (
           <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3">

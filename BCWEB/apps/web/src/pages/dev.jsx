@@ -363,13 +363,31 @@ export function devCards(cfg, t) {
   }));
 }
 
-function Tool({ icon: Icon, title, children, to, cta }) {
+// ONE tile, used for everything on this page that is "somewhere you can go".
+//
+// There were three shapes doing this job — a <Link> tile for the tools, a <Card> with
+// decorative pills for the two jobs, and a <Card> with a Button inside for the rest —
+// laid out in three separate grids under two headings. Same job, three dialects, so the
+// page read as three unrelated sections rather than one list of doors.
+function Tile({ icon, title, hint, to }) {
+  // One border for every tile, deliberately. An accent border on the five tools ranked
+  // them above the three plain cards — on screen that was five orange boxes reading as
+  // five warnings, and a row of one orange beside one grey that looked like a mistake.
+  // Their position in the list already says which came first; the icon already carries
+  // the colour.
   return (
-    <Card className="p-5 flex flex-col">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Icon size={15} className="text-[var(--primary-2)]" /> {title}</div>
-      <p className="text-[12px] text-[var(--muted)] flex-1">{children}</p>
-      {to && <Link to={to} className="mt-3"><Button size="sm" variant="primary">{cta} <ArrowRight size={13} /></Button></Link>}
-    </Card>
+    <Link to={to || '#'}
+      className="group rounded-xl border border-[var(--line)] p-4 flex flex-col transition hover:border-[var(--primary)]"
+      style={{ background: 'var(--surface)' }}>
+      <span className="flex items-center gap-2 text-[13px] font-semibold">
+        <IconGlyph name={icon || 'circle'} size={15} className="text-[var(--primary-2)]" />
+        <span className="min-w-0 flex-1">{title}</span>
+        {/* Always rendered, revealed on hover. Mounting it on hover would shift the title
+            by 13px every time the pointer crossed a tile. */}
+        <ArrowRight size={13} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
+      </span>
+      {hint && <p className="text-[12px] text-[var(--muted)] mt-1.5 leading-snug">{hint}</p>}
+    </Link>
   );
 }
 
@@ -397,13 +415,19 @@ export default function DevHub() {
   // Every chip on every card, flattened: an admin who adds a chip to a custom card gets it
   // in the tools grid without a second list to keep in step.
   const toolCards = allCards.flatMap((c) => c.chips || []);
-  // A card whose chips are drawn above is not shown again below.
-  //
-  // It was: five chips hoisted into the tools grid as their own cards, AND the card that held
-  // them kept in "Everything here" — so /dev offered six links to /dev/tools, five of them
-  // anchors into the same page. The container card only ever said "here is the section", and
-  // the section is already right there, described item by item.
+  // A card whose chips are drawn as tiles is not shown again as a tile of its own: /dev
+  // would otherwise offer six links to /dev/tools, five of them anchors into the same page.
   const cards = allCards.filter((c) => !(c.chips && c.chips.length));
+  // Every door on this page, in one list of one shape. Tools first (they are what a
+  // developer came to use), then the plain cards, admin order preserved within each.
+  const doors = [
+    ...toolCards.map((c, i) => ({
+      key: `t${i}`, icon: c.icon || 'circle', to: c.to,
+      title: c.labelKey ? t(c.labelKey, c.label || '') : (c.label || ''),
+      hint: c.hintKey ? t(c.hintKey, c.hint || '') : (c.hint || ''),
+    })),
+    ...cards.map((c) => ({ key: c.key, icon: c.icon, to: c.to, title: c.title, hint: c.body })),
+  ].filter((d) => d.title);
 
   const loadScopes = async () => {
     if (scopes) return setScopes(null);
@@ -449,77 +473,74 @@ export default function DevHub() {
         )}
       </div>
 
-      {/* The two jobs, before the tools — picking the wrong one is the mistake that costs a
-          day, and it is not obvious from the names. Removable from Projects config. */}
-      {show.jobs !== false && <div className="grid sm:grid-cols-2 gap-4 mb-8">
-        <Card className="p-5">
-          <div className="flex items-center gap-2 mb-1"><KeyRound size={16} className="text-[var(--primary-2)]" />
-            <span className="font-semibold text-[15px]">{t('dev.hub.jobkey', 'Your program acts as YOU')}</span></div>
-          <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobkey.s', 'A script, a sync job, a bot you run. Use an API key: scoped, personal, nobody else’s consent involved.')}</p>
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {['API keys', 'Test keys', 'Webhooks'].map((x) => <span key={x} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{x}</span>)}
-          </div>
-        </Card>
-        <Card className="p-5">
-          <div className="flex items-center gap-2 mb-1"><Shield size={16} className="text-[var(--primary-2)]" />
-            <span className="font-semibold text-[15px]">{t('dev.hub.jobsso', 'Your app acts for OTHER people')}</span></div>
-          <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobsso.s', 'Anything with its own users. Use Sign in with BetterCommunity: they authorise it, and you never touch their password.')}</p>
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {['OpenID Connect', 'PKCE', 'URL generator'].map((x) => <span key={x} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{x}</span>)}
-          </div>
-        </Card>
-      </div>}
+      {/* ONE fork, first: which of the two things are you building?
+          Getting this wrong is the mistake that costs a day, and the names do not give it
+          away. Each side is now a LINK to where that answer starts — they were dead-end
+          cards decorated with pills, so the page named the decision and then left you to
+          find the door yourself. */}
+      {show.jobs !== false && (
+        <div className="grid sm:grid-cols-2 gap-4 mb-10">
+          <Link to="/dev/config" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
+            <div className="flex items-center gap-2 mb-1">
+              <KeyRound size={16} className="text-[var(--primary-2)]" />
+              <span className="font-semibold text-[15px] flex-1">{t('dev.hub.jobkey', 'Your program acts as YOU')}</span>
+              <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
+            </div>
+            <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobkey.s', 'A script, a sync job, a bot you run. Use an API key: scoped, personal, nobody else’s consent involved.')}</p>
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {['API keys', 'Test keys', 'Webhooks'].map((x) => <span key={x} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{x}</span>)}
+            </div>
+          </Link>
+          <Link to="/docs/sso" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
+            <div className="flex items-center gap-2 mb-1">
+              <Shield size={16} className="text-[var(--primary-2)]" />
+              <span className="font-semibold text-[15px] flex-1">{t('dev.hub.jobsso', 'Your app acts for OTHER people')}</span>
+              <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
+            </div>
+            <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobsso.s', 'Anything with its own users. Use Sign in with BetterCommunity: they authorise it, and you never touch their password.')}</p>
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {['OpenID Connect', 'PKCE', 'URL generator'].map((x) => <span key={x} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{x}</span>)}
+            </div>
+          </Link>
+        </div>
+      )}
 
-      {/* THE TOOLS, as the page's main answer.
-          They were five pills inside one card of four — so the five things a developer
-          actually came to use looked like footnotes to the card that contained them, and the
-          only way to learn what any of them did was to open it. Each is its own card with a
-          line saying what it does; the card that held them keeps its place below, beside the
-          other three, where "here is the section" belongs. */}
-      {toolCards.length > 0 && (
+      {/* ONE grid, one shape, one heading.
+          It was two grids under "Tools you can use right now" and "Everything here" — a
+          pair of titles that do not distinguish anything, since everything is here. Measured
+          at 931px, where both fell back to two columns: five items left an orphan on a row of
+          its own, and three items left another. Merged, the same eight tiles fill four clean
+          rows there, and three rows from 1024px up.
+
+          Order is preserved, so an admin reordering cards in Projects config still gets what
+          they arranged: the tools a card carries, then the plain cards. */}
+      {doors.length > 0 && (
         <>
           <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
-            {t('dev.hub.toolsh2', 'Tools you can use right now')}
+            {hero.toolsTitle || t('dev.hub.toolsh', 'Everything here')}
           </h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
-            {toolCards.map((c, i) => (
-              <Link key={i} to={c.to || '#'}
-                className="group rounded-xl border border-[var(--line)] p-4 hover:border-[var(--primary)] transition flex flex-col"
-                style={{ background: 'var(--surface)' }}>
-                <span className="flex items-center gap-2 text-[13px] font-semibold">
-                  <IconGlyph name={c.icon || 'circle'} size={15} className="text-[var(--primary-2)]" />
-                  {c.labelKey ? t(c.labelKey, c.label || '') : (c.label || '')}
-                  <ArrowRight size={13} className="ml-auto opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
-                </span>
-                {(c.hint || c.hintKey) && (
-                  <p className="text-[12px] text-[var(--muted)] mt-1.5 leading-snug">{t(c.hintKey, c.hint || '')}</p>
-                )}
-              </Link>
-            ))}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {doors.map((d, i) => <Tile key={d.key || i} icon={d.icon} title={d.title} hint={d.hint} to={d.to} />)}
           </div>
         </>
       )}
 
-      <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{hero.toolsTitle || t('dev.hub.toolsh', 'Everything here')}</h2>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {cards.map((c) => (
-          <Tool key={c.key} icon={(props) => <IconGlyph name={c.icon} {...props} />} title={c.title} to={c.to} cta={c.cta}>
-            {c.body}
-            {/* The chips are drawn as their own cards above; repeating them here would be
-                the same five links twice on one screen. */}
-          </Tool>
-        ))}
-      </div>
-
-      <Card className="p-4 mt-4">
-        <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('dev.hub.discovery', 'Discovery')}</div>
-        <code className="block text-[11px] font-mono break-all bg-[var(--surface-2)] rounded p-2">{base}/.well-known/openid-configuration</code>
+      {/* The machine-readable corner, kept but demoted.
+          A discovery URL and a scope table are reference material, not a destination — as a
+          full Card at the same weight as the tiles above, they read as a ninth door. */}
+      <div className="mt-8 rounded-xl border border-[var(--line)] p-4">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('dev.hub.discovery', 'Discovery')}</span>
+          <code className="text-[11px] font-mono break-all bg-[var(--surface-2)] rounded px-2 py-1 flex-1 min-w-[240px]">{base}/.well-known/openid-configuration</code>
+          {/* copyText takes ONE argument and returns a boolean — it does not toast. The two
+              other copy buttons in this file already pair it with an explicit toast; a third
+              spelling of the same action is how one of them ends up silently doing nothing. */}
+          <Button size="sm" variant="ghost" title={t('common.copy', 'Copy')} aria-label={t('common.copy', 'Copy')}
+            onClick={() => { copyText(`${base}/.well-known/openid-configuration`); toast.success(t('common.copied', 'Copied.')); }}><Copy size={13} /></Button>
+        </div>
         <div className="flex flex-wrap gap-2 mt-3">
           <Button size="sm" variant="ghost" onClick={loadScopes}>{scopes ? t('common.close', 'Close') : t('dev.hub.scopes', 'What the scopes mean')}</Button>
           <Link to="/blog?project=developers"><Button size="sm" variant="ghost"><Newspaper size={13} /> {t('dev.hub.blog', 'Developer blog')}</Button></Link>
-          {/* Only when the hero is not already offering it — the same link twice on one
-              screen is the thing that made the tools look like footnotes in the first place. */}
-          {!myKeys.length && <Link to="/dev/config"><Button size="sm" variant="ghost"><KeyRound size={13} /> {t('dev.hub.mykeys', 'My keys')}</Button></Link>}
         </div>
         {scopes && (
           <div className="mt-3 space-y-1">
@@ -528,8 +549,7 @@ export default function DevHub() {
             ))}
           </div>
         )}
-      </Card>
-
+      </div>
 
 
       {!user && (
