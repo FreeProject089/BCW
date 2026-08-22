@@ -247,7 +247,12 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
             </div>
 
             <div className="grid lg:grid-cols-[1fr_300px] gap-4 items-start">
-                <div className="overflow-auto max-h-[70vh] rounded-xl border border-[var(--line)] p-2 relative">
+                {/* A background, at last. This had a border and a radius and nothing to
+                    paint them around, and the map is a bare <div> on the page rather than a
+                    Card — so the hero orb sat behind the entire diagram whatever the
+                    Translucent-surfaces setting said. --surface honours the setting: solid
+                    when it is off, tinted to the chosen alpha when it is on. */}
+                <div className="overflow-auto max-h-[70vh] rounded-xl border border-[var(--line)] p-2 relative bg-[var(--surface)]">
                     <div className="sticky top-0 left-0 z-10 flex items-center gap-1 w-fit">
                         {[['−', -0.2, t('cm.zoomout', 'Zoom out')], ['+', 0.2, t('cm.zoomin', 'Zoom in')]].map(([sign, d, title]) => (
                             <button key={sign} type="button" title={title}
@@ -321,8 +326,14 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
 
                         {boxes.map((b) => (
                             <g key={b.key}>
+                                {/* Opaque, on the BASE token. This was a hardcoded
+                                    `--surface-2 60%` — translucent for everybody, at every
+                                    setting, and with no backdrop-filter to replace what it gave
+                                    up, so the page and the import curves drawn beneath it both
+                                    showed through. The canvas above honours the setting; the
+                                    marks drawn ON it are marks, not windows. */}
                                 <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="8"
-                                    fill="color-mix(in srgb, var(--surface-2) 60%, transparent)"
+                                    fill="var(--surface-2-base)"
                                     stroke="var(--line)" strokeWidth="1" />
                                 <text x={b.x + PAD} y={b.y + 13} fontSize="10.5" fill="var(--muted)">{b.key}</text>
                                 {/* Collapsed: one row saying how many files are in here, instead of the
@@ -331,7 +342,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                 {collapsed ? (
                                     <g transform={`translate(${b.x + PAD}, ${b.y + HEADER + PAD})`}>
                                         <rect width={COL_W - PAD * 2} height={FILE_H} rx="5"
-                                            fill="color-mix(in srgb, var(--primary) 10%, var(--surface))" stroke="var(--line)" />
+                                            fill="color-mix(in srgb, var(--primary) 10%, var(--surface-base))" stroke="var(--line)" />
                                         <text x="7" y="15" fontSize="11" fill="var(--text)">
                                             {t('cm.nfiles', '{n} file(s)').replace('{n}', String(b.files.length))}
                                         </text>
@@ -358,8 +369,8 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                             <title>{`${f.id} — ${f.dependents} dependent(s)`}</title>
                                             <rect width={p.w} height={p.h} rx="5"
                                                 fill={f.served
-                                                  ? 'color-mix(in srgb, var(--warning) 12%, var(--surface))'
-                                                  : `color-mix(in srgb, var(--primary) ${Math.round(strength * 30)}%, var(--surface))`}
+                                                  ? 'color-mix(in srgb, var(--warning) 12%, var(--surface-base))'
+                                                  : `color-mix(in srgb, var(--primary) ${Math.round(strength * 30)}%, var(--surface-base))`}
                                                 stroke={picked === f.id ? 'var(--primary-2)' : f.served ? 'color-mix(in srgb, var(--warning) 45%, var(--line))' : 'var(--line)'}
                                                 strokeWidth={picked === f.id ? 2 : 1}
                                                 strokeDasharray={f.served ? '4 3' : undefined} />

@@ -190,8 +190,14 @@ export default function CodeFlows({ flows = [], repoUrl = null, t = (k, d) => d 
                 </p>
             )}
             <div className="space-y-2">
+                {/* The background lives on the ROW, not on the button's hover state. It had
+                    only `hover:bg-…`, so a row was a surface for exactly as long as the pointer
+                    sat on it, and the hero orb showed through the whole list the rest of the
+                    time — including for people who had turned Translucent surfaces OFF.
+                    --surface is the glass-aware token: solid when the setting is off,
+                    translucent at the alpha they chose when it is on. */}
                 {shown.map(({ f, i }) => (
-                    <div key={i} className="rounded-xl border border-[var(--line)] overflow-hidden">
+                    <div key={i} className="rounded-xl border border-[var(--line)] overflow-hidden bg-[var(--surface)]">
                         <button onClick={() => openFlow(i)}
                             className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-[var(--surface-2)]">
                             <ChevronRight size={13} className={`transition-transform ${open === i ? 'rotate-90' : ''}`} />
