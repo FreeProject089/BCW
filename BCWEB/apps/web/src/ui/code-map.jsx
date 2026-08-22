@@ -326,14 +326,18 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
 
                         {boxes.map((b) => (
                             <g key={b.key}>
-                                {/* Opaque, on the BASE token. This was a hardcoded
-                                    `--surface-2 60%` — translucent for everybody, at every
-                                    setting, and with no backdrop-filter to replace what it gave
-                                    up, so the page and the import curves drawn beneath it both
-                                    showed through. The canvas above honours the setting; the
-                                    marks drawn ON it are marks, not windows. */}
+                                {/* Translucent ON PURPOSE, and on the BASE token.
+                                    The import curves are drawn under the boxes so a line never
+                                    crosses a name — which means a fully opaque box hides the
+                                    very thing the map is for. 62% lets a link read through the
+                                    box without the label losing contrast.
+                                    What it does NOT let through is the page: the canvas behind
+                                    it is painted now. Before that, this same alpha showed the
+                                    hero orb, which is why it briefly went opaque. The alpha is
+                                    on --surface-2-BASE so it stays 62% of a solid colour rather
+                                    than fading a second time under Translucent surfaces. */}
                                 <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="8"
-                                    fill="var(--surface-2-base)"
+                                    fill="color-mix(in srgb, var(--surface-2-base) 62%, transparent)"
                                     stroke="var(--line)" strokeWidth="1" />
                                 <text x={b.x + PAD} y={b.y + 13} fontSize="10.5" fill="var(--muted)">{b.key}</text>
                                 {/* Collapsed: one row saying how many files are in here, instead of the
@@ -342,7 +346,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                 {collapsed ? (
                                     <g transform={`translate(${b.x + PAD}, ${b.y + HEADER + PAD})`}>
                                         <rect width={COL_W - PAD * 2} height={FILE_H} rx="5"
-                                            fill="color-mix(in srgb, var(--primary) 10%, var(--surface-base))" stroke="var(--line)" />
+                                            fill="color-mix(in srgb, color-mix(in srgb, var(--primary) 10%, var(--surface-base)) 88%, transparent)" stroke="var(--line)" />
                                         <text x="7" y="15" fontSize="11" fill="var(--text)">
                                             {t('cm.nfiles', '{n} file(s)').replace('{n}', String(b.files.length))}
                                         </text>
@@ -367,10 +371,13 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                             onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setTraceTo(null); setPicked(picked === f.id ? null : f.id); } }}
                                             opacity={on ? 1 : 0.25} style={{ cursor: 'pointer' }}>
                                             <title>{`${f.id} — ${f.dependents} dependent(s)`}</title>
+                                            {/* 88% of a solid colour: enough to read the name
+                                                on, sheer enough that a link crossing behind it
+                                                stays followable. */}
                                             <rect width={p.w} height={p.h} rx="5"
                                                 fill={f.served
-                                                  ? 'color-mix(in srgb, var(--warning) 12%, var(--surface-base))'
-                                                  : `color-mix(in srgb, var(--primary) ${Math.round(strength * 30)}%, var(--surface-base))`}
+                                                  ? 'color-mix(in srgb, color-mix(in srgb, var(--warning) 12%, var(--surface-base)) 88%, transparent)'
+                                                  : `color-mix(in srgb, color-mix(in srgb, var(--primary) ${Math.round(strength * 30)}%, var(--surface-base)) 88%, transparent)`}
                                                 stroke={picked === f.id ? 'var(--primary-2)' : f.served ? 'color-mix(in srgb, var(--warning) 45%, var(--line))' : 'var(--line)'}
                                                 strokeWidth={picked === f.id ? 2 : 1}
                                                 strokeDasharray={f.served ? '4 3' : undefined} />
