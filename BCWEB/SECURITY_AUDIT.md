@@ -404,3 +404,62 @@ falsy, so the guard was dead) and `stripe.checkout.sessions.create(...)` (a prop
 on a function). Every request to that endpoint returned 500. Confirmed against `HEAD`
 before any of this session's edits, and reproduced in the container.
 
+## BMM (Tauri desktop) — 2026-08-22
+
+### The amplifier: no Content-Security-Policy on the webview
+
+`app.security.csp` is `null` in `src-tauri/tauri.conf.json`. The app exposes **361**
+`#[tauri::command]` functions, and its own capability file records why that matters:
+"most BMM file work happens in Rust commands, which capabilities don't gate." So script
+running in the webview reaches `window.__TAURI__` and through it file read/write and
+process spawn — any XSS here is remote code execution, not a layout bug.
+
+Escaping is applied **by hand**: `escHtml` appears 692 times, and roughly 70
+interpolations of `.name` / `.description` / `.author` into HTML do not use it. 692 correct
+applications and one miss is exactly the shape a hand-applied rule fails in.
+
+### Fixed: three of those carry data from outside the machine
+
+| Where | Field | Reachable how |
+|---|---|---|
+| `repo-sync.ts:386` | a profile name from a **remote `repo.json`** | subscribe to a hostile repo — ordinary BMM usage |
+| `repo-sync.ts:868` | same, second view | same |
+| `mods-list.ts:526` | a **mod's name** (its folder or archive) | install a malicious mod |
+
+The mod-name one is the clearest illustration: the same field is already escaped in
+`mods-details.ts` and `mods-conflicts.ts`. One site out of three was missed.
+
+### NOT fixed, and the reason is a measurement
+
+The missing CSP is the finding underneath the other three, and it is left open
+deliberately. `script-src 'self'` is the directive that breaks the XSS-to-RCE chain, and
+inline `style=` is unaffected by it — but the frontend generates **74 inline event
+handlers** (`onclick=`, `onerror=`, `onfocus=`) that it would break, alongside **2492
+inline style attributes** that need `style-src 'unsafe-inline'` to keep working.
+
+Adding it blind to a desktop application that cannot be launched from this environment
+would trade a possible compromise for a certain breakage. The order of work is: migrate
+the 74 handlers to `addEventListener`, add
+`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'`, then run the app.
+
+### The remaining ~67, by file — to triage, not 67 findings
+
+Most carry app-internal strings, and calling them all vulnerabilities would bury the three
+that are not. Worth reading in this order, because the data is least trusted at the top:
+
+    features/plugins/plugins.ts      4    third-party plugin metadata
+    features/mods/modpack-creator.ts 5    modpack contents
+    features/settings/scheduler.ts   7    user-authored, persisted
+    ui/navbar-customize.ts           4    user-authored, persisted
+    features/settings/crash-manager.ts 4  crash payloads
+    features/betahub/betahub-modals.ts 4
+    ui/app.ts                        8
+    ui/tutorial-engine.ts            5
+    ui/components.ts / kit.ts        7
+    ui/update-notes.ts               3    release notes fetched remotely
+
+### Not covered
+
+BetterInstaller, and BMM's Rust side — the deeplink handler, archive extraction (zip-slip),
+and the `bmmpage://` broker — which the 2026-07-18 pass covered and this one did not revisit.
+
