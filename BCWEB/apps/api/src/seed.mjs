@@ -1,6 +1,7 @@
 // One-shot seed: projects, an admin account, default hosting plans + admin settings.
 // Run inside the api container: `node src/seed.mjs` (idempotent).
 import argon2 from 'argon2';
+import { toCurrentShape } from './lib/project-config.mjs';
 import { db } from './lib/lib.mjs';
 import { BLOG_FR } from './seed-blog-fr.mjs';
 
@@ -195,11 +196,21 @@ const projectConfigs = {
     },
   },
 };
-// NOTE: project configs are overwritten on seed (still being set up). Once you
-// customize them via Admin → Projects config, avoid reseeding or they'll reset.
+// Written through toCurrentShape, and NEVER over an existing row.
+//
+// Two separate corrections to what this used to do. The literals above are in the pre-rewrite
+// flat shape, so seeding a brand-new site produced project pages the current project.jsx
+// cannot read — a fresh install came up blank BY CONSTRUCTION, and nothing noticed because a
+// new site looking bare is what a new site looks like.
+//
+// And it used to overwrite on every run. The old comment said so and asked people to remember
+// not to re-seed, which is not a safeguard: `seed:all` is exactly what somebody runs on a site
+// they have already customised, precisely because they want the parts they are MISSING. A
+// seed that resets a topbar somebody built is worse than a seed that does nothing.
 for (const [key, value] of Object.entries(projectConfigs)) {
   const k = `project.${key}`;
-  await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value }, update: { value } });
+  const { out } = toCurrentShape(value);
+  await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: out }, update: {} });
 }
 
 // Markdown guide — hosted in the blog and linked from the blog editor toolbar.
