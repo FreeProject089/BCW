@@ -277,16 +277,17 @@ function HostCatalog({ onBack }) {
 
         <Field label={t('sub2.kind', 'Catalog type')} hint={t('sub2.kind.h', 'A catalog serves one type. BMM reads plugins, themes and apps from separate URLs, each with its own format, so a mixed catalog is one no client can read — create a second catalog for another type.')}>
           <Select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
-            <option value="plugin">{t('sub2.k.plugin', 'Plugins')}</option>
-            <option value="theme">{t('sub2.k.theme', 'Themes')}</option>
-            <option value="app">{t('sub2.k.app', 'Apps')}</option>
-            {/* PRESET was missing here and nowhere else: the API has accepted
-                z.enum(['app','plugin','theme','preset']) all along, BMM follows preset
-                catalogues from the scheduler, and this dropdown was the one place that made
-                it unreachable. "Automations" rather than "Presets" for the same reason
-                kindLabel() exists — "Preset" on a BMM page reads as a harmless settings
-                bundle, and these can ask to run PowerShell. */}
-            <option value="preset">{t('sub2.k.preset', 'Automations')}</option>
+            {/* DERIVED, not listed. A hardcoded list here is the reason PRESET was
+                unreachable for months while the API accepted it all along, and then MODPACK
+                after it: this dropdown is the last place a kind has to be repeated, so it was
+                the last place to forget. kindLabel() also answers "Automations" rather than
+                "Presets" — "Preset" on a BMM page reads as a harmless settings bundle, and
+                these can ask to run PowerShell. */}
+            {/* 'bmm': a hosted community catalogue is read by BMM. HostCatalog has no project
+                picker, so naming it here is the honest version of what was already true. */}
+            {kindsFor('bmm').map((K) => (
+              <option key={K} value={K.toLowerCase()}>{kindLabel(K, 'bmm')}</option>
+            ))}
           </Select>
         </Field>
 
