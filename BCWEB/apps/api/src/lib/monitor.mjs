@@ -333,9 +333,20 @@ async function storageAlerts(p, t) {
 // eventually disagree with the number people are looking at — an alert that contradicts the
 // dashboard is worse than no alert, because it costs an investigation to dismiss.
 async function capacityAlerts(p, t) {
-  const out = [];
   let cap;
-  try { cap = await capacityStatus(p); } catch { return out; }
+  try { cap = await capacityStatus(p); } catch { return []; }
+  return capacityVerdict(cap, t);
+}
+
+/**
+ * The decision, separated from the fetch so it can be tested.
+ *
+ * Kept pure on purpose: the interesting part of this check is the arithmetic — what counts as
+ * oversold, when a percentage matters less than an absolute floor — and a test that has to
+ * stand up a database to reach it is a test nobody runs. Exported for that reason only.
+ */
+export function capacityVerdict(cap, t) {
+  const out = [];
 
   // Allocated vs what is actually usable, not vs the raw disk: `usableGB` already subtracts
   // the reserve the machine needs to keep working.
@@ -350,6 +361,32 @@ async function capacityAlerts(p, t) {
         message: `Server capacity: ${pct.toFixed(0)}% allocated (${allocated.toFixed(1)} of ${usable.toFixed(1)} GB usable, ${freeGB.toFixed(1)} GB left). Thresholds: ${t.capacityPct}% or ${t.capacityFreeGB} GB.`,
       });
     }
+  }
+
+  // ── the declared capacity against the REAL disk ─────────────────────────
+  //
+  // The check above compares what is allocated to what we SAY we can hold. Both numbers come
+  // from `hosting.totalCapacityGB`, which an operator types in — so a machine that promises
+  // more than its disk can back never trips it: allocation stays comfortably under a ceiling
+  // that is fiction, right up until a write fails.
+  //
+  // The shipped default is 500 GB. On a 100 GB VPS that is not a rounding error, it is four
+  // hundred gigabytes the platform believes it can sell. This is the one alert that catches
+  // it, and it fires on a quiet server rather than on a full one.
+  const diskTotal = Number(cap?.diskTotalGB || 0);
+  const diskFree = Number(cap?.diskFreeGB || 0);
+  if (diskTotal > 0 && usable > diskTotal) {
+    out.push({
+      kind: 'capacity_oversold',
+      message: `Declared capacity exceeds the disk: ${usable.toFixed(0)} GB offered on a ${diskTotal.toFixed(0)} GB volume (${diskFree.toFixed(0)} GB free). Lower hosting.totalCapacityGB, or the platform will accept storage it cannot provide.`,
+    });
+  } else if (diskFree > 0 && usable - allocated > diskFree) {
+    // Not oversold on paper, but the unsold remainder no longer fits: something outside
+    // hosting has grown into the space — backups, logs, the database itself.
+    out.push({
+      kind: 'capacity_oversold',
+      message: `${(usable - allocated).toFixed(0)} GB is still on sale but only ${diskFree.toFixed(0)} GB is free on disk. Something outside hosting is using the volume.`,
+    });
   }
 
   // Telemetry only when a limit has been set: zero means "not allocated", and a percentage of
