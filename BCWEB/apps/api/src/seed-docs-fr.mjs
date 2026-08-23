@@ -1177,4 +1177,140 @@ Endpoints, clés et journal de livraison.
 :::
 `,
   },
+  'bcweb-api': {
+    title: 'API BetterCommunity',
+    category: 'Référence',
+    body: `::toc[Sur cette page]
+
+# API BetterCommunity
+
+Une API HTTP, d'abord en lecture, pour votre propre compte, vos dépôts hébergés et le catalogue public. C'est ce qu'on utilise pour miroiter un catalogue, surveiller les changements d'un dépôt, ou brancher BetterCommunity dans un script.
+
+Ce n'est **pas** la même chose que [l'API des plugins](/docs/api-reference), qui tourne à l'intérieur de BMM, sur votre propre machine.
+
+## Obtenir une clé
+
+Les clés se créent depuis votre **page de profil**, section *Clés API*. Chaque clé a un nom, un ensemble de portées, et une expiration facultative.
+
+:::warning[La clé n'est affichée qu'une fois]
+Le serveur ne conserve qu'une empreinte de votre clé : il ne peut donc réellement pas vous la remontrer. Copiez-la à la création. Si vous la perdez, révoquez-la et créez-en une autre — c'est le seul chemin.
+:::
+
+Vous pouvez détenir jusqu'à 20 clés actives. Une clé ne peut pas en créer une autre : la création exige votre session de navigateur, donc révoquer une clé qui a fuité met vraiment fin au problème.
+
+## S'authentifier
+
+\`\`\`bash
+curl -H "Authorization: Bearer bck_VOTRE_CLE" https://VOTRE-HOTE/api/v1/account
+\`\`\`
+
+\`X-API-Key\` fonctionne aussi, si un en-tête « bearer » est malcommode dans votre client.
+
+Les échecs sont volontairement peu bavards : une clé qui n'a jamais existé, une clé révoquée et une clé expirée répondent toutes \`401 invalid_key\`. Une clé réelle mais dépourvue de la portée nécessaire répond \`403 insufficient_scope\` et vous dit laquelle manquait.
+
+## Portées
+
+Une clé a exactement les droits que ses portées décrivent, et une clé sans portée ne peut rien.
+
+| Portée | Ce que ça ouvre |
+|---|---|
+| \`account:read\` | Votre profil. |
+| \`account:write\` | Votre nom affiché et votre bio. |
+| \`repos:read\` | Vos dépôts, la liste de leurs fichiers, leur historique de changements. |
+| \`catalog:read\` | Les éléments publiés du catalogue et leur historique. |
+| \`users:read\` | Les profils publics — exactement ce que voit un visiteur non connecté. |
+
+Rien de ce qui dépense de l'argent, modifie un contrôle d'accès ou supprime quoi que ce soit n'est accessible par clé. C'est délibéré : une clé vit dans un script, sur une machine que nous ne maîtrisons pas ; en perdre une doit vous coûter un accès en lecture, et rien de plus.
+
+## Points d'accès
+
+### \`GET /api/v1/scopes\`
+
+Toutes les portées et leur signification. Aucune clé requise — c'est ainsi qu'un client découvre ce qu'il doit demander.
+
+### \`GET /api/v1/account\` · \`account:read\`
+
+\`\`\`json
+{ "user": { "id": "…", "displayName": "…", "bio": "…", "role": "USER", "createdAt": "…" },
+  "scopes": ["account:read"] }
+\`\`\`
+
+### \`PATCH /api/v1/account\` · \`account:write\`
+
+Accepte \`displayName\` (2 à 60 caractères) et \`bio\` (jusqu'à 500). Tout le reste est ignoré, et un corps sans rien d'exploitable répond \`400 nothing_to_update\`.
+
+### \`GET /api/v1/repos\` · \`repos:read\`
+
+Vos dépôts hébergés : id, nom, statut, \`hostPath\`, s'ils sont publiés et listés, si le manifeste a été vérifié, le \`sha\` du contenu, et le stockage utilisé par rapport au quota.
+
+### \`GET /api/v1/repos/:id/files\` · \`repos:read\`
+
+Tous les fichiers que BetterCommunity détient pour ce dépôt — chemin, taille, sha256, type de contenu, dernière modification.
+
+C'est la réponse à un manque réel : un hébergement web ordinaire avec listage de répertoire laisse BMM découvrir seul les fichiers d'un dépôt, or BetterCommunity ne sert pas de listage. Ce point d'accès est ce listage.
+
+### \`GET /api/v1/repos/:id/changes\` · \`repos:read\`
+
+Ce qui est arrivé au contenu du dépôt, du plus récent au plus ancien.
+
+\`\`\`json
+{ "retentionDays": 30,
+  "changes": [ { "action": "upload", "path": "mods/foo/data.pak", "at": "2026-08-11T09:12:04.000Z" },
+               { "action": "delete", "path": "mods/old/bad.pak", "at": "2026-08-10T22:40:11.000Z" } ] }
+\`\`\`
+
+\`action\` vaut \`upload\`, \`delete\`, \`publish\`, \`unpublish\`, \`settings\`, \`access\`, \`ban\` ou \`unban\`.
+
+:::warning[L'historique a un horizon]
+L'historique par dépôt est élagué à 30 jours et 1000 entrées. \`retentionDays\` vous dit où se trouve la limite. Si vous êtes resté absent plus longtemps, relisez la liste des fichiers — ne lisez pas un flux de changements vide comme « rien n'a changé ».
+:::
+
+### \`GET /api/v1/users/:id\` · \`users:read\`
+
+Un profil public : nom affiché, avatar, bio, badges, date d'inscription, les connexions que le propriétaire a choisi de montrer, ainsi que ses dépôts et catalogues listés. Jamais d'adresse e-mail.
+
+\`:id\` accepte un id de compte ou un **BC id** (\`BCU-XXXX-XXXX\`), pour qu'une intégration BMM ne disposant que d'un identifiant de créateur puisse le résoudre sans connaître l'id interne.
+
+Un profil privé répond \`403 private_profile\` ; un compte banni ou inconnu répond \`404\`.
+
+:::warning[Une clé n'est pas un badge de modération]
+Connecté sur le site, un modérateur peut ouvrir un profil privé. Via l'API, **personne ne le peut** — le profil est construit comme pour un visiteur non connecté, quel que soit le rôle du propriétaire de la clé. Les pouvoirs d'équipe vivent derrière une session de navigateur et la double authentification ; un jeton collé dans un script, ce n'est pas ça.
+:::
+
+### \`GET /api/v1/users?q=\` · \`users:read\`
+
+Recherche par nom affiché, BC id, id de dépôt ou slug de catalogue — chacun des trois derniers étant résolu vers son propriétaire. Uniquement les profils publics et non bannis : une recherche ne peut donc jamais faire apparaître ce qu'un accès direct refuserait. Deux caractères minimum ; \`?limit=\` jusqu'à 100.
+
+### \`GET /api/v1/catalog\` · \`catalog:read\`
+
+Les éléments publiés seulement. Filtrez avec \`?kind=APP|PLUGIN|THEME|PRESET\`. Les éléments encore en relecture, refusés ou masqués ne sont pas visibles par une clé — le processus de relecture n'est pas quelque chose qu'une clé API contourne.
+
+### \`GET /api/v1/catalog/changes\` · \`catalog:read\`
+
+Ajouts et retraits, du plus récent au plus ancien.
+
+\`\`\`json
+{ "changes": [ { "slug": "my-theme", "kind": "THEME", "action": "published",
+                 "version": "1.2.0", "id": "clx…", "at": "2026-08-11T09:12:04.000Z" },
+               { "slug": "old-plugin", "kind": "PLUGIN", "action": "deleted",
+                 "version": null, "id": null, "at": "2026-08-09T14:02:55.000Z" } ] }
+\`\`\`
+
+\`action\` vaut \`created\`, \`updated\`, \`published\`, \`rejected\`, \`hidden\`, \`restored\` ou \`deleted\`.
+
+Un élément supprimé l'est vraiment — sa ligne n'existe plus — donc \`id\` revient à \`null\` et **c'est le slug qui sert d'identité pour indexer votre miroir**. Ce flux est le seul endroit où un retrait est consigné ; rien d'autre n'y survit.
+
+## Interroger périodiquement
+
+Les deux flux de changements acceptent \`?since=<ISO-8601>\` et ne renvoient que ce qui est plus récent, ainsi que \`?limit=\` (100 par défaut, 500 au maximum).
+
+\`\`\`bash
+curl -H "Authorization: Bearer $CLE" \
+  "https://VOTRE-HOTE/api/v1/catalog/changes?since=2026-08-01T00:00:00Z&limit=200"
+\`\`\`
+
+Une valeur \`since\` illisible est ignorée plutôt que rejetée : un client qui rejoue un mauvais curseur récupère tout, au lieu de boucler sur une erreur 400.
+
+Les points d'accès en lecture autorisent 120 requêtes par minute ; la gestion des clés et les écritures, 30.`,
+  },
 };
