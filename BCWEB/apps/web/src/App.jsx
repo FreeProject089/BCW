@@ -187,7 +187,7 @@ function navSubLabel(item, lang) {
 
 // Segmented "pill" nav link (desktop) + hamburger-sheet row. Module-scope so the
 // dropdown/accordion components below can share the exact same styling.
-const pill = ({ isActive }) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition ${isActive ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
+const pill = ({ isActive }) => `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition ${isActive ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
 const sheet = ({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm ${isActive ? 'bg-[var(--surface-2)] text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]'}`;
 
 // Desktop dropdown pill for a configured "group" nav item — Twenty-style: opens on

@@ -124,16 +124,16 @@ export function ReposPage() {
           ['official', t('repos.cat.official', 'Official'), BadgeCheck],
           ['partner', t('repos.cat.partner', 'Partner'), Handshake],
           ['community', t('repos.cat.community', 'Community'), Users]].map(([key, label, Ico]) => (
-          <button key={key} onClick={() => setCat(key)} className={`text-xs px-2.5 py-1 rounded-full border flex items-center gap-1 transition ${cat === key ? 'border-[var(--primary)] text-[var(--text)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+          <button key={key} onClick={() => setCat(key)} className={`text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1 transition ${cat === key ? 'border-[var(--primary)] text-[var(--text)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {Ico && <Ico size={11} />} {label}
           </button>
         ))}
       </div>
       {allTags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-5">
-          <button onClick={() => setTag('')} className={`text-xs px-2.5 py-1 rounded-full border ${!tag ? 'border-[var(--primary)] text-[var(--text)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('repos.alltags', 'All')}</button>
+          <button onClick={() => setTag('')} className={`text-xs px-2.5 py-1 rounded-lg border ${!tag ? 'border-[var(--primary)] text-[var(--text)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('repos.alltags', 'All')}</button>
           {allTags.map((tg) => (
-            <button key={tg} onClick={() => setTag(tg === tag ? '' : tg)} className={`text-xs px-2.5 py-1 rounded-full border flex items-center gap-1 ${tag === tg ? 'border-[var(--primary)] text-[var(--text)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Tag size={10} /> {tg}</button>
+            <button key={tg} onClick={() => setTag(tg === tag ? '' : tg)} className={`text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1 ${tag === tg ? 'border-[var(--primary)] text-[var(--text)] bg-orange-500/10' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Tag size={10} /> {tg}</button>
           ))}
         </div>
       )}

@@ -274,7 +274,10 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
      tight row squeezed it until its label broke or vanished ("SUSPENDE…"). It must keep its
      natural width and push the row to wrap instead. */
   .badge {
-    display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 99px;
+    /* --r-sm, not a 99px pill. A capsule the size of a word reads as a button you can
+       press; these are labels. The token keeps them in step with every other corner on
+       the page instead of being the one shape that is different. */
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: var(--r-sm);
     font-size: 10.5px; font-weight: 600; letter-spacing: .02em; line-height: 1.45;
     background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
     flex: none; white-space: nowrap;
