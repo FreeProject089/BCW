@@ -284,6 +284,7 @@ export function Admin() {
             <Dropdown value={modKind} onChange={setModKind} options={[
               { value: '', label: t('mod.allkinds', 'All kinds') }, { value: 'APP', label: t('mod.k.app', 'App') },
               { value: 'PLUGIN', label: t('mod.k.plugin', 'Plugin') }, { value: 'THEME', label: t('mod.k.theme', 'Theme') }, { value: 'PRESET', label: t('mod.k.preset', 'Preset') },
+              { value: 'MODPACK', label: t('mod.k.modpack', 'Modpack') },
             ]} />
             <Dropdown value={modType} onChange={setModType} options={[
               { value: '', label: t('mod.alltypes', 'All types') }, { value: 'NEW', label: t('mod.t.new', 'New') }, { value: 'UPDATE', label: t('mod.t.update', 'Update') },

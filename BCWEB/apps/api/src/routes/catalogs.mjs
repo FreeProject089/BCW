@@ -1,4 +1,5 @@
 import argon2 from 'argon2';
+import { CATALOG_KINDS, CATALOG_KINDS_LOWER, INDEX_TYPE_ORDER } from '../lib/catalog-kinds.mjs';
 import { keyAuthOk, keyAudience } from '../lib/keyauth.mjs';
 import { z } from 'zod';
 import crypto from 'node:crypto';
@@ -19,7 +20,7 @@ async function readObject(key) {
 const TEXT_EXT = /\.(json|txt|md|css|js|mjs|cjs|ts|lua|cfg|ini|yml|yaml|xml|toml|csv|log|sh)$/i;
 const TEXT_PREVIEW_MAX = 256 * 1024; // don't inline more than 256 KB of a single entry
 
-const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
+const KINDS = CATALOG_KINDS;
 const SITE_URL = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 const GiB = 1024 ** 3;
 
@@ -136,6 +137,19 @@ function emitManagedFeed(catalog, items, kind, priv) {
     return { version: '1.0', name: title, themes: rows.map((it) => ({
       id: it.slug, name: it.name, description: it.description || '', author: catalog.owner?.displayName || '', version: it.version, url: dl(it), tags: it.tags || [],
     })).filter((x) => x.url) };
+  }
+  if (kind === 'MODPACK') {
+    // Same shape as every other feed, deliberately: a modpack is one downloadable file with a
+    // name and a version, exactly like a theme. `mods` is the count BMM shows before you
+    // install — undefined when the publisher did not say, because "0 mods" and "not stated"
+    // are different claims and only one of them is ever true here.
+    return { version: '1.0', name: title, modpacks: rows.map((it) => ({
+      id: it.slug, name: it.name, description: it.description || '',
+      author: catalog.owner?.displayName || '', version: it.version,
+      download_url: dl(it), tags: it.tags || [],
+      game: it.meta?.game || '',
+      mods: Number.isFinite(it.meta?.mods) ? it.meta.mods : undefined,
+    })).filter((x) => x.download_url) };
   }
   if (kind === 'PRESET') {
     // Same shape as the platform feed — one document type, whoever publishes it.
@@ -435,7 +449,7 @@ export default async function communityCatalogRoutes(app) {
       // Sorted, because an index is read by people as well as parsed: official first,
       // then by app, then by type, then by name. Stable regardless of what the database
       // felt like returning.
-      const TYPE_ORDER = ['app', 'plugin', 'theme', 'preset', 'repo'];
+      const TYPE_ORDER = INDEX_TYPE_ORDER;
       entries.sort((a, b) => (Number(b.official) - Number(a.official))
         || String(a.app || 'zzz').localeCompare(String(b.app || 'zzz'))
         || (TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type))
@@ -601,10 +615,10 @@ export default async function communityCatalogRoutes(app) {
       // One kind per catalog (see catalogKind). `kinds` is still accepted for older clients,
       // but only as a single-element array — a mixed feed is rejected rather than stored and
       // discovered to be unreadable later.
-      kind: z.enum(['app', 'plugin', 'theme', 'preset']).optional(),
+      kind: z.enum(CATALOG_KINDS_LOWER).optional(),
       // Accepted at up to 4 so an older client gets a NAMED error (mixed_kinds, below) instead
       // of a blanket invalid_input it cannot act on; an empty array means "not specified".
-      kinds: z.array(z.enum(['app', 'plugin', 'theme', 'preset'])).max(4).optional(),
+      kinds: z.array(z.enum(CATALOG_KINDS_LOWER)).max(CATALOG_KINDS_LOWER.length).optional(),
       visibility: z.enum(['public', 'private']).default('public'),
       groupId: z.string().optional(),
       storageGB: z.number().min(0.5).max(2000).optional().default(1),
@@ -672,10 +686,10 @@ export default async function communityCatalogRoutes(app) {
     const b = z.object({
       name: z.string().trim().min(2).max(80).optional(),
       description: z.string().max(2000).optional(),
-      kind: z.enum(['app', 'plugin', 'theme', 'preset']).optional(),
+      kind: z.enum(CATALOG_KINDS_LOWER).optional(),
       // Accepted at up to 4 so an older client gets a NAMED error (mixed_kinds, below) instead
       // of a blanket invalid_input it cannot act on; an empty array means "not specified".
-      kinds: z.array(z.enum(['app', 'plugin', 'theme', 'preset'])).max(4).optional(),
+      kinds: z.array(z.enum(CATALOG_KINDS_LOWER)).max(CATALOG_KINDS_LOWER.length).optional(),
       visibility: z.enum(['public', 'private']).optional(),
       listed: z.boolean().optional(),
       access: accessSchema.optional(),
@@ -751,7 +765,7 @@ export default async function communityCatalogRoutes(app) {
   // ── Owner: items in a MANAGED catalog ──
   app.post('/me/catalogs/:id/items', { preHandler: requireRole() }, async (req, reply) => {
     const b = z.object({
-      kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET']),
+      kind: z.enum(CATALOG_KINDS),
       name: z.string().trim().min(1).max(120),
       version: z.string().max(24).optional().default('1.0.0'),
       description: z.string().max(4000).optional().default(''),

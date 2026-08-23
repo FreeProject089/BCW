@@ -27,6 +27,7 @@
 // Refuses to run against anything that does not look like a dev database.
 
 import { PrismaClient } from '@prisma/client';
+import { CATALOG_KINDS } from './lib/catalog-kinds.mjs';
 
 const p = new PrismaClient();
 
@@ -197,7 +198,7 @@ async function generate() {
     }
 
     for (let c = 0; c < scale.catsPerUser; c++) {
-      const kind = pick(['APP', 'PLUGIN', 'THEME', 'PRESET']);
+      const kind = pick(CATALOG_KINDS);
       const cat = await p.communityCatalog.create({
         data: {
           ownerId: user.id, projectId: project.id,

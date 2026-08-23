@@ -2754,6 +2754,7 @@ const DICT = {
     'bmi.script': 'Script',
     'mod.queue': 'File de modération', 'mod.search.ph': 'Rechercher par nom, auteur ou e-mail…', 'mod.search': 'Rechercher',
     'mod.allkinds': 'Toutes catégories', 'mod.k.app': 'App', 'mod.k.plugin': 'Plugin', 'mod.k.theme': 'Thème', 'mod.k.preset': 'Preset',
+    'mod.k.modpack': "Modpack",
     'mod.alltypes': 'Toutes actions', 'mod.t.new': 'Nouveau', 'mod.t.update': 'Mise à jour',
     'mod.oldest': 'Plus anciens d’abord', 'mod.newest': 'Plus récents d’abord',
     'mod.review': 'Examiner', 'mod.approve': 'Approuver', 'mod.reject': 'Rejeter',

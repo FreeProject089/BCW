@@ -40,6 +40,9 @@ enum CatalogKind {
   PLUGIN
   THEME
   PRESET
+  /// A .bmp modpack — a set of mods and the profile that arranges them, published as one
+  /// downloadable thing. Added last, so existing rows keep their ordinal.
+  MODPACK
 }
 
 enum ItemStatus {

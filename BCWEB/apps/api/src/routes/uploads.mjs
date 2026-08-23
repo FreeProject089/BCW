@@ -94,7 +94,7 @@ const LIMITS = {
 };
 
 const schema = z.object({
-  kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET', 'BLOG', 'MEDIA', 'REPORT', 'REPLAY', 'MYO_DELIVER']),
+  kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET', 'MODPACK', 'BLOG', 'MEDIA', 'REPORT', 'REPLAY', 'MYO_DELIVER']),
   filename: z.string().min(1).max(160),
   contentType: z.string().min(1).max(120),
   size: z.number().int().positive(),

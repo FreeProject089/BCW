@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CATALOG_KINDS, CATALOG_KINDS_LOWER, INDEX_TYPE_ORDER } from '../lib/catalog-kinds.mjs';
 import { emitWebhook } from '../lib/webhooks.mjs';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
@@ -46,7 +47,7 @@ function replyBlocked(reply, hit) {
 }
 
 
-const KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
+const KINDS = CATALOG_KINDS;
 // The ProjectKey enum. Validated like KINDS: an unknown ?project= must never reach the feed's
 // cache key — each distinct key pins a whole feed payload in the L1 map — nor silently widen
 // the query to every project (an unknown key made findUnique throw, the catch swallow it, and
@@ -184,7 +185,7 @@ const presetSchema = z.object({
 
 const submitSchema = z.object({
   projectKey: z.enum(['bmm', 'bsm', 'community']),
-  kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET']),
+  kind: z.enum(CATALOG_KINDS),
   name: z.string().min(2).max(80),
   description: z.string().max(4000).default(''),
   tags: z.array(z.string().max(24)).max(12).default([]),
@@ -496,7 +497,7 @@ export default async function catalogRoutes(app) {
     const b = z.object({
       projectKey: z.enum(['bmm', 'bsm', 'community']),
       entries: z.array(z.object({
-        kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET']),
+        kind: z.enum(CATALOG_KINDS),
         name: z.string().trim().min(2).max(80),
         version: z.string().max(24).optional().default('1.0.0'),
         description: z.string().max(4000).optional().default(''),

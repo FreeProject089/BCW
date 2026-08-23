@@ -102,10 +102,10 @@ export function useElementWidth(fallback = 760) {
   }, []);
   return [ref, w];
 }
-export const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson };
-export const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset' };
+export const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson, MODPACK: Package };
+export const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset', MODPACK: 'Modpack' };
 /** Every kind the CatalogKind enum holds, in the order screens show them. */
-export const ALL_KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET'];
+export const ALL_KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET', 'MODPACK'];
 
 /**
  * Which kinds each project publishes — and, by its absence, which projects publish nothing.
