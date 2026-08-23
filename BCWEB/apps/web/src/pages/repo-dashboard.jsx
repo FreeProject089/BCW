@@ -692,12 +692,36 @@ function SettingsTab({ r, reload }) {
   const [busy, setBusy] = useState(false);
   const GiB = 1024 ** 3;
   const usedGB = (r.used || 0) / GiB;
+  const pool = r.pool || null;
+  const freeGB = (pool?.freeBytes || 0) / GiB;
+  // The biggest this repo may become: what it already reserves, plus what nobody has claimed.
+  const maxGB = ((r.storageQuotaBytes || 0) / GiB) + freeGB;
   const [quotaGB, setQuotaGB] = useState((r.storageQuotaBytes || 0) / GiB);
   const [sizeBusy, setSizeBusy] = useState(false);
+  const [mergeId, setMergeId] = useState('');
+  const [mergeBusy, setMergeBusy] = useState(false);
+  // Within half a step of the ceiling counts as at it: the slider moves in 0.5 GB, so
+  // requiring exact equality would hide the way out at the one moment it is needed.
+  const atCeiling = quotaGB >= maxGB - 0.5;
+  const doMerge = async () => {
+    if (!mergeId || !pool) return;
+    setMergeBusy(true);
+    try {
+      // Into THIS repo's pool, never the other way: merging is destructive to the source, and
+      // the pool the person is standing in front of is the one they mean to keep.
+      await api.post('/me/hosting/groups/merge', { sourceId: mergeId, targetId: pool.id });
+      toast.success(t('rd.size.merged', 'Pools merged — the space is available here now.'));
+      setMergeId('');
+      reload();
+    } catch (x) {
+      toast.error(x.data?.error === 'different_owners' ? t('rd.size.mergeowner', 'Both pools must belong to the same account.')
+        : t('repos.mng.savefail', 'Failed to save.'));
+    } finally { setMergeBusy(false); }
+  };
   const saveQuota = async () => {
     setSizeBusy(true);
     try {
-      await api.put(`/me/repos/${r.id}/quota`, { storageGB: Math.max(quotaGB, usedGB) });
+      await api.put(`/me/repos/${r.id}/quota`, { storageGB: Math.min(Math.max(quotaGB, usedGB), Math.max(maxGB, usedGB)) });
       toast.success(t('rd.size.done', 'Storage resized.'));
       reload();
     } catch (x) {
@@ -740,16 +764,40 @@ function SettingsTab({ r, reload }) {
         <Card className="p-4">
           <div className="flex items-center justify-between mb-1.5 text-sm">
             <span className="flex items-center gap-1.5 text-[var(--muted)]"><HardDrive size={14} /> {t('rd.size', 'Storage')}</span>
-            <span className="font-semibold">{quotaGB.toFixed(1)} GB</span>
+            <span className="font-semibold">{quotaGB.toFixed(1)} / {maxGB.toFixed(1)} GB</span>
           </div>
-          <input type="range" min={Math.max(0.5, usedGB)} max={2000} step={0.5}
-            value={Math.max(quotaGB, usedGB)} className="bcw-range w-full"
+          {/* The ceiling is what this repo could actually become: its own quota plus whatever
+              of the pool nobody has claimed. Everything past it is refused with
+              `pool_exceeded`, so travelling there was the control offering a move it could
+              not make. */}
+          <input type="range" min={Math.max(0.5, usedGB)} max={Math.max(maxGB, usedGB, 0.5)} step={0.5}
+            value={Math.min(Math.max(quotaGB, usedGB), Math.max(maxGB, usedGB, 0.5))} className="bcw-range w-full"
             onChange={(e) => setQuotaGB(Number(e.target.value))} />
           <div className="text-xs mt-2 text-[var(--muted)]">
             {t('rd.size.used', 'Holding {n} GB.').replace('{n}', usedGB.toFixed(2))}{' '}
-            {t('rd.size.floor', 'It cannot be set below what it already holds — delete files first.')}
+            {t('rd.size.pool', 'The pool “{name}” has {n} GB unclaimed.').replace('{name}', pool?.name || '').replace('{n}', freeGB.toFixed(1))}
           </div>
-          <div className="flex justify-end mt-3">
+          <div className="flex items-center justify-between gap-2 mt-3 flex-wrap">
+            {/* At the ceiling, say what the two ways past it are — both already exist and
+                neither was reachable from this page. Merging is offered only when there IS
+                another pool; otherwise the honest answer is the hosting page. */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {atCeiling && (pool?.others?.length ? (
+                <>
+                  <Select className="!w-auto text-xs" value={mergeId} onChange={(e) => setMergeId(e.target.value)}>
+                    <option value="">{t('rd.size.mergePick', 'Merge a pool…')}</option>
+                    {pool.others.map((o) => (
+                      <option key={o.id} value={o.id}>{o.name} · {(o.poolBytes / GiB).toFixed(1)} GB</option>
+                    ))}
+                  </Select>
+                  <Button size="sm" variant="secondary" disabled={!mergeId || mergeBusy} onClick={doMerge}>
+                    {mergeBusy ? <Spinner /> : t('rd.size.merge', 'Merge in')}
+                  </Button>
+                </>
+              ) : (
+                <a href="/hosting"><Button size="sm" variant="secondary">{t('rd.size.buy', 'Get more space')}</Button></a>
+              ))}
+            </div>
             <Button size="sm" variant="secondary" disabled={sizeBusy || Math.abs(quotaGB - (r.storageQuotaBytes / GiB)) < 0.01}
               onClick={saveQuota}>{sizeBusy ? <Spinner /> : t('rd.size.apply', 'Resize')}</Button>
           </div>

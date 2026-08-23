@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { ALERT_THRESHOLDS, ALERT_THRESHOLD_KEYS } from '../lib/thresholds.mjs';
 import { z } from 'zod';
 import { db, requireRole, botAuth } from '../lib/lib.mjs';
 import { checkSslExpiry, checkDependencies, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps } from '../lib/monitor.mjs';
@@ -210,8 +211,8 @@ export default async function serverPerfRoutes(app) {
   // overrides. Returning the EFFECTIVE values (defaults merged with whatever is stored)
   // means the form shows what is actually in force rather than blank boxes that imply
   // "no threshold".
-  const T_KEYS = ['cpuPct', 'memPct', 'diskPct', 'storagePct', 'vitalsPoorPct', 'vitalsMinSamples', 'errorBurst'];
-  const T_DEFAULTS = { cpuPct: 90, memPct: 90, diskPct: 90, storagePct: 85, vitalsPoorPct: 25, vitalsMinSamples: 20, errorBurst: 10 };
+  const T_KEYS = ALERT_THRESHOLD_KEYS;
+  const T_DEFAULTS = ALERT_THRESHOLDS;
 
   app.get('/admin/server/thresholds', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();

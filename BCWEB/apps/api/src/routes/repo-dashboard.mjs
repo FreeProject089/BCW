@@ -15,6 +15,41 @@ const settingsSchema = SETTINGS_SCHEMA;
 
 const fileSer = (f) => ({ ...f, size: Number(f.size) });
 
+/**
+ * What the resize control needs to know about this repo's pool.
+ *
+ * `freeBytes` is what is UNCLAIMED — the pool minus every repo's and catalogue's reservation,
+ * this repo's own included. So the biggest this repo may become is its current quota plus
+ * that, which is exactly the ceiling the server enforces in PUT /me/repos/:id/quota. Computing
+ * it here rather than in the browser keeps one definition of "how much room is left".
+ *
+ * `others` lists the owner's OTHER pools, because merging one in is the supported way to get
+ * past the ceiling and the screen could not otherwise know whether to offer it or to point at
+ * the hosting page.
+ */
+async function poolInfo(p, repo) {
+  if (!repo.groupId) return null;
+  const group = await p.hostingGroup.findUnique({ where: { id: repo.groupId } });
+  if (!group) return null;
+  const [repoAgg, catAgg] = await Promise.all([
+    p.serverRepo.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
+    p.communityCatalog.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
+  ]);
+  const claimed = (repoAgg._sum.storageQuotaBytes || 0n) + (catAgg._sum.storageQuotaBytes || 0n);
+  const others = await p.hostingGroup.findMany({
+    where: { ownerId: group.ownerId, id: { not: group.id } },
+    select: { id: true, name: true, poolBytes: true },
+  });
+  return {
+    id: group.id,
+    name: group.name,
+    poolBytes: Number(group.poolBytes),
+    freeBytes: Number(group.poolBytes - claimed),
+    others: others.map((o) => ({ id: o.id, name: o.name, poolBytes: Number(o.poolBytes) })),
+  };
+}
+
+
 // Resolve the caller's access to a repo → 'owner' | 'collab' | 'password' | null.
 //  owner    = the owner, or an ADMIN/MOD (logged in)
 //  collab   = a logged-in user whose email is in accessEmails
@@ -94,6 +129,10 @@ export default async function repoDashboardRoutes(app) {
       // has a fixed quota tied to its plan — so the screen needs to know before offering a
       // control that would always answer `not_grouped`.
       grouped: !!r.groupId,
+      // And HOW MUCH of it is unclaimed. Without this the resize slider had no ceiling and
+      // ran to 2000 GB, so most of its travel was values the server refuses with
+      // `pool_exceeded` — a control that offers moves it cannot make.
+      pool: await poolInfo(req._p, r),
       settings: r.settings || DEFAULT_SETTINGS,
       files: r.files.map(fileSer), used: r.files.reduce((a, f) => a + Number(f.size), 0),
       level: req.level,

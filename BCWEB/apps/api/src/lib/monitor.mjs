@@ -7,7 +7,8 @@ import os from 'node:os';
 import fs from 'node:fs';
 import tls from 'node:tls';
 import { Transform } from 'node:stream';
-import { realDiskStats } from '../routes/hosting.mjs';
+import { realDiskStats, capacityStatus } from '../routes/hosting.mjs';
+import { ALERT_THRESHOLDS } from './thresholds.mjs';
 import { checkStorageHealth } from './storage.mjs';
 import { notify } from './lib.mjs';
 
@@ -259,15 +260,7 @@ function netRate() {
 // installation that never touches them. Read per tick rather than cached: the tick is every
 // ten minutes, one settings read is free next to the sampling it accompanies, and a cached
 // copy would mean a threshold change quietly not taking effect until a restart.
-const T_DEFAULTS = {
-  cpuPct: 90,
-  memPct: 90,
-  diskPct: 90,
-  storagePct: 85,      // a hosting pool this full needs action BEFORE it refuses an upload
-  vitalsPoorPct: 25,   // share of "poor" samples on a metric that counts as degraded
-  vitalsMinSamples: 20, // below this, a couple of bad loads would fire on noise
-  errorBurst: 10,      // new errors within the window
-};
+const T_DEFAULTS = ALERT_THRESHOLDS;
 async function thresholds(p) {
   const row = await p.adminSetting.findUnique({ where: { key: 'alerts.thresholds' } }).catch(() => null);
   const v = (row?.value && typeof row.value === 'object') ? row.value : {};
@@ -328,6 +321,50 @@ async function storageAlerts(p, t) {
     const pct = (100 * used) / cap;
     if (pct >= t.storagePct) {
       out.push({ kind: 'storage', message: `Storage pool "${g.name}" is ${pct.toFixed(0)}% full (${(used / 1e9).toFixed(1)} of ${(cap / 1e9).toFixed(1)} GB).` });
+    }
+  }
+  return out;
+}
+
+// ── The server's own ceiling, and telemetry's ────────────────────────────
+//
+// Read from capacityStatus() rather than re-derived. That function is what the hosting page
+// and checkout already believe, and a monitor computing "how full are we" its own way would
+// eventually disagree with the number people are looking at — an alert that contradicts the
+// dashboard is worse than no alert, because it costs an investigation to dismiss.
+async function capacityAlerts(p, t) {
+  const out = [];
+  let cap;
+  try { cap = await capacityStatus(p); } catch { return out; }
+
+  // Allocated vs what is actually usable, not vs the raw disk: `usableGB` already subtracts
+  // the reserve the machine needs to keep working.
+  const usable = Number(cap?.usableGB || 0);
+  const allocated = Number(cap?.allocatedGB || 0);
+  if (usable > 0) {
+    const pct = (100 * allocated) / usable;
+    const freeGB = Math.max(0, usable - allocated);
+    if (pct >= t.capacityPct || freeGB <= t.capacityFreeGB) {
+      out.push({
+        kind: 'capacity',
+        message: `Server capacity: ${pct.toFixed(0)}% allocated (${allocated.toFixed(1)} of ${usable.toFixed(1)} GB usable, ${freeGB.toFixed(1)} GB left). Thresholds: ${t.capacityPct}% or ${t.capacityFreeGB} GB.`,
+      });
+    }
+  }
+
+  // Telemetry only when a limit has been set: zero means "not allocated", and a percentage of
+  // zero would fire on every tick forever.
+  const limit = Number(cap?.telemetryLimitGB || 0);
+  const used = cap?.telemetryUsedGB;
+  if (limit > 0 && Number.isFinite(Number(used))) {
+    const u = Number(used);
+    const pct = (100 * u) / limit;
+    const freeGB = Math.max(0, limit - u);
+    if (pct >= t.telemetryPct || freeGB <= t.telemetryFreeGB) {
+      out.push({
+        kind: 'telemetry_storage',
+        message: `BMM telemetry storage: ${pct.toFixed(0)}% used (${u.toFixed(2)} of ${limit.toFixed(1)} GB, ${freeGB.toFixed(2)} GB left). Thresholds: ${t.telemetryPct}% or ${t.telemetryFreeGB} GB.`,
+      });
     }
   }
   return out;
@@ -407,7 +444,7 @@ export async function sampleAndAlert(p, log) {
     // The non-machine signals. Each returns a list, and each is wrapped: a failure to
     // COUNT errors must never stop the CPU alert from firing, which is the one that says
     // the box is about to fall over.
-    for (const fn of [vitalsAlerts, storageAlerts, errorAlerts]) {
+    for (const fn of [vitalsAlerts, storageAlerts, capacityAlerts, errorAlerts]) {
       try {
         for (const a of await fn(p, t)) alerts.push(await maybeAlert(p, a.kind, a.message));
       } catch (e) { log?.warn?.({ e: String(e?.message || e) }, `monitor: ${fn.name} failed`); }
