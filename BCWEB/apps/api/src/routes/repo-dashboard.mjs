@@ -90,6 +90,10 @@ export default async function repoDashboardRoutes(app) {
       ownerName: r.owner?.displayName || null, favoriteCount,
       storageUsedBytes: Number(r.storageUsedBytes), storageQuotaBytes: Number(r.storageQuotaBytes),
       uploadLimitKbps: r.uploadLimitKbps, effectiveUploadKbps: effUpload(r), cpuShare: r.cpuShare,
+      // Whether this repo draws from a POOL. Only a pooled repo can be resized — a solo one
+      // has a fixed quota tied to its plan — so the screen needs to know before offering a
+      // control that would always answer `not_grouped`.
+      grouped: !!r.groupId,
       settings: r.settings || DEFAULT_SETTINGS,
       files: r.files.map(fileSer), used: r.files.reduce((a, f) => a + Number(f.size), 0),
       level: req.level,

@@ -686,25 +686,39 @@ function OnlineTab({ r, reload, publicUrl }) {
 
 function SettingsTab({ r, reload }) {
   const { t } = useI18n(); const toast = useToast();
-  const s0 = r.settings || { access: { whitelistEnabled: false, ips: [], keys: [], accounts: [] }, bans: { ips: [], keys: [], accounts: [] }, requestedUploadKbps: null };
-  const [access, setAccess] = useState(s0.access);
-  const [bans, setBans] = useState(s0.bans);
+  const s0 = r.settings || { access: {}, bans: {}, requestedUploadKbps: null };
   const capKbps = r.uploadLimitKbps || 0;
   const [reqMbps, setReqMbps] = useState(s0.requestedUploadKbps ? s0.requestedUploadKbps / 1024 : capKbps / 1024);
   const [busy, setBusy] = useState(false);
+  const GiB = 1024 ** 3;
+  const usedGB = (r.used || 0) / GiB;
+  const [quotaGB, setQuotaGB] = useState((r.storageQuotaBytes || 0) / GiB);
+  const [sizeBusy, setSizeBusy] = useState(false);
+  const saveQuota = async () => {
+    setSizeBusy(true);
+    try {
+      await api.put(`/me/repos/${r.id}/quota`, { storageGB: Math.max(quotaGB, usedGB) });
+      toast.success(t('rd.size.done', 'Storage resized.'));
+      reload();
+    } catch (x) {
+      // The server's two refusals are two different problems and two different fixes.
+      const e = x.data?.error;
+      toast.error(e === 'below_used' ? t('rd.size.belowused', 'Smaller than what the repo holds — delete files first.')
+        : e === 'pool_exceeded' ? t('rd.size.poolfull', 'The pool only has {n} GB free.').replace('{n}', (x.data?.freeGB ?? 0).toFixed(1))
+        : e === 'not_grouped' ? t('rd.size.solo', 'This repo has a fixed quota from its plan.')
+        : t('repos.mng.savefail', 'Failed to save.'));
+    } finally { setSizeBusy(false); }
+  };
   const requestedKbps = Math.round(reqMbps * 1024);
   const effectiveKbps = Math.min(requestedKbps <= 0 ? capKbps : requestedKbps, capKbps);
-  const addTo = (setter, field, val) => setter((s) => ({ ...s, [field]: [...new Set([...(s[field] || []), val])] }));
-  const rm = (setter, field, val) => setter((s) => ({ ...s, [field]: (s[field] || []).filter((x) => x !== val) }));
-  const addAccount = (setter, field, entry) => setter((s) => {
-    const list = s[field] || [];
-    if (list.some((a) => a.type === entry.type && a.id === entry.id)) return s;
-    return { ...s, [field]: [...list, entry] };
-  });
-  const rmAccount = (setter, field, entry) => setter((s) => ({ ...s, [field]: (s[field] || []).filter((a) => !(a.type === entry.type && a.id === entry.id)) }));
   const save = async () => {
     setBusy(true);
-    try { const res = await api.put(`/repos/${r.id}/dashboard/settings`, { access, bans, requestedUploadKbps: requestedKbps <= 0 ? null : requestedKbps }); toast.success(res.effectiveUploadKbps < requestedKbps ? t('repos.mng.capped', 'Saved — upload capped to {n} Mbps by the sandbox.').replace('{n}', (res.effectiveUploadKbps / 1024).toFixed(1)) : t('repos.mng.saved', 'Settings saved.')); reload(); }
+    // The lists are read from `r` AT SAVE TIME, not captured at mount. This PUT replaces the
+    // whole settings object, so a copy taken when the tab opened would silently undo whatever
+    // was changed on the Access tab in between — a save on one screen quietly reverting
+    // another is the worst kind of data loss, because nothing reports it.
+    const cur = r.settings || {};
+    try { const res = await api.put(`/repos/${r.id}/dashboard/settings`, { access: cur.access || {}, bans: cur.bans || {}, requestedUploadKbps: requestedKbps <= 0 ? null : requestedKbps }); toast.success(res.effectiveUploadKbps < requestedKbps ? t('repos.mng.capped', 'Saved — upload capped to {n} Mbps by the sandbox.').replace('{n}', (res.effectiveUploadKbps / 1024).toFixed(1)) : t('repos.mng.saved', 'Settings saved.')); reload(); }
     // Name the failure when the server named it: "Failed to save." over a form holding a key
     // somebody just pasted tells them nothing about which of the six fields is wrong.
     catch (x) {
@@ -717,22 +731,30 @@ function SettingsTab({ r, reload }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-xs text-[var(--muted)]"><ShieldCheck size={13} className="text-[var(--primary-2)]" /> {t('repos.sandboxed', "Sandboxed — your settings can never exceed this repo's hard limits.")}</div>
-      <div className="flex items-center gap-2 text-xs text-[var(--muted)]"><Globe size={13} className="text-[var(--primary-2)]" /> {t('repos.globalpolicy.note', "Staff-wide bans and (if enabled) a site-wide whitelist apply to every repo automatically, on top of what you set below.")}</div>
-      <Card className="p-4 space-y-4">
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={access.whitelistEnabled} onChange={(e) => setAccess({ ...access, whitelistEnabled: e.target.checked })} /> {t('repos.wl', 'Whitelist-only access (only allow-listed IPs/keys/accounts can sync)')}</label>
-        <ChipList label={t('repos.allowedips', 'Allowed IPs')} items={access.ips || []} onAdd={(v) => addTo(setAccess, 'ips', v)} onRemove={(v) => rm(setAccess, 'ips', v)} placeholder="203.0.113.4" />
-        <ChipList label={t('repos.allowedkeys', 'Allowed keys')} items={access.keys || []} onAdd={(v) => addTo(setAccess, 'keys', v)} onRemove={(v) => rm(setAccess, 'keys', v)} placeholder="access-key…" />
-        <AccountChipList label={t('repos.allowedaccounts', 'Allowed accounts')} items={access.accounts || []} onAdd={(e) => addAccount(setAccess, 'accounts', e)} onRemove={(e) => rmAccount(setAccess, 'accounts', e)} placeholder={t('repos.acct.search', 'Search creator id / Discord / username…')} />
-        {/* Independent of the whitelist toggle, and deliberately so: an authorised key is a
-            requirement placed on EVERYONE, not one more way onto an allow list. Adding a key
-            here means nobody syncs without one. */}
-        <PubkeyList items={access.pubkeys || []} onAdd={(v) => addTo(setAccess, 'pubkeys', v)} onRemove={(v) => rm(setAccess, 'pubkeys', v)} />
-      </Card>
-      <Card className="p-4 space-y-3">
-        <ChipList label={t('repos.bannedips', 'Banned IPs')} items={bans.ips || []} onAdd={(v) => addTo(setBans, 'ips', v)} onRemove={(v) => rm(setBans, 'ips', v)} placeholder="198.51.100.7" />
-        <ChipList label={t('rd.bannedkeys', 'Banned keys')} items={bans.keys || []} onAdd={(v) => addTo(setBans, 'keys', v)} onRemove={(v) => rm(setBans, 'keys', v)} placeholder="key…" />
-        <AccountChipList label={t('repos.bannedaccounts', 'Banned accounts')} items={bans.accounts || []} onAdd={(e) => addAccount(setBans, 'accounts', e)} onRemove={(e) => rmAccount(setBans, 'accounts', e)} placeholder={t('repos.acct.search', 'Search creator id / Discord / username…')} />
-      </Card>
+      {/* SIZE, in Settings, because that is what a setting is: how this repo is provisioned.
+          Only offered for a POOLED repo — a solo one's quota is fixed by its plan, and a
+          slider that always answers "not grouped" is a control that lies about being one.
+          The floor is what the repo ALREADY holds: the server refuses `below_used` anyway,
+          and letting the slider go there first would be offering a move that cannot be made. */}
+      {r.grouped && (
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-1.5 text-sm">
+            <span className="flex items-center gap-1.5 text-[var(--muted)]"><HardDrive size={14} /> {t('rd.size', 'Storage')}</span>
+            <span className="font-semibold">{quotaGB.toFixed(1)} GB</span>
+          </div>
+          <input type="range" min={Math.max(0.5, usedGB)} max={2000} step={0.5}
+            value={Math.max(quotaGB, usedGB)} className="bcw-range w-full"
+            onChange={(e) => setQuotaGB(Number(e.target.value))} />
+          <div className="text-xs mt-2 text-[var(--muted)]">
+            {t('rd.size.used', 'Holding {n} GB.').replace('{n}', usedGB.toFixed(2))}{' '}
+            {t('rd.size.floor', 'It cannot be set below what it already holds — delete files first.')}
+          </div>
+          <div className="flex justify-end mt-3">
+            <Button size="sm" variant="secondary" disabled={sizeBusy || Math.abs(quotaGB - (r.storageQuotaBytes / GiB)) < 0.01}
+              onClick={saveQuota}>{sizeBusy ? <Spinner /> : t('rd.size.apply', 'Resize')}</Button>
+          </div>
+        </Card>
+      )}
       <Card className="p-4">
         <div className="flex items-center justify-between mb-1.5 text-sm"><span className="flex items-center gap-1.5 text-[var(--muted)]"><Zap size={14} /> {t('repos.uploadlimit', 'Upload limit')}</span><span className="font-semibold">{reqMbps >= capKbps / 1024 ? t('repos.max', 'Max') : `${reqMbps.toFixed(1)} Mbps`}</span></div>
         <input type="range" min={0.5} max={Math.max(1, capKbps / 1024)} step={0.5} value={Math.min(reqMbps, capKbps / 1024)} className="bcw-range w-full" onChange={(e) => setReqMbps(Number(e.target.value))} />
@@ -798,6 +820,43 @@ function AccessTab({ r, reload }) {
     } catch { toast.error(t('repos.failed', 'Failed.')); }
   };
   const validEmail = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
+
+  // ── who may READ this repo ────────────────────────────────────────────────
+  //
+  // These lists used to live under Settings while this tab held the dashboard's own
+  // emails and passwords, which had the two words the wrong way round: whether somebody
+  // may read the repo is an access question, and how big the repo may grow is a setting.
+  // Moved rather than duplicated — the PUT is the same one, and two editors writing one
+  // `settings.access` would have been two answers to one question.
+  const s0 = r.settings || { access: {}, bans: {}, requestedUploadKbps: null };
+  const [access, setAccess] = useState(s0.access || {});
+  const [bans, setBans] = useState(s0.bans || {});
+  const [listBusy, setListBusy] = useState(false);
+  const addTo = (setter, field, val) => setter((x) => ({ ...x, [field]: [...new Set([...(x[field] || []), val])] }));
+  const rm = (setter, field, val) => setter((x) => ({ ...x, [field]: (x[field] || []).filter((v) => v !== val) }));
+  const addAccount = (setter, field, entry) => setter((x) => {
+    const list = x[field] || [];
+    if (list.some((a) => a.type === entry.type && a.id === entry.id)) return x;
+    return { ...x, [field]: [...list, entry] };
+  });
+  const rmAccount = (setter, field, entry) => setter((x) => ({ ...x, [field]: (x[field] || []).filter((a) => !(a.type === entry.type && a.id === entry.id)) }));
+  const saveLists = async () => {
+    setListBusy(true);
+    try {
+      // requestedUploadKbps is sent unchanged: the PUT replaces the whole settings object,
+      // and omitting it here would quietly reset a limit set on the other tab.
+      // Same rule the other way: the upload limit is read from `r` now, not from a copy taken
+      // when this tab opened, so saving here cannot undo a limit set on Settings.
+      await api.put(`/repos/${r.id}/dashboard/settings`, { access, bans, requestedUploadKbps: r.settings?.requestedUploadKbps ?? null });
+      toast.success(t('repos.mng.saved', 'Settings saved.'));
+      reload();
+    } catch (x) {
+      toast.error(x.data?.error === 'unsupported_public_key'
+        ? t('oca.badkey', 'One of the public keys is not a supported type (ed25519, RSA or ECDSA).')
+        : t('repos.mng.savefail', 'Failed to save.'));
+    } finally { setListBusy(false); }
+  };
+
   return (
     <div className="space-y-4">
       <Card className="p-4">
@@ -841,6 +900,26 @@ function AccessTab({ r, reload }) {
         </div>
       </Card>
       <div className="text-[11px] text-[var(--faint)] flex items-center gap-1.5"><ShieldCheck size={12} /> {t('rd.accessnote', 'You (the owner) and site admins always have full access. Collaborators and password holders can manage files, publishing and settings, but not access or billing.')}</div>
+      {/* Staff-wide rules are layered ON TOP of these, so a repo can be closed by a
+          decision made elsewhere. Saying so here stops "but I allowed them" being a
+          mystery. */}
+      <div className="flex items-center gap-2 text-xs text-[var(--muted)]"><Globe size={13} className="text-[var(--primary-2)]" /> {t('repos.globalpolicy.note', "Staff-wide bans and (if enabled) a site-wide whitelist apply to every repo automatically, on top of what you set below.")}</div>
+      <Card className="p-4 space-y-4">
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={access.whitelistEnabled} onChange={(e) => setAccess({ ...access, whitelistEnabled: e.target.checked })} /> {t('repos.wl', 'Whitelist-only access (only allow-listed IPs/keys/accounts can sync)')}</label>
+        <ChipList label={t('repos.allowedips', 'Allowed IPs')} items={access.ips || []} onAdd={(v) => addTo(setAccess, 'ips', v)} onRemove={(v) => rm(setAccess, 'ips', v)} placeholder="203.0.113.4" />
+        <ChipList label={t('repos.allowedkeys', 'Allowed keys')} items={access.keys || []} onAdd={(v) => addTo(setAccess, 'keys', v)} onRemove={(v) => rm(setAccess, 'keys', v)} placeholder="access-key…" />
+        <AccountChipList label={t('repos.allowedaccounts', 'Allowed accounts')} items={access.accounts || []} onAdd={(e) => addAccount(setAccess, 'accounts', e)} onRemove={(e) => rmAccount(setAccess, 'accounts', e)} placeholder={t('repos.acct.search', 'Search creator id / Discord / username…')} />
+        {/* Independent of the whitelist toggle, and deliberately so: an authorised key is a
+            requirement placed on EVERYONE, not one more way onto an allow list. Adding a key
+            here means nobody syncs without one. */}
+        <PubkeyList items={access.pubkeys || []} onAdd={(v) => addTo(setAccess, 'pubkeys', v)} onRemove={(v) => rm(setAccess, 'pubkeys', v)} />
+      </Card>
+      <Card className="p-4 space-y-3">
+        <ChipList label={t('repos.bannedips', 'Banned IPs')} items={bans.ips || []} onAdd={(v) => addTo(setBans, 'ips', v)} onRemove={(v) => rm(setBans, 'ips', v)} placeholder="198.51.100.7" />
+        <ChipList label={t('rd.bannedkeys', 'Banned keys')} items={bans.keys || []} onAdd={(v) => addTo(setBans, 'keys', v)} onRemove={(v) => rm(setBans, 'keys', v)} placeholder="key…" />
+        <AccountChipList label={t('repos.bannedaccounts', 'Banned accounts')} items={bans.accounts || []} onAdd={(e) => addAccount(setBans, 'accounts', e)} onRemove={(e) => rmAccount(setBans, 'accounts', e)} placeholder={t('repos.acct.search', 'Search creator id / Discord / username…')} />
+      </Card>
+      <div className="flex justify-end"><Button variant="primary" disabled={listBusy} onClick={saveLists}>{listBusy ? <Spinner /> : t('repos.savesettings', 'Save settings')}</Button></div>
     </div>
   );
 }
