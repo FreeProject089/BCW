@@ -10,6 +10,7 @@ import {
 import { api } from '../lib/api.js';
 import { repoStatusMeta, repoCategoryMeta, repoLocked } from './repos.jsx';
 import { useToast, useDialog, Button, Card, Badge, Input, Select, Spinner, copyText } from '../ui/ui.jsx';
+import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { useUploads } from './uploads.jsx';
 import { useUndoableSave } from './pages.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -683,70 +684,6 @@ function OnlineTab({ r, reload, publicUrl }) {
   );
 }
 
-function ChipList({ label, items, onAdd, onRemove, placeholder }) {
-  const [v, setV] = useState('');
-  const add = () => { const x = v.trim(); if (x) { onAdd(x); setV(''); } };
-  return (
-    <div>
-      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{label}</div>
-      <div className="flex gap-2"><Input value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} onKeyDown={(e) => e.key === 'Enter' && add()} /><Button size="sm" onClick={add}><Plus size={14} /></Button></div>
-      <div className="flex flex-wrap gap-1.5 mt-2">
-        {items.length ? items.map((x) => (
-          <span key={x} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs">{x}<button onClick={() => onRemove(x)} className="text-[var(--faint)] hover:text-error"><X size={12} /></button></span>
-        )) : <span className="text-xs text-[var(--faint)]">{'—'}</span>}
-      </div>
-    </div>
-  );
-}
-
-// Whitelist/ban entries that identify an account (BetterCommunity or Discord) rather
-// than an IP/key. Search resolves via /accounts/search (creator id / Discord id or
-// username / display name) — a repo owner can add either identity from one result.
-function AccountChipList({ label, items, onAdd, onRemove, placeholder }) {
-  const { t } = useI18n();
-  const [q, setQ] = useState('');
-  const [results, setResults] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const search = async () => {
-    if (q.trim().length < 2) return setResults(null);
-    setBusy(true);
-    try { const { accounts } = await api.get(`/accounts/search?q=${encodeURIComponent(q.trim())}`); setResults(accounts); }
-    catch { setResults([]); } finally { setBusy(false); }
-  };
-  const has = (type, id) => items.some((a) => a.type === type && a.id === id);
-  const add = (entry) => { if (!has(entry.type, entry.id)) onAdd(entry); };
-  return (
-    <div>
-      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{label}</div>
-      <div className="flex gap-2">
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} onKeyDown={(e) => e.key === 'Enter' && search()} />
-        <Button size="sm" onClick={search}>{busy ? <Spinner /> : <Search size={14} />}</Button>
-      </div>
-      {results && (
-        <div className="mt-2 space-y-1">
-          {results.length ? results.map((u) => (
-            <div key={u.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs">
-              <span className="truncate">{u.displayName}{u.discord && <span className="text-[var(--faint)]"> · Discord: {u.discord.username || u.discord.id}</span>}</span>
-              <span className="flex gap-1 shrink-0">
-                <button onClick={() => add({ type: 'bcweb', id: u.id, label: u.displayName })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--primary-2)] hover:border-[var(--primary-2)]">+ BC</button>
-                {u.discord && <button onClick={() => add({ type: 'discord', id: u.discord.id, label: u.discord.username || u.discord.id })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--primary-2)] hover:border-[var(--primary-2)]">+ Discord</button>}
-              </span>
-            </div>
-          )) : <div className="text-xs text-[var(--faint)] px-1">{t('repos.acct.none', 'No accounts found.')}</div>}
-        </div>
-      )}
-      <div className="flex flex-wrap gap-1.5 mt-2">
-        {items.length ? items.map((a) => (
-          <span key={`${a.type}:${a.id}`} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs">
-            <Users size={10} className="text-[var(--faint)]" /> {a.type === 'discord' ? 'Discord: ' : ''}{a.label || a.id}
-            <button onClick={() => onRemove(a)} className="text-[var(--faint)] hover:text-error"><X size={12} /></button>
-          </span>
-        )) : <span className="text-xs text-[var(--faint)]">{'—'}</span>}
-      </div>
-    </div>
-  );
-}
-
 function SettingsTab({ r, reload }) {
   const { t } = useI18n(); const toast = useToast();
   const s0 = r.settings || { access: { whitelistEnabled: false, ips: [], keys: [], accounts: [] }, bans: { ips: [], keys: [], accounts: [] }, requestedUploadKbps: null };
@@ -768,7 +705,13 @@ function SettingsTab({ r, reload }) {
   const save = async () => {
     setBusy(true);
     try { const res = await api.put(`/repos/${r.id}/dashboard/settings`, { access, bans, requestedUploadKbps: requestedKbps <= 0 ? null : requestedKbps }); toast.success(res.effectiveUploadKbps < requestedKbps ? t('repos.mng.capped', 'Saved — upload capped to {n} Mbps by the sandbox.').replace('{n}', (res.effectiveUploadKbps / 1024).toFixed(1)) : t('repos.mng.saved', 'Settings saved.')); reload(); }
-    catch { toast.error(t('repos.mng.savefail', 'Failed to save.')); } finally { setBusy(false); }
+    // Name the failure when the server named it: "Failed to save." over a form holding a key
+    // somebody just pasted tells them nothing about which of the six fields is wrong.
+    catch (x) {
+      toast.error(x.data?.error === 'not_an_ed25519_public_key'
+        ? t('oca.badkey', 'One of the public keys is not an ed25519 key.')
+        : t('repos.mng.savefail', 'Failed to save.'));
+    } finally { setBusy(false); }
   };
   if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]">{t('rd.selfhostset', 'Sandbox settings apply to hosted repos only.')}</Card>;
   return (
@@ -780,6 +723,10 @@ function SettingsTab({ r, reload }) {
         <ChipList label={t('repos.allowedips', 'Allowed IPs')} items={access.ips || []} onAdd={(v) => addTo(setAccess, 'ips', v)} onRemove={(v) => rm(setAccess, 'ips', v)} placeholder="203.0.113.4" />
         <ChipList label={t('repos.allowedkeys', 'Allowed keys')} items={access.keys || []} onAdd={(v) => addTo(setAccess, 'keys', v)} onRemove={(v) => rm(setAccess, 'keys', v)} placeholder="access-key…" />
         <AccountChipList label={t('repos.allowedaccounts', 'Allowed accounts')} items={access.accounts || []} onAdd={(e) => addAccount(setAccess, 'accounts', e)} onRemove={(e) => rmAccount(setAccess, 'accounts', e)} placeholder={t('repos.acct.search', 'Search creator id / Discord / username…')} />
+        {/* Independent of the whitelist toggle, and deliberately so: an authorised key is a
+            requirement placed on EVERYONE, not one more way onto an allow list. Adding a key
+            here means nobody syncs without one. */}
+        <PubkeyList items={access.pubkeys || []} onAdd={(v) => addTo(setAccess, 'pubkeys', v)} onRemove={(v) => rm(setAccess, 'pubkeys', v)} />
       </Card>
       <Card className="p-4 space-y-3">
         <ChipList label={t('repos.bannedips', 'Banned IPs')} items={bans.ips || []} onAdd={(v) => addTo(setBans, 'ips', v)} onRemove={(v) => rm(setBans, 'ips', v)} placeholder="198.51.100.7" />

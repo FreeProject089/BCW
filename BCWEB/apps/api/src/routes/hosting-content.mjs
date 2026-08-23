@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import argon2 from 'argon2';
+import { keyAuthOk, keyAudience } from '../lib/keyauth.mjs';
 import { Transform } from 'node:stream';
 import { createHash } from 'node:crypto';
 import archiver from 'archiver';
@@ -110,6 +111,14 @@ export function sandboxVerdict(repo, req, policies, identity) {
       || policies.some((pol) => (pol.whitelistIps || []).includes(ip) || (creatorId && (pol.whitelistKeys || []).includes(creatorId)) || matchAccountList(pol.whitelistAccounts, userId, discordId));
     if (!ok) return { ok: false, reason: 'not_whitelisted', accountLinked: !!userId };
   }
+  // Authorised PUBLIC keys, checked last.
+  //
+  // `acc.keys` above holds CREATOR IDS, which arrive in a header the client chooses — an
+  // allow list keyed on them is passed by claiming an id that is on it. `acc.pubkeys` holds
+  // real public keys, and the holder has to sign for them. The two live side by side because
+  // they answer different questions, and the names stay distinct for exactly that reason.
+  const ka = keyAuthOk(acc, req, keyAudience());
+  if (!ka.ok) return { ok: false, reason: 'key_required', keyReason: ka.reason };
   return { ok: true };
 }
 
@@ -117,6 +126,11 @@ function sandboxGate(repo, req, reply, policies, identity) {
   const v = sandboxVerdict(repo, req, policies, identity);
   if (v.ok) return true;
   if (v.reason === 'banned') reply.code(403).send({ error: 'banned' });
+  // 401 rather than 403: the client can DO something about this one — present a proof — and
+  // BMM already reads a 401 as "there is a credential to supply". The specific reason stays
+  // in the log, not the body: telling a prober whether its key is authorised is telling it
+  // something it should have to hold a key to learn.
+  else if (v.reason === 'key_required') reply.code(401).send({ error: 'key_required' });
   else reply.code(403).send({ error: 'not_whitelisted', accountLinked: v.accountLinked });
   return false;
 }
@@ -127,7 +141,9 @@ function sandboxGate(repo, req, reply, policies, identity) {
 function repoRestricted(repo, policies) {
   const s = repo.settings || {};
   const anyBans = (o) => ((o?.ips || []).length + (o?.keys || []).length + (o?.accounts || []).length) > 0;
-  return !!(s.access?.whitelistEnabled || anyBans(s.bans)
+  // A public-key requirement is per-requester too: without it here, a CDN would cache one
+  // authorised response and hand it to everybody, which is the whole gate defeated by a hit.
+  return !!(s.access?.whitelistEnabled || (s.access?.pubkeys || []).length || anyBans(s.bans)
     || policies.some((pol) => pol?.whitelistOnly
       || (pol?.bannedIps || []).length || (pol?.bannedKeys || []).length || (pol?.bannedAccounts || []).length));
 }

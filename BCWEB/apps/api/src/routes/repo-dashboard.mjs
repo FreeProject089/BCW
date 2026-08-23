@@ -2,19 +2,16 @@ import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
 import archiver from 'archiver';
-import { db, repoLog, notify, accountEntrySchema } from '../lib/lib.mjs';
-import { effUpload, DEFAULT_SETTINGS } from './repos.mjs';
+import { db, repoLog, notify, accountEntrySchema, pubkeyErrorCode } from '../lib/lib.mjs';
+import { effUpload, DEFAULT_SETTINGS, SETTINGS_SCHEMA } from './repos.mjs';
 import { presignRepoFile, registerRepoFile, removeRepoFile, publishRepo, unpublishRepo, throttle } from './hosting-content.mjs';
 import { getObject } from '../lib/storage.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 
-// Same sandbox-settings shape the owner card uses (clamped to hard caps on save).
-const settingsSchema = z.object({
-  access: z.object({ whitelistEnabled: z.boolean(), ips: z.array(z.string().max(64)).max(2000), keys: z.array(z.string().max(128)).max(2000), accounts: z.array(accountEntrySchema).max(2000) }).partial(),
-  bans: z.object({ ips: z.array(z.string().max(64)).max(10000), keys: z.array(z.string().max(128)).max(10000), accounts: z.array(accountEntrySchema).max(10000) }).partial(),
-  requestedUploadKbps: z.number().int().min(0).max(10_000_000).nullable(),
-}).partial();
+// The sandbox-settings shape, imported rather than restated — this file used to carry its
+// own identical copy, and a field added to one would have been stripped by the other.
+const settingsSchema = SETTINGS_SCHEMA;
 
 const fileSer = (f) => ({ ...f, size: Number(f.size) });
 
@@ -194,7 +191,7 @@ export default async function repoDashboardRoutes(app) {
   // ── Sandbox settings (owner / collab / password) — clamped to the hard caps ──
   app.put('/repos/:id/dashboard/settings', { preHandler: resolve() }, async (req, reply) => {
     const b = settingsSchema.safeParse(req.body);
-    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (!b.success) return reply.code(400).send({ error: pubkeyErrorCode(b.error) || 'invalid_input' });
     const r = req.repo; const cur = r.settings || DEFAULT_SETTINGS;
     const next = {
       access: { ...DEFAULT_SETTINGS.access, ...cur.access, ...(b.data.access || {}) },

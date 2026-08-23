@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
+import { pubkeyFromOpenssh } from './keyauth.mjs';
 import { userBcId } from './repofingerprint.mjs';
 import { boundedSet } from './boundedmap.mjs';
 // NOTE: clientIp is deliberately NOT imported — this module already exports its own,
@@ -25,6 +26,29 @@ export function safeEqual(a, b) {
 // A whitelist/ban entry that identifies an account rather than an IP/key —
 // shared by per-repo settings (repos.mjs, repo-dashboard.mjs) and the global
 // policy (access-policy.mjs) so the shape can never drift between the two.
+// One OpenSSH public-key line an owner pasted into an access list.
+//
+// Rejected HERE, at save time, rather than at request time. Only ed25519 can be verified
+// (lib/keyauth.mjs says why), so storing an RSA key would store a requirement that nothing
+// can ever satisfy: every client locked out, the owner included, and a gate that looks broken
+// rather than mis-configured. The moment the person is still looking at the field is the only
+// good moment to say no.
+export const pubkeyLineSchema = z.string().max(1000).refine((v) => pubkeyFromOpenssh(v) !== null, {
+  message: 'not_an_ed25519_public_key',
+});
+
+// A zod failure that is ONLY about a pasted public key, turned into a name the UI can act on.
+//
+// `invalid_input` is the right answer for a malformed body, and a useless one for "the key you
+// just typed is the wrong kind" — the person is looking at the field and can fix it if we say
+// which field. Returns null when the failure was something else, so the blanket code still
+// covers everything it should.
+export function pubkeyErrorCode(zodError) {
+  const issues = zodError?.issues || [];
+  return issues.length && issues.every((i) => i.message === 'not_an_ed25519_public_key')
+    ? 'not_an_ed25519_public_key' : null;
+}
+
 export const accountEntrySchema = z.object({
   type: z.enum(['bcweb', 'discord']),
   id: z.string().min(1).max(120),

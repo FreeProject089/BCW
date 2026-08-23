@@ -1,8 +1,9 @@
 import argon2 from 'argon2';
+import { keyAuthOk, keyAudience } from '../lib/keyauth.mjs';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
-import { db, requireRole, requireCap, optionalAuth, slugify, notify, resolveClientIdentity, accessListMatches, policyBans, policyWhitelist, getGlobalAccessPolicy, getUserAccessPolicy, safeEqual } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalAuth, slugify, notify, resolveClientIdentity, accessListMatches, pubkeyLineSchema, pubkeyErrorCode, policyBans, policyWhitelist, getGlobalAccessPolicy, getUserAccessPolicy, safeEqual } from '../lib/lib.mjs';
 import { presignGet, deleteObject, getObject } from '../lib/storage.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
 import { replyCachedJson } from '../lib/cache.mjs';
@@ -105,6 +106,12 @@ async function catalogGate(catalog, identity, globalPolicy, ownerPolicy, key, re
     const shareOk = !!(key && catalog.shareKey && safeEqual(key, catalog.shareKey));
     if (!shareOk && !accessListMatches(acc, identity)) return { code: 403, error: 'not_whitelisted' };
   }
+  // Authorised PUBLIC keys. `acc.keys` above holds creator ids, which a client can claim;
+  // these have to be signed for. Different questions, so different names.
+  if (req) {
+    const ka = keyAuthOk(acc, req, keyAudience());
+    if (!ka.ok) return { code: 401, error: 'key_required' };
+  }
   // Last, so a banned client is told it is banned rather than asked for a password it could
   // never use — and so the password never becomes an oracle for "does this catalog exist".
   if (req && !(await catalogPasswordOk(catalog, req))) {
@@ -168,7 +175,10 @@ const rawFeedSchema = z.object({
 // Access config the owner can set: whitelist (ips/keys/accounts) + a bans sub-object.
 // Email / BC id / username are resolved to a bcweb account BEFORE reaching here.
 const acctEntry = z.object({ type: z.enum(['bcweb', 'discord', 'creator']), id: z.string().min(1).max(120), label: z.string().max(120).optional() });
-const accessList = z.object({ ips: z.array(z.string().max(64)).max(500).optional(), keys: z.array(z.string().max(120)).max(500).optional(), accounts: z.array(acctEntry).max(500).optional() });
+// `keys` are CREATOR IDS (claimed in a header); `pubkeys` are OpenSSH public-key lines
+// (signed for). Two fields because they are two different guarantees, and one name for
+// both would make the weaker one look like the stronger.
+const accessList = z.object({ ips: z.array(z.string().max(64)).max(500).optional(), keys: z.array(z.string().max(120)).max(500).optional(), pubkeys: z.array(pubkeyLineSchema).max(200).optional(), accounts: z.array(acctEntry).max(500).optional() });
 const accessSchema = accessList.extend({ bans: accessList.optional() });
 
 // How many things is this catalog offering? The two modes store that in different places, so
@@ -676,7 +686,7 @@ export default async function communityCatalogRoutes(app) {
       // filtering by app silently drops it.
       app: z.union([z.enum(['bmm', 'bsm', 'installer', 'community', 'developers']), z.literal('')]).optional(),
     }).safeParse(req.body);
-    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (!b.success) return reply.code(400).send({ error: pubkeyErrorCode(b.error) || 'invalid_input' });
     if ((b.data.kinds?.length || 0) > 1) return reply.code(400).send({ error: 'mixed_kinds' });
     const p = await db();
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });

@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
+import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -13595,10 +13596,78 @@ function CatalogSyncPassword({ catalog, onChange }) {
   );
 }
 
+// Owner: who may read this catalog.
+//
+// Catalogs enforced bans and a whitelist server-side long before this screen existed — the
+// rules ran, and nobody could see or set them. The lists themselves are the same three the
+// repo dashboard edits, so the editors are imported rather than rewritten.
+//
+// The list route serialises through an allowlist that (rightly) omits `access` — a public
+// browse must not ship somebody's ban list — so the panel fetches the owner-scoped detail
+// route when it opens, exactly as the item manager does.
+function OwnerCatalogAccess({ catalog, onChange }) {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading } = useAsync(() => api.get(`/me/catalogs/${catalog.id}`), [catalog.id]);
+  const [acc, setAcc] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data?.catalog) setAcc(data.catalog.access || {}); }, [data]);
+  if (loading || !acc) return <div className="mt-3 pt-3 border-t border-[var(--line)]"><Spinner /></div>;
+
+  const bans = acc.bans || {};
+  const setList = (field, val) => setAcc((a) => ({ ...a, [field]: val }));
+  const setBanList = (field, val) => setAcc((a) => ({ ...a, bans: { ...(a.bans || {}), [field]: val } }));
+  const addTo = (cur, v) => [...new Set([...(cur || []), v])];
+  const rmFrom = (cur, v) => (cur || []).filter((x) => x !== v);
+  const addAcct = (cur, e) => ((cur || []).some((a) => a.type === e.type && a.id === e.id) ? cur : [...(cur || []), e]);
+  const rmAcct = (cur, e) => (cur || []).filter((a) => !(a.type === e.type && a.id === e.id));
+
+  const save = async () => {
+    setBusy(true);
+    try { await api.patch(`/me/catalogs/${catalog.id}`, { access: acc }); toast.success(t('oca.saved', 'Access saved.')); onChange?.(); }
+    catch (x) {
+      // The server refuses a non-ed25519 key. Say which failure it was: "Failed." on a form
+      // holding a key someone just pasted is the least useful thing we could tell them.
+      toast.error(x.data?.error === 'not_an_ed25519_public_key'
+        ? t('oca.badkey', 'One of the public keys is not an ed25519 key.')
+        : t('acc.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-[var(--line)] space-y-4">
+      <Card className="p-4 space-y-4">
+        <div className="text-sm font-semibold">{t('oca.allow', 'Who may download')}</div>
+        {/* Said plainly, because the rule is not obvious and a whitelist that silently does
+            nothing is worse than no whitelist: the IP/id/account lists gate a PRIVATE catalog
+            (or a site-wide whitelist mode). A public catalog ignores them — but never ignores
+            the bans, the password, or a required key. */}
+        <div className="text-xs text-[var(--muted)]">
+          {catalog.visibility === 'private'
+            ? t('oca.priv', 'This catalog is private: only the lists below (or the share link) can read it.')
+            : t('oca.pub', 'This catalog is public, so these allow lists are not applied — set it to Private for them to take effect. Bans, the password and any required key still apply.')}
+        </div>
+        <ChipList label={t('repos.allowedips', 'Allowed IPs')} items={acc.ips || []} onAdd={(v) => setList('ips', addTo(acc.ips, v))} onRemove={(v) => setList('ips', rmFrom(acc.ips, v))} placeholder="203.0.113.4" />
+        <ChipList label={t('repos.allowedkeys', 'Allowed keys')} items={acc.keys || []} onAdd={(v) => setList('keys', addTo(acc.keys, v))} onRemove={(v) => setList('keys', rmFrom(acc.keys, v))} placeholder="BMM creator id…" />
+        <AccountChipList label={t('repos.allowedaccounts', 'Allowed accounts')} items={acc.accounts || []} onAdd={(e) => setList('accounts', addAcct(acc.accounts, e))} onRemove={(e) => setList('accounts', rmAcct(acc.accounts, e))} placeholder={t('repos.acct.search', 'Search creator id / Discord / username…')} />
+        <PubkeyList items={acc.pubkeys || []} onAdd={(v) => setList('pubkeys', addTo(acc.pubkeys, v))} onRemove={(v) => setList('pubkeys', rmFrom(acc.pubkeys, v))} />
+      </Card>
+      <Card className="p-4 space-y-4">
+        <div className="text-sm font-semibold">{t('oca.ban', 'Banned')}</div>
+        <div className="text-xs text-[var(--muted)]">{t('oca.ban.note', 'Applied to every download, public catalog included — and before anything else, so a banned client is told it is banned rather than asked for a password.')}</div>
+        <ChipList label={t('repos.bannedips', 'Banned IPs')} items={bans.ips || []} onAdd={(v) => setBanList('ips', addTo(bans.ips, v))} onRemove={(v) => setBanList('ips', rmFrom(bans.ips, v))} placeholder="198.51.100.7" />
+        <ChipList label={t('rd.bannedkeys', 'Banned keys')} items={bans.keys || []} onAdd={(v) => setBanList('keys', addTo(bans.keys, v))} onRemove={(v) => setBanList('keys', rmFrom(bans.keys, v))} placeholder="BMM creator id…" />
+        <AccountChipList label={t('repos.bannedaccounts', 'Banned accounts')} items={bans.accounts || []} onAdd={(e) => setBanList('accounts', addAcct(bans.accounts, e))} onRemove={(e) => setBanList('accounts', rmAcct(bans.accounts, e))} placeholder={t('repos.acct.search', 'Search creator id / Discord / username…')} />
+      </Card>
+      <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('repos.savesettings', 'Save settings')}</Button></div>
+    </div>
+  );
+}
+
 function OwnerCatalogs() {
   const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/me/catalogs'), []);
   const [openId, setOpenId] = useState(null);
+  const [accessId, setAccessId] = useState(null);
   const [hidden, setHidden] = useState(() => new Set()); // optimistically-removed during the undo window
   const cats = (data?.catalogs || []).filter((c) => !hidden.has(c.id));
   const patch = async (c, body) => { try { await api.patch(`/me/catalogs/${c.id}`, body); reload(); } catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); } };
@@ -13646,6 +13715,7 @@ function OwnerCatalogs() {
               <ActionBar actions={[
                 { key: 'feed', label: t('oc.feed', 'Feed URL'), icon: Copy, onClick: () => copyFeed(c) },
                 c.mode === 'managed' && { key: 'items', label: t('oc.items', 'Items'), icon: Package, onClick: () => setOpenId(openId === c.id ? null : c.id) },
+                { key: 'access', label: t('oc.access', 'Access'), icon: ShieldCheck, onClick: () => setAccessId(accessId === c.id ? null : c.id) },
                 { key: 'del', label: t('common.delete', 'Delete'), icon: Trash2, danger: true, onClick: () => del(c) },
               ].filter(Boolean)} />
             </div>
@@ -13670,6 +13740,7 @@ function OwnerCatalogs() {
               <CatalogSyncPassword catalog={c} onChange={reload} />
             </div>
             {openId === c.id && <OwnerCatalogItems catalog={c} onChange={reload} />}
+            {accessId === c.id && <OwnerCatalogAccess catalog={c} onChange={reload} />}
           </Card>
         ))}
       </div> : <EmptyState icon={Boxes} title={t('mycat.none.t', 'No catalogs yet')} sub={t('mycat.none.s', 'Host your own catalog of plugins, themes or apps.')} />}

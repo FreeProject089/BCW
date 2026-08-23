@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { applyCampaign } from './campaigns.mjs';
-import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema, logAudit } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema, pubkeyLineSchema, pubkeyErrorCode, logAudit } from '../lib/lib.mjs';
 import { purgeRepo } from '../lib/sweeper.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } from '../lib/repofingerprint.mjs';
@@ -32,7 +32,22 @@ const linksSchema = z.object({ discord: z.string().max(300), website: z.string()
 // `accounts` entries ({type:"bcweb"|"discord", id, label}) whitelist/ban a specific
 // account rather than an IP/key; the site-wide GlobalAccessPolicy (access-policy.mjs)
 // is enforced ON TOP of this, identically for every repo (see hosting-content.mjs).
-export const DEFAULT_SETTINGS = { access: { whitelistEnabled: false, ips: [], keys: [], accounts: [] }, bans: { ips: [], keys: [], accounts: [] }, requestedUploadKbps: null };
+export const DEFAULT_SETTINGS = { access: { whitelistEnabled: false, ips: [], keys: [], pubkeys: [], accounts: [] }, bans: { ips: [], keys: [], accounts: [] }, requestedUploadKbps: null };
+
+// The sandbox-settings shape, defined ONCE and imported by every route that accepts it.
+// It used to be written out twice, identically, in two files — which is how one copy gains a
+// field and the other silently strips it (zod drops unknown keys) on the very next save.
+export const SETTINGS_SCHEMA = z.object({
+  access: z.object({
+    whitelistEnabled: z.boolean(),
+    ips: z.array(z.string().max(64)).max(2000),
+    keys: z.array(z.string().max(128)).max(2000),
+    pubkeys: z.array(pubkeyLineSchema).max(200),
+    accounts: z.array(accountEntrySchema).max(2000),
+  }).partial(),
+  bans: z.object({ ips: z.array(z.string().max(64)).max(10000), keys: z.array(z.string().max(128)).max(10000), accounts: z.array(accountEntrySchema).max(10000) }).partial(),
+  requestedUploadKbps: z.number().int().min(0).max(10_000_000).nullable(),
+}).partial();
 export function effUpload(repo) {
   const cap = repo.uploadLimitKbps || 0;
   const req = repo.settings?.requestedUploadKbps;
@@ -332,15 +347,11 @@ export default async function repoRoutes(app) {
   });
 
   // ── Sandboxed repo management (owner) ──
-  const settingsSchema = z.object({
-    access: z.object({ whitelistEnabled: z.boolean(), ips: z.array(z.string().max(64)).max(2000), keys: z.array(z.string().max(128)).max(2000), accounts: z.array(accountEntrySchema).max(2000) }).partial(),
-    bans: z.object({ ips: z.array(z.string().max(64)).max(10000), keys: z.array(z.string().max(128)).max(10000), accounts: z.array(accountEntrySchema).max(10000) }).partial(),
-    requestedUploadKbps: z.number().int().min(0).max(10_000_000).nullable(),
-  }).partial();
+  const settingsSchema = SETTINGS_SCHEMA;
 
   app.put('/me/repos/:id/settings', { preHandler: requireRole() }, async (req, reply) => {
     const b = settingsSchema.safeParse(req.body);
-    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (!b.success) return reply.code(400).send({ error: pubkeyErrorCode(b.error) || 'invalid_input' });
     const p = await db();
     const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
     if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
