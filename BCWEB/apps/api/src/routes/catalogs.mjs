@@ -623,8 +623,15 @@ export default async function communityCatalogRoutes(app) {
       groupId: z.string().optional(),
       storageGB: z.number().min(0.5).max(2000).optional().default(1),
       rawJson: rawFeedSchema.optional(),
+      // Protection AT CREATION, so a catalogue is never briefly open between being made and
+      // being locked. Setting it afterwards still works and is still the only way to change
+      // it; this exists because "create it, then remember to protect it" is a step people
+      // skip, and the window it opens is real — a private catalogue is listed the moment it
+      // exists.
+      syncPassword: z.string().min(4).max(200).optional(),
+      pubkeys: z.array(pubkeyLineSchema).max(200).optional(),
     }).safeParse(req.body);
-    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (!b.success) return reply.code(400).send({ error: pubkeyErrorCode(b.error) || 'invalid_input' });
     if ((b.data.kinds?.length || 0) > 1) return reply.code(400).send({ error: 'mixed_kinds' });
     const p = await db();
     // Hosting a catalog requires a linked BMM identity (creator id) — it's what gates
@@ -655,6 +662,11 @@ export default async function communityCatalogRoutes(app) {
       freePlan: b.data.mode === 'raw',
       shareKey: crypto.randomBytes(12).toString('base64url'),
       rawJson: b.data.mode === 'raw' ? b.data.rawJson : undefined,
+      // Hashed on the way in, exactly as the later route does — argon2id, never the plaintext.
+      syncPasswordHash: b.data.syncPassword
+        ? await argon2.hash(b.data.syncPassword, { type: argon2.argon2id })
+        : undefined,
+      access: b.data.pubkeys?.length ? { pubkeys: b.data.pubkeys } : undefined,
     } });
     return reply.code(201).send({ catalog: ser(c), slug: c.slug });
   });

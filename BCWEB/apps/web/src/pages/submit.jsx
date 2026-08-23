@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { PubkeyList } from '../ui/access-lists.jsx';
 import { Link, useNavigate } from 'react-router-dom';
 import { Upload, Boxes, Server, ArrowLeft, Wand2, FileJson, Layers, Rocket, ChevronDown, CheckCircle2, Package } from 'lucide-react';
 import { PageHeader, Card, Button, Field, Input, Select, Textarea, Spinner, Badge, EmptyState } from '../ui/ui.jsx';
@@ -189,7 +190,10 @@ function HostCatalog({ onBack }) {
   // all, so the feed fell back to APP and a plugin catalog answered `unsupported_type` for the
   // only type it actually held. One catalog serves one type — BMM reads a separate URL per
   // type, each with its own payload shape.
-  const [form, setForm] = useState({ name: '', description: '', visibility: 'public', mode: 'raw', kind: 'plugin' });
+  const [form, setForm] = useState({ name: '', description: '', visibility: 'public', mode: 'raw', kind: 'plugin', syncPassword: '' });
+  // Beside the form rather than inside it: this is a list, and every other field there is
+  // a flat string the reset paths treat as one value each.
+  const [pubkeys, setPubkeys] = useState([]);
   const [rawFile, setRawFile] = useState(null);
   const [rawJson, setRawJson] = useState(null);
   const [pools, setPools] = useState(null);
@@ -217,6 +221,14 @@ function HostCatalog({ onBack }) {
   const create = () => {
     if (form.name.trim().length < 2) return toast.error(t('sub2.catname', 'A catalog name is required.'));
     const body = { name: form.name.trim(), description: form.description.trim(), mode: form.mode, visibility: form.visibility, kind: form.kind };
+    // Protection set HERE rather than after the fact. Creating a catalogue and then locking it
+    // leaves a window where it exists and is open, and for a listed catalogue that window is
+    // not theoretical.
+    if (form.syncPassword.trim()) {
+      if (form.syncPassword.trim().length < 4) return toast.error(t('sub2.pw.short', 'Password too short (min 4).'));
+      body.syncPassword = form.syncPassword.trim();
+    }
+    if (pubkeys.length) body.pubkeys = pubkeys;
     if (form.mode === 'raw') { if (!rawJson) return toast.error(t('sub2.raw.need', 'Upload your catalog.json first.')); body.rawJson = rawJson; }
     else {
       if (!groupId) return toast.error(t('sub2.pool.need', 'Pick a storage pool (or buy one on the Hosting page).'));
@@ -251,6 +263,14 @@ function HostCatalog({ onBack }) {
       <Card className="p-5 space-y-3">
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('sub2.catname.l', 'Catalog name')}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="My Server Plugins" /></Field>
+          {/* Optional, and blank means open — the same meaning it has everywhere else here. */}
+          <Field label={t('sub2.pw', 'Download password (optional)')} hint={t('sub2.pw.hint', 'Anyone syncing is asked for it. Leave empty for an open catalogue.')}>
+            <Input type="password" value={form.syncPassword} autoComplete="new-password"
+              onChange={(e) => setForm({ ...form, syncPassword: e.target.value })} />
+          </Field>
+          <PubkeyList items={pubkeys}
+            onAdd={(v) => setPubkeys([...new Set([...pubkeys, v])])}
+            onRemove={(v) => setPubkeys(pubkeys.filter((x) => x !== v))} />
           <Field label={t('sub2.visibility', 'Visibility')}><Select value={form.visibility} onChange={(e) => setForm({ ...form, visibility: e.target.value })}><option value="public">{t('sub2.public', 'Public (listed)')}</option><option value="private">{t('sub2.private', 'Private (invite only)')}</option></Select></Field>
         </div>
         <Field label={t('sub.desc', 'Description')}><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
