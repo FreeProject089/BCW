@@ -13664,7 +13664,12 @@ function OwnerCatalogAccess({ catalog, onChange }) {
   );
 }
 
-function OwnerCatalogs() {
+// Exported because dashboard.jsx reaches it by NAME through lazyNamed. Without the keyword
+// the lazy resolves to undefined and the whole Catalogues tab renders as React error #306 —
+// which says "element type is invalid" and names nothing, so it reads like a broken component
+// rather than a missing export. CatalogSyncPassword above carries the same note; this is the
+// second time.
+export function OwnerCatalogs() {
   const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/me/catalogs'), []);
   const [openId, setOpenId] = useState(null);

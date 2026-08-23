@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/check-lazy-named.mjs && vite build",
     "preview": "vite preview",
     "lint": "eslint src",
     "i18n:check": "node scripts/i18n-check.mjs --strict",
@@ -13,7 +13,8 @@
     "legal:check": "node scripts/check-legal-fresh.mjs",
     "i18n:untranslated": "node scripts/i18n-untranslated.mjs",
     "css:check": "node scripts/check-css-vars.mjs",
-    "geo:check": "node scripts/check-geo-names.mjs"
+    "geo:check": "node scripts/check-geo-names.mjs",
+    "check:lazy": "node scripts/check-lazy-named.mjs"
   },
   "dependencies": {
     "boring-avatars": "^1.11.2",
