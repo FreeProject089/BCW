@@ -148,6 +148,17 @@ export default async function socialRoutes(app) {
     // Direct lookups: a BC id, a repo id, or a catalog slug/id all resolve to the owner.
     const owners = new Set();
     if (looksLikeBcId(q)) { const uid = await findUserIdByBcId(p, q); if (uid) owners.add(uid); }
+    // A BMM creator id resolves to the account it is linked to.
+    //
+    // This is what lets a Server Repo name its author as a person: the manifest carries the
+    // signing creator id, and until now nothing PUBLIC could turn that into a profile — the
+    // two existing lookups are behind requireRole() and requireCap(). So a repo published by
+    // a linked BMM showed a bare identifier that led nowhere.
+    //
+    // It grants no new visibility: the filter below still requires profilePublic, still
+    // excludes banned and closed accounts, and an unlinked creator id simply matches nothing.
+    const byCreator = await p.creatorLink.findMany({ where: { creatorId: q }, select: { userId: true } });
+    for (const c of byCreator) owners.add(c.userId);
     const [repo, cat] = await Promise.all([
       p.serverRepo.findUnique({ where: { id: q }, select: { ownerId: true } }).catch(() => null),
       p.communityCatalog.findFirst({ where: { OR: [{ id: q }, { slug: q }] }, select: { ownerId: true } }).catch(() => null),
