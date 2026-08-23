@@ -17,7 +17,10 @@ async function readObject(key) {
   return Buffer.concat(chunks);
 }
 // Entries in a .bmmplug/.bmmtheme (ZIP) whose text is safe to preview inline for review.
-const TEXT_EXT = /\.(json|txt|md|css|js|mjs|cjs|ts|lua|cfg|ini|yml|yaml|xml|toml|csv|log|sh)$/i;
+// `bmp` is here despite the name: a BMM modpack is a signed JSON DOCUMENT, not an image.
+// Without it the packs inside a .cbmp listed with no preview, so a moderator reviewing a
+// catalogue could see that eight files existed and not one word of what they install.
+const TEXT_EXT = /\.(json|txt|md|css|js|mjs|cjs|ts|lua|cfg|ini|yml|yaml|xml|toml|csv|log|sh|bmp)$/i;
 const TEXT_PREVIEW_MAX = 256 * 1024; // don't inline more than 256 KB of a single entry
 
 const KINDS = CATALOG_KINDS;
@@ -277,6 +280,33 @@ const ser = (c) => ({
   // is named here; adding the column alone would have left the UI unable to see it.
   hasPassword: !!(c.syncPasswordHash || '').trim(),
 });
+
+/**
+ * A one-line description of a .cbmp, or null when the zip is not one.
+ *
+ * Read from the index the archive carries rather than from the file names, because the names
+ * are chosen by whoever built it and the index is what a client actually follows. A zip whose
+ * catalog.json does not parse is NOT a modpack catalogue as far as this is concerned — saying
+ * "8 modpacks" from a file count would be reporting a guess as a fact.
+ */
+function modpackCatalogSummary(entries) {
+  const index = entries.find((e) => e.name === 'catalog.json');
+  if (!index?.text) return null;
+  let doc;
+  try { doc = JSON.parse(index.text); } catch { return null; }
+  if (!Array.isArray(doc?.modpacks)) return null;
+  return {
+    name: typeof doc.name === 'string' ? doc.name : '',
+    count: doc.modpacks.length,
+    packs: doc.modpacks.slice(0, 50).map((m) => ({
+      id: String(m?.id ?? ''),
+      name: String(m?.name ?? ''),
+      // Undefined stays undefined: "not stated" and "zero mods" are different claims.
+      mods: Number.isFinite(m?.mods) ? m.mods : undefined,
+      file: String(m?.file ?? ''),
+    })),
+  };
+}
 
 export default async function communityCatalogRoutes(app) {
   // ── Public: browse listed community catalogs ──
@@ -932,9 +962,21 @@ export default async function communityCatalogRoutes(app) {
           const isText = TEXT_EXT.test(e.name) && data.length <= TEXT_PREVIEW_MAX;
           let text = null;
           if (isText) { try { text = data.toString('utf-8'); } catch { text = null; } }
+          // `.bmp` is on the text list because a BMM modpack is JSON — but the extension is
+          // also, unavoidably, a Windows BITMAP. Previewing one as UTF-8 would put a screenful
+          // of mojibake in a review panel, so the CONTENT decides: a document that does not
+          // start with `{` is not the kind of .bmp meant here and gets no preview.
+          if (text !== null && /\.bmp$/i.test(e.name) && text.trimStart()[0] !== '{') text = null;
           return { name: e.name, size: data.length, text };
         });
-        return { type: 'zip', size: buf.length, entries };
+        // A .cbmp says what it is, in one line, before the file list.
+        //
+        // A modpack catalogue is a zip like any other to this route, so it listed as
+        // `catalog.json` plus eight opaque entries. What a reviewer needs first is "eight
+        // modpacks, called these things" — the entry list answers a question they only ask
+        // once that one is answered.
+        const summary = modpackCatalogSummary(entries);
+        return { type: 'zip', size: buf.length, entries, ...(summary ? { modpackCatalog: summary } : {}) };
       }
       const isText = TEXT_EXT.test(it.payloadKey) || buf.length <= TEXT_PREVIEW_MAX;
       return { type: 'file', size: buf.length, name: it.payloadKey.split('/').pop(), text: isText ? buf.slice(0, TEXT_PREVIEW_MAX).toString('utf-8') : null };
