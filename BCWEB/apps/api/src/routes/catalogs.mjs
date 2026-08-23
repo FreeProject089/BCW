@@ -1,3 +1,4 @@
+import argon2 from 'argon2';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
@@ -40,7 +41,58 @@ const isServable = (c) => c && c.status === 'ACTIVE';
 // owner policy, the catalog's own bans) apply even to a PUBLIC catalog; the whitelist
 // only gates PRIVATE ones (or a site-wide whitelistOnly mode). Returns null when allowed,
 // else { code, error }.
-function catalogGate(catalog, identity, globalPolicy, ownerPolicy, key) {
+// ── download password ────────────────────────────────────────────────────────
+//
+// The same contract as ServerRepo, on purpose: `X-Repo-Password` or `?password=` (a browser
+// cannot set a header), and 401 when it is missing or wrong. BMM already reads a 401 from a
+// repo as "this needs a password" and prompts once, so catalogs needed no client vocabulary
+// of their own.
+const CAT_PW_CACHE_TTL_MS = 60_000;
+const CAT_PW_CACHE_MAX = 500;
+const _catPwCache = new Map();
+
+function presentedCatalogPassword(req) {
+  const h = req?.headers?.['x-repo-password'];
+  const q = req?.query?.password;
+  const v = (typeof h === 'string' && h) || (typeof q === 'string' && q) || '';
+  return String(v).trim();
+}
+
+/// Does this request satisfy the catalog's download password? True when none is set.
+async function catalogPasswordOk(catalog, req) {
+  const want = (catalog.syncPasswordHash || '').trim();
+  if (!want) return true; // no password on this catalog — blank means "not required"
+  const presented = presentedCatalogPassword(req);
+  if (!presented) return false;
+
+  // argon2 is deliberately slow. A feed is one request, but the per-item download route uses
+  // this gate too, so a sync of a large catalog would pay the hash per file without a cache.
+  const key = `${catalog.id}:${presented}`;
+  const hit = _catPwCache.get(key);
+  if (hit && Date.now() - hit.at < CAT_PW_CACHE_TTL_MS) return hit.ok;
+
+  let ok = false;
+  try { ok = await argon2.verify(want, presented); } catch { ok = false; }
+
+  if (_catPwCache.size >= CAT_PW_CACHE_MAX) {
+    const oldest = _catPwCache.keys().next().value;
+    if (oldest !== undefined) _catPwCache.delete(oldest);
+  }
+  _catPwCache.set(key, { ok, at: Date.now() });
+  return ok;
+}
+
+/// Drop every cached verdict for one catalog.
+///
+/// Called the moment the password changes or is removed: without this, a revoked password
+/// keeps working for the rest of the cache window, which is the whole point of revoking it.
+function forgetCatalogPassword(catalogId) {
+  for (const k of [..._catPwCache.keys()]) {
+    if (k.startsWith(`${catalogId}:`)) _catPwCache.delete(k);
+  }
+}
+
+async function catalogGate(catalog, identity, globalPolicy, ownerPolicy, key, req) {
   const acc = catalog.access || {};
   if (policyBans(globalPolicy, identity) || policyBans(ownerPolicy, identity) || accessListMatches(acc.bans, identity)) {
     return { code: 403, error: 'banned' };
@@ -52,6 +104,11 @@ function catalogGate(catalog, identity, globalPolicy, ownerPolicy, key) {
     // safeEqual: a share key is a bearer secret, not an identifier.
     const shareOk = !!(key && catalog.shareKey && safeEqual(key, catalog.shareKey));
     if (!shareOk && !accessListMatches(acc, identity)) return { code: 403, error: 'not_whitelisted' };
+  }
+  // Last, so a banned client is told it is banned rather than asked for a password it could
+  // never use — and so the password never becomes an oracle for "does this catalog exist".
+  if (req && !(await catalogPasswordOk(catalog, req))) {
+    return { code: 401, error: 'password_required' };
   }
   return null;
 }
@@ -190,6 +247,11 @@ const ser = (c) => ({
   views: c.views, downloads: c.downloads, itemCount: catalogItemCount(c),
   // Null when nobody has said — the UI shows "not specified" rather than picking one.
   app: c.project?.key ?? null, createdAt: c.createdAt, updatedAt: c.updatedAt,
+  // WHETHER there is a download password, never the hash. The owner has to be able to see
+  // that one is set — a protection you cannot tell apart from its absence gets set twice and
+  // removed by accident. This serializer is an allowlist, so the field only exists because it
+  // is named here; adding the column alone would have left the UI unable to see it.
+  hasPassword: !!(c.syncPasswordHash || '').trim(),
 });
 
 export default async function communityCatalogRoutes(app) {
@@ -398,7 +460,7 @@ export default async function communityCatalogRoutes(app) {
     const [globalPolicy, ownerPolicy, identity] = await Promise.all([
       getGlobalAccessPolicy(p), getUserAccessPolicy(p, c.ownerId), resolveClientIdentity(p, req),
     ]);
-    const denied = catalogGate(c, identity, globalPolicy, ownerPolicy, req.query?.k);
+    const denied = await catalogGate(c, identity, globalPolicy, ownerPolicy, req.query?.k, req);
     if (denied) return reply.code(denied.code).send({ error: denied.error });
     // Which kinds this catalog actually serves (config union with what items carry).
     const raw = c.rawJson || {};
@@ -469,7 +531,7 @@ export default async function communityCatalogRoutes(app) {
     const [globalPolicy, ownerPolicy, identity] = await Promise.all([
       getGlobalAccessPolicy(p), getUserAccessPolicy(p, c.ownerId), resolveClientIdentity(p, req),
     ]);
-    const denied = catalogGate(c, identity, globalPolicy, ownerPolicy, req.query?.k);
+    const denied = await catalogGate(c, identity, globalPolicy, ownerPolicy, req.query?.k, req);
     if (denied) return reply.code(denied.code).send({ error: denied.error });
 
     // Default to the catalog's own kind, so the URL needs no ?kind= at all — that plain URL
@@ -496,7 +558,7 @@ export default async function communityCatalogRoutes(app) {
     const [globalPolicy, ownerPolicy, identity] = await Promise.all([
       getGlobalAccessPolicy(p), getUserAccessPolicy(p, c.ownerId), resolveClientIdentity(p, req),
     ]);
-    const denied = catalogGate(c, identity, globalPolicy, ownerPolicy, req.query?.k);
+    const denied = await catalogGate(c, identity, globalPolicy, ownerPolicy, req.query?.k, req);
     if (denied) return reply.code(denied.code).send({ error: denied.error });
     const it = c.items[0];
     if (!it?.payloadKey) return reply.code(404).send({ error: 'no_payload' });
@@ -574,6 +636,28 @@ export default async function communityCatalogRoutes(app) {
   });
 
   // Update meta, visibility, access lists, listing, or the raw feed.
+  // ── Owner: set or clear the catalog's download password ──
+  //
+  // Its own endpoint rather than a field on PATCH /me/catalogs/:id, for the same reason the
+  // repo one has its own: a secret should not travel in the same body as a rename, where it
+  // ends up in request logs and in every optimistic-update payload the editor sends.
+  app.put('/me/catalogs/:id/sync-password', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ password: z.string().max(200).default('') }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
+    if (!c || (c.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role))) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
+    const pw = b.data.password.trim();
+    // Blank means "no password" — the same meaning ServerRepo and BMM's own mini-server give
+    // it, so clearing is the natural inverse of setting and needs no second endpoint.
+    const hash = pw ? await argon2.hash(pw, { type: argon2.argon2id }) : null;
+    await p.communityCatalog.update({ where: { id: c.id }, data: { syncPasswordHash: hash } });
+    forgetCatalogPassword(c.id);
+    return { ok: true, hasPassword: !!hash };
+  });
+
   app.patch('/me/catalogs/:id', { preHandler: requireRole() }, async (req, reply) => {
     const b = z.object({
       name: z.string().trim().min(2).max(80).optional(),

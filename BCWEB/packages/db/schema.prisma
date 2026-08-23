@@ -68,46 +68,46 @@ enum RepoStatus {
 }
 
 model User {
-  id                String    @id @default(cuid())
-  email             String    @unique
+  id               String         @id @default(cuid())
+  email            String         @unique
   // Null for accounts created purely via OAuth (GitHub/Discord) that never set a
   // password — /auth/login rejects those with a clear "use <provider> to sign in"
   // error instead of crashing on argon2.verify(null, ...).
-  passwordHash      String?
-  displayName       String
-  role              Role      @default(USER)
+  passwordHash     String?
+  displayName      String
+  role             Role           @default(USER)
   // Fine-grained capability grants layered ON TOP of the role (e.g. a MOD/USER granted
   // "manage_repos"). ADMIN/SUPERADMIN implicitly have every capability; see CAPABILITIES
   // in lib/lib.mjs. Empty for most accounts.
-  permissions       String[]  @default([])
+  permissions      String[]       @default([])
   // Custom, SUPERADMIN-authored roles (CustomRole) assigned to this user. Each expands
   // into a bundle of capabilities that are UNION-ed with `permissions` to form the
   // user's effective caps (see currentUser() in lib/lib.mjs). A user may hold several.
   // Denormalized id list (matches the codebase's String[] idiom); dangling ids left by a
   // deleted role are simply ignored at resolution time.
-  customRoleIds     String[]  @default([])
-  emailVerified     Boolean   @default(false)
-  bio               String    @default("")
-  avatar            Json? // { variant, seed } for the Boring Avatar
-  termsAcceptedAt   DateTime? // last time the user accepted the Terms + Payments policy at checkout
+  customRoleIds    String[]       @default([])
+  emailVerified    Boolean        @default(false)
+  bio              String         @default("")
+  avatar           Json? // { variant, seed } for the Boring Avatar
+  termsAcceptedAt  DateTime? // last time the user accepted the Terms + Payments policy at checkout
   /// The published Terms version that acceptance refers to. Without it the timestamp above
   /// points at whatever the document says TODAY, which in a dispute is worth nothing.
-  termsVersion      Int?
+  termsVersion     Int?
   /// Last time the user agreed to a policy change that required it. Distinct from
   /// termsAcceptedAt, which is tied to a purchase; this one can be prompted at any time.
-  legalAcceptedAt   DateTime?
-  stripeCustomerId  String?   @unique
-  apiKeys           ApiKey[]
-  polls             Poll[]     @relation("PollAuthor")
-  oauthClients      OAuthClient[] @relation("OAuthClientOwner")
-  pollVotes         PollVote[] @relation("PollVoter")
-  pollAnswers       PollAnswer[] @relation("PollAnswerer")
-  blockedUrls       BlockedUrl[]
-  legalEdits        LegalSection[]
-  legalPublished    LegalVersion[] @relation("LegalPublisher")
-  expenses          Expense[]      @relation("ExpenseAuthor")
-  sessions          Session[]
-  createdAt         DateTime  @default(now())
+  legalAcceptedAt  DateTime?
+  stripeCustomerId String?        @unique
+  apiKeys          ApiKey[]
+  polls            Poll[]         @relation("PollAuthor")
+  oauthClients     OAuthClient[]  @relation("OAuthClientOwner")
+  pollVotes        PollVote[]     @relation("PollVoter")
+  pollAnswers      PollAnswer[]   @relation("PollAnswerer")
+  blockedUrls      BlockedUrl[]
+  legalEdits       LegalSection[]
+  legalPublished   LegalVersion[] @relation("LegalPublisher")
+  expenses         Expense[]      @relation("ExpenseAuthor")
+  sessions         Session[]
+  createdAt        DateTime       @default(now())
 
   // ── 2FA (TOTP) — see totp.mjs. Recovery codes are argon2 hashes, one-time use. ──
   totpSecret        String?
@@ -153,23 +153,23 @@ model User {
   // that matter most — payments, the audit chain — are exactly the ones that must survive
   // for as long as the law says. So the row stays and everything personal is scrubbed off
   // it, which keeps every invoice attached to something without keeping a person.
-  closureRequestedAt  DateTime?
-  closureScheduledFor DateTime?
+  closureRequestedAt     DateTime?
+  closureScheduledFor    DateTime?
   // The cancel link. Random, and usable for as long as the closure is pending — someone
   // changing their mind may be doing it from an email on a device they are not signed in
   // on, and "log in first to stop your account being deleted" is a trap.
-  closureToken        String?   @unique
-  closedAt            DateTime?
+  closureToken           String?   @unique
+  closedAt               DateTime?
   // Set when STAFF scheduled the closure rather than the account holder. Both fields are
   // null on a self-request, which is how the two are told apart everywhere else.
-  closureReason       String?
-  closureBy           String?
+  closureReason          String?
+  closureBy              String?
   // Can the account holder call this off? True for anything they asked for themselves.
   // Staff choose: a closure meant as a sanction that the target can undo with one click is
   // not a sanction, and one they CANNOT undo needs to be a deliberate choice rather than a
   // side effect of who pressed the button. When false no cancel token is minted at all —
   // an unusable link in an email is worse than no link.
-  closureCancellable  Boolean   @default(true)
+  closureCancellable     Boolean   @default(true)
   // What everything this account owns looked like BEFORE the closure suspended it.
   //
   // During the grace period nothing is deleted — repos, catalogs and items are suspended, so
@@ -178,7 +178,7 @@ model User {
   // OFFLINE must return to OFFLINE, not to ONLINE. That is only possible if the previous
   // state was written down, so it is, here, as { repos: {id: status}, catalogs: {id: {...}},
   // items: {id: status} }.
-  closureSuspendState Json?
+  closureSuspendState    Json?
   // The same snapshot, for a MODERATION suspension. Separate from the closure one because
   // the two can overlap — an account can be suspended and then closed — and one field would
   // let the second event overwrite the first's memory of the original state.
@@ -188,7 +188,7 @@ model User {
   // Absent means enabled, so a new category starts on for everybody and nobody has to opt
   // in to being told about their own things. Stored as JSON rather than a table because it
   // is a handful of booleans read on every notify() — one row read instead of a join.
-  notifPrefs        Json?
+  notifPrefs             Json?
   // SHA-256 of the email the account had before anonymisation.
   //
   // Closing erases the address, which is the point — but it also erases the only link
@@ -197,63 +197,63 @@ model User {
   // record; and someone returning in good faith would lose the history they earned. The
   // hash matches without storing the address: it can confirm "this is the same mailbox",
   // and it cannot be read back into one.
-  closedEmailHash     String?
+  closedEmailHash        String?
   // The closed account this one was recognised as coming back to.
-  priorUser           User?     @relation("AccountReturn", fields: [priorUserId], references: [id], onDelete: SetNull)
-  priorUserId         String?
-  returnedAccounts    User[]    @relation("AccountReturn")
-  profilePublic    Boolean   @default(true) // false = only the owner + staff (mod+) can view
+  priorUser              User?     @relation("AccountReturn", fields: [priorUserId], references: [id], onDelete: SetNull)
+  priorUserId            String?
+  returnedAccounts       User[]    @relation("AccountReturn")
+  profilePublic          Boolean   @default(true) // false = only the owner + staff (mod+) can view
   // Which linked connections to surface on the profile, e.g. ["github","discord","website"].
   // Empty = show none. The owner opts each in explicitly.
-  showConnections  String[]  @default([])
-  website          String? // optional public link the user chooses to show
+  showConnections        String[]  @default([])
+  website                String? // optional public link the user chooses to show
 
-  badges             UserBadge[]
+  badges UserBadge[]
 
-  items              CatalogItem[]
-  communityCatalogs  CommunityCatalog[]
-  submissions        Submission[]
-  notifications      Notification[]
-  serverRepos        ServerRepo[]
-  subscriptions      Subscription[]
-  posts              BlogPost[]
-  payments           Payment[]
-  hostingGroups      HostingGroup[]
-  creatorLinks       CreatorLink[]
-  discordLinks       DiscordLink[]
-  blogPermissions    BlogPermission[]
-  projectPermissions ProjectPermission[]
-  myoRequests        MyoRequest[]
-  myoAssigned        MyoRequest[]        @relation("MyoAssignee")
-  myoMessages        MyoMessage[]
-  submissionComments SubmissionComment[]
-  contactMessages    ContactMessage[]
-  reportsMade         Report[]            @relation("ReportReporter")
-  reportMessages      ReportMessage[]
+  items                CatalogItem[]
+  communityCatalogs    CommunityCatalog[]
+  submissions          Submission[]
+  notifications        Notification[]
+  serverRepos          ServerRepo[]
+  subscriptions        Subscription[]
+  posts                BlogPost[]
+  payments             Payment[]
+  hostingGroups        HostingGroup[]
+  creatorLinks         CreatorLink[]
+  discordLinks         DiscordLink[]
+  blogPermissions      BlogPermission[]
+  projectPermissions   ProjectPermission[]
+  myoRequests          MyoRequest[]
+  myoAssigned          MyoRequest[]         @relation("MyoAssignee")
+  myoMessages          MyoMessage[]
+  submissionComments   SubmissionComment[]
+  contactMessages      ContactMessage[]
+  reportsMade          Report[]             @relation("ReportReporter")
+  reportMessages       ReportMessage[]
   reportParticipations ReportParticipant[]
-  socialConnections   SocialConnection[]
-  loginAttempts      LoginAttempt[]
-  auditLogEntries    AuditLogEntry[]
-  repoFavorites      RepoFavorite[]
-  catalogFavorites   CatalogFavorite[]
-  oauthAccounts      OAuthAccount[]
-  blogComments       BlogComment[]
-  docComments        DocComment[]
+  socialConnections    SocialConnection[]
+  loginAttempts        LoginAttempt[]
+  auditLogEntries      AuditLogEntry[]
+  repoFavorites        RepoFavorite[]
+  catalogFavorites     CatalogFavorite[]
+  oauthAccounts        OAuthAccount[]
+  blogComments         BlogComment[]
+  docComments          DocComment[]
+  // Moderation paperwork. `sanctions` is what landed ON them; `sanctionsIssued` is what
+  // they handed out as staff — two different questions, and conflating them in one
+  // relation would make both unanswerable.
+  sanctions            Sanction[]           @relation("SanctionTarget")
+  sanctionsIssued      Sanction[]           @relation("SanctionIssuer")
+  botActions           BotAction[]          @relation("BotActionRequester")
+  staffNotes           StaffNote[]          @relation("StaffNoteAuthor")
+  sanctionEvidence     SanctionAttachment[] @relation("SanctionAttachmentAuthor")
+  pendingDismissals    PendingDismissal[]
+  webhooks             WebhookEndpoint[]
+  botWarnsIssued       BotWarn[]            @relation("BotWarnIssuer")
 
   @@index([status])
   @@index([closedEmailHash])
   @@index([priorUserId])
-  // Moderation paperwork. `sanctions` is what landed ON them; `sanctionsIssued` is what
-  // they handed out as staff — two different questions, and conflating them in one
-  // relation would make both unanswerable.
-  sanctions        Sanction[] @relation("SanctionTarget")
-  sanctionsIssued  Sanction[] @relation("SanctionIssuer")
-  botActions       BotAction[] @relation("BotActionRequester")
-  staffNotes       StaffNote[] @relation("StaffNoteAuthor")
-  sanctionEvidence SanctionAttachment[] @relation("SanctionAttachmentAuthor")
-  pendingDismissals PendingDismissal[]
-  webhooks         WebhookEndpoint[]
-  botWarnsIssued   BotWarn[]  @relation("BotWarnIssuer")
 }
 
 // A GitHub/Discord identity linked to a website account — powers "Continue with
@@ -392,14 +392,14 @@ model HostingGroup {
 }
 
 model Project {
-  id             String        @id @default(cuid())
-  key            ProjectKey    @unique
+  id             String             @id @default(cuid())
+  key            ProjectKey         @unique
   name           String
   // Per-blog toggle: do this project's posts also surface in the home page's
   // unified "Latest news"? They always show on /blog regardless of this flag.
-  showOnHomeNews Boolean       @default(true)
+  showOnHomeNews Boolean            @default(true)
   // Opt-in "Blog" tab on the project's own page, showing only this project's posts.
-  showBlogTab    Boolean       @default(false)
+  showBlogTab    Boolean            @default(false)
   posts          BlogPost[]
   items          CatalogItem[]
   catalogs       CommunityCatalog[]
@@ -748,6 +748,15 @@ model CommunityCatalog {
   // accounts:[{type,id}], bans:{ ips, emails, accounts } }. Mirrors the repo sandbox
   // shape; matched against the server-resolved identity (see resolveIdentity).
   access            Json?
+  /// Optional download password, argon2 hash. Null / empty = no password — the same
+  /// contract as ServerRepo.syncPasswordHash, deliberately: BMM sends `X-Repo-Password`
+  /// (or `?password=`) and reads a 401 as "this needs a password". Reusing the repo
+  /// contract means the client needed no new vocabulary for catalogs.
+  ///
+  /// Hashed rather than stored in clear because it is a user-chosen secret. The gate
+  /// keeps a short-lived verification cache so argon2 is paid once per client per
+  /// window, not once per request.
+  syncPasswordHash  String?
   shareKey          String?                @unique // owner's private direct link (?k=…)
   listed            Boolean                @default(true) // in the public browser (never true if private)
   featuredUntil     DateTime? // paid promotion
@@ -898,13 +907,13 @@ model Announcement {
 }
 
 model HostingPlan {
-  id                String         @id @default(cuid())
-  name              String
-  storageGB         Int
-  uploadLimitKbps   Int
-  cpuShare          Float          @default(0.25)
-  priceMonthlyCents Int
-  active            Boolean        @default(true)
+  id                   String         @id @default(cuid())
+  name                 String
+  storageGB            Int
+  uploadLimitKbps      Int
+  cpuShare             Float          @default(0.25)
+  priceMonthlyCents    Int
+  active               Boolean        @default(true)
   // A price change that has been ANNOUNCED but is not in force yet.
   //
   // The Payments policy promises advance notice and "the new price applies from your
@@ -912,12 +921,12 @@ model HostingPlan {
   // directly cannot keep that promise: it changes the price the instant Save is pressed,
   // with nobody told. So an increase is staged here, subscribers are emailed at the
   // moment it is scheduled, and the sweeper swaps it in on the day.
-  pendingPriceCents Int?
-  pendingPriceAt    DateTime?
+  pendingPriceCents    Int?
+  pendingPriceAt       DateTime?
   // When the announcement went out, and to how many — so the same change is never
   // announced twice, and so the record of "we did give notice" outlives the mailbox.
-  pendingNoticeAt   DateTime?
-  pendingNoticeCount Int           @default(0)
+  pendingNoticeAt      DateTime?
+  pendingNoticeCount   Int            @default(0)
   // Does the announced change touch people who are ALREADY subscribed?
   //
   // false (the default, and what happens today whether anyone intended it or not): each
@@ -928,8 +937,8 @@ model HostingPlan {
   // true: on the effective date their Stripe subscription item is moved onto a new Price
   // with proration_behavior 'none', so the new amount starts at their next renewal and
   // nobody is charged mid-term. That is the same promise the notice email makes.
-  pendingApplyExisting Boolean     @default(false)
-  subscriptions     Subscription[]
+  pendingApplyExisting Boolean        @default(false)
+  subscriptions        Subscription[]
 
   @@index([pendingPriceAt])
 }
@@ -1111,26 +1120,26 @@ model RepoAccessEvent {
 // 0.1 + 0.2 is not 0.3, and a rounding error in a total is the kind of bug nobody reports
 // because everybody assumes they misread it.
 model Expense {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   label       String
   /// hosting · domain · service · software · hardware · fees · tax · other
-  category    String   @default("other")
+  category    String    @default("other")
   amountCents Int
   /// ISO 4217. Stored per row rather than converted on the way in: converting at entry
   /// bakes in that day's rate and loses what was actually paid.
-  currency    String   @default("CHF")
+  currency    String    @default("CHF")
   /// none · monthly · yearly. A recurring cost is counted every month it applies to, not
   /// only in the month it was entered.
-  recurring   String   @default("none")
+  recurring   String    @default("none")
   /// When it applies from. For a recurring cost this is the start, not a single date.
-  incurredAt  DateTime @default(now())
+  incurredAt  DateTime  @default(now())
   /// Set on a recurring cost that has stopped, so history stays intact rather than being
   /// deleted — last month's numbers must not change because a subscription ended today.
   endedAt     DateTime?
-  note        String   @default("")
+  note        String    @default("")
   createdById String?
-  createdBy   User?    @relation("ExpenseAuthor", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt   DateTime @default(now())
+  createdBy   User?     @relation("ExpenseAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
 
   @@index([incurredAt])
   @@index([category])
@@ -1148,23 +1157,23 @@ model Expense {
 // when somebody asks what they agreed to. Nothing here is ever edited — a correction is a
 // new version, which is the entire point.
 model LegalVersion {
-  id          String   @id @default(cuid())
+  id                 String   @id @default(cuid())
   /// privacy · terms · cookies · about · refunds
-  doc         String
+  doc                String
   /// 1, 2, 3 … per document. Human-quotable, unlike a cuid.
-  version     Int
+  version            Int
   /// The full document at publish time: [{ title, titleFr, body, bodyFr }]. Denormalised on
   /// purpose — a snapshot that joins to live rows is not a snapshot.
-  sections    Json
+  sections           Json
   /// Why this version exists, for the reader, not for staff. Shown in the archive.
-  note        String   @default("")
+  note               String   @default("")
   /// Whether this change is one people must agree to again. Separate from merely notifying
   /// them: demanding agreement interrupts everybody, so it is only right when the change
   /// actually alters what they agreed to.
-  requiresAcceptance Boolean @default(false)
-  publishedAt DateTime @default(now())
-  publishedById String?
-  publishedBy   User?  @relation("LegalPublisher", fields: [publishedById], references: [id], onDelete: SetNull)
+  requiresAcceptance Boolean  @default(false)
+  publishedAt        DateTime @default(now())
+  publishedById      String?
+  publishedBy        User?    @relation("LegalPublisher", fields: [publishedById], references: [id], onDelete: SetNull)
 
   @@unique([doc, version])
   @@index([doc, publishedAt])
@@ -1181,17 +1190,17 @@ model LegalVersion {
 // `body` is markdown with the same block directives as the docs and blog (md.jsx), so a
 // legal page can use callouts and steps without a second renderer being written for it.
 model LegalSection {
-  id        String   @id @default(cuid())
+  id          String   @id @default(cuid())
   /// privacy · terms · cookies · about · refunds
-  doc       String
-  title     String
-  titleFr   String?
-  body      String   @default("")
-  bodyFr    String?
-  order     Int      @default(0)
-  updatedAt DateTime @updatedAt
+  doc         String
+  title       String
+  titleFr     String?
+  body        String   @default("")
+  bodyFr      String?
+  order       Int      @default(0)
+  updatedAt   DateTime @updatedAt
   updatedById String?
-  updatedBy   User?  @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy   User?    @relation(fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@index([doc, order])
 }
@@ -1204,30 +1213,30 @@ model LegalSection {
 // dull — an exact address, or a host and everything under it. No wildcards: somebody refused
 // a link is owed a rule they can read.
 model BlockedUrl {
-  id        String   @id @default(cuid())
+  id          String          @id @default(cuid())
   /// 'domain' — the host and every subdomain · 'url' — that exact address, path and query
-  scope     String   @default("domain")
+  scope       String          @default("domain")
   /// An EXCEPTION rather than a rule: an allow entry beats every block entry, whichever is
   /// more specific. Deliberately not a specificity contest — an allowed address is allowed,
   /// which is a sentence somebody can hold while deciding whether to add one.
-  allow     Boolean  @default(false)
+  allow       Boolean         @default(false)
   /// Stored normalised (lowercase, no www., no trailing slash) so a duplicate cannot be
   /// added in a different spelling and read as a second, different rule.
-  pattern   String
+  pattern     String
   /// Shown to staff, never to the person refused: it can name a complainant.
-  reason    String   @default("")
+  reason      String          @default("")
   /// The notice this came from, when it came from one. Nullable because an admin may block
   /// something they found themselves, and SetNull so deleting a message never deletes the
   /// protection that message caused.
-  noticeId  String?
-  notice    ContactMessage? @relation(fields: [noticeId], references: [id], onDelete: SetNull)
+  noticeId    String?
+  notice      ContactMessage? @relation(fields: [noticeId], references: [id], onDelete: SetNull)
   createdById String?
-  createdBy   User?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
   /// How often it actually caught something. A rule with zero hits after a year is a rule to
   /// re-read, and a rule with thousands is worth telling somebody about.
-  hits      Int      @default(0)
-  lastHitAt DateTime?
-  createdAt DateTime @default(now())
+  hits        Int             @default(0)
+  lastHitAt   DateTime?
+  createdAt   DateTime        @default(now())
 
   @@unique([scope, pattern])
   @@index([createdAt])
@@ -1328,61 +1337,61 @@ model ServerMetricSample {
 /// The account columns on User stay: they are the fast path every request reads. This is the
 /// history and the paperwork, not the lock itself.
 model Sanction {
-  id          String    @id @default(cuid())
+  id    String @id @default(cuid())
   /// SNC-XXXX-XXXX. Quoted in the e-mail, searchable in the admin, given by the user when
   /// they contest. Unique so it can be looked up directly.
-  code        String    @unique
+  code  String @unique
   /// warning · suspension · ban · closure · takedown
-  kind        String
+  kind  String
   /// account · content — what the decision is really about, which decides what lifting it does.
-  scope       String    @default("account")
+  scope String @default("account")
 
   /// The person answerable for it, ALWAYS set — including for a content sanction, because a
   /// repo cannot read its e-mail.
-  user        User      @relation("SanctionTarget", fields: [userId], references: [id], onDelete: Cascade)
-  userId      String
+  user   User   @relation("SanctionTarget", fields: [userId], references: [id], onDelete: Cascade)
+  userId String
 
   /// For a content sanction: repo · catalog · item, its id, and its name at the time.
   /// The name is denormalised on purpose — the row may be deleted, the record must survive it.
-  targetType  String?
-  targetId    String?
-  targetName  String?
+  targetType String?
+  targetId   String?
+  targetName String?
   /// Other content caught by the same decision (ids), so one takedown can name several items
   /// instead of becoming five unrelated records.
-  relatedIds  String[]  @default([])
+  relatedIds String[] @default([])
 
-  reason      String
+  reason         String
   /// What the person is being asked to do about it, if anything. A warning with no request
   /// is just an insult with a reference number.
-  request     String?
+  request        String?
   requiresAction Boolean @default(false)
 
-  issuedBy    User?     @relation("SanctionIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
-  issuedById  String?
-  issuedAt    DateTime  @default(now())
-  expiresAt   DateTime?
+  issuedBy   User?     @relation("SanctionIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
+  issuedById String?
+  issuedAt   DateTime  @default(now())
+  expiresAt  DateTime?
 
   /// active · lifted · expired
-  status      String    @default("active")
-  liftedAt    DateTime?
-  liftedById  String?
-  liftReason  String?
+  status     String    @default("active")
+  liftedAt   DateTime?
+  liftedById String?
+  liftReason String?
 
   /// The contest. An admin closure cannot be cancelled by the person it lands on — but it can
   /// be argued with, and an argument nobody can file is not a right.
-  contestedAt        DateTime?
-  contestBody        String?
+  contestedAt         DateTime?
+  contestBody         String?
   /// upheld · overturned
-  contestOutcome     String?
-  contestAnswer      String?
-  contestAnsweredAt  DateTime?
+  contestOutcome      String?
+  contestAnswer       String?
+  contestAnsweredAt   DateTime?
   contestAnsweredById String?
 
   /// The report this came out of, when it came out of one. A decision with no cause recorded
   /// is a decision nobody can review later — and without it the next moderator re-reads a
   /// case that was already handled.
-  report      Report?   @relation(fields: [reportId], references: [id], onDelete: SetNull)
-  reportId    String?
+  report   Report? @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  reportId String?
 
   /// STAFF ONLY. Never sent, never quoted, never shown to the person it is about.
   ///
@@ -1398,7 +1407,7 @@ model Sanction {
 
   /// Whatever the decision needs to remember — chiefly the subscriptions it cancelled, so the
   /// offer to take them out again can name them when the suspension ends.
-  meta        Json?
+  meta Json?
 
   /// Filed away, not deleted. A sanction is a record of a decision about a person, so it must
   /// never be removable — but a moderation list that shows every settled case from three years
@@ -1412,9 +1421,9 @@ model Sanction {
   /// the e-mail the person received and in any contest they file, so changing it silently
   /// would leave them holding a document that no longer matches the record. Editable, but not
   /// quietly.
-  edits        Json?
+  edits Json?
 
-  attachments  SanctionAttachment[]
+  attachments SanctionAttachment[]
 
   @@index([userId, issuedAt])
   @@index([status, expiresAt])
@@ -1447,13 +1456,13 @@ model SanctionAttachment {
   /// Original filename, or the label a moderator gave the link.
   name       String
   mime       String?
-  bytes      Int      @default(0)
+  bytes      Int     @default(0)
   /// Why this is here. Evidence with no note is evidence the next moderator has to re-derive.
   note       String?
 
-  addedBy    User?    @relation("SanctionAttachmentAuthor", fields: [addedById], references: [id], onDelete: SetNull)
-  addedById  String?
-  createdAt  DateTime @default(now())
+  addedBy   User?    @relation("SanctionAttachmentAuthor", fields: [addedById], references: [id], onDelete: SetNull)
+  addedById String?
+  createdAt DateTime @default(now())
 
   @@index([sanctionId, createdAt])
 }
@@ -1468,15 +1477,15 @@ model SanctionAttachment {
 /// Shared, not per-person: two moderators working the same list should not each have to
 /// dismiss the same handled item. Who did it is recorded so the other one can ask.
 model PendingDismissal {
-  id      String   @id @default(cuid())
-  queue   String
-  itemId  String
+  id     String   @id @default(cuid())
+  queue  String
+  itemId String
   /// handled · archived — the difference is only what the person meant, and it is worth
   /// keeping: "I dealt with this" and "I am not going to" are different admissions.
-  mode    String   @default("handled")
-  by      User?    @relation(fields: [byId], references: [id], onDelete: SetNull)
-  byId    String?
-  at      DateTime @default(now())
+  mode   String   @default("handled")
+  by     User?    @relation(fields: [byId], references: [id], onDelete: SetNull)
+  byId   String?
+  at     DateTime @default(now())
 
   @@unique([queue, itemId])
   @@index([at])
@@ -1488,25 +1497,25 @@ model PendingDismissal {
 /// minute in case an item was published. That is wasted on both sides and always late by up
 /// to a minute. A webhook inverts it — we call them.
 model WebhookEndpoint {
-  id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    String
-  url       String
+  id             String    @id @default(cuid())
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  url            String
   /// Which events this address wants. Empty means none — the same rule as scopes on a key:
   /// a subscription to nothing is silence, not a wildcard.
-  events    String[] @default([])
+  events         String[]  @default([])
   /// Shared with the receiver once, at creation. Every delivery is signed with it, so the
   /// receiver can tell our call from anybody who learned the URL.
-  secret    String
-  enabled   Boolean  @default(true)
-  label     String   @default("")
+  secret         String
+  enabled        Boolean   @default(true)
+  label          String    @default("")
   /// Consecutive failures. A dead address is disabled rather than retried for ever, and the
   /// owner is told — an endpoint quietly retried for a month is a bill nobody agreed to.
-  failures  Int      @default(0)
+  failures       Int       @default(0)
   disabledReason String?
-  lastAt    DateTime?
-  lastStatus Int?
-  createdAt DateTime @default(now())
+  lastAt         DateTime?
+  lastStatus     Int?
+  createdAt      DateTime  @default(now())
 
   deliveries WebhookDelivery[]
 
@@ -1517,19 +1526,19 @@ model WebhookEndpoint {
 /// One attempt to deliver one event. Kept so "you never called me" has an answer, and so a
 /// failed delivery can be replayed once the receiver is fixed.
 model WebhookDelivery {
-  id         String   @id @default(cuid())
-  endpoint   WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
-  endpointId String
-  event      String
-  payload    Json
+  id          String          @id @default(cuid())
+  endpoint    WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  endpointId  String
+  event       String
+  payload     Json
   /// pending · ok · failed
-  status     String   @default("pending")
-  httpStatus Int?
-  error      String?
-  attempts   Int      @default(0)
+  status      String          @default("pending")
+  httpStatus  Int?
+  error       String?
+  attempts    Int             @default(0)
   /// When the next attempt is due. Null once it succeeded or was given up on.
-  nextAt     DateTime?
-  createdAt  DateTime @default(now())
+  nextAt      DateTime?
+  createdAt   DateTime        @default(now())
   deliveredAt DateTime?
 
   @@index([endpointId, createdAt])
@@ -1537,16 +1546,16 @@ model WebhookDelivery {
 }
 
 model ServerAlertLog {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   kind      String
   message   String
-  announced Boolean  @default(false) // has the Discord bot posted this one yet?
+  announced Boolean   @default(false) // has the Discord bot posted this one yet?
   // Acknowledgement is what turns a log into a queue: the "Server perf" tab badges the
   // count of alerts nobody has looked at yet. Without it the badge would show a 30-day
   // history for ever and be ignored within a week.
   ackAt     DateTime?
   ackById   String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([createdAt])
   @@index([ackAt])
@@ -1558,10 +1567,10 @@ model ServerAlertLog {
 /// asked after the fact. `cause` keeps the message that opened it, so an outage carries
 /// its reason rather than just its shape.
 model ServiceOutage {
-  id        String    @id @default(cuid())
+  id        String         @id @default(cuid())
   dep       String
   cause     String?
-  startedAt DateTime  @default(now())
+  startedAt DateTime       @default(now())
   endedAt   DateTime?
   notes     IncidentNote[]
 
@@ -1570,8 +1579,8 @@ model ServiceOutage {
 }
 
 model Subscription {
-  id               String      @id @default(cuid())
-  user             User        @relation(fields: [userId], references: [id])
+  id               String        @id @default(cuid())
+  user             User          @relation(fields: [userId], references: [id])
   userId           String
   // A hosting subscription anchors to EITHER a single repo (legacy single-repo hosting)
   // OR a whole storage pool (the current model: you buy a pool and fill it with repos
@@ -1585,10 +1594,10 @@ model Subscription {
   hostingGroup     HostingGroup? @relation(fields: [hostingGroupId], references: [id])
   hostingGroupId   String?
   poolContribBytes BigInt        @default(0)
-  plan             HostingPlan @relation(fields: [planId], references: [id])
+  plan             HostingPlan   @relation(fields: [planId], references: [id])
   planId           String
-  stripeSubId      String?     @unique
-  status           String      @default("active")
+  stripeSubId      String?       @unique
+  status           String        @default("active")
   currentPeriodEnd DateTime?
   warnedAt         DateTime? // set when the 72h-before-expiry warning was sent (once per term)
 
@@ -1841,9 +1850,9 @@ model AccountClosureSurvey {
 
 model OwnershipTransfer {
   id          String    @id @default(cuid())
-  kind        String    // 'repo' | 'catalog'
-  targetId    String    // ServerRepo.id or CatalogItem.id
-  targetName  String    // snapshot: the object may be renamed or gone by the time this is read
+  kind        String // 'repo' | 'catalog'
+  targetId    String // ServerRepo.id or CatalogItem.id
+  targetName  String // snapshot: the object may be renamed or gone by the time this is read
   fromUserId  String
   toUserId    String
   // pending → accepted | declined | cancelled | expired
@@ -2103,10 +2112,10 @@ model ShowcaseProject {
 // and it moves open → archived (auto after inactivity, or manual) → deleted (after a
 // further delay). A reporter may have at most one OPEN report per target at a time.
 model Report {
-  id             String          @id @default(cuid())
+  id             String              @id @default(cuid())
   targetType     String // "user" | "repo" | "catalog" | "item" | "general"
-  targetId       String          @default("") // the reported entity's id ("" for general)
-  targetLabel    String          @default("") // denormalized name for the admin list
+  targetId       String              @default("") // the reported entity's id ("" for general)
+  targetLabel    String              @default("") // denormalized name for the admin list
   /// NULLABLE so a report can outlive the person who filed it.
   ///
   /// A report is about somebody ELSE'S content. When its author asks to be erased, deleting
@@ -2117,16 +2126,16 @@ model Report {
   ///
   /// Every read already tolerates it — canAccessReport compares ids, and the archive mail is
   /// guarded by `r.reporter?.email` — so this changes what CAN happen, not what does.
-  reporter       User?           @relation("ReportReporter", fields: [reporterId], references: [id])
+  reporter       User?               @relation("ReportReporter", fields: [reporterId], references: [id])
   reporterId     String?
-  reason         String          @default("") // short category chosen by the reporter
-  status         String          @default("open") // open | archived | closed
-  staffUnread    Boolean         @default(true) // a new reporter message staff hasn't seen
-  userUnread     Boolean         @default(false) // a new staff message the reporter hasn't seen
-  lastActivityAt DateTime        @default(now())
+  reason         String              @default("") // short category chosen by the reporter
+  status         String              @default("open") // open | archived | closed
+  staffUnread    Boolean             @default(true) // a new reporter message staff hasn't seen
+  userUnread     Boolean             @default(false) // a new staff message the reporter hasn't seen
+  lastActivityAt DateTime            @default(now())
   archivedAt     DateTime? // when it was archived (starts the delete countdown)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
   messages       ReportMessage[]
   participants   ReportParticipant[]
   invites        ReportInvite[]
@@ -2232,7 +2241,7 @@ model ContactMessage {
 
   /// Blocks that exist because of this notice. SetNull on the other side, so deleting a
   /// message never quietly removes the protection it caused.
-  blocks    BlockedUrl[]
+  blocks BlockedUrl[]
 
   // Declared here because the DB already has it: 20260815040000_contact_kind created it and
   // the model never named it, so every drift check wanted to DROP an index the admin queue
@@ -2300,42 +2309,42 @@ model MyoProduct {
 
 // One user's commission request — the paid consultation conversation.
 model MyoRequest {
-  id                String      @id @default(cuid())
-  user              User        @relation(fields: [userId], references: [id])
+  id                String           @id @default(cuid())
+  user              User             @relation(fields: [userId], references: [id])
   userId            String
-  product           MyoProduct? @relation(fields: [productId], references: [id])
+  product           MyoProduct?      @relation(fields: [productId], references: [id])
   productId         String?
-  productKind       String      @default("custom") // snapshot of the chosen kind
+  productKind       String           @default("custom") // snapshot of the chosen kind
   // ── Intake (collected before the consultation payment) ──
   name              String // the product's name
   logo              String? // optional logo URL
-  objective         String      @default("") // what it's for, in one line
-  target            String      @default("personal") // personal|friends|community|nonprofit|commercial|other
-  description       String      @default("") // ≤ 2000 chars (enforced in the route)
-  lang              String      @default("en") // conversation language: en | fr
-  urgent            Boolean     @default(false) // higher consultation fee, flagged to staff
+  objective         String           @default("") // what it's for, in one line
+  target            String           @default("personal") // personal|friends|community|nonprofit|commercial|other
+  description       String           @default("") // ≤ 2000 chars (enforced in the route)
+  lang              String           @default("en") // conversation language: en | fr
+  urgent            Boolean          @default(false) // higher consultation fee, flagged to staff
   // ── Consultation payment (gate to open the conversation) ──
-  consultationPaid  Boolean     @default(false)
-  consultationCents Int         @default(0)
+  consultationPaid  Boolean          @default(false)
+  consultationCents Int              @default(0)
   stripeSessionId   String?
   // pending_payment → open (paid, advice stage) → quoted → in_production (quote paid) →
   // delivered → closed (reopenable) / cancelled.
-  status            String      @default("pending_payment")
-  staffUnread       Boolean     @default(true) // a user message staff hasn't seen
-  userUnread        Boolean     @default(false) // a staff message the user hasn't seen
+  status            String           @default("pending_payment")
+  staffUnread       Boolean          @default(true) // a user message staff hasn't seen
+  userUnread        Boolean          @default(false) // a staff message the user hasn't seen
   // Who on the team owns this one. A queue where everybody sees everything is a queue
   // where two people answer the same request and nobody answers the next.
-  assignedTo        User?       @relation("MyoAssignee", fields: [assignedToId], references: [id])
+  assignedTo        User?            @relation("MyoAssignee", fields: [assignedToId], references: [id])
   assignedToId      String?
   assignedAt        DateTime?
   // Archived = handled, out of the working queue, still on file. Distinct from `closed`:
   // a request can be closed and still need invoicing, and a cancelled one still counts as
   // history. Nothing is ever deleted here — there is money attached to these rows.
   archivedAt        DateTime?
-  lastActivityAt    DateTime    @default(now())
+  lastActivityAt    DateTime         @default(now())
   closedAt          DateTime?
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
   messages          MyoMessage[]
   quotes            MyoQuote[]
   deliverables      MyoDeliverable[]
@@ -2513,10 +2522,10 @@ model ErrorEvent {
 // is a plain reference (no FK/cascade) so the leaderboard survives an account delete and the
 // User model stays untouched; display name/avatar are resolved at read time.
 model GameScore {
-  id     String @id @default(cuid())
-  userId String
-  game   String @default("orbfall")
-  score  Int
+  id        String   @id @default(cuid())
+  userId    String
+  game      String   @default("orbfall")
+  score     Int
   /// The month this score belongs to, as "YYYY-MM" (UTC). The leaderboard resets every
   /// month, and it resets by asking for the current season rather than by DELETING: a
   /// deleted board cannot award anything afterwards, and the winners are decided once the
@@ -2536,12 +2545,12 @@ model GameScore {
 /// row is also the only durable answer to "who won March" once a season scrolls off the
 /// board.
 model GameAward {
-  id       String   @id @default(cuid())
-  game     String   @default("orbfall")
-  season   String
-  rank     Int
-  userId   String
-  score    Int
+  id         String   @id @default(cuid())
+  game       String   @default("orbfall")
+  season     String
+  rank       Int
+  userId     String
+  score      Int
   /// The code minted for this winner. Kept as the code string rather than a relation so
   /// deleting a spent code never erases the record of who won.
   code       String
@@ -2555,20 +2564,20 @@ model GameAward {
 // FAQ — admin/editor-curated questions & answers, grouped by category. Answers use the
 // BetterCommunity doc-block markdown (rendered with the same md.jsx pipeline as blog/docs).
 model FaqItem {
-  id          String   @id @default(cuid())
-  question    String
+  id         String   @id @default(cuid())
+  question   String
   // The question and the category are TITLES — they are what a French reader sees first, and
   // they had no translation while the answer did. Nullable: an entry with no French title
   // falls back to the English one rather than showing an empty heading.
-  questionFr  String?
-  answer      String   @default("") // markdown (doc-block system), EN base
-  answerFr    String? // optional French translation
-  category    String   @default("General")
-  categoryFr  String?
-  order     Int      @default(0)
-  published Boolean  @default(true)
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
+  questionFr String?
+  answer     String   @default("") // markdown (doc-block system), EN base
+  answerFr   String? // optional French translation
+  category   String   @default("General")
+  categoryFr String?
+  order      Int      @default(0)
+  published  Boolean  @default(true)
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
 
   @@index([category])
 }
@@ -2687,8 +2696,8 @@ model ApiKey {
   revokedAt  DateTime?
   createdAt  DateTime  @default(now())
 
-  usageDays  ApiUsageDay[]
-  requests   ApiRequest[]
+  usageDays ApiUsageDay[]
+  requests  ApiRequest[]
 
   @@index([userId, createdAt])
 }
@@ -2701,20 +2710,20 @@ model ApiKey {
 // forensic question with a short shelf life. One row per key per day stays small enough to
 // keep indefinitely, which is what makes a usage graph honest.
 model ApiUsageDay {
-  id     String   @id @default(cuid())
-  key    ApiKey?  @relation(fields: [keyId], references: [id], onDelete: SetNull)
-  keyId  String?
+  id      String   @id @default(cuid())
+  key     ApiKey?  @relation(fields: [keyId], references: [id], onDelete: SetNull)
+  keyId   String?
   // Denormalised so the history survives the key: an admin looking at last quarter's usage
   // should not lose it because somebody tidied up a token.
-  userId String
-  day    DateTime @db.Date
-  count  Int      @default(0)
-  errors Int      @default(0)
+  userId  String
+  day     DateTime @db.Date
+  count   Int      @default(0)
+  errors  Int      @default(0)
   // Sandbox calls are counted here but never added to `count`: the daily figure answers
   // "how much is this key really being used", and a console click is not use. Kept so the
   // usage chart can show exploration as its own band rather than as nothing at all —
   // "nobody is calling us" and "three people are learning the API" look identical otherwise.
-  sandbox Int     @default(0)
+  sandbox Int      @default(0)
 
   @@unique([keyId, day])
   @@index([userId, day])
@@ -2732,26 +2741,25 @@ model ApiUsageDay {
 // the query (?k=…), and a table of URLs an admin can read is exactly where that must not
 // end up (CWE-532).
 model ApiRequest {
-  id     String   @id @default(cuid())
-  key    ApiKey?  @relation(fields: [keyId], references: [id], onDelete: SetNull)
-  keyId  String?
-  userId String?
-  method String
-  path   String
-  status Int
-  ms     Int      @default(0)
-  ip     String?
+  id      String   @id @default(cuid())
+  key     ApiKey?  @relation(fields: [keyId], references: [id], onDelete: SetNull)
+  keyId   String?
+  userId  String?
+  method  String
+  path    String
+  status  Int
+  ms      Int      @default(0)
+  ip      String?
   // A call made from the developer console's sandbox: authenticated and scope-checked, but
   // it wrote nothing. Kept apart from real traffic so somebody exploring the API does not
   // appear in the usage figures as a customer hammering it.
-  sandbox Boolean @default(false)
-  at     DateTime @default(now())
+  sandbox Boolean  @default(false)
+  at      DateTime @default(now())
 
   @@index([at])
   @@index([userId, at])
   @@index([keyId, at])
 }
-
 
 // Polls — a question, some options, and an honest count.
 //
@@ -2763,23 +2771,23 @@ model ApiRequest {
 // Every count is therefore stored and reported split by `wasLoggedIn`, never merged into a
 // single reassuring total.
 model Poll {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   question    String
-  description String   @default("")
+  description String    @default("")
   // 'users' | 'all'
-  audience    String   @default("users")
+  audience    String    @default("users")
   // More than one option allowed? maxChoices caps it (0 = no cap).
-  multiple    Boolean  @default(false)
-  maxChoices  Int      @default(0)
+  multiple    Boolean   @default(false)
+  maxChoices  Int       @default(0)
   // 'draft' | 'open' | 'closed'. Draft is invisible; closed keeps its results.
-  status      String   @default("draft")
+  status      String    @default("draft")
   opensAt     DateTime?
   closesAt    DateTime?
   // 'always' | 'after_vote' | 'staff' — when a voter may see the tally. after_vote is the
   // default because showing a running total before someone answers steers the answer.
-  results     String   @default("after_vote")
+  results     String    @default("after_vote")
   // Shown on the site's poll page, and pinned to the home page when true.
-  pinned      Boolean  @default(false)
+  pinned      Boolean   @default(false)
   // WHERE it can be found — a different question from `audience`, which is who may answer.
   // A poll can be answerable by anyone and still not be listed anywhere.
   //
@@ -2789,22 +2797,22 @@ model Poll {
   //
   // Default 'public' because that is what every existing poll already is: they are all listed
   // today, and a default of anything else would make them vanish on migration.
-  visibility  String   @default("public")
+  visibility  String    @default("public")
   // The secret in an unlisted poll's URL. Empty until the poll is made unlisted, and it is
   // NOT returned to people who cannot already see the poll — otherwise the list endpoint
   // would hand out the keys to everything it is hiding.
-  shareKey    String   @default("")
-  createdBy   User?    @relation("PollAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  shareKey    String    @default("")
+  createdBy   User?     @relation("PollAuthor", fields: [createdById], references: [id], onDelete: SetNull)
   createdById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  options     PollOption[]
-  votes       PollVote[]
+  options   PollOption[]
+  votes     PollVote[]
   // Multi-question shape. `question` above becomes the TITLE; a single-question poll is one
   // PollQuestion, which is what the backfill turns every existing poll into.
-  questions   PollQuestion[]
-  answers     PollAnswer[]
+  questions PollQuestion[]
+  answers   PollAnswer[]
 
   @@index([status, pinned])
 }
@@ -2862,12 +2870,12 @@ model PollChoice {
 // the rule this way keeps the aggregates indexable, which is the whole reason the columns are
 // typed at all.
 model PollAnswer {
-  id          String        @id @default(cuid())
-  poll        Poll          @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  id          String       @id @default(cuid())
+  poll        Poll         @relation(fields: [pollId], references: [id], onDelete: Cascade)
   pollId      String
-  question    PollQuestion  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question    PollQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
   questionId  String
-  choice      PollChoice?   @relation(fields: [choiceId], references: [id], onDelete: Cascade)
+  choice      PollChoice?  @relation(fields: [choiceId], references: [id], onDelete: Cascade)
   choiceId    String?
   text        String?
   number      Float?
@@ -2877,14 +2885,14 @@ model PollAnswer {
   // column for two rows ("Speed: good, Docs: good") and the unique below would otherwise call
   // the second one a duplicate of the first. NOT NULL on purpose: a nullable discriminator is
   // no discriminator at all in Postgres, where every NULL is distinct from every other.
-  slot        Int           @default(0)
-  user        User?         @relation("PollAnswerer", fields: [userId], references: [id], onDelete: SetNull)
+  slot        Int          @default(0)
+  user        User?        @relation("PollAnswerer", fields: [userId], references: [id], onDelete: SetNull)
   userId      String?
   voterKey    String?
   // Same reason as PollVote.wasLoggedIn: a closed account must not move its answer into the
   // anonymous column and change a published result.
-  wasLoggedIn Boolean       @default(false)
-  createdAt   DateTime      @default(now())
+  wasLoggedIn Boolean      @default(false)
+  createdAt   DateTime     @default(now())
 
   // The uniqueness moves with the data: one answer per (question, voter) for a single-choice
   // question, per (question, voter, choice) when several are allowed. NULLs are distinct in
@@ -3004,28 +3012,28 @@ model Session {
 /// starts to matter. The subject is a plain id plus what they were called at the time, so the
 /// trail survives the erasure it describes.
 model StaffNote {
-  id           String   @id @default(cuid())
+  id           String @id @default(cuid())
   /// The account this is about. No FK on purpose — see above.
   subjectId    String
   /// Display name + address as they were when the note was written, so a closed account still
   /// reads as a person rather than as a cuid.
-  subjectLabel String   @default("")
+  subjectLabel String @default("")
 
   /// note · closure · ban · suspension · erasure — what produced it. A `note` is somebody
   /// writing something down; the others are stamped by the action itself.
-  kind         String   @default("note")
-  body         String
+  kind       String  @default("note")
+  body       String
   /// For an action: was the reason sent to the person, and to which address.
-  notified     Boolean  @default(false)
-  notifiedTo   String?
+  notified   Boolean @default(false)
+  notifiedTo String?
 
-  author       User?    @relation("StaffNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  authorId     String?
+  author      User?   @relation("StaffNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  authorId    String?
   /// Denormalised for the same reason as subjectLabel: the author may leave too.
-  authorLabel  String   @default("")
+  authorLabel String  @default("")
 
-  pinned       Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
 
   @@index([subjectId, createdAt])
   @@index([kind])
@@ -3041,7 +3049,7 @@ model StaffNote {
 /// Written by the same sweeper that prunes, BEFORE it prunes, and idempotent on `day` so a
 /// restart or a double tick cannot double-count.
 model ServerMetricDaily {
-  day        DateTime @id @db.Date
+  day DateTime @id @db.Date
 
   cpuAvg     Float
   cpuMax     Float
@@ -3056,12 +3064,12 @@ model ServerMetricDaily {
 
   /// How many raw samples this day is made of — a day with four is not a day with 144, and a
   /// reader comparing two of them deserves to know which they are looking at.
-  samples    Int      @default(0)
+  samples     Int @default(0)
   /// Minutes the sampler was not running, from the gaps between consecutive samples.
-  downMinutes Int     @default(0)
+  downMinutes Int @default(0)
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 /// A moderation action the admin asked for, waiting for the bot to carry it out.
@@ -3075,19 +3083,19 @@ model ServerMetricDaily {
 /// because the bot's role sits below the target's is a normal, frequent failure, and the admin
 /// has to see it instead of watching a button go green.
 model BotAction {
-  id          String    @id @default(cuid())
+  id          String @id @default(cuid())
   /// ban · unban · kick · timeout · untimeout
   kind        String
   discordId   String
   /// Who it is about, as they were named when it was asked for — the member may leave.
-  targetLabel String    @default("")
-  reason      String    @default("")
+  targetLabel String @default("")
+  reason      String @default("")
   /// For a timeout, and for a ban that should lift itself. Null means permanent.
   minutes     Int?
 
-  requestedBy   User?   @relation("BotActionRequester", fields: [requestedById], references: [id], onDelete: SetNull)
-  requestedById String?
-  requestedByLabel String @default("")
+  requestedBy      User?   @relation("BotActionRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  requestedById    String?
+  requestedByLabel String  @default("")
 
   /// pending · done · failed
   status      String    @default("pending")
@@ -3114,10 +3122,10 @@ model BotAction {
 /// A revoked warning is kept, not deleted. "This was withdrawn on the 4th" is part of the
 /// record, and a count that silently drops rows makes the escalation unexplainable.
 model BotWarn {
-  id          String    @id @default(cuid())
+  id          String  @id @default(cuid())
   discordId   String
   /// Who it is about, as they were named at the time — the member may leave or rename.
-  targetLabel String    @default("")
+  targetLabel String  @default("")
   reason      String
   guildId     String?
 
@@ -3127,11 +3135,11 @@ model BotWarn {
 
   /// What the count triggered, if anything — recorded on the warning that crossed the line so
   /// the escalation can be explained months later.
-  triggered   String?
-  revokedAt   DateTime?
-  revokedById String?
+  triggered     String?
+  revokedAt     DateTime?
+  revokedById   String?
   revokedReason String?
-  createdAt   DateTime  @default(now())
+  createdAt     DateTime  @default(now())
 
   @@index([discordId, revokedAt])
   @@index([createdAt])
@@ -3143,21 +3151,21 @@ model BotWarn {
 /// Discord target needs no confirmation because only an admin can add one — you cannot
 /// subscribe somebody else's channel from the public page.
 model StatusSubscriber {
-  id        String   @id @default(cuid())
+  id     String   @id @default(cuid())
   /// email · discord
-  kind      String   @default("email")
+  kind   String   @default("email")
   /// The address, or the Discord channel id.
-  target    String
+  target String
   /// Which services they care about. Empty means all of them — the common case, and it must
   /// keep working when a new service is added rather than silently excluding it.
-  deps      String[] @default([])
+  deps   String[] @default([])
 
-  confirmed   Boolean  @default(false)
+  confirmed    Boolean @default(false)
   confirmToken String? @unique
   /// Also the unsubscribe token: one link in every message, no login needed.
-  token       String   @unique
+  token        String  @unique
 
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
   lastSentAt DateTime?
 
   @@unique([kind, target])
@@ -3170,19 +3178,19 @@ model StatusSubscriber {
 /// this is WRITTEN afterwards. Merging them would mean an automatic row carrying empty prose,
 /// and no way to tell "nobody has explained this yet" from "there was nothing to say".
 model IncidentNote {
-  id        String        @id @default(cuid())
-  outage    ServiceOutage @relation(fields: [outageId], references: [id], onDelete: Cascade)
-  outageId  String
+  id       String        @id @default(cuid())
+  outage   ServiceOutage @relation(fields: [outageId], references: [id], onDelete: Cascade)
+  outageId String
 
   /// investigating · identified · watching · resolved
-  state     String        @default("investigating")
-  body      String
+  state      String  @default("investigating")
+  body       String
   /// Shown on the public page. An admin may want to record something internal first.
-  publicNote Boolean      @default(true)
+  publicNote Boolean @default(true)
 
-  authorId  String?
-  authorLabel String      @default("")
-  createdAt DateTime      @default(now())
+  authorId    String?
+  authorLabel String   @default("")
+  createdAt   DateTime @default(now())
 
   @@index([outageId, createdAt])
 }
@@ -3194,11 +3202,11 @@ model IncidentNote {
 /// event, a promotion, a commission request — so they carry their own channel choice and their
 /// own urgency, and a failure to post is recorded rather than lost.
 model BotAnnouncement {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   /// event · promo · myo · incident · custom
   kind      String
   title     String
-  body      String   @default("")
+  body      String  @default("")
   /// Where it should end up. Optional: unset means the bot's general channel, which is the
   /// honest default — a new kind should be loud where people watch, not dropped because
   /// nobody configured a channel for it.
@@ -3206,11 +3214,11 @@ model BotAnnouncement {
   url       String?
   /// Shown as a colour and a mention-worthy flag. A commission that is urgent and one that is
   /// not are read by the same person at very different speeds.
-  urgent    Boolean  @default(false)
+  urgent    Boolean @default(false)
 
-  status    String   @default("pending")   // pending · sent · failed
+  status    String    @default("pending") // pending · sent · failed
   error     String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   sentAt    DateTime?
 
   @@index([status, createdAt])
