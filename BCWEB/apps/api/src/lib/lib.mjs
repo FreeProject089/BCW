@@ -28,13 +28,16 @@ export function safeEqual(a, b) {
 // policy (access-policy.mjs) so the shape can never drift between the two.
 // One OpenSSH public-key line an owner pasted into an access list.
 //
-// Rejected HERE, at save time, rather than at request time. Only ed25519 can be verified
-// (lib/keyauth.mjs says why), so storing an RSA key would store a requirement that nothing
-// can ever satisfy: every client locked out, the owner included, and a gate that looks broken
-// rather than mis-configured. The moment the person is still looking at the field is the only
-// good moment to say no.
+// Rejected HERE, at save time, rather than at request time. What counts as usable is asked of
+// the VERIFIER (pubkeyFromOpenssh) rather than listed here, so the two cannot disagree: a key
+// this accepts and that cannot verify would store a requirement nothing could satisfy — every
+// client locked out, the owner included, and a gate that looks broken rather than
+// mis-configured. The moment the person is still looking at the field is the only good moment
+// to say no.
+//
+// ed25519, RSA and ECDSA all pass. ssh-dss does not: OpenSSH removed it.
 export const pubkeyLineSchema = z.string().max(1000).refine((v) => pubkeyFromOpenssh(v) !== null, {
-  message: 'not_an_ed25519_public_key',
+  message: 'unsupported_public_key',
 });
 
 // A zod failure that is ONLY about a pasted public key, turned into a name the UI can act on.
@@ -45,8 +48,8 @@ export const pubkeyLineSchema = z.string().max(1000).refine((v) => pubkeyFromOpe
 // covers everything it should.
 export function pubkeyErrorCode(zodError) {
   const issues = zodError?.issues || [];
-  return issues.length && issues.every((i) => i.message === 'not_an_ed25519_public_key')
-    ? 'not_an_ed25519_public_key' : null;
+  return issues.length && issues.every((i) => i.message === 'unsupported_public_key')
+    ? 'unsupported_public_key' : null;
 }
 
 export const accountEntrySchema = z.object({

@@ -13627,8 +13627,8 @@ function OwnerCatalogAccess({ catalog, onChange }) {
     catch (x) {
       // The server refuses a non-ed25519 key. Say which failure it was: "Failed." on a form
       // holding a key someone just pasted is the least useful thing we could tell them.
-      toast.error(x.data?.error === 'not_an_ed25519_public_key'
-        ? t('oca.badkey', 'One of the public keys is not an ed25519 key.')
+      toast.error(x.data?.error === 'unsupported_public_key'
+        ? t('oca.badkey', 'One of the public keys is not a supported type (ed25519, RSA or ECDSA).')
         : t('acc.failed', 'Failed.'));
     } finally { setBusy(false); }
   };

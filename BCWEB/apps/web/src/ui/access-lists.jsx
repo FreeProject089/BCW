@@ -77,9 +77,14 @@ export function AccountChipList({ label, items, onAdd, onRemove, placeholder }) 
 }
 
 /** `ssh-ed25519 AAAA…` → the base64 blob and the trailing comment, or null. */
+// Every algorithm BMM can prove with. ssh-dss is absent because OpenSSH removed it and
+// nothing on either side verifies it — accepting it here would store a requirement no client
+// could ever satisfy.
+const KEY_TYPES = /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521))$/;
+
 function splitKey(line) {
   const parts = String(line || '').trim().split(/\s+/);
-  if (parts[0] !== 'ssh-ed25519' || !parts[1]) return null;
+  if (!KEY_TYPES.test(parts[0] || '') || !parts[1]) return null;
   return { blob: parts[1], comment: parts.slice(2).join(' ') };
 }
 
@@ -111,9 +116,9 @@ export function PubkeyList({ items, onAdd, onRemove }) {
     // between a correction and a mystery. (Only ed25519 is verifiable; storing anything else
     // would be storing a requirement nothing could ever satisfy.)
     if (!splitKey(line)) {
-      setErr(/^ssh-(rsa|dss)|^ecdsa-/.test(line)
-        ? t('acck.wrongtype', 'Only ed25519 keys work here. Generate one with: ssh-keygen -t ed25519')
-        : t('acck.malformed', 'That does not look like an OpenSSH public key line (ssh-ed25519 AAAA… comment).'));
+      setErr(/^ssh-dss/.test(line)
+        ? t('acck.wrongtype', 'DSA keys are not supported — OpenSSH removed them. Use ed25519, RSA or ECDSA.')
+        : t('acck.malformed', 'That does not look like an OpenSSH public key line (ssh-ed25519 / ssh-rsa / ecdsa-sha2-… AAAA… comment).'));
       return;
     }
     setErr(''); setV(''); onAdd(line);
@@ -125,7 +130,7 @@ export function PubkeyList({ items, onAdd, onRemove }) {
         {t('acck.label', 'Authorised public keys')}
       </div>
       <div className="text-xs text-[var(--muted)] mb-1.5">
-        {t('acck.hint', 'Paste the contents of a .pub file. Unlike the lists above, a key cannot be claimed — the client has to prove it holds the private half.')}
+        {t('acck.hint', 'Paste the contents of a .pub file — ed25519, RSA or ECDSA. Unlike the lists above, a key cannot be claimed: the client has to prove it holds the private half.')}
       </div>
       <div className="flex gap-2">
         <Input

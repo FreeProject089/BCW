@@ -708,8 +708,8 @@ function SettingsTab({ r, reload }) {
     // Name the failure when the server named it: "Failed to save." over a form holding a key
     // somebody just pasted tells them nothing about which of the six fields is wrong.
     catch (x) {
-      toast.error(x.data?.error === 'not_an_ed25519_public_key'
-        ? t('oca.badkey', 'One of the public keys is not an ed25519 key.')
+      toast.error(x.data?.error === 'unsupported_public_key'
+        ? t('oca.badkey', 'One of the public keys is not a supported type (ed25519, RSA or ECDSA).')
         : t('repos.mng.savefail', 'Failed to save.'));
     } finally { setBusy(false); }
   };
