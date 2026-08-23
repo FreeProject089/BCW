@@ -13542,7 +13542,60 @@ function AdminNav() {
 // Rendered by the MEMBER dashboard (pages/dashboard.jsx), never by this page — it lives
 // here only because the old pages monolith was split this way. Exported so the dashboard
 // imports it instead of referencing a bare identifier, which crashed the tab at render.
-export function OwnerCatalogs() {
+export /** Set or remove a catalog's download password. */
+function CatalogSyncPassword({ catalog, onChange }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const dialog = useDialog();
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const has = !!catalog.hasPassword;
+
+  const save = async () => {
+    if (pw.length < 4) return toast.error(t('ocpw.short', 'Password too short (min 4).'));
+    setBusy(true);
+    try {
+      await api.put(`/me/catalogs/${catalog.id}/sync-password`, { password: pw });
+      setPw('');
+      toast.success(t('ocpw.set', 'Download password set.'));
+      onChange?.();
+    } catch { toast.error(t('acc.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+
+  const clear = async () => {
+    // Removing a protection is not a thing to do by mis-click, and the confirm says what
+    // actually changes rather than "are you sure".
+    if (!(await dialog.confirm({
+      title: t('ocpw.clear.t', 'Remove the download password'),
+      message: t('ocpw.clear.m', 'The catalog becomes readable by anyone your access lists already allow. Continue?'),
+      okLabel: t('rd.remove', 'Remove'), danger: true,
+    }))) return;
+    setBusy(true);
+    try {
+      await api.put(`/me/catalogs/${catalog.id}/sync-password`, { password: '' });
+      toast.success(t('ocpw.cleared', 'Download password removed.'));
+      onChange?.();
+    } catch { toast.error(t('acc.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-xs text-[var(--muted)] inline-flex items-center gap-1">
+        <Lock size={12} /> {t('ocpw.label', 'Download password')}
+      </span>
+      {has && <Badge tone="amber">{t('ocpw.on', 'Set')}</Badge>}
+      <Input
+        type="password" value={pw} onChange={(e) => setPw(e.target.value)}
+        placeholder={has ? t('ocpw.replace', 'Replace…') : t('ocpw.new', 'Set a password…')}
+        className="w-40" autoComplete="new-password"
+      />
+      <Button size="sm" variant="secondary" disabled={busy || !pw} onClick={save}>{t('ocpw.save', 'Set')}</Button>
+      {has && <Button size="sm" variant="ghost" disabled={busy} onClick={clear}>{t('rd.remove', 'Remove')}</Button>}
+    </div>
+  );
+}
+
+function OwnerCatalogs() {
   const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/me/catalogs'), []);
   const [openId, setOpenId] = useState(null);
@@ -13614,6 +13667,7 @@ export function OwnerCatalogs() {
                 </Select>
               </label>
               {c.visibility === 'private' && <Button size="sm" variant="ghost" onClick={() => rotate(c)}><RefreshCw size={12} /> {t('oc.sharelink', 'Copy share link')}</Button>}
+              <CatalogSyncPassword catalog={c} onChange={reload} />
             </div>
             {openId === c.id && <OwnerCatalogItems catalog={c} onChange={reload} />}
           </Card>
