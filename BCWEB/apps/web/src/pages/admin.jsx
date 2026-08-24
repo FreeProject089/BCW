@@ -1777,9 +1777,23 @@ function AdminServerPerf() {
   const gb = (b) => b == null ? null : b / 1024 ** 3;
   const memUsedGB = totals.memTotalBytes != null && totals.memFreeBytes != null ? gb(totals.memTotalBytes - totals.memFreeBytes) : null;
   const diskUsedGB = totals.diskTotalBytes != null && totals.diskFreeBytes != null ? gb(totals.diskTotalBytes - totals.diskFreeBytes) : null;
+  // The SAME numbers the cards below show, as a percentage.
+  //
+  // These used to read latest.memPct / latest.diskPct — the most recent stored sample —
+  // while the GB figures underneath were computed live when the page was fetched. Two clocks
+  // for one quantity, shown side by side as though they agreed: 60% over "1.9 / 15.5 GB",
+  // 83% over "95 / 1007 GB". Neither was wrong; the pairing was. A percentage and the
+  // absolute value it is a percentage OF have to come from one reading.
+  const memPctLive = totals.memTotalBytes ? 100 * (1 - totals.memFreeBytes / totals.memTotalBytes) : null;
+  const diskPctLive = totals.diskTotalBytes ? 100 * (1 - totals.diskFreeBytes / totals.diskTotalBytes) : null;
+  // How old the sampled metrics are. CPU and load have no live counterpart in this payload,
+  // so they still come from the sample — and the page says so instead of implying "now".
+  const sampleAgeMin = latest?.createdAt ? Math.round((Date.now() - new Date(latest.createdAt).getTime()) / 60000) : null;
   // Per-metric tone (green/amber/red) + an overall health rollup = the worst of them.
   const loadRatio = latest && totals.cpuCores ? latest.loadAvg1 / totals.cpuCores : null;
-  const cpuTone = toneFor(latest?.cpuPct, PERF_THRESH.cpuPct), memTone = toneFor(latest?.memPct, PERF_THRESH.memPct), diskTone = toneFor(latest?.diskPct, PERF_THRESH.diskPct), loadTone = toneFor(loadRatio, PERF_THRESH.loadRatio);
+  // Each tone follows the value its own card DISPLAYS. Colouring memory from the stored
+  // sample while showing the live number would put an amber ring around "12%".
+  const cpuTone = toneFor(latest?.cpuPct, PERF_THRESH.cpuPct), memTone = toneFor(memPctLive, PERF_THRESH.memPct), diskTone = toneFor(diskPctLive, PERF_THRESH.diskPct), loadTone = toneFor(loadRatio, PERF_THRESH.loadRatio);
   const worst = [cpuTone, memTone, diskTone, loadTone];
   const health = !latest ? null : worst.includes('crit') ? 'crit' : worst.includes('warn') ? 'warn' : 'ok';
   const healthLabel = { ok: t('sp.health.ok', 'Healthy'), warn: t('sp.health.warn', 'Under load'), crit: t('sp.health.crit', 'Critical') }[health];
@@ -1813,8 +1827,8 @@ function AdminServerPerf() {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
         {kpi('CPU', latest ? `${latest.cpuPct.toFixed(0)}%` : '—', Cpu, cpuTone, 'cpuPct')}
-        {kpi(t('sp.memory', 'Memory'), latest ? `${latest.memPct.toFixed(0)}%` : '—', Gauge, memTone, 'memPct')}
-        {kpi(t('sp.disk', 'Disk'), latest ? `${latest.diskPct.toFixed(0)}%` : '—', HardDrive, diskTone, 'diskPct')}
+        {kpi(t('sp.memory', 'Memory'), memPctLive != null ? `${memPctLive.toFixed(0)}%` : '—', Gauge, memTone, 'memPct')}
+        {kpi(t('sp.disk', 'Disk'), diskPctLive != null ? `${diskPctLive.toFixed(0)}%` : '—', HardDrive, diskTone, 'diskPct')}
         {kpi(t('sp.load', 'Load (1m)'), latest ? latest.loadAvg1.toFixed(2) : '—', TrendingUp, loadTone)}
         {kpi(t('sp.uptime', 'Uptime'), latest ? `${(latest.uptimeSec / 3600).toFixed(1)}h` : '—', Clock, '')}
         {kpi(t('sp.latency', 'Avg latency'), latest?.latencyMs != null ? `${latest.latencyMs}ms` : '—', Zap, latest?.latencyMs != null ? toneFor(latest.latencyMs, [400, 1000]) : '')}
@@ -1837,6 +1851,9 @@ function AdminServerPerf() {
           <span className="flex items-center gap-3 text-[11px] text-[var(--muted)]"><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#f97316' }} /> CPU</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#38bdf8' }} /> Mem</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#a78bfa' }} /> Disk</span></span>
         </div>
         <MetricChart history={history} />
+        {/* CPU and load come from the last stored sample, not from this instant. Saying how
+            old it is turns "why is CPU 3% when the box is busy" into an answerable question. */}
+        {sampleAgeMin != null && <div className="text-[11px] text-[var(--faint)] mt-2">{t('sp.sampleAge', 'CPU, load, latency and uptime are from the last sample, taken {n} min ago. Memory and disk are read live.').replace('{n}', String(sampleAgeMin))}</div>}
         {cg?.usedBytes != null && <div className="text-[11px] text-[var(--faint)] mt-2">This process's own cgroup memory: {(cg.usedBytes / 1024 / 1024).toFixed(0)} MB{cg.limitBytes ? ` / ${(cg.limitBytes / 1024 / 1024).toFixed(0)} MB allocated` : ' (no cgroup limit set — showing real usage only)'}.</div>}
       </Card>
 

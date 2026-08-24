@@ -2385,6 +2385,7 @@ const DICT = {
     'sp.title': 'Performance serveur', 'sp.auto': 'auto 30 s', 'sp.samplenow': 'Échantillonner',
     'sp.desc': 'Les métriques reflètent la propre vue de ce conteneur API (os/cgroup) — échantillonnées toutes les ~10 min, rafraîchies ici toutes les 30 s. Une ventilation complète par service avec contrôles de redémarrage nécessite l’accès au socket Docker (voir « Gestion serveur avancée »).',
     'sp.memory': 'Mémoire', 'sp.disk': 'Disque', 'sp.load': 'Charge (1m)', 'sp.uptime': 'Disponibilité', 'sp.latency': 'Latence moy.',
+    'sp.sampleAge': "Le CPU, la charge, la latence et l'uptime proviennent du dernier échantillon, pris il y a {n} min. La mémoire et le disque sont lus en direct.",
     'sp.cores': 'Cœurs CPU', 'sp.ramtotal': 'RAM totale', 'sp.disktotal': 'Disque total', 'sp.availability': 'Disponibilité',
     'sp.history': 'CPU / Mémoire / Disque — historique',
     'sp.alloc': 'Allocation par repo', 'sp.alloc.summary': 'vCPU alloués sur {n} repo(s) · l’hôte a {c} cœur(s) · {u} Mbps au total',
