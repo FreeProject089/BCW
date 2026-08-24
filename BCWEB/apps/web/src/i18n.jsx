@@ -2721,6 +2721,8 @@ const DICT = {
     'st.contrastlow': 'Contraste du texte du bouton {n}:1 — sous WCAG AA (4,5:1). L’encre a déjà basculé vers sa meilleure option ; cet accent est simplement difficile à écrire dessus.',
     'adm.tab.needs': 'À traiter', 'common.refresh': 'Actualiser',
     'common.reset': 'Réinitialiser',
+    'adm.react.off': 'Aucun article n’accepte encore les réactions.',
+    'adm.react.offsub': 'Les réactions sont désactivées par défaut sur chaque article. Activez-les — et choisissez les émoji — dans l’éditeur d’article, section Réactions.',
     'pce.basics': 'Général',
     'pce.blocks': 'Blocs',
     'pce.bloglimits': 'Limites du blog',

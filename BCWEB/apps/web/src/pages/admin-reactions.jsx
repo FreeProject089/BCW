@@ -50,7 +50,18 @@ export function AdminReactions() {
           {t('adm.react.blogsub', 'One reaction per person per post — a total is people, not clicks.')}
         </p>
         {!blog.length ? (
-          <EmptyState icon={Heart} title={t('adm.react.none', 'No reactions in this window.')} />
+          /* Two different empty states, because they need two different answers. "Nobody
+             reacted" is information; "reactions are off on every post" is a setting the
+             person reading this can change, and showing them the first when the truth is
+             the second is how a working feature gets reported as broken. Reactions default
+             to off per post, so a site that never touched the switch is always the second. */
+          data?.totals?.postsAcceptingReactions === 0 && data?.totals?.publishedPosts > 0 ? (
+            <EmptyState icon={Heart}
+              title={t('adm.react.off', 'No post accepts reactions yet.')}
+              sub={t('adm.react.offsub', 'Reactions are off by default on every post. Turn them on — and pick which emoji — in the post editor, under Reactions.')} />
+          ) : (
+            <EmptyState icon={Heart} title={t('adm.react.none', 'No reactions in this window.')} />
+          )
         ) : (
           <div className="divide-y divide-[var(--line)]">
             {blog.map((b) => (

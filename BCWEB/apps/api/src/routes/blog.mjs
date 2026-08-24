@@ -555,7 +555,18 @@ export default async function blogRoutes(app) {
 
     const [grouped, posts, docs] = await Promise.all([
       p.blogReaction.groupBy({ by: ['postId', 'type'], _count: { type: true }, where: { createdAt: { gte: since } } }),
-      p.blogPost.findMany({ select: { id: true, title: true, slug: true, projectKey: true, publishedAt: true } }),
+      // `projectKey` is NOT a column on BlogPost — a post points at a Project (or a
+      // ShowcaseProject) by id, and the key lives on the Project. Selecting a field that
+      // does not exist makes Prisma refuse the WHOLE query, so this endpoint answered 500
+      // and the Reader-feedback panel rendered nothing at all. It reads as a display detail
+      // and took out the entire screen.
+      p.blogPost.findMany({
+        select: {
+          id: true, title: true, slug: true, publishedAt: true,
+          project: { select: { key: true } },
+          showcaseProject: { select: { slug: true } },
+        },
+      }),
       p.docPage.findMany({
         select: { slug: true, title: true, category: true, helpfulYes: true, helpfulOk: true, helpfulNo: true },
       }),
@@ -575,7 +586,9 @@ export default async function blogRoutes(app) {
         id,
         title: postMeta.get(id)?.title || id,
         slug: postMeta.get(id)?.slug || null,
-        projectKey: postMeta.get(id)?.projectKey || null,
+        // The Project's key, or the showcase page's slug — a post belongs to exactly one
+        // of the two, so whichever is set is the space it lives in.
+        projectKey: postMeta.get(id)?.project?.key || postMeta.get(id)?.showcaseProject?.slug || null,
         total: e.total,
         types: e.types,
       }))
@@ -603,6 +616,12 @@ export default async function blogRoutes(app) {
       totals: {
         blogReactions: blog.reduce((n, x) => n + x.total, 0),
         docVotes: docRows.reduce((n, x) => n + x.votes, 0),
+        // How many posts CAN be reacted to. Without this the panel cannot tell "nobody has
+        // reacted" from "reactions are switched off on every post" — they render as the same
+        // empty list, and only one of them is something an admin can act on. Reactions
+        // default to off per post, so a fresh site is always the second case.
+        postsAcceptingReactions: await p.blogPost.count({ where: { reactionsEnabled: true, status: 'PUBLISHED' } }),
+        publishedPosts: await p.blogPost.count({ where: { status: 'PUBLISHED' } }),
       },
     };
   });
